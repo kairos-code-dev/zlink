@@ -571,6 +571,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
         @Override public void setConnectRoutingId(RoutingId routingId) { record("setConnectRoutingId"); }
+        @Override public void setProbe(boolean enabled) { record("setProbe." + enabled); }
         @Override public int peerWeight() { return peerWeight; }
         @Override public void setPeerWeight(int weight) { peerWeight = weight; record("setPeerWeight." + weight); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return received.pollFirst(); }

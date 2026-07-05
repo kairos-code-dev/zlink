@@ -29,6 +29,16 @@ final class ZLinkAutoConnectPlanner {
         String ownerId) {
     }
 
+    record PeerDecision(
+        ZLinkPeerLocation peer,
+        Target target,
+        String skipReason) {
+
+        boolean shouldDial() {
+            return target != null;
+        }
+    }
+
     static boolean isRoleAllowed(
         ZLinkLocationAutoConnectType type,
         ZLinkLocationRole role) {
@@ -47,26 +57,49 @@ final class ZLinkAutoConnectPlanner {
     static Map<String, Target> computeDesired(Local local, List<ZLinkPeerLocation> peers) {
         Map<String, Target> desired = new HashMap<>();
         for (ZLinkPeerLocation peer : peers) {
-            if (peer.autoConnectType() != local.type()
-                || !peer.meshName().equals(local.meshName())
-                || !isRoleAllowed(local.type(), peer.role())
-                || peer.endpoint() == null
-                || peer.endpoint().isBlank()) {
-                continue;
+            PeerDecision decision = decide(local, peer);
+            if (decision.shouldDial()) {
+                desired.put(decision.target().key(), decision.target());
             }
-            if (isSelf(local, peer) || !shouldDial(local, peer)) {
-                continue;
-            }
-            Target target = new Target(
-                targetKeyOf(peer),
-                peer.nodeRid(),
-                peer.role(),
-                peer.endpoint(),
-                peer.metadata(),
-                peer.ownerId());
-            desired.put(target.key(), target);
         }
         return desired;
+    }
+
+    static List<PeerDecision> decideAll(Local local, List<ZLinkPeerLocation> peers) {
+        return peers.stream().map(peer -> decide(local, peer)).toList();
+    }
+
+    private static PeerDecision decide(Local local, ZLinkPeerLocation peer) {
+        if (peer.autoConnectType() != local.type()) {
+            return skip(peer, "type-mismatch");
+        }
+        if (!peer.meshName().equals(local.meshName())) {
+            return skip(peer, "mesh-mismatch");
+        }
+        if (!isRoleAllowed(local.type(), peer.role())) {
+            return skip(peer, "role-not-allowed");
+        }
+        if (peer.endpoint() == null || peer.endpoint().isBlank()) {
+            return skip(peer, "missing-endpoint");
+        }
+        if (isSelf(local, peer)) {
+            return skip(peer, "self");
+        }
+        if (!shouldDial(local, peer)) {
+            return skip(peer, "not-initiator");
+        }
+        Target target = new Target(
+            targetKeyOf(peer),
+            peer.nodeRid(),
+            peer.role(),
+            peer.endpoint(),
+            peer.metadata(),
+            peer.ownerId());
+        return new PeerDecision(peer, target, null);
+    }
+
+    private static PeerDecision skip(ZLinkPeerLocation peer, String reason) {
+        return new PeerDecision(peer, null, reason);
     }
 
     private static String targetKeyOf(ZLinkPeerLocation peer) {
@@ -97,7 +130,8 @@ final class ZLinkAutoConnectPlanner {
             case FANOUT -> local.role() == ZLinkLocationRole.SUB
                 && peer.role() == ZLinkLocationRole.PUB;
             case SPOT_MESH -> local.role() == ZLinkLocationRole.SPOT
-                && peer.role() == ZLinkLocationRole.SPOT;
+                && peer.role() == ZLinkLocationRole.SPOT
+                && localIsInitiator(local, peer);
             default -> false;
         };
     }

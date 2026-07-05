@@ -64,6 +64,7 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
@@ -1117,6 +1118,41 @@ final class ChannelMessagingTest {
              ZLinkFrameworkRuntime target =
                  RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("route:hello", awaitRouteReply(ignoredSource, targetRid));
+            assertEquals("route", ROUTE_REQUEST_CHANNEL.get());
+        } finally {
+            ROUTE_REQUEST_CHANNEL.set(null);
+        }
+    }
+
+    @Test
+    void routeMesh_nonInitiatorRequestUsesInboundProbeIdentity() {
+        String initiatorEndpoint = tcpEndpoint();
+        String nonInitiatorEndpoint = tcpEndpoint();
+        RoutingId initiatorRid = RoutingId.from("route-a-initiator");
+        RoutingId nonInitiatorRid = RoutingId.from("route-z-non-initiator");
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ROUTE_REQUEST_CHANNEL.set(null);
+
+        DefaultZLinkFrameworkOptions initiatorOptions = new DefaultZLinkFrameworkOptions();
+        initiatorOptions.addLocationStore(store);
+        initiatorOptions.configureLocations().setPollingInterval(Duration.ofMillis(50));
+        { var channel = initiatorOptions.addRouteMeshChannel("route");
+            channel.enableServer(initiatorEndpoint);
+            channel.setRoutingId(initiatorRid);
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
+
+        DefaultZLinkFrameworkOptions nonInitiatorOptions = new DefaultZLinkFrameworkOptions();
+        nonInitiatorOptions.addLocationStore(store);
+        nonInitiatorOptions.configureLocations().setPollingInterval(Duration.ofMillis(50));
+        { var channel = nonInitiatorOptions.addRouteMeshChannel("route");
+            channel.enableServer(nonInitiatorEndpoint);
+            channel.setRoutingId(nonInitiatorRid); };
+
+        try (ZLinkFrameworkRuntime initiator =
+                 RuntimeTestSupport.startFramework(initiatorOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime nonInitiator =
+                 RuntimeTestSupport.startFramework(nonInitiatorOptions, new ZLinkJavaBackendAdapterFactory())) {
+            assertEquals("route:hello", awaitRouteReply(nonInitiator, initiatorRid));
             assertEquals("route", ROUTE_REQUEST_CHANNEL.get());
         } finally {
             ROUTE_REQUEST_CHANNEL.set(null);

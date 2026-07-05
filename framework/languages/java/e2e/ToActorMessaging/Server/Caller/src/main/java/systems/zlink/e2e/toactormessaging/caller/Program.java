@@ -24,16 +24,23 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        boot("main builder");
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
+        boot("main keepAlive");
         builder.application().setKeepAlive(true);
+        boot("main run");
         builder.run(args);
+        boot("main run done");
     }
 
     @Bean(destroyMethod = "close")
     JsonHttp http(ZLinkActorClient actors) {
+        boot("http create");
         JsonHttp http = new JsonHttp(Env.get("ZLINK_JAVA_E2E_CALLER_HTTP"));
+        boot("http route health");
         http.get("/health", () -> java.util.Map.of("status", "ok"));
+        boot("http route send");
         http.post("/send", Contracts.ActorCallRequest.class, request -> {
             try {
                 actors.sendToActor(
@@ -48,6 +55,7 @@ public final class Program {
                 return failed(request, ex);
             }
         });
+        boot("http route request");
         http.post("/request", Contracts.ActorCallRequest.class, request -> {
             try {
                 Contracts.ActorReply reply = actors.requestToActor(
@@ -63,24 +71,41 @@ public final class Program {
                 return failed(request, ex);
             }
         });
+        boot("http start");
         http.start();
+        boot("http start done");
         return http;
     }
 
     @Bean
     ZLinkFrameworkConfigurer framework() {
+        boot("framework configurer bean");
         return options -> {
+            boot("configureDispatch");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs") + "/caller-flow.log")
                 .traceLabel("java-to-actor-caller");
+            boot("configureDispatch done");
+            boot("addLocationStore");
             options.addLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
                 .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
                 .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"))));
-            options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(Env.get("ZLINK_JAVA_E2E_CALLER_SPOT"))
-                .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_CALLER_RID", "caller")));
+            boot("addLocationStore done");
+            boot("addSpotMesh");
+            var spotMesh = options.addSpotMesh(Contracts.SPOT_MESH);
+            boot("addSpotMesh done");
+            boot("enableRouter");
+            spotMesh.enableRouter(Env.get("ZLINK_JAVA_E2E_CALLER_SPOT"));
+            boot("enableRouter done");
+            boot("setRoutingId");
+            spotMesh.setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_CALLER_RID", "caller")));
+            boot("setRoutingId done");
         };
+    }
+
+    private static void boot(String step) {
+        System.out.println("[boot] role=caller step=" + step);
     }
 
     private static Contracts.ActorCallResponse failed(

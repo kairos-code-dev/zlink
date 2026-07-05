@@ -68,6 +68,72 @@ final class ZLinkAutoConnectReconcilerTest {
     }
 
     @Test
+    void rejectedStartupClaimIsRetriedOnNextTick() {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
+        ZLinkPeerLocation localRow = peer(
+            ZLinkLocationRole.ROUTER,
+            RoutingId.from("local-node"),
+            "inproc://local",
+            "local-owner");
+        store.renewOwnerLeaseAsync("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .join();
+        var remoteWrite = store.updatePeerAsync(
+                peer(
+                    ZLinkLocationRole.ROUTER,
+                    RoutingId.from("local-node"),
+                    "inproc://local",
+                    "remote-owner"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .join();
+        ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.ROUTER,
+                RoutingId.from("local-node"),
+                "inproc://local"),
+            localRow,
+            runtime,
+            resolver(store),
+            ZLinkAutoConnectExecutor.NONE,
+            options());
+
+        reconciler.tickAsync().toCompletableFuture().join();
+        assertEquals("remote-owner", findPeer(store, new ZLinkPeerLocationKey(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.ROUTER,
+                RoutingId.from("local-node"),
+                "inproc://local"))
+            .ownerId());
+
+        store.removePeerAsync(
+                new ZLinkPeerLocationKey(
+                    ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                    "orders",
+                    ZLinkLocationRole.ROUTER,
+                    RoutingId.from("local-node"),
+                    "inproc://local"),
+                new ZLinkLocationOwnerToken("remote-owner", remoteWrite.generation()))
+            .toCompletableFuture()
+            .join();
+        reconciler.tickAsync().toCompletableFuture().join();
+
+        assertEquals("local-owner", findPeer(store, new ZLinkPeerLocationKey(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.ROUTER,
+                RoutingId.from("local-node"),
+                "inproc://local"))
+            .ownerId());
+        reconciler.shutdownAsync().toCompletableFuture().join();
+        runtime.close();
+    }
+
+    @Test
     void dialingCapabilityConnectsLivePeerAndDisconnectsRemovedPeer() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");

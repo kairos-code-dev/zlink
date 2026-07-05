@@ -29,8 +29,10 @@ import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkCloseException;
 import systems.zlink.contracts.errors.ZlinkRecvException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
@@ -91,6 +93,16 @@ public final class ZLinkChannelRuntime
         "__zlink.routed_spot.egress.send";
     private static final String SPOT_ROUTE_BRIDGE_REQUEST_PACKET_NAME =
         "__zlink.routed_spot.egress.request";
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_ENETUNREACH = 101;
+    private static final int ERRNO_ENOTCONN = 107;
+    private static final int ERRNO_ECONNREFUSED = 111;
+    private static final int ERRNO_EHOSTUNREACH = 113;
+    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int ERRNO_ENETUNREACH_WIN = 10051;
+    private static final int ERRNO_ENOTCONN_WIN = 10057;
+    private static final int ERRNO_ECONNREFUSED_WIN = 10061;
+    private static final int ERRNO_EHOSTUNREACH_WIN = 10065;
 
     private final ZLinkBackendContext context;
     private final boolean ownsContext;
@@ -406,17 +418,24 @@ public final class ZLinkChannelRuntime
         if (channel.kind() != ChannelKind.ROUTE_MESH) {
             return;
         }
+        boot("routeMesh init channel=" + channel.name());
         ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
         router.setChannelName(channel.name());
         if (channel.routeRoutingId() != null) {
+            boot("routeMesh setRoutingId channel=" + channel.name());
             router.setRoutingId(channel.routeRoutingId());
+            boot("routeMesh setRoutingId done channel=" + channel.name());
         }
         for (String endpoint : channel.routeManualEndpoints()) {
+            boot("routeMesh manualConnect channel=" + channel.name() + " endpoint=" + endpoint);
             router.connect(endpoint);
+            boot("routeMesh manualConnect done channel=" + channel.name() + " endpoint=" + endpoint);
         }
         manualRouteRouters.add(router);
         for (String endpoint : channel.routeBinds()) {
+            boot("routeMesh bind channel=" + channel.name() + " endpoint=" + endpoint);
             router.bind(endpoint);
+            boot("routeMesh bind done channel=" + channel.name() + " endpoint=" + endpoint);
         }
         routeRouters.put(channel.name(), router);
         routeSocketLocks.put(channel.name(), new Object());
@@ -424,7 +443,9 @@ public final class ZLinkChannelRuntime
         routeRequestHandlers.put(channel.name(), routeHandlersByPacket(channel, handlerCatalog));
         routeSendDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
         routeRequestDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
+        boot("routeMesh startLoop channel=" + channel.name());
         startRouteLoop(channel.name(), router);
+        boot("routeMesh init done channel=" + channel.name());
     }
 
     public List<AutoConnectSurface> autoConnectSurfaces() {
@@ -866,6 +887,10 @@ public final class ZLinkChannelRuntime
                     }
                     timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
                 } catch (RuntimeException ex) {
+                    if (isRetriableSubmit(ex) && System.nanoTime() < deadline) {
+                        timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
+                        return;
+                    }
                     result.completeExceptionally(ex);
                 } finally {
                     attemptParts.forEach(Message::close);
@@ -1023,6 +1048,10 @@ public final class ZLinkChannelRuntime
         ZLinkBackendRouterSocket router,
         ZLinkBackendReceived received) {
         try {
+            if (isProbeFrame(received.parts())) {
+                boot("clientServer probeSkip channel=" + channelName);
+                return;
+            }
             ParsedPacket packet = parsePacket(received.parts());
             if (isFrameworkErrorPacket(packet.packetName())) {
                 reportDispatchError(
@@ -1367,7 +1396,9 @@ public final class ZLinkChannelRuntime
     }
 
     private void startRouteLoop(String channelName, ZLinkBackendRouterSocket router) {
+        boot("routeLoop submit channel=" + channelName);
         receiveExecutor.submit(() -> {
+            boot("routeLoop running channel=" + channelName);
             while (running) {
                 try {
                     ZLinkBackendReceived received;
@@ -1453,6 +1484,10 @@ public final class ZLinkChannelRuntime
         ZLinkBackendRouterSocket router,
         ZLinkBackendReceived received) {
         try {
+            if (isProbeFrame(received.parts())) {
+                boot("routeMesh probeSkip channel=" + channelName);
+                return;
+            }
             if (tryCompleteRawSpotRouteBridgeReply(channelName, received)) {
                 return;
             }
@@ -2310,6 +2345,14 @@ public final class ZLinkChannelRuntime
         return new ParsedPacket("", parts.get(0));
     }
 
+    private static boolean isProbeFrame(List<Message> parts) {
+        return parts.isEmpty() || parts.get(0).size() == 0;
+    }
+
+    private static void boot(String step) {
+        System.out.println("[boot] component=channel-runtime step=" + step);
+    }
+
     private record ParsedPacket(String packetName, Message payload) {
     }
 
@@ -3053,6 +3096,9 @@ public final class ZLinkChannelRuntime
         Duration timeout,
         ZLinkBackendRequestCallback callback,
         CompletableFuture<?> result) {
+        List<byte[]> requestPayloads = requestParts.stream()
+            .map(Message::toByteArray)
+            .toList();
         long timeoutNanos = timeout == null || timeout.isZero()
             ? defaultRequestTimeout.toNanos()
             : timeout.toNanos();
@@ -3063,9 +3109,12 @@ public final class ZLinkChannelRuntime
                 if (result.isDone()) {
                     return;
                 }
+                List<Message> attemptParts = requestPayloads.stream()
+                    .map(Message::from)
+                    .toList();
                 try {
                     boolean submitted = client.request(
-                        requestParts,
+                        attemptParts,
                         callback,
                         SendFlags.DONT_WAIT,
                         timeout);
@@ -3079,11 +3128,40 @@ public final class ZLinkChannelRuntime
                     }
                     timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
                 } catch (RuntimeException ex) {
+                    if (isRetriableSubmit(ex) && System.nanoTime() < deadline) {
+                        timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
+                        return;
+                    }
                     result.completeExceptionally(ex);
+                } finally {
+                    attemptParts.forEach(Message::close);
                 }
             }
         }
         new Attempt().run();
+    }
+
+    private static boolean isRetriableSubmit(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ZlinkSubmitException submit) {
+                int errno = submit.getNativeErrno();
+                return submit.getResult() == SubmitResult.BACKPRESSURED
+                    || submit.getResult() == SubmitResult.NOT_CONNECTED
+                    || errno == ERRNO_EHOSTUNREACH
+                    || errno == ERRNO_EHOSTUNREACH_WIN
+                    || errno == ERRNO_ENETUNREACH
+                    || errno == ERRNO_ENETUNREACH_WIN
+                    || errno == ERRNO_ECONNREFUSED
+                    || errno == ERRNO_ECONNREFUSED_WIN
+                    || errno == ERRNO_ENOTCONN
+                    || errno == ERRNO_ENOTCONN_WIN
+                    || errno == ERRNO_EAGAIN
+                    || errno == ERRNO_EWOULDBLOCK_WIN;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static List<Message> parts(Optional<String> packetName, Message payload) {

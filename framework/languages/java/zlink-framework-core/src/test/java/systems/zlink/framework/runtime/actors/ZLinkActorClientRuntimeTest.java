@@ -104,6 +104,52 @@ final class ZLinkActorClientRuntimeTest {
         assertEquals(ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND, frameworkError.kind());
     }
 
+    @Test
+    void noBindActorSendRetriesWhileRouteConverges() {
+        ZLinkInMemoryLocationStore store = storeWithActor("actor-1");
+        RecordingSpotNode node = new RecordingSpotNode();
+        node.sendFailuresRemaining = 1;
+        ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
+            () -> node,
+            new ZLinkStoreLocationResolvers(
+                ZLinkRegisteredLocationStores.fromUnified(store),
+                new systems.zlink.framework.locations.ZLinkLocationOptions()),
+            new ZLinkJsonMessageSerializer(),
+            Duration.ofMillis(250));
+
+        client.sendToActor("actor-1", new Ping("hello"))
+            .packetName("Ping")
+            .submit()
+            .toCompletableFuture()
+            .join();
+
+        assertEquals(2, node.sendAttempts);
+        assertEquals("actor-1", node.sentActor.actorId());
+    }
+
+    private static ZLinkInMemoryLocationStore storeWithActor(String actorId) {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        store.renewOwnerLeaseAsync("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
+            .toCompletableFuture()
+            .join();
+        store.updateActorAsync(
+                new ZLinkActorLocation(
+                    actorId,
+                    "test",
+                    new ZLinkActorRef(RoutingId.from("actor-node"), actorId, 7),
+                    RoutingId.from("actor-node"),
+                    ZLinkSpotKind.ENTRY,
+                    "mesh",
+                    RoutingId.from("actor-node"),
+                    "owner",
+                    1,
+                    Instant.now()),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .join();
+        return store;
+    }
+
     private static List<Message> reply(String value) {
         ZLinkJsonMessageSerializer serializer = new ZLinkJsonMessageSerializer();
         ZLinkStreamHeader header = new ZLinkStreamHeader(
@@ -128,6 +174,8 @@ final class ZLinkActorClientRuntimeTest {
         private final List<Message> reply;
         ZLinkBackendActorRef sentActor;
         ZLinkBackendActorRef requestedActor;
+        int sendAttempts;
+        int sendFailuresRemaining;
 
         RecordingSpotNode() {
             this(reply("unused"));
@@ -161,6 +209,11 @@ final class ZLinkActorClientRuntimeTest {
 
         @Override
         public boolean sendToActor(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) {
+            sendAttempts++;
+            if (sendFailuresRemaining > 0) {
+                sendFailuresRemaining--;
+                throw new IllegalStateException("NOT_CONNECTED");
+            }
             sentActor = actor;
             return true;
         }

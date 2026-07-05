@@ -18,12 +18,14 @@ import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkRecvException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -147,6 +149,80 @@ final class ZLinkChannelRuntimeTest {
             assertEquals(RoutingId.from("play-node"), backend.bridge.lastTargetNodeRid);
             assertEquals(RoutingId.from("room-spot"), backend.bridge.lastTargetSpotRid);
             assertEquals("TestCommand", backend.bridge.lastParts.get(0).toUtf8String());
+        }
+    }
+
+    @Test
+    void routeReceiveLoopSkipsRouterProbeFrame() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addRouteMeshChannel("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("route-a-peer")),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(Message.from(new byte[0]))));
+
+            Thread.sleep(50);
+            assertEquals(0, backend.router.replyCount);
+            assertFalse(backend.bridge.routerReceivedInvoked);
+        }
+    }
+
+    @Test
+    void channelRequestRetriesRetriableSubmitFailure() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addClientServerChannel("profile")
+            .enableClient("inproc://profile");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.dealer.requestFailuresRemaining = 1;
+        backend.dealer.requestReplyParts = List.of(Message.from("{\"value\":\"reply\"}".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            TestReply reply = runtime.requestToChannel("profile", new TestRequest("hello"))
+                .packetName("TestRequest")
+                .timeout(Duration.ofMillis(300))
+                .await(TestReply.class);
+
+            assertEquals("reply", reply.value());
+            assertEquals(2, backend.dealer.requestAttempts);
+        }
+    }
+
+    @Test
+    void routeRequestRetriesRetriableSubmitFailure() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMeshChannel("play.route")
+            .enableServer("inproc://play-route")
+            .enableClient("inproc://play-peer");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.router.requestFailuresRemaining = 1;
+        backend.router.requestReplyParts = List.of(Message.from("{\"value\":\"reply\"}".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            TestReply reply = runtime.requestToNode(
+                    "play.route",
+                    RoutingId.from("play-node"),
+                    new TestRequest("hello"))
+                .packetName("TestRequest")
+                .timeout(Duration.ofMillis(300))
+                .await(TestReply.class);
+
+            assertEquals("reply", reply.value());
+            assertEquals(2, backend.router.requestAttempts);
         }
     }
 
@@ -755,6 +831,9 @@ final class ZLinkChannelRuntimeTest {
 
     private static final class FakeDealerSocket implements ZLinkBackendDealerSocket {
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
+        int requestAttempts;
+        int requestFailuresRemaining;
+        List<Message> requestReplyParts = List.of();
 
         @Override public void setChannelName(String channelName) { }
         @Override public void bind(String endpoint) { }
@@ -762,12 +841,19 @@ final class ZLinkChannelRuntimeTest {
         @Override public void disconnect(String endpoint) { }
         @Override public boolean send(List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            requestAttempts++;
+            if (requestFailuresRemaining > 0) {
+                requestFailuresRemaining--;
+                throw new IllegalStateException(
+                    "transient submit",
+                    new ZlinkSubmitException(SubmitResult.NOT_CONNECTED, 107));
+            }
             callback.handle(new ZLinkBackendReceived(
                 requestResult,
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                List.of()));
+                requestReplyParts.stream().map(Message::from).toList()));
             return true;
         }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return null; }
@@ -794,11 +880,15 @@ final class ZLinkChannelRuntimeTest {
         final ArrayDeque<ZLinkBackendReceived> inbound = new ArrayDeque<>();
         int peerWeight = 100;
         int replyCount;
+        int requestAttempts;
+        int requestFailuresRemaining;
         RoutingId connectRoutingId;
+        List<Message> requestReplyParts = List.of();
 
         @Override public void setChannelName(String channelName) { }
         @Override public void setRoutingId(RoutingId routingId) { }
         @Override public void setConnectRoutingId(RoutingId routingId) { connectRoutingId = routingId; }
+        @Override public void setProbe(boolean enabled) { }
         @Override public int peerWeight() { return peerWeight; }
         @Override public void setPeerWeight(int weight) { peerWeight = weight; }
         @Override public void bind(String endpoint) { }
@@ -806,7 +896,22 @@ final class ZLinkChannelRuntimeTest {
         @Override public void disconnect(String endpoint) { }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return inbound.poll(); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { return true; }
-        @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return true; }
+        @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            requestAttempts++;
+            if (requestFailuresRemaining > 0) {
+                requestFailuresRemaining--;
+                throw new IllegalStateException(
+                    "transient submit",
+                    new ZlinkSubmitException(SubmitResult.NOT_CONNECTED, 107));
+            }
+            callback.handle(new ZLinkBackendReceived(
+                ZLinkBackendRequestResult.OK,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                requestReplyParts.stream().map(Message::from).toList()));
+            return true;
+        }
         @Override public void reply(RoutingId routingId, long requestSeq, List<Message> parts) { replyCount++; }
         @Override public String name() { return "fake-router"; }
         @Override public void close() { }

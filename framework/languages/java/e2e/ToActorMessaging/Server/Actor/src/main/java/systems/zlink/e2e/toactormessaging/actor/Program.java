@@ -36,59 +36,93 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        boot("main builder");
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
+        boot("main keepAlive");
         builder.application().setKeepAlive(true);
+        boot("main run");
         builder.run(args);
+        boot("main run done");
     }
 
     @Bean
     EvidenceStore evidenceStore() {
+        boot("evidenceStore");
         return new EvidenceStore();
     }
 
     @Bean(destroyMethod = "close")
     JsonHttp http(EvidenceStore evidence, ZLinkActorManager actors) {
+        boot("http create");
         JsonHttp http = new JsonHttp(Env.get("ZLINK_JAVA_E2E_ACTOR_HTTP"));
+        boot("http route health");
         http.get("/health", () -> java.util.Map.of("status", "ok"));
+        boot("http route evidence");
         http.get("/evidence", evidence::all);
+        boot("http route ensure");
         http.post("/ensure", Contracts.ActorCallRequest.class, request -> {
             actors.getOrCreate(request.actorId(), Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
                 .toCompletableFuture()
                 .join();
             return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "ensured");
         });
+        boot("http start");
         http.start();
+        boot("http start done");
         return http;
     }
 
     @Bean
     ZLinkFrameworkConfigurer framework() {
+        boot("framework configurer bean");
         return options -> {
+            boot("configureDispatch");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs") + "/actor-flow.log")
                 .traceLabel("java-to-actor-actor");
+            boot("configureDispatch done");
+            boot("addLocationStore");
             options.addLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
                 .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
                 .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"))));
-            options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(Env.get("ZLINK_JAVA_E2E_ACTOR_SPOT"))
-                .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_ACTOR_RID", "actor-a")))
-                .addEntrySpot(TestEntrySpot.class)
-                .addActorFactory(Contracts.ACTOR_TYPE, TestActorFactory.class);
+            boot("addLocationStore done");
+            boot("addSpotMesh");
+            var spotMesh = options.addSpotMesh(Contracts.SPOT_MESH);
+            boot("addSpotMesh done");
+            boot("enableRouter");
+            spotMesh.enableRouter(Env.get("ZLINK_JAVA_E2E_ACTOR_SPOT"));
+            boot("enableRouter done");
+            boot("setRoutingId");
+            spotMesh.setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_ACTOR_RID", "actor-a")));
+            boot("setRoutingId done");
+            boot("addEntrySpot");
+            spotMesh.addEntrySpot(TestEntrySpot.class);
+            boot("addEntrySpot done");
+            boot("addActorFactory");
+            spotMesh.addActorFactory(Contracts.ACTOR_TYPE, TestActorFactory.class);
+            boot("addActorFactory done");
         };
     }
 
     @Bean
     ApplicationRunner createBaselineActors(ZLinkActorManager actors) {
         return ignored -> {
+            boot("baselineActors start");
             for (String actorId : java.util.List.of("ta-a1", "ta-a2", "ta-a3", "ta-a4", "ta-b2", "ta-b3")) {
+                boot("baselineActors getOrCreate actorId=" + actorId);
                 actors.getOrCreate(actorId, Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
                     .toCompletableFuture()
                     .join();
+                boot("baselineActors getOrCreate done actorId=" + actorId);
             }
+            boot("baselineActors done");
         };
+    }
+
+    private static void boot(String step) {
+        System.out.println("[boot] role=actor step=" + step);
     }
 
     public static final class TestActor implements ZLinkActor {

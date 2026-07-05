@@ -1942,7 +1942,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         private void dispatchRoute(ZLinkBackendReceived received) {
             activeRouteReceives.add(received);
-            if (received.parts().isEmpty()) {
+            if (isProbeFrame(received.parts())) {
                 closeRouteReceived(received);
                 return;
             }
@@ -4216,6 +4216,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return new ParsedPacket("", parts.get(0));
     }
 
+    private static boolean isProbeFrame(List<Message> parts) {
+        return parts.isEmpty() || parts.get(0).size() == 0;
+    }
+
     private record ParsedPacket(String packetName, Message payload) {
     }
 
@@ -4842,7 +4846,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         private CompletionStage<Void> dispatchRouteAsync(ZLinkBackendReceived received) {
             activeRouteReceives.add(received);
-            if (received.parts().isEmpty()) {
+            if (isProbeFrame(received.parts())) {
                 closeRouteReceived(received);
                 return systems.zlink.framework.ZLinkSubmitStage.completed();
             }

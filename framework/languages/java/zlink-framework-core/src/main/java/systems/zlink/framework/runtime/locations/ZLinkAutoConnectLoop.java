@@ -9,11 +9,14 @@ import java.util.concurrent.TimeUnit;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 
 final class ZLinkAutoConnectLoop implements AutoCloseable {
+    private static final long STARTUP_POLLING_MILLIS = 100;
+
     private final ZLinkAutoConnectReconciler reconciler;
     private final ZLinkLocationOptions options;
     private final ScheduledExecutorService executor;
     private ScheduledFuture<?> task;
     private volatile boolean running;
+    private volatile long startupPollingUntilNanos;
 
     ZLinkAutoConnectLoop(
         ZLinkAutoConnectReconciler reconciler,
@@ -29,13 +32,10 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
 
     CompletionStage<Void> startAsync() {
         running = true;
+        startupPollingUntilNanos = System.nanoTime() + options.heartbeatInterval().toNanos();
         return tickAsync().whenComplete((ignored, failure) -> {
             if (running) {
-                task = executor.scheduleWithFixedDelay(
-                    this::tickOnLoop,
-                    options.pollingInterval().toMillis(),
-                    options.pollingInterval().toMillis(),
-                    TimeUnit.MILLISECONDS);
+                scheduleNext();
             }
         });
     }
@@ -62,7 +62,19 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
             tickAsync().toCompletableFuture().join();
         } catch (RuntimeException ignored) {
             // The reconciler records store failures as fail-static ticks.
+        } finally {
+            if (running) {
+                scheduleNext();
+            }
         }
+    }
+
+    private void scheduleNext() {
+        long delayMillis = options.pollingInterval().toMillis();
+        if (System.nanoTime() < startupPollingUntilNanos) {
+            delayMillis = Math.min(delayMillis, STARTUP_POLLING_MILLIS);
+        }
+        task = executor.schedule(this::tickOnLoop, delayMillis, TimeUnit.MILLISECONDS);
     }
 
     @Override

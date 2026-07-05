@@ -43,7 +43,7 @@ export ZLINK_JAVA_E2E_CALLER_HTTP="http://127.0.0.1:${caller_http}"
 export ZLINK_JAVA_E2E_ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
 export ZLINK_JAVA_E2E_CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
 export ZLINK_JAVA_E2E_ACTOR_RID="actor-a"
-export ZLINK_JAVA_E2E_CALLER_RID="caller"
+export ZLINK_JAVA_E2E_CALLER_RID="${ZLINK_JAVA_E2E_CALLER_RID:-caller}"
 
 print_logs() {
   local status="$1"

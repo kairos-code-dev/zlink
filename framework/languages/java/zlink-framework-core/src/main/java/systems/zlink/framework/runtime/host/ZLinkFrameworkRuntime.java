@@ -88,7 +88,10 @@ public final class ZLinkFrameworkRuntime
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
+        boot("runtime constructor");
+        boot("options validate");
         options.validate();
+        boot("options validate done");
         this.registration = options.registration();
         var diagnostics = this.registration.dispatchOptions().diagnostics();
         this.messageFlowMode =
@@ -101,18 +104,23 @@ public final class ZLinkFrameworkRuntime
             ZLinkHandlerFactory.services(handlerFactory);
         runtimeHandlers.add(ZLinkFrameworkRegistration.class, this.registration);
         runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
+        boot("locationStore resolve");
         this.locationStores = ZLinkLocationStoreResolver.resolve(
             this.registration.locations(),
             runtimeHandlers);
+        boot("locationStore resolve done enabled=" + (this.locationStores != null));
         if (this.locationStores != null) {
+            boot("locationRuntime create");
             this.locationStores.addTo(runtimeHandlers);
             this.locationRuntime = new ZLinkLocationRuntime(
                 this.locationStores,
                 this.registration.locations().options().ownerLeaseTtl(),
                 this.registration.locations().options().heartbeatInterval());
+            boot("locationRuntime start");
             this.locationRuntime.startAsync(RoutingId.from(this.locationRuntime.ownerId()))
                 .toCompletableFuture()
                 .join();
+            boot("locationRuntime start done");
             this.locationRuntimeQuery = new ZLinkLocationRuntimeQueryService(
                 this.locationStores,
                 this.locationRuntime,
@@ -144,6 +152,7 @@ public final class ZLinkFrameworkRuntime
             runtimeHandlers.add(
                 ZLinkLocationSpotRemoteAddressResolver.class,
                 this.locationSpotRemoteAddressResolver);
+            boot("locationRuntime create done");
         } else {
             this.locationRuntime = null;
             this.locationRuntimeQuery = null;
@@ -152,10 +161,12 @@ public final class ZLinkFrameworkRuntime
             this.locationSpotRemoteAddressResolver = null;
             this.storeLocationResolvers = null;
         }
+        boot("channelBackend create");
         ZLinkChannelBackendAdapter channelBackend =
             backendFactory.createChannelAdapter(adapterOptions);
         ZLinkBackendContext backendContext = channelBackend.createContext();
         this.backendContext = backendContext;
+        boot("channelRuntime create");
         this.channels = new ZLinkChannelRuntime(
             channelBackend,
             backendContext,
@@ -164,12 +175,15 @@ public final class ZLinkFrameworkRuntime
             options.registration(),
             serializer,
             runtimeHandlers);
+        boot("channelRuntime create done");
         runtimeHandlers.add(ZLinkClient.class, this.channels);
         runtimeHandlers.add(ZLinkFanoutClient.class, this.channels);
         runtimeHandlers.add(ZLinkRouteClient.class, this.channels);
         if (options.registration().spotNodes().isEmpty()) {
+            boot("spotRuntime skip");
             this.spots = null;
         } else {
+            boot("spotRuntime create");
             this.spots = new ZLinkSpotRuntime(
                 backendFactory,
                 adapterOptions,
@@ -180,6 +194,7 @@ public final class ZLinkFrameworkRuntime
                 runtimeHandlers,
                 eventDispatcher);
             this.spots.setLocationLifecycle(this.locationLifecycle);
+            boot("spotRuntime create done");
         }
         Class<? extends ZLinkSpotRemoteAddressResolver> resolverType =
             options.registration().spotRemoteAddressResolverType();
@@ -198,6 +213,7 @@ public final class ZLinkFrameworkRuntime
                 this.spots::drainRoutedDispatchQueues);
         }
         if (this.locationAutoConnectHost != null) {
+            boot("autoConnect start");
             this.locationAutoConnectHost.startAsync(
                     this.registration,
                     this.channels,
@@ -205,11 +221,13 @@ public final class ZLinkFrameworkRuntime
                     this.spots)
                 .toCompletableFuture()
                 .join();
+            boot("autoConnect start done");
         }
         var actorNodeRegistration = options.registration().spotNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
             .findFirst()
             .orElse(null);
+        boot("actorRuntime create");
         this.actors = spots != null && actorNodeRegistration != null
             ? new ZLinkActorRuntime(
                 spots.node(actorNodeRegistration.nodeName()),
@@ -219,6 +237,8 @@ public final class ZLinkFrameworkRuntime
                 runtimeHandlers,
                 defaultStreamCodec)
             : null;
+        boot("actorRuntime create done enabled=" + (this.actors != null));
+        boot("actorClient create");
         this.actorClient = spots != null && this.storeLocationResolvers != null
             ? new ZLinkActorClientRuntime(
                 this.spots::primaryNode,
@@ -226,6 +246,7 @@ public final class ZLinkFrameworkRuntime
                 serializer,
                 options.registration().defaultRequestTimeout())
             : null;
+        boot("actorClient create done enabled=" + (this.actorClient != null));
         if (this.actorClient != null) {
             runtimeHandlers.add(ZLinkActorClient.class, this.actorClient);
         }
@@ -252,6 +273,7 @@ public final class ZLinkFrameworkRuntime
                 ZLinkActorEntrySpotRoutePackets.JOIN_ENTRY_SPOT_PACKET_NAME,
                 this.actors::handleEntrySpotRouteJoin);
         }
+        boot("streamRuntime create");
         this.streams = options.registration().streamNodes().isEmpty()
             ? null
             : new ZLinkStreamRuntime(
@@ -264,6 +286,8 @@ public final class ZLinkFrameworkRuntime
                 runtimeHandlers,
                 spots == null ? ignored -> true : spots::isSessionRelayRouteReady,
                 spots);
+        boot("streamRuntime create done enabled=" + (this.streams != null));
+        boot("runtime constructor done");
     }
 
     static ZLinkFrameworkRuntime start(
@@ -304,6 +328,10 @@ public final class ZLinkFrameworkRuntime
     private static ZLinkStreamCodec defaultStreamCodec(DefaultZLinkFrameworkOptions options) {
         return options.registration().codecs().streamCodecForCustomSerializer()
             .orElse(ZLinkStreamCodec.JSON);
+    }
+
+    private static void boot(String step) {
+        System.out.println("[boot] component=framework-runtime step=" + step);
     }
 
     public ZLinkClient client() {

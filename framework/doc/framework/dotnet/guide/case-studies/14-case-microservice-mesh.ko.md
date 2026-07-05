@@ -10,7 +10,7 @@
 > 아키텍처 매핑 문서다.
 
 > **이 케이스에서 ZLink 이 좋은 지점**
-> - 다수 서비스 호출·BFF fan-out 을 channel name + location store 로 묶어 sidecar·별도 discovery 를 줄인다.
+> - 다수 서비스 호출·BFF fan-out 을 channel name + location store 로 묶어 sidecar·별도 서비스 위치 조회 구성을 줄인다.
 > - **그대로 남는 것**: retry·circuit-breaking·correlation 추적·외부 공개 API.
 > - 즉 ZLink 은 호출 배선·위치 해결을 줄이고, 복원력 정책은 그대로 앱이 진다.
 
@@ -30,14 +30,14 @@
   건너가며 추적) 전파와 topology 가시성이 필수다.
   ([scaling microservices](https://www.netguru.com/blog/scaling-microservices))
 - **서비스가 늘 때마다 같은 배선이 반복된다.** 새 서비스를 부를 때마다 `.proto`
-  컴파일, stub 생성, channel factory, deadline 설정, discovery 등록, mTLS 구성이
+  컴파일, stub 생성, channel factory, deadline 설정, 서비스 위치 조회 등록, mTLS 구성이
   복붙된다. **서비스 수에 비례해 배선 코드와 mesh 설정이 늘어난다.**
 
 이 중 **retry 정책·circuit breaking·correlation 전파·부분 실패 degrade(일부 실패해도
 나머지로 응답) 는 도메인/정책 문제로 그대로 남는다.** ZLink 가 줄이는 건 위치
 해결·L7 분배·sidecar 운영·서비스마다 반복되는 배선이다.
 
-## 2. 기존 스택 — gRPC stub + mesh + discovery
+## 2. 기존 스택 — gRPC stub + mesh + 서비스 위치 조회
 
 ### 2.1 컴포넌트와 그 이유
 
@@ -47,7 +47,7 @@
 | gRPC stub/channel | 호출. channel 재사용·deadline 을 직접 관리 |
 | Polly(또는 유사) | **retry**(재시도)·**circuit-breaker**(연속 실패 시 잠시 차단)·timeout 정책 |
 | Envoy sidecar + mesh control plane | HTTP/2 의 **L7(요청 단위) 분배**·mTLS·재시도 |
-| service discovery(Consul/xDS) | 어느 pod 이 떠 있는지 추적 |
+| 서비스 위치 조회(Consul/xDS) | 어느 pod 이 떠 있는지 추적 |
 | OpenTelemetry collector + tracing 백엔드 | correlation 전파·분산 추적 수집 |
 
 ### 2.2 계약과 서버 (gRPC)
@@ -199,7 +199,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
 
 ```text
-[classic]  gRPC + service mesh + discovery + telemetry
+[classic]  gRPC + service mesh + service locator + telemetry
 
   +--------+ +--------+ +--------+ +--------+
   | bff    | | profile| | pricing| |  ...   |   each pod = app + Envoy sidecar
@@ -209,7 +209,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
       +----------+----+-----+----------+
               +--------v---------+
               | mesh control     |   L7 LB + mTLS
-              | Consul / xDS     |   discovery
+              | Consul / xDS     |   service location
               +------------------+
   +-------------------------------+
   | OTel collector + tracing store|
@@ -231,7 +231,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
   (tracing/metrics store stays; app feeds monitoring events into it)
 ```
 
-- **빠지는 박스:** Envoy sidecar(서비스마다), mesh control plane, 별도 discovery.
+- **빠지는 박스:** Envoy sidecar(서비스마다), mesh control plane, 별도 서비스 위치 조회 구성.
 - **그대로인 박스:** 추적·메트릭 백엔드(연동 지점만 monitoring 이벤트로 바뀜),
   retry/circuit 정책.
 
@@ -275,7 +275,7 @@ sidecar hop 이 빠질 뿐, fan-out 의 부분 실패·retry 정책은 양쪽 �
 
 ## 6. 줄어드는 것 / 그대로 남는 것
 
-- **줄어드는 것:** Envoy sidecar·mesh control plane·별도 discovery·proto/stub 관리.
+- **줄어드는 것:** Envoy sidecar·mesh control plane·별도 서비스 위치 조회 구성·proto/stub 관리.
 - **그대로 남는 것:** retry·circuit-breaking·degrade 정책, correlation/tracing
   전파(filter 로), 외부 공개 API(REST/gRPC), 영속 DB. 공통 경계는
   [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.

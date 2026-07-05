@@ -21,8 +21,8 @@ use case validation 문서는 설계 설명이 어디까지 닿아 있는지를 
 | 계층 | 목적 | 예시 |
 |------|------|------|
 | `unit` | registration validation, dispatch lookup, option parsing | 중복 등록, builder validation |
-| `integration-single-process` | 같은 호스트 안에서 runtime 조합이 정상 동작하는지 확인 | channel request/send, embedded registry, monitoring attach |
-| `integration-multi-process` | 실제 topology[^topology]와 reconnect 동작 확인 | 원격 registry query, discovery 변화, spot peer 변화 |
+| `integration-single-process` | 같은 호스트 안에서 runtime 조합이 정상 동작하는지 확인 | channel request/send, in-memory location store, monitoring attach |
+| `integration-multi-process` | 실제 topology[^topology]와 reconnect 동작 확인 | location runtime query, store row 변화, spot peer 변화 |
 
 ## 3. 최소 CI 매트릭스
 
@@ -65,10 +65,10 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `AddClientServerChannel(...).EnableClient(endpoint)` | `integration-single-process` | manual request/send 성공 |
 | `AddFanoutChannel(...).EnableSubscriber(endpoint)` | `integration-single-process` | manual 기반 subscribe 성공 |
 | client 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
-| 같은 역할에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
+| 같은 역할에서 location store 자동 연결/manual 혼용 | `unit` | startup validation 예외 |
 | publisher 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher 전용 channel | `integration-single-process` | publish submit 성공 |
-| subscriber discovery attach | `integration-multi-process` | 원격 publish 수신 |
+| subscriber location-store attach | `integration-multi-process` | 원격 publish 수신 |
 | handler group mapping | `unit` | `AddZLinkHandlers...()`만으로는 전역 dispatch 대상이 되지 않고, `channel.AddHandlerGroup("...")`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
 | handler exposure 없는 server channel | `unit` | scan 된 handler 가 있어도 `AddHandlerGroup(...)` 또는 `Add...Handler(...)`가 없으면 application handler 가 자동 노출되지 않는다 |
 | empty fanout subscriber validation | `unit` | publish handler exposure 없는 fanout subscriber 는 빈 수신자로 허용하지 않고 startup validation 오류다 |
@@ -125,8 +125,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
 | duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `AddSpotMesh` 호출 | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
-| root discovery 없이 local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
+| `AddSpotMesh` 호출 | `integration-single-process` | mesh 빌더 한 호출로 mesh channel, node, spot factory 등록을 한 번에 끝낸다 |
+| location store 없이 local-only spot factory | `integration-single-process` | store endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `CreateAsync<TSpot>()` | `integration-single-process` | `SpotId`, create `State`, create reply 값이 일관되게 유지된다 |
 | `CreateAsync<TSpot>()` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
 | `CreateAsync<TSpot>(request)` payload | `integration-single-process` | create request `ZLinkMessage`가 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |
@@ -176,8 +176,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale bound session 메시지가 새 binding을 지우거나 사용하지 못한다 |
 | Spot route resolver 등록 | `unit` | custom resolver 등록 없이 제거된 registry-backed resolver API가 다시 노출되지 않는다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
-| Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
-| Registry Spot RID route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 종료 후 not found 를 반환한다 |
+| location store resolver 대체 | `unit` | custom resolver 를 등록하면 기본 location store resolver 대신 custom resolver 가 DI 에 노출된다 |
+| location store Spot RID route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(...)` 으로 만든 Spot 을 resolver 경로로 찾고 종료 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
 | actor-session store 없이 동작 | `unit` | Bingo 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
 | SessionGateway 변형 없음 | `unit` | TicTacToe SessionGateway 변형이 sample tree 와 solution 에 남아 있지 않다 |
@@ -211,12 +211,12 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | handler `ValueTask<T>` 결과 await | `unit` | handler invoker가 generic `ValueTask<T>`를 실제 결과 값으로 변환하고, 값 타입 boxing 오류를 내지 않는다 |
 | abstract wire payload validation | `unit` | converter 없는 abstract/interface payload가 node 경계 DTO에 포함되면 등록 시점 또는 첫 submit 직전에 configuration 오류로 실패한다 |
 
-## 7. Registry / Monitoring Regression 항목
+## 7. Location / Monitoring Regression 항목
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| embedded registry 시작 순서 | `integration-single-process` | framework discovery가 registry bind 이후에 시작된다 |
-| 원격 query client | `integration-multi-process` | topology snapshot 조회가 성공한다 |
+| location store 시작 순서 | `integration-single-process` | framework runtime 이 location store 등록 뒤 자동 연결을 시작한다 |
+| 원격 query client | `integration-multi-process` | location topology snapshot 조회가 성공한다 |
 | monitoring source 이름 불일치 | `unit` | startup validation 예외 |
 | registry polling diff | `integration-multi-process` | topology, status, service summary event가 발생한다 |
 | spot polling diff | `integration-multi-process` | status, peers, subjects event가 발생한다 |

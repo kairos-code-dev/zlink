@@ -137,7 +137,7 @@ public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
                 // 서버가 추가/제거되어 살아 있는 peer 구성이 바뀌었다
                 logger.LogInformation("topology: {Count} entries", @event.Topology?.Count ?? 0);
                 break;
-            case ZLinkLocationRuntimeEventKind.StoreUnavailable:
+            case ZLinkLocationRuntimeEventKind.StoreFailure:
                 // store 가 죽었다 — 기존 연결은 유지되지만 새 위치 반영이 멈춘다
                 logger.LogWarning("location store unavailable: {Error}", @event.Status?.LastError);
                 break;
@@ -151,9 +151,9 @@ public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
 ```
 
 kind 는 `StatusChanged` / `TopologyChanged` / `ServiceSummaryChanged` /
-`StoreUnavailable` / `StoreRecovered` **5종 고정**이다. 하부 raw monitor 가 없어
+`StoreFailure` / `StoreRecovered` **5종 고정**이다. 하부 raw monitor 가 없어
 framework 가 `interval` 주기로 runtime query 결과를 읽어 직전 값과 비교해 합성한다.
-store 가 죽어도 이 source 는 죽지 않는다 — 조회 실패는 `StoreUnavailable` 이벤트 한
+store 가 죽어도 이 source 는 죽지 않는다 — 조회 실패는 `StoreFailure` 이벤트 한
 번으로 강등되고, 복구되면 `StoreRecovered` 가 온다.
 
 ### spot

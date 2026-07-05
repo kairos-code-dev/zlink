@@ -18,9 +18,9 @@
 `STREAM`을 `ASP.NET Core`의 DI 와 hosted service 모델 안에서 쓰게 해 주는 상위
 계층이다.
 
-핵심은 "raw socket 과 low-level discovery 를 직접 다루지 않는다"는 것이다.
+핵심은 "raw socket 과 위치 저장소 조회를 직접 다루지 않는다"는 것이다.
 개발자는 HTTP/gRPC 를 쓰던 감각으로 **handler, client, filter** 를 작성하고,
-연결·발견·라우팅·재연결·correlation 은 framework 가 처리한다. HTTP middleware 는
+연결·위치 조회·라우팅·재연결·correlation 은 framework 가 처리한다. HTTP middleware 는
 HTTP pipeline 전용이므로, ZLink handler 앞뒤의 로깅·검증·권한 확인·메트릭 기록은
 `IZLinkHandlerFilter` 로 분리한다.
 
@@ -36,14 +36,14 @@ HTTP pipeline 전용이므로, ZLink handler 앞뒤의 로깅·검증·권한 �
 ASP.NET Core 서비스가 서로 통신할 때 흔히 드는 비용은 다음과 같다.
 
 - 서비스마다 주소·포트를 알아야 하고, 앞단에 gateway 나 로드밸런서를 둔다.
-- 메시징 라이브러리를 쓰면 socket·endpoint·재연결·discovery 를 앱이 직접 관리한다.
+- 메시징 라이브러리를 쓰면 socket·endpoint·재연결·서비스 위치 조회를 앱이 직접 관리한다.
 - 요청/응답, 단방향 전송, 이벤트 fan-out 마다 다른 코드 경로가 생긴다.
 - 로깅·검증·권한 확인 같은 공통 처리가 HTTP middleware 와 handler 코드 사이에 흩어진다.
 - 게임 room/stage 같은 동적 단위를 다루려면 라우팅과 세션 관리를 또 따로 짠다.
 
 ZLink Framework 는 이 모든 호출의 단위를 **논리 `channel name` 하나**로 좁힌다.
 응용은 "`order` channel 로 요청을 보낸다"만 알면 되고, 그 channel 이 어디에 몇 개
-떠 있는지는 channel 별 `Discovery`가 숨긴다.
+떠 있는지는 location store 에 적힌 peer row 를 framework 가 읽어 숨긴다.
 
 서버 하나를 만들 때 직접 작성해야 했던 것들을 framework 가 처리한다.
 
@@ -55,7 +55,7 @@ ZLink Framework 는 이 모든 호출의 단위를 **논리 `channel name` 하�
 | 로깅·검증·권한 확인 같은 공통 처리 반복 | HTTP route는 middleware, ZLink handler는 `IZLinkHandlerFilter`로 분리 |
 | 동시 요청의 상태 보호 | SPOT의 직렬 실행으로 lock 없이 상태 관리 |
 | 서비스 생성·의존성 관리 | ASP.NET Core DI에서 handler, client, filter를 resolve |
-| 서버 주소 관리·연결 해석 | Registry / Discovery로 endpoint 자동 연결 |
+| 서버 주소 관리·연결 해석 | location store 자동 연결로 endpoint 추적 |
 | 설정·로그·모니터링 | ASP.NET Core 설정·logging·hosted service와 통합 |
 
 ### 기존 방식 대비 (체감 난이도)
@@ -65,7 +65,7 @@ ZLink Framework 는 이 모든 호출의 단위를 **논리 `channel name` 하�
 **raw 바인딩으로 직접 (개념적):**
 
 ```csharp
-// discovery 구성, dealer socket 생성, endpoint 연결, 재연결 관리,
+// 위치 저장소 조회, dealer socket 생성, endpoint 연결, 재연결 관리,
 // correlation id 매칭, 직렬화, 수신 루프 ... 수십 줄의 배선 코드
 ```
 
@@ -109,10 +109,10 @@ var reply = await client
 +-----------------------------------------------------------+
 |  ZLink Framework for .NET (adapter surface)               |
 |   - channel messaging  - SPOT/actor  - STREAM session     |
-|   - registry/monitoring integration                       |
+|   - location/monitoring integration                       |
 +-----------------------------------------------------------+
 |  zlink .NET binding (DealerSocket, RouterSocket, Spot,    |
-|   SpotNode, Registry, Discovery ...)                      |
+|   SpotNode ...)                                           |
 +-----------------------------------------------------------+
 |  zlink core (C API) - transport, ZMP, I/O threads         |
 +-----------------------------------------------------------+
@@ -138,9 +138,9 @@ framework 는 dispatch 시점에 필요한 객체를 resolve한다.
 
 ### Configuration — ASP.NET Core 설정과 함께 사용
 
-Framework 설정은 `AddZLinkFramework(options => ...)`에서 channel, discovery, codec,
-SPOT, STREAM 역할을 선언하는 방식으로 묶는다. 주소나 환경별 값은 일반 ASP.NET Core
-configuration에서 읽어 options에 넘긴다.
+Framework 설정은 `AddZLinkFramework(options => ...)`에서 channel, location store,
+codec, SPOT, STREAM 역할을 선언하는 방식으로 묶는다. 주소나 환경별 값은 일반
+ASP.NET Core configuration에서 읽어 options에 넘긴다.
 
 [2장 →](02-getting-started.ko.md)
 
@@ -218,11 +218,11 @@ Stream Connector가 담당한다.
 
 [8장 →](08-stream.ko.md)
 
-### Registry / Discovery — 주소 자동 연결
+### Location store — 주소 자동 연결
 
 서버가 여러 인스턴스로 확장될 때 어느 주소로 연결할지를 코드에 하드코딩하지 않는다.
-Registry 서버가 등록된 서버 목록을 관리하고, client 역할의 서버가 Discovery로 현재
-살아 있는 서버를 동적으로 찾는다.
+location store 가 등록된 서버 목록을 관리하고, client 역할의 서버가 store 에서 현재
+살아 있는 서버의 위치 row 를 읽어 동적으로 연결한다.
 
 [9장 →](09-location.ko.md)
 
@@ -264,7 +264,7 @@ flowchart LR
         StreamN["stream node"]:::stream
         ActorG["session relay"]:::actor
     end
-    Registry["Registry<br/>(discovery)"]:::infra
+    Store["Location store<br/>(peer rows)"]:::infra
 
     Client -- "1 HTTP 요청" --> HTTP
     HTTP --> ApiC
@@ -272,8 +272,8 @@ flowchart LR
     CoreS --> SpotN
     Client -- "3 stream 실시간 접속" --> StreamN
     StreamN -- "relay" --> ActorG --> SpotN
-    ApiC -.->|"주소 해석"| Registry
-    CoreS -.->|등록| Registry
+    ApiC -.->|"주소 해석"| Store
+    CoreS -.->|등록| Store
 
     classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
     classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
@@ -284,7 +284,7 @@ flowchart LR
 
 - **진입 서버** — ASP.NET Core HTTP로 외부 요청을 받아 domain 서버에 위임한다.
 - **도메인 서버** — channel server + SPOT(상태 단위) + session relay + stream node.
-- **Registry 서버** — 서버 주소를 관리한다. 점선 = discovery로 해석되는 연결.
+- **Location store** — 서버 주소 row 를 관리한다. 점선 = store 조회로 해석되는 연결.
 - **클라이언트 앱** — HTTP로 요청 생성, stream으로 실시간 상태 수신.
 
 ## 4. 산출물
@@ -306,7 +306,7 @@ framework와 독립적으로 배포되며, client 앱에서 TCP/TLS/WS/WSS 접�
   서버, 외부 client(STREAM)를 받는 게이트 서버, 클러스터 topology 를 운영에서
   들여다봐야 하는 팀.
 - **비목표:** 새 transport 나 새 socket 의미를 만드는 것이 아니다. 기존
-  `.NET` 바인딩(`DealerSocket`, `SpotNode`, `Registry` 등)을 그대로 쓰되
+  `.NET` 바인딩(`DealerSocket`, `SpotNode` 등)을 그대로 쓰되
   framework 친화적으로 감싼다.
 
 framework 는 handler 를 자동으로 모든 channel 에 열지 않는다. assembly scan 은

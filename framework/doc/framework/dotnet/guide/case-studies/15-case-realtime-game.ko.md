@@ -199,7 +199,7 @@ spot.AddActorFactory<PlayerActorFactory>("player");
   | (SpotMesh)           |
   +----------+-----------+
         +-----v------+
-        | Registry   |   location resolve
+        | loc store  |   location resolve
         +------------+
   + progression DB        (unchanged)
 ```

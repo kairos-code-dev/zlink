@@ -35,7 +35,7 @@
 framework 는 channel 마다 역할을 선언하게 되어 있다. request client 역할[^capability]
 에 대해서는 두 가지 방식을 모두 지원한다.
 
-- `Discovery`[^discovery] 를 이용한 자동 연결
+- location store[^location-store] 를 이용한 자동 연결
 - endpoint 집합만 등록하는 수동 연결
 
 다만 한 가지 제약이 있다. 같은 channel 의 request client 역할 안에서는, 자동
@@ -72,7 +72,7 @@ builder.Services.AddZLinkFramework(options =>
 이 경우 runtime 의 동작은 다음과 같다.
 
 - channel 별로 선언한 역할을 만든다.
-- client 역할을 둔 channel 에 대해서는, `Discovery` channel view 를 붙잡아
+- client 역할을 둔 channel 에 대해서는, location store 의 peer row 를 읽어
   provider 집합을 관리한다.
 
 local handler 를 등록하지 않은 상태라면, 이 단계에서는 outbound `DEALER(client)`
@@ -101,7 +101,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이 경우 framework 는 `Discovery` 를 강제하지 않는다. 호출자가, 어떤 channel 의 client
+이 경우 framework 는 location store 자동 연결을 강제하지 않는다. 호출자가, 어떤 channel 의 client
 역할에 어떤 peer 를 붙일지 직접 정한다. channel 은 그 목록만 가지고 연결을
 관리한다.
 
@@ -141,13 +141,13 @@ framework가 channel runtime과 route bridge를 소유하고, 사용자는 연�
 
 이 예시의 구성은 다음과 같다.
 
-- `profile` channel 은 `Discovery` 기반 자동 연결로 둔다.
+- `profile` channel 은 location store 기반 자동 연결로 둔다.
 - `account` channel 은 수동 연결로 둔다.
 
 여기서 핵심은 한 가지다. 같은 outbound channel 안에 두 방식을 함께 넣는 것은 허용하지
 않는다.
 
-이유는 zlink core 의 동작 때문이다. `Discovery` 가 붙은 `DEALER` 는, 수동 `connect` 를
+이유는 연결 집합의 소유권 때문이다. location store 자동 연결이 관리하는 `DEALER` 는, 수동 `connect` 를
 다시 받지 않는다. 그래서 framework 도 같은 channel runtime 안에서 두 방식을 함께 섞지
 않는다.
 
@@ -203,7 +203,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-Discovery 를 쓰는 client/subscriber 는 endpoint 없이 `EnableClient()` 또는
+location store 자동 연결을 쓰는 client/subscriber 는 endpoint 없이 `EnableClient()` 또는
 `EnableSubscriber()` 만 호출한다. 수동 연결을 쓰는 역할은 endpoint 인자형 메서드를
 여러 번 호출해 여러 peer 를 등록한다.
 
@@ -509,7 +509,7 @@ public sealed class UserCacheRefreshedEvent
 - local handler 를 등록한 경우에만, 이 앱은 `api` channel 에서 server 역할을 한다.
 - runtime 은 channel 마다 선언한 역할에 맞는 runtime 만 만든다.
 - `account`, `profile` 처럼 client 역할을 둔 channel 은, 그 channel 전용의
-  `Discovery` 와 outbound `DEALER(client)` socket 을 가진다. 이 socket은 channel
+  location store 자동 연결과 outbound `DEALER(client)` socket 을 가진다. 이 socket은 channel
   runtime 소유이며 `SpotNode`에 직접 attach하지 않는다.
 - 기본 packet key 는 payload 타입 이름이다. timeout 과 packet override 는 builder 에
   이어 붙인다.
@@ -767,7 +767,7 @@ app.MapPost("/profiles/get", async (
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 샘플의 request / send 흐름이 동작한다. |
-| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | 자동 연결 샘플의 request / send 흐름이 동작한다. |
+| `LocationMessaging` E2E | location store 자동 연결 샘플의 request / send 흐름이 동작한다. |
 | `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | publish / subscribe 샘플 흐름이 동작한다. |
 
 ---
@@ -795,9 +795,9 @@ app.MapPost("/profiles/get", async (
     client, publisher, subscriber 네 가지가 있다. 한 channel 이 둘 이상의 역할을
     동시에 가질 수도 있다(channel 타입에 따라).
 
-[^discovery]: **Discovery** 는 zlink core 의 자동 peer 발견 메커니즘이다. registry
-    노드에 channel 의 provider 목록이 등록되어 있고, client 는 그 목록을 받아 자동으로
-    연결한다. 수동 endpoint 관리가 필요 없다.
+[^location-store]: **location store** 는 서버가 자기 endpoint 와 routing id 를 row 로
+    적고, 다른 서버가 그 row 를 읽어 연결 대상을 찾는 공유 저장소다. 수동 endpoint
+    목록을 코드에 넣지 않아도 된다.
 
 [^rid]: **RoutingId** (rid) 는 zlink core 가 각 peer 에게 부여하는 식별자다. channel
     안의 특정 노드를 가리킬 때 쓴다.

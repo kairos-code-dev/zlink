@@ -107,8 +107,8 @@
 | `actor.Context.BoundSession.Send(...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
 | converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 직전에 configuration 오류 |
 | spot remote address resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
-| Registry Spot route 기본 구현 + custom Spot remote address resolver 함께 등록 | 비허용 | startup validation 오류 |
-| Registry route 기본 구현 + route mesh channel이 둘 이상이고 channel id 생략 | 비허용 | startup validation 오류 |
+| location store 등록 + custom Spot remote address resolver 등록 | 허용 | custom resolver 가 기본 location store resolver 를 대체한다 |
+| route mesh channel이 둘 이상이고 channel id 생략 | 비허용 | startup validation 오류 |
 | spot rid 기반 routed Spot client 사용 + spot remote address resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
 | `IZLinkBoundSession` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
 
@@ -119,15 +119,15 @@
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddZLinkMonitoring(...)` + 등록된 socket source 이름 | 허용 | 해당 source에 event handler를 연결한다 |
-| `AddZLinkMonitoring(...)` + 등록된 registry source 이름 | 허용 | 주기적으로 상태를 읽고 직전 상태와 비교하는 관측을 시작한다 |
+| `AddZLinkMonitoring(...)` + 등록된 location source 이름 | 허용 | 주기적으로 상태를 읽고 직전 상태와 비교하는 관측을 시작한다 |
 | `AddZLinkMonitoring(...)` + 등록된 spot source 이름 | 허용 | 주기적으로 상태를 읽고 직전 상태와 비교하는 관측을 시작한다 |
-| `AddZLinkMonitoring(...)` + 임의 discovery source 이름 | 비허용 | 자동 연결 상태는 `location-runtime` source 와 runtime query 로 관찰하는 것이 원칙이다 |
+| `AddZLinkMonitoring(...)` + 임의 자동 발견 source 이름 | 비허용 | 제거된 자동 발견 source 를 다시 만들지 않고, 자동 연결 상태는 `location-runtime` source 와 runtime query 로 관찰한다 |
 | 존재하지 않는 source 이름 등록 | 비허용 | startup validation 오류 |
 | polling source인데 interval이 0 이하 | 비허용 | startup validation 오류 |
 
-## 7. Registry Matrix
+## 7. Location Store Matrix
 
-다음 표는 Registry 등록 조합의 허용 여부를 정리한다.
+다음 표는 location store 등록 조합의 허용 여부를 정리한다.
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|

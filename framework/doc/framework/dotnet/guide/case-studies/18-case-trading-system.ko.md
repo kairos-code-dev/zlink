@@ -172,13 +172,13 @@ Disruptor/Aeron 으로 남긴다.
                         +-----------------+
                         v
                 +----------------+   +-----------+
-                | pricing/UI/risk|   | Registry  |
+                | pricing/UI/risk|   | loc store |
                 +----------------+   +-----------+
   + FIX gateway (external venue)  + audit DB   (unchanged)
 ```
 
 - **빠지는 박스:** 시세 배포용 별도 메시징 버스(주변부 한정), 연결 수용 gateway,
-  discovery/mesh.
+  서비스 위치 조회/mesh.
 - **그대로인 박스:** **마이크로초 매칭 hot loop(Disruptor/Aeron/colocation)**,
   FIX gateway, audit DB.
 
@@ -221,7 +221,7 @@ sequenceDiagram
 
 ## 6. 줄어드는 것 / 그대로 남는 것
 
-- **줄어드는 것:** 주변부의 시세 배포 transport, 연결 수용 gateway, discovery/mesh.
+- **줄어드는 것:** 주변부의 시세 배포 transport, 연결 수용 gateway, 서비스 위치 조회/mesh.
 - **그대로 남는 것:** **마이크로초 HFT 매칭 코어**(Aeron/Disruptor/SBE/colocation),
   **FIX 외부 연동**, **regulatory audit 영속(DB/event store)**. ZLink 는 이 핵심 실행 경로의
   마이크로초 지연 시간 구간을 노리지 않는다. 공통 경계는

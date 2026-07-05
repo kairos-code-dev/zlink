@@ -94,7 +94,7 @@ self-check seed 데이터, `ServerAssertionReq`/`Res` 는 server-side 검증에 
 |------|:--------:|------|
 | `CommerceApi` | 2 | HTTP API, 입력 검증, idempotency lookup, projection 조회(event append 안 함) |
 | `OrderWorkflow` | 2 | `OrderWorkflowSpot` 호스팅, 상태 전이, event append, projection 갱신 |
-| `Registry` | 1 | instance discovery |
+| location store | 1 shared dependency | instance 위치 row 공유와 자동 연결 |
 
 저장소는 별도 ZLink 서버가 아니라 instance 들이 공유하는 dependency 다.
 
@@ -161,7 +161,7 @@ lifecycle, route mesh request, projection read model 저장)을 이미 고정하
 |---------------|-----------|
 | `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 OrderId workflow Spot instance 가 최초 payload 로 한 번만 초기화된다. |
 | `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | OrderWorkflow Spot 생성·조회·close·publish 가 framework runtime 으로 동작한다. |
-| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | CommerceApi channel request·send 가 Registry/Discovery 경로로 동작한다. |
+| `LocationMessaging` E2E | CommerceApi channel request·send 가 location store 자동 연결로 동작한다. |
 | `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | projection 갱신 event publish 가 target channel 로 전달된다. |
 
 [^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: order workflow instance 등) 단위로 메시지를 라우팅하는 추상이다.

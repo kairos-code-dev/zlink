@@ -64,7 +64,7 @@ flowchart LR
 | `.proto` + 코드 생성 | 서비스 간 계약을 stub 으로 찍어냄. CI 에 proto 컴파일 단계 |
 | gRPC stub/channel | 호출. channel 재사용·deadline 을 직접 관리 |
 | Envoy sidecar + mesh control plane | HTTP/2 는 L4 LB 가 안 되므로 **L7(request-level) 분배**·mTLS·재시도 |
-| service discovery(Consul/xDS) | 어느 pod 이 떠 있는지 |
+| 서비스 위치 조회(Consul/xDS) | 어느 pod 이 떠 있는지 |
 | Kafka | `order.events` 영속 fan-out + saga choreography 백본 |
 | outbox publisher | DB→Kafka 이중 쓰기 문제 해소 |
 | idempotency store | 중복 결제 차단 |
@@ -141,12 +141,12 @@ control plane + Consul/xDS + Kafka + outbox publisher + idempotency store.**
 
 ## 3. ZLink 스택 — 같은 로직, 줄어든 배선
 
-ZLink 에서는 `.proto`·stub·Envoy·mesh·별도 discovery 가 빠진다. **하지만 saga·
+ZLink 에서는 `.proto`·stub·Envoy·mesh·별도 서비스 위치 조회 구성이 빠진다. **하지만 saga·
 outbox·idempotency 는 그대로 짠다** — 분산 데이터 문제는 transport 가 아니라
 도메인 문제이기 때문이다.
 
 ```csharp
-// 등록: channel 이름만. proto/stub/mesh/discovery 컴포넌트 없음
+// 등록: channel 이름만. proto/stub/mesh/서비스 위치 조회 컴포넌트 없음
 builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.Use(ZLinkProtobufCodec.Default);
@@ -204,7 +204,7 @@ public sealed class PlaceOrderHandler(
 | 전송 보안 | Envoy mTLS | 배포 계층/TLS 지원 범위/네트워크 정책에서 별도 결정 |
 | 멱등/outbox/saga | **앱 책임** | **앱 책임(동일)** |
 
-배선(계약·stub·mesh·discovery)은 사라지지만, **비즈니스 로직(멱등·outbox·보상)은
+배선(계약·stub·mesh·서비스 위치 조회)은 사라지지만, **비즈니스 로직(멱등·outbox·보상)은
 양쪽이 글자 그대로 같다.** 이게 이 케이스의 핵심이다.
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
@@ -224,7 +224,7 @@ public sealed class PlaceOrderHandler(
          +-----------------+----------------+
                   +--------v---------+
                   | mesh control     |   L7 LB + mTLS
-                  | service discovery|   Consul / xDS
+                  | service locator   |   Consul / xDS
                   +------------------+
   +--------------+  +------------------+  +----------------+
   | Kafka        |  | outbox publisher |  | idempotency DB |
@@ -235,7 +235,7 @@ public sealed class PlaceOrderHandler(
 ```
 
 ```text
-[ZLink]  ZLink Framework  + Registry
+[ZLink]  ZLink Framework  + location store
 
   +--------------+  +--------------+  +--------------+
   | order-svc    |  | payment-svc  |  | inventory-svc|   each app +
@@ -255,7 +255,7 @@ public sealed class PlaceOrderHandler(
   +-------------------------------------------------------+
 ```
 
-- **빠지는 박스:** Envoy sidecar ×3, mesh control plane, 별도 discovery,
+- **빠지는 박스:** Envoy sidecar ×3, mesh control plane, 별도 서비스 위치 조회 구성,
   `.proto` 파이프라인.
 - **그대로인 박스:** 도메인 DB, outbox publisher, idempotency store —
   분산 데이터 일관성은 transport 가 바뀌어도 그대로 남는다.
@@ -274,7 +274,7 @@ sequenceDiagram
   participant PAY as payment-svc
   C->>GW: HTTP POST /orders
   GW->>M: gRPC PlaceOrder
-  M->>ORD: L7 LB + mTLS + discovery
+  M->>ORD: L7 LB + mTLS + 위치 조회
   ORD->>M: gRPC Charge with deadline
   M->>PAY: L7 LB + mTLS
   PAY-->>ORD: Charged
@@ -300,7 +300,7 @@ sequenceDiagram
   Note over ORD: outbox publisher 가 선택한 transport 로 발행
 ```
 
-mesh sidecar hop 이 빠지고, 위치 해결은 Registry view 가 미리 끝낸다. 단 durable
+mesh sidecar hop 이 빠지고, 위치 해결은 location store row 로 미리 끝낸다. 단 durable
 이벤트라면 outbox commit 과 outbox publisher 는 양쪽 모두 그대로다. 단순 통지성
 이벤트처럼 유실을 허용할 때만 handler 에서 바로 `Publish` 한다.
 
@@ -310,7 +310,7 @@ mesh sidecar hop 이 빠지고, 위치 해결은 Registry view 가 미리 끝낸
 
 - `.proto` 컴파일 파이프라인과 생성 stub 관리
 - Envoy sidecar + mesh control plane(L7 LB·mTLS)
-- 별도 service discovery(Consul/xDS) → `UseDiscovery`  + Registry
+- 별도 서비스 위치 조회(Consul/xDS) → `AddLocationStore(...)` + location store 자동 연결
 - 단순 실시간 fan-out 한정으로는 Kafka 한 겹
 
 **그대로 남는 것 (도메인 — ZLink 가 대신 풀어주지 않음).**

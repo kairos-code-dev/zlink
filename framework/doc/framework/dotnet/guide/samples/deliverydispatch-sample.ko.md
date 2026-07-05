@@ -115,7 +115,8 @@ Tracking 내부 Spot 구성에 쓴다.
 | `Courier` (A/B) | 제안 수락 또는 의도적 무응답(timeout) | channel server (`OfferDelivery`) |
 | `Tracking` | 상태 event 기록, `DeliveryTrackingSpot`[^spot], status fanout publish | fanout publisher + Spot mesh + actor[^actor] factory |
 | `Session` | 고객 stream session, delivery subscription, 상태 push | stream node + fanout subscriber |
-| `Registry`/`Probe` | endpoint 발견, readiness 확인 | registry host, active probe |
+| `Probe` | readiness 확인 | active probe |
+| location store | 서버 간 endpoint 자동 연결 | Redis location store 또는 테스트용 in-memory store |
 
 역할 간 channel/fanout 이름은 `deliverydispatch.dispatch`,
 `deliverydispatch.courier.a/b`, `deliverydispatch.tracking`, `deliverydispatch.status`
@@ -163,7 +164,7 @@ fanout, 재배정 timer, 고객 stream push)을 이미 고정하고 있다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | DispatchApi/DispatchCenter/Courier 사이 channel request·send 가 Discovery 경로로 동작한다. |
+| `LocationMessaging` E2E | DispatchApi/DispatchCenter/Courier 사이 channel request·send 가 location store 자동 연결로 동작한다. |
 | `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | 배송 상태 fanout 이 publisher/subscriber 로 전달된다. |
 | `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | timeout 재배정 timer 와 Spot lifecycle 정리가 framework timer 계약과 맞는다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | 고객 stream push 와 request/reply correlation 이 유지된다. |

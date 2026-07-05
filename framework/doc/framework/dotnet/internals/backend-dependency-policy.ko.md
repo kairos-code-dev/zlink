@@ -35,8 +35,8 @@ public contract 를 안정적으로 얹는 것을 목표로 한다. 구체적으
 ## 3. 현재 backend 정책
 
 - 현재 backend 구현은 `bindings/dotnet` 이다.
-- framework runtime 은 내부적으로 `Discovery`, `DealerSocket`, `RouterSocket`,
-  `SpotNode`, `Spot`, `Registry` 같은 하부 객체를 사용할 수 있다.
+- framework runtime 은 내부적으로 `DealerSocket`, `RouterSocket`, `SpotNode`,
+  `Spot` 같은 하부 객체를 사용할 수 있다.
 - 다만 framework 사용자가 이런 객체를 생성자 파라미터나 public property 로
   직접 받게 만들지는 않는 것이 기본이다.
 
@@ -64,10 +64,8 @@ compatibility layer[^compatibility-layer] 를 끼워 줄 수 있는 종류다.
 
 - `DealerSocket`
 - `RouterSocket`
-- `Discovery`
 - `SpotNode`
 - `Spot`
-- `Registry`
 - 하부의 timer, recv loop, raw socket monitor 같은 객체
 
 이 객체들은 backend 구현 세부에 가깝다. 따라서 public API 표면[^public-surface]

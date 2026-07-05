@@ -1495,8 +1495,8 @@ handler 를 찾지 못했거나 payload decode 에 실패한 inbound request 는
 운영 점검용이며 session actor dispatch 의 필수 API 는 아니다.
 
 
-- registry view
-- discovery member
+- location runtime query
+- location peer row
 
 ## 11. 다른 문서와의 관계
 

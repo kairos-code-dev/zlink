@@ -422,7 +422,7 @@ app.Run();
 
 ### 3.1.1 역할별 수동 연결
 
-이 절은 discovery 대신 endpoint 를 직접 지정해 역할을 잇는 모양을
+이 절은 location store 자동 연결 대신 endpoint 를 직접 지정해 역할을 잇는 모양을
 보여 준다.
 
 SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로 다뤄야
@@ -452,7 +452,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - `router`, `pub/sub`, route bridge channel socket, SpotNode publisher handle
   client 는 서로 별개의 연결 집합을 다룬다.
-- 같은 역할 안에서는 `Discovery`[^discovery] 와 `Manual` 방식을 섞지
+- 같은 역할 안에서는 location store 자동 연결과 `Manual` 방식을 섞지
   않는다.
 - 같은 `SpotNode` 안에서 `spotRid` 은 비어 있으면 안 된다.
 - 이미 등록된 `spotRid` 을 다시 등록하면, 기존 값을 덮어쓰지 않고 예외가
@@ -694,7 +694,7 @@ local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel 로 publi
 사용한다.
 
 이 샘플에서 publisher 노드는 spot mesh 등록에 attach 만 걸어 두면 충분하다.
-실제로 어느 SPOT channel 에 publish 할지는, mesh discovery scope 와
+실제로 어느 SPOT channel 에 publish 할지는, 등록한 mesh channel 이름과
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -1906,7 +1906,7 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 [^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, subscriber, publisher)를 가리킨다.
 [^typed-facade]: typed facade 는 native 옵션 키를 직접 노출하지 않고, 타입과 속성으로 감싸 IDE 자동완성과 컴파일 검증을 받게 하는 wrapper 인터페이스다.
 [^factory]: factory 는 이름이나 타입 정보를 받아 새 인스턴스를 만들어 주는 등록형 생성기다. SPOT 의 경우 spot 인스턴스 생성을 담당한다.
-[^discovery]: `Discovery` 는 Registry 같은 외부 서비스를 통해 peer 주소와 라우팅 정보를 자동으로 받아 오는 연결 방식이다.
+[^location-store]: location store 는 서버가 자기 endpoint 와 routing id 를 row 로 적고, 다른 서버가 그 row 를 읽어 연결 대상을 찾는 공유 저장소다.
 [^ingress]: ingress 는 외부에서 들어오는 트래픽을 받는 진입 지점(주소나 endpoint)을 뜻한다.
 [^rid]: RID(RoutingId) 는 라우팅 계층이 peer 노드를 식별하기 위해 사용하는 바이트 식별자다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.

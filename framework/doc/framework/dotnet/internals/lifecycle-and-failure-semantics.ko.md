@@ -60,14 +60,14 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 
 1. monitoring source detach
 2. SpotNode → route channel → SPOT mesh 채널 → stream node → channel bundle(client/publisher/subscriber/server) 순으로 dispose
-3. embedded Registry stop
+3. location store watcher / auto-connect host stop
 4. `Context` dispose
 
 이 순서를 따르는 이유는 두 가지다.
 
 - 첫째, runtime 이 내려가는 동안 monitoring 이 새로운
   synthetic event[^synthetic-event] 를 계속 만들어 내지 않도록 하기 위해서다.
-- 둘째, service runtime 을 먼저 내린 뒤에 Registry 를 정리해야, 다른 노드들이
+- 둘째, service runtime 을 먼저 내린 뒤에 location row 를 정리해야, 다른 노드들이
   topology[^topology] 변화를 정상적인 절차로 읽어 갈 수 있기 때문이다.
 
 ## 5. Request / Send / Publish 실패 의미
@@ -177,7 +177,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 | 테스트 케이스 | 확인 기준 |
 | ------------- | --------- |
 | `HostTests.Host_Starts_And_Stops_FrameworkRuntimeContext` | host 의 시작·종료에 맞춰 framework runtime context 가 생성되고 정리된다. |
-| `HostTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry 와 framework runtime 사이의 시작 순서가 유지된다. |
+| `LocationLifecycleTests` location 계열 | location row 등록, owner lease, 종료 정리가 framework runtime lifecycle 과 맞물려 동작한다. |
 | `ZLinkAsyncSubmitterTests.Async_FailsPendingItemWhenSendTimeoutExpires` | pending submit 은 send timeout 정책에 따라 실패하고, caller thread 를 묶지 않는다. |
 | `StreamConnectorTests.RequestTimeoutRemovesPendingRequest` | stream connector 의 request timeout 이 끝나면 pending request 가 정리된다. |
 | `TopologyTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 는 stream session 의 transport error 콜백으로 보고된다. |
@@ -188,7 +188,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 [^startup-validation]: startup validation 은 host 가 본격적으로 동작하기 전에 설정과 등록 정보를 검사해서, 잘못된 구성이라면 그 자리에서 막아 내는 단계다.
 [^registration-surface]: registration surface 는 `AddZLinkFramework(...)` 같은 등록 호출을 통해 framework 에 쌓이는 설정의 집합을 가리킨다.
 [^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
-[^store]: Registry 는 어느 노드가 어떤 역할을 어디서 제공하는지를 모아 두고, 다른 노드가 그 정보를 조회할 수 있게 해 주는 컴포넌트다.
+[^store]: location store 는 어느 노드가 어떤 역할을 어디서 제공하는지를 row 로 모아 두고, 다른 노드가 그 정보를 조회할 수 있게 해 주는 공유 저장소다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다.
 [^fail-fast]: fail-fast 는 잘못된 설정이나 상태를 발견하면 즉시 예외를 던지고 실행을 멈춰서, 더 큰 문제로 번지는 것을 막는 전략이다.
 [^synthetic-event]: synthetic event 는 backend 가 직접 발생시키는 이벤트가 아니라, framework 가 snapshot 의 차이나 polling 결과를 보고 합성해서 만들어 내는 이벤트를 가리킨다.

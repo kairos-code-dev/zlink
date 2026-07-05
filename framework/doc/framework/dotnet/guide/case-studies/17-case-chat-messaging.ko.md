@@ -183,7 +183,7 @@ spot.AddActorFactory<UserActorFactory>("user");
   | (STREAM)             |
   +----------+-----------+
   +----------v-----------+    +-----------+
-  | room SPOT            |--->| Registry  |
+  | room SPOT            |--->| loc store |
   | membership + fan-out |    +-----------+
   +----------+-----------+
   +----------v-----------+
@@ -260,7 +260,7 @@ room SPOT·BoundSession·STREAM 매핑을 1:1 고객 상담 도메인으로 좁�
 | `SupportChat.Session` | client STREAM 연결, 인증, actor binding, conversation packet relay |
 | `SupportChat.Api` | token 검증, 상담 시작 orchestration, agent 배정 요청 |
 | `SupportChat.Support` | customer/agent actor, `SupportEntrySpot`, `ConversationSpot` 호스팅 |
-| `SupportChat.Registry` | 세 서버 endpoint 자동 발견(Discovery) |
+| location store | 세 서버 endpoint 자동 연결에 필요한 위치 row 공유 |
 
 customer 와 agent client 가 직접 연결하는 서버는 Session 하나뿐이다. Api·Support 는
 client-facing endpoint 를 열지 않는다(케이스 §3 의 gateway 경계를 그대로 구현).

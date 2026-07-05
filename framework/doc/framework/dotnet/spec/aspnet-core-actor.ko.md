@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Registry](aspnet-core-registry.ko.md)
+[.NET 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Location](aspnet-core-location.ko.md)
 
 # ZLink Framework ASP.NET Core Actor
 
@@ -327,7 +327,7 @@ core 모델에서 비롯된 핵심 제약은 다음과 같다.
   destroy 나 user Spot leave 를 자동으로 만들지 않는다.
 - Entry Spot destroy 는 `OnLeaveActorAsync(...)` 또는 다른 lifecycle callback 을 호출하지
   않고 actor 상태만 정리한다. 같은 actor instance 에 대한 중복 destroy 는 성공으로 끝난다.
-- **discovery[^discovery] actor remote address publish 는 user Spot join 성공 뒤에
+- **location store[^location-store] actor remote address publish 는 user Spot join 성공 뒤에
   갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
   session bind / unbind 도 active route 를 새로 만들거나 지우지 않는다.
 
@@ -352,7 +352,7 @@ Entry 단계와 user Spot 단계는 같은 actor 객체를 보더라도 의미�
   stage로 들어갈지 결정한 뒤 해당 user Spot 의 `RoutingId`를 얻고
   `Context.JoinSpot(spotRid, requestDto).Async(...)`을 호출한다.
   `gameId`, `matchId`, `roomId` 같은 domain 값은 application 이 먼저
-  `RoutingId`로 변환하거나 registry 에서 조회한다.
+  `RoutingId`로 변환하거나 location store 에서 조회한다.
 - **session 초기 상태 설정** -- session metadata, profile lookup 같은 초기
   작업이 여기 들어간다.
 
@@ -1204,9 +1204,9 @@ context 만 다룬다는 원칙을 함께 검증한다.
     actorType 키와 함께 등록해 두면, framework가 해당 type의 actor를 만들 때
     이 factory를 호출한다.
 
-[^discovery]: discovery는 등록된 노드(channel, spot 등)의 위치 정보를 Registry
-    같은 외부 저장소에서 자동으로 조회하고 갱신해 주는 메커니즘이다. application
-    이 IP/port를 직접 박지 않아도 노드 위치를 찾을 수 있다.
+[^location-store]: location store 는 등록된 노드(channel, spot 등)의 위치 정보를
+    공유 저장소 row 로 조회하고 갱신해 주는 메커니즘이다. application 이 IP/port를
+    직접 박지 않아도 노드 위치를 찾을 수 있다.
 
 [^mailbox]: mailbox는 같은 actor에게 들어오는 메시지를 한 줄로 세워 순차
     처리하는 큐다. actor 단위로 순서를 보장하면서도 서로 다른 actor 사이의

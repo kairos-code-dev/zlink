@@ -10,14 +10,19 @@
 
 | API | 의미 |
 |-----|------|
-| `IZLinkFrameworkBuilder.AddLocationStore(IZLinkLocationStore store)` | 통합 store 인스턴스 등록. 같은 인스턴스가 `IZLinkLocationChangeStampStore`/`IZLinkLocationWatchStore` 도 구현하면 자동 인식된다. |
-| `IZLinkFrameworkBuilder.AddPeerLocationStore<T>()` 등 역할별 5종 | custom 구현체를 역할별로 나눠 등록. 통합 등록과 섞으면 startup 검증 오류다. |
-| `IZLinkFrameworkBuilder.ConfigureLocations()` → `ZLinkLocationOptions` | `HeartbeatInterval`, `OwnerLeaseTtl`, `PollingInterval`, `ListPageSize`, `StoreFailureGrace` |
+| `IZLinkFrameworkOptions.AddLocationStore(IZLinkLocationStore store)` | 하나의 물리 저장소 인스턴스를 등록한다. 이 인스턴스가 peer, spot, actor, route, owner lease 역할을 모두 맡는다. 같은 인스턴스가 `IZLinkLocationChangeStampStore`/`IZLinkLocationWatchStore` 도 구현하면 자동 인식된다. |
+| `IZLinkFrameworkOptions.UseInMemoryLocationStores()` | 단일 프로세스 개발·단위 테스트용 메모리 저장소를 등록한다. 여러 프로세스가 서로 위치를 공유해야 하는 배포에서는 쓰지 않는다. |
+| `IZLinkFrameworkOptions.ConfigureLocations()` → `ZLinkLocationOptions` | `HeartbeatInterval`, `OwnerLeaseTtl`, `PollingInterval`, `ListPageSize`, `StoreFailureGrace` |
 
 공식 Redis extension 은 `Zlink.Framework.Locations.Redis` 패키지의
 `ZLinkRedisLocationStore` 다. 옵션은 빌더 형식이다:
 `new ZLinkRedisLocationStore(redis => redis.SetConnectionString(...).SetKeyPrefix(...))`
 (`SetConfiguration(ConfigurationOptions)` 으로 StackExchange.Redis 옵션 직접 전달 가능).
+
+`AddLocationStore(...)` 와 `UseInMemoryLocationStores()` 는 서로 대체 관계다. 둘 다
+등록하면 startup 검증 오류다. 역할별 store 를 따로 등록하는 public API 는 없다. owner
+lease 와 위치 row 가 같은 물리 저장소에 있어야 오래된 소유자 판정과 위치 갱신을 같은
+규칙으로 처리할 수 있기 때문이다.
 
 ## 2. DI 로 노출되는 조회 표면
 
@@ -50,9 +55,9 @@ store 를 등록하면 아래 서비스가 DI 에 등록된다. 캐시가 없다
 
 `AddZLinkMonitoring(monitor => monitor.AddLocationRuntimeEvents(sourceName, interval))` 로
 `ZLinkLocationRuntimeEvent`(kind: `StatusChanged`, `TopologyChanged`,
-`ServiceSummaryChanged`, `StoreUnavailable`, `StoreRecovered`) 를 typed handler
+`ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered`) 를 typed handler
 (`IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>`) 로 받는다. store 장애는 source
-를 죽이지 않고 `StoreUnavailable` 이벤트로 강등된다. 나머지 location 계열 source
+를 죽이지 않고 `StoreFailure` 이벤트로 강등된다. 나머지 location 계열 source
 (`location-peer/spot/actor/route`)는 [공통 스펙 §9](../../common/spec/location-runtime.ko.md)를
 따른다.
 

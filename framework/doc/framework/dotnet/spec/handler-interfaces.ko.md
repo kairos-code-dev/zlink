@@ -1932,7 +1932,7 @@ binding `Message` bytes나 codec helper를 직접 다루지 않는다.
 
 호출 방식은 한 가지 축을 기본으로 둔다.
 
-- `channelName` 기준 호출 — Discovery 가 대상을 선택한다.
+- `channelName` 기준 호출 — location store 자동 연결 또는 수동 endpoint 설정이 대상을 선택한다.
 
 다시 말해, 일반 channel messaging 에서는 특정 `ROUTER(server)` 를 `rid` 로
 직접 지정해 호출하지 않는다. `rid` 를 넣는 routed 호출은 SPOT spot-to-spot
@@ -2490,17 +2490,18 @@ actor id 를 가리키게 된다. 이 경우 configuration 오류로 실패한�
 분명히 하기 위해서다. 해당 표면들은 `AddClientServerChannel`,
 `UseFilter(...)` 다.
 
-SPOT discovery 와 node 집합은 `AddSpotMesh` 안에서 함께 등록한다.
+SPOT mesh channel 과 node 집합은 `AddSpotMesh` 안에서 함께 등록한다.
 이렇게 하면 channel view 의 소유자가 하나로 고정되어 node 등록 순서나
 분리 호출 여부가 의미에 영향을 주지 않는다.
+peer 획득은 이 등록이 직접 소유하지 않는다. location store 자동 연결 또는
+manual endpoint 설정이 peer 집합을 공급한다.
 
-channel discovery 의 등록 위치는 다음과 같이 정해 둔다.
+channel 자동 연결의 등록 위치는 다음과 같이 정해 둔다.
 
-- channel discovery 는 역할 별 builder 아래에 중복으로 두지 않는다.
-  framework 등록 루트에 한 번만 둔다.
-- 이 discovery registration 의 의미는 다음과 같다. framework 안의
-  discovery 기반 channel 역할 들이 공유하는, registry endpoint 집합
-  을 가리킨다.
+- location store 는 역할 별 builder 아래에 중복으로 두지 않는다.
+  framework 등록 루트에 `AddLocationStore(...)` 로 한 번만 둔다.
+- 이 등록의 의미는 다음과 같다. framework 안의 자동 연결 역할들이 공유하는
+  peer/spot/actor/route 위치 row 저장소를 가리킨다.
 - 반대로 manual 연결은 역할 별 runtime 설정에 해당한다. 그래서 역할을 켜는
   builder 메서드의 endpoint 인자로 둔다.
 
@@ -2680,11 +2681,11 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
 - `AddRouteMesh`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.
-  - 일반 channel 역할들이 공유할 registry endpoint 집합을 등록한다.
+  - route mesh 채널이 사용할 server/client 역할을 등록한다.
 - `UseFilter<TFilter>()`
   - handler filter 타입을 framework pipeline에 등록한다.
 - `AddSpotMesh`
-  - SPOT mesh discovery view와 이 프로세스의 단일 `SpotNode`를 함께 등록한다.
+  - SPOT mesh channel 과 이 프로세스의 단일 `SpotNode`를 함께 등록한다.
     `EnableRouter`, `EnablePubSub`, `AddSpotFactory<TSpot>(...)`,
     `AddEntrySpot<TEntrySpot>()`를 노출한다.
     SessionRelay 는 별도 node builder 를 갖지 않고, 같은 프로세스의 router 역할
@@ -2710,7 +2711,7 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
 
 - 수동 연결은 `channel` 전체가 아니라 `channel + role` 단위다.
 - startup 수동 연결은 역할을 켜는 메서드의 endpoint 인자로 지정한다.
-- 같은 역할 안에서 `Discovery` 와 manual 연결을 섞지 않는다.
+- 같은 역할 안에서 location store 자동 연결과 manual 연결을 섞지 않는다.
 - `client` 와 `subscriber` 는 서로 다른 연결 집합으로 본다.
 - publisher 는 outbound fan-out submit 역할로 간주한다. 이 초안
   에서는 publisher 에 대해 별도의 manual peer 관리 표면을 두지 않는다.
@@ -2725,7 +2726,7 @@ client 역할은 `EnableClient(endpoint)`, subscriber 역할은
 이 endpoint 인자는 실행 중인 socket 에 직접 연결 명령을 보내는 runtime handle 이
 아니라 startup 설정이다.
 
-discovery 모드인 역할은 peer 집합의 소유권이 discovery 에 있다. 따라서
+location store 자동 연결 모드인 역할은 peer 집합의 소유권이 location store 에 있다. 따라서
 수동 연결이 필요하면 해당 역할을 manual 모드로 등록해야 한다.
 
 ### 6.3 Spot 관리와 등록 인터페이스
@@ -3029,8 +3030,8 @@ public interface IZLinkEntrySpotOptions
     `SPOT` pub/sub 전용 facade를 framework 등록 쪽으로 끌어올린다.
 - `ConfigureRouting(...)`
   - 역할이 routed peer와 맺는 연결 규칙을 따로 설정한다.
-  - framework public 표면에서는 remote `RoutingId`를 설정하지 않는다. discovery 기반
-    경로는 resolver와 discovery registry가 위치값을 소유하고, manual 연결은 endpoint
+  - framework public 표면에서는 remote `RoutingId`를 설정하지 않는다. location store 기반
+    경로는 resolver와 location store가 위치값을 소유하고, manual 연결은 endpoint
     집합만 소유한다.
 - `Timeout(...)`
   - request 한 번에만 적용되는 호출 단위 옵션이다.
@@ -3389,7 +3390,7 @@ public enum ZLinkLocationRuntimeEventKind
     StatusChanged = 0,
     TopologyChanged,
     ServiceSummaryChanged,
-    StoreUnavailable,
+    StoreFailure,
     StoreRecovered
 }
 
@@ -3455,7 +3456,7 @@ public readonly record struct ZLinkSpotEvent(
 - location event
   - 하부 raw monitor 가 아니다. location runtime query 의 polling + diff 로
     합성한다(`GetStatusAsync()`, `ListTopologyAsync()`, `ListServiceSummariesAsync()`).
-  - store 장애는 source 를 죽이지 않고 `StoreUnavailable` 이벤트로 강등된다.
+  - store 장애는 source 를 죽이지 않고 `StoreFailure` 이벤트로 강등된다.
 - spot event
   - 하부 raw monitor 가 아니다. 다음 호출들의 polling + diff 로 합성한다.
     `Status()`, `Peers()`, `Subjects()`.

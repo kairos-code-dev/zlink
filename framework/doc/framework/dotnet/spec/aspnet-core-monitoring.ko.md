@@ -17,15 +17,13 @@
 framework 표면에서 함께 받을 수 있어야 한다.
 
 - socket connect / disconnect / handshake[^handshake] 실패
-- discovery[^discovery] provider up / down / changed
-- registry status / topology[^topology] 변화
+- location store[^location-store] 상태와 topology[^topology] 변화
 - spot node[^spot-node] peer / subject 변화
 
 문제는 하부 `.NET zlink` 표면이 source 마다 모양이 다르다는 점이다.
 
 - socket: `SocketMonitor`
-- discovery: runtime event로 노출하지 않는다. 운영 조회는 registry snapshot/query로 처리한다.
-- registry: snapshot/query만 제공한다.
+- location runtime: store 상태와 위치 row 를 주기적으로 조회해 변화 event 를 만든다.
 - spot: status/peer/subject snapshot만 제공한다.
 - timer handler failure: 하부 snapshot 이 아니라 framework timer loop 안에서
   직접 관찰한다.
@@ -33,10 +31,10 @@ framework 표면에서 함께 받을 수 있어야 한다.
 그래서 framework 는 source 마다 표면을 달리 둔다.
 
 - socket 은 raw monitor[^raw-monitor] 기반 event 로 올린다.
-- registry / spot 은 일정 주기로 상태를 읽고 직전 상태와 비교해서 바뀐 때만 event 로 올린다.
+- location / spot 은 일정 주기로 상태를 읽고 직전 상태와 비교해서 바뀐 때만 event 로 올린다.
 - timer handler failure 는 주기적 조회를 기다리지 않고 발생 시점에 바로 event 로 올린다.
-- discovery 자체는 별도 runtime event 로 만들지 않는다. registry 의 topology /
-  service / member snapshot 을 조회해서 현재 provider 상태를 확인한다.
+- peer/spot/actor/route row 변화는 location 계열 source 로 받거나
+  `IZLinkLocationRuntimeQuery` 로 직접 조회한다.
 
 ## 2. 기본 방향
 
@@ -47,9 +45,9 @@ framework 표면에서 함께 받을 수 있어야 한다.
 - event kind 는 enum 으로 둔다.
 - 실제 callback payload 는 record struct 로 둔다.
 - socket 은 하부 monitor 를 그대로 감싼다.
-- registry / spot 은 polling[^polling] 으로 상태를 읽고 직전 상태와 비교해서 event 를 합성한다.
+- location / spot 은 polling[^polling] 으로 상태를 읽고 직전 상태와 비교해서 event 를 합성한다.
 - timer handler failure 는 polling interval 을 기다리지 않고 즉시 발행한다.
-- discovery 상태는 registry snapshot / query 결과로 조회한다.
+- location 상태는 `IZLinkLocationRuntimeQuery` 결과와 location runtime event 로 조회한다.
 - application 은 `IZLinkRuntimeEventHandler<TEvent>` 를 구현해서 이벤트를 받는다.
 
 enum 하나만으로는 충분하지 않다. 운영 코드에서는 event 종류뿐 아니라 source 이름,
@@ -144,13 +142,13 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
 }
 ```
 
-socket, registry, spot 은 각각 framework 가 소유한 event kind enum 과 record
+socket, location, spot 은 각각 framework 가 소유한 event kind enum 과 record
 payload 를 가진다. backend 의 raw monitor enum 이나 status 값이 필요하면,
 event 안의 optional diagnostic detail 로만 노출한다.
 
 이 "optional diagnostic" 도 framework 가 소유한 타입으로 다시 감싼다. 즉
 backend `.NET` binding 의 `MonitorEventType`, `ServiceEventType`, `SubjectKind`,
-`RegistryStatus`, `SpotNodeStatus` 같은 타입은 framework 의 public API 표면에
+`SpotNodeStatus` 같은 타입은 framework 의 public API 표면에
 직접 노출하지 않는다.
 
 `AddSocketEvents(...)` 에 event kind 를 따로 넘기지 않으면, 그 source 에서
@@ -199,30 +197,34 @@ public sealed class ProfileServerSocketMonitor
 }
 ```
 
-### 5.2 registry 이벤트
+### 5.2 location runtime 이벤트
 
 ```csharp
-public sealed class RegistryMonitor
+public sealed class LocationRuntimeMonitor
+    : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
 {
-    private readonly ILogger<RegistryMonitor> _logger;
+    private readonly ILogger<LocationRuntimeMonitor> _logger;
 
-    public RegistryMonitor(ILogger<RegistryMonitor> logger)
+    public LocationRuntimeMonitor(ILogger<LocationRuntimeMonitor> logger)
     {
         _logger = logger;
     }
 
     public ValueTask HandleAsync(
+        ZLinkLocationRuntimeEvent @event,
         CancellationToken cancellationToken)
     {
         switch (@event.Event)
         {
+            case ZLinkLocationRuntimeEventKind.StatusChanged:
                 _logger.LogInformation(
-                    "registry status changed: {State}",
-                    @event.Status?.State);
+                    "location store status changed: {Healthy}",
+                    @event.Status?.StoreHealthy);
                 break;
 
+            case ZLinkLocationRuntimeEventKind.TopologyChanged:
                 _logger.LogInformation(
-                    "registry topology changed: {Count}",
+                    "location topology changed: {Count}",
                     @event.Topology?.Count ?? 0);
                 break;
         }
@@ -232,8 +234,8 @@ public sealed class RegistryMonitor
 }
 ```
 
-registry 는 하부에 raw monitor 가 없다. 그래서 framework 가 주기적으로 snapshot
-을 읽고, 직전 값과 비교하는 방식으로 event 를 합성한다.
+location runtime 은 하부에 raw monitor 가 없다. 그래서 framework 가 주기적으로
+store 상태와 topology snapshot 을 읽고, 직전 값과 비교하는 방식으로 event 를 합성한다.
 
 ### 5.3 spot 이벤트
 
@@ -284,7 +286,7 @@ public sealed class StageNodeMonitor
 }
 ```
 
-spot 도 registry 와 같은 이유로, raw monitor 보다 주기적으로 상태를 읽고 직전 상태와 비교하는 표면이
+spot 도 같은 이유로, raw monitor 보다 주기적으로 상태를 읽고 직전 상태와 비교하는 표면이
 더 잘 맞는다. 즉 `Status()`, `Peers()`, `Subjects()` 를
 주기적으로 읽고, 변화가 있을 때 typed event 로 올리는 방향을 기본으로 본다.
 
@@ -312,19 +314,19 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
 이 절은 source 별로 표면을 따로 둔 이유를 정리한다.
 
 하나의 API 로 네 source 를 전부 덮으려면, 결국 가장 낮은 수준의 모양으로
-내려가야 한다. 그러면 registry 와 spot 은 실제 하부 표면이 가진 능력보다 더
+내려가야 한다. 그러면 location 과 spot 은 실제 하부 표면이 가진 능력보다 더
 많은 것을 약속하게 된다.
 
 따라서 현재 스펙은 다음과 같이 source 를 나누는 편을 기본으로 본다.
 
 - socket
   - raw monitor 기반
-- registry/spot 상태
+- location/spot 상태
   - 주기적으로 상태를 읽고 직전 상태와 비교해서 event 합성
 - spot timer failure
   - timer loop 에서 실패가 발생한 시점에 즉시 발행하는 event
-- discovery
-  - registry snapshot/query 기반 조회
+- location row
+  - `location-peer`, `location-spot`, `location-actor`, `location-route` source 로 관찰
 - application
   - typed runtime event handler 기반
 
@@ -335,17 +337,17 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
 
 이 절은 monitoring 표면이 따르는 고정된 결정 사항을 모아둔 것이다.
 
-- registry / spot polling 주기는 monitoring 등록 시점에 항상 명시한다. 숨은
+- location / spot polling 주기는 monitoring 등록 시점에 항상 명시한다. 숨은
   기본 주기를 두지 않는다. 운영 코드가 polling cost 를 설정에서 바로 읽을 수
   있게 하는 편을 기본으로 본다.
-- registry event 종류는 `StatusChanged`, `TopologyChanged`,
-  `ServiceSummaryChanged` 세 가지로 고정한다.
+- location runtime event 종류는 `StatusChanged`, `TopologyChanged`,
+  `ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered` 다.
 - spot event 종류는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
   `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` 다.
 - socket event payload 는 raw native enum 과 상태 코드를 함께 노출한다. 반면
-  registry event 와 spot 상태 event 는 주기적 상태 비교로 만든 합성 event 다. timer
-  failure event 는 framework timer loop 에서 즉시 만든다. discovery 는 runtime
-  event 자체가 아니므로 별도 event payload 를 두지 않는다.
+  location event 와 spot 상태 event 는 주기적 상태 비교로 만든 합성 event 다. timer
+  failure event 는 framework timer loop 에서 즉시 만든다. 제거된 자동 발견 runtime
+  event payload 는 다시 두지 않는다.
 
 ## 8. 회귀 테스트
 
@@ -366,7 +368,7 @@ Monitoring 문서의 항목은 다음을 확인한다.
 
 ## 9. 메시지 흐름 추적 (dispatch 관측)
 
-monitoring 이 socket/registry/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
+monitoring 이 socket/location/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
 생애주기(왔나/처리됐나/응답됐나/보냈나/응답받았나)를 dispatch 길목에서 관측한다. 공통 의미
 (로그 모드·phase·event·observer·off 제로코스트 성능 계약·출력 라우팅·길목·스트림
 correlation_id 와이어)는 [공통 스펙 — 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md)이
@@ -435,8 +437,8 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.
-[^discovery]: discovery는 분산 환경에서 어떤 서비스가 어느 endpoint에 있는지를 자동으로 알아내는 메커니즘이다. ZLink에서는 registry가 그 역할을 한다.
-[^topology]: topology는 어떤 노드(channel, spot, registry 등)가 어디에 있고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
+[^location-store]: location store 는 분산 환경에서 어떤 서비스가 어느 endpoint에 있는지를 row 로 저장하고 조회하는 공유 저장소다.
+[^topology]: topology는 어떤 노드(channel, spot, location row 등)가 어디에 있고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 [^spot-node]: spot node는 여러 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^raw-monitor]: raw monitor는 하부 socket 계층에서 직접 발생하는 저수준 이벤트(연결 성공, 끊김 등)를 그대로 수신하는 메커니즘이다.
 [^snapshot-diff]: snapshot diff는 일정 주기로 상태 스냅샷을 읽고, 이전 스냅샷과 비교해서 차이가 있을 때만 event를 합성하는 방식이다. 본문에서는 가능한 한 "주기적으로 상태를 읽고 직전 상태와 비교한다"처럼 풀어 쓴다.

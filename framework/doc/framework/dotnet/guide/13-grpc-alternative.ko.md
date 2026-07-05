@@ -22,7 +22,7 @@
 
 | 상황 | ZLink 이 좋은 이유 | 쓰는 기능 |
 |------|--------------------|-----------|
-| 내부 `.NET` 서비스끼리 자주 호출 | host/port/stub 대신 **channel name** 으로 호출 | channel  + Registry |
+| 내부 `.NET` 서비스끼리 자주 호출 | host/port/stub 대신 **channel name** 으로 호출 | channel + location store |
 | 이벤트를 실시간으로 여러 서비스에 뿌림 | 별도 broker 없이 **transport fan-out** | fanout pub/sub |
 | 게임 room·채팅 room·ride zone 같은 동적 상태 단위 | **단일 실행 큐**로 lock 없는 직렬 상태 처리 | SPOT |
 | 모바일·게임 client 와 장기 연결 | 연결 수명·framing·재접속 흐름을 framework 가 소유 | STREAM |
@@ -70,7 +70,7 @@ channel/spot 계약으로 메시징할 수 있다.
 
 기술명보다 **증상**으로 판단한다. 아래가 반복되면 ZLink 가 후보다.
 
-- 서비스마다 gRPC stub·channel factory·deadline·discovery 설정이 반복된다.
+- 서비스마다 gRPC stub·channel factory·deadline·서비스 위치 조회 설정이 반복된다.
 - Kubernetes L4 LB 로 gRPC 부하가 고르게 안 퍼져 mesh 를 고민한다.
 - 게임 room·채팅 room·ride zone 처럼 상태 단위를 lock 으로 보호하고 있다.
 - 재접속 때 client 가 어느 서버에 붙어 있었는지 Redis 로 따로 관리한다.
@@ -101,7 +101,7 @@ channel/spot 계약으로 메시징할 수 있다.
 | 케이스 | 무엇을 보나 | ZLink 핵심 기능 |
 |--------|-------------|-----------------|
 | [13 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md) | channel messaging 기본형(request/send/pub-sub) | channel + pub/sub |
-| [14 내부 마이크로서비스 mesh + 운영](case-studies/14-case-microservice-mesh.ko.md) | service discovery 와 운영·topology | channel + location store + monitoring |
+| [14 내부 마이크로서비스 mesh + 운영](case-studies/14-case-microservice-mesh.ko.md) | 서비스 위치 조회와 운영·topology | channel + location store + monitoring |
 | [15 실시간 멀티플레이 게임](case-studies/15-case-realtime-game.ko.md) | STREAM+SPOT+actor 가 모두 필요한 강한 사례 | STREAM + SPOT + actor + session dispatch |
 | [16 라이드헤일링 디스패치](case-studies/16-case-ride-hailing.ko.md) | zone 상태와 위치 fan-out | STREAM + pub/sub + zone SPOT |
 | [17 채팅·메시징](case-studies/17-case-chat-messaging.ko.md) | room membership 과 presence | STREAM + room SPOT + BoundSession |
@@ -163,7 +163,7 @@ gRPC 자체는 빠르고 좋다. 문제는 이런 류의 서비스를 **"프로�
   - 정리하면, gRPC 를 여러 서버로 고르게 분산하려면 위와 같은 **별도 장치**가 거의
     항상 따라온다.
   ([Kubernetes 블로그](https://kubernetes.io/blog/2018/11/07/grpc-load-balancing-on-kubernetes-without-tears/))
-- **그 밖에** service discovery(Eureka/Consul/xDS), retry·hedging, `.proto` 파이프
+- **그 밖에** 서비스 위치 조회(Eureka/Consul/xDS), retry·hedging, `.proto` 파이프
   라인, mTLS, 그리고 **이벤트 fan-out 은 또 별도 broker**(Kafka/NATS)로 간다.
 
 위 셋째 항목(L4 로드밸런싱)을 그림으로 보면 차이가 분명하다. **L4 는 "연결"을 나누고,
@@ -186,7 +186,7 @@ flowchart LR
   L7 -->|"req"| D2["server C"]
 ```
 
-즉 "gRPC 를 쓴다"는 실제로 **gRPC + L7 LB(보통 mesh) + discovery + event broker +
+즉 "gRPC 를 쓴다"는 실제로 **gRPC + L7 LB(보통 mesh) + 서비스 위치 조회 + event broker +
 proto 파이프라인**을 함께 운영한다는 뜻이다.
 
 ### 6.2 배치 구조 비교
@@ -204,7 +204,7 @@ proto 파이프라인**을 함께 운영한다는 뜻이다.
                          |
                 +--------v---------+
                 | mesh control     |
-                | discovery + L7 LB|
+                | 위치 조회 + L7 LB |
                 +------------------+
 
   +------------------+          +------------------+
@@ -213,7 +213,7 @@ proto 파이프라인**을 함께 운영한다는 뜻이다.
 ```
 
 ```text
-[ZLink] ZLink Framework  + Registry
+[ZLink] ZLink Framework  + location store
 
   +------------------+          +------------------+
   | order-service    |          | payment-service  |
@@ -225,8 +225,8 @@ proto 파이프라인**을 함께 운영한다는 뜻이다.
            +-------------+----------------+
                          |
                 +--------v---------+
-                | Registry         |
-                | discovery view   |
+                | location store   |
+                | peer rows        |
                 +------------------+
 
   +------------------+          +------------------+
@@ -234,8 +234,8 @@ proto 파이프라인**을 함께 운영한다는 뜻이다.
   +------------------+          +------------------+
 ```
 
-Envoy sidecar 와 mesh control plane(discovery·L7 LB·mTLS) 자리가 framework 와
-Registry 한 겹으로 들어온다. broker 와 WS edge 는 요구가 단순한 실시간 전파·연결
+Envoy sidecar 와 mesh control plane(서비스 위치 조회·L7 LB·mTLS) 자리가 framework 와
+location store 한 겹으로 들어온다. broker 와 WS edge 는 요구가 단순한 실시간 전파·연결
 수용이면 fanout channel·STREAM 으로 흡수할 수 있고, 영속 큐·replay 나 HTTP edge
 정책이 필요하면 그대로 둔다.
 
@@ -249,7 +249,7 @@ sequenceDiagram
   participant SB as Envoy remote
   participant B as payment-service
   A->>SA: gRPC Charge
-  SA->>SB: discovery + L7 LB 후 mTLS HTTP/2
+  SA->>SB: 위치 조회 + L7 LB 후 mTLS HTTP/2
   SB->>B: forward
   B-->>A: reply (sidecar 역경로)
 ```
@@ -259,7 +259,7 @@ sequenceDiagram
   autonumber
   participant A as order-service
   participant B as payment-service
-  Note over A: channel 위치는 Registry view 가 이미 해결해 둠
+  Note over A: channel 위치는 location store row 로 해결됨
   A->>B: RequestToChannel(payments, Charge) — framework 가 peer 분배
   B-->>A: reply
 ```

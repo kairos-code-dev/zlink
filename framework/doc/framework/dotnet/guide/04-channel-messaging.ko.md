@@ -47,7 +47,7 @@ gRPC 의 네 가지 호출 형태를 얻는다.
 | Unary `Empty` / fire-and-forget | one-way send | §2·§4 |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | §4 |
 | Client/Bidi streaming | STREAM session | [08-stream](08-stream.ko.md) |
-| Service discovery(DNS/xDS) | location store 자동 연결 | [09-location](09-location.ko.md) |
+| 서비스 위치 조회(DNS/xDS) | location store 자동 연결 | [09-location](09-location.ko.md) |
 | Interceptor | handler filter | §5 |
 | Deadline | request timeout | §4 |
 
@@ -512,7 +512,7 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
 ## 8. client-server 수평 확장
 
 처리량을 늘리려면 같은 client-server channel 이름으로 provider 를 여러 개 띄우고,
-호출 노드는 discovery 또는 여러 `EnableClient(endpoint)` 호출로 provider endpoint 를 붙인다.
+호출 노드는 location store 자동 연결 또는 여러 `EnableClient(endpoint)` 호출로 provider endpoint 를 붙인다.
 호출자는 여전히 `IZLinkChannelClient.RequestToChannel(...)` / `SendToChannel(...)` 를 사용한다.
 
 ```csharp
@@ -532,7 +532,7 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
         .EnableClient("tcp://10.30.1.10:5601");
 }
 
-// 또는 Discovery 로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
+// 또는 location store 로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
 options.AddClientServerChannel("image.resize").EnableClient();
 ```
 
@@ -541,15 +541,15 @@ graph LR
     C["호출 노드<br/>channel client"] -->|"요청 1"| A["처리 노드 A<br/>:5600"]
     C -->|"요청 2"| B["처리 노드 B<br/>:5601"]
     C -->|"요청 3 (다시 A)"| A
-    C -.->|"노드 추가 시<br/>Discovery 자동 발견"| D["처리 노드 C<br/>:5602"]
+    C -.->|"노드 추가 시<br/>store row 자동 반영"| D["처리 노드 C<br/>:5602"]
 ```
 
 특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 route mesh(§9)를 사용한다.
 
 > **provider 에 안정적 식별자 주기 — client-server 채널의 `SetRoutingId(...)`.** `SetRoutingId` 는
 > route mesh 전용이 아니다. client-server provider 에도 걸어 두면(`EnableServer(...).EnableClient().SetRoutingId(RoutingId.From(rid))`)
-> 그 노드가 **고정된 논리 id** 를 갖는다. provider 가 죽고 같은 rid 로 새로 떠도 discovery 가 같은
-> 논리 id 로 계속 라우팅하므로(same-rid failover), 응답에 어느 노드가 처리했는지(rid)를 실어 보내거나
+> 그 노드가 **고정된 논리 id** 를 갖는다. provider 가 죽고 같은 rid 로 새로 떠도 location store 가 같은
+> 논리 id 의 새 endpoint 로 이어 주므로(same-rid failover), 응답에 어느 노드가 처리했는지(rid)를 실어 보내거나
 > 프로세스 교체 후에도 라우팅을 이어 갈 때 쓴다.
 
 ## 9. route mesh — 주소 라우팅

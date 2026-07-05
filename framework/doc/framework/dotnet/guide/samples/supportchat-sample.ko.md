@@ -130,12 +130,12 @@ public sealed record ConversationState(
 | `SupportChat.Server.Session` | client STREAM 연결, 인증, actor binding, conversation packet relay |
 | `SupportChat.Server.Api` | token 검증, 상담 시작 orchestration, agent 배정 요청 |
 | `SupportChat.Server.Support` | customer/agent actor, `SupportEntrySpot`, `ConversationSpot` 호스팅 |
-| `SupportChat.Server.Registry` | 세 서버 endpoint 자동 발견(Discovery) |
+| location store | 세 서버 endpoint 자동 연결에 필요한 위치 row 공유 |
 
-(실행은 위 4개 서버 외에 `SupportChat.Client`, `SupportChat.Probe` 프로세스를 함께 띄운다.)
+(실행은 위 서버 외에 `SupportChat.Client`, `SupportChat.Probe` 프로세스를 함께 띄운다.)
 
 customer 와 agent client 가 직접 연결하는 서버는 Session 하나뿐이다. Api·Support 는
-client-facing endpoint 를 열지 않는다. 서버 간 연결은 Registry/Discovery 자동 연결을
+client-facing endpoint 를 열지 않는다. 서버 간 연결은 location store 자동 연결을
 사용한다(수동 endpoint 연결은 TicTacToe 샘플이 맡는다).
 
 Support 서버는 domain logic 과 framework adapter 를 분리한다.
@@ -182,7 +182,7 @@ timer handler 파일이 아니라 `ConversationSpot` 의 idle check 와 domain `
 ## 5. 완료 기준
 
 - customer/agent client 는 각각 Session 서버에 STREAM 연결 하나만 연다.
-- Session·Api·Support 는 Registry/Discovery 로 서로를 자동 발견한다.
+- Session·Api·Support 는 location store 로 서로를 자동 연결한다.
 - agent greeting 은 `MessageSeq = 1`, customer 답변은 `MessageSeq = 2` 로 검증한다.
 - 배정 가능한 agent 가 없으면 `WaitingForAgent` 로 남고 오류 response 가 아니다.
 - reconnect 시 같은 actor 와 conversation 상태(`Subject` 포함)가 유지된다.

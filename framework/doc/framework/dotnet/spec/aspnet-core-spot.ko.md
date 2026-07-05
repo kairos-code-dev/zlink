@@ -34,7 +34,7 @@ channel socket을 bridge에 연결한다. channel socket의 lifecycle은 channel
 - room, stage, zone 같은 논리 인스턴스 모델 설명
 - 현재 channel publish/subscribe
 - attach[^attach]된 다른 channel client를 통한 send/request
-- `Discovery`[^discovery] 기반 peer 구성
+- location store[^location-store] 기반 peer 구성
 - background subscriber handler
 
 ## 2. 기반이 되는 .NET binding
@@ -44,7 +44,7 @@ channel socket을 bridge에 연결한다. channel socket의 lifecycle은 channel
 
 현재 하부 토대는 다음 binding 표면이다.
 
-- `Discovery`
+- location store 자동 연결
 - `SpotNode`
 - `Spot`
 - `Spot` publish / subscribe
@@ -153,7 +153,7 @@ builder.Services.AddZLinkFramework(options =>
 - 다른 channel 호출용 client attach
 - 필요하다면 외부 노드용 spot publish client attach
 - 자동 Entry Spot에 붙일 application registry 등록
-- spot rid 기반 호출 또는 actor `JoinSpot(...)` 경로에서 사용할 Registry 기반
+- spot rid 기반 호출 또는 actor `JoinSpot(...)` 경로에서 사용할 location store 기반
   spot remote address resolver 등록
 - host shutdown 시 lifecycle 정리
 
@@ -165,7 +165,7 @@ builder.Services.AddZLinkFramework(options =>
 `channelName` 이 그 로컬 노드 이름으로도 쓰이므로, route·publish 소유 노드를
 따로 고르는 설정이 필요하지 않다.
 
-discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh` 안에서 표현한다.
+location store 가 없는 로컬 단일 노드도 `AddSpotMesh` 안에서 표현한다.
 가 반환한 builder 에 바로 router, pub/sub, factory 를 설정한다. public 등록
 표면은 항상 `AddSpotMesh` 가 SPOT channel 이름과 단일 node 를 함께 소유하도록
 유지한다.
@@ -357,7 +357,7 @@ handler 섹션을 기준으로 본다.
 
 ### 4.2 역할별 수동 연결
 
-이 소절은 discovery 를 쓰지 않고 endpoint 를 직접 지정해 연결할 때, 그 설정을
+이 소절은 location store 자동 연결을 쓰지 않고 endpoint 를 직접 지정해 연결할 때, 그 설정을
 어디에 어떻게 둬야 하는지를 정리한다.
 
 SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로 나눠서
@@ -385,7 +385,7 @@ builder.Services.AddZLinkFramework(options =>
 여기서 따라야 할 규칙은 다음과 같다.
 
 - 수동 연결은 `SpotNode` 전체가 아니라 역할별로 관리한다.
-- 같은 역할 안에서는 `Discovery`와 `Manual`을 섞지 않는다.
+- 같은 역할 안에서는 location store 자동 연결과 `Manual`을 섞지 않는다.
 - 같은 `SpotNode`에서 같은 `TSpot` factory를 두 번 등록하면 기존 값을 덮어쓰지 않고 예외를 던진다.
 - `router` manual 연결도 endpoint 집합만 등록한다. 이 문서에서는 `Connect(...)`
   호출 시 remote router id를 별도 파라미터로 받지 않는다.
@@ -976,10 +976,10 @@ room 의 핫패스에 비해 편의 기능을 조금 더 허용할 여지가 있
 - channel publish / send / request
 - `SpotNode` 가 spot 인스턴스를 생성하고 소유하는 lifecycle
 
-## 9. discovery와 service name
+## 9. location store와 service name
 
 이 절은 `SpotNode` 가 어떻게 channel 정체성을 닫는지, 그리고 그 결정이
-discovery 와 어떻게 묶이는지를 짧게 정리한다.
+location store 자동 연결과 어떻게 묶이는지를 짧게 정리한다.
 
 최신 topology 초안에서는 `SpotNode` 가 channel 이름을 직접 소유하지 않는다.
 channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 의 범위를
@@ -988,10 +988,11 @@ channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 
 등록했다고 하자. 이 경우 그 mesh 에 포함된 `SpotNode` 는 `game.stage` channel
 mesh 안에서 동작한다고 이해하면 된다.
 
-SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경로는
+SPOT mesh channel 과 top-level node 등록을 분리해서 호출하는 public 경로는
 제공하지 않는다. SPOT network 를 구성하는 로컬 node 는
-`AddSpotMesh` 호출과 동시에 등록된다. STREAM session relay 는 별도 node builder 가
-아니라, framework 가 router 역할을 켠 SpotNode 를 relay ingress 로 사용한다.
+`AddSpotMesh` 호출과 동시에 등록된다. peer 획득은 location store 자동 연결 또는
+manual endpoint 설정이 맡는다. STREAM session relay 는 별도 node builder 가 아니라,
+framework 가 router 역할을 켠 SpotNode 를 relay ingress 로 사용한다.
 
 ## 10. 결정된 기준
 
@@ -1059,8 +1060,8 @@ node.EnableRouter("tcp://0.0.0.0:9001");
 ```csharp
 ```
 
-수동 endpoint가 없으면 framework discovery view를 통해 자동 연결한다. 같은 route
-수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation 오류다.
+수동 endpoint가 없으면 framework 가 location store 의 peer row 를 읽어 자동 연결한다. 같은 route
+수신 관계에서 수동 연결과 store 자동 연결을 섞으면 startup validation 오류다.
 fanout channel은 router 역할이 없으므로 지정할 수 없다.
 
 target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router 사이에
@@ -1077,7 +1078,7 @@ actor 생성 또는 entry spot join 같은 도메인 흐름으로 `ActorRef` 를
 local egress channel 은 client-server channel 의 client DEALER 이거나 route mesh channel 일
 수 있다. 두 경우 모두 channel builder 에 target SpotNode ingress channel 이름을 명시한다.
 route mesh channel 을 egress 로 쓸 때는 실제 target ROUTER endpoint 에 연결되어 있어야 하고,
-target ROUTER 의 `RoutingId`는 discovery/query metadata 또는 같은 process 안의 명시적 route
+target ROUTER 의 `RoutingId`는 location runtime query 또는 같은 process 안의 명시적 route
 channel 등록으로 확인할 수 있어야 한다. 주소만 알고 연결하지 않은 상태에서는 routed Spot
 메시지를 보낼 수 없다.
 
@@ -1095,14 +1096,14 @@ channel 등록으로 확인할 수 있어야 한다. 주소만 알고 연결하�
 
 이 절은 SPOT 문서가 다룬 항목들을 어떤 테스트로 검증하는지 한꺼번에 본다.
 
-SPOT 문서의 항목은 factory 등록, mesh / discovery 구성, lifecycle, publish,
+SPOT 문서의 항목은 factory 등록, mesh / location store 구성, lifecycle, publish,
 actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를 다루는 public
 표면은, 호출자가 transport 위치를 알지 못해도 동작해야 한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes` | 같은 Spot factory 타입을 중복 등록하면 startup validation 예외가 난다. |
-| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery 없이도 local-only SpotNode 구성은 시작할 수 있다. |
+| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | location store 없이도 local-only SpotNode 구성은 시작할 수 있다. |
 | `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `CloseAsync`와 scope 정리가 일관된다. |
 | `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 종료 뒤에는 멈춘다. |
 | `TimerTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다. |
@@ -1132,12 +1133,12 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 [^actor]: actor 는 자기 상태와 mailbox 를 갖고 메시지 단위로 동작하는 단위 객체로, 같은 actor 의 메시지는 순서대로 직렬 처리된다.
 [^handler]: handler 는 특정 메시지(packet, request, event 등)가 도착했을 때 실행되는 콜백 함수 또는 메서드를 뜻한다.
 [^attach]: attach 는 한 node 가 다른 channel 의 client 경로를 자기 안에 끌어다 붙여, 그 channel 로 send/request 를 보낼 수 있게 하는 동작이다.
-[^discovery]: `Discovery` 는 Registry 같은 외부 디렉토리를 통해 같은 channel 에 속한 peer 의 endpoint 를 자동으로 찾아 연결을 구성하는 메커니즘이다.
+[^location-store]: location store 는 같은 배포의 서버가 자기 endpoint 와 routing id 를 row 로 적고, 다른 서버가 그 row 를 읽어 연결 대상을 찾는 공유 저장소다.
 [^addressable-instance]: 주소 가능한 논리 인스턴스(addressable instance) 는 식별자로 직접 지목해 메시지를 보낼 수 있는 단위 객체(room, stage 등)를 가리킨다.
 [^fan-out]: fan-out 은 한 발신자가 보낸 메시지를 여러 수신자에게 동시에 전달하는 구조를 뜻한다.
 [^channel-view]: active channel view 는 한 `SpotNode` 가 현재 어떤 channel 의 일원으로 동작하고 있는지를 나타내는 활성 channel 시야를 가리킨다.
 [^mesh]: mesh 는 같은 channel 에 속한 여러 `SpotNode` 가 서로 peer 로 연결돼 routed/pub-sub 트래픽을 주고받는 망 구조를 가리킨다.
-[^topology]: topology 는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
+[^topology]: topology 는 어떤 노드(channel, spot, location row 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 [^routed]: routed 호출은 router 가 목적지 식별자를 기준으로 패킷을 특정 peer 로 전달하는 방식의 송수신을 뜻한다.
 [^route-resolver]: route resolver 는 spot rid 같은 논리 키를 실제 transport 위치(node rid 등)로 변환해 주는 컴포넌트다.
 [^routing-id]: `RoutingId` 는 transport 계층에서 peer 를 식별하는 라우팅 키다. application 코드는 보통 이 값을 직접 다루지 않고 resolver 가 숨긴다.

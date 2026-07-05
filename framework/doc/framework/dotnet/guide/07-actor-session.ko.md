@@ -31,7 +31,7 @@ membership 은 그대로 남는다(actor id 만 같으면 되니 — 멱등).
 
 Session 서버는 자기 프로세스에 gateway 용 local SpotNode 하나를 두고(자동 연결), 그 gateway 가
 **원격 Play 서버의 actor 로 relay 를 forward** 한다. 그래서 relay 가 네트워크를 한 번 건너간다.
-(예: **Bingo** 샘플 — Session·Play·Api·Registry 를 각각
+(예: **Bingo** 샘플 — Session·Play·Api 와 location store 를 각각
 별도 서버로 운영)
 
 ```mermaid

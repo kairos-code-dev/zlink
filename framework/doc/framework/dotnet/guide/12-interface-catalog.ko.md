@@ -162,7 +162,8 @@ codecs.Use(ZLinkProtobufCodec.Default);
 
 게임 도메인뿐 아니라 일반 웹/마이크로서비스 백엔드에서도 같은 channel messaging
 표면이 **gRPC 의 대체재**가 된다. 서비스마다 host:port 를 알리거나 앞단에 gateway/
-로드밸런서를 두지 않고, 논리 `channel name` + discovery 로 서비스 간 호출을 묶는다.
+로드밸런서를 두지 않고, 논리 `channel name` + location store 자동 연결로 서비스 간
+호출을 묶는다.
 
 ```csharp
 // gRPC unary RPC -> request/response

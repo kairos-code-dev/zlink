@@ -27,7 +27,7 @@
   ([Uber-scale dispatch](https://dev.to/madhur_banger/architecting-an-uber-scale-real-time-tracking-dispatch-system-3a72))
 
 남는 난제: **geo-index(Redis/H3)** 와 **위치 이력의 영속/replay(Kafka)** 는 그대로
-남는다. ZLink 가 줄이는 건 연결 수용·라이브 fan-out transport·discovery 다.
+남는다. ZLink 가 줄이는 건 연결 수용·라이브 fan-out transport·서비스 위치 조회 구성이다.
 
 ## 2. 기존 스택 — WS ingestion + Kafka + Redis GEO
 
@@ -40,7 +40,7 @@
 | Redis GEO / H3 | 반경 근접 질의("2km 내 가용 운전자")를 밀리초에 |
 | 분산 락(Redis 등) | 같은 운전자가 두 호출에 **이중 배정**되는 것을 막음 |
 | dispatch service | ride 요청을 소비해 후보 운전자와 매칭 |
-| service mesh / discovery | dispatch↔다른 서비스 위치 해결·분배 |
+| service mesh / 서비스 위치 조회 | dispatch↔다른 서비스 위치 해결·분배 |
 
 ### 2.2 위치 ingestion + 다운스트림
 
@@ -70,7 +70,7 @@ await rideStore.AssignAsync(req.RiderId, chosen);
 ```
 
 서 있어야 하는 것: WS ingestion gateway, Kafka, Redis GEO, 분산 락, dispatch
-service, 다운스트림 consumer(서비스마다), service discovery/mesh.
+service, 다운스트림 consumer(서비스마다), 서비스 위치 조회/mesh.
 
 ## 3. ZLink 스택 — STREAM + pub/sub + zone SPOT
 
@@ -169,7 +169,7 @@ options.AddFanoutChannel("loc.events").EnablePublisher("tcp://0.0.0.0:7600");
               +-------------+------+    +-------v------+
               v             v      v    | dispatch     |
             ETA          surge  analytics+--------------+
-  + service discovery / mesh
+  + service location / mesh
 ```
 
 ```text
@@ -184,12 +184,12 @@ options.AddFanoutChannel("loc.events").EnablePublisher("tcp://0.0.0.0:7600");
                   +--------------+     +--------------+
                   | dispatch     |---->| zone SPOT    |  serial assign
                   +--------------+     +--------------+
-   + Registry (location resolve)
+   + location store (location resolve)
   + Kafka (kept if location history needs persist)
 ```
 
 - **빠지는 박스:** WS ingestion gateway, 라이브 fan-out용 Kafka 한 겹, 배정 분산 락,
-  discovery/mesh.
+  서비스 위치 조회/mesh.
 - **그대로인 박스:** Redis GEO(근접 질의), Kafka(영속/replay 이력).
 
 ### 메시지 흐름 — 시퀀스 비교
@@ -233,7 +233,7 @@ sequenceDiagram
 ## 6. 줄어드는 것 / 그대로 남는 것
 
 - **줄어드는 것:** 라이브 fan-out transport, 연결 수용 gateway, 배정 분산 락,
-  discovery/mesh.
+  서비스 위치 조회/mesh.
 - **그대로 남는 것:** **geo-index(Redis/H3)** 와 **위치 이력 영속/replay(Kafka)**.
   ZLink 는 geo 질의나 영속 큐를 대신하지 않는다. 공통 경계는
   [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.

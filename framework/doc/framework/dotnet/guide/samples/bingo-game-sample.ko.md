@@ -36,8 +36,8 @@
 | `BingoEntrySpot` | actor 가 특정 room 에 들어가기 전 머무는 lobby 역할을 한다. |
 | `BingoRoomSpot` | 매칭된 한 room 의 참가자, host, 게임 상태, timer, 승리 판정을 소유한다. |
 
-서버 사이의 Spot route 는 Registry 기반 framework 기본 구현을 사용한다.
-channel·SpotMesh 를 등록한다. Play 서버의
+서버 사이의 Spot route 는 location store 기반 framework 기본 구현을 사용한다.
+각 서버는 `AddLocationStore(...)` 와 channel·SpotMesh 를 등록한다. Play 서버의
 actor 준비 응답은 actor id/type 과 SessionRelay remote address snapshot 을 돌려주고,
 Session 서버는 현재 STREAM session 을 그 actor handle 에 bind 한다. actor-session binding 은 framework / core runtime 내부 상태로
 관리된다.
@@ -317,7 +317,7 @@ matching 흐름은 다음과 같다.
   를 사용하지 않는다.
 - client 로 가는 push 는 actor session binding 을 통해 전달된다.
 - 샘플의 public DTO 에서 player identity 필드는 `ActorId` 로 통일한다.
-- 샘플은 Registry 기반 Spot route 기본 구현을 사용하고, 자체 metadata store 를
+- 샘플은 location store 기반 Spot route 기본 구현을 사용하고, 자체 metadata store 를
   두지 않는다.
 
 ## 11. 회귀 테스트

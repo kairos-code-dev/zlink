@@ -109,7 +109,7 @@ public sealed record GameState(
 
 `Api` channel client 와 `Play` channel client 는 현재 샘플 코드에서
 `EnableClient(endpoint)` 로 endpoint 를 직접 지정해 연결한다. 이 점은
-Registry/Discovery 를 사용하는 Bingo 샘플과 다르다.
+location store 자동 연결을 사용하는 Bingo 샘플과 다르다.
 
 ## 3. Play 서버 구조
 
@@ -142,7 +142,7 @@ handler 를 맡는다.
 - 샘플 spec과 코드 모두에서 actor 식별용 public field는 `ActorId`만 사용한다.
 - room 식별용 public field는 `RoomId`만 사용하고, core routing id hex 문자열을
   public DTO 로 노출하지 않는다.
-- TicTacToe는 수동 endpoint 연결만 사용하고 Registry/Discovery 자동 연결을 쓰지 않는다.
+- TicTacToe는 수동 endpoint 연결만 사용하고 location store 자동 연결을 쓰지 않는다.
 - TicTacToe 는 Api + Play 직접 연결 단일 구조를 따른다.
 - Play 서버는 Domain / Application / Infrastructure 구조를 유지한다.
 - Entry Spot 과 game room Spot 의 actor packet handler 는

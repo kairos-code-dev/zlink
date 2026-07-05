@@ -116,7 +116,7 @@ quest event 의 `SourceEventId` 가 중복 적용과 reward 중복 지급을 막
 |------|:--------:|------|
 | `GameApi` | 2 | HTTP action API, WebSocket session, gameplay module 실행, event publish, quest notify 전달 |
 | `QuestMission` | 2 | gameplay event 구독, `PlayerQuestSpot` owner routing, quest event append, projection 갱신 |
-| `Registry` | 1 | endpoint discovery |
+| location store | 1 shared dependency | endpoint 위치 row 공유와 자동 연결 |
 
 저장소는 두 개의 file 기반 store 클래스로 구현되며 각 서버가 나눠 소유한다.
 

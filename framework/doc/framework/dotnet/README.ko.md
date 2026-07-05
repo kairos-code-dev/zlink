@@ -20,12 +20,13 @@
 
 - channel 이름을 기준으로 한 request / send 와 event messaging[^channel-messaging]
 - `SPOT`[^spot]을 `ASP.NET Core` 애플리케이션에서 다루는 방법
-- Registry 서버를 `ASP.NET Core`의 lifecycle 안에서 띄우고 topology[^topology]를 조회하는 방법
+- location store[^location-store] 를 등록해 peer, spot, actor 위치를 공유하고 운영 상태를 조회하는 방법
 
 지금 단계의 목표는 새 runtime 을 만드는 것이 아니다. 기존 `.NET` 바인딩은 이미
-`Discovery`, `DealerSocket`, `RouterSocket`, `SpotNode`, `Spot`, `Registry`
-같은 기본 기능을 제공한다. 이 기능들을 그대로 활용하되, framework 사용자에게는
-익숙한 DI, hosted service[^hosted-service], handler 모델로 감싸서 노출한다.
+`DealerSocket`, `RouterSocket`, `SpotNode`, `Spot` 같은 기본 전송 기능을 제공한다.
+framework 는 이 기능을 그대로 활용하되, 사용자에게는 익숙한 DI,
+hosted service[^hosted-service], handler 모델, location store 기반 자동 연결로
+감싸서 노출한다.
 
 현재 구현 backend 는 `bindings/dotnet` 을 그대로 쓴다. 다만 framework 가
 사용자에게 보여 주는 public contract 는 backend 구현체와 분리해서 유지하는 것을
@@ -92,7 +93,7 @@
   `Systems.Zlink.*`를 사용한다. 예를 들어 framework는
   `Systems.Zlink.Framework`, Stream Connector는 `Systems.Zlink.Stream.Connector`가 된다.
 - 수동 연결은 `channel + capability`[^capability] 또는 `spot node + capability`
-  단위로 설명한다. 같은 역할 안에서는 `Discovery` 기반 자동 연결과 manual
+  단위로 설명한다. 같은 역할 안에서는 location store 기반 자동 연결과 manual
   연결을 섞지 않는다.
 - send 는 기본적으로 async submit 으로 설명한다. backpressure[^backpressure]는
   public no-wait 옵션을 따로 두지 않고, nonblocking send 와 pending queue,
@@ -148,12 +149,12 @@
 | [guide/07-actor-session.ko.md](guide/07-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
 | [guide/08-stream.ko.md](guide/08-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
 | [guide/09-location.ko.md](guide/09-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
-| [guide/10-monitoring.ko.md](guide/10-monitoring.ko.md) | socket / registry / spot runtime 이벤트 관찰 사용법 |
+| [guide/10-monitoring.ko.md](guide/10-monitoring.ko.md) | socket / location / spot runtime 이벤트 관찰 사용법 |
 | [guide/11-feature-map.ko.md](guide/11-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
 | [guide/12-interface-catalog.ko.md](guide/12-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
 | [guide/13-grpc-alternative.ko.md](guide/13-grpc-alternative.ko.md) | **ZLink 을 어디에 쓰나** — 사용처·문제 신호·경계 + 케이스 허브(도입 판단 문서) |
 | [guide/case-studies/13-case-ecommerce-checkout.ko.md](guide/case-studies/13-case-ecommerce-checkout.ko.md) | 케이스: 전자상거래 체크아웃 — channel messaging 도입 판단 + 양쪽 비교 |
-| [guide/case-studies/14-case-microservice-mesh.ko.md](guide/case-studies/14-case-microservice-mesh.ko.md) | 케이스: 내부 마이크로서비스 mesh + 운영(discovery/topology) |
+| [guide/case-studies/14-case-microservice-mesh.ko.md](guide/case-studies/14-case-microservice-mesh.ko.md) | 케이스: 내부 마이크로서비스 mesh + 운영(location/topology) |
 | [guide/case-studies/15-case-realtime-game.ko.md](guide/case-studies/15-case-realtime-game.ko.md) | 케이스: 실시간 멀티플레이 게임 — STREAM + SPOT + actor |
 | [guide/case-studies/16-case-ride-hailing.ko.md](guide/case-studies/16-case-ride-hailing.ko.md) | 케이스: 라이드헤일링 dispatch — zone SPOT + 위치 fan-out |
 | [guide/case-studies/17-case-chat-messaging.ko.md](guide/case-studies/17-case-chat-messaging.ko.md) | 케이스: 채팅·메시징 — room SPOT + BoundSession |
@@ -183,7 +184,7 @@
 | [aspnet-core-stream.ko.md](spec/aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](guide/samples/streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
 | [Unity Stream Connector 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `Dispatch.Async()`를 호출하는 사용법 |
-| [aspnet-core-monitoring.ko.md](spec/aspnet-core-monitoring.ko.md) | socket / registry / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
+| [aspnet-core-monitoring.ko.md](spec/aspnet-core-monitoring.ko.md) | socket / location / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
 | [stage-wrapper-on-spot.ko.md](spec/stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 추가로 필요한 조건 |
 | [aspnet-core-location.ko.md](spec/aspnet-core-location.ko.md) | location store 등록, 자동 연결, resolver/runtime query DI 표면, monitoring 연동 |
 
@@ -237,8 +238,8 @@
 - `ASP.NET Core` 의 DI 와 hosted service 모델을 따른다.
 - handler, client, filter 의 생성도 동일한 `.NET DI` 컨테이너를 기준으로 맞춘다.
 - 기본 호출 모델은 `channel name` 기준의 direct call 이다.
-- 별도의 gateway 나 전용 load balancer 를 두지 않고, channel 별 `Discovery` 로
-  직접 호출한다.
+- 별도의 gateway 나 전용 load balancer 를 두지 않고, channel 별 location store
+  자동 연결로 직접 호출한다.
 - channel messaging handler 는 attribute scan[^attribute-scan] 으로 찾는다.
   다만 발견된 handler 를 모든 channel 에 전역으로 노출하지 않는다.
   대신 `EnableServer(...)` 또는 `EnableSubscriber(...)` 같은 inbound 역할
@@ -280,7 +281,8 @@
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^channel-messaging]: channel messaging 은 채널 이름을 키로 삼아 메시지를 주고받는 방식이다. request / send 는 요청-응답과 단방향 전달, event messaging 은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
-[^topology]: topology 는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
+[^topology]: topology 는 어떤 노드(channel, spot, location row 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
+[^location-store]: location store 는 서버가 자기 endpoint 와 routing id 를 row 로 적고, 다른 서버가 그 row 를 읽어 연결 대상을 찾는 공유 저장소다. 현재 Redis extension 과 단일 프로세스용 in-memory 구현을 제공한다.
 [^hosted-service]: hosted service 는 `ASP.NET Core` 호스트가 시작·종료될 때 함께 시작·종료되는 백그라운드 컴포넌트를 뜻한다(`IHostedService`).
 [^ci]: CI(Continuous Integration) 는 코드 변경이 들어올 때마다 자동으로 빌드와 테스트를 실행해 회귀를 빠르게 잡아내는 파이프라인을 가리킨다.
 [^rid]: RID(Runtime Identifier) 는 `.NET` 이 OS·CPU 조합을 식별하는 문자열이다. 예: `win-x64`, `linux-arm64`.

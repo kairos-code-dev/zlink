@@ -157,6 +157,20 @@ struct gameplay_event_envelope_t
     long long created_at_unix_ms = 0;
 };
 
+struct notify_quest_progress_req_t
+{
+    static constexpr const char *packet_name = "NotifyQuestProgressReq";
+    std::string player_id;
+    std::vector<quest_progress_t> projection;
+    std::string completed_quest_id;
+};
+
+struct notify_quest_progress_res_t
+{
+    static constexpr const char *packet_name = "NotifyQuestProgressRes";
+    bool delivered = false;
+};
+
 struct apply_gameplay_event_req_t
 {
     static constexpr const char *packet_name = "ApplyGameplayEventReq";
@@ -385,6 +399,26 @@ inline void from_json (const nlohmann::json &json, gameplay_event_envelope_t &va
     json.at ("count").get_to (value.count);
     json.at ("sourceApi").get_to (value.source_api);
     json.at ("createdAtUnixMs").get_to (value.created_at_unix_ms);
+}
+inline void to_json (nlohmann::json &json, const notify_quest_progress_req_t &value)
+{
+    json = {{"playerId", value.player_id},
+            {"projection", value.projection},
+            {"completedQuestId", value.completed_quest_id}};
+}
+inline void from_json (const nlohmann::json &json, notify_quest_progress_req_t &value)
+{
+    json.at ("playerId").get_to (value.player_id);
+    json.at ("projection").get_to (value.projection);
+    value.completed_quest_id = json.value ("completedQuestId", "");
+}
+inline void to_json (nlohmann::json &json, const notify_quest_progress_res_t &value)
+{
+    json = {{"delivered", value.delivered}};
+}
+inline void from_json (const nlohmann::json &json, notify_quest_progress_res_t &value)
+{
+    json.at ("delivered").get_to (value.delivered);
 }
 inline void to_json (nlohmann::json &json, const apply_gameplay_event_req_t &value)
 {

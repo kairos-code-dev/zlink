@@ -8,6 +8,10 @@
 
 #include <zlink/framework.hpp>
 
+#include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+
 #include <chrono>
 #include <ctime>
 #include <iostream>
@@ -20,6 +24,54 @@ namespace zlink::samples::gamequest
 {
 
 using namespace framework;
+namespace beast = boost::beast;
+namespace http = beast::http;
+using tcp = boost::asio::ip::tcp;
+
+struct http_endpoint_t
+{
+    std::string host;
+    std::string port;
+};
+
+http_endpoint_t parse_http_url (const std::string &url)
+{
+    const std::string prefix = "http://";
+    const auto authority_begin = url.rfind (prefix, 0) == 0 ? prefix.size () : 0;
+    const auto path_begin = url.find ('/', authority_begin);
+    const auto authority = url.substr (authority_begin, path_begin - authority_begin);
+    const auto colon = authority.rfind (':');
+    if (colon == std::string::npos) {
+        return {authority, "80"};
+    }
+    return {authority.substr (0, colon), authority.substr (colon + 1)};
+}
+
+bool post_notify (const std::string &base_url, const notify_quest_progress_req_t &request)
+{
+    const auto endpoint = parse_http_url (base_url);
+    boost::asio::io_context io;
+    tcp::resolver resolver (io);
+    beast::tcp_stream stream (io);
+    stream.connect (resolver.resolve (endpoint.host, endpoint.port));
+
+    http::request<http::string_body> http_request{http::verb::post, "/internal/notify", 11};
+    http_request.set (http::field::host, endpoint.host + ":" + endpoint.port);
+    http_request.set (http::field::content_type, "application/json");
+    http_request.body () = nlohmann::json (request).dump ();
+    http_request.prepare_payload ();
+    http::write (stream, http_request);
+
+    beast::flat_buffer buffer;
+    http::response<http::string_body> response;
+    http::read (stream, buffer, response);
+    beast::error_code ignored;
+    stream.socket ().shutdown (tcp::socket::shutdown_both, ignored);
+    if (response.result_int () < 200 || response.result_int () >= 300) {
+        return false;
+    }
+    return nlohmann::json::parse (response.body ()).get<notify_quest_progress_res_t> ().delivered;
+}
 
 class quest_store_t
 {
@@ -115,20 +167,42 @@ class quest_store_t
 class apply_gameplay_event_handler_t
 {
   public:
-    using dependency_types = dependency_list_t<quest_store_t>;
+    using dependency_types = dependency_list_t<quest_store_t, sample_topology_t>;
     using request_type = apply_gameplay_event_req_t;
     using reply_type = apply_gameplay_event_res_t;
     static constexpr const char *topic_name = apply_gameplay_event_req_t::packet_name;
 
-    explicit apply_gameplay_event_handler_t (quest_store_t &store) : _store (store) {}
+    explicit apply_gameplay_event_handler_t (quest_store_t &store,
+                                             sample_topology_t &topology) :
+        _store (store), _topology (topology)
+    {
+    }
 
     apply_gameplay_event_res_t handle (const apply_gameplay_event_req_t &request)
     {
-        return _store.apply (request.event);
+        auto result = _store.apply (request.event);
+        bool delivered = false;
+        try {
+            delivered =
+              post_notify (_topology.api_http_url_for (request.event.source_api),
+                           notify_quest_progress_req_t{request.event.player_id,
+                                                       result.projection,
+                                                       result.completed_quest_id});
+        }
+        catch (const std::exception &error) {
+            std::cerr << "gamequest mission projection kept while stream notify failed."
+                      << " player=" << request.event.player_id
+                      << " error=" << error.what () << "\n";
+        }
+        std::cerr << "gamequest mission notified source=" << request.event.source_api
+                  << " player=" << request.event.player_id
+                  << " delivered=" << (delivered ? "true" : "false") << "\n";
+        return result;
     }
 
   private:
     quest_store_t &_store;
+    sample_topology_t &_topology;
 };
 
 class sync_quest_progress_handler_t
@@ -184,6 +258,7 @@ int main (int argc, char **argv)
           .trace_log_file (gamequest_flow_log_path (topology.mission_name))
           .trace_label (topology.mission_name);
         options.services ().add_singleton<quest_store_t> ();
+        options.services ().add_singleton<sample_topology_t> ();
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
         options.add_route_mesh_channel (sample_names_t::quest_owner_route_channel)

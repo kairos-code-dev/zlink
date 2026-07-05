@@ -74,6 +74,11 @@ struct sample_topology_t
         return api_name == "api-b" ? api_b_http_url : api_a_http_url;
     }
 
+    std::string api_http_url_for (const std::string &source_api) const
+    {
+        return source_api == "api-b" ? api_b_http_url : api_a_http_url;
+    }
+
     std::string selected_mission_route_endpoint () const
     {
         return mission_name == "mission-b" ? mission_b_route_endpoint

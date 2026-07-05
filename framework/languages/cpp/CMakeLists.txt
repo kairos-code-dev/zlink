@@ -1548,6 +1548,37 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::http_client
     zlink::stream_connector
     zlink::stream_e2e_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_api
+    samples/SupportChat/Server/Api/main.cpp
+    "framework-sample-supportchat;framework-sample-api"
+    zlink::framework
+    zlink::framework_locations_redis)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_session
+    samples/SupportChat/Server/Session/main.cpp
+    "framework-sample-supportchat;framework-sample-session"
+    zlink::framework
+    zlink::framework_locations_redis
+    zlink::stream_connector)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_support
+    samples/SupportChat/Server/Support/main.cpp
+    "framework-sample-supportchat;framework-sample-support"
+    zlink::framework
+    zlink::framework_locations_redis)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_probe
+    samples/SupportChat/Probe/main.cpp
+    "framework-sample-supportchat;framework-sample-probe"
+    zlink::framework
+    zlink::framework_locations_redis)
+  add_executable(sample_cpp_framework_supportchat_client
+    samples/SupportChat/Client/main.cpp)
+  target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE
+    zlink::framework
+    zlink::stream_connector
+    zlink::stream_e2e_client)
 
   function(add_zlink_framework_sample_runner sample_name labels timeout_seconds)
     add_test(
@@ -1572,6 +1603,10 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     DeliveryDispatch
     "framework-sample-deliverydispatch;framework-sample-api;framework-sample-courier;framework-sample-dispatch;framework-sample-probe;framework-sample-registry;framework-sample-session;framework-sample-tracking"
     420)
+  add_zlink_framework_sample_runner(
+    SupportChat
+    "framework-sample-supportchat;framework-sample-api;framework-sample-probe;framework-sample-session;framework-sample-support"
+    240)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS AND ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)

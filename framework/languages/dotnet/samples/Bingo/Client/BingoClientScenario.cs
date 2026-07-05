@@ -44,6 +44,11 @@ internal sealed class BingoClientScenario
         Ensure(observed.Subscribed);
         Ensure(observed.ObserverNodeRid != client1MatchRes.RoomOwnerNodeRid);
 
+        // Register before the room can finish so the reward push cannot race past the observer.
+        var rewardTask = observer.WaitFor<BingoRewardAnnouncedNotify>()
+            .Where(message => message.Payload.RoomId == client1MatchRes.RoomId)
+            .Async(cancellationToken).AsTask();
+
         // Client 2 connects, authenticates, and joins the same room.
         await client2.Connect.Async(cancellationToken);
 
@@ -157,9 +162,7 @@ internal sealed class BingoClientScenario
         Ensure(
             client1Result.Payload.State.Players.All(static player => player.Marks[4]));
 
-        var reward = await observer.WaitFor<BingoRewardAnnouncedNotify>()
-            .Where(message => message.Payload.RoomId == client1MatchRes.RoomId)
-            .Async(cancellationToken);
+        var reward = await rewardTask;
         Ensure(reward.Payload.ActorId == client1Auth.ActorId);
         Ensure(reward.Payload.DrawSeq == client1Result.Payload.State.DrawSeq);
         Ensure(reward.Payload.ItemId == BingoRewardItems.GoldenDauberId);

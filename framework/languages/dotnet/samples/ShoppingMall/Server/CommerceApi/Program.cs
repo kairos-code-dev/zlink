@@ -61,6 +61,24 @@ internal static class Program
         });
 
         var app = builder.Build();
+        app.Use(async (context, next) =>
+        {
+            try
+            {
+                await next(context);
+            }
+            catch (Exception error)
+            {
+                app.Services.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("ShoppingMall.Server.CommerceApi")
+                    .LogError(
+                        error,
+                        "shoppingmall api handler failed: endpoint={Endpoint} error={Error}",
+                        context.Request.Path.Value,
+                        error.Message);
+                throw;
+            }
+        });
         app.Services.GetRequiredService<RedisCommerceStores>().SeedDefaults();
 
         app.MapGet("/health", () => Results.Ok(new { ready = true, instance = instance.InstanceId }));

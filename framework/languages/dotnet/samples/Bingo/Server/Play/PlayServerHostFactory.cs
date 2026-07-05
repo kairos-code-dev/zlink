@@ -53,10 +53,12 @@ public static class PlayServerHostFactory
                 .EnableClient()
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
-            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)                .EnableRouter(node.SpotRouterEndpoint)
+            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+                .EnableRouter(node.SpotRouterEndpoint)
                 .SetRoutingId(node.NodeRid)
                 .SetEntrySpotRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
+                .ConnectPeerPub(node.PeerSpotPubEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
                 .AddSpotFactory<BingoRoom>();

@@ -20,12 +20,14 @@ public sealed record SampleTopology(
             playAChannelEndpoint,
             playBChannelEndpoint,
             ReadEndpoint("BINGO_PLAY_A_SPOT_ENDPOINT", "tcp://127.0.0.1:47110"),
+            ReadEndpoint("BINGO_PLAY_B_SPOT_ENDPOINT", "tcp://127.0.0.1:47115"),
             ReadEndpoint("BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:47111"),
             RoutingId.From("2201"));
         var playB = new SamplePlayNode(
             playBChannelEndpoint,
             playAChannelEndpoint,
             ReadEndpoint("BINGO_PLAY_B_SPOT_ENDPOINT", "tcp://127.0.0.1:47115"),
+            ReadEndpoint("BINGO_PLAY_A_SPOT_ENDPOINT", "tcp://127.0.0.1:47110"),
             ReadEndpoint("BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:47116"),
             RoutingId.From("2202"));
 
@@ -109,6 +111,7 @@ public sealed record SamplePlayNode(
     string PlayChannelEndpoint,
     string PeerPlayChannelEndpoint,
     string SpotPubEndpoint,
+    string PeerSpotPubEndpoint,
     string SpotRouterEndpoint,
     RoutingId NodeRid);
 

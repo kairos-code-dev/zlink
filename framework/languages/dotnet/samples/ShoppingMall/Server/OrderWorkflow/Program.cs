@@ -70,6 +70,24 @@ internal static class Program
         });
 
         var app = builder.Build();
+        app.Use(async (context, next) =>
+        {
+            try
+            {
+                await next(context);
+            }
+            catch (Exception error)
+            {
+                app.Services.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("ShoppingMall.Server.OrderWorkflow")
+                    .LogError(
+                        error,
+                        "shoppingmall workflow http handler failed: endpoint={Endpoint} error={Error}",
+                        context.Request.Path.Value,
+                        error.Message);
+                throw;
+            }
+        });
         app.MapGet("/health", () => Results.Ok(new { ready = true, instance = instance.InstanceId }));
         app.MapPost("/self-check/workflow/inventory-reserved", async (
             StartOrderWorkflowReq request,

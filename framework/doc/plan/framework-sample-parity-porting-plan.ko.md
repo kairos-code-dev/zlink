@@ -48,7 +48,7 @@
 | P-K1 | kotlin | GameQuest | ✅ | 2026-07-05 완료 — java 정본 미러, run_sample 3연속 PASS |
 | P-K2 | kotlin | ShoppingMall | ✅ | 2026-07-05 완료 — 구 registry 제거·location store 전환, 3연속 PASS |
 | P-C1 | cpp | SupportChat | ✅ | 2026-07-05 완료 — 3연속 PASS |
-| P-C2 | cpp | GameQuest | 🟨 | segfault·잔존quest 해소, 잔여="first kill event id mismatch"(동결) — 다음: dotnet 정본 이벤트 순서 대조 |
+| P-C2 | cpp | GameQuest | ✅ | 2026-07-05 완료 — 결함 사슬 5종(route mesh 오배선·notify·actor bind·join sync) 해소, 3연속 PASS |
 | P-C3 | cpp | ShoppingMall | ✅ | 2026-07-05 완료 — 5연속 PASS |
 | SAMP-V | dotnet | 6종 샘플 ↔ 공통 샘플 문서 갭 검증·수정 | ✅ | 2026-07-04 갭 0 — 코드·문서 일치 |
 | SAMP-GN | node | 기존 ✅ 샘플(TicTacToe·Bingo) dotnet 대비 갭 수정 | ✅ | 2026-07-04 갭 1건(Bingo reward id drift) 수정 |

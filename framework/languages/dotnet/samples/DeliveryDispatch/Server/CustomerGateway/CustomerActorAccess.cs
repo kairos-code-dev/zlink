@@ -7,6 +7,7 @@ namespace DeliveryDispatch.Server.CustomerGateway;
 
 internal sealed class CustomerActorAccess(
     IZLinkActorManager actorManager,
+    CustomerActorDirectory directory,
     ILogger<CustomerActorAccess> logger)
 {
     public async ValueTask<FindCustomerActorRes> FindAsync(
@@ -19,7 +20,7 @@ internal sealed class CustomerActorAccess(
             return new FindCustomerActorRes(request.CustomerId, null);
         }
 
-        var actorRef = actor.Value;
+        var actorRef = directory.RequireRef(request.CustomerId);
         return new FindCustomerActorRes(
             request.CustomerId,
             ZLinkActorRefSnapshot.From(actorRef));
@@ -38,8 +39,9 @@ internal sealed class CustomerActorAccess(
             "deliverydispatch customer-access: ensured customer={CustomerId} node={NodeRid}",
             request.CustomerId,
             actor.NodeRid);
+        var actorRef = directory.RequireRef(request.CustomerId);
         return new EnsureCustomerActorRes(
             request.CustomerId,
-            ZLinkActorRefSnapshot.From(actor));
+            ZLinkActorRefSnapshot.From(actorRef));
     }
 }

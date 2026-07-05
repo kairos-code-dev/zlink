@@ -3,18 +3,35 @@ using Microsoft.Extensions.Logging;
 
 namespace DeliveryDispatch.Server.CustomerGateway;
 
+internal sealed record CustomerActorDirectoryEntry(
+    CustomerActor Actor,
+    Systems.Zlink.ActorRef Ref);
+
 internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> logger)
 {
     private readonly object _gate = new();
-    private readonly Dictionary<string, CustomerActor> _actors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CustomerActorDirectoryEntry> _actors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _deliveryCustomers = new(StringComparer.Ordinal);
 
-    public void Register(CustomerActor actor)
+    public void Register(CustomerActor actor, Systems.Zlink.ActorRef actorRef)
     {
         lock (_gate)
         {
-            _actors[actor.ActorId] = actor;
+            _actors[actor.ActorId] = new CustomerActorDirectoryEntry(actor, actorRef);
         }
+    }
+
+    public Systems.Zlink.ActorRef RequireRef(string customerId)
+    {
+        lock (_gate)
+        {
+            if (_actors.TryGetValue(customerId, out var entry))
+            {
+                return entry.Ref;
+            }
+        }
+
+        throw new InvalidOperationException($"Customer actor is not available. actor={customerId}");
     }
 
     public void Subscribe(string customerId, string deliveryId)
@@ -34,7 +51,7 @@ internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> log
         {
             if (_deliveryCustomers.TryGetValue(status.DeliveryId, out var customerId))
             {
-                _actors.TryGetValue(customerId, out actor);
+                actor = _actors.TryGetValue(customerId, out var entry) ? entry.Actor : null;
             }
         }
 

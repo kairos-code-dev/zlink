@@ -55,7 +55,9 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkBackendSpotNode? GetActorSpotNode()
     {
-        return _state?.SpotNodes.Values.FirstOrDefault()?.Node;
+        return _state?.SpotNodes.Values
+            .SingleOrDefault(static node => node.Registration.ActorFactories.Count > 0)
+            ?.Node;
     }
 
     internal async ValueTask<bool> TrySubmitEntrySpotActorAsync(

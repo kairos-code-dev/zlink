@@ -96,7 +96,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
     public ZLinkBackendActorRef CreateActor(string actorId, Message createRequest)
     {
         var actor = nativeSpotNode.CreateActor(actorId, createRequest);
-        return actor.Ref.ToBackend();
+        return EnsureConcreteActorRef(actor.Ref.ToBackend(), actorId);
     }
 
     public ZLinkBackendActorRef? ActorLookup(string actorId)
@@ -104,12 +104,27 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         try
         {
             var actorRef = nativeSpotNode.ActorLookup(actorId);
-            return actorRef.ToBackend();
+            return EnsureConcreteActorRef(actorRef.ToBackend(), actorId);
         }
         catch (ZlinkConfigException ex) when (ex.Result == ZlinkConfigException.ErrorCode.NotFound)
         {
             return null;
         }
+    }
+
+    private ZLinkBackendActorRef EnsureConcreteActorRef(
+        ZLinkBackendActorRef actorRef,
+        string actorId)
+    {
+        if (!actorRef.NodeRid.IsEmpty) return actorRef;
+
+        var nodeRid = nativeSpotNode.RoutingId;
+        if (nodeRid.IsEmpty)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                $"Actor '{actorId}' was created on a SpotNode without a concrete routing id.");
+
+        return actorRef with { NodeRid = nodeRid };
     }
 
     public bool JoinActor(

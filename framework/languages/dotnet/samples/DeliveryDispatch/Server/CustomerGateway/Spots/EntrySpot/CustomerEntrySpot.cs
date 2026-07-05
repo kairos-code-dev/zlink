@@ -1,5 +1,6 @@
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -8,6 +9,7 @@ namespace DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot;
 internal sealed class CustomerEntrySpot(
     IZLinkEntrySpotContext context,
     CustomerActorDirectory actors,
+    IZLinkActorManager actorManager,
     ILogger<CustomerEntrySpot> logger) : IZLinkEntrySpot<CustomerActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
@@ -23,16 +25,19 @@ internal sealed class CustomerEntrySpot(
         await actors.PushAsync(status, cancellationToken);
     }
 
-    public ValueTask OnCreateActorAsync(
+    public async ValueTask OnCreateActorAsync(
         CustomerActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        actors.Register(actor);
+        var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
+                       ?? throw new InvalidOperationException(
+                           $"Customer actor ref is not available. actor={actor.ActorId}");
+        actors.Register(actor, actorRef);
         logger.LogInformation(
-            "deliverydispatch customer-entry: actor created customer={ActorId}",
-            actor.ActorId);
-        return ValueTask.CompletedTask;
+            "deliverydispatch customer-entry: actor created customer={ActorId} node={NodeRid}",
+            actor.ActorId,
+            actorRef.NodeRid);
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

@@ -70,12 +70,12 @@ var reply = await client
 var target = RoutingId.From("play-node-1");   // router channel 너머 최종 대상 노드(§1.1 의 channel-name 호출과 다른 점)
 
 client
-    .Send("play-router", target, new RoomEvent("opened")) // 인자 = (router channel, target node, payload)
+    .SendToNode("play-router", target, new RoomEvent("opened")) // 인자 = (router channel, target node, payload)
     .PacketName("room.event")
     .Submit();
 
 var room = await client
-    .Request("play-router", target, new AllocateRoom("alice")) // IZLinkRequestCall
+    .RequestToNode("play-router", target, new AllocateRoom("alice")) // IZLinkRequestCall
     .PacketName("room.allocate")
     .Timeout(TimeSpan.FromSeconds(2))
     .Async<RoomAllocated>();
@@ -83,7 +83,7 @@ var room = await client
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkRouteClient` | router channel 이름 + target 으로 노드/spot 을 직접 지정하는 client. 노드는 `Send(channel, nodeRid, …)`/`Request(channel, nodeRid, …)`, spot 은 `SendToSpot(channel, 주소, …)`/`RequestToSpot(channel, 주소, …)`(§3.2) |
+| `IZLinkRouteClient` | router channel 이름 + target 으로 노드/spot 을 직접 지정하는 client. 노드는 `SendToNode(channel, nodeRid, …)`/`RequestToNode(channel, nodeRid, …)`, spot 은 `SendToSpot(channel, 주소, …)`/`RequestToSpot(channel, 주소, …)`(§3.2) |
 | `IZLinkSendCall` | route send 종결자(`PacketName` → `Submit(ct)`) |
 | `IZLinkRouteRequestCall` | route request 종결자(`PacketName` · `Timeout` → `Async<TReply>`) |
 | `IZLinkRouteSendHandler<TMessage>` | route mesh channel 의 단방향 수신 handler. `HandleAsync(msg, ZLinkRouteSendContext, ct)` |

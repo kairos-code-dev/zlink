@@ -94,10 +94,6 @@ API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[
 REDIS_PORT="${PORTS[16]}"
 PLAY_A_ROUTE_ENDPOINT="${BINGO_PLAY_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
 PLAY_B_ROUTE_ENDPOINT="${BINGO_PLAY_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
-API_A_PLAY_ROUTE_ENDPOINT="${BINGO_API_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[17]}}"
-API_B_PLAY_ROUTE_ENDPOINT="${BINGO_API_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[18]}}"
-SESSION_A_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[19]}}"
-SESSION_B_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[20]}}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -203,10 +199,6 @@ topology_args=(
   "--sample.topology.playBChannelEndpoint=$PLAY_B_CHANNEL_ENDPOINT"
   "--sample.topology.playARouteEndpoint=$PLAY_A_ROUTE_ENDPOINT"
   "--sample.topology.playBRouteEndpoint=$PLAY_B_ROUTE_ENDPOINT"
-  "--sample.topology.apiAPlayRouteEndpoint=$API_A_PLAY_ROUTE_ENDPOINT"
-  "--sample.topology.apiBPlayRouteEndpoint=$API_B_PLAY_ROUTE_ENDPOINT"
-  "--sample.topology.sessionAPlayRouteEndpoint=$SESSION_A_PLAY_ROUTE_ENDPOINT"
-  "--sample.topology.sessionBPlayRouteEndpoint=$SESSION_B_PLAY_ROUTE_ENDPOINT"
   "--sample.topology.playASpotEndpoint=$PLAY_A_SPOT_ENDPOINT"
   "--sample.topology.playBSpotEndpoint=$PLAY_B_SPOT_ENDPOINT"
   "--sample.topology.playASpotRouterEndpoint=$PLAY_A_SPOT_ROUTER_ENDPOINT"
@@ -240,10 +232,8 @@ wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
 
 start_server api-a "$API_BIN" --sample.topology.apiNode=a
 wait_port api-a "$API_A_CHANNEL_ENDPOINT"
-wait_port api-a-play-route "$API_A_PLAY_ROUTE_ENDPOINT"
 start_server api-b "$API_BIN" --sample.topology.apiNode=b
 wait_port api-b "$API_B_CHANNEL_ENDPOINT"
-wait_port api-b-play-route "$API_B_PLAY_ROUTE_ENDPOINT"
 
 start_server session-a "$SESSION_BIN" \
   --sample.topology.sessionNode=a \
@@ -252,7 +242,6 @@ start_server session-a "$SESSION_BIN" \
   "--sample.topology.streamEndpoint=$SESSION_A_STREAM_ENDPOINT"
 wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
 wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
-wait_port session-a-play-route "$SESSION_A_PLAY_ROUTE_ENDPOINT"
 
 start_server session-b "$SESSION_BIN" \
   --sample.topology.sessionNode=b \
@@ -261,7 +250,6 @@ start_server session-b "$SESSION_BIN" \
   "--sample.topology.streamEndpoint=$SESSION_B_STREAM_ENDPOINT"
 wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
 wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
-wait_port session-b-play-route "$SESSION_B_PLAY_ROUTE_ENDPOINT"
 
 sleep "${BINGO_STARTUP_SETTLE_SECONDS:-4}"
 

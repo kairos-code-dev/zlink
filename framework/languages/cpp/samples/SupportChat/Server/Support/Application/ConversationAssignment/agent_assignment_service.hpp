@@ -32,7 +32,8 @@ class agent_availability_directory_t
     std::optional<std::string> first_available () const
     {
         for (const auto &[actor_id, capacity] : _capacity) {
-            const auto load = _load.contains (actor_id) ? _load.at (actor_id) : 0;
+            const auto current_load = _load.find (actor_id);
+            const auto load = current_load != _load.end () ? current_load->second : 0;
             if (load < capacity) {
                 return actor_id;
             }

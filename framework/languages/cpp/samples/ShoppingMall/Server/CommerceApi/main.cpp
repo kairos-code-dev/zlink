@@ -34,9 +34,9 @@ class commerce_api_handlers_t
   public:
     commerce_api_handlers_t (sample_topology_t &topology,
                              api_instance_topology_t &instance,
-                             route_client_t &routes,
+                             channel_client_t &channels,
                              file_state_store_t &store) :
-        _topology (topology), _instance (instance), _routes (routes), _store (store)
+        _topology (topology), _instance (instance), _channels (channels), _store (store)
     {
     }
 
@@ -84,9 +84,9 @@ class commerce_api_handlers_t
         });
 
         const auto owner = _topology.for_order_id (command.order_id);
-        auto state = request_workflow<start_order_workflow_res_t> (owner.route_rid, command).state;
+        auto state = request_workflow<start_order_workflow_res_t> (owner.instance_id, command).state;
         (void) request_workflow<continue_order_workflow_res_t> (
-          owner.route_rid, continue_order_workflow_req_t{state.order_id});
+          owner.instance_id, continue_order_workflow_req_t{state.order_id});
         state = _store.read ([&] (const nlohmann::json &saved) {
             return saved["readModels"][command.order_id].get<order_state_t> ();
         });
@@ -134,7 +134,7 @@ class commerce_api_handlers_t
     continue_order_workflow_res_t continue_order (const continue_order_workflow_req_t &request)
     {
         const auto owner = _topology.for_order_id (request.order_id);
-        return request_workflow<continue_order_workflow_res_t> (owner.route_rid, request);
+        return request_workflow<continue_order_workflow_res_t> (owner.instance_id, request);
     }
 
     ok_res_t delete_projection (const delete_projection_req_t &request)
@@ -149,7 +149,7 @@ class commerce_api_handlers_t
     rebuild_order_projection_res_t rebuild_projection_req (const rebuild_order_projection_req_t &request)
     {
         const auto owner = _topology.for_order_id (request.order_id);
-        return request_workflow<rebuild_order_projection_res_t> (owner.route_rid, request);
+        return request_workflow<rebuild_order_projection_res_t> (owner.instance_id, request);
     }
 
     server_assertion_res_t assert_server (const server_assertion_req_t &request)
@@ -214,12 +214,10 @@ class commerce_api_handlers_t
 
   private:
     template <typename TReply, typename TRequest>
-    TReply request_workflow (const routing_id_t &owner_route_rid, const TRequest &request)
+    TReply request_workflow (const std::string &owner_instance_id, const TRequest &request)
     {
-        auto reply = _routes
-                       .request_to_node (sample_names_t::order_workflow_route_channel,
-                                         owner_route_rid,
-                                         request)
+        auto reply = _channels
+                       .request (order_workflow_channel_for (owner_instance_id), request)
                        .timeout (std::chrono::milliseconds (5000))
                        .template async<TReply> ()
                        .result ();
@@ -233,7 +231,7 @@ class commerce_api_handlers_t
 
     sample_topology_t &_topology;
     api_instance_topology_t &_instance;
-    route_client_t &_routes;
+    channel_client_t &_channels;
     file_state_store_t &_store;
 };
 
@@ -304,16 +302,15 @@ int main (int argc, char **argv)
           .add_singleton<commerce_api_handlers_t,
                          sample_topology_t,
                          api_instance_topology_t,
-                         route_client_t,
+                         channel_client_t,
                          file_state_store_t> ();
         add_shoppingmall_location_store (options, topology);
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
           .trace_label (instance.instance_id);
-        options.add_route_mesh_channel (sample_names_t::order_workflow_route_channel)
-          .enable_server (instance.route_endpoint)
-          .set_routing_id (instance.route_rid);
+        options.add_client_server_channel (order_workflow_channel_for ("workflow-a")).enable_client ();
+        options.add_client_server_channel (order_workflow_channel_for ("workflow-b")).enable_client ();
         options.http ()
           .listen (instance.http_url)
           .map_health ("/health")

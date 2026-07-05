@@ -366,7 +366,8 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    const std::vector<std::string> expected_samples{"Bingo", "TicTacToe", "DeliveryDispatch"};
+    const std::vector<std::string> expected_samples{
+      "Bingo", "TicTacToe", "DeliveryDispatch", "GameQuest", "SupportChat", "ShoppingMall"};
 
     for (const auto &sample : expected_samples) {
         EXPECT_TRUE (std::filesystem::is_directory (samples_root / sample))
@@ -756,7 +757,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
     EXPECT_EQ (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
     EXPECT_NE (api_factory.find (".enable_client (topology.selected_play_endpoint ())"),
                std::string::npos);
-    EXPECT_NE (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
+    EXPECT_EQ (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),

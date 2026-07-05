@@ -151,18 +151,18 @@ class game_api_store_t
 class gamequest_session_t final : public packet_stream_session_t
 {
   public:
-    using dependency_types = dependency_list_t<route_client_t,
+    using dependency_types = dependency_list_t<channel_client_t,
                                                game_api_store_t,
                                                sample_topology_t,
                                                session_actor_manager_t,
                                                actor_gateway_t>;
 
-    gamequest_session_t (route_client_t &routes,
+    gamequest_session_t (channel_client_t &channels,
                          game_api_store_t &store,
                          sample_topology_t &topology,
                          session_actor_manager_t &actors,
                          actor_gateway_t &gateway) :
-        _routes (routes), _store (store), _topology (topology), _actors (actors), _gateway (gateway)
+        _channels (channels), _store (store), _topology (topology), _actors (actors), _gateway (gateway)
     {
     }
 
@@ -308,9 +308,9 @@ class gamequest_session_t final : public packet_stream_session_t
     task_t<sync_quest_progress_res_t> sync_projection (const std::string &player_id)
     {
         auto synced =
-          co_await _routes
-            .request_to_node (sample_names_t::quest_owner_route_channel,
-                              owner_route_rid (player_id), sync_quest_progress_req_t{player_id})
+          co_await _channels
+            .request (quest_owner_channel_for (owner_mission_id (player_id)),
+                      sync_quest_progress_req_t{player_id})
             .packet_name (sync_quest_progress_req_t::packet_name)
             .template async<sync_quest_progress_res_t> ();
         co_return synced;
@@ -319,9 +319,9 @@ class gamequest_session_t final : public packet_stream_session_t
     task_t<apply_gameplay_event_res_t> apply_event (const gameplay_event_envelope_t &event)
     {
         auto applied =
-          co_await _routes
-            .request_to_node (sample_names_t::quest_owner_route_channel,
-                              owner_route_rid (event.player_id), apply_gameplay_event_req_t{event})
+          co_await _channels
+            .request (quest_owner_channel_for (owner_mission_id (event.player_id)),
+                      apply_gameplay_event_req_t{event})
             .packet_name (apply_gameplay_event_req_t::packet_name)
             .template async<apply_gameplay_event_res_t> ();
         _store.record_event (event);
@@ -332,7 +332,7 @@ class gamequest_session_t final : public packet_stream_session_t
         co_return applied;
     }
 
-    route_client_t &_routes;
+    channel_client_t &_channels;
     game_api_store_t &_store;
     sample_topology_t &_topology;
     session_actor_manager_t &_actors;
@@ -401,9 +401,8 @@ int main (int argc, char **argv)
         options.services ().add_singleton<game_api_store_t> ();
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
-        options.add_route_mesh_channel (sample_names_t::quest_owner_route_channel)
-          .enable_server (topology.selected_api_route_endpoint ())
-          .set_routing_id (topology.selected_api_rid ());
+        options.add_client_server_channel (quest_owner_channel_for ("mission-a")).enable_client ();
+        options.add_client_server_channel (quest_owner_channel_for ("mission-b")).enable_client ();
         options.add_stream_node (sample_names_t::stream_node)
           .bind (topology.selected_api_stream_endpoint ())
           .register_session<gamequest_session_t> ();

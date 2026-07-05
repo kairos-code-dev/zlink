@@ -30,9 +30,14 @@ inline std::string shoppingmall_state_file ()
 struct sample_names_t
 {
     static constexpr const char *order_spot_discovery = "shoppingmall.order.spot";
-    static constexpr const char *order_workflow_route_channel =
-      "shoppingmall.order.workflow.route";
+    static constexpr const char *order_workflow_channel_prefix =
+      "shoppingmall.order.workflow.";
 };
+
+inline std::string order_workflow_channel_for (const std::string &instance_id)
+{
+    return std::string (sample_names_t::order_workflow_channel_prefix) + instance_id;
+}
 
 struct api_instance_topology_t
 {

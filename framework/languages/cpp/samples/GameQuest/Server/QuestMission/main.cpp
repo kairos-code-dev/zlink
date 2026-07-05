@@ -15,6 +15,7 @@
 #include <chrono>
 #include <ctime>
 #include <iostream>
+#include <sstream>
 #include <map>
 #include <mutex>
 #include <string>
@@ -70,7 +71,10 @@ bool post_notify (const std::string &base_url, const notify_quest_progress_req_t
     if (response.result_int () < 200 || response.result_int () >= 300) {
         return false;
     }
-    return nlohmann::json::parse (response.body ()).get<notify_quest_progress_res_t> ().delivered;
+    std::istringstream body (response.body ());
+    nlohmann::json decoded;
+    body >> decoded;
+    return decoded.get<notify_quest_progress_res_t> ().delivered;
 }
 
 class quest_store_t
@@ -261,9 +265,8 @@ int main (int argc, char **argv)
         options.services ().add_singleton<sample_topology_t> ();
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
-        options.add_route_mesh_channel (sample_names_t::quest_owner_route_channel)
+        options.add_client_server_channel (quest_owner_channel_for (topology.mission_name))
           .enable_server (topology.selected_mission_route_endpoint ())
-          .set_routing_id (topology.selected_mission_rid ())
           .use_handler_group ("quest-owner");
         options.handlers ()
           .group ("quest-owner")

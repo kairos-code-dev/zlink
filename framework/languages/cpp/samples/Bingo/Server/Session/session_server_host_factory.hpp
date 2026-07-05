@@ -42,13 +42,13 @@ class session_server_host_factory_t
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client (topology.api_a_channel_endpoint)
-              .enable_client (topology.api_b_channel_endpoint);
-            options.add_route_mesh_channel (sample_names_t::play_channel)
+              .enable_client ();
+            options.add_client_server_channel (play_channel_for (topology.play_a_node_rid))
               .set_routing_id (zlink::routing_id_t::from (topology.selected_session_route_rid ()))
-              .enable_server (topology.selected_session_route_endpoint ())
-              .enable_client (topology.play_a_route_endpoint)
-              .enable_client (topology.play_b_route_endpoint);
+              .enable_client ();
+            options.add_client_server_channel (play_channel_for (topology.play_b_node_rid))
+              .set_routing_id (zlink::routing_id_t::from (topology.selected_session_route_rid ()))
+              .enable_client ();
             options.add_spot_mesh (sample_names_t::room_spot_mesh)
               .set_routing_id (topology.session_router_rid)
               .enable_router (topology.session_router_endpoint)

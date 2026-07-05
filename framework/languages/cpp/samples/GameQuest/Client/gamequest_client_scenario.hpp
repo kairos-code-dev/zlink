@@ -2,7 +2,6 @@
 #pragma once
 
 #include "../Shared/Contracts/messages.hpp"
-#include "../Server/Configuration/sample_names.hpp"
 
 #include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>

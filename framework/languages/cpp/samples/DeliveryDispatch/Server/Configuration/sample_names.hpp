@@ -11,7 +11,7 @@ struct sample_names_t
 {
     static constexpr const char *dispatch_route_channel = "deliverydispatch.dispatch";
     static constexpr const char *courier_route_channel = "deliverydispatch.courier";
-    static constexpr const char *courier_actor_node_route_channel = "delivery-couriers.route";
+    static constexpr const char *courier_actor_node_channel_prefix = "delivery-couriers.node.";
     static constexpr const char *customer_actor_discovery = "delivery-customers";
     static constexpr const char *courier_actor_discovery = "delivery-couriers";
     static constexpr const char *courier_session_route_channel = "deliverydispatch.courier.session";
@@ -39,5 +39,10 @@ struct sample_names_t
         throw std::runtime_error ("unknown courier '" + courier_id + "'");
     }
 };
+
+inline std::string courier_actor_node_channel_for (const std::string &node_rid)
+{
+    return std::string (sample_names_t::courier_actor_node_channel_prefix) + node_rid;
+}
 
 } // namespace zlink::samples::deliverydispatch

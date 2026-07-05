@@ -78,8 +78,6 @@ fi
 export SHOPPINGMALL_REDIS_KEY_PREFIX="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:cpp:${RUN_ID}:}"
 export SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_A_PORT}"
 export SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_B_PORT}"
-export SHOPPINGMALL_API_A_ROUTE_ENDPOINT="$SHOPPINGMALL_API_A_ROUTE"
-export SHOPPINGMALL_API_B_ROUTE_ENDPOINT="$SHOPPINGMALL_API_B_ROUTE"
 export SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_WORKFLOW_A_PORT}"
 export SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_WORKFLOW_B_PORT}"
 export SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT="$SHOPPINGMALL_WORKFLOW_A_ROUTE"
@@ -154,11 +152,9 @@ wait_port workflow-b-spot-router "$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT"
 wait_http workflow-b "$SHOPPINGMALL_WORKFLOW_B_HTTP_URL"
 
 start_role api-a "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --instance api-a
-wait_port api-a-route "$SHOPPINGMALL_API_A_ROUTE_ENDPOINT"
 wait_http api-a "$SHOPPINGMALL_API_A_HTTP_URL"
 
 start_role api-b "$BIN_DIR/sample_cpp_framework_shoppingmall_commerce_api" --instance api-b
-wait_port api-b-route "$SHOPPINGMALL_API_B_ROUTE_ENDPOINT"
 wait_http api-b "$SHOPPINGMALL_API_B_HTTP_URL"
 
 "$BIN_DIR/sample_cpp_framework_shoppingmall_client" >"$LOG_DIR/client.log" 2>&1 || {

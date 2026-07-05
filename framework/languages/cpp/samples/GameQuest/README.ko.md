@@ -1,7 +1,7 @@
 # GameQuest C++ sample
 
 GameQuest 샘플은 게임 플레이 이벤트를 GameApi stream endpoint로 받고, player id 기준 owner인
-QuestMission role로 route mesh request를 보낸다. QuestMission은 quest projection을 갱신하고,
+QuestMission role의 owner별 channel로 request를 보낸다. QuestMission은 quest projection을 갱신하고,
 GameApi는 현재 연결된 stream session에 progress/completion notify를 돌려준다.
 
 runner는 Redis location store를 공유 location store로 사용한다. 별도 registry process를 두지

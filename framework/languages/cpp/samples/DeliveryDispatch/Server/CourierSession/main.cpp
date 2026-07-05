@@ -121,13 +121,8 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::courier_route_channel)
-          .enable_client (topology.courier_route_endpoint);
-        options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
-          .enable_client (topology.courier_actor_node_1_route_endpoint)
-          .enable_client (topology.courier_actor_node_2_route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node));
+          .enable_client ();
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)
-          .accept_route_mesh (sample_names_t::courier_actor_node_route_channel)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node))
           .enable_router (topology.courier_session_spot_router_endpoint)
           .connect_router (topology.courier_actor_node_1_router_endpoint)

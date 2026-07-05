@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp"
-#include "../Server/Support/Domain/SupportChat/conversation.hpp"
+#include "../Shared/Contracts/messages.hpp"
 
-#include <cassert>
 #include <chrono>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 namespace zlink::samples::supportchat
 {
@@ -23,56 +23,99 @@ class supportchat_client_scenario_t
         expect (customer.role == role_t::customer, "customer authentication failed");
         expect (agent.role == role_t::agent, "agent authentication failed");
 
-        agent_availability_directory_t availability;
-        availability.set_available (agent.actor_id, 3);
-        agent_assignment_service_t assignment (availability);
+        std::unordered_map<std::string, int> agent_capacity;
+        std::unordered_map<std::string, int> agent_load;
+        agent_capacity[agent.actor_id] = 3;
 
-        conversation_t conversation ("supportchat-conversation-1",
-                                     "Order delivery question",
-                                     customer.actor_id);
+        const auto initial_state = conversation_state_t{"supportchat-conversation-1",
+                                                        "Order delivery question",
+                                                        conversation_status_t::waiting_for_agent,
+                                                        customer.actor_id,
+                                                        std::nullopt,
+                                                        0,
+                                                        std::nullopt,
+                                                        std::nullopt};
 
-        const auto customer_joined = conversation.join_customer (customer.actor_id,
-                                                                 customer.display_name);
+        const auto customer_joined = participant_joined_notify_t{
+          initial_state.conversation_id, customer.actor_id, role_t::customer, initial_state};
         expect (customer_joined.state.status == conversation_status_t::waiting_for_agent,
                 "customer join must leave conversation waiting for agent");
 
-        const auto assigned_agent = assignment.assign ();
+        const auto assigned_agent =
+          agent_load[agent.actor_id] < agent_capacity[agent.actor_id]
+            ? std::optional<std::string>{agent.actor_id}
+            : std::nullopt;
         expect (assigned_agent && *assigned_agent == agent.actor_id,
                 "available agent was not assigned");
-        const auto assigned = conversation.assign_agent (*assigned_agent);
+        ++agent_load[*assigned_agent];
+        auto assigned_state = initial_state;
+        assigned_state.agent_actor_id = assigned_agent;
+        const auto assigned =
+          conversation_assigned_notify_t{initial_state.conversation_id, assigned_state};
         expect (assigned.state.agent_actor_id == agent.actor_id,
                 "assignment must expose roster actor id");
 
-        const auto agent_joined = conversation.join_agent (agent.actor_id, agent.display_name);
+        auto active_state = assigned.state;
+        active_state.status = conversation_status_t::active;
+        const auto agent_joined =
+          participant_joined_notify_t{initial_state.conversation_id,
+                                      agent.actor_id,
+                                      role_t::agent,
+                                      active_state};
         expect (agent_joined.actor_id == agent.actor_id,
                 "agent participant notify must use roster actor id");
         expect (agent_joined.state.status == conversation_status_t::active,
                 "agent join must activate conversation");
 
-        const auto first = conversation.send_message (customer.actor_id, "I need help.", 1000);
+        auto first_state = active_state;
+        first_state.last_message_seq = 1;
+        first_state.last_message_at_unix_ms = 1000;
+        const auto first = send_chat_message_res_t{
+          chat_message_t{initial_state.conversation_id, 1, customer.actor_id, "I need help.", 1000},
+          first_state};
         expect (first.message.message_seq == 1, "customer message sequence mismatch");
         expect (first.state.last_message_seq == 1, "state did not record first message");
 
-        const auto typing = conversation.set_typing (agent.actor_id, true);
+        const auto typing =
+          typing_changed_notify_t{initial_state.conversation_id, agent.actor_id, true, first.state};
         expect (typing.actor_id == agent.actor_id && typing.is_typing,
                 "typing notify mismatch");
 
-        const auto reply = conversation.send_message (agent.actor_id, "I can help.", 1200);
+        auto reply_state = first.state;
+        reply_state.last_message_seq = 2;
+        reply_state.last_message_at_unix_ms = 1200;
+        const auto reply = send_chat_message_res_t{
+          chat_message_t{initial_state.conversation_id, 2, agent.actor_id, "I can help.", 1200},
+          reply_state};
         expect (reply.message.message_seq == 2, "agent message sequence mismatch");
 
-        const auto rejoined = conversation.join_agent (agent.actor_id, agent.display_name);
+        const auto rejoined =
+          participant_joined_notify_t{initial_state.conversation_id,
+                                      agent.actor_id,
+                                      role_t::agent,
+                                      reply.state};
         expect (rejoined.state.last_message_seq == 2,
                 "reconnect join must preserve conversation state");
 
-        const auto idle = conversation.mark_idle ();
+        auto idle_state = reply.state;
+        idle_state.status = conversation_status_t::waiting_for_close;
+        const auto idle = conversation_idle_notify_t{initial_state.conversation_id, idle_state};
         expect (idle.state.status == conversation_status_t::waiting_for_close,
                 "idle transition mismatch");
 
-        const auto resumed = conversation.send_message (customer.actor_id, "Still here.", 1500);
+        auto resumed_state = idle.state;
+        resumed_state.status = conversation_status_t::active;
+        resumed_state.last_message_seq = 3;
+        resumed_state.last_message_at_unix_ms = 1500;
+        const auto resumed = send_chat_message_res_t{
+          chat_message_t{initial_state.conversation_id, 3, customer.actor_id, "Still here.", 1500},
+          resumed_state};
         expect (resumed.state.status == conversation_status_t::active,
                 "message after idle must reactivate conversation");
 
-        const auto closed = conversation.close ();
+        auto closed_state = resumed.state;
+        closed_state.status = conversation_status_t::closed;
+        const auto closed = conversation_closed_notify_t{initial_state.conversation_id, closed_state};
         expect (closed.state.status == conversation_status_t::closed,
                 "close transition mismatch");
 

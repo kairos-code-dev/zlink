@@ -8,7 +8,6 @@ struct sample_names_t
 {
     static constexpr const char *api_channel = "tictactoe.api";
     static constexpr const char *play_channel = "tictactoe.play";
-    static constexpr const char *play_route_channel = "tictactoe.play.route";
     static constexpr const char *stream_name = "client.stream";
     static constexpr const char *session_spot_node = "tictactoe.session.node";
     static constexpr const char *actor_type = "player";

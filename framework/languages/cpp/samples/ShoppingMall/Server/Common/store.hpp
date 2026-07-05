@@ -97,7 +97,9 @@ class file_state_store_t
         std::ifstream input (_path);
         if (!input.good () || input.peek () == std::ifstream::traits_type::eof ())
             return nlohmann::json::object ();
-        return nlohmann::json::parse (input);
+        nlohmann::json state;
+        input >> state;
+        return state;
     }
 
     void save (const nlohmann::json &state) const

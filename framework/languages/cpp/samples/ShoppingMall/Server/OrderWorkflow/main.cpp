@@ -43,8 +43,7 @@ class workflow_handlers_t
         return {state};
     }
 
-    start_order_workflow_res_t start_route (const start_order_workflow_req_t &request,
-                                            const route_handler_context_t &)
+    start_order_workflow_res_t start_route (const start_order_workflow_req_t &request)
     {
         try {
             return start (request);
@@ -63,8 +62,7 @@ class workflow_handlers_t
         })};
     }
 
-    continue_order_workflow_res_t continue_route (const continue_order_workflow_req_t &request,
-                                                  const route_handler_context_t &)
+    continue_order_workflow_res_t continue_route (const continue_order_workflow_req_t &request)
     {
         try {
             return continue_ (request);
@@ -97,8 +95,7 @@ class workflow_handlers_t
         })};
     }
 
-    rebuild_order_projection_res_t rebuild_route (const rebuild_order_projection_req_t &request,
-                                                  const route_handler_context_t &)
+    rebuild_order_projection_res_t rebuild_route (const rebuild_order_projection_req_t &request)
     {
         rebuild_order_projection_res_t response;
         try {
@@ -157,21 +154,15 @@ int main (int argc, char **argv)
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
           .trace_label (instance.instance_id);
-        options.add_route_mesh_channel (sample_names_t::order_workflow_route_channel)
+        options.add_client_server_channel (order_workflow_channel_for (instance.instance_id))
           .enable_server (instance.route_endpoint)
           .set_routing_id (instance.route_rid)
-          .add_request_handler<workflow_handlers_t,
-                               start_order_workflow_req_t,
-                               start_order_workflow_res_t> (
-            "StartOrderWorkflowReq", &workflow_handlers_t::start_route)
-          .add_request_handler<workflow_handlers_t,
-                               continue_order_workflow_req_t,
-                               continue_order_workflow_res_t> (
-            "ContinueOrderWorkflowReq", &workflow_handlers_t::continue_route)
-          .add_request_handler<workflow_handlers_t,
-                               rebuild_order_projection_req_t,
-                               rebuild_order_projection_res_t> (
-            "RebuildOrderProjectionReq", &workflow_handlers_t::rebuild_route);
+          .use_handler_group ("workflow");
+        options.handlers ()
+          .group ("workflow")
+          .add<workflow_start_handler_t> ()
+          .add<workflow_continue_handler_t> ()
+          .add<workflow_rebuild_handler_t> ();
         options.add_spot_mesh (sample_names_t::order_spot_discovery)
           .enable_router (instance.spot_router_endpoint)
           .set_routing_id (instance.spot_rid)

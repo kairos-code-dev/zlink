@@ -40,6 +40,11 @@ inline zlink::routing_id_t owner_route_rid (const std::string &player_id)
                                    : sample_names_t::mission_a_rid);
 }
 
+inline std::string owner_mission_id (const std::string &player_id)
+{
+    return owner_index (player_id) == 1 ? "mission-b" : "mission-a";
+}
+
 struct sample_topology_t
 {
     std::string redis_endpoint = env_or ("GAMEQUEST_REDIS_ENDPOINT", "");

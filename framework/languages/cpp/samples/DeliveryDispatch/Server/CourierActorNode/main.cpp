@@ -301,18 +301,15 @@ int main (int argc, char **argv)
           .add_transient<ensure_courier_actor_handler_t, courier_actor_runtime_t> ()
           .add_transient<actor_node_offer_delivery_handler_t, courier_actor_runtime_t,
                          courier_decision_directory_t> ();
-        options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
+        options.add_client_server_channel (courier_actor_node_channel_for (node_rid))
           .enable_server (route_endpoint)
-          .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .add_request_handler<ensure_courier_actor_handler_t, ensure_courier_actor_req_t,
-                               ensure_courier_actor_res_t> (
-            ensure_courier_actor_req_t::packet_name, &ensure_courier_actor_handler_t::handle)
-          .add_request_handler<actor_node_offer_delivery_handler_t, offer_delivery_req_t,
-                               offer_delivery_res_t> (
-            offer_delivery_req_t::packet_name, &actor_node_offer_delivery_handler_t::handle);
+          .use_handler_group ("courier-actor-node");
+        options.handlers ()
+          .group ("courier-actor-node")
+          .add<ensure_courier_actor_handler_t> ()
+          .add<actor_node_offer_delivery_handler_t> ();
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)
-          .accept_route_mesh (sample_names_t::courier_actor_node_route_channel)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)
           .enable_pub_sub (spot_endpoint)

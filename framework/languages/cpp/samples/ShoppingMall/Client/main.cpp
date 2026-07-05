@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../Server/Configuration/sample_topology.hpp"
 #include "../Shared/Contracts/messages.hpp"
 
 #include <zlink/http_client.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -17,6 +17,22 @@ inline void ensure (bool condition, const std::string &message)
 {
     if (!condition) throw std::runtime_error ("Ensure failed: " + message);
 }
+
+inline std::string env_or (const char *name, std::string fallback)
+{
+    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
+        return value;
+    }
+    return fallback;
+}
+
+struct client_topology_t
+{
+    std::string api_a_http_url =
+      env_or ("SHOPPINGMALL_API_A_HTTP_URL", "http://127.0.0.1:7821");
+    std::string api_b_http_url =
+      env_or ("SHOPPINGMALL_API_B_HTTP_URL", "http://127.0.0.1:7822");
+};
 
 inline order_state_t get_order (zlink::http_client::client_t &api, const std::string &order_id)
 {
@@ -51,7 +67,7 @@ inline bool is_started_or_confirmed (const order_state_t &state)
 int main ()
 {
     using namespace zlink::samples::shoppingmall;
-    const sample_topology_t topology;
+    const client_topology_t topology;
     auto api_a = zlink::http_client::client_t::create (topology.api_a_http_url)
                    .timeout (std::chrono::milliseconds (5000))
                    .build ();

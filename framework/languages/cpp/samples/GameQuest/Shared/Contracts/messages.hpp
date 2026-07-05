@@ -9,6 +9,21 @@
 namespace zlink::samples::gamequest
 {
 
+struct quest_ids_t
+{
+    static constexpr const char *first_hunt = "first-hunt";
+    static constexpr const char *open_auction = "open-auction";
+    static constexpr const char *herb_gathering = "herb-gathering";
+    static constexpr const char *clear_tutorial = "clear-tutorial";
+    static constexpr const char *visit_ruins = "visit-ruins";
+};
+
+struct quest_status_t
+{
+    static constexpr const char *active = "Active";
+    static constexpr const char *reward_granted = "RewardGranted";
+};
+
 struct kill_monster_req_t
 {
     static constexpr const char *packet_name = "KillMonsterReq";

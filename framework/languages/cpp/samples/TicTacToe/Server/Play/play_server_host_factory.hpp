@@ -50,16 +50,12 @@ class play_server_host_factory_t
                              redis_room_route_store_t> ();
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_endpoint ())
-              .use_handler_group ("play");
-            options.add_route_mesh_channel (sample_names_t::play_route_channel)
-              .enable_server (topology.selected_play_route_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .enable_client (topology.peer_play_route_endpoint ());
+              .use_handler_group ("play");
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client (topology.api_endpoint);
+              .enable_client ();
             options.add_spot_mesh (sample_names_t::game_spot_node)
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .accept_route_mesh (sample_names_t::play_route_channel)
               .enable_router (topology.selected_play_spot_router_endpoint ())
               .enable_pub_sub (topology.selected_play_spot_endpoint ())
               .connect_peer_pub (topology.peer_play_spot_endpoint ())

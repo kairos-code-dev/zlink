@@ -185,8 +185,14 @@ test('framework runtime host starts channel auto-connect loops from location pee
         'subscriber:events:connect:tcp://remote-events'
       ].sort()
     );
-    assert.ok(calls.includes(`router:mesh:probe:true`));
-    assert.ok(calls.includes(`router:mesh:connectRoutingId:${rid('node-b').toHex()}`));
+    const routeBind = calls.indexOf('router:mesh:bind:tcp://local-route');
+    const routeDialStart = calls.indexOf(`router:mesh:connectRoutingId:${rid('node-b').toHex()}`);
+    const routeProbe = calls.indexOf('router:mesh:probe:true');
+    const routeConnect = calls.indexOf('router:mesh:connect:tcp://remote-route');
+    assert.ok(routeBind >= 0);
+    assert.ok(routeDialStart > routeBind);
+    assert.ok(routeProbe > routeDialStart);
+    assert.ok(routeConnect > routeProbe);
   } finally {
     await runtime.stop();
   }

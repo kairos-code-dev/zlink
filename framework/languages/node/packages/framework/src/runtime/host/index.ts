@@ -358,6 +358,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         }
       });
       await spotNodeRuntime.start();
+      channelRuntime.bindRouteMeshRouters();
       this.ensureLocationRuntime();
       if (this.locationRuntime !== undefined) {
         await this.locationRuntime.start(this.locationOwnerNodeRid(spotNodeRuntime));

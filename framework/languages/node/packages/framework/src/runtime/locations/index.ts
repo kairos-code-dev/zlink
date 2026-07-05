@@ -1214,6 +1214,21 @@ export class ZLinkAutoConnectReconciler {
       return;
     }
 
+    const traceAutoConnect = process.env.ZLINK_AUTOCONNECT_TRACE === '1';
+    if (traceAutoConnect) {
+      console.error(
+        `[zlink-autoconnect] tick local type=${zlinkLocationAutoConnectTypeName(this.local.autoConnectType)} ` +
+        `mesh=${this.local.meshName} role=${zlinkLocationRoleName(this.local.role)} ` +
+        `rid=${formatAutoConnectRid(this.local.nodeRid)} endpoint=${this.local.endpoint} rows=${rows.length}`
+      );
+      for (const row of rows) {
+        console.error(
+          `[zlink-autoconnect] row rid=${formatAutoConnectRid(row.nodeRid)} endpoint=${row.endpoint} ` +
+          `role=${zlinkLocationRoleName(row.role)} decision=${formatAutoConnectDecision(this.local, row)}`
+        );
+      }
+    }
+
     if (this.storeFailedValue) {
       this.storeFailedValue = false;
       this.recoveryDeferUntilMs = this.monotonicNowMs() + this.options.heartbeatIntervalMs;
@@ -1230,7 +1245,17 @@ export class ZLinkAutoConnectReconciler {
     for (const [key, target] of desired) {
       const current = this.active.get(key);
       if (current === undefined) {
+        if (traceAutoConnect) {
+          console.error(
+            `[zlink-autoconnect] dial start rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
+          );
+        }
         this.executor.connect(target);
+        if (traceAutoConnect) {
+          console.error(
+            `[zlink-autoconnect] dial ok rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
+          );
+        }
         connectedEndpoints.push(target.endpoint);
         this.active.set(key, target);
         continue;
@@ -1238,7 +1263,17 @@ export class ZLinkAutoConnectReconciler {
 
       if (current.endpoint !== target.endpoint || current.ownerId !== target.ownerId) {
         this.executor.disconnect(current);
+        if (traceAutoConnect) {
+          console.error(
+            `[zlink-autoconnect] dial start rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
+          );
+        }
         this.executor.connect(target);
+        if (traceAutoConnect) {
+          console.error(
+            `[zlink-autoconnect] dial ok rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
+          );
+        }
         disconnectedEndpoints.push(current.endpoint);
         connectedEndpoints.push(target.endpoint);
         this.active.set(key, target);
@@ -1804,6 +1839,32 @@ function shouldDialAutoConnectPeer(local: ZLinkAutoConnectLocal, peer: ZLinkPeer
     default:
       return false;
   }
+}
+
+function formatAutoConnectDecision(local: ZLinkAutoConnectLocal, peer: ZLinkPeerLocation): string {
+  if (peer.autoConnectType !== local.autoConnectType) {
+    return `skip:type=${zlinkLocationAutoConnectTypeName(peer.autoConnectType)}`;
+  }
+  if (peer.meshName !== local.meshName) {
+    return `skip:mesh=${peer.meshName}`;
+  }
+  if (!ZLinkAutoConnectPlanner.isRoleAllowed(peer.autoConnectType, peer.role)) {
+    return `skip:role=${zlinkLocationRoleName(peer.role)}`;
+  }
+  if (peer.endpoint.length === 0) {
+    return 'skip:empty-endpoint';
+  }
+  if (isAutoConnectSelf(local, peer)) {
+    return 'skip:self';
+  }
+  if (!shouldDialAutoConnectPeer(local, peer)) {
+    return `skip:not-initiator localRid=${formatAutoConnectRid(local.nodeRid)}`;
+  }
+  return 'dial';
+}
+
+function formatAutoConnectRid(rid: RoutingId | undefined): string {
+  return rid === undefined ? '<none>' : encodeRoutingIdHex(rid);
 }
 
 function localIsPairwiseInitiator(local: ZLinkAutoConnectLocal, peer: ZLinkPeerLocation): boolean {

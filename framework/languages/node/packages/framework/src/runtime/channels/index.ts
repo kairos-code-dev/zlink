@@ -104,6 +104,8 @@ type ZLinkRuntimeDispatchFailure = ZLinkDispatchFailure & {
 };
 
 const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
+const zlinkSocketTraceIds = new WeakMap<object, number>();
+let zlinkNextSocketTraceId = 1;
 
 import {
   closeMessages,
@@ -696,6 +698,21 @@ export class ZLinkChannelRuntimeManager {
     return this.sockets.routeRouter(routerChannelId);
   }
 
+  bindRouteMeshRouters(): void {
+    const traceAutoConnect = process.env.ZLINK_AUTOCONNECT_TRACE === '1';
+    for (const routeChannel of this.registration.routeChannelOptions.values()) {
+      if (traceAutoConnect) {
+        console.error(
+          `[zlink-autoconnect] bindRouteMeshRouters channel=${routeChannel.routerChannelId} ` +
+            `bind=${routeChannel.bind ?? '<none>'}`
+        );
+      }
+      if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
+        this.sockets.routeRouter(routeChannel.routerChannelId);
+      }
+    }
+  }
+
   openMonitoringSource(sourceName: string, adapter: ZLinkMonitoringBackendAdapter): ZLinkBackendSocketMonitor {
     const [channelName, role] = splitMonitoringSocketSourceName(sourceName);
     switch (role) {
@@ -969,6 +986,7 @@ export class ZLinkChannelRuntimeManager {
   ): Promise<void> {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
+    traceRouteMeshSocket('route send', routerChannelId, router, targetNodeRid);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
@@ -997,6 +1015,7 @@ export class ZLinkChannelRuntimeManager {
   ): Promise<TReply> {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
+    traceRouteMeshSocket('route request', routerChannelId, router, targetNodeRid);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Request,
@@ -1742,7 +1761,7 @@ export class ZLinkChannelRuntimeManager {
         executor: new ZLinkSocketAutoConnectExecutor(
           this.sockets.routeRouter(routeChannel.routerChannelId),
           new Set(routeChannel.manualConnections ?? []),
-          { routerInitiatorDial: true }
+          { routerInitiatorDial: true, routeChannelId: routeChannel.routerChannelId }
         )
       });
     }
@@ -1772,7 +1791,7 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   constructor(
     private readonly socket: ZLinkBackendConnectableSocket,
     private readonly manualEndpoints: ReadonlySet<string>,
-    private readonly options: { readonly routerInitiatorDial?: boolean } = {}
+    private readonly options: { readonly routerInitiatorDial?: boolean; readonly routeChannelId?: string } = {}
   ) {}
 
   connect(target: ZLinkAutoConnectTarget): void {
@@ -1782,7 +1801,20 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
     if (this.options.routerInitiatorDial === true) {
       configureRouterInitiatorDial(this.socket, target);
     }
-    this.socket.connect(target.endpoint);
+    if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+      traceAutoConnectSocketDial('connect begin', this.socket, target, this.options.routeChannelId);
+    }
+    try {
+      const result = this.socket.connect(target.endpoint);
+      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+        traceAutoConnectSocketDial('connect return', this.socket, target, this.options.routeChannelId, `result=${String(result)}`);
+      }
+    } catch (error) {
+      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+        traceAutoConnectSocketDial('connect error', this.socket, target, this.options.routeChannelId, formatAutoConnectError(error));
+      }
+      throw error;
+    }
   }
 
   disconnect(target: ZLinkAutoConnectTarget): void {
@@ -1806,12 +1838,69 @@ function configureRouterInitiatorDial(socket: ZLinkBackendConnectableSocket, tar
   if (options === undefined) {
     return;
   }
-  if ('probe' in options) {
-    options.probe = true;
-  }
   if (target.nodeRid !== undefined) {
     options.setConnectRoutingId?.(target.nodeRid);
   }
+  if ('probe' in options) {
+    options.probe = true;
+  }
+}
+
+function traceAutoConnectSocketDial(
+  event: string,
+  socket: ZLinkBackendConnectableSocket,
+  target: ZLinkAutoConnectTarget,
+  routeChannelId: string | undefined,
+  detail?: string
+): void {
+  console.error(
+    `[zlink-autoconnect] socket ${event} id=${socketTraceId(socket)} channel=${routeChannelId ?? '<none>'} ` +
+    `rid=${formatAutoConnectSocketRid(target.nodeRid)} endpoint=${target.endpoint}` +
+    (detail === undefined ? '' : ` ${detail}`)
+  );
+}
+
+function traceRouteMeshSocket(
+  event: string,
+  routeChannelId: string | undefined,
+  socket: ZLinkBackendConnectableSocket,
+  targetNodeRid?: string
+): void {
+  if (process.env.ZLINK_AUTOCONNECT_TRACE !== '1') {
+    return;
+  }
+  console.error(
+    `[zlink-autoconnect] socket ${event} id=${socketTraceId(socket)} channel=${routeChannelId ?? '<none>'}` +
+    (targetNodeRid === undefined ? '' : ` target=${targetNodeRid}`)
+  );
+}
+
+function socketTraceId(socket: object): number {
+  let id = zlinkSocketTraceIds.get(socket);
+  if (id === undefined) {
+    id = zlinkNextSocketTraceId;
+    zlinkNextSocketTraceId += 1;
+    zlinkSocketTraceIds.set(socket, id);
+  }
+  return id;
+}
+
+function formatAutoConnectSocketRid(rid: RoutingId | undefined): string {
+  if (rid === undefined) {
+    return '<none>';
+  }
+  const value = rid as unknown as { toHex?: () => string };
+  if (typeof value.toHex === 'function') {
+    return value.toHex.call(rid).toLowerCase();
+  }
+  return Buffer.from(rid, 'utf8').toString('hex');
+}
+
+function formatAutoConnectError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  return String(error);
 }
 
 function autoConnectLocal(

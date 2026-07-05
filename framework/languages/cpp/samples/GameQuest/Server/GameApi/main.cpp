@@ -199,9 +199,11 @@ class gamequest_session_t final : public packet_stream_session_t
                                           stream_codec_t::json);
             _player_id = request.player_id;
             _store.bind (request.player_id, _topology.api_name, stream);
+            auto synced = co_await sync_projection (request.player_id);
+            _store.merge_projection (request.player_id, synced.updated_quests);
             stream
               .reply_packet (zlink::message_t::from_json (
-                join_session_res_t{_store.projection (request.player_id)}))
+                join_session_res_t{synced.updated_quests}))
               .packet_name (join_session_res_t::packet_name)
               .submit ();
             co_return;

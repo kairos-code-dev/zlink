@@ -828,6 +828,7 @@ final class SpotRuntimeFakeBackendTest {
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
+        List<String> calls = backendFactory.calls();
         assertEquals(
             List.of(
                 "factory.channel",
@@ -847,7 +848,24 @@ final class SpotRuntimeFakeBackendTest {
                 "close.router",
                 "close.spotNode",
                 "close.context"),
-            backendFactory.calls());
+            withoutSpotRouteBridgeDrainCalls(calls));
+        assertEquals(
+            List.of("router.connect.inproc://api-route-peer"),
+            calls.stream()
+                .filter(call -> call.startsWith("router.connect."))
+                .toList());
+        assertFalse(calls.contains("router.setConnectRoutingId"));
+        assertFalse(calls.contains("router.setProbe.true"));
+        assertTrue(calls.indexOf("router.connect.inproc://api-route-peer")
+            < calls.indexOf("router.bind.inproc://api-route"));
+        assertTrue(calls.indexOf("spotRouteBridge.bridge.attachRouterChannel.api")
+            < calls.indexOf("spotRouteBridge.bridge.close"));
+    }
+
+    private static List<String> withoutSpotRouteBridgeDrainCalls(List<String> calls) {
+        return calls.stream()
+            .filter(call -> !call.equals("spotRouteBridge.bridge.drain"))
+            .toList();
     }
 
     @Test

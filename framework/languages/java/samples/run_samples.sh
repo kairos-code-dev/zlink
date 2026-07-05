@@ -59,7 +59,7 @@ for sample in TicTacToe Bingo DeliveryDispatch; do
   fi
 done
 
-for sample in TicTacToe Bingo GameQuest; do
+for sample in TicTacToe Bingo GameQuest ShoppingMall; do
   if should_run_sample kotlin "$sample"; then
     run_sample_with_retry "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
   fi

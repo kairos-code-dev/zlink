@@ -1533,6 +1533,26 @@ test('ZLinkModule.forRootFactory resolves factory dependencies from imported Nes
   await app.close();
 });
 
+test('ZLinkModule.forRootFactory preserves route mesh transport options after dynamic handler merge', async () => {
+  const module = nestjs.ZLinkModule.forRootFactory({
+    useFactory() {
+      return nestjs.zlinkFramework()
+        .useInMemoryLocationStores()
+        .addRouteMeshChannel('quest.route')
+          .enableRouter('tcp://127.0.0.1:7111')
+          .routingId('gamequest-api-a')
+          .connect('tcp://127.0.0.1:7112')
+        .build();
+    }
+  });
+  const registration = await resolveFrameworkRegistration(module);
+  const route = registration.routeChannelOptions.get('quest.route');
+
+  assert.equal(route.bind, 'tcp://127.0.0.1:7111');
+  assert.equal(route.routingId, 'gamequest-api-a');
+  assert.deepEqual(route.manualConnections, ['tcp://127.0.0.1:7112']);
+});
+
 test('ZLinkModule.forRootFactory boots through NestJS when async capability providers are absent', async () => {
   const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {

@@ -1,6 +1,7 @@
 const SampleNames = {
   questMissionRouteChannel: 'gamequest.quest-owner.route',
   playerStreamNode: 'gamequest-stream',
+  playerActorType: 'gamequest-player',
   playerQuestSpotMesh: 'gamequest.player-quest.spot',
   requestTimeout: 5000,
   clientTimeout: 20000

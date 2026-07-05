@@ -1,10 +1,9 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_MANAGER, ZLINK_BOUND_SESSION_FACTORY, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { GameplayActionService } from './Application/gameplay-action-service';
 import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
 import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
 import {
-  getQuestProgressReq,
   PacketNames,
   QuestStatuses,
   syncQuestProgressReq
@@ -24,6 +23,8 @@ import type {
   UnlockFeatureReq
 } from '../../Shared/Contracts/messages';
 import type {
+  ZLinkActorManager,
+  ZLinkBoundSessionFactory,
   ZLinkMessage,
   ZLinkRouteClient,
   ZLinkSession,
@@ -39,32 +40,32 @@ class GameQuestSession implements ZLinkSession {
     readonly context: ZLinkSessionContext,
     private readonly store: QuestProgressStore,
     private readonly actions: GameplayActionService,
-    private readonly routes: ZLinkRouteClient
+    private readonly routes: ZLinkRouteClient,
+    private readonly actorManager: ZLinkActorManager,
+    private readonly boundSessions: ZLinkBoundSessionFactory
   ) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (dispatch.packetName === PacketNames.joinSessionReq) {
       const request = payload.decode<JoinSessionReq>(Object as never);
+      const actorRef = await this.actorManager.getOrCreate(request.playerId, SampleNames.playerActorType);
+      await this.context.actors.bindOrGet(actorRef);
       this.playerId = request.playerId;
-      const ownerProjection = await this.ownerProjection(request.playerId);
-      this.store.mergeProjection(request.playerId, ownerProjection.activeQuests);
-      this.context.client.reply({ activeQuests: ownerProjection.activeQuests }).submit();
+      const synced = await this.syncProjection(request.playerId);
+      this.store.mergeProjection(request.playerId, synced.updatedQuests);
+      this.context.client.reply({ activeQuests: synced.updatedQuests }).submit();
       return;
     }
     if (dispatch.packetName === PacketNames.getQuestProgressReq) {
       const request = payload.decode<GetQuestProgressReq>(Object as never);
-      const ownerProjection = await this.ownerProjection(request.playerId);
-      this.store.mergeProjection(request.playerId, ownerProjection.activeQuests);
-      this.context.client.reply(ownerProjection).submit();
+      const synced = await this.syncProjection(request.playerId);
+      this.store.mergeProjection(request.playerId, synced.updatedQuests);
+      this.context.client.reply({ activeQuests: synced.updatedQuests }).submit();
       return;
     }
     if (dispatch.packetName === PacketNames.syncQuestProgressReq) {
       const request = payload.decode<SyncQuestProgressReq>(Object as never);
-      const synced = await this.routes
-        .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(request.playerId), syncQuestProgressReq(request.playerId))
-        .packetName(PacketNames.syncQuestProgressReq)
-        .timeout(SampleNames.requestTimeout)
-        .submit<SyncQuestProgressRes>();
+      const synced = await this.syncProjection(request.playerId);
       this.store.mergeProjection(request.playerId, synced.updatedQuests);
       await this.notify(request.playerId, synced.updatedQuests);
       this.context.client.reply(synced).submit();
@@ -112,15 +113,20 @@ class GameQuestSession implements ZLinkSession {
     if (projection.length === 0) {
       return;
     }
+    const actor = this.context.actors.find(playerId);
+    if (actor === undefined) {
+      return;
+    }
+    const client = this.boundSessions.create(actor.actorId);
     const latest = projection[projection.length - 1];
-    this.context.client.send({
+    client.send({
       playerId,
       targetConnectionId: this.context.sessionId,
       progress: latest
     } satisfies QuestProgressNotify).packetName(PacketNames.questProgressNotify).submit();
     if (completedQuestId !== undefined || latest.status === QuestStatuses.RewardGranted) {
       const completed = projection.find((progress) => progress.questId === completedQuestId) ?? latest;
-      this.context.client.send({
+      client.send({
         playerId,
         targetConnectionId: this.context.sessionId,
         progress: completed,
@@ -129,12 +135,12 @@ class GameQuestSession implements ZLinkSession {
     }
   }
 
-  private async ownerProjection(playerId: string): Promise<{ activeQuests: QuestProgress[] }> {
+  private async syncProjection(playerId: string): Promise<SyncQuestProgressRes> {
     return await this.routes
-      .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), getQuestProgressReq(playerId))
-      .packetName(PacketNames.getQuestProgressReq)
+      .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), syncQuestProgressReq(playerId))
+      .packetName(PacketNames.syncQuestProgressReq)
       .timeout(SampleNames.requestTimeout)
-      .submit<{ activeQuests: QuestProgress[] }>();
+      .submit<SyncQuestProgressRes>();
   }
 }
 
@@ -142,11 +148,13 @@ class GameQuestSessionFactory implements ZLinkSessionFactory<GameQuestSession> {
   constructor(
     @Inject(QuestProgressStore) private readonly store: QuestProgressStore,
     private readonly actions: GameplayActionService,
-    @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient,
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
+    @Inject(ZLINK_BOUND_SESSION_FACTORY) private readonly boundSessions: ZLinkBoundSessionFactory
   ) {}
 
   create(context: ZLinkSessionContext): GameQuestSession {
-    return new GameQuestSession(context, this.store, this.actions, this.routes);
+    return new GameQuestSession(context, this.store, this.actions, this.routes, this.actorManager, this.boundSessions);
   }
 }
 

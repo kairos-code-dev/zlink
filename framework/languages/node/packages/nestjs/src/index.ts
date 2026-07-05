@@ -1386,6 +1386,12 @@ function createDiscoveredOptions(
   }
   for (const [routerMeshName, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
     const existing = routerMeshes.get(routerMeshName) ?? { routerChannelId: routerMeshName };
+    const {
+      handlerGroups: _handlerGroups,
+      requestHandlerTypes: _requestHandlerTypes,
+      sendHandlerTypes: _sendHandlerTypes,
+      ...routeTransportOptions
+    } = routerMesh;
     const requestHandlers = createDiscoveredRequestHandlers(
       providerRefs,
       routerMesh.handlerGroups,
@@ -1400,6 +1406,7 @@ function createDiscoveredOptions(
     const manualSendHandlers = createManualRouteSendHandlers(routerMesh.sendHandlerTypes, moduleRef);
     const normalized = {
       ...existing,
+      ...routeTransportOptions,
       requestHandlers: [
         ...(existing.requestHandlers ?? []),
         ...manualRequestHandlers,

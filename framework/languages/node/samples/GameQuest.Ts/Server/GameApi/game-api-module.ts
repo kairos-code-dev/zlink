@@ -7,7 +7,21 @@ import { GameplayActionService } from './Application/gameplay-action-service';
 import { GameplayEventPublisher } from './Infrastructure/ZLink/gameplay-event-publisher';
 import { GameQuestSessionFactory } from './game-api-session';
 import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
+import type { ZLinkActor, ZLinkActorContext, ZLinkActorFactory } from '@zlink-systems/framework';
 import type { GameQuestServerConfig } from '../Configuration/sample-config';
+
+class GameQuestPlayerActor implements ZLinkActor {
+  constructor(
+    readonly actorId: string,
+    readonly context: ZLinkActorContext
+  ) {}
+}
+
+class GameQuestPlayerActorFactory implements ZLinkActorFactory {
+  create(actorId: string, context: ZLinkActorContext): GameQuestPlayerActor {
+    return new GameQuestPlayerActor(actorId, context);
+  }
+}
 
 function createGameApiModule(config: GameQuestServerConfig, instanceId: 'api-a' | 'api-b') {
   class GameApiModule {}
@@ -33,6 +47,8 @@ function createGameApiModule(config: GameQuestServerConfig, instanceId: 'api-a' 
             .addStreamNode(SampleNames.playerStreamNode)
               .bind(streamEndpoint)
               .registerSession(GameQuestSessionFactory)
+            .addSpotMesh(`${SampleNames.playerStreamNode}.${instanceId}.actors`)
+              .actorFactory(SampleNames.playerActorType, GameQuestPlayerActorFactory)
             .build();
         }
       })
@@ -41,6 +57,7 @@ function createGameApiModule(config: GameQuestServerConfig, instanceId: 'api-a' 
       { provide: QuestProgressStore, useFactory: () => new QuestProgressStore(config.workDir) },
       GameplayActionService,
       GameplayEventPublisher,
+      GameQuestPlayerActorFactory,
       GameQuestSessionFactory
     ]
   })(GameApiModule);

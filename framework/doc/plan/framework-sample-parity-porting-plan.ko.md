@@ -14,7 +14,7 @@
 | Bingo | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DeliveryDispatch | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SupportChat | ✅ | ✅ | ✅ | ✅ | **⬜ P-C1** |
-| GameQuest | ✅ | **⬜ P-N2** | ✅ | **⬜ P-K1** | **⬜ P-C2** |
+| GameQuest | ✅ | **⬜ P-N2** | ✅ | ✅ | **⬜ P-C2** |
 | ShoppingMall | ✅ | **⬜ P-N3** | ✅ | **⬜ P-K2** | **⬜ P-C3** |
 
 갭 합계: **8건 포팅 + 1건 완성도 확인**(P-J1: java GameQuest는 디렉터리·빌드는 있으나
@@ -45,7 +45,7 @@
 | P-N1 | node | SupportChat | ✅ | 2026-07-05 완료 — 2연속 PASS, sample-regression 35/35 |
 | P-N2 | node | GameQuest | ⬜ | 키스톤: NestJS 모듈+ZLink 채널(HTTP 아님) — dotnet Spring 대응 구조 미러 |
 | P-N3 | node | ShoppingMall | ⬜ | |
-| P-K1 | kotlin | GameQuest | ⬜ | java GameQuest(P-J1) 완료 후 |
+| P-K1 | kotlin | GameQuest | ✅ | 2026-07-05 완료 — java 정본 미러, run_sample 3연속 PASS |
 | P-K2 | kotlin | ShoppingMall | ⬜ | |
 | P-C1 | cpp | SupportChat | ⬜ | |
 | P-C2 | cpp | GameQuest | ⬜ | |

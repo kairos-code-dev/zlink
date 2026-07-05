@@ -7,14 +7,13 @@ namespace ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
 
 internal sealed class ZLinkOrderWorkflowRouter(
     IZLinkChannelClient channels,
-    IZLinkRouteClient routes,
     SampleTopology topology) : IOrderWorkflowRouter
 {
     public async ValueTask<OrderState> StartAsync(
         StartOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        var response = await channels.RequestToChannel(SampleNames.OrderWorkflowRouteChannel, command)
+        var response = await RequestToOwner(command.OrderId, command)
             .Async<StartOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
@@ -23,8 +22,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
         ContinueOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        var owner = topology.ForOrderId(command.OrderId);
-        var response = await routes.RequestToNode(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
+        var response = await RequestToOwner(command.OrderId, command)
             .Async<ContinueOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
@@ -33,9 +31,16 @@ internal sealed class ZLinkOrderWorkflowRouter(
         RebuildOrderProjectionReq command,
         CancellationToken cancellationToken)
     {
-        var owner = topology.ForOrderId(command.OrderId);
-        var response = await routes.RequestToNode(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
+        var response = await RequestToOwner(command.OrderId, command)
             .Async<RebuildOrderProjectionRes>(cancellationToken);
         return response.State;
+    }
+
+    private IZLinkYieldRequestCall RequestToOwner<TMessage>(string orderId, TMessage command)
+    {
+        var owner = topology.ForOrderId(orderId);
+        return channels.RequestToChannel(
+            SampleNames.OrderWorkflowChannelFor(owner.InstanceId),
+            command);
     }
 }

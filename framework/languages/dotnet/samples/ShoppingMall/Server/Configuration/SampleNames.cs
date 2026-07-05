@@ -7,6 +7,9 @@ public static class SampleNames
     public const string OrderSpotDiscovery = "shoppingmall.order.spot";
     public const string OrderSpotNode = "shoppingmall.order.node";
     public const string OrderWorkflowRouteChannel = "shoppingmall.order.workflow.route";
+
+    public static string OrderWorkflowChannelFor(string instanceId)
+        => $"shoppingmall.order.workflow.{instanceId}";
 }
 
 public static class OrderStatuses

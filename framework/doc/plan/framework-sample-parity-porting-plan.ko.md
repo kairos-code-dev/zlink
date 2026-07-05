@@ -15,7 +15,7 @@
 | DeliveryDispatch | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SupportChat | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GameQuest | ✅ | **⬜ P-N2** | ✅ | ✅ | **⬜ P-C2** |
-| ShoppingMall | ✅ | ✅ | ✅ | ✅ | **⬜ P-C3** |
+| ShoppingMall | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 갭 합계: **8건 포팅 + 1건 완성도 확인**(P-J1: java GameQuest는 디렉터리·빌드는 있으나
 [GameQuest 포팅 트랙](../../doc 참조)의 잔여 모듈 완성 여부를 S0에서 확인).
@@ -48,8 +48,8 @@
 | P-K1 | kotlin | GameQuest | ✅ | 2026-07-05 완료 — java 정본 미러, run_sample 3연속 PASS |
 | P-K2 | kotlin | ShoppingMall | ✅ | 2026-07-05 완료 — 구 registry 제거·location store 전환, 3연속 PASS |
 | P-C1 | cpp | SupportChat | ✅ | 2026-07-05 완료 — 3연속 PASS |
-| P-C2 | cpp | GameQuest | ⬜ | |
-| P-C3 | cpp | ShoppingMall | ⬜ | |
+| P-C2 | cpp | GameQuest | 🟨 | segfault·잔존quest 해소, 잔여="first kill event id mismatch"(동결) — 다음: dotnet 정본 이벤트 순서 대조 |
+| P-C3 | cpp | ShoppingMall | ✅ | 2026-07-05 완료 — 5연속 PASS |
 | SAMP-V | dotnet | 6종 샘플 ↔ 공통 샘플 문서 갭 검증·수정 | ✅ | 2026-07-04 갭 0 — 코드·문서 일치 |
 | SAMP-GN | node | 기존 ✅ 샘플(TicTacToe·Bingo) dotnet 대비 갭 수정 | ✅ | 2026-07-04 갭 1건(Bingo reward id drift) 수정 |
 | SAMP-GJ | java+kotlin | 기존 ✅ 샘플(TTT·Bingo·SupportChat·ShoppingMall) dotnet 대비 갭 수정 | ✅ | 2026-07-04 갭 0 — P-J1은 포팅으로 재분류 |

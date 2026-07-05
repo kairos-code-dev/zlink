@@ -5,6 +5,8 @@ type GameQuestServerConfig = {
   apiBStreamEndpoint: string;
   missionAEndpoint: string;
   missionBEndpoint: string;
+  apiARouteEndpoint: string;
+  apiBRouteEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
   workDir: string;
@@ -18,6 +20,8 @@ function loadSampleConfig(): GameQuestServerConfig {
     apiBStreamEndpoint: process.env.GAMEQUEST_API_B_STREAM ?? 'tcp://127.0.0.1:31204',
     missionAEndpoint: process.env.GAMEQUEST_MISSION_A_ROUTE ?? 'tcp://127.0.0.1:31207',
     missionBEndpoint: process.env.GAMEQUEST_MISSION_B_ROUTE ?? 'tcp://127.0.0.1:31208',
+    apiARouteEndpoint: process.env.GAMEQUEST_API_A_ROUTE ?? 'tcp://127.0.0.1:31209',
+    apiBRouteEndpoint: process.env.GAMEQUEST_API_B_ROUTE ?? 'tcp://127.0.0.1:31210',
     redisEndpoint: requireEnv('GAMEQUEST_REDIS_ENDPOINT'),
     redisKeyPrefix: process.env.GAMEQUEST_REDIS_KEY_PREFIX ?? 'gamequest:node:',
     workDir: process.env.GAMEQUEST_WORK_DIR ?? '.gamequest-work'

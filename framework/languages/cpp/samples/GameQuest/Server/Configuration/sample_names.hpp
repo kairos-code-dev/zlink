@@ -10,6 +10,8 @@ struct sample_names_t
     static constexpr const char *stream_node = "gamequest.stream";
     static constexpr const char *mission_a_rid = "gamequest-mission-a";
     static constexpr const char *mission_b_rid = "gamequest-mission-b";
+    static constexpr const char *api_a_rid = "gamequest-api-a";
+    static constexpr const char *api_b_rid = "gamequest-api-b";
 };
 
 struct quest_ids_t

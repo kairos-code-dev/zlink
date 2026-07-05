@@ -56,6 +56,10 @@ struct sample_topology_t
       env_or ("GAMEQUEST_MISSION_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:7425");
     std::string mission_b_route_endpoint =
       env_or ("GAMEQUEST_MISSION_B_ROUTE_ENDPOINT", "tcp://127.0.0.1:7426");
+    std::string api_a_route_endpoint =
+      env_or ("GAMEQUEST_API_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:7427");
+    std::string api_b_route_endpoint =
+      env_or ("GAMEQUEST_API_B_ROUTE_ENDPOINT", "tcp://127.0.0.1:7428");
 
     std::string api_name = env_or ("GAMEQUEST_API_NAME", "api-a");
     std::string mission_name = env_or ("GAMEQUEST_MISSION_NAME", "mission-a");
@@ -81,6 +85,17 @@ struct sample_topology_t
         return zlink::routing_id_t::from (mission_name == "mission-b"
                                             ? sample_names_t::mission_b_rid
                                             : sample_names_t::mission_a_rid);
+    }
+
+    std::string selected_api_route_endpoint () const
+    {
+        return api_name == "api-b" ? api_b_route_endpoint : api_a_route_endpoint;
+    }
+
+    zlink::routing_id_t selected_api_rid () const
+    {
+        return zlink::routing_id_t::from (
+          api_name == "api-b" ? sample_names_t::api_b_rid : sample_names_t::api_a_rid);
     }
 };
 

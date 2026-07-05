@@ -258,7 +258,13 @@ class gamequest_session_t final : public packet_stream_session_t
     task_t<apply_gameplay_event_res_t> apply_event (stream_t &stream,
                                                     const gameplay_event_envelope_t &event)
     {
-        auto applied = co_await apply_event_with_retry (event);
+        auto applied =
+          co_await _routes
+            .request_to_node (sample_names_t::quest_owner_route_channel,
+                              owner_route_rid (event.player_id),
+                              apply_gameplay_event_req_t{event})
+            .packet_name (apply_gameplay_event_req_t::packet_name)
+            .template async<apply_gameplay_event_res_t> ();
         _store.record_event (event);
         _store.merge_projection (event.player_id, applied.projection);
         std::cerr << "gamequest api event routed player=" << event.player_id
@@ -282,30 +288,6 @@ class gamequest_session_t final : public packet_stream_session_t
             }
         }
         co_return applied;
-    }
-
-    task_t<apply_gameplay_event_res_t>
-    apply_event_with_retry (const gameplay_event_envelope_t &event)
-    {
-        std::exception_ptr last_error;
-        for (int attempt = 0; attempt < 5; ++attempt) {
-            try {
-                co_return co_await _routes
-                  .request_to_node (sample_names_t::quest_owner_route_channel,
-                                    owner_route_rid (event.player_id),
-                                    apply_gameplay_event_req_t{event})
-                  .packet_name (apply_gameplay_event_req_t::packet_name)
-                  .template async<apply_gameplay_event_res_t> ();
-            }
-            catch (...) {
-                last_error = std::current_exception ();
-                std::this_thread::sleep_for (std::chrono::milliseconds (300));
-            }
-        }
-        if (last_error) {
-            std::rethrow_exception (last_error);
-        }
-        throw std::runtime_error ("apply gameplay event retry failed");
     }
 
     route_client_t &_routes;
@@ -352,7 +334,8 @@ int main (int argc, char **argv)
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
         options.add_route_mesh_channel (sample_names_t::quest_owner_route_channel)
-          .enable_client ();
+          .enable_server (topology.selected_api_route_endpoint ())
+          .set_routing_id (topology.selected_api_rid ());
         options.add_stream_node (sample_names_t::stream_node)
           .bind (topology.selected_api_stream_endpoint ())
           .register_session<gamequest_session_t> ();

@@ -1,0 +1,228 @@
+package systems.zlink.samples.kotlin.gamequest.client
+
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
+import java.time.Instant
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.kotlin
+import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.CompleteMissionReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.CompleteMissionRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.EnterAreaReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.EnterAreaRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameQuestServerAssertRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetQuestProgressReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetQuestProgressRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.JoinSessionReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.JoinSessionRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.KillMonsterReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.KillMonsterRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestCompletedNotify
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestIds
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgressNotify
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestStatuses
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.UnlockFeatureReq
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.UnlockFeatureRes
+import systems.zlink.stream.connector.ZLinkStreamCompression
+import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
+import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
+import systems.zlink.stream.connector.ZLinkStreamDispatchMode
+
+suspend fun main() {
+    val apiA = createClient(SampleTopology.ApiAStreamEndpoint)
+    val apiB = createClient(SampleTopology.ApiBStreamEndpoint)
+    try {
+        GameQuestClientScenario().run(apiA, apiB)
+    } finally {
+        apiA.close().await()
+        apiB.close().await()
+    }
+    println(SampleNames.CompletedMarker)
+}
+
+private fun createClient(endpoint: String): ZLinkKotlinStreamConnector =
+    ZLinkStreamConnectorFactory.create(
+        ZLinkStreamConnectorOptions(
+            URI.create(endpoint),
+            ZLinkStreamDispatchMode.AUTO,
+            SampleTimings.RequestTimeout,
+            SampleTimings.RequestTimeout,
+            2,
+            SampleTimings.ConnectTimeout,
+            64 * 1024,
+            64 * 1024,
+            Int.MAX_VALUE,
+            true,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(5),
+            true,
+            Duration.ofMillis(250),
+            Duration.ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.LZ4,
+            null,
+            null,
+            null,
+        ),
+    ).kotlin()
+
+class GameQuestClientScenario {
+    private val json = jacksonObjectMapper()
+    private val http = HttpClient.newHttpClient()
+
+    suspend fun run(apiAStream: ZLinkKotlinStreamConnector, apiBStream: ZLinkKotlinStreamConnector) = coroutineScope {
+        apiAStream.connect().await()
+        val joined = apiAStream.request(JoinSessionReq("player-alice")).await<JoinSessionRes>()
+        ensure(joined.activeQuests.isEmpty())
+
+        val firstProgress = async { apiAStream.waitFor<QuestProgressNotify>().await() }
+        val firstKill = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-1")).await<KillMonsterRes>()
+        ensure(firstKill.eventId == "player-alice-kill-1")
+        val firstPush = firstProgress.await().payload()
+        ensure(firstPush.playerId == "player-alice")
+        ensure(firstPush.progress.questId == QuestIds.FirstHunt)
+        ensure(firstPush.progress.currentCount == 1)
+
+        val firstHuntCompleted = apiAStream.waitFor<QuestCompletedNotify>()
+            .where { it.payload().progress.questId == QuestIds.FirstHunt }
+            .let { wait -> async { wait.await() } }
+        apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-2")).await<KillMonsterRes>()
+        val thirdKill = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-3")).await<KillMonsterRes>()
+        ensure(thirdKill.eventId == "player-alice-kill-3")
+        val firstHuntPush = firstHuntCompleted.await().payload()
+        ensure(firstHuntPush.rewardGranted)
+        ensure(firstHuntPush.progress.status == QuestStatuses.RewardGranted)
+
+        val duplicate = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-3")).await<KillMonsterRes>()
+        ensure(duplicate.eventId == thirdKill.eventId)
+
+        val auctionCompleted = apiAStream.waitFor<QuestCompletedNotify>()
+            .where { it.payload().progress.questId == QuestIds.OpenAuction }
+            .let { wait -> async { wait.await() } }
+        val auction = apiAStream.request(UnlockFeatureReq("player-alice", "auction", "unlock-auction")).await<UnlockFeatureRes>()
+        ensure(auction.eventId == "player-alice-unlock-auction")
+        ensure(auctionCompleted.await().payload().rewardGranted)
+        val snapshot = post<GetGameplaySnapshotRes>(
+            SampleTopology.ApiAHttpEndpoint,
+            "/internal/snapshot",
+            GetGameplaySnapshotReq("player-alice"),
+        )
+        ensure(snapshot.unlockedFeatureIds.contains("auction"))
+
+        ensure(postRaw(SampleTopology.MissionAHttpEndpoint, "/self-check/owner/player-alice/close"))
+        ensure(postRaw(SampleTopology.MissionBHttpEndpoint, "/self-check/owner/player-alice/close"))
+
+        val tutorial = apiAStream.request(CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
+            .await<CompleteMissionRes>()
+        ensure(tutorial.eventId == "player-alice-mission-tutorial")
+        val ruins = apiAStream.request(EnterAreaReq("player-alice", "ruins", "enter-ruins")).await<EnterAreaRes>()
+        ensure(ruins.eventId == "player-alice-enter-ruins")
+
+        val offlineItem = apiAStream.request(CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
+            .await<CollectItemRes>()
+        ensure(offlineItem.eventId == "player-bob-herb-1")
+
+        apiBStream.connect().await()
+        val bobJoined = apiBStream.request(JoinSessionReq("player-bob")).await<JoinSessionRes>()
+        ensure(hasProgress(bobJoined.activeQuests, QuestIds.HerbGathering, 1))
+
+        val herbCompleted = apiBStream.waitFor<QuestCompletedNotify>()
+            .where { it.payload().progress.questId == QuestIds.HerbGathering }
+            .let { wait -> async { wait.await() } }
+        val onlineItem = apiBStream.request(CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
+            .await<CollectItemRes>()
+        ensure(onlineItem.eventId == "player-bob-herb-2")
+        val herbPush = herbCompleted.await().payload()
+        ensure(herbPush.playerId == "player-bob")
+        ensure(herbPush.rewardGranted)
+        ensure(herbPush.progress.status == QuestStatuses.RewardGranted)
+
+        ensure(postRaw(SampleTopology.ApiAHttpEndpoint, "/self-check/projection/player-bob/${QuestIds.HerbGathering}/delete"))
+        val missingProjection = apiBStream.request(GetQuestProgressReq("player-bob")).await<GetQuestProgressRes>()
+        ensure(missingProjection.activeQuests.none { it.questId == QuestIds.HerbGathering })
+        val rebuilt = post<QuestProgress>(
+            SampleTopology.ApiAHttpEndpoint,
+            "/self-check/projection/player-bob/${QuestIds.HerbGathering}/rebuild",
+            "",
+        )
+        ensure(rebuilt.questId == QuestIds.HerbGathering)
+        ensure(rebuilt.status == QuestStatuses.RewardGranted)
+        val rebuiltProjection = apiBStream.request(GetQuestProgressReq("player-bob")).await<GetQuestProgressRes>()
+        ensure(rebuiltProjection.activeQuests.any {
+            it.questId == QuestIds.HerbGathering && it.status == QuestStatuses.RewardGranted
+        })
+
+        ensure(postRaw(SampleTopology.ApiBHttpEndpoint, "/self-check/gameplay/kill-without-publish/player-alice"))
+        val sync = apiAStream.request(SyncQuestProgressReq("player-alice")).await<SyncQuestProgressRes>()
+        ensure(sync.updatedQuests.any { it.questId == QuestIds.FirstHunt && it.currentCount >= 4 })
+        val reconciled = apiBStream.request(GetQuestProgressReq("player-alice")).await<GetQuestProgressRes>()
+        ensure(reconciled.activeQuests.any { it.questId == QuestIds.FirstHunt && it.currentCount >= 4 })
+
+        apiAStream.close().await()
+        val assertion = waitForServerAssertion()
+        ensure(assertion.passed)
+        println(SampleNames.ServerEvidenceMarker)
+    }
+
+    private fun waitForServerAssertion(): GameQuestServerAssertRes {
+        val deadline = Instant.now().plus(Duration.ofSeconds(10))
+        var last: GameQuestServerAssertRes? = null
+        while (Instant.now().isBefore(deadline)) {
+            val current: GameQuestServerAssertRes = post(SampleTopology.ApiAHttpEndpoint, "/self-check/assert", "")
+            last = current
+            if (current.passed) {
+                return current
+            }
+        }
+        return last ?: error("Server assertion did not return a response")
+    }
+
+    private fun hasProgress(progress: List<QuestProgress>, questId: String, currentCount: Int): Boolean =
+        progress.any { it.questId == questId && it.currentCount == currentCount }
+
+    private fun postRaw(base: String, path: String): Boolean {
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create(base + path))
+            .POST(HttpRequest.BodyPublishers.ofString(""))
+            .build()
+        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        return response.statusCode() in 200..299
+    }
+
+    private inline fun <reified T> post(base: String, path: String, body: Any): T {
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create(base + path))
+            .header("content-type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(if (body is String) body else json.writeValueAsString(body)))
+            .build()
+        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        if (response.statusCode() !in 200..299) {
+            error("HTTP ${response.statusCode()} for $path: ${response.body()}")
+        }
+        return json.readValue(response.body())
+    }
+}
+
+private fun ensure(condition: Boolean) {
+    if (!condition) {
+        throw IllegalStateException("Ensure failed")
+    }
+}

@@ -119,6 +119,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
           .enable_server (topology.dispatch_center_route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (sample_names_t::dispatch_route_node))
           .use_handler_group ("dispatch");
         options.add_client_server_channel (sample_names_t::courier_route_channel)
           .enable_client (topology.courier_route_endpoint);

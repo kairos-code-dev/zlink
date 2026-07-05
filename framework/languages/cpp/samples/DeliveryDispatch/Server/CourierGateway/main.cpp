@@ -135,6 +135,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::courier_route_channel)
           .enable_server (topology.courier_route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_route_node))
           .use_handler_group ("courier-gateway");
         options.add_client_server_channel (
           courier_actor_node_channel_for (sample_names_t::courier_actor_node_1)).enable_client ();

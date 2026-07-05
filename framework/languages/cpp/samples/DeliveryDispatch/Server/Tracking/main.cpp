@@ -28,6 +28,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
           .enable_server (topology.tracking_route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_route_node))
           .use_handler_group ("tracking");
         options.add_fanout_channel (sample_names_t::status_fanout_channel)
           .enable_publisher (topology.status_fanout_endpoint);

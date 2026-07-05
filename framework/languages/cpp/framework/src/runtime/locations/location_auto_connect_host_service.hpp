@@ -11,7 +11,10 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <exception>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -234,7 +237,11 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             try {
                 tick (loop);
             }
+            catch (const std::exception &ex) {
+                trace_error (loop.local, ex.what ());
+            }
             catch (...) {
+                trace_error (loop.local, "unknown");
             }
             std::this_thread::sleep_for (std::chrono::milliseconds (100));
         }
@@ -250,6 +257,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             .result ()
             .value ();
         auto desired = compute_desired (loop.local, rows);
+        trace_scan (loop.local, rows.size (), desired.size ());
         for (const auto &[key, target] : desired) {
             const auto found = loop.active.find (key);
             if (found == loop.active.end ()) {
@@ -301,6 +309,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             row.generation = claim.generation;
             loop.local_row = row;
             loop.local_published = true;
+            trace_publish (row, "stored");
             return;
         }
         if (claim.status == location_write_status_t::rejected_conflict
@@ -310,6 +319,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             if (renewed.status == location_write_status_t::stored) {
                 loop.local_row = row;
                 loop.local_published = true;
+                trace_publish (row, "renewed");
             }
         }
     }
@@ -426,6 +436,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
 
     static void connect (loop_t &loop, const target_t &target)
     {
+        trace_connect (loop.local, target);
         if (loop.connect_target) {
             loop.connect_target (target);
             return;
@@ -435,6 +446,66 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             return;
         }
         (void) loop.bundle->try_add_auto_connection (target.endpoint, target.weight);
+    }
+
+    static bool trace_enabled ()
+    {
+        const char *value = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
+        return value != nullptr && *value != '\0';
+    }
+
+    static void trace_scan (const local_t &local, std::size_t rows, std::size_t desired)
+    {
+        if (!trace_enabled ()) {
+            return;
+        }
+        std::cerr << "zlink auto-connect scan"
+                  << " type=" << location_value_codec_t::to_canonical_string (local.type)
+                  << " mesh=" << local.mesh_name
+                  << " role=" << location_value_codec_t::to_canonical_string (local.role)
+                  << " rows=" << rows
+                  << " desired=" << desired << "\n";
+    }
+
+    static void trace_publish (const peer_location_t &row, std::string_view status)
+    {
+        if (!trace_enabled ()) {
+            return;
+        }
+        std::cerr << "zlink auto-connect publish"
+                  << " status=" << status
+                  << " type=" << location_value_codec_t::to_canonical_string (
+                       row.auto_connect_type)
+                  << " mesh=" << row.mesh_name
+                  << " role=" << location_value_codec_t::to_canonical_string (row.role)
+                  << " rid=" << (row.node_rid ? row.node_rid->to_string () : "")
+                  << " endpoint=" << row.endpoint << "\n";
+    }
+
+    static void trace_connect (const local_t &local, const target_t &target)
+    {
+        if (!trace_enabled ()) {
+            return;
+        }
+        std::cerr << "zlink auto-connect dial"
+                  << " type=" << location_value_codec_t::to_canonical_string (local.type)
+                  << " mesh=" << local.mesh_name
+                  << " fromRole=" << location_value_codec_t::to_canonical_string (local.role)
+                  << " targetRole=" << location_value_codec_t::to_canonical_string (target.role)
+                  << " targetRid=" << (target.node_rid ? target.node_rid->to_string () : "")
+                  << " endpoint=" << target.endpoint << "\n";
+    }
+
+    static void trace_error (const local_t &local, std::string_view error)
+    {
+        if (!trace_enabled ()) {
+            return;
+        }
+        std::cerr << "zlink auto-connect error"
+                  << " type=" << location_value_codec_t::to_canonical_string (local.type)
+                  << " mesh=" << local.mesh_name
+                  << " role=" << location_value_codec_t::to_canonical_string (local.role)
+                  << " error=" << error << "\n";
     }
 
     static void disconnect (loop_t &loop, const target_t &target)

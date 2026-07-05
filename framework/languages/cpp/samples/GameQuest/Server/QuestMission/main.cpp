@@ -267,6 +267,7 @@ int main (int argc, char **argv)
         add_gamequest_location_store (options, topology);
         options.add_client_server_channel (quest_owner_channel_for (topology.mission_name))
           .enable_server (topology.selected_mission_route_endpoint ())
+          .set_routing_id (topology.selected_mission_rid ())
           .use_handler_group ("quest-owner");
         options.handlers ()
           .group ("quest-owner")

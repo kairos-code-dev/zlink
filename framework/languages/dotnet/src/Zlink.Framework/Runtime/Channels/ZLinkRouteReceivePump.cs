@@ -14,14 +14,17 @@ internal sealed class ZLinkRouteReceivePump(
             Received? received = null;
             try
             {
+                DrainSpotRouteBridge();
                 received = router.Recv(RecvFlags.DontWait);
                 if (received is null)
                 {
+                    DrainSpotRouteBridge();
                     await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
                 backoff.Reset();
+                if (IsProbeFrame(received)) continue;
                 if (TryHandleSpotRouteBridgePacket(received)) continue;
 
                 await dispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
@@ -54,6 +57,16 @@ internal sealed class ZLinkRouteReceivePump(
                 received?.Dispose();
             }
         }
+    }
+
+    private void DrainSpotRouteBridge()
+    {
+        spotRouteBridge()?.Drain();
+    }
+
+    private static bool IsProbeFrame(Received received)
+    {
+        return received.Parts.Count == 0 || received.Parts[0].Size == 0;
     }
 
     private bool TryHandleSpotRouteBridgePacket(Received received)

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
@@ -42,7 +42,7 @@ cleanup() {
     docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
   if [[ "${GAMEQUEST_KEEP_RUN_DIR:-}" != "1" ]]; then
-    rm -rf "${RUN_DIR}"
+    [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
   else
     echo "runDir=${RUN_DIR}"
   fi

@@ -27,6 +27,6 @@ internal sealed class BindCourierSessionActorHandler(ILogger<BindCourierSessionA
             actor.ActorId,
             actorRef.NodeRid,
             sessionRoute);
-        return ValueTask.FromResult(new BindCourierSessionRes(message.CourierId, actorRef, sessionRoute));
+        return ValueTask.FromResult(new BindCourierSessionRes(message.CourierId, actorRef.NodeRid.ToString(), sessionRoute));
     }
 }

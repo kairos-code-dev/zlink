@@ -43,7 +43,7 @@ public sealed record BindCourierSessionReq(
 
 public sealed record BindCourierSessionRes(
     string CourierId,
-    ZLinkActorRefSnapshot Actor,
+    string NodeRid,
     string SessionRoute);
 
 public sealed record EnsureCourierActorReq(

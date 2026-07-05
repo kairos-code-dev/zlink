@@ -21,6 +21,10 @@ internal sealed class CourierSessionBinder(
         CancellationToken cancellationToken)
     {
         var actor = await FindOrEnsureActorAsync(courierId, cancellationToken);
+        logger.LogInformation(
+            "deliverydispatch courier-session: find/ensure returned courier={CourierId} node={NodeRid}",
+            courierId,
+            actor.NodeRid);
         var boundActor = await context.Actors.BindOrGetAsync(
             actor.ToActorRef(),
             cancellationToken);

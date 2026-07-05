@@ -108,6 +108,13 @@ class QuestProgressStore {
     return this.readProjectionFromState(this.readState(), playerId);
   }
 
+  mergeProjection(playerId: string, projection: QuestProgress[]): void {
+    const state = this.readState();
+    state.projections = state.projections.filter((progress) => progress.playerId !== playerId);
+    state.projections.push(...projection);
+    this.writeState(state);
+  }
+
   deleteProjection(playerId: string, questId: string): void {
     const state = this.readState();
     state.projections = state.projections.filter((progress) =>

@@ -16,6 +16,9 @@ type GetQuestProgressReq = PacketNamed & { playerId: string };
 type GetQuestProgressRes = { activeQuests: QuestProgress[] };
 type SyncQuestProgressReq = PacketNamed & { playerId: string };
 type SyncQuestProgressRes = { updatedQuests: QuestProgress[] };
+type DeleteQuestProjectionReq = PacketNamed & { playerId: string; questId: string };
+type DeleteQuestProjectionRes = { deleted: boolean };
+type RebuildQuestProjectionReq = PacketNamed & { playerId: string; questId: string; count: number };
 type GetGameplaySnapshotReq = { playerId: string };
 type GetGameplaySnapshotRes = {
   playerId: string;
@@ -125,6 +128,9 @@ const PacketNames = {
   getQuestProgressRes: 'GetQuestProgressRes',
   syncQuestProgressReq: 'SyncQuestProgressReq',
   syncQuestProgressRes: 'SyncQuestProgressRes',
+  deleteQuestProjectionReq: 'DeleteQuestProjectionReq',
+  deleteQuestProjectionRes: 'DeleteQuestProjectionRes',
+  rebuildQuestProjectionReq: 'RebuildQuestProjectionReq',
   applyGameplayEventReq: 'ApplyGameplayEventReq',
   applyGameplayEventRes: 'ApplyGameplayEventRes',
   questProgressNotify: 'QuestProgressNotify',
@@ -163,6 +169,14 @@ function syncQuestProgressReq(playerId: string): SyncQuestProgressReq {
   return { playerId, packetName: () => PacketNames.syncQuestProgressReq };
 }
 
+function deleteQuestProjectionReq(playerId: string, questId: string): DeleteQuestProjectionReq {
+  return { playerId, questId, packetName: () => PacketNames.deleteQuestProjectionReq };
+}
+
+function rebuildQuestProjectionReq(playerId: string, questId: string, count = 0): RebuildQuestProjectionReq {
+  return { playerId, questId, count, packetName: () => PacketNames.rebuildQuestProjectionReq };
+}
+
 function applyGameplayEventReq(event: GameplayEventEnvelope): ApplyGameplayEventReq {
   return { event, packetName: () => PacketNames.applyGameplayEventReq };
 }
@@ -179,6 +193,8 @@ export {
   joinSessionReq,
   getQuestProgressReq,
   syncQuestProgressReq,
+  deleteQuestProjectionReq,
+  rebuildQuestProjectionReq,
   applyGameplayEventReq
 };
 
@@ -199,6 +215,9 @@ export type {
   GetQuestProgressRes,
   SyncQuestProgressReq,
   SyncQuestProgressRes,
+  DeleteQuestProjectionReq,
+  DeleteQuestProjectionRes,
+  RebuildQuestProjectionReq,
   GetGameplaySnapshotReq,
   GetGameplaySnapshotRes,
   KillCountSnapshot,

@@ -1,9 +1,13 @@
 import { Inject } from '@nestjs/common';
+import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { GameplayActionService } from './Application/gameplay-action-service';
 import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
+import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
 import {
+  getQuestProgressReq,
   PacketNames,
-  QuestStatuses
+  QuestStatuses,
+  syncQuestProgressReq
 } from '../../Shared/Contracts/messages';
 import type {
   CollectItemReq,
@@ -16,10 +20,12 @@ import type {
   QuestProgress,
   QuestProgressNotify,
   SyncQuestProgressReq,
+  SyncQuestProgressRes,
   UnlockFeatureReq
 } from '../../Shared/Contracts/messages';
 import type {
   ZLinkMessage,
+  ZLinkRouteClient,
   ZLinkSession,
   ZLinkSessionContext,
   ZLinkSessionDispatchContext,
@@ -32,24 +38,34 @@ class GameQuestSession implements ZLinkSession {
   constructor(
     readonly context: ZLinkSessionContext,
     private readonly store: QuestProgressStore,
-    private readonly actions: GameplayActionService
+    private readonly actions: GameplayActionService,
+    private readonly routes: ZLinkRouteClient
   ) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (dispatch.packetName === PacketNames.joinSessionReq) {
       const request = payload.decode<JoinSessionReq>(Object as never);
       this.playerId = request.playerId;
-      this.context.client.reply({ activeQuests: this.store.readProjection(request.playerId) }).submit();
+      const ownerProjection = await this.ownerProjection(request.playerId);
+      this.store.mergeProjection(request.playerId, ownerProjection.activeQuests);
+      this.context.client.reply({ activeQuests: ownerProjection.activeQuests }).submit();
       return;
     }
     if (dispatch.packetName === PacketNames.getQuestProgressReq) {
       const request = payload.decode<GetQuestProgressReq>(Object as never);
-      this.context.client.reply({ activeQuests: this.store.readProjection(request.playerId) }).submit();
+      const ownerProjection = await this.ownerProjection(request.playerId);
+      this.store.mergeProjection(request.playerId, ownerProjection.activeQuests);
+      this.context.client.reply(ownerProjection).submit();
       return;
     }
     if (dispatch.packetName === PacketNames.syncQuestProgressReq) {
       const request = payload.decode<SyncQuestProgressReq>(Object as never);
-      const synced = await this.actions.sync(request.playerId);
+      const synced = await this.routes
+        .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(request.playerId), syncQuestProgressReq(request.playerId))
+        .packetName(PacketNames.syncQuestProgressReq)
+        .timeout(SampleNames.requestTimeout)
+        .submit<SyncQuestProgressRes>();
+      this.store.mergeProjection(request.playerId, synced.updatedQuests);
       await this.notify(request.playerId, synced.updatedQuests);
       this.context.client.reply(synced).submit();
       return;
@@ -112,16 +128,25 @@ class GameQuestSession implements ZLinkSession {
       } satisfies QuestCompletedNotify).packetName(PacketNames.questCompletedNotify).submit();
     }
   }
+
+  private async ownerProjection(playerId: string): Promise<{ activeQuests: QuestProgress[] }> {
+    return await this.routes
+      .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), getQuestProgressReq(playerId))
+      .packetName(PacketNames.getQuestProgressReq)
+      .timeout(SampleNames.requestTimeout)
+      .submit<{ activeQuests: QuestProgress[] }>();
+  }
 }
 
 class GameQuestSessionFactory implements ZLinkSessionFactory<GameQuestSession> {
   constructor(
     @Inject(QuestProgressStore) private readonly store: QuestProgressStore,
-    private readonly actions: GameplayActionService
+    private readonly actions: GameplayActionService,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient
   ) {}
 
   create(context: ZLinkSessionContext): GameQuestSession {
-    return new GameQuestSession(context, this.store, this.actions);
+    return new GameQuestSession(context, this.store, this.actions, this.routes);
   }
 }
 

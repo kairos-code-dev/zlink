@@ -1,6 +1,7 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { questMissionSpotRid } from '../../../../Shared/Configuration/sample-names';
+import { PlayerQuestSpot } from './Spots/PlayerQuestSpot/player-quest-spot';
 import type { ZLinkSpotManager } from '@zlink-systems/framework';
 
 class PlayerQuestSpotProvisioner {
@@ -8,7 +9,7 @@ class PlayerQuestSpotProvisioner {
 
   async ensure(playerId: string): Promise<string> {
     const spotRid = questMissionSpotRid(playerId);
-    void this.spots;
+    await this.spots.getOrCreate(PlayerQuestSpot, spotRid, { playerId });
     return spotRid;
   }
 }

@@ -57,7 +57,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 15:
+    while len(sockets) < 8:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -84,16 +84,10 @@ export GAMEQUEST_API_A_HTTP="http://127.0.0.1:${PORTS[0]}"
 export GAMEQUEST_API_B_HTTP="http://127.0.0.1:${PORTS[1]}"
 export GAMEQUEST_API_A_STREAM="tcp://127.0.0.1:${PORTS[2]}"
 export GAMEQUEST_API_B_STREAM="tcp://127.0.0.1:${PORTS[3]}"
-export GAMEQUEST_API_A_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
-export GAMEQUEST_API_B_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
-export GAMEQUEST_MISSION_A_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
-export GAMEQUEST_MISSION_B_ROUTE="tcp://127.0.0.1:${PORTS[7]}"
-export GAMEQUEST_MISSION_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[8]}"
-export GAMEQUEST_MISSION_B_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[9]}"
-export GAMEQUEST_MISSION_A_SPOT="tcp://127.0.0.1:${PORTS[10]}"
-export GAMEQUEST_MISSION_B_SPOT="tcp://127.0.0.1:${PORTS[11]}"
-export GAMEQUEST_MISSION_A_HTTP="http://127.0.0.1:${PORTS[12]}"
-export GAMEQUEST_MISSION_B_HTTP="http://127.0.0.1:${PORTS[13]}"
+export GAMEQUEST_MISSION_A_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
+export GAMEQUEST_MISSION_B_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
+export GAMEQUEST_MISSION_A_HTTP="http://127.0.0.1:${PORTS[6]}"
+export GAMEQUEST_MISSION_B_HTTP="http://127.0.0.1:${PORTS[7]}"
 export GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:node:${RANDOM}:$$:}"
 
 endpoint_host() {
@@ -152,19 +146,13 @@ wait_tcp_endpoint redis "tcp://${GAMEQUEST_REDIS_ENDPOINT}"
 
 start_role mission-a
 wait_tcp_endpoint mission-a "${GAMEQUEST_MISSION_A_ROUTE}"
-wait_tcp_endpoint mission-a-spot-router "${GAMEQUEST_MISSION_A_SPOT_ROUTER}"
-wait_tcp_endpoint mission-a-spot "${GAMEQUEST_MISSION_A_SPOT}"
 start_role mission-b
 wait_tcp_endpoint mission-b "${GAMEQUEST_MISSION_B_ROUTE}"
-wait_tcp_endpoint mission-b-spot-router "${GAMEQUEST_MISSION_B_SPOT_ROUTER}"
-wait_tcp_endpoint mission-b-spot "${GAMEQUEST_MISSION_B_SPOT}"
 
 start_role api-a
-wait_tcp_endpoint api-a-route "${GAMEQUEST_API_A_ROUTE}"
 wait_tcp_endpoint api-a-stream "${GAMEQUEST_API_A_STREAM}"
 wait_http api-a "${GAMEQUEST_API_A_HTTP}"
 start_role api-b
-wait_tcp_endpoint api-b-route "${GAMEQUEST_API_B_ROUTE}"
 wait_tcp_endpoint api-b-stream "${GAMEQUEST_API_B_STREAM}"
 wait_http api-b "${GAMEQUEST_API_B_HTTP}"
 
@@ -172,6 +160,5 @@ node "${SCRIPT_DIR}/dist/Client/main.js"
 
 grep -q "gamequest api event routed" "${LOG_DIR}/api-a.log"
 grep -Rq "gamequest mission processed" "${LOG_DIR}"
-grep -Rq "gamequest player quest spot ready" "${LOG_DIR}" || true
 grep -Rq "message flow" "${GAMEQUEST_LOG_DIR}"
 echo "gamequest-server-evidence=completed"

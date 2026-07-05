@@ -11,14 +11,16 @@ const requiredSamples = [
   'Bingo.Ts',
   'DeliveryDispatch.Ts',
   'SupportChat.Ts',
-  'GameQuest.Ts'
+  'GameQuest.Ts',
+  'ShoppingMall.Ts'
 ];
 const topologySamples = [
   'TicTacToe.Ts',
   'Bingo.Ts',
   'DeliveryDispatch.Ts',
   'SupportChat.Ts',
-  'GameQuest.Ts'
+  'GameQuest.Ts',
+  'ShoppingMall.Ts'
 ];
 
 test('node samples define the required sample directories and README files', () => {
@@ -175,7 +177,13 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/main.ts',
       'Server/GameApi/game-api-module.ts',
       'Server/GameApi/game-api-server.ts',
+      'Server/GameApi/Application/gameplay-action-service.ts',
+      'Server/GameApi/Infrastructure/ZLink/gameplay-event-publisher.ts',
       'Server/QuestMission/gamequest-quest-module.ts',
+      'Server/QuestMission/Application/quest-owner-router.ts',
+      'Server/QuestMission/Infrastructure/ZLink/gameplay-event-route-handler.ts',
+      'Server/QuestMission/Infrastructure/ZLink/player-quest-spot-provisioner.ts',
+      'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot.ts',
       'Server/Registry/registry-module.ts',
       'Server/Shared/Store/quest-progress-store.ts',
       'Shared/Configuration/sample-names.ts',
@@ -199,6 +207,40 @@ test('node topology samples mirror dotnet role layout', () => {
       if (!fs.existsSync(path.join(samplesRoot, sample, relative))) {
         missing.push(`${sample}/${relative}`);
       }
+    }
+  }
+
+  assert.deepEqual(missing, []);
+});
+
+test('GameQuest TypeScript sample registers required sample and provisions player quest spots', () => {
+  assert.ok(requiredSamples.includes('GameQuest.Ts'));
+
+  const names = readSample('GameQuest.Ts', 'Shared/Configuration/sample-names.ts');
+  const publisher = readSample('GameQuest.Ts', 'Server/GameApi/Infrastructure/ZLink/gameplay-event-publisher.ts');
+  const missionModule = readSample('GameQuest.Ts', 'Server/QuestMission/gamequest-quest-module.ts');
+  const provisioner = readSample(
+    'GameQuest.Ts',
+    'Server/QuestMission/Infrastructure/ZLink/player-quest-spot-provisioner.ts'
+  );
+  const spot = readSample(
+    'GameQuest.Ts',
+    'Server/QuestMission/Infrastructure/ZLink/Spots/PlayerQuestSpot/player-quest-spot.ts'
+  );
+  const missing = [];
+
+  for (const [content, text] of [
+    [names, 'questMissionRouteRid(playerId: string)'],
+    [names, 'ownerIndex(playerId) === 0 ? \'mission-a\' : \'mission-b\''],
+    [publisher, '.requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(event.playerId), applyGameplayEventReq(event))'],
+    [missionModule, '.addSpotMesh(SampleNames.playerQuestSpotMesh)'],
+    [missionModule, '.addSpotFactory(PlayerQuestSpot)'],
+    [provisioner, 'ZLINK_SPOT_MANAGER'],
+    [provisioner, 'this.spots.getOrCreate(PlayerQuestSpot, spotRid, { playerId })'],
+    [spot, 'gamequest player quest spot ready']
+  ]) {
+    if (!content.includes(text)) {
+      missing.push(text);
     }
   }
 

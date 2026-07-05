@@ -57,7 +57,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 8:
+    while len(sockets) < 10:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -86,8 +86,10 @@ export GAMEQUEST_API_A_STREAM="tcp://127.0.0.1:${PORTS[2]}"
 export GAMEQUEST_API_B_STREAM="tcp://127.0.0.1:${PORTS[3]}"
 export GAMEQUEST_MISSION_A_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
 export GAMEQUEST_MISSION_B_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
-export GAMEQUEST_MISSION_A_HTTP="http://127.0.0.1:${PORTS[6]}"
-export GAMEQUEST_MISSION_B_HTTP="http://127.0.0.1:${PORTS[7]}"
+export GAMEQUEST_API_A_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
+export GAMEQUEST_API_B_ROUTE="tcp://127.0.0.1:${PORTS[7]}"
+export GAMEQUEST_MISSION_A_HTTP="http://127.0.0.1:${PORTS[8]}"
+export GAMEQUEST_MISSION_B_HTTP="http://127.0.0.1:${PORTS[9]}"
 export GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:node:${RANDOM}:$$:}"
 
 endpoint_host() {
@@ -150,9 +152,11 @@ start_role mission-b
 wait_tcp_endpoint mission-b "${GAMEQUEST_MISSION_B_ROUTE}"
 
 start_role api-a
+wait_tcp_endpoint api-a-route "${GAMEQUEST_API_A_ROUTE}"
 wait_tcp_endpoint api-a-stream "${GAMEQUEST_API_A_STREAM}"
 wait_http api-a "${GAMEQUEST_API_A_HTTP}"
 start_role api-b
+wait_tcp_endpoint api-b-route "${GAMEQUEST_API_B_ROUTE}"
 wait_tcp_endpoint api-b-stream "${GAMEQUEST_API_B_STREAM}"
 wait_http api-b "${GAMEQUEST_API_B_HTTP}"
 

@@ -188,15 +188,6 @@ void spot_node_t::disconnect_peer (const std::string &endpoint_)
     throw_connect_result (zlink_spot_node_disconnect_peer (_impl->handle, endpoint_.c_str ()));
 }
 
-void spot_node_t::connect_peer_rid (const routing_id_t &target_node_rid_,
-                                    const std::string &endpoint_)
-{
-    validate_endpoint (endpoint_);
-    const zlink_routing_id_t native = *zlink::detail::routing_id_native (target_node_rid_);
-    detail::throw_if_failed<connect_error_t> (static_cast<connect_result_t> (
-      zlink_spot_node_connect_peer_rid (_impl->handle, &native, endpoint_.c_str ())));
-}
-
 void spot_node_t::disconnect_peer_rid (const routing_id_t &target_node_rid_)
 {
     const zlink_routing_id_t native = *zlink::detail::routing_id_native (target_node_rid_);

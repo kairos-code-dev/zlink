@@ -8,7 +8,7 @@ DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 DEFAULT_MULTI_MSG_SIZES="64,256,1024,4096,65536,131072"
 MSG_SIZES="${PERF_MSG_SIZES:-${DEFAULT_MULTI_MSG_SIZES}}"
@@ -341,7 +341,7 @@ Usage: bindings/c/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM
+  DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM
 This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -475,11 +475,17 @@ resolve_multi_build_targets() {
       DEALER_DEALER)
         targets+=("comp_src_dealer_dealer_server" "comp_src_dealer_dealer_client")
         ;;
-      DEALER_ROUTER)
-        targets+=("comp_src_dealer_router_server" "comp_src_dealer_router_client")
+      DEALER_ROUTER|DEALER_ROUTER_SENDSEND)
+        targets+=("comp_src_dealer_router_sendsend_server" "comp_src_dealer_router_sendsend_client")
         ;;
-      ROUTER_ROUTER)
-        targets+=("comp_src_router_router_server" "comp_src_router_router_client")
+      ROUTER_ROUTER|ROUTER_ROUTER_SENDSEND)
+        targets+=("comp_src_router_router_sendsend_server" "comp_src_router_router_sendsend_client")
+        ;;
+      DEALER_ROUTER_REQREP)
+        targets+=("comp_src_dealer_router_reqrep_server" "comp_src_dealer_router_reqrep_client")
+        ;;
+      ROUTER_ROUTER_REQREP)
+        targets+=("comp_src_router_router_reqrep_server" "comp_src_router_router_reqrep_client")
         ;;
       PUBSUB)
         targets+=("comp_src_pubsub_server" "comp_src_pubsub_client")
@@ -520,6 +526,12 @@ expand_and_add_explicit_pattern() {
   fi
 
   case "${raw}" in
+    DEALER_ROUTER)
+      add_explicit_pattern_unique "DEALER_ROUTER_SENDSEND"
+      ;;
+    ROUTER_ROUTER)
+      add_explicit_pattern_unique "ROUTER_ROUTER_SENDSEND"
+      ;;
     STREAM)
       add_explicit_pattern_unique "STREAM"
       ;;

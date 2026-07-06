@@ -111,7 +111,7 @@ internal static partial class PerfRunner
     // 604). C's discovery layer tolerates this via its connect/retry loop;
     // reproduce that here with a bounded retry so MULTI_SPOT is actually
     // exercised instead of being misreported as UNSUPPORTED.
-    internal static void ConnectRegistryWithRetry(IDiscovery discovery,
+    internal static void ConnectRegistryWithRetry(dynamic discovery,
         string registryPubEndpoint, int timeoutMs)
     {
         int budget = Math.Max(2000, timeoutMs);

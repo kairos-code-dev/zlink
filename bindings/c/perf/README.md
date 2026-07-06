@@ -117,7 +117,7 @@ The recommended sweep axes are:
 |------|--------|
 | profile | `low_latency`, `balanced`, `throughput` |
 | message sizes | `64`, `1024`, `4096`, `65536` bytes |
-| patterns | `DEALER_ROUTER`, `PUBSUB`, `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` |
+| patterns | `DEALER_ROUTER_SENDSEND`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_SENDSEND`, `ROUTER_ROUTER_REQREP`, `PUBSUB`, `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` |
 
 Profile guidance after the auto-HWM message-unit change:
 

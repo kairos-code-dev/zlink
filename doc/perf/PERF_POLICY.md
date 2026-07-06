@@ -27,7 +27,7 @@
 | 문서 | 설명 |
 |------|------|
 | **PERF_POLICY.md** (본 문서) | 공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙 |
-| [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: recv 모델, phase, 패턴/transport, single 전용 환경 변수 |
+| [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: recv/request-reply 모델, phase, 패턴/transport, single 전용 환경 변수 |
 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) | multi suite 전용: 프로세스 모델, backpressure, throughput/latency 측정, 패턴/transport, multi 전용 환경 변수 |
 
 - 양 suite에 공통으로 적용되는 모든 규칙은 본 문서에서 관리한다.
@@ -125,7 +125,8 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
   `STREAM`, echo, `PAIR` 은 제외한다.
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
-- perf 측정용 I/O 경로는 기본적으로 **recv 모델**만 사용한다.
+- perf 측정용 I/O 경로는 기본적으로 **recv 모델**과 request-reply completion
+  모델만 사용한다.
   - recv: poller `POLLIN` readiness 감지 → 비동기 `zlink_recv()` /
     `zlink_msg_recv()` drain 루프 (react 방식).
   - send (single): blocking send. HWM 도달 시 자연 backpressure.
@@ -133,18 +134,26 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
   - send (multi): nonblocking send + poller `POLLOUT` readiness 감지.
     서버가 N개 클라이언트를 한 poller에서 처리하므로 EAGAIN 시 pending
     deque/flag에 저장하고 POLLOUT에서 재개.
-  - poller는 recv readiness 감지에 공통 사용하고, send backpressure는
-    suite별로 위 방식을 따른다.
+  - poller는 recv readiness와 request-reply completion 감지에 공통 사용하고,
+    send backpressure는 suite별로 위 방식을 따른다.
 - direct message callback 경로는 perf에서 측정하지 않는다. callback의 동기화
   메커니즘(TSFN, GIL, mutex 등)은 언어별 런타임에 의존하므로 일관된 비교
   기준이 불가능하다.
-- request/reply completion 도 recv 모델의 일부로 본다. socket request/reply
-  surface와 spot request/reply surface는 public poller loop에서
-  `POLLCOMPLETION`을 등록해야 한다. `ZLINK_POLLCOMPLETION`은 completion
-  drain 요청이므로 `POLLIN`/`POLLOUT`과 섞지 않고 completion 대상에 단독으로
-  등록한다. `MULTI_SPOT_REQREP` requester reply completion도 예외 없이
-  `POLLCOMPLETION` poller가 소유한다. request completion 처리를 위해
-  별도 progress thread, timer, pipe/eventfd wake, `setInterval`, 짧은 sleep,
+- request/reply completion 도 recv 모델의 일부로 본다. requester 는 request
+  submit 뒤에도 같은 requester socket의 reply 수신/progress 경로를 계속 돌려야
+  한다. completion은 requester socket을 수신하지 않아도 되는 별도 channel이
+  아니다.
+  - single reqrep은 같은 process 안에서 requester submit thread, requester
+    progress thread, replier thread를 분리한다. requester progress thread는
+    blocking recv/wait 또는 그와 같은 의미의 public completion progress 경로로
+    reply completion을 drain한다.
+  - multi reqrep은 client process의 active poller loop가 N개 requester socket을
+    multiplex한다. socket request/reply surface와 spot request/reply surface는
+    이 public poller loop에 `POLLCOMPLETION`을 등록한다.
+    `ZLINK_POLLCOMPLETION`은 completion drain 요청이므로 `POLLIN`/`POLLOUT`과
+    섞지 않고 completion 대상에 단독으로 등록한다. `MULTI_SPOT_REQREP`
+    requester reply completion도 예외 없이 `POLLCOMPLETION` poller가 소유한다.
+  suite 정책에 없는 timer, pipe/eventfd wake, `setInterval`, 짧은 sleep,
   busy polling을 hot path에 두면 C perf와 같은 측정 의미가 아니므로 금지한다.
   Node처럼 native completion callback을 JavaScript turn에서 전달하는 binding은
   `POLLCOMPLETION` poller wait가 completion queue를 drain한 뒤 callback 전달을
@@ -394,6 +403,11 @@ total: 29 bytes (고정)
       종속된다. 이 idle drain은 single recv one-way 공통 계약으로 C 기준과 bindings
       전체에 동일하게 적용해야 하며, 다른 ad-hoc drain/settle 단계로 확장하면
       안 된다.
+  - `completion drain`
+    - 예외: `single` request-reply 패턴은 active 종료 후 bounded completion drain을
+      반드시 수행한다. 이 절차는 deadline 이전에 제출된 request의 reply completion만
+      정리하는 운영 절차이며, active deadline 이후 새 request를 제출하거나 완료 수를
+      늘리는 별도 phase가 아니다.
 - 위 단계가 이미 존재하지만 실제로는 “ready 이벤트 하나 기다리기” 또는
   “phase 종료 후 남은 메시지 정리”를 우회적으로 표현한 것뿐이라면, 새 단계로
   유지하지 말고 삭제하거나 기존 `ready -> active` 흐름에 흡수한다.
@@ -494,7 +508,9 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `bindings/c/p
 ## 1.3 패턴 해석 규칙
 
 - echo
-  - request/reply 의미를 유지한다.
+  - 왕복 완료 의미를 유지한다.
+  - `*_SENDSEND` 패턴은 public send/recv API로 echo를 만든다.
+  - `*_REQREP` 패턴은 public request/reply API와 completion poller로 왕복을 만든다.
   - send 역할과 recv 역할 정책을 둘 다 적용한다.
 - one-way send
   - recv 정책은 없다.
@@ -520,12 +536,22 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `bindings/c/p
   - 정식 표에 아직 없는 SPOT 계열 비교 패턴을 추가할 때도, 별도 예외 문서가
     없으면 같은 topology 계약을 유지한다.
 - `MULTI_DEALER_ROUTER`
-  - echo(request/reply) 패턴이다. client(dealer requester) 가 request 를 보내고,
-    server(router replier) 는 request 를 읽은 뒤 source routing id 로 reply 를
-    되돌려 보낸다.
-  - client(requester) 와 server(replier) 는 echo 패턴과 동일하게
-    request/reply 의미를 유지하며, send 역할과 recv 역할 정책을 둘 다
-    적용한다.
+  - 기존 send/send echo 패턴의 호환 이름이다.
+  - 새 문서와 새 구현에서는 같은 의미를 `MULTI_DEALER_ROUTER_SENDSEND` 로
+    부른다.
+- `MULTI_ROUTER_ROUTER`
+  - 기존 send/send echo 패턴의 호환 이름이다.
+  - 새 문서와 새 구현에서는 같은 의미를 `MULTI_ROUTER_ROUTER_SENDSEND` 로
+    부른다.
+- `MULTI_DEALER_ROUTER_REQREP`
+  - multi suite 의 raw socket request/reply 패턴이다.
+  - client(dealer requester) 는 public request API로 request를 제출하고,
+    server(router replier) 는 request를 읽은 뒤 public reply API로 응답한다.
+  - client completion은 public poller `POLLCOMPLETION` 경로로만 진행한다.
+- `MULTI_ROUTER_ROUTER_REQREP`
+  - multi suite 의 route-aware raw socket request/reply 패턴이다.
+  - 양쪽 모두 routing identity가 있는 socket을 사용하되, 왕복 의미는
+    `MULTI_DEALER_ROUTER_REQREP` 와 같다.
 
 ---
 
@@ -589,9 +615,9 @@ perf/                                       # bindings/<lang>/perf/
 
 - 모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다 (PascalCase 언어는 `Perf` 접두어).
 - 기본 패턴: `perf_<pattern>` — 각 언어의 명명 컨벤션을 적용한다.
-- perf의 공식 측정 surface는 recv 중심 모델이므로 별도 모델 구분용 파일명이나
-  pattern 이름을 추가하지 않는다. request/reply echo를 위한 handler 또는
-  completion callback은 측정 data delivery surface로 분리하지 않는다.
+- perf의 공식 측정 surface는 recv 중심 모델이다. request/reply echo를 추가할
+  때는 기존 pattern의 mode나 API 의미를 바꾸지 않고 별도 pattern 이름으로 분리한다.
+  handler 또는 completion callback은 측정 data delivery surface로 분리하지 않는다.
 - **예외**: 공통 유틸리티 헤더는 `perf_` 접두어 없이 명명할 수 있다 (예: `bench_common.hpp`, `perf_common.hpp`).
 - 상세 파일명 규칙은 개별 정책 문서를 참조한다:
   - Single: [PERF_SINGLE_TEST_POLICY.md § 10.1](PERF_SINGLE_TEST_POLICY.md)
@@ -887,7 +913,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | metric | 설명 | 필수 |
 |--------|------|------|
 | `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`, 1 op = send + recv response 1회 완료), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
-| `bandwidth` | 네트워크 전송량 (MB/s) — echo 패턴(multi echo 전체): `throughput × size × 2 / 1,000,000`, one-way 패턴(single 전체 + multi one-way): `throughput × size / 1,000,000` | MUST |
+| `bandwidth` | 네트워크 전송량 (MB/s) — echo 패턴(single request-reply + multi echo): `throughput × size × 2 / 1,000,000`, one-way 패턴(single one-way + multi one-way): `throughput × size / 1,000,000` | MUST |
 | `latency` | 레이턴시 (internal ns, external ms) | MUST |
 | `latency_p95` | 레이턴시 95th percentile (internal ns, external ms) | MUST |
 | `latency_p99` | 레이턴시 99th percentile (internal ns, external ms) | MUST |

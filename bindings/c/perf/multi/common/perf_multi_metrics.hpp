@@ -123,11 +123,20 @@ inline void print_result (const std::string &lib_type,
                           double latency_p95_ns,
                           double latency_p99_ns)
 {
-    const bool is_echo_pattern = pattern == "DEALER_ROUTER" || pattern == "ROUTER_ROUTER"
-                                 || pattern == "STREAM" || pattern == "MULTI_SPOT_REQREP"
-                                 || pattern == "MULTI_SPOT_SENDSEND"
-                                 || pattern == "MULTI_DEALER_ROUTER"
-                                 || pattern == "MULTI_ROUTER_ROUTER" || pattern == "MULTI_STREAM";
+    std::string normalized_pattern = pattern;
+    if (normalized_pattern.compare (0, 6, "MULTI_") == 0)
+        normalized_pattern.erase (0, 6);
+    if (normalized_pattern == "DEALER_ROUTER")
+        normalized_pattern = "DEALER_ROUTER_SENDSEND";
+    else if (normalized_pattern == "ROUTER_ROUTER")
+        normalized_pattern = "ROUTER_ROUTER_SENDSEND";
+
+    const bool is_echo_pattern =
+      normalized_pattern == "DEALER_ROUTER_SENDSEND"
+      || normalized_pattern == "ROUTER_ROUTER_SENDSEND"
+      || normalized_pattern == "DEALER_ROUTER_REQREP"
+      || normalized_pattern == "ROUTER_ROUTER_REQREP" || normalized_pattern == "SPOT_REQREP"
+      || normalized_pattern == "SPOT_SENDSEND" || normalized_pattern == "STREAM";
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double> (size) * direction_factor) / 1000000.0;

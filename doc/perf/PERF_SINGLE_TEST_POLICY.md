@@ -26,8 +26,8 @@
 | 항목 | 기준 |
 |------|------|
 | 측정 모델 | ready + active(duration) |
-| throughput | `active 수신 건수 / active 시간(초)` (msg/s) |
-| latency | active 구간 수신 payload header timestamp 기반 (internal ns / external ms) |
+| throughput | one-way는 `active 수신 건수 / active 시간(초)` (msg/s), request-reply는 `active 왕복 완료 수 / active 시간(초)` (ops/s) |
+| latency | one-way는 active 구간 수신 payload header timestamp 기반, request-reply는 request 제출부터 reply completion까지의 왕복 시간 기반 (internal ns / external ms) |
 | 대표값 | runs > 1일 때 metric별 median |
 | 저장 경로 | `perf/results/single/report/` 단일 |
 
@@ -40,59 +40,97 @@
   만들지 않는다.
 - 한 줄 요약: `single = ready + active`
 
-### 1.1 I/O 모델 (recv only)
+### 1.1 I/O 모델
 
 - 측정 집계가 걸리는 수신 경로는 **recv 모델**(poller `POLLIN` readiness 감지 +
   비동기 `recv` drain) 을 기본으로 한다. callback으로 측정 data delivery를
   직접 집계하는 경로는 single 에서 사용하지 않는다.
 - `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
   `ROUTER_ROUTER`, `SPOT` 은 이 recv 모델로 active payload를 집계한다.
+- `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_REQREP` 은 request-reply completion
+  모델로 active 왕복 완료를 집계한다. single reqrep은 requester submit flow,
+  requester reply recv/progress flow, replier recv/reply flow를 같은 process 안에서
+  동시에 구동한다. requester는 응답을 하나 받을 때마다 다음 request를 보내는
+  RTT 전용 루프가 아니라, public request API가 허용하는 만큼 request를 연속
+  제출하고 reply completion을 계속 drain한다.
 - `SPOT` 은 direct message callback을 쓰지 않고, local probe 이후
   `zlink_spot_subscribe()` recv drain 으로 active payload를 집계한다.
 
 #### 프로세스/스레드 모델
 
-single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
-single 의 모든 패턴은 one-way 측정 surface를 사용한다.
+single은 **단일 프로세스** 안에서 sender와 receiver를 동시에 구동한다. 구현은
+sender thread + main recv loop 또는 sender thread + receiver thread 처럼 나뉠 수
+있지만, 측정 중 송신과 수신/progress가 동시에 진행되어야 한다.
+single 의 기본 패턴은 one-way 측정 surface를 사용한다. request-reply 비용은
+기존 one-way 패턴의 mode를 바꾸지 않고 별도 `*_REQREP` 패턴으로 측정한다.
 
 **raw one-way 패턴** (PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER):
 ```text
 +--------------------------------------+
 | process                              |
-| sender thread     recv thread        |
+| sender flow       recv/progress flow |
 | blocking send --> poller POLLIN      |
 | continuous        recv drain         |
 |                   metric collect     |
 +--------------------------------------+
 ```
-- sender thread: blocking send 연속 수행. HWM 도달 시 자연 backpressure.
-- recv thread: recv 루프 안에서 throughput/latency 집계를 수행한다.
+- sender flow: blocking send 연속 수행. HWM 도달 시 자연 backpressure.
+- recv/progress flow: recv 루프 안에서 throughput/latency 집계를 수행한다.
   recv loop 구조와 active 집계 anchor는 모든 raw one-way 패턴과 바인딩에서
   동일 의미로 유지해야 한다.
+
+**raw request-reply 패턴** (DEALER_ROUTER_REQREP, ROUTER_ROUTER_REQREP):
+```text
++--------------------------------------+
+| process                              |
+| request submit   requester progress  |
+| thread           thread              |
+| request loop --> blocking progress   |
+|                  metric collect      |
+| replier thread: recv request -> reply|
++--------------------------------------+
+```
+- request submit flow는 ready gate 통과 후 requester socket으로 request를 가능한
+  만큼 연속 제출한다. submit 이 backpressure 를 만나면 새 request 제출을 멈추고
+  completion progress 쪽이 reply를 drain할 수 있게 한다.
+- requester progress flow는 같은 requester socket에서 blocking requester
+  progress loop를 수행한다. 이 loop는 blocking recv/wait 또는 그와 같은 의미의
+  public completion progress 경로로 reply completion을 drain하고, completion
+  callback 또는 completion result를 집계한다. 같은 handle 동시 사용은 public
+  handle concurrency 계약을 따른다.
+- replier thread는 request를 받은 뒤 source routing id와 request sequence로 reply를
+  되돌려 보낸다.
+- throughput은 active 구간에서 reply까지 완료된 왕복 수로 계산한다.
+- latency는 request 제출 시각부터 해당 reply completion까지의 시간으로 계산한다.
 
 **SPOT one-way 패턴**:
 ```text
 +--------------------------------------+
 | process                              |
-| sender thread     recv thread        |
+| sender flow       recv/progress flow |
 | publish loop ---> spot subscribe     |
 |                   recv drain         |
 |                   metric collect     |
 +--------------------------------------+
 ```
-- sender thread는 ready barrier 통과 후 metric header가 포함된 payload를 연속 publish한다.
-- recv thread는 local probe barrier를 닫은 뒤 `zlink_spot_subscribe()` recv
+- sender flow는 ready barrier 통과 후 metric header가 포함된 payload를 연속 publish한다.
+- recv/progress flow는 local probe barrier를 닫은 뒤 `zlink_spot_subscribe()` recv
   drain 으로 active payload만 집계한다.
 
 **공통**:
-- `EAGAIN` 기반 pending 관리, send-ready handler 등 multi에서 사용하는
-  backpressure 메커니즘은 single에 적용하지 않는다.
+- raw one-way single에는 `EAGAIN` 기반 pending 관리, send-ready handler 등
+  multi에서 사용하는 backpressure 메커니즘을 적용하지 않는다. single reqrep은
+  request API의 public backpressure 결과를 사용해 submit flow를 멈추고,
+  completion progress가 pending reply를 drain한 뒤 다시 submit한다.
 - latency sample 계산, percentile sample 축적은 recv 루프 내에서 처리한다.
 - phase 종료 후에는 bounded idle drain을 반드시 수행한다. 이 절차는 "deadline 이전에
   송신되어 queue/in-flight에 남아 있던 메시지를 추가 recv로 비운다"는 의미이며,
   active 결과 집계는 본 문서가 정의한 active 유효 메시지 조건을 계속 따른다.
-- idle drain은 single recv one-way 공통 계약이다. 특정 패턴이나 특정 binding만
-  더 길거나 다른 의미의 종료 drain을 두면 안 된다.
+- idle drain은 single recv one-way 공통 계약이다. 특정 one-way 패턴이나 특정
+  binding만 더 길거나 다른 의미의 종료 drain을 두면 안 된다.
+- request-reply 패턴의 종료 drain은 active deadline 이전에 제출된 request의
+  bounded completion drain만 허용한다. active deadline 이후 새 request를 제출해서
+  완료 수를 늘리면 안 된다.
 
 ### 1.2 실행 계약 불변식
 
@@ -170,6 +208,7 @@ PUBSUB / SPOT    = [ready] -> [post_ready_settle] -> [active(duration)] -> [idle
 | post-ready settle | bounded stabilization | PUBSUB/SPOT만 수행 | `PERF_SINGLE_PUBSUB_READY_SETTLE_MS`, `PERF_SINGLE_SPOT_READY_SETTLE_MS` |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
 | idle drain | bounded recv drain | recv one-way 전체 수행 | `PERF_SINGLE_RCVTIMEO_MS` 계열 timeout bound |
+| completion drain | bounded completion drain | request-reply 전체 수행 | `PERF_SINGLE_RCVTIMEO_MS` 계열 timeout bound |
 
 ### 2.0.1 Single 패턴별 handshake 고정
 
@@ -179,10 +218,12 @@ active 시작 조건, 종료 신호를 사용해야 한다.
 
 | 패턴 | process 구조 | ready gate | active 시작 | 종료 |
 |------|--------------|------------|-------------|------|
-| `PAIR` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY` | ready gate 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
-| `DEALER_DEALER` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY` | ready gate 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
-| `DEALER_ROUTER` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
-| `ROUTER_ROUTER` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
+| `PAIR` | 단일 process 안 sender thread + recv/progress flow | raw socket `CONNECTION_READY` | ready gate 통과 직후 `phase=active` | sender가 wire stop token 송신, recv/progress flow는 idle drain 후 종료 |
+| `DEALER_DEALER` | 단일 process 안 sender thread + recv/progress flow | raw socket `CONNECTION_READY` | ready gate 통과 직후 `phase=active` | sender가 wire stop token 송신, recv/progress flow는 idle drain 후 종료 |
+| `DEALER_ROUTER` | 단일 process 안 sender thread + recv/progress flow | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | sender가 wire stop token 송신, recv/progress flow는 idle drain 후 종료 |
+| `ROUTER_ROUTER` | 단일 process 안 sender thread + recv/progress flow | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | sender가 wire stop token 송신, recv/progress flow는 idle drain 후 종료 |
+| `DEALER_ROUTER_REQREP` | 단일 process 안 request submit thread + requester progress thread + replier thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | submit thread는 새 request 제출을 멈추고, progress thread는 bounded completion drain 후 종료 |
+| `ROUTER_ROUTER_REQREP` | 단일 process 안 request submit thread + requester progress thread + replier thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | submit thread는 새 request 제출을 멈추고, progress thread는 bounded completion drain 후 종료 |
 | `PUBSUB` | 단일 process 안 publisher thread + subscriber drain | raw socket `CONNECTION_READY` 후 bounded post-ready settle | post-ready settle 완료 직후 `phase=active` | publisher가 wire stop token 송신, subscriber는 idle drain 후 종료 |
 | `SPOT` | 단일 process 안 publisher + `zlink_spot_subscribe()` drain | local pub/sub probe payload 수신 후 bounded post-ready settle | post-ready settle 완료 직후 `phase=active` | benchmark 전용 stop publisher가 같은 topic으로 wire stop token 송신 |
 
@@ -213,9 +254,10 @@ active 시작 조건, 종료 신호를 사용해야 한다.
   이 경우에도 ready source는 반드시 위 표의 pattern contract 와 일치해야 한다.
 - active에서만 throughput/latency를 계산한다.
 - `single`은 별도 settle/prime phase를 두지 않는다.
-- 단, 아래 두 절차는 본 문서에 정의된 의미로 반드시 수행한다.
+- 단, 아래 절차는 본 문서에 정의된 의미로 반드시 수행한다.
   - post-ready settle: `PUBSUB` / `SPOT` 공통으로 수행한다.
   - idle drain: recv one-way 패턴 공통으로 수행한다.
+  - completion drain: request-reply 패턴 공통으로 수행한다.
 - latency sample은 내부적으로 nanosecond 단위로 누적하고, RESULT line과
   사람이 읽는 report/table에는 millisecond 단위로 표시한다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
@@ -234,10 +276,14 @@ active 구간 집계는 payload에 기록된 metric header를 기준으로만 �
 - `magic`, `phase`, `msg_size` 검증 실패 메시지: 집계 제외
 - `run_id` 불일치 메시지는 집계 제외한다.
 - 유효 header 메시지만 throughput 카운트와 latency 샘플에 포함
-- single active 유효 메시지 규칙은 "`phase == active` 이고, recv 루프가 active
-  window 안에서 처리한 유효 header 메시지"로 고정한다. idle drain 구간에서
+- single one-way active 유효 메시지 규칙은 "`phase == active` 이고, recv 루프가
+  active window 안에서 처리한 유효 header 메시지"로 고정한다. idle drain 구간에서
   추가로 recv한 메시지는 종료 정리용으로만 소비하며, active 집계 포함 여부는
   이 규칙을 바꾸지 않는다.
+- single request-reply active 유효 완료 규칙은 "`phase == active` 인 request가
+  active window 안에서 제출되고, 그 request의 reply completion이 bounded
+  completion drain 안에서 완료된 왕복"으로 고정한다. completion drain 구간에서는
+  deadline 이전에 제출된 request의 completion만 집계할 수 있다.
 
 즉, throughput과 latency는 동일한 유효 메시지 집합을 사용한다.
 
@@ -364,10 +410,12 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 - DEALER_DEALER
 - DEALER_ROUTER
 - ROUTER_ROUTER
+- DEALER_ROUTER_REQREP
+- ROUTER_ROUTER_REQREP
 - SPOT
 
 > STREAM 계열(STREAM)은 single suite에서 테스트하지 않는다.
-> echo 측정(예: SPOT_REQREP)은 multi suite 에서만 다룬다.
+> SPOT_REQREP 같은 routed framework echo 측정은 multi suite 에서만 다룬다.
 
 #### recv mode 지원 범위
 
@@ -378,11 +426,16 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 | DEALER_DEALER | `recv` |
 | DEALER_ROUTER | `recv` |
 | ROUTER_ROUTER | `recv` |
+| DEALER_ROUTER_REQREP | `request-reply` |
+| ROUTER_ROUTER_REQREP | `request-reply` |
 | SPOT | `recv` |
 
 정책:
 
-- single의 유일한 테스트 mode는 recv이다.
+- single one-way 패턴의 테스트 mode는 recv이다.
+- single request-reply 패턴은 별도 패턴명으로만 추가한다. 기존
+  `DEALER_ROUTER`, `ROUTER_ROUTER`의 mode를 바꾸거나 옵션으로 request-reply를
+  섞으면 안 된다.
 
 #### ready gate 기준
 
@@ -398,6 +451,8 @@ SPOT 에서는 local pub/sub probe barrier 로 판정한다. perf는 추가 prec
 | DEALER_DEALER | `CONNECTION_READY` | `CONNECTION_READY` |
 | DEALER_ROUTER | `CONNECTION_READY` | `CONNECTION_READY` |
 | ROUTER_ROUTER | `CONNECTION_READY` | `CONNECTION_READY` |
+| DEALER_ROUTER_REQREP | `CONNECTION_READY` | `CONNECTION_READY` |
+| ROUTER_ROUTER_REQREP | `CONNECTION_READY` | `CONNECTION_READY` |
 | SPOT | local probe publish 후 first valid recv | local probe payload first valid recv |
 
 - single policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
@@ -423,11 +478,12 @@ SPOT 에서는 local pub/sub probe barrier 로 판정한다. perf는 추가 prec
 | 방향 | 패턴 | throughput 단위 |
 |------|------|----------------|
 | one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, SPOT | `msg/s` |
+| request-reply (왕복) | DEALER_ROUTER_REQREP, ROUTER_ROUTER_REQREP | `ops/s` |
 
-> **구현 참고**: single runner는 모든 패턴을 **one-way 방향**, **Kmsg/s** 단위로
-> 출력한다. bandwidth도 방향과 무관하게
-> `throughput × size / 1,000,000`으로 계산한다
-> (direction_factor를 적용하지 않는다).
+> **구현 참고**: single one-way runner는 **Kmsg/s** 단위로 출력한다.
+> request-reply 패턴은 **Kops/s** 단위로 출력하고, bandwidth는 왕복 payload를
+> 반영해 `throughput × size × 2 / 1,000,000`으로 계산한다. one-way 패턴은
+> `throughput × size / 1,000,000`으로 계산한다.
 
 ### 6.2 표준 메시지 크기
 

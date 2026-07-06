@@ -84,7 +84,9 @@ endfunction()
     add_current_bench_single(perf_pubsub single/src/perf_pubsub.cpp)
     add_current_bench_single(perf_dealer_dealer single/src/perf_dealer_dealer.cpp)
     add_current_bench_single(perf_dealer_router single/src/perf_dealer_router.cpp)
+    add_current_bench_single(perf_dealer_router_reqrep single/src/perf_dealer_router_reqrep.cpp)
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
+    add_current_bench_single(perf_router_router_reqrep single/src/perf_router_router_reqrep.cpp)
     add_current_bench_single(perf_spot single/src/perf_spot.cpp)
 
     add_executable(
@@ -104,10 +106,14 @@ endfunction()
 
     add_current_bench_multi(comp_src_dealer_dealer_server
                            multi/src/perf_multi_dealer_dealer_server.cpp)
-    add_current_bench_multi(comp_src_dealer_router_server
+    add_current_bench_multi(comp_src_dealer_router_sendsend_server
                            multi/src/perf_multi_dealer_router_server.cpp)
-    add_current_bench_multi(comp_src_router_router_server
+    add_current_bench_multi(comp_src_dealer_router_reqrep_server
+                           multi/src/perf_multi_dealer_router_reqrep_server.cpp)
+    add_current_bench_multi(comp_src_router_router_sendsend_server
                            multi/src/perf_multi_router_router_server.cpp)
+    add_current_bench_multi(comp_src_router_router_reqrep_server
+                           multi/src/perf_multi_router_router_reqrep_server.cpp)
     add_current_bench_multi(comp_src_pubsub_server
                            multi/src/perf_multi_pubsub_server.cpp)
     add_current_bench_multi(comp_src_spot_server
@@ -118,10 +124,14 @@ endfunction()
                            multi/src/perf_multi_spot_sendsend_server.cpp)
     add_current_bench_multi(comp_src_dealer_dealer_client
                            multi/src/perf_multi_dealer_dealer_client.cpp)
-    add_current_bench_multi(comp_src_dealer_router_client
+    add_current_bench_multi(comp_src_dealer_router_sendsend_client
                            multi/src/perf_multi_dealer_router_client.cpp)
-    add_current_bench_multi(comp_src_router_router_client
+    add_current_bench_multi(comp_src_dealer_router_reqrep_client
+                           multi/src/perf_multi_dealer_router_reqrep_client.cpp)
+    add_current_bench_multi(comp_src_router_router_sendsend_client
                            multi/src/perf_multi_router_router_client.cpp)
+    add_current_bench_multi(comp_src_router_router_reqrep_client
+                           multi/src/perf_multi_router_router_reqrep_client.cpp)
     add_current_bench_multi(comp_src_pubsub_client
                            multi/src/perf_multi_pubsub_client.cpp)
     add_current_bench_multi(comp_src_spot_client

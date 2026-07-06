@@ -14,7 +14,9 @@ internal static partial class PerfRunner
     {
         string normalized = NormalizePerfPattern(pattern);
         return normalized == "DEALER_ROUTER"
+            || normalized == "DEALER_ROUTER_REQREP"
             || normalized == "ROUTER_ROUTER"
+            || normalized == "ROUTER_ROUTER_REQREP"
             || normalized == "STREAM"
             || normalized == "SPOT_REQREP"
             || normalized == "SPOT_SENDSEND";

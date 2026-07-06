@@ -47,7 +47,9 @@
   - app thread가 poller event loop를 직접 구동하며, `POLLIN` / `POLLOUT`
     이벤트에 따라 recv drain과 send 재개를 처리한다.
   - `send_ready_handler`는 사용하지 않는다.
-- multi 전체 pattern은 recv only다.
+- multi one-way와 send/send echo pattern은 recv 모델로 측정한다. raw socket
+  request/reply pattern과 SPOT request/reply pattern은 public completion poller로
+  reply completion을 측정한다.
 - SPOT 계열은 direct message callback을 측정 data delivery surface로 쓰지 않는다.
   `MULTI_SPOT` one-way 수신과 echo 계열 server(replier)는 `dispatch_event`
   callback을 recv drain activation signal로만 사용한다. `MULTI_SPOT_REQREP` /
@@ -90,18 +92,32 @@ poller wait 이후 hot path는 poller가 ready로 보고한 source만 처리해�
 
 역할별 backpressure 전략:
 
-- **echo 서버** (소켓 1개 × 클라이언트 N개):
+- **send/send echo 서버** (소켓 1개 × 클라이언트 N개):
   - `EAGAIN` 시 per-socket pending deque에 메시지를 저장한다.
   - pending이 있는 동안 새 send는 pending deque에 추가만 한다.
   - poller `POLLOUT` readiness에서 pending deque를 `EAGAIN`까지 drain한다.
   - 소켓 1개로 N개 클라이언트를 처리하므로, EAGAIN 중에도 다른 클라이언트의 메시지가 도착할 수 있어 deque가 필요하다.
-- **echo 클라이언트** (per-socket, inflight 1):
+- **send/send echo 클라이언트** (per-socket, inflight 1):
   - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
   - poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
   - 응답 수신 → 다음 전송의 1:1 대응이므로 deque 불필요하다.
-  - 이 `inflight 1`은 구현 선택이 아니라 측정 계약이다. `MULTI_DEALER_ROUTER`,
-    `MULTI_ROUTER_ROUTER`, `MULTI_STREAM` echo client는 소켓별 outstanding request를
-    반드시 1개로 유지해야 하며, 숨은 추가 inflight/deque/window를 두면 안 된다.
+  - 이 `inflight 1`은 구현 선택이 아니라 측정 계약이다.
+    `MULTI_DEALER_ROUTER_SENDSEND`, `MULTI_ROUTER_ROUTER_SENDSEND`,
+    `MULTI_STREAM` echo client는 소켓별 outstanding send를 반드시 1개로 유지해야
+    하며, 숨은 추가 inflight/deque/window를 두면 안 된다.
+  - 기존 `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER` 이름은 위 send/send echo
+    pattern의 호환 이름이다.
+- **request/reply 클라이언트** (per-socket, inflight 1):
+  - client process는 N개 requester socket을 하나의 active poller loop에서
+    multiplex한다. socket마다 별도 recv/progress thread를 만들지 않는다.
+  - 각 requester socket은 inflight request를 1개만 유지한다.
+  - public request API로 request를 제출하고, 같은 active poller에 completion
+    대상을 `POLLCOMPLETION` 단독으로 등록한다.
+  - requester socket은 request 제출 뒤에도 reply 수신/progress 경로를 계속
+    실행해야 한다. `POLLCOMPLETION`은 이 requester socket reply progress와
+    completion callback drain을 public poller loop에 묶는 등록이다.
+  - completion drain 뒤 다음 request를 제출한다. 별도 progress thread, timer,
+    pipe wake, sleep fallback은 금지한다.
 - **one-way sender** (단일 흐름):
   - `EAGAIN` 시 `bool send_pending` 플래그만 설정한다.
   - poller `POLLOUT` readiness에서 플래그 확인 후 재전송한다.
@@ -141,9 +157,13 @@ request completion 이 있는 socket request/reply 워크로드와 spot request/
 **`ZLINK_POLLCOMPLETION` 단독**으로 등록한다. `ZLINK_POLLCOMPLETION`은
 `POLLIN`/`POLLOUT` readiness와 섞어 등록하지 않는다. completion event는 public
 event로 보고되지 않을 수 있지만, poller wait가 hidden completion queue를
-drain하면 app thread는 즉시 slot state를 다시 확인하고 다음 request를 submit해야
-한다. binding perf는 이 completion poller 의미를 따라야 하며, completion progress를
-위해 별도 thread/timer/pipe/setInterval/sleep fallback을 추가하면 측정이 무효다.
+drain하면 app thread는 즉시 완료된 slot state를 다시 확인하고 그 slot의 다음
+request를 submit해야 한다. binding perf는 이 completion poller 의미를 따라야
+하며, completion progress를 위해 socket별 recv/progress thread, timer, pipe,
+setInterval, sleep fallback을 추가하면 측정이 무효다.
+socket request/reply 워크로드에서 이 completion drain은 requester socket의 reply
+수신/progress를 포함한다. requester 가 request만 submit하고 socket receive/progress
+를 돌리지 않는 구조는 reply completion을 관측할 수 없으므로 정책 위반이다.
 Node처럼 callback 전달이 event loop turn에서 완료되는 binding은 poller wait 이후
 callback dispatch turn을 한 번 허용한다. 이 turn은 `POLLCOMPLETION` poller가
 completion을 drain한 뒤 언어 런타임 callback을 실행시키는 단계일 뿐이며, 별도
@@ -202,8 +222,10 @@ process token, direct control message, ready gate, active 시작 의미를 유�
 | 패턴 | 역할 | ready gate |
 |------|------|------------|
 | MULTI_DEALER_DEALER | client 각 소켓 | `CONNECTION_READY` |
-| MULTI_DEALER_ROUTER | client 각 소켓 | `CONNECTION_READY` |
-| MULTI_ROUTER_ROUTER | client 각 소켓 | `CONNECTION_READY` |
+| MULTI_DEALER_ROUTER_SENDSEND | client 각 소켓 | `CONNECTION_READY` |
+| MULTI_ROUTER_ROUTER_SENDSEND | client 각 소켓 | `CONNECTION_READY` |
+| MULTI_DEALER_ROUTER_REQREP | client 각 소켓(requester) | `CONNECTION_READY` |
+| MULTI_ROUTER_ROUTER_REQREP | client 각 소켓(requester) | `CONNECTION_READY` |
 | MULTI_PUBSUB | client 각 소켓 | `CONNECTION_READY` 확인 후 runner orchestration (`CLIENT_READY`/`START`) — subscribe 설정과 연결 준비가 끝난 뒤 runner START 신호로 active 진입 |
 | MULTI_SPOT | client 각 spot | control handshake barrier (`CONNECTED` progress payload + `READY_COUNT`/`START`) |
 | MULTI_SPOT_REQREP | client 각 spot(requester) | MULTI_SPOT control handshake에 `DATA_ENDPOINT` data link 준비를 추가한 barrier (`CONNECTED` progress payload + `DATA_ENDPOINT` + `READY_COUNT`/`START`) |
@@ -218,8 +240,10 @@ ready 판정, active 시작 조건을 바꾸면 안 된다.
 
 | 패턴 | runner orchestration | process 내부 ready | active 시작 조건 |
 |------|----------------------|-------------------|------------------|
-| `MULTI_DEALER_ROUTER` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 request/reply active 실행 |
-| `MULTI_ROUTER_ROUTER` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 request/reply active 실행 |
+| `MULTI_DEALER_ROUTER_SENDSEND` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 send/send echo active 실행 |
+| `MULTI_ROUTER_ROUTER_SENDSEND` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 send/send echo active 실행 |
+| `MULTI_DEALER_ROUTER_REQREP` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 request/reply active 실행 |
+| `MULTI_ROUTER_ROUTER_REQREP` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 request/reply active 실행 |
 | `MULTI_DEALER_DEALER` | server `READY,<endpoint>` 후 client spawn, client `CLIENT_READY,<msg_size>` 출력, runner가 server/client에 `START,<msg_size>` 전달 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | server와 client가 같은 `START,<msg_size>`를 받은 뒤 active 실행 |
 | `MULTI_PUBSUB` | server `READY,<endpoint>` 후 client spawn, client `CLIENT_READY,<msg_size>` 출력, runner가 server/client에 `START,<msg_size>` 전달 | client가 subscribe 설정, connect, 각 socket의 `CONNECTION_READY` 확인을 끝낸 뒤 `CLIENT_READY` 출력 | server와 client가 같은 `START,<msg_size>`를 받은 뒤 active 실행 |
 | `MULTI_SPOT` | server `READY,<endpoint>` + `CONTROL_READY,<endpoint>`, client `CLIENT_CONTROL_ENDPOINT,<endpoint>`, runner `CONNECT_CONTROL,<endpoint>`, server `CONTROL_CONNECTED,<endpoint>` 전달 | client는 control setup 중 `CONNECTED` progress payload를 보낼 수 있다. 이후 `CONTROL_CONNECTED` 통지, ready settle, local setup을 끝낸 뒤 `READY_COUNT,<msg_size>,<count>`와 `CLIENT_READY`를 보낸다. server는 expected ready unit을 모두 수집 | runner `START,<msg_size>`와 direct control `START,<msg_size>`가 모두 닫힌 뒤 active 실행 |
@@ -230,8 +254,12 @@ ready 판정, active 시작 조건을 바꾸면 안 된다.
 - C runner가 `PUBSUB` / `DEALER_DEALER` one-way 경로에서
   `PHASE_ACTIVE,<msg_size>`를 보낼 수 있지만, 이는 호환용 보조 token이다.
   benchmark process가 이를 active gate로 기다리면 안 된다.
-- echo 계열(`MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_STREAM`)은
+- send/send echo 계열(`MULTI_DEALER_ROUTER_SENDSEND`,
+  `MULTI_ROUTER_ROUTER_SENDSEND`, `MULTI_STREAM`)과 raw socket request/reply
+  계열(`MULTI_DEALER_ROUTER_REQREP`, `MULTI_ROUTER_ROUTER_REQREP`)은
   client가 active phase를 주도하며, runner `START` barrier를 추가하지 않는다.
+- 기존 `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER` 이름은 각각
+  `MULTI_DEALER_ROUTER_SENDSEND`, `MULTI_ROUTER_ROUTER_SENDSEND`의 호환 이름이다.
 - one-way raw 계열(`MULTI_DEALER_DEALER`, `MULTI_PUBSUB`)은 runner
   `CLIENT_READY` / `START` barrier를 사용한다.
 - SPOT 계열은 runner orchestration과 direct control handshake를 둘 다 사용한다.
@@ -244,8 +272,9 @@ ready 판정, active 시작 조건을 바꾸면 안 된다.
   않은 새 조합뿐이다.
 
 - `expected_clients`는 해당 케이스에서 runner가 요구한 client 수와 동일하다.
-- raw socket client(`MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`,
-  `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`)는 expected client 수만큼 low-cost
+- raw socket client(`MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER_SENDSEND`,
+  `MULTI_ROUTER_ROUTER_SENDSEND`, `MULTI_DEALER_ROUTER_REQREP`,
+  `MULTI_ROUTER_ROUTER_REQREP`, `MULTI_PUBSUB`)는 expected client 수만큼 low-cost
   `CONNECTION_READY` event를 직접 counting 해서 연결 준비를 판정한다.
 - PUBSUB 는 client 가 subscribe 설정, connect, `CONNECTION_READY` 확인을 끝낸 뒤
   `CLIENT_READY` 를 runner 에 보고하고, runner 의 `START` 신호로 server/client 가
@@ -521,11 +550,14 @@ Runner                    Server                      Client
 - server: `READY,<endpoint>` 출력 후 relay/echo 대기. stdin `STOP`/`QUIT`으로 종료.
 - client: endpoint로 connect, 내부 `CONNECTION_READY` gate 통과 후 active 측정.
   runner와 추가 stdin 교환 없이 자율 실행.
-- `MULTI_DEALER_ROUTER` 는 echo(request/reply) 패턴이다.
-  client(dealer requester) 가 request 를 보내고, server(router replier) 는
-  source routing id 로 reply 를 되돌려 보낸다.
-- `MULTI_ROUTER_ROUTER` 도 echo 계열이지만, 양쪽 모두 route-aware socket 위에서
-  같은 request/reply 의미를 유지한다.
+- `MULTI_DEALER_ROUTER_SENDSEND` 는 send/send echo 패턴이다.
+  client(dealer)가 public send API로 메시지를 보내고, server(router)는 source
+  routing id로 public send API를 사용해 echo를 되돌려 보낸다.
+- `MULTI_ROUTER_ROUTER_SENDSEND` 도 send/send echo 계열이지만, 양쪽 모두
+  route-aware socket 위에서 같은 send/send 왕복 의미를 유지한다.
+- `MULTI_DEALER_ROUTER_REQREP` 와 `MULTI_ROUTER_ROUTER_REQREP` 는 별도 raw socket
+  request/reply 패턴이다. 이 패턴은 public request API와 `POLLCOMPLETION`
+  completion drain을 측정한다.
 
 **One-way 패턴 (DEALER_DEALER, PUBSUB):**
 
@@ -778,13 +810,16 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 | 방향 | 단위 | 의미 | 측정 지점 | 패턴 |
 |------|------|------|-----------|------|
-| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_STREAM, MULTI_SPOT_REQREP, MULTI_SPOT_SENDSEND |
+| send/send echo | `ops/s` | send/recv 기반 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER_SENDSEND, MULTI_ROUTER_ROUTER_SENDSEND, MULTI_STREAM, MULTI_SPOT_SENDSEND |
+| request/reply | `ops/s` | public request/reply 완료 수/초 | client 측 completion | MULTI_DEALER_ROUTER_REQREP, MULTI_ROUTER_ROUTER_REQREP, MULTI_SPOT_REQREP |
 | one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
-- `MULTI_DEALER_ROUTER` 와 `MULTI_ROUTER_ROUTER` 의 echo 는 둘 다
-  request/reply 의미를 유지한다. 즉 client request 1회와 그에 대응하는 reply
-  1회가 완료되어야 1 op 로 집계한다.
+- `MULTI_DEALER_ROUTER_SENDSEND` 와 `MULTI_ROUTER_ROUTER_SENDSEND` 는
+  public send/recv API로 왕복 echo를 만든다. 기존 `MULTI_DEALER_ROUTER`,
+  `MULTI_ROUTER_ROUTER` 이름은 이 두 패턴의 호환 이름이다.
+- `MULTI_DEALER_ROUTER_REQREP` 와 `MULTI_ROUTER_ROUTER_REQREP` 는 public
+  request/reply API와 `POLLCOMPLETION`으로 왕복 완료를 만든다.
 - one-way 패턴: sender가 송신한 메시지를 receiver가 수신한다(서버 relay 또는 server push 포함). 1 msg = 1 message hop으로 보고, receiver 수신 수를 카운트한다.
 - 동일 단위의 패턴 간에만 throughput을 직접 비교할 수 있다.
 
@@ -831,7 +866,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 | 유형 | divisor | 적용 패턴 |
 |------|---------|-----------|
-| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM, MULTI_SPOT_REQREP, MULTI_SPOT_SENDSEND |
+| 양방향 RTT | `2` | MULTI_DEALER_ROUTER_SENDSEND, MULTI_ROUTER_ROUTER_SENDSEND, MULTI_DEALER_ROUTER_REQREP, MULTI_ROUTER_ROUTER_REQREP, MULTI_STREAM, MULTI_SPOT_REQREP, MULTI_SPOT_SENDSEND |
 | 단방향 | `received_count` | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 ### 5.3 계산식
@@ -954,7 +989,13 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 ### 8.1 지원 패턴
 
-MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_SPOT, MULTI_SPOT_REQREP, MULTI_SPOT_SENDSEND, MULTI_STREAM
+MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER_SENDSEND, MULTI_ROUTER_ROUTER_SENDSEND,
+MULTI_DEALER_ROUTER_REQREP, MULTI_ROUTER_ROUTER_REQREP, MULTI_PUBSUB, MULTI_SPOT,
+MULTI_SPOT_REQREP, MULTI_SPOT_SENDSEND, MULTI_STREAM
+
+`MULTI_DEALER_ROUTER` 와 `MULTI_ROUTER_ROUTER` 는 기존 결과와 runner 호환을 위한
+send/send echo alias 이다. 새 문서, 새 runner 옵션, 새 결과 표에서는 각각
+`MULTI_DEALER_ROUTER_SENDSEND`, `MULTI_ROUTER_ROUTER_SENDSEND` 를 사용한다.
 
 #### 바인딩 소스 파일 명명 규칙
 
@@ -975,19 +1016,25 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 - 실행 스크립트: C 기준과 각 bindings는 `perf/run_benchmarks_multi.sh` / `.ps1` 또는 동등한 binding-local 실행기를 사용한다 ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
 - 파일 분리 대신 단일 runner를 사용하는 경우에도 실행 시점에서는 반드시 server/client 별도 프로세스로 동작해야 하며 READY/RESULT 프로토콜은 동일하게 준수한다.
 
-#### 패턴별 소스 파일 / 바이너리 매핑 (C binding reference)
+#### 패턴별 목표 소스 파일 / 바이너리 매핑 (C binding reference)
 
-server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로 작성하는 것을 원칙으로 한다. 기본 소스 경로: `perf/multi/src/`
+server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로 작성하는 것을
+원칙으로 한다. 기본 소스 경로: `perf/multi/src/`
 
 - C binding도 같은 원칙을 쓴다. 실제 경로는 `bindings/c/perf/multi/src/`이고,
   공통 helper는 `bindings/c/perf/multi/common/`과
   `bindings/c/perf/common/streamclient/` 아래에 둔다.
+- 아래 표는 새 패턴 이름을 반영한 목표 파일명이다. 기존 C 기준 파일이 아직
+  목표 이름으로 옮겨지지 않은 경우에는 현재 파일을 호환 alias로만 취급하고,
+  새 문서, 새 runner 옵션, 새 결과 표는 목표 이름을 기준으로 작성한다.
 
 | 패턴 | server 소스 | server 바이너리 | client 소스 | client 바이너리 |
 |------|------------|----------------|------------|----------------|
 | MULTI_DEALER_DEALER | `*_dealer_dealer_server.cpp` | `comp_src_dealer_dealer_server` | `*_dealer_dealer_client.cpp` | `comp_src_dealer_dealer_client` |
-| MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_src_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_src_dealer_router_client` |
-| MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_router_router_server` | `*_router_router_client.cpp` | `comp_src_router_router_client` |
+| MULTI_DEALER_ROUTER_SENDSEND | `*_dealer_router_sendsend_server.cpp` | `comp_src_dealer_router_sendsend_server` | `*_dealer_router_sendsend_client.cpp` | `comp_src_dealer_router_sendsend_client` |
+| MULTI_ROUTER_ROUTER_SENDSEND | `*_router_router_sendsend_server.cpp` | `comp_src_router_router_sendsend_server` | `*_router_router_sendsend_client.cpp` | `comp_src_router_router_sendsend_client` |
+| MULTI_DEALER_ROUTER_REQREP | `*_dealer_router_reqrep_server.cpp` | `comp_src_dealer_router_reqrep_server` | `*_dealer_router_reqrep_client.cpp` | `comp_src_dealer_router_reqrep_client` |
+| MULTI_ROUTER_ROUTER_REQREP | `*_router_router_reqrep_server.cpp` | `comp_src_router_router_reqrep_server` | `*_router_router_reqrep_client.cpp` | `comp_src_router_router_reqrep_client` |
 | MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_pubsub_client` |
 | MULTI_SPOT | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
 | MULTI_SPOT_REQREP | `*_spot_reqrep_server.cpp` (replier) | `comp_src_spot_reqrep_server` | `*_spot_reqrep_client.cpp` (requester) | `comp_src_spot_reqrep_client` |
@@ -995,6 +1042,9 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
+> 기존 C 기준 파일 `perf_multi_dealer_router_*` 와 `perf_multi_router_router_*` 는
+> `*_sendsend_*` 로 옮기는 대상이다. 전환 전에는 호환 alias 로만 취급하며,
+> 새로 추가하는 request/reply 패턴은 `*_reqrep_*` 목표 이름을 사용한다.
 > STREAM client 예외(C 기준): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. C++ 등 다른 binding perf runner가 이 공용 `perf_stream_client`를 symlink나 wrapper로 연결해 실행하는 것은 정책 위반이 아니다. 이 client는 외부 raw peer 검증 인프라이며, 측정 대상 binding surface는 각 언어의 `MULTI_STREAM` server/packet handler 구현이다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
 > SPOT 계열 topology 고정: `MULTI_SPOT`, `MULTI_SPOT_REQREP`,
 > `MULTI_SPOT_SENDSEND` 은 기본적으로
@@ -1040,7 +1090,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴군 | transport |
 |--------|-----------|
-| MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell entrypoint 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
+| MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER_SENDSEND, MULTI_ROUTER_ROUTER_SENDSEND, MULTI_DEALER_ROUTER_REQREP, MULTI_ROUTER_ROUTER_REQREP, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell entrypoint 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
 | MULTI_SPOT / MULTI_SPOT_REQREP / MULTI_SPOT_SENDSEND | tcp, tls, ws, wss |
 | MULTI_STREAM | tcp, tls, ws, wss |
 
@@ -1534,7 +1584,7 @@ def bandwidth_mbps(throughput, msg_size, is_echo):
     return throughput * msg_size * multiplier / 1_000_000
 
 def latency_rtt_ns(elapsed_ns, roundtrip_count):
-    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM, MULTI_SPOT_REQREP, MULTI_SPOT_SENDSEND"""
+    """MULTI_*_SENDSEND, MULTI_*_REQREP, MULTI_STREAM"""
     return elapsed_ns / max(1, roundtrip_count * 2)
 
 def latency_oneway_ns(elapsed_ns, count):

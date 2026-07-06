@@ -11,7 +11,7 @@ REPO_DIR="$(cd "${DOTNET_DIR}/../.." && pwd)"
 source "${REPO_DIR}/bindings/tools/local_core_runtime.sh"
 STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
 STREAM_BUILD_DIR="${REPO_DIR}/bindings/c/build"
-CORE_LIB="${ZLINK_CORE_VERSIONED_LIB}"
+CORE_LIB="${ZLINK_LOCAL_CORE_RUNTIME}"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
@@ -343,7 +343,9 @@ raw = sys.argv[1].upper()
 allowed = {
     "DEALER_DEALER",
     "DEALER_ROUTER",
+    "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
+    "ROUTER_ROUTER_REQREP",
     "PUBSUB",
     "SPOT",
     "SPOT_REQREP",
@@ -354,6 +356,7 @@ allowed = {
 if raw == "ALL":
     print(
         "MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,"
+        "MULTI_DEALER_ROUTER_REQREP,MULTI_ROUTER_ROUTER_REQREP,"
         "MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,"
         "MULTI_SPOT_SENDSEND,MULTI_STREAM"
     )
@@ -756,7 +759,9 @@ import sys
 pattern = sys.argv[2].upper()
 echo_patterns = {
     "MULTI_DEALER_ROUTER",
+    "MULTI_DEALER_ROUTER_REQREP",
     "MULTI_ROUTER_ROUTER",
+    "MULTI_ROUTER_ROUTER_REQREP",
     "MULTI_STREAM",
     "MULTI_SPOT_REQREP",
     "MULTI_SPOT_SENDSEND",
@@ -1795,7 +1800,7 @@ print_meta_block "${META_CLIENTS}"
 
 ROUTED_ECHO_BORROW_PAYLOAD="none"
 case ",${PATTERN}," in
-  *,MULTI_DEALER_ROUTER,*|*,MULTI_ROUTER_ROUTER,*)
+  *,MULTI_DEALER_ROUTER,*|*,MULTI_DEALER_ROUTER_REQREP,*|*,MULTI_ROUTER_ROUTER,*|*,MULTI_ROUTER_ROUTER_REQREP,*)
     case ",${TRANSPORTS}," in
       *,tcp,*) ROUTED_ECHO_BORROW_PAYLOAD="tcp" ;;
     esac
@@ -1881,7 +1886,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
     IFS=',' read -r -a msg_sizes <<< "${pattern_msg_sizes}"
     pattern_kind="one-way"
     case "${pattern}" in
-      MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_STREAM|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND)
+      MULTI_DEALER_ROUTER|MULTI_DEALER_ROUTER_REQREP|MULTI_ROUTER_ROUTER|MULTI_ROUTER_ROUTER_REQREP|MULTI_STREAM|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND)
         pattern_kind="echo"
         ;;
     esac

@@ -8,7 +8,7 @@ source "${DOTNET_DIR}/perf/common/report_helpers.sh"
 source "${REPO_DIR}/bindings/tools/local_core_runtime.sh"
 PROJECT="${DOTNET_DIR}/perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj"
 PROJECT_DIR="${DOTNET_DIR}/perf/single/Zlink.BindingBench"
-CORE_LIB="${ZLINK_CORE_VERSIONED_LIB}"
+CORE_LIB="${ZLINK_LOCAL_CORE_RUNTIME}"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-}"
@@ -187,7 +187,7 @@ validate_uint() {
 normalize_pattern_csv() {
   local raw="${1:-}"
   if [[ "${raw}" == "ALL" ]]; then
-    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
+    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP,SPOT"
     return
   fi
 
@@ -199,7 +199,9 @@ allowed = {
     "PUBSUB",
     "DEALER_DEALER",
     "DEALER_ROUTER",
+    "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
+    "ROUTER_ROUTER_REQREP",
     "SPOT",
 }
 

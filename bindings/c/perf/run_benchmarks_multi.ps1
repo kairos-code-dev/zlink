@@ -110,10 +110,14 @@ if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') { throw "MsgSizes must be
 if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') { throw "Transports must be a comma-separated list of names." }
 $DefaultPatterns = @(
     "DEALER_DEALER",
-    "DEALER_ROUTER",
-    "ROUTER_ROUTER",
+    "DEALER_ROUTER_SENDSEND",
+    "ROUTER_ROUTER_SENDSEND",
+    "DEALER_ROUTER_REQREP",
+    "ROUTER_ROUTER_REQREP",
     "PUBSUB",
     "SPOT",
+    "SPOT_REQREP",
+    "SPOT_SENDSEND",
     "STREAM"
 )
 
@@ -139,6 +143,14 @@ function Expand-AndAddPatternAlias {
         $p = $p.Substring(6)
     }
     switch ($p) {
+        "DEALER_ROUTER" {
+            Add-UniquePattern -List $List -PatternName "DEALER_ROUTER_SENDSEND"
+            break
+        }
+        "ROUTER_ROUTER" {
+            Add-UniquePattern -List $List -PatternName "ROUTER_ROUTER_SENDSEND"
+            break
+        }
         "STREAM" {
             Add-UniquePattern -List $List -PatternName "STREAM"
             break

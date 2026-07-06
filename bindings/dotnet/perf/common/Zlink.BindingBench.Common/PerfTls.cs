@@ -77,35 +77,6 @@ public static class PerfTls
         spotNode.SetTlsClient(caPath, "localhost");
     }
 
-    public static void ConfigureSpotRegistryTlsIfNeeded(IRegistry registry,
-        string transport, bool verbose = true)
-    {
-        if (!IsSecureTransport(transport))
-            return;
-        if (!TryResolvePerfTlsPaths(out string certPath, out string keyPath,
-                out _))
-        {
-            throw new InvalidOperationException(verbose
-                ? "TLS certificate files not found under bindings/dotnet/tests/certs"
-                : "TLS certificate files not found.");
-        }
-        registry.SetTlsServer(certPath, keyPath);
-    }
-
-    public static void ConfigureSpotDiscoveryTlsIfNeeded(IDiscovery discovery,
-        string transport, bool verbose = true)
-    {
-        if (!IsSecureTransport(transport))
-            return;
-        if (!TryResolvePerfTlsPaths(out _, out _, out string caPath))
-        {
-            throw new InvalidOperationException(verbose
-                ? "TLS CA file not found under bindings/dotnet/tests/certs"
-                : "TLS CA file not found.");
-        }
-        discovery.SetTlsClient(caPath, "localhost");
-    }
-
     public static bool TryResolvePerfTlsPaths(out string certPath,
         out string keyPath, out string caPath)
     {

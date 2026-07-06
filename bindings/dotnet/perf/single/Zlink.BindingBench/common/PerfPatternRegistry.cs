@@ -13,8 +13,12 @@ internal static class SinglePerfPatternRegistry
                 PerfDealerDealer.RunDealerDealer(options.Transport, options.Size)),
             new SinglePerfPattern("DEALER_ROUTER", static options =>
                 PerfDealerRouter.RunDealerRouter(options.Transport, options.Size)),
+            new SinglePerfPattern("DEALER_ROUTER_REQREP", static options =>
+                PerfReqRep.RunDealerRouter(options.Transport, options.Size)),
             new SinglePerfPattern("ROUTER_ROUTER", static options =>
                 PerfRouterRouter.RunRouterRouter(options.Transport, options.Size)),
+            new SinglePerfPattern("ROUTER_ROUTER_REQREP", static options =>
+                PerfReqRep.RunRouterRouter(options.Transport, options.Size)),
             new SinglePerfPattern("SPOT", static options =>
                 PerfSpot.RunSpot(options.Transport, options.Size)),
         });

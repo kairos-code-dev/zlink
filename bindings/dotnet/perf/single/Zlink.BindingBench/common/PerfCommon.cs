@@ -235,7 +235,7 @@ internal static partial class PerfRunner
     // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token with a
     // bounded retry through transient backpressure so the receiver exits when
     // it observes the token.
-    internal static void SendStopTokenBlocking(IMessageSocket sender, string tag)
+    internal static bool SendStopTokenBlocking(IMessageSocket sender, string tag)
     {
         for (int retry = 0; retry < 100; retry++)
         {
@@ -244,7 +244,7 @@ internal static partial class PerfRunner
                 sender.Options.SendTimeout = null;
                 if (PerfSocketIo.Send(sender, StopToken.Bytes,
                         SendFlags.None) > 0)
-                    return;
+                    return true;
             }
             catch (ZlinkException ex)
                 when (PerfShared.IsTransientBackpressure(ex.NativeErrno)
@@ -255,13 +255,14 @@ internal static partial class PerfRunner
             {
                 Console.Error.WriteLine(
                     $"{tag} stop-token send failed: {ex.Message}");
-                return;
+                return false;
             }
 
             Thread.Sleep(1);
         }
 
         Console.Error.WriteLine($"{tag} stop-token send failed");
+        return false;
     }
 
     internal static bool SendRoutedStopTokenBlocking(IRoutedMessageSocket sender,

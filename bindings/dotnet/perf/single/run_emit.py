@@ -49,7 +49,9 @@ DEFAULT_PATTERNS = [
     "PUBSUB",
     "DEALER_DEALER",
     "DEALER_ROUTER",
+    "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
+    "ROUTER_ROUTER_REQREP",
     "SPOT",
 ]
 
@@ -58,7 +60,9 @@ PATTERN_TO_BINARY = {
     "PUBSUB": "Zlink.BindingBench",
     "DEALER_DEALER": "Zlink.BindingBench",
     "DEALER_ROUTER": "Zlink.BindingBench",
+    "DEALER_ROUTER_REQREP": "Zlink.BindingBench",
     "ROUTER_ROUTER": "Zlink.BindingBench",
+    "ROUTER_ROUTER_REQREP": "Zlink.BindingBench",
     "SPOT": "Zlink.BindingBench",
 }
 
@@ -465,7 +469,8 @@ def single_table_separator_line() -> str:
 
 
 def format_throughput(pattern: str, throughput_per_sec: float) -> str:
-    return f"{throughput_per_sec/1e3:6.2f} Kmsg/s"
+    unit = "Kops/s" if pattern.endswith("_REQREP") else "Kmsg/s"
+    return f"{throughput_per_sec/1e3:6.2f} {unit}"
 
 
 def format_bandwidth(bandwidth_mb_s: float) -> str:
@@ -512,6 +517,8 @@ def single_table_row_line(
 
 
 def pattern_direction_label(pattern: str) -> str:
+    if pattern.endswith("_REQREP"):
+        return "request/reply"
     return "one-way"
 
 

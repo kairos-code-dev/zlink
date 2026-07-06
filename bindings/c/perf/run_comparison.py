@@ -39,6 +39,8 @@ PATTERN_SEPARATOR = "===========================================================
 STREAM_VARIANT_PATTERNS = ("STREAM",)
 SPOT_CONTROL_PATTERNS = ("SPOT", "SPOT_REQREP", "SPOT_SENDSEND")
 PATTERN_ALIASES = {
+    "DEALER_ROUTER": ("DEALER_ROUTER_SENDSEND",),
+    "ROUTER_ROUTER": ("ROUTER_ROUTER_SENDSEND",),
     "STREAM": ("STREAM",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
 }
@@ -48,8 +50,10 @@ STREAM_SERVER_BINARY_BY_PATTERN = {
 }
 PATTERN_SUFFIX = {
     "DEALER_DEALER": "dealer_dealer",
-    "DEALER_ROUTER": "dealer_router",
-    "ROUTER_ROUTER": "router_router",
+    "DEALER_ROUTER_SENDSEND": "dealer_router_sendsend",
+    "ROUTER_ROUTER_SENDSEND": "router_router_sendsend",
+    "DEALER_ROUTER_REQREP": "dealer_router_reqrep",
+    "ROUTER_ROUTER_REQREP": "router_router_reqrep",
     "PUBSUB": "pubsub",
     "SPOT": "spot",
     "SPOT_REQREP": "spot_reqrep",
@@ -57,8 +61,10 @@ PATTERN_SUFFIX = {
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
-    "DEALER_ROUTER",
-    "ROUTER_ROUTER",
+    "DEALER_ROUTER_SENDSEND",
+    "ROUTER_ROUTER_SENDSEND",
+    "DEALER_ROUTER_REQREP",
+    "ROUTER_ROUTER_REQREP",
     "SPOT_REQREP",
     "SPOT_SENDSEND",
     "STREAM",
@@ -75,8 +81,10 @@ SINGLE_COMPARISONS = [
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
-    ("comp_src_dealer_router_client", "DEALER_ROUTER"),
-    ("comp_src_router_router_client", "ROUTER_ROUTER"),
+    ("comp_src_dealer_router_sendsend_client", "DEALER_ROUTER_SENDSEND"),
+    ("comp_src_router_router_sendsend_client", "ROUTER_ROUTER_SENDSEND"),
+    ("comp_src_dealer_router_reqrep_client", "DEALER_ROUTER_REQREP"),
+    ("comp_src_router_router_reqrep_client", "ROUTER_ROUTER_REQREP"),
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_spot_client", "SPOT"),
     ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
@@ -86,8 +94,10 @@ MULTI_COMPARISONS = [
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
 SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_DEALER": ("recv",),
-    "DEALER_ROUTER": ("recv",),
-    "ROUTER_ROUTER": ("recv",),
+    "DEALER_ROUTER_SENDSEND": ("recv",),
+    "ROUTER_ROUTER_SENDSEND": ("recv",),
+    "DEALER_ROUTER_REQREP": ("recv",),
+    "ROUTER_ROUTER_REQREP": ("recv",),
     "PUBSUB": ("recv",),
     "SPOT": ("recv",),
     "SPOT_REQREP": ("recv",),
@@ -147,6 +157,10 @@ def normalize_multi_pattern_name(pattern_name):
     pattern = (pattern_name or "").strip().upper()
     if pattern.startswith("MULTI_"):
         pattern = pattern[6:]
+    if pattern == "DEALER_ROUTER":
+        return "DEALER_ROUTER_SENDSEND"
+    if pattern == "ROUTER_ROUTER":
+        return "ROUTER_ROUTER_SENDSEND"
     return pattern
 
 
@@ -4007,7 +4021,7 @@ def build_effective_option_items(args, selected_patterns):
             "routed_echo_per_socket_payload",
             "tcp"
             if any(
-                pattern in ("DEALER_ROUTER", "ROUTER_ROUTER")
+                pattern in ("DEALER_ROUTER_SENDSEND", "ROUTER_ROUTER_SENDSEND")
                 for pattern in selected_patterns
             )
             and "tcp" in unique_transports

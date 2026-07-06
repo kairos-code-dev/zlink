@@ -2,6 +2,8 @@
 #define PERF_SINGLE_LATENCY_HPP
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 struct latency_stats_t
@@ -16,14 +18,30 @@ struct latency_stats_t
 class latency_stats_builder_t
 {
   public:
-    latency_stats_builder_t () : _count (0), _sum_ns (0.0) {}
+    latency_stats_builder_t () : latency_stats_builder_t (0) {}
+
+    explicit latency_stats_builder_t (size_t sample_cap_) :
+        _count (0),
+        _sum_ns (0.0),
+        _sample_cap (sample_cap_),
+        _rng (0xA341316Cu)
+    {
+        if (_sample_cap > 0)
+            _samples.reserve (_sample_cap);
+    }
 
     void add (double latency_ns_)
     {
         const double sample = latency_ns_ >= 0.0 ? latency_ns_ : 0.0;
         ++_count;
         _sum_ns += sample;
-        _samples.push_back (sample);
+        if (_sample_cap == 0 || _samples.size () < _sample_cap) {
+            _samples.push_back (sample);
+            return;
+        }
+        const unsigned long long slot = next_random () % _count;
+        if (slot < _samples.size ())
+            _samples[static_cast<size_t> (slot)] = sample;
     }
 
     unsigned long long count () const { return _count; }
@@ -66,7 +84,15 @@ class latency_stats_builder_t
 
     unsigned long long _count;
     double _sum_ns;
+    size_t _sample_cap;
+    uint32_t _rng;
     std::vector<double> _samples;
+
+    uint32_t next_random ()
+    {
+        _rng = (_rng * 1664525u) + 1013904223u;
+        return _rng;
+    }
 };
 
 #endif

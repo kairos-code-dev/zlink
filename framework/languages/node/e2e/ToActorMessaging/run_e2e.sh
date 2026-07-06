@@ -6,6 +6,7 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 
 pick_port() {
   node -e "const net=require('node:net'); const s=net.createServer(); s.listen(0,'127.0.0.1',()=>{console.log(s.address().port); s.close();});"
@@ -72,7 +73,66 @@ start_server() {
   pids+=("$!")
 }
 
+ordered_roles() {
+  python3 - "$E2E_START_ORDER" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
+start_role() {
+  case "$1" in
+    actor)
+      start_server actor "$ACTOR_MAIN" \
+        --rid to-actor-owner \
+        --http-url "$ACTOR_URL" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --router-endpoint "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
+        --pubsub-endpoint "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
+        --evidence-file "$LOG_DIR/actor.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    caller)
+      start_server caller "$CALLER_MAIN" \
+        --rid to-actor-caller \
+        --http-url "$CALLER_URL" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --router-endpoint "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
+        --pubsub-endpoint "tcp://127.0.0.1:$CALLER_PUBSUB_PORT" \
+        --log-dir "$LOG_DIR"
+      ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
+wait_role() {
+  case "$1" in
+    actor) wait_health "$ACTOR_URL" actor ;;
+    caller) wait_health "$CALLER_URL" caller ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
 echo "log_dir=$LOG_DIR"
+echo "start_order=$E2E_START_ORDER"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Server/Actor" && npm run build >/dev/null)
@@ -106,27 +166,14 @@ ACTOR_MAIN="$ROOT_DIR/Server/Actor/dist/Server/Actor/main.js"
 CALLER_MAIN="$ROOT_DIR/Server/Caller/dist/Server/Caller/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server actor "$ACTOR_MAIN" \
-  --rid to-actor-owner \
-  --http-url "$ACTOR_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --router-endpoint "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
-  --pubsub-endpoint "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
-  --evidence-file "$LOG_DIR/actor.evidence.log" \
-  --log-dir "$LOG_DIR"
-
-start_server caller "$CALLER_MAIN" \
-  --rid to-actor-caller \
-  --http-url "$CALLER_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --router-endpoint "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
-  --pubsub-endpoint "tcp://127.0.0.1:$CALLER_PUBSUB_PORT" \
-  --log-dir "$LOG_DIR"
-
-wait_health "$ACTOR_URL" actor
-wait_health "$CALLER_URL" caller
+SERVER_ROLES=(actor caller)
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_role "$role"
+done
+for role in "${SERVER_ROLES[@]}"; do
+  wait_role "$role"
+done
 sleep 5
 
 node "$CLIENT_MAIN" \

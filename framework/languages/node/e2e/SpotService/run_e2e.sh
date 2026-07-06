@@ -6,6 +6,7 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -125,7 +126,31 @@ start_server() {
   pids+=("$!")
 }
 
+ordered_roles() {
+  python3 - "$E2E_START_ORDER" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
 echo "log_dir=$LOG_DIR"
+echo "start_order=$E2E_START_ORDER"
 
 if [[ "$SCENARIO" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   for child_group in default-batch SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
@@ -222,89 +247,119 @@ openssl req -x509 -newkey rsa:2048 -nodes \
   -subj "/CN=localhost" \
   -days 1 >/dev/null 2>&1
 
-start_server play-a "$PLAY_MAIN" \
-  --rid play-a \
-  --http-url "$PLAY_A_URL" \
-  --control-router-endpoint "$PLAY_A_CONTROL" \
-  --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-  --spot-router-endpoint "$PLAY_A_ROUTER" \
-  --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-  --client-spot-pub-endpoint "$GATEWAY_SPOT_PUB" \
-  --external-client-endpoint "$PLAY_A_EXTERNAL_CLIENT" \
-  --evidence-file "$LOG_DIR/play-a.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$PLAY_A_URL" play-a
+start_named_server() {
+  case "$1" in
+    play-a)
+      start_server play-a "$PLAY_MAIN" \
+        --rid play-a \
+        --http-url "$PLAY_A_URL" \
+        --control-router-endpoint "$PLAY_A_CONTROL" \
+        --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+        --spot-router-endpoint "$PLAY_A_ROUTER" \
+        --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
+        --client-spot-pub-endpoint "$GATEWAY_SPOT_PUB" \
+        --external-client-endpoint "$PLAY_A_EXTERNAL_CLIENT" \
+        --evidence-file "$LOG_DIR/play-a.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    play-b)
+      start_server play-b "$PLAY_MAIN" \
+        --rid play-b \
+        --http-url "$PLAY_B_URL" \
+        --control-router-endpoint "$PLAY_B_CONTROL" \
+        --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
+        --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+        --spot-router-endpoint "$PLAY_B_ROUTER" \
+        --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
+        --external-client-endpoint "$PLAY_B_EXTERNAL_CLIENT" \
+        --evidence-file "$LOG_DIR/play-b.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    session-a)
+      start_server session-a "$SESSION_MAIN" \
+        --rid session-a \
+        --http-url "$SESSION_A_URL" \
+        --control-router-endpoint "$SESSION_A_CONTROL" \
+        --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
+        --spot-router-endpoint "$SESSION_A_ROUTER" \
+        --play-spot-router-play-a "$PLAY_A_ROUTER" \
+        --play-spot-router-play-b "$PLAY_B_ROUTER" \
+        --stream-endpoint "$SESSION_A_STREAM" \
+        --tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
+        --tls-cert-path "$TLS_CERT" \
+        --tls-key-path "$TLS_KEY" \
+        --evidence-file "$LOG_DIR/session-a.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    session-b)
+      start_server session-b "$SESSION_MAIN" \
+        --rid session-b \
+        --http-url "$SESSION_B_URL" \
+        --control-router-endpoint "$SESSION_B_CONTROL" \
+        --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
+        --spot-router-endpoint "$SESSION_B_ROUTER" \
+        --play-spot-router-play-a "$PLAY_A_ROUTER" \
+        --play-spot-router-play-b "$PLAY_B_ROUTER" \
+        --stream-endpoint "$SESSION_B_STREAM" \
+        --evidence-file "$LOG_DIR/session-b.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    gateway)
+      start_server gateway "$GATEWAY_MAIN" \
+        --rid gateway \
+        --http-url "$GATEWAY_URL" \
+        --spot-router-endpoint "$GATEWAY_ROUTER" \
+        --spot-pub-endpoint "$GATEWAY_SPOT_PUB" \
+        --spot-pub-peer "$PLAY_A_SPOT_PUB,$PLAY_B_SPOT_PUB" \
+        --evidence-file "$LOG_DIR/gateway.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    multi-node-a)
+      start_server multi-node-a "$MULTI_NODE_MAIN" \
+        --rid multi-node-a \
+        --http-url "$MULTI_A_URL" \
+        --route-endpoint "$MULTI_A_ROUTE" \
+        --spot-router-endpoint "$MULTI_A_SPOT_ROUTER" \
+        --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    multi-node-b)
+      start_server multi-node-b "$MULTI_NODE_MAIN" \
+        --rid multi-node-b \
+        --http-url "$MULTI_B_URL" \
+        --route-endpoint "$MULTI_B_ROUTE" \
+        --spot-router-endpoint "$MULTI_B_SPOT_ROUTER" \
+        --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
 
-start_server play-b "$PLAY_MAIN" \
-  --rid play-b \
-  --http-url "$PLAY_B_URL" \
-  --control-router-endpoint "$PLAY_B_CONTROL" \
-  --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
-  --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-  --spot-router-endpoint "$PLAY_B_ROUTER" \
-  --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
-  --external-client-endpoint "$PLAY_B_EXTERNAL_CLIENT" \
-  --evidence-file "$LOG_DIR/play-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$PLAY_B_URL" play-b
+wait_named_server() {
+  case "$1" in
+    play-a) wait_health "$PLAY_A_URL" play-a ;;
+    play-b) wait_health "$PLAY_B_URL" play-b ;;
+    session-a)
+      wait_health "$SESSION_A_URL" session-a
+      wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
+      ;;
+    session-b) wait_health "$SESSION_B_URL" session-b ;;
+    gateway) wait_health "$GATEWAY_URL" gateway ;;
+    multi-node-a) wait_health "$MULTI_A_URL" multi-node-a ;;
+    multi-node-b) wait_health "$MULTI_B_URL" multi-node-b ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
 
-start_server session-a "$SESSION_MAIN" \
-  --rid session-a \
-  --http-url "$SESSION_A_URL" \
-  --control-router-endpoint "$SESSION_A_CONTROL" \
-  --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
-  --spot-router-endpoint "$SESSION_A_ROUTER" \
-  --play-spot-router-play-a "$PLAY_A_ROUTER" \
-  --play-spot-router-play-b "$PLAY_B_ROUTER" \
-  --stream-endpoint "$SESSION_A_STREAM" \
-  --tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
-  --tls-cert-path "$TLS_CERT" \
-  --tls-key-path "$TLS_KEY" \
-  --evidence-file "$LOG_DIR/session-a.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$SESSION_A_URL" session-a
-wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
-
-start_server session-b "$SESSION_MAIN" \
-  --rid session-b \
-  --http-url "$SESSION_B_URL" \
-  --control-router-endpoint "$SESSION_B_CONTROL" \
-  --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
-  --spot-router-endpoint "$SESSION_B_ROUTER" \
-  --play-spot-router-play-a "$PLAY_A_ROUTER" \
-  --play-spot-router-play-b "$PLAY_B_ROUTER" \
-  --stream-endpoint "$SESSION_B_STREAM" \
-  --evidence-file "$LOG_DIR/session-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$SESSION_B_URL" session-b
-
-start_server gateway "$GATEWAY_MAIN" \
-  --rid gateway \
-  --http-url "$GATEWAY_URL" \
-  --spot-router-endpoint "$GATEWAY_ROUTER" \
-  --spot-pub-endpoint "$GATEWAY_SPOT_PUB" \
-  --spot-pub-peer "$PLAY_A_SPOT_PUB,$PLAY_B_SPOT_PUB" \
-  --evidence-file "$LOG_DIR/gateway.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$GATEWAY_URL" gateway
-
-start_server multi-node-a "$MULTI_NODE_MAIN" \
-  --rid multi-node-a \
-  --http-url "$MULTI_A_URL" \
-  --route-endpoint "$MULTI_A_ROUTE" \
-  --spot-router-endpoint "$MULTI_A_SPOT_ROUTER" \
-  --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$MULTI_A_URL" multi-node-a
-
-start_server multi-node-b "$MULTI_NODE_MAIN" \
-  --rid multi-node-b \
-  --http-url "$MULTI_B_URL" \
-  --route-endpoint "$MULTI_B_ROUTE" \
-  --spot-router-endpoint "$MULTI_B_SPOT_ROUTER" \
-  --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$MULTI_B_URL" multi-node-b
+SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b)
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_named_server "$role"
+done
+for role in "${SERVER_ROLES[@]}"; do
+  wait_named_server "$role"
+done
 
 run_client() {
   local scenario="$1"

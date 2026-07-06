@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -62,6 +63,7 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
+echo "start_order=$E2E_START_ORDER"
 cat >"$LOG_DIR/endpoints.env" <<EOF
 ROUTE_A=$ROUTE_A
 ROUTE_B=$ROUTE_B
@@ -410,6 +412,29 @@ wait_file() {
   return 1
 }
 
+ordered_roles() {
+  python3 - "$E2E_START_ORDER" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
 ensure_location_store() {
   python3 - "$REDIS_HOST" "$REDIS_TCP_PORT" <<'PY'
 import socket
@@ -421,7 +446,7 @@ with socket.create_connection((host, port), timeout=3):
 PY
 }
 
-start_play() {
+do_start_play() {
   local rid="$1"
   local route="$2"
   local spot="$3"
@@ -457,13 +482,9 @@ start_play() {
   if [[ "$rid" == "play-b" ]]; then
     PLAY_B_PID="$pid"
   fi
-  wait_port "$rid-route" "$route"
-  wait_port "$rid-spot" "$spot"
-  wait_port "$rid-http" "$http"
-  wait_http_health "$rid" "$http"
 }
 
-start_session() {
+do_start_session() {
   local rid="$1"
   local route="$2"
   local spot="$3"
@@ -497,14 +518,6 @@ start_session() {
   if [[ "$rid" == "session-a" ]]; then
     SESSION_A_PID="$pid"
   fi
-  wait_port "$rid-route" "$route"
-  wait_port "$rid-spot" "$spot"
-  wait_port "$rid-stream" "$stream"
-  if [[ -n "$tls_stream" ]]; then
-    wait_port "$rid-tls-stream" "$tls_stream"
-  fi
-  wait_port "$rid-http" "$http"
-  wait_http_health "$rid" "$http"
 }
 
 generate_tls_cert() {
@@ -521,7 +534,7 @@ generate_tls_cert() {
     -out "$cert" >/dev/null 2>&1
 }
 
-start_gateway() {
+do_start_gateway() {
   local rid="$1"
   local route="$2"
   local spot="$3"
@@ -545,13 +558,9 @@ start_gateway() {
   local pid="$!"
   PIDS+=("$pid")
   GATEWAY_PID="$pid"
-  wait_port "$rid-route" "$route"
-  wait_port "$rid-spot" "$spot"
-  wait_port "$rid-http" "$http"
-  wait_http_health "$rid" "$http"
 }
 
-start_multi_node() {
+do_start_multi_node() {
   local rid="$1"
   local route="$2"
   local peer_route="$3"
@@ -571,13 +580,9 @@ start_multi_node() {
     "$MULTI_NODE_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
   PIDS+=("$pid")
-  wait_port "$rid-route" "$route"
-  wait_port "$rid-spot" "$spot"
-  wait_port "$rid-http" "$http"
-  wait_http_health "$rid" "$http"
 }
 
-start_multi_node_requester() {
+do_start_multi_node_requester() {
   local rid="$1"
   local route="$2"
   local route_client="$3"
@@ -594,12 +599,133 @@ start_multi_node_requester() {
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$MULTI_NODE_REQUESTER" >"$LOG_DIR/$rid-requester.stdout.log" 2>"$LOG_DIR/$rid-requester.stderr.log" &
   PIDS+=("$!")
-  wait_port "$rid-requester-route" "$route_client"
-  wait_port "$rid-requester-http" "$http"
-  wait_http_health "$rid-requester" "$http"
+}
+
+PENDING_SERVER_ROLES=()
+declare -A PENDING_SERVER_SPECS=()
+SERVER_ROLES_STARTED=0
+
+queue_server_role() {
+  local role="$1"
+  shift
+  PENDING_SERVER_ROLES+=("$role")
+  PENDING_SERVER_SPECS["$role"]="$*"
+}
+
+start_play() {
+  queue_server_role "$1" "play" "$@"
+}
+
+start_session() {
+  queue_server_role "$1" "session" "$@"
+}
+
+start_gateway() {
+  queue_server_role "$1" "gateway" "$@"
+}
+
+start_multi_node() {
+  queue_server_role "$1" "multi-node" "$@"
+}
+
+start_multi_node_requester() {
+  queue_server_role "$1-requester" "multi-node-requester" "$@"
+}
+
+start_queued_server_role() {
+  local role="$1"
+  local spec="${PENDING_SERVER_SPECS[$role]}"
+  local kind
+  read -r kind _ <<<"$spec"
+  case "$kind" in
+    play) do_start_play ${spec#play } ;;
+    session) do_start_session ${spec#session } ;;
+    gateway) do_start_gateway ${spec#gateway } ;;
+    multi-node) do_start_multi_node ${spec#multi-node } ;;
+    multi-node-requester) do_start_multi_node_requester ${spec#multi-node-requester } ;;
+    *) echo "Unknown server role '$role'" >&2; return 1 ;;
+  esac
+}
+
+wait_named_server() {
+  case "$1" in
+    play-a)
+      wait_port play-a-route "$ROUTE_A"
+      wait_port play-a-spot "$SPOT_A"
+      wait_port play-a-http "$HTTP_A"
+      wait_http_health play-a "$HTTP_A"
+      ;;
+    play-b)
+      wait_port play-b-route "$ROUTE_B"
+      wait_port play-b-spot "$SPOT_B"
+      wait_port play-b-http "$HTTP_B"
+      wait_http_health play-b "$HTTP_B"
+      ;;
+    session-a)
+      wait_port session-a-route "$ROUTE_SESSION_A"
+      wait_port session-a-spot "$SPOT_SESSION_A"
+      wait_port session-a-stream "$STREAM_A"
+      if [[ "${PENDING_SERVER_SPECS[session-a]}" == *"$STREAM_TLS_A"* ]]; then
+        wait_port session-a-tls-stream "$STREAM_TLS_A"
+      fi
+      wait_port session-a-http "$HTTP_SESSION_A"
+      wait_http_health session-a "$HTTP_SESSION_A"
+      ;;
+    session-b)
+      wait_port session-b-route "$ROUTE_SESSION_B"
+      wait_port session-b-spot "$SPOT_SESSION_B"
+      wait_port session-b-stream "$STREAM_B"
+      wait_port session-b-http "$HTTP_SESSION_B"
+      wait_http_health session-b "$HTTP_SESSION_B"
+      ;;
+    gateway)
+      wait_port gateway-route "$ROUTE_CLIENT"
+      wait_port gateway-spot "$SPOT_CLIENT"
+      wait_port gateway-http "$HTTP_GATEWAY"
+      wait_http_health gateway "$HTTP_GATEWAY"
+      ;;
+    multi-a)
+      wait_port multi-a-route "$MULTI_ROUTE_A"
+      wait_port multi-a-spot "$MULTI_SPOT_A"
+      wait_port multi-a-http "$HTTP_MULTI_A"
+      wait_http_health multi-a "$HTTP_MULTI_A"
+      ;;
+    multi-b)
+      wait_port multi-b-route "$MULTI_ROUTE_B"
+      wait_port multi-b-spot "$MULTI_SPOT_B"
+      wait_port multi-b-http "$HTTP_MULTI_B"
+      wait_http_health multi-b "$HTTP_MULTI_B"
+      ;;
+    multi-a-requester)
+      wait_port multi-a-requester-route "$MULTI_ROUTE_CLIENT_A"
+      wait_port multi-a-requester-http "$HTTP_A"
+      wait_http_health multi-a-requester "$HTTP_A"
+      ;;
+    multi-b-requester)
+      wait_port multi-b-requester-route "$MULTI_ROUTE_CLIENT_B"
+      wait_port multi-b-requester-http "$HTTP_B"
+      wait_http_health multi-b-requester "$HTTP_B"
+      ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
+ensure_servers_started_and_ready() {
+  if [[ "$SERVER_ROLES_STARTED" == "1" ]]; then
+    return 0
+  fi
+  mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${PENDING_SERVER_ROLES[@]}")
+  for role in "${ORDERED_SERVER_ROLES[@]}"; do
+    start_queued_server_role "$role"
+  done
+  for role in "${PENDING_SERVER_ROLES[@]}"; do
+    wait_named_server "$role"
+  done
+  SERVER_ROLES_STARTED=1
 }
 
 fetch_evidence() {
+  ensure_servers_started_and_ready
   local name="$1"
   local http="$2"
   python3 - "$http/evidence" "$HTTP_PROBE_TIMEOUT_SECONDS" >"$LOG_DIR/$name-evidence.json" <<'PY'
@@ -614,6 +740,7 @@ PY
 }
 
 run_control_ping() {
+  ensure_servers_started_and_ready
   local output="$1"
   local http="$2"
   local target="$3"
@@ -688,12 +815,14 @@ settle_scenario() {
 }
 
 run_base_client() {
+  ensure_servers_started_and_ready
   local mode="$1"
   local output="$2"
   local route_endpoint="${3:-$ROUTE_CLIENT}"
   local route_a_endpoint="${4:-$ROUTE_A}"
   local route_b_endpoint="${5:-$ROUTE_B}"
   local status=0
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route_endpoint" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$route_a_endpoint" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$route_b_endpoint" \
@@ -812,8 +941,10 @@ if [[ "$SCENARIO" == "SM-Q9" || "$SCENARIO" == "sm-q9" ]]; then
 fi
 
 run_stream_route_ready_client() {
+  ensure_servers_started_and_ready
   local output="$1"
   local status=0
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_STREAM_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1340,6 +1471,7 @@ if [[ "$SCENARIO" == "SM-B6" || "$SCENARIO" == "sm-b6" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   wait_control_ping sm-b6-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b6-session-a-play-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1404,6 +1536,7 @@ if [[ "$SCENARIO" == "SM-B7" || "$SCENARIO" == "sm-b7" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   wait_control_ping sm-b7-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b7-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1465,6 +1598,7 @@ if [[ "$SCENARIO" == "SM-B8" || "$SCENARIO" == "sm-b8" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   wait_control_ping sm-b8-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b8-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1527,6 +1661,7 @@ if [[ "$SCENARIO" == "SM-C1" || "$SCENARIO" == "sm-c1" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
   wait_control_ping sm-c1-play-a-play-b "$HTTP_A" play-b "sm-c1-play-a-play-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1584,6 +1719,7 @@ if [[ "$SCENARIO" == "SM-C2" || "$SCENARIO" == "sm-c2" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
   wait_control_ping sm-c2-play-a-play-b "$HTTP_A" play-b "sm-c2-play-a-play-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1641,6 +1777,7 @@ if [[ "$SCENARIO" == "SM-C3" || "$SCENARIO" == "sm-c3" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
   wait_control_ping sm-c3-play-a-play-b "$HTTP_A" play-b "sm-c3-play-a-play-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1701,6 +1838,7 @@ if [[ "$SCENARIO" == "SM-C4" || "$SCENARIO" == "sm-c4" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_gateway gateway "$ROUTE_CLIENT" "$SPOT_CLIENT" "$PUB_CLIENT" "$HTTP_GATEWAY"
   settle_scenario
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1813,6 +1951,7 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   CRASH_GO="$LOG_DIR/sm-g1-go"
   CRASH_OBSERVED="$LOG_DIR/sm-g1-observed"
 
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_SETUP_ROUTE" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1842,6 +1981,7 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   wait "$CRASH_CLIENT_PID"
   cat "$LOG_DIR/client-sm-g1-setup.stdout.log"
   CRASH_RECOVER_ROUTE="$(allocate_tcp_endpoint)"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_RECOVER_ROUTE" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="" \
@@ -1896,6 +2036,7 @@ if [[ "$SCENARIO" == "SM-D1" || "$SCENARIO" == "sm-d1" ]]; then
   settle_scenario
   wait_control_ping sm-d1-session-a-play-a-ready "$HTTP_SESSION_A" play-a \
     "sm-d1-session-a-play-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1955,6 +2096,7 @@ if [[ "$SCENARIO" == "SM-D2" || "$SCENARIO" == "sm-d2" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   wait_control_ping sm-d11-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d11-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2014,6 +2156,7 @@ if [[ "$SCENARIO" == "SM-D3" || "$SCENARIO" == "sm-d3" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   wait_control_ping sm-d3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d3-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2078,6 +2221,7 @@ if [[ "$SCENARIO" == "SM-D4" || "$SCENARIO" == "sm-d4" ]]; then
   settle_scenario
   wait_control_ping sm-d5-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d5-session-a-play-a-ready"
   wait_control_ping sm-d5-session-a-play-b "$HTTP_SESSION_A" play-b "sm-d5-session-a-play-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2137,6 +2281,7 @@ if [[ "$SCENARIO" == "SM-D5" || "$SCENARIO" == "sm-d5" ]]; then
   settle_scenario
   wait_control_ping sm-d5-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d5-session-a-play-a-ready"
   wait_control_ping sm-d5-session-a-play-b "$HTTP_SESSION_A" play-b "sm-d5-session-a-play-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2217,6 +2362,7 @@ if [[ "$SCENARIO" == "SM-D6" || "$SCENARIO" == "sm-d6" ]]; then
   settle_scenario
   wait_control_ping sm-d6-session-a-control "$HTTP_SESSION_A" play-a "sm-d6-session-a-ready"
   wait_control_ping sm-d6-session-b-control "$HTTP_SESSION_B" play-b "sm-d6-session-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2274,6 +2420,7 @@ if [[ "$SCENARIO" == "SM-D7" || "$SCENARIO" == "sm-d7" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   wait_control_ping sm-g3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g3-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2327,6 +2474,7 @@ if [[ "$SCENARIO" == "SM-D8" || "$SCENARIO" == "sm-d8" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   wait_control_ping sm-d8-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d8-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2386,6 +2534,7 @@ if [[ "$SCENARIO" == "SM-D9" || "$SCENARIO" == "sm-d9" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   wait_control_ping sm-d9-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d9-session-a-play-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2441,6 +2590,7 @@ if [[ "$SCENARIO" == "SM-D10" || "$SCENARIO" == "sm-d10" ]]; then
   settle_scenario
   wait_control_ping sm-d10-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d10-session-a-ready"
   wait_control_ping sm-d10-session-b-play-b "$HTTP_SESSION_B" play-b "sm-d10-session-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2497,6 +2647,7 @@ if [[ "$SCENARIO" == "SM-D11" || "$SCENARIO" == "sm-d11" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   wait_control_ping sm-d13-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d13-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2553,6 +2704,7 @@ if [[ "$SCENARIO" == "SM-D12" || "$SCENARIO" == "sm-d12" ]]; then
   settle_scenario
   wait_control_ping sm-d12-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d12-session-a-ready"
   wait_control_ping sm-d12-session-b-play-a "$HTTP_SESSION_B" play-a "sm-d12-session-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2609,6 +2761,7 @@ if [[ "$SCENARIO" == "SM-D13" || "$SCENARIO" == "sm-d13" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2664,6 +2817,7 @@ if [[ "$SCENARIO" == "SM-D14" || "$SCENARIO" == "sm-d14" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A" "$STREAM_TLS_A" "$TLS_CERT" "$TLS_KEY"
   settle_scenario
   wait_control_ping sm-d14-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d14-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2712,6 +2866,7 @@ if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2754,6 +2909,7 @@ if [[ "$SCENARIO" == "SM-E2" || "$SCENARIO" == "sm-e2" ]]; then
   ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2792,6 +2948,7 @@ if [[ "$SCENARIO" == "SM-E3" || "$SCENARIO" == "sm-e3" ]]; then
   ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2830,6 +2987,7 @@ if [[ "$SCENARIO" == "SM-E4" || "$SCENARIO" == "sm-e4" ]]; then
   ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2900,6 +3058,7 @@ if [[ "$SCENARIO" == "SM-G2" || "$SCENARIO" == "sm-g2" ]]; then
   settle_scenario
   wait_control_ping sm-g2-play-b-play-a "$HTTP_B" play-a "sm-g2-play-b-play-a-ready"
   wait_control_ping sm-g2-play-a-play-b "$HTTP_A" play-b "sm-g2-play-a-play-b-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2953,6 +3112,7 @@ if [[ "$SCENARIO" == "SM-G3" || "$SCENARIO" == "sm-g3" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   wait_control_ping sm-g3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g3-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -3004,6 +3164,7 @@ if [[ "$SCENARIO" == "SM-G4" || "$SCENARIO" == "sm-g4" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   wait_control_ping sm-g4-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g4-session-a-ready"
+  ensure_servers_started_and_ready
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \

@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -85,6 +87,51 @@ parsed_tcp_endpoint_t parse_stream_endpoint (const stream_snapshot_t &stream)
                                     : parse_tcp_endpoint (stream.bind_endpoint);
 }
 
+bool stream_trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_STREAM_TRACE");
+    return value != nullptr && std::string_view (value) != "0" && std::string_view (value) != "";
+}
+
+const char *stream_kind_name (stream_message_kind_t kind)
+{
+    switch (kind) {
+    case stream_message_kind_t::send:
+        return "send";
+    case stream_message_kind_t::request:
+        return "request";
+    case stream_message_kind_t::response:
+        return "response";
+    case stream_message_kind_t::error:
+        return "error";
+    case stream_message_kind_t::control:
+        return "control";
+    }
+    return "unknown";
+}
+
+void trace_stream_host (std::string_view stage,
+                        const stream_snapshot_t &stream,
+                        std::optional<stream_header_t> header = std::nullopt,
+                        std::string_view detail = {})
+{
+    if (!stream_trace_enabled ()) {
+        return;
+    }
+    std::cerr << "zlink-cpp-stream-trace side=server stage=" << stage
+              << " stream=" << stream.name << " endpoint=" << stream.bind_endpoint;
+    if (header) {
+        std::cerr << " seq="
+                  << (header->request_seq () ? std::to_string (*header->request_seq ()) : "-")
+                  << " name=" << header->packet_name ()
+                  << " kind=" << stream_kind_name (header->kind ());
+    }
+    if (!detail.empty ()) {
+        std::cerr << " " << detail;
+    }
+    std::cerr << std::endl;
+}
+
 template <typename TStream> std::vector<std::uint8_t> read_exact (TStream &socket, std::size_t size)
 {
     std::vector<std::uint8_t> bytes (size);
@@ -154,6 +201,7 @@ class stream_host_service_t::listener_t
             if (error || _stop->load (std::memory_order_acquire)) {
                 continue;
             }
+            trace_stream_host ("accept", _stream);
             auto connection = std::make_shared<tcp::socket> (std::move (socket));
             {
                 const std::lock_guard<std::mutex> lock (_sockets_mutex);
@@ -254,7 +302,10 @@ class stream_host_service_t::listener_t
                                                                  ? header.error ()->what ()
                                                                  : "STREAM header decode failed");
         }
-        return {header.value (), message_from_bytes (payload_bytes)};
+        auto decoded_header = header.value ();
+        trace_stream_host ("read-frame", _stream, decoded_header,
+                           "payload_bytes=" + std::to_string (payload_bytes.size ()));
+        return {decoded_header, message_from_bytes (payload_bytes)};
     }
 
     template <typename TStream>
@@ -280,7 +331,10 @@ class stream_host_service_t::listener_t
         frame.insert (frame.end (), encoded_header.value ().begin (),
                       encoded_header.value ().end ());
         frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
+        trace_stream_host ("write-frame", _stream, header,
+                           "payload_bytes=" + std::to_string (payload_bytes.size ()));
         boost::asio::write (socket, boost::asio::buffer (frame));
+        trace_stream_host ("write-completion", _stream, header, "result=success");
     }
 
     template <typename TStream>
@@ -363,6 +417,7 @@ class stream_host_service_t::listener_t
                 if (frame.header.kind () == stream_message_kind_t::control) {
                     continue;
                 }
+                trace_stream_host ("dispatch", _stream, frame.header);
                 dispatch_workers.emplace_back (
                   [this, &session, &stream, connection, write_mutex, frame = std::move (frame)] {
                       try {

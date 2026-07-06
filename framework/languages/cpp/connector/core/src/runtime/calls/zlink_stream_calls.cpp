@@ -14,7 +14,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <future>
+#include <iostream>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -42,6 +44,57 @@ std::string next_correlation_id ()
         value >>= 4u;
     } while (value != 0);
     return std::string (buffer + index);
+}
+
+bool stream_trace_enabled ()
+{
+    static const bool enabled = [] {
+        const char *value = std::getenv ("ZLINK_CPP_STREAM_TRACE");
+        return value != nullptr && value[0] != '\0' && std::string (value) != "0";
+    }();
+    return enabled;
+}
+
+const char *message_kind_name (message_kind_t kind)
+{
+    switch (kind) {
+        case message_kind_t::send:
+            return "send";
+        case message_kind_t::request:
+            return "request";
+        case message_kind_t::response:
+            return "response";
+        case message_kind_t::error:
+            return "error";
+        case message_kind_t::control:
+            return "control";
+    }
+    return "unknown";
+}
+
+void trace_request (const char *stage,
+                    std::optional<std::uint64_t> seq,
+                    const std::string &name,
+                    const std::string &detail = {})
+{
+    if (!stream_trace_enabled ()) {
+        return;
+    }
+    static std::mutex trace_mutex;
+    std::lock_guard<std::mutex> lock (trace_mutex);
+    std::cerr << "zlink-cpp-stream-trace stage=" << stage << " seq=";
+    if (seq) {
+        std::cerr << *seq;
+    } else {
+        std::cerr << "-";
+    }
+    if (!name.empty ()) {
+        std::cerr << " name=" << name;
+    }
+    if (!detail.empty ()) {
+        std::cerr << " " << detail;
+    }
+    std::cerr << '\n';
 }
 
 result_t<void> validate_packet_limits (const connector_state_t &state, const packet_t &packet)
@@ -153,16 +206,17 @@ result_t<packet_t> decode_packet (connector_state_t &state,
     const bool compressed = has_flag (header.flags, header_flags_t::payload_compressed);
     if (compressed) {
         if (!state.compression_codec) {
-            return result_t<packet_t>::failure (error_code_t::decompression_failed,
-                                                "stream connector compression codec is not configured");
+            return result_t<packet_t>::failure (
+              error_code_t::decompression_failed,
+              "stream connector compression codec is not configured");
         }
         if (state.options.compression == compression_t::lz4 && !state.lz4_enabled) {
             return result_t<packet_t>::failure (error_code_t::decompression_failed,
                                                 "LZ4 compression is not enabled");
         }
         try {
-            payload = state.compression_codec->decompress (payload,
-                                                           state.options.max_receive_payload_size);
+            payload =
+              state.compression_codec->decompress (payload, state.options.max_receive_payload_size);
             if (payload.size () > state.options.max_receive_payload_size) {
                 return result_t<packet_t>::failure (
                   error_code_t::decompression_failed,
@@ -315,8 +369,8 @@ result_t<std::vector<std::uint8_t>> encode_packet_frame (connector_state_t &stat
         flags = flags | header_flags_t::payload_compressed;
     }
     header_codec_t header_codec;
-    stream_header_t header_data{kind,        packet.codec,     flags,
-                                request_seq, packet.name,      packet.metadata};
+    stream_header_t header_data{kind,        packet.codec, flags,
+                                request_seq, packet.name,  packet.metadata};
     if (kind != message_kind_t::control) {
         header_data.correlation_id = next_correlation_id ();
     }
@@ -410,7 +464,7 @@ result_t<inbound_frame_t> read_inbound_frame (std::shared_ptr<connector_state_t>
     }
     auto header = decoded.value ();
     const auto preview_length = std::min (state->options.max_inbound_observer_payload_preview_bytes,
-                                           payload_bytes.value ().size ());
+                                          payload_bytes.value ().size ());
     std::vector<std::uint8_t> payload_preview (payload_bytes.value ().begin (),
                                                payload_bytes.value ().begin ()
                                                  + static_cast<std::ptrdiff_t> (preview_length));
@@ -418,12 +472,10 @@ result_t<inbound_frame_t> read_inbound_frame (std::shared_ptr<connector_state_t>
                                            std::move (payload_preview));
     auto packet = decode_packet (*state, header, std::move (payload_bytes.value ()));
     if (!packet) {
-        return result_t<inbound_frame_t>::failure (packet.error_code (),
-                                                   packet.error ()->message);
+        return result_t<inbound_frame_t>::failure (packet.error_code (), packet.error ()->message);
     }
-    return result_t<inbound_frame_t>::success (
-      inbound_frame_t{header.kind, header.request_seq, std::move (packet.value ()), payload_size,
-                      {}});
+    return result_t<inbound_frame_t>::success (inbound_frame_t{
+      header.kind, header.request_seq, std::move (packet.value ()), payload_size, {}});
 }
 
 result_t<void> send_due_heartbeat (connector_state_t &state)
@@ -531,12 +583,17 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
                                result_t<request_reply_t> result)
 {
     std::function<void (result_t<request_reply_t>)> callback;
+    std::string packet_name;
+    const bool succeeded = static_cast<bool> (result);
+    const auto error_code = result ? error_code_t{} : result.error_code ();
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         auto found = state->pending_requests.find (request_seq);
         if (found == state->pending_requests.end ()) {
+            trace_request ("pending-complete-missing", request_seq, {});
             return;
         }
+        packet_name = found->second.packet.name;
         callback = std::move (found->second.callback);
         if (found->second.timeout_timer) {
             boost::system::error_code ignored;
@@ -544,6 +601,10 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
         }
         state->pending_requests.erase (found);
     }
+    trace_request ("pending-complete", request_seq, packet_name,
+                   succeeded
+                     ? "result=success"
+                     : "result=failure error=" + std::to_string (static_cast<int> (error_code)));
     schedule_delivery (state,
                        [callback = std::move (callback), result = std::move (result)] () mutable {
                            if (callback) {
@@ -621,27 +682,27 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
               value.packet.metadata};
             enqueue_inbound_observer_notification (state, observation_header, value.payload_length,
                                                    std::move (value.payload_preview));
+            trace_request ("read-dispatch", value.request_seq, value.packet.name,
+                           std::string ("kind=") + message_kind_name (value.kind));
             if (value.kind == message_kind_t::response && value.request_seq
                 && state->pending_requests.find (*value.request_seq)
                      != state->pending_requests.end ()) {
                 completed_requests.emplace_back (
-                  *value.request_seq,
-                  result_t<request_reply_t>::success (
-                    request_reply_t{value.packet.codec, std::move (value.packet.payload)}));
+                  *value.request_seq, result_t<request_reply_t>::success (request_reply_t{
+                                        value.packet.codec, std::move (value.packet.payload)}));
             } else if (value.kind == message_kind_t::error && value.request_seq
                        && state->pending_requests.find (*value.request_seq)
                             != state->pending_requests.end ()) {
                 completed_requests.emplace_back (
                   *value.request_seq,
-                  result_t<request_reply_t>::failure (
-                    error_code_t::remote_error, value.packet.payload.to_string ()));
+                  result_t<request_reply_t>::failure (error_code_t::remote_error,
+                                                      value.packet.payload.to_string ()));
             } else {
                 pushed_packets.push_back (std::move (value.packet));
             }
         }
-        reschedule = is_transport_connected (*state) && !state->close_requested.load ()
-                     && !transport_error
-                     && (!state->pending_requests.empty () || !state->pending_waits.empty ());
+        reschedule =
+          is_transport_connected (*state) && !state->close_requested.load () && !transport_error;
     }
 
     for (auto &packet : pushed_packets) {
@@ -665,9 +726,9 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
         publish_error (*state, *transport_error);
         change_state (state, connection_state_t::disconnected, *transport_error);
         for (auto request_seq : request_ids) {
-            complete_pending_request (state, request_seq,
-                                      result_t<request_reply_t>::failure (
-                                        transport_error->code, transport_error->message));
+            complete_pending_request (
+              state, request_seq,
+              result_t<request_reply_t>::failure (transport_error->code, transport_error->message));
         }
     } else if (reschedule) {
         schedule_request_pump (state);
@@ -686,9 +747,13 @@ void schedule_request_pump (std::shared_ptr<connector_state_t> state)
         state->read_in_progress = true;
         connection = state->connection;
     }
+    trace_request ("read-start", std::nullopt, {});
     connection->async_read_some (8192, [state] (boost::system::error_code error,
                                                 std::vector<std::uint8_t> bytes) mutable {
         std::optional<error_t> transport_error;
+        trace_request ("read-completion", std::nullopt, {},
+                       error ? "result=failure error=" + error.message ()
+                             : "result=success bytes=" + std::to_string (bytes.size ()));
         {
             std::lock_guard<std::mutex> lock (state->transport_mutex);
             state->read_in_progress = false;
@@ -768,6 +833,8 @@ void start_next_async_write (std::shared_ptr<connector_state_t> state)
         connection->async_write (
           std::move (write.frame),
           [state, callback = std::move (write.callback)] (boost::system::error_code error) mutable {
+              trace_request ("write-completion", std::nullopt, {},
+                             error ? "result=failure error=" + error.message () : "result=success");
               if (error) {
                   finish_async_write (state, std::move (callback),
                                       result_t<void>::failure (state->close_requested.load ()
@@ -860,9 +927,16 @@ void start_next_async_send (std::shared_ptr<connector_state_t> state)
         return;
     }
 
+    trace_request ("send-submit", std::nullopt, send.packet.name, "kind=send");
     enqueue_async_write (state, std::move (frame),
                          [state, packet = std::move (send.packet),
                           callback = std::move (send.callback)] (result_t<void> result) mutable {
+                             trace_request (
+                               "send-write-completion", std::nullopt, packet.name,
+                               result ? "result=success"
+                                      : "result=failure error="
+                                          + std::to_string (
+                                            static_cast<int> (result.error_code ())));
                              if (!result) {
                                  finish_async_send (state, std::move (packet), std::move (callback),
                                                     std::move (result));
@@ -927,18 +1001,15 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
     bool use_async_request_pump = false;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
-        use_async_request_pump =
-          state->options.dispatch_mode == dispatch_mode_t::immediate
-          && (state->read_in_progress || !state->pending_waits.empty ());
+        use_async_request_pump = state->read_in_progress || !state->pending_waits.empty ();
     }
     if (use_async_request_pump) {
         auto promise = std::make_shared<std::promise<result_t<request_reply_t>>> ();
         auto future = promise->get_future ();
-        submit_request_async (
-          state, std::move (packet), timeout,
-          [promise] (result_t<request_reply_t> result) mutable {
-              promise->set_value (std::move (result));
-          });
+        submit_request_async (state, std::move (packet), timeout,
+                              [promise] (result_t<request_reply_t> result) mutable {
+                                  promise->set_value (std::move (result));
+                              });
         return future.get ();
     }
     std::unique_lock<std::mutex> lock (state->transport_mutex);
@@ -959,43 +1030,55 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
     const auto seq = state->next_request_seq++;
     state->pending_requests.emplace (seq, pending_request_t{seq, std::move (packet)});
     const auto &request_packet = state->pending_requests.at (seq).packet;
+    const std::string request_packet_name = request_packet.name;
+    trace_request ("submit", seq, request_packet_name, "mode=sync");
     if (auto written = write_packet_frame (*state, message_kind_t::request, request_packet, seq);
         !written) {
+        trace_request ("request-write-completion", seq, request_packet_name,
+                       "result=failure error="
+                         + std::to_string (static_cast<int> (written.error_code ())));
         publish_error (*state, *written.error ());
         state->pending_requests.erase (seq);
         return result_t<request_reply_t>::failure (written.error_code (),
                                                    written.error ()->message);
     }
+    trace_request ("request-write-completion", seq, request_packet_name, "result=success");
     std::deque<std::function<void ()>> deliveries;
-    auto complete_request =
-      [&lock, &deliveries] (result_t<request_reply_t> result) mutable {
-          lock.unlock ();
-          while (!deliveries.empty ()) {
-              auto delivery = std::move (deliveries.front ());
-              deliveries.pop_front ();
-              if (delivery) {
-                  delivery ();
-              }
-          }
-          return result;
-      };
+    auto complete_request = [&lock, &deliveries] (result_t<request_reply_t> result) mutable {
+        lock.unlock ();
+        while (!deliveries.empty ()) {
+            auto delivery = std::move (deliveries.front ());
+            deliveries.pop_front ();
+            if (delivery) {
+                delivery ();
+            }
+        }
+        return result;
+    };
     const auto deadline = steady_clock_t::now () + timeout;
     for (;;) {
         auto received = read_inbound_frame (state, deadline);
         if (!received) {
             state->pending_requests.erase (seq);
+            trace_request ("pending-complete", seq, request_packet_name,
+                           "result=failure error="
+                             + std::to_string (static_cast<int> (received.error_code ())));
             return complete_request (result_t<request_reply_t>::failure (
               received.error_code (), received.error ()->message));
         }
         auto frame = std::move (received.value ());
+        trace_request ("read-dispatch", frame.request_seq, frame.packet.name,
+                       std::string ("kind=") + message_kind_name (frame.kind));
         if (frame.kind == message_kind_t::response && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
-            return complete_request (
-              result_t<request_reply_t>::success (
-                request_reply_t{frame.packet.codec, std::move (frame.packet.payload)}));
+            trace_request ("pending-complete", seq, request_packet_name, "result=success");
+            return complete_request (result_t<request_reply_t>::success (
+              request_reply_t{frame.packet.codec, std::move (frame.packet.payload)}));
         }
         if (frame.kind == message_kind_t::error && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
+            trace_request ("pending-complete", seq, request_packet_name,
+                           "result=failure error=remote");
             return complete_request (result_t<request_reply_t>::failure (
               error_code_t::remote_error, frame.packet.payload.to_string ()));
         }
@@ -1034,6 +1117,7 @@ void submit_request_async (std::shared_ptr<void> state_handle,
     std::uint64_t seq = 0;
     std::vector<std::uint8_t> outbound_frame;
     std::optional<result_t<request_reply_t>> immediate_result;
+    std::string request_packet_name;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         if (state->close_requested.load ()) {
@@ -1049,12 +1133,16 @@ void submit_request_async (std::shared_ptr<void> state_handle,
                                                             : "stream request validation failed");
         } else {
             seq = state->next_request_seq++;
-            auto timeout_timer = post_runtime_operation_after (timeout, [state, seq] {
-                complete_pending_request (
-                  state, seq,
-                  result_t<request_reply_t>::failure (error_code_t::request_timeout,
-                                                      "stream connector request timed out"));
-            });
+            request_packet_name = packet.name;
+            trace_request ("submit", seq, request_packet_name, "mode=async");
+            auto timeout_timer =
+              post_runtime_operation_after (timeout, [state, seq, request_packet_name] {
+                  trace_request ("request-timeout", seq, request_packet_name);
+                  complete_pending_request (
+                    state, seq,
+                    result_t<request_reply_t>::failure (error_code_t::request_timeout,
+                                                        "stream connector request timed out"));
+              });
             state->pending_requests.emplace (
               seq, pending_request_t{seq, packet, std::move (callback), timeout_timer});
             if (auto encoded = encode_packet_frame (*state, message_kind_t::request, packet, seq);
@@ -1087,8 +1175,14 @@ void submit_request_async (std::shared_ptr<void> state_handle,
         return;
     }
 
+    schedule_request_pump (state);
     enqueue_async_write (
-      state, std::move (outbound_frame), [state, seq] (result_t<void> written) mutable {
+      state, std::move (outbound_frame),
+      [state, seq, request_packet_name] (result_t<void> written) mutable {
+          trace_request ("request-write-completion", seq, request_packet_name,
+                         written ? "result=success"
+                                 : "result=failure error="
+                                     + std::to_string (static_cast<int> (written.error_code ())));
           if (!written) {
               complete_pending_request (
                 state, seq,

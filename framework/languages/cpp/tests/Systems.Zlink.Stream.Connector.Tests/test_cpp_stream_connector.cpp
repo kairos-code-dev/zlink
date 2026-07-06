@@ -85,18 +85,17 @@ class async_write_connection_t final : public zlink::stream_connector::detail::s
         return 0;
     }
 
-    std::size_t
-    read_some (std::uint8_t *, std::size_t, boost::system::error_code &error) override
+    std::size_t read_some (std::uint8_t *, std::size_t, boost::system::error_code &error) override
     {
         error = boost::asio::error::would_block;
         return 0;
     }
 
-    void async_read_some (
-      std::size_t,
-      std::function<void (boost::system::error_code, std::vector<std::uint8_t>)> completion) override
+    void async_read_some (std::size_t,
+                          std::function<void (boost::system::error_code, std::vector<std::uint8_t>)>
+                            completion) override
     {
-        completion (boost::asio::error::operation_aborted, {});
+        read_completion = std::move (completion);
     }
 
     void write (const std::vector<std::uint8_t> &bytes) override { written.push_back (bytes); }
@@ -118,6 +117,7 @@ class async_write_connection_t final : public zlink::stream_connector::detail::s
     }
 
     std::vector<std::vector<std::uint8_t>> written;
+    std::function<void (boost::system::error_code, std::vector<std::uint8_t>)> read_completion;
 
   private:
     bool _open = true;
@@ -127,8 +127,7 @@ class async_write_connection_t final : public zlink::stream_connector::detail::s
 class early_reply_connection_t final : public zlink::stream_connector::detail::stream_connection_t
 {
   public:
-    explicit early_reply_connection_t (std::vector<std::uint8_t> reply) :
-        _reply (std::move (reply))
+    explicit early_reply_connection_t (std::vector<std::uint8_t> reply) : _reply (std::move (reply))
     {
     }
 
@@ -140,16 +139,15 @@ class early_reply_connection_t final : public zlink::stream_connector::detail::s
         return _reply.empty () ? 0 : _reply.size ();
     }
 
-    std::size_t
-    read_some (std::uint8_t *, std::size_t, boost::system::error_code &error) override
+    std::size_t read_some (std::uint8_t *, std::size_t, boost::system::error_code &error) override
     {
         error = boost::asio::error::would_block;
         return 0;
     }
 
-    void async_read_some (
-      std::size_t,
-      std::function<void (boost::system::error_code, std::vector<std::uint8_t>)> completion) override
+    void async_read_some (std::size_t,
+                          std::function<void (boost::system::error_code, std::vector<std::uint8_t>)>
+                            completion) override
     {
         auto reply = std::move (_reply);
         _reply.clear ();
@@ -956,10 +954,7 @@ int main ()
         return 3;
     }
 
-    connector.send (login_request_t{})
-      .metadata ("trace", "t1")
-      .compress ()
-      .submit ();
+    connector.send (login_request_t{}).metadata ("trace", "t1").compress ().submit ();
     auto runtime = zlink::stream_connector::detail::connector_runtime_t::from (connector);
     if (runtime.sent_packets ().size () != 1
         || runtime.sent_packets ()[0].name != login_request_t::packet_name
@@ -971,16 +966,15 @@ int main ()
         zlink::stream_connector::connector_options_t async_send_options;
         async_send_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         auto async_send_state =
-          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
-            async_send_options);
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
         async_send_state->state = zlink::stream_connector::connection_state_t::connected;
         auto async_send_connection = std::make_shared<async_write_connection_t> ();
         async_send_state->connection = async_send_connection;
         bool async_send_seen = false;
         zlink::stream_connector::detail::submit_send_async (
           async_send_state,
-          zlink::stream_connector::packet_t{
-            .name = "async.send", .payload = zlink::message_t::from ("payload")},
+          zlink::stream_connector::packet_t{.name = "async.send",
+                                            .payload = zlink::message_t::from ("payload")},
           [&] (zlink::stream_connector::result_t<void> result) {
               async_send_seen = static_cast<bool> (result);
           });
@@ -991,17 +985,14 @@ int main ()
         }
 
         auto async_write_failure_state =
-          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
-            async_send_options);
-        async_write_failure_state->state =
-          zlink::stream_connector::connection_state_t::connected;
-        async_write_failure_state->connection =
-          std::make_shared<async_write_connection_t> (true);
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
+        async_write_failure_state->state = zlink::stream_connector::connection_state_t::connected;
+        async_write_failure_state->connection = std::make_shared<async_write_connection_t> (true);
         bool async_write_failure_seen = false;
         zlink::stream_connector::detail::submit_send_async (
           async_write_failure_state,
-          zlink::stream_connector::packet_t{
-            .name = "async.write.fail", .payload = zlink::message_t::from ("payload")},
+          zlink::stream_connector::packet_t{.name = "async.write.fail",
+                                            .payload = zlink::message_t::from ("payload")},
           [&] (zlink::stream_connector::result_t<void> result) {
               async_write_failure_seen =
                 !result
@@ -1012,16 +1003,15 @@ int main ()
         }
 
         auto async_closed_state =
-          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
-            async_send_options);
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
         async_closed_state->state = zlink::stream_connector::connection_state_t::connected;
         async_closed_state->connection = std::make_shared<async_write_connection_t> ();
         async_closed_state->close_requested.store (true);
         bool async_closed_seen = false;
         zlink::stream_connector::detail::submit_send_async (
           async_closed_state,
-          zlink::stream_connector::packet_t{
-            .name = "async.closed", .payload = zlink::message_t::from ("payload")},
+          zlink::stream_connector::packet_t{.name = "async.closed",
+                                            .payload = zlink::message_t::from ("payload")},
           [&] (zlink::stream_connector::result_t<void> result) {
               async_closed_seen =
                 !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
@@ -1031,13 +1021,12 @@ int main ()
         }
 
         auto async_disconnected_state =
-          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
-            async_send_options);
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
         bool async_disconnected_seen = false;
         zlink::stream_connector::detail::submit_send_async (
           async_disconnected_state,
-          zlink::stream_connector::packet_t{
-            .name = "async.disconnected", .payload = zlink::message_t::from ("payload")},
+          zlink::stream_connector::packet_t{.name = "async.disconnected",
+                                            .payload = zlink::message_t::from ("payload")},
           [&] (zlink::stream_connector::result_t<void> result) {
               async_disconnected_seen =
                 !result
@@ -1049,20 +1038,18 @@ int main ()
 
         async_send_options.max_send_payload_size = 1;
         auto async_validation_state =
-          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
-            async_send_options);
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
         async_validation_state->state = zlink::stream_connector::connection_state_t::connected;
         async_validation_state->connection = std::make_shared<async_write_connection_t> ();
         bool async_validation_seen = false;
         zlink::stream_connector::detail::submit_send_async (
           async_validation_state,
-          zlink::stream_connector::packet_t{
-            .name = "async.validation", .payload = zlink::message_t::from ("too-large")},
+          zlink::stream_connector::packet_t{.name = "async.validation",
+                                            .payload = zlink::message_t::from ("too-large")},
           [&] (zlink::stream_connector::result_t<void> result) {
               async_validation_seen =
                 !result
-                && result.error_code ()
-                     == zlink::stream_connector::error_code_t::frame_too_large;
+                && result.error_code () == zlink::stream_connector::error_code_t::frame_too_large;
           });
         if (!async_validation_seen) {
             return 161;
@@ -1072,8 +1059,8 @@ int main ()
         zlink::stream_connector::detail::submit_request_async (
           {}, zlink::stream_connector::packet_t{.name = "unbound.request"},
           std::chrono::milliseconds (1),
-          [&] (zlink::stream_connector::result_t<
-               zlink::stream_connector::detail::request_reply_t> result) {
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
               async_request_unbound_seen =
                 !result
                 && result.error_code ()
@@ -1085,11 +1072,10 @@ int main ()
 
         bool async_request_closed_seen = false;
         zlink::stream_connector::detail::submit_request_async (
-          async_closed_state,
-          zlink::stream_connector::packet_t{.name = "closed.request"},
+          async_closed_state, zlink::stream_connector::packet_t{.name = "closed.request"},
           std::chrono::milliseconds (1),
-          [&] (zlink::stream_connector::result_t<
-               zlink::stream_connector::detail::request_reply_t> result) {
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
               async_request_closed_seen =
                 !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
           });
@@ -1102,8 +1088,8 @@ int main ()
           async_disconnected_state,
           zlink::stream_connector::packet_t{.name = "disconnected.request"},
           std::chrono::milliseconds (1),
-          [&] (zlink::stream_connector::result_t<
-               zlink::stream_connector::detail::request_reply_t> result) {
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
               async_request_disconnected_seen =
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::disconnected;
@@ -1115,11 +1101,11 @@ int main ()
         bool async_request_validation_seen = false;
         zlink::stream_connector::detail::submit_request_async (
           async_validation_state,
-          zlink::stream_connector::packet_t{
-            .name = "validation.request", .payload = zlink::message_t::from ("too-large")},
+          zlink::stream_connector::packet_t{.name = "validation.request",
+                                            .payload = zlink::message_t::from ("too-large")},
           std::chrono::milliseconds (1),
-          [&] (zlink::stream_connector::result_t<
-               zlink::stream_connector::detail::request_reply_t> result) {
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
               async_request_validation_seen =
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::frame_too_large;
@@ -1139,11 +1125,11 @@ int main ()
         bool async_request_write_failure_seen = false;
         zlink::stream_connector::detail::submit_request_async (
           async_request_write_failure_state,
-          zlink::stream_connector::packet_t{
-            .name = "write.failure.request", .payload = zlink::message_t::from ("payload")},
+          zlink::stream_connector::packet_t{.name = "write.failure.request",
+                                            .payload = zlink::message_t::from ("payload")},
           std::chrono::milliseconds (1),
-          [&] (zlink::stream_connector::result_t<
-               zlink::stream_connector::detail::request_reply_t> result) {
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
               async_request_write_failure_seen =
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::send_failed;
@@ -1168,30 +1154,75 @@ int main ()
         bool early_reply_seen = false;
         zlink::stream_connector::detail::submit_request_async (
           early_reply_state,
-          zlink::stream_connector::packet_t{
-            .name = "early.reply.request", .payload = zlink::message_t::from ("payload")},
+          zlink::stream_connector::packet_t{.name = "early.reply.request",
+                                            .payload = zlink::message_t::from ("payload")},
           std::chrono::milliseconds (25),
-          [&] (zlink::stream_connector::result_t<
-               zlink::stream_connector::detail::request_reply_t> result) {
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
               ++early_reply_callback_count;
-              early_reply_seen =
-                result && result.value ().payload.to_string () == "early-reply";
+              early_reply_seen = result && result.value ().payload.to_string () == "early-reply";
           });
-        if (early_reply_connection->written.empty ()
-            || !early_reply_connection->write_completion
-            || early_reply_state->pending_requests.size () != 1) {
-            return 171;
-        }
-        zlink::stream_connector::detail::start_read_loop (early_reply_state);
-        if (!early_reply_seen || early_reply_callback_count != 1
+        if (early_reply_connection->written.empty () || !early_reply_connection->write_completion
+            || !early_reply_seen || early_reply_callback_count != 1
             || !early_reply_state->pending_requests.empty ()) {
-            return 172;
+            return 171;
         }
         early_reply_connection->complete_write ();
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
         if (!early_reply_seen || early_reply_callback_count != 1
             || !early_reply_state->pending_requests.empty ()) {
             return 173;
+        }
+
+        auto interleaved_push_frame = make_server_frame (
+          zlink::stream_connector::message_kind_t::send, 0, "interleaved.push", "push-payload");
+        auto interleaved_response_frame =
+          make_server_frame (zlink::stream_connector::message_kind_t::response, 1,
+                             "interleaved.reply", "reply-payload");
+        const auto interleaved_text =
+          interleaved_push_frame.to_string () + interleaved_response_frame.to_string ();
+        auto interleaved_connection = std::make_shared<early_reply_connection_t> (
+          std::vector<std::uint8_t> (interleaved_text.begin (), interleaved_text.end ()));
+        auto interleaved_state =
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
+            zlink::stream_connector::connector_options_t{
+              .dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate});
+        interleaved_state->state = zlink::stream_connector::connection_state_t::connected;
+        interleaved_state->connection = interleaved_connection;
+        int interleaved_wait_callback_count = 0;
+        bool interleaved_push_seen = false;
+        interleaved_state->pending_waits.emplace (
+          1, zlink::stream_connector::detail::pending_wait_t{
+               1,
+               "interleaved.push",
+               {},
+               [&] (zlink::stream_connector::result_t<zlink::stream_connector::packet_t> result) {
+                   ++interleaved_wait_callback_count;
+                   interleaved_push_seen =
+                     result && result.value ().payload.to_string () == "push-payload";
+               }});
+        bool interleaved_reply_seen = false;
+        zlink::stream_connector::detail::submit_request_async (
+          interleaved_state,
+          zlink::stream_connector::packet_t{.name = "interleaved.request",
+                                            .payload = zlink::message_t::from ("payload")},
+          std::chrono::milliseconds (25),
+          [&] (zlink::stream_connector::result_t<zlink::stream_connector::detail::request_reply_t>
+                 result) {
+              interleaved_reply_seen =
+                result && result.value ().payload.to_string () == "reply-payload";
+          });
+        if (interleaved_connection->written.empty () || !interleaved_connection->write_completion
+            || !interleaved_push_seen || interleaved_wait_callback_count != 1
+            || !interleaved_reply_seen || !interleaved_state->pending_requests.empty ()
+            || !interleaved_state->pending_waits.empty ()) {
+            return 174;
+        }
+        interleaved_connection->complete_write ();
+        if (!interleaved_push_seen || interleaved_wait_callback_count != 1
+            || !interleaved_reply_seen || !interleaved_state->pending_requests.empty ()
+            || !interleaved_state->pending_waits.empty ()) {
+            return 175;
         }
 
         async_send_state->dispatch_queue.push_back (zlink::stream_connector::packet_t{
@@ -1238,7 +1269,6 @@ int main ()
             || wait_closed.error_code () != zlink::stream_connector::error_code_t::closed) {
             return 170;
         }
-
     }
 
     connector.send (login_request_t{}).packet_name ("login.uncompressed").submit ();
@@ -1316,7 +1346,10 @@ int main ()
         if (!custom_connector.connect ()) {
             return 148;
         }
-        custom_connector.send (login_request_t{}).packet_name ("custom.outbound").compress ().submit ();
+        custom_connector.send (login_request_t{})
+          .packet_name ("custom.outbound")
+          .compress ()
+          .submit ();
         custom_server_thread.join ();
         if (!custom_payload_seen) {
             return 145;
@@ -1644,10 +1677,9 @@ int main ()
     zlink::stream_connector::metadata_t oversized_metadata;
     oversized_metadata.with ("trace", std::string (9 * 1024, 'm'));
     connector
-      .send (zlink::stream_connector::packet_t{
-        "oversized.metadata", std::move (oversized_metadata),
-        zlink::stream_connector::codec_t::raw, false,
-        zlink::message_t::from (std::string ("ok"))})
+      .send (zlink::stream_connector::packet_t{"oversized.metadata", std::move (oversized_metadata),
+                                               zlink::stream_connector::codec_t::raw, false,
+                                               zlink::message_t::from (std::string ("ok"))})
       .submit ();
 
     int manual_dispatch_count = 0;
@@ -2072,9 +2104,9 @@ int main ()
             auto push = make_server_frame (zlink::stream_connector::message_kind_t::send, 0,
                                            "async.pump.push", "push");
             inbound.send ().message (push).submit ();
-            auto reply = make_server_frame (zlink::stream_connector::message_kind_t::response,
-                                            frame->header.request_seq.value (), "reply",
-                                            "async-pump-reply");
+            auto reply =
+              make_server_frame (zlink::stream_connector::message_kind_t::response,
+                                 frame->header.request_seq.value (), "reply", "async-pump-reply");
             inbound.send ().message (reply).submit ();
         }
         inbound.close ();
@@ -2097,11 +2129,10 @@ int main ()
           async_pump_wait_seen = result && result.value ().payload.to_string () == "push";
           async_pump_wait_latch.signal ();
       });
-    auto async_pump_reply =
-      async_pump_connector.request (login_request_t{})
-        .packet_name ("async.pump.request")
-        .timeout (std::chrono::milliseconds (100))
-        .submit<login_reply_t> ();
+    auto async_pump_reply = async_pump_connector.request (login_request_t{})
+                              .packet_name ("async.pump.request")
+                              .timeout (std::chrono::milliseconds (100))
+                              .submit<login_reply_t> ();
     async_pump_wait_latch.wait_for (std::chrono::milliseconds (100));
     async_pump_thread.join ();
     async_pump_connector.close ();

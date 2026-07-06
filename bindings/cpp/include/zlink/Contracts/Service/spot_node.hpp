@@ -98,6 +98,7 @@ class spot_node_t
 
     void disconnect_peer (const std::string &endpoint_);
 
+    void connect_peer_rid (const routing_id_t &target_node_rid_, const std::string &endpoint_);
     void disconnect_peer_rid (const routing_id_t &target_node_rid_);
 
     void set_routing_id (const routing_id_t &routing_id_);

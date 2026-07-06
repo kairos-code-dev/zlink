@@ -112,6 +112,7 @@ export DELIVERYDISPATCH_COURIER_ACTOR_NODE1
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE2
+export ZLINK_CPP_AUTO_CONNECT_TRACE="${ZLINK_CPP_AUTO_CONNECT_TRACE-1}"
 
 port_of() {
   local endpoint="$1"
@@ -229,4 +230,7 @@ grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-1.l
 grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-2.log"
 grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-customer-gateway.log"
 grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-session.log"
+grep -q "zlink auto-connect publish .* type=spot mesh=delivery-couriers" "$LOG_DIR/courier-actor-node-1.log"
+grep -q "zlink auto-connect scan type=spot mesh=delivery-couriers" "$LOG_DIR/courier-session.log"
+grep -q "zlink auto-connect dial type=spot mesh=delivery-couriers" "$LOG_DIR/courier-session.log"
 echo "deliverydispatch sample result=passed"

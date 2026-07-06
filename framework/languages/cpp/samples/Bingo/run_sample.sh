@@ -133,6 +133,7 @@ PIDS=()
 REDIS_CONTAINER=""
 cleanup_done=false
 BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:cpp:${RANDOM}:$$:}"
+export ZLINK_CPP_AUTO_CONNECT_TRACE="${ZLINK_CPP_AUTO_CONNECT_TRACE-1}"
 
 cleanup() {
   set +e
@@ -278,6 +279,9 @@ if grep -Rq "entry spot: actor destroy completed. actor=observer" "$LOG_DIR"/pla
   echo "Observer actor must not be destroyed during Bingo player cleanup." >&2
   exit 1
 fi
+grep -q "zlink auto-connect publish .* type=spot mesh=bingo.rooms" "$LOG_DIR/play-a.log"
+grep -q "zlink auto-connect scan type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
+grep -q "zlink auto-connect dial type=spot mesh=bingo.rooms" "$LOG_DIR/session-a.log"
 grep -Rq "message flow" "$BINGO_LOG_DIR"
 
 cleanup

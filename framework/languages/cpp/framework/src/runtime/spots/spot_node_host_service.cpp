@@ -167,11 +167,19 @@ void connect_spot_peer (const spot_node_snapshot_t &snapshot,
         return;
     }
     trace_spot_dial (local, peer);
-    node.connect_peer (peer.endpoint);
+    if (peer.node_rid) {
+        node.connect_peer_rid (*peer.node_rid, peer.endpoint);
+    } else {
+        node.connect_peer (peer.endpoint);
+    }
     if (const auto found = peer.metadata.find ("pub-endpoint");
         found != peer.metadata.end () && !found->second.empty ()
         && !is_manual_spot_endpoint (snapshot, found->second)) {
-        node.connect_peer (found->second);
+        if (peer.node_rid) {
+            node.connect_peer_rid (*peer.node_rid, found->second);
+        } else {
+            node.connect_peer (found->second);
+        }
     }
 }
 
@@ -179,6 +187,10 @@ void disconnect_spot_peer (const spot_node_snapshot_t &snapshot,
                            zlink::service::spot_node_t &node,
                            const peer_location_t &peer)
 {
+    if (peer.node_rid) {
+        node.disconnect_peer_rid (*peer.node_rid);
+        return;
+    }
     if (!peer.endpoint.empty () && !is_manual_spot_endpoint (snapshot, peer.endpoint)) {
         node.disconnect_peer (peer.endpoint);
     }

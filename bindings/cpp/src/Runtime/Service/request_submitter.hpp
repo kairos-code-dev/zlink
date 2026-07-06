@@ -73,9 +73,8 @@ async_result_t<std::vector<message_t>> submit_request_parts_awaitable (
 
     const int raw_rc = submit_message_parts_close_on_failure (
       parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-          return submit_part_ (part_out_, part_flag_,
-                               is_final_ ? &request_callback_trampoline : nullptr,
-                               is_final_ ? state.get () : nullptr);
+          (void) is_final_;
+          return submit_part_ (part_out_, part_flag_, &request_callback_trampoline, state.get ());
       });
     if (raw_rc == -1)
         throw last_error ();
@@ -97,9 +96,8 @@ bool submit_request_parts_callback (std::vector<message_t> &parts_,
 
     const int raw_rc = submit_message_parts_close_on_failure (
       parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-          return submit_part_ (part_out_, part_flag_,
-                               is_final_ ? &request_callback_trampoline : nullptr,
-                               is_final_ ? state.get () : nullptr);
+          (void) is_final_;
+          return submit_part_ (part_out_, part_flag_, &request_callback_trampoline, state.get ());
       });
     if (raw_rc == -1)
         throw last_error ();

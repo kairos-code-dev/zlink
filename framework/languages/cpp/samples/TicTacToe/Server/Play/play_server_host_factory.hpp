@@ -59,6 +59,8 @@ class play_server_host_factory_t
             options.add_spot_mesh (sample_names_t::game_spot_node)
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_router (topology.selected_play_spot_router_endpoint ())
+              .connect_router (zlink::routing_id_t::from (topology.peer_play_node_rid ()),
+                                topology.peer_play_spot_router_endpoint ())
               .enable_pub_sub (topology.selected_play_spot_endpoint ())
               .connect_peer_pub (topology.peer_play_spot_endpoint ())
               .add_entry_spot<tictactoe_entry_spot_t> ()

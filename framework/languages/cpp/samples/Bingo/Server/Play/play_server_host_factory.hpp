@@ -62,6 +62,7 @@ class play_server_host_factory_t
               .set_routing_id (routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_router (topology.selected_play_spot_router_endpoint ())
               .enable_pub_sub (topology.selected_play_spot_endpoint ())
+              .connect_peer_pub (topology.peer_play_spot_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> ()
               .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type);

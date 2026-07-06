@@ -199,6 +199,11 @@ struct sample_topology_t
         return play_node == "b" ? play_b_spot_endpoint : play_a_spot_endpoint;
     }
 
+    std::string peer_play_spot_endpoint () const
+    {
+        return play_node == "b" ? play_a_spot_endpoint : play_b_spot_endpoint;
+    }
+
     std::string selected_play_spot_router_endpoint () const
     {
         return play_node == "b" ? play_b_spot_router_endpoint : play_a_spot_router_endpoint;

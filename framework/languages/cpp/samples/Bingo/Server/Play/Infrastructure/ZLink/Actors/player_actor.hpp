@@ -39,4 +39,20 @@ struct player_actor_t
     }
 };
 
+inline void to_json (nlohmann::json &json, const player_actor_t &value)
+{
+    json = {{"actor", value.actor},
+            {"displayName", value.display_name},
+            {"destroyAfterEntrySpotJoin", value.destroy_after_entry_spot_join},
+            {"disconnected", value.disconnected}};
+}
+
+inline void from_json (const nlohmann::json &json, player_actor_t &value)
+{
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.display_name = json.value ("displayName", std::string{});
+    value.destroy_after_entry_spot_join = json.value ("destroyAfterEntrySpotJoin", false);
+    value.disconnected = json.value ("disconnected", false);
+}
+
 } // namespace zlink::samples::bingo

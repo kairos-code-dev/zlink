@@ -118,7 +118,7 @@ class bingo_entry_spot_t : public entry_spot_t
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)
     {
-        return actor_ref_t (node_rid_t::from_string (sample_names_t::room_spot_node),
+        return actor_ref_t (actor.actor.node_rid,
                             sample_names_t::player_actor_type, actor.actor.actor_id,
                             actor.actor.generation);
     }

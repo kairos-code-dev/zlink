@@ -41,7 +41,6 @@ class bingo_client_scenario_t
         try {
             const std::vector<int> client1_card_numbers{1, 2, 3, 4, 0, 6, 7, 8, 9};
             const std::vector<int> client2_card_numbers{10, 11, 12, 13, 0, 14, 4, 5, 6};
-            constexpr int expected_draw_count = 3;
 
             trace ("connect client1");
             co_await client1.connect ().async ();
@@ -149,6 +148,7 @@ class bingo_client_scenario_t
               }));
 
             trace ("client1 submit card");
+            constexpr int expected_draw_count = 3;
             auto reward_future = observer.wait_for<bingo_reward_announced_notify_t> ()
                                    .where (&bingo_reward_announced_notify_t::room_id, room_id)
                                    .to_future ("reward announcement wait failed");
@@ -167,16 +167,22 @@ class bingo_client_scenario_t
                     .to_future ("client2 draw notify wait failed"));
             }
             auto client1_ended_future =
-              client1.wait_for<game_ended_notify_t> ().to_future ("client1 game ended wait failed");
+              client1.wait_for<game_ended_notify_t> ()
+                .where ([] (const game_ended_notify_t &message) {
+                    return message.state.status == bingo_room_status_t::finished;
+                })
+                .to_future ("client1 game ended wait failed");
             auto client2_ended_future =
-              client2.wait_for<game_ended_notify_t> ().to_future ("client2 game ended wait failed");
+              client2.wait_for<game_ended_notify_t> ()
+                .where ([] (const game_ended_notify_t &message) {
+                    return message.state.status == bingo_room_status_t::finished;
+                })
+                .to_future ("client2 game ended wait failed");
             const auto client1_card_request =
               submit_bingo_card_req_t{room_id, client1_card_numbers};
             auto client1_card =
               co_await client1.request (client1_card_request)
                 .async<submit_bingo_card_res_t> ();
-            trace ("wait reward announcement");
-            auto reward = reward_future.get ();
             std::vector<number_drawn_notify_t> drawn_numbers;
             for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
                 auto client1_drawn =
@@ -212,7 +218,10 @@ class bingo_client_scenario_t
                   return player.card.size () == 9 && player.marks.size () == 9 && player.marks[4];
               }));
 
+            trace ("wait reward announcement");
+            auto reward = reward_future.get ();
             ensure (reward.actor_id == client1_auth.actor_id);
+            ensure (reward.draw_seq == client1_ended.state.draw_seq);
             ensure (reward.item_id == bingo_reward_items_t::golden_dauber_id);
             ensure (reward.item_name == bingo_reward_items_t::golden_dauber_name);
             ensure (reward.rarity == bingo_reward_items_t::legendary_rarity);

@@ -297,10 +297,7 @@ int main (int argc, char **argv)
           options.services ().build_provider ());
         options.services ()
           .add_singleton<courier_decision_directory_t> (std::move (decisions))
-          .add_singleton<courier_actor_runtime_t> (std::move (runtime))
-          .add_transient<ensure_courier_actor_handler_t, courier_actor_runtime_t> ()
-          .add_transient<actor_node_offer_delivery_handler_t, courier_actor_runtime_t,
-                         courier_decision_directory_t> ();
+          .add_singleton<courier_actor_runtime_t> (std::move (runtime));
         options.add_client_server_channel (courier_actor_node_channel_for (node_rid))
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))

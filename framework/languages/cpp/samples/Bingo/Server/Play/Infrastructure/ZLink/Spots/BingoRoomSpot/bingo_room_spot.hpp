@@ -104,6 +104,7 @@ class bingo_room_spot_t : public spot_t
                     const auto ended_notify = game_ended_notify_t{drawn->state};
                     send_to_players (ended_notify);
                     publish_reward (*drawn);
+                    leave_finished_actors ();
                     break;
                 }
             }
@@ -205,7 +206,12 @@ class bingo_room_spot_t : public spot_t
         }
         for (auto *actor : leaving) {
             actor->mark_for_destroy_after_room_leave ();
-            (void) _context.leave_actor (actor_ref_for (*actor), *actor);
+            const auto before = actor_ref_for (*actor);
+            auto left = _context.leave_actor (before, *actor).result ();
+            if (!left) {
+                throw std::runtime_error (left.error () ? left.error ()->what ()
+                                                        : "finished actor leave failed");
+            }
         }
     }
 

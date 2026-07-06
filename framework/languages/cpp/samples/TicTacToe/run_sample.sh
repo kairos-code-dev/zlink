@@ -226,7 +226,7 @@ wait_port api-b-http "$API_B_HTTP_ENDPOINT"
 
 sleep "${TICTACTOE_CPP_STARTUP_SETTLE_SECONDS:-1}"
 
-${ZLINK_CLIENT_WRAP:-} "$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
+"$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2
   cat "$LOG_DIR/play-a.log" >&2
   cat "$LOG_DIR/play-b.log" >&2

@@ -651,8 +651,8 @@ header/context API를 제공한다.
 
 ## 17. 성능 기준
 
-성능 목표는 [ZLink Framework Performance Policy](../../../../../doc/perf/framework/README.ko.md)와
-[C++ Framework Performance Plan](../../../../../doc/perf/framework/bindings/cpp-framework-performance.ko.md)에
+성능 목표는 [ZLink Framework Performance Policy](../../perf/README.ko.md)와
+[C++ Framework Performance Plan](../../perf/bindings/cpp-framework-performance.ko.md)에
 맞춘다. HTTP server perf는 별도 수치만 보지 않고, handler dispatch, JSON binding, logging,
 TLS 여부를 분리해서 측정한다.
 

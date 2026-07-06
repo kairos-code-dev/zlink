@@ -910,6 +910,8 @@ int main ()
       .bind ("tcp://0.0.0.0:9000")
       .enable_router ("tcp://0.0.0.0:9002")
       .connect_router ("tcp://127.0.0.1:9003")
+      .connect_router (zlink::routing_id_t::from ("stage-peer"),
+                       "tcp://127.0.0.1:9006")
       .enable_pub_sub ("tcp://0.0.0.0:9004")
       .connect_pub_sub ("tcp://127.0.0.1:9005")
       .add_entry_spot<entry_spot_t> ()
@@ -922,6 +924,9 @@ int main ()
         || *snapshots[0].router_bind_endpoint != "tcp://0.0.0.0:9002"
         || snapshots[0].router_manual_connections.size () != 1
         || snapshots[0].router_manual_connections[0] != "tcp://127.0.0.1:9003"
+        || snapshots[0].router_manual_rid_connections.size () != 1
+        || snapshots[0].router_manual_rid_connections[0].first.to_string () != "stage-peer"
+        || snapshots[0].router_manual_rid_connections[0].second != "tcp://127.0.0.1:9006"
         || !snapshots[0].pub_bind_endpoint
         || *snapshots[0].pub_bind_endpoint != "tcp://0.0.0.0:9004"
         || snapshots[0].pub_sub_manual_connections.size () != 1

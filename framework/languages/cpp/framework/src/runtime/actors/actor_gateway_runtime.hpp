@@ -84,6 +84,10 @@ class actor_gateway_runtime_t
                              std::string route_channel_name,
                              zlink::routing_id_t target_node_rid,
                              stream_codec_t codec = stream_codec_t::message_pack);
+    void bind_session_sink (
+      actor_ref_t actor_ref,
+      std::function<task_t<void> (std::string, const zlink::message_t &)> sink,
+      stream_codec_t codec = stream_codec_t::message_pack);
     void unbind_session_stream (std::string actor_id);
     result_t<void> dispatch_bound_session_send (const actor_ref_t &actor_ref,
                                                 std::string packet_name,

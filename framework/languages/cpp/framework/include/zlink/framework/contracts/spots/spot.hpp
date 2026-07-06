@@ -463,6 +463,7 @@ struct spot_node_snapshot_t
     std::optional<std::string> pub_bind_endpoint;
     std::optional<zlink::routing_id_t> routing_id;
     std::vector<std::string> router_manual_connections;
+    std::vector<std::pair<zlink::routing_id_t, std::string>> router_manual_rid_connections;
     std::vector<std::string> pub_sub_manual_connections;
     std::optional<std::string> discovery_channel_name;
     std::vector<std::string> spot_names;
@@ -1269,6 +1270,7 @@ class spot_node_builder_t
     spot_node_builder_t &set_routing_id (zlink::routing_id_t routing_id);
     spot_node_builder_t &enable_router (std::string endpoint);
     spot_node_builder_t &connect_router (std::string endpoint);
+    spot_node_builder_t &connect_router (zlink::routing_id_t peer_rid, std::string endpoint);
     spot_node_builder_t &enable_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_peer_pub (std::string endpoint);

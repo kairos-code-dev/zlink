@@ -15,6 +15,7 @@
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/spots/spot_route_internal_dispatcher.hpp"
 
 #include <zlink.hpp>
 
@@ -147,6 +148,11 @@ void attach_native_spot_locked (const std::shared_ptr<detail::spot_context_state
             if (state->node->snapshot.entry_spot_name
                 && *state->node->snapshot.entry_spot_name == state->spot_name) {
                 native = std::make_shared<zlink::service::spot_t> (native_node->entry_spot ());
+                const auto expected_rid =
+                  zlink::routing_id_t::from (detail::effective_spot_node_rid (state->node->snapshot));
+                if (native->routing_id ().to_string () != expected_rid.to_string ()) {
+                    native->set_routing_id (expected_rid);
+                }
             } else {
                 auto [spot, created] =
                   native_node->get_or_create_spot (zlink::routing_id_t::from (rid));
@@ -160,7 +166,22 @@ void attach_native_spot_locked (const std::shared_ptr<detail::spot_context_state
         state->native_spot = native;
         native->set_dispatch_handler (
           [weak_state = std::weak_ptr<detail::spot_context_state_t> (state),
-           native_node] (const zlink::spot_dispatch_info_t &info) {
+           native_node,
+           native] (const zlink::spot_dispatch_info_t &info) {
+              if (info.event == zlink::spot_dispatch_event_t::routed_readable) {
+                  while (true) {
+                      zlink::received_t inbound;
+                      const int rc = native->recv_routed (inbound, zlink::recv_flags_t::dontwait);
+                      if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                          break;
+                      }
+                      if (auto owner = weak_state.lock (); owner && owner->node) {
+                          std::lock_guard<std::recursive_mutex> node_lock (owner->node->mutex);
+                          owner->queued_routed_packets.push_back (std::move (inbound));
+                      }
+                  }
+                  return;
+              }
               if (info.event != zlink::spot_dispatch_event_t::actor_readable || !info.actor) {
                   return;
               }
@@ -916,12 +937,13 @@ task_t<actor_ref_t> spot_context_t::leave_actor_erased (
             }
         }
 
-        const auto entry_joined = entry_state.on_actor_joined_callbacks.find (actor_type);
-        if (entry_joined != entry_state.on_actor_joined_callbacks.end ()
-            && entry_state.spot_instance) {
+        const auto entry_admission = entry_state.actor_admissions.find (actor_type);
+        if (entry_admission != entry_state.actor_admissions.end ()
+            && entry_admission->second.on_actor_joined && entry_state.spot_instance) {
             node_lock.unlock ();
             if (!entry_state.run_serial_sync ("spot-lifecycle-join", [&] {
-                    entry_joined->second (entry_state.spot_instance.get (), actor);
+                    entry_admission->second.on_actor_joined (entry_state.spot_instance.get (),
+                                                             actor);
                 })) {
                 return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
                   framework_error_kind_t::request_rejected, "spot serial queue is full"));
@@ -1549,6 +1571,22 @@ spot_node_builder_t &spot_node_builder_t::connect_router (std::string endpoint)
                                      "SPOT router manual endpoint is required");
     }
     _state->snapshot.router_manual_connections.push_back (std::move (endpoint));
+    return *this;
+}
+
+spot_node_builder_t &spot_node_builder_t::connect_router (zlink::routing_id_t peer_rid,
+                                                          std::string endpoint)
+{
+    if (peer_rid.size () == 0u) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "SPOT router manual peer routing id is required");
+    }
+    if (endpoint.empty () || is_blank (endpoint)) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "SPOT router manual endpoint is required");
+    }
+    _state->snapshot.router_manual_rid_connections.push_back (
+      {std::move (peer_rid), std::move (endpoint)});
     return *this;
 }
 
@@ -2656,9 +2694,12 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
                                                        zlink::message_t request)
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
-    auto rid =
-      spot_rid_t::from_string (detail::effective_spot_node_rid (_state->snapshot) + ":" + spot_name
-                               + ":" + std::to_string (_state->next_spot_id++));
+    const auto is_entry_spot =
+      _state->snapshot.entry_spot_name && *_state->snapshot.entry_spot_name == spot_name;
+    auto rid = spot_rid_t::from_string (
+      is_entry_spot ? detail::effective_spot_node_rid (_state->snapshot)
+                    : detail::effective_spot_node_rid (_state->snapshot) + ":" + spot_name + ":"
+                        + std::to_string (_state->next_spot_id++));
     return create_spot_context_unlocked (std::move (spot_name), std::move (rid),
                                          std::move (request));
 }
@@ -2846,6 +2887,12 @@ void spot_node_runtime_t::attach_native_node (std::shared_ptr<zlink::service::sp
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     _state->native_node = std::move (node);
+    if (_state->spot_contexts_by_rid.empty ()) {
+      if (auto native = _state->native_node.lock ()) {
+        _state->routed_control_spot =
+          std::make_shared<zlink::service::spot_t> (native->entry_spot ());
+      }
+    }
     for (auto &[_, context] : _state->spot_contexts_by_rid) {
         attach_native_spot_locked (context._state);
     }
@@ -2875,6 +2922,7 @@ void spot_node_runtime_t::detach_native_node ()
     }
     _state->native_node.reset ();
     _state->native_spots_by_rid.clear ();
+    _state->routed_control_spot.reset ();
     _state->last_monitoring_peers.clear ();
     for (auto &[_, context] : _state->spot_contexts_by_rid) {
         context._state->native_spot.reset ();
@@ -2912,6 +2960,12 @@ std::shared_ptr<zlink::service::spot_node_t> spot_node_runtime_t::native_node ()
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     return _state->native_node.lock ();
+}
+
+void spot_node_runtime_t::set_route_client (route_client_t route_client)
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    _state->route_client = std::move (route_client);
 }
 
 void spot_node_runtime_t::publish_peer_snapshot_if_changed ()
@@ -3045,6 +3099,42 @@ std::size_t spot_node_runtime_t::drain_actor_packets (service_provider_t &servic
         }
 
         const auto &request_header = header.value ();
+        auto route_client = [&] () -> std::optional<route_client_t> {
+            std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+            return _state->route_client;
+        }();
+        if (route_client) {
+            auto &actor_gateway = services.get_required<actor_gateway_runtime_t> ();
+            spot_route_internal_dispatcher_t internal_dispatcher (
+              *this, actor_gateway, *route_client, serializers);
+            if (request_header.kind == runtime::messaging::message_kind_t::request
+                && internal_dispatcher.can_handle_request (request_header.message_name)) {
+                auto reply = internal_dispatcher.dispatch_request (
+                  route_received_packet_t{info.source_node_rid, info.request_id,
+                                          runtime::messaging::message_parts_t (parts.items ())},
+                  request_header, services);
+                if (reply) {
+                    reply_no_bind (
+                      info, replies.reply_raw_envelope (
+                              replies.create_reply_header (
+                                runtime::messaging::message_kind_t::response,
+                                request_header.channel_name, request_header),
+                              std::move (reply.value ())));
+                } else {
+                    reply_no_bind (
+                      info, replies.reply_raw_envelope (
+                              replies.create_error_header (
+                                request_header.channel_name, request_header,
+                                framework_exception_t (
+                                  reply.error_kind (),
+                                  reply.error () ? reply.error ()->what ()
+                                                  : "SPOT route request failed")),
+                              zlink::message_t::from ("")));
+                }
+                ++dispatched;
+                continue;
+            }
+        }
         auto actor_ref = find_actor_ref (info.actor);
         auto body = codec.decode_body (parts);
         auto reply_error = [&] (const framework_exception_t &error,
@@ -3183,19 +3273,47 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
     std::size_t dispatched = 0;
     runtime::messaging::envelope_codec_t codec;
     detail::channel_reply_writer_t replies;
-    for (const auto &context : active_contexts ()) {
+    auto contexts = active_contexts ();
+    if (contexts.empty ()) {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        if (_state->routed_control_spot) {
+            auto context_state = std::make_shared<spot_context_state_t> ();
+            context_state->node = _state;
+            context_state->channel_runtime = _state->channel_runtime;
+            context_state->node_rid = node_rid_t::from_string (detail::effective_spot_node_rid (
+              _state->snapshot));
+            context_state->spot_rid = spot_rid_t::from_string (
+              detail::effective_spot_node_rid (_state->snapshot));
+            context_state->spot_name = "__zlink-routed-control";
+            context_state->native_spot = _state->routed_control_spot;
+            context_state->spot_instance = _state->routed_control_spot;
+            contexts.push_back (spot_context_t (std::move (context_state)));
+        }
+    }
+    for (const auto &context : contexts) {
         auto native = context._state->native_spot.lock ();
         if (!native || !context._state->spot_instance) {
             continue;
         }
+        std::vector<zlink::received_t> queued_packets;
+        {
+            std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+            queued_packets.swap (context._state->queued_routed_packets);
+        }
+        auto queued_packet = queued_packets.begin ();
         while (true) {
             zlink::received_t inbound;
-            const int rc = native->recv_routed (inbound, zlink::recv_flags_t::dontwait);
-            if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
-                break;
-            }
-            if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
-                break;
+            if (queued_packet != queued_packets.end ()) {
+                inbound = std::move (*queued_packet);
+                ++queued_packet;
+            } else {
+                const int rc = native->recv_routed (inbound, zlink::recv_flags_t::dontwait);
+                if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
+                    break;
+                }
+                if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                    break;
+                }
             }
             struct routed_reply_target_t
             {
@@ -3241,6 +3359,84 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
               message_kind, header.value ().message_name, {}, context._state->spot_rid.value ());
             const routed_reply_target_t reply_target{inbound.routing_id (), inbound.spot_rid (),
                                                      inbound.request_seq ().value_or (0)};
+            auto route_client = [&] () -> std::optional<route_client_t> {
+                std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+                return _state->route_client;
+            }();
+            if (route_client
+                && header.value ().kind == runtime::messaging::message_kind_t::command) {
+                auto &actor_gateway = services.get_required<actor_gateway_runtime_t> ();
+                spot_route_internal_dispatcher_t internal_dispatcher (
+                  *this, actor_gateway, *route_client, serializers);
+                if (internal_dispatcher.can_handle_send (header.value ().message_name)) {
+                    auto sent = internal_dispatcher.dispatch_send (
+                      route_received_packet_t{
+                        inbound.routing_id ().value_or (zlink::routing_id_t::from (std::uint32_t{0})),
+                        inbound.request_seq (), std::move (parts)},
+                      services);
+                    if (!sent) {
+                        report_spot_dispatch_error (
+                          _state, dispatch_error_surface_t::spot_route, dispatch_message_kind_t::send,
+                          dispatch_reason_from_error (sent.error_kind ()),
+                          dispatch_error_action_t::drop, header.value ().message_name, std::nullopt,
+                          std::string (context._state->spot_rid.value ()));
+                    }
+                    ++dispatched;
+                    continue;
+                }
+            }
+            if (route_client && header.value ().kind == runtime::messaging::message_kind_t::request) {
+                auto &actor_gateway = services.get_required<actor_gateway_runtime_t> ();
+                spot_route_internal_dispatcher_t internal_dispatcher (
+                  *this, actor_gateway, *route_client, serializers);
+                if (internal_dispatcher.can_handle_request (header.value ().message_name)) {
+                    if (!inbound.routing_id ()) {
+                        report_spot_dispatch_error (
+                          _state, dispatch_error_surface_t::spot_route,
+                          dispatch_message_kind_t::request,
+                          dispatch_error_reason_t::invalid_frame, dispatch_error_action_t::drop,
+                          header.value ().message_name, std::nullopt,
+                          std::string (context._state->spot_rid.value ()));
+                        ++dispatched;
+                        continue;
+                    }
+                    auto reply = internal_dispatcher.dispatch_request (
+                      route_received_packet_t{*inbound.routing_id (), inbound.request_seq (),
+                                              std::move (parts)},
+                      header.value (), services);
+                    if (reply && reply_target.request_seq != 0) {
+                        auto reply_parts = replies.reply_raw_envelope (
+                          replies.create_reply_header (runtime::messaging::message_kind_t::response,
+                                                       header.value ().channel_name,
+                                                       header.value ()),
+                          std::move (reply.value ()));
+                        submit_reply (*native, reply_target, reply_parts);
+                        report_spot_dispatch_trace (
+                          _state, message_flow_outcome_t::replied,
+                          dispatch_error_surface_t::spot_route, dispatch_message_kind_t::response,
+                          header.value ().message_name, {}, context._state->spot_rid.value ());
+                    } else if (!reply && reply_target.request_seq != 0) {
+                        const auto *error = reply.error ();
+                        const framework_exception_t exception (
+                          reply.error_kind (),
+                          error != nullptr ? error->what () : "SPOT route request failed",
+                          error != nullptr && error->is_retriable ());
+                        auto reply_parts = replies.reply_raw_envelope (
+                          replies.create_error_header (header.value ().channel_name, header.value (),
+                                                       exception),
+                          zlink::message_t::from (""));
+                        submit_reply (*native, reply_target, reply_parts);
+                        report_spot_dispatch_error (
+                          _state, dispatch_error_surface_t::spot_route,
+                          dispatch_message_kind_t::request,
+                          dispatch_reason_from_error (exception.kind ()),
+                          dispatch_error_action_t::reply_error, header.value ().message_name,
+                          std::nullopt, std::string (context._state->spot_rid.value ()));
+                    }
+                    ++dispatched;
+                    continue;
+                }
+            }
             auto body = codec.decode_body (parts);
             auto reply_error = [&] (const framework_exception_t &error) {
                 report_spot_dispatch_error (

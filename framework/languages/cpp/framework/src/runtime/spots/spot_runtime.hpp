@@ -85,6 +85,8 @@ class spot_node_builder_state_t
     std::map<std::string, std::shared_ptr<std::mutex>> actor_mailboxes;
     std::map<std::string, spot_route_t> actor_routes;
     std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_rid;
+    std::shared_ptr<service::spot_t> routed_control_spot;
+    std::optional<route_client_t> route_client;
     struct queued_actor_packet_t
     {
         zlink::actor_recv_info_t info;
@@ -160,6 +162,7 @@ class spot_context_state_t
     std::shared_ptr<runtime::offload_executor_t> serial_executor;
     std::shared_ptr<runtime::serial_execution_queue_t> serial_queue;
     std::shared_ptr<worker_scheduler_t> worker_scheduler;
+    std::vector<zlink::received_t> queued_routed_packets;
     spot_lifecycle_callbacks_t lifecycle;
     std::map<std::type_index, std::function<void (void *, void *)>> on_actor_joined_callbacks;
     std::map<
@@ -261,6 +264,7 @@ class spot_node_runtime_t
                                      serializer_registry_t &serializers);
     std::size_t drain_subscriptions (service_provider_t &services,
                                      serializer_registry_t &serializers) const;
+    void set_route_client (route_client_t route_client);
     void on_destroy_actor (std::function<result_t<void> (const actor_ref_t &)> destroy_actor);
     void on_actor_ref_updated (std::function<result_t<void> (const actor_ref_t &)> update_actor);
     void on_actor_entry_spot_join (

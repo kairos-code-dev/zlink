@@ -869,6 +869,19 @@ class spot_node_options_builder_t
         return *this;
     }
 
+    spot_node_options_builder_t &connect_router (zlink::routing_id_t peer_rid,
+                                                 std::string endpoint)
+    {
+        if (peer_rid.size () == 0u) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "SPOT router manual peer routing id is required");
+        }
+        detail::require_non_blank (endpoint, "SPOT router manual endpoint is required");
+        _router_manual_rid_connections.push_back ({std::move (peer_rid), std::move (endpoint)});
+        apply ();
+        return *this;
+    }
+
     spot_node_options_builder_t &enable_pub_sub (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "SPOT pub/sub endpoint is required");
@@ -1002,6 +1015,7 @@ class spot_node_options_builder_t
         const auto pub_endpoint = _pub_endpoint;
         const auto routing_id = _routing_id;
         const auto router_manual_connections = _router_manual_connections;
+        const auto router_manual_rid_connections = _router_manual_rid_connections;
         const auto pub_sub_manual_connections = _pub_sub_manual_connections;
         const auto accepted_route_channels = _accepted_route_channels;
         const auto options = _options;
@@ -1032,6 +1046,9 @@ class spot_node_options_builder_t
                 for (const auto &endpoint : router_manual_connections) {
                     spot_node.connect_router (endpoint);
                 }
+                for (const auto &connection : router_manual_rid_connections) {
+                    spot_node.connect_router (connection.first, connection.second);
+                }
             }
             if (!pub_endpoint.empty ()) {
                 spot_node.enable_pub_sub (pub_endpoint);
@@ -1056,13 +1073,16 @@ class spot_node_options_builder_t
             }
         };
         _options->spot_node_appliers[spot_node_name] = [options = _options, spot_node_name,
+                                                        routing_id,
                                                         uses_implicit_spot_route_channel,
                                                         configure] {
             if (options->active_zlink == nullptr) {
                 return;
             }
             if (uses_implicit_spot_route_channel) {
-                (void) options->active_zlink->route_channel (spot_node_name);
+                auto route_channel = options->active_zlink->route_channel (spot_node_name);
+                route_channel.set_routing_id (
+                  routing_id.value_or (zlink::routing_id_t::from (spot_node_name)));
             }
             auto spot_node = options->active_zlink->add_spot_node (spot_node_name);
             configure (spot_node);
@@ -1076,6 +1096,7 @@ class spot_node_options_builder_t
     std::string _pub_endpoint;
     std::optional<zlink::routing_id_t> _routing_id;
     std::vector<std::string> _router_manual_connections;
+    std::vector<std::pair<zlink::routing_id_t, std::string>> _router_manual_rid_connections;
     std::vector<std::string> _pub_sub_manual_connections;
     std::vector<std::string> _accepted_route_channels;
     std::optional<std::string> _spot_route_channel_name;

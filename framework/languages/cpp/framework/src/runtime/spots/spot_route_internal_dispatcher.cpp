@@ -2,8 +2,11 @@
 
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 
+#include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
+
+#include <zlink.hpp>
 
 namespace zlink::framework::detail
 {
@@ -43,8 +46,7 @@ spot_route_internal_dispatcher_t::spot_route_internal_dispatcher_t (
 
 bool spot_route_internal_dispatcher_t::can_handle_send (std::string_view packet_name) const
 {
-    (void) packet_name;
-    return false;
+    return packet_name == actor_bound_session_route_request_t::packet_name;
 }
 
 bool spot_route_internal_dispatcher_t::can_handle_request (std::string_view packet_name) const
@@ -60,8 +62,34 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
 {
     (void) received;
     (void) services;
-    return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
-                                    "SPOT route internal send is not supported");
+    auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
+    if (!body) {
+        return result_t<void>::failure (body.error_kind (), body.error ()
+                                                              ? body.error ()->what ()
+                                                              : "actor route send body missing");
+    }
+    try {
+        auto request = _serializers->get<actor_bound_session_route_request_t> ().deserialize (
+          detail::encoded_payload_from_raw (body.value ()));
+        auto actor_ref = actor_ref_from_bound_session_route (request);
+        auto actor_gateway = _actor_gateway;
+        auto updated = actor_gateway.update_actor_ref (actor_ref);
+        if (!updated) {
+            return result_t<void>::failure (updated.error_kind (), updated.error ()
+                                                                     ? updated.error ()->what ()
+                                                                     : "actor ref update failed");
+        }
+        return actor_gateway.dispatch_bound_session_send (
+          actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+    }
+    catch (const std::exception &error) {
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        std::string ("actor route send decode failed: ")
+                                          + error.what ());
+    }
 }
 
 actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
@@ -72,6 +100,68 @@ actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
     auto actor_gateway = _actor_gateway;
     actor_gateway.bind_session_route (actor_ref, _route_client, header.channel_name,
                                       received.source_node_rid, stream_codec_t::message_pack);
+    if (_runtime.native_node ()) {
+        auto *serializers = _serializers;
+        actor_gateway.bind_session_sink (
+          actor_ref,
+          [runtime = _runtime,
+           target_node_rid = received.source_node_rid,
+           actor_ref,
+           serializers] (std::string packet_name, const zlink::message_t &payload) mutable {
+              auto native = runtime.native_node ();
+              if (!native) {
+                  return task_t<void> (result_t<void>::failure (
+                    framework_error_kind_t::spot_route_not_found, "SPOT node is not running"));
+              }
+              try {
+                  runtime::messaging::client_call_codec_t codec;
+                  auto header = codec.create_envelope (
+                    runtime::messaging::message_kind_t::command,
+                    std::string (runtime.node_rid ().value ()),
+                    actor_bound_session_route_request_t::packet_name);
+                  auto current_actor_ref = runtime.current_actor_ref (actor_ref).value_or (actor_ref);
+                  auto request = make_actor_bound_session_route_request (
+                    current_actor_ref, std::move (packet_name), payload);
+                  auto parts = codec.encode_envelope_parts (header, request, *serializers).items ();
+                  if (parts.empty ()) {
+                      return task_t<void> (result_t<void>::failure (
+                        framework_error_kind_t::request_protocol_error,
+                        "actor bound session route requires message parts"));
+                  }
+                  auto origin_spot =
+                    native
+                      ->get_or_create_spot (zlink::routing_id_t::from (
+                        std::string (runtime.node_rid ().value ())
+                        + ":__zlink-bound-session-route-origin"))
+                      .first;
+                  auto iterator = parts.begin ();
+                  auto submit =
+                    origin_spot
+                      .send_to_spot (target_node_rid,
+                                     zlink::routing_id_t::from (target_node_rid.to_string ()))
+                      .message (*iterator);
+                  ++iterator;
+                  for (; iterator != parts.end (); ++iterator) {
+                      submit = std::move (submit).message (*iterator);
+                  }
+                  if (!std::move (submit).submit ()) {
+                      return task_t<void> (result_t<void>::failure (
+                        framework_error_kind_t::request_failed,
+                        "actor bound session route was not submitted"));
+                  }
+                  return task_t<void> (result_t<void>::success ());
+              }
+              catch (const framework_exception_t &error) {
+                  return task_t<void> (
+                    result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+              }
+              catch (const std::exception &error) {
+                  return task_t<void> (
+                    result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
+              }
+          },
+          stream_codec_t::message_pack);
+    }
     return actor_gateway;
 }
 
@@ -100,7 +190,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             metadata.values = request.metadata;
             const auto message_kind = actor_relay_kind_from_metadata (metadata);
             auto relayed = runtime.manager ().relay_actor_packet (
-              actor_ref, _actor_gateway.actor_context (actor_ref), message_kind,
+              actor_ref, actor_gateway.actor_context (actor_ref), message_kind,
               request.packet_name_value, zlink::message_t::from (request.payload), services,
               *_serializers, std::move (metadata));
             if (!relayed) {
@@ -141,7 +231,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
           detail::encoded_payload_from_raw (body.value ()));
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
-        bind_actor_route (actor_ref, header, received);
+        auto actor_gateway = bind_actor_route (actor_ref, header, received);
         auto joined =
           request.spot_rid.empty ()
             ? runtime.join_actor_to_entry_spot_erased (
@@ -151,12 +241,13 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   : std::nullopt)
             : runtime.join_remote_actor_to_spot_erased (
                 actor_ref, spot_rid_t::from_string (request.spot_rid),
-                zlink::message_t::from (request.payload), _actor_gateway.actor_context (actor_ref));
+                zlink::message_t::from (request.payload), actor_gateway.actor_context (actor_ref));
         if (!joined) {
             return result_t<zlink::message_t>::failure (
               joined.error_kind (),
               joined.error () ? joined.error ()->what () : "remote actor join failed");
         }
+        (void) actor_gateway.update_actor_ref (joined.value ().actor);
         auto reply = make_spot_actor_join_route_reply (joined.value ());
         return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
           _serializers->get<spot_actor_join_route_reply_t> ().serialize (reply)));

@@ -1010,6 +1010,12 @@ static_assert (
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .connect_router (zlink::routing_id_t::from ("peer"),
+                                              "tcp://127.0.0.1:5503")),
+                 zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
                              .connect_pub_sub ("tcp://127.0.0.1:5504")),
                  zlink::framework::spot_node_options_builder_t &>);
 

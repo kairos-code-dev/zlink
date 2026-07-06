@@ -154,7 +154,11 @@ request_spot_mesh_parts (spot_node_runtime_t runtime,
               framework_error_kind_t::request_protocol_error,
               "remote SPOT mesh request requires at least one message part");
         }
-        auto origin_spot = native_node->entry_spot ();
+        auto origin_spot = native_node
+                             ->get_or_create_spot (zlink::routing_id_t::from (
+                               std::string (runtime.node_rid ().value ())
+                               + ":__zlink-route-origin"))
+                             .first;
         auto iterator = native_parts.begin ();
         auto submit =
           origin_spot
@@ -308,66 +312,49 @@ runtime::messaging::message_parts_t make_actor_mesh_parts (
 result_t<std::optional<zlink::message_t>> relay_actor_packet_to_remote_actor_mesh (
   spot_node_runtime_t runtime,
   const actor_ref_t &actor_ref,
+  const node_rid_t &target_node_rid,
+  const spot_rid_t &target_spot_rid,
   const stream_header_t &header,
   const zlink::message_t &payload,
-  const spot_actor_message_metadata_t &metadata)
+  const spot_actor_message_metadata_t &metadata,
+  serializer_registry_t &serializers)
 {
-    auto native_node = runtime.native_node ();
-    if (!native_node) {
-        return result_t<std::optional<zlink::message_t>>::failure (
-          framework_error_kind_t::spot_route_not_found, "SPOT node is not running");
-    }
     try {
-        auto parts = make_actor_mesh_parts (header, payload, metadata).items ();
-        if (parts.empty ()) {
-            return result_t<std::optional<zlink::message_t>>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "remote actor mesh relay requires at least one message part");
-        }
-        auto native_actor = zlink::service::spot_node_t::remote_actor_ref (
-          zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
-          std::string (actor_ref.actor_id ()));
-        auto iterator = parts.begin ();
+        auto route_metadata = metadata;
         if (header.kind () == stream_message_kind_t::send) {
-            auto submit = native_node->send_to_actor (native_actor).message (*iterator);
-            ++iterator;
-            for (; iterator != parts.end (); ++iterator) {
-                submit = std::move (submit).message (*iterator);
-            }
-            if (!std::move (submit).submit ()) {
-                return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::request_failed, "remote actor mesh send was not submitted");
-            }
-            return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
+            route_metadata.values["__zlink.actorRelayKind"] = "send";
         }
-
-        auto submit = native_node->request_to_actor (native_actor).message (*iterator);
-        ++iterator;
-        for (; iterator != parts.end (); ++iterator) {
-            submit = std::move (submit).message (*iterator);
-        }
-        auto reply =
-          runtime::messaging::message_parts_t (std::move (std::move (submit).async ().get ()));
-        runtime::messaging::envelope_codec_t envelope;
-        auto reply_header = envelope.decode_header (reply);
-        if (!reply_header) {
+        runtime::messaging::client_call_codec_t codec;
+        auto request_header = codec.create_envelope (
+          runtime::messaging::message_kind_t::request, "spot",
+          std::string (spot_actor_packet_route_request_t::packet_name), std::chrono::seconds (30));
+        auto request = make_spot_actor_packet_route_request (
+          actor_ref, target_spot_rid, header.packet_name (), payload, route_metadata);
+        auto request_parts = codec.encode_envelope_parts (request_header, request, serializers);
+        auto reply_parts =
+          request_spot_mesh_parts (runtime, target_node_rid, target_spot_rid,
+                                   std::move (request_parts));
+        if (!reply_parts) {
+            const auto *error = reply_parts.error ();
             return result_t<std::optional<zlink::message_t>>::failure (
-              reply_header.error_kind (),
-              reply_header.error () ? reply_header.error ()->what ()
-                                    : "remote actor mesh reply header decode failed");
+              reply_parts.error_kind (),
+              error != nullptr ? error->what () : "remote actor mesh request failed",
+              error != nullptr && error->is_retriable ());
         }
-        if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
+        auto decoded = codec.decode_envelope_reply<spot_actor_packet_route_reply_t> (
+          reply_parts.value (), serializers, "remote actor mesh reply is empty",
+          "remote actor mesh reply decode failed", std::string (header.packet_name ()));
+        if (!decoded) {
+            const auto *error = decoded.error ();
             return result_t<std::optional<zlink::message_t>>::failure (
-              framework_error_kind_t::request_failed,
-              reply_header.value ().error_message.value_or ("remote actor mesh request failed"));
+              decoded.error_kind (),
+              error != nullptr ? error->what () : "remote actor mesh request failed",
+              error != nullptr && error->is_retriable ());
         }
-        auto body = envelope.decode_body (reply);
-        if (!body) {
-            return result_t<std::optional<zlink::message_t>>::failure (
-              body.error_kind (),
-              body.error () ? body.error ()->what () : "remote actor mesh reply body missing");
-        }
-        return result_t<std::optional<zlink::message_t>>::success (body.value ());
+        return result_t<std::optional<zlink::message_t>>::success (
+          decoded.value ().has_reply
+            ? std::make_optional (zlink::message_t::from (decoded.value ().payload))
+            : std::nullopt);
     }
     catch (const framework_exception_t &error) {
         return result_t<std::optional<zlink::message_t>>::failure (
@@ -467,7 +454,8 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
       [&] (const spot_route_t &route,
            const spot_rid_t &spot_rid) -> result_t<std::optional<zlink::message_t>> {
         auto relayed =
-          relay_actor_packet_to_remote_actor_mesh (runtime, actor_ref, header, payload, metadata);
+          relay_actor_packet_to_remote_actor_mesh (
+            runtime, actor_ref, route.node_rid, spot_rid, header, payload, metadata, serializers);
         if (relayed) {
             runtime.record_actor_route (actor_ref,
                                         spot_route_t{route.node_rid, spot_rid, route.spot_name});
@@ -726,8 +714,10 @@ void configure_actor_gateway_spot_bridge (
         runtime->on_actor_ref_updated ([&actor_gateway] (const actor_ref_t &actor_ref) {
             return actor_gateway.update_actor_ref (actor_ref);
         });
+        auto route_client = zlink.route_client (serializers);
+        runtime->set_route_client (route_client);
         actor_gateway_spot_nodes.push_back (actor_gateway_spot_node_binding_t{
-          *runtime, zlink.route_client (serializers), std::string (runtime->node_rid ().value ()),
+          *runtime, std::move (route_client), std::string (runtime->node_rid ().value ()),
           default_spot_route_channel (spot_node), !spot_node.accepted_route_channels.empty ()});
         auto binding = actor_gateway_spot_nodes.back ();
         runtime->on_actor_entry_spot_join (

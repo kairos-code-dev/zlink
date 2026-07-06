@@ -46,13 +46,24 @@ struct spot_node_host_service_t::native_node_t
     bool local_published = false;
     std::map<std::string, peer_location_t> active_peers;
 
-    explicit native_node_t (detail::spot_node_runtime_t runtime_) :
+    native_node_t (detail::spot_node_runtime_t runtime_, zlink::spot_node_mode_t mode_) :
         context (),
-        node (std::make_shared<zlink::service::spot_node_t> (context)),
+        node (std::make_shared<zlink::service::spot_node_t> (context, mode_)),
         runtime (std::move (runtime_))
     {
     }
 };
+
+zlink::spot_node_mode_t native_spot_node_mode (const spot_node_snapshot_t &snapshot)
+{
+    if (snapshot.router_bind_endpoint && snapshot.pub_bind_endpoint) {
+        return zlink::spot_node_mode_t::all;
+    }
+    if (snapshot.router_bind_endpoint) {
+        return zlink::spot_node_mode_t::routed;
+    }
+    return zlink::spot_node_mode_t::pubsub;
+}
 
 peer_location_key_t key_of (const peer_location_t &peer)
 {
@@ -93,6 +104,12 @@ bool is_manual_spot_endpoint (const spot_node_snapshot_t &snapshot, const std::s
     return std::find (snapshot.router_manual_connections.begin (),
                       snapshot.router_manual_connections.end (),
                       endpoint) != snapshot.router_manual_connections.end ()
+           || std::find_if (snapshot.router_manual_rid_connections.begin (),
+                            snapshot.router_manual_rid_connections.end (),
+                            [&] (const auto &connection) {
+                                return connection.second == endpoint;
+                            })
+                != snapshot.router_manual_rid_connections.end ()
            || std::find (snapshot.pub_sub_manual_connections.begin (),
                          snapshot.pub_sub_manual_connections.end (),
                          endpoint) != snapshot.pub_sub_manual_connections.end ();
@@ -288,7 +305,8 @@ void spot_node_host_service_t::start (service_provider_t &services)
         if (!snapshot.router_bind_endpoint && !snapshot.pub_bind_endpoint) {
             continue;
         }
-        auto native = std::make_unique<native_node_t> (configured.runtime);
+        auto native =
+          std::make_unique<native_node_t> (configured.runtime, native_spot_node_mode (snapshot));
         if (snapshot.routing_id) {
             native->node->set_routing_id (*snapshot.routing_id);
             if (snapshot.pub_bind_endpoint) {
@@ -296,6 +314,10 @@ void spot_node_host_service_t::start (service_provider_t &services)
                   derive_routing_id (*snapshot.routing_id, "pub"));
                 native->node->set_subscriber_routing_id (
                   derive_routing_id (*snapshot.routing_id, "sub"));
+            }
+            auto entry_spot = native->node->entry_spot ();
+            if (entry_spot.routing_id ().to_string () != snapshot.routing_id->to_string ()) {
+                entry_spot.set_routing_id (*snapshot.routing_id);
             }
         }
         if (snapshot.router_bind_endpoint) {
@@ -306,6 +328,9 @@ void spot_node_host_service_t::start (service_provider_t &services)
         }
         for (const auto &endpoint : snapshot.router_manual_connections) {
             native->node->connect_peer (endpoint);
+        }
+        for (const auto &connection : snapshot.router_manual_rid_connections) {
+            native->node->connect_peer_rid (connection.first, connection.second);
         }
         for (const auto &endpoint : snapshot.pub_sub_manual_connections) {
             native->node->connect_peer (endpoint);

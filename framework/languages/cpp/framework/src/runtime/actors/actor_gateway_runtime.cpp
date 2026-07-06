@@ -940,17 +940,8 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
                                                   stream_codec_t codec)
 {
     const auto actor_id = std::string (actor_ref.actor_id ());
-    const std::lock_guard lock (_state->mutex);
-    auto found = _state->actors_by_id.find (actor_id);
-    if (found == _state->actors_by_id.end ()) {
-        _state->actors_by_id.emplace (actor_id, actor_record_t{actor_ref, true, false, codec});
-    } else {
-        found->second.ref = actor_ref;
-        found->second.bound = true;
-        found->second.disconnected = false;
-        found->second.bound_session_codec = codec;
-    }
-    _state->bound_session_sinks[actor_id] =
+    bind_session_sink (
+      std::move (actor_ref),
       [state = _state, actor_id, route_client = std::move (route_client),
        route_channel_name = std::move (route_channel_name),
        target_node_rid = std::move (target_node_rid)] (std::string packet_name,
@@ -971,7 +962,27 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
             .packet_name (actor_bound_session_route_request_t::packet_name)
             .submit ();
           return task_t<void> (result_t<void>::success ());
-      };
+      },
+      codec);
+}
+
+void actor_gateway_runtime_t::bind_session_sink (
+  actor_ref_t actor_ref,
+  std::function<task_t<void> (std::string, const zlink::message_t &)> sink,
+  stream_codec_t codec)
+{
+    const auto actor_id = std::string (actor_ref.actor_id ());
+    const std::lock_guard lock (_state->mutex);
+    auto found = _state->actors_by_id.find (actor_id);
+    if (found == _state->actors_by_id.end ()) {
+        _state->actors_by_id.emplace (actor_id, actor_record_t{actor_ref, true, false, codec});
+    } else {
+        found->second.ref = actor_ref;
+        found->second.bound = true;
+        found->second.disconnected = false;
+        found->second.bound_session_codec = codec;
+    }
+    _state->bound_session_sinks[actor_id] = std::move (sink);
 }
 
 void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id)

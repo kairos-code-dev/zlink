@@ -1216,6 +1216,7 @@ public:
     spot_node_builder_t &set_routing_id(zlink::routing_id_t routing_id);
     spot_node_builder_t &enable_router(std::string endpoint);
     spot_node_builder_t &connect_router(std::string endpoint);
+    spot_node_builder_t &connect_router(zlink::routing_id_t peer_rid, std::string endpoint);
     spot_node_builder_t &enable_pub_sub(std::string endpoint);
     spot_node_builder_t &connect_pub_sub(std::string endpoint);
     spot_node_builder_t &use_discovery(std::string channel_name);
@@ -1688,7 +1689,8 @@ framework error로 닫는다.
 SPOT code가 client/server channel로 send/request 하려면 해당 channel에서
 `enable_client(...)`를 설정한다. Spot node builder는 별도 channel client를 부착하지 않는다.
 SPOT router와 pub/sub 역할도 registry discovery 없이 고정 peer를 붙일 수 있다. 이때는
-`enable_router(endpoint).connect_router(peer)` 또는
+`enable_router(endpoint).connect_router(peer)` 또는 target node routing id를 함께 주는
+`enable_router(endpoint).connect_router(peer_rid, peer)` 또는
 `enable_pub_sub(endpoint).connect_pub_sub(peer)`처럼 역할별 manual endpoint를 기록한다.
 routing id는 `set_routing_id (routing_id)`로 Spot node에 한 번 지정한다. router와 pub/sub 역할을
 같이 켜면 framework가 같은 node id에서 역할별 내부 id를 파생해 설정한다.

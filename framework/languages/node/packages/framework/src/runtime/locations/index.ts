@@ -871,7 +871,7 @@ export interface ZLinkAutoConnectTarget {
 }
 
 export interface IZLinkAutoConnectExecutor {
-  connect(target: ZLinkAutoConnectTarget): void;
+  connect(target: ZLinkAutoConnectTarget): boolean;
   disconnect(target: ZLinkAutoConnectTarget): void;
 }
 
@@ -1250,14 +1250,17 @@ export class ZLinkAutoConnectReconciler {
             `[zlink-autoconnect] dial start rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
           );
         }
-        this.executor.connect(target);
+        const connected = this.executor.connect(target);
         if (traceAutoConnect) {
           console.error(
-            `[zlink-autoconnect] dial ok rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
+            `[zlink-autoconnect] ${connected ? 'dial ok' : 'dial skipped'} ` +
+              `rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
           );
         }
-        connectedEndpoints.push(target.endpoint);
-        this.active.set(key, target);
+        if (connected) {
+          connectedEndpoints.push(target.endpoint);
+          this.active.set(key, target);
+        }
         continue;
       }
 
@@ -1268,15 +1271,19 @@ export class ZLinkAutoConnectReconciler {
             `[zlink-autoconnect] dial start rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
           );
         }
-        this.executor.connect(target);
+        const connected = this.executor.connect(target);
         if (traceAutoConnect) {
           console.error(
-            `[zlink-autoconnect] dial ok rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
+            `[zlink-autoconnect] ${connected ? 'dial ok' : 'dial skipped'} ` +
+              `rid=${formatAutoConnectRid(target.nodeRid)} endpoint=${target.endpoint}`
           );
         }
         disconnectedEndpoints.push(current.endpoint);
-        connectedEndpoints.push(target.endpoint);
-        this.active.set(key, target);
+        this.active.delete(key);
+        if (connected) {
+          connectedEndpoints.push(target.endpoint);
+          this.active.set(key, target);
+        }
       }
     }
 

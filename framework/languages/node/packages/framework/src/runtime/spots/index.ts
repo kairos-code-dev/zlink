@@ -694,18 +694,22 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
     private readonly manualEndpoints: ReadonlySet<string>
   ) {}
 
-  connect(target: ZLinkAutoConnectTarget): void {
+  connect(target: ZLinkAutoConnectTarget): boolean {
+    let connected = false;
     if (!this.manualEndpoints.has(target.endpoint)) {
       if (target.nodeRid !== undefined) {
         this.node.connectPeerRid(target.nodeRid, target.endpoint);
       } else {
         this.node.connectPeer(target.endpoint);
       }
+      connected = true;
     }
     const pubEndpoint = spotPubEndpointOf(target);
     if (pubEndpoint !== undefined && !this.manualEndpoints.has(pubEndpoint)) {
       this.node.connectPeer(pubEndpoint);
+      connected = true;
     }
+    return connected;
   }
 
   disconnect(target: ZLinkAutoConnectTarget): void {

@@ -129,6 +129,51 @@ test('auto-connect reconciler publishes local row diffs handover and stays fail-
   assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 0);
 });
 
+test('auto-connect reconciler does not mark a target active when executor skips dial', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const runtime = runtimeFor(store, 'owner-local');
+  await runtime.start(rid('node-local'));
+  await store.renewOwnerLease('owner-remote', rid('node-remote'), 30000);
+  await store.updatePeer(
+    peer('owner-remote', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://manual'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+
+  const calls = [];
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-local', 'tcp://local'),
+    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-local', 'tcp://local'),
+    runtime,
+    peerResolver: new internal.ZLinkStoreLocationResolvers({
+      stores: stores(store),
+      leaseTracker: new internal.ZLinkOwnerLeaseTracker({
+        store,
+        options: { pollingIntervalMs: 0 },
+        monotonicNowMs: () => 0
+      })
+    }),
+    executor: {
+      connect(target) {
+        calls.push(`skip:${target.endpoint}:${target.ownerId}`);
+        return false;
+      },
+      disconnect(target) {
+        calls.push(`disconnect:${target.endpoint}:${target.ownerId}`);
+      }
+    },
+    options: { heartbeatIntervalMs: 1000 },
+    monotonicNowMs: () => 0
+  });
+
+  await reconciler.tick();
+  assert.deepEqual(calls, ['skip:tcp://manual:owner-remote']);
+  assert.deepEqual(reconciler.activeTargets, []);
+
+  await reconciler.shutdown();
+  assert.deepEqual(calls, ['skip:tcp://manual:owner-remote']);
+  await runtime.stop();
+});
+
 test('auto-connect loop skips unchanged change stamp until live owner set changes', async () => {
   const reconciler = {
     storeFailed: false,
@@ -211,6 +256,7 @@ function executor(calls) {
   return {
     connect(target) {
       calls.push(`connect:${target.endpoint}:${target.ownerId}`);
+      return true;
     },
     disconnect(target) {
       calls.push(`disconnect:${target.endpoint}:${target.ownerId}`);

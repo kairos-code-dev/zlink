@@ -1804,9 +1804,9 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
     private readonly options: { readonly routerInitiatorDial?: boolean; readonly routeChannelId?: string } = {}
   ) {}
 
-  connect(target: ZLinkAutoConnectTarget): void {
+  connect(target: ZLinkAutoConnectTarget): boolean {
     if (this.manualEndpoints.has(target.endpoint)) {
-      return;
+      return false;
     }
     if (this.options.routerInitiatorDial === true) {
       configureRouterInitiatorDial(this.socket, target);
@@ -1819,6 +1819,7 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
       if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
         traceAutoConnectSocketDial('connect return', this.socket, target, this.options.routeChannelId, `result=${String(result)}`);
       }
+      return true;
     } catch (error) {
       if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
         traceAutoConnectSocketDial('connect error', this.socket, target, this.options.routeChannelId, formatAutoConnectError(error));
@@ -1838,7 +1839,7 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
 class ZLinkNoopAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   static readonly instance = new ZLinkNoopAutoConnectExecutor();
 
-  connect(): void {}
+  connect(): boolean { return false; }
 
   disconnect(): void {}
 }

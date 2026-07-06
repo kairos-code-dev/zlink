@@ -15,6 +15,7 @@ CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 SCENARIO_SET="${SCENARIO_SET:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 NEED_SESSION_NODES=1
 NEED_SESSION_B=0
 NEED_PLAY_B=1
@@ -141,7 +142,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 143' TERM INT
 
-read -r -a PORTS <<<"$(python3 - <<'PY'
+PORT_LIST="$(python3 - <<'PY'
 import random
 import socket
 
@@ -166,6 +167,7 @@ finally:
         sock.close()
 PY
 )"
+read -r -a PORTS <<<"$PORT_LIST"
 
 PLAY_A_HTTP="http://127.0.0.1:${PORTS[3]}"
 PLAY_A_CONTROL="tcp://127.0.0.1:${PORTS[4]}"
@@ -331,6 +333,29 @@ wait_control_route() {
   return 1
 }
 
+ordered_roles() {
+  python3 - "$E2E_START_ORDER" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
 start_server() {
   local name="$1"
   local dll="$2"
@@ -351,7 +376,153 @@ start_server() {
   PIDS+=("$!")
 }
 
+start_named_server() {
+  case "$1" in
+    session-a)
+      SESSION_A_ARGS=(
+        --rid session-a
+        --http-url "$SESSION_A_HTTP"
+        --redis-endpoint "$REDIS_ENDPOINT"
+        --redis-key-prefix "$REDIS_KEY_PREFIX"
+        --control-endpoint "$SESSION_A_CONTROL"
+        --spot-router-endpoint "$SESSION_A_SPOT_ROUTER"
+        --stream-endpoint "$SESSION_A_STREAM"
+        --evidence-file "$LOG_DIR/session-a.evidence.log"
+        --log-dir "$LOG_DIR"
+      )
+      if [[ "$NEED_TLS_STREAM" == "1" ]]; then
+        SESSION_A_ARGS+=(
+          --tls-stream-endpoint "$SESSION_A_TLS_STREAM"
+          --tls-cert-path "$TLS_CERT"
+          --tls-key-path "$TLS_KEY"
+        )
+      fi
+      start_server session-a "$SESSION_DLL" "${SESSION_A_ARGS[@]}"
+      ;;
+    session-b)
+      start_server session-b "$SESSION_DLL" \
+        --rid session-b \
+        --http-url "$SESSION_B_HTTP" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --control-endpoint "$SESSION_B_CONTROL" \
+        --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
+        --stream-endpoint "$SESSION_B_STREAM" \
+        --evidence-file "$LOG_DIR/session-b.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    play-a)
+      start_server play-a "$PLAY_DLL" \
+        --rid play-a \
+        --http-url "$PLAY_A_HTTP" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --control-endpoint "$PLAY_A_CONTROL" \
+        --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
+        --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
+        --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
+        --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+        --external-client-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
+        --evidence-file "$LOG_DIR/play-a.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    play-b)
+      start_server play-b "$PLAY_DLL" \
+        --rid play-b \
+        --http-url "$PLAY_B_HTTP" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --control-endpoint "$PLAY_B_CONTROL" \
+        --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
+        --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
+        --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
+        --evidence-file "$LOG_DIR/play-b.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    multi-node-a)
+      start_server multi-node-a "$MULTI_NODE_DLL" \
+        --rid multi-node-a \
+        --http-url "$MULTI_A_HTTP" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --multi-route-a-endpoint "$MULTI_ROUTE_A" \
+        --multi-spot-router-a-endpoint "$MULTI_SPOT_ROUTER_A" \
+        --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    multi-node-b)
+      start_server multi-node-b "$MULTI_NODE_DLL" \
+        --rid multi-node-b \
+        --http-url "$MULTI_B_HTTP" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --multi-route-b-endpoint "$MULTI_ROUTE_B" \
+        --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
+        --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    gateway)
+      start_server gateway "$GATEWAY_DLL" \
+        --rid gateway \
+        --http-url "$GATEWAY_HTTP" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --spot-pub-endpoint "$CLIENT_SPOT_PUB" \
+        --evidence-file "$LOG_DIR/gateway.evidence.log" \
+        --log-dir "$LOG_DIR"
+      ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
+wait_named_server() {
+  case "$1" in
+    session-a)
+      wait_health session-a "$SESSION_A_HTTP"
+      wait_port session-a-control "$SESSION_A_CONTROL"
+      wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER"
+      wait_port session-a-stream "$SESSION_A_STREAM"
+      if [[ "$NEED_TLS_STREAM" == "1" ]]; then
+        wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
+      fi
+      ;;
+    session-b)
+      wait_health session-b "$SESSION_B_HTTP"
+      wait_port session-b-control "$SESSION_B_CONTROL"
+      wait_port session-b-spot-router "$SESSION_B_SPOT_ROUTER"
+      wait_port session-b-stream "$SESSION_B_STREAM"
+      ;;
+    play-a)
+      wait_health play-a "$PLAY_A_HTTP"
+      wait_port play-a-control "$PLAY_A_CONTROL"
+      wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
+      wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
+      ;;
+    play-b)
+      wait_health play-b "$PLAY_B_HTTP"
+      wait_port play-b-control "$PLAY_B_CONTROL"
+      wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
+      wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
+      ;;
+    multi-node-a)
+      wait_health multi-node-a "$MULTI_A_HTTP"
+      wait_port multi-route-a "$MULTI_ROUTE_A"
+      wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
+      ;;
+    multi-node-b)
+      wait_health multi-node-b "$MULTI_B_HTTP"
+      wait_port multi-route-b "$MULTI_ROUTE_B"
+      wait_port multi-spot-router-b "$MULTI_SPOT_ROUTER_B"
+      ;;
+    gateway)
+      wait_health gateway "$GATEWAY_HTTP"
+      ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
 echo "log_dir=$LOG_DIR"
+echo "start_order=$E2E_START_ORDER"
 if [[ "${ZLINK_SPOT_SERVICE_SKIP_BUILD:-0}" != "1" ]]; then
   build_projects
 fi
@@ -374,130 +545,36 @@ docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpi
 REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 REDIS_KEY_PREFIX="spotservice-e2e:$$:"
 
+SERVER_ROLES=()
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
-SESSION_A_ARGS=(
-  --rid session-a
-  --http-url "$SESSION_A_HTTP"
-  --redis-endpoint "$REDIS_ENDPOINT"
-  --redis-key-prefix "$REDIS_KEY_PREFIX"
-  --control-endpoint "$SESSION_A_CONTROL"
-  --spot-router-endpoint "$SESSION_A_SPOT_ROUTER"
-  --stream-endpoint "$SESSION_A_STREAM"
-  --evidence-file "$LOG_DIR/session-a.evidence.log"
-  --log-dir "$LOG_DIR"
-)
-if [[ "$NEED_TLS_STREAM" == "1" ]]; then
-  SESSION_A_ARGS+=(
-    --tls-stream-endpoint "$SESSION_A_TLS_STREAM"
-    --tls-cert-path "$TLS_CERT"
-    --tls-key-path "$TLS_KEY"
-  )
-fi
-start_server session-a "$SESSION_DLL" "${SESSION_A_ARGS[@]}"
-wait_health session-a "$SESSION_A_HTTP"
-wait_port session-a-control "$SESSION_A_CONTROL"
-wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER"
-wait_port session-a-stream "$SESSION_A_STREAM"
-if [[ "$NEED_TLS_STREAM" == "1" ]]; then
-  wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
-fi
-
-if [[ "$NEED_SESSION_B" == "1" ]]; then
-  start_server session-b "$SESSION_DLL" \
-    --rid session-b \
-    --http-url "$SESSION_B_HTTP" \
-    --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --control-endpoint "$SESSION_B_CONTROL" \
-    --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
-    --stream-endpoint "$SESSION_B_STREAM" \
-    --evidence-file "$LOG_DIR/session-b.evidence.log" \
-    --log-dir "$LOG_DIR"
-  wait_health session-b "$SESSION_B_HTTP"
-  wait_port session-b-control "$SESSION_B_CONTROL"
-  wait_port session-b-spot-router "$SESSION_B_SPOT_ROUTER"
-  wait_port session-b-stream "$SESSION_B_STREAM"
-fi
+  SERVER_ROLES+=(session-a)
+  if [[ "$NEED_SESSION_B" == "1" ]]; then
+    SERVER_ROLES+=(session-b)
+  fi
 fi
 
 if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
-start_server play-a "$PLAY_DLL" \
-  --rid play-a \
-  --http-url "$PLAY_A_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --control-endpoint "$PLAY_A_CONTROL" \
-  --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
-  --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-  --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
-  --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-  --external-client-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
-  --evidence-file "$LOG_DIR/play-a.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health play-a "$PLAY_A_HTTP"
-wait_port play-a-control "$PLAY_A_CONTROL"
-wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
-wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
-
-if [[ "$NEED_PLAY_B" == "1" ]]; then
-start_server play-b "$PLAY_DLL" \
-  --rid play-b \
-  --http-url "$PLAY_B_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --control-endpoint "$PLAY_B_CONTROL" \
-  --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
-  --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
-  --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
-  --evidence-file "$LOG_DIR/play-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health play-b "$PLAY_B_HTTP"
-wait_port play-b-control "$PLAY_B_CONTROL"
-wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
-wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
-fi
-
+  SERVER_ROLES+=(play-a)
+  if [[ "$NEED_PLAY_B" == "1" ]]; then
+    SERVER_ROLES+=(play-b)
+  fi
 fi
 
 if [[ "$SCENARIO_SET" == "sm-q9" ]]; then
-start_server multi-node-a "$MULTI_NODE_DLL" \
-  --rid multi-node-a \
-  --http-url "$MULTI_A_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --multi-route-a-endpoint "$MULTI_ROUTE_A" \
-  --multi-spot-router-a-endpoint "$MULTI_SPOT_ROUTER_A" \
-  --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health multi-node-a "$MULTI_A_HTTP"
-wait_port multi-route-a "$MULTI_ROUTE_A"
-wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
-
-start_server multi-node-b "$MULTI_NODE_DLL" \
-  --rid multi-node-b \
-  --http-url "$MULTI_B_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --multi-route-b-endpoint "$MULTI_ROUTE_B" \
-  --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
-  --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health multi-node-b "$MULTI_B_HTTP"
-wait_port multi-route-b "$MULTI_ROUTE_B"
-wait_port multi-spot-router-b "$MULTI_SPOT_ROUTER_B"
+  SERVER_ROLES+=(multi-node-a multi-node-b)
 fi
 
 if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
-start_server gateway "$GATEWAY_DLL" \
-  --rid gateway \
-  --http-url "$GATEWAY_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --spot-pub-endpoint "$CLIENT_SPOT_PUB" \
-  --evidence-file "$LOG_DIR/gateway.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health gateway "$GATEWAY_HTTP"
+  SERVER_ROLES+=(gateway)
 fi
+
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_named_server "$role"
+done
+for role in "${SERVER_ROLES[@]}"; do
+  wait_named_server "$role"
+done
 
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
   wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a

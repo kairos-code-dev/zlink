@@ -13,7 +13,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRouteReceivePump _receivePump;
     private readonly ZLinkRouteChannelRegistration _registration;
     private readonly IZLinkBackendRouterSocket _router;
-    private volatile bool _autoConnectManaged;
     private readonly CancellationTokenSource _stopSource;
     private readonly ZLinkAsyncSubmitter _submitter;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
@@ -40,8 +39,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _submitter = new ZLinkAsyncSubmitter(
             router.OnSendReady,
             registration.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
-            _stopSource.Token,
-            failFastNotConnected: () => _autoConnectManaged);
+            _stopSource.Token);
         _calls = new ZLinkRouteChannelCalls(
             services,
             frameworkRegistration,
@@ -184,14 +182,12 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
     /// <summary>
     /// Called by the auto-connect host when a reconcile loop manages this
-    /// channel's mesh. From then on rid-addressed submits fail fast on
-    /// NotConnected instead of buffering: the loop owns convergence, and a
-    /// still-unconnected target is a typed, retriable condition for the
-    /// caller (spot-address messaging draft §7).
+    /// channel's mesh. Route submits still use the socket writability window
+    /// so a peer discovered just after the request can connect without
+    /// caller-level retry.
     /// </summary>
     internal void MarkAutoConnectManaged()
     {
-        _autoConnectManaged = true;
     }
 
     public void Connect(string endpoint)

@@ -9,6 +9,7 @@ mkdir -p "$LOG_DIR"
 ACTOR_PROJECT="$ROOT_DIR/Server/Actor/ToActorMessaging.Actor.csproj"
 CALLER_PROJECT="$ROOT_DIR/Server/Caller/ToActorMessaging.Caller.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/ToActorMessaging.Client.csproj"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 
 pick_port() {
   python3 - <<'PY'
@@ -50,6 +51,64 @@ wait_health() {
   return 1
 }
 
+ordered_roles() {
+  python3 - "$E2E_START_ORDER" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
+start_actor() {
+  dotnet run --no-build --project "$ACTOR_PROJECT" -- \
+    --rid "$ACTOR_RID" \
+    --http-url "$ACTOR_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --router-endpoint "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
+    --pubsub-endpoint "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
+    --evidence-file "$LOG_DIR/actor.evidence.log" \
+    --log-dir "$LOG_DIR" \
+    >"$LOG_DIR/actor.stdout.log" 2>"$LOG_DIR/actor.stderr.log" &
+  pids+=("$!")
+}
+
+start_caller() {
+  dotnet run --no-build --project "$CALLER_PROJECT" -- \
+    --rid "$CALLER_RID" \
+    --http-url "$CALLER_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --router-endpoint "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
+    --pubsub-endpoint "tcp://127.0.0.1:$CALLER_PUBSUB_PORT" \
+    --log-dir "$LOG_DIR" \
+    >"$LOG_DIR/caller.stdout.log" 2>"$LOG_DIR/caller.stderr.log" &
+  pids+=("$!")
+}
+
+start_role() {
+  case "$1" in
+    actor) start_actor ;;
+    caller) start_caller ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
 if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
 else
@@ -73,32 +132,15 @@ ACTOR_URL="http://127.0.0.1:$ACTOR_HTTP_PORT"
 CALLER_URL="http://127.0.0.1:$CALLER_HTTP_PORT"
 
 echo "log_dir=$LOG_DIR"
+echo "start_order=$E2E_START_ORDER"
 dotnet build "$ACTOR_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CALLER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-dotnet run --no-build --project "$ACTOR_PROJECT" -- \
-  --rid "$ACTOR_RID" \
-  --http-url "$ACTOR_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --router-endpoint "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
-  --pubsub-endpoint "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
-  --evidence-file "$LOG_DIR/actor.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/actor.stdout.log" 2>"$LOG_DIR/actor.stderr.log" &
-pids+=("$!")
-
-dotnet run --no-build --project "$CALLER_PROJECT" -- \
-  --rid "$CALLER_RID" \
-  --http-url "$CALLER_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --router-endpoint "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
-  --pubsub-endpoint "tcp://127.0.0.1:$CALLER_PUBSUB_PORT" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/caller.stdout.log" 2>"$LOG_DIR/caller.stderr.log" &
-pids+=("$!")
+mapfile -t SERVER_ROLES < <(ordered_roles actor caller)
+for role in "${SERVER_ROLES[@]}"; do
+  start_role "$role"
+done
 
 wait_health "$ACTOR_URL" actor
 wait_health "$CALLER_URL" caller

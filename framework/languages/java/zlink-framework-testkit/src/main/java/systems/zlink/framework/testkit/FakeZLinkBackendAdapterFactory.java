@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
@@ -78,6 +79,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private final List<FakeRouterSocket> routers = new ArrayList<>();
     private Message nextActorJoinReply;
     private List<Message> nextSpotRequestReplyParts;
+    private volatile Consumer<String> spotReplyObserver = ignored -> { };
 
     public List<String> calls() {
         synchronized (calls) {
@@ -99,6 +101,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         nextSpotRequestReplyParts = parts.stream()
             .map(Message::from)
             .toList();
+    }
+
+    public void onSpotReply(Consumer<String> observer) {
+        spotReplyObserver = observer == null ? ignored -> { } : observer;
     }
 
     private static Message jsonStringMessage(String value) {
@@ -249,6 +255,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         spot.dispatchRouteReadable();
     }
 
+    public void dispatchEntrySpotRequest(String packetName, String payload, long requestSeq) {
+        FakeSpot spot = entrySpot();
+        spot.enqueueRoute(packetName, payload, Optional.of(requestSeq));
+        spot.dispatchRouteReadable();
+    }
+
     public void dispatchRouteMeshSpotRequest(
         RoutingId sourceRid,
         RoutingId targetSpotRid,
@@ -296,6 +308,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             .filter(spot -> spot.name().startsWith("spot."))
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("no fake user spot is available"));
+    }
+
+    private FakeSpot entrySpot() {
+        return spots.stream()
+            .filter(spot -> "entrySpot".equals(spot.name()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("no fake entry spot is available"));
     }
 
     @Override
@@ -997,9 +1016,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 Optional.of(RoutingId.from(name())),
                 requestSeq,
                 List.of(Message.from(packetName), Message.from(payload)),
-                replyParts -> replies.add(replyParts.isEmpty()
-                    ? ""
-                    : replyParts.get(0).toUtf8String())));
+                replyParts -> {
+                    String reply = replyParts.isEmpty()
+                        ? ""
+                        : replyParts.get(0).toUtf8String();
+                    replies.add(reply);
+                    owner.spotReplyObserver.accept(reply);
+                }));
         }
 
         void dispatchRouteReadable() {

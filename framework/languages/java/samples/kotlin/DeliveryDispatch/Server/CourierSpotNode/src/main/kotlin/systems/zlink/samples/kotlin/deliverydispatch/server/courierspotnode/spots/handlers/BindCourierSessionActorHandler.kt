@@ -23,7 +23,7 @@ class BindCourierSessionActorHandler : ZLinkEntrySpotActorRequestHandler<
     ): BindCourierSessionRes =
         BindCourierSessionRes(
             courierId = request.courierId,
-            actor = requireNotNull(request.actor) { "BindCourierSessionReq.actor is required" },
+            nodeRid = requireNotNull(request.actor) { "BindCourierSessionReq.actor is required" }.nodeRid().toString(),
             sessionRoute = requireNotNull(request.sessionRoute) { "BindCourierSessionReq.sessionRoute is required" },
         )
 }

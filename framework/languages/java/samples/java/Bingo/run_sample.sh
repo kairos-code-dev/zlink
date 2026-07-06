@@ -8,6 +8,7 @@ redis_container_id=""
 role_pattern='systems\.zlink\.samples\.bingo\.(server\.(api|play|session)\.Program|client\.Program)'
 log_dir="build/sample-logs"
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$(pwd)/logs}"
+export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
 mkdir -p "${log_dir}" "${BINGO_LOG_DIR}"
 rm -f "${log_dir}"/*.log
 rm -f "${BINGO_LOG_DIR}"/*.log

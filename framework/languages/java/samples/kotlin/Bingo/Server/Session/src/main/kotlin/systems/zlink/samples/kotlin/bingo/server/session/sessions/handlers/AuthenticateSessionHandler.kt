@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.locations.ZLinkSpotAddress
@@ -63,14 +64,20 @@ class AuthenticateSessionHandler(
             .submit(EnsurePlayerActorRes::class.java)
             .await()
         context.actors()
-            .bind(ensured.actor.toActorRef())
+            .bind(
+                ZLinkActorRef(
+                    RoutingId.from(ensured.actor.nodeRid),
+                    ensured.actor.actorId,
+                    ensured.actor.generation,
+                ),
+            )
             .await()
         context.client()
             .reply(
                 AuthenticateRes(
                     ensured.actorId,
                     authenticated.displayName,
-                    SampleTopology.preferredPlayNodeRid(),
+                    ensured.actor.nodeRid,
                 ),
             )
             .submit()

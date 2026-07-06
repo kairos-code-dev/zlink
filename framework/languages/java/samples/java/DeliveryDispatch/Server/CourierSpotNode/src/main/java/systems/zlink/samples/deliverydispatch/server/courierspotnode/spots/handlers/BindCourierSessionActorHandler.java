@@ -22,7 +22,7 @@ public final class BindCourierSessionActorHandler
         CancellationToken cancellationToken) {
         return new Messages.BindCourierSessionAccepted(
             request.courierId(),
-            request.actor(),
+            request.actor().nodeRid().toString(),
             request.sessionRoute());
     }
 }

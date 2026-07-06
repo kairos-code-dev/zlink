@@ -16,7 +16,7 @@ import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoR
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
-@ZLinkHandlerGroup("play")
+@ZLinkHandlerGroup("play-route")
 public final class AllocateBingoRoomHandler
     implements ZLinkRequestHandler<
         Messages.AllocateBingoRoomReq,

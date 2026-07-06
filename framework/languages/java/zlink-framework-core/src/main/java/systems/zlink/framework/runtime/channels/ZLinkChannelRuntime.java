@@ -103,6 +103,8 @@ public final class ZLinkChannelRuntime
     private static final int ERRNO_ENOTCONN_WIN = 10057;
     private static final int ERRNO_ECONNREFUSED_WIN = 10061;
     private static final int ERRNO_EHOSTUNREACH_WIN = 10065;
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
 
     private final ZLinkBackendContext context;
     private final boolean ownsContext;
@@ -799,10 +801,17 @@ public final class ZLinkChannelRuntime
         RoutingId targetSpotRid,
         List<Message> spotParts,
         Duration timeout) {
+        trace("spot-route request-start router=" + routerChannelId
+            + " targetNode=" + targetNodeRid
+            + " targetSpot=" + targetSpotRid
+            + " parts=" + describeTraceParts(spotParts));
         ChannelRegistration registration = registrationsByName.get(routerChannelId);
         if (registration == null || registration.kind() != ChannelKind.ROUTE_MESH) {
             ZLinkBackendSpotNode spotRouterNode = spotRouterNodes.get(routerChannelId);
             if (spotRouterNode != null) {
+                trace("spot-route request-path=spot-router-node router=" + routerChannelId
+                    + " targetNode=" + targetNodeRid
+                    + " targetSpot=" + targetSpotRid);
                 return requestToSpotViaSpotRouterNode(
                     routerChannelId,
                     spotRouterNode,
@@ -811,6 +820,9 @@ public final class ZLinkChannelRuntime
                     spotParts,
                     timeout);
             }
+            trace("spot-route request-missing-router router=" + routerChannelId
+                + " targetNode=" + targetNodeRid
+                + " targetSpot=" + targetSpotRid);
             throw new ZLinkConfigurationException(
                 "route mesh channel is not configured: " + routerChannelId);
         }
@@ -818,6 +830,9 @@ public final class ZLinkChannelRuntime
         trackPendingRequest(result, timeout);
         try {
             ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
+            trace("spot-route request-path=route-bridge router=" + routerChannelId
+                + " targetNode=" + targetNodeRid
+                + " targetSpot=" + targetSpotRid);
             List<Message> bridgeParts = copyMessages(spotParts);
             PendingRawSpotRouteBridgeReply rawReply = new PendingRawSpotRouteBridgeReply(
                 targetNodeRid,
@@ -834,10 +849,18 @@ public final class ZLinkChannelRuntime
                         timeout)
                     .whenComplete((reply, error) -> {
                         if (error != null) {
+                            trace("spot-route bridge-reply-error router=" + routerChannelId
+                                + " targetNode=" + targetNodeRid
+                                + " targetSpot=" + targetSpotRid
+                                + " error=" + error);
                             result.completeExceptionally(error);
                             return;
                         }
                         try {
+                            trace("spot-route bridge-reply router=" + routerChannelId
+                                + " targetNode=" + targetNodeRid
+                                + " targetSpot=" + targetSpotRid
+                                + " parts=" + describeTraceParts(reply));
                             if (sameMessageParts(rawReply.requestParts(), reply)
                                 || sameFirstMessagePart(rawReply.requestParts(), reply)) {
                                 return;
@@ -866,6 +889,10 @@ public final class ZLinkChannelRuntime
             }
             return result;
         } catch (RuntimeException ex) {
+            trace("spot-route request-exception router=" + routerChannelId
+                + " targetNode=" + targetNodeRid
+                + " targetSpot=" + targetSpotRid
+                + " error=" + ex);
             removeRawSpotRouteBridgeReply(routerChannelId, result);
             result.completeExceptionally(ex);
             return result;
@@ -886,6 +913,10 @@ public final class ZLinkChannelRuntime
                 targetSpotRid,
                 requestParts,
                 SendFlags.NONE);
+            trace("spot-route node-send-submit router=" + routerChannelId
+                + " targetNode=" + targetNodeRid
+                + " targetSpot=" + targetSpotRid
+                + " submitted=" + submitted);
             if (submitted) {
                 result.complete(null);
             } else {
@@ -911,6 +942,7 @@ public final class ZLinkChannelRuntime
         CompletableFuture<List<Message>> result = new CompletableFuture<>();
         trackPendingRequest(result, timeout);
         List<Message> requestParts = copyMessages(spotParts);
+        long requestStartedNanos = System.nanoTime();
         try {
             boolean submitted = node.entrySpot().requestToSpot(
                 targetNodeRid,
@@ -918,6 +950,23 @@ public final class ZLinkChannelRuntime
                 requestParts,
                 reply -> {
                     try {
+                        trace("spot-route node-reply router=" + routerChannelId
+                            + " targetNode=" + targetNodeRid
+                            + " targetSpot=" + targetSpotRid
+                            + " elapsedMs=" + elapsedMillis(requestStartedNanos)
+                            + " result=" + reply.result()
+                            + " origin=spot-node-callback"
+                            + " sourceRid=" + reply.routingId().map(Object::toString).orElse(null)
+                            + " sourceSpot=" + reply.spotRid().map(Object::toString).orElse(null)
+                            + " requestSeq=" + reply.requestSeq().map(Object::toString).orElse(null)
+                            + " parts=" + describeTraceParts(reply.parts()));
+                        if (reply.result() != ZLinkBackendRequestResult.OK) {
+                            result.completeExceptionally(new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                                "SPOT route request failed through router '" + routerChannelId
+                                    + "': " + reply.result()));
+                            return;
+                        }
                         List<Message> replyParts = copyMessages(reply.parts());
                         if (isFrameworkErrorReply(replyParts)) {
                             replyParts.forEach(Message::close);
@@ -935,6 +984,10 @@ public final class ZLinkChannelRuntime
                 },
                 SendFlags.NONE,
                 timeout);
+            trace("spot-route node-submit router=" + routerChannelId
+                + " targetNode=" + targetNodeRid
+                + " targetSpot=" + targetSpotRid
+                + " submitted=" + submitted);
             if (!submitted) {
                 result.completeExceptionally(new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.REQUEST_FAILED,
@@ -946,6 +999,39 @@ public final class ZLinkChannelRuntime
             requestParts.forEach(Message::close);
         }
         return result;
+    }
+
+    private static void trace(String message) {
+        if (STREAM_TRACE) {
+            System.out.println("[zlink-java-stream-trace] " + message);
+        }
+    }
+
+    private static String describeTraceParts(List<Message> parts) {
+        List<String> descriptions = new ArrayList<>();
+        for (int i = 0; i < parts.size(); i++) {
+            byte[] bytes = parts.get(i).toByteArray();
+            descriptions.add(i + ":" + bytes.length + ":" + traceText(bytes));
+        }
+        return descriptions.toString();
+    }
+
+    private static String traceText(byte[] bytes) {
+        if (bytes.length == 0 || bytes.length > 96) {
+            return "";
+        }
+        String text = new String(bytes, StandardCharsets.UTF_8);
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (Character.isISOControl(ch) && !Character.isWhitespace(ch)) {
+                return "";
+            }
+        }
+        return text;
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
     }
 
     private void submitRouteRequestWithRetry(

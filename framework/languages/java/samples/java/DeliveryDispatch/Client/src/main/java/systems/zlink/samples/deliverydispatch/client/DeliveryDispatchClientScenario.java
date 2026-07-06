@@ -32,7 +32,7 @@ public final class DeliveryDispatchClientScenario {
             courierB.request(new Messages.BindCourierSession("courier-b"))
                 .await(Messages.BindCourierSessionAccepted.class);
         ensure(courierBBound.courierId().equals("courier-b"));
-        ensure(!courierABound.actor().nodeRid().equals(courierBBound.actor().nodeRid()));
+        ensure(!courierABound.nodeRid().equals(courierBBound.nodeRid()));
 
         runSuccessfulDelivery(customer, courierA);
         runReassignedDelivery(customer, courierA, courierB);

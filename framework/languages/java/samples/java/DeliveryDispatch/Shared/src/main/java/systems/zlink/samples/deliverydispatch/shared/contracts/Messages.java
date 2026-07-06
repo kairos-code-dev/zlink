@@ -57,7 +57,7 @@ public final class Messages {
         }
     }
 
-    public record BindCourierSessionAccepted(String courierId, ZLinkActorRefSnapshot actor, String sessionRoute) {
+    public record BindCourierSessionAccepted(String courierId, String nodeRid, String sessionRoute) {
     }
 
     @ZLinkPacket("BindCourier")

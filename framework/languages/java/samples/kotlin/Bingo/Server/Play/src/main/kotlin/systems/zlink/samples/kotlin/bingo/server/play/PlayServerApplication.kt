@@ -53,7 +53,7 @@ class PlayServerApplication {
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(SampleTopology.selectedPlayChannelEndpoint())
                 .enableClient()
-                .addHandlerGroup("play")
+                .addHandlerGroup("play-route")
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             val node: ZLinkSpotNodeBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())

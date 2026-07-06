@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.bingo.shared.contracts
 
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 import systems.zlink.framework.handlers.ZLinkPacket
 
 @ZLinkPacket("AuthenticateReq")
@@ -25,10 +24,16 @@ data class EnsurePlayerActorReq(
     val preferredActorNodeRid: String,
 )
 
+data class ActorRefWire(
+    val nodeRid: String,
+    val actorId: String,
+    val generation: Long,
+)
+
 data class EnsurePlayerActorRes(
     val actorId: String,
     val actorType: String,
-    val actor: ZLinkActorRefSnapshot,
+    val actor: ActorRefWire,
 )
 
 @ZLinkPacket("MatchBingoReq")

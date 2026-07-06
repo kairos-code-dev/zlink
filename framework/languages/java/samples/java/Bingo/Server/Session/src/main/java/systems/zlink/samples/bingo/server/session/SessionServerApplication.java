@@ -51,6 +51,7 @@ public final class SessionServerApplication {
             node.connectRouter(
                 RoutingId.from(SampleTopology.preferredPlayNodeRid()),
                 SampleTopology.preferredPlaySpotRouterEndpoint());
+            node.enablePubSub(SampleTopology.selectedSessionSpotEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession.class)

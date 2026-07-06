@@ -58,12 +58,13 @@ public final class PlayServerApplication {
                 .enableServer(SampleTopology.selectedPlayChannelEndpoint())
                 .enableClient()
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
-                .addHandlerGroup("play");
+                .addHandlerGroup("play-route");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint());
             node.connectPeerPub(SampleTopology.peerPlaySpotEndpoint());
+            node.configureEntrySpot().setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
             node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);

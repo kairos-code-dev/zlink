@@ -51,6 +51,8 @@ public final class CustomerGatewayApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.CustomerSpotDiscovery);
             node.enableRouter(SampleTopology.CustomerSpotRouterEndpoint)
                 .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid));
+            node.configureEntrySpot()
+                .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid));
             node.enablePubSub(SampleTopology.CustomerSpotEndpoint);
             node.addEntrySpot(CustomerEntrySpot.class);
             node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory.class);

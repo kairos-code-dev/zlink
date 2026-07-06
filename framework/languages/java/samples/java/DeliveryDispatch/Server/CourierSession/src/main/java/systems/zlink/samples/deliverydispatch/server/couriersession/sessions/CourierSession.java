@@ -79,7 +79,7 @@ public final class CourierSession implements ZLinkSession {
         context.client()
             .reply(new Messages.BindCourierSessionAccepted(
                 request.courierId(),
-                actorRef,
+                actorRef.nodeRid().toString(),
                 context.sessionId()))
             .submit();
     }

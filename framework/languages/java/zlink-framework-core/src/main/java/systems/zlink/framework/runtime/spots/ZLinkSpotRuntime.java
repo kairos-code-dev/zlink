@@ -144,6 +144,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
         "zlink.framework.actor.bound_session.bind";
 
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
     private static final CancellationToken NONE_CANCELLATION = () -> false;
     private static final ScheduledThreadPoolExecutor ACTOR_SESSION_REPLY_RETRY_EXECUTOR =
         new ScheduledThreadPoolExecutor(1, task -> {
@@ -186,6 +188,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final Set<RoutingId> manualRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
     private final Set<RoutingId> autoConnectedRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
     private final ThreadLocal<DefaultSpotOutbound> currentOutbound = new ThreadLocal<>();
+    private final ThreadLocal<DefaultEntrySpotContext> currentEntrySpotDispatch = new ThreadLocal<>();
     private ZLinkSpotRemoteAddressResolver remoteAddressResolver;
     private ZLinkLocationLifecycle locationLifecycle;
     private final Map<RoutingId, CompletionStage<ZLinkSpotCreateResult>> pendingSpotCreates =
@@ -872,6 +875,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     public void attachActorRuntime(ZLinkActorRuntime actorRuntime) {
         this.actorRuntime = actorRuntime;
         this.actorRuntime.setCreatedNotifier(this::notifyEntrySpotActorCreated);
+        this.actorRuntime.setActorCreateContextSupplier(() -> currentEntrySpotDispatch.get());
         this.actorRuntime.setDisconnectedNotifier(this::notifySpotActorDisconnected);
         this.actorRuntime.setSpotResolver(this::spotFor);
         this.actorRuntime.setSpotMeshResolver(this::meshNameForSpot);
@@ -1158,6 +1162,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         if (closing) {
             return;
         }
+        for (EntrySpotActivation activation : entrySpots) {
+            activation.drainPolledDispatchQueues();
+        }
         for (SpotActivation activation : spots.values()) {
             activation.drainPolledDispatchQueues();
         }
@@ -1175,11 +1182,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         Supplier<CompletionStage<T>> action) {
         CompletableFuture<T> result = new CompletableFuture<>();
         ZLinkYieldTurn turn = preserveYieldTurn ? ZLinkFrameworkTurns.captureCurrent() : null;
+        DefaultEntrySpotContext entryDispatchContext = currentEntrySpotDispatch.get();
         try {
             handlerExecutor.execute(() -> {
                 ZLinkFrameworkTurns.runWithTurn(turn, () -> {
                     DefaultSpotOutbound previous = currentOutbound.get();
+                    DefaultEntrySpotContext previousEntryDispatch = currentEntrySpotDispatch.get();
                     currentOutbound.set(outbound);
+                    if (entryDispatchContext == null) {
+                        currentEntrySpotDispatch.remove();
+                    } else {
+                        currentEntrySpotDispatch.set(entryDispatchContext);
+                    }
                     try {
                         action.get().whenComplete((value, error) -> {
                             if (error != null) {
@@ -1195,6 +1209,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             currentOutbound.remove();
                         } else {
                             currentOutbound.set(previous);
+                        }
+                        if (previousEntryDispatch == null) {
+                            currentEntrySpotDispatch.remove();
+                        } else {
+                            currentEntrySpotDispatch.set(previousEntryDispatch);
                         }
                     }
                     return null;
@@ -1440,10 +1459,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private CompletionStage<Void> notifyEntrySpotActorCreated(
         RoutingId nodeRid,
         ZLinkActor actor,
-        ZLinkMessage createRequest) {
+        ZLinkMessage createRequest,
+        Object createContext) {
         for (EntrySpotActivation activation : entrySpots) {
             if (activation.context.nodeRid().equals(nodeRid)) {
                 ZLinkEntrySpot rawEntrySpot = activation.entrySpot;
+                if (createContext == activation.context) {
+                    return ZLinkHandlerStages.fromRunnable(() ->
+                        rawEntrySpot.onCreateActor(actor, createRequest, NONE_CANCELLATION));
+                }
                 return activation.context.enqueueDispatch(() ->
                     ZLinkHandlerStages.fromRunnable(() ->
                         rawEntrySpot.onCreateActor(actor, createRequest, NONE_CANCELLATION)));
@@ -1788,7 +1812,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         CompletionStage<Void> enqueueDispatch(Supplier<CompletionStage<Void>> operation) {
-            return dispatchQueue.enqueue(operation);
+            return dispatchQueue.enqueue(() -> {
+                DefaultEntrySpotContext previous = currentEntrySpotDispatch.get();
+                currentEntrySpotDispatch.set(this);
+                try {
+                    return operation.get();
+                } finally {
+                    if (previous == null) {
+                        currentEntrySpotDispatch.remove();
+                    } else {
+                        currentEntrySpotDispatch.set(previous);
+                    }
+                }
+            });
         }
 
         @Override
@@ -1956,6 +1992,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 if (received == null) {
                     return;
                 }
+                traceSpotRouteInbound("entry-recv", backendSpot, received);
                 if (channels != null
                     && channels.dispatchSpotRouteBridgePacket(received)) {
                     received.close();
@@ -1965,6 +2002,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             }
         }
 
+        private void drainPolledDispatchQueues() {
+            drainRoutes();
+            drainUnhandledActorJoins();
+            drainActorLifecycleEvents();
+        }
+
         private void dispatchRoute(ZLinkBackendReceived received) {
             activeRouteReceives.add(received);
             if (isProbeFrame(received.parts())) {
@@ -1972,6 +2015,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
+            traceSpotRouteDispatch("entry-dispatch", backendSpot, received, packet);
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.RECEIVED,
@@ -4245,6 +4289,62 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return parts.isEmpty() || parts.get(0).size() == 0;
     }
 
+    private static void traceSpotRouteInbound(
+        String phase,
+        ZLinkBackendSpot backendSpot,
+        ZLinkBackendReceived received) {
+        if (!STREAM_TRACE) {
+            return;
+        }
+        System.out.println("[zlink-java-stream-trace] spot-route " + phase
+            + " localSpot=" + backendSpot.routingId()
+            + " sourceRid=" + received.routingId().map(Object::toString).orElse(null)
+            + " sourceSpot=" + received.spotRid().map(Object::toString).orElse(null)
+            + " requestSeq=" + received.requestSeq().map(Object::toString).orElse(null)
+            + " result=" + received.result()
+            + " parts=" + describeTraceParts(received.parts()));
+    }
+
+    private static void traceSpotRouteDispatch(
+        String phase,
+        ZLinkBackendSpot backendSpot,
+        ZLinkBackendReceived received,
+        ParsedPacket packet) {
+        if (!STREAM_TRACE) {
+            return;
+        }
+        System.out.println("[zlink-java-stream-trace] spot-route " + phase
+            + " localSpot=" + backendSpot.routingId()
+            + " sourceRid=" + received.routingId().map(Object::toString).orElse(null)
+            + " sourceSpot=" + received.spotRid().map(Object::toString).orElse(null)
+            + " requestSeq=" + received.requestSeq().map(Object::toString).orElse(null)
+            + " packet=" + packet.packetName()
+            + " payloadBytes=" + packet.payload().size());
+    }
+
+    private static String describeTraceParts(List<Message> parts) {
+        List<String> descriptions = new ArrayList<>();
+        for (int i = 0; i < parts.size(); i++) {
+            byte[] bytes = parts.get(i).toByteArray();
+            descriptions.add(i + ":" + bytes.length + ":" + traceText(bytes));
+        }
+        return descriptions.toString();
+    }
+
+    private static String traceText(byte[] bytes) {
+        if (bytes.length == 0 || bytes.length > 96) {
+            return "";
+        }
+        String text = new String(bytes, StandardCharsets.UTF_8);
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (Character.isISOControl(ch) && !Character.isWhitespace(ch)) {
+                return "";
+            }
+        }
+        return text;
+    }
+
     private record ParsedPacket(String packetName, Message payload) {
     }
 
@@ -4860,6 +4960,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 if (received == null) {
                     return tail;
                 }
+                traceSpotRouteInbound("spot-recv", backendSpot, received);
                 if (channels != null
                     && channels.dispatchSpotRouteBridgePacket(received)) {
                     received.close();
@@ -4876,6 +4977,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             ParsedPacket packet = parsePacket(received.parts());
+            traceSpotRouteDispatch("spot-dispatch", backendSpot, received, packet);
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.RECEIVED,

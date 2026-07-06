@@ -44,7 +44,7 @@ data class BindCourierSessionReq(
 
 data class BindCourierSessionRes(
     val courierId: String,
-    val actor: ZLinkActorRefSnapshot,
+    val nodeRid: String,
     val sessionRoute: String,
 )
 

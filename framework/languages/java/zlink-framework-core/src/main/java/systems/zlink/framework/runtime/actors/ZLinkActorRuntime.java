@@ -60,7 +60,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         CompletionStage<Void> notify(
             RoutingId nodeRid,
             ZLinkActor actor,
-            ZLinkMessage createRequest);
+            ZLinkMessage createRequest,
+            Object createContext);
     }
 
     private final ZLinkBackendSpotNode spotNode;
@@ -75,7 +76,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     private final Map<String, ZLinkAsyncSerialQueue> dispatchQueues = new HashMap<>();
     private final ThreadLocal<String> currentDispatchActorId = new ThreadLocal<>();
     private CreatedNotifier createdNotifier =
-        (ignoredNode, ignoredActor, ignoredRequest) -> CompletableFuture.completedFuture(null);
+        (ignoredNode, ignoredActor, ignoredRequest, ignoredContext) -> CompletableFuture.completedFuture(null);
+    private Supplier<Object> actorCreateContextSupplier = () -> null;
     private Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier =
         ignored -> CompletableFuture.completedFuture(null);
     private Function<RoutingId, ZLinkSpot<?>> spotResolver = ignored -> null;
@@ -197,6 +199,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             }
             return CompletableFuture.completedFuture(existing);
         }
+        Object createContext = actorCreateContextSupplier.get();
         if (locationLifecycle != null && intent != null) {
             CompletionStage<ZLinkLocationWriteStatus> claim = intent == ZLinkLocationWriteIntent.TAKEOVER
                 ? locationLifecycle.takeoverActorAsync(
@@ -220,7 +223,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                             actorType,
                             createRequest,
                             factoryType,
-                            notifyCreated)
+                            notifyCreated,
+                            createContext)
                         .thenCompose(actor -> locationLifecycle.setActorRefAsync(
                                 actorType,
                                 actorId,
@@ -238,7 +242,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             actorType,
             createRequest,
             factoryType,
-            notifyCreated);
+            notifyCreated,
+            createContext);
     }
 
     private CompletionStage<ZLinkActor> activateLocalActor(
@@ -246,7 +251,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         String actorType,
         ZLinkMessage createRequest,
         Class<? extends ZLinkActorFactory> factoryType,
-        boolean notifyCreated) {
+        boolean notifyCreated,
+        Object createContext) {
         Message nativeCreateRequest = messageFromRequest(createRequest);
         ZLinkBackendActorRef actorRef;
         try {
@@ -271,7 +277,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             .thenCompose(actor -> notifyCreated
                 ? submitActorDispatch(
                     actor.actorId(),
-                    () -> createdNotifier.notify(actorRef.nodeRid(), actor, createRequest))
+                    () -> createdNotifier.notify(actorRef.nodeRid(), actor, createRequest, createContext))
                     .thenApply(ignored -> actor)
                 : CompletableFuture.completedFuture(actor));
     }
@@ -845,8 +851,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
 
     public void setCreatedNotifier(CreatedNotifier createdNotifier) {
         this.createdNotifier = createdNotifier == null
-            ? (ignoredNode, ignoredActor, ignoredRequest) -> CompletableFuture.completedFuture(null)
+            ? (ignoredNode, ignoredActor, ignoredRequest, ignoredContext) -> CompletableFuture.completedFuture(null)
             : createdNotifier;
+    }
+
+    public void setActorCreateContextSupplier(Supplier<Object> actorCreateContextSupplier) {
+        this.actorCreateContextSupplier = actorCreateContextSupplier == null
+            ? () -> null
+            : actorCreateContextSupplier;
     }
 
     public void setSpotResolver(Function<RoutingId, ZLinkSpot<?>> spotResolver) {

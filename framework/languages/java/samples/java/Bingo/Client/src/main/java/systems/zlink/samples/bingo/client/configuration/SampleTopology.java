@@ -6,7 +6,7 @@ public final class SampleTopology {
     public static final String SessionAStreamEndpoint =
         property("sessionAStreamEndpoint", StreamEndpoint);
     public static final String SessionBStreamEndpoint =
-        property("sessionBStreamEndpoint", "tcp://127.0.0.1:47117");
+        property("sessionBStreamEndpoint", "tcp://127.0.0.1:47125");
 
     private SampleTopology() {
     }

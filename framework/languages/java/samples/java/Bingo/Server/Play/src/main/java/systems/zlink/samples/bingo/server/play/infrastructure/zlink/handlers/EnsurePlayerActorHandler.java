@@ -4,7 +4,6 @@ import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot;
@@ -29,6 +28,9 @@ public final class EnsurePlayerActorHandler
         return new Messages.EnsurePlayerActorRes(
             request.actorId(),
             SampleNames.PlayerActorType,
-            ZLinkActorRefSnapshot.from(actor));
+            new Messages.ActorRefWire(
+                actor.nodeRid().toString(),
+                actor.actorId(),
+                actor.generation()));
     }
 }

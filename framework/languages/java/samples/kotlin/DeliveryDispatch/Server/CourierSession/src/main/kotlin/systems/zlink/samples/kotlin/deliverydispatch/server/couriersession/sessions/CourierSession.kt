@@ -76,7 +76,7 @@ class CourierSession(
             ),
         )
         sessionContext.client()
-            .reply(BindCourierSessionRes(request.courierId, actorRef, sessionContext.sessionId()))
+            .reply(BindCourierSessionRes(request.courierId, actorRef.nodeRid().toString(), sessionContext.sessionId()))
             .submit()
     }
 

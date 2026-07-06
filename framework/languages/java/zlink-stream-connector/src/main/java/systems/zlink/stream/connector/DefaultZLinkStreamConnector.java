@@ -33,6 +33,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private static final String HEARTBEAT_PING_NAME = "$zlink.heartbeat.ping";
     private static final String HEARTBEAT_PONG_NAME = "$zlink.heartbeat.pong";
     private static final int MAX_PACKET_NAME_BYTES = 255;
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
     private static final ScheduledExecutorService TIMEOUTS =
         Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory());
 
@@ -139,6 +141,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         InetSocketAddress address = new InetSocketAddress(
             options.endpoint().getHost(),
             resolvePort(options.endpoint()));
+        trace("connector connect-start endpoint=" + options.endpoint() + " address=" + address);
         channel.connect(address, null, new CompletionHandler<Void, Void>() {
             @Override
             public void completed(Void ignored, Void attachment) {
@@ -152,6 +155,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     channel,
                     options.maxReceivePayloadSize());
                 activateConnection(tcp);
+                trace("connector connect-complete endpoint=" + options.endpoint());
                 result.complete(null);
             }
 
@@ -159,6 +163,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             public void failed(Throwable exc, Void attachment) {
                 timeout.cancel(false);
                 closeRawQuietly(channel);
+                trace("connector connect-failed endpoint=" + options.endpoint()
+                    + " error=" + exc);
                 result.completeExceptionally(exc);
             }
         });
@@ -355,9 +361,30 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             encodedHeader,
             payload,
             options.maxSendPayloadSize());
+        trace("connector write-start endpoint=" + options.endpoint()
+            + " kind=" + header.kind()
+            + " name=" + header.name()
+            + " requestSeq=" + header.requestSeq()
+            + " bytes=" + payload.length
+            + " correlation=" + header.correlationId());
         synchronized (this) {
             sendChain = sendChain.thenCompose(ignored -> writeFrame(frame));
-            return sendChain;
+            return sendChain.whenComplete((ignored, ex) -> {
+                if (ex == null) {
+                    trace("connector write-complete endpoint=" + options.endpoint()
+                        + " kind=" + header.kind()
+                        + " name=" + header.name()
+                        + " requestSeq=" + header.requestSeq()
+                        + " correlation=" + header.correlationId());
+                } else {
+                    trace("connector write-failed endpoint=" + options.endpoint()
+                        + " kind=" + header.kind()
+                        + " name=" + header.name()
+                        + " requestSeq=" + header.requestSeq()
+                        + " correlation=" + header.correlationId()
+                        + " error=" + ex);
+                }
+            });
         }
     }
 
@@ -400,6 +427,12 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             ZLinkStreamWireProtocol.decodeHeader(encodedHeader);
         lastInboundNanos = System.nanoTime();
         byte[] decodedPayload = decodePayload(header, payload);
+        trace("connector read-frame endpoint=" + options.endpoint()
+            + " kind=" + header.kind()
+            + " name=" + header.name()
+            + " requestSeq=" + header.requestSeq()
+            + " bytes=" + decodedPayload.length
+            + " correlation=" + header.correlationId());
         inboundObservers.enqueue(header, payload);
         if (header.kind() == ZLinkStreamWireProtocol.KIND_CONTROL) {
             dispatchControl(header, decodedPayload);
@@ -504,6 +537,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     throw new IllegalStateException("connector is closed");
                 }
                 activateConnection(ws);
+                trace("connector connect-complete endpoint=" + options.endpoint());
             });
     }
 
@@ -1001,6 +1035,12 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             Thread thread = new Thread(runnable, "zlink-stream-connector-timeouts");
             thread.setDaemon(true);
             return thread;
+        }
+    }
+
+    private static void trace(String message) {
+        if (STREAM_TRACE) {
+            System.out.println("[zlink-java-stream-trace] " + message);
         }
     }
 }

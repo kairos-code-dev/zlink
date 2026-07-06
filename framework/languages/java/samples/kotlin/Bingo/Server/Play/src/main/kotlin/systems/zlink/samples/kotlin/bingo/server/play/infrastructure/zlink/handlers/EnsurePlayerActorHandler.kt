@@ -2,10 +2,10 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.hand
 
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkActorManager
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot
+import systems.zlink.samples.kotlin.bingo.shared.contracts.ActorRefWire
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 
@@ -20,7 +20,11 @@ class EnsurePlayerActorHandler(
         EnsurePlayerActorRes(
             request.actorId,
             SampleNames.PlayerActorType,
-            ZLinkActorRefSnapshot.from(actor),
+            ActorRefWire(
+                actor.nodeRid().toString(),
+                actor.actorId(),
+                actor.generation(),
+            ),
         )
     }
 }

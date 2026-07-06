@@ -48,6 +48,8 @@ public final class CourierSpotNodeApplication {
             ZLinkSpotNodeBuilder spotNode = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
             spotNode.enableRouter(selected.routerEndpoint())
                 .setRoutingId(RoutingId.from(selected.nodeRid()));
+            spotNode.configureEntrySpot()
+                .setRoutingId(RoutingId.from(selected.nodeRid()));
             spotNode.connectRouter(
                 RoutingId.from(SampleTopology.CourierSessionSpotNodeRid),
                 SampleTopology.CourierSessionSpotRouterEndpoint);

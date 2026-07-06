@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 import java.lang.reflect.Method;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
@@ -223,6 +224,69 @@ final class ZLinkChannelRuntimeTest {
 
             assertEquals("reply", reply.value());
             assertEquals(2, backend.router.requestAttempts);
+        }
+    }
+
+    @Test
+    void spotRouterNodeRequestFailsWhenConnectedRouteIsNotReady() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.spotNode.entrySpot.requestFailuresRemaining = 1;
+        backend.spotNode.entrySpot.requestReplyParts = List.of(
+            Message.from("{\"value\":\"reply\"}".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouterNode("bingo.rooms", backend.spotNode);
+
+            CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
+                CompletionException.class,
+                () -> runtime.requestToSpot(
+                        "bingo.rooms",
+                        new ZLinkSpotAddress(
+                            "bingo.rooms",
+                            RoutingId.from("play-node"),
+                            RoutingId.from("room-spot")),
+                        new TestRequest("hello"))
+                    .packetName("TestRequest")
+                    .timeout(Duration.ofMillis(300))
+                    .await(TestReply.class));
+
+            assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
+            assertEquals(1, backend.spotNode.entrySpot.requestAttempts);
+            assertEquals(SendFlags.NONE, backend.spotNode.entrySpot.lastRequestFlags);
+        }
+    }
+
+    @Test
+    void spotRouterNodeRequestFailsOnBackendRequestResultWithoutTreatingEmptyReplyAsSuccess() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.spotNode.entrySpot.requestResult = ZLinkBackendRequestResult.NOT_FOUND;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouterNode("bingo.rooms", backend.spotNode);
+
+            CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
+                CompletionException.class,
+                () -> runtime.requestToSpot(
+                        "bingo.rooms",
+                        new ZLinkSpotAddress(
+                            "bingo.rooms",
+                            RoutingId.from("play-node"),
+                            RoutingId.from("room-spot")),
+                        new TestRequest("hello"))
+                    .packetName("TestRequest")
+                    .timeout(Duration.ofMillis(300))
+                    .await(TestReply.class));
+
+            assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
+            assertTrue(error.getCause().getMessage().contains("NOT_FOUND"));
         }
     }
 
@@ -1005,6 +1069,7 @@ final class ZLinkChannelRuntimeTest {
 
     private static final class FakeSpotNode implements ZLinkBackendSpotNode {
         private final FakeSpotRouteBridge bridge;
+        private final FakeSpot entrySpot = new FakeSpot();
 
         FakeSpotNode(FakeSpotRouteBridge bridge) {
             this.bridge = bridge;
@@ -1022,7 +1087,7 @@ final class ZLinkChannelRuntimeTest {
         @Override public void disconnectPeer(RoutingId peerRid) { }
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() { return bridge; }
         @Override public ZLinkBackendSpot createSpot() { throw new UnsupportedOperationException(); }
-        @Override public ZLinkBackendSpot entrySpot() { throw new UnsupportedOperationException(); }
+        @Override public ZLinkBackendSpot entrySpot() { return entrySpot; }
         @Override public ZLinkBackendActorRef createActor(String actorId, Message createRequest) { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { throw new UnsupportedOperationException(); }
         @Override public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
@@ -1041,5 +1106,48 @@ final class ZLinkChannelRuntimeTest {
         @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
         @Override public String name() { return "fake-node"; }
         @Override public void close() { }
+    }
+
+    private static final class FakeSpot implements ZLinkBackendSpot {
+        int requestAttempts;
+        int requestFailuresRemaining;
+        ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
+        SendFlags lastRequestFlags;
+        List<Message> requestReplyParts = List.of();
+
+        @Override public RoutingId routingId() { return RoutingId.from("entry-spot"); }
+        @Override public void setRoutingId(RoutingId routingId) { }
+        @Override public void setSubscription(String topic) { }
+        @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
+        @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return null; }
+        @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { return true; }
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { return true; }
+        @Override public boolean requestToSpot(
+            RoutingId targetNodeRid,
+            RoutingId spotRid,
+            List<Message> parts,
+            ZLinkBackendRequestCallback callback,
+            SendFlags flags,
+            Duration timeout) {
+            requestAttempts++;
+            lastRequestFlags = flags;
+            if (requestFailuresRemaining > 0) {
+                requestFailuresRemaining--;
+                return false;
+            }
+            callback.handle(new ZLinkBackendReceived(
+                requestResult,
+                Optional.empty(),
+                Optional.of(spotRid),
+                Optional.empty(),
+                requestReplyParts.stream().map(Message::from).toList()));
+            return true;
+        }
+        @Override public void onDispatchEvent(ZLinkBackendSpotDispatchHandler handler) { }
+        @Override public ZLinkBackendActorJoinRequest recvActorJoin(ZLinkBackendRecvMode mode) { return null; }
+        @Override public void replyActorJoin(ZLinkBackendActorJoinRequest request, int joinResultCode, List<Message> parts) { }
+        @Override public ZLinkBackendActorLifecycleEvent recvActorLifecycle(ZLinkBackendRecvMode mode) { return null; }
+        @Override public String name() { return "fake-spot"; }
+        @Override public void close() { requestReplyParts.forEach(Message::close); }
     }
 }

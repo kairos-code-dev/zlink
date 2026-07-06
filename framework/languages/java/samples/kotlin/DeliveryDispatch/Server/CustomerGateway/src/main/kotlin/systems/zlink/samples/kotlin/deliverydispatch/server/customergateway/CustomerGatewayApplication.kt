@@ -41,6 +41,8 @@ class CustomerGatewayApplication {
             val node = options.addSpotMesh(SampleNames.CustomerSpotMesh)
             node.enableRouter(SampleTopology.CustomerSpotRouterEndpoint)
                 .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid))
+            node.configureEntrySpot()
+                .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid))
             node.enablePubSub(SampleTopology.CustomerSpotEndpoint)
             node.addEntrySpot(CustomerEntrySpot::class.java)
             node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory::class.java)

@@ -15,14 +15,20 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 
 final class EntrySpotActorDispatchTest {
 
@@ -102,6 +108,39 @@ final class EntrySpotActorDispatchTest {
         }
     }
 
+    @Test
+    void entrySpotRequestHandlerCanSynchronouslyAwaitActorCreation() throws Exception {
+        EntryActorDispatchHandlers.reset();
+        FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
+        CountDownLatch replied = new CountDownLatch(1);
+        backendFactory.onSpotReply(reply -> replied.countDown());
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options(), backendFactory)) {
+            backendFactory.dispatchEntrySpotRequest(
+                "EnsureActorRequest",
+                "{\"actorId\":\"actor-created-from-request\"}",
+                7);
+
+            assertTrue(
+                EntryActorDispatchHandlers.actorCreated.await(5, TimeUnit.SECONDS),
+                () -> "actor create callback did not run; events="
+                    + EntryActorDispatchHandlers.events
+                    + ", calls="
+                    + backendFactory.calls());
+            assertTrue(
+                replied.await(5, TimeUnit.SECONDS),
+                () -> "entry spot request did not reply; events="
+                    + EntryActorDispatchHandlers.events
+                    + ", calls="
+                    + backendFactory.calls());
+        }
+
+        assertEquals(
+            List.of("{\"actorId\":\"actor-created-from-request\"}"),
+            backendFactory.spotReplies());
+        assertTrue(EntryActorDispatchHandlers.events.contains("created:actor-created-from-request"));
+    }
+
     private static DefaultZLinkFrameworkOptions options() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(EntrySpotActorDispatchTest.class);
@@ -109,7 +148,7 @@ final class EntrySpotActorDispatchTest {
         var entry = node.configureEntrySpot();
         entry.setRoutingId(RoutingId.from("entry-actor-dispatch-entry"));
         node.addEntrySpot(EntryActorDispatchSpot.class);
-        node.addActorFactory("player", SpotRuntimeFakeBackendTest.PlayerActorFactory.class);
+        node.addActorFactory("player", PlayerActorFactory.class);
         return options;
     }
 
@@ -137,6 +176,67 @@ final class EntrySpotActorDispatchTest {
 
         @Override
         public void configure() {
+            context.handlers().addHandler(EnsureActorRequestHandler.class);
+        }
+
+        @Override
+        public void onCreateActor(
+            ZLinkActor actor,
+            ZLinkMessage createRequest,
+            CancellationToken cancellationToken) {
+            EntryActorDispatchHandlers.events.add("created:" + actor.actorId());
+            EntryActorDispatchHandlers.actorCreated.countDown();
+        }
+    }
+
+    public static final class EnsureActorRequestHandler
+        implements ZLinkSpotRequestHandler<EntryActorDispatchSpot, EnsureActorRequest, EnsureActorReply> {
+        private final ZLinkActorManager actors;
+
+        public EnsureActorRequestHandler(ZLinkActorManager actors) {
+            this.actors = actors;
+        }
+
+        @Override
+        public EnsureActorReply handle(EntryActorDispatchSpot spot, EnsureActorRequest request) {
+            ZLinkActorRef actor = actors
+                .getOrCreate(request.actorId(), "player")
+                .toCompletableFuture()
+                .join();
+            return new EnsureActorReply(actor.actorId());
+        }
+    }
+
+    public record EnsureActorRequest(String actorId) {
+    }
+
+    public record EnsureActorReply(String actorId) {
+    }
+
+    public static final class PlayerActor implements ZLinkActor {
+        private final String actorId;
+        private final ZLinkActorContext context;
+
+        PlayerActor(String actorId, ZLinkActorContext context) {
+            this.actorId = actorId;
+            this.context = context;
+        }
+
+        @Override
+        public String actorId() {
+            return actorId;
+        }
+
+        @Override
+        public ZLinkActorContext context() {
+            return context;
+        }
+    }
+
+    public static final class PlayerActorFactory implements ZLinkActorFactory {
+        @Override
+        public ZLinkActor create(String actorId, ZLinkActorContext context) {
+            return new PlayerActor(actorId, context);
         }
     }
 
@@ -145,6 +245,7 @@ final class EntrySpotActorDispatchTest {
         static volatile CountDownLatch actorAStarted = new CountDownLatch(1);
         static volatile CountDownLatch actorBStarted = new CountDownLatch(1);
         static volatile CountDownLatch actorASecondStarted = new CountDownLatch(1);
+        static volatile CountDownLatch actorCreated = new CountDownLatch(1);
         static volatile CountDownLatch releaseActorA = new CountDownLatch(1);
         static volatile CountDownLatch yieldObserved = new CountDownLatch(1);
         static final ConcurrentLinkedQueue<String> events = new ConcurrentLinkedQueue<>();
@@ -154,6 +255,7 @@ final class EntrySpotActorDispatchTest {
             actorAStarted = new CountDownLatch(1);
             actorBStarted = new CountDownLatch(1);
             actorASecondStarted = new CountDownLatch(1);
+            actorCreated = new CountDownLatch(1);
             releaseActorA = new CountDownLatch(1);
             yieldObserved = new CountDownLatch(1);
             events.clear();

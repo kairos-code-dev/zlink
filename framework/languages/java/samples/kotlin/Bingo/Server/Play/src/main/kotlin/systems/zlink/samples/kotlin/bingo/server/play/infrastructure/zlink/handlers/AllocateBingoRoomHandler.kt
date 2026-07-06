@@ -14,7 +14,7 @@ import systems.zlink.samples.kotlin.bingo.server.play.application.roomallocation
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomRes
 
-@ZLinkHandlerGroup("play")
+@ZLinkHandlerGroup("play-route")
 class AllocateBingoRoomHandler(
     private val rooms: BingoRoomAllocator,
     private val spots: ZLinkSpotManager,

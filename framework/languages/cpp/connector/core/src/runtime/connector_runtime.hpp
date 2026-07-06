@@ -67,10 +67,15 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
 {
   public:
     explicit connector_state_t (connector_options_t options) :
-        options (std::move (options)), io_context (shared_io_context ())
+        connector_id (next_connector_id.fetch_add (1, std::memory_order_relaxed)),
+        options (std::move (options)),
+        io_context (shared_io_context ()),
+        write_strand (boost::asio::make_strand (io_context))
     {
     }
 
+    inline static std::atomic_uint64_t next_connector_id{1};
+    std::uint64_t connector_id = 0;
     connector_options_t options;
     connection_state_t state = connection_state_t::created;
     std::uint64_t next_request_seq = 1;
@@ -105,6 +110,7 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
     boost::asio::io_context &io_context;
+    boost::asio::strand<boost::asio::io_context::executor_type> write_strand;
     std::shared_ptr<stream_connection_t> connection;
     std::mutex transport_mutex;
     std::condition_variable state_changed;

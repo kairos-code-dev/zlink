@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Configuration/sample_configuration.hpp"
+#include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/redis_room_route_store.hpp"
 #include "../Configuration/sample_topology.hpp"
@@ -48,6 +49,7 @@ class play_server_host_factory_t
               .add_singleton<redis_room_route_store_t, sample_topology_t> ()
               .add_singleton<tictactoe_game_creator_t, sample_topology_t,
                              redis_room_route_store_t> ();
+            add_sample_location_store (options, topology);
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))

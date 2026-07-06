@@ -1479,12 +1479,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     sample_cpp_framework_tictactoe_api
     samples/TicTacToe/Server/Api/main.cpp
     "framework-sample-tictactoe;framework-sample-api"
+    zlink::framework_locations_redis
     zlink::framework
     zlink::stream_connector)
   add_zlink_framework_sample(
     sample_cpp_framework_tictactoe_play
     samples/TicTacToe/Server/Play/main.cpp
     "framework-sample-tictactoe;framework-sample-play"
+    zlink::framework_locations_redis
     zlink::framework
     zlink::stream_connector)
   add_executable(sample_cpp_framework_tictactoe_client

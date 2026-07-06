@@ -565,19 +565,25 @@ int main ()
           zlink::stream_connector::connector_options_t{});
         auto connection = std::make_shared<async_write_connection_t> ();
         bool callback_called = false;
+        callback_latch_t callback_latch;
         {
             std::lock_guard<std::mutex> lock (state->transport_mutex);
             state->connection = connection;
             state->pending_writes.push_back (
               zlink::stream_connector::detail::pending_write_t{
                 std::vector<std::uint8_t>{'f', 'r', 'a', 'm', 'e'},
-                [&callback_called] (zlink::stream_connector::result_t<void> result) {
+                [&callback_called, &callback_latch] (
+                  zlink::stream_connector::result_t<void> result) {
                     callback_called = static_cast<bool> (result);
+                    callback_latch.signal ();
                 }});
         }
         zlink::stream_connector::detail::change_state (
           state, zlink::stream_connector::connection_state_t::connected);
         zlink::stream_connector::detail::resume_pending_writes_after_connect (state);
+        if (!callback_latch.wait_for (std::chrono::seconds (1))) {
+            return 146;
+        }
         if (!callback_called || connection->written.size () != 1
             || std::string (connection->written[0].begin (), connection->written[0].end ())
                  != "frame"

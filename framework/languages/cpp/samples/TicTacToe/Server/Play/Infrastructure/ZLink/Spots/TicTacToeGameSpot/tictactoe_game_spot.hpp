@@ -8,9 +8,11 @@
 
 #include <zlink/framework.hpp>
 
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace zlink::samples::tictactoe
@@ -19,6 +21,27 @@ namespace zlink::samples::tictactoe
 using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
+
+inline bool tictactoe_game_spot_trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_TICTACTOE_SESSION_TRACE");
+    return value != nullptr && value[0] != '\0' && std::string_view (value) != "0";
+}
+
+inline void trace_tictactoe_game_spot (std::string_view stage,
+                                       std::string_view actor_id,
+                                       int cell = -1)
+{
+    if (!tictactoe_game_spot_trace_enabled ()) {
+        return;
+    }
+    std::cerr << "zlink-cpp-tictactoe-session-trace side=spot stage=" << stage
+              << " actor=" << actor_id;
+    if (cell >= 0) {
+        std::cerr << " cell=" << cell;
+    }
+    std::cerr << std::endl;
+}
 
 class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
 {
@@ -64,7 +87,9 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         if (context.packet_name.empty ()) {
             throw std::runtime_error ("packet name is required");
         }
+        trace_tictactoe_game_spot ("place-mark-enter", actor.actor_id, request.cell);
         auto state = place (actor.actor_id, request);
+        trace_tictactoe_game_spot ("place-mark-complete", actor.actor_id, request.cell);
         game_state_notify_t state_notify{state.room_id, state.next_turn, state};
         publisher.publish_game_state (state_notify);
         send_to_other_actors (actor.actor_id, state_notify);

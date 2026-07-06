@@ -87,8 +87,9 @@ class CourierSession(
             .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(courierId))
             .timeout(SampleTimings.RequestTimeout)
             .await(FindCourierActorRes::class.java)
-        if (found.actor != null) {
-            return found.actor
+        val foundActor = found.actor
+        if (foundActor != null) {
+            return foundActor
         }
         return routes
             .requestToSpot(SampleNames.CourierSpotMesh, address, EnsureCourierActorReq(courierId))

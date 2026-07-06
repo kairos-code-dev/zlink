@@ -82,7 +82,7 @@ wait_port() {
 reserve_ports() {
   local base=$((20000 + ((RANDOM + $$) % 1000) * 15 % 9000))
   local endpoints=()
-  for offset in $(seq 0 12); do
+  for offset in $(seq 0 13); do
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
@@ -110,7 +110,7 @@ build_framework_jars() {
   )
 }
 
-read -r tracking customer_stream courier_stream courier_gateway dispatch_http customer_spot customer_router courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
+read -r tracking tracking_spot customer_stream courier_stream courier_gateway dispatch_http customer_spot customer_router courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -118,6 +118,7 @@ endpoint_port() { echo "${1##*:}"; }
 common_java_options="${JAVA_TOOL_OPTIONS:-}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.stateDir=${state_dir}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.trackingChannelEndpoint=tcp://$(endpoint_host "${tracking}"):$(endpoint_port "${tracking}")"
+common_java_options+=" -Dzlink.samples.deliverydispatch.trackingSpotEndpoint=tcp://$(endpoint_host "${tracking_spot}"):$(endpoint_port "${tracking_spot}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierGatewayChannelEndpoint=tcp://$(endpoint_host "${courier_gateway}"):$(endpoint_port "${courier_gateway}")"
@@ -157,6 +158,7 @@ gradle_run \
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/Tracking Tracking)" >"${log_dir}/tracking.log" 2>&1 &
 pids+=("$!")
 wait_port "$(endpoint_host "${tracking}")" "$(endpoint_port "${tracking}")"
+wait_port "$(endpoint_host "${tracking_spot}")" "$(endpoint_port "${tracking_spot}")"
 
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/CustomerGateway CustomerGateway)" >"${log_dir}/customer-gateway.log" 2>&1 &
 pids+=("$!")

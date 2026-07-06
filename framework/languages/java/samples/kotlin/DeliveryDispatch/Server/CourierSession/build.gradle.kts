@@ -24,4 +24,5 @@ kotlin {
 
 application {
     mainClass.set("systems.zlink.samples.kotlin.deliverydispatch.server.couriersession.ProgramKt")
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }

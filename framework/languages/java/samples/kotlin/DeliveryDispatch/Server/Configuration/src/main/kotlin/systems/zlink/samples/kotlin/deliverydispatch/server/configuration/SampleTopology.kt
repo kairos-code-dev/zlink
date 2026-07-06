@@ -26,6 +26,7 @@ data class SampleTopology(
         val RegistryPubEndpoint: String = property("registryPubEndpoint", "tcp://127.0.0.1:49101")
         val RegistryRouterEndpoint: String = property("registryRouterEndpoint", "tcp://127.0.0.1:49102")
         val TrackingChannelEndpoint: String = property("trackingChannelEndpoint", "tcp://127.0.0.1:49103")
+        val TrackingSpotEndpoint: String = property("trackingSpotEndpoint", "tcp://127.0.0.1:49118")
         val CustomerStreamEndpoint: String = property("customerStreamEndpoint", "tcp://127.0.0.1:49104")
         val CourierStreamEndpoint: String = property("courierStreamEndpoint", "tcp://127.0.0.1:49105")
         val CourierGatewayChannelEndpoint: String = property("courierGatewayChannelEndpoint", "tcp://127.0.0.1:49106")

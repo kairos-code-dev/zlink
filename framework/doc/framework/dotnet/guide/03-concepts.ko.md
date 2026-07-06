@@ -238,9 +238,39 @@ graph TB
     end
 ```
 
+위 그림은 **처리 순서**를 보여준다. 노드 핸들러는 요청마다 독립 실행되고, SPOT
+핸들러는 같은 SPOT 큐에 들어온 일을 하나씩 처리한다. 아래 그림은 같은 상황을
+**스레드 점유** 관점에서 다시 본 것이다. 각 event는 async task가 되고, task가
+`await`에 도달하면 스레드를 붙잡지 않은 채 응답을 기다린다.
+
+```mermaid
+graph LR
+    subgraph EV ["SPOT event 마다 async task 하나"]
+        E1["message A"]
+        E2["timer tick"]
+        E3["message B"]
+    end
+    E1 --> T1["ValueTask A"]
+    E2 --> T2["ValueTask T"]
+    E3 --> T3["ValueTask B"]
+    T1 --> POOL["worker 스레드 풀<br/>(소수)"]
+    T2 --> POOL
+    T3 --> POOL
+    POOL -.->|"await 도달 → suspend"| WAIT["대기 중 task<br/>(스레드 점유 0)"]
+    WAIT -.->|"응답 도착 → resume"| POOL
+```
+
 노드 핸들러는 요청마다 새 인스턴스로 비동기 처리되니 핸들러 멤버에 가변 상태를 두면
 경합이 난다. SPOT 핸들러는 단일 큐로 **한 번에 하나씩** 처리하니 상태에 lock 이
-필요 없다.
+필요 없다. 다만 직렬 실행은 "스레드 하나를 계속 점유한다"는 뜻이 아니다. SPOT의
+event(message·timer)는 각각 task가 되어 소수의 worker 스레드에 다중화되고,
+`await`에 걸린 task는 스레드를 **놓는다**(blocking 아님). 그래서 스레드 몇 개로
+대기 중인 task 수천 개를 떠받칠 수 있다.
+
+Entry Spot과 user/domain Spot은 둘 다 순서 보장을 제공하지만, 메시지가 들어오는 경로와
+실행 기준이 다르다. user/domain Spot은 `spotRid`로 주소 지정되는 도메인 상태 단위이고,
+Entry Spot의 actor packet은 대상 actor mailbox 기준으로 처리된다. 자세한 차이는
+[05-spot](05-spot.ko.md)의 실행 직렬화 설명에서 다룬다.
 
 가변 도메인 상태(게임 룸 등)는 **SPOT**, 불변 구성(topology)은 싱글톤 서비스, 공유
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
@@ -292,29 +322,8 @@ public async ValueTask<CreateGameReply> HandleAsync (
 실행 스레드는 풀로 돌아가 다른 일을 처리한다. SPOT 핸들러는 §6.1 처럼 단일 큐로 직렬
 실행돼, 같은 SPOT 큐는 그 handler 완료 전까지 다음 callback 을 시작하지 않는다.
 
-핵심은 **이벤트마다 async task 하나, 스레드는 공유**다 — SPOT 의 event(message·timer)는
-각각 task 가 되어 소수의 worker 스레드에 다중화되고, `await` 에 걸린 task 는 스레드를
-**놓는다**(blocking 아님). 그래서 스레드 몇 개로 대기 중인 task 수천 개를 떠받친다.
-
-```mermaid
-graph LR
-    subgraph EV ["SPOT event 마다 async task 하나"]
-        E1["message A"]
-        E2["timer tick"]
-        E3["message B"]
-    end
-    E1 --> T1["ValueTask A"]
-    E2 --> T2["ValueTask T"]
-    E3 --> T3["ValueTask B"]
-    T1 --> POOL["worker 스레드 풀<br/>(소수)"]
-    T2 --> POOL
-    T3 --> POOL
-    POOL -.->|"await 도달 → suspend"| WAIT["대기 중 task<br/>(스레드 점유 0)"]
-    WAIT -.->|"응답 도착 → resume"| POOL
-```
-
-아래 타임라인은 같은 흐름을 시간순으로 본 것이다 — A 가 `await` 로 suspend 되면 같은
-스레드가 즉시 B 를 처리하고, A 는 응답이 오면 resume 된다.
+아래 타임라인은 같은 흐름을 시간순으로 본 것이다. A가 `await`로 suspend 되면 같은
+스레드가 즉시 B를 처리하고, A는 응답이 오면 resume 된다.
 
 ```mermaid
 sequenceDiagram

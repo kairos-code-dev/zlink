@@ -381,6 +381,22 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 > 있다. 단 이 보장은 그 Spot 내부 callback 한정이다. 외부에서 `SpotRid` 로 직접
 > 접근하는 코드는 별도 동기화가 필요하다.
 
+여기서 말하는 직렬화는 payload 를 bytes 로 바꾸는 codec 직렬화가 아니라, **메시지를
+어떤 실행 줄에서 어떤 순서로 처리하는가**를 뜻한다. Entry Spot 과 user/domain Spot 은
+둘 다 framework 가 순서를 보장하지만, 메시지가 들어오는 경로와 순서의 기준이 다르다.
+
+| 구분 | 주소 지정과 진입 경로 | 실행 순서 기준 | 상태를 둘 때의 기준 |
+|------|------------------------|----------------|---------------------|
+| user/domain Spot | `spotRid` 로 특정 room/stage/zone 을 가리키고, route mesh 나 local call 로 들어온다 | 해당 Spot 인스턴스의 실행 큐 | 그 Spot 이 소유한 도메인 상태 |
+| Entry Spot | actor 생성 직후의 기본 위치이며, actor packet 은 session/actor relay 를 거쳐 들어온다 | 대상 actor mailbox 와 Entry Spot dispatch 계약 | actor-local 상태 또는 admission 같은 짧은 진입 처리 |
+
+그래서 room board, match queue, zone state 처럼 여러 메시지가 함께 바꾸는 도메인 상태는
+user/domain Spot 에 둔다. Entry Spot 에서는 actor 를 만들거나 actor 의 첫 진입을
+처리하는 일을 맡기고, actor packet 의 순서 보장은 Entry Spot 전체 큐만으로 설명하지
+않는다. 대상 actor mailbox 가 순서의 중요한 기준이므로 actor dispatch 세부 규칙은
+[06-actor-spot](06-actor-spot.ko.md)과 [07-actor-session](07-actor-session.ko.md)에서
+함께 본다.
+
 ### yield dispatch
 
 Spot/Entry Spot handler 안에서 기본 terminator인 `Async(...)`를 기다리면 handler가

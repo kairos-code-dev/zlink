@@ -51,6 +51,125 @@ gRPC 의 네 가지 호출 형태를 얻는다.
 | Interceptor | handler filter | §5 |
 | Deadline | request timeout | §4 |
 
+메시지 요청 경로로 보면 차이는 더 분명하다. gRPC 기반 내부 호출은 보통 client
+application 이 gRPC stub 으로 요청을 만들고, L7 로드밸런서 또는 service mesh sidecar 를
+통해 scale-out 된 서버 중 하나로 보낸다. deadline/retry 같은 호출 정책은 클라이언트
+코드나 gRPC channel 설정에 둔다. ZLink channel messaging 은 application 이 논리
+`channel name` 으로 요청하고, framework runtime 이 연결 가능한 서버 runtime 중 하나로
+직접 보낸다. 서버 선택은 중간 L7 계층이 아니라 ZLink 의 peer 선택이 맡는다. 기본은
+연결된 peer 사이의 균등 분배이고, peer weight 를 쓰면 새 요청을 받을 서버 비율을
+조정하거나 특정 서버를 새 요청 후보에서 뺄 수 있다. 그래서 application 코드는 endpoint
+나 프록시 배선보다 **논리 channel 이름과 handler** 를 중심으로 작성된다.
+
+gRPC 구성에서는 요청 분산을 로드밸런서나 mesh 같은 중간 계층이 맡는다.
+
+```mermaid
+flowchart LR
+    subgraph GA ["client application"]
+        GSTUB["gRPC stub<br/>요청 시작"]
+        GCR["gRPC client runtime"]
+    end
+
+    GL["L7 LB 또는<br/>service mesh sidecar<br/>서버 선택"]
+
+    subgraph SGA ["server A"]
+        GSR1["gRPC server runtime"]
+        GS1["service implementation"]
+    end
+    subgraph SGB ["server B"]
+        GSR2["gRPC server runtime"]
+        GS2["service implementation"]
+    end
+    subgraph SGC ["server C"]
+        GSR3["gRPC server runtime"]
+        GS3["service implementation"]
+    end
+
+    GSTUB --> GCR --> GL
+    GL --> GSR1 --> GS1
+    GL --> GSR2 --> GS2
+    GL --> GSR3 --> GS3
+```
+
+이 구성에서 client application 은 보통 로드밸런서나 mesh 의 주소만 알고 요청한다.
+scale-out 된 서버 목록과 분산 처리는 로드밸런서나 mesh 가 맡고, 서버 안에서는 gRPC
+server runtime 이 service implementation 으로 요청을 전달한다.
+
+ZLink 구성에서는 framework runtime 이 연결된 서버 runtime 중 하나를 직접 고른다.
+
+```mermaid
+flowchart LR
+    subgraph ZA ["client application"]
+        ZC["ZLink channel client<br/>요청 시작"]
+        ZF["ZLink channel runtime<br/>round-robin / weight"]
+        ZADDR["runtime peer set<br/>auto-connect 결과"]
+    end
+
+    subgraph ZSA ["server A"]
+        ZR1["ZLink channel runtime"]
+        ZH1["typed handler"]
+    end
+    subgraph ZSB ["server B"]
+        ZR2["ZLink channel runtime"]
+        ZH2["typed handler"]
+    end
+    subgraph ZSC ["server C"]
+        ZR3["ZLink channel runtime"]
+        ZH3["typed handler"]
+    end
+
+    ZC --> ZF
+    ZADDR -. "주소 참고" .-> ZF
+    ZF -->|"직접 요청"| ZR1 --> ZH1
+    ZF -->|"직접 요청"| ZR2 --> ZH2
+    ZF -->|"직접 요청"| ZR3 --> ZH3
+```
+
+`runtime peer set` 은 ZLink runtime 이 수동 endpoint 설정이나 location store 자동 연결로
+유지하는 연결 후보 집합이다.
+메시지는 location store 나 외부 L7 계층을 거치지 않고 runtime 에서 서버 runtime 으로
+간다. 연결된 서버의 weight 가 모두 같으면 균등하게 분배되고, weight 가 다르면 더 큰
+weight 를 가진 서버가 새 요청 대상으로 더 자주 선택된다. weight 가 `0`인 서버는 기존
+연결은 유지하지만 새 outbound 후보에서는 빠진다.
+
+이 그림은 gRPC 와 ZLink 의 우열을 일반화하려는 비교가 아니다. gRPC 는 외부 공개 API,
+표준 RPC 계약, 조직 표준 tooling 이 중요할 때 여전히 좋은 선택이다. ZLink 가 강한
+지점은 내부 서비스 호출에서 **논리 channel 이름**, location store 기반 자동 연결,
+TCP 기반 비동기 메시징을 함께 쓸 때다. 별도 L7 로드밸런서나 sidecar 없이도 framework 가
+peer 목록을 보고 연결을 나누지만, 조직 보안 정책이나 외부 ingress 가 필요하면 기존
+mesh/LB 를 함께 둔다.
+
+```mermaid
+sequenceDiagram
+    box Client application
+        participant A as application code
+        participant C as ZLink channel client
+        participant R as ZLink channel runtime
+    end
+
+    box Server instance
+        participant S as ZLink channel runtime
+        participant H as typed handler
+    end
+
+    A->>C: RequestToChannel("orders", dto)
+    C->>R: 연결된 peer 후보에 submit
+    R->>R: round-robin / weight 로 peer 선택
+    R->>S: TCP 기반 비동기 송신
+    S->>H: typed handler dispatch
+    H-->>S: reply dto
+    S-->>R: reply frame
+    R-->>C: correlation 으로 reply 매칭
+    C-->>A: await 결과 반환
+```
+
+성능은 payload 크기, codec, 네트워크, peer 수, 배포 방식에 따라 달라진다. 이 장에서
+강조하는 핵심은 **호출 경로와 운영 컴포넌트를 줄일 수 있다**는 점이다. ZLink 는
+HTTP/2 프록시·stub·별도 broker 를 통과하는 구성을 줄이고, TCP 기반 비동기 channel 로
+request/reply 와 send 를 처리하기 때문에 내부 메시징 경로를 짧게 만들 수 있다.
+더 자세한 도입 판단과 gRPC 비교는 [13-grpc-alternative](13-grpc-alternative.ko.md)가
+다룬다.
+
 예를 들어 주문 서비스라면, gRPC `rpc PlaceOrder(...)` 가 다음과 같이 바뀐다.
 
 ```csharp
@@ -265,7 +384,9 @@ group 매핑으로 등록한다.
 ### 잘못된 등록은 시작 단계에서 막힌다
 
 channel 종류가 handler 종류를 강제한다 — client/server 는 request·send 만, fanout 은
-publish 만 받는다. 맞지 않게 등록하거나 같은 channel 이름을 중복으로 등록하면,
+publish 만 받는다. channel 이름은 종류별로 따로 관리되지 않고, framework 안에서 하나의
+이름 공간을 공유한다. 따라서 client/server channel 과 fanout channel 이 서로 다른
+종류여도 같은 이름을 쓰면 안 된다. 맞지 않게 등록하거나 같은 channel 이름을 중복으로 등록하면,
 런타임에 조용히 무시되거나 잘못 라우팅되지 않고 **`AddZLinkFramework` 시작 단계에서
 `ZLinkConfigurationException` 으로 즉시 실패**한다. 즉 잘못된 배선은 빌드가 아니라
 **부팅이 깨지므로** 운영에 나가기 전에 드러난다.
@@ -274,7 +395,7 @@ publish 만 받는다. 맞지 않게 등록하거나 같은 channel 이름을 �
 |-------------|----------------------|
 | client/server channel 에 publish handler 등록 | `client/server channel '{name}' cannot register publish handlers` |
 | fanout channel 에 request/send handler 등록 | `fanout channel '{name}' cannot register send or request handlers` |
-| 같은 channel 이름을 client/server 와 fanout 으로 등록 | `Duplicate channel name '{name}'` — 두 종류는 같은 channel 이름 공간을 공유한다 |
+| 종류가 달라도 같은 channel 이름을 중복 등록 | `Duplicate channel name '{name}'` |
 | 종류가 맞지 않는 handler 그룹 매핑(예: fanout 에 request 그룹) | `maps handler group '{group}' with incompatible handler kind` |
 | handler 를 노출했지만 받을 역할이 없음(server/subscriber 미등록) | `exposes handlers but does not enable server/subscriber capability` |
 | 같은 channel 에 `kind + packet 이름` 중복 | `Duplicate request/send/publish handler '{channel}:{packet}'` |
@@ -426,6 +547,41 @@ handle 이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바
 **새 요청 수신만 멈추고 싶을 때** 가 있다. 이걸 위해 `IZLinkChannelRuntimeOptions`
 (DI singleton) 을 주입받아 channel 의 serving 역할을 런타임에 drain 한다.
 
+여기서 쓰는 `Weight` 는 drain 전용 플래그가 아니라, client-server channel 이 새
+메시지를 어느 peer 로 보낼지 고를 때 참고하는 **peer 가중치**다. 연결된 서버들의
+weight 가 모두 같으면 새 요청은 균등하게 round-robin 으로 분배된다. weight 가 서로
+다르면 더 큰 값을 가진 서버가 그 비율만큼 더 자주 선택된다. `0` 은 "연결은 유지하지만
+새 요청 후보에서는 제외"라는 뜻이고, `100` 은 기본 정상 serving 값이다.
+
+```mermaid
+flowchart LR
+    subgraph C ["client application"]
+        R["ZLink channel runtime<br/>새 요청 대상 선택"]
+    end
+
+    subgraph A ["server A"]
+        AR["runtime<br/>Weight = 100"]
+        AH["typed handler"]
+    end
+    subgraph B ["server B"]
+        BR["runtime<br/>Weight = 50"]
+        BH["typed handler"]
+    end
+    subgraph D ["server C"]
+        DR["runtime<br/>Weight = 0<br/>drain"]
+        DH["typed handler"]
+    end
+
+    R -->|"더 자주 선택"| AR --> AH
+    R -->|"덜 자주 선택"| BR --> BH
+    R -. "새 요청 후보 제외" .-> DR
+    DR --> DH
+```
+
+위 예에서 server C 는 연결과 기존 in-flight 처리는 유지하지만 새 요청 후보에서는 빠진다.
+server A 와 server B 처럼 양수 weight 를 가진 peer 만 새 요청 후보가 되고, 두 값이 같으면
+균등하게 round-robin 으로 선택된다.
+
 ```csharp
 // 운영 admin 엔드포인트 (DI 주입). "orders" 는 이 앱이 등록한 client-server channel.
 app.MapPost("/admin/channels/orders/drain",
@@ -443,10 +599,12 @@ app.MapPost("/admin/channels/orders/restore",
     });
 ```
 
-- `Weight = 0`(drain) 은 serving socket 을 **닫지 않는다**. 이미 들어온 in-flight 요청은
+- `Weight = 0`(drain) 은 serving socket 을 **닫지 않는다**. 이 서버를 새 outbound 후보에서
+  빼라는 신호다. 이미 들어온 in-flight 요청은
   끝까지 처리·reply 하고, 그 시점 이후 peer 들이 그 노드를 새 요청 대상에서 뺀다.
   store 의 peer row 도 그대로 남는다(graceful drain).
-- `Weight = 100` 으로 정상 복귀한다. `1..99` 로 두면 연결된 peer 의 분배 비율을 낮춘다(weighted).
+- `Weight = 100` 으로 기본 정상 serving 상태로 복귀한다. `1..99` 로 두면 연결된 peer 의
+  분배 비율을 낮춘다(weighted).
 - 같은 `Weight` 를 **build-time 초기값**으로도 쓰고, route mesh serving 역할도 같은
   `ConfigureSocket` 접근자 패턴으로 연다(접근자별 대상은 아래 주석 참고):
 

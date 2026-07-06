@@ -9,7 +9,6 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
         Func<IZLinkBackendSpotRouteBridge?> spotRouteBridge,
         CancellationToken cancellationToken)
     {
-        var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
             Received? received = null;
@@ -18,14 +17,12 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             {
                 await receiveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 gateHeld = true;
-                received = router.Recv(RecvFlags.DontWait);
+                received = router.Recv();
                 if (received is null)
                 {
-                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
-                backoff.Reset();
                 if (TryHandleSpotRouteBridgePacket(
                         channelName,
                         spotRouteBridge(),

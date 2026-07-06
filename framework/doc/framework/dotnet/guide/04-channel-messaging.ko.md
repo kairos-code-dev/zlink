@@ -866,8 +866,10 @@ public sealed class UserCacheRefreshedEventHandler
 - **`ZLink` vs `Zlink`** → 서버 framework 타입은 전부 `ZLink`(대문자 L)다.
 - **handler 없는 packet 으로 보냈을 때(런타임)** → 시작 단계 검증과 별개로, 실행 중 등록되지
   않은 packet 이름이 도착하면 **request 는 error reply 로 실패**(client 는 예외로 받음),
-  **send 는 조용히 drop** 된다. 그 이유/동작은 dispatch error observer 에 marker
-  (`HandlerMissing` / `ReplyError`·`Drop`)로 남는다([10-monitoring](10-monitoring.ko.md)).
+  **send 는 조용히 drop** 된다. 다만 조용히 drop 된다는 말은 호출자에게 reply 가 없다는
+  뜻이지, 관측 흔적이 없다는 뜻은 아니다. message flow 로그/observer 를 켜 두면 dispatch
+  실패가 구조화 로그와 observer event 로 남고, 이유는 marker
+  (`HandlerMissing` / `ReplyError`·`Drop`)로 구분된다([10-monitoring](10-monitoring.ko.md)).
 
 ## 12. 더 보기
 

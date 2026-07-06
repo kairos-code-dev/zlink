@@ -124,6 +124,71 @@ class async_write_connection_t final : public zlink::stream_connector::detail::s
     bool _fail_write = false;
 };
 
+class early_reply_connection_t final : public zlink::stream_connector::detail::stream_connection_t
+{
+  public:
+    explicit early_reply_connection_t (std::vector<std::uint8_t> reply) :
+        _reply (std::move (reply))
+    {
+    }
+
+    bool is_open () const override { return _open; }
+
+    std::size_t available (boost::system::error_code &error) override
+    {
+        error.clear ();
+        return _reply.empty () ? 0 : _reply.size ();
+    }
+
+    std::size_t
+    read_some (std::uint8_t *, std::size_t, boost::system::error_code &error) override
+    {
+        error = boost::asio::error::would_block;
+        return 0;
+    }
+
+    void async_read_some (
+      std::size_t,
+      std::function<void (boost::system::error_code, std::vector<std::uint8_t>)> completion) override
+    {
+        auto reply = std::move (_reply);
+        _reply.clear ();
+        completion (boost::system::error_code{}, std::move (reply));
+    }
+
+    void write (const std::vector<std::uint8_t> &bytes) override { written.push_back (bytes); }
+
+    void async_write (std::vector<std::uint8_t> bytes,
+                      std::function<void (boost::system::error_code)> completion) override
+    {
+        written.push_back (std::move (bytes));
+        write_completion = std::move (completion);
+    }
+
+    void complete_write ()
+    {
+        if (write_completion) {
+            auto completion = std::move (write_completion);
+            completion (boost::system::error_code{});
+        }
+    }
+
+    void shutdown_and_close () override { _open = false; }
+
+    void close (boost::system::error_code &error) override
+    {
+        _open = false;
+        error.clear ();
+    }
+
+    std::vector<std::vector<std::uint8_t>> written;
+    std::function<void (boost::system::error_code)> write_completion;
+
+  private:
+    bool _open = true;
+    std::vector<std::uint8_t> _reply;
+};
+
 class oversized_compression_codec_t final : public zlink::stream_connector::compression_codec_t
 {
   public:
@@ -1086,6 +1151,47 @@ int main ()
         if (!async_request_write_failure_seen
             || async_request_write_failure_state->pending_requests.size () != 0) {
             return 166;
+        }
+
+        auto early_reply_frame = make_server_frame (
+          zlink::stream_connector::message_kind_t::response, 1, "early.reply", "early-reply");
+        const auto early_reply_text = early_reply_frame.to_string ();
+        auto early_reply_connection = std::make_shared<early_reply_connection_t> (
+          std::vector<std::uint8_t> (early_reply_text.begin (), early_reply_text.end ()));
+        auto early_reply_state =
+          std::make_shared<zlink::stream_connector::detail::connector_state_t> (
+            zlink::stream_connector::connector_options_t{
+              .dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate});
+        early_reply_state->state = zlink::stream_connector::connection_state_t::connected;
+        early_reply_state->connection = early_reply_connection;
+        int early_reply_callback_count = 0;
+        bool early_reply_seen = false;
+        zlink::stream_connector::detail::submit_request_async (
+          early_reply_state,
+          zlink::stream_connector::packet_t{
+            .name = "early.reply.request", .payload = zlink::message_t::from ("payload")},
+          std::chrono::milliseconds (25),
+          [&] (zlink::stream_connector::result_t<
+               zlink::stream_connector::detail::request_reply_t> result) {
+              ++early_reply_callback_count;
+              early_reply_seen =
+                result && result.value ().payload.to_string () == "early-reply";
+          });
+        if (early_reply_connection->written.empty ()
+            || !early_reply_connection->write_completion
+            || early_reply_state->pending_requests.size () != 1) {
+            return 171;
+        }
+        zlink::stream_connector::detail::start_read_loop (early_reply_state);
+        if (!early_reply_seen || early_reply_callback_count != 1
+            || !early_reply_state->pending_requests.empty ()) {
+            return 172;
+        }
+        early_reply_connection->complete_write ();
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        if (!early_reply_seen || early_reply_callback_count != 1
+            || !early_reply_state->pending_requests.empty ()) {
+            return 173;
         }
 
         async_send_state->dispatch_queue.push_back (zlink::stream_connector::packet_t{

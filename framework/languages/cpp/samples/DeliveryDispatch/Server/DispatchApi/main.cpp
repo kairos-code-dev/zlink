@@ -96,7 +96,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
-          .enable_client (topology.dispatch_center_route_endpoint);
+          .enable_client ();
         options.http ()
           .listen (topology.dispatch_api_http_url)
           .map_health ("/health")

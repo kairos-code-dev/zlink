@@ -22,6 +22,7 @@
 #include <cctype>
 #include <chrono>
 #include <exception>
+#include <future>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -389,35 +390,40 @@ void update_actor_location_after_move (detail::spot_node_builder_state_t &state,
     (void) state.location_lifecycle->update_actor_location (std::move (location));
 }
 
-result_t<std::string>
-spot_route_channel_name (const std::shared_ptr<detail::spot_context_state_t> &state)
+std::string spot_mesh_channel_name (const std::shared_ptr<detail::spot_context_state_t> &state)
+{
+    if (state && !state->spot_name.empty ()) {
+        return state->spot_name;
+    }
+    return "spot-mesh";
+}
+
+std::optional<std::string>
+optional_spot_route_channel_name (const std::shared_ptr<detail::spot_context_state_t> &state)
 {
     if (!state || !state->node || !state->channel_runtime) {
-        return result_t<std::string>::failure (framework_error_kind_t::request_protocol_error,
-                                               "SPOT route runtime is not configured");
+        return std::nullopt;
     }
     std::lock_guard lock (state->channel_runtime->mutex);
     if (state->node->snapshot.spot_route_channel_name) {
         const auto &route_channel_name = *state->node->snapshot.spot_route_channel_name;
         if (state->channel_runtime->route_channels.find (route_channel_name)
             != state->channel_runtime->route_channels.end ()) {
-            return result_t<std::string>::success (route_channel_name);
+            return route_channel_name;
         }
     }
     if (state->channel_runtime->route_channels.size () == 1) {
-        return result_t<std::string>::success (
-          state->channel_runtime->route_channels.begin ()->first);
+        return state->channel_runtime->route_channels.begin ()->first;
     }
-    if (state->node && state->node->snapshot.accepted_route_channels.size () == 1) {
+    if (state->node->snapshot.accepted_route_channels.size () == 1) {
         const auto &route_channel_name =
           state->node->snapshot.accepted_route_channels.front ().channel_name;
         if (state->channel_runtime->route_channels.find (route_channel_name)
             != state->channel_runtime->route_channels.end ()) {
-            return result_t<std::string>::success (route_channel_name);
+            return route_channel_name;
         }
     }
-    return result_t<std::string>::failure (framework_error_kind_t::spot_route_not_found,
-                                           "remote SPOT route channel is not configured");
+    return std::nullopt;
 }
 
 runtime::messaging::message_parts_t
@@ -433,6 +439,76 @@ encode_spot_route_parts (runtime::messaging::message_kind_t kind,
     header.metadata = std::move (metadata);
     runtime::messaging::envelope_codec_t envelope;
     return envelope.encode_raw_body_parts (header, std::move (payload));
+}
+
+framework_error_kind_t native_request_error_kind (zlink::request_result_t result)
+{
+    switch (result) {
+        case zlink::request_result_t::timed_out:
+            return framework_error_kind_t::timeout;
+        case zlink::request_result_t::not_connected:
+            return framework_error_kind_t::timeout;
+        case zlink::request_result_t::ok:
+            return framework_error_kind_t::request_failed;
+        default:
+            return framework_error_kind_t::request_failed;
+    }
+}
+
+result_t<runtime::messaging::message_parts_t>
+request_spot_mesh_parts (const std::shared_ptr<detail::spot_context_state_t> &state,
+                         node_rid_t node_rid,
+                         spot_rid_t spot_rid,
+                         runtime::messaging::message_parts_t parts,
+                         std::chrono::milliseconds timeout)
+{
+    if (!state) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          framework_error_kind_t::request_protocol_error, "SPOT context is not configured");
+    }
+    auto native = state->native_spot.lock ();
+    if (!native) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          framework_error_kind_t::spot_route_not_found,
+          "SPOT mesh route requires a running native Spot");
+    }
+    try {
+        auto native_parts = parts.items ();
+        if (native_parts.empty ()) {
+            return result_t<runtime::messaging::message_parts_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "SPOT mesh request requires at least one message part");
+        }
+        auto iterator = native_parts.begin ();
+        auto submit =
+          native
+            ->request_to_spot (zlink::routing_id_t::from (std::string (node_rid.value ())),
+                               zlink::routing_id_t::from (std::string (spot_rid.value ())))
+            .message (*iterator);
+        ++iterator;
+        for (; iterator != native_parts.end (); ++iterator) {
+            submit = std::move (submit).message (*iterator);
+        }
+        auto reply = std::move (submit).timeout (timeout).async ().get ();
+        return result_t<runtime::messaging::message_parts_t>::success (
+          runtime::messaging::message_parts_t (std::move (reply)));
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          error.kind (), error.what (), error.is_retriable ());
+    }
+    catch (const zlink::request_error_t &error) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          native_request_error_kind (error.result ()), error.what ());
+    }
+    catch (const zlink::submit_error_t &error) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          framework_error_kind_t::timeout, error.what ());
+    }
+    catch (const std::exception &error) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          framework_error_kind_t::request_failed, error.what ());
+    }
 }
 
 } // namespace
@@ -987,39 +1063,72 @@ send_call_t spot_context_t::send_to_erased (node_rid_t node_rid,
         return send_call_t (result_t<void>::failure (framework_error_kind_t::spot_route_not_found,
                                                      "target spot route is empty"));
     }
-    auto route_channel = spot_route_channel_name (_state);
-    if (!route_channel) {
-        return send_call_t (result_t<void>::failure (
-          route_channel.error_kind (),
-          route_channel.error () ? route_channel.error ()->what () : "SPOT route channel failed"));
-    }
     auto state = _state;
     return send_call_t (
       std::move (packet_name),
-      [state, route_channel_name = route_channel.value (), node_rid = std::move (node_rid),
+      [state, node_rid = std::move (node_rid),
        spot_rid = std::move (spot_rid), payload = std::move (payload)] (
         const std::string &submitted_packet_name, std::chrono::milliseconds,
         const send_call_t::metadata_map_t &metadata) mutable -> result_t<void> {
-          if (!state || !state->channel_runtime) {
+          if (!state) {
               return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                              "SPOT route runtime is not configured");
+                                              "SPOT context is not configured");
+          }
+          auto native = state->native_spot.lock ();
+          if (!native) {
+              if (auto route_channel_name = optional_spot_route_channel_name (state)) {
+                  detail::channel_runtime_manager_t manager (state->channel_runtime);
+                  auto &runtime = manager.get_route_channel (*route_channel_name);
+                  auto parts = encode_spot_route_parts (
+                    runtime::messaging::message_kind_t::command, *route_channel_name,
+                    submitted_packet_name, payload, std::chrono::milliseconds::zero (), metadata);
+                  auto submitted = runtime.submit_spot_send_parts (
+                    zlink::routing_id_t::from (std::string (node_rid.value ())),
+                    zlink::routing_id_t::from (std::string (spot_rid.value ())), std::move (parts));
+                  if (submitted) {
+                      state->ordering_log.push_back ("send_to:" + std::string (spot_rid.value ()));
+                  }
+                  return submitted;
+              }
+              return result_t<void>::failure (
+                framework_error_kind_t::spot_route_not_found,
+                "SPOT mesh route requires a running native Spot");
           }
           try {
-              detail::channel_runtime_manager_t manager (state->channel_runtime);
-              auto &runtime = manager.get_route_channel (route_channel_name);
+              const auto channel_name = spot_mesh_channel_name (state);
               auto parts = encode_spot_route_parts (
-                runtime::messaging::message_kind_t::command, route_channel_name,
-                submitted_packet_name, payload, std::chrono::milliseconds::zero (), metadata);
-              auto submitted = runtime.submit_spot_send_parts (
-                zlink::routing_id_t::from (std::string (node_rid.value ())),
-                zlink::routing_id_t::from (std::string (spot_rid.value ())), std::move (parts));
-              if (submitted && state) {
+                runtime::messaging::message_kind_t::command, channel_name, submitted_packet_name,
+                payload, std::chrono::milliseconds::zero (), metadata);
+              auto native_parts = parts.items ();
+              if (native_parts.empty ()) {
+                  return result_t<void>::failure (
+                    framework_error_kind_t::request_protocol_error,
+                    "SPOT mesh send requires at least one message part");
+              }
+              auto iterator = native_parts.begin ();
+              auto submit =
+                native
+                  ->send_to_spot (zlink::routing_id_t::from (std::string (node_rid.value ())),
+                                  zlink::routing_id_t::from (std::string (spot_rid.value ())))
+                  .message (*iterator);
+              ++iterator;
+              for (; iterator != native_parts.end (); ++iterator) {
+                  submit = std::move (submit).message (*iterator);
+              }
+              if (!std::move (submit).submit ()) {
+                  return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                  "SPOT mesh send was not submitted");
+              }
+              if (state) {
                   state->ordering_log.push_back ("send_to:" + std::string (spot_rid.value ()));
               }
-              return submitted;
+              return result_t<void>::success ();
           }
           catch (const framework_exception_t &error) {
               return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+          }
+          catch (const std::exception &error) {
+              return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
           }
       });
 }
@@ -1033,51 +1142,92 @@ spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_ri
         return erased_request_call_t (framework_exception_t (
           framework_error_kind_t::spot_route_not_found, "target spot route is empty"));
     }
-    auto route_channel = spot_route_channel_name (_state);
-    if (!route_channel) {
-        return erased_request_call_t (framework_exception_t (
-          route_channel.error_kind (),
-          route_channel.error () ? route_channel.error ()->what () : "SPOT route channel failed"));
-    }
     auto state = _state;
     return erased_request_call_t (
       std::move (packet_name), serializer_registry (),
-      [state, route_channel_name = route_channel.value (), node_rid = std::move (node_rid),
+      [state, node_rid = std::move (node_rid),
        spot_rid = std::move (spot_rid), payload = std::move (payload)] (
         const std::string &submitted_packet_name, std::chrono::milliseconds timeout,
         const request_call_t<zlink::message_t>::metadata_map_t &metadata) mutable
       -> task_t<zlink::message_t> {
-          if (!state || !state->channel_runtime) {
+          if (!state) {
               return task_t<zlink::message_t> (
                 result_t<zlink::message_t>::failure (framework_error_kind_t::request_protocol_error,
-                                                     "SPOT route runtime is not configured"));
+                                                     "SPOT context is not configured"));
           }
           try {
-              detail::channel_runtime_manager_t manager (state->channel_runtime);
-              auto &runtime = manager.get_route_channel (route_channel_name);
+              auto native = state->native_spot.lock ();
+              if (!native) {
+                  if (auto route_channel_name = optional_spot_route_channel_name (state)) {
+                      detail::channel_runtime_manager_t manager (state->channel_runtime);
+                      auto &runtime = manager.get_route_channel (*route_channel_name);
+                      const auto effective_timeout = timeout > std::chrono::milliseconds::zero ()
+                                                       ? timeout
+                                                       : runtime.default_request_timeout ();
+                      auto parts = encode_spot_route_parts (
+                        runtime::messaging::message_kind_t::request, *route_channel_name,
+                        submitted_packet_name, payload, effective_timeout, metadata);
+                      state->ordering_log.push_back ("request_to:" + std::string (spot_rid.value ()));
+                      return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+                        [state, route_channel_name = *route_channel_name,
+                         node_rid = std::move (node_rid), spot_rid = std::move (spot_rid),
+                         parts = std::move (parts),
+                         effective_timeout] () mutable
+                        -> boost::asio::awaitable<result_t<zlink::message_t>> {
+                            try {
+                                detail::channel_runtime_manager_t manager (state->channel_runtime);
+                                auto &runtime = manager.get_route_channel (route_channel_name);
+                                auto reply = runtime.request_reply_spot_parts (
+                                  zlink::routing_id_t::from (std::string (node_rid.value ())),
+                                  zlink::routing_id_t::from (std::string (spot_rid.value ())),
+                                  std::move (parts), effective_timeout);
+                                if (!reply) {
+                                    co_return result_t<zlink::message_t>::failure (
+                                      reply.error_kind (),
+                                      reply.error () ? reply.error ()->what ()
+                                                    : "SPOT route request failed");
+                                }
+                                runtime::messaging::envelope_codec_t envelope;
+                                auto body = envelope.decode_body (reply.value ());
+                                if (!body) {
+                                    co_return result_t<zlink::message_t>::failure (
+                                      body.error_kind (),
+                                      body.error () ? body.error ()->what ()
+                                                    : "SPOT route reply body decode failed");
+                                }
+                                co_return result_t<zlink::message_t>::success (body.value ());
+                            }
+                            catch (const framework_exception_t &error) {
+                                co_return result_t<zlink::message_t>::failure (
+                                  error.kind (), error.what (), error.is_retriable ());
+                            }
+                        });
+                  }
+                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+                    framework_error_kind_t::spot_route_not_found,
+                    "SPOT mesh route requires a running native Spot"));
+              }
               const auto effective_timeout = timeout > std::chrono::milliseconds::zero ()
                                                ? timeout
-                                               : runtime.default_request_timeout ();
+                                               : native->request_timeout ();
+              const auto channel_name = spot_mesh_channel_name (state);
               auto parts = encode_spot_route_parts (runtime::messaging::message_kind_t::request,
-                                                    route_channel_name, submitted_packet_name,
-                                                    payload, effective_timeout, metadata);
+                                                    channel_name, submitted_packet_name, payload,
+                                                    effective_timeout, metadata);
               state->ordering_log.push_back ("request_to:" + std::string (spot_rid.value ()));
               return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
-                [state, route_channel_name, node_rid = std::move (node_rid),
-                 spot_rid = std::move (spot_rid), parts = std::move (parts),
+                [state, node_rid = std::move (node_rid), spot_rid = std::move (spot_rid),
+                 parts = std::move (parts),
                  effective_timeout] () mutable
                 -> boost::asio::awaitable<result_t<zlink::message_t>> {
                     try {
-                        detail::channel_runtime_manager_t manager (state->channel_runtime);
-                        auto &runtime = manager.get_route_channel (route_channel_name);
-                        auto reply = runtime.request_reply_spot_parts (
-                          zlink::routing_id_t::from (std::string (node_rid.value ())),
-                          zlink::routing_id_t::from (std::string (spot_rid.value ())),
-                          std::move (parts), effective_timeout);
+                        auto reply = request_spot_mesh_parts (
+                          state, std::move (node_rid), std::move (spot_rid), std::move (parts),
+                          effective_timeout);
                         if (!reply) {
                             co_return result_t<zlink::message_t>::failure (
                               reply.error_kind (), reply.error () ? reply.error ()->what ()
-                                                                  : "SPOT route request failed");
+                                                                  : "SPOT mesh request failed");
                         }
                         runtime::messaging::envelope_codec_t envelope;
                         auto reply_header = envelope.decode_header (reply.value ());

@@ -122,9 +122,9 @@ int main (int argc, char **argv)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::dispatch_route_node))
           .use_handler_group ("dispatch");
         options.add_client_server_channel (sample_names_t::courier_route_channel)
-          .enable_client (topology.courier_route_endpoint);
+          .enable_client ();
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
-          .enable_client (topology.tracking_route_endpoint);
+          .enable_client ();
         options.handlers ().group ("dispatch").add<assign_delivery_handler_t> ();
     });
     return app.run (argc, argv);

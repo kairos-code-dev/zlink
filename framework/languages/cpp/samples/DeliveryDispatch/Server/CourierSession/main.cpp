@@ -125,11 +125,7 @@ int main (int argc, char **argv)
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node))
           .enable_router (topology.courier_session_spot_router_endpoint)
-          .connect_router (topology.courier_actor_node_1_router_endpoint)
-          .connect_router (topology.courier_actor_node_2_router_endpoint)
-          .enable_pub_sub (topology.courier_session_spot_endpoint)
-          .connect_peer_pub (topology.courier_actor_node_1_endpoint)
-          .connect_peer_pub (topology.courier_actor_node_2_endpoint);
+          .enable_pub_sub (topology.courier_session_spot_endpoint);
         options.add_stream_node (sample_names_t::courier_stream_node)
           .bind (topology.courier_stream_endpoint)
           .register_session<courier_session_t> ();

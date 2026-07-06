@@ -4,14 +4,12 @@ import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
+import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
-@ZLinkHandlerGroup("courier-actor-node")
 public final class FindCourierActorHandler
-    implements ZLinkRequestHandler<Messages.FindCourierActor, Messages.CourierActorFound> {
+    implements ZLinkSpotRequestHandler<CourierEntrySpot, Messages.FindCourierActor, Messages.CourierActorFound> {
     private final ZLinkActorManager actors;
 
     public FindCourierActorHandler(ZLinkActorManager actors) {
@@ -20,8 +18,8 @@ public final class FindCourierActorHandler
 
     @Override
     public Messages.CourierActorFound handle(
-        Messages.FindCourierActor request,
-        ZLinkRequestContext context) {
+        CourierEntrySpot spot,
+        Messages.FindCourierActor request) {
         return await(actors.find(request.courierId()))
             .map(actor -> new Messages.CourierActorFound(request.courierId(), ZLinkActorRefSnapshot.from(actor)))
             .orElseGet(() -> new Messages.CourierActorFound(request.courierId(), null));

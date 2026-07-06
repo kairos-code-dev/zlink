@@ -13,6 +13,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers.EnsurePlayerActorHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers.MatchBingoActorHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers.ObserveBingoEventsHandler;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
@@ -40,6 +41,7 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
 
     @Override
     public void configure() {
+        context.handlers().addHandler(EnsurePlayerActorHandler.class);
         context.handlers().addHandler(MatchBingoActorHandler.class);
         context.handlers().addHandler(ObserveBingoEventsHandler.class);
     }

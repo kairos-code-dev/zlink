@@ -2,7 +2,9 @@ package systems.zlink.samples.deliverydispatch.server.couriersession.sessions;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -11,20 +13,22 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 public final class CourierSession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
-    private final ZLinkClient channels;
+    private final ZLinkRouteClient routes;
 
     public CourierSession(
         ZLinkSessionContext context,
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers,
-        ZLinkClient channels) {
+        ZLinkRouteClient routes) {
         this.context = context;
         this.handlers = handlers;
-        this.channels = channels;
+        this.routes = routes;
     }
 
     @Override
@@ -65,23 +69,36 @@ public final class CourierSession implements ZLinkSession {
 
     private void handleBindCourierSession(ZLinkMessage payload) {
         Messages.BindCourierSession request = payload.decode(Messages.BindCourierSession.class);
-        Messages.CourierBound bound = channels
-            .requestToChannel(
-                SampleNames.CourierChannel,
-                new Messages.BindCourier(request.courierId(), context.sessionId()))
-            .await(Messages.CourierBound.class);
-        ZLinkSessionActor actor = context.actors().find(bound.actor().actorId())
-            .orElseGet(() -> await(context.actors().bind(bound.actor().toActorRef())));
+        var actorRef = findOrEnsureActor(request.courierId());
+        ZLinkSessionActor actor = context.actors().find(actorRef.actorId())
+            .orElseGet(() -> await(context.actors().bind(actorRef.toActorRef())));
         await(actor.relay(ZLinkMessage.of(new Messages.BindCourierSession(
-            bound.courierId(),
-            bound.actor(),
-            bound.sessionRoute()))));
+            request.courierId(),
+            actorRef,
+            context.sessionId()))));
         context.client()
             .reply(new Messages.BindCourierSessionAccepted(
-                bound.courierId(),
-                bound.actor(),
-                bound.sessionRoute()))
+                request.courierId(),
+                actorRef,
+                context.sessionId()))
             .submit();
     }
 
+    private systems.zlink.framework.actors.ZLinkActorRefSnapshot findOrEnsureActor(String courierId) {
+        String placement = SampleTopology.courierPlacement(courierId);
+        RoutingId nodeRid = RoutingId.from(placement);
+        ZLinkSpotAddress address = new ZLinkSpotAddress(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
+        Messages.CourierActorFound found = routes
+            .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.FindCourierActor(courierId))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(Messages.CourierActorFound.class);
+        if (found.actor() != null) {
+            return found.actor();
+        }
+        return routes
+            .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.EnsureCourierActor(courierId))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(Messages.CourierActorEnsured.class)
+            .actor();
+    }
 }

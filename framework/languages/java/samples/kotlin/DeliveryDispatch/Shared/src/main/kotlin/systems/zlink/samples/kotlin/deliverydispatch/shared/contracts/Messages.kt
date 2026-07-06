@@ -59,6 +59,15 @@ data class BindCourierRes(
     val sessionRoute: String,
 )
 
+data class FindCourierActorReq(
+    val courierId: String,
+)
+
+data class FindCourierActorRes(
+    val courierId: String,
+    val actor: ZLinkActorRefSnapshot?,
+)
+
 data class EnsureCourierActorReq(
     val courierId: String,
 )

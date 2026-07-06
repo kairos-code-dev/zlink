@@ -205,6 +205,8 @@ topology_args=(
   "--sample.topology.playBSpotRouterEndpoint=$PLAY_B_SPOT_ROUTER_ENDPOINT"
   "--sample.topology.sessionSpotEndpoint=$SESSION_A_SPOT_ENDPOINT"
   "--sample.topology.sessionRouterEndpoint=$SESSION_A_ROUTER_ENDPOINT"
+  "--sample.topology.sessionASpotNodeRid=1201-spot"
+  "--sample.topology.sessionBSpotNodeRid=1202-spot"
   "--sample.topology.sessionAStreamEndpoint=$SESSION_A_STREAM_ENDPOINT"
   "--sample.topology.sessionBStreamEndpoint=$SESSION_B_STREAM_ENDPOINT"
   "--sample.topology.redisEndpoint=$BINGO_REDIS_ENDPOINT"
@@ -220,12 +222,12 @@ start_server() {
 }
 
 start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
-wait_port play-a "$PLAY_A_CHANNEL_ENDPOINT"
+wait_port play-a "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-route "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
 wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
 start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
-wait_port play-b "$PLAY_B_CHANNEL_ENDPOINT"
+wait_port play-b "$PLAY_B_ROUTE_ENDPOINT"
 wait_port play-b-route "$PLAY_B_ROUTE_ENDPOINT"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
 wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"

@@ -6,7 +6,9 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
+import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -35,6 +37,18 @@ class DispatchServerApplication {
                 .enableClient()
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()
+            val courierRoutes = options.addSpotMesh(SampleNames.CourierSpotMesh)
+            courierRoutes
+                .enableRouter("inproc://deliverydispatch-dispatch-courier-client")
+                .setRoutingId(RoutingId.from("deliverydispatch-dispatch-courier-client"))
+            courierRoutes.connectRouter(
+                RoutingId.from(SampleTopology.CourierActorNode1Rid),
+                SampleTopology.CourierActorNode1RouterEndpoint,
+            )
+            courierRoutes.connectRouter(
+                RoutingId.from(SampleTopology.CourierActorNode2Rid),
+                SampleTopology.CourierActorNode2RouterEndpoint,
+            )
         }
 
     @Bean
@@ -44,7 +58,8 @@ class DispatchServerApplication {
     fun dispatchWorkQueue(worker: DispatchWorker): DispatchWorkQueue = DispatchWorkQueue(worker)
 
     @Bean
-    fun dispatchWorker(channels: ZLinkClient): DispatchWorker = DispatchWorker(channels)
+    fun dispatchWorker(channels: ZLinkClient, routes: ZLinkRouteClient): DispatchWorker =
+        DispatchWorker(channels, routes)
 
     @Bean
     fun dispatchHttpServer(

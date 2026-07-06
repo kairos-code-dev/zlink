@@ -1,12 +1,19 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.dispatch
 
 import java.time.Instant
+import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatus
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAssertionReq
@@ -14,6 +21,7 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAsse
 
 class DispatchWorker(
     private val channels: ZLinkClient,
+    private val routes: ZLinkRouteClient,
 ) {
     fun dispatch(request: AssignDelivery) {
         if (request.deliveryId == "delivery-reassign") {
@@ -58,10 +66,24 @@ class DispatchWorker(
         publishStatus(request.deliveryId, DeliveryStatus.Delivered, "courier-b")
     }
 
-    private fun offer(request: AssignDelivery, courierId: String): OfferDeliveryRes =
-        channels
-            .requestToChannel(
-                SampleNames.CourierChannel,
+    private fun offer(request: AssignDelivery, courierId: String): OfferDeliveryRes {
+        val address = courierAddress(courierId)
+        val found = routes
+            .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(courierId))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(FindCourierActorRes::class.java)
+        if (found.actor == null) {
+            return OfferDeliveryRes(
+                deliveryId = request.deliveryId,
+                courierId = courierId,
+                accepted = false,
+                reason = "courier actor is not bound: $courierId",
+            )
+        }
+        return routes
+            .requestToSpot(
+                SampleNames.CourierSpotMesh,
+                address,
                 OfferDeliveryReq(
                     courierId = courierId,
                     deliveryId = request.deliveryId,
@@ -69,7 +91,14 @@ class DispatchWorker(
                     dropoffAddress = request.dropoffAddress,
                 ),
             )
+            .timeout(SampleTimings.OfferRequestTimeout)
             .await(OfferDeliveryRes::class.java)
+    }
+
+    private fun courierAddress(courierId: String): ZLinkSpotAddress {
+        val nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId))
+        return ZLinkSpotAddress(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
+    }
 
     private fun publishStatus(
         deliveryId: String,

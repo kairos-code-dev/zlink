@@ -50,13 +50,9 @@ class session_server_host_factory_t
               .set_routing_id (zlink::routing_id_t::from (topology.selected_session_route_rid ()))
               .enable_client ();
             options.add_spot_mesh (sample_names_t::room_spot_mesh)
-              .set_routing_id (topology.session_router_rid)
+              .set_routing_id (zlink::routing_id_t::from (topology.selected_session_spot_node_rid ()))
               .enable_router (topology.session_router_endpoint)
-              .connect_router (topology.play_a_spot_router_endpoint)
-              .connect_router (topology.play_b_spot_router_endpoint)
-              .enable_pub_sub (topology.session_spot_endpoint)
-              .connect_peer_pub (topology.play_a_spot_endpoint)
-              .connect_peer_pub (topology.play_b_spot_endpoint);
+              .enable_pub_sub (topology.session_spot_endpoint);
             options.add_stream_node (sample_names_t::stream_node)
               .bind (topology.selected_stream_endpoint ())
               .register_session<bingo_session_t> ();

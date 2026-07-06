@@ -325,6 +325,7 @@ struct framework_options_state_t
     std::set<std::string> accepted_spot_route_channels;
     std::map<std::string, std::set<std::string>> accepted_spot_route_channels_by_node;
     manual_connection_map_t accepted_spot_route_manual_connections_by_node;
+    std::set<std::string> implicit_spot_route_channels;
     std::set<std::string> route_mesh_channels;
     std::set<std::string> route_mesh_channels_with_bind;
     std::set<std::string> route_mesh_channels_with_client;

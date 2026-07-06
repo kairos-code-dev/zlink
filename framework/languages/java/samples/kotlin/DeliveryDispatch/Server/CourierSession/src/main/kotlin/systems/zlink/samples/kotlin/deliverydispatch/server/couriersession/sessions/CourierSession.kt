@@ -1,7 +1,10 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriersession.sessions
 
+import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkAwait
-import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot
+import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
@@ -9,16 +12,20 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierReq
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierSessionReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierSessionRes
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CourierDecisionMsg
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCourierActorReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCourierActorRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorRes
 
 class CourierSession(
     private val sessionContext: ZLinkSessionContext,
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
-    private val channels: ZLinkClient,
+    private val routes: ZLinkRouteClient,
 ) : ZLinkSession {
     override fun context(): ZLinkSessionContext = sessionContext
 
@@ -50,28 +57,43 @@ class CourierSession(
 
     private fun handleBindCourierSessionReq(payload: ZLinkMessage) {
         val request = payload.decode(BindCourierSessionReq::class.java)
-        val bound = channels
-            .requestToChannel(SampleNames.CourierChannel, BindCourierReq(request.courierId, sessionContext.sessionId()))
-            .await(BindCourierRes::class.java)
-        val actor = sessionContext.actors().find(bound.actor.actorId())
+        val actorRef = findOrEnsureActor(request.courierId)
+        val actor = sessionContext.actors().find(actorRef.actorId())
             .orElseGet {
                 ZLinkAwait.await(
-                    sessionContext.actors().bind(bound.actor.toActorRef()),
+                    sessionContext.actors().bind(actorRef.toActorRef()),
                 )
             }
         ZLinkAwait.await(
             actor.relay(
                 ZLinkMessage.of(
                     BindCourierSessionReq(
-                        courierId = bound.courierId,
-                        actor = bound.actor,
-                        sessionRoute = bound.sessionRoute,
+                        courierId = request.courierId,
+                        actor = actorRef,
+                        sessionRoute = sessionContext.sessionId(),
                     ),
                 ),
             ),
         )
         sessionContext.client()
-            .reply(BindCourierSessionRes(bound.courierId, bound.actor, bound.sessionRoute))
+            .reply(BindCourierSessionRes(request.courierId, actorRef, sessionContext.sessionId()))
             .submit()
+    }
+
+    private fun findOrEnsureActor(courierId: String): ZLinkActorRefSnapshot {
+        val nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId))
+        val address = ZLinkSpotAddress(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
+        val found = routes
+            .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(courierId))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(FindCourierActorRes::class.java)
+        if (found.actor != null) {
+            return found.actor
+        }
+        return routes
+            .requestToSpot(SampleNames.CourierSpotMesh, address, EnsureCourierActorReq(courierId))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(EnsureCourierActorRes::class.java)
+            .actor
     }
 }

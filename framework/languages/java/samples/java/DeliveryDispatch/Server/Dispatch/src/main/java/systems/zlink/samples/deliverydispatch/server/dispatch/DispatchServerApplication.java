@@ -6,12 +6,15 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocationStore;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -40,6 +43,16 @@ public final class DispatchServerApplication {
                 .enableClient();
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient();
+            ZLinkSpotNodeBuilder courierRoutes = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
+            courierRoutes
+                .enableRouter("inproc://deliverydispatch-dispatch-courier-client")
+                .setRoutingId(RoutingId.from("deliverydispatch-dispatch-courier-client"));
+            courierRoutes.connectRouter(
+                RoutingId.from(SampleTopology.CourierActorNode1Rid),
+                SampleTopology.CourierActorNode1RouterEndpoint);
+            courierRoutes.connectRouter(
+                RoutingId.from(SampleTopology.CourierActorNode2Rid),
+                SampleTopology.CourierActorNode2RouterEndpoint);
         };
     }
 
@@ -54,8 +67,10 @@ public final class DispatchServerApplication {
     }
 
     @Bean
-    DispatchWorker dispatchWorker(systems.zlink.framework.channels.ZLinkClient channels) {
-        return new DispatchWorker(channels);
+    DispatchWorker dispatchWorker(
+        systems.zlink.framework.channels.ZLinkClient channels,
+        systems.zlink.framework.channels.ZLinkRouteClient routes) {
+        return new DispatchWorker(channels, routes);
     }
 
     @Bean

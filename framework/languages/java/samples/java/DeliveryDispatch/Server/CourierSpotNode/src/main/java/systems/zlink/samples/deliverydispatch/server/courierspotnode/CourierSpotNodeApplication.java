@@ -44,11 +44,13 @@ public final class CourierSpotNodeApplication {
             options.addClientServerChannel(SampleNames.courierActorNodeChannelFor(selected.nodeRid()))
                 .enableServer(selected.routeEndpoint())
                 .enableClient()
-                .setRoutingId(RoutingId.from(selected.nodeRid()))
-                .addHandlerGroup("courier-actor-node");
+                .setRoutingId(RoutingId.from(selected.nodeRid()));
             ZLinkSpotNodeBuilder spotNode = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
             spotNode.enableRouter(selected.routerEndpoint())
                 .setRoutingId(RoutingId.from(selected.nodeRid()));
+            spotNode.connectRouter(
+                RoutingId.from(SampleTopology.CourierSessionSpotNodeRid),
+                SampleTopology.CourierSessionSpotRouterEndpoint);
             spotNode.enablePubSub(selected.spotEndpoint());
             spotNode.addEntrySpot(CourierEntrySpot.class);
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory.class);

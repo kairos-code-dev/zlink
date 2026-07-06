@@ -3,14 +3,12 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.hand
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRefSnapshot
-import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 
-@ZLinkHandlerGroup("play")
 class EnsurePlayerActorHandler(
     private val actors: ZLinkActorManager,
 ) : ZLinkSuspendingSpotRequestHandler<BingoEntrySpot, EnsurePlayerActorReq, EnsurePlayerActorRes> {

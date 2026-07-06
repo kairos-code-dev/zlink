@@ -1,15 +1,22 @@
 package systems.zlink.samples.deliverydispatch.server.dispatch;
 
 import java.time.Instant;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 public final class DispatchWorker {
     private final ZLinkClient channels;
+    private final ZLinkRouteClient routes;
 
-    public DispatchWorker(ZLinkClient channels) {
+    public DispatchWorker(ZLinkClient channels, ZLinkRouteClient routes) {
         this.channels = channels;
+        this.routes = routes;
     }
 
     public void dispatch(Messages.AssignDelivery request) {
@@ -57,15 +64,34 @@ public final class DispatchWorker {
     }
 
     private Messages.OfferDeliveryResult offer(Messages.AssignDelivery request, String courierId) {
-        return channels
-            .requestToChannel(
-                SampleNames.CourierChannel,
+        ZLinkSpotAddress address = courierAddress(courierId);
+        Messages.CourierActorFound found = routes
+            .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.FindCourierActor(courierId))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(Messages.CourierActorFound.class);
+        if (found.actor() == null) {
+            return new Messages.OfferDeliveryResult(
+                request.deliveryId(),
+                courierId,
+                false,
+                "courier actor is not bound: " + courierId);
+        }
+        return routes
+            .requestToSpot(
+                SampleNames.CourierSpotDiscovery,
+                address,
                 new Messages.OfferDelivery(
                     courierId,
                     request.deliveryId(),
                     request.pickupAddress(),
                     request.dropoffAddress()))
+            .timeout(SampleTimings.OfferRequestTimeout)
             .await(Messages.OfferDeliveryResult.class);
+    }
+
+    private ZLinkSpotAddress courierAddress(String courierId) {
+        RoutingId nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId));
+        return new ZLinkSpotAddress(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
     }
 
     private void publishStatus(

@@ -81,6 +81,10 @@ struct sample_topology_t
         if (auto value = section.get ("sessionRouterRid")) {
             topology.session_router_rid = zlink::routing_id_t::from (*value);
         }
+        topology.session_a_spot_node_rid =
+          section.get ("sessionASpotNodeRid").value_or (topology.session_a_spot_node_rid);
+        topology.session_b_spot_node_rid =
+          section.get ("sessionBSpotNodeRid").value_or (topology.session_b_spot_node_rid);
         if (auto value = section.get ("sessionPubRid")) {
             topology.session_pub_rid = zlink::routing_id_t::from (*value);
         }
@@ -128,6 +132,8 @@ struct sample_topology_t
     std::string session_node = "a";
     std::string play_a_node_rid = "2201";
     std::string play_b_node_rid = "2202";
+    std::string session_a_spot_node_rid = "1201-spot";
+    std::string session_b_spot_node_rid = "1202-spot";
     std::string api_a_route_rid = "3301";
     std::string api_b_route_rid = "3302";
     std::string session_a_route_rid = "1201";
@@ -181,6 +187,11 @@ struct sample_topology_t
     std::string selected_session_route_rid () const
     {
         return session_node == "b" ? session_b_route_rid : session_a_route_rid;
+    }
+
+    std::string selected_session_spot_node_rid () const
+    {
+        return session_node == "b" ? session_b_spot_node_rid : session_a_spot_node_rid;
     }
 
     std::string selected_play_spot_endpoint () const

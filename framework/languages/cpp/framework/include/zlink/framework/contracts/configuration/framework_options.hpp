@@ -851,6 +851,12 @@ class spot_node_options_builder_t
         _router_manual_connections.clear ();
         _options->spot_nodes_with_router.insert (_spot_node_name);
         _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
+        if (_accepted_route_channels.empty () && _options->route_mesh_channels.empty ()) {
+            _options->implicit_spot_route_channels.insert (_spot_node_name);
+            _options->accepted_spot_route_channels.insert (_spot_node_name);
+            _options->accepted_spot_route_channels_by_node[_spot_node_name].insert (
+              _spot_node_name);
+        }
         apply ();
         return *this;
     }
@@ -890,7 +896,21 @@ class spot_node_options_builder_t
     spot_node_options_builder_t &accept_route_mesh (std::string route_channel_name)
     {
         detail::require_non_blank (route_channel_name, "accepted SPOT route channel is required");
+        if (_accepted_route_channels.empty ()
+            && _options->implicit_spot_route_channels.erase (_spot_node_name) != 0) {
+            _options->accepted_spot_route_channels.erase (_spot_node_name);
+            if (auto found = _options->accepted_spot_route_channels_by_node.find (_spot_node_name);
+                found != _options->accepted_spot_route_channels_by_node.end ()) {
+                found->second.erase (_spot_node_name);
+                if (found->second.empty ()) {
+                    _options->accepted_spot_route_channels_by_node.erase (found);
+                }
+            }
+        }
         _accepted_route_channels.push_back (std::move (route_channel_name));
+        _options->accepted_spot_route_channels.insert (_accepted_route_channels.back ());
+        _options->accepted_spot_route_channels_by_node[_spot_node_name].insert (
+          _accepted_route_channels.back ());
         if (_accepted_route_channels.size () == 1) {
             _spot_route_channel_name = _accepted_route_channels.front ();
         } else {
@@ -986,10 +1006,19 @@ class spot_node_options_builder_t
         const auto accepted_route_channels = _accepted_route_channels;
         const auto options = _options;
         auto spot_route_channel_name = _spot_route_channel_name;
+        std::vector<std::string> effective_accepted_route_channels = accepted_route_channels;
+        if (effective_accepted_route_channels.empty () && options->route_mesh_channels.empty ()
+            && !router_endpoint.empty ()) {
+            effective_accepted_route_channels.push_back (spot_node_name);
+            spot_route_channel_name = spot_node_name;
+        }
         if (!spot_route_channel_name && accepted_route_channels.empty ()
             && options->route_mesh_channels.size () == 1) {
             spot_route_channel_name = *options->route_mesh_channels.begin ();
         }
+        const auto uses_implicit_spot_route_channel =
+          accepted_route_channels.empty () && options->route_mesh_channels.empty ()
+          && !router_endpoint.empty ();
         const auto actions = _actions;
         auto configure = [=] (spot_node_builder_t &spot_node) {
             if (!endpoint.empty ()) {
@@ -1010,12 +1039,12 @@ class spot_node_options_builder_t
                     spot_node.connect_pub_sub (endpoint);
                 }
             }
-            if (accepted_route_channels.empty ()) {
+            if (accepted_route_channels.empty () && !options->route_mesh_channels.empty ()) {
                 for (const auto &route_channel_name : options->route_mesh_channels) {
                     spot_node.accept_implicit_route_mesh (route_channel_name);
                 }
             } else {
-                for (const auto &route_channel_name : accepted_route_channels) {
+                for (const auto &route_channel_name : effective_accepted_route_channels) {
                     spot_node.accept_implicit_route_mesh (route_channel_name);
                 }
             }
@@ -1027,9 +1056,13 @@ class spot_node_options_builder_t
             }
         };
         _options->spot_node_appliers[spot_node_name] = [options = _options, spot_node_name,
+                                                        uses_implicit_spot_route_channel,
                                                         configure] {
             if (options->active_zlink == nullptr) {
                 return;
+            }
+            if (uses_implicit_spot_route_channel) {
+                (void) options->active_zlink->route_channel (spot_node_name);
             }
             auto spot_node = options->active_zlink->add_spot_node (spot_node_name);
             configure (spot_node);

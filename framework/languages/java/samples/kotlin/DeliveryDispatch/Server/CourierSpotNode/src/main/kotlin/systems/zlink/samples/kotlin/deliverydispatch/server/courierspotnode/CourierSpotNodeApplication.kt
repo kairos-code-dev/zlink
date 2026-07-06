@@ -37,10 +37,13 @@ class CourierSpotNodeApplication {
                 .setRoutingId(RoutingId.from(selected.nodeRid))
                 .enableServer(selected.routeEndpoint)
                 .enableClient()
-                .addHandlerGroup("courier-actor-node")
             val spotNode = options.addSpotMesh(SampleNames.CourierSpotMesh)
             spotNode.enableRouter(selected.routerEndpoint)
                 .setRoutingId(RoutingId.from(selected.nodeRid))
+            spotNode.connectRouter(
+                RoutingId.from(SampleTopology.CourierSessionSpotNodeRid),
+                SampleTopology.CourierSessionSpotRouterEndpoint,
+            )
             spotNode.enablePubSub(selected.spotEndpoint)
             spotNode.addEntrySpot(CourierEntrySpot::class.java)
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory::class.java)

@@ -85,6 +85,8 @@ inline void validate_framework_options (const framework_options_state_t &options
         for (const auto &channel_name : channel_names) {
             const auto regular_channel = options.client_server_channels.contains (channel_name);
             const auto route_channel = options.route_mesh_channels.contains (channel_name);
+            const auto implicit_spot_route_channel =
+              options.implicit_spot_route_channels.contains (channel_name);
             if (regular_channel && route_channel) {
                 throw framework_exception_t (
                   framework_error_kind_t::request_protocol_error,
@@ -98,7 +100,7 @@ inline void validate_framework_options (const framework_options_state_t &options
                   "SPOT route channel '" + channel_name
                     + "' must be a client/server channel or a route mesh channel");
             }
-            if (!regular_channel && !route_channel) {
+            if (!regular_channel && !route_channel && !implicit_spot_route_channel) {
                 throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                              "SPOT route channel '" + channel_name
                                                + "' is not registered");

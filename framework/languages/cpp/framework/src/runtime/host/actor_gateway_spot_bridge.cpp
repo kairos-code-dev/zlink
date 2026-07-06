@@ -3,11 +3,17 @@
 #include "runtime/host/actor_gateway_spot_bridge.hpp"
 
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
+#include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <zlink.hpp>
 #include <zlink/framework/contracts/locations/resolvers.hpp>
+
+#include <condition_variable>
+#include <mutex>
 
 namespace zlink::framework::detail
 {
@@ -40,6 +46,255 @@ bool rid_targets_node (std::string_view rid, std::string_view node_rid)
            && rid[node_rid.size ()] == ':';
 }
 
+framework_error_kind_t request_result_error_kind (zlink::request_result_t result)
+{
+    switch (result) {
+        case zlink::request_result_t::timed_out:
+            return framework_error_kind_t::timeout;
+        case zlink::request_result_t::not_connected:
+            return framework_error_kind_t::route_not_connected;
+        case zlink::request_result_t::ok:
+            return framework_error_kind_t::request_failed;
+        default:
+            return framework_error_kind_t::request_failed;
+    }
+}
+
+result_t<actor_join_reply_t> actor_join_reply_from_native (
+  zlink::request_result_t result,
+  int join_result_code,
+  const zlink::actor_ref_t &native_actor_ref,
+  const actor_ref_t &fallback_actor_ref,
+  const std::vector<zlink::message_t> &reply_parts,
+  std::string_view operation)
+{
+    if (result != zlink::request_result_t::ok) {
+        return result_t<actor_join_reply_t>::failure (request_result_error_kind (result),
+                                                      std::string (operation) + " failed");
+    }
+    const auto node_rid = native_actor_ref.node_rid ().size () == 0
+                            ? fallback_actor_ref.node_rid ()
+                            : node_rid_t::from_string (native_actor_ref.node_rid ().to_string ());
+    const auto actor_id = native_actor_ref.actor_id ().empty ()
+                            ? std::string (fallback_actor_ref.actor_id ())
+                            : native_actor_ref.actor_id ();
+    auto joined_actor = actor_ref_t (node_rid, std::string (fallback_actor_ref.actor_type ()),
+                                     actor_id, native_actor_ref.generation ());
+    const auto payload = reply_parts.empty () ? zlink::message_t{} : reply_parts.front ();
+    return result_t<actor_join_reply_t>::success (
+      actor_join_reply_t{join_result_code, std::move (joined_actor), payload});
+}
+
+result_t<actor_join_reply_t> wait_native_actor_join (
+  zlink::service::actor_join_callback_submit_operation_t submit,
+  const actor_ref_t &fallback_actor_ref,
+  std::string_view operation)
+{
+    struct join_state_t
+    {
+        std::mutex mutex;
+        std::condition_variable changed;
+        bool completed = false;
+        zlink::actor_join_result_t result;
+        std::vector<zlink::message_t> parts;
+    };
+    auto state = std::make_shared<join_state_t> ();
+    try {
+        const bool submitted = std::move (submit).submit (
+          [state] (const zlink::actor_join_result_t &result,
+                   std::vector<zlink::message_t> parts) {
+              {
+                  std::lock_guard lock (state->mutex);
+                  state->result = result;
+                  state->parts = std::move (parts);
+                  state->completed = true;
+              }
+              state->changed.notify_all ();
+          });
+        if (!submitted) {
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::request_failed, std::string (operation) + " was not submitted");
+        }
+        std::unique_lock lock (state->mutex);
+        state->changed.wait (lock, [&] { return state->completed; });
+        return actor_join_reply_from_native (state->result.result, state->result.join_result_code,
+                                             state->result.actor, fallback_actor_ref, state->parts,
+                                             operation);
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<actor_join_reply_t>::failure (error.kind (), error.what (),
+                                                      error.is_retriable ());
+    }
+    catch (const zlink::request_error_t &error) {
+        return result_t<actor_join_reply_t>::failure (request_result_error_kind (error.result ()),
+                                                      error.what ());
+    }
+    catch (const std::exception &error) {
+        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::request_failed,
+                                                      error.what ());
+    }
+}
+
+result_t<actor_join_reply_t> join_actor_to_remote_spot_mesh (spot_node_runtime_t runtime,
+                                                             const actor_ref_t &actor_ref,
+                                                             const node_rid_t &target_node_rid,
+                                                             const spot_rid_t &target_spot_rid,
+                                                             const zlink::message_t &payload)
+{
+    auto native_node = runtime.native_node ();
+    if (!native_node) {
+        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::spot_route_not_found,
+                                                      "SPOT node is not running");
+    }
+    auto request = payload;
+    auto submit =
+      native_node
+        ->join_actor (zlink::service::spot_node_t::remote_actor_ref (
+                        zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
+                        std::string (actor_ref.actor_id ())),
+                      zlink::routing_id_t::from (std::string (target_node_rid.value ())),
+                      zlink::routing_id_t::from (std::string (target_spot_rid.value ())))
+        .message (request)
+        .flags (static_cast<int> (zlink::send_flags_t::none));
+    return wait_native_actor_join (std::move (submit), actor_ref, "remote SPOT actor join");
+}
+
+result_t<actor_join_reply_t> join_actor_to_remote_entry_spot_mesh (
+  spot_node_runtime_t runtime,
+  const actor_ref_t &actor_ref,
+  const node_rid_t &target_node_rid,
+  const zlink::message_t &payload)
+{
+    auto native_node = runtime.native_node ();
+    if (!native_node) {
+        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::spot_route_not_found,
+                                                      "SPOT node is not running");
+    }
+    try {
+        auto request = payload;
+        auto joined =
+          std::move (native_node
+                       ->join_actor_entry_spot (
+                         zlink::service::spot_node_t::remote_actor_ref (
+                           zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
+                           std::string (actor_ref.actor_id ())),
+                         zlink::routing_id_t::from (std::string (target_node_rid.value ())), request)
+                       .flags (static_cast<int> (zlink::send_flags_t::none)))
+            .async ()
+            .get ();
+        return actor_join_reply_from_native (joined.result, joined.join_result_code, joined.actor,
+                                             actor_ref, joined.reply_parts,
+                                             "remote entry SPOT actor join");
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<actor_join_reply_t>::failure (error.kind (), error.what (),
+                                                      error.is_retriable ());
+    }
+    catch (const zlink::request_error_t &error) {
+        return result_t<actor_join_reply_t>::failure (request_result_error_kind (error.result ()),
+                                                      error.what ());
+    }
+    catch (const std::exception &error) {
+        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::request_failed,
+                                                      error.what ());
+    }
+}
+
+runtime::messaging::message_parts_t make_actor_mesh_parts (
+  const stream_header_t &header,
+  const zlink::message_t &payload,
+  const spot_actor_message_metadata_t &metadata)
+{
+    runtime::messaging::client_call_codec_t codec;
+    auto envelope =
+      codec.create_envelope (header.kind () == stream_message_kind_t::send
+                                ? runtime::messaging::message_kind_t::command
+                                : runtime::messaging::message_kind_t::request,
+                              "actor", std::string (header.packet_name ()));
+    envelope.content_type = metadata.content_type;
+    envelope.metadata = metadata.values;
+    runtime::messaging::envelope_codec_t envelope_codec;
+    return envelope_codec.encode_raw_body_parts (envelope, payload);
+}
+
+result_t<std::optional<zlink::message_t>> relay_actor_packet_to_remote_actor_mesh (
+  spot_node_runtime_t runtime,
+  const actor_ref_t &actor_ref,
+  const stream_header_t &header,
+  const zlink::message_t &payload,
+  const spot_actor_message_metadata_t &metadata)
+{
+    auto native_node = runtime.native_node ();
+    if (!native_node) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          framework_error_kind_t::spot_route_not_found, "SPOT node is not running");
+    }
+    try {
+        auto parts = make_actor_mesh_parts (header, payload, metadata).items ();
+        if (parts.empty ()) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "remote actor mesh relay requires at least one message part");
+        }
+        auto native_actor = zlink::service::spot_node_t::remote_actor_ref (
+          zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
+          std::string (actor_ref.actor_id ()));
+        auto iterator = parts.begin ();
+        if (header.kind () == stream_message_kind_t::send) {
+            auto submit = native_node->send_to_actor (native_actor).message (*iterator);
+            ++iterator;
+            for (; iterator != parts.end (); ++iterator) {
+                submit = std::move (submit).message (*iterator);
+            }
+            if (!std::move (submit).submit ()) {
+                return result_t<std::optional<zlink::message_t>>::failure (
+                  framework_error_kind_t::request_failed, "remote actor mesh send was not submitted");
+            }
+            return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
+        }
+
+        auto submit = native_node->request_to_actor (native_actor).message (*iterator);
+        ++iterator;
+        for (; iterator != parts.end (); ++iterator) {
+            submit = std::move (submit).message (*iterator);
+        }
+        auto reply =
+          runtime::messaging::message_parts_t (std::move (std::move (submit).async ().get ()));
+        runtime::messaging::envelope_codec_t envelope;
+        auto reply_header = envelope.decode_header (reply);
+        if (!reply_header) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              reply_header.error_kind (),
+              reply_header.error () ? reply_header.error ()->what ()
+                                    : "remote actor mesh reply header decode failed");
+        }
+        if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::request_failed,
+              reply_header.value ().error_message.value_or ("remote actor mesh request failed"));
+        }
+        auto body = envelope.decode_body (reply);
+        if (!body) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              body.error_kind (),
+              body.error () ? body.error ()->what () : "remote actor mesh reply body missing");
+        }
+        return result_t<std::optional<zlink::message_t>>::success (body.value ());
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          error.kind (), error.what (), error.is_retriable ());
+    }
+    catch (const zlink::request_error_t &error) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          request_result_error_kind (error.result ()), error.what ());
+    }
+    catch (const std::exception &error) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          framework_error_kind_t::request_failed, error.what ());
+    }
+}
+
 result_t<actor_join_reply_t>
 join_actor_to_spot_through_route (spot_node_runtime_t runtime,
                                   actor_gateway_runtime_t actor_gateway,
@@ -51,6 +306,9 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
                                   spot_rid_t spot_rid,
                                   const zlink::message_t &payload)
 {
+    (void) actor_gateway;
+    (void) route_client;
+    (void) route_channel_name;
     auto route = runtime.resolve_spot (spot_rid);
     if (!route) {
         if (rid_targets_node (spot_rid.value (), local_spot_node_rid)) {
@@ -66,30 +324,14 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     if (route->node_rid.empty () || route->node_rid.value () == local_spot_node_rid) {
         return runtime.join_actor_to_spot_erased (actor_ref, std::move (spot_rid), payload);
     }
-    if (!route_channel_name || route_channel_name->empty ()) {
-        return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::spot_route_not_found,
-          "remote SPOT route channel is not configured");
+    auto joined = join_actor_to_remote_spot_mesh (runtime, actor_ref, route->node_rid,
+                                                  route->spot_rid, payload);
+    if (!joined) {
+        return joined;
     }
-
-    auto request = make_spot_actor_join_route_request (actor_ref, route->spot_rid, payload);
-    auto reply =
-      route_client
-        .request_to_node (*route_channel_name,
-                          zlink::routing_id_t::from (std::string (route->node_rid.value ())),
-                          std::move (request))
-        .packet_name (spot_actor_join_route_request_t::packet_name)
-        .template async<spot_actor_join_route_reply_t> ()
-        .result ();
-    if (!reply) {
-        return result_t<actor_join_reply_t>::failure (
-          reply.error_kind (),
-          reply.error () ? reply.error ()->what () : "remote SPOT route join failed");
-    }
-    auto joined = actor_join_reply_from_spot_route (reply.value ());
-    runtime.record_actor_route (joined.actor,
+    runtime.record_actor_route (joined.value ().actor,
                                 spot_route_t{route->node_rid, spot_rid, route->spot_name});
-    return result_t<actor_join_reply_t>::success (std::move (joined));
+    return joined;
 }
 
 result_t<actor_join_reply_t> join_actor_to_entry_spot_through_route (
@@ -106,27 +348,10 @@ result_t<actor_join_reply_t> join_actor_to_entry_spot_through_route (
         return runtime.join_actor_to_entry_spot_erased (actor_ref, std::move (target_node_rid),
                                                         payload, actor_snapshot);
     }
-    if (!route_channel_name || route_channel_name->empty ()) {
-        return result_t<actor_join_reply_t>::failure (
-          framework_error_kind_t::spot_route_not_found,
-          "remote SPOT route channel is not configured");
-    }
-
-    auto reply =
-      route_client
-        .request_to_node (
-          *route_channel_name, zlink::routing_id_t::from (std::string (target_node_rid.value ())),
-          make_spot_actor_join_route_request (actor_ref, spot_rid_t{}, payload, actor_snapshot))
-        .packet_name (spot_actor_join_route_request_t::packet_name)
-        .template async<spot_actor_join_route_reply_t> ()
-        .result ();
-    if (!reply) {
-        return result_t<actor_join_reply_t>::failure (
-          reply.error_kind (),
-          reply.error () ? reply.error ()->what () : "remote entry SPOT join failed");
-    }
-    return result_t<actor_join_reply_t>::success (
-      actor_join_reply_from_spot_route (reply.value ()));
+    (void) route_client;
+    (void) route_channel_name;
+    (void) actor_snapshot;
+    return join_actor_to_remote_entry_spot_mesh (runtime, actor_ref, target_node_rid, payload);
 }
 
 result_t<std::optional<zlink::message_t>>
@@ -142,41 +367,19 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
                                   serializer_registry_t &serializers,
                                   spot_actor_message_metadata_t metadata)
 {
+    (void) actor_gateway;
+    (void) route_client;
+    (void) route_channel_name;
     const auto send_remote =
       [&] (const spot_route_t &route,
            const spot_rid_t &spot_rid) -> result_t<std::optional<zlink::message_t>> {
-        if (!route_channel_name || route_channel_name->empty ()) {
-            return result_t<std::optional<zlink::message_t>>::failure (
-              framework_error_kind_t::spot_route_not_found,
-              "remote SPOT route channel is not configured");
-        }
-        auto reply =
-          route_client
-            .request_to_node (*route_channel_name,
-                              zlink::routing_id_t::from (std::string (route.node_rid.value ())),
-                              make_spot_actor_packet_route_request (
-                                actor_ref, spot_rid, header.packet_name (), payload, metadata))
-            .packet_name (spot_actor_packet_route_request_t::packet_name)
-            .template async<spot_actor_packet_route_reply_t> ()
-            .result ();
-        if (!reply) {
-            return result_t<std::optional<zlink::message_t>>::failure (
-              reply.error_kind (),
-              reply.error () ? reply.error ()->what () : "remote actor packet relay failed");
-        }
-        if (reply.value ().actor_ref_present) {
-            auto updated_actor_ref = actor_ref_t (
-              node_rid_t::from_string (reply.value ().actor_node_rid), reply.value ().actor_type,
-              reply.value ().actor_id, reply.value ().actor_generation);
-            (void) actor_gateway.update_actor_ref (updated_actor_ref);
-            runtime.record_actor_route (updated_actor_ref,
+        auto relayed =
+          relay_actor_packet_to_remote_actor_mesh (runtime, actor_ref, header, payload, metadata);
+        if (relayed) {
+            runtime.record_actor_route (actor_ref,
                                         spot_route_t{route.node_rid, spot_rid, route.spot_name});
         }
-        if (!reply.value ().has_reply) {
-            return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
-        }
-        return result_t<std::optional<zlink::message_t>>::success (
-          zlink::message_t::from (reply.value ().payload));
+        return relayed;
     };
 
     auto route = runtime.actor_route (actor_ref);

@@ -6,6 +6,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -47,6 +48,16 @@ public final class CourierGatewayApplication {
             options.addClientServerChannel(SampleNames.courierActorNodeChannelFor(SampleTopology.CourierActorNode2Rid))
                 .enableClient(SampleTopology.CourierActorNode2RouteEndpoint)
                 .setRoutingId(RoutingId.from("delivery-courier-gateway-node2"));
+            ZLinkSpotNodeBuilder courierRoutes = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
+            courierRoutes
+                .enableRouter("inproc://deliverydispatch-courier-gateway-courier-client")
+                .setRoutingId(RoutingId.from("deliverydispatch-courier-gateway-courier-client"));
+            courierRoutes.connectRouter(
+                RoutingId.from(SampleTopology.CourierActorNode1Rid),
+                SampleTopology.CourierActorNode1RouterEndpoint);
+            courierRoutes.connectRouter(
+                RoutingId.from(SampleTopology.CourierActorNode2Rid),
+                SampleTopology.CourierActorNode2RouterEndpoint);
         };
     }
 

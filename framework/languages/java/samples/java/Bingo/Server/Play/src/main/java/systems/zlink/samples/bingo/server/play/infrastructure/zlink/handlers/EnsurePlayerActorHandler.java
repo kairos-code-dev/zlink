@@ -5,15 +5,13 @@ import static systems.zlink.framework.ZLinkAwait.await;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
-@ZLinkHandlerGroup("play")
 public final class EnsurePlayerActorHandler
-    implements ZLinkRequestHandler<Messages.EnsurePlayerActorReq, Messages.EnsurePlayerActorRes> {
+    implements ZLinkSpotRequestHandler<BingoEntrySpot, Messages.EnsurePlayerActorReq, Messages.EnsurePlayerActorRes> {
     private final ZLinkActorManager actors;
 
     public EnsurePlayerActorHandler(ZLinkActorManager actors) {
@@ -22,8 +20,8 @@ public final class EnsurePlayerActorHandler
 
     @Override
     public Messages.EnsurePlayerActorRes handle(
-        Messages.EnsurePlayerActorReq request,
-        ZLinkRequestContext context) {
+        BingoEntrySpot spot,
+        Messages.EnsurePlayerActorReq request) {
         ZLinkActorRef actor = await(actors.getOrCreate(
             request.actorId(),
             SampleNames.PlayerActorType,

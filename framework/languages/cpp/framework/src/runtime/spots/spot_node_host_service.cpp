@@ -8,6 +8,8 @@
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <algorithm>
+#include <cstdlib>
+#include <iostream>
 #include <map>
 #include <set>
 #include <string_view>
@@ -96,13 +98,75 @@ bool is_manual_spot_endpoint (const spot_node_snapshot_t &snapshot, const std::s
                          endpoint) != snapshot.pub_sub_manual_connections.end ();
 }
 
+bool trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
+    return value != nullptr && *value != '\0';
+}
+
+std::string write_status_name (location_write_status_t status)
+{
+    switch (status) {
+        case location_write_status_t::stored:
+            return "stored";
+        case location_write_status_t::ignored_stale:
+            return "ignored-stale";
+        case location_write_status_t::rejected_conflict:
+            return "rejected-conflict";
+    }
+    return "unknown";
+}
+
+void trace_spot_publish (const peer_location_t &row, location_write_status_t status)
+{
+    if (!trace_enabled ()) {
+        return;
+    }
+    std::cerr << "zlink auto-connect publish"
+              << " status=" << write_status_name (status)
+              << " type=spot"
+              << " mesh=" << row.mesh_name
+              << " role=" << location_value_codec_t::to_canonical_string (row.role)
+              << " rid=" << (row.node_rid ? row.node_rid->to_string () : "")
+              << " endpoint=" << row.endpoint << "\n";
+}
+
+void trace_spot_scan (const peer_location_t &local, std::size_t rows, std::size_t desired)
+{
+    if (!trace_enabled ()) {
+        return;
+    }
+    std::cerr << "zlink auto-connect scan"
+              << " type=spot"
+              << " mesh=" << local.mesh_name
+              << " role=" << location_value_codec_t::to_canonical_string (local.role)
+              << " rows=" << rows
+              << " desired=" << desired << "\n";
+}
+
+void trace_spot_dial (const peer_location_t &local, const peer_location_t &peer)
+{
+    if (!trace_enabled ()) {
+        return;
+    }
+    std::cerr << "zlink auto-connect dial"
+              << " type=spot"
+              << " mesh=" << local.mesh_name
+              << " fromRole=" << location_value_codec_t::to_canonical_string (local.role)
+              << " targetRole=" << location_value_codec_t::to_canonical_string (peer.role)
+              << " targetRid=" << (peer.node_rid ? peer.node_rid->to_string () : "")
+              << " endpoint=" << peer.endpoint << "\n";
+}
+
 void connect_spot_peer (const spot_node_snapshot_t &snapshot,
+                        const peer_location_t &local,
                         zlink::service::spot_node_t &node,
                         const peer_location_t &peer)
 {
     if (peer.endpoint.empty () || is_manual_spot_endpoint (snapshot, peer.endpoint)) {
         return;
     }
+    trace_spot_dial (local, peer);
     node.connect_peer (peer.endpoint);
     if (const auto found = peer.metadata.find ("pub-endpoint");
         found != peer.metadata.end () && !found->second.empty ()
@@ -133,6 +197,7 @@ void publish_local_spot_peer (spot_node_host_service_t::native_node_t &native,
     }
     auto row = *native.local_peer;
     const auto claim = runtime.write_peer (row, location_write_intent_t::new_claim);
+    trace_spot_publish (row, claim.status);
     if (claim.status == location_write_status_t::stored) {
         native.local_generation = claim.generation;
         native.local_published = true;
@@ -142,6 +207,7 @@ void publish_local_spot_peer (spot_node_host_service_t::native_node_t &native,
         && native.local_generation > 0) {
         row.generation = native.local_generation;
         const auto renewed = runtime.write_peer (row, location_write_intent_t::renew);
+        trace_spot_publish (row, renewed.status);
         native.local_published = renewed.status == location_write_status_t::stored;
     }
 }
@@ -169,16 +235,17 @@ void reconcile_spot_mesh (spot_node_host_service_t::native_node_t &native,
         }
         desired[spot_target_key (row)] = std::move (row);
     }
+    trace_spot_scan (*native.local_peer, rows.size (), desired.size ());
     for (const auto &[key, peer] : desired) {
         const auto found = native.active_peers.find (key);
         if (found == native.active_peers.end ()) {
-            connect_spot_peer (snapshot, *native.node, peer);
+            connect_spot_peer (snapshot, *native.local_peer, *native.node, peer);
             native.active_peers[key] = peer;
             continue;
         }
         if (found->second.endpoint != peer.endpoint || found->second.owner_id != peer.owner_id) {
             disconnect_spot_peer (snapshot, *native.node, found->second);
-            connect_spot_peer (snapshot, *native.node, peer);
+            connect_spot_peer (snapshot, *native.local_peer, *native.node, peer);
             native.active_peers[key] = peer;
         }
     }

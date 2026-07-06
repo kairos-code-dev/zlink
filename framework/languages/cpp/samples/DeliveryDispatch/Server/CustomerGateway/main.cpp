@@ -261,7 +261,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
-          .enable_client (topology.tracking_route_endpoint);
+          .enable_client ();
         options.add_fanout_channel (sample_names_t::status_fanout_channel)
           .enable_subscriber (topology.status_fanout_endpoint)
           .use_handler_group ("status");

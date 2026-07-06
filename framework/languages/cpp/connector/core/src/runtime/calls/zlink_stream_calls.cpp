@@ -1049,12 +1049,22 @@ void submit_request_async (std::shared_ptr<void> state_handle,
                                                             : "stream request validation failed");
         } else {
             seq = state->next_request_seq++;
-            state->pending_requests.emplace (seq,
-                                             pending_request_t{seq, packet, std::move (callback)});
+            auto timeout_timer = post_runtime_operation_after (timeout, [state, seq] {
+                complete_pending_request (
+                  state, seq,
+                  result_t<request_reply_t>::failure (error_code_t::request_timeout,
+                                                      "stream connector request timed out"));
+            });
+            state->pending_requests.emplace (
+              seq, pending_request_t{seq, packet, std::move (callback), timeout_timer});
             if (auto encoded = encode_packet_frame (*state, message_kind_t::request, packet, seq);
                 !encoded) {
                 auto found = state->pending_requests.find (seq);
                 if (found != state->pending_requests.end ()) {
+                    if (found->second.timeout_timer) {
+                        boost::system::error_code ignored;
+                        found->second.timeout_timer->cancel (ignored);
+                    }
                     callback = std::move (found->second.callback);
                     state->pending_requests.erase (found);
                 }
@@ -1078,7 +1088,7 @@ void submit_request_async (std::shared_ptr<void> state_handle,
     }
 
     enqueue_async_write (
-      state, std::move (outbound_frame), [state, seq, timeout] (result_t<void> written) mutable {
+      state, std::move (outbound_frame), [state, seq] (result_t<void> written) mutable {
           if (!written) {
               complete_pending_request (
                 state, seq,
@@ -1086,22 +1096,6 @@ void submit_request_async (std::shared_ptr<void> state_handle,
                   written.error_code (),
                   written.error () ? written.error ()->message : "stream request write failed"));
               return;
-          }
-          auto timeout_timer = post_runtime_operation_after (timeout, [state, seq] {
-              complete_pending_request (
-                state, seq,
-                result_t<request_reply_t>::failure (error_code_t::request_timeout,
-                                                    "stream connector request timed out"));
-          });
-          {
-              std::lock_guard<std::mutex> lock (state->transport_mutex);
-              auto found = state->pending_requests.find (seq);
-              if (found != state->pending_requests.end ()) {
-                  found->second.timeout_timer = timeout_timer;
-              } else if (timeout_timer) {
-                  boost::system::error_code ignored;
-                  timeout_timer->cancel (ignored);
-              }
           }
           schedule_request_pump (state);
       });

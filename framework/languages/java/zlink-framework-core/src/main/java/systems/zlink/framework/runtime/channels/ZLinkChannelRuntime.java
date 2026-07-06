@@ -1282,8 +1282,10 @@ public final class ZLinkChannelRuntime
         List<Message> parts = copyMessages(received.parts());
         spotRouteBridgeExecutor.execute(() -> {
             try {
-                if (!selectedBridge.handleRouterReceived(channelName, sourceRid, requestSeq, parts)) {
-                    return;
+                synchronized (selectedBridge) {
+                    if (!selectedBridge.handleRouterReceived(channelName, sourceRid, requestSeq, parts)) {
+                        return;
+                    }
                 }
                 drainSpotRouteBridgeDispatch();
             } catch (RuntimeException ex) {
@@ -1511,6 +1513,7 @@ public final class ZLinkChannelRuntime
             boot("routeLoop running channel=" + channelName);
             while (running) {
                 try {
+                    drainSpotRouteBridgeNow(channelName);
                     ZLinkBackendReceived received;
                     Object routeSocketLock = routeSocketLocks.getOrDefault(channelName, this);
                     synchronized (routeSocketLock) {
@@ -1519,7 +1522,7 @@ public final class ZLinkChannelRuntime
                     if (received != null) {
                         dispatchRouteRequest(channelName, router, received);
                     } else {
-                        drainSpotRouteBridge(channelName);
+                        drainSpotRouteBridgeNow(channelName);
                         Thread.onSpinWait();
                     }
                 } catch (RuntimeException ex) {
@@ -1548,7 +1551,9 @@ public final class ZLinkChannelRuntime
         }
         spotRouteBridgeExecutor.execute(() -> {
             try {
-                bridge.drain();
+                synchronized (bridge) {
+                    bridge.drain();
+                }
                 drainSpotRouteBridgeDispatch();
             } catch (RuntimeException ex) {
                 if (isNoDataReceive(ex)) {
@@ -1569,6 +1574,24 @@ public final class ZLinkChannelRuntime
                 spotRouteBridgeDrainScheduled.remove(channelName);
             }
         });
+    }
+
+    private void drainSpotRouteBridgeNow(String channelName) {
+        ZLinkBackendSpotRouteBridge bridge = spotRouteBridges.get(channelName);
+        if (bridge == null) {
+            return;
+        }
+        try {
+            synchronized (bridge) {
+                bridge.drain();
+            }
+        } catch (RuntimeException ex) {
+            if (isNoDataReceive(ex)) {
+                return;
+            }
+            throw ex;
+        }
+        drainSpotRouteBridgeDispatch();
     }
 
     private void drainSpotRouteBridgeDispatch() {

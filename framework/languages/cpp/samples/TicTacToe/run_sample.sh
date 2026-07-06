@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$SCRIPT_DIR/logs}"
+export ZLINK_CPP_STREAM_TRACE="${ZLINK_CPP_STREAM_TRACE:-1}"
 mkdir -p "$TICTACTOE_LOG_DIR"
 rm -f "$TICTACTOE_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"

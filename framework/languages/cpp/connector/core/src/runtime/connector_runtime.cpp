@@ -527,7 +527,14 @@ void complete_connect_callback (std::shared_ptr<detail::connector_state_t> state
           if (callback) {
               callback (std::move (result));
           }
-      });
+          });
+}
+
+void schedule_start_read_loop (std::shared_ptr<detail::connector_state_t> state)
+{
+    detail::post_runtime_operation ([state = std::move (state)] {
+        detail::start_read_loop (state);
+    });
 }
 
 void connect_tcp_async (std::shared_ptr<detail::connector_state_t> state,
@@ -577,6 +584,7 @@ void connect_tcp_async (std::shared_ptr<detail::connector_state_t> state,
                 detail::change_state (state, connection_state_t::connected);
                 complete_connect_callback (state, std::move (callback),
                                            result_t<void>::success ());
+                schedule_start_read_loop (state);
             });
       });
 }
@@ -604,6 +612,7 @@ void complete_async_transport_connect (
     }
     detail::change_state (state, connection_state_t::connected);
     complete_connect_callback (state, std::move (callback), result_t<void>::success ());
+    schedule_start_read_loop (state);
 }
 
 void connect_websocket_plain_async (std::shared_ptr<detail::connector_state_t> state,
@@ -709,6 +718,7 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
             state->last_heartbeat_sent = now;
             state->last_inbound_received = now;
             detail::change_state (state, connection_state_t::connected);
+            schedule_start_read_loop (state);
             return result_t<void>::success ();
         }
         catch (const std::exception &ex) {

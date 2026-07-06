@@ -82,7 +82,7 @@ wait_port() {
 reserve_ports() {
   local base=$((20000 + ((RANDOM + $$) % 1000) * 15 % 9000))
   local endpoints=()
-  for offset in $(seq 0 13); do
+  for offset in $(seq 0 12); do
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
@@ -110,7 +110,7 @@ build_framework_jars() {
   )
 }
 
-read -r tracking customer_stream courier_stream courier_gateway dispatch_http customer_route customer_spot customer_router courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
+read -r tracking customer_stream courier_stream courier_gateway dispatch_http customer_spot customer_router courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -122,7 +122,6 @@ common_java_options+=" -Dzlink.samples.deliverydispatch.customerStreamEndpoint=t
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierGatewayChannelEndpoint=tcp://$(endpoint_host "${courier_gateway}"):$(endpoint_port "${courier_gateway}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")"
-common_java_options+=" -Dzlink.samples.deliverydispatch.customerRouteEndpoint=tcp://$(endpoint_host "${customer_route}"):$(endpoint_port "${customer_route}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerSpotEndpoint=tcp://$(endpoint_host "${customer_spot}"):$(endpoint_port "${customer_spot}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerSpotRouterEndpoint=tcp://$(endpoint_host "${customer_router}"):$(endpoint_port "${customer_router}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode1SpotEndpoint=tcp://$(endpoint_host "${courier_node1_spot}"):$(endpoint_port "${courier_node1_spot}")"
@@ -161,7 +160,6 @@ wait_port "$(endpoint_host "${tracking}")" "$(endpoint_port "${tracking}")"
 
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/CustomerGateway CustomerGateway)" >"${log_dir}/customer-gateway.log" 2>&1 &
 pids+=("$!")
-wait_port "$(endpoint_host "${customer_route}")" "$(endpoint_port "${customer_route}")"
 wait_port "$(endpoint_host "${customer_stream}")" "$(endpoint_port "${customer_stream}")"
 wait_port "$(endpoint_host "${customer_router}")" "$(endpoint_port "${customer_router}")"
 

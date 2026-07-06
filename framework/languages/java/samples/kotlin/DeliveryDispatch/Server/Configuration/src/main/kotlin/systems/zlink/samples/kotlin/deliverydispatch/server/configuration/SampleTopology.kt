@@ -30,7 +30,6 @@ data class SampleTopology(
         val CourierStreamEndpoint: String = property("courierStreamEndpoint", "tcp://127.0.0.1:49105")
         val CourierGatewayChannelEndpoint: String = property("courierGatewayChannelEndpoint", "tcp://127.0.0.1:49106")
         val DispatchHttpEndpoint: String = property("dispatchHttpEndpoint", "http://127.0.0.1:49107")
-        val CustomerRouteEndpoint: String = property("customerRouteEndpoint", "tcp://127.0.0.1:49108")
         val CustomerSpotEndpoint: String = property("customerSpotEndpoint", "tcp://127.0.0.1:49109")
         val CustomerSpotRouterEndpoint: String = property("customerSpotRouterEndpoint", "tcp://127.0.0.1:49110")
         val CustomerSpotNodeRid: String = property("customerSpotNodeRid", "customer-node-1")

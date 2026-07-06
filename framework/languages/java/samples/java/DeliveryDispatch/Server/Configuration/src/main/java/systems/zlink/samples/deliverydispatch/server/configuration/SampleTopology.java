@@ -13,8 +13,6 @@ public final class SampleTopology {
         property("courierGatewayChannelEndpoint", "tcp://127.0.0.1:48106");
     public static final String DispatchHttpEndpoint =
         property("dispatchHttpEndpoint", "http://127.0.0.1:48107");
-    public static final String CustomerRouteEndpoint =
-        property("customerRouteEndpoint", "tcp://127.0.0.1:48108");
     public static final String CustomerSpotEndpoint =
         property("customerSpotEndpoint", "tcp://127.0.0.1:48109");
     public static final String CustomerSpotRouterEndpoint =

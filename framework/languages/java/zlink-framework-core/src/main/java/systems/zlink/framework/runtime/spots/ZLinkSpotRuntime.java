@@ -382,6 +382,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (nodeRegistration.routerEnabled()) {
                 routeBridgeNodesByName.put(nodeRegistration.nodeName(), node);
                 routerSpotNodeNames.add(nodeRegistration.nodeName());
+                if (channels != null) {
+                    channels.registerSpotRouterNode(nodeRegistration.meshName(), node);
+                    if (!nodeRegistration.meshName().equals(nodeRegistration.nodeName())) {
+                        channels.registerSpotRouterNode(nodeRegistration.nodeName(), node);
+                    }
+                }
             }
             locationMetadataByNodeRid.put(
                 node.routingId(),

@@ -23,8 +23,10 @@ public final class ApiServer {
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(settings.apiChannelEndpoint())
                 .addHandlerGroup("api");
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableClient(settings.playChannelEndpoint());
+            for (int index = 0; index < settings.playChannelEndpoints().size(); index++) {
+                options.addClientServerChannel(SampleNames.playChannel(index))
+                    .enableClient(settings.playChannelEndpoints().get(index));
+            }
         };
     }
 }

@@ -6,8 +6,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 
@@ -21,7 +23,6 @@ class CourierGatewayApplication {
     fun courierGatewayFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(CourierGatewayApplication::class.java)
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
@@ -33,13 +34,19 @@ class CourierGatewayApplication {
                 .enableServer(SampleTopology.CourierGatewayChannelEndpoint)
                 .setRoutingId(RoutingId.from("delivery-courier-gateway-server"))
                 .addHandlerGroup("courier-gateway")
-            options.addRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
-                .enableClient()
-                .setRoutingId(RoutingId.from("delivery-courier-gateway"))
+            options.addClientServerChannel(SampleNames.courierActorNodeChannel(SampleTopology.CourierActorNode1Rid))
+                .enableClient(SampleTopology.CourierActorNode1RouteEndpoint)
+                .setRoutingId(RoutingId.from("delivery-courier-gateway-node1"))
+            options.addClientServerChannel(SampleNames.courierActorNodeChannel(SampleTopology.CourierActorNode2Rid))
+                .enableClient(SampleTopology.CourierActorNode2RouteEndpoint)
+                .setRoutingId(RoutingId.from("delivery-courier-gateway-node2"))
         }
 
     @Bean
     fun courierDirectory(): CourierDirectory = CourierDirectory()
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {

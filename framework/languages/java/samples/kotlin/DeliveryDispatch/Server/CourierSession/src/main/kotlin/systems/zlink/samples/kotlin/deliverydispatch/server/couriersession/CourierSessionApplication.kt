@@ -6,8 +6,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.server.couriersession.sessions.CourierSession
@@ -22,7 +24,6 @@ class CourierSessionApplication {
     fun courierSessionFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(CourierSessionApplication::class.java)
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
@@ -39,6 +40,9 @@ class CourierSessionApplication {
                 .bind(SampleTopology.CourierStreamEndpoint)
                 .registerSession(CourierSession::class.java)
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {

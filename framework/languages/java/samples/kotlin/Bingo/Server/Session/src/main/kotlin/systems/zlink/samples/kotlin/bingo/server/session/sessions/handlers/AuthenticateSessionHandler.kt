@@ -4,6 +4,7 @@ import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
@@ -47,10 +48,11 @@ class AuthenticateSessionHandler(
                 authenticated.reason ?: "Player authentication failed.",
             )
         }
+        val preferredPlayNode = RoutingId.from(SampleTopology.preferredPlayNodeRid())
         val ensured = routes
-            .requestToNode(
-                SampleNames.PlayChannel,
-                RoutingId.from(SampleTopology.preferredPlayNodeRid()),
+            .requestToSpot(
+                SampleNames.RoomSpotDiscovery,
+                ZLinkSpotAddress(SampleNames.RoomSpotDiscovery, preferredPlayNode, preferredPlayNode),
                 EnsurePlayerActorReq(
                     authenticated.actorId,
                     authenticated.displayName,

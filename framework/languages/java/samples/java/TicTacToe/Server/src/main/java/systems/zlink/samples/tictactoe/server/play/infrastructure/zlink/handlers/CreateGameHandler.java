@@ -14,7 +14,7 @@ import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.ti
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 
-@ZLinkHandlerGroup(SampleNames.PlayChannel)
+@ZLinkHandlerGroup(SampleNames.PlayHandlerGroup)
 public final class CreateGameHandler {
     private final ObjectProvider<ZLinkSpotManager> spots;
     private final SampleSettings settings;

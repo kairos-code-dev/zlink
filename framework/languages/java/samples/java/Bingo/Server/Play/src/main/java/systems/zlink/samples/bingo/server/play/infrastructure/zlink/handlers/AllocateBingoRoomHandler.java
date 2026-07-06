@@ -4,8 +4,8 @@ import static systems.zlink.framework.ZLinkAwait.await;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
-import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -16,9 +16,9 @@ import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoR
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
-@ZLinkHandlerGroup("play-route")
+@ZLinkHandlerGroup("play")
 public final class AllocateBingoRoomHandler
-    implements ZLinkRouteRequestHandler<
+    implements ZLinkRequestHandler<
         Messages.AllocateBingoRoomReq,
         Messages.AllocateBingoRoomRes> {
     private final BingoRoomAllocator rooms;
@@ -37,7 +37,7 @@ public final class AllocateBingoRoomHandler
     @Override
     public Messages.AllocateBingoRoomRes handle(
         Messages.AllocateBingoRoomReq request,
-        ZLinkRouteRequestContext context) {
+        ZLinkRequestContext context) {
         BingoRoomAllocation allocation = rooms.allocate(
             request.actorId(),
             request.mode(),

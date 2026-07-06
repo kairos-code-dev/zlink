@@ -8,8 +8,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 
@@ -22,7 +24,6 @@ class DispatchServerApplication {
     @Bean
     fun dispatchFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
@@ -35,6 +36,9 @@ class DispatchServerApplication {
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
 
     @Bean
     fun dispatchWorkQueue(worker: DispatchWorker): DispatchWorkQueue = DispatchWorkQueue(worker)

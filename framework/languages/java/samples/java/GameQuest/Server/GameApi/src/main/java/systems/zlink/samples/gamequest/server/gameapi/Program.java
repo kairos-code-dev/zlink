@@ -12,7 +12,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -58,8 +58,10 @@ public class Program {
                 .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")
                     + "/flow-" + SampleTopology.apiName() + ".log")
                 .traceLabel(SampleTopology.apiName());
-            options.addRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
-                .enableClient();
+            options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-a"))
+                .enableClient(SampleTopology.missionAOwnerChannelEndpoint());
+            options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-b"))
+                .enableClient(SampleTopology.missionBOwnerChannelEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedApiStreamEndpoint())
                 .registerSession(GameQuestSession.class);
@@ -79,9 +81,9 @@ public class Program {
     }
 
     @Bean
-    GameQuestApiServices gameQuestApiServices(GameQuestStore store, ZLinkRouteClient routes) {
+    GameQuestApiServices gameQuestApiServices(GameQuestStore store, ZLinkClient channels) {
         ApplicationContextHolder.store = store;
-        ApplicationContextHolder.routes = routes;
+        ApplicationContextHolder.channels = channels;
         return new GameQuestApiServices();
     }
 
@@ -119,10 +121,9 @@ public class Program {
         String questId = parts.length >= 5 ? parts[4] : "";
         String action = parts.length >= 6 ? parts[5] : "";
         if ("delete".equals(action)) {
-            Messages.DeleteQuestProjectionRes deleted = ApplicationContextHolder.routes
-                .requestToNode(
-                    SampleNames.QuestOwnerRouteChannel,
-                    SampleTopology.ownerRouteRid(playerId),
+            Messages.DeleteQuestProjectionRes deleted = ApplicationContextHolder.channels
+                .requestToChannel(
+                    SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId)),
                     new Messages.DeleteQuestProjectionReq(playerId, questId))
                 .await(Messages.DeleteQuestProjectionRes.class);
             store.deleteProjection(playerId, questId);
@@ -130,10 +131,9 @@ public class Program {
             return;
         }
         if ("rebuild".equals(action)) {
-            Messages.QuestProgress rebuilt = ApplicationContextHolder.routes
-                .requestToNode(
-                    SampleNames.QuestOwnerRouteChannel,
-                    SampleTopology.ownerRouteRid(playerId),
+            Messages.QuestProgress rebuilt = ApplicationContextHolder.channels
+                .requestToChannel(
+                    SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId)),
                     new Messages.RebuildQuestProjectionReq(playerId, questId, 0))
                 .await(Messages.QuestProgress.class);
             store.mergeProjection(playerId, java.util.List.of(rebuilt));
@@ -173,6 +173,6 @@ public class Program {
 
     private static final class ApplicationContextHolder {
         private static GameQuestStore store;
-        private static ZLinkRouteClient routes;
+        private static ZLinkClient channels;
     }
 }

@@ -51,9 +51,17 @@ data class SampleTopology(
         val CourierSessionSpotRouterEndpoint: String =
             property("courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:49117")
         val CourierSessionSpotNodeRid: String = property("courierSessionSpotNodeRid", "courier-session-node")
+        val RedisEndpoint: String = requiredProperty("redisEndpoint")
+        val RedisKeyPrefix: String = property("redisKeyPrefix", "deliverydispatch:kotlin:")
 
         private fun property(name: String, fallback: String): String =
             System.getProperty("zlink.samples.deliverydispatch.$name", fallback)
+
+        private fun requiredProperty(name: String): String {
+            val value = System.getProperty("zlink.samples.deliverydispatch.$name")
+            require(!value.isNullOrBlank()) { "Missing zlink.samples.deliverydispatch.$name" }
+            return value
+        }
 
         fun courierPlacement(courierId: String): String =
             if (courierId == "courier-b") CourierActorNode2Rid else CourierActorNode1Rid

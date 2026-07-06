@@ -150,8 +150,6 @@ try {
     $PlayBStreamPort = $ports[7]
     $PlayASpotPort = $ports[8]
     $PlayBSpotPort = $ports[9]
-    $PlayARoutePort = $ports[10]
-    $PlayBRoutePort = $ports[11]
     $PlayAPubPort = $ports[12]
     $PlayBPubPort = $ports[13]
 
@@ -175,7 +173,6 @@ try {
     $commonPlayChannels = "tcp://127.0.0.1:${PlayAChannelPort},tcp://127.0.0.1:${PlayBChannelPort}"
     $commonPlayStreams = "tcp://127.0.0.1:${PlayAStreamPort},tcp://127.0.0.1:${PlayBStreamPort}"
     $commonSpots = "tcp://127.0.0.1:${PlayASpotPort},tcp://127.0.0.1:${PlayBSpotPort}"
-    $commonRoutes = "tcp://127.0.0.1:${PlayARoutePort},tcp://127.0.0.1:${PlayBRoutePort}"
     $commonPubs = "tcp://127.0.0.1:${PlayAPubPort},tcp://127.0.0.1:${PlayBPubPort}"
 
     $apiAConfig = Join-Path $RunDir "api-a.properties"
@@ -193,8 +190,6 @@ try {
         "sample.playEndpoints=$commonPlayStreams",
         "sample.spotEndpoint=tcp://127.0.0.1:$PlayASpotPort",
         "sample.spotEndpoints=$commonSpots",
-        "sample.routeEndpoint=tcp://127.0.0.1:$PlayARoutePort",
-        "sample.routeEndpoints=$commonRoutes",
         "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PlayAPubPort",
         "sample.spotPubSubEndpoints=$commonPubs",
         "sample.redisEndpoint=$redisEndpoint",
@@ -202,7 +197,6 @@ try {
         "sample.playSpotNodeRid=play-node-1",
         "sample.peerPlaySpotNodeRid=play-node-2",
         "sample.peerSpotEndpoint=tcp://127.0.0.1:$PlayBSpotPort",
-        "sample.peerRouteEndpoint=tcp://127.0.0.1:$PlayBRoutePort",
         "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PlayBPubPort",
         "sample.logDirectory=$LogDir"
     ) | Set-Content -Path $apiAConfig -Encoding UTF8
@@ -220,12 +214,10 @@ try {
         -replace 'sample\.playChannelEndpoint=.*', "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayBChannelPort" `
         -replace 'sample\.playEndpoint=.*', "sample.playEndpoint=tcp://127.0.0.1:$PlayBStreamPort" `
         -replace 'sample\.spotEndpoint=.*', "sample.spotEndpoint=tcp://127.0.0.1:$PlayBSpotPort" `
-        -replace 'sample\.routeEndpoint=.*', "sample.routeEndpoint=tcp://127.0.0.1:$PlayBRoutePort" `
         -replace 'sample\.spotPubSubEndpoint=.*', "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PlayBPubPort" `
         -replace 'sample\.playSpotNodeRid=.*', "sample.playSpotNodeRid=play-node-2" `
         -replace 'sample\.peerPlaySpotNodeRid=.*', "sample.peerPlaySpotNodeRid=play-node-1" `
         -replace 'sample\.peerSpotEndpoint=.*', "sample.peerSpotEndpoint=tcp://127.0.0.1:$PlayASpotPort" `
-        -replace 'sample\.peerRouteEndpoint=.*', "sample.peerRouteEndpoint=tcp://127.0.0.1:$PlayARoutePort" `
         -replace 'sample\.peerSpotPubSubEndpoint=.*', "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PlayAPubPort" |
         Set-Content -Path $playBConfig -Encoding UTF8
 

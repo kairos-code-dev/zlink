@@ -1,9 +1,8 @@
 package systems.zlink.samples.deliverydispatch.server.couriergateway.handlers;
 
-import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.couriergateway.CourierBinding;
@@ -14,23 +13,23 @@ import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 public final class BindCourierHandler
     implements ZLinkRequestHandler<Messages.BindCourier, Messages.CourierBound> {
     private final CourierDirectory directory;
-    private final ZLinkRouteClient routes;
+    private final ZLinkClient channels;
 
     public BindCourierHandler(
         CourierDirectory directory,
-        ZLinkRouteClient routes) {
+        ZLinkClient channels) {
         this.directory = directory;
-        this.routes = routes;
+        this.channels = channels;
     }
 
     @Override
     public Messages.CourierBound handle(
         Messages.BindCourier request,
         ZLinkRequestContext context) {
-        Messages.CourierActorEnsured ensured = routes
-            .requestToNode(
-                SampleNames.CourierActorNodeRouteChannel,
-                RoutingId.from(directory.choosePlacement(request.courierId())),
+        String placement = directory.choosePlacement(request.courierId());
+        Messages.CourierActorEnsured ensured = channels
+            .requestToChannel(
+                SampleNames.courierActorNodeChannelFor(placement),
                 new Messages.EnsureCourierActor(request.courierId()))
             .await(Messages.CourierActorEnsured.class);
         CourierBinding binding = directory.remember(ensured, request.sessionRoute());

@@ -34,8 +34,6 @@ public final class CourierSessionApplication {
     ZLinkFrameworkConfigurer courierSessionFramework() {
         return options -> {
             options.addHandlersFromPackageOf(CourierSessionApplication.class);
-            options.configureLocations()
-                .setSpotRouterChannel(SampleNames.CourierSpotDiscovery, SampleNames.CourierChannel);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")

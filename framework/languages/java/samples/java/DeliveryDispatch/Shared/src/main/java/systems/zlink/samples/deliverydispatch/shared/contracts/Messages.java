@@ -67,6 +67,13 @@ public final class Messages {
     public record CourierBound(String courierId, ZLinkActorRefSnapshot actor, String sessionRoute) {
     }
 
+    @ZLinkPacket("FindCourierActor")
+    public record FindCourierActor(String courierId) {
+    }
+
+    public record CourierActorFound(String courierId, ZLinkActorRefSnapshot actor) {
+    }
+
     @ZLinkPacket("EnsureCourierActor")
     public record EnsureCourierActor(String courierId) {
     }

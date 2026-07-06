@@ -38,18 +38,16 @@ class SessionServerApplication {
                 traceLabel("session")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
-            options.configureLocations()
-                .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
-            val route = options.addRouteMeshChannel(SampleNames.PlayChannel)
-            route.enableServer(SampleTopology.selectedSessionRouteEndpoint())
-            route.enableClient()
-            route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()))
             val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
 
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()))
+            node.connectRouter(
+                RoutingId.from(SampleTopology.preferredPlayNodeRid()),
+                SampleTopology.preferredPlaySpotRouterEndpoint(),
+            )
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession::class.java)

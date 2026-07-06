@@ -2,8 +2,8 @@ package systems.zlink.samples.tictactoe.server.configuration;
 
 public final class SampleNames {
     public static final String ApiChannel = "tictactoe-api";
-    public static final String PlayChannel = "tictactoe-play";
-    public static final String RouteChannel = "tictactoe-room-route";
+    private static final String PlayChannelPrefix = "tictactoe-play-";
+    public static final String PlayHandlerGroup = "play";
     public static final String SpotMesh = "tictactoe";
     public static final String PlayNode = "play";
     public static final String PlayerMilestoneTopic = "tictactoe.player.milestone";
@@ -14,5 +14,9 @@ public final class SampleNames {
     public static final java.time.Duration RequestTimeout = java.time.Duration.ofSeconds(5);
 
     private SampleNames() {
+    }
+
+    public static String playChannel(int index) {
+        return PlayChannelPrefix + index;
     }
 }

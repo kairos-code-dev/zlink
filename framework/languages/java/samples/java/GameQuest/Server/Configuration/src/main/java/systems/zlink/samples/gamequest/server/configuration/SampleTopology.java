@@ -1,7 +1,6 @@
 package systems.zlink.samples.gamequest.server.configuration;
 
 import java.nio.charset.StandardCharsets;
-import systems.zlink.contracts.core.RoutingId;
 
 public final class SampleTopology {
     public static final String ApiAStreamEndpoint = property(
@@ -16,12 +15,18 @@ public final class SampleTopology {
     public static final String ApiBHttpEndpoint = property(
         "zlink.samples.gamequest.apiBHttpEndpoint",
         "http://127.0.0.1:28312");
+    public static final String MissionAChannelEndpoint = property(
+        "zlink.samples.gamequest.missionAChannelEndpoint",
+        "tcp://127.0.0.1:28321");
+    public static final String MissionBChannelEndpoint = property(
+        "zlink.samples.gamequest.missionBChannelEndpoint",
+        "tcp://127.0.0.1:28322");
     public static final String MissionARouteEndpoint = property(
         "zlink.samples.gamequest.missionARouteEndpoint",
-        "tcp://127.0.0.1:28321");
+        MissionAChannelEndpoint);
     public static final String MissionBRouteEndpoint = property(
         "zlink.samples.gamequest.missionBRouteEndpoint",
-        "tcp://127.0.0.1:28322");
+        MissionBChannelEndpoint);
     public static final String MissionAHttpEndpoint = property(
         "zlink.samples.gamequest.missionAHttpEndpoint",
         "http://127.0.0.1:28331");
@@ -54,20 +59,24 @@ public final class SampleTopology {
         return "api-b".equals(apiName()) ? ApiBHttpEndpoint : ApiAHttpEndpoint;
     }
 
-    public static String selectedMissionRouteEndpoint() {
+    public static String selectedMissionChannelEndpoint() {
         return "mission-b".equals(missionName()) ? MissionBRouteEndpoint : MissionARouteEndpoint;
+    }
+
+    public static String missionAOwnerChannelEndpoint() {
+        return MissionARouteEndpoint;
+    }
+
+    public static String missionBOwnerChannelEndpoint() {
+        return MissionBRouteEndpoint;
     }
 
     public static String selectedMissionHttpEndpoint() {
         return "mission-b".equals(missionName()) ? MissionBHttpEndpoint : MissionAHttpEndpoint;
     }
 
-    public static String selectedMissionRid() {
-        return "mission-b".equals(missionName()) ? "gamequest-mission-b" : "gamequest-mission-a";
-    }
-
-    public static RoutingId ownerRouteRid(String playerId) {
-        return RoutingId.from(ownerIndex(playerId) == 1 ? "gamequest-mission-b" : "gamequest-mission-a");
+    public static String ownerMissionName(String playerId) {
+        return ownerIndex(playerId) == 1 ? "mission-b" : "mission-a";
     }
 
     private static int ownerIndex(String playerId) {

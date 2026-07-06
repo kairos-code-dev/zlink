@@ -120,7 +120,7 @@ wait_log_contains() {
   local pattern="$2"
   local deadline=$((SECONDS + 60))
   while (( SECONDS < deadline )); do
-    if [[ -f "${log_file}" ]] && rg -q "${pattern}" "${log_file}"; then
+    if [[ -f "${log_file}" ]] && grep -Eq "${pattern}" "${log_file}"; then
       return 0
     fi
     sleep 0.1
@@ -135,7 +135,7 @@ wait_grep() {
   shift 2
   local deadline=$((SECONDS + 20))
   while (( SECONDS < deadline )); do
-    if rg -q "${pattern}" "$@" 2>/dev/null; then
+    if grep -Eq "${pattern}" "$@" 2>/dev/null; then
       return 0
     fi
     sleep 0.1
@@ -182,7 +182,7 @@ app_bin() {
   printf '%s/build/install/%s/bin/%s' "${project_path}" "${app_name}" "${app_name}"
 }
 
-read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_route_port play_b_route_port play_a_pub_port play_b_pub_port unused_port < <(reserve_ports)
+read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_pub_port play_b_pub_port unused_port1 unused_port2 unused_port3 < <(reserve_ports)
 
 if [[ -n "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
   redis_endpoint="${TICTACTOE_REDIS_ENDPOINT}"
@@ -204,7 +204,6 @@ wait_endpoint redis "${redis_endpoint}"
 common_play_channels="tcp://127.0.0.1:${play_a_channel_port},tcp://127.0.0.1:${play_b_channel_port}"
 common_play_streams="tcp://127.0.0.1:${play_a_stream_port},tcp://127.0.0.1:${play_b_stream_port}"
 common_spots="tcp://127.0.0.1:${play_a_spot_port},tcp://127.0.0.1:${play_b_spot_port}"
-common_routes="tcp://127.0.0.1:${play_a_route_port},tcp://127.0.0.1:${play_b_route_port}"
 common_pubs="tcp://127.0.0.1:${play_a_pub_port},tcp://127.0.0.1:${play_b_pub_port}"
 
 api_a_config="${run_dir}/api-a.properties"
@@ -222,8 +221,6 @@ sample.playEndpoint=tcp://127.0.0.1:${play_a_stream_port}
 sample.playEndpoints=${common_play_streams}
 sample.spotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
 sample.spotEndpoints=${common_spots}
-sample.routeEndpoint=tcp://127.0.0.1:${play_a_route_port}
-sample.routeEndpoints=${common_routes}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
 sample.spotPubSubEndpoints=${common_pubs}
 sample.redisEndpoint=${redis_endpoint}
@@ -231,7 +228,6 @@ sample.redisKeyPrefix=${redis_key_prefix}
 sample.playSpotNodeRid=play-node-1
 sample.peerPlaySpotNodeRid=play-node-2
 sample.peerSpotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
-sample.peerRouteEndpoint=tcp://127.0.0.1:${play_b_route_port}
 sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.logDirectory=${log_dir}
 EOF
@@ -249,12 +245,10 @@ sed -i \
   -e "s#sample.playChannelEndpoint=.*#sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}#" \
   -e "s#sample.playEndpoint=.*#sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}#" \
   -e "s#sample.spotEndpoint=.*#sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}#" \
-  -e "s#sample.routeEndpoint=.*#sample.routeEndpoint=tcp://127.0.0.1:${play_b_route_port}#" \
   -e "s#sample.spotPubSubEndpoint=.*#sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}#" \
   -e "s#sample.playSpotNodeRid=.*#sample.playSpotNodeRid=play-node-2#" \
   -e "s#sample.peerPlaySpotNodeRid=.*#sample.peerPlaySpotNodeRid=play-node-1#" \
   -e "s#sample.peerSpotEndpoint=.*#sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}#" \
-  -e "s#sample.peerRouteEndpoint=.*#sample.peerRouteEndpoint=tcp://127.0.0.1:${play_a_route_port}#" \
   -e "s#sample.peerSpotPubSubEndpoint=.*#sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}#" \
   "${play_b_config}"
 
@@ -284,9 +278,9 @@ wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 
 "$(app_bin Client Client)" --api-url "http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
 
-rg -q "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
-rg -q "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
-rg -q "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
-rg -q "tictactoe completed" "${log_dir}/client.log"
+grep -Eq "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
+grep -Eq "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
+grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
+grep -Eq "tictactoe completed" "${log_dir}/client.log"
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 echo "PASS TicTacToe.Kotlin"

@@ -12,11 +12,10 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.channels.ZLinkRouteRequestContext
+import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -73,9 +72,8 @@ class Program {
                     "${System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")}/flow-${SampleTopology.missionName()}.log",
                 )
                 .traceLabel(SampleTopology.missionName())
-            options.addRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
-                .setRoutingId(RoutingId.from(SampleTopology.selectedMissionRid()))
-                .enableServer(SampleTopology.selectedMissionRouteEndpoint())
+            options.addClientServerChannel(SampleTopology.selectedMissionChannel())
+                .enableServer(SampleTopology.selectedMissionChannelEndpoint())
                 .addHandlerGroup("quest-owner")
         }
 
@@ -124,8 +122,8 @@ private fun writeJson(exchange: HttpExchange, status: Int, body: Any) {
 @ZLinkHandlerGroup("quest-owner")
 class GameplayEventRouteHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRouteRequestHandler<GameplayEventEnvelope, QuestProcessingRes> {
-    override suspend fun handle(request: GameplayEventEnvelope, context: ZLinkRouteRequestContext): QuestProcessingRes {
+) : ZLinkSuspendingRequestHandler<GameplayEventEnvelope, QuestProcessingRes> {
+    override suspend fun handle(request: GameplayEventEnvelope, context: ZLinkRequestContext): QuestProcessingRes {
         store.markRehydrated(request.playerId)
         return store.apply(request)
     }
@@ -134,18 +132,18 @@ class GameplayEventRouteHandler(
 @ZLinkHandlerGroup("quest-owner")
 class GetQuestProgressHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRouteRequestHandler<GetQuestProgressReq, GetQuestProgressRes> {
-    override suspend fun handle(request: GetQuestProgressReq, context: ZLinkRouteRequestContext): GetQuestProgressRes =
+) : ZLinkSuspendingRequestHandler<GetQuestProgressReq, GetQuestProgressRes> {
+    override suspend fun handle(request: GetQuestProgressReq, context: ZLinkRequestContext): GetQuestProgressRes =
         GetQuestProgressRes(store.projection(request.playerId))
 }
 
 @ZLinkHandlerGroup("quest-owner")
 class DeleteQuestProjectionHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRouteRequestHandler<DeleteQuestProjectionReq, DeleteQuestProjectionRes> {
+) : ZLinkSuspendingRequestHandler<DeleteQuestProjectionReq, DeleteQuestProjectionRes> {
     override suspend fun handle(
         request: DeleteQuestProjectionReq,
-        context: ZLinkRouteRequestContext,
+        context: ZLinkRequestContext,
     ): DeleteQuestProjectionRes =
         store.deleteProjection(request.playerId, request.questId)
 }
@@ -153,16 +151,16 @@ class DeleteQuestProjectionHandler(
 @ZLinkHandlerGroup("quest-owner")
 class RebuildQuestProjectionHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRouteRequestHandler<RebuildQuestProjectionReq, QuestProgress> {
-    override suspend fun handle(request: RebuildQuestProjectionReq, context: ZLinkRouteRequestContext): QuestProgress =
+) : ZLinkSuspendingRequestHandler<RebuildQuestProjectionReq, QuestProgress> {
+    override suspend fun handle(request: RebuildQuestProjectionReq, context: ZLinkRequestContext): QuestProgress =
         store.rebuildProjection(request.playerId, request.questId)
 }
 
 @ZLinkHandlerGroup("quest-owner")
 class SyncQuestProgressHandler(
     private val store: QuestStore,
-) : ZLinkSuspendingRouteRequestHandler<SyncQuestProgressReq, SyncQuestProgressRes> {
-    override suspend fun handle(request: SyncQuestProgressReq, context: ZLinkRouteRequestContext): SyncQuestProgressRes =
+) : ZLinkSuspendingRequestHandler<SyncQuestProgressReq, SyncQuestProgressRes> {
+    override suspend fun handle(request: SyncQuestProgressReq, context: ZLinkRequestContext): SyncQuestProgressRes =
         store.sync(request.playerId, 4)
 }
 

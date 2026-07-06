@@ -41,9 +41,12 @@ public final class CourierGatewayApplication {
                 .enableServer(SampleTopology.CourierGatewayChannelEndpoint)
                 .setRoutingId(RoutingId.from("delivery-courier-gateway-server"))
                 .addHandlerGroup("courier-gateway");
-            options.addRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
-                .enableClient()
-                .setRoutingId(RoutingId.from("delivery-courier-gateway"));
+            options.addClientServerChannel(SampleNames.courierActorNodeChannelFor(SampleTopology.CourierActorNode1Rid))
+                .enableClient(SampleTopology.CourierActorNode1RouteEndpoint)
+                .setRoutingId(RoutingId.from("delivery-courier-gateway-node1"));
+            options.addClientServerChannel(SampleNames.courierActorNodeChannelFor(SampleTopology.CourierActorNode2Rid))
+                .enableClient(SampleTopology.CourierActorNode2RouteEndpoint)
+                .setRoutingId(RoutingId.from("delivery-courier-gateway-node2"));
         };
     }
 

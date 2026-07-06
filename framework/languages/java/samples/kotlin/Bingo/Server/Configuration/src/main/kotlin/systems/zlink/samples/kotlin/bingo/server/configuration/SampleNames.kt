@@ -8,6 +8,5 @@ object SampleNames {
     const val PlayerActorType: String = "bingo.player"
     const val RoomSpotDiscovery: String = "bingo.rooms"
     const val RoomSpotNode: String = "bingo.room.node"
-    const val RoomRouteChannel: String = "bingo.rooms.route"
     const val WinnerTopic: String = "bingo.room.reward"
 }

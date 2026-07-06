@@ -5,7 +5,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -44,17 +43,14 @@ public final class SessionServerApplication {
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-session.log")
                 .traceLabel("session");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
-            options.configureLocations()
-                .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
-            route.enableServer(SampleTopology.selectedSessionRouteEndpoint());
-            route.enableClient();
-            route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
+            node.connectRouter(
+                RoutingId.from(SampleTopology.preferredPlayNodeRid()),
+                SampleTopology.preferredPlaySpotRouterEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession.class)

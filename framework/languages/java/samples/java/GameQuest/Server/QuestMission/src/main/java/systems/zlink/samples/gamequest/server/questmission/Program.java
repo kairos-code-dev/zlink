@@ -11,7 +11,6 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -56,9 +55,8 @@ public class Program {
                 .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")
                     + "/flow-" + SampleTopology.missionName() + ".log")
                 .traceLabel(SampleTopology.missionName());
-            options.addRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
-                .setRoutingId(RoutingId.from(SampleTopology.selectedMissionRid()))
-                .enableServer(SampleTopology.selectedMissionRouteEndpoint())
+            options.addClientServerChannel(SampleNames.questOwnerChannelFor(SampleTopology.missionName()))
+                .enableServer(SampleTopology.selectedMissionChannelEndpoint())
                 .addHandlerGroup("quest-owner");
         };
     }

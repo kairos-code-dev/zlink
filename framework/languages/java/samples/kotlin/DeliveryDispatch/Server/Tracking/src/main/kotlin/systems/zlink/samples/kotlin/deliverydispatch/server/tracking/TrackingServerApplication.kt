@@ -5,9 +5,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.DeliveryEvidenceStore
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 
@@ -20,7 +22,6 @@ class TrackingServerApplication {
     @Bean
     fun trackingFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
@@ -35,6 +36,9 @@ class TrackingServerApplication {
                 .enableServer(SampleTopology.TrackingChannelEndpoint)
                 .addHandlerGroup("tracking")
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
 
     @Bean
     fun evidenceStore(): DeliveryEvidenceStore =

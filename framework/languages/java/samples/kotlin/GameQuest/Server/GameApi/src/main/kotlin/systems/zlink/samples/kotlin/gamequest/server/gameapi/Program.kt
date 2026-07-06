@@ -14,7 +14,7 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -89,8 +89,10 @@ class Program {
                     "${System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")}/flow-${SampleTopology.apiName()}.log",
                 )
                 .traceLabel(SampleTopology.apiName())
-            options.addRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
-                .enableClient()
+            SampleTopology.ownerChannels().zip(SampleTopology.ownerChannelEndpoints()).forEach { (channel, endpoint) ->
+                options.addClientServerChannel(channel)
+                    .enableClient(endpoint)
+            }
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedApiStreamEndpoint())
                 .registerSession(GameQuestSession::class.java)
@@ -104,7 +106,7 @@ class Program {
         GameQuestStore().also { store = it }
 
     @Bean
-    fun gameQuestApiServices(store: GameQuestStore, routes: ZLinkRouteClient): GameQuestApiServices {
+    fun gameQuestApiServices(store: GameQuestStore, routes: ZLinkClient): GameQuestApiServices {
         Companion.store = store
         Companion.routes = routes
         return GameQuestApiServices()
@@ -114,7 +116,7 @@ class Program {
 
     companion object {
         lateinit var store: GameQuestStore
-        lateinit var routes: ZLinkRouteClient
+        lateinit var routes: ZLinkClient
         fun run(vararg args: String): AutoCloseable {
             val context = SpringApplicationBuilder(Program::class.java)
                 .also { it.application().setKeepAlive(true) }
@@ -127,7 +129,7 @@ class Program {
 
 class GameQuestSession(
     private val context: ZLinkSessionContext,
-    private val routes: ZLinkRouteClient,
+    private val routes: ZLinkClient,
     private val store: GameQuestStore,
 ) : ZLinkSuspendingSession() {
     private var playerId: String? = null
@@ -155,11 +157,7 @@ class GameQuestSession(
         playerId = request.playerId
         store.bind(request.playerId, SampleTopology.apiName())
         val ownerProjection = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(request.playerId),
-                GetQuestProgressReq(request.playerId),
-            )
+            .requestToChannel(SampleTopology.ownerChannel(request.playerId), GetQuestProgressReq(request.playerId))
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -168,11 +166,7 @@ class GameQuestSession(
 
     private suspend fun handleGetProgress(request: GetQuestProgressReq) {
         val ownerProjection = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(request.playerId),
-                request,
-            )
+            .requestToChannel(SampleTopology.ownerChannel(request.playerId), request)
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -181,11 +175,7 @@ class GameQuestSession(
 
     private suspend fun handleSync(request: SyncQuestProgressReq) {
         val response = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(request.playerId),
-                request,
-            )
+            .requestToChannel(SampleTopology.ownerChannel(request.playerId), request)
             .submit(SyncQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, response.updatedQuests)
@@ -220,11 +210,7 @@ class GameQuestSession(
     private suspend fun process(event: GameplayEventEnvelope): QuestProcessingRes {
         store.recordGameplay(event)
         val processed = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(event.playerId),
-                event,
-            )
+            .requestToChannel(SampleTopology.ownerChannel(event.playerId), event)
             .submit(QuestProcessingRes::class.java)
             .await()
         store.mergeProjection(event.playerId, processed.projection)
@@ -279,9 +265,8 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore) {
         "delete" -> {
             val deleted = kotlinx.coroutines.runBlocking {
                 Program.routes
-                    .requestToNode(
-                        SampleNames.QuestOwnerRouteChannel,
-                        SampleTopology.ownerRouteRid(playerId),
+                    .requestToChannel(
+                        SampleTopology.ownerChannel(playerId),
                         DeleteQuestProjectionReq(playerId, questId),
                     )
                     .submit(DeleteQuestProjectionRes::class.java)
@@ -293,9 +278,8 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore) {
         "rebuild" -> {
             val rebuilt = kotlinx.coroutines.runBlocking {
                 Program.routes
-                    .requestToNode(
-                        SampleNames.QuestOwnerRouteChannel,
-                        SampleTopology.ownerRouteRid(playerId),
+                    .requestToChannel(
+                        SampleTopology.ownerChannel(playerId),
                         RebuildQuestProjectionReq(playerId, questId, 0),
                     )
                     .submit(QuestProgress::class.java)

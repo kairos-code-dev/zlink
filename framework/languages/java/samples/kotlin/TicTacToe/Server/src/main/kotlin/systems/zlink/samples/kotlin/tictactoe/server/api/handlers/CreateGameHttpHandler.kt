@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameReq
@@ -14,11 +15,13 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
 @RestController
 class CreateGameHttpHandler(
     private val client: ZLinkClient,
+    private val settings: SampleSettings,
 ) {
     @PostMapping("/games")
     suspend fun handle(@RequestBody request: CreateGameHttpReq): CreateGameHttpRes {
+        val ownerIndex = selectOwner(settings.playChannelEndpoints.size)
         val game = client.requestToChannel(
-            SampleNames.PlayChannel,
+            SampleNames.playChannel(ownerIndex),
             CreateGameReq(request.gameName?.takeIf { it.isNotBlank() } ?: "tictactoe-game"),
         )
             .timeout(SampleNames.RequestTimeout)
@@ -33,4 +36,6 @@ class CreateGameHttpHandler(
             requiredLevel = game.requiredLevel,
         )
     }
+
+    private fun selectOwner(playNodeCount: Int): Int = 0.coerceAtMost(playNodeCount - 1)
 }

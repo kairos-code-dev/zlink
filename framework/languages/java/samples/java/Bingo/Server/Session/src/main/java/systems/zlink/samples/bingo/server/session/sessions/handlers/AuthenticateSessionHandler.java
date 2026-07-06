@@ -5,6 +5,7 @@ import static systems.zlink.framework.ZLinkAwait.await;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -18,9 +19,7 @@ public final class AuthenticateSessionHandler
     private final ZLinkClient channels;
     private final ZLinkRouteClient routes;
 
-    public AuthenticateSessionHandler(
-        ZLinkClient channels,
-        ZLinkRouteClient routes) {
+    public AuthenticateSessionHandler(ZLinkClient channels, ZLinkRouteClient routes) {
         this.channels = channels;
         this.routes = routes;
     }
@@ -57,10 +56,11 @@ public final class AuthenticateSessionHandler
                     ? "Player authentication failed."
                     : authenticated.reason());
         }
+        RoutingId preferredPlayNode = RoutingId.from(SampleTopology.preferredPlayNodeRid());
         var ensured = routes
-            .requestToNode(
-                SampleNames.PlayChannel,
-                RoutingId.from(SampleTopology.preferredPlayNodeRid()),
+            .requestToSpot(
+                SampleNames.RoomSpotDiscovery,
+                new ZLinkSpotAddress(SampleNames.RoomSpotDiscovery, preferredPlayNode, preferredPlayNode),
                 new Messages.EnsurePlayerActorReq(
                     authenticated.actorId(),
                     authenticated.displayName(),

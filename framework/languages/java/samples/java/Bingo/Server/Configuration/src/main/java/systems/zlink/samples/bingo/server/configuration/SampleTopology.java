@@ -37,18 +37,6 @@ public final class SampleTopology {
         property("playASpotRouterEndpoint", PlaySpotRouterEndpoint);
     public static final String PlayBSpotRouterEndpoint =
         property("playBSpotRouterEndpoint", "tcp://127.0.0.1:47122");
-    public static final String SessionRouteEndpoint =
-        property("sessionRouteEndpoint", "tcp://127.0.0.1:47112");
-    public static final String PlayRouteEndpoint =
-        property("playRouteEndpoint", "tcp://127.0.0.1:47113");
-    public static final String SessionAPlayRouteEndpoint =
-        property("sessionAPlayRouteEndpoint", SessionRouteEndpoint);
-    public static final String SessionBPlayRouteEndpoint =
-        property("sessionBPlayRouteEndpoint", "tcp://127.0.0.1:47123");
-    public static final String PlayARouteEndpoint =
-        property("playARouteEndpoint", PlayRouteEndpoint);
-    public static final String PlayBRouteEndpoint =
-        property("playBRouteEndpoint", "tcp://127.0.0.1:47124");
     public static final String StreamEndpoint =
         property("streamEndpoint", "tcp://127.0.0.1:47114");
     public static final String SessionAStreamEndpoint =
@@ -61,10 +49,6 @@ public final class SampleTopology {
     public static final String ApiNode = property("apiNode", "a");
     public static final String PlayNode = property("playNode", "a");
     public static final String SessionNode = property("sessionNode", "a");
-    public static final String SessionARouteRid = property("sessionAPlayRouteRid", "1201");
-    public static final String SessionBRouteRid = property("sessionBPlayRouteRid", "1202");
-    public static final String ApiARouteRid = property("apiAPlayRouteRid", "1301");
-    public static final String ApiBRouteRid = property("apiBPlayRouteRid", "1302");
     public static final String SessionARouterRid = property("sessionARouterRid", "1101");
     public static final String SessionBRouterRid = property("sessionBRouterRid", "1102");
     public static final String PlayANodeRid = property("playANodeRid", "2201");
@@ -78,20 +62,8 @@ public final class SampleTopology {
         return "b".equals(ApiNode) ? ApiBChannelEndpoint : ApiAChannelEndpoint;
     }
 
-    public static String selectedApiRouteRid() {
-        return "b".equals(ApiNode) ? ApiBRouteRid : ApiARouteRid;
-    }
-
     public static String selectedPlayChannelEndpoint() {
         return "b".equals(PlayNode) ? PlayBChannelEndpoint : PlayAChannelEndpoint;
-    }
-
-    public static String selectedPlayRouteEndpoint() {
-        return "b".equals(PlayNode) ? PlayBRouteEndpoint : PlayARouteEndpoint;
-    }
-
-    public static String peerPlayRouteEndpoint() {
-        return "b".equals(PlayNode) ? PlayARouteEndpoint : PlayBRouteEndpoint;
     }
 
     public static String selectedPlaySpotEndpoint() {
@@ -104,6 +76,10 @@ public final class SampleTopology {
 
     public static String selectedPlaySpotRouterEndpoint() {
         return "b".equals(PlayNode) ? PlayBSpotRouterEndpoint : PlayASpotRouterEndpoint;
+    }
+
+    public static String preferredPlaySpotRouterEndpoint() {
+        return "b".equals(SessionNode) ? PlayBSpotRouterEndpoint : PlayASpotRouterEndpoint;
     }
 
     public static String selectedPlayNodeRid() {
@@ -124,14 +100,6 @@ public final class SampleTopology {
 
     public static String selectedSessionRouterRid() {
         return "b".equals(SessionNode) ? SessionBRouterRid : SessionARouterRid;
-    }
-
-    public static String selectedSessionRouteEndpoint() {
-        return "b".equals(SessionNode) ? SessionBPlayRouteEndpoint : SessionAPlayRouteEndpoint;
-    }
-
-    public static String selectedSessionRouteRid() {
-        return "b".equals(SessionNode) ? SessionBRouteRid : SessionARouteRid;
     }
 
     public static String selectedStreamEndpoint() {

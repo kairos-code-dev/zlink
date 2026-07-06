@@ -13,7 +13,7 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.s
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
 
-@ZLinkHandlerGroup(SampleNames.PlayChannel)
+@ZLinkHandlerGroup(SampleNames.PlayHandlerGroup)
 class CreateGameHandler(
     private val spots: ObjectProvider<ZLinkSpotManager>,
     private val settings: SampleSettings,

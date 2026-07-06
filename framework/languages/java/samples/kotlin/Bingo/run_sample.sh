@@ -109,35 +109,12 @@ wait_port() {
 }
 
 reserve_ports() {
-  python3 - <<'PY'
-import random
-import socket
-reserved = []
-try:
-    chosen = set()
-    while len(reserved) < 19:
-        host = "127.0.0.1"
-        port = random.randint(48000, 60999)
-        key = (host, port)
-        if key in chosen:
-            continue
-        sockets = []
-        try:
-            sock4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock4.bind((host, port))
-            sockets.append(sock4)
-        except OSError:
-            for sock in sockets:
-                sock.close()
-            continue
-        chosen.add(key)
-        reserved.append((host, port, sockets))
-    print(" ".join(f"{host}:{port}" for host, port, _ in reserved))
-finally:
-    for _, _, sockets in reserved:
-        for sock in sockets:
-            sock.close()
-PY
+  local base=$((48000 + ((RANDOM + $$) % 1000) * 15 % 12000))
+  local endpoints=()
+  for offset in $(seq 0 14); do
+    endpoints+=("127.0.0.1:$((base + offset))")
+  done
+  echo "${endpoints[*]}"
 }
 
 gradle_run() {
@@ -164,7 +141,7 @@ build_framework_jars() {
   )
 }
 
-read -r api_a_channel play_a_channel session_a_spot session_a_router play_a_spot play_a_router session_a_route play_a_route session_a_stream api_b_channel play_b_channel session_b_spot session_b_router play_b_spot play_b_router session_b_route play_b_route session_b_stream unused_endpoint < <(reserve_ports)
+read -r api_a_channel play_a_channel session_a_spot session_a_router play_a_spot play_a_router session_a_stream api_b_channel play_b_channel session_b_spot session_b_router play_b_spot play_b_router session_b_stream unused_endpoint < <(reserve_ports)
 api_a_host="${api_a_channel%:*}"
 api_a_port="${api_a_channel##*:}"
 api_b_host="${api_b_channel%:*}"
@@ -189,14 +166,6 @@ play_a_router_host="${play_a_router%:*}"
 play_a_router_port="${play_a_router##*:}"
 play_b_router_host="${play_b_router%:*}"
 play_b_router_port="${play_b_router##*:}"
-session_a_route_host="${session_a_route%:*}"
-session_a_route_port="${session_a_route##*:}"
-session_b_route_host="${session_b_route%:*}"
-session_b_route_port="${session_b_route##*:}"
-play_a_route_host="${play_a_route%:*}"
-play_a_route_port="${play_a_route##*:}"
-play_b_route_host="${play_b_route%:*}"
-play_b_route_port="${play_b_route##*:}"
 stream_a_host="${session_a_stream%:*}"
 stream_a_port="${session_a_stream##*:}"
 stream_b_host="${session_b_stream%:*}"
@@ -213,7 +182,7 @@ fi
 redis_host="${BINGO_REDIS_ENDPOINT%:*}"
 redis_port="${BINGO_REDIS_ENDPOINT##*:}"
 wait_port "${redis_host}" "${redis_port}"
-common_java_options="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port} -Dzlink.samples.bingo.apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port} -Dzlink.samples.bingo.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port} -Dzlink.samples.bingo.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port} -Dzlink.samples.bingo.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port} -Dzlink.samples.bingo.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port} -Dzlink.samples.bingo.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port} -Dzlink.samples.bingo.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port} -Dzlink.samples.bingo.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port} -Dzlink.samples.bingo.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port} -Dzlink.samples.bingo.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port} -Dzlink.samples.bingo.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port} -Dzlink.samples.bingo.sessionAPlayRouteEndpoint=tcp://${session_a_route_host}:${session_a_route_port} -Dzlink.samples.bingo.sessionBPlayRouteEndpoint=tcp://${session_b_route_host}:${session_b_route_port} -Dzlink.samples.bingo.playARouteEndpoint=tcp://${play_a_route_host}:${play_a_route_port} -Dzlink.samples.bingo.playBRouteEndpoint=tcp://${play_b_route_host}:${play_b_route_port} -Dzlink.samples.bingo.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port} -Dzlink.samples.bingo.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port} -Dzlink.samples.bingo.redisEndpoint=${BINGO_REDIS_ENDPOINT} -Dzlink.samples.bingo.redisKeyPrefix=${bingo_redis_key_prefix}"
+common_java_options="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port} -Dzlink.samples.bingo.apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port} -Dzlink.samples.bingo.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port} -Dzlink.samples.bingo.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port} -Dzlink.samples.bingo.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port} -Dzlink.samples.bingo.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port} -Dzlink.samples.bingo.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port} -Dzlink.samples.bingo.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port} -Dzlink.samples.bingo.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port} -Dzlink.samples.bingo.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port} -Dzlink.samples.bingo.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port} -Dzlink.samples.bingo.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port} -Dzlink.samples.bingo.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port} -Dzlink.samples.bingo.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port} -Dzlink.samples.bingo.redisEndpoint=${BINGO_REDIS_ENDPOINT} -Dzlink.samples.bingo.redisKeyPrefix=${bingo_redis_key_prefix}"
 
 build_framework_jars
 gradle_run \
@@ -233,18 +202,14 @@ JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.playNode=a -Dzli
 pids+=("$!")
 JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.playNode=b -Dzlink.samples.bingo.playRid=2202" "$(app_bin Server/Play Play)" >"${log_dir}/play-b.log" 2>&1 &
 pids+=("$!")
-wait_port "${session_a_route_host}" "${session_a_route_port}"
 wait_port "${session_a_router_host}" "${session_a_router_port}"
 wait_port "${stream_a_host}" "${stream_a_port}"
-wait_port "${session_b_route_host}" "${session_b_route_port}"
 wait_port "${session_b_router_host}" "${session_b_router_port}"
 wait_port "${stream_b_host}" "${stream_b_port}"
 wait_port "${api_a_host}" "${api_a_port}"
 wait_port "${api_b_host}" "${api_b_port}"
-wait_port "${play_a_route_host}" "${play_a_route_port}"
 wait_port "${play_a_router_host}" "${play_a_router_port}"
 wait_port "${play_a_spot_host}" "${play_a_spot_port}"
-wait_port "${play_b_route_host}" "${play_b_route_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
 wait_port "${play_b_spot_host}" "${play_b_spot_port}"
 

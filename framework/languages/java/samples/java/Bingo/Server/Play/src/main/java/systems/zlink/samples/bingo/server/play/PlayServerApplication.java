@@ -8,7 +8,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -52,20 +51,19 @@ public final class PlayServerApplication {
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-play.log")
                 .traceLabel("play");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
-            options.configureLocations()
-                .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel);
             options.addHandlersFromPackageOf(PlayServerApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
-            route.enableServer(SampleTopology.selectedPlayRouteEndpoint());
-            route.enableClient();
-            route.addHandlerGroup("play-route");
-            route.setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableServer(SampleTopology.selectedPlayChannelEndpoint())
+                .enableClient()
+                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+                .addHandlerGroup("play");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint());
+            node.connectPeerPub(SampleTopology.peerPlaySpotEndpoint());
             node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
             node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);

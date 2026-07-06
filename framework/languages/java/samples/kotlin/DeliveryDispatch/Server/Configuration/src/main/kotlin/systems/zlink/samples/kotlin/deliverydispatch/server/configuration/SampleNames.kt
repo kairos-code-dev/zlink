@@ -24,4 +24,6 @@ object SampleNames {
     const val ReassignmentMarker: String = "deliverydispatch-reassignment=completed"
     const val ServerEvidenceMarker: String = "deliverydispatch-server-evidence=completed"
     const val CompletedMarker: String = "deliverydispatch=completed"
+
+    fun courierActorNodeChannel(nodeRid: String): String = "$CourierActorNodeRouteChannel.$nodeRid"
 }

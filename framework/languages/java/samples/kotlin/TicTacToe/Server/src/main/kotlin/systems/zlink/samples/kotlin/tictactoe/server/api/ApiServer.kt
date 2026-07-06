@@ -25,7 +25,9 @@ object ApiServer {
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(settings.apiChannelEndpoint)
                 .addHandlerGroup("api")
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableClient(settings.playChannelEndpoint)
+            settings.playChannelEndpoints.forEachIndexed { index, endpoint ->
+                options.addClientServerChannel(SampleNames.playChannel(index))
+                    .enableClient(endpoint)
+            }
         }
 }

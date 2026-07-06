@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.samples\.kotlin\.deliverydispatch\.(server\.(registry|tracking|customergateway|couriersession|couriergateway|courierspotnode|dispatch)\.ProgramKt|client\.ProgramKt)'
+redis_container_id=""
+role_pattern='systems\.zlink\.samples\.kotlin\.deliverydispatch\.(server\.(tracking|customergateway|couriersession|couriergateway|courierspotnode|dispatch)\.ProgramKt|client\.ProgramKt)'
 log_dir="build/sample-logs"
 state_dir="$(pwd)/build/sample-state"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-$(pwd)/logs}"
@@ -53,6 +54,9 @@ cleanup() {
     kill "${pid}" >/dev/null 2>&1 || true
   done
   kill_role_processes
+  if [[ -n "${redis_container_id}" ]]; then
+    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
+  fi
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
@@ -75,31 +79,12 @@ wait_port() {
 }
 
 reserve_ports() {
-  python3 - <<'PY'
-import random
-import socket
-
-reserved = []
-try:
-    chosen = set()
-    while len(reserved) < 17:
-        host = "127.0.0.1"
-        port = random.randint(20000, 29999)
-        if port in chosen:
-            continue
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.bind((host, port))
-        except OSError:
-            sock.close()
-            continue
-        chosen.add(port)
-        reserved.append((host, port, sock))
-    print(" ".join(f"{host}:{port}" for host, port, _ in reserved))
-finally:
-    for _, _, sock in reserved:
-        sock.close()
-PY
+  local base=$((20000 + ((RANDOM + $$) % 1000) * 15 % 9000))
+  local endpoints=()
+  for offset in $(seq 0 14); do
+    endpoints+=("127.0.0.1:$((base + offset))")
+  done
+  echo "${endpoints[*]}"
 }
 
 gradle_run() {
@@ -118,20 +103,19 @@ build_framework_jars() {
     ./gradlew --no-daemon \
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
+      :zlink-framework-locations-redis:jar \
       :zlink-stream-connector:jar \
       --quiet
   )
 }
 
-read -r registry_pub registry_router tracking customer_stream courier_stream courier_gateway dispatch_http customer_route customer_spot customer_router courier_node1_route courier_node2_route courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router < <(reserve_ports)
+read -r tracking customer_stream courier_stream courier_gateway dispatch_http customer_route customer_spot customer_router courier_node1_route courier_node2_route courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
 
 common_java_options="${JAVA_TOOL_OPTIONS:-}"
 common_java_options+=" -Dzlink.samples.deliverydispatch.stateDir=${state_dir}"
-common_java_options+=" -Dzlink.samples.deliverydispatch.registryPubEndpoint=tcp://$(endpoint_host "${registry_pub}"):$(endpoint_port "${registry_pub}")"
-common_java_options+=" -Dzlink.samples.deliverydispatch.registryRouterEndpoint=tcp://$(endpoint_host "${registry_router}"):$(endpoint_port "${registry_router}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.trackingChannelEndpoint=tcp://$(endpoint_host "${tracking}"):$(endpoint_port "${tracking}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")"
@@ -148,9 +132,21 @@ common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode1RouterE
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode2RouterEndpoint=tcp://$(endpoint_host "${courier_node2_router}"):$(endpoint_port "${courier_node2_router}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierSessionSpotRouterEndpoint=tcp://$(endpoint_host "${courier_session_router}"):$(endpoint_port "${courier_session_router}")"
 
+deliverydispatch_redis_key_prefix="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:kotlin:${RANDOM}:$$:}"
+if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required when DELIVERYDISPATCH_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  redis_container_id="$(docker run -d --rm --name "deliverydispatch-kotlin-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+  DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+fi
+wait_port "${DELIVERYDISPATCH_REDIS_ENDPOINT%:*}" "${DELIVERYDISPATCH_REDIS_ENDPOINT##*:}"
+common_java_options+=" -Dzlink.samples.deliverydispatch.redisEndpoint=${DELIVERYDISPATCH_REDIS_ENDPOINT}"
+common_java_options+=" -Dzlink.samples.deliverydispatch.redisKeyPrefix=${deliverydispatch_redis_key_prefix}"
+
 build_framework_jars
 gradle_run \
-  :Server:Registry:installDist \
   :Server:Tracking:installDist \
   :Server:CustomerGateway:installDist \
   :Server:CourierSession:installDist \
@@ -158,11 +154,6 @@ gradle_run \
   :Server:CourierGateway:installDist \
   :Server:Dispatch:installDist \
   :Client:installDist
-
-JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/Registry Registry)" >"${log_dir}/registry.log" 2>&1 &
-pids+=("$!")
-wait_port "$(endpoint_host "${registry_pub}")" "$(endpoint_port "${registry_pub}")"
-wait_port "$(endpoint_host "${registry_router}")" "$(endpoint_port "${registry_router}")"
 
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/Tracking Tracking)" >"${log_dir}/tracking.log" 2>&1 &
 pids+=("$!")

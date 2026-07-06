@@ -6,8 +6,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot
@@ -24,7 +26,6 @@ class CourierSpotNodeApplication {
             val node = System.getProperty("zlink.samples.deliverydispatch.courierNode", "node1")
             val selected = NodeOptions.resolve(node)
             options.addHandlersFromPackageOf(CourierSpotNodeApplication::class.java)
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
@@ -32,7 +33,7 @@ class CourierSpotNodeApplication {
                         "/flow-courier-$node.log",
                 )
                 .traceLabel("courier-$node")
-            options.addRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
+            options.addClientServerChannel(SampleNames.courierActorNodeChannel(selected.nodeRid))
                 .setRoutingId(RoutingId.from(selected.nodeRid))
                 .enableServer(selected.routeEndpoint)
                 .enableClient()
@@ -47,6 +48,9 @@ class CourierSpotNodeApplication {
 
     @Bean
     fun actorDirectory(): ActorDirectory = ActorDirectory()
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {

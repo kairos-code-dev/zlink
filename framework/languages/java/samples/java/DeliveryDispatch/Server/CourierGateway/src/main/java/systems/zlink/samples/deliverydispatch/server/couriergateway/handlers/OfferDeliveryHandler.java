@@ -2,7 +2,7 @@ package systems.zlink.samples.deliverydispatch.server.couriergateway.handlers;
 
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
@@ -14,13 +14,13 @@ import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 public final class OfferDeliveryHandler
     implements ZLinkRequestHandler<Messages.OfferDelivery, Messages.OfferDeliveryResult> {
     private final CourierDirectory directory;
-    private final ZLinkRouteClient routes;
+    private final ZLinkClient channels;
 
     public OfferDeliveryHandler(
         CourierDirectory directory,
-        ZLinkRouteClient routes) {
+        ZLinkClient channels) {
         this.directory = directory;
-        this.routes = routes;
+        this.channels = channels;
     }
 
     @Override
@@ -28,10 +28,9 @@ public final class OfferDeliveryHandler
         Messages.OfferDelivery request,
         ZLinkRequestContext context) {
         CourierBinding binding = directory.require(request.courierId());
-        return routes
-            .requestToNode(
-                SampleNames.CourierActorNodeRouteChannel,
-                binding.actor().nodeRid(),
+        return channels
+            .requestToChannel(
+                SampleNames.courierActorNodeChannelFor(binding.actor().nodeRid().toString()),
                 request)
             .timeout(SampleTimings.OfferRequestTimeout)
             .await(Messages.OfferDeliveryResult.class);

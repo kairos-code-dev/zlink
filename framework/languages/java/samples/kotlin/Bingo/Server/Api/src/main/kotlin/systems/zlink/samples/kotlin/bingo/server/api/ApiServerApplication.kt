@@ -5,7 +5,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
@@ -39,10 +38,9 @@ class ApiServerApplication {
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(SampleTopology.selectedApiChannelEndpoint())
                 .addHandlerGroup("api")
-            val route = options.addRouteMeshChannel(SampleNames.PlayChannel)
-            route.enableClient()
-            route.enableClient()
-            route.setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()))
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableClient(SampleTopology.PlayAChannelEndpoint)
+                .enableClient(SampleTopology.PlayBChannelEndpoint)
         }
 
     @Bean

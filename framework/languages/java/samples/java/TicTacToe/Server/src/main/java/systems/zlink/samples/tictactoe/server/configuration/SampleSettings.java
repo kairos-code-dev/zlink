@@ -16,8 +16,6 @@ public record SampleSettings(
     List<String> playEndpoints,
     String spotEndpoint,
     List<String> spotEndpoints,
-    String routeEndpoint,
-    List<String> routeEndpoints,
     String spotPubSubEndpoint,
     List<String> spotPubSubEndpoints,
     String redisEndpoint,
@@ -25,7 +23,6 @@ public record SampleSettings(
     String playSpotNodeRid,
     String peerPlaySpotNodeRid,
     String peerSpotEndpoint,
-    String peerRouteEndpoint,
     String peerSpotPubSubEndpoint,
     String logDirectory) {
     public static SampleSettings createDefault() {
@@ -39,8 +36,6 @@ public record SampleSettings(
             List.of("tcp://127.0.0.1:47202", "tcp://127.0.0.1:47212"),
             "tcp://127.0.0.1:47205",
             List.of("tcp://127.0.0.1:47205", "tcp://127.0.0.1:47215"),
-            "tcp://127.0.0.1:47206",
-            List.of("tcp://127.0.0.1:47206", "tcp://127.0.0.1:47216"),
             "tcp://127.0.0.1:47207",
             List.of("tcp://127.0.0.1:47207", "tcp://127.0.0.1:47217"),
             "",
@@ -48,7 +43,6 @@ public record SampleSettings(
             "play-node-1",
             "play-node-2",
             "tcp://127.0.0.1:47215",
-            "tcp://127.0.0.1:47216",
             "tcp://127.0.0.1:47217",
             "logs/tictactoe");
     }
@@ -81,8 +75,6 @@ public record SampleSettings(
             readListOption(args, "--play-endpoints", defaults.playEndpoints()),
             readOption(args, "--spot-endpoint", defaults.spotEndpoint()),
             readListOption(args, "--spot-endpoints", defaults.spotEndpoints()),
-            readOption(args, "--route-endpoint", defaults.routeEndpoint()),
-            readListOption(args, "--route-endpoints", defaults.routeEndpoints()),
             readOption(args, "--spot-pubsub-endpoint", defaults.spotPubSubEndpoint()),
             readListOption(args, "--spot-pubsub-endpoints", defaults.spotPubSubEndpoints()),
             readOption(args, "--redis-endpoint", defaults.redisEndpoint()),
@@ -90,7 +82,6 @@ public record SampleSettings(
             readOption(args, "--play-spot-node-rid", defaults.playSpotNodeRid()),
             readOption(args, "--peer-play-spot-node-rid", defaults.peerPlaySpotNodeRid()),
             readOption(args, "--peer-spot-endpoint", defaults.peerSpotEndpoint()),
-            readOption(args, "--peer-route-endpoint", defaults.peerRouteEndpoint()),
             readOption(args, "--peer-spot-pubsub-endpoint", defaults.peerSpotPubSubEndpoint()),
             readOption(args, "--log-dir", defaults.logDirectory()));
     }
@@ -115,8 +106,6 @@ public record SampleSettings(
             readListProperty(properties, "sample.playEndpoints", defaults.playEndpoints()),
             properties.getProperty("sample.spotEndpoint", defaults.spotEndpoint()),
             readListProperty(properties, "sample.spotEndpoints", defaults.spotEndpoints()),
-            properties.getProperty("sample.routeEndpoint", defaults.routeEndpoint()),
-            readListProperty(properties, "sample.routeEndpoints", defaults.routeEndpoints()),
             properties.getProperty("sample.spotPubSubEndpoint", defaults.spotPubSubEndpoint()),
             readListProperty(properties, "sample.spotPubSubEndpoints", defaults.spotPubSubEndpoints()),
             properties.getProperty("sample.redisEndpoint", defaults.redisEndpoint()),
@@ -124,13 +113,17 @@ public record SampleSettings(
             properties.getProperty("sample.playSpotNodeRid", defaults.playSpotNodeRid()),
             properties.getProperty("sample.peerPlaySpotNodeRid", defaults.peerPlaySpotNodeRid()),
             properties.getProperty("sample.peerSpotEndpoint", defaults.peerSpotEndpoint()),
-            properties.getProperty("sample.peerRouteEndpoint", defaults.peerRouteEndpoint()),
             properties.getProperty("sample.peerSpotPubSubEndpoint", defaults.peerSpotPubSubEndpoint()),
             properties.getProperty("sample.logDirectory", defaults.logDirectory()));
     }
 
     public int apiHttpPort() {
         return java.net.URI.create(apiBindUrl).getPort();
+    }
+
+    public int playIndex() {
+        int index = playChannelEndpoints.indexOf(playChannelEndpoint);
+        return index >= 0 ? index : 0;
     }
 
     private static String readOption(String[] args, String name, String defaultValue) {

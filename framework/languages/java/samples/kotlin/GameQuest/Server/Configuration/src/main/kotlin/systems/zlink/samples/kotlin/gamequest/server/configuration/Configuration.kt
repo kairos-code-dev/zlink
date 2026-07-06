@@ -8,7 +8,6 @@ import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
 import java.nio.charset.StandardCharsets
 import java.time.Duration
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
@@ -16,9 +15,11 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 
 object SampleNames {
     const val StreamNode = "gamequest-stream"
-    const val QuestOwnerRouteChannel = "gamequest.quest-owner.route"
+    private const val QuestOwnerChannelPrefix = "gamequest.quest-owner."
     const val CompletedMarker = "gamequest=completed"
     const val ServerEvidenceMarker = "gamequest-server-evidence=completed"
+
+    fun questOwnerChannelFor(instanceId: String): String = "$QuestOwnerChannelPrefix$instanceId"
 }
 
 object SampleTimings {
@@ -46,12 +47,18 @@ object SampleTopology {
         if (missionName() == "mission-b") MissionBRouteEndpoint else MissionARouteEndpoint
     fun selectedMissionHttpEndpoint(): String =
         if (missionName() == "mission-b") MissionBHttpEndpoint else MissionAHttpEndpoint
-    fun selectedMissionRid(): String = if (missionName() == "mission-b") "gamequest-mission-b" else "gamequest-mission-a"
-    fun ownerRouteRid(playerId: String): RoutingId =
-        RoutingId.from(if (ownerIndex(playerId) == 1) "gamequest-mission-b" else "gamequest-mission-a")
+    fun selectedMissionChannel(): String = ownerChannelForIndex(if (missionName() == "mission-b") 1 else 0)
+    fun selectedMissionChannelEndpoint(): String =
+        if (missionName() == "mission-b") MissionBRouteEndpoint else MissionARouteEndpoint
+    fun ownerChannel(playerId: String): String = ownerChannelForIndex(ownerIndex(playerId))
+    fun ownerChannels(): List<String> = listOf(ownerChannelForIndex(0), ownerChannelForIndex(1))
+    fun ownerChannelEndpoints(): List<String> = listOf(MissionARouteEndpoint, MissionBRouteEndpoint)
 
     private fun ownerIndex(playerId: String): Int =
         playerId.toByteArray(StandardCharsets.UTF_8).sumOf { it.toInt() and 0xff } % 2
+
+    private fun ownerChannelForIndex(index: Int): String =
+        SampleNames.questOwnerChannelFor(if (index == 1) "mission-b" else "mission-a")
 
     private fun property(name: String, fallback: String): String =
         System.getProperty("zlink.samples.gamequest.$name", fallback)

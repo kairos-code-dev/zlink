@@ -19,12 +19,6 @@ object SampleTopology {
     val PlayBSpotEndpoint: String = property("playBSpotEndpoint", "tcp://127.0.0.1:47121")
     val PlayASpotRouterEndpoint: String = property("playASpotRouterEndpoint", PlaySpotRouterEndpoint)
     val PlayBSpotRouterEndpoint: String = property("playBSpotRouterEndpoint", "tcp://127.0.0.1:47122")
-    val SessionRouteEndpoint: String = property("sessionRouteEndpoint", "tcp://127.0.0.1:47112")
-    val PlayRouteEndpoint: String = property("playRouteEndpoint", "tcp://127.0.0.1:47113")
-    val SessionAPlayRouteEndpoint: String = property("sessionAPlayRouteEndpoint", SessionRouteEndpoint)
-    val SessionBPlayRouteEndpoint: String = property("sessionBPlayRouteEndpoint", "tcp://127.0.0.1:47123")
-    val PlayARouteEndpoint: String = property("playARouteEndpoint", PlayRouteEndpoint)
-    val PlayBRouteEndpoint: String = property("playBRouteEndpoint", "tcp://127.0.0.1:47124")
     val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47114")
     val SessionAStreamEndpoint: String = property("sessionAStreamEndpoint", StreamEndpoint)
     val SessionBStreamEndpoint: String = property("sessionBStreamEndpoint", "tcp://127.0.0.1:47125")
@@ -33,10 +27,6 @@ object SampleTopology {
     val ApiNode: String = property("apiNode", "a")
     val PlayNode: String = property("playNode", "a")
     val SessionNode: String = property("sessionNode", "a")
-    val SessionARouteRid: String = property("sessionAPlayRouteRid", "1201")
-    val SessionBRouteRid: String = property("sessionBPlayRouteRid", "1202")
-    val ApiARouteRid: String = property("apiAPlayRouteRid", "1301")
-    val ApiBRouteRid: String = property("apiBPlayRouteRid", "1302")
     val SessionARouterRid: String = property("sessionARouterRid", "1101")
     val SessionBRouterRid: String = property("sessionBRouterRid", "1102")
     val PlayANodeRid: String = property("playANodeRid", "2201")
@@ -46,23 +36,20 @@ object SampleTopology {
     fun selectedApiChannelEndpoint(): String =
         if (ApiNode == "b") ApiBChannelEndpoint else ApiAChannelEndpoint
 
-    fun selectedApiRouteRid(): String =
-        if (ApiNode == "b") ApiBRouteRid else ApiARouteRid
-
     fun selectedPlayChannelEndpoint(): String =
         if (PlayNode == "b") PlayBChannelEndpoint else PlayAChannelEndpoint
-
-    fun selectedPlayRouteEndpoint(): String =
-        if (PlayNode == "b") PlayBRouteEndpoint else PlayARouteEndpoint
-
-    fun peerPlayRouteEndpoint(): String =
-        if (PlayNode == "b") PlayARouteEndpoint else PlayBRouteEndpoint
 
     fun selectedPlaySpotEndpoint(): String =
         if (PlayNode == "b") PlayBSpotEndpoint else PlayASpotEndpoint
 
+    fun peerPlaySpotEndpoint(): String =
+        if (PlayNode == "b") PlayASpotEndpoint else PlayBSpotEndpoint
+
     fun selectedPlaySpotRouterEndpoint(): String =
         if (PlayNode == "b") PlayBSpotRouterEndpoint else PlayASpotRouterEndpoint
+
+    fun preferredPlaySpotRouterEndpoint(): String =
+        if (SessionNode == "b") PlayBSpotRouterEndpoint else PlayASpotRouterEndpoint
 
     fun selectedPlayNodeRid(): String =
         if (PlayNode == "b") PlayBNodeRid else PlayANodeRid
@@ -78,12 +65,6 @@ object SampleTopology {
 
     fun selectedSessionRouterRid(): String =
         if (SessionNode == "b") SessionBRouterRid else SessionARouterRid
-
-    fun selectedSessionRouteEndpoint(): String =
-        if (SessionNode == "b") SessionBPlayRouteEndpoint else SessionAPlayRouteEndpoint
-
-    fun selectedSessionRouteRid(): String =
-        if (SessionNode == "b") SessionBRouteRid else SessionARouteRid
 
     fun selectedStreamEndpoint(): String =
         if (SessionNode == "b") SessionBStreamEndpoint else SessionAStreamEndpoint

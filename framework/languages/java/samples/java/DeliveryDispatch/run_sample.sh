@@ -124,7 +124,7 @@ build_framework_jars() {
   )
 }
 
-read -r tracking customer_stream courier_stream courier_gateway dispatch_http customer_route customer_spot customer_router courier_node1_route courier_node2_route courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router < <(reserve_ports)
+read -r tracking customer_stream courier_stream courier_gateway dispatch_http customer_route customer_spot customer_router courier_node1_channel courier_node2_channel courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -138,8 +138,8 @@ common_java_options+=" -Dzlink.samples.deliverydispatch.dispatchHttpEndpoint=htt
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerRouteEndpoint=tcp://$(endpoint_host "${customer_route}"):$(endpoint_port "${customer_route}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerSpotEndpoint=tcp://$(endpoint_host "${customer_spot}"):$(endpoint_port "${customer_spot}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.customerSpotRouterEndpoint=tcp://$(endpoint_host "${customer_router}"):$(endpoint_port "${customer_router}")"
-common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode1RouteEndpoint=tcp://$(endpoint_host "${courier_node1_route}"):$(endpoint_port "${courier_node1_route}")"
-common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode2RouteEndpoint=tcp://$(endpoint_host "${courier_node2_route}"):$(endpoint_port "${courier_node2_route}")"
+common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode1RouteEndpoint=tcp://$(endpoint_host "${courier_node1_channel}"):$(endpoint_port "${courier_node1_channel}")"
+common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode2RouteEndpoint=tcp://$(endpoint_host "${courier_node2_channel}"):$(endpoint_port "${courier_node2_channel}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode1SpotEndpoint=tcp://$(endpoint_host "${courier_node1_spot}"):$(endpoint_port "${courier_node1_spot}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode2SpotEndpoint=tcp://$(endpoint_host "${courier_node2_spot}"):$(endpoint_port "${courier_node2_spot}")"
 common_java_options+=" -Dzlink.samples.deliverydispatch.courierActorNode1RouterEndpoint=tcp://$(endpoint_host "${courier_node1_router}"):$(endpoint_port "${courier_node1_router}")"
@@ -188,8 +188,8 @@ JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.deliverydispatch.couri
 pids+=("$!")
 JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.deliverydispatch.courierNode=node2" "$(app_bin Server/CourierSpotNode CourierSpotNode)" >"${log_dir}/courier-node2.log" 2>&1 &
 pids+=("$!")
-wait_port "$(endpoint_host "${courier_node1_route}")" "$(endpoint_port "${courier_node1_route}")"
-wait_port "$(endpoint_host "${courier_node2_route}")" "$(endpoint_port "${courier_node2_route}")"
+wait_port "$(endpoint_host "${courier_node1_channel}")" "$(endpoint_port "${courier_node1_channel}")"
+wait_port "$(endpoint_host "${courier_node2_channel}")" "$(endpoint_port "${courier_node2_channel}")"
 wait_port "$(endpoint_host "${courier_node1_spot}")" "$(endpoint_port "${courier_node1_spot}")"
 wait_port "$(endpoint_host "${courier_node2_spot}")" "$(endpoint_port "${courier_node2_spot}")"
 wait_port "$(endpoint_host "${courier_node1_router}")" "$(endpoint_port "${courier_node1_router}")"

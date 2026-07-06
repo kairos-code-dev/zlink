@@ -13,15 +13,19 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 @RestController
 public final class CreateGameHttpHandler {
     private final ZLinkClient client;
+    private final systems.zlink.samples.tictactoe.server.configuration.SampleSettings settings;
 
-    public CreateGameHttpHandler(ZLinkClient client) {
+    public CreateGameHttpHandler(
+        ZLinkClient client,
+        systems.zlink.samples.tictactoe.server.configuration.SampleSettings settings) {
         this.client = client;
+        this.settings = settings;
     }
 
     @PostMapping("/games")
     public CreateGameHttpRes handle(@RequestBody CreateGameHttpReq request) {
         CreateGameRes game = client.requestToChannel(
-                    SampleNames.PlayChannel,
+                    SampleNames.playChannel(selectOwner(settings.playChannelEndpoints().size())),
                     new CreateGameReq(gameName(request)))
                 .timeout(SampleNames.RequestTimeout)
             .await(CreateGameRes.class);
@@ -38,5 +42,9 @@ public final class CreateGameHttpHandler {
         return request.gameName() == null || request.gameName().isBlank()
             ? "tictactoe-game"
             : request.gameName();
+    }
+
+    private static int selectOwner(int playNodeCount) {
+        return Math.min(0, playNodeCount - 1);
     }
 }

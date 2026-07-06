@@ -10,7 +10,6 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
 import systems.zlink.framework.kotlin.configureDispatch
@@ -49,19 +48,18 @@ class PlayServerApplication {
                 traceLabel("play")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
-            options.configureLocations()
-                .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
-            val route: RouteMeshChannelBuilder = options.addRouteMeshChannel(SampleNames.PlayChannel)
-            route.enableServer(SampleTopology.selectedPlayRouteEndpoint())
-            route.enableClient()
-            route.addHandlerGroup("play-route")
-            route.setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableServer(SampleTopology.selectedPlayChannelEndpoint())
+                .enableClient()
+                .addHandlerGroup("play")
+                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             val node: ZLinkSpotNodeBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
+            node.connectPeerPub(SampleTopology.peerPlaySpotEndpoint())
             node.addEntrySpot(BingoEntrySpot::class.java)
             node.addSpotFactory(BingoRoomSpot::class.java)
             node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)

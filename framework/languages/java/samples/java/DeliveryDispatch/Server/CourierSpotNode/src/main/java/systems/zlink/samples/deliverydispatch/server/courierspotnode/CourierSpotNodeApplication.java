@@ -36,19 +36,15 @@ public final class CourierSpotNodeApplication {
             String node = System.getProperty("zlink.samples.deliverydispatch.courierNode", "node1");
             NodeOptions selected = NodeOptions.resolve(node);
             options.addHandlersFromPackageOf(CourierSpotNodeApplication.class);
-            options.configureLocations()
-                .setSpotRouterChannel(
-                    SampleNames.CourierSpotDiscovery,
-                    SampleNames.CourierActorNodeRouteChannel);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
                     + "/flow-courier-" + node + ".log")
                 .traceLabel("courier-" + node);
-            options.addRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
-                .setRoutingId(RoutingId.from(selected.nodeRid()))
+            options.addClientServerChannel(SampleNames.courierActorNodeChannelFor(selected.nodeRid()))
                 .enableServer(selected.routeEndpoint())
                 .enableClient()
+                .setRoutingId(RoutingId.from(selected.nodeRid()))
                 .addHandlerGroup("courier-actor-node");
             ZLinkSpotNodeBuilder spotNode = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
             spotNode.enableRouter(selected.routerEndpoint())

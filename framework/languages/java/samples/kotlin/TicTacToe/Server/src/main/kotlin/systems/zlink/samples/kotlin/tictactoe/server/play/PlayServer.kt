@@ -3,7 +3,6 @@ package systems.zlink.samples.kotlin.tictactoe.server.play
 import kotlinx.coroutines.Dispatchers
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -28,18 +27,12 @@ object PlayServer {
                 traceLogFile(SampleLogging.flowLogPath(settings.playSpotNodeRid))
                 traceLabel(settings.playSpotNodeRid)
             }
-            options.configureLocations()
-                .setSpotRouterChannel(SampleNames.SpotMesh, SampleNames.RouteChannel)
             options.addHandlersFromPackageOf(PlayServer::class.java)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient(settings.apiChannelEndpoint)
-            options.addClientServerChannel(SampleNames.PlayChannel)
+            options.addClientServerChannel(SampleNames.playChannel(settings.playIndex))
                 .enableServer(settings.playChannelEndpoint)
-                .addHandlerGroup(SampleNames.PlayChannel)
-            val route: RouteMeshChannelBuilder = options.addRouteMeshChannel(SampleNames.RouteChannel)
-            route.enableServer(settings.routeEndpoint)
-                .enableClient(settings.peerRouteEndpoint)
-                .setRoutingId(RoutingId.from(settings.playSpotNodeRid))
+                .addHandlerGroup(SampleNames.PlayHandlerGroup)
             val node = options.addSpotMesh(SampleNames.SpotMesh)
 
             node.enableRouter(settings.spotEndpoint)

@@ -124,7 +124,7 @@ build_framework_jars() {
   )
 }
 
-read -r api_a_stream api_b_stream api_a_http api_b_http mission_a_route mission_b_route mission_a_http mission_b_http < <(reserve_ports)
+read -r api_a_stream api_b_stream api_a_http api_b_http mission_a_channel mission_b_channel mission_a_http mission_b_http < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -134,8 +134,8 @@ common_java_options+=" -Dzlink.samples.gamequest.apiAStreamEndpoint=tcp://$(endp
 common_java_options+=" -Dzlink.samples.gamequest.apiBStreamEndpoint=tcp://$(endpoint_host "${api_b_stream}"):$(endpoint_port "${api_b_stream}")"
 common_java_options+=" -Dzlink.samples.gamequest.apiAHttpEndpoint=http://$(endpoint_host "${api_a_http}"):$(endpoint_port "${api_a_http}")"
 common_java_options+=" -Dzlink.samples.gamequest.apiBHttpEndpoint=http://$(endpoint_host "${api_b_http}"):$(endpoint_port "${api_b_http}")"
-common_java_options+=" -Dzlink.samples.gamequest.missionARouteEndpoint=tcp://$(endpoint_host "${mission_a_route}"):$(endpoint_port "${mission_a_route}")"
-common_java_options+=" -Dzlink.samples.gamequest.missionBRouteEndpoint=tcp://$(endpoint_host "${mission_b_route}"):$(endpoint_port "${mission_b_route}")"
+common_java_options+=" -Dzlink.samples.gamequest.missionARouteEndpoint=tcp://$(endpoint_host "${mission_a_channel}"):$(endpoint_port "${mission_a_channel}")"
+common_java_options+=" -Dzlink.samples.gamequest.missionBRouteEndpoint=tcp://$(endpoint_host "${mission_b_channel}"):$(endpoint_port "${mission_b_channel}")"
 common_java_options+=" -Dzlink.samples.gamequest.missionAHttpEndpoint=http://$(endpoint_host "${mission_a_http}"):$(endpoint_port "${mission_a_http}")"
 common_java_options+=" -Dzlink.samples.gamequest.missionBHttpEndpoint=http://$(endpoint_host "${mission_b_http}"):$(endpoint_port "${mission_b_http}")"
 
@@ -162,8 +162,8 @@ JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.gamequest.missionName=
 pids+=("$!")
 JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.gamequest.missionName=mission-b" "$(app_bin Server/QuestMission QuestMission)" >"${log_dir}/mission-b.log" 2>&1 &
 pids+=("$!")
-wait_port "$(endpoint_host "${mission_a_route}")" "$(endpoint_port "${mission_a_route}")"
-wait_port "$(endpoint_host "${mission_b_route}")" "$(endpoint_port "${mission_b_route}")"
+wait_port "$(endpoint_host "${mission_a_channel}")" "$(endpoint_port "${mission_a_channel}")"
+wait_port "$(endpoint_host "${mission_b_channel}")" "$(endpoint_port "${mission_b_channel}")"
 wait_port "$(endpoint_host "${mission_a_http}")" "$(endpoint_port "${mission_a_http}")"
 wait_port "$(endpoint_host "${mission_b_http}")" "$(endpoint_port "${mission_b_http}")"
 

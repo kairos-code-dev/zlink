@@ -3,7 +3,7 @@ package systems.zlink.samples.gamequest.server.gameapi.sessions;
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import java.time.Instant;
-import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -16,16 +16,16 @@ import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 public final class GameQuestSession implements ZLinkSession {
     private final ZLinkSessionContext context;
-    private final ZLinkRouteClient routes;
+    private final ZLinkClient channels;
     private final GameQuestStore store;
     private String playerId;
 
     public GameQuestSession(
         ZLinkSessionContext context,
-        ZLinkRouteClient routes,
+        ZLinkClient channels,
         GameQuestStore store) {
         this.context = context;
-        this.routes = routes;
+        this.channels = channels;
         this.store = store;
     }
 
@@ -67,10 +67,9 @@ public final class GameQuestSession implements ZLinkSession {
     private void handleJoin(Messages.JoinSessionReq request) {
         playerId = request.playerId();
         store.bind(request.playerId(), SampleTopology.apiName());
-        Messages.GetQuestProgressRes ownerProjection = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(request.playerId()),
+        Messages.GetQuestProgressRes ownerProjection = channels
+            .requestToChannel(
+                ownerChannel(request.playerId()),
                 new Messages.GetQuestProgressReq(request.playerId()))
             .await(Messages.GetQuestProgressRes.class);
         store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
@@ -80,10 +79,9 @@ public final class GameQuestSession implements ZLinkSession {
     }
 
     private void handleGetProgress(Messages.GetQuestProgressReq request) {
-        Messages.GetQuestProgressRes ownerProjection = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(request.playerId()),
+        Messages.GetQuestProgressRes ownerProjection = channels
+            .requestToChannel(
+                ownerChannel(request.playerId()),
                 request)
             .await(Messages.GetQuestProgressRes.class);
         store.mergeProjection(request.playerId(), ownerProjection.activeQuests());
@@ -93,10 +91,9 @@ public final class GameQuestSession implements ZLinkSession {
     }
 
     private void handleSync(Messages.SyncQuestProgressReq request) {
-        Messages.SyncQuestProgressRes response = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(request.playerId()),
+        Messages.SyncQuestProgressRes response = channels
+            .requestToChannel(
+                ownerChannel(request.playerId()),
                 request)
             .await(Messages.SyncQuestProgressRes.class);
         store.mergeProjection(request.playerId(), response.updatedQuests());
@@ -169,16 +166,19 @@ public final class GameQuestSession implements ZLinkSession {
     }
 
     private Messages.QuestProcessingRes process(Messages.GameplayEventEnvelope event) {
-        Messages.QuestProcessingRes processed = routes
-            .requestToNode(
-                SampleNames.QuestOwnerRouteChannel,
-                SampleTopology.ownerRouteRid(event.playerId()),
+        Messages.QuestProcessingRes processed = channels
+            .requestToChannel(
+                ownerChannel(event.playerId()),
                 event)
             .await(Messages.QuestProcessingRes.class);
         store.mergeProjection(event.playerId(), processed.projection());
         processed.progressNotifications().forEach(notification -> context.client().send(notification).submit());
         processed.completedNotifications().forEach(notification -> context.client().send(notification).submit());
         return processed;
+    }
+
+    private static String ownerChannel(String playerId) {
+        return SampleNames.questOwnerChannelFor(SampleTopology.ownerMissionName(playerId));
     }
 
     private static Messages.GameplayEventEnvelope event(

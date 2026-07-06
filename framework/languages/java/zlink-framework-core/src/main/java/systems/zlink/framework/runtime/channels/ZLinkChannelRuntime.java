@@ -109,6 +109,7 @@ public final class ZLinkChannelRuntime
     private final Map<String, ZLinkBackendDealerSocket> clients = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
     private final Map<String, ZLinkBackendSpotRouteBridge> spotRouteBridges = new HashMap<>();
+    private final Map<String, ZLinkBackendSpotNode> spotRouterNodes = new HashMap<>();
     private final Set<String> spotRouteBridgeDrainScheduled = ConcurrentHashMap.newKeySet();
     private final Map<String, ZLinkBackendPublisherSocket> publishers = new HashMap<>();
     private final Map<String, ZLinkBackendSubscriberSocket> subscribers = new HashMap<>();
@@ -205,6 +206,13 @@ public final class ZLinkChannelRuntime
                 "channel has incompatible kind: " + channelName);
         }
         return registration;
+    }
+
+    private static String requireRouterChannelId(String routerChannelId) {
+        if (routerChannelId == null || routerChannelId.isBlank()) {
+            throw new ZLinkConfigurationException("router channel id is required");
+        }
+        return routerChannelId;
     }
 
     private ZLinkBackendRouterSocket requireServerSocket(String channelName) {
@@ -658,6 +666,13 @@ public final class ZLinkChannelRuntime
         return true;
     }
 
+    public void registerSpotRouterNode(
+        String routerChannelId,
+        ZLinkBackendSpotNode node) {
+        String channelId = requireRouterChannelId(routerChannelId);
+        spotRouterNodes.put(channelId, Objects.requireNonNull(node, "node"));
+    }
+
     private Duration defaultRequestTimeout(String channelName) {
         ChannelRegistration registration = registrationsByName.get(channelName);
         if (registration != null && registration.defaultRequestTimeout() != null) {
@@ -696,6 +711,15 @@ public final class ZLinkChannelRuntime
         List<Message> spotParts) {
         ChannelRegistration registration = registrationsByName.get(routerChannelId);
         if (registration == null || registration.kind() != ChannelKind.ROUTE_MESH) {
+            ZLinkBackendSpotNode spotRouterNode = spotRouterNodes.get(routerChannelId);
+            if (spotRouterNode != null) {
+                return sendToSpotViaSpotRouterNode(
+                    routerChannelId,
+                    spotRouterNode,
+                    targetNodeRid,
+                    targetSpotRid,
+                    spotParts);
+            }
             throw new ZLinkConfigurationException(
                 "route mesh channel is not configured: " + routerChannelId);
         }
@@ -777,6 +801,16 @@ public final class ZLinkChannelRuntime
         Duration timeout) {
         ChannelRegistration registration = registrationsByName.get(routerChannelId);
         if (registration == null || registration.kind() != ChannelKind.ROUTE_MESH) {
+            ZLinkBackendSpotNode spotRouterNode = spotRouterNodes.get(routerChannelId);
+            if (spotRouterNode != null) {
+                return requestToSpotViaSpotRouterNode(
+                    routerChannelId,
+                    spotRouterNode,
+                    targetNodeRid,
+                    targetSpotRid,
+                    spotParts,
+                    timeout);
+            }
             throw new ZLinkConfigurationException(
                 "route mesh channel is not configured: " + routerChannelId);
         }
@@ -836,6 +870,82 @@ public final class ZLinkChannelRuntime
             result.completeExceptionally(ex);
             return result;
         }
+    }
+
+    private CompletionStage<Void> sendToSpotViaSpotRouterNode(
+        String routerChannelId,
+        ZLinkBackendSpotNode node,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> spotParts) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        List<Message> requestParts = copyMessages(spotParts);
+        try {
+            boolean submitted = node.entrySpot().sendToSpot(
+                targetNodeRid,
+                targetSpotRid,
+                requestParts,
+                SendFlags.NONE);
+            if (submitted) {
+                result.complete(null);
+            } else {
+                result.completeExceptionally(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    "Spot node router '" + routerChannelId + "' is not ready for SPOT send."));
+            }
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
+        } finally {
+            requestParts.forEach(Message::close);
+        }
+        return result;
+    }
+
+    private CompletionStage<List<Message>> requestToSpotViaSpotRouterNode(
+        String routerChannelId,
+        ZLinkBackendSpotNode node,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> spotParts,
+        Duration timeout) {
+        CompletableFuture<List<Message>> result = new CompletableFuture<>();
+        trackPendingRequest(result, timeout);
+        List<Message> requestParts = copyMessages(spotParts);
+        try {
+            boolean submitted = node.entrySpot().requestToSpot(
+                targetNodeRid,
+                targetSpotRid,
+                requestParts,
+                reply -> {
+                    try {
+                        List<Message> replyParts = copyMessages(reply.parts());
+                        if (isFrameworkErrorReply(replyParts)) {
+                            replyParts.forEach(Message::close);
+                            result.completeExceptionally(new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                                frameworkErrorReplyMessage(reply.parts())));
+                            return;
+                        }
+                        if (!result.complete(replyParts)) {
+                            replyParts.forEach(Message::close);
+                        }
+                    } finally {
+                        reply.close();
+                    }
+                },
+                SendFlags.NONE,
+                timeout);
+            if (!submitted) {
+                result.completeExceptionally(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    "Spot node router '" + routerChannelId + "' is not ready for SPOT request."));
+            }
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
+        } finally {
+            requestParts.forEach(Message::close);
+        }
+        return result;
     }
 
     private void submitRouteRequestWithRetry(

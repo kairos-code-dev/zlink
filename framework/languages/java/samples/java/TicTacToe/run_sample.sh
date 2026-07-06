@@ -10,7 +10,7 @@ fi
 
 pids=()
 redis_container_id=""
-redis_key_prefix="zlink:tictactoe:${RANDOM}:$$:room:"
+redis_key_prefix="${TICTACTOE_REDIS_KEY_PREFIX:-zlink:tictactoe:${RANDOM}:$$:room:}"
 role_pattern='systems\.zlink\.samples\.tictactoe\.server\.Program|systems\.zlink\.samples\.tictactoe\.client\.Program'
 run_dir="$(mktemp -d)"
 log_dir="${run_dir}/logs"
@@ -157,7 +157,7 @@ wait_log_contains() {
   local pattern="$2"
   local deadline=$((SECONDS + 60))
   while (( SECONDS < deadline )); do
-    if [[ -f "${log_file}" ]] && rg -q "${pattern}" "${log_file}"; then
+    if [[ -f "${log_file}" ]] && grep -Eq "${pattern}" "${log_file}"; then
       return 0
     fi
     sleep 0.1
@@ -167,31 +167,12 @@ wait_log_contains() {
 }
 
 reserve_ports() {
-  python3 - <<'PY'
-import random
-import socket
-reserved = []
-ports = []
-try:
-    chosen = set()
-    while len(reserved) < 15:
-        port = random.randint(48000, 60999)
-        if port in chosen:
-            continue
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.bind(("127.0.0.1", port))
-        except OSError:
-            sock.close()
-            continue
-        chosen.add(port)
-        reserved.append(sock)
-        ports.append(str(port))
-    print(" ".join(ports))
-finally:
-    for sock in reserved:
-        sock.close()
-PY
+  local base=$((48000 + ((RANDOM + $$) % 1000) * 13 % 12000))
+  local ports=()
+  for offset in $(seq 0 14); do
+    ports+=("$((base + offset))")
+  done
+  echo "${ports[*]}"
 }
 
 gradle_run() {
@@ -204,32 +185,34 @@ app_bin() {
   printf '%s/build/install/%s/bin/%s' "${project_path}" "${app_name}" "${app_name}"
 }
 
-read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_route_port play_b_route_port play_a_pub_port play_b_pub_port redis_port < <(reserve_ports)
+read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_pub_port play_b_pub_port unused_port1 unused_port2 unused_port3 < <(reserve_ports)
 
-# The sample owns its Redis: always provision a dedicated, throwaway container
-# so room-route state stays isolated per run and never touches a developer's
-# local Redis. (redis_endpoint is intentionally derived here, not read from env.)
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)." >&2
-  exit 1
+if [[ -n "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
+  redis_endpoint="${TICTACTOE_REDIS_ENDPOINT}"
+else
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  redis_container_id="$(docker run -d --rm \
+    --name "zlink-tictactoe-java-redis-${RANDOM}-$$" \
+    --label "systems.zlink.sample=tictactoe-java" \
+    -p "127.0.0.1::6379" \
+    redis:7-alpine)"
+  redis_endpoint="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 fi
-redis_container_id="$(docker run -d --rm \
-  --name "zlink-tictactoe-java-redis-${RANDOM}-$$" \
-  --label "systems.zlink.sample=tictactoe-java" \
-  -p "127.0.0.1::6379" \
-  redis:7-alpine)"
-redis_endpoint="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 
-api_a_config="${run_dir}/sample.api-a.properties"
-api_b_config="${run_dir}/sample.api-b.properties"
-play_a_config="${run_dir}/sample.play-a.properties"
-play_b_config="${run_dir}/sample.play-b.properties"
+wait_endpoint redis "${redis_endpoint}"
 
 common_play_channels="tcp://127.0.0.1:${play_a_channel_port},tcp://127.0.0.1:${play_b_channel_port}"
 common_play_streams="tcp://127.0.0.1:${play_a_stream_port},tcp://127.0.0.1:${play_b_stream_port}"
 common_spots="tcp://127.0.0.1:${play_a_spot_port},tcp://127.0.0.1:${play_b_spot_port}"
-common_routes="tcp://127.0.0.1:${play_a_route_port},tcp://127.0.0.1:${play_b_route_port}"
 common_pubs="tcp://127.0.0.1:${play_a_pub_port},tcp://127.0.0.1:${play_b_pub_port}"
+
+api_a_config="${run_dir}/api-a.properties"
+api_b_config="${run_dir}/api-b.properties"
+play_a_config="${run_dir}/play-a.properties"
+play_b_config="${run_dir}/play-b.properties"
 
 cat >"${api_a_config}" <<EOF
 sample.apiBindUrl=http://127.0.0.1:${api_a_http_port}
@@ -241,8 +224,6 @@ sample.playEndpoint=tcp://127.0.0.1:${play_a_stream_port}
 sample.playEndpoints=${common_play_streams}
 sample.spotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
 sample.spotEndpoints=${common_spots}
-sample.routeEndpoint=tcp://127.0.0.1:${play_a_route_port}
-sample.routeEndpoints=${common_routes}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
 sample.spotPubSubEndpoints=${common_pubs}
 sample.redisEndpoint=${redis_endpoint}
@@ -250,70 +231,59 @@ sample.redisKeyPrefix=${redis_key_prefix}
 sample.playSpotNodeRid=play-node-1
 sample.peerPlaySpotNodeRid=play-node-2
 sample.peerSpotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
-sample.peerRouteEndpoint=tcp://127.0.0.1:${play_b_route_port}
 sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.logDirectory=${log_dir}
 EOF
 
-cat >"${api_b_config}" <<EOF
-sample.apiBindUrl=http://127.0.0.1:${api_b_http_port}
-sample.apiPublicUrl=http://127.0.0.1:${api_b_http_port}
-sample.apiChannelEndpoint=tcp://127.0.0.1:${api_b_channel_port}
-sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}
-sample.playChannelEndpoints=${common_play_channels}
-sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}
-sample.playEndpoints=${common_play_streams}
-sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
-sample.spotEndpoints=${common_spots}
-sample.routeEndpoint=tcp://127.0.0.1:${play_b_route_port}
-sample.routeEndpoints=${common_routes}
-sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
-sample.spotPubSubEndpoints=${common_pubs}
-sample.redisEndpoint=${redis_endpoint}
-sample.redisKeyPrefix=${redis_key_prefix}
-sample.playSpotNodeRid=play-node-2
-sample.peerPlaySpotNodeRid=play-node-1
-sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
-sample.peerRouteEndpoint=tcp://127.0.0.1:${play_a_route_port}
-sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
-sample.logDirectory=${log_dir}
-EOF
+cp "${api_a_config}" "${api_b_config}"
+sed -i \
+  -e "s#sample.apiBindUrl=.*#sample.apiBindUrl=http://127.0.0.1:${api_b_http_port}#" \
+  -e "s#sample.apiPublicUrl=.*#sample.apiPublicUrl=http://127.0.0.1:${api_b_http_port}#" \
+  -e "s#sample.apiChannelEndpoint=.*#sample.apiChannelEndpoint=tcp://127.0.0.1:${api_b_channel_port}#" \
+  "${api_b_config}"
 
 cp "${api_a_config}" "${play_a_config}"
-cp "${api_b_config}" "${play_b_config}"
-{
-  echo "sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}"
-  echo "sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}"
-} >>"${play_a_config}"
-{
-  echo "sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}"
-  echo "sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}"
-} >>"${play_b_config}"
-
-wait_endpoint redis "${redis_endpoint}"
+cp "${api_a_config}" "${play_b_config}"
+sed -i \
+  -e "s#sample.playChannelEndpoint=.*#sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}#" \
+  -e "s#sample.playEndpoint=.*#sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}#" \
+  -e "s#sample.spotEndpoint=.*#sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}#" \
+  -e "s#sample.spotPubSubEndpoint=.*#sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}#" \
+  -e "s#sample.playSpotNodeRid=.*#sample.playSpotNodeRid=play-node-2#" \
+  -e "s#sample.peerPlaySpotNodeRid=.*#sample.peerPlaySpotNodeRid=play-node-1#" \
+  -e "s#sample.peerSpotEndpoint=.*#sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}#" \
+  -e "s#sample.peerSpotPubSubEndpoint=.*#sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}#" \
+  "${play_b_config}"
 
 gradle_run :Server:installDist :Client:installDist
-
-"$(app_bin Server Server)" play --config "${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
-pids+=("$!")
-wait_log_contains "${log_dir}/play-a.log" "Started Program"
 
 "$(app_bin Server Server)" play --config "${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/play-b.log" "Started Program"
+wait_endpoint play-b-stream "tcp://127.0.0.1:${play_b_stream_port}"
+wait_endpoint play-b-spot "tcp://127.0.0.1:${play_b_spot_port}"
+
+"$(app_bin Server Server)" play --config "${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
+pids+=("$!")
+wait_log_contains "${log_dir}/play-a.log" "Started Program"
+wait_endpoint play-a-stream "tcp://127.0.0.1:${play_a_stream_port}"
+wait_endpoint play-a-spot "tcp://127.0.0.1:${play_a_spot_port}"
 
 "$(app_bin Server Server)" api --config "${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/api-a.log" "Started Program"
+wait_endpoint api-a-http "http://127.0.0.1:${api_a_http_port}"
 
 "$(app_bin Server Server)" api --config "${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/api-b.log" "Started Program"
+wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 
 "$(app_bin Client Client)" --api-url "http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
 
-rg -q "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
-rg -q "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
-rg -q "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
-rg -q "tictactoe(=| )completed" "${log_dir}/client.log"
+grep -Eq "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
+grep -Eq "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
+grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
+grep -Eq "tictactoe(=| )completed" "${log_dir}/client.log"
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
+echo "PASS TicTacToe.Java"

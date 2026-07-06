@@ -348,6 +348,44 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 | [Config 8 — Spot yield dispatch](config-8-yield-dispatch.ko.md) | location store + play 노드 2 + delay service 2 + session gateway 2 | yield terminator가 현재 Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개하는지, actor·timer mailbox 격리, local/remote topology, timeout·cancellation·shutdown 경로, 언어별 동일 의미 |
 | [Config 9 — To-actor messaging](config-9-to-actor-messaging.ko.md) | location store + actor 노드 2 + session gateway 2 + 외부 caller 서버 | bind 상태별 to-actor send/request, bound-session 비오염, mailbox 인계와 handler reply, actor 부재·stale location·route 미연결 실패 분류, 언어별 동일 의미 |
 
+## 3.1 구성 축 — config를 관통하는 변형
+
+같은 시나리오라도 서버 구성의 특정 조합에서만 드러나는 결함이 있다. 2026-07 샘플의
+route mesh 소거 작업에서 4개 언어 framework의 결함 다수가 발굴됐는데, 전부 "기능 자체는
+e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로였다. 이를 막기 위해 config의
+핵심 시나리오는 아래 축의 변형으로도 검증한다.
+
+| 축 | 변형 | 주로 걸리는 config | 실제 발굴 사례 |
+|----|------|--------------------|----------------|
+| 채널 구성 | **route mesh 없이** location 발견만으로 구성 | Config 2, 9 | 원격 actor join relay가 route mesh 채널 등록을 전제하던 구현(cpp spot bridge, java channel runtime) |
+| 배치 | 세션과 spot을 **다른 프로세스로 분리** (colocated 변형과 쌍) | Config 2, 9 | colocated에서는 로컬 join이라 원격 relay 경로가 실행조차 안 됨 |
+| rid 방향 | 요청자가 auto-connect **non-initiator**가 되도록 rid 사전순을 뒤집은 변형 | Config 1, 2, 9 | non-initiator의 spot 응답 correlate 누락(recv pump) — rid를 뒤집어야만 재현 |
+| peer 수 | 한 발신자가 **2개 이상 노드로 연속 요청** | Config 1, 2 | 두 번째 peer의 응답 drain 누락 |
+
+축 변형은 시나리오를 새로 쓰는 게 아니라 같은 client 시나리오를 서버 topology만 바꿔
+다시 돌리는 것이다. 모든 조합을 다 돌릴 필요는 없고, config별 P0 시나리오에 대해
+"route mesh 없음 × 분리 배치" 조합을 우선 적용한다(발굴 결함의 대다수가 이 조합).
+
+### 축과 별개로 모든 config가 지켜야 하는 검증 요구
+
+- **계약 round-trip**: framework 공개 타입(routing id, actor ref snapshot 등)이 channel·spot·
+  stream 표면을 넘을 때 값이 보존되는지 어서션한다. 응답에 실린 actor ref는 concrete해야
+  한다(node rid 비어 있지 않음, generation > 0). — 직렬화 누락은 송신 측 로그에는 값이
+  보이므로 수신 값 어서션 없이는 잡히지 않는다.
+- **silent-drop 금지**: 등록되지 않은 handler로 향한 send/request는 조용히 버려지지 않고
+  관측 가능한 실패(오류 응답 또는 로그 marker)를 남겨야 한다. 무응답 timeout으로만
+  나타나는 유형은 진단 비용이 가장 크다.
+- **소유 일관성**: 상태를 만드는 요청(start)과 이후 요청(continue)이 다른 노드로 가는
+  조합을 명시적으로 돌려, 소유권 위반이 fail-fast로 분류되는지와 owner 일관 라우팅이
+  이를 예방하는지 본다. 소유가 해시 기반이면 실패가 간헐이므로 반복 횟수를 늘린다
+  (3연속 통과로는 부족했던 사례 있음).
+- **수렴 직후 첫 요청**: location 발견·dial 수렴 직후 settle 지연 없이 즉시 첫 요청을
+  보낸다. 재시도나 sleep으로 가리지 않는다 — 첫 요청이 바로 성공하거나 fail-fast로
+  분류되는 것 자체가 검증 대상이다.
+- **인프라 게이트**: location store가 필수인 config는 store 없는 빌드/구성에서 조용히
+  미연결로 돌지 않고 구성 시점에 실패해야 한다. 러너 스크립트는 표준 도구만 쓴다
+  (미설치 도구 의존으로 판정 루프 전체가 무효가 된 사례 있음).
+
 ## 4. 우선순위
 
 | 우선순위 | 의미 | 구현 기준 |
@@ -355,6 +393,9 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 | `P0` | config의 핵심 기능을 주장하려면 반드시 있어야 하는 검증 | 모든 언어에서 구현한다 |
 | `P1` | 특정 기능을 지원한다고 문서화한 언어가 통과해야 하는 검증 | 지원 언어에서 구현한다 |
 | `P2` | 운영 규모·rolling update처럼 비용이 큰 검증 | release gate에 선택 적용, 미구현 이유를 남긴다 |
+
+축 변형(§3.1)의 우선순위: "route mesh 없음 × 분리 배치"는 Config 2·9의 P0 시나리오에
+`P0`으로, rid 방향·다중 peer 변형은 `P1`로 적용한다.
 
 ## 5. 공통 실행 원칙
 

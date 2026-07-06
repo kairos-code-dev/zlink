@@ -695,6 +695,7 @@ void configure_actor_gateway_spot_bridge (
   serializer_registry_t &serializers,
   const std::vector<spot_node_snapshot_t> &spot_node_snapshot)
 {
+    register_spot_route_packet_serializers (serializers);
     std::vector<actor_gateway_spot_node_binding_t> actor_gateway_spot_nodes;
     actor_gateway_spot_nodes.reserve (spot_node_snapshot.size ());
     for (const auto &spot_node : spot_node_snapshot) {

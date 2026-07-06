@@ -2,9 +2,9 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.han
 
 import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.actors.ZLinkActorManager
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler
 import systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ActorRefWire
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.FindCourierActorRes
 
@@ -18,7 +18,7 @@ class FindCourierActorRouteHandler(
         val actor = ZLinkAwait.await(actors.find(request.courierId))
         return FindCourierActorRes(
             courierId = request.courierId,
-            actor = actor.map { ZLinkActorRefSnapshot.from(it) }.orElse(null),
+            actor = actor.map { ActorRefWire.from(it) }.orElse(null),
         )
     }
 }

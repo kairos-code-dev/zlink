@@ -50,6 +50,7 @@ public final class CourierSessionApplication {
             node.connectRouter(
                 RoutingId.from(SampleTopology.CourierActorNode2Rid),
                 SampleTopology.CourierActorNode2RouterEndpoint);
+            node.enablePubSub(SampleTopology.CourierSessionSpotEndpoint);
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(SampleTopology.CourierStreamEndpoint)
                 .registerSession(CourierSession.class);

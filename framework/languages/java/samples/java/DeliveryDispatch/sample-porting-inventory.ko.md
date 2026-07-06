@@ -21,7 +21,7 @@
 | `.NET: Server/CustomerGateway/*` | `Server/CustomerGateway/src/main/java/.../server/customergateway/*` | server-role | done | customer stream session, customer actor, entry spot, status push를 처리한다. |
 | `.NET: Server/CourierSession/*` | `Server/CourierSession/src/main/java/.../server/couriersession/*` | server-role | done | courier stream session과 courier actor/session bind를 처리한다. |
 | `.NET: Server/CourierGateway/*` | `Server/CourierGateway/src/main/java/.../server/couriergateway/*` | server-role | done | courier id를 actor node rid와 session route로 해석한다. |
-| `.NET: Server/CourierActorNode/*` | `Server/CourierSpotNode/src/main/java/.../server/courierspotnode/*` | server-role | done | node 1/2 courier actor, entry spot, route handler를 제공한다. Java project명은 spot 책임을 드러내도록 `CourierSpotNode`로 둔다. |
+| `.NET: Server/CourierActorNode/*` | `Server/CourierSpotNode/src/main/java/.../server/courierspotnode/*` | server-role | done | node 1/2 courier actor, entry spot, Spot request handler를 제공한다. Java project명은 spot 책임을 드러내도록 `CourierSpotNode`로 둔다. |
 | `.NET: Server/Dispatch/*` | `Server/Dispatch/src/main/java/.../server/dispatch/*` | server-role | done | HTTP API, dispatch worker, courier offer, tracking event, self-check endpoint를 제공한다. |
 
 ## 공통 메시지 계약 매핑
@@ -44,7 +44,7 @@
 | `DeliveryStatusChanged` / `DeliveryStatusAck` | `Messages.DeliveryStatusChanged`, `Messages.DeliveryStatusAck` | shared-contract | done | Tracking server 기록 요청과 응답이다. |
 | `EnsureCustomerActor` / `CustomerActorEnsured` | `Messages.EnsureCustomerActor`, `Messages.CustomerActorEnsured` | shared-contract | done | CustomerGateway actor 생성과 조회를 처리한다. |
 | `ServerAssertionRequest` / `ServerAssertionResponse` | `Messages.ServerAssertionRequest`, `Messages.ServerAssertionResponse` | shared-contract | done | server-side evidence self-check 계약이다. |
-| actor ref snapshot | `ZLinkActorRefSnapshot` | shared-contract | done | framework가 제공하는 actor snapshot으로 node rid, actor id, generation을 전달한다. |
+| courier actor ref wire | `Messages.ActorRefWire` | shared-contract | done | courier actor node rid, actor id, generation을 wire-safe DTO로 전달한 뒤 session bind 직전에 framework actor ref로 재구성한다. |
 | `DeliveryStatus` | `Messages.DeliveryStatus` | shared-contract | done | `Created`, `Assigned`, `Accepted`, `Reassigned`, `PickedUp`, `Delivered`, `Failed` 값을 가진다. |
 
 ## 공통 검증 흐름 매핑

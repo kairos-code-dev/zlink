@@ -13,6 +13,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ConfigResult;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
@@ -383,7 +385,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public CompletionStage<Optional<ZLinkActorRef>> find(String actorId) {
         requireActorId(actorId);
         if (!actors.containsKey(actorId)) {
-            spotNode.actorLookup(actorId);
+            try {
+                spotNode.actorLookup(actorId);
+            } catch (ZlinkConfigException ex) {
+                if (ex.getResult() == ConfigResult.NOT_FOUND) {
+                    return CompletableFuture.completedFuture(Optional.empty());
+                }
+                throw ex;
+            }
         }
         ZLinkActor local = actors.get(actorId);
         if (local != null) {

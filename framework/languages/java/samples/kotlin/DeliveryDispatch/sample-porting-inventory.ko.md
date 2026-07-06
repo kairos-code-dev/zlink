@@ -25,15 +25,15 @@ process, stream runtime client, server evidence self-check를 실행한다.
 | `.NET: Server/CourierActorNode/ActorDirectory.cs` | `Server/CourierSpotNode/src/main/kotlin/.../ActorDirectory.kt` | courier-actor-directory | done | actor id와 courier actor instance mapping을 관리한다. |
 | `.NET: Server/CourierActorNode/CourierActor.cs` | `Server/CourierSpotNode/src/main/kotlin/.../CourierActor.kt` | courier-actor | done | bound session으로 offer를 push하고 courier decision timeout을 처리한다. |
 | `.NET: Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj` | `Server/CourierSpotNode/build.gradle.kts` | server-role-project | done | Kotlin role 이름은 공통 문서의 Courier spot server node 의미를 따른다. |
-| `.NET: Server/CourierActorNode/NodeHostFactory.cs` | `Server/CourierSpotNode/src/main/kotlin/.../CourierSpotNodeApplication.kt` | framework-host | done | courier actor route server, spot mesh, entry spot, actor factory를 public framework API로 구성한다. |
+| `.NET: Server/CourierActorNode/NodeHostFactory.cs` | `Server/CourierSpotNode/src/main/kotlin/.../CourierSpotNodeApplication.kt` | framework-host | done | courier actor spot mesh, entry spot, actor factory를 public framework API로 구성한다. |
 | `.NET: Server/CourierActorNode/Program.cs` | `Server/CourierSpotNode/src/main/kotlin/.../Program.kt` | server-entrypoint | done | real ZLink spot node host entrypoint로 standalone runtime proof를 통과했다. |
-| `.NET: Server/CourierActorNode/RouteHandlers.cs` | `Server/CourierSpotNode/src/main/kotlin/.../handlers/*RouteHandler.kt` | route-handler | done | `EnsureCourierActorReq`, `OfferDeliveryReq` route handlers가 actor manager와 directory를 사용한다. |
+| `.NET: Server/CourierActorNode/RouteHandlers.cs` | `Server/CourierSpotNode/src/main/kotlin/.../handlers/*RouteHandler.kt` | spot-request-handler | done | `FindCourierActorReq`, `EnsureCourierActorReq`, `OfferDeliveryReq` Spot request handler가 actor manager와 directory를 사용한다. |
 | `.NET: Server/CourierActorNode/Spots/EntrySpot/EntrySpot.cs` | `Server/CourierSpotNode/src/main/kotlin/.../spots/CourierEntrySpot.kt` | entry-spot | done | courier actor entry spot과 actor registration을 구현했다. |
 | `.NET: Server/CourierActorNode/Spots/EntrySpot/Handlers/BindCourierSessionActorHandler.cs` | `Server/CourierSpotNode/src/main/kotlin/.../spots/handlers/BindCourierSessionActorHandler.kt` | actor-bind-handler | done | bound session join response를 actor handler로 반환한다. |
 | `.NET: Server/CourierActorNode/Spots/EntrySpot/Handlers/CourierDecisionActorHandler.cs` | `Server/CourierSpotNode/src/main/kotlin/.../spots/handlers/CourierDecisionActorHandler.kt` | actor-request-handler | done | courier decision send를 actor가 응답을 기다리는 offer에 연결한다. |
 | `.NET: Server/CourierGateway/CourierDirectory.cs` | `Server/CourierGateway/src/main/kotlin/.../CourierDirectory.kt` | courier-directory | done | courier id -> actor node/session route mapping을 public handler에서 사용한다. |
-| `.NET: Server/CourierGateway/CourierGatewayHandlers.cs` | `Server/CourierGateway/src/main/kotlin/.../handlers/*Handler.kt` | channel-handler | done | `BindCourierReq`, `OfferDeliveryReq` handlers가 route client로 courier actor node에 요청한다. |
-| `.NET: Server/CourierGateway/CourierGatewayHostFactory.cs` | `Server/CourierGateway/src/main/kotlin/.../CourierGatewayApplication.kt` | framework-host | done | courier channel server와 courier actor route client를 public framework API로 구성한다. |
+| `.NET: Server/CourierGateway/CourierGatewayHandlers.cs` | `Server/CourierGateway/src/main/kotlin/.../handlers/*Handler.kt` | channel-handler | done | `BindCourierReq`, `OfferDeliveryReq` handlers가 `requestToSpot`으로 courier actor node entry spot에 요청한다. |
+| `.NET: Server/CourierGateway/CourierGatewayHostFactory.cs` | `Server/CourierGateway/src/main/kotlin/.../CourierGatewayApplication.kt` | framework-host | done | courier channel server와 courier actor spot mesh client를 public framework API로 구성한다. |
 | `.NET: Server/CourierGateway/DeliveryDispatch.Server.CourierGateway.csproj` | `Server/CourierGateway/build.gradle.kts` | server-role-project | done | distinct role project |
 | `.NET: Server/CourierGateway/Program.cs` | `Server/CourierGateway/src/main/kotlin/.../Program.kt` | server-entrypoint | done | real ZLink channel server entrypoint로 standalone runtime proof를 통과했다. |
 | `.NET: Server/CourierSession/BindCourierSessionHandler.cs` | `Server/CourierSession/src/main/kotlin/.../sessions/CourierSession.kt` | stream-handler | done | courier stream bind request를 courier gateway channel과 actor binding으로 연결한다. |
@@ -95,7 +95,7 @@ process, stream runtime client, server evidence self-check를 실행한다.
 | `.NET: ServerAssertionReq` | `ServerAssertionReq` | validation-contract | done | server evidence self-check 입력으로 `successfulDeliveryId`, `reassignedDeliveryId` 대응 |
 | `.NET: ServerAssertionRes` | `ServerAssertionRes` | validation-contract | done | server evidence self-check 결과로 `passed`, `evidence` 대응 |
 | `common/.NET: DeliveryStatus` | `DeliveryStatus` | shared-contract | done | `Assigned`, `Reassigned`, `Accepted`, `PickedUp`, `Delivered` 포함 |
-| `common/.NET: ActorRefSnapshot` | `ActorRefSnapshot` | shared-contract | done | `nodeRid`, `actorId`, `generation` 대응 |
+| `common/.NET: courier actor ref` | `ActorRefWire` | shared-contract | done | courier actor `nodeRid`, `actorId`, `generation`을 wire-safe DTO로 전달한 뒤 session bind 직전에 framework actor ref로 재구성한다. |
 
 ## 공통 요구 매핑
 
@@ -105,7 +105,7 @@ process, stream runtime client, server evidence self-check를 실행한다.
 | `common: Dispatch role` | `Server/Dispatch` | server-role | done | HTTP API, dispatch channel, worker가 standalone runtime proof를 통과했다. |
 | `common: CourierGateway role` | `Server/CourierGateway` | server-role | done | courier channel server와 directory가 standalone runtime proof를 통과했다. |
 | `common: CourierSession role` | `Server/CourierSession` | server-role | done | stream server와 courier session이 standalone runtime proof를 통과했다. |
-| `common: CourierSpotNode1/2 roles` | `Server/CourierSpotNode` 두 process | server-role | done | actor/entry spot/route mesh가 standalone runtime proof를 통과했다. |
+| `common: CourierSpotNode1/2 roles` | `Server/CourierSpotNode` 두 process | server-role | done | actor/entry spot/spot mesh가 standalone runtime proof를 통과했다. |
 | `common: Tracking role` | `Server/Tracking` | server-role | done | tracking channel/evidence, CustomerGateway forward, assertion handler가 standalone runtime proof를 통과했다. |
 | `common: CustomerGateway role` | `Server/CustomerGateway` | server-role | done | stream server, entry spot, customer actor가 standalone runtime proof를 통과했다. |
 | `common: Probe readiness` | `run_sample.sh` bound endpoint probes | validation | done | startup log가 아니라 registry/channel/stream/HTTP endpoint port readiness를 확인한다. |

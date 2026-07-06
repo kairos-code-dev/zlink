@@ -37,6 +37,8 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private static final Duration RELAY_SUBMIT_TIMEOUT = Duration.ofSeconds(30);
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
     private static final ThreadLocal<ZLinkStreamHeader> CURRENT_RELAY_HEADER = new ThreadLocal<>();
     private static final ScheduledExecutorService RELAY_RETRY_EXECUTOR =
         Executors.newSingleThreadScheduledExecutor(task -> {
@@ -193,6 +195,10 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
 
     private CompletionStage<ZLinkSessionActor> bindBackendRef(
         ZLinkBackendActorRef ref) {
+        trace("session-actor bind-start sessionRid=" + sessionRid
+            + " actorNode=" + ref.nodeRid()
+            + " actorId=" + ref.actorId()
+            + " generation=" + ref.generation());
         if (actors != null) {
             Optional<ZLinkActor> localActor = actors.localActor(ref.actorId());
             if (localActor.isPresent()) {
@@ -200,14 +206,28 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 if (localRef.nodeRid().equals(ref.nodeRid())
                     && localRef.actorId().equals(ref.actorId())
                     && localRef.generation() == ref.generation()) {
+                    trace("session-actor bind-local sessionRid=" + sessionRid
+                        + " actorNode=" + ref.nodeRid()
+                        + " actorId=" + ref.actorId()
+                        + " generation=" + ref.generation());
                     return bindManagedAsync(localActor.get());
                 }
             }
         }
         return awaitRouteReady(ref)
-            .thenCompose(ignored -> stream.bindActor(sessionRid, ref)
-                .submit(Duration.ofSeconds(30)))
+            .thenCompose(ignored -> {
+                trace("session-actor bind-native-submit sessionRid=" + sessionRid
+                    + " actorNode=" + ref.nodeRid()
+                    + " actorId=" + ref.actorId()
+                    + " generation=" + ref.generation());
+                return stream.bindActor(sessionRid, ref)
+                    .submit(Duration.ofSeconds(30));
+            })
             .thenApply(ignored -> {
+                trace("session-actor bind-native-ok sessionRid=" + sessionRid
+                    + " actorNode=" + ref.nodeRid()
+                    + " actorId=" + ref.actorId()
+                    + " generation=" + ref.generation());
                 ZLinkSessionActor actor = new BoundActor(
                     stream,
                     sessionRid,
@@ -222,6 +242,15 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     defaultCodec);
                 bound.add(actor);
                 return actor;
+            })
+            .whenComplete((ignored, error) -> {
+                if (error != null) {
+                    trace("session-actor bind-native-error sessionRid=" + sessionRid
+                        + " actorNode=" + ref.nodeRid()
+                        + " actorId=" + ref.actorId()
+                        + " generation=" + ref.generation()
+                        + " error=" + errorSummary(error));
+                }
             });
     }
 
@@ -294,6 +323,10 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     return;
                 }
                 if (routeReady.test(ref.nodeRid())) {
+                    trace("session-actor route-ready sessionRid=" + sessionRid
+                        + " actorNode=" + ref.nodeRid()
+                        + " actorId=" + ref.actorId()
+                        + " generation=" + ref.generation());
                     result.complete(null);
                     return;
                 }
@@ -308,6 +341,23 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         }
         new Attempt().run();
         return result;
+    }
+
+    private static void trace(String message) {
+        if (STREAM_TRACE) {
+            System.out.println("[zlink-java-stream-trace] " + message);
+        }
+    }
+
+    private static String errorSummary(Throwable error) {
+        Throwable current = error;
+        while (current instanceof java.util.concurrent.CompletionException
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return current.getClass().getSimpleName()
+            + (message == null || message.isBlank() ? "" : ":" + message);
     }
 
     private static final class BoundActor implements ZLinkSessionActor {

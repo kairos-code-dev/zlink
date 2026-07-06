@@ -79,12 +79,12 @@ public final class CourierSession implements ZLinkSession {
         context.client()
             .reply(new Messages.BindCourierSessionAccepted(
                 request.courierId(),
-                actorRef.nodeRid().toString(),
+                actorRef.nodeRid(),
                 context.sessionId()))
             .submit();
     }
 
-    private systems.zlink.framework.actors.ZLinkActorRefSnapshot findOrEnsureActor(String courierId) {
+    private Messages.ActorRefWire findOrEnsureActor(String courierId) {
         String placement = SampleTopology.courierPlacement(courierId);
         RoutingId nodeRid = RoutingId.from(placement);
         ZLinkSpotAddress address = new ZLinkSpotAddress(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);

@@ -36,10 +36,6 @@ data class SampleTopology(
         val CustomerSpotNodeRid: String = property("customerSpotNodeRid", "customer-node-1")
         val CourierActorNode1Rid: String = property("courierActorNode1Rid", "courier-node-1")
         val CourierActorNode2Rid: String = property("courierActorNode2Rid", "courier-node-2")
-        val CourierActorNode1RouteEndpoint: String =
-            property("courierActorNode1RouteEndpoint", "tcp://127.0.0.1:49111")
-        val CourierActorNode2RouteEndpoint: String =
-            property("courierActorNode2RouteEndpoint", "tcp://127.0.0.1:49112")
         val CourierActorNode1SpotEndpoint: String =
             property("courierActorNode1SpotEndpoint", "tcp://127.0.0.1:49113")
         val CourierActorNode2SpotEndpoint: String =
@@ -50,6 +46,8 @@ data class SampleTopology(
             property("courierActorNode2RouterEndpoint", "tcp://127.0.0.1:49116")
         val CourierSessionSpotRouterEndpoint: String =
             property("courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:49117")
+        val CourierSessionSpotEndpoint: String =
+            property("courierSessionSpotEndpoint", "tcp://127.0.0.1:49119")
         val CourierSessionSpotNodeRid: String = property("courierSessionSpotNodeRid", "courier-session-node")
         val RedisEndpoint: String = requiredProperty("redisEndpoint")
         val RedisKeyPrefix: String = property("redisKeyPrefix", "deliverydispatch:kotlin:")

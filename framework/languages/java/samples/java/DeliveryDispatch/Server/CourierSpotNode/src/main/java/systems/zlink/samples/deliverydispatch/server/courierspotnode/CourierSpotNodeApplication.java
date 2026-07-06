@@ -41,10 +41,6 @@ public final class CourierSpotNodeApplication {
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
                     + "/flow-courier-" + node + ".log")
                 .traceLabel("courier-" + node);
-            options.addClientServerChannel(SampleNames.courierActorNodeChannelFor(selected.nodeRid()))
-                .enableServer(selected.routeEndpoint())
-                .enableClient()
-                .setRoutingId(RoutingId.from(selected.nodeRid()));
             ZLinkSpotNodeBuilder spotNode = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
             spotNode.enableRouter(selected.routerEndpoint())
                 .setRoutingId(RoutingId.from(selected.nodeRid()));
@@ -69,17 +65,15 @@ public final class CourierSpotNodeApplication {
         return SampleLocationStore.create();
     }
 
-    private record NodeOptions(String nodeRid, String routeEndpoint, String spotEndpoint, String routerEndpoint) {
+    private record NodeOptions(String nodeRid, String spotEndpoint, String routerEndpoint) {
         static NodeOptions resolve(String node) {
             return switch (node) {
                 case "node2" -> new NodeOptions(
                     SampleTopology.CourierActorNode2Rid,
-                    SampleTopology.CourierActorNode2RouteEndpoint,
                     SampleTopology.CourierActorNode2SpotEndpoint,
                     SampleTopology.CourierActorNode2RouterEndpoint);
                 default -> new NodeOptions(
                     SampleTopology.CourierActorNode1Rid,
-                    SampleTopology.CourierActorNode1RouteEndpoint,
                     SampleTopology.CourierActorNode1SpotEndpoint,
                     SampleTopology.CourierActorNode1RouterEndpoint);
             };

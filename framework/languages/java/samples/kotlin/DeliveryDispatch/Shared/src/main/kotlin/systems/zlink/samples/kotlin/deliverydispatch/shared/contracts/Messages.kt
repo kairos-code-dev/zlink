@@ -1,6 +1,8 @@
 package systems.zlink.samples.kotlin.deliverydispatch.shared.contracts
 
 import java.time.Instant
+import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 
 data class CreateDeliveryReq(
@@ -38,7 +40,7 @@ data class AssignDelivery(
 
 data class BindCourierSessionReq(
     val courierId: String,
-    val actor: ZLinkActorRefSnapshot? = null,
+    val actor: ActorRefWire? = null,
     val sessionRoute: String? = null,
 )
 
@@ -48,6 +50,24 @@ data class BindCourierSessionRes(
     val sessionRoute: String,
 )
 
+data class ActorRefWire(
+    val nodeRid: String,
+    val actorId: String,
+    val generation: Long,
+) {
+    fun toActorRef(): ZLinkActorRef =
+        ZLinkActorRef(RoutingId.from(nodeRid), actorId, generation)
+
+    companion object {
+        fun from(actor: ZLinkActorRef): ActorRefWire =
+            ActorRefWire(
+                nodeRid = actor.nodeRid().toString(),
+                actorId = actor.actorId(),
+                generation = actor.generation(),
+            )
+    }
+}
+
 data class BindCourierReq(
     val courierId: String,
     val sessionRoute: String,
@@ -55,7 +75,7 @@ data class BindCourierReq(
 
 data class BindCourierRes(
     val courierId: String,
-    val actor: ZLinkActorRefSnapshot,
+    val actor: ActorRefWire,
     val sessionRoute: String,
 )
 
@@ -65,7 +85,7 @@ data class FindCourierActorReq(
 
 data class FindCourierActorRes(
     val courierId: String,
-    val actor: ZLinkActorRefSnapshot?,
+    val actor: ActorRefWire?,
 )
 
 data class EnsureCourierActorReq(
@@ -74,7 +94,7 @@ data class EnsureCourierActorReq(
 
 data class EnsureCourierActorRes(
     val courierId: String,
-    val actor: ZLinkActorRefSnapshot,
+    val actor: ActorRefWire,
 )
 
 data class OfferDeliveryReq(
@@ -107,6 +127,14 @@ data class CourierDecisionMsg(
 
 data class DeliveryStatusChangedReq(
     val deliveryId: String,
+    val status: DeliveryStatus,
+    val courierId: String,
+    val occurredAt: Instant,
+)
+
+data class DeliveryStatusUpdatedMsg(
+    val deliveryId: String,
+    val customerId: String,
     val status: DeliveryStatus,
     val courierId: String,
     val occurredAt: Instant,

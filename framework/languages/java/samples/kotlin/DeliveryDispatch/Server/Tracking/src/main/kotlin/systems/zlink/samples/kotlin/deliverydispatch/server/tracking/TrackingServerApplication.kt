@@ -4,6 +4,7 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
+import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -30,10 +31,9 @@ class TrackingServerApplication {
                 )
                 .traceLabel("tracking")
             options.addHandlersFromPackageOf(TrackingServerApplication::class.java)
-            options.addClientServerChannel(SampleNames.CustomerRouteChannel)
-                .enableClient()
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)
+                .setRoutingId(RoutingId.from("delivery-tracking-server"))
                 .addHandlerGroup("tracking")
         }
 

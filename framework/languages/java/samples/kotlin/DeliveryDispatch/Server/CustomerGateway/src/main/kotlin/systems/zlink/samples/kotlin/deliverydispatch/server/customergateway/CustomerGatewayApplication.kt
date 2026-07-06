@@ -33,11 +33,6 @@ class CustomerGatewayApplication {
                         "/flow-customer-gateway.log",
                 )
                 .traceLabel("customer-gateway")
-            options.addClientServerChannel(SampleNames.CustomerRouteChannel)
-                .enableServer(SampleTopology.CustomerRouteEndpoint)
-                .enableClient()
-                .setRoutingId(RoutingId.from("delivery-customer-gateway-server"))
-                .addHandlerGroup("customer-route")
             val node = options.addSpotMesh(SampleNames.CustomerSpotMesh)
             node.enableRouter(SampleTopology.CustomerSpotRouterEndpoint)
                 .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid))

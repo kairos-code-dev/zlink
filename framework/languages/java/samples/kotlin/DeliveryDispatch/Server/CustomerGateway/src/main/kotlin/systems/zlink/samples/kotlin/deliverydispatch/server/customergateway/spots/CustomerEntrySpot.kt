@@ -7,6 +7,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActor
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActorDirectory
+import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spots.handlers.DeliveryStatusUpdatedHandler
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spots.handlers.SubscribeDeliveryActorHandler
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryRes
@@ -18,6 +19,7 @@ class CustomerEntrySpot(
     override fun context(): ZLinkEntrySpotContext = entryContext
 
     override fun configure() {
+        entryContext.handlers().addHandler(DeliveryStatusUpdatedHandler::class.java)
         entryContext.handlers().addHandler(SubscribeDeliveryActorHandler::class.java)
     }
 

@@ -30,7 +30,7 @@ public final class OfferDeliveryHandler
         Messages.OfferDelivery request,
         ZLinkRequestContext context) {
         CourierBinding binding = directory.require(request.courierId());
-        RoutingId nodeRid = binding.actor().nodeRid();
+        RoutingId nodeRid = RoutingId.from(binding.actor().nodeRid());
         return routes
             .requestToSpot(
                 SampleNames.CourierSpotDiscovery,

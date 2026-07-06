@@ -2,7 +2,6 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.couriersession.sess
 
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkAwait
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.framework.messaging.ZLinkMessage
@@ -14,6 +13,7 @@ import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ActorRefWire
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierSessionReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierSessionRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CourierDecisionMsg
@@ -58,7 +58,7 @@ class CourierSession(
     private fun handleBindCourierSessionReq(payload: ZLinkMessage) {
         val request = payload.decode(BindCourierSessionReq::class.java)
         val actorRef = findOrEnsureActor(request.courierId)
-        val actor = sessionContext.actors().find(actorRef.actorId())
+        val actor = sessionContext.actors().find(actorRef.actorId)
             .orElseGet {
                 ZLinkAwait.await(
                     sessionContext.actors().bind(actorRef.toActorRef()),
@@ -76,11 +76,11 @@ class CourierSession(
             ),
         )
         sessionContext.client()
-            .reply(BindCourierSessionRes(request.courierId, actorRef.nodeRid().toString(), sessionContext.sessionId()))
+            .reply(BindCourierSessionRes(request.courierId, actorRef.nodeRid, sessionContext.sessionId()))
             .submit()
     }
 
-    private fun findOrEnsureActor(courierId: String): ZLinkActorRefSnapshot {
+    private fun findOrEnsureActor(courierId: String): ActorRefWire {
         val nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId))
         val address = ZLinkSpotAddress(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
         val found = routes

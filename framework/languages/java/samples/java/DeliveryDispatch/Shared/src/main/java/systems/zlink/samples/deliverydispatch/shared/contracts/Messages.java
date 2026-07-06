@@ -1,5 +1,7 @@
 package systems.zlink.samples.deliverydispatch.shared.contracts;
 
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.handlers.ZLinkPacket;
 
@@ -51,7 +53,7 @@ public final class Messages {
     }
 
     @ZLinkPacket("BindCourierSession")
-    public record BindCourierSession(String courierId, ZLinkActorRefSnapshot actor, String sessionRoute) {
+    public record BindCourierSession(String courierId, ActorRefWire actor, String sessionRoute) {
         public BindCourierSession(String courierId) {
             this(courierId, null, null);
         }
@@ -64,21 +66,34 @@ public final class Messages {
     public record BindCourier(String courierId, String sessionRoute) {
     }
 
-    public record CourierBound(String courierId, ZLinkActorRefSnapshot actor, String sessionRoute) {
+    public record ActorRefWire(String nodeRid, String actorId, long generation) {
+        public static ActorRefWire from(ZLinkActorRef actor) {
+            return new ActorRefWire(
+                actor.nodeRid().toString(),
+                actor.actorId(),
+                actor.generation());
+        }
+
+        public ZLinkActorRef toActorRef() {
+            return new ZLinkActorRef(RoutingId.from(nodeRid), actorId, generation);
+        }
+    }
+
+    public record CourierBound(String courierId, ActorRefWire actor, String sessionRoute) {
     }
 
     @ZLinkPacket("FindCourierActor")
     public record FindCourierActor(String courierId) {
     }
 
-    public record CourierActorFound(String courierId, ZLinkActorRefSnapshot actor) {
+    public record CourierActorFound(String courierId, ActorRefWire actor) {
     }
 
     @ZLinkPacket("EnsureCourierActor")
     public record EnsureCourierActor(String courierId) {
     }
 
-    public record CourierActorEnsured(String courierId, ZLinkActorRefSnapshot actor) {
+    public record CourierActorEnsured(String courierId, ActorRefWire actor) {
     }
 
     @ZLinkPacket("OfferDelivery")

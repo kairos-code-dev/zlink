@@ -27,14 +27,6 @@ public final class SampleTopology {
         property("courierActorNode1Rid", "courier-node-1");
     public static final String CourierActorNode2Rid =
         property("courierActorNode2Rid", "courier-node-2");
-    public static final String CourierActorNode1ChannelEndpoint =
-        property("courierActorNode1ChannelEndpoint", "tcp://127.0.0.1:48111");
-    public static final String CourierActorNode2ChannelEndpoint =
-        property("courierActorNode2ChannelEndpoint", "tcp://127.0.0.1:48112");
-    public static final String CourierActorNode1RouteEndpoint =
-        property("courierActorNode1RouteEndpoint", CourierActorNode1ChannelEndpoint);
-    public static final String CourierActorNode2RouteEndpoint =
-        property("courierActorNode2RouteEndpoint", CourierActorNode2ChannelEndpoint);
     public static final String CourierActorNode1SpotEndpoint =
         property("courierActorNode1SpotEndpoint", "tcp://127.0.0.1:48113");
     public static final String CourierActorNode2SpotEndpoint =
@@ -45,6 +37,8 @@ public final class SampleTopology {
         property("courierActorNode2RouterEndpoint", "tcp://127.0.0.1:48116");
     public static final String CourierSessionSpotRouterEndpoint =
         property("courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:48117");
+    public static final String CourierSessionSpotEndpoint =
+        property("courierSessionSpotEndpoint", "tcp://127.0.0.1:48119");
     public static final String CourierSessionSpotNodeRid =
         property("courierSessionSpotNodeRid", "courier-session-node");
     public static final String RedisEndpoint = requiredProperty("redisEndpoint");
@@ -68,11 +62,5 @@ public final class SampleTopology {
 
     public static String courierPlacement(String courierId) {
         return "courier-b".equals(courierId) ? CourierActorNode2Rid : CourierActorNode1Rid;
-    }
-
-    public static String courierActorNodeRouteEndpoint(String nodeRid) {
-        return CourierActorNode2Rid.equals(nodeRid)
-            ? CourierActorNode2RouteEndpoint
-            : CourierActorNode1RouteEndpoint;
     }
 }

@@ -5,9 +5,7 @@ public final class SampleNames {
     }
 
     public static final String CourierChannel = "deliverydispatch.courier";
-    public static final String CourierActorNodeChannelPrefix = "deliverydispatch.courier.actor-node.";
     public static final String TrackingChannel = "deliverydispatch.tracking";
-    public static final String CustomerRouteChannel = "deliverydispatch.customer";
     public static final String CustomerSpotDiscovery = "delivery-customers";
     public static final String CourierSpotDiscovery = "delivery-couriers";
     public static final String CustomerStreamNode = "deliverydispatch.customer.stream";
@@ -19,8 +17,4 @@ public final class SampleNames {
     public static final String ReassignmentMarker = "deliverydispatch-reassignment=completed";
     public static final String ServerEvidenceMarker = "deliverydispatch-server-evidence=completed";
     public static final String CompletedMarker = "deliverydispatch=completed";
-
-    public static String courierActorNodeChannelFor(String nodeRid) {
-        return CourierActorNodeChannelPrefix + nodeRid;
-    }
 }

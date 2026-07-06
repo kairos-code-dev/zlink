@@ -1,19 +1,18 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.sessions.handlers
 
 import systems.zlink.framework.ZLinkAwait
-import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActorDirectory
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCustomerActorRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCustomerActorReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryRes
 
 class SubscribeDeliverySessionHandler(
-    private val channels: ZLinkClient,
+    private val actors: ZLinkActorManager,
     private val customers: CustomerActorDirectory,
 ) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, SubscribeDeliveryReq> {
     override fun packetName(): String = "SubscribeDeliveryReq"
@@ -25,15 +24,15 @@ class SubscribeDeliverySessionHandler(
         dispatch: ZLinkSessionDispatchContext,
         message: SubscribeDeliveryReq,
     ) {
-        val ensured = channels
-            .requestToChannel(SampleNames.CustomerRouteChannel, EnsureCustomerActorReq(CustomerId))
-            .await(EnsureCustomerActorRes::class.java)
-        if (context.actors().find(ensured.actor.actorId()).isEmpty) {
+        val actor = ZLinkAwait.await(
+            actors.getOrCreate(CustomerId, SampleNames.CustomerActorType, EnsureCustomerActorReq(CustomerId)),
+        )
+        if (context.actors().find(actor.actorId()).isEmpty) {
             context.actors().bind(
-                ensured.actor.toActorRef(),
+                actor,
             ).let { ZLinkAwait.await(it) }
         }
-        customers.subscribe(ensured.customerId, message.deliveryId)
+        customers.subscribe(CustomerId, message.deliveryId)
         context.client()
             .reply(SubscribeDeliveryRes(message.deliveryId))
             .submit()

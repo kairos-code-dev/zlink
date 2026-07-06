@@ -2,9 +2,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.configuration
 
 object SampleNames {
     const val CourierChannel: String = "deliverydispatch.courier"
-    const val CourierActorNodeRouteChannel: String = "deliverydispatch.courier.actor-node"
     const val TrackingChannel: String = "deliverydispatch.tracking"
-    const val CustomerRouteChannel: String = "deliverydispatch.customer"
     const val CustomerSpotMesh: String = "delivery-customers"
     const val CourierSpotMesh: String = "delivery-couriers"
     const val CustomerStreamNode: String = "deliverydispatch.customer.stream"
@@ -24,6 +22,4 @@ object SampleNames {
     const val ReassignmentMarker: String = "deliverydispatch-reassignment=completed"
     const val ServerEvidenceMarker: String = "deliverydispatch-server-evidence=completed"
     const val CompletedMarker: String = "deliverydispatch=completed"
-
-    fun courierActorNodeChannel(nodeRid: String): String = "$CourierActorNodeRouteChannel.$nodeRid"
 }

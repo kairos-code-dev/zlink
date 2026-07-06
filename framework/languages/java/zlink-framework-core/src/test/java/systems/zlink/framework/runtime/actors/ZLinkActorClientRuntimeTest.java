@@ -10,6 +10,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ConfigResult;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
@@ -105,6 +107,19 @@ final class ZLinkActorClientRuntimeTest {
     }
 
     @Test
+    void actorManagerFindReturnsEmptyWhenNativeLookupReportsNotFound() {
+        ZLinkActorRuntime actors = new ZLinkActorRuntime(
+            new MissingLookupSpotNode(),
+            java.util.Map.of("probe", ProbeActorFactory.class),
+            Duration.ofSeconds(5),
+            new ZLinkJsonMessageSerializer());
+
+        assertEquals(
+            java.util.Optional.empty(),
+            actors.find("missing").toCompletableFuture().join());
+    }
+
+    @Test
     void noBindActorSendRetriesWhileRouteConverges() {
         ZLinkInMemoryLocationStore store = storeWithActor("actor-1");
         RecordingSpotNode node = new RecordingSpotNode();
@@ -170,7 +185,41 @@ final class ZLinkActorClientRuntimeTest {
     private record Pong(String value) {
     }
 
-    private static final class RecordingSpotNode implements ZLinkBackendSpotNode {
+    public static final class ProbeActor implements systems.zlink.framework.actors.ZLinkActor {
+        private final String actorId;
+
+        ProbeActor(String actorId) {
+            this.actorId = actorId;
+        }
+
+        @Override
+        public String actorId() {
+            return actorId;
+        }
+
+        @Override
+        public systems.zlink.framework.actors.ZLinkActorContext context() {
+            return null;
+        }
+    }
+
+    public static final class ProbeActorFactory implements systems.zlink.framework.actors.ZLinkActorFactory {
+        @Override
+        public systems.zlink.framework.actors.ZLinkActor create(
+            String actorId,
+            systems.zlink.framework.actors.ZLinkActorContext context) {
+            return new ProbeActor(actorId);
+        }
+    }
+
+    private static final class MissingLookupSpotNode extends RecordingSpotNode {
+        @Override
+        public ZLinkBackendActorRef actorLookup(String actorId) {
+            throw new ZlinkConfigException(ConfigResult.NOT_FOUND);
+        }
+    }
+
+    private static class RecordingSpotNode implements ZLinkBackendSpotNode {
         private final List<Message> reply;
         ZLinkBackendActorRef sentActor;
         ZLinkBackendActorRef requestedActor;

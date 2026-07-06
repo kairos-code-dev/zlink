@@ -42,7 +42,8 @@ public final class DispatchServerApplication {
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient();
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableClient();
+                .enableClient()
+                .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"));
             ZLinkSpotNodeBuilder courierRoutes = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
             courierRoutes
                 .enableRouter("inproc://deliverydispatch-dispatch-courier-client")

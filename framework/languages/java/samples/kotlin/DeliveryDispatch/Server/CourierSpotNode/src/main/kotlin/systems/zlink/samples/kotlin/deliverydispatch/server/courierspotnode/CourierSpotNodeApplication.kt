@@ -33,10 +33,6 @@ class CourierSpotNodeApplication {
                         "/flow-courier-$node.log",
                 )
                 .traceLabel("courier-$node")
-            options.addClientServerChannel(SampleNames.courierActorNodeChannel(selected.nodeRid))
-                .setRoutingId(RoutingId.from(selected.nodeRid))
-                .enableServer(selected.routeEndpoint)
-                .enableClient()
             val spotNode = options.addSpotMesh(SampleNames.CourierSpotMesh)
             spotNode.enableRouter(selected.routerEndpoint)
                 .setRoutingId(RoutingId.from(selected.nodeRid))
@@ -69,7 +65,6 @@ class CourierSpotNodeApplication {
 
     private data class NodeOptions(
         val nodeRid: String,
-        val routeEndpoint: String,
         val spotEndpoint: String,
         val routerEndpoint: String,
     ) {
@@ -78,14 +73,12 @@ class CourierSpotNodeApplication {
                 if (node == "node2") {
                     NodeOptions(
                         SampleTopology.CourierActorNode2Rid,
-                        SampleTopology.CourierActorNode2RouteEndpoint,
                         SampleTopology.CourierActorNode2SpotEndpoint,
                         SampleTopology.CourierActorNode2RouterEndpoint,
                     )
                 } else {
                     NodeOptions(
                         SampleTopology.CourierActorNode1Rid,
-                        SampleTopology.CourierActorNode1RouteEndpoint,
                         SampleTopology.CourierActorNode1SpotEndpoint,
                         SampleTopology.CourierActorNode1RouterEndpoint,
                     )

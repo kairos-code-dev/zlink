@@ -1,9 +1,9 @@
 package systems.zlink.samples.deliverydispatch.server.couriergateway;
 
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
+import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 public record CourierBinding(
     String courierId,
-    ZLinkActorRefSnapshot actor,
+    Messages.ActorRefWire actor,
     String sessionRoute) {
 }

@@ -37,6 +37,7 @@ class DispatchServerApplication {
                 .enableClient()
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()
+                .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"))
             val courierRoutes = options.addSpotMesh(SampleNames.CourierSpotMesh)
             courierRoutes
                 .enableRouter("inproc://deliverydispatch-dispatch-courier-client")

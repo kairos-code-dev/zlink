@@ -4,7 +4,6 @@ import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot;
@@ -28,6 +27,6 @@ public final class EnsureCourierActorHandler
             request));
         return new Messages.CourierActorEnsured(
             request.courierId(),
-            ZLinkActorRefSnapshot.from(actor));
+            Messages.ActorRefWire.from(actor));
     }
 }

@@ -1,5 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.handlers
 
+import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkAwait.await
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkRequestContext
@@ -26,7 +27,11 @@ class OfferDeliveryHandler(
             routes
                 .requestToSpot(
                     SampleNames.CourierSpotMesh,
-                    ZLinkSpotAddress(SampleNames.CourierSpotMesh, binding.actor.nodeRid(), binding.actor.nodeRid()),
+                    ZLinkSpotAddress(
+                        SampleNames.CourierSpotMesh,
+                        RoutingId.from(binding.actor.nodeRid),
+                        RoutingId.from(binding.actor.nodeRid),
+                    ),
                     request,
                 )
                 .timeout(SampleTimings.OfferRequestTimeout)

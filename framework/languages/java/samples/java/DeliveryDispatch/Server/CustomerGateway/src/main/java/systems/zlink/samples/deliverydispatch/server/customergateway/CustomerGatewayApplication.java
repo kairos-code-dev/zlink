@@ -36,18 +36,11 @@ public final class CustomerGatewayApplication {
     ZLinkFrameworkConfigurer customerGatewayFramework() {
         return options -> {
             options.addHandlersFromPackageOf(CustomerGatewayApplication.class);
-            options.configureLocations()
-                .setSpotRouterChannel(SampleNames.CustomerSpotDiscovery, SampleNames.CustomerRouteChannel);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
                     + "/flow-customer-gateway.log")
                 .traceLabel("customer-gateway");
-            options.addClientServerChannel(SampleNames.CustomerRouteChannel)
-                .enableServer(SampleTopology.CustomerRouteEndpoint)
-                .enableClient()
-                .setRoutingId(RoutingId.from("delivery-customer-gateway-server"))
-                .addHandlerGroup("customer-route");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.CustomerSpotDiscovery);
             node.enableRouter(SampleTopology.CustomerSpotRouterEndpoint)
                 .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid));

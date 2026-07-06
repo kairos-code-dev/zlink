@@ -43,6 +43,7 @@ public final class TrackingServerApplication {
                 .setRoutingId(RoutingId.from("tracking"));
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)
+                .setRoutingId(RoutingId.from("delivery-tracking-server"))
                 .addHandlerGroup("tracking");
         };
     }

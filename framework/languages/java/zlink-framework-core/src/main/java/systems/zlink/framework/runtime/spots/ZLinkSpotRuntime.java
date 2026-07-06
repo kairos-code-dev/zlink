@@ -4332,7 +4332,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     }
 
     private static String traceText(byte[] bytes) {
-        if (bytes.length == 0 || bytes.length > 96) {
+        if (bytes.length == 0 || bytes.length > 512) {
             return "";
         }
         String text = new String(bytes, StandardCharsets.UTF_8);

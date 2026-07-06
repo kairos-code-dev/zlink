@@ -230,6 +230,16 @@ actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 
 - 검증: actor가 mailbox에서 제거되고, 파괴 후 그 actor로의 request는 정해진 public error로 끝난다. 파괴 lifecycle callback이 정해진 순서로 1회 발화해 evidence에 남고, 다른 actor는 영향받지 않는다.
 - 세부 동작: actor 명시 파괴 + 정리.
 
+#### SM-B9 entry spot join admission (허용·거부)
+
+우선순위: `P1`
+
+**한마디로:** entry spot의 join admission 훅(`onActorJoin`류)이 join을 심사해, 거부하면 actor가 생기지 않고 caller가 분류된 실패를 받는가.
+
+- 절차: entry spot에 admission 훅을 두고, 허용 조건과 거부 조건(예: 정원 초과, 잘못된 자격)의 join을 각각 보낸다. 거부는 local join과 remote join(원격 노드 대상) 양쪽에서 확인한다.
+- 검증: 허용 join은 SM-B1/B2와 동일하게 완주한다. 거부 join은 actor가 생성되지 않고(evidence에 생성 callback 없음), caller가 timeout이 아닌 분류된 거부 응답을 받는다. 거부가 노드 경계를 넘어도 같은 의미다.
+- 세부 동작: join admission 심사 + 거부의 fail-fast 전파. (언어 간 구현 격차가 실제로 있었던 표면 — parity 검증 대상.)
+
 ### Track C — messaging 방향
 
 여기서는 메시지가 흐르는 방향(channel→spot, spot→channel, spot→spot)별로, 한 시나리오 안에서
@@ -284,6 +294,16 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 - 절차: local spot이 없는 노드가 `AddSpotMesh("mesh").EnablePubSub(...)`로 SPOT mesh publisher를 열고 topic으로 publish한다.
 - 검증: 그 SPOT mesh의 구독 spot 전원이 이벤트를 받는다(publish-only 노드 — local spot 호스팅 불필요). 미구독 spot은 받지 않는다.
 - 세부 동작: spot 호스팅 없는 publish-only 노드의 SPOT mesh publish. (SM-C2의 spot→mesh publish와 달리, publisher가 spot이 아닌 일반 노드.)
+
+#### SM-C5 SpotMesh pub/sub 노드 간 도달 (발행 성공 ≠ 도달)
+
+우선순위: `P0`
+
+**한마디로:** 한 노드의 spot이 SPOT mesh로 publish한 이벤트를 **다른 노드**의 구독 spot이 실제로 받는가 — 발행자 로그의 성공만으로 통과시키지 않는다.
+
+- 절차: `play-a`의 spot이 publish하고, 구독자는 `play-b`(다른 프로세스)의 spot으로 둔다. 노드 간 pub/sub plane 연결은 location 발견(또는 명시 peer 연결)으로 성립시킨다.
+- 검증: 성공 기준은 **수신 측 evidence**다 — `play-b` 구독 spot이 이벤트를 받았다는 기록. 발행 측의 publish 성공 로그는 보조 증거일 뿐 단독으로는 통과가 아니다. 연결 미성립이면 발행이 성공으로 보여도 시나리오는 실패해야 한다.
+- 세부 동작: cross-node SPOT mesh pub/sub 도달. (발행 성공 로그가 남는데 구독 수신이 0인 결함이 실제로 있었다 — 노드 간 pub/sub plane 연결 누락이 발행자 관점에서는 보이지 않는다.)
 
 ### Track D — session bind·relay·push와 stream
 
@@ -430,6 +450,16 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 - 검증: TLS 위에서 bind·relay·push가 평문과 같은 의미로 동작한다. 잘못된 인증서는 연결 거부.
 - 세부 동작: TLS stream 전송.
 
+#### SM-D15 cross-role 다단 push 사슬
+
+우선순위: `P0`
+
+**한마디로:** 다른 role이 시작한 상태 변화가 actor send를 거쳐 bound session push로 client stream까지 끝까지 도달하는가.
+
+- 절차: client와 무관한 별도 role(예: tracking)이 channel request를 받아 `SendToActor`로 대상 actor에 상태 변경 메시지를 보내고, 그 actor의 핸들러가 bound session으로 notify를 push한다. client는 stream에서 그 notify를 기다린다.
+- 검증: client가 notify를 실제 수신한다 — 이것만이 성공 기준. 중간 각 hop(channel 수신, actor send 도달, push 발신)의 flow trace가 남아 단절 시 지점을 특정할 수 있다. actor send의 대상 핸들러가 미등록이면 silent drop이 아니라 관측 가능한 실패가 남는다.
+- 세부 동작: role 경계 2회 이상을 넘는 push 사슬의 end-to-end 도달 + hop별 관측성. (발신 role들의 로그는 전부 정상인데 client만 timeout인 결함 — 중간 hop의 핸들러 미등록 — 이 실제로 있었다.)
+
 ### Track E — negatives와 timer
 
 #### SM-E1 spot route 미등록 request
@@ -554,6 +584,16 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 - 절차: spot route ingress를 등록한 channel로 일반 channel request와 spot route request를 모두 보낸 뒤, 그 spot node를 종료한다. 이후 같은 channel로 일반 channel request를 다시 보낸다.
 - 검증: spot routing 중에도 일반 channel messaging이 정상이다. spot node 종료 뒤에도 channel socket은 살아 있어 일반 channel request가 계속 정상 동작한다(channel socket 소유권은 channel runtime에 있고, spot routing 사용/중단이 channel lifecycle을 좌우하지 않음).
 - 세부 동작: channel socket lifecycle이 spot route 사용과 독립.
+
+#### SM-F6 spot mesh 단독 구성의 target spot 도달 (route mesh 미등록)
+
+우선순위: `P0`
+
+**한마디로:** RouteMesh channel을 전혀 등록하지 않은 구성에서도, spot mesh(location 발견)만으로 원격 target spot으로의 request·send·actor join relay가 전부 도달하는가.
+
+- 절차: SM-F1/F2와 같은 시나리오를 **RouteMesh 등록이 전혀 없는** 서버 구성에서 돌린다. 모든 노드는 `AddSpotMesh` + location store 발견만으로 연결된다. 원격 actor join(SM-B2 의미)도 이 구성에서 함께 확인한다.
+- 검증: request/send/join이 전부 노드 경계를 넘어 도달하고 reply가 돌아온다. "route channel이 없다"는 오류가 나면 framework가 spot 경로를 route mesh에 위임하고 있다는 뜻이므로 실패다.
+- 세부 동작: route mesh 부재 시 spot mesh 자체 링크의 완결성. (framework 구현이 원격 spot relay를 route mesh 채널에 얹어 두어, route mesh를 걷어내자 부러진 결함이 여러 언어에서 실제로 있었다 — §3.1 구성 축의 대표 사례.)
 
 ### Track G — 장애와 복구 (stateful 노드)
 

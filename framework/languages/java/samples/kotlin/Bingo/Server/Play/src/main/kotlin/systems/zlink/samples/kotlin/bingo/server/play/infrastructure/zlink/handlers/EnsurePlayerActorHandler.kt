@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.handlers
 
-import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkActorManager
+import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot

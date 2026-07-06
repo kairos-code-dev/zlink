@@ -58,6 +58,8 @@ class PlayServerApplication {
             val node: ZLinkSpotNodeBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+            node.configureEntrySpot()
+                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
             node.connectPeerPub(SampleTopology.peerPlaySpotEndpoint())
             node.addEntrySpot(BingoEntrySpot::class.java)

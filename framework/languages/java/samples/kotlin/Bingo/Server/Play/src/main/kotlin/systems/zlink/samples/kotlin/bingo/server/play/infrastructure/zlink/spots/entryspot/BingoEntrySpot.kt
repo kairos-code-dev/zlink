@@ -1,10 +1,10 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.ZLinkAwait.await
+import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext

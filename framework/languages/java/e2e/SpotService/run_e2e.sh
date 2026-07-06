@@ -12,6 +12,8 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
@@ -119,6 +121,29 @@ wait_port() {
   return 1
 }
 
+ordered_roles() {
+  python3 - "${E2E_START_ORDER}" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
 gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
@@ -165,11 +190,6 @@ start_play() {
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(play_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
-  wait_port "${rid}-route" "${route}"
-  wait_port "${rid}-spot" "${spot}"
-  wait_port "${rid}-spot-pub" "${spot_pub}"
-  wait_port "${rid}-stream" "${stream}"
-  wait_port "${rid}-http" "${http}"
 }
 
 start_gateway() {
@@ -190,9 +210,40 @@ start_gateway() {
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(gateway_bin)" >"${log_dir}/gateway.stdout.log" 2>"${log_dir}/gateway.stderr.log" &
   pids+=("$!")
-  wait_port gateway-route "${ROUTE_CLIENT}"
-  wait_port gateway-spot "${SPOT_CLIENT}"
-  wait_port gateway-http "${HTTP_GATEWAY}"
+}
+
+start_named_server() {
+  case "$1" in
+    play-a) start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" "${STREAM_A}" ;;
+    play-b) start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}" ;;
+    gateway) start_gateway ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
+wait_named_server() {
+  case "$1" in
+    play-a)
+      wait_port play-a-route "${ROUTE_A}"
+      wait_port play-a-spot "${SPOT_A}"
+      wait_port play-a-spot-pub "${SPOT_PUB_A}"
+      wait_port play-a-stream "${STREAM_A}"
+      wait_port play-a-http "${HTTP_A}"
+      ;;
+    play-b)
+      wait_port play-b-route "${ROUTE_B}"
+      wait_port play-b-spot "${SPOT_B}"
+      wait_port play-b-spot-pub "${SPOT_PUB_B}"
+      wait_port play-b-stream "${STREAM_B}"
+      wait_port play-b-http "${HTTP_B}"
+      ;;
+    gateway)
+      wait_port gateway-route "${ROUTE_CLIENT}"
+      wait_port gateway-spot "${SPOT_CLIENT}"
+      wait_port gateway-http "${HTTP_GATEWAY}"
+      ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
 }
 
 run_publisher() {
@@ -260,9 +311,12 @@ read -r ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS
 
 gradle_run installDist
 
-start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" "${STREAM_A}"
-start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}"
-start_gateway
+SERVER_ROLES=(play-a play-b gateway)
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_named_server "$role"
+  wait_named_server "$role"
+done
 sleep 2
 
 run_client_mode() {

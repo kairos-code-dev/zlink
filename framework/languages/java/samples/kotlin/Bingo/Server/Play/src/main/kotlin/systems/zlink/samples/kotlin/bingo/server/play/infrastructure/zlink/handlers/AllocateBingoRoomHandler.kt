@@ -1,10 +1,10 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.handlers
 
-import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology

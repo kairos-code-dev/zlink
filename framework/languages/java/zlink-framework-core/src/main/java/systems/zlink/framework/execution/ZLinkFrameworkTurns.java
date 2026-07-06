@@ -27,6 +27,7 @@ public final class ZLinkFrameworkTurns {
         "systems.zlink.framework.runtime.channels.ZLinkChannelRuntime",
         "systems.zlink.framework.runtime.spots.DefaultZLinkWorkerCall",
         "systems.zlink.framework.runtime.spots.ZLinkSpotRuntime",
+        "systems.zlink.framework.kotlin.ZLinkCoroutineTurnAwaitKt",
         "systems.zlink.framework.kotlin.ZLinkCoroutineSuspendHandlerInvoker");
 
     private ZLinkFrameworkTurns() {

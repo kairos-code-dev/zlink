@@ -10,6 +10,8 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
@@ -87,14 +89,85 @@ PY
   return 1
 }
 
+ordered_roles() {
+  python3 - "${E2E_START_ORDER}" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
+start_role() {
+  case "$1" in
+    actor)
+      ./Server/Actor/build/install/to-actor-actor/bin/to-actor-actor >"${log_dir}/actor.log" 2>&1 &
+      pids+=("$!")
+      ;;
+    caller)
+      ./Server/Caller/build/install/to-actor-caller/bin/to-actor-caller >"${log_dir}/caller.log" 2>&1 &
+      pids+=("$!")
+      ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
+wait_role() {
+  case "$1" in
+    actor) wait_http "${ZLINK_JAVA_E2E_ACTOR_HTTP}" ;;
+    caller) wait_http "${ZLINK_JAVA_E2E_CALLER_HTTP}" ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
+wait_log() {
+  local log="$1"
+  local pattern="$2"
+  local description="$3"
+  for _ in $(seq 1 300); do
+    if [[ -f "${log}" ]] && grep -q "${pattern}" "${log}"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${description}" >&2
+  return 1
+}
+
+wait_role_ready() {
+  case "$1" in
+    actor) wait_log "${log_dir}/actor.log" "\\[boot\\] role=actor step=baselineActors done" "actor baseline readiness" ;;
+    caller) wait_log "${log_dir}/caller.log" "\\[boot\\] role=caller step=main run done" "caller application readiness" ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
 ../../gradlew --no-daemon --gradle-user-home "${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/toactor-gradle}" -p . installDist
 
-./Server/Actor/build/install/to-actor-actor/bin/to-actor-actor >"${log_dir}/actor.log" 2>&1 &
-pids+=("$!")
-wait_http "${ZLINK_JAVA_E2E_ACTOR_HTTP}"
+SERVER_ROLES=(actor caller)
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_role "$role"
+done
+for role in "${SERVER_ROLES[@]}"; do
+  wait_role "$role"
+done
+for role in "${SERVER_ROLES[@]}"; do
+  wait_role_ready "$role"
+done
 
-./Server/Caller/build/install/to-actor-caller/bin/to-actor-caller >"${log_dir}/caller.log" 2>&1 &
-pids+=("$!")
-wait_http "${ZLINK_JAVA_E2E_CALLER_HTTP}"
-
-./Client/build/install/to-actor-client/bin/to-actor-client | tee "${log_dir}/client.log"
+./Client/build/install/to-actor-client/bin/to-actor-client > >(tee "${log_dir}/client.log") 2>"${log_dir}/client.stderr.log"

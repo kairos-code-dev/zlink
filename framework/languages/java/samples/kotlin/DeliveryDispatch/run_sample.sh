@@ -9,6 +9,7 @@ role_pattern='systems\.zlink\.samples\.kotlin\.deliverydispatch\.(server\.(track
 log_dir="build/sample-logs"
 state_dir="$(pwd)/build/sample-state"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-$(pwd)/logs}"
+export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
 mkdir -p "${log_dir}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${log_dir}"/*.log
 rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log

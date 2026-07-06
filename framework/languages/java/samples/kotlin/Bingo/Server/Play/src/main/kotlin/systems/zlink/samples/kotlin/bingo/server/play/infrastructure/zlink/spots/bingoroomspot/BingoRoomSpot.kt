@@ -2,8 +2,8 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
-import kotlinx.coroutines.future.await
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse

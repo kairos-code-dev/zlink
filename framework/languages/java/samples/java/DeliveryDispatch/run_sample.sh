@@ -8,6 +8,7 @@ redis_container_id=""
 role_pattern='systems\.zlink\.samples\.deliverydispatch\.(server\.(tracking|customergateway|couriersession|couriergateway|courierspotnode|dispatch)\.Program|client\.Program)'
 log_dir="build/sample-logs"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-$(pwd)/logs}"
+export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
 mkdir -p "${log_dir}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${log_dir}"/*.log
 rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log

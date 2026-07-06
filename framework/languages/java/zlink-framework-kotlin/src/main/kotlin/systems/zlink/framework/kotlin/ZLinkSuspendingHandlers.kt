@@ -48,7 +48,7 @@ interface ZLinkSuspendingSpotPacketHandler<TSpot : ZLinkSpot<*>, TMessage> {
     suspend fun handle(spot: TSpot, message: TMessage)
 }
 
-interface ZLinkSuspendingSpotRequestHandler<TSpot : ZLinkSpot<*>, TRequest, TReply> {
+interface ZLinkSuspendingSpotRequestHandler<TSpot : Any, TRequest, TReply> {
     suspend fun handle(spot: TSpot, request: TRequest): TReply
 }
 

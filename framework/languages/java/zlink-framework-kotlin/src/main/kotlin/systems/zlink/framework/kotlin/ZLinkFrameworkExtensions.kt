@@ -1,6 +1,5 @@
 package systems.zlink.framework.kotlin
 
-import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorDirectory
@@ -34,17 +33,17 @@ import systems.zlink.framework.streams.ZLinkSessionActors
 import kotlin.jvm.JvmName
 
 suspend fun <TReply> ZLinkRequestCall.awaitReply(replyType: Class<TReply>): TReply =
-    submit(replyType).await()
+    awaitFrameworkStage(submit(replyType))
 
 inline suspend fun <reified TReply> ZLinkRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
 
 suspend fun ZLinkActorSendCall.awaitSend() {
-    submit().await()
+    awaitFrameworkStage(submit())
 }
 
 suspend fun <TReply> ZLinkActorRequestCall.awaitReply(replyType: Class<TReply>): TReply =
-    submit(replyType).await()
+    awaitFrameworkStage(submit(replyType))
 
 inline suspend fun <reified TReply> ZLinkActorRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
@@ -70,20 +69,20 @@ inline suspend fun <reified TReply> ZLinkActorClient.requestToActorAwait(
     requestToActorAwait(actorId, request, TReply::class.java)
 
 suspend fun ZLinkActorDirectory.findActor(actorId: String): ZLinkActorRef? =
-    find(actorId).await().orElse(null)
+    awaitFrameworkStage(find(actorId)).orElse(null)
 
 suspend fun ZLinkActorDirectory.ensureActor(
     actorId: String,
     createRequest: ZLinkMessage,
     placement: ZLinkActorPlacement = ZLinkActorPlacement.any(),
 ): ZLinkActorRef =
-    ensure(actorId, createRequest, placement).await()
+    awaitFrameworkStage(ensure(actorId, createRequest, placement))
 
 suspend fun ZLinkActorDirectory.ensureActor(
     actorId: String,
     createRequest: Any,
 ): ZLinkActorRef =
-    ensure(actorId, createRequest).await()
+    awaitFrameworkStage(ensure(actorId, createRequest))
 
 fun ZLinkActorRef.snapshot(): ZLinkActorRefSnapshot =
     ZLinkActorRefSnapshot.from(this)
@@ -96,18 +95,18 @@ suspend fun ZLinkLocationReadiness.isPeerReady(
     role: ZLinkLocationRole,
     nodeRid: RoutingId? = null,
 ): Boolean =
-    isPeerReadyAsync(meshName, role, nodeRid).await()
+    awaitFrameworkStage(isPeerReadyAsync(meshName, role, nodeRid))
 
 suspend fun ZLinkSessionActors.bindOrGetActor(actor: ZLinkActorRef): ZLinkSessionActor =
-    bindOrGet(actor).await()
+    awaitFrameworkStage(bindOrGet(actor))
 
 @JvmName("awaitJoinCallVoid")
 suspend fun ZLinkActorJoinCall.awaitJoin(): ZLinkActorJoinResult<Void> =
-    submit().await()
+    awaitFrameworkStage(submit())
 
 @JvmName("awaitJoinCall")
 suspend fun <TReply> ZLinkActorJoinCall.awaitJoin(replyType: Class<TReply>): ZLinkActorJoinResult<TReply> =
-    submit(replyType).await()
+    awaitFrameworkStage(submit(replyType))
 
 @JvmName("awaitJoinCallReified")
 inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoin(): ZLinkActorJoinResult<TReply> =
@@ -211,28 +210,28 @@ suspend inline fun <reified TReply> ZLinkRouteClient.request(
     requestToSpot(channelName, address, message).awaitReply()
 
 suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(): ZLinkSpotCreateResult =
-    create(TSpot::class.java).await()
+    awaitFrameworkStage(create(TSpot::class.java))
 
 suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
     request: ZLinkMessage,
 ): ZLinkSpotCreateResult =
-    create(TSpot::class.java, request).await()
+    awaitFrameworkStage(create(TSpot::class.java, request))
 
 suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
     spotRid: RoutingId,
 ): ZLinkSpotCreateResult =
-    create(TSpot::class.java, spotRid).await()
+    awaitFrameworkStage(create(TSpot::class.java, spotRid))
 
 suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
     spotRid: RoutingId,
 ): ZLinkSpotCreateResult =
-    getOrCreate(TSpot::class.java, spotRid).await()
+    awaitFrameworkStage(getOrCreate(TSpot::class.java, spotRid))
 
 suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
     spotRid: RoutingId,
     request: ZLinkMessage,
 ): ZLinkSpotCreateResult =
-    getOrCreate(TSpot::class.java, spotRid, request).await()
+    awaitFrameworkStage(getOrCreate(TSpot::class.java, spotRid, request))
 
 fun ZLinkFrameworkOptions.configureStreamCompression(
     configure: ZLinkStreamCompressionBuilder.() -> Unit,

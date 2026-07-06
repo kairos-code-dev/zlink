@@ -582,6 +582,7 @@ void connect_tcp_async (std::shared_ptr<detail::connector_state_t> state,
                     state->last_inbound_received = now;
                 }
                 detail::change_state (state, connection_state_t::connected);
+                detail::resume_pending_writes_after_connect (state);
                 complete_connect_callback (state, std::move (callback),
                                            result_t<void>::success ());
                 schedule_start_read_loop (state);
@@ -611,6 +612,7 @@ void complete_async_transport_connect (
         state->last_inbound_received = now;
     }
     detail::change_state (state, connection_state_t::connected);
+    detail::resume_pending_writes_after_connect (state);
     complete_connect_callback (state, std::move (callback), result_t<void>::success ());
     schedule_start_read_loop (state);
 }
@@ -718,6 +720,7 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
             state->last_heartbeat_sent = now;
             state->last_inbound_received = now;
             detail::change_state (state, connection_state_t::connected);
+            detail::resume_pending_writes_after_connect (state);
             schedule_start_read_loop (state);
             return result_t<void>::success ();
         }

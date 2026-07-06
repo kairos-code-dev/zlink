@@ -778,10 +778,19 @@ void enqueue_async_write (std::shared_ptr<connector_state_t> state,
                           std::vector<std::uint8_t> frame,
                           std::function<void (result_t<void>)> callback)
 {
+    const auto frame_size = frame.size ();
+    std::size_t queued = 0;
+    bool connected = false;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         state->pending_writes.push_back (pending_write_t{std::move (frame), std::move (callback)});
+        queued = state->pending_writes.size ();
+        connected = is_transport_connected (*state);
     }
+    trace_request ("write-queued", std::nullopt, {},
+                   "bytes=" + std::to_string (frame_size)
+                     + " pending_writes=" + std::to_string (queued)
+                     + " connected=" + (connected ? "true" : "false"));
     start_next_async_write (std::move (state));
 }
 
@@ -825,11 +834,16 @@ void start_next_async_write (std::shared_ptr<connector_state_t> state)
     }
 
     if (immediate_failure) {
+        trace_request ("write-start", std::nullopt, {},
+                       "result=skipped error="
+                         + std::to_string (static_cast<int> (immediate_failure->error_code ())));
         finish_async_write (state, std::move (write.callback), std::move (*immediate_failure));
         return;
     }
 
     try {
+        trace_request ("write-start", std::nullopt, {},
+                       "bytes=" + std::to_string (write.frame.size ()));
         connection->async_write (
           std::move (write.frame),
           [state, callback = std::move (write.callback)] (boost::system::error_code error) mutable {
@@ -952,6 +966,21 @@ void start_next_async_send (std::shared_ptr<connector_state_t> state)
 void start_read_loop (std::shared_ptr<connector_state_t> state)
 {
     schedule_request_pump (std::move (state));
+}
+
+void resume_pending_writes_after_connect (std::shared_ptr<connector_state_t> state)
+{
+    std::size_t queued = 0;
+    bool connected = false;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        queued = state->pending_writes.size ();
+        connected = is_transport_connected (*state);
+    }
+    trace_request ("flush-on-connect", std::nullopt, {},
+                   "pending_writes=" + std::to_string (queued)
+                     + " connected=" + (connected ? "true" : "false"));
+    start_next_async_write (std::move (state));
 }
 
 void submit_request_async (std::shared_ptr<void> state_handle,

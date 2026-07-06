@@ -130,6 +130,7 @@ void submit_send_async (std::shared_ptr<connector_state_t> state,
                         packet_t packet,
                         std::function<void (result_t<void>)> callback);
 void start_read_loop (std::shared_ptr<connector_state_t> state);
+void resume_pending_writes_after_connect (std::shared_ptr<connector_state_t> state);
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state);
 result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
                                  std::chrono::milliseconds timeout);

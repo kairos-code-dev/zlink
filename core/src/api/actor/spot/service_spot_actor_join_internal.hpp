@@ -40,6 +40,7 @@ actor_handle_t *create_join_actor_locked_with_generation (zlink::spot_node_t *no
                                                           bool pending_remote_join_);
 void remove_join_pending_target_locked (queued_join_request_t *request_);
 void remove_join_actor_locked (actor_handle_t *actor_, bool erase_session_binding_);
+void notify_join_actor_readable (actor_handle_t *actor_);
 void schedule_join_lifecycle_event_locked (
   const std::shared_ptr<spot_logical_state_t> &spot_state_,
   zlink_spot_actor_lifecycle_event_kind_t kind_,

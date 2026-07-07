@@ -5,12 +5,16 @@
 #include "api/actor/spot/service_spot_actor_join_internal.hpp"
 #include "api/actor/spot/service_spot_actor_state_internal.hpp"
 #include "api/socket/request_timeout_scheduler_internal.hpp"
+#include "core/recv_tls_view.hpp"
 #include "runtime/services/actor/gateway/service_spot_actor_gateway_protocol_internal.hpp"
 #include "runtime/services/actor/multipart/service_spot_actor_multipart_internal.hpp"
+#include "runtime/services/actor/result/service_spot_actor_result_internal.hpp"
+#include "runtime/services/actor/service_spot_actor_internal.hpp"
 #include "runtime/services/actor/validation/service_spot_actor_validation_internal.hpp"
 #include "runtime/services/spot/common/spot_message_parts_internal.hpp"
 #include "runtime/services/spot/node/spot_node.hpp"
 #include "runtime/services/spot/node/spot_node_access.hpp"
+#include "runtime/services/spot/pubsub/spot_subject_access.hpp"
 #include "runtime/services/spot/runtime/spot_handle.hpp"
 #include "utils/clock.hpp"
 
@@ -41,6 +45,15 @@ void complete_idempotent_join_scheduled (void *userdata_)
 void cleanup_idempotent_join_completion (void *userdata_)
 {
     delete static_cast<idempotent_join_completion_t *> (userdata_);
+}
+
+bool same_join_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
+{
+    if (!lhs_ || !rhs_)
+        return false;
+    if (lhs_ == rhs_)
+        return true;
+    return lhs_->logical_state && lhs_->logical_state == rhs_->logical_state;
 }
 
 }
@@ -562,4 +575,171 @@ zlink_submit_result_t complete_idempotent_join_async (zlink_msg_t *parts_,
 }
 
 }
+}
+
+using namespace zlink::spot_actor_api_internal;
+
+extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (void *spot_,
+                                                           zlink_actor_join_info_t *info_out_,
+                                                           zlink_msg_t **parts_out_,
+                                                           size_t *part_count_out_,
+                                                           zlink_recv_flags_t flags_)
+{
+    if (!spot_ || !info_out_ || !parts_out_ || !part_count_out_) {
+        errno = EINVAL;
+        return ZLINK_RECV_INVALID_HANDLE;
+    }
+    if (flags_ != ZLINK_RECV_FLAGS_DONTWAIT) {
+        errno = ENOTSUP;
+        return ZLINK_RECV_NOT_SUPPORTED;
+    }
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot || !spot->logical_state) {
+        errno = EFAULT;
+        return ZLINK_RECV_INVALID_HANDLE;
+    }
+    std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+    queued_join_request_t *request = NULL;
+    if (!actor_runtime ().joins.peek_for_spot (spot, &request)) {
+        errno = EAGAIN;
+        return ZLINK_RECV_NO_DATA;
+    }
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return ZLINK_RECV_INTERNAL_ERROR;
+    for (zlink::spot_owned_msg_parts_t::iterator it = request->message_parts.begin ();
+         it != request->message_parts.end (); ++it) {
+        if (zlink::recv_tls_view::push (&(*it)) != 0) {
+            zlink::recv_tls_view::abort ();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+    }
+    if (zlink::recv_tls_view::commit (parts_out_, part_count_out_) != 0) {
+        zlink::recv_tls_view::abort ();
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    zlink::spot_clear_msg_parts (&request->message_parts);
+    remove_pending_join_request_locked (request);
+    request->spot = spot;
+    memset (info_out_, 0, sizeof (*info_out_));
+    if (request->actor)
+        info_out_->source_actor = request->actor->ref_cache;
+    else
+        info_out_->source_actor = request->source_actor_ref;
+    info_out_->target_actor = request->target_actor_ref;
+    info_out_->source_node_rid =
+      request->actor ? request->actor->node_rid : request->source_node_rid;
+    info_out_->source_spot_rid = request->source_spot_rid;
+    info_out_->target_node_rid =
+      request->target_node ? request->target_node_rid : request->actor->node_rid;
+    if (request->spot_state)
+        info_out_->target_spot_rid = request->spot_state->routing_id;
+    info_out_->join_epoch = request->join_epoch;
+    info_out_->request = request;
+    info_out_->flags = request->remote ? ZLINK_ACTOR_JOIN_INFO_REMOTE : 0u;
+    return ZLINK_RECV_OK;
+}
+
+extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (void *spot_,
+                                                              const zlink_actor_join_info_t *info_,
+                                                              int32_t join_result_code_,
+                                                              zlink_msg_t *parts_,
+                                                              size_t part_count_)
+{
+    if (!spot_) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    if (!info_ || !info_->request) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if ((info_->flags & ~ZLINK_ACTOR_JOIN_INFO_REMOTE) != 0) {
+        errno = EPROTO;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (!zlink::spot_actor_internal::valid_multipart_payload (parts_, part_count_))
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    queued_join_request_t *request = static_cast<queued_join_request_t *> (info_->request);
+    actor_handle_t *readable_actor = NULL;
+    zlink_request_result_t completion_result = ZLINK_REQUEST_OK;
+    bool send_external_reply = false;
+    zlink::spot_node_t *external_reply_node = NULL;
+    zlink_routing_id_t external_reply_source_node_rid;
+    zlink_routing_id_t external_reply_target_node_rid;
+    zlink_routing_id_t external_reply_target_spot_rid;
+    char external_reply_actor_id[ZLINK_ACTOR_ID_MAX];
+    uint64_t external_reply_actor_generation = 0;
+    uint64_t external_reply_join_epoch = 0;
+    int32_t external_reply_join_result_code = 0;
+    std::vector<zlink_msg_t> external_reply_parts;
+    memset (&external_reply_source_node_rid, 0, sizeof (external_reply_source_node_rid));
+    memset (&external_reply_target_node_rid, 0, sizeof (external_reply_target_node_rid));
+    memset (&external_reply_target_spot_rid, 0, sizeof (external_reply_target_spot_rid));
+    memset (external_reply_actor_id, 0, sizeof (external_reply_actor_id));
+    {
+        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+        if (!join_request_live_locked (request) || request->replied || !request->spot
+            || !same_join_spot (request->spot, spot)) {
+            errno = EALREADY;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
+        if (info_->join_epoch != request->join_epoch
+            || info_->flags != (request->remote ? ZLINK_ACTOR_JOIN_INFO_REMOTE : 0u)) {
+            errno = ESTALE;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
+        const zlink_submit_result_t adopt_rc =
+          zlink::spot_actor_internal::adopt_multipart_payload (&request->reply_parts, parts_,
+                                                               part_count_);
+        if (adopt_rc != ZLINK_SUBMIT_OK)
+            return adopt_rc;
+        request->replied = true;
+        request->join_result_code = join_result_code_;
+        if (join_result_code_ == 0)
+            completion_result = commit_accepted_join_locked (request, &readable_actor);
+        if (request->remote && !request->actor
+            && zlink::spot_actor_internal::valid_routing_id (&request->source_node_rid)) {
+            send_external_reply = true;
+            external_reply_node = request->target_node;
+            external_reply_target_node_rid = request->source_node_rid;
+            external_reply_target_spot_rid =
+              request->spot_state ? request->spot_state->routing_id : request->source_spot_rid;
+            external_reply_actor_generation = request->target_actor_ref.generation;
+            external_reply_join_epoch = request->join_epoch;
+            external_reply_join_result_code = join_result_code_;
+            strncpy (external_reply_actor_id, request->target_actor_ref.actor_id,
+                     ZLINK_ACTOR_ID_MAX - 1);
+            if (external_reply_node)
+                (void) external_reply_node->node_routing_id (&external_reply_source_node_rid);
+            if (zlink::spot_move_msg_parts (&request->reply_parts, &external_reply_parts) != 0)
+                completion_result = ZLINK_REQUEST_INTERNAL_ERROR;
+        }
+        retire_join_request_locked (request);
+    }
+
+    if (readable_actor)
+        notify_join_actor_readable (readable_actor);
+    if (send_external_reply && external_reply_node
+        && zlink::spot_actor_internal::valid_routing_id (&external_reply_source_node_rid)) {
+        zlink_msg_t *reply_data = external_reply_parts.empty () ? NULL : &external_reply_parts[0];
+        const zlink_submit_result_t send_rc =
+          zlink::spot_actor_internal::send_actor_gateway_multipart_from_source (
+            external_reply_node, external_reply_source_node_rid, external_reply_target_node_rid,
+            request->entry_spot_join ? zlink::spot_actor_gateway::packet_entry_join_reply
+                                     : zlink::spot_actor_gateway::packet_spot_join_reply,
+            external_reply_target_spot_rid, external_reply_actor_id,
+            external_reply_actor_generation, external_reply_join_epoch,
+            external_reply_join_result_code, reply_data, external_reply_parts.size (),
+            ZLINK_DONTWAIT);
+        if (send_rc != ZLINK_SUBMIT_OK && completion_result == ZLINK_REQUEST_OK)
+            completion_result = zlink::spot_actor_internal::errno_to_request_result (errno);
+    }
+    complete_join_request (request, completion_result);
+    release_join_request_after_completion (request);
+    return ZLINK_SUBMIT_OK;
 }

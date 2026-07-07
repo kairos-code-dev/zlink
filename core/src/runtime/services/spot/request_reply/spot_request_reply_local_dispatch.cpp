@@ -238,11 +238,8 @@ int synthesize_local_error_reply (const parsed_spot_envelope_t &request_envelope
     zlink_msg_t errno_part;
     zlink_msg_init (&errno_part);
 
-    unsigned char errbuf[4];
-    zlink::request_reply::encode_u32_be (static_cast<uint32_t> (errnum_), errbuf);
-    if (zlink_msg_init_size (&errno_part, sizeof (errbuf)) != 0)
+    if (zlink::request_reply::init_error_reply_errno_part (&errno_part, errnum_) != 0)
         return -1;
-    memcpy (zlink_msg_data (&errno_part), errbuf, sizeof (errbuf));
 
     std::vector<zlink_msg_t> combined;
     if (zlink::spot_reqrep_internal::build_spot_request_reply_message (

@@ -6,28 +6,8 @@
 
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
-#include "api/message/request_result_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "sockets/common/socket_base.hpp"
-
-#include <string.h>
-
-namespace
-{
-int init_errno_part (zlink_msg_t *part_, int errnum_)
-{
-    if (!part_) {
-        errno = EFAULT;
-        return -1;
-    }
-    unsigned char errbuf[4];
-    zlink::request_reply::encode_u32_be (static_cast<uint32_t> (errnum_), errbuf);
-    if (zlink_msg_init_size (part_, sizeof (errbuf)) != 0)
-        return -1;
-    memcpy (zlink_msg_data (part_), errbuf, sizeof (errbuf));
-    return 0;
-}
-}
 
 namespace zlink
 {
@@ -174,7 +154,7 @@ void send_channel_request_error (socket_base_t *router_socket_,
         return;
     zlink_msg_t errno_part;
     zlink_msg_init (&errno_part);
-    if (init_errno_part (&errno_part, zlink::request_result_internal::to_errno (result_)) != 0)
+    if (zlink::request_reply::init_error_reply_result_part (&errno_part, result_) != 0)
         return;
     (void) socket_reqrep_internal::send_request_reply_message (
       router_socket_, peer_rid_, &errno_part, 1, ZLINK_DONTWAIT,
@@ -196,7 +176,7 @@ void reply_to_channel_request (zlink_request_result_t result_,
         zlink_multipart_close (parts_, part_count_);
         zlink_msg_t errno_part;
         zlink_msg_init (&errno_part);
-        if (init_errno_part (&errno_part, zlink::request_result_internal::to_errno (result_)) == 0) {
+        if (zlink::request_reply::init_error_reply_result_part (&errno_part, result_) == 0) {
             (void) socket_reqrep_internal::send_request_reply_message (
               pending->router_socket, &pending->peer_rid, &errno_part, 1, ZLINK_DONTWAIT,
               request_reply::error_reply_type, pending->request_seq);

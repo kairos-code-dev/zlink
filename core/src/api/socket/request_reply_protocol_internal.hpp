@@ -203,6 +203,26 @@ inline int decode_reply_completion (uint8_t message_type_,
     return 0;
 }
 
+inline int init_error_reply_errno_part (zlink_msg_t *part_, int errnum_)
+{
+    if (!part_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    unsigned char errbuf[4];
+    encode_u32_be (static_cast<uint32_t> (errnum_), errbuf);
+    if (zlink_msg_init_size (part_, sizeof (errbuf)) != 0)
+        return -1;
+    memcpy (zlink_msg_data (part_), errbuf, sizeof (errbuf));
+    return 0;
+}
+
+inline int init_error_reply_result_part (zlink_msg_t *part_, zlink_request_result_t result_)
+{
+    return init_error_reply_errno_part (part_, zlink::request_result_internal::to_errno (result_));
+}
+
 inline int init_control_part (zlink_msg_t *part_, const void *data_, size_t size_)
 {
     if (!part_) {

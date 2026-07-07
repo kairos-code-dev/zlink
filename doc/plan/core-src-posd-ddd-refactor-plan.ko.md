@@ -244,7 +244,7 @@ runtime/services (spot):
   - 670줄 단일 TU에 local dispatch + pending 조회 + reply 전달 + 에러 합성 +
     codec + local-delivery 파이프라인(api쪽 24파일과 극단 비대칭). T2-08 codec
     분리 후 에러 합성/전달을 concern별 분리. (code-motion / M)
-- [ ] **T2-10. spot 에러-reply 합성/분류 dedup**
+- [x] **T2-10. spot 에러-reply 합성/분류 dedup**
   - `spot_request_reply_local_dispatch.cpp:234-266`,
     `service_spot_route_bridge_channel_reply_internal.cpp:213, 234`,
     `service_spot_request_reply_channel_bridge.cpp:29-74`
@@ -476,3 +476,6 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-02 구현 — reqrep envelope control frame의 protocol/version/type/seq
   인코딩을 `request_reply_protocol_internal.hpp`의 공통 helper로 모았다. streaming
   send 경로는 기존 4프레임 전송 형태를 유지하고, control bytes 생성만 정본화했다.
+- 2026-07-07: T2-10 구현 — spot request/reply error-reply의 errno payload
+  생성을 `request_reply_protocol_internal.hpp`의 공통 helper로 모았다. result→errno
+  분류는 T1-01의 `request_result_internal::to_errno` 정본을 계속 사용한다.

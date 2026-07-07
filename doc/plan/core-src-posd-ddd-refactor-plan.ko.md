@@ -158,9 +158,11 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
     send-frame consume 여부와 no-bind pending erase는 호출처에 남겼다. 사용자
     지시와 CPU 부하 조건에 따라 perf는 생략하고 빌드와 관련 actor/spot 테스트로
     검증했다.
-- [ ] **T1-08. `err.cpp` backtrace 서브시스템 분리**
+- [x] **T1-08. `err.cpp` backtrace 서브시스템 분리**
   - `runtime/utils/err.cpp:371-424` `print_backtrace`(demangle/backtrace 의존)를
     별도 진단 TU로. errno 번역과 무관한 관심사. (없음 / S)
+  - 2026-07-07 완료: `print_backtrace` 구현을 `runtime/utils/err_backtrace.cpp`로
+    분리하고 `err.cpp`에는 errno 문자열, abort, Windows errno 변환만 남겼다.
 - [ ] **T1-09. TLS verify-mode 결정 시퀀스 `ssl_context_helper`로 중앙화**
   - `transports/tls/asio_tls_connecter.cpp:400-424` vs
     `transports/ws/asio_ws_connecter.cpp:60-77` + 양쪽 listener의
@@ -442,3 +444,5 @@ sockets/engine/transports/utils:
 - 2026-07-07: T1-07 구현 — actor gateway multipart 조립의 3중 복제를 header
   inline helper로 통일했다. send 경로의 기존 frame consume 정책과 no-bind pending
   cleanup 정책은 호출처별로 유지했다.
+- 2026-07-07: T1-08 구현 — `err.cpp`에서 libunwind/demangle 기반 backtrace 출력을
+  `err_backtrace.cpp`로 분리해 errno 변환과 진단 출력 책임을 나눴다.

@@ -1158,6 +1158,7 @@ set(utils-sources
     src/runtime/utils/allocator.cpp
     src/runtime/utils/clock.cpp
     src/runtime/utils/err.cpp
+    src/runtime/utils/err_backtrace.cpp
     src/runtime/utils/ip.cpp
     src/runtime/utils/ip_resolver.cpp
     src/runtime/utils/mtrie.cpp

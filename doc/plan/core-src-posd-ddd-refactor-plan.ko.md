@@ -294,7 +294,7 @@ runtime/core:
     release는 `command_targets_pipe` 집합(`:17-22, 144-145`)으로 발화 — 불변식이
     두 단절 지점에 분산. `send_to_pipe` 헬퍼로 co-locate.
     `send_activate_write:276-279` self-dispatch는 불변. (code-motion / S)
-- [ ] **T2-21. `session_base_pipe_io.cpp` trace 추출**
+- [x] **T2-21. `session_base_pipe_io.cpp` trace 추출**
   - `:10-12, 26-50` env-gate된 router 커맨드 trace(stderr)가 `push_msg` 분기에
     인라인. no-op-when-disabled 헬퍼로. (code-motion / S)
 
@@ -543,6 +543,9 @@ sockets/engine/transports/utils:
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,
   bindings/framework 확인은 별도 단계로 넘긴다.
+- 2026-07-07: T2-21 완료 — `session_base_pipe_io.cpp`의 env-gate router trace
+  `fprintf`와 로그 카운터를 같은 TU의 inline helper로 옮겨 `push_msg` 분기에서
+  trace 세부 조립을 제거했다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

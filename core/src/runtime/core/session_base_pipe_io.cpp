@@ -10,6 +10,66 @@
 namespace
 {
 const bool spot_direct_route_trace_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+
+enum session_push_trace_event_t
+{
+    session_push_trace_command,
+    session_push_trace_payload,
+    session_push_trace_write,
+    session_push_trace_write_failed
+};
+
+inline void trace_router_session_push (zlink::socket_base_t *socket_,
+                                       zlink::msg_t *msg_,
+                                       session_push_trace_event_t event_)
+{
+    if (!spot_direct_route_trace_on || !socket_
+        || socket_->socket_type () != ZLINK_CORE_SOCKET_ROUTER)
+        return;
+
+    switch (event_) {
+        case session_push_trace_command: {
+            static std::atomic<int> g_router_command_logs (0);
+            if (g_router_command_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
+                std::fprintf (
+                  stderr, "[spot-direct] session push command socket=%d size=%zu flags=%u\n",
+                  socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
+            break;
+        }
+        case session_push_trace_payload: {
+            static std::atomic<int> g_router_payload_logs (0);
+            if (g_router_payload_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
+                std::fprintf (
+                  stderr,
+                  "[spot-direct] session push payload socket=%d size=%zu flags=%u more=%d "
+                  "routing_id=%d\n",
+                  socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
+                  (msg_->flags () & zlink::msg_t::more) != 0 ? 1 : 0,
+                  msg_->is_routing_id () ? 1 : 0);
+            break;
+        }
+        case session_push_trace_write: {
+            static std::atomic<int> g_router_write_logs (0);
+            if (g_router_write_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
+                std::fprintf (
+                  stderr,
+                  "[spot-direct] session wrote pipe socket=%d size=%zu flags=%u more=%d "
+                  "routing_id=%d\n",
+                  socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
+                  (msg_->flags () & zlink::msg_t::more) != 0 ? 1 : 0,
+                  msg_->is_routing_id () ? 1 : 0);
+            break;
+        }
+        case session_push_trace_write_failed: {
+            static std::atomic<int> g_router_write_fail_logs (0);
+            if (g_router_write_fail_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
+                std::fprintf (
+                  stderr, "[spot-direct] session pipe write failed socket=%d size=%zu flags=%u\n",
+                  socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
+            break;
+        }
+    }
+}
 }
 
 int zlink::session_base_t::pull_msg (msg_t *msg_)
@@ -26,17 +86,8 @@ int zlink::session_base_t::pull_msg (msg_t *msg_)
 
 int zlink::session_base_t::push_msg (msg_t *msg_)
 {
-    const bool trace_direct_route = spot_direct_route_trace_on && _socket != NULL;
-
     if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe () && !msg_->is_cancel ()) {
-        if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
-            static std::atomic<int> g_router_command_logs (0);
-            if (g_router_command_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
-                std::fprintf (
-                  stderr, "[spot-direct] session push command socket=%d size=%zu flags=%u\n",
-                  _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
-            }
-        }
+        trace_router_session_push (_socket, msg_, session_push_trace_command);
         if (_socket) {
             const int control_rc = _socket->peer_command_from_io (msg_, _pipe);
             if (control_rc < 0)
@@ -50,17 +101,7 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         return 0;
     }
 
-    if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
-        static std::atomic<int> g_router_payload_logs (0);
-        if (g_router_payload_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
-            std::fprintf (
-              stderr,
-              "[spot-direct] session push payload socket=%d size=%zu flags=%u more=%d "
-              "routing_id=%d\n",
-              _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
-              (msg_->flags () & msg_t::more) != 0 ? 1 : 0, msg_->is_routing_id () ? 1 : 0);
-        }
-    }
+    trace_router_session_push (_socket, msg_, session_push_trace_payload);
 
     if (_socket && _socket->socket_msg_dispatch_active ()) {
         const int dispatch_rc = _socket->socket_msg_dispatch_from_io (msg_, _pipe);
@@ -88,30 +129,13 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
     }
 
     if (_pipe && _pipe->write (msg_)) {
-        if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
-            static std::atomic<int> g_router_write_logs (0);
-            if (g_router_write_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
-                std::fprintf (
-                  stderr,
-                  "[spot-direct] session wrote pipe socket=%d size=%zu flags=%u more=%d "
-                  "routing_id=%d\n",
-                  _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
-                  (msg_->flags () & msg_t::more) != 0 ? 1 : 0, msg_->is_routing_id () ? 1 : 0);
-            }
-        }
+        trace_router_session_push (_socket, msg_, session_push_trace_write);
         const int rc = msg_->init ();
         errno_assert (rc == 0);
         return 0;
     }
 
-    if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
-        static std::atomic<int> g_router_write_fail_logs (0);
-        if (g_router_write_fail_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
-            std::fprintf (
-              stderr, "[spot-direct] session pipe write failed socket=%d size=%zu flags=%u\n",
-              _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
-        }
-    }
+    trace_router_session_push (_socket, msg_, session_push_trace_write_failed);
     errno = EAGAIN;
     return -1;
 }

@@ -6,8 +6,17 @@
 
 #include <stddef.h>
 
+struct spot_handle_t;
+
 namespace zlink
 {
+class spot_node_t;
+
+namespace spot_actor_gateway
+{
+struct frame_t;
+}
+
 namespace spot_actor_api_internal
 {
 
@@ -22,7 +31,30 @@ void release_join_request_after_completion (queued_join_request_t *request_);
 void remove_pending_join_request_locked (queued_join_request_t *request_);
 void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms_);
 
+actor_handle_t *create_join_actor_locked_with_generation (zlink::spot_node_t *node_,
+                                                          const zlink_routing_id_t &node_rid_,
+                                                          const char *actor_id_,
+                                                          uint64_t generation_,
+                                                          bool pending_remote_join_);
 void remove_join_pending_target_locked (queued_join_request_t *request_);
+
+int enqueue_actor_gateway_entry_join_request_locked (
+  zlink::spot_node_t *node_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink::spot_actor_gateway::frame_t &frame_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  bool entry_spot_join_,
+  spot_handle_t **notify_spot_out_);
+int process_actor_gateway_entry_join_reply_locked (
+  zlink::spot_node_t *node_,
+  const zlink_routing_id_t *reply_source_node_rid_,
+  const zlink::spot_actor_gateway::frame_t &frame_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  bool entry_spot_join_,
+  queued_join_request_t **completed_out_,
+  actor_handle_t **source_actor_to_remove_out_);
 
 void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_);
 

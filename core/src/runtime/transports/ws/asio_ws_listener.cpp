@@ -15,6 +15,7 @@
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
+#include "transports/asio/asio_tcp_acceptor_config.hpp"
 #include "transports/asio/asio_listener_accept_policy.hpp"
 #include "transports/asio/asio_tcp_endpoint.hpp"
 #include "transports/asio/asio_tcp_tuning.hpp"
@@ -89,62 +90,20 @@ int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_, boo
     boost::asio::ip::tcp protocol =
       addr_->family () == AF_INET6 ? boost::asio::ip::tcp::v6 () : boost::asio::ip::tcp::v4 ();
 
-    boost::system::error_code ec;
-
-    //  Open the acceptor
-    _acceptor.open (protocol, ec);
-    if (ec) {
-        WS_LISTENER_DBG ("Failed to open acceptor: %s", ec.message ().c_str ());
-        errno = EADDRINUSE;
-        return -1;
-    }
-
-    //  Set socket options
-#ifdef ZLINK_HAVE_WINDOWS
-    _acceptor.set_option (
-      boost::asio::detail::socket_option::boolean<SOL_SOCKET, SO_EXCLUSIVEADDRUSE> (true), ec);
-#else
-    _acceptor.set_option (boost::asio::socket_base::reuse_address (true), ec);
-#endif
-    if (ec) {
-        WS_LISTENER_DBG ("Failed to set reuse_address: %s", ec.message ().c_str ());
-        _acceptor.close ();
-        errno = EADDRINUSE;
-        return -1;
-    }
-
-    //  For IPv6, set IPV6_V6ONLY option
-    if (addr_->family () == AF_INET6) {
-        _acceptor.set_option (boost::asio::ip::v6_only (!options.ipv6), ec);
-        if (ec) {
-            WS_LISTENER_DBG ("Failed to set v6only: %s", ec.message ().c_str ());
-            //  Non-fatal, continue
-        }
-    }
-
     //  Construct boost endpoint from ws_address
     const boost::asio::ip::tcp::endpoint bind_endpoint =
       asio_tcp_endpoint_from_sockaddr (addr_->addr ());
 
-    //  Bind the acceptor
-    _acceptor.bind (bind_endpoint, ec);
-    if (ec) {
-        WS_LISTENER_DBG ("Failed to bind: %s", ec.message ().c_str ());
-        _acceptor.close ();
-        errno = EADDRINUSE;
+    if (configure_asio_tcp_acceptor (
+          _acceptor, protocol, addr_->family (), bind_endpoint, options, false,
+          [] (const char *stage, const boost::system::error_code &ec, bool) {
+              WS_LISTENER_DBG ("Failed to %s: %s", stage, ec.message ().c_str ());
+          })
+        != 0)
         return -1;
-    }
-
-    //  Listen for incoming connections
-    _acceptor.listen (options.backlog, ec);
-    if (ec) {
-        WS_LISTENER_DBG ("Failed to listen: %s", ec.message ().c_str ());
-        _acceptor.close ();
-        errno = EADDRINUSE;
-        return -1;
-    }
 
     //  Get the actual bound port (in case port 0 was specified)
+    boost::system::error_code ec;
     boost::asio::ip::tcp::endpoint local_ep = _acceptor.local_endpoint (ec);
     if (!ec) {
         _port = local_ep.port ();

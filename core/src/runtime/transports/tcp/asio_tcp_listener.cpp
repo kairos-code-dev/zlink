@@ -10,6 +10,7 @@
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
+#include "transports/asio/asio_tcp_acceptor_config.hpp"
 #include "transports/asio/asio_listener_accept_policy.hpp"
 #include "transports/asio/asio_tcp_endpoint.hpp"
 #include "transports/asio/asio_tcp_tuning.hpp"
@@ -73,74 +74,17 @@ int zlink::asio_tcp_listener_t::set_local_address (const char *addr_)
     boost::asio::ip::tcp protocol =
       _address.family () == AF_INET6 ? boost::asio::ip::tcp::v6 () : boost::asio::ip::tcp::v4 ();
 
-    boost::system::error_code ec;
-
-    //  Open the acceptor
-    _acceptor.open (protocol, ec);
-    if (ec) {
-        LISTENER_DBG ("Failed to open acceptor: %s", ec.message ().c_str ());
-        errno = EADDRINUSE;
-        return -1;
-    }
-
-    //  Set socket options
-
-    //  Allow reusing of the address (SO_REUSEADDR)
-#ifdef ZLINK_HAVE_WINDOWS
-    //  On Windows, use SO_EXCLUSIVEADDRUSE instead
-    _acceptor.set_option (
-      boost::asio::detail::socket_option::boolean<SOL_SOCKET, SO_EXCLUSIVEADDRUSE> (true), ec);
-#else
-    _acceptor.set_option (boost::asio::socket_base::reuse_address (true), ec);
-#endif
-    if (ec) {
-        LISTENER_DBG ("Failed to set reuse_address: %s", ec.message ().c_str ());
-        _acceptor.close ();
-        errno = EADDRINUSE;
-        return -1;
-    }
-
-#ifdef SO_REUSEPORT
-    typedef boost::asio::detail::socket_option::boolean<SOL_SOCKET, SO_REUSEPORT> reuse_port_t;
-    _acceptor.set_option (reuse_port_t (true), ec);
-    if (ec) {
-        LISTENER_DBG ("Failed to set reuse_port: %s", ec.message ().c_str ());
-        //  Non-fatal: keep compatibility with kernels where SO_REUSEPORT
-        //  is blocked or unsupported for this socket type.
-        ec.clear ();
-    }
-#endif
-
-    //  For IPv6, set IPV6_V6ONLY option based on ipv6 setting
-    if (_address.family () == AF_INET6) {
-        _acceptor.set_option (boost::asio::ip::v6_only (!options.ipv6), ec);
-        if (ec) {
-            LISTENER_DBG ("Failed to set v6only: %s", ec.message ().c_str ());
-            //  Non-fatal, continue
-        }
-    }
-
     //  Construct boost endpoint from zlink address
     const boost::asio::ip::tcp::endpoint bind_endpoint =
       asio_tcp_endpoint_from_sockaddr (_address.addr ());
 
-    //  Bind the acceptor
-    _acceptor.bind (bind_endpoint, ec);
-    if (ec) {
-        LISTENER_DBG ("Failed to bind: %s", ec.message ().c_str ());
-        _acceptor.close ();
-        errno = EADDRINUSE;
+    if (configure_asio_tcp_acceptor (
+          _acceptor, protocol, _address.family (), bind_endpoint, options, true,
+          [] (const char *stage, const boost::system::error_code &ec, bool) {
+              LISTENER_DBG ("Failed to %s: %s", stage, ec.message ().c_str ());
+          })
+        != 0)
         return -1;
-    }
-
-    //  Listen for incoming connections
-    _acceptor.listen (options.backlog, ec);
-    if (ec) {
-        LISTENER_DBG ("Failed to listen: %s", ec.message ().c_str ());
-        _acceptor.close ();
-        errno = EADDRINUSE;
-        return -1;
-    }
 
     //  Get endpoint string for events (this resolves wildcard port)
     _endpoint = get_socket_name (_acceptor.native_handle (), socket_end_local);

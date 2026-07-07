@@ -361,6 +361,10 @@ sockets/engine/transports/utils:
     `asio_tcp_endpoint_from_sockaddr`/`asio_tcp_protocol_for_endpoint`로 통합했다.
     source bind endpoint, listener bind endpoint, remote connect endpoint의
     IPv4/IPv6 해석은 기존과 동일하게 유지했다.
+  - 2026-07-08 부분 완료: TCP/TLS/WS listener의 acceptor open, reuse option,
+    v6-only, bind, listen 순서를 `configure_asio_tcp_acceptor`로 통합했다.
+    TCP listener만 시도하던 `SO_REUSEPORT` 정책은 helper 인자로 보존했고,
+    TLS/WS listener는 기존처럼 시도하지 않는다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

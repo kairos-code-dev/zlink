@@ -368,8 +368,8 @@ int publish_socket_parts (socket_handle_t handle_,
         return -1;
     }
 
-    return zlink::logical_multipart_publish (handle_.socket, topic_id_, parts_, part_count_, flags_,
-                                             fallback_on_missing_sndtimeo_);
+    (void) fallback_on_missing_sndtimeo_;
+    return zlink::logical_multipart_publish (handle_.socket, topic_id_, parts_, part_count_, flags_);
 }
 
 zlink_submit_result_t

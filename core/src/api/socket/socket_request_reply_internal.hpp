@@ -96,6 +96,7 @@ int dispatch_dealer_message (socket_request_reply_state_t *state_,
                              zlink::pipe_t *source_pipe_,
                              zlink_msg_t *parts_,
                              size_t part_count_);
+uint64_t allocate_dealer_reply_token (socket_request_reply_state_t *state_);
 int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
                                 const zlink_routing_id_t **source_node_rid_out_,
                                 const zlink_routing_id_t **source_spot_rid_out_,

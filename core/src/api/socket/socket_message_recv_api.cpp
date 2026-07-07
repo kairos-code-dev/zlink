@@ -33,11 +33,6 @@ bool is_direct_public_recv_fast_type (int type_)
     return type_ == ZLINK_CORE_SOCKET_PAIR || type_ == ZLINK_CORE_SOCKET_DEALER;
 }
 
-bool is_direct_public_routed_recv_fast_type (int type_)
-{
-    return false;
-}
-
 int recv_socket_subscribe_parts (socket_handle_t handle_,
                                  zlink_routing_id_t *source_rid_out_,
                                  zlink_msg_t **parts_out_,
@@ -137,8 +132,6 @@ int recv_socket_parts (socket_handle_t handle_,
     const bool strip_recv_routing_id = type == ZLINK_CORE_SOCKET_STREAM || routed_router_payload;
     const bool direct_public_recv_fast =
       !strip_recv_routing_id && !source_rid_out_ && is_direct_public_recv_fast_type (type);
-    const bool direct_public_routed_recv_fast =
-      routed_router_payload && is_direct_public_routed_recv_fast_type (type);
 
     if (direct_public_recv_fast) {
         zlink_msg_t *first_slot = NULL;
@@ -152,30 +145,6 @@ int recv_socket_parts (socket_handle_t handle_,
         }
 
         if (handle_.socket->recv (reinterpret_cast<zlink::msg_t *> (first_slot), flags_) < 0)
-            return -1;
-
-        if (!zlink::msg_frame_has_more (*first_slot))
-            return zlink::recv_tls_view::commit_reserved_single (parts_out_, part_count_out_);
-
-        return zlink::export_reserved_followup_msg_sequence (handle_.socket, parts_out_,
-                                                             part_count_out_, false);
-    }
-
-    if (direct_public_routed_recv_fast) {
-        zlink_msg_t *first_slot = NULL;
-        if (zlink::recv_tls_view::begin_with_first_slot (parts_out_, part_count_out_, &first_slot)
-            != 0)
-            return -1;
-
-        reset_routing_id_output (source_rid_out_);
-        if (handle_.socket->socket_msg_dispatch_active ()) {
-            errno = EBUSY;
-            return -1;
-        }
-
-        if (handle_.socket->recv_routed (reinterpret_cast<zlink::msg_t *> (first_slot),
-                                         source_rid_out_, flags_)
-            < 0)
             return -1;
 
         if (!zlink::msg_frame_has_more (*first_slot))

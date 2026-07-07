@@ -140,7 +140,7 @@ int publish_message_with_flags (zlink::socket_base_t *socket_,
     }
 
     const int rc = zlink::logical_multipart_publish (
-      socket_, topic_.c_str (), frames.empty () ? NULL : &frames[0], frames.size (), flags_, true);
+      socket_, topic_.c_str (), frames.empty () ? NULL : &frames[0], frames.size (), flags_);
     const int saved_errno = rc == 0 ? 0 : errno;
     for (size_t i = 0; i < frames.size (); ++i)
         (void) zlink_msg_close (&frames[i]);

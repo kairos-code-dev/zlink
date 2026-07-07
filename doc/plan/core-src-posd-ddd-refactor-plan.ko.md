@@ -122,7 +122,7 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
     `core/doc/spec/core/errno-map.ko.md`가 같은 값을 가리키는 점이다. 기존
     `service_spot_route_bridge_channel_reply_internal.cpp`의 `EPERM`/`EBUSY`/
     `EAGAIN`/`ESHUTDOWN` 매핑은 정본과 달라 `to_errno` 호출로 교체했다.
-- [ ] **T1-02. `assign_routing_id_compact` 이중 정의 삭제**
+- [x] **T1-02. `assign_routing_id_compact` 이중 정의 삭제**
   - `api/socket/socket_message_api.cpp:22-28` 익명 네임스페이스 사본이
     `socket_request_reply_runtime_io_helpers.hpp:19` inline 정본을 가림. 사본
     삭제, 헤더 include. (없음 / S)
@@ -132,16 +132,16 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
   - `reqrep::foo(...) { return foo_impl(...); }` 형태 8쌍. 동일 시그니처의 얕은
     레이어이므로 `_impl` 본문을 공개 정의로 병합(호출이 하나 줄어드는 방향).
     공개 C API 진입점 주변이므로 단독 커밋 + 테스트 증거 분리. (없음 / S)
-- [ ] **T1-04. dealer reply-token 할당 중복 → 기존 헬퍼 호출**
+- [x] **T1-04. dealer reply-token 할당 중복 → 기존 헬퍼 호출**
   - `api/socket/socket_request_reply_router_api.cpp:440-457`이
     `socket_request_reply_runtime_io.cpp:82-96` `allocate_dealer_reply_token`
     + target 저장을 verbatim 재인라인. 같은 `state->mutex` 하이므로 헬퍼 호출로
     교체. (code-motion / S)
-- [ ] **T1-05. 도달 불가 recv fast-path 분기 정리**
+- [x] **T1-05. 도달 불가 recv fast-path 분기 정리**
   - `api/socket/socket_message_recv_api.cpp:36-39`
     `is_direct_public_routed_recv_fast_type`가 항상 false → `:164-186` 분기 사장.
     ROUTER-fast 후속 의도가 없음을 확인한 뒤 predicate+분기 삭제. (없음 / S)
-- [ ] **T1-06. `multipart_send_txn.cpp` dead retry scaffolding 삭제**
+- [x] **T1-06. `multipart_send_txn.cpp` dead retry scaffolding 삭제**
   - `runtime/core/multipart_send_txn.cpp:238-285`, `.hpp:69,76`
   - 미사용 `attempt_fn` typedef, 1회 호출 trampoline(`attempt_send_*` +
     `*_attempt_arg_t`), `(void)` 처리된 vestigial 파라미터 2개
@@ -429,3 +429,8 @@ sockets/engine/transports/utils:
   bridge, spot route-bridge channel reply의 로컬 매핑 3개를 제거했다. 정본 값은
   `from_errno` 왕복 일관성과 `core/doc/spec/core/errno-map(.ko).md`의 callback
   errno 표를 기준으로 확정했다.
+- 2026-07-07: T1-02/T1-04/T1-05/T1-06 구현 — `assign_routing_id_compact`
+  사본 제거, dealer reply-token 할당의 기존 helper 재사용, 항상 false인 routed
+  recv fast-path 분기 삭제, multipart send retry 잔재 삭제를 묶어 적용했다.
+  T1-04는 원래 reqrep 벤치 게이트 대상이지만, 사용자 지시로 perf 실행은
+  생략하고 빌드와 테스트로 검증한다.

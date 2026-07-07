@@ -142,7 +142,7 @@ inline int spot_publish_msg_parts (socket_base_t *socket_,
     }
 
     const int rc = logical_multipart_publish (
-      socket_, topic_.c_str (), count > 0 ? send_frames : NULL, count, ZLINK_DONTWAIT, true);
+      socket_, topic_.c_str (), count > 0 ? send_frames : NULL, count, ZLINK_DONTWAIT);
     const int saved_errno = rc == 0 ? 0 : errno;
     for (size_t i = 0; i < count; ++i)
         spot_close_msg_frame (&send_frames[i]);
@@ -187,7 +187,7 @@ inline int spot_publish_msg_parts_consume (socket_base_t *socket_,
     spot_clear_msg_parts (parts_);
 
     const int rc = logical_multipart_publish (socket_, topic_.c_str (),
-                                              count > 0 ? send_frames : NULL, count, 0, true);
+                                              count > 0 ? send_frames : NULL, count, 0);
     const int saved_errno = rc == 0 ? 0 : errno;
     for (size_t i = 0; i < count; ++i)
         spot_close_msg_frame (&send_frames[i]);

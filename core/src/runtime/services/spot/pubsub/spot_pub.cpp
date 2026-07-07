@@ -131,7 +131,7 @@ int spot_pub_t::publish (const char *topic_, zlink_msg_t *parts_, size_t part_co
 
     scoped_lock_t publish_lock (_publish_sync);
     const int rc =
-      socket ? zlink::logical_multipart_publish (socket, topic_, parts_, part_count_, flags_, true)
+      socket ? zlink::logical_multipart_publish (socket, topic_, parts_, part_count_, flags_)
              : zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
                  _runtime, topic_, parts_, part_count_, static_cast<zlink_send_flags_t> (flags_),
                  resolve_spot_send_timeout_ms (_node));

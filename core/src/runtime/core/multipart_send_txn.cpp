@@ -235,55 +235,6 @@ static int send_prefixed_once (zlink::socket_base_t *socket_,
                                       flags_, scope_);
 }
 
-typedef int (*attempt_fn) (zlink::socket_base_t *socket_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_,
-                           int flags_,
-                           void *arg_,
-                           zlink::socket_public_send_scope_t &scope_);
-
-struct routed_attempt_arg_t
-{
-    const zlink_routing_id_t *routing_id;
-};
-
-struct publish_attempt_arg_t
-{
-    const char *topic;
-};
-
-static int attempt_send_plain (zlink::socket_base_t *socket_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_,
-                               int flags_,
-                               void *,
-                               zlink::socket_public_send_scope_t &scope_)
-{
-    return send_frames_once (socket_, parts_, part_count_, flags_, false, scope_);
-}
-
-static int attempt_send_routed (zlink::socket_base_t *socket_,
-                                zlink_msg_t *parts_,
-                                size_t part_count_,
-                                int flags_,
-                                void *arg_,
-                                zlink::socket_public_send_scope_t &scope_)
-{
-    const routed_attempt_arg_t *arg = static_cast<const routed_attempt_arg_t *> (arg_);
-    return send_frames_once_routed (socket_, arg->routing_id, parts_, part_count_, flags_, scope_);
-}
-
-static int attempt_send_publish (zlink::socket_base_t *socket_,
-                                 zlink_msg_t *parts_,
-                                 size_t part_count_,
-                                 int flags_,
-                                 void *arg_,
-                                 zlink::socket_public_send_scope_t &scope_)
-{
-    const publish_attempt_arg_t *arg = static_cast<const publish_attempt_arg_t *> (arg_);
-    return send_publish_once (socket_, arg->topic, parts_, part_count_, flags_, scope_);
-}
-
 }
 
 int zlink::logical_multipart_send (socket_base_t *socket_,
@@ -301,7 +252,7 @@ int zlink::logical_multipart_send (socket_base_t *socket_,
     if (!send_scope.acquired ())
         return -1;
 
-    const int rc = attempt_send_plain (socket_, parts_, part_count_, flags_, NULL, send_scope);
+    const int rc = send_frames_once (socket_, parts_, part_count_, flags_, false, send_scope);
     if (rc != 0)
         return -1;
 
@@ -320,13 +271,13 @@ int zlink::logical_multipart_send_routed (socket_base_t *socket_,
         return -1;
     }
 
-    routed_attempt_arg_t arg = {routing_id_};
     zlink::socket_public_send_scope_t send_scope =
       zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 
-    const int rc = attempt_send_routed (socket_, parts_, part_count_, flags_, &arg, send_scope);
+    const int rc =
+      send_frames_once_routed (socket_, routing_id_, parts_, part_count_, flags_, send_scope);
     if (rc != 0)
         return -1;
 
@@ -339,15 +290,13 @@ int zlink::logical_multipart_send_prefixed (socket_base_t *socket_,
                                             size_t prefix_size_,
                                             zlink_msg_t *parts_,
                                             size_t part_count_,
-                                            int flags_,
-                                            int route_ready_retry_ms_)
+                                            int flags_)
 {
     if (!socket_ || !parts_ || part_count_ == 0) {
         errno = EINVAL;
         return -1;
     }
 
-    (void) route_ready_retry_ms_;
     zlink::socket_public_send_scope_t send_scope =
       zlink::multipart_send_facade_t::make_scope (socket_, false);
     if (!send_scope.acquired ())
@@ -488,22 +437,19 @@ int zlink::logical_multipart_publish (socket_base_t *socket_,
                                       const char *topic_,
                                       zlink_msg_t *parts_,
                                       size_t part_count_,
-                                      int flags_,
-                                      bool fallback_on_missing_sndtimeo_)
+                                      int flags_)
 {
     if (!socket_ || (part_count_ > 0 && !parts_) || (!topic_ && part_count_ == 0)) {
         errno = EINVAL;
         return -1;
     }
 
-    publish_attempt_arg_t arg = {topic_};
-    (void) fallback_on_missing_sndtimeo_;
     zlink::socket_public_send_scope_t send_scope =
       zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 
-    const int rc = attempt_send_publish (socket_, parts_, part_count_, flags_, &arg, send_scope);
+    const int rc = send_publish_once (socket_, topic_, parts_, part_count_, flags_, send_scope);
     if (rc != 0)
         return -1;
 

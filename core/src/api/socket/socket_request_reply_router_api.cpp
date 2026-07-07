@@ -436,19 +436,9 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
                 }
                 message_type = ZLINK_DEALER_MESSAGE_REQUEST;
                 std::lock_guard<std::mutex> lock (state->mutex);
-                request_seq = 0;
-                for (uint64_t i = 0; i < std::numeric_limits<uint64_t>::max (); ++i) {
-                    uint64_t token = state->dealer_next_reply_token++;
-                    if (state->dealer_next_reply_token == 0)
-                        state->dealer_next_reply_token = 1;
-                    if (token != 0 && state->dealer_reply_targets.count (token) == 0) {
-                        request_seq = token;
-                        break;
-                    }
-                }
+                request_seq = reqrep::allocate_dealer_reply_token (state.get ());
                 if (request_seq == 0) {
                     zlink::close_msg_frames (&raw_parts);
-                    errno = EAGAIN;
                     return zlink::recv_result_internal::from_errno (errno);
                 }
                 reqrep::dealer_reply_target_t target;

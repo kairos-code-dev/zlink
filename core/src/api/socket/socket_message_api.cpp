@@ -8,7 +8,7 @@
 #include "api/socket/part_helper_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
-#include "core/c_api_copy_internal.hpp"
+#include "api/socket/socket_request_reply_runtime_io_helpers.hpp"
 #include "core/recv_internal.hpp"
 
 namespace
@@ -17,14 +17,6 @@ zlink_routing_id_t &recv_part_source_rid_tls ()
 {
     static thread_local zlink_routing_id_t rid;
     return rid;
-}
-
-void assign_routing_id_compact (zlink_routing_id_t *dest_, const zlink_routing_id_t &src_)
-{
-    if (!dest_)
-        return;
-
-    zlink::copy_routing_id_from_bytes (src_.data, src_.size, dest_);
 }
 
 void drain_socket_reply_completions_for_recv (
@@ -117,7 +109,8 @@ zlink_recv_result_t zlink_recv_part (void *s_,
 
         if (part_count == 1) {
             zlink_routing_id_t &recv_part_source_rid = recv_part_source_rid_tls ();
-            assign_routing_id_compact (&recv_part_source_rid, source_rid);
+            zlink::socket_reqrep_internal::assign_routing_id_compact (&recv_part_source_rid,
+                                                                       source_rid);
             if (zlink_msg_move (part_out_, &parts[0]) != 0) {
                 zlink_multipart_close (parts, part_count);
                 errno = EFAULT;

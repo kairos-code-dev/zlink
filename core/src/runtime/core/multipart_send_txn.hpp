@@ -65,15 +65,13 @@ int logical_multipart_send_prefixed (socket_base_t *socket_,
                                      size_t prefix_size_,
                                      zlink_msg_t *parts_,
                                      size_t part_count_,
-                                     int flags_,
-                                     int route_ready_retry_ms_ = 0);
+                                     int flags_);
 
 int logical_multipart_publish (socket_base_t *socket_,
                                const char *topic_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
-                               int flags_,
-                               bool fallback_on_missing_sndtimeo_ = false);
+                               int flags_);
 
 int logical_multipart_publish_frame (socket_base_t *socket_,
                                      zlink_msg_t *topic_frame_,

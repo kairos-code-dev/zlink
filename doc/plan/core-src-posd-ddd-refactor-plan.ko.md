@@ -277,12 +277,17 @@ runtime/services (spot):
     `spot_data_plane_protocol_state_t`와 `spot_mesh_peer_state_t`를 좁은 state 헤더로
     분리했다. data-plane helper/forwarder 선언은 기존 internal 헤더 안에 남겨
     실행 경로는 바꾸지 않았다.
-- [ ] **T2-16. `spot_data_plane_forwarding.cpp` 저위험 3책임 추출**
+- [x] **T2-16. `spot_data_plane_forwarding.cpp` 저위험 3책임 추출**
   - 1,065줄 6책임 중 control plane 3개만: mesh sender 소켓 수명주기
     (`:65-144, 532-553`), poller-interest 관리(`:145-203, 574-593`),
     admission plan/backpressure 정책(`:47-63, 214-281, 555-573`).
     forward/stage/flush/drain hot 본체는 남김(6절). db5e30fb7 방향의 연장.
     (없음~code-motion / L)
+  - 2026-07-07 완료: poller-interest 갱신을
+    `spot_data_plane_poller_interest.cpp`로 분리하고 admission/backpressure 계산을
+    `spot_data_plane_queue_admission.hpp`의 inline policy로 옮겼다. 현재 호출되지
+    않는 remote mesh sender socket 생성 helper는 dead lifecycle 코드라 삭제했다.
+    `forward_*`, `stage_message`, `flush_*`, `drain_*` 본체는 제자리에 유지했다.
 
 runtime/core:
 

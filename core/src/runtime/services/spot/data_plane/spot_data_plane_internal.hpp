@@ -165,6 +165,18 @@ struct spot_data_plane_forwarder_t
     static int flush_staged_messages (spot_runtime_t *runtime_,
                                       spot_data_plane_runtime_state_t *state_);
 };
+
+struct spot_data_plane_poller_interest_t
+{
+    static void refresh_fixed (spot_data_plane_runtime_state_t *state_);
+    static void
+    refresh_local_target (spot_data_plane_runtime_state_t *state_,
+                          spot_data_plane_runtime_state_t::local_target_state_t *target_);
+    static void
+    refresh_remote_target (spot_data_plane_runtime_state_t *state_,
+                           spot_data_plane_runtime_state_t::remote_target_state_t *target_);
+    static void refresh_all (spot_data_plane_runtime_state_t *state_);
+};
 }
 
 #endif

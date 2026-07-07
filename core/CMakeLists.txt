@@ -1005,6 +1005,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/data_plane/spot_data_plane_control.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_mesh.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_message_io.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_poller_interest.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_runtime.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_runtime_config.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp

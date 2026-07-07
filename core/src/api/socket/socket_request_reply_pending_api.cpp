@@ -10,9 +10,7 @@
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
-namespace
-{
-int lookup_socket_pending_request_by_seq_impl (
+int reqrep::lookup_socket_pending_request_by_seq (
   const std::shared_ptr<reqrep::socket_request_reply_state_t> &state_,
   uint64_t request_seq_,
   reqrep::pending_key_t *key_out_)
@@ -34,7 +32,7 @@ int lookup_socket_pending_request_by_seq_impl (
     return 0;
 }
 
-void erase_socket_pending_request_impl (
+void reqrep::erase_socket_pending_request (
   const std::shared_ptr<reqrep::socket_request_reply_state_t> &state_,
   const reqrep::pending_key_t &key_)
 {
@@ -61,7 +59,7 @@ void erase_socket_pending_request_impl (
         zlink::request_timeout::cancel (pending.timeout_task);
 }
 
-int ensure_socket_pending_request_impl (
+int reqrep::ensure_socket_pending_request (
   socket_handle_t handle_,
   const zlink_routing_id_t *peer_rid_,
   uint32_t timeout_ms_,
@@ -152,33 +150,4 @@ int ensure_socket_pending_request_impl (
     *state_out_ = state;
     *key_out_ = key;
     return 0;
-}
-}
-
-int reqrep::lookup_socket_pending_request_by_seq (
-  const std::shared_ptr<socket_request_reply_state_t> &state_,
-  uint64_t request_seq_,
-  pending_key_t *key_out_)
-{
-    return lookup_socket_pending_request_by_seq_impl (state_, request_seq_, key_out_);
-}
-
-void reqrep::erase_socket_pending_request (
-  const std::shared_ptr<socket_request_reply_state_t> &state_, const pending_key_t &key_)
-{
-    erase_socket_pending_request_impl (state_, key_);
-}
-
-int reqrep::ensure_socket_pending_request (
-  socket_handle_t handle_,
-  const zlink_routing_id_t *peer_rid_,
-  uint32_t timeout_ms_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  uint64_t *request_seq_out_,
-  std::shared_ptr<socket_request_reply_state_t> *state_out_,
-  pending_key_t *key_out_)
-{
-    return ensure_socket_pending_request_impl (handle_, peer_rid_, timeout_ms_, handler_, userdata_,
-                                               request_seq_out_, state_out_, key_out_);
 }

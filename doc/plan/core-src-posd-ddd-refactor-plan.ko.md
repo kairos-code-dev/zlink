@@ -126,7 +126,7 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
   - `api/socket/socket_message_api.cpp:22-28` 익명 네임스페이스 사본이
     `socket_request_reply_runtime_io_helpers.hpp:19` inline 정본을 가림. 사본
     삭제, 헤더 include. (없음 / S)
-- [ ] **T1-03. reqrep `_impl` pass-through 병합**
+- [x] **T1-03. reqrep `_impl` pass-through 병합**
   - `api/socket/socket_request_reply_api.cpp:12-129`,
     `socket_request_reply_pending_api.cpp:15-184`
   - `reqrep::foo(...) { return foo_impl(...); }` 형태 8쌍. 동일 시그니처의 얕은
@@ -459,3 +459,6 @@ sockets/engine/transports/utils:
   `lock_socket_msg_dispatch()`로 좁히고, 하위 타입이 직접 쓰지 않는 handler
   subject/userdata accessor를 private 영역으로 내렸다. x-가상함수 표면은 변경하지
   않았다.
+- 2026-07-07: T1-03 구현 — socket reqrep api/pending api의 파일-local `_impl`
+  함수 본문을 `reqrep::...` 정의로 직접 병합하고 1줄 pass-through wrapper를
+  삭제했다. 공개 C API 및 내부 헤더 시그니처는 유지했다.

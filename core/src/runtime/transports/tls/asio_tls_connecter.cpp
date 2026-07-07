@@ -14,6 +14,7 @@
 #include "core/address.hpp"
 #include "transports/asio/asio_tcp_endpoint.hpp"
 #include "transports/asio/asio_reconnect_interval.hpp"
+#include "transports/asio/asio_socket_lifecycle.hpp"
 #include "transports/asio/asio_timer_flag.hpp"
 #include "transports/asio/asio_tcp_tuning.hpp"
 #include "transports/tcp/tcp_address.hpp"
@@ -404,14 +405,9 @@ void zlink::asio_tls_connecter_t::close ()
 {
     TLS_CONNECTER_DBG ("close called");
 
-    //  Close plain socket if open
-    if (_socket.is_open ()) {
-        fd_t fd = _socket.native_handle ();
-        boost::system::error_code ec;
-        _socket.close (ec);
-
+    close_asio_socket_if_open (_socket, [this] (fd_t fd) {
         _socket_ptr->event_closed (make_unconnected_connect_endpoint_pair (_endpoint_str), fd);
-    }
+    });
 }
 
 #endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL

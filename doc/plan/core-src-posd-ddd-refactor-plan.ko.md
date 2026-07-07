@@ -369,6 +369,10 @@ sockets/engine/transports/utils:
     linger 저장, reconnect/connect timer cancel, socket close, pending handler
     poll)를 `prepare_asio_connecter_termination`으로 통합했다. `own_t::process_term`
     호출 위치와 transport별 close/poll 동작은 호출처 람다에 남겼다.
+  - 2026-07-08 부분 완료: 네 connecter의 `close()` 안에 반복되던 open socket
+    확인, native fd capture, ASIO close, `event_closed` 방출 순서를
+    `close_asio_socket_if_open`으로 통합했다. endpoint pair 생성은 호출처에
+    유지했다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

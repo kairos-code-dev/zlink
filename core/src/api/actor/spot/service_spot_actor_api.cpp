@@ -1563,26 +1563,9 @@ void erase_actor_spot_facade (spot_handle_t *spot_)
     if (!spot_)
         return;
     std::deque<queued_join_request_t *> pending;
-    const std::shared_ptr<spot_logical_state_t> logical_state = spot_->logical_state;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        spot_handle_t *replacement =
-          actor_runtime ().nodes.find_replacement_spot (spot_, logical_state);
-        actor_runtime ().nodes.erase_spot (spot_);
-        if (replacement) {
-            actor_runtime ().joins.replace_live_spot (spot_, replacement);
-            return;
-        }
-        spot_logical_state_t *key = join_queue_key (logical_state);
-        if (logical_state && logical_state->entry) {
-            (void) key;
-            actor_runtime ().joins.replace_live_spot (spot_, NULL);
-            actor_runtime ().lifecycle.clear (logical_state.get ());
-            return;
-        }
-        actor_runtime ().lifecycle.clear (logical_state.get ());
-        actor_runtime ().joins.take_queue (key, &pending);
-        actor_runtime ().joins.collect_live_for_state (logical_state, &pending);
+        collect_join_spot_facade_erase_locked (spot_, &pending);
     }
     for (std::deque<queued_join_request_t *>::iterator it = pending.begin (); it != pending.end ();
          ++it) {
@@ -1601,20 +1584,7 @@ extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_)
     if (!spot)
         return 0;
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-    if (spot->logical_state && spot->logical_state->entry)
-        return 0;
-    if (actor_runtime ().nodes.has_peer_spot_facade (spot))
-        return 0;
-    std::vector<actor_handle_t *> actors;
-    actor_runtime ().nodes.collect_actor_handles (&actors);
-    for (std::vector<actor_handle_t *>::const_iterator it = actors.begin (); it != actors.end ();
-         ++it) {
-        if ((*it)->joined_spot_state && (*it)->joined_spot_state == spot->logical_state)
-            return 1;
-    }
-    if (actor_runtime ().joins.spot_has_pending (join_queue_key (spot->logical_state)))
-        return 1;
-    return 0;
+    return join_spot_has_joined_or_pending_actor_locked (spot) ? 1 : 0;
 }
 
 extern "C" void zlink_actor_replay_readable_for_spot (void *spot_)

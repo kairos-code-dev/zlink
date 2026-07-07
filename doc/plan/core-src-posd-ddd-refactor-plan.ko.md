@@ -516,7 +516,9 @@ sockets/engine/transports/utils:
   이동했다. `service_spot_actor_api.cpp`에는 join queue/spot replacement/stream
   teardown과 gateway ingress dispatch에 필요한 결합부가 아직 남아 있으므로 T3-01
   체크박스는 유지한다. submit 이동 뒤 미사용이 된 join pending actor/queue helper와
-  한 줄 pass-through helper는 제거했다.
+  한 줄 pass-through helper는 제거했다. 이어서 spot facade 제거 시 join queue/live
+  request를 종료 대상으로 수집하는 로직과 joined-or-pending 조회 로직을 join
+  모듈로 옮겨 API 파일의 join state 직접 접근을 더 줄였다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

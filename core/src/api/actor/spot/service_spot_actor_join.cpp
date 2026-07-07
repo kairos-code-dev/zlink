@@ -584,6 +584,47 @@ void complete_join_request (queued_join_request_t *request_, zlink_request_resul
     }
 }
 
+void collect_join_spot_facade_erase_locked (spot_handle_t *spot_,
+                                            std::deque<queued_join_request_t *> *pending_)
+{
+    if (!spot_)
+        return;
+    const std::shared_ptr<spot_logical_state_t> logical_state = spot_->logical_state;
+    spot_handle_t *replacement = actor_runtime ().nodes.find_replacement_spot (spot_,
+                                                                               logical_state);
+    actor_runtime ().nodes.erase_spot (spot_);
+    if (replacement) {
+        actor_runtime ().joins.replace_live_spot (spot_, replacement);
+        return;
+    }
+    spot_logical_state_t *key = join_queue_key (logical_state);
+    if (logical_state && logical_state->entry) {
+        (void) key;
+        actor_runtime ().joins.replace_live_spot (spot_, NULL);
+        actor_runtime ().lifecycle.clear (logical_state.get ());
+        return;
+    }
+    actor_runtime ().lifecycle.clear (logical_state.get ());
+    actor_runtime ().joins.take_queue (key, pending_);
+    actor_runtime ().joins.collect_live_for_state (logical_state, pending_);
+}
+
+bool join_spot_has_joined_or_pending_actor_locked (spot_handle_t *spot_)
+{
+    if (!spot_ || (spot_->logical_state && spot_->logical_state->entry))
+        return false;
+    if (actor_runtime ().nodes.has_peer_spot_facade (spot_))
+        return false;
+    std::vector<actor_handle_t *> actors;
+    actor_runtime ().nodes.collect_actor_handles (&actors);
+    for (std::vector<actor_handle_t *>::const_iterator it = actors.begin (); it != actors.end ();
+         ++it) {
+        if ((*it)->joined_spot_state && (*it)->joined_spot_state == spot_->logical_state)
+            return true;
+    }
+    return actor_runtime ().joins.spot_has_pending (join_queue_key (spot_->logical_state));
+}
+
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
                                                       size_t part_count_,
                                                       zlink_actor_join_spot_handler_fn handler_,

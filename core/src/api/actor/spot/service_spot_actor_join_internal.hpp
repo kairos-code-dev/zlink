@@ -5,6 +5,7 @@
 #include <zlink.h>
 
 #include <stddef.h>
+#include <deque>
 #include <memory>
 
 struct spot_handle_t;
@@ -68,6 +69,9 @@ int process_actor_gateway_entry_join_reply_locked (
   actor_handle_t **source_actor_to_remove_out_);
 
 void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_);
+void collect_join_spot_facade_erase_locked (spot_handle_t *spot_,
+                                            std::deque<queued_join_request_t *> *pending_);
+bool join_spot_has_joined_or_pending_actor_locked (spot_handle_t *spot_);
 
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
                                                       size_t part_count_,

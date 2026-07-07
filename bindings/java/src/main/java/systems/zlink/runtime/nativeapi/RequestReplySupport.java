@@ -180,6 +180,11 @@ public final class RequestReplySupport {
         RequestProgressPump.trackSocketRequest(future, socketHandle, threadName);
     }
 
+    public static ScheduledFuture<?> scheduleRequestTimeout(Runnable action,
+                                                            long timeoutMs) {
+        return REQUEST_TIMEOUTS.schedule(action, timeoutMs, TimeUnit.MILLISECONDS);
+    }
+
     private static final class NamedDaemonThreadFactory implements ThreadFactory {
         private final String name;
         private final AtomicInteger sequence = new AtomicInteger();

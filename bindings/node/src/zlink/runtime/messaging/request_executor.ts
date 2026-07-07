@@ -52,6 +52,9 @@ export function requestErrorFromResult(result: RequestResult, message: string): 
 }
 
 function executeCallbackRequest(options: NativeRequestOptions, callback: RequestCallback): boolean {
+  // HOT PATH: callback requests are the binding-level fast path. Keep this
+  // separate from executePromiseRequest so saturated request/reply benchmarks
+  // do not allocate a Promise for every in-flight request.
   const { flags, timeoutMs } = normalizeCallbackFlagsAndTimeout(
     options.flagsOrTimeout,
     options.maybeTimeout

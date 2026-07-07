@@ -197,21 +197,29 @@ final class NativeDealerRequestSupport {
                                           SendFlags flags,
                                           Duration timeout) {
         Objects.requireNonNull(callback, "callback");
+        Objects.requireNonNull(socket, "socket");
+        Objects.requireNonNull(parts, "parts");
+        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
+        long requestId = RoutedRequestSupport.nextRequestId();
+        CompletableFuture<Void> progress = RoutedRequestSupport.registerDirectPending(
+            requestId, timeoutMs, callback::onComplete);
         try {
-            request(socket, parts, timeout, flags).whenComplete((reply, error) -> {
-                List<Message> payload = List.of();
-                if (reply != null) {
-                    payload = RequestReplySupport.takeReceivedParts(reply);
-                }
-                callback.onComplete(error == null ? RequestResult.OK
-                    : RequestReplySupport.requestResult(error), payload);
-            });
+            submitRequest(socket, parts, timeoutMs, flags,
+                RoutedRequestSupport.replyCallback(),
+                RoutedRequestSupport.userData(requestId));
+            RequestReplySupport.startSocketRequestProgress(progress,
+                InternalAccess.socketHandle(socket),
+                "zlink-dealer-request-progress");
             return true;
         } catch (ZlinkSubmitException ex) {
+            RoutedRequestSupport.removeDirectPending(requestId);
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
             }
+            throw ex;
+        } catch (RuntimeException ex) {
+            RoutedRequestSupport.removeDirectPending(requestId);
             throw ex;
         }
     }

@@ -8,7 +8,6 @@ import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RequestCallback;
-import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
@@ -49,22 +48,30 @@ final class NativeRouterRequestSupport {
                                           SendFlags flags,
                                           Duration timeout) {
         Objects.requireNonNull(callback, "callback");
+        Objects.requireNonNull(socket, "socket");
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(parts, "parts");
+        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
+        long requestId = RoutedRequestSupport.nextRequestId();
+        CompletableFuture<Void> progress = RoutedRequestSupport.registerDirectPending(
+            requestId, timeoutMs, callback::onComplete);
         try {
-            request(socket, routingId, parts, flags, timeout).whenComplete(
-                (reply, error) -> {
-                    List<Message> payload = List.of();
-                    if (reply != null) {
-                        payload = RequestReplySupport.takeReceivedParts(reply);
-                    }
-                    callback.onComplete(error == null ? RequestResult.OK
-                        : RequestReplySupport.requestResult(error), payload);
-                });
+            submitRequest(socket, routingId, parts, timeoutMs, flags,
+                RoutedRequestSupport.replyCallback(),
+                RoutedRequestSupport.userData(requestId));
+            RequestReplySupport.startSocketRequestProgress(progress,
+                InternalAccess.socketHandle(socket),
+                "zlink-router-request-progress");
             return true;
         } catch (ZlinkSubmitException ex) {
+            RoutedRequestSupport.removeDirectPending(requestId);
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
             }
+            throw ex;
+        } catch (RuntimeException ex) {
+            RoutedRequestSupport.removeDirectPending(requestId);
             throw ex;
         }
     }

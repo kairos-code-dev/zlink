@@ -92,6 +92,9 @@ bool submit_request_parts_callback (std::vector<message_t> &parts_,
                                     send_flags_t flags_,
                                     SubmitPart submit_part_)
 {
+    // HOT PATH: callback request submission must stay separate from the
+    // awaitable path. Do not route this through std::promise/std::future; the
+    // native completion callback already owns the reply vector handoff.
     std::unique_ptr<request_state_t> state (make_callback_request_state (std::move (callback_)));
 
     const int raw_rc = submit_message_parts_close_on_failure (

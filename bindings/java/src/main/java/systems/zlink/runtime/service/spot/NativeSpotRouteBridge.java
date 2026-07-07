@@ -13,11 +13,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.RequestCallback;
-import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.service.spot.SpotNode;
@@ -217,16 +218,27 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         RequestCallback callback,
         SendFlags flags,
         Duration timeout) {
-        requestAsync(channelName, targetNodeRid, targetSpotRid, parts, flags, timeout)
-            .whenComplete((reply, error) -> {
-                if (error != null) {
-                    callback.onComplete(RequestReplySupport.requestResult(error),
-                        List.of());
-                    return;
-                }
-                callback.onComplete(RequestResult.OK, reply);
-            });
-        return true;
+        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
+        long requestId = RoutedRequestSupport.nextRequestId();
+        CompletableFuture<Void> progress = RoutedRequestSupport.registerDirectPending(
+            requestId, timeoutMs, callback::onComplete);
+        try {
+            RequestProgressPump.trackSocketRequest(progress,
+                endpointHandle(channelName), "zlink-spot-route-bridge-request");
+            RequestProgressPump.trackSpotRouteBridgeRequest(progress,
+                handle(), "zlink-spot-route-bridge-drain");
+            submitRequest(channelName, targetNodeRid, targetSpotRid, parts, flags,
+                RequestReplySupport.toTimeoutInt(timeoutMs), requestId);
+            return true;
+        } catch (RuntimeException ex) {
+            RoutedRequestSupport.removeDirectPending(requestId);
+            if (ex instanceof ZlinkSubmitException submitException
+                && flags == SendFlags.DONT_WAIT
+                && submitException.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
     }
 
     private void submitRequest(

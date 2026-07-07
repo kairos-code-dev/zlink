@@ -35,7 +35,6 @@ import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeListSnapshots;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
-import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -464,24 +463,8 @@ public final class NativeSpot implements Spot {
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags, Duration timeout) {
         Objects.requireNonNull(callback, "callback");
-        try {
-            requestChannelInternal(channelName, parts, timeout, flags)
-              .whenComplete((reply, error) -> {
-                  List<Message> response = List.of();
-                  if (reply != null) {
-                      response = reply;
-                  }
-                  callback.accept(error == null ? RequestResult.OK
-                      : RequestReplySupport.requestResult(error), response);
-              });
-            return true;
-        } catch (ZlinkSubmitException ex) {
-            if (flags == SendFlags.DONT_WAIT
-                && ex.getResult() == SubmitResult.BACKPRESSURED) {
-                return false;
-            }
-            throw ex;
-        }
+        return requestPlane.requestToChannelCallback(channelName, parts, callback,
+          timeout, flags);
     }
 
     private boolean publishInternal(String topicId, Message part,

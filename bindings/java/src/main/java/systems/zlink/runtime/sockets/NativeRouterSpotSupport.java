@@ -93,20 +93,19 @@ final class NativeRouterSpotSupport {
         Objects.requireNonNull(callback, "callback");
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = RoutedRequestSupport.nextRequestId();
-        CompletableFuture<Received> future = RoutedRequestSupport.registerPending(
-          requestId, timeoutMs);
+        CompletableFuture<Void> progress = RoutedRequestSupport.registerDirectPending(
+            requestId, timeoutMs, callback::accept);
         try {
             submitRouterRequestSpot(socket, destNodeRid, destSpotRid, parts,
                 RoutedRequestSupport.replyCallback(),
                 RoutedRequestSupport.userData(requestId),
                 Objects.requireNonNull(flags, "flags").value(),
                 RoutedRequestSupport.toTimeoutInt(timeoutMs));
-            RequestReplySupport.startSocketRequestProgress(future,
+            RequestReplySupport.startSocketRequestProgress(progress,
                 InternalAccess.socketHandle(socket),
                 "zlink-router-spot-request-progress");
         } catch (RuntimeException ex) {
-            RoutedRequestSupport.removePending(requestId);
-            future.cancel(false);
+            RoutedRequestSupport.removeDirectPending(requestId);
             if (ex instanceof ZlinkSubmitException submitException
                 && flags == SendFlags.DONT_WAIT
                 && submitException.getResult() == SubmitResult.BACKPRESSURED) {
@@ -114,14 +113,6 @@ final class NativeRouterSpotSupport {
             }
             throw ex;
         }
-        future.whenComplete((reply, error) -> {
-            List<Message> response = List.of();
-            if (reply != null) {
-                response = RequestReplySupport.takeReceivedParts(reply);
-            }
-            callback.accept(error == null ? RequestResult.OK
-                : RequestReplySupport.requestResult(error), response);
-        });
         return true;
     }
 

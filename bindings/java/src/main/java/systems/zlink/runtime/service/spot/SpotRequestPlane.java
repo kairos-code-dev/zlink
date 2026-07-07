@@ -10,19 +10,23 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
@@ -43,6 +47,8 @@ final class SpotRequestPlane {
     private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong(1L);
     private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
         new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, DirectReplyState> DIRECT_PENDING =
+        new ConcurrentHashMap<>();
 
     static {
         try {
@@ -58,6 +64,7 @@ final class SpotRequestPlane {
 
     private final NativeSpot spot;
     private final Set<Long> ownedRequests = ConcurrentHashMap.newKeySet();
+    private final Set<Long> ownedCallbacks = ConcurrentHashMap.newKeySet();
 
     SpotRequestPlane(NativeSpot spot) {
         this.spot = spot;
@@ -85,6 +92,37 @@ final class SpotRequestPlane {
             throw ex;
         }
         return future.thenApply(InternalAccess::receivedTakeParts);
+    }
+
+    boolean requestToChannelCallback(
+        String channelName, List<Message> parts,
+        BiConsumer<RequestResult, List<Message>> callback, Duration timeout,
+        SendFlags flags) {
+        Objects.requireNonNull(callback, "callback");
+        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
+        long requestId = NEXT_REQUEST_ID.getAndIncrement();
+        DirectReplyState state = registerDirectPending(requestId, timeoutMs, callback);
+        ownedCallbacks.add(requestId);
+        state.progress.whenComplete((ignored, error) -> ownedCallbacks.remove(requestId));
+        RequestProgressPump.trackSpotRequest(state.progress, spot.handle(),
+            "zlink-spot-request-progress");
+        try {
+            submitRequestChannel(channelName, parts, REPLY_CALLBACK,
+                MemorySegment.ofAddress(requestId),
+                Objects.requireNonNull(flags, "flags").value(),
+                RequestReplySupport.toTimeoutInt(timeoutMs));
+            return true;
+        } catch (ZlinkSubmitException ex) {
+            removeDirectPending(requestId);
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        } catch (RuntimeException ex) {
+            removeDirectPending(requestId);
+            throw ex;
+        }
     }
 
     private void submitRequestChannel(String channelName, List<Message> payload,
@@ -141,10 +179,39 @@ final class SpotRequestPlane {
         return future;
     }
 
+    private static DirectReplyState registerDirectPending(
+        long requestId,
+        long timeoutMs,
+        BiConsumer<RequestResult, List<Message>> callback) {
+        DirectReplyState state = new DirectReplyState(callback);
+        DIRECT_PENDING.put(requestId, state);
+        state.timeout = RequestReplySupport.scheduleRequestTimeout(() -> {
+            DirectReplyState removed = DIRECT_PENDING.remove(requestId);
+            if (removed != null) {
+                removed.complete(RequestResult.TIMED_OUT, List.of());
+            }
+        }, timeoutMs);
+        return state;
+    }
+
+    private static void removeDirectPending(long requestId) {
+        DirectReplyState state = DIRECT_PENDING.remove(requestId);
+        if (state != null) {
+            state.cancelTimeout();
+            state.progress.cancel(false);
+        }
+    }
+
     private static void handleReplyCallback(int result, MemorySegment parts,
                                             long partCount,
                                             MemorySegment userdata) {
         long requestId = userdata.address();
+        DirectReplyState directState = DIRECT_PENDING.remove(requestId);
+        if (directState != null) {
+            completeDirect(directState, result, parts, partCount);
+            return;
+        }
+
         CompletableFuture<Received> future = PENDING.remove(requestId);
         try {
             if (result != RequestResult.OK.value()) {
@@ -170,6 +237,28 @@ final class SpotRequestPlane {
         }
     }
 
+    private static void completeDirect(DirectReplyState state, int result,
+                                       MemorySegment parts, long partCount) {
+        state.cancelTimeout();
+        try {
+            if (result != RequestResult.OK.value()) {
+                state.complete(RequestResult.fromValue(result), List.of());
+                return;
+            }
+            try {
+                Message[] frames = InternalAccess.messageFromOwnedMessageVectorShared(
+                    parts, partCount);
+                state.complete(RequestResult.OK,
+                    frames.length == 0 ? List.of() : Arrays.asList(frames),
+                    frames);
+            } catch (Throwable error) {
+                state.complete(RequestResult.PROTOCOL_ERROR, List.of());
+            }
+        } finally {
+            NativeMessage.multipartClose(parts, partCount);
+        }
+    }
+
     void close() {
         for (Long requestId : List.copyOf(ownedRequests)) {
             CompletableFuture<Received> future = PENDING.remove(requestId);
@@ -177,6 +266,50 @@ final class SpotRequestPlane {
             if (future != null) {
                 future.completeExceptionally(
                     new ZlinkRequestException(RequestResult.TERMINATED));
+            }
+        }
+        for (Long requestId : List.copyOf(ownedCallbacks)) {
+            DirectReplyState state = DIRECT_PENDING.remove(requestId);
+            ownedCallbacks.remove(requestId);
+            if (state != null) {
+                state.cancelTimeout();
+                state.complete(RequestResult.TERMINATED, List.of());
+            }
+        }
+    }
+
+    private static final class DirectReplyState {
+        private final BiConsumer<RequestResult, List<Message>> callback;
+        private final CompletableFuture<Void> progress = new CompletableFuture<>();
+        private volatile ScheduledFuture<?> timeout;
+
+        private DirectReplyState(BiConsumer<RequestResult, List<Message>> callback) {
+            this.callback = callback;
+        }
+
+        private void cancelTimeout() {
+            ScheduledFuture<?> scheduled = timeout;
+            if (scheduled != null) {
+                scheduled.cancel(false);
+            }
+        }
+
+        private void complete(RequestResult result, List<Message> parts) {
+            complete(result, parts, null);
+        }
+
+        private void complete(RequestResult result, List<Message> parts,
+                              Message[] closeOnCallbackFailure) {
+            // HOT PATH: spot callback requests deliver the reply directly.
+            // Avoid the Received/future path used by awaitable requests.
+            try {
+                callback.accept(result, parts);
+                progress.complete(null);
+            } catch (Throwable error) {
+                if (closeOnCallbackFailure != null) {
+                    Message.closeAll(closeOnCallbackFailure);
+                }
+                progress.completeExceptionally(error);
             }
         }
     }

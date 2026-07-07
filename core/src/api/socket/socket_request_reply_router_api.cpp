@@ -11,6 +11,7 @@
 #include "api/service/service_mode_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
+#include "api/socket/socket_request_reply_submit_internal.hpp"
 #include "api/socket/socket_request_reply_wait_internal.hpp"
 #include "core/socket_poller.hpp"
 #include "core/recv_internal.hpp"
@@ -34,20 +35,6 @@ router_recv_part_metadata_tls_t &router_recv_part_metadata_tls ()
 {
     static thread_local router_recv_part_metadata_tls_t metadata;
     return metadata;
-}
-
-int validate_socket_type (void *socket_, int expected_type_)
-{
-    const socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-
-    if (socket_type (handle) != expected_type_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    return 0;
 }
 
 void export_router_recv_part_metadata_view (const zlink_routing_id_t *source_node_rid_,
@@ -110,7 +97,7 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
     }
     if (validate_recv_flags (flags_) != 0)
         return zlink::recv_result_internal::from_errno (errno);
-    if (validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
+    if (reqrep::validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
         return zlink::recv_result_internal::from_errno (errno);
 
     socket_handle_t handle = as_socket_handle (router_);
@@ -358,7 +345,7 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     }
     if (validate_recv_flags (flags_) != 0)
         return zlink::recv_result_internal::from_errno (errno);
-    if (validate_socket_type (dealer_, ZLINK_CORE_SOCKET_DEALER) != 0)
+    if (reqrep::validate_socket_type (dealer_, ZLINK_CORE_SOCKET_DEALER) != 0)
         return zlink::recv_result_internal::from_errno (errno);
 
     socket_handle_t handle = as_socket_handle (dealer_);
@@ -608,93 +595,4 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     }
     zlink::part_helper_internal::complete_recv_step (helper_state, *has_more_out_);
     return ZLINK_RECV_OK;
-}
-
-extern "C" void zlink_socket_request_reply_cleanup (void *socket_)
-{
-    reqrep::cleanup_request_reply_socket (as_socket_handle (socket_));
-}
-
-extern "C" int zlink_router_enable_request_reply_receive (void *router_)
-{
-    if (validate_socket_type (router_, ZLINK_CORE_SOCKET_ROUTER) != 0)
-        return -1;
-
-    socket_handle_t handle = as_socket_handle (router_);
-    if (!handle.socket) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    std::shared_ptr<reqrep::socket_request_reply_state_t> state =
-      reqrep::find_or_create_request_reply_state (handle);
-    if (reqrep::ensure_recv_queue_ready (state) != 0)
-        return -1;
-    return reqrep::ensure_internal_dispatch_installed (state);
-}
-
-extern "C" int zlink_socket_request_reply_set_default_timeout (void *socket_,
-                                                               const void *optval_,
-                                                               size_t optvallen_)
-{
-    const socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const int type = socket_type (handle);
-    if (type != ZLINK_CORE_SOCKET_ROUTER && type != ZLINK_CORE_SOCKET_DEALER) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (!optval_ || optvallen_ != sizeof (int)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    int timeout_ms = 0;
-    memcpy (&timeout_ms, optval_, sizeof (timeout_ms));
-    if (timeout_ms < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::shared_ptr<reqrep::socket_request_reply_state_t> state =
-      reqrep::find_or_create_request_reply_state (handle);
-    std::lock_guard<std::mutex> lock (state->mutex);
-    state->default_timeout_ms = static_cast<uint32_t> (timeout_ms);
-    return 0;
-}
-
-extern "C" int
-zlink_socket_request_reply_get_default_timeout (void *socket_, void *optval_, size_t *optvallen_)
-{
-    const socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const int type = socket_type (handle);
-    if (type != ZLINK_CORE_SOCKET_ROUTER && type != ZLINK_CORE_SOCKET_DEALER) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (!optval_ || !optvallen_ || *optvallen_ < sizeof (int)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::shared_ptr<reqrep::socket_request_reply_state_t> state =
-      reqrep::find_or_create_request_reply_state (handle);
-    int timeout_ms = 0;
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        timeout_ms = static_cast<int> (state->default_timeout_ms);
-    }
-
-    memcpy (optval_, &timeout_ms, sizeof (timeout_ms));
-    *optvallen_ = sizeof (timeout_ms);
-    return 0;
 }

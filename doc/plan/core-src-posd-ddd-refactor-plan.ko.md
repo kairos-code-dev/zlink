@@ -444,6 +444,10 @@ sockets/engine/transports/utils:
     `recv_dealer_parts_once:375-495`의 envelope 파싱+토큰 할당은
     `runtime_io.cpp` 큐 경로와 로직 중복 — T1-04 선행 후, fast path 인라인 유지
     조건으로 정리. (부분 없음, recv부는 조건부 / L)
+  - 2026-07-08 부분 완료: cleanup, router receive enable, default timeout get/set을
+    `socket_request_reply_router_control.cpp`로 분리했다. router/dealer recv 본문은
+    변경하지 않았고, 파일-local socket type 검증 사본은 기존
+    `reqrep::validate_socket_type` 정본 호출로 교체했다.
 - [x] **T3-05. ZMP handshake/control 중복 통합 (zmp ↔ ws 엔진)**
   - `engine/asio/asio_zmp_engine.cpp` vs `transports/ws/asio_ws_engine.cpp`:
     `receive_hello`/`parse_hello`/`process_handshake_input`/
@@ -673,6 +677,11 @@ sockets/engine/transports/utils:
 - 2026-07-08: T3-03 완료 — 일회성 `zlink_poll`을 `poller_poll_once.cpp`로
   분리했다. `poller_api.cpp`는 poller handle lifecycle, fd/timer API,
   `zlink_poller_wait`의 hidden-completion drain 루프를 소유한다.
+- 2026-07-08: T3-04 부분 완료 — request/reply router control-plane 함수
+  (`zlink_socket_request_reply_cleanup`,
+  `zlink_router_enable_request_reply_receive`, default timeout get/set)를
+  `socket_request_reply_router_control.cpp`로 분리했다. recv hot path는 변경하지
+  않았고, socket type 검증은 기존 `reqrep::validate_socket_type` 정본을 재사용한다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

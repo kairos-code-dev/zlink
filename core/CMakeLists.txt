@@ -873,6 +873,7 @@ set(api-socket-sources
     src/api/socket/socket_request_reply_dispatch.cpp
     src/api/socket/socket_request_reply_runtime_io.cpp
     src/api/socket/socket_request_reply_internal.cpp
+    src/api/socket/socket_request_reply_router_control.cpp
     src/api/socket/socket_request_reply_router_api.cpp
     src/api/socket/socket_request_reply_api.cpp
     src/api/socket/socket_request_reply_pending_api.cpp

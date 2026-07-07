@@ -181,7 +181,7 @@ instance, client stream notify)을 이미 고정하고 있다. GameQuest 는 act
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | quest Spot 의 actor 참여·submit 흐름이 SpotExecutionContext 로 동작한다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | GameApi WebSocket(stream) notify 와 request/reply correlation 이 유지된다. |
 
-[^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: player quest, room 등) 단위로 메시지를 라우팅하는 추상이다.
+[^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 단위(예: player quest, room 등)로 메시지를 라우팅하는 추상이다.
 [^dto]: DTO(Data Transfer Object) 는 컴포넌트 사이에서 데이터를 옮기기 위해 정의한 단순 데이터 클래스를 가리킨다.
 
 ---

@@ -83,7 +83,7 @@ var room = await client
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkRouteClient` | router channel 이름 + target 으로 노드/spot 을 직접 지정하는 client. 노드는 `SendToNode(channel, nodeRid, …)`/`RequestToNode(channel, nodeRid, …)`, spot 은 `SendToSpot(channel, 주소, …)`/`RequestToSpot(channel, 주소, …)`(§3.2) |
+| `IZLinkRouteClient` | router channel 이름 + target 으로 노드/spot 을 직접 지정하는 client. 노드는 `SendToNode(channel, nodeRid, …)`/`RequestToNode(channel, nodeRid, …)`, spot 은 `SendToSpot(channel, SpotRef, …)`/`RequestToSpot(channel, SpotRef, …)`(§3.2) |
 | `IZLinkSendCall` | route send 종결자(`PacketName` → `Submit(ct)`) |
 | `IZLinkRouteRequestCall` | route request 종결자(`PacketName` · `Timeout` → `Async<TReply>`) |
 | `IZLinkRouteSendHandler<TMessage>` | route mesh channel 의 단방향 수신 handler. `HandleAsync(msg, ZLinkRouteSendContext, ct)` |
@@ -291,7 +291,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         api.ConfigureClientSocket().Immediate = true;
         spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
         spot.AddSpotFactory<RoomSpot>();   // user Spot: 요청마다 동적 생성
-        spot.AddEntrySpot<EntrySpot>();    // Entry Spot: 노드당 단일 진입점
+        spot.AddEntrySpot<EntrySpot>();    // Entry Spot: SpotNode 당 단일 진입점
     }
 
     {
@@ -407,7 +407,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
     {
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
 
-        // 다른 spot 으로 보내려면 주소가 필요하다 — resolve 한 번으로 얻어 보관해 두고 쓴다(§3.2).
+        // 다른 spot 으로 보내려면 SpotRef 가 필요하다 — resolve 한 번으로 얻어 보관해 두고 쓴다(§3.2).
         if (await spots.ResolveSpotRefAsync(RoutingId.From("room-2"), ct) is { } room2)
         {
             Context.Outbound.SendToSpot(room2, new RoomEvent("opened")).Submit(ct);                    // send: reply 없음
@@ -431,7 +431,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `DestroyActorAsync` + `AddTimer` + `RunWorker` |
 | `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe(`AddPacket`, `AddSubscribe`) |
-| `IZLinkSpotOutbound` | spot 안 outbound. `SendToSpot(주소, msg)`/`RequestToSpot(주소, req)` 는 `SpotRef` 를 받는다(§3.2) + `Publish(topic, msg)`/`SendToChannel`/`RequestToChannel` |
+| `IZLinkSpotOutbound` | spot 안 outbound. `SendToSpot(SpotRef, msg)`/`RequestToSpot(SpotRef, req)`(§3.2) + `Publish(topic, msg)`/`SendToChannel`/`RequestToChannel` |
 | `IZLinkTimer` | 등록된 timer 핸들. `CancelAsync()` / `DisposeAsync()` (§8 도 참조) |
 
 검증: `SpotContracts.Spot_context_registers_handlers_timers_actor_lifecycle_and_outbound_messages`.
@@ -439,32 +439,32 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 ### 3.2 spot outbound — local · routed · publisher
 
 ```csharp
-// ① 주소를 한 번 resolve 해서 보관 — 보내는 순간에는 조회가 없다
+// ① SpotRef 를 한 번 resolve 해서 보관 — 보내는 순간에는 조회가 없다
 SpotRef room1 = await spots.ResolveSpotRefAsync(RoutingId.From("room-1"))
                          ?? throw new InvalidOperationException("room-1 이 아직 없다");
 
-// ② current Spot callback 안에서 — 보관한 주소로 send/request (IZLinkSpotOutbound)
+// ② current Spot callback 안에서 — 보관한 SpotRef 로 send/request (IZLinkSpotOutbound)
 spot.Context.Outbound.SendToSpot(room1, new RoomEvent("opened")).Submit();
 var reply = await spot.Context.Outbound
     .RequestToSpot(room1, new JoinRoom("room-1"))
     .Async<JoinedRoom>();
 
-// ③ spot 밖(일반 코드)에서 — route mesh channel 이름 + 주소 (IZLinkRouteClient)
+// ③ spot 밖(일반 코드)에서 — route mesh channel 이름 + SpotRef (IZLinkRouteClient)
 await routes.RequestToSpot("api", room1, new JoinRoom("room-1")).Async<JoinedRoom>();
 
-// local spot 없는 노드에서 publish (topic 은 주소가 필요 없다)
+// local spot 없는 프로세스에서 publish (topic 은 SpotRef 가 필요 없다)
 publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit(); // IZLinkSpotPublisherClient
 ```
 
-주소가 낡으면(spot 이동·소멸) request 는 `SpotRouteNotFound` 로 실패한다 — 그때 다시
+`SpotRef` 가 낡으면(spot 이동·소멸) request 는 `SpotRouteNotFound` 로 실패한다 — 그때 다시
 resolve 해서 재시도한다. send 는 best-effort 라 조용히 버려진다
 ([공통 스펙: spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md)).
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkSpotManager` | spot 인스턴스 생성/조회/종료(`CreateAsync`, `GetOrCreateAsync`, `FindAsync`, `ListAsync`, `CloseAsync`) |
-| `IZLinkSpotOutbound` | current Spot callback 안에서의 outbound(`SendToSpot(주소, …)`/`RequestToSpot(주소, …)`/`SendToChannel`/`RequestToChannel`/`Publish`) |
-| `IZLinkSpotPublisherClient` | local spot 없는 노드의 spot channel publish(`PublishSpot(channelName, topic, msg)`) |
+| `IZLinkSpotOutbound` | current Spot callback 안에서의 outbound(`SendToSpot(SpotRef, …)`/`RequestToSpot(SpotRef, …)`/`SendToChannel`/`RequestToChannel`/`Publish`) |
+| `IZLinkSpotPublisherClient` | local spot 없는 프로세스의 spot channel publish(`PublishSpot(channelName, topic, msg)`) |
 | `IZLinkSpotRefResolver` | spot rid → `SpotRef` 조회(`ResolveSpotRefAsync`) — location store 를 읽는 기본 메시징 조회 |
 | `IZLinkActorAddressResolver` | actor id → actor 가 있는 spot 의 `SpotRef` 조회(`ResolveActorSpotRefAsync`) |
 
@@ -698,7 +698,7 @@ options.AddLocationStore(new ZLinkRedisLocationStore(r => r
 var loc = options.ConfigureLocations();
 loc.OwnerLeaseTtl = TimeSpan.FromSeconds(15);
 
-// 메시징 조회 — 주소를 한 번 받아 보관한다 (DI 주입)
+// 메시징 조회 — SpotRef 를 한 번 받아 보관한다 (DI 주입)
 SpotRef? spot = await spots.ResolveSpotRefAsync(spotRid, ct);          // IZLinkSpotRefResolver
 SpotRef? actorSpot = await actors.ResolveActorSpotRefAsync("p-1", ct); // IZLinkActorAddressResolver
 

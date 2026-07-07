@@ -393,7 +393,7 @@ app.Run();
 
 - `AddClientServerChannel("orders").EnableClient(...)`
   - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 channel
-    client 역할을 켠다.
+    client 역할을 활성화한다.
 - `EnableRouter(endpoint)`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
     local router를 켜고 routed ingress endpoint를 명시한다.
@@ -404,7 +404,7 @@ app.Run();
     별도 routed Spot egress client 를 노출하지 않는다.
 - `EnablePubSub(endpoint)`
   - local spot 문맥에서 `spot.Context.Outbound.Publish(...)`를 호출할 수 있게 한다.
-  - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
+  - local spot 인스턴스가 없는 외부 프로세스가 `game.stage` SPOT channel로 publish할
     수 있도록 별도의 publisher client를 붙인다.
 - `ConfigureSocket(...)`, `ConfigureRouting(...)`,
   `ConfigurePublisher(...)`, `ConfigureSubscriber(...)`
@@ -684,16 +684,16 @@ backpressure[^backpressure] 는 별도의 public no-wait 옵션을 호출자에�
 ready notification 을 조합해 처리한다. send 대기 한계는 builder가 아니라
 framework 기본값 또는 socket 의 `SendTimeout` 옵션을 따른다.
 
-### 3.1.4 외부 노드에서 SPOT channel publish
+### 3.1.4 외부 프로세스에서 SPOT channel publish
 
-이 절은 local spot 인스턴스 없이 publish 만 해야 하는 외부 노드의 표면을
+이 절은 local spot 인스턴스 없이 publish 만 해야 하는 외부 프로세스의 표면을
 다룬다.
 
-local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel 로 publish 해야 할
+local spot 인스턴스가 없는 외부 프로세스가 특정 SPOT channel 로 publish 해야 할
 때가 있다. 이런 경우에는 `IZLinkSpotPublisherClient` 를 별도로 주입받아
 사용한다.
 
-이 샘플에서 publisher 노드는 spot mesh 등록에 attach 만 걸어 두면 충분하다.
+이 샘플에서 publisher 프로세스는 spot mesh 등록에 attach 만 걸어 두면 충분하다.
 실제로 어느 SPOT channel 에 publish 할지는, 등록한 mesh channel 이름과
 
 ```csharp
@@ -911,8 +911,8 @@ public interface IZLinkActor
 bootstrap 은 다음과 같이 읽는다. room 은 외부에서 이미 만들어져 있다고
 가정하므로, 두 노드는 각자 역할만 맡는다.
 
-- stream node: client 접속을 받는다.
-- spot node: room 인스턴스를 제공한다.
+- `StreamNode`: client 접속을 받는다.
+- `SpotNode`: room 인스턴스를 제공한다.
 
 ```csharp
 builder.Services.AddScoped<ISampleRoomDirectory, SampleRoomDirectory>();
@@ -1677,7 +1677,7 @@ server tick 수를 계산할 수 있다.
 - 그래서 public registration 함수에 매번 `IServiceProvider services` 를 넘기지
   않고, `Context.Handlers.AddPacket<THandler>()` 처럼 타입만 등록하는 형태가 더
   자연스럽다.
-- local spot 인스턴스가 없는 외부 노드는 `IZLinkSpotPublisherClient` 를 별도로
+- local spot 인스턴스가 없는 외부 프로세스는 `IZLinkSpotPublisherClient` 를 별도로
   주입받아 SPOT channel publish 를 할 수 있다.
 - `Context.Handlers.AddPacket<THandler>(...)` 는 request packet 과 send packet 을 함께
   등록한다.
@@ -1804,7 +1804,7 @@ dispatch key 로 등록한다.
   - `IZLinkSpotManager.FindAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
   - `Publish(topic, ...).Async(...)`
-- local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다
+- local spot 인스턴스가 없는 외부 프로세스에서 특정 SPOT channel로 publish하고 싶다
   - `IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...).Async(...)`
 - stage 안에서 heartbeat timeout sweep 같은 주기 작업을 돌리고 싶다
   - `SampleSpot.OnInitializeAsync()`에서 `Context.AddTimer<THandler>(...)`로 등록
@@ -1891,11 +1891,11 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 | `ManagerTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 `ZLinkMessage`로 `OnCreateAsync(...)`를 호출한다. |
 | `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create request `ZLinkMessage`만 `OnCreateAsync(...)`로 전달된다. |
 | `ManagerTests.SpotManager_GetOrCreateAsync_Returns_Existing_Spot_For_Same_Type` | 같은 `spotRid`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환한다. |
-| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 노드 publish 샘플이 target SPOT channel에 도달한다. |
+| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 프로세스 publish 샘플이 target SPOT channel에 도달한다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤, 해당 문맥에서 dispatch된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
-[^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다.
+[^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 단위(예: room, stage 등)로 메시지를 라우팅하는 추상이다.
 [^spotnode]: `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^handler]: handler 는 특정 메시지(packet, subscribe event, timer tick 등)가 들어왔을 때 실제 로직을 실행하는 callback 클래스 또는 메서드를 뜻한다.
 [^channel]: channel 은 이름을 키로 삼아 메시지를 주고받는 논리적 통신 경로다. request / send 양방향과 publish / subscribe 양방향이 모두 channel 단위로 묶인다.

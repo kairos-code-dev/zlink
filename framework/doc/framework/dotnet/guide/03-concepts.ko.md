@@ -28,7 +28,7 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 | **pub/sub · fan-out** | 한 번 발행한 이벤트가 **여러 구독자에게 동시에 퍼지는** 것 |
 | **packet name(패킷 이름)** | 같은 channel 안에서 **어느 메시지 종류인지** 구분하는 키 |
 | **codec(코덱)** | payload(메시지 본문)를 바이트로 **직렬화/역직렬화**하는 방식(json·protobuf·messagepack) |
-| **SPOT(스팟)** | room/zone 처럼 **동적으로 생겼다 사라지는 상태 노드**. 한 SPOT 의 콜백은 **한 줄로 직렬** 실행돼 lock 이 필요 없다 |
+| **SPOT(스팟)** | room/zone 처럼 **동적으로 생겼다 사라지는 상태 단위**. 한 SPOT 의 콜백은 **한 줄로 직렬** 실행돼 lock 이 필요 없다 |
 | **actor(액터)** | **ID 로 식별되는 상태 보유 객체**. 같은 ID 로 온 메시지는 늘 같은 인스턴스가 처리 |
 | **Entry Spot** | actor 가 생성 직후 머무는 **기본 실행 위치** |
 | **STREAM(스트림)** | 외부 client(모바일·게임)와의 **연결 지향 양방향 채널**. 연결 수명·재연결을 framework 가 관리 |
@@ -55,13 +55,14 @@ endpoint 를 명시하고, client/subscriber 역할은 수동 연결을 쓰거�
 |------|------|-----------|
 | client-server | `AddClientServerChannel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 붙는다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
 | fanout | `AddFanoutChannel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| route mesh | `AddRouteMesh` | router ↔ router — routing id 로 특정 주소에 라우팅 (SPOT node 가 이 route mesh 로 구성된다: [05-spot](05-spot.ko.md)) |
+| route mesh | `AddRouteMesh` | router ↔ router — routing id 로 특정 주소에 라우팅 (`SpotNode` 가 이 route mesh 로 구성된다: [05-spot](05-spot.ko.md)) |
 
 **소켓 구조 한눈에** — 어떤 소켓이 어떻게 붙는지가 네 종류의 차이다.
 
 - **client-server** — ROUTER 서버 **하나**에 DEALER 클라이언트 **여럿**이 붙는 비대칭 구조.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     C1["client A<br/>DEALER"] --> S["server<br/>ROUTER"]
     C2["client B<br/>DEALER"] --> S
@@ -71,15 +72,17 @@ graph LR
 - **fanout** — PUB 하나가 발행하면 같은 메시지가 SUB 여럿에 동시에 퍼진다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     P["publisher<br/>PUB"] --> S1["subscriber A<br/>SUB"]
     P --> S2["subscriber B<br/>SUB"]
     P --> S3["subscriber C<br/>SUB"]
 ```
 
-- **route mesh** — ROUTER 끼리 붙어, **routing id 로 지정한 주소에만** 보낸다(분산 아님). SPOT node 가 이 구조로 구성된다.
+- **route mesh** — ROUTER 끼리 붙어, **routing id 로 지정한 주소에만** 보낸다(분산 아님). `SpotNode` 가 이 구조로 구성된다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     R["router<br/>ROUTER"] -->|"routing id = A"| A["node A<br/>ROUTER"]
     R -->|"routing id = B"| B["node B<br/>ROUTER"]
@@ -104,13 +107,13 @@ server/publisher 는 외부가 접근할 endpoint 가 필요하므로 `EnableSer
 
 ## 2. spot — 상태 단위
 
-spot 은 room/zone/stage 처럼 **동적으로 생겼다 사라지는 상태 노드**다. 한 spot 에
+spot 은 room/zone/stage 처럼 **동적으로 생겼다 사라지는 상태 단위**다. 한 spot 에
 들어오는 packet · timer · actor 콜백은 **한 줄로 직렬 실행**되므로, spot 이 소유한
 상태에 lock 없이 접근한다. "어디서 도는가"가 channel handler 와 다르다(§6).
 
 | | channel handler | SPOT handler |
 |---|---|---|
-| 위치 | channel server/subscriber 역할 | SPOT node 안의 entry/user Spot |
+| 위치 | channel server/subscriber 역할 | `SpotNode` 안의 entry/user Spot |
 | 실행 | 서로 다른 요청은 동시에 실행 가능 | 같은 SPOT 안에서는 직렬 실행 |
 | 상태 | 공유 상태를 직접 멤버에 두지 않음 | SPOT이 상태를 직접 소유 |
 
@@ -118,6 +121,7 @@ spot 은 room/zone/stage 처럼 **동적으로 생겼다 사라지는 상태 노
 lock 이 없다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     M1["packet"] --> Q["단일 큐<br/>직렬 실행"]
     M2["timer"] --> Q
@@ -135,6 +139,7 @@ actor 는 **ID 로 식별되는 상태 보유 객체**다. 같은 ID 로 온 메
 나누는 패턴이다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     S1["msg · id=42"] --> RT{"actor id<br/>라우팅"}
     S2["msg · id=42"] --> RT
@@ -152,6 +157,7 @@ stream 은 모바일·게임 같은 **외부 client 와의 연결 지향 양방�
 하나가 서버 측 **session** 객체에 대응한다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     C["모바일·게임<br/>client"] <-->|"연결 (heartbeat·재연결 관리)"| SV["STREAM 서버"]
     SV --- SE["session<br/>(연결 1개 = 객체 1개)"]
@@ -177,11 +183,11 @@ store 없이 endpoint 를 역할 등록에 직접 적는 수동 연결도 그대
 
 위 다섯 개념을 받치는 공통 동작이다. 여기서 한 번 짚고, 상세는 각 챕터가 소유한다.
 
-### 6.1 핸들러 모델 — 노드 핸들러 vs SPOT 핸들러
+### 6.1 핸들러 모델 — 채널/HTTP 핸들러 vs SPOT 핸들러
 
 핸들러는 실행 컨텍스트에 따라 두 종류로 나뉘고, 구조와 수명이 완전히 다르다.
 
-- **노드 핸들러(채널·HTTP)** — 독립 class. interface 기반
+- **채널/HTTP 핸들러** — 독립 class. interface 기반
   (`IZLinkRequestHandler<TRequest, TReply>` 등)이나 attribute 기반
   (`[ZLinkHandlerGroup]` + `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]` 메서드)으로
   작성하고, 의존성은 **생성자 주입**으로 받는다. 수명은 **transient**(요청마다 새로),
@@ -209,10 +215,10 @@ public void Configure()   // 등록은 그 spot 의 Configure() 안에서 한다
 }
 ```
 
-| | 노드 핸들러 (채널·HTTP) | entry spot | room spot |
+| | 채널/HTTP 핸들러 | entry spot | room spot |
 |---|---|---|---|
 | 기반 | 독립 class (interface/attribute) | `IZLinkSpot` 구현 | `IZLinkSpot` 구현 |
-| 수명 | transient (요청마다) | 노드와 동일 (영속) | 상태 단위와 동일 (영속) |
+| 수명 | transient (요청마다) | `SpotNode` 와 동일 (영속) | 상태 단위와 동일 (영속) |
 | 실행 | 비동기 (채널별 수신 루프·HTTP 파이프라인) | **전체 직렬** — 단일 큐 | **전체 직렬** — 단일 큐 |
 | 공유 상태 | 핸들러에 두지 않음 | 큐 안에서 안전 | 락 없이 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
@@ -222,8 +228,9 @@ public void Configure()   // 등록은 그 spot 의 Configure() 안에서 한다
 **실행 모델 비교** — 같은 3개 요청이 두 핸들러에서 어떻게 도는가:
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph TB
-    subgraph N ["노드 핸들러 — 비동기 (수신 루프 · HTTP 파이프라인)"]
+    subgraph N ["채널/HTTP 핸들러 — 비동기 (수신 루프 · HTTP 파이프라인)"]
         direction LR
         NR1["req A"] --> NW1["핸들러 A ▶ 처리"]
         NR2["req B"] --> NW2["핸들러 B ▶ 처리"]
@@ -238,12 +245,13 @@ graph TB
     end
 ```
 
-위 그림은 **처리 순서**를 보여준다. 노드 핸들러는 요청마다 독립 실행되고, SPOT
+위 그림은 **처리 순서**를 보여준다. 채널/HTTP 핸들러는 요청마다 독립 실행되고, SPOT
 핸들러는 같은 SPOT 큐에 들어온 일을 하나씩 처리한다. 아래 그림은 같은 상황을
 **스레드 점유** 관점에서 다시 본 것이다. 각 event는 async task가 되고, task가
 `await`에 도달하면 스레드를 붙잡지 않은 채 응답을 기다린다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     subgraph EV ["SPOT event 마다 async task 하나"]
         E1["message A"]
@@ -260,7 +268,7 @@ graph LR
     WAIT -.->|"응답 도착 → resume"| POOL
 ```
 
-노드 핸들러는 요청마다 새 인스턴스로 비동기 처리되니 핸들러 멤버에 가변 상태를 두면
+채널/HTTP 핸들러는 요청마다 새 인스턴스로 비동기 처리되니 핸들러 멤버에 가변 상태를 두면
 경합이 난다. SPOT 핸들러는 단일 큐로 **한 번에 하나씩** 처리하니 상태에 lock 이
 필요 없다. 다만 직렬 실행은 "스레드 하나를 계속 점유한다"는 뜻이 아니다. SPOT의
 event(message·timer)는 각각 task가 되어 소수의 worker 스레드에 다중화되고,

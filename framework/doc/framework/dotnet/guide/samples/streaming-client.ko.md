@@ -991,7 +991,7 @@ Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 �
 [^transport]: transport는 실제 네트워크 위에서 바이트를 실어 나르는 계층을 뜻한다. 그 위에 framework의 packet/session 추상이 올라간다.
 [^codec]: codec은 객체를 wire 위에서 주고받을 수 있는 byte 표현으로 직렬화하거나 다시 객체로 복원하는 컴포넌트다(JSON, MessagePack, Protobuf 등).
 [^nuget]: NuGet은 `.NET`의 표준 패키지 매니저로, 라이브러리를 package id 단위로 배포·설치한다.
-[^spot]: `SPOT`은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 ZLink의 추상이다.
+[^spot]: `SPOT`은 동적으로 생성·소멸되는 논리적 단위(예: room, stage 등)로 메시지를 라우팅하는 ZLink의 추상이다.
 [^wire]: wire는 네트워크 회선 위로 실제로 흘러가는 바이트 형태를 가리키는 표현이다. 같은 메시지라도 메모리상 표현과 wire 표현이 서로 다를 수 있다.
 
 ---

@@ -30,6 +30,7 @@ handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconne
 DI 에 등록된 handler 를 scope 안에서 꺼내 호출한다(HTTP 요청 handler 와 같은 결).
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   SRC["source: socket / location / spot"] -->|"변화 발생"| FW["framework runtime"]
   FW -->|"typed event 로 전달"| H["IZLinkRuntimeEventHandler 등록<br/>(DI scope 에서 호출)"]
@@ -69,13 +70,13 @@ builder.Services.AddScoped<
 
 - socket source 이름은 `channel + capability`(예: `profile.server`,
   `profile.client`) 형태다. capability 는 `server`, `client`, `publisher`,
-  `subscriber` 중 하나다. spot 은 spot node 등록 이름(예: `stage-node`)이다.
+  `subscriber` 중 하나다. spot 은 `SpotNode` 등록 이름(예: `stage-node`)이다.
 - location source 이름(예: `location-runtime`)은 event 의 `SourceName` 으로만
   쓰이는 자유 문자열이라 별도 infrastructure 등록 이름으로 검증하지 않는다.
 - location/spot polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
   코드가 polling 비용을 설정에서 바로 읽도록).
 - socket source 가 등록된 channel capability 와 맞지 않거나, spot source 가 등록된
-  spot node 이름과 맞지 않으면 시작 단계 예외다. location event 는 source 이름보다
+  `SpotNode` 이름과 맞지 않으면 시작 단계 예외다. location event 는 source 이름보다
 - `AddSocketEvents(...)` 에 kind 를 안 넘기면 그 source 가 지원하는 모든 이벤트를
   받는다.
 
@@ -222,7 +223,7 @@ monitoring 이 socket/location/spot 의 **상태 변화**를 본다면, 메시�
 로그를 `corr=` 로 grep 하면 한 요청의 생애주기를 노드 간에 이어서 추적할 수 있다. dispatch 를
 제어하는 게 아니라 관측만 한다.
 
-`ConfigureDispatch()` 체인으로만 켠다(진단 필드는 read-only).
+`ConfigureDispatch()` 체인으로만 활성화한다(진단 필드는 read-only).
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>

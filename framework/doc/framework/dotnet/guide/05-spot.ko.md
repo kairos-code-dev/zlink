@@ -48,6 +48,7 @@ SPOT 은 pub/sub helper 가 아니다. publish/subscribe 는 spot **안에서** 
 함수별로 다룬다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   subgraph ch1["channel: game.stage · active SPOT channel view 1개"]
     direction LR
@@ -144,6 +145,7 @@ node 역할은 서로 독립이다.
 각 소켓이 무엇을 활성화하고 메시지가 어디로 흐르는지 그림으로 보면 이렇다(점선 = 함수 호출로 활성화).
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   subgraph node["SpotNode · game.stage — 자체 소켓 + spot 들"]
     rsock(["router 소켓"])
@@ -186,10 +188,11 @@ flowchart LR
 
 **🟦 `EnableRouter(ep)`** — 이 노드의 **router 소켓**을 활성화한다. 같은 channel 의 다른 SpotNode 와
 spot↔spot 으로 send/request 를 주고받는 축이다. 같은 channel 노드끼리는 §1 처럼 **location
-store 기준**으로 자동 연결되므로 이 소켓만 활성화하면 추가 배선이 없다. store 없이 peer 를 직접 잇는
+store 기준**으로 자동 연결되므로 이 소켓만 활성화하면 추가로 연결할 게 없다. store 없이 peer 를 직접 잇는
 수동 연결도 있다(바로 아래 "자동 연결 vs 수동 연결").
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   f["EnableRouter(ep)"] -. 활성화 .-> r(["router 소켓"])
   r <==>|"spot↔spot send / request"| peer["같은 channel 의<br/>다른 SpotNode"]
@@ -201,6 +204,7 @@ flowchart LR
 publish/subscribe 하는 축이다. local spot 안의 `Outbound.Publish(...)` 가 바로 이 소켓을 쓴다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   f["EnablePubSub(ep)"] -. 활성화 .-> p(["pub/sub 소켓"])
   spot["내 Spot"] <==>|"topic publish / subscribe"| p
@@ -241,6 +245,7 @@ bridge / publisher 를 **자동으로** 붙여 spot 에 전달한다. route 면 
 같은 길로 돌아오고, publish 는 단방향(reply 없음)이다. 상세 host 설정은 §5 에서 본다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   ext["외부 코드<br/>routeClient.Request(routeMesh, spotRid)<br/>publisherClient.PublishSpot(mesh, topic)"]
   ext ==>|"자동 연결(colocation)"| sp["Spot"]
@@ -256,6 +261,7 @@ spot 안에서 `Context.Outbound.SendToChannel(name, …)` / `RequestToChannel(n
 되돌아온다. (자세한 사용은 §5)
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   f{{"options.AddClientServerChannel(name)<br/>.EnableClient()  · 노드 밖 별도 등록"}} -. 등록 .-> c(["channel client"])
   spot["내 Spot"] ==>|"① Outbound.SendToChannel/RequestToChannel(name, …)"| c ==> svc["일반 channel server"]
@@ -264,7 +270,7 @@ flowchart LR
   class f,c b;
 ```
 
-spot↔spot·actor 까지 포함한 전체 연결·handler·배선 표는 **§5 「한눈에 보기」**에서 한 번에 본다. 여기 §2 그림은 "함수가 활성화하는 SpotNode 소켓 ↔ channel" 한 축만 떼어 본 것이다.
+spot↔spot·actor 까지 포함한 전체 연결·handler 표는 **§5 「한눈에 보기」**에서 한 번에 본다. 여기 §2 그림은 "함수가 활성화하는 SpotNode 소켓 ↔ channel" 한 축만 떼어 본 것이다.
 
 > 기본으로 사용한다. mesh 단위로 다른 endpoint 를 따로 지정하지 않는다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)`가 반환한
 > builder 에 router, pub/sub, factory 를 바로 설정한다.
@@ -782,10 +788,11 @@ background)에서 부르는 함수가 다를 뿐 결국 같은 handler 로 들�
 
 연결 그림부터 보자. spot 은 `SpotNode` 안에 살고, **같은 spot mesh 의 SpotNode 들은
 router↔router 로 이미 연결**돼 있어(각 노드 `EnableRouter` + location store 자동 연결)
-spot↔spot 메시징은 추가 배선이 없다. 외부 프로세스도 **RouteMesh channel(route)·SpotMesh(publish)를 같은
+spot↔spot 메시징은 추가로 연결할 게 없다. 외부 프로세스도 **RouteMesh channel(route)·SpotMesh(publish)를 같은
 프로세스에 두면 런타임이 자동으로 잇는다**(굵은 화살표 = spot mesh 자동, 가는 화살표 = colocation 자동 bridge).
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   subgraph nodeA["SpotNode A · game.stage"]
     spotA["Spot"] --- rA(["router"])
@@ -796,13 +803,17 @@ flowchart LR
   rA <==>|"이미 연결됨: 양쪽 EnableRouter + location store 자동 연결<br/>spot packet: SendToSpot / RequestToSpot"| rB
   api["외부 코드<br/>(routeClient / publisherClient)"] -->|"자동(RouteMesh · SpotMesh pub colocation)<br/>spot packet · topic"| rA
   strm["StreamNode<br/>(client session)"] -->|"gateway 자동 연결(같은 프로세스 SpotNode)<br/>actor packet: actorRef.RelayAsync"| rA
+  classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
+  classDef ext fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
+  class spotA,spotB,rA,rB ownMesh;
+  class api,strm ext;
   style nodeA stroke:#1565c0,stroke-width:3px
   style nodeB stroke:#1565c0,stroke-width:3px
 ```
 
-종류별 함수·handler·배선을 한 표로 모으면 다음과 같다.
+종류별 함수·handler·연결을 한 표로 모으면 다음과 같다.
 
-| 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 배선 |
+| 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 |
 |------|---------------------------|----------------------------|------------------------|-----------|
 | topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(mesh, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | 같은 SpotMesh pub colocation → **자동** (보내는 쪽 SpotMesh + `EnablePubSub`) |
 | actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM gateway 자동(같은 프로세스 SpotNode) + `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
@@ -837,7 +848,7 @@ public sealed class StageNoticeHandler
 ```
 
 아래에서 종류별로 받는 handler 와 밖에서 보내는 코드를 본다. host 설정 전문은 맨 끝
-"host 배선 한곳에 모아 보기" 에 모았다.
+"host 연결 설정 한곳에 모아 보기" 에 모았다.
 
 ### topic — publish / subscribe
 
@@ -896,7 +907,7 @@ public sealed class GetStageStateHandler
 }
 ```
 
-spot **안**(spot↔spot)에서는 `RequestToSpot(spotRef, …)`. 같은 mesh 라 배선이 자동이다.
+spot **안**(spot↔spot)에서는 `RequestToSpot(spotRef, …)`. 같은 mesh 라 연결이 자동이다.
 
 대상 spot 의 **`SpotRef` 는 한 번만 조회해서 들고 있는다.** `IZLinkSpotRefResolver` 로
 spot rid 를 `SpotRef`(소유 SpotNode rid + spot rid)로 바꾸고, 그 값을
@@ -937,7 +948,7 @@ public sealed class StageQueryAdapter(
 }
 ```
 
-배선은 **자동**이다. 받는 쪽은 `AddRouteMesh("api")` 를 `SpotNode` 와 같은 프로세스에 두기만 하면,
+연결은 **자동**이다. 받는 쪽은 `AddRouteMesh("api")` 를 `SpotNode` 와 같은 프로세스에 두기만 하면,
 런타임이 그 RouteMesh ROUTER 에 route bridge 를 붙여 inbound relay 를 spot 에 넘긴다. 보내는 쪽은
 `AddRouteMesh("api").EnableClient(...)` 만 하면 된다. **보내는 순간 위치를 찾지 않는다** — `SpotRef`
 안에 이미 소유 SpotNode 가 들어 있으므로 런타임은 그 SpotNode 로 전달만 한다. spot 이 다른 SpotNode 로
@@ -945,6 +956,7 @@ public sealed class StageQueryAdapter(
 request 면 spot 의 reply 가 같은 길로 돌아온다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   subgraph ext["외부 프로세스 (local spot 없음)"]
     h["route/HTTP handler<br/>routes.Request(&quot;api&quot;, spotRid, req)"]
@@ -956,6 +968,10 @@ flowchart LR
   end
   c ==>|"① request (target=보관한 SpotRef 의 소유 SpotNode)"| sp
   sp -.->|"② reply"| h
+  classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
+  classDef extNode fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
+  class sp ownMesh;
+  class h,c extNode;
   style sn stroke:#1565c0,stroke-width:3px
   style ext stroke:#e65100,stroke-width:3px
 ```
@@ -1014,7 +1030,7 @@ client/server channel에 `EnableClient()`가 있어야 한다. 받는 쪽은 그
 ([04-channel-messaging](04-channel-messaging.ko.md) §3) spot handler 가 아니다. 반대
 방향(channel → spot)은 위 "spot packet" 의 외부→spot 경로를 쓴다.
 
-### host 배선 한곳에 모아 보기
+### host 연결 설정 한곳에 모아 보기
 
 종류별 연결("한눈에 보기" 의 표·다이어그램)을 실제 host 설정으로 모으면 한 쌍의
 설정이 된다. **"받는 쪽(spot 호스팅 SpotNode)" 와 "보내는 쪽(외부 프로세스)" 가 짝**을 이룬다.

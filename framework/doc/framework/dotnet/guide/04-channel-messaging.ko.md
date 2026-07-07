@@ -22,6 +22,7 @@ channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호�
 세 상호작용을 그림으로 먼저 잡으면 이렇다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   CL["호출하는 쪽<br/>IZLinkChannelClient / IZLinkFanoutClient"]
   CL -->|"Request: 응답이 필요"| H1["server handler → 응답 돌려줌"]
@@ -59,11 +60,12 @@ application 이 gRPC stub 으로 요청을 만들고, L7 로드밸런서 또는 
 직접 보낸다. 서버 선택은 중간 L7 계층이 아니라 ZLink 의 peer 선택이 맡는다. 기본은
 연결된 peer 사이의 균등 분배이고, peer weight 를 쓰면 새 요청을 받을 서버 비율을
 조정하거나 특정 서버를 새 요청 후보에서 뺄 수 있다. 그래서 application 코드는 endpoint
-나 프록시 배선보다 **논리 channel 이름과 handler** 를 중심으로 작성된다.
+나 프록시 설정보다 **논리 channel 이름과 handler** 를 중심으로 작성된다.
 
 gRPC 구성에서는 요청 분산을 로드밸런서나 mesh 같은 중간 계층이 맡는다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
     subgraph GA ["client application"]
         GSTUB["gRPC stub<br/>요청 시작"]
@@ -98,6 +100,7 @@ server runtime 이 service implementation 으로 요청을 전달한다.
 ZLink 구성에서는 framework runtime 이 연결된 서버 runtime 중 하나를 직접 고른다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
     subgraph ZA ["client application"]
         ZC["ZLink channel client<br/>요청 시작"]
@@ -388,7 +391,7 @@ publish 만 받는다. channel 이름은 종류별로 따로 관리되지 않고
 이름 공간을 공유한다. 따라서 client/server channel 과 fanout channel 이 서로 다른
 종류여도 같은 이름을 쓰면 안 된다. 맞지 않게 등록하거나 같은 channel 이름을 중복으로 등록하면,
 런타임에 조용히 무시되거나 잘못 라우팅되지 않고 **`AddZLinkFramework` 시작 단계에서
-`ZLinkConfigurationException` 으로 즉시 실패**한다. 즉 잘못된 배선은 빌드가 아니라
+`ZLinkConfigurationException` 으로 즉시 실패**한다. 즉 잘못된 설정은 빌드가 아니라
 **부팅이 깨지므로** 운영에 나가기 전에 드러난다.
 
 | 잘못된 등록 | 시작 단계 예외 메시지 |
@@ -554,6 +557,7 @@ weight 가 모두 같으면 새 요청은 균등하게 round-robin 으로 분배
 새 요청 후보에서는 제외"라는 뜻이고, `100` 은 기본 정상 serving 값이다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
     subgraph C ["client application"]
         R["ZLink channel runtime<br/>새 요청 대상 선택"]
@@ -622,7 +626,7 @@ options.RouteMeshChannel(name).ConfigureSocket();    // route mesh serving 역�
 
 ## 7. 직렬화 codec
 
-payload 직렬화 codec 은 framework 등록에서 켠다.
+payload 직렬화 codec 은 framework 등록에서 활성화한다.
 
 ```csharp
 options.Codecs.Use(ZLinkProtobufCodec.Default);
@@ -695,6 +699,7 @@ options.AddClientServerChannel("image.resize").EnableClient();
 ```
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     C["호출 노드<br/>channel client"] -->|"요청 1"| A["처리 노드 A<br/>:5600"]
     C -->|"요청 2"| B["처리 노드 B<br/>:5601"]
@@ -714,7 +719,7 @@ graph LR
 
 route mesh 는 `RoutingId` 로 **특정 주소를 지정해서 라우팅**한다(dealer 의 분산과
 대비). `EnableServer` 는 이 노드가 받을 endpoint 와 이 노드의 `RoutingId` 를 설정하고,
-`EnableClient` 는 다른 route node 로 나가는 연결을 설정한다. 한 노드가 둘 다 켤 수 있다.
+`EnableClient` 는 다른 route node 로 나가는 연결을 설정한다. 한 노드가 둘 다 활성화할 수 있다.
 SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([05-spot](05-spot.ko.md)).
 
 ```csharp
@@ -776,6 +781,7 @@ builder.Services.AddSingleton<IPlayRoutes, PlayRoutes>();
 ```
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
     C["caller"] -->|"target routing id = A"| A["node A"]
     C -->|"target routing id = B"| B["node B"]

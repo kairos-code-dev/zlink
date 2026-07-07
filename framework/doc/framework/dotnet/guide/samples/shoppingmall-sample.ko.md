@@ -164,7 +164,7 @@ lifecycle, route mesh request, projection read model 저장)을 이미 고정하
 | `LocationMessaging` E2E | CommerceApi channel request·send 가 location store 자동 연결로 동작한다. |
 | `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | projection 갱신 event publish 가 target channel 로 전달된다. |
 
-[^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: order workflow instance 등) 단위로 메시지를 라우팅하는 추상이다.
+[^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 단위(예: order workflow instance 등)로 메시지를 라우팅하는 추상이다.
 [^dto]: DTO(Data Transfer Object) 는 컴포넌트 사이에서 데이터를 옮기기 위해 정의한 단순 데이터 클래스를 가리킨다.
 
 ---

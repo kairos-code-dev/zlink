@@ -205,7 +205,7 @@ idle timer, client connector)을 이미 고정하고 있다.
 
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.
 [^actor]: actor 는 자신만의 메일박스와 상태를 가지고 메시지를 순서대로 처리하는 동시성 단위다. framework 에서는 클라이언트 세션과 묶여 사용자별 상태를 다루는 데 쓰인다.
-[^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: conversation, room 등) 단위로 메시지를 라우팅하는 추상이다.
+[^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 단위(예: conversation, room 등)로 메시지를 라우팅하는 추상이다.
 [^dto]: DTO(Data Transfer Object) 는 컴포넌트 사이에서 데이터를 옮기기 위해 정의한 단순 데이터 클래스를 가리킨다.
 
 ---

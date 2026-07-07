@@ -22,7 +22,7 @@
 | 서버 간 request/response | 낮음 | 서비스 A가 서비스 B의 결과가 필요할 때 | [4](04-channel-messaging.ko.md) | [channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
 | 서버 간 단방향 send | 낮음 | 응답 없는 작업 위임/통지 | [4](04-channel-messaging.ko.md) | [channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
 | pub/sub 이벤트 fan-out | 낮음 | domain event 를 여러 구독자에게 전파 | [4](04-channel-messaging.ko.md) | [channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
-| SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | [5](05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
+| SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 단위 라우팅 | [5](05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
 | 일반 handler 에서 Spot 흐름 진입 | 중간 | HTTP/세션 gateway 가 actor 생성 또는 Entry Spot join 으로 `ActorRef` 확보 | [5](05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
 | Spot yield dispatch | 높음 | player admission처럼 공용 상태 의존 없는 I/O 대기 중 다른 actor/timer를 막지 않을 때 | [5](05-spot.ko.md) | [async-execution-policy](../../common/spec/async-execution-policy.ko.md) |
 | Spot timer (게임 루프 등) | 중간 | 주기 tick, heartbeat, 정리 작업 | [5](05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
@@ -38,6 +38,7 @@
 ## 3. 빠른 선택 가이드
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart TD
   Q1{외부 client를<br/>직접 받나?} -->|예| Stream[STREAM + Connector<br/>07]
   Q1 -->|아니오| Q2{동적 단위<br/>room/stage가 있나?}

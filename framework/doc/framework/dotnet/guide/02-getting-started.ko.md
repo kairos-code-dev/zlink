@@ -189,7 +189,7 @@ client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `OwnerPl
 
 ## 7. 자동 연결의 위치
 
-이 장의 예제는 배선을 눈으로 따라가기 쉽게 endpoint 를 직접 적는 **수동 연결**로
+이 장의 예제는 연결 관계를 눈으로 따라가기 쉽게 endpoint 를 직접 적는 **수동 연결**로
 설명했다. 실제 배포에서 서버가 늘고 주소가 바뀌는 환경이라면, endpoint 를 코드에 적지
 않고 channel 이름만으로 연결 대상을 찾는 **location store 기반 자동 연결**을 쓴다 —
 store 인스턴스 하나를 등록하면 서버는 자기 위치를 자동으로 알리고 client 는 그걸 보고
@@ -210,7 +210,7 @@ store 인스턴스 하나를 등록하면 서버는 자기 위치를 자동으�
 |--------------|---------|
 | 표면 개념 정리(channel, 역할, DI) | [03-concepts](03-concepts.ko.md) |
 | request/send/pub-sub 전체 사용법 | [04-channel-messaging](04-channel-messaging.ko.md) |
-| room/stage 같은 동적 노드 | [05-spot](05-spot.ko.md) |
+| room/stage 같은 동적 단위 | [05-spot](05-spot.ko.md) |
 | 외부 game/mobile client 받기 | [08-stream](08-stream.ko.md) |
 | 실행 가능한 전체 예제 | [guide/samples](samples/channel-messaging-samples.ko.md) |
 

@@ -5,7 +5,7 @@
 # 13. ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > ZLink 은 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
-> 수명, 동적 상태 노드(SPOT), pub/sub, 위치 기반 자동 연결을 한 framework 안에서 묶어 주는
+> 수명, 동적 상태 단위(SPOT), pub/sub, 위치 기반 자동 연결을 한 framework 안에서 묶어 주는
 > 서버 간·실시간 메시징 계층**이다. 특히 "서비스가 어디 떠 있는지", "client 가
 > 어디 붙어 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
 > **반복 문제로 나올 때** 효과가 크다.
@@ -45,7 +45,7 @@ ZLink 의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가
 
 > ZLink 은 이 문제들을 **없애는 게 아니라 호출자 밖으로 밀어낸다.** 위치·연결·
 > correlation·dispatch 직렬성을 framework 가 가져가므로, 응용 코드가 transport
-> 배선이 아니라 **업무 흐름처럼** 보인다.
+> 설정이 아니라 **업무 흐름처럼** 보인다.
 
 ### 2.1 여러 언어가 한 channel 위에서 (cross-language)
 
@@ -171,6 +171,7 @@ L7 은 "요청"을 나눈다.** gRPC 는 연결 하나를 오래 유지하므로
 요청이 서버 한 대에 쏠린다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   C["client"] -->|"연결 1개에 요청들 multiplex"| L4["L4 LB: 연결 단위로 분배"]
   L4 -->|"그 연결이 붙은 한 대로 전부"| A["server A: 과부하"]
@@ -179,6 +180,7 @@ flowchart LR
 ```
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   C2["client"] -->|"요청 하나하나를 분배"| L7["L7 분배: mesh sidecar 또는 client-side LB"]
   L7 -->|"req"| A2["server A"]

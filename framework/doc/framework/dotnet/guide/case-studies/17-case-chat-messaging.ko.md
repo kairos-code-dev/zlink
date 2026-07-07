@@ -5,7 +5,7 @@
 # 케이스 — 채팅·메시징 플랫폼
 
 > [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
-> room 을 **주소 가능한 노드(SPOT)** 로 두어 membership 과 fan-out 결정을 직렬화하는
+> room 을 **주소 가능한 단위(SPOT)** 로 두어 membership 과 fan-out 결정을 직렬화하는
 > 사례다. 실제 client push 는 각 user actor 의 `BoundSession` 이 맡고,
 > **메시지 영속 저장은 그대로 DB** 다. 이 문서는 채팅 도메인의
 > 책임 경계와 ZLink 매핑을 설명하는 케이스 스터디이고, 같은 흐름을 빌드·실행해 보는

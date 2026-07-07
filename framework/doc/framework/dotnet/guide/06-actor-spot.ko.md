@@ -18,7 +18,7 @@ actor 는 **ID 로 식별되는 상태 보유 객체**다. 같은 `ActorId` 로 
 인스턴스**가 처리한다(일반 handler 는 stateless 라 메시지마다 새로 resolve 된다). 게임에서 한
 플레이어, 한 session 의 진행 상태를 담기에 맞다.
 
-호출자는 actor 가 어느 노드/Spot 에 있는지 몰라도 된다. `actorId` 만으로 호출하면 routing 은
+호출자는 actor 가 어느 SpotNode/Spot 에 있는지 몰라도 된다. `actorId` 만으로 호출하면 routing 은
 framework 가 등록된 resolver 로 푼다.
 
 actor 의 상태는 **서로 독립인 두 축**으로 본다. 이 챕터는 **위치 축**, 다음 챕터([07](07-actor-session.ko.md))는
@@ -156,8 +156,8 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 
 ### actor 이동 — 무슨 일이 일어나나 (로컬 vs 크로스노드)
 
-`JoinSpot` 으로 actor 가 한 Spot 에서 다른 Spot 으로 옮길 때, 대상 Spot 이 **같은 노드**냐 **다른
-노드**냐로 동작이 갈린다.
+`JoinSpot` 으로 actor 가 한 Spot 에서 다른 Spot 으로 옮길 때, 대상 Spot 이 **같은 SpotNode**에
+있느냐 **다른 SpotNode**에 있느냐로 동작이 갈린다.
 
 **① 같은 노드 — route 이동(단일 인스턴스).** 인스턴스는 그대로 두고 위치(route)만 바꾼다.
 
@@ -258,14 +258,16 @@ internal sealed class SubmitBingoCardHandler
 | 대상 | 실행 라인 |
 |------|-----------|
 | Entry Spot actor packet | actor별 mailbox |
-| Entry Spot lifecycle 콜백 | Entry Spot 의 단일 실행 큐(직렬) |
+| Entry Spot lifecycle 콜백 · route packet · subscription · timer | Entry Spot 자신의 단일 실행 큐(직렬) |
 | user Spot actor packet / packet / timer / subscription · lifecycle 콜백 | 그 user Spot 의 단일 실행 큐(직렬) |
 
-그래서 Entry Spot 의 admission lifecycle 상태와 user Spot 안의 room board 같은 가변 상태는 각자
-소유한 실행 큐 안에서 lock 없이 만질 수 있다. Entry Spot actor handler 는 actor별 mailbox 에서
-실행되므로 Entry Spot 인스턴스의 공유 mutable state 를 actor 간 순서 보장 수단으로 쓰지 않는다.
-join 직후 들어온 packet 이 옛 Entry Spot handler 로 가지 않도록, dispatch 는 actor 의 현재 위치를
-다시 읽어 큐를 atomic 하게 고른다.
+user Spot 은 모든 콜백이 한 줄에 몰려서 lock 없이 room board 같은 가변 상태를 만질 수 있다. **Entry
+Spot 은 줄이 둘이라 이 보장이 그대로 적용되지 않는다** — actor packet 은 actor별 mailbox 에서,
+lifecycle·route packet·subscription·timer 는 Entry Spot 자신의 줄에서 각각 직렬화되고, 이 두 줄은
+서로 동시에 실행될 수 있다. 그래서 Entry Spot 인스턴스의 공유 mutable state(참가자 카운터 등)를
+actor 간 또는 actor-vs-lifecycle 순서 보장 수단으로 쓰면 안 되고, 여러 actor·timer·route packet 이
+같이 건드리는 상태가 있으면 명시적 동기화(lock)가 필요하다. join 직후 들어온 packet 이 옛 Entry
+Spot handler 로 가지 않도록, dispatch 는 actor 의 현재 위치를 다시 읽어 큐를 atomic 하게 고른다.
 
 ## 4. 예제 — Bingo 로 따라가는 actor 생애 (콜백이 불리는 순서)
 

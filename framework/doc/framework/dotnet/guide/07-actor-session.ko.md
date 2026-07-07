@@ -70,7 +70,7 @@ builder.Services.AddZLinkFramework(options =>
         .Bind("tcp://0.0.0.0:9000")
         .RegisterSession<PlaySession>();
 
-    // play 역할 — 같은 프로세스가 spot 노드를 호스팅(= 위 stream 의 gateway 입구)
+    // play 역할 — 같은 프로세스가 SpotNode 를 호스팅(= 위 stream 의 gateway 입구)
     options.AddSpotMesh("play-spot")
         .EnableRouter("tcp://0.0.0.0:9201")
         .AddEntrySpot<PlayerEntrySpot>()
@@ -80,9 +80,9 @@ builder.Services.AddZLinkFramework(options =>
 
 > STREAM 의 actor-gateway 입구는 **같은 프로세스의 (router 가 켜진) SpotNode 로 자동 연결**된다 —
 > stream 과 SpotNode 를 한 프로세스에 두면 framework 가 알아서 잇는다(별도 호출 없음). 통합·분리의
-> 진짜 차이는 그 gateway 노드가 **actor 를 직접 호스팅하느냐(통합)** vs **원격 Play 노드로 forward
-> 하느냐(분리)** 다. actor 의 실제 위치는 bind 된 ref 가 운반하고, gateway 노드는 그쪽으로
-> relay·return 을 잇는 입구일 뿐이다.
+> 진짜 차이는 그 gateway SpotNode 가 **actor 를 직접 호스팅하느냐(통합)** vs **원격 Play SpotNode 로
+> forward 하느냐(분리)** 다. actor 의 실제 위치는 bind 된 ref 가 운반하고, gateway SpotNode 는
+> 그쪽으로 relay·return 을 잇는 입구일 뿐이다.
 
 ### 장단점 — 언제 무엇을
 
@@ -91,7 +91,7 @@ builder.Services.AddZLinkFramework(options =>
 | session→play relay | **네트워크 홉** | **in-process**(저지연) |
 | 스케일 | session·play **독립 증설**(연결 폭증 ↔ 로직 부하 각각) | **한 단위로 묶임**(따로 못 늘림) |
 | 장애 격리 | 강함(역할별 프로세스) | 약함(session·play 상호 영향) |
-| 운영·배포 | 프로세스가 늘고 store 배선 필요 | **한 프로세스, 단순** |
+| 운영·배포 | 프로세스가 늘고 store 연결 설정 필요 | **한 프로세스, 단순** |
 | 적합 | 대규모, 연결/로직 부하 특성이 다름, 무중단 스케일·배포 | 프로토타입·소규모·단순 게임·단일 리전 |
 | 샘플 | **Bingo** | **TicTacToe** |
 
@@ -177,7 +177,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
 > 작성법은 [08-stream](08-stream.ko.md)이 다룬다.
 
 위 예제는 actor 가 **같은 프로세스**에 있어 `IZLinkActorManager.GetOrCreateAsync` 로 바로 만들고
-bind 한다. actor 를 **다른 노드(Play 서버)** 가 호스팅하는 분리 토폴로지(§1 A)에서는, Play 서버에
+bind 한다. actor 를 **다른 SpotNode(Play 서버)** 가 호스팅하는 분리 토폴로지(§1 A)에서는, Play 서버에
 actor 를 보장해 달라고 요청해 ref 3종을 받은 뒤, 그 값으로 `ActorRef` 를 만들어 bind 한다
 (ensure-then-bind).
 
@@ -347,7 +347,7 @@ actorId)` 를 쓴다 — location store 를 읽어 actor 가 위치한 spot 의 
 조회용 public 표면이 없다 — actor 가 client 로 push 할 때는 `Context.BoundSession` 을 쓰면 된다.
 
 spot rid → 주소 변환을 기본(location store) 대신 직접 구현으로 바꾸고 싶을 때만
-`AddLocationStore(...)` 를 등록한다. `JoinSpot(spotRid, ...)` 가 노드 경계를 넘을 때
+`AddLocationStore(...)` 를 등록한다. `JoinSpot(spotRid, ...)` 가 SpotNode 경계를 넘을 때
 이 변환이 쓰인다.
 
 ## 5. 오류 처리 — `ZLinkFrameworkException`
@@ -386,7 +386,7 @@ builder.Services.AddZLinkFramework(options =>
         .EnableRouter("tcp://0.0.0.0:9101")
         .SetRoutingId(sessionNodeRid);
 
-    options.AddStreamNode("client-stream")   // gateway 는 위 game.session 노드로 자동 연결
+    options.AddStreamNode("client-stream")   // gateway 는 위 game.session SpotNode 로 자동 연결
         .Bind("tcp://0.0.0.0:9000")
         .RegisterSession<TicTacToeSession>();
 });
@@ -405,7 +405,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             var node = mesh;
             node.EnableRouter("tcp://0.0.0.0:9201");
-            node.AddEntrySpot<PlayerEntrySpot>();  // Entry Spot 은 노드당 1개(actor 가 처음 머무는 곳)
+            node.AddEntrySpot<PlayerEntrySpot>();  // Entry Spot 은 SpotNode 당 1개(actor 가 처음 머무는 곳)
             node.AddSpotFactory<MatchSpot>();      // user Spot 은 factory 로 요청마다 동적 생성
 
         }
@@ -414,7 +414,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> 노드 등록 시그니처는 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와 샘플 코드를
+> SpotNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와 샘플 코드를
 > 기준으로 확인한다.
 
 ## 7. 더 보기

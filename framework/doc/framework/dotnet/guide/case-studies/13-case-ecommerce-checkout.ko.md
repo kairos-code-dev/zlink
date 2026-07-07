@@ -45,6 +45,7 @@
 "ZLink 가 줄이는 것(배선)"과 "그대로 남는 것(분산 데이터 일관성)"을 가르는 데 있다.
 
 ```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   GW[API gateway] -->|PlaceOrder| ORD[order-service]
   ORD -->|Charge / deadline| PAY[payment-service]

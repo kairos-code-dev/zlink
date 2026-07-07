@@ -776,7 +776,7 @@ app.MapPost("/profiles/get", async (
 
 [^public-contract]: **public contract** 는 외부 사용자에게 공개되어, 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 
-[^spot]: **SPOT** 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다.
+[^spot]: **SPOT** 은 동적으로 생성·소멸되는 논리적 단위(예: room, stage 등)로 메시지를 라우팅하는 추상이다.
 
 [^channel]: **channel** 은 zlink core 의 논리적 통신 경로 단위다. 같은 channel 이름을
     쓰는 노드끼리만 메시지를 주고받는다. 물리 endpoint(IP:port)와는 분리된 개념이다.

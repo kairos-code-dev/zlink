@@ -421,6 +421,46 @@ int export_router_payload_parts (zlink_msg_t *parts_,
     return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
 }
 
+bool try_export_spot_routed_router_payload (std::vector<zlink_msg_t> *raw_parts_,
+                                            const zlink_routing_id_t &source_rid_,
+                                            uint64_t *request_seq_out_,
+                                            const zlink_routing_id_t **source_node_rid_out_,
+                                            const zlink_routing_id_t **source_spot_rid_out_,
+                                            zlink_msg_t **parts_out_,
+                                            size_t *part_count_out_,
+                                            int *rc_out_)
+{
+    if (!raw_parts_ || !request_seq_out_ || !source_node_rid_out_ || !source_spot_rid_out_
+        || !parts_out_ || !part_count_out_ || !rc_out_)
+        return false;
+
+    zlink::spot_reqrep_internal::parsed_spot_envelope_t spot_envelope;
+    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (
+          raw_parts_->data (), raw_parts_->size (), &spot_envelope))
+        return false;
+
+    *request_seq_out_ = 0;
+    size_t spot_payload_start_index = 0;
+    zlink::request_reply::parsed_envelope_t inner_envelope;
+    if (zlink::request_reply::parse_envelope (
+          spot_envelope.payload_parts, spot_envelope.payload_part_count, &inner_envelope)) {
+        *request_seq_out_ = inner_envelope.request_seq;
+        spot_payload_start_index = zlink::request_reply::control_part_count;
+    }
+
+    zlink_msg_close (&(*raw_parts_)[0]);
+    for (size_t i = 0; i < spot_payload_start_index; ++i)
+        zlink_msg_close (&spot_envelope.payload_parts[i]);
+
+    export_spot_routed_router_metadata (spot_envelope, source_rid_);
+    *source_node_rid_out_ = &router_recv_metadata_tls ().source_rid;
+    *source_spot_rid_out_ = &router_recv_metadata_tls ().source_spot_rid;
+    *rc_out_ = export_router_payload_parts (spot_envelope.payload_parts,
+                                            spot_envelope.payload_part_count,
+                                            spot_payload_start_index, parts_out_, part_count_out_);
+    return true;
+}
+
 int recv_router_message_direct (socket_handle_t handle_,
                                 const zlink_routing_id_t **source_node_rid_out_,
                                 const zlink_routing_id_t **source_spot_rid_out_,
@@ -509,29 +549,11 @@ int recv_router_message_direct (socket_handle_t handle_,
         return -1;
     }
 
-    zlink::spot_reqrep_internal::parsed_spot_envelope_t spot_envelope;
-    if (zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-          raw_parts.data (), raw_parts.size (), &spot_envelope)) {
-        *request_seq_out_ = 0;
-        size_t spot_payload_start_index = 0;
-        zlink::request_reply::parsed_envelope_t inner_envelope;
-        if (zlink::request_reply::parse_envelope (
-              spot_envelope.payload_parts, spot_envelope.payload_part_count, &inner_envelope)) {
-            *request_seq_out_ = inner_envelope.request_seq;
-            spot_payload_start_index = zlink::request_reply::control_part_count;
-        }
-
-        zlink_msg_close (&raw_parts[0]);
-        for (size_t i = 0; i < spot_payload_start_index; ++i)
-            zlink_msg_close (&spot_envelope.payload_parts[i]);
-
-        export_spot_routed_router_metadata (spot_envelope, source_rid);
-        *source_node_rid_out_ = &router_recv_metadata_tls ().source_rid;
-        *source_spot_rid_out_ = &router_recv_metadata_tls ().source_spot_rid;
-        return export_router_payload_parts (spot_envelope.payload_parts,
-                                            spot_envelope.payload_part_count,
-                                            spot_payload_start_index, parts_out_, part_count_out_);
-    }
+    int spot_export_rc = -1;
+    if (try_export_spot_routed_router_payload (&raw_parts, source_rid, request_seq_out_,
+                                               source_node_rid_out_, source_spot_rid_out_,
+                                               parts_out_, part_count_out_, &spot_export_rc))
+        return spot_export_rc;
 
     zlink::request_reply::parsed_envelope_t envelope;
     const bool parsed =

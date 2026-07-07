@@ -29,4 +29,5 @@ class spot_node_t;
 #include "api/actor/spot/service_spot_actor_session_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_route_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_join_state_internal.hpp"
+#include "api/actor/spot/service_spot_actor_no_bind_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_runtime_state_internal.hpp"

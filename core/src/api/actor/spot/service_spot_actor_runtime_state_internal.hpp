@@ -17,9 +17,12 @@ struct actor_runtime_t
     actor_route_state_t routes;
     actor_join_state_t joins;
     actor_lifecycle_state_t lifecycle;
+    actor_no_bind_pending_state_t no_bind;
     uint64_t protocol_drop_count;
     uint64_t next_join_epoch;
 };
+
+actor_runtime_t &actor_runtime ();
 
 }
 }

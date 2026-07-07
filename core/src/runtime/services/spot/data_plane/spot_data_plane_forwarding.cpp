@@ -441,6 +441,11 @@ int copy_raw_parts_to_owned (zlink_msg_t *parts_, size_t part_count_, spot_owned
 
 }
 
+int flush_staged_publish_entry_local (spot_runtime_t *runtime_,
+                                      spot_data_plane_runtime_state_t *state_,
+                                      spot_data_plane_runtime_state_t::staged_publish_entry_t *entry_,
+                                      bool allow_mesh_);
+
 void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
 {
     if (!socket_)
@@ -818,34 +823,14 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
 
     while (!local.empty ()) {
         spot_data_plane_runtime_state_t::staged_publish_entry_t &entry = local.front ();
-        if (entry.need_local) {
-            if (state_->local_fanout.targets.empty ()) {
-                entry.need_local = false;
-            } else if (forward_local_fanout (runtime_, state_, entry.topic, entry.parts,
-                                             entry.encoded_bytes)
-                       != 0) {
-                if (errno == EAGAIN) {
-                    move_ingress_messages_to_staged (state_, &local);
-                    return 0;
-                }
-                spot_clear_msg_parts (&entry.parts);
-                return -1;
-            } else {
-                entry.need_local = false;
-            }
+        const int flush_rc = flush_staged_publish_entry_local (runtime_, state_, &entry, true);
+        if (flush_rc > 0) {
+            move_ingress_messages_to_staged (state_, &local);
+            return 0;
         }
-
-        if (entry.need_mesh) {
-            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts, entry.encoded_bytes)
-                != 0) {
-                if (errno == EAGAIN) {
-                    move_ingress_messages_to_staged (state_, &local);
-                    return 0;
-                }
-                spot_clear_msg_parts (&entry.parts);
-                return -1;
-            }
-            entry.need_mesh = false;
+        if (flush_rc < 0) {
+            spot_clear_msg_parts (&entry.parts);
+            return -1;
         }
 
         spot_clear_msg_parts (&entry.parts);
@@ -936,6 +921,38 @@ int spot_data_plane_forwarder_t::drain_pub_ingress_socket (spot_runtime_t *runti
     return flush_staged_messages (runtime_, state_);
 }
 
+int flush_staged_publish_entry_local (spot_runtime_t *runtime_,
+                                      spot_data_plane_runtime_state_t *state_,
+                                      spot_data_plane_runtime_state_t::staged_publish_entry_t *entry_,
+                                      bool allow_mesh_)
+{
+    if (!runtime_ || !state_ || !entry_)
+        return 0;
+
+    if (entry_->need_local) {
+        if (state_->local_fanout.targets.empty ()) {
+            entry_->need_local = false;
+        } else if (spot_data_plane_forwarder_t::forward_local_fanout (
+                     runtime_, state_, entry_->topic, entry_->parts, entry_->encoded_bytes)
+                   != 0) {
+            return errno == EAGAIN ? 1 : -1;
+        } else {
+            entry_->need_local = false;
+        }
+    }
+
+    if (allow_mesh_ && entry_->need_mesh) {
+        if (spot_data_plane_forwarder_t::forward_mesh_pub (runtime_, state_, entry_->topic,
+                                                           entry_->parts, entry_->encoded_bytes)
+            != 0) {
+            return errno == EAGAIN ? 1 : -1;
+        }
+        entry_->need_mesh = false;
+    }
+
+    return 0;
+}
+
 int spot_data_plane_forwarder_t::flush_staged_messages (spot_runtime_t *runtime_,
                                                         spot_data_plane_runtime_state_t *state_)
 {
@@ -945,28 +962,11 @@ int spot_data_plane_forwarder_t::flush_staged_messages (spot_runtime_t *runtime_
     while (!state_->staged.ingress_messages.empty ()) {
         spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
           state_->staged.ingress_messages.front ();
-        if (entry.need_local) {
-            if (state_->local_fanout.targets.empty ()) {
-                entry.need_local = false;
-            } else if (forward_local_fanout (runtime_, state_, entry.topic, entry.parts,
-                                             entry.encoded_bytes)
-                       != 0) {
-                if (errno == EAGAIN)
-                    break;
-                return -1;
-            } else {
-                entry.need_local = false;
-            }
-        }
-        if (entry.need_mesh) {
-            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts, entry.encoded_bytes)
-                != 0) {
-                if (errno == EAGAIN)
-                    break;
-                return -1;
-            }
-            entry.need_mesh = false;
-        }
+        const int flush_rc = flush_staged_publish_entry_local (runtime_, state_, &entry, true);
+        if (flush_rc > 0)
+            break;
+        if (flush_rc < 0)
+            return -1;
         if (entry.need_local || entry.need_mesh)
             break;
         spot_clear_msg_parts (&entry.parts);
@@ -976,19 +976,11 @@ int spot_data_plane_forwarder_t::flush_staged_messages (spot_runtime_t *runtime_
     while (!state_->staged.mesh_messages.empty ()) {
         spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
           state_->staged.mesh_messages.front ();
-        if (entry.need_local) {
-            if (state_->local_fanout.targets.empty ()) {
-                entry.need_local = false;
-            } else if (forward_local_fanout (runtime_, state_, entry.topic, entry.parts,
-                                             entry.encoded_bytes)
-                       != 0) {
-                if (errno == EAGAIN)
-                    break;
-                return -1;
-            } else {
-                entry.need_local = false;
-            }
-        }
+        const int flush_rc = flush_staged_publish_entry_local (runtime_, state_, &entry, false);
+        if (flush_rc > 0)
+            break;
+        if (flush_rc < 0)
+            return -1;
         if (entry.need_local)
             break;
         spot_clear_msg_parts (&entry.parts);

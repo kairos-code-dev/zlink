@@ -50,10 +50,10 @@
 
 using namespace zlink::spot_actor_api_internal;
 
-namespace
+namespace zlink
 {
-
-const size_t stack_spot_actor_routed_part_capacity = 8;
+namespace spot_actor_api_internal
+{
 
 actor_runtime_t &actor_runtime ()
 {
@@ -61,48 +61,15 @@ actor_runtime_t &actor_runtime ()
     return runtime;
 }
 
+}
+}
+
+namespace
+{
+
+const size_t stack_spot_actor_routed_part_capacity = 8;
+
 const bool actor_gateway_debug_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
-
-struct no_bind_pending_key_t
-{
-    std::string target_node_rid;
-    std::string actor_id;
-    uint64_t generation;
-    std::string caller_endpoint_rid;
-    uint64_t request_id;
-
-    bool operator< (const no_bind_pending_key_t &other_) const
-    {
-        if (request_id != other_.request_id)
-            return request_id < other_.request_id;
-        if (generation != other_.generation)
-            return generation < other_.generation;
-        if (target_node_rid != other_.target_node_rid)
-            return target_node_rid < other_.target_node_rid;
-        if (actor_id != other_.actor_id)
-            return actor_id < other_.actor_id;
-        return caller_endpoint_rid < other_.caller_endpoint_rid;
-    }
-};
-
-struct no_bind_pending_reply_t
-{
-    zlink_reply_handler_fn handler;
-    void *userdata;
-    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
-};
-
-std::mutex &no_bind_pending_mutex ()
-{
-    static std::mutex mutex;
-    return mutex;
-}
-
-std::map<no_bind_pending_key_t, no_bind_pending_reply_t> &no_bind_pending_replies ()
-{
-    static std::map<no_bind_pending_key_t, no_bind_pending_reply_t> pending;
-    return pending;
-}
 
 uint64_t next_no_bind_request_id ()
 {
@@ -714,11 +681,6 @@ no_bind_pending_key_t make_no_bind_pending_key (const zlink_routing_id_t &target
     return key;
 }
 
-void cleanup_no_bind_timeout_key (void *userdata_)
-{
-    delete static_cast<no_bind_pending_key_t *> (userdata_);
-}
-
 int errno_from_request_result (zlink_request_result_t result_);
 
 void complete_no_bind_callback (zlink_reply_handler_fn handler_,
@@ -751,88 +713,22 @@ void complete_no_bind_callback (zlink_reply_handler_fn handler_,
     zlink::request_reply::close_built_parts (&moved_parts);
 }
 
-void on_no_bind_request_timeout (void *userdata_)
-{
-    const no_bind_pending_key_t *key = static_cast<const no_bind_pending_key_t *> (userdata_);
-    if (!key)
-        return;
-
-    no_bind_pending_reply_t pending;
-    bool found = false;
-    {
-        std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
-        std::map<no_bind_pending_key_t, no_bind_pending_reply_t>::iterator it =
-          no_bind_pending_replies ().find (*key);
-        if (it != no_bind_pending_replies ().end ()) {
-            pending = it->second;
-            no_bind_pending_replies ().erase (it);
-            found = true;
-        }
-    }
-
-    if (found) {
-        zlink::request_reply::complete_reply_callback (pending.handler, ETIMEDOUT, NULL, 0,
-                                                       pending.userdata);
-    }
-}
-
 int register_no_bind_pending (const no_bind_pending_key_t &key_,
                               zlink_reply_handler_fn handler_,
                               void *userdata_,
                               uint32_t timeout_ms_)
 {
-    if (!handler_ || key_.request_id == 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    no_bind_pending_reply_t pending;
-    pending.handler = handler_;
-    pending.userdata = userdata_;
-    if (timeout_ms_ != 0) {
-        no_bind_pending_key_t *timeout_key = new (std::nothrow) no_bind_pending_key_t (key_);
-        if (!timeout_key) {
-            errno = ENOMEM;
-            return -1;
-        }
-        pending.timeout_task = zlink::request_timeout::schedule (
-          timeout_ms_, on_no_bind_request_timeout, timeout_key, cleanup_no_bind_timeout_key);
-    }
-
-    {
-        std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
-        no_bind_pending_replies ()[key_] = pending;
-    }
-    return 0;
+    return actor_runtime ().no_bind.register_pending (key_, handler_, userdata_, timeout_ms_);
 }
 
 void erase_no_bind_pending (const no_bind_pending_key_t &key_)
 {
-    no_bind_pending_reply_t pending;
-    {
-        std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
-        std::map<no_bind_pending_key_t, no_bind_pending_reply_t>::iterator it =
-          no_bind_pending_replies ().find (key_);
-        if (it == no_bind_pending_replies ().end ())
-            return;
-        pending = it->second;
-        no_bind_pending_replies ().erase (it);
-    }
-    zlink::request_timeout::cancel (pending.timeout_task);
+    actor_runtime ().no_bind.erase_pending (key_);
 }
 
 bool take_no_bind_pending (const no_bind_pending_key_t &key_, no_bind_pending_reply_t *out_)
 {
-    if (!out_)
-        return false;
-    std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
-    std::map<no_bind_pending_key_t, no_bind_pending_reply_t>::iterator it =
-      no_bind_pending_replies ().find (key_);
-    if (it == no_bind_pending_replies ().end ())
-        return false;
-    *out_ = it->second;
-    no_bind_pending_replies ().erase (it);
-    return true;
+    return actor_runtime ().no_bind.take_pending (key_, out_);
 }
 
 int errno_from_request_result (zlink_request_result_t result_)

@@ -46,49 +46,6 @@
 #define WS_CONNECTER_DBG(fmt, ...)
 #endif
 
-#if defined ZLINK_HAVE_WSS
-namespace
-{
-std::unique_ptr<boost::asio::ssl::context>
-create_wss_client_context (const zlink::options_t &options_, const std::string &hostname_)
-{
-    const bool verify_peer = options_.tls_verify != 0;
-    const bool trust_system = options_.tls_trust_system != 0;
-
-    if (verify_peer && options_.tls_ca.empty () && !trust_system) {
-        return std::unique_ptr<boost::asio::ssl::context> ();
-    }
-
-    const bool has_client_cert = !options_.tls_cert.empty () && !options_.tls_key.empty ();
-
-    const zlink::ssl_context_helper_t::verification_mode verify_mode =
-      verify_peer ? zlink::ssl_context_helper_t::verify_peer
-                  : zlink::ssl_context_helper_t::verify_none;
-
-    std::unique_ptr<boost::asio::ssl::context> ssl_context;
-    if (has_client_cert) {
-        ssl_context = zlink::ssl_context_helper_t::create_client_context_with_cert (
-          options_.tls_ca, options_.tls_cert, options_.tls_key, options_.tls_password, trust_system,
-          verify_mode);
-    } else {
-        ssl_context = zlink::ssl_context_helper_t::create_client_context (
-          options_.tls_ca, trust_system, verify_mode);
-    }
-
-    if (!ssl_context)
-        return std::unique_ptr<boost::asio::ssl::context> ();
-
-    if (verify_peer && !hostname_.empty ()) {
-        if (!zlink::ssl_context_helper_t::set_hostname_verification (*ssl_context, hostname_)) {
-            return std::unique_ptr<boost::asio::ssl::context> ();
-        }
-    }
-
-    return ssl_context;
-}
-}
-#endif
-
 namespace
 {
 int connect_delayed_errno_value ()
@@ -448,7 +405,8 @@ void zlink::asio_ws_connecter_t::create_engine (fd_t fd_, const std::string &loc
 #if defined ZLINK_HAVE_WSS
     std::unique_ptr<boost::asio::ssl::context> ssl_context;
     if (_secure) {
-        ssl_context = create_wss_client_context (options, _tls_hostname);
+        ssl_context =
+          ssl_context_helper_t::create_client_context_from_options (options, _tls_hostname);
         if (!ssl_context) {
             WS_CONNECTER_DBG ("create_engine: failed to create SSL context");
 #ifdef ZLINK_HAVE_WINDOWS

@@ -163,7 +163,7 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
     별도 진단 TU로. errno 번역과 무관한 관심사. (없음 / S)
   - 2026-07-07 완료: `print_backtrace` 구현을 `runtime/utils/err_backtrace.cpp`로
     분리하고 `err.cpp`에는 errno 문자열, abort, Windows errno 변환만 남겼다.
-- [ ] **T1-09. TLS verify-mode 결정 시퀀스 `ssl_context_helper`로 중앙화**
+- [x] **T1-09. TLS verify-mode 결정 시퀀스 `ssl_context_helper`로 중앙화**
   - `transports/tls/asio_tls_connecter.cpp:400-424` vs
     `transports/ws/asio_ws_connecter.cpp:60-77` + 양쪽 listener의
     `configure_server_verification`/`create_server_context` 시퀀스
@@ -171,6 +171,11 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
     자체를 helper로 올려 4곳 복붙 해소. 단 verify-mode/hostname 검증/trust
     store 적용 **순서와 에러 의미는 사실상 계약** — 이동 전 현재 동작을 테스트로
     고정하고 순서를 바꾸지 않는다. (없음 / M)
+  - 2026-07-07 완료: `ssl_context_helper_t`에 options 기반 client/server context
+    builder를 추가하고 TLS connecter/listener 및 WSS connecter/listener가 같은
+    helper를 사용하도록 교체했다. 기존 순서인 CA/trust-system 로딩, verify-mode
+    설정, hostname verification 적용 순서를 유지했다. 현재 CTest에 등록된
+    TLS/WSS 회귀 테스트는 `test_transport_matrix`이며 `tls`/`wss` 케이스를 포함한다.
 - [ ] **T1-10. `socket_base.hpp` 정보은닉 강화(축소판)**
   - `sockets/common/socket_base.hpp` — `socket_msg_dispatch_mutex()`의 raw
     `recursive_mutex&` 노출과 핸들러 액세서 9종 축소. protected 사이에 낀
@@ -446,3 +451,7 @@ sockets/engine/transports/utils:
   cleanup 정책은 호출처별로 유지했다.
 - 2026-07-07: T1-08 구현 — `err.cpp`에서 libunwind/demangle 기반 backtrace 출력을
   `err_backtrace.cpp`로 분리해 errno 변환과 진단 출력 책임을 나눴다.
+- 2026-07-07: T1-09 구현 — TLS/WSS client/server SSL context 생성 정책을
+  `ssl_context_helper_t`의 options 기반 builder 두 개로 중앙화했다. `test_asio_ssl`,
+  `test_asio_ws`, `test_zmp_ws_wss`는 현재 CTest 미등록 allowlist 항목이고, 등록된
+  TLS/WSS 검증은 `test_transport_matrix`로 수행했다.

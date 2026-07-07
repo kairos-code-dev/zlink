@@ -317,6 +317,77 @@ ssl_context_helper_t::create_client_context_with_cert_from_pem (const std::strin
     }
 }
 
+std::unique_ptr<boost::asio::ssl::context>
+ssl_context_helper_t::create_client_context_from_options (const options_t &options,
+                                                          const std::string &hostname)
+{
+    const bool verify_peer_enabled = options.tls_verify != 0;
+    const bool trust_system = options.tls_trust_system != 0;
+
+    if (verify_peer_enabled && options.tls_ca.empty () && !trust_system) {
+        return nullptr;
+    }
+
+    const bool has_client_cert = !options.tls_cert.empty () && !options.tls_key.empty ();
+    const verification_mode verify_mode = verify_peer_enabled ? verify_peer : verify_none;
+
+    std::unique_ptr<boost::asio::ssl::context> ssl_context;
+    if (has_client_cert) {
+        ssl_context = create_client_context_with_cert (
+          options.tls_ca, options.tls_cert, options.tls_key, options.tls_password, trust_system,
+          verify_mode);
+    } else {
+        ssl_context = create_client_context (options.tls_ca, trust_system, verify_mode);
+    }
+
+    if (!ssl_context)
+        return nullptr;
+
+    if (verify_peer_enabled && !hostname.empty ()) {
+        if (!set_hostname_verification (*ssl_context, hostname))
+            return nullptr;
+    }
+
+    return ssl_context;
+}
+
+std::unique_ptr<boost::asio::ssl::context>
+ssl_context_helper_t::create_server_context_from_options (const options_t &options)
+{
+    if (options.tls_cert.empty () || options.tls_key.empty ()) {
+        return nullptr;
+    }
+
+    std::unique_ptr<boost::asio::ssl::context> ssl_context =
+      create_server_context (options.tls_cert, options.tls_key, options.tls_password);
+    if (!ssl_context)
+        return nullptr;
+
+    const bool require_client_cert = options.tls_require_client_cert != 0;
+    const bool trust_system = options.tls_trust_system != 0;
+
+    if (require_client_cert) {
+        if (options.tls_ca.empty () && !trust_system) {
+            return nullptr;
+        }
+
+        if (!options.tls_ca.empty ()) {
+            if (!load_ca_certificate (*ssl_context, options.tls_ca))
+                return nullptr;
+        } else if (trust_system) {
+            ssl_context->set_default_verify_paths ();
+        }
+    } else if (!options.tls_ca.empty ()) {
+        if (!load_ca_certificate (*ssl_context, options.tls_ca))
+            return nullptr;
+    }
+
+    if (!configure_server_verification (*ssl_context, require_client_cert))
+        return nullptr;
+
+    return ssl_context;
+}
+
 bool ssl_context_helper_t::configure_verification (boost::asio::ssl::context &ctx,
                                                    verification_mode mode)
 {

@@ -45,54 +45,6 @@
 #if defined ZLINK_HAVE_WSS
 namespace
 {
-std::unique_ptr<boost::asio::ssl::context>
-create_wss_server_context (const zlink::options_t &options_)
-{
-    //  Server requires certificate and private key
-    if (options_.tls_cert.empty () || options_.tls_key.empty ()) {
-        return std::unique_ptr<boost::asio::ssl::context> ();
-    }
-
-    std::unique_ptr<boost::asio::ssl::context> ssl_context =
-      zlink::ssl_context_helper_t::create_server_context (options_.tls_cert, options_.tls_key,
-                                                          options_.tls_password);
-    if (!ssl_context)
-        return std::unique_ptr<boost::asio::ssl::context> ();
-
-    const bool require_client_cert = options_.tls_require_client_cert != 0;
-    const bool trust_system = options_.tls_trust_system != 0;
-
-    if (require_client_cert) {
-        if (options_.tls_ca.empty () && !trust_system) {
-            return std::unique_ptr<boost::asio::ssl::context> ();
-        }
-
-        if (!options_.tls_ca.empty ()) {
-            if (!zlink::ssl_context_helper_t::load_ca_certificate (*ssl_context, options_.tls_ca)) {
-                return std::unique_ptr<boost::asio::ssl::context> ();
-            }
-        } else if (trust_system) {
-            ssl_context->set_default_verify_paths ();
-        }
-    } else if (!options_.tls_ca.empty ()) {
-        if (!zlink::ssl_context_helper_t::load_ca_certificate (*ssl_context, options_.tls_ca)) {
-            return std::unique_ptr<boost::asio::ssl::context> ();
-        }
-    }
-
-    if (!zlink::ssl_context_helper_t::configure_server_verification (*ssl_context,
-                                                                     require_client_cert)) {
-        return std::unique_ptr<boost::asio::ssl::context> ();
-    }
-
-    return ssl_context;
-}
-}
-#endif
-
-#if defined ZLINK_HAVE_WSS
-namespace
-{
 size_t parse_stream_accept_concurrency ()
 {
     return zlink::env::asio_stream_accept_concurrency ();
@@ -431,7 +383,7 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
 #if defined ZLINK_HAVE_WSS
     std::unique_ptr<boost::asio::ssl::context> ssl_context;
     if (_secure) {
-        ssl_context = create_wss_server_context (options);
+        ssl_context = ssl_context_helper_t::create_server_context_from_options (options);
         if (!ssl_context) {
             _socket->event_accept_failed (make_unconnected_bind_endpoint_pair (_endpoint), EINVAL);
 #ifdef ZLINK_HAVE_WINDOWS

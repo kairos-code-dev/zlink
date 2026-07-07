@@ -398,45 +398,11 @@ bool zlink::asio_tls_connecter_t::create_ssl_context (const std::string &hostnam
     TLS_CONNECTER_DBG ("create_ssl_context: ca=%s, cert=%s, key=%s", options.tls_ca.c_str (),
                        options.tls_cert.c_str (), options.tls_key.c_str ());
 
-    const bool verify_peer = options.tls_verify != 0;
-    const bool trust_system = options.tls_trust_system != 0;
-
-    //  Determine if we're doing mutual TLS (client cert auth)
-    bool has_client_cert = !options.tls_cert.empty () && !options.tls_key.empty ();
-
-    if (verify_peer && options.tls_ca.empty () && !trust_system) {
-        TLS_CONNECTER_DBG ("create_ssl_context: tls_verify=1 requires tls_ca or tls_trust_system");
-        return false;
-    }
-
-    const ssl_context_helper_t::verification_mode verify_mode =
-      verify_peer ? ssl_context_helper_t::verify_peer : ssl_context_helper_t::verify_none;
-
-    if (has_client_cert) {
-        //  Client with certificate for mutual TLS
-        _ssl_context = ssl_context_helper_t::create_client_context_with_cert (
-          options.tls_ca, options.tls_cert, options.tls_key, options.tls_password, trust_system,
-          verify_mode);
-    } else {
-        //  Client without certificate (server auth only)
-        _ssl_context =
-          ssl_context_helper_t::create_client_context (options.tls_ca, trust_system, verify_mode);
-    }
-
+    _ssl_context = ssl_context_helper_t::create_client_context_from_options (options, hostname_);
     if (!_ssl_context) {
         TLS_CONNECTER_DBG ("create_ssl_context: failed to create SSL context: %s",
                            ssl_context_helper_t::get_ssl_error_string ().c_str ());
         return false;
-    }
-
-    //  Configure hostname verification if enabled and hostname is specified
-    if (verify_peer && !hostname_.empty ()) {
-        TLS_CONNECTER_DBG ("create_ssl_context: setting hostname verification: %s",
-                           hostname_.c_str ());
-        if (!ssl_context_helper_t::set_hostname_verification (*_ssl_context, hostname_)) {
-            TLS_CONNECTER_DBG ("create_ssl_context: failed to set hostname verification");
-            return false;
-        }
     }
 
     TLS_CONNECTER_DBG ("create_ssl_context: SSL context created successfully");

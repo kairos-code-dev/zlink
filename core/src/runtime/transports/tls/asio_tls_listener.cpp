@@ -352,61 +352,11 @@ std::unique_ptr<boost::asio::ssl::context> zlink::asio_tls_listener_t::create_ss
     TLS_LISTENER_DBG ("create_ssl_context: cert=%s, key=%s, ca=%s", options.tls_cert.c_str (),
                       options.tls_key.c_str (), options.tls_ca.c_str ());
 
-    //  Server requires certificate and private key
-    if (options.tls_cert.empty () || options.tls_key.empty ()) {
-        TLS_LISTENER_DBG ("create_ssl_context: server requires tls_cert and tls_key");
-        return std::unique_ptr<boost::asio::ssl::context> ();
-    }
-
-    //  Create server SSL context
     std::unique_ptr<boost::asio::ssl::context> ssl_context =
-      ssl_context_helper_t::create_server_context (options.tls_cert, options.tls_key,
-                                                   options.tls_password);
+      ssl_context_helper_t::create_server_context_from_options (options);
 
     if (!ssl_context) {
         TLS_LISTENER_DBG ("create_ssl_context: failed to create SSL context: %s",
-                          ssl_context_helper_t::get_ssl_error_string ().c_str ());
-        return std::unique_ptr<boost::asio::ssl::context> ();
-    }
-
-    //  Configure client certificate verification based on options
-    //  If tls_require_client_cert is set and CA is provided, enable mTLS
-    bool require_client_cert = (options.tls_require_client_cert != 0);
-    const bool trust_system = options.tls_trust_system != 0;
-
-    if (require_client_cert) {
-        //  mTLS mode requires CA certificate to verify client
-        if (options.tls_ca.empty () && !trust_system) {
-            TLS_LISTENER_DBG ("create_ssl_context: mTLS requires tls_ca or tls_trust_system");
-            return std::unique_ptr<boost::asio::ssl::context> ();
-        }
-
-        TLS_LISTENER_DBG ("create_ssl_context: enabling mTLS (client certificate required)");
-
-        if (!options.tls_ca.empty ()) {
-            if (!ssl_context_helper_t::load_ca_certificate (*ssl_context, options.tls_ca)) {
-                TLS_LISTENER_DBG ("create_ssl_context: failed to load CA: %s",
-                                  ssl_context_helper_t::get_ssl_error_string ().c_str ());
-                return std::unique_ptr<boost::asio::ssl::context> ();
-            }
-        } else if (trust_system) {
-            ssl_context->set_default_verify_paths ();
-        }
-    } else if (!options.tls_ca.empty ()) {
-        //  CA specified but client cert not required - optional client auth
-        TLS_LISTENER_DBG (
-          "create_ssl_context: loading CA for optional client certificate verification");
-
-        if (!ssl_context_helper_t::load_ca_certificate (*ssl_context, options.tls_ca)) {
-            TLS_LISTENER_DBG ("create_ssl_context: failed to load CA: %s",
-                              ssl_context_helper_t::get_ssl_error_string ().c_str ());
-            return std::unique_ptr<boost::asio::ssl::context> ();
-        }
-    }
-
-    //  Configure server verification mode
-    if (!ssl_context_helper_t::configure_server_verification (*ssl_context, require_client_cert)) {
-        TLS_LISTENER_DBG ("create_ssl_context: failed to configure server verification: %s",
                           ssl_context_helper_t::get_ssl_error_string ().c_str ());
         return std::unique_ptr<boost::asio::ssl::context> ();
     }

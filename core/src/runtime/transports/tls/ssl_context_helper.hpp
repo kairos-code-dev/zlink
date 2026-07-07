@@ -6,6 +6,8 @@
 #include "core/poller.hpp"
 #if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
+#include "core/options.hpp"
+
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 
@@ -85,6 +87,16 @@ class ssl_context_helper_t
                                               const std::string &password = std::string (),
                                               bool trust_system = true,
                                               verification_mode mode = verify_peer);
+
+    //  Create a client SSL context from socket TLS options.
+    //  Returns nullptr on failure.
+    static std::unique_ptr<boost::asio::ssl::context>
+    create_client_context_from_options (const options_t &options, const std::string &hostname);
+
+    //  Create a server SSL context from socket TLS options.
+    //  Returns nullptr on failure.
+    static std::unique_ptr<boost::asio::ssl::context>
+    create_server_context_from_options (const options_t &options);
 
     //  Configure verification on an existing context
     static bool configure_verification (boost::asio::ssl::context &ctx, verification_mode mode);

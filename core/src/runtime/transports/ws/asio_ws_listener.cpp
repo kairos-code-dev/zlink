@@ -212,8 +212,7 @@ void zlink::asio_ws_listener_t::process_term (int linger_)
     }
 
     //  Process pending handlers
-    for (size_t i = 0; i < 4096 && _accepting_count > 0; ++i)
-        _io_context.poll_one ();
+    drain_asio_listener_pending_accepts (_io_context, &_accepting_count);
 
     own_t::process_term (linger_);
 }

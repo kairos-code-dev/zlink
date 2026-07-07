@@ -200,8 +200,7 @@ void zlink::asio_tcp_listener_t::process_term (int linger_)
     //  Process any pending handlers (including the cancelled async_accept)
     //  to ensure the callback fires while the object is still alive.
     //  The _terminating flag ensures the callback is a no-op.
-    for (size_t i = 0; i < 4096 && _accepting_count > 0; ++i)
-        _io_context.poll_one ();
+    drain_asio_listener_pending_accepts (_io_context, &_accepting_count);
 
     //  Now it's safe to call own_t::process_term to terminate child sessions
     own_t::process_term (linger_);

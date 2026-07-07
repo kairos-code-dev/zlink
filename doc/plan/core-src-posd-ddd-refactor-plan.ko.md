@@ -493,23 +493,51 @@ sockets/engine/transports/utils:
 
 ### 3.4 티어 4 — 조건부 (벤치 게이트 없이는 착수 금지, 3건)
 
-- [ ] **T4-01. recv-part 시퀀싱 4중 중복 통합**
+- [x] **T4-01. recv-part 시퀀싱 4중 중복 통합**
   - `socket_message_api.cpp:39-441`(recv/subscribe) +
     `socket_request_reply_router_api.cpp:98-621`(router/dealer)
   - 동일 상태기계(sequence 활성 판정 → 단일부 fast move → stage/take →
     abort/close 언와인딩) 4벌. 범위 내 최대 API-층 중복이지만 router/dealer recv가
     명시된 hot path. **`part_count==1` fast move는 제자리**, post-recv 꼬리만
     공유 가능한지 설계 검토 후 벤치로 결판. (조건부 / L)
-- [ ] **T4-02. transport wrapper 쌍 통합**
+  - 2026-07-08 완료 판정: 코드 변경 없이 닫는다. 현재 네 경로는 단일부 fast move
+    위치만 비슷하고, metadata 모델이 서로 다르다. 기본 recv는 STREAM source RID,
+    subscribe는 topic buffer, router는 source node/spot/request seq, dealer는
+    message type/request seq를 내보낸다. `part_count==1` fast move를 제자리에 두고
+    post-recv 꼬리만 공유하려면 metadata export callback, 템플릿 driver, 또는
+    out-of-line helper를 hot recv 본문에 추가해야 한다. 이는 2.3절의
+    out-of-line/분기/콜백 추가 금지와 POSD의 얕은 모듈 위험을 키우므로 통합하지
+    않는다. 벤치는 코드 변경이 없어 수행하지 않았다.
+- [x] **T4-02. transport wrapper 쌍 통합**
   - `tcp_transport.cpp`≈`ipc_transport.cpp`, `ws_transport.cpp`≈`wss_transport.cpp`
   - 주소/소켓 타입만 다른 어댑터 2벌씩. `async_read_some`/`async_write_some`/
     `async_writev`가 per-message I/O primitive — 템플릿화가 non-virtual/인라인
     dispatch를 보존함을 증명해야 진행. (조건부 / M)
-- [ ] **T4-03. WS 엔진 base 통합**
+  - 2026-07-08 완료 판정: 코드 변경 없이 닫는다. TCP/IPC는 raw stream socket 계열
+    writev loop가 비슷하지만 stats counter, 환경 flag, Windows 분기, IPC
+    force-async 정책, close/shutdown 의미가 다르다. WS/WSS는 handshake state,
+    read message buffer, frame-atomic write 의미가 핵심이고 WSS는 SSL handshake와
+    SSL error mapping까지 추가된다. 이를 공통 템플릿/정책층으로 묶으면
+    per-message `async_read_some`/`async_write_some`/`async_writev` primitive 주변에
+    새 정책 dispatch와 타입 매개변수 surface가 생겨 hot I/O 경로의 구조가 바뀐다.
+    POSD 기준으로 호출 표면과 정책 누출이 구현 중복 절감보다 커서 통합하지 않는다.
+    벤치는 코드 변경이 없어 수행하지 않았다.
+- [x] **T4-03. WS 엔진 base 통합**
   - `asio_ws_engine_t`가 `i_engine` 직접 상속으로 stream fastpath 전층 + ZMP층을
     재구현(3중 ~1,700줄, 범위 내 최대 중복원). 상속 변경은 vtable에 영향.
     **T3-05(handshake 통합) 선행 후**, base 추출은 벤치 무회귀 증명 시에만.
     (조건부 / L)
+  - 2026-07-08 완료 판정: 코드 변경 없이 닫는다. T3-05에서 HELLO/READY
+    frame construction, HELLO receive state, READY accept state처럼 정보 은닉 효과가
+    큰 control-plane 중복은 이미 `zmp_control`로 분리했다. 남은 중복은
+    `start_async_read`, `on_read_complete`, `start_async_write`, `on_write_complete`,
+    `prepare_gather_output`, `speculative_write`, `decode_and_push` 계열이며 WS 엔진의
+    `i_engine` 직접 상속, callback guard, timer, read/write pending flag,
+    gather/decoder buffer 상태와 결합돼 있다. 이를 base로 합치면 vtable 구조와
+    STREAM/WS send/recv hot path의 상태 배치가 바뀌므로 2.3절과 6절의
+    `decode_and_push`/WS send/recv 본체 제외 판정을 침범한다. 벤치로 무회귀를
+    증명하기 전에 시도할 수 있는 code-motion 범위가 없어 통합하지 않는다. 벤치는
+    코드 변경이 없어 수행하지 않았다.
 
 ## 4. 권장 실행 순서
 

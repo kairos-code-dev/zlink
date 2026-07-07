@@ -1386,8 +1386,7 @@ int zlink::spot_actor_internal::process_gateway_delivery (
             rc = -1;
     }
     if (rc == 0 && completed_join) {
-        complete_join_request (completed_join, ZLINK_REQUEST_OK);
-        release_join_request_after_completion (completed_join);
+        complete_and_release_join_request (completed_join, ZLINK_REQUEST_OK);
     }
     return rc;
 }
@@ -1529,8 +1528,7 @@ void erase_actor_spot_facade (spot_handle_t *spot_)
             std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
             retire_join_request_locked (*it);
         }
-        complete_join_request (*it, ZLINK_REQUEST_TERMINATED);
-        release_join_request_after_completion (*it);
+        complete_and_release_join_request (*it, ZLINK_REQUEST_TERMINATED);
     }
 }
 
@@ -1612,8 +1610,7 @@ void erase_actor_stream_bindings (void *stream_)
     }
     for (std::deque<queued_join_request_t *>::iterator it = aborted_joins.begin ();
          it != aborted_joins.end (); ++it) {
-        complete_join_request (*it, ZLINK_REQUEST_TERMINATED);
-        release_join_request_after_completion (*it);
+        complete_and_release_join_request (*it, ZLINK_REQUEST_TERMINATED);
     }
 }
 

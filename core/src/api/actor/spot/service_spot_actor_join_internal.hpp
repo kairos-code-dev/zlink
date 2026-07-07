@@ -31,7 +31,6 @@ bool join_request_live_locked (queued_join_request_t *request_);
 void index_join_request_locked (queued_join_request_t *request_);
 void unindex_join_request_locked (queued_join_request_t *request_);
 void retire_join_request_locked (queued_join_request_t *request_);
-void release_join_request_after_completion (queued_join_request_t *request_);
 void remove_pending_join_request_locked (queued_join_request_t *request_);
 void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms_);
 uint64_t next_join_commit_epoch_locked ();
@@ -65,7 +64,6 @@ int process_actor_gateway_join_packet_locked (
   queued_join_request_t **completed_out_,
   actor_handle_t **source_actor_to_remove_out_);
 
-void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_);
 void collect_join_spot_facade_erase_locked (spot_handle_t *spot_,
                                             std::deque<queued_join_request_t *> *pending_);
 bool join_spot_has_joined_or_pending_actor_locked (spot_handle_t *spot_);
@@ -77,6 +75,8 @@ void collect_join_stream_live_erase_requests_locked (
   const std::deque<queued_join_request_t *> &queued_aborts_,
   std::vector<queued_join_request_t *> *live_aborts_);
 
+void complete_and_release_join_request (queued_join_request_t *request_,
+                                        zlink_request_result_t result_);
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
                                                       size_t part_count_,
                                                       zlink_actor_join_spot_handler_fn handler_,

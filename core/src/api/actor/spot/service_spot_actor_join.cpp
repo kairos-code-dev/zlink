@@ -116,6 +116,8 @@ namespace zlink
 namespace spot_actor_api_internal
 {
 
+void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_);
+
 bool join_request_live_locked (queued_join_request_t *request_)
 {
     return actor_runtime ().joins.is_live (request_);
@@ -625,6 +627,13 @@ void complete_join_request (queued_join_request_t *request_, zlink_request_resul
     }
 }
 
+void complete_and_release_join_request (queued_join_request_t *request_,
+                                        zlink_request_result_t result_)
+{
+    complete_join_request (request_, result_);
+    release_join_request_after_completion (request_);
+}
+
 void collect_join_spot_facade_erase_locked (spot_handle_t *spot_,
                                             std::deque<queued_join_request_t *> *pending_)
 {
@@ -966,8 +975,7 @@ zlink_spot_node_actor_join_spot (void *node_,
                 std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
                 retire_join_request_locked (request);
             }
-            complete_join_request (request, failure);
-            release_join_request_after_completion (request);
+            complete_and_release_join_request (request, failure);
             return ZLINK_SUBMIT_OK;
         }
         schedule_join_timeout (request, timeout_ms_);
@@ -1168,8 +1176,7 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
                 std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
                 retire_join_request_locked (request);
             }
-            complete_join_request (request, failure);
-            release_join_request_after_completion (request);
+            complete_and_release_join_request (request, failure);
             return ZLINK_SUBMIT_OK;
         }
         schedule_join_timeout (request, timeout_ms_);
@@ -1342,7 +1349,6 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (void *spot_,
         if (send_rc != ZLINK_SUBMIT_OK && completion_result == ZLINK_REQUEST_OK)
             completion_result = zlink::spot_actor_internal::errno_to_request_result (errno);
     }
-    complete_join_request (request, completion_result);
-    release_join_request_after_completion (request);
+    complete_and_release_join_request (request, completion_result);
     return ZLINK_SUBMIT_OK;
 }

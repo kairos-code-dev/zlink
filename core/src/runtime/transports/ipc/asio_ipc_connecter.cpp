@@ -137,19 +137,18 @@ void zlink::asio_ipc_connecter_t::timer_event (int id_)
 {
     IPC_CONNECTER_DBG ("timer_event: id=%d", id_);
 
-    if (id_ == reconnect_timer_id) {
-        _reconnect_timer_started = false;
-        start_connecting ();
-    } else if (id_ == connect_timer_id) {
-        _connect_timer_started = false;
-        if (_connecting) {
-            boost::system::error_code ec;
-            _socket.cancel (ec);
-            _connecting = false;
-        }
-        close ();
-        add_reconnect_timer ();
-    } else {
+    if (!handle_asio_connecter_timer_event (
+          id_, reconnect_timer_id, connect_timer_id, &_reconnect_timer_started,
+          &_connect_timer_started, [this] () { start_connecting (); },
+          [this] () {
+              if (_connecting) {
+                  boost::system::error_code ec;
+                  _socket.cancel (ec);
+                  _connecting = false;
+              }
+              close ();
+              add_reconnect_timer ();
+          })) {
         zlink_assert (false);
     }
 }

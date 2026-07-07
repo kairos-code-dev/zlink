@@ -164,20 +164,18 @@ void zlink::asio_tls_connecter_t::timer_event (int id_)
 {
     TLS_CONNECTER_DBG ("timer_event: id=%d", id_);
 
-    if (id_ == reconnect_timer_id) {
-        _reconnect_timer_started = false;
-        start_connecting ();
-    } else if (id_ == connect_timer_id) {
-        _connect_timer_started = false;
-        //  TCP connection timed out
-        if (_tcp_connecting) {
-            boost::system::error_code ec;
-            _socket.cancel (ec);
-            _tcp_connecting = false;
-        }
-        close ();
-        add_reconnect_timer ();
-    } else {
+    if (!handle_asio_connecter_timer_event (
+          id_, reconnect_timer_id, connect_timer_id, &_reconnect_timer_started,
+          &_connect_timer_started, [this] () { start_connecting (); },
+          [this] () {
+              if (_tcp_connecting) {
+                  boost::system::error_code ec;
+                  _socket.cancel (ec);
+                  _tcp_connecting = false;
+              }
+              close ();
+              add_reconnect_timer ();
+          })) {
         zlink_assert (false);
     }
 }

@@ -9,6 +9,7 @@
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/locations/resolvers.hpp>
+#include <zlink/Contracts/Service/actor.hpp>
 #include <zlink/Contracts/Service/actor_models.hpp>
 
 #include <cstdint>
@@ -84,6 +85,7 @@ class spot_node_builder_state_t
     std::map<std::string, std::shared_ptr<void>> actor_instances;
     std::map<std::string, std::shared_ptr<std::mutex>> actor_mailboxes;
     std::map<std::string, spot_route_t> actor_routes;
+    std::map<std::string, std::unique_ptr<service::actor_t>> native_actors;
     std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_rid;
     std::shared_ptr<service::spot_t> routed_control_spot;
     std::optional<route_client_t> route_client;

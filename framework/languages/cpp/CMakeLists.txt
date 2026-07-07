@@ -1300,21 +1300,23 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   add_executable(zlink_cpp_e2e_to_actor_messaging_actor
     e2e/ToActorMessaging/Server/Actor/main.cpp)
   target_link_libraries(zlink_cpp_e2e_to_actor_messaging_actor PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   target_include_directories(zlink_cpp_e2e_to_actor_messaging_actor PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_to_actor_messaging_caller
     e2e/ToActorMessaging/Server/Caller/main.cpp)
   target_link_libraries(zlink_cpp_e2e_to_actor_messaging_caller PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   target_include_directories(zlink_cpp_e2e_to_actor_messaging_caller PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_to_actor_messaging_client
     e2e/ToActorMessaging/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_to_actor_messaging_client PRIVATE
-    zlink::framework)
+    zlink::http_client)
   target_include_directories(zlink_cpp_e2e_to_actor_messaging_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 

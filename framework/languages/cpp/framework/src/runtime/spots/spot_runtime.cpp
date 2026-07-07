@@ -279,6 +279,7 @@ void erase_actor_route_unlocked (detail::spot_node_builder_state_t &state, const
     state.actor_spot_rids.erase (key);
     state.actor_routes.erase (key);
     state.actor_generations.erase (key);
+    state.native_actors.erase (key);
 }
 
 std::uint64_t actor_generation_from_location (const actor_location_t &location)
@@ -2144,6 +2145,11 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
     detail::record_actor_context_route_unlocked (*_state, key,
                                                  detail::effective_spot_node_rid (_state->snapshot),
                                                  target_state, committed.generation ());
+    if (auto native = _state->native_node.lock (); native && !_state->native_actors.contains (key)) {
+        _state->native_actors.emplace (
+          key, std::make_unique<zlink::service::actor_t> (
+                 native->create_actor (std::string (committed.actor_id ()))));
+    }
     update_actor_location_after_move (*_state, committed, target_state, false);
     if (_state->update_actor_registry_ref) {
         (void) _state->update_actor_registry_ref (committed);

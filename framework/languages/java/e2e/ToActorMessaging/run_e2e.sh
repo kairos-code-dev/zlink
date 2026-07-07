@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
+redis_container=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,7 +18,6 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:toactor:${run_id}}"
 export ZLINK_JAVA_E2E_LOG_DIR="${log_dir}"
 
@@ -38,6 +38,57 @@ finally:
         sock.close()
 PY
 }
+
+wait_tcp() {
+  local host="$1"
+  local port="$2"
+  local name="$3"
+  if python3 - "$host" "$port" <<'PY'
+import socket
+import sys
+import time
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            sys.exit(0)
+    except OSError:
+        time.sleep(0.2)
+sys.exit(1)
+PY
+  then
+    return 0
+  fi
+  echo "Timed out waiting for ${name} at ${host}:${port}" >&2
+  return 1
+}
+
+if [[ -n "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
+  redis_endpoint="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
+elif [[ -n "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
+  redis_endpoint="${ZLINK_REDIS_LOCATION_ENDPOINT}"
+elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  redis_endpoint="${ZLINK_REDIS_E2E_ENDPOINT}"
+else
+  read -r redis_port < <(python3 - <<'PY'
+import socket
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+print(sock.getsockname()[1])
+sock.close()
+PY
+)
+  redis_container="zlink-e2e-toactor-java-$$"
+  docker run -d --rm --name "${redis_container}" -p "127.0.0.1:${redis_port}:6379" redis:7-alpine >/dev/null
+  redis_endpoint="127.0.0.1:${redis_port}"
+fi
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
+redis_host="${redis_endpoint%:*}"
+redis_port="${redis_endpoint##*:}"
+wait_tcp "${redis_host}" "${redis_port}" redis
 
 read -r actor_http caller_http actor_spot caller_spot < <(reserve_ports)
 export ZLINK_JAVA_E2E_ACTOR_HTTP="http://127.0.0.1:${actor_http}"
@@ -66,6 +117,9 @@ cleanup() {
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     kill "${pids[$i]}" >/dev/null 2>&1 || true
   done
+  if [[ -n "${redis_container}" ]]; then
+    docker rm -f "${redis_container}" >/dev/null 2>&1 || true
+  fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }

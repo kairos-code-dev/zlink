@@ -6,6 +6,7 @@
 #include <zlink/Contracts/Service/spot_node.hpp>
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/actors/actor_client.hpp"
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/route_packet_dispatcher.hpp"
@@ -397,6 +398,61 @@ int main ()
         || no_bind_gateway.actor_bound ("actor-a")) {
         cleanup_no_bind ();
         return 76;
+    }
+    zlink::framework::runtime::in_memory_location_store_t no_bind_location_store;
+    auto no_bind_owner =
+      no_bind_location_store
+        .renew_owner_lease ("no-bind-owner", zlink::routing_id_t::from ("no-bind-node"),
+                            std::chrono::seconds (30))
+        .result ();
+    if (!no_bind_owner) {
+        cleanup_no_bind ();
+        return 79;
+    }
+    auto no_bind_location =
+      no_bind_location_store
+        .update_actor (
+          zlink::framework::actor_location_t{
+            .actor_id = "actor-a",
+            .actor_type = "bridge-player",
+            .actor_ref = no_bind_join.value ().actor,
+            .node_rid = zlink::routing_id_t::from ("no-bind-node"),
+            .location_kind = zlink::spot_kind::entry,
+            .spot_mesh_name = "bridge",
+            .spot_rid = std::nullopt,
+            .owner_id = "no-bind-owner"},
+          zlink::framework::location_write_intent_t::new_claim)
+        .result ();
+    if (!no_bind_location
+        || no_bind_location.value ().status
+             != zlink::framework::location_write_status_t::stored) {
+        cleanup_no_bind ();
+        return 80;
+    }
+    auto no_bind_actor_client = zlink::framework::runtime::make_actor_client (
+      no_bind_location_store, serializers, {no_bind_runtime});
+    auto no_bind_client_reply =
+      no_bind_actor_client->request_to_actor ("actor-a", bridge_request_t{8})
+        .packet_name ("bridge.relay")
+        .timeout (std::chrono::milliseconds (1000))
+        .async<bridge_reply_t> ()
+        .result ();
+    if (!no_bind_client_reply
+        && (no_bind_client_reply.error_kind () == framework_error_kind_t::payload_decode_failed
+            || (no_bind_client_reply.error ()
+                && std::string (no_bind_client_reply.error ()->what ())
+                     .find ("erased serializer is not registered")
+                     != std::string::npos))) {
+        cleanup_no_bind ();
+        return 81;
+    }
+    if (no_bind_client_reply && no_bind_client_reply.value ().value != "actor-a:8") {
+        cleanup_no_bind ();
+        return 82;
+    }
+    if (no_bind_gateway.actor_bound ("actor-a")) {
+        cleanup_no_bind ();
+        return 83;
     }
     auto no_bind_throw_reply =
       request_native_actor (*no_bind_native, no_bind_native_actor.ref (), no_bind_runtime,

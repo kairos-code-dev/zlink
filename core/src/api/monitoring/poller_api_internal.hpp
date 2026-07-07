@@ -90,6 +90,16 @@ static inline poller_handle_t *as_poller_handle (void *poller_)
 
 void *poller_index_user_data (size_t index_);
 bool poller_index_from_user_data (void *user_data_, size_t item_count_, size_t *index_out_);
+void poller_set_pollitem_revents_by_identity (zlink_pollitem_t *items_,
+                                              int nitems_,
+                                              const zlink::socket_poller_t::event_t &event_);
+const poller_registration_t *
+poller_find_registration_for_native (poller_handle_t *poller_,
+                                     const zlink::socket_poller_t::event_t &native_);
+int poller_fill_public_event_from_registration (
+  const poller_registration_t *registration_,
+  const zlink::socket_poller_t::event_t &native_,
+  zlink_poller_event_t *event_out_);
 int validate_socket_callback_poller_events (socket_handle_t handle_, short events_);
 void release_poller_registration (const poller_registration_t &registration_);
 int poller_add_registration (poller_handle_t *poller_,

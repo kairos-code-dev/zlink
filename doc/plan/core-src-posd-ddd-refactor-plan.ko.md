@@ -432,6 +432,10 @@ sockets/engine/transports/utils:
   - 2026-07-08 부분 완료: registration index encoding과 registration add/find/remove
     구현을 `poller_registration.cpp`로 분리했다. `zlink_poller_wait` drain 루프와
     native→public event 변환은 변경하지 않았다.
+  - 2026-07-08 부분 완료: native poller event에서 registration을 찾고 public
+    `zlink_poller_event_t`/`zlink_pollitem_t::revents`로 변환하는 규칙을
+    `poller_event_conversion.cpp`로 분리했다. `zlink_poller_wait` drain 루프는
+    호출 순서 그대로 유지했다.
 - [ ] **T3-04. `socket_request_reply_router_api.cpp`(710줄) 분해**
   - 옵션 get/set(`:646-710`)·lifecycle(`:623-644`)은 무위험 추출.
     `recv_dealer_parts_once:375-495`의 envelope 파싱+토큰 할당은
@@ -660,6 +664,9 @@ sockets/engine/transports/utils:
   registration add/find/remove 구현을 `poller_registration.cpp`로 분리했다.
   `poller_api.cpp`에는 public API, one-shot `zlink_poll`, native→public event
   변환, `zlink_poller_wait` drain 루프를 남겼다.
+- 2026-07-08: T3-03 부분 완료 — native poller event와 public poller event 간
+  변환 규칙을 `poller_event_conversion.cpp`로 분리했다. hidden completion drain
+  loop와 `zlink_poller_wait` 반환 조건은 기존 위치와 순서를 유지했다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

@@ -3,72 +3,17 @@
 #include "utils/precompiled.hpp"
 
 #include <new>
-#include <stdint.h>
-#include <unordered_map>
 #include <vector>
 
 #include "api/core/close_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
 #include "api/monitoring/poller_completion_internal.hpp"
-#include "api/socket/request_completion_queue_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
-#include "services/spot/pubsub/spot_subject_access.hpp"
 #include "utils/clock.hpp"
 
 namespace
 {
-bool registration_matches_native (const poller_registration_t &registration_,
-                                  const zlink::socket_poller_t::event_t &native_);
-
-const poller_registration_t *
-find_registration_for_native (poller_handle_t *poller_,
-                              const zlink::socket_poller_t::event_t &native_)
-{
-    if (!poller_)
-        return NULL;
-    size_t native_index = 0;
-    if (poller_index_from_user_data (native_.user_data, poller_->registrations.size (),
-                                     &native_index)) {
-        const poller_registration_t &registration = poller_->registrations[native_index];
-        if (registration_matches_native (registration, native_))
-            return &registration;
-    }
-    if (native_.socket) {
-        std::unordered_map<void *, size_t>::const_iterator it =
-          poller_->socket_registration_indices.find (native_.socket);
-        if (it != poller_->socket_registration_indices.end ()
-            && it->second < poller_->registrations.size ()) {
-            return &poller_->registrations[it->second];
-        }
-    } else {
-        std::unordered_map<zlink_fd_t, size_t>::const_iterator it =
-          poller_->fd_registration_indices.find (native_.fd);
-        if (it != poller_->fd_registration_indices.end ()
-            && it->second < poller_->registrations.size ()) {
-            return &poller_->registrations[it->second];
-        }
-    }
-    for (size_t i = 0; i < poller_->registrations.size (); ++i) {
-        const poller_registration_t &registration = poller_->registrations[i];
-        if (registration.socket && registration.socket == native_.socket)
-            return &registration;
-        if (!registration.socket && registration.fd == native_.fd)
-            return &registration;
-    }
-    return NULL;
-}
-
-bool is_spot_recv_fd_registration (poller_subject_kind_t kind_)
-{
-    return kind_ == poller_subject_spot_sub || kind_ == poller_subject_spot_routed;
-}
-
-bool is_spot_send_ready_fd_registration (poller_subject_kind_t kind_)
-{
-    return kind_ == poller_subject_spot_pub || kind_ == poller_subject_spot_node_pub;
-}
-
 long remaining_timeout_ms (long timeout_ms_, zlink::clock_t &clock_, uint64_t deadline_ms_)
 {
     if (timeout_ms_ < 0)
@@ -117,94 +62,6 @@ int drain_hidden_completion_event (const poller_registration_t *registration_,
     return 1;
 }
 
-bool registration_matches_native (const poller_registration_t &registration_,
-                                  const zlink::socket_poller_t::event_t &native_)
-{
-    return (registration_.socket && registration_.socket == native_.socket)
-           || (!registration_.socket && !native_.socket && registration_.fd == native_.fd);
-}
-
-void set_pollitem_revents_by_identity (zlink_pollitem_t *items_,
-                                       int nitems_,
-                                       const zlink::socket_poller_t::event_t &event_)
-{
-    for (int j = 0; j < nitems_; ++j) {
-        if ((items_[j].socket && items_[j].socket == event_.socket)
-            || (!items_[j].socket && items_[j].fd == event_.fd)) {
-            items_[j].revents = event_.events;
-            return;
-        }
-    }
-}
-
-int fill_public_poller_event_from_registration (const poller_registration_t *registration_,
-                                                const zlink::socket_poller_t::event_t &native_,
-                                                zlink_poller_event_t *event_out_)
-{
-    if (!event_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    memset (event_out_, 0, sizeof (*event_out_));
-    event_out_->fd = 0;
-
-    if (!registration_) {
-        event_out_->source_kind =
-          native_.socket ? ZLINK_POLLER_SOURCE_SOCKET : ZLINK_POLLER_SOURCE_FD;
-        event_out_->socket = native_.socket;
-        event_out_->fd = native_.fd;
-        event_out_->timer = NULL;
-        event_out_->user_data = native_.user_data;
-        event_out_->events = native_.events;
-        return 0;
-    }
-
-    if (registration_->socket) {
-        event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
-        event_out_->socket = is_spot_recv_fd_registration (registration_->subject_kind)
-                               ? registration_->subject
-                               : native_.socket;
-        event_out_->fd = native_.fd;
-        event_out_->timer = NULL;
-        event_out_->user_data = registration_->user_data;
-        event_out_->events = native_.events;
-        return 0;
-    }
-
-    if (registration_->subject_kind == poller_subject_timer) {
-        event_out_->source_kind = ZLINK_POLLER_SOURCE_TIMER;
-        event_out_->socket = NULL;
-        event_out_->fd = native_.fd;
-        event_out_->timer = registration_->subject;
-        event_out_->user_data = registration_->user_data;
-        event_out_->events = native_.events;
-        return 0;
-    }
-
-    if (is_spot_recv_fd_registration (registration_->subject_kind)
-        || is_spot_send_ready_fd_registration (registration_->subject_kind)) {
-        if (is_spot_send_ready_fd_registration (registration_->subject_kind))
-            drain_spot_send_ready_signal (registration_->subject);
-        event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
-        event_out_->socket = registration_->subject;
-        event_out_->fd = native_.fd;
-        event_out_->timer = NULL;
-        event_out_->user_data = registration_->user_data;
-        event_out_->events = is_spot_send_ready_fd_registration (registration_->subject_kind)
-                               ? ZLINK_POLLOUT
-                               : native_.events;
-        return 0;
-    }
-
-    event_out_->source_kind = ZLINK_POLLER_SOURCE_FD;
-    event_out_->socket = NULL;
-    event_out_->fd = native_.fd;
-    event_out_->timer = NULL;
-    event_out_->user_data = registration_->user_data;
-    event_out_->events = native_.events;
-    return 0;
-}
 }
 
 int zlink_poll (zlink_pollitem_t *items_,
@@ -290,7 +147,7 @@ int zlink_poll (zlink_pollitem_t *items_,
             items_[static_cast<int> (index)].revents = events[i].events;
             continue;
         }
-        set_pollitem_revents_by_identity (items_, nitems_, events[i]);
+        poller_set_pollitem_revents_by_identity (items_, nitems_, events[i]);
     }
     if (error_out_)
         *error_out_ = ZLINK_CONFIG_OK;
@@ -469,7 +326,7 @@ int zlink_poller_wait (void *poller_,
         bool observed_hidden = false;
         for (int i = 0; i < rc; ++i) {
             const poller_registration_t *registration =
-              find_registration_for_native (poller, poller->native_events[i]);
+              poller_find_registration_for_native (poller, poller->native_events[i]);
             const int hidden_rc =
               drain_hidden_completion_event (registration, &observed_hidden, &drained_any);
             if (hidden_rc < 0) {
@@ -480,7 +337,8 @@ int zlink_poller_wait (void *poller_,
             if (hidden_rc > 0)
                 continue;
 
-            if (fill_public_poller_event_from_registration (registration, poller->native_events[i],
+            if (poller_fill_public_event_from_registration (registration,
+                                                            poller->native_events[i],
                                                             &events_[public_count])
                 != 0) {
                 if (error_out_)

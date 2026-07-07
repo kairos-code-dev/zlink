@@ -860,6 +860,7 @@ set(api-monitoring-sources
 set(api-socket-sources
     src/api/socket/internal_pair_queue_internal.cpp
     src/api/socket/part_helper_api.cpp
+    src/api/socket/part_helper_state.cpp
     src/api/socket/request_completion_queue_internal.cpp
     src/api/socket/request_timeout_scheduler_internal.cpp
     src/api/socket/socket_message_api.cpp

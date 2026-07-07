@@ -207,7 +207,7 @@ api/socket reqrep 클러스터:
   - "service 표면 먼저, EFAULT면 socket" 판정이 errno 값 제어 흐름으로 ~8곳
     반복. 내부 경로가 정당하게 EFAULT를 설정하면 라우팅이 깨지는 취약 구조.
     `resolve_option_target(handle)` enum 반환 하나로. (없음 / M)
-- [ ] **T2-04. `part_helper_api.cpp` 저장소 정책 분리**
+- [x] **T2-04. `part_helper_api.cpp` 저장소 정책 분리**
   - `socket/part_helper_api.cpp:22-106, 226-273, 660-685` vs `:295-658`
   - "어느 레지스트리가 state를 소유하나"(spot 레지스트리 4종 지식 하드코딩,
     cross-domain 누수)와 send/recv 스텝 엔진을 파일 분리. 호출 그래프 불변.
@@ -562,6 +562,10 @@ sockets/engine/transports/utils:
   helper를 제거하고 같은 lifecycle 구현을 `ctx_t` private 메서드로 환원했다.
   외부 helper가 ctx 내부 멤버를 직접 조작하던 결합을 없애기 위해 잠금 순서와
   shutdown/reaper wait 동작은 그대로 유지했다.
+- 2026-07-07: T2-04 완료 — part helper의 handle state 저장소 선택, 생성,
+  cleanup 정책을 `part_helper_state.cpp`로 분리했다. `part_helper_api.cpp`는
+  validation과 send/recv sequence step engine 중심으로 남겼고 공개 호출
+  그래프는 유지했다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

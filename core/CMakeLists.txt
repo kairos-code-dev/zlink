@@ -1031,6 +1031,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/node/spot_node_defaults.cpp
     src/runtime/services/spot/node/spot_node_get_or_new.cpp
     src/runtime/services/spot/node/spot_node_handles.cpp
+    src/runtime/services/spot/node/spot_node_tuning.cpp
     src/runtime/services/spot/node/spot_node_lifecycle.cpp
     src/runtime/services/spot/node/spot_node_peer.cpp
     src/runtime/services/spot/node/spot_node_pubsub_fanout.cpp

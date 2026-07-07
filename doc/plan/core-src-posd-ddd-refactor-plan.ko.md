@@ -253,7 +253,7 @@ runtime/services (spot):
 - [x] **T2-11. `spot_data_plane_runtime.cpp` 튜닝/lifecycle 분리**
   - `:49-101`(HWM 해석·옵션 정책) + 168줄 `configure_runtime_sockets:231-399` vs
     초기화/해체(`:442-728`). 1회성 경로라 무위험. (없음 / M)
-- [ ] **T2-12. `spot_node_handles.cpp` 튜닝/lifecycle 분리**
+- [x] **T2-12. `spot_node_handles.cpp` 튜닝/lifecycle 분리**
   - `:28-345`(HWM refresh, 튜닝 옵션 파싱/저장/검증) vs `:346-719`(핸들
     생성/파괴, 소켓 해체). `fast_*` 액세서는 제자리. (없음 / M)
 - [ ] **T2-13. `spot_sub_subject_state.cpp` ready-ack 상태기계 분리**
@@ -569,6 +569,10 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-11 완료 — spot data-plane runtime socket tuning과 HWM 적용
   정책을 `spot_data_plane_runtime_config.cpp`로 분리했다. runtime lifecycle 파일은
   socket 생성, poller wiring, 실패 unwinding, teardown 흐름 중심으로 남겼다.
+- 2026-07-07: T2-12 완료 — spot node runtime tuning 옵션 파싱, 조회,
+  HWM refresh 진입점을 `spot_node_tuning.cpp`로 분리했다. `spot_node_handles.cpp`는
+  default pub/sub handle과 internal receiver lifecycle 중심으로 남겼고 fast
+  accessor는 변경하지 않았다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

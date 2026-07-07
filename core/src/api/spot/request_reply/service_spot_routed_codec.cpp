@@ -14,6 +14,8 @@ using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::resolve_spot_node_routing_id;
 
+const size_t packed_spot_routed_control_part_count = 1;
+
 bool assign_routing_id_value_local (const char *data_, size_t size_, zlink_routing_id_t *out_rid_)
 {
     if (!out_rid_)
@@ -130,6 +132,44 @@ bool peek_packed_destination_node_rid (zlink_msg_t *parts_,
     out_->size = static_cast<uint8_t> (destination_node_size);
     return true;
 }
+
+template <typename InitPrefixFn>
+int build_packed_spot_message_with_payload (zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            zlink_msg_t *out_,
+                                            size_t out_count_,
+                                            size_t expected_out_count_,
+                                            size_t payload_offset_,
+                                            InitPrefixFn init_prefix_)
+{
+    if (!parts_ || part_count_ == 0 || !out_ || out_count_ != expected_out_count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    for (size_t i = 0; i < out_count_; ++i)
+        zlink_msg_init (&out_[i]);
+
+    if (init_prefix_ (out_) != 0) {
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (out_, out_count_);
+        zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
+        errno = saved_errno;
+        return -1;
+    }
+
+    for (size_t i = 0; i < part_count_; ++i) {
+        if (zlink_msg_move (&out_[payload_offset_ + i], &parts_[i]) != 0) {
+            const int saved_errno = errno;
+            zlink::request_reply::close_built_parts (out_, out_count_);
+            zlink::request_reply::consume_send_frames_from (parts_, i, part_count_);
+            errno = saved_errno;
+            return -1;
+        }
+    }
+
+    return 0;
+}
 }
 
 bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (zlink_msg_t *parts_,
@@ -208,6 +248,127 @@ int zlink::spot_reqrep_internal::init_packed_spot_routed_header (
     }
 
     return 0;
+}
+
+size_t
+zlink::spot_reqrep_internal::spot_request_reply_message_part_count (size_t payload_part_count_)
+{
+    return packed_spot_routed_control_part_count + zlink::request_reply::control_part_count
+           + payload_part_count_;
+}
+
+size_t zlink::spot_reqrep_internal::spot_routed_message_part_count (size_t payload_part_count_)
+{
+    return packed_spot_routed_control_part_count + payload_part_count_;
+}
+
+int zlink::spot_reqrep_internal::build_spot_request_reply_message_into (
+  uint8_t source_class_,
+  const std::string &source_node_rid_,
+  const std::string &source_endpoint_rid_,
+  uint8_t destination_class_,
+  const std::string &destination_node_rid_,
+  const std::string &destination_endpoint_rid_,
+  uint8_t message_type_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_msg_t *out_,
+  size_t out_count_)
+{
+    if (request_seq_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const size_t expected_out_count = spot_request_reply_message_part_count (part_count_);
+    const size_t payload_offset =
+      packed_spot_routed_control_part_count + zlink::request_reply::control_part_count;
+    return build_packed_spot_message_with_payload (
+      parts_, part_count_, out_, out_count_, expected_out_count, payload_offset,
+      [&] (zlink_msg_t *out_parts_) {
+          if (init_packed_spot_routed_header (
+                &out_parts_[0], source_class_, source_node_rid_, source_endpoint_rid_,
+                destination_class_, destination_node_rid_, destination_endpoint_rid_)
+              != 0) {
+              return -1;
+          }
+          return zlink::request_reply::init_envelope_control_parts (
+            out_parts_ + packed_spot_routed_control_part_count, message_type_, request_seq_);
+      });
+}
+
+int zlink::spot_reqrep_internal::build_spot_request_reply_message (
+  uint8_t source_class_,
+  const std::string &source_node_rid_,
+  const std::string &source_endpoint_rid_,
+  uint8_t destination_class_,
+  const std::string &destination_node_rid_,
+  const std::string &destination_endpoint_rid_,
+  uint8_t message_type_,
+  uint64_t request_seq_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  std::vector<zlink_msg_t> *out_)
+{
+    if (!parts_ || part_count_ == 0 || request_seq_ == 0 || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const size_t total_part_count = spot_request_reply_message_part_count (part_count_);
+    out_->resize (total_part_count);
+    return build_spot_request_reply_message_into (
+      source_class_, source_node_rid_, source_endpoint_rid_, destination_class_,
+      destination_node_rid_, destination_endpoint_rid_, message_type_, request_seq_, parts_,
+      part_count_, &(*out_)[0], total_part_count);
+}
+
+int zlink::spot_reqrep_internal::build_spot_routed_message_into (
+  uint8_t source_class_,
+  const std::string &source_node_rid_,
+  const std::string &source_endpoint_rid_,
+  uint8_t destination_class_,
+  const std::string &destination_node_rid_,
+  const std::string &destination_endpoint_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_msg_t *out_,
+  size_t out_count_)
+{
+    const size_t expected_out_count = spot_routed_message_part_count (part_count_);
+    return build_packed_spot_message_with_payload (
+      parts_, part_count_, out_, out_count_, expected_out_count,
+      packed_spot_routed_control_part_count,
+      [&] (zlink_msg_t *out_parts_) {
+          return init_packed_spot_routed_header (
+            &out_parts_[0], source_class_, source_node_rid_, source_endpoint_rid_,
+            destination_class_, destination_node_rid_, destination_endpoint_rid_);
+      });
+}
+
+int zlink::spot_reqrep_internal::build_spot_routed_message (
+  uint8_t source_class_,
+  const std::string &source_node_rid_,
+  const std::string &source_endpoint_rid_,
+  uint8_t destination_class_,
+  const std::string &destination_node_rid_,
+  const std::string &destination_endpoint_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  std::vector<zlink_msg_t> *out_)
+{
+    if (!parts_ || part_count_ == 0 || !out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const size_t total_part_count = spot_routed_message_part_count (part_count_);
+    out_->resize (total_part_count);
+    return build_spot_routed_message_into (source_class_, source_node_rid_, source_endpoint_rid_,
+                                           destination_class_, destination_node_rid_,
+                                           destination_endpoint_rid_, parts_, part_count_,
+                                           &(*out_)[0], total_part_count);
 }
 
 bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (spot_node_t *node_,

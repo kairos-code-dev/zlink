@@ -232,7 +232,7 @@ spot actor (api/actor):
 
 runtime/services (spot):
 
-- [ ] **T2-08. spot 패킹 codec 단일 모듈화**
+- [x] **T2-08. spot 패킹 codec 단일 모듈화**
   - encoder: `runtime/services/spot/request_reply/spot_request_reply_local_dispatch.cpp:384-556`
     / decoder+header-init: `api/spot/request_reply/service_spot_routed_codec.cpp`
   - 같은 wire format(packed spot-routed envelope)의 encode가 runtime층, decode가
@@ -479,3 +479,7 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-10 구현 — spot request/reply error-reply의 errno payload
   생성을 `request_reply_protocol_internal.hpp`의 공통 helper로 모았다. result→errno
   분류는 T1-01의 `request_result_internal::to_errno` 정본을 계속 사용한다.
+- 2026-07-07: T2-08 구현 — spot packed routed envelope의 build/part-count
+  함수를 `service_spot_routed_codec.cpp`로 옮겨 decode/header-init과 같은 모듈에
+  모았다. request/reply와 routed build의 header-prefix + payload move skeleton도
+  공통 helper로 묶었다.

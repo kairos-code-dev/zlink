@@ -50,10 +50,10 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_, char *buf_, size_t
 int zlink::router_t::xsend (msg_t *msg_)
 {
     // Public send enters this path through socket_public_send_scope_t. Do not
-    // add socket_msg_dispatch_mutex() here: SPOT route echo hot paths call
+    // add lock_socket_msg_dispatch() here: SPOT route echo hot paths call
     // router send for every small message, and a second socket-level mutex
     // serializes those sends. Pipe teardown still updates router pipe state
-    // under socket_msg_dispatch_mutex() in xpipe_terminated().
+    // under lock_socket_msg_dispatch() in xpipe_terminated().
 
     if (!_more_out) {
         zlink_assert (!_current_out);

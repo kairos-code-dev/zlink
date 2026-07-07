@@ -176,7 +176,7 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
     helper를 사용하도록 교체했다. 기존 순서인 CA/trust-system 로딩, verify-mode
     설정, hostname verification 적용 순서를 유지했다. 현재 CTest에 등록된
     TLS/WSS 회귀 테스트는 `test_transport_matrix`이며 `tls`/`wss` 케이스를 포함한다.
-- [ ] **T1-10. `socket_base.hpp` 정보은닉 강화(축소판)**
+- [x] **T1-10. `socket_base.hpp` 정보은닉 강화(축소판)**
   - `sockets/common/socket_base.hpp` — `socket_msg_dispatch_mutex()`의 raw
     `recursive_mutex&` 노출과 핸들러 액세서 9종 축소. protected 사이에 낀
     `public:` 블록 정리. **x-가상함수 표면은 불변**(virtual dispatch 변경 금지).
@@ -455,3 +455,7 @@ sockets/engine/transports/utils:
   `ssl_context_helper_t`의 options 기반 builder 두 개로 중앙화했다. `test_asio_ssl`,
   `test_asio_ws`, `test_zmp_ws_wss`는 현재 CTest 미등록 allowlist 항목이고, 등록된
   TLS/WSS 검증은 `test_transport_matrix`로 수행했다.
+- 2026-07-07: T1-10 구현 — socket message dispatch mutex의 raw reference 노출을
+  `lock_socket_msg_dispatch()`로 좁히고, 하위 타입이 직접 쓰지 않는 handler
+  subject/userdata accessor를 private 영역으로 내렸다. x-가상함수 표면은 변경하지
+  않았다.

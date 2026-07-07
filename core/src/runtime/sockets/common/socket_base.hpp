@@ -377,13 +377,6 @@ class socket_base_t : public own_t,
     void stop_async_mailbox_processing ();
     void wait_async_quiesced (int timeout_ms_);
     zlink_socket_msg_handler_fn socket_msg_handler () const;
-    zlink_subscribe_handler_fn socket_spot_handler () const;
-    zlink_send_ready_handler_fn socket_send_ready_handler () const;
-    void *socket_msg_handler_subject () const;
-    void *socket_msg_handler_userdata () const;
-    void *socket_spot_handler_userdata () const;
-    void *socket_send_ready_handler_subject () const;
-    void *socket_send_ready_handler_userdata () const;
     static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
     static void resolve_socket_msg_source_rid (pipe_t *pipe_, zlink_routing_id_t *out_);
 
@@ -401,9 +394,10 @@ class socket_base_t : public own_t,
                                                zlink_msg_t *parts_,
                                                size_t part_count_,
                                                void *userdata_);
-    std::recursive_mutex &socket_msg_dispatch_mutex ()
+    typedef std::unique_lock<std::recursive_mutex> socket_msg_dispatch_lock_t;
+    socket_msg_dispatch_lock_t lock_socket_msg_dispatch ()
     {
-        return dispatch_runtime ().socket_msg_dispatch_sync;
+        return socket_msg_dispatch_lock_t (dispatch_runtime ().socket_msg_dispatch_sync);
     }
     void arm_send_ready_notification ();
     void notify_send_ready_if_armed ();
@@ -465,6 +459,14 @@ class socket_base_t : public own_t,
                 uint64_t values_[],
                 uint64_t values_count_,
                 uint64_t type_);
+
+    zlink_subscribe_handler_fn socket_spot_handler () const;
+    zlink_send_ready_handler_fn socket_send_ready_handler () const;
+    void *socket_msg_handler_subject () const;
+    void *socket_msg_handler_userdata () const;
+    void *socket_spot_handler_userdata () const;
+    void *socket_send_ready_handler_subject () const;
+    void *socket_send_ready_handler_userdata () const;
 
     // Socket event data dispatch
     static void monitor_task_main (void *arg_);

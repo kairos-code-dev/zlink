@@ -104,7 +104,7 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
     }
     if (routing_id_ok) {
         {
-            std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+            socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
             _fq.attach (pipe_);
             (void) pipe_->check_read ();
             if (socket_msg_dispatch_active ())
@@ -113,7 +113,7 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
         if (local_peer_weight () != 100)
             send_local_peer_weight (pipe_);
     } else {
-        std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+        socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
         const blob_t &routing_id = pipe_->get_routing_id ();
         const out_pipe_t *const out_pipe =
           routing_id.size () > 0 ? lookup_out_pipe (routing_id) : NULL;
@@ -132,7 +132,7 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
 
 void zlink::router_t::xread_activated (pipe_t *pipe_)
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
     const std::set<pipe_t *>::iterator it = _anonymous_pipes.find (pipe_);
     if (router_debug_enabled ()) {
         char rid_text[160];
@@ -291,7 +291,7 @@ int zlink::router_t::xrecv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_o
 
 void zlink::router_t::xdispatch_io ()
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
     if (!socket_msg_dispatch_active ())
         return;
     zlink::drain_socket_dispatch_loop (

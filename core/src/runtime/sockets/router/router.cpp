@@ -249,7 +249,7 @@ int zlink::router_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_
 
 void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
     if (router_debug_enabled ()) {
         char rid_text[160];
         format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text, sizeof (rid_text));
@@ -358,7 +358,7 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
 void zlink::router_t::xarm_socket_msg_dispatch ()
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
     _fq.arm_dispatch ();
 }
 

@@ -1180,6 +1180,7 @@ set(utils-sources
     src/runtime/utils/err.cpp
     src/runtime/utils/err_backtrace.cpp
     src/runtime/utils/ip.cpp
+    src/runtime/utils/ip_fdpair.cpp
     src/runtime/utils/ip_resolver.cpp
     src/runtime/utils/mtrie.cpp
     src/runtime/utils/polling_util.cpp

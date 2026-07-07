@@ -1513,34 +1513,6 @@ void note_actor_spot_node_peer_disconnected (zlink::spot_node_t *node_,
     actor_runtime ().routes.mark_disconnected (node_, *target_node_rid_);
 }
 
-void erase_actor_spot_facade (spot_handle_t *spot_)
-{
-    if (!spot_)
-        return;
-    std::deque<queued_join_request_t *> pending;
-    {
-        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        collect_join_spot_facade_erase_locked (spot_, &pending);
-    }
-    for (std::deque<queued_join_request_t *>::iterator it = pending.begin (); it != pending.end ();
-         ++it) {
-        {
-            std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-            retire_join_request_locked (*it);
-        }
-        complete_and_release_join_request (*it, ZLINK_REQUEST_TERMINATED);
-    }
-}
-
-extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_)
-{
-    spot_handle_t *spot = static_cast<spot_handle_t *> (spot_);
-    if (!spot)
-        return 0;
-    std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-    return join_spot_has_joined_or_pending_actor_locked (spot) ? 1 : 0;
-}
-
 extern "C" void zlink_actor_replay_readable_for_spot (void *spot_)
 {
     spot_handle_t *spot = static_cast<spot_handle_t *> (spot_);

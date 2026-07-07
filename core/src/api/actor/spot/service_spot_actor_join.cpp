@@ -759,6 +759,34 @@ zlink_submit_result_t complete_idempotent_join_async (zlink_msg_t *parts_,
 
 using namespace zlink::spot_actor_api_internal;
 
+void erase_actor_spot_facade (spot_handle_t *spot_)
+{
+    if (!spot_)
+        return;
+    std::deque<queued_join_request_t *> pending;
+    {
+        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+        collect_join_spot_facade_erase_locked (spot_, &pending);
+    }
+    for (std::deque<queued_join_request_t *>::iterator it = pending.begin (); it != pending.end ();
+         ++it) {
+        {
+            std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+            retire_join_request_locked (*it);
+        }
+        complete_and_release_join_request (*it, ZLINK_REQUEST_TERMINATED);
+    }
+}
+
+extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_)
+{
+    spot_handle_t *spot = static_cast<spot_handle_t *> (spot_);
+    if (!spot)
+        return 0;
+    std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+    return join_spot_has_joined_or_pending_actor_locked (spot) ? 1 : 0;
+}
+
 extern "C" zlink_submit_result_t
 zlink_spot_node_actor_join_spot (void *node_,
                                  const zlink_actor_ref_t *actor_ref_,

@@ -547,6 +547,24 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
       << "DeliveryDispatch runner must verify final client scenario completion";
     EXPECT_EQ (deliverydispatch_runner.find ("delivery-dispatch e2e result"), std::string::npos)
       << "DeliveryDispatch sample runner must not report e2e completion wording";
+
+    const auto courier_actor_node =
+      read_file (cpp_root / "samples/DeliveryDispatch/Server/CourierActorNode/main.cpp");
+    EXPECT_NE (
+      courier_actor_node.find (
+        ".group (\"courier-actor-node\")\n          .add<ensure_courier_actor_handler_t> ()\n"
+        "          .add<actor_node_offer_delivery_handler_t> ();"),
+      std::string::npos)
+      << "DeliveryDispatch CourierActorNode must register actor handlers through the framework "
+         "handler group";
+    EXPECT_EQ (courier_actor_node.find ("add_transient<ensure_courier_actor_handler_t>"),
+               std::string::npos)
+      << "DeliveryDispatch CourierActorNode must not manually register the ensure actor handler "
+         "beside the handler group";
+    EXPECT_EQ (courier_actor_node.find ("add_transient<actor_node_offer_delivery_handler_t>"),
+               std::string::npos)
+      << "DeliveryDispatch CourierActorNode must not manually register the delivery handler "
+         "beside the handler group";
 }
 
 TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)

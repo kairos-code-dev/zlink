@@ -2,6 +2,8 @@
 
 #include "support.hpp"
 
+#include <Runtime/Service/request_submitter.hpp>
+
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -14,6 +16,93 @@ namespace
 zlink::message_t make_request_message (const std::string &text_)
 {
     return zlink_cpp_contract::make_message (text_);
+}
+
+struct recorded_request_part_t
+{
+    zlink_part_flag_t flag = ZLINK_PART_FINAL;
+    zlink_reply_handler_fn callback = nullptr;
+    void *userdata = nullptr;
+};
+
+std::vector<zlink::message_t> make_multipart_request ()
+{
+    std::vector<zlink::message_t> parts;
+    parts.push_back (make_request_message ("request:part-1"));
+    parts.push_back (make_request_message ("request:part-2"));
+    parts.push_back (make_request_message ("request:part-3"));
+    return parts;
+}
+
+void assert_multipart_request_submitter_passes_callback_to_every_part (
+  const std::vector<recorded_request_part_t> &submissions_)
+{
+    assert (submissions_.size () == 3);
+    assert (submissions_[0].flag == ZLINK_PART_MORE);
+    assert (submissions_[1].flag == ZLINK_PART_MORE);
+    assert (submissions_[2].flag == ZLINK_PART_FINAL);
+
+    void *const expected_userdata = submissions_[0].userdata;
+    for (const auto &submission : submissions_) {
+        assert (submission.callback != nullptr);
+        assert (submission.userdata != nullptr);
+        assert (submission.userdata == expected_userdata);
+    }
+}
+
+void test_multipart_request_callback_submitter_attaches_reply_handler_to_every_part ()
+{
+    std::vector<zlink::message_t> parts = make_multipart_request ();
+    std::vector<recorded_request_part_t> submissions;
+    bool completed = false;
+
+    const bool submitted = zlink::service::detail::submit_request_parts_callback (
+      parts,
+      [&completed] (zlink::request_result_t result, std::vector<zlink::message_t> replies) {
+          assert (result == zlink::request_result_t::not_found);
+          assert (replies.empty ());
+          completed = true;
+      },
+      zlink::send_flags_t::none,
+      [&submissions] (zlink_msg_t *part_out, zlink_part_flag_t part_flag,
+                      zlink_reply_handler_fn callback, void *userdata) {
+          submissions.push_back ({part_flag, callback, userdata});
+          (void) zlink_msg_close (part_out);
+          return ZLINK_SUBMIT_OK;
+      });
+
+    assert (submitted);
+    assert_multipart_request_submitter_passes_callback_to_every_part (submissions);
+
+    submissions.back ().callback (ZLINK_REQUEST_NOT_FOUND, nullptr, 0, submissions.back ().userdata);
+    assert (completed);
+}
+
+void test_multipart_request_awaitable_submitter_attaches_reply_handler_to_every_part ()
+{
+    std::vector<zlink::message_t> parts = make_multipart_request ();
+    std::vector<recorded_request_part_t> submissions;
+
+    zlink::async_result_t<std::vector<zlink::message_t>> result =
+      zlink::service::detail::submit_request_parts_awaitable (
+        parts, [] {},
+        [&submissions] (zlink_msg_t *part_out, zlink_part_flag_t part_flag,
+                        zlink_reply_handler_fn callback, void *userdata) {
+            submissions.push_back ({part_flag, callback, userdata});
+            (void) zlink_msg_close (part_out);
+            return ZLINK_SUBMIT_OK;
+        });
+
+    assert_multipart_request_submitter_passes_callback_to_every_part (submissions);
+
+    submissions.back ().callback (ZLINK_REQUEST_NOT_FOUND, nullptr, 0, submissions.back ().userdata);
+    try {
+        (void) result.get ();
+        assert (false && "request failure must complete the awaitable with an exception");
+    }
+    catch (const zlink::request_error_t &error) {
+        assert (error.result () == zlink::request_result_t::not_found);
+    }
 }
 
 void test_request_dealer_router_roundtrip ()
@@ -203,6 +292,8 @@ void test_received_reply_rejects_non_none_flags ()
 
 int main ()
 {
+    test_multipart_request_callback_submitter_attaches_reply_handler_to_every_part ();
+    test_multipart_request_awaitable_submitter_attaches_reply_handler_to_every_part ();
     test_request_dealer_router_roundtrip ();
     test_request_wait_for_zero_pumps_progress ();
     test_request_router_preserves_data_recv_surface ();

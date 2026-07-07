@@ -375,6 +375,9 @@ if(ZLINK_CPP_BUILD_TESTS)
       "tests/contract/${test_source}"
     )
   endforeach()
+  target_include_directories(test_cpp_contract_request_reply PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/src
+  )
 
   add_executable(
     test_cpp_contract_common_header_version

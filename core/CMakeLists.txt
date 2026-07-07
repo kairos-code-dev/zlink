@@ -944,9 +944,11 @@ set(core-sources
     src/runtime/core/ctx_bootstrap.cpp
     src/runtime/core/ctx_inproc_registry.cpp
     src/runtime/core/ctx_io_thread_registry.cpp
+    src/runtime/core/ctx_options.cpp
     src/runtime/core/ctx_runtime_resources.cpp
     src/runtime/core/ctx_socket_registry.cpp
     src/runtime/core/ctx_termination.cpp
+    src/runtime/core/ctx_thread.cpp
     src/runtime/core/auto_hwm_policy.cpp
     src/runtime/core/pipe.cpp
     src/runtime/core/mailbox.cpp

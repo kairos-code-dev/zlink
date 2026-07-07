@@ -143,6 +143,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     friend class ctx_termination_t;
 
     bool start ();
+    static int clipped_maxsocket (int max_requested_);
     void debug_dump_sockets_locked (const char *phase_) const;
     static void auto_hwm_recalc_task_main (void *arg_);
     void auto_hwm_recalc_task ();

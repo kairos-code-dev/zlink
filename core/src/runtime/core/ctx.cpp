@@ -9,10 +9,8 @@
 
 #include <limits>
 #include <climits>
-#include <cstdlib>
 #include <new>
 #include <stdio.h>
-#include <sstream>
 #include <string.h>
 
 #include "core/ctx.hpp"
@@ -31,7 +29,7 @@
 #define ZLINK_CTX_TAG_VALUE_GOOD 0xabadcafe
 #define ZLINK_CTX_TAG_VALUE_BAD 0xdeadbeef
 
-static int clipped_maxsocket (int max_requested_)
+int zlink::ctx_t::clipped_maxsocket (int max_requested_)
 {
     if (max_requested_ >= zlink::poller_t::max_fds () && zlink::poller_t::max_fds () != -1)
         // -1 because we need room for the reaper mailbox.
@@ -72,7 +70,7 @@ zlink::ctx_t::ctx_t () :
     _tag (ZLINK_CTX_TAG_VALUE_GOOD),
     _starting (true),
     _terminating (false),
-    _max_sockets (clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
+    _max_sockets (ctx_t::clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
     _auto_hwm_enabled (ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0),
@@ -329,226 +327,6 @@ int zlink::ctx_t::shutdown ()
     return 0;
 }
 
-int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
-{
-    const bool is_int = (optvallen_ == sizeof (int));
-    int value = 0;
-    if (is_int)
-        memcpy (&value, optval_, sizeof (int));
-
-    bool refresh_auto_hwm = false;
-
-    switch (option_) {
-        case ZLINK_MAX_SOCKETS:
-            if (is_int && value >= 1 && value == clipped_maxsocket (value)) {
-                scoped_lock_t locker (_opt_sync);
-                _max_sockets = value;
-                return 0;
-            }
-            break;
-
-        case ZLINK_IO_THREADS:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _io_thread_count = value;
-                return 0;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
-            if (is_int && (value == 0 || value == 1)) {
-                scoped_lock_t locker (_opt_sync);
-                _auto_hwm_enabled = (value != 0);
-                refresh_auto_hwm = true;
-                break;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _auto_hwm_recalc_debounce_ms = value;
-                refresh_auto_hwm = true;
-                break;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
-            if (is_int
-                && (value == ZLINK_AUTO_HWM_PROFILE_COMPACT
-                    || value == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
-                    || value == ZLINK_AUTO_HWM_PROFILE_BALANCED
-                    || value == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT)) {
-                scoped_lock_t locker (_opt_sync);
-                _auto_hwm_profile = static_cast<zlink_auto_hwm_profile_t> (value);
-                refresh_auto_hwm = true;
-                break;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _auto_hwm_msg_unit_bytes = value;
-                refresh_auto_hwm = true;
-                break;
-            }
-            break;
-
-        case ZLINK_INTERNAL_OPT_IPV6:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _ipv6 = (value != 0);
-                return 0;
-            }
-            break;
-
-        case ZLINK_INTERNAL_OPT_BLOCKY:
-        case ZLINK_CTX_OPT_BLOCKY:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _blocky = (value != 0);
-                return 0;
-            }
-            break;
-
-        case ZLINK_MAX_MSGSZ:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _max_msgsz = value < INT_MAX ? value : INT_MAX;
-                return 0;
-            }
-            break;
-
-        default: {
-            return thread_ctx_t::set (option_, optval_, optvallen_);
-        }
-    }
-
-    if (refresh_auto_hwm) {
-        schedule_auto_hwm_recalculate ();
-        return 0;
-    }
-
-    errno = EINVAL;
-    return -1;
-}
-
-int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
-{
-    const bool is_int = (*optvallen_ == sizeof (int));
-    int *value = static_cast<int *> (optval_);
-
-    switch (option_) {
-        case ZLINK_MAX_SOCKETS:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _max_sockets;
-                return 0;
-            }
-            break;
-
-        case ZLINK_SOCKET_LIMIT:
-            if (is_int) {
-                *value = clipped_maxsocket (65535);
-                return 0;
-            }
-            break;
-
-        case ZLINK_IO_THREADS:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _io_thread_count;
-                return 0;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_enabled ? 1 : 0;
-                return 0;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_recalc_debounce_ms;
-                return 0;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_profile;
-                return 0;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_msg_unit_bytes;
-                return 0;
-            }
-            break;
-
-        case ZLINK_INTERNAL_OPT_IPV6:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _ipv6;
-                return 0;
-            }
-            break;
-
-        case ZLINK_INTERNAL_OPT_BLOCKY:
-        case ZLINK_CTX_OPT_BLOCKY:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _blocky;
-                return 0;
-            }
-            break;
-
-        case ZLINK_MAX_MSGSZ:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _max_msgsz;
-                return 0;
-            }
-            break;
-
-        case ZLINK_MSG_T_SIZE:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = sizeof (zlink_msg_t);
-                return 0;
-            }
-            break;
-
-        default: {
-            return thread_ctx_t::get (option_, optval_, optvallen_);
-        }
-    }
-
-    errno = EINVAL;
-    return -1;
-}
-
-int zlink::ctx_t::get (int option_)
-{
-    int optval = 0;
-    size_t optvallen = sizeof (int);
-
-    if (get (option_, &optval, &optvallen) == 0)
-        return optval;
-
-    errno = EINVAL;
-    return -1;
-}
-
 bool zlink::ctx_t::start ()
 {
     return ctx_bootstrap_t::start_runtime_locked (*this);
@@ -643,120 +421,6 @@ int zlink::ctx_t::wait_for_socket_count_at_most (size_t max_count_, int timeout_
 zlink::object_t *zlink::ctx_t::get_reaper () const
 {
     return _runtime_resources.reaper_object ();
-}
-
-zlink::thread_ctx_t::thread_ctx_t () :
-    _thread_priority (ZLINK_THREAD_PRIORITY_DFLT),
-    _thread_sched_policy (ZLINK_THREAD_SCHED_POLICY_DFLT)
-{
-}
-
-void zlink::thread_ctx_t::start_thread (thread_t &thread_,
-                                        thread_fn *tfn_,
-                                        void *arg_,
-                                        const char *name_) const
-{
-    thread_.setSchedulingParameters (_thread_priority, _thread_sched_policy, _thread_affinity_cpus);
-
-    char namebuf[16] = "";
-    snprintf (namebuf, sizeof (namebuf), "%s%sZLINKbg%s%s",
-              _thread_name_prefix.empty () ? "" : _thread_name_prefix.c_str (),
-              _thread_name_prefix.empty () ? "" : "/", name_ ? "/" : "", name_ ? name_ : "");
-    thread_.start (tfn_, arg_, namebuf);
-}
-
-int zlink::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
-{
-    const bool is_int = (optvallen_ == sizeof (int));
-    int value = 0;
-    if (is_int)
-        memcpy (&value, optval_, sizeof (int));
-
-    switch (option_) {
-        case ZLINK_THREAD_SCHED_POLICY:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _thread_sched_policy = value;
-                return 0;
-            }
-            break;
-
-        case ZLINK_THREAD_AFFINITY_CPU_ADD:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _thread_affinity_cpus.insert (value);
-                return 0;
-            }
-            break;
-
-        case ZLINK_THREAD_AFFINITY_CPU_REMOVE:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                if (0 == _thread_affinity_cpus.erase (value)) {
-                    errno = EINVAL;
-                    return -1;
-                }
-                return 0;
-            }
-            break;
-
-        case ZLINK_THREAD_PRIORITY:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _thread_priority = value;
-                return 0;
-            }
-            break;
-
-        case ZLINK_THREAD_NAME_PREFIX:
-            // start_thread() allows max 16 chars for thread name
-            if (is_int) {
-                std::ostringstream s;
-                s << value;
-                scoped_lock_t locker (_opt_sync);
-                _thread_name_prefix = s.str ();
-                return 0;
-            } else if (optvallen_ > 0 && optvallen_ <= 16) {
-                scoped_lock_t locker (_opt_sync);
-                _thread_name_prefix.assign (static_cast<const char *> (optval_), optvallen_);
-                return 0;
-            }
-            break;
-    }
-
-    errno = EINVAL;
-    return -1;
-}
-
-int zlink::thread_ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
-{
-    const bool is_int = (*optvallen_ == sizeof (int));
-    int *value = static_cast<int *> (optval_);
-
-    switch (option_) {
-        case ZLINK_THREAD_SCHED_POLICY:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _thread_sched_policy;
-                return 0;
-            }
-            break;
-
-        case ZLINK_THREAD_NAME_PREFIX:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = atoi (_thread_name_prefix.c_str ());
-                return 0;
-            } else if (*optvallen_ >= _thread_name_prefix.size ()) {
-                scoped_lock_t locker (_opt_sync);
-                memcpy (optval_, _thread_name_prefix.data (), _thread_name_prefix.size ());
-                return 0;
-            }
-            break;
-    }
-
-    errno = EINVAL;
-    return -1;
 }
 
 void zlink::ctx_t::send_command (uint32_t tid_, const command_t &command_)

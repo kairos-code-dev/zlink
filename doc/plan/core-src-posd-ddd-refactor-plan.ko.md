@@ -549,6 +549,10 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-20 완료 — pipe 대상 command 판정을 `pipe_command_destination`
   helper 하나로 모으고, retain + send/self-dispatch는 `send_pipe_command`로
   응집했다. `activate_write`의 같은-thread 직접 처리 조건은 유지했다.
+- 2026-07-07: T2-17 진행 — `thread_ctx_t` 구현을 `ctx.cpp`에서
+  `ctx_thread.cpp`로 분리해 ctx 본문에서 thread option/scheduling switchboard를
+  제거했다. 이어서 `ctx_t::set/get` option switchboard를 `ctx_options.cpp`로
+  옮겼다. auto-HWM 엔진 분리는 후속으로 남았다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

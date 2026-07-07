@@ -3,7 +3,9 @@
 #ifndef __ZLINK_SPOT_RUNTIME_EXECUTION_HPP_INCLUDED__
 #define __ZLINK_SPOT_RUNTIME_EXECUTION_HPP_INCLUDED__
 
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_data_plane_protocol_state.hpp"
+#include "services/spot/data_plane/spot_data_plane_runtime_state.hpp"
+#include "services/spot/data_plane/spot_mesh_peer_state.hpp"
 
 namespace zlink
 {

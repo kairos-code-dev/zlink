@@ -268,10 +268,15 @@ runtime/services (spot):
     제거했다. 남은 얕은 위임자는 API/actor/pubsub 호출자가 `spot_node_t` 내부
     타입에 직접 결합하지 않게 하는 내부 access boundary라, 공개/내부 경계를
     흔드는 제거 대신 책임별 TU 분리로 축소했다.
-- [ ] **T2-15. data-plane 내부 state 헤더 노출 축소**
+- [x] **T2-15. data-plane 내부 state 헤더 노출 축소**
   - `spot_data_plane_runtime_state.hpp`(pending/target/backpressure 세부)가
     `runtime/spot_runtime_execution.hpp`로 누출. forward-decl/좁은 인터페이스로.
     (없음 / S–M)
+  - 2026-07-07 완료: `spot_runtime_execution.hpp`가 더 이상
+    `spot_data_plane_internal.hpp`를 include하지 않도록, runtime execution에 필요한
+    `spot_data_plane_protocol_state_t`와 `spot_mesh_peer_state_t`를 좁은 state 헤더로
+    분리했다. data-plane helper/forwarder 선언은 기존 internal 헤더 안에 남겨
+    실행 경로는 바꾸지 않았다.
 - [ ] **T2-16. `spot_data_plane_forwarding.cpp` 저위험 3책임 추출**
   - 1,065줄 6책임 중 control plane 3개만: mesh sender 소켓 수명주기
     (`:65-144, 532-553`), poller-interest 관리(`:145-203, 574-593`),

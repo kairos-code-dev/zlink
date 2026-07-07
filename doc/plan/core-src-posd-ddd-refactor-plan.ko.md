@@ -511,10 +511,16 @@ sockets/engine/transports/utils:
   직접 소유하지 않게 줄였다. 이어서 승인된 join을 actor 상태와 lifecycle event에
   반영하는 commit helper도 같은 join 모듈로 옮겼다. join recv/reply public
   surface와 `zlink_spot_node_actor_join_spot` submit 진입점까지
-  `service_spot_actor_join.cpp`로 이동했으며, `zlink_spot_node_actor_join_entry_spot`
-  진입점은 아직 `service_spot_actor_api.cpp`에 남아 있으므로 T3-01 체크박스는
-  유지한다.
+  `service_spot_actor_join.cpp`로 이동했다. 이어서
+  `zlink_spot_node_actor_join_entry_spot` submit 진입점도 같은 join 모듈로
+  이동했다. `service_spot_actor_api.cpp`에는 join queue/spot replacement/stream
+  teardown과 gateway ingress dispatch에 필요한 결합부가 아직 남아 있으므로 T3-01
+  체크박스는 유지한다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,
   bindings/framework 확인은 별도 단계로 넘긴다.
+- 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
+  단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
+  좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로
+  둔다.

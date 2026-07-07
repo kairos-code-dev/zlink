@@ -14,8 +14,6 @@
 #include <string.h>
 
 #include "core/ctx.hpp"
-#include "core/ctx_bootstrap.hpp"
-#include "core/ctx_termination.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "core/io_thread.hpp"
 #include "core/reaper.hpp"
@@ -103,7 +101,7 @@ zlink::ctx_t::~ctx_t ()
     //  Check that there are no remaining _sockets.
     zlink_assert (_socket_registry.empty ());
     stop_auto_hwm_recalc_task ();
-    ctx_termination_t::teardown_runtime (*this);
+    teardown_runtime ();
 
     //  De-initialise crypto library, if needed.
     zlink::random_close ();
@@ -119,7 +117,7 @@ bool zlink::ctx_t::valid () const
 
 zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
 {
-    return ctx_bootstrap_t::ensure_service_runtime (*this);
+    return ensure_service_runtime ();
 }
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
@@ -146,11 +144,11 @@ void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
 int zlink::ctx_t::terminate ()
 {
     _slot_sync.lock ();
-    ctx_termination_t::flush_pending_inproc_locked (*this);
+    flush_pending_inproc_locked ();
 
-    if (ctx_termination_t::begin_shutdown_locked (*this, true)) {
+    if (begin_shutdown_locked (true)) {
         _slot_sync.unlock ();
-        if (ctx_termination_t::wait_for_reaper_done (*this) == -1)
+        if (wait_for_reaper_done () == -1)
             return -1;
         _slot_sync.lock ();
         zlink_assert (_socket_registry.empty ());
@@ -172,13 +170,13 @@ int zlink::ctx_t::terminate ()
 int zlink::ctx_t::shutdown ()
 {
     scoped_lock_t locker (_slot_sync);
-    (void) ctx_termination_t::begin_shutdown_locked (*this, false);
+    (void) begin_shutdown_locked (false);
     return 0;
 }
 
 bool zlink::ctx_t::start ()
 {
-    return ctx_bootstrap_t::start_runtime_locked (*this);
+    return start_runtime_locked ();
 }
 
 zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)

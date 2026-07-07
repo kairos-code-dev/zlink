@@ -29,8 +29,6 @@ class socket_base_t;
 class reaper_t;
 class pipe_t;
 class service_control_runtime_t;
-class ctx_bootstrap_t;
-class ctx_termination_t;
 
 class thread_ctx_t
 {
@@ -139,10 +137,13 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     int auto_hwm_msg_unit_bytes () const;
 
   private:
-    friend class ctx_bootstrap_t;
-    friend class ctx_termination_t;
-
     bool start ();
+    bool start_runtime_locked ();
+    service_control_runtime_t *ensure_service_runtime ();
+    void teardown_runtime ();
+    void flush_pending_inproc_locked ();
+    bool begin_shutdown_locked (bool allow_fork_cleanup_);
+    int wait_for_reaper_done ();
     static int clipped_maxsocket (int max_requested_);
     void debug_dump_sockets_locked (const char *phase_) const;
     static void auto_hwm_recalc_task_main (void *arg_);

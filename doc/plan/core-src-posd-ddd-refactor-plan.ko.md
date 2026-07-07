@@ -285,7 +285,7 @@ runtime/core:
   - `:61-203` add/modify/remove가 `is_socket` vs `is_fd`만 다른 쌍 4벌 +
     `check_socket_events:336-358`가 `check_events:371-388` 재구현. predicate
     파라미터화 헬퍼로. 관리 API라 hot 무관. (없음 / M)
-- [ ] **T2-19. `ctx_bootstrap`/`ctx_termination` friend 결합 정리**
+- [x] **T2-19. `ctx_bootstrap`/`ctx_termination` friend 결합 정리**
   - `ctx.hpp:142-143` friend 2개가 private 멤버 ~10개를 직접 조작하는 전권 정적
     프로시저 — 줄만 옮기고 은닉 경계는 못 옮긴 추출. 좁은 인터페이스 경유로
     전환하거나 환원. (없음 / S–M)
@@ -558,6 +558,10 @@ sockets/engine/transports/utils:
   중복을 private item helper로 합치고, socket event 채우기 로직도
   `collect_socket_event`로 공유했다. poll/select wait 루프와 drain 흐름은
   그대로 유지했다.
+- 2026-07-07: T2-19 완료 — `ctx_bootstrap_t`/`ctx_termination_t` friend
+  helper를 제거하고 같은 lifecycle 구현을 `ctx_t` private 메서드로 환원했다.
+  외부 helper가 ctx 내부 멤버를 직접 조작하던 결합을 없애기 위해 잠금 순서와
+  shutdown/reaper wait 동작은 그대로 유지했다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

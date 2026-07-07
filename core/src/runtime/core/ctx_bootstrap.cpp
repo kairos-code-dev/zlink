@@ -7,7 +7,6 @@
 #endif
 
 #include "core/ctx.hpp"
-#include "core/ctx_bootstrap.hpp"
 #include "services/control/service_control_runtime.hpp"
 
 namespace
@@ -15,46 +14,45 @@ namespace
 const int ctx_bootstrap_retry_count = 50;
 }
 
-bool zlink::ctx_bootstrap_t::start_runtime_locked (ctx_t &ctx_)
+bool zlink::ctx_t::start_runtime_locked ()
 {
-    ctx_._opt_sync.lock ();
-    const int max_sockets = ctx_._max_sockets;
-    const int ios = ctx_._io_thread_count;
-    ctx_._opt_sync.unlock ();
+    _opt_sync.lock ();
+    const int max_sockets = _max_sockets;
+    const int ios = _io_thread_count;
+    _opt_sync.unlock ();
 
-    if (!ctx_._runtime_resources.start_locked (ctx_, ctx_._socket_registry, ctx_._term_mailbox,
-                                               max_sockets, ios))
+    if (!_runtime_resources.start_locked (*this, _socket_registry, _term_mailbox, max_sockets, ios))
         return false;
 
-    ctx_._starting = false;
+    _starting = false;
     return true;
 }
 
-zlink::service_control_runtime_t *zlink::ctx_bootstrap_t::ensure_service_runtime (ctx_t &ctx_)
+zlink::service_control_runtime_t *zlink::ctx_t::ensure_service_runtime ()
 {
     int last_errno = ENOTSUP;
     for (int attempt = 0; attempt < ctx_bootstrap_retry_count; ++attempt) {
-        ctx_._slot_sync.lock ();
-        if (ctx_._terminating) {
-            ctx_._slot_sync.unlock ();
+        _slot_sync.lock ();
+        if (_terminating) {
+            _slot_sync.unlock ();
             errno = ETERM;
             return NULL;
         }
-        service_control_runtime_t *runtime = ctx_._runtime_resources.service_control_runtime ();
+        service_control_runtime_t *runtime = _runtime_resources.service_control_runtime ();
         if (runtime) {
-            ctx_._slot_sync.unlock ();
+            _slot_sync.unlock ();
             return runtime;
         }
-        if (!ctx_._starting) {
-            ctx_._slot_sync.unlock ();
+        if (!_starting) {
+            _slot_sync.unlock ();
             errno = ENOTSUP;
             return NULL;
         }
 
-        const bool started = start_runtime_locked (ctx_);
-        runtime = ctx_._runtime_resources.service_control_runtime ();
+        const bool started = start_runtime_locked ();
+        runtime = _runtime_resources.service_control_runtime ();
         last_errno = errno;
-        ctx_._slot_sync.unlock ();
+        _slot_sync.unlock ();
         if (started && runtime)
             return runtime;
 #ifndef ZLINK_HAVE_WINDOWS

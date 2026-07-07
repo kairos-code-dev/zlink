@@ -20,7 +20,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.server.play.application.roomallocation.BingoMatchQueue
 import systems.zlink.samples.kotlin.bingo.server.play.application.roomallocation.BingoRoomAllocator
@@ -78,8 +78,8 @@ class PlayServerApplication {
     fun redisBingoMatchQueue(): BingoMatchQueue = RedisBingoMatchQueue()
 
     @Bean
-    fun bingoRoomSpotCreatedHandler(json: ObjectMapper): BingoRoomSpotCreatedHandler =
-        BingoRoomSpotCreatedHandler(json)
+    fun bingoRoomSettingsInitializer(): BingoRoomSettingsInitializer =
+        BingoRoomSettingsInitializer()
 
     @Bean
     fun bingoJsonMapper(): ObjectMapper =

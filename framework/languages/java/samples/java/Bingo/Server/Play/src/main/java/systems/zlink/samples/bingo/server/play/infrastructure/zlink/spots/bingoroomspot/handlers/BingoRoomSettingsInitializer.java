@@ -1,19 +1,12 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 
-public final class BingoRoomSpotCreatedHandler {
-    private final ObjectMapper json;
-
-    public BingoRoomSpotCreatedHandler(ObjectMapper json) {
-        this.json = json;
-    }
-
+public final class BingoRoomSettingsInitializer {
     public ZLinkSpotCreateResponse handle(
         BingoRoomSpot spot,
         ZLinkMessage request) {

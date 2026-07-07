@@ -2,7 +2,6 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingo
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -18,7 +17,7 @@ import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomTimerHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerMsgHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.StopObservingBingoEventsHandler;
@@ -30,8 +29,7 @@ import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     private final ZLinkSpotContext context;
-    private final BingoRoomSpotCreatedHandler createdHandler;
-    private final ObjectMapper json;
+    private final BingoRoomSettingsInitializer settingsInitializer;
     private final Map<String, PlayerActor> actors = new HashMap<>();
     private final Map<String, PlayerActor> observers = new HashMap<>();
     private BingoRoomModels.BingoRoomSettings settings =
@@ -42,11 +40,9 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
 
     public BingoRoomSpot(
         ZLinkSpotContext context,
-        BingoRoomSpotCreatedHandler createdHandler,
-        ObjectMapper json) {
+        BingoRoomSettingsInitializer settingsInitializer) {
         this.context = context;
-        this.createdHandler = createdHandler;
-        this.json = json;
+        this.settingsInitializer = settingsInitializer;
         this.game = BingoGame.room(context.spotRid().toString(), settings);
     }
 
@@ -66,7 +62,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
 
     @Override
     public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
-        return createdHandler.handle(this, request);
+        return settingsInitializer.handle(this, request);
     }
 
     @Override

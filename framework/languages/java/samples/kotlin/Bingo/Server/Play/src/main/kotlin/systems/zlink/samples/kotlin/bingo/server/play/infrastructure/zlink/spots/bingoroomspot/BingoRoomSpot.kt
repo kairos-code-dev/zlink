@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.await
@@ -14,7 +13,7 @@ import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomTimerHandler
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerMsgHandler
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.StopObservingBingoEventsHandler
@@ -41,8 +40,8 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardRes
 
 class BingoRoomSpot(
     private val context: ZLinkSpotContext,
-    private val createdHandler: BingoRoomSpotCreatedHandler,
-    private val json: ObjectMapper,) : ZLinkSuspendingSpot<PlayerActor>() {
+    private val settingsInitializer: BingoRoomSettingsInitializer,
+) : ZLinkSuspendingSpot<PlayerActor>() {
     private val actors = mutableMapOf<String, PlayerActor>()
     private val observers = mutableMapOf<String, PlayerActor>()
     private var settings = BingoRoomSettings.create(
@@ -57,7 +56,7 @@ class BingoRoomSpot(
     override fun context(): ZLinkSpotContext = context
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
-        createdHandler.handle(this, request)
+        settingsInitializer.handle(this, request)
         return ZLinkSpotCreateResponse.accept()
     }
 

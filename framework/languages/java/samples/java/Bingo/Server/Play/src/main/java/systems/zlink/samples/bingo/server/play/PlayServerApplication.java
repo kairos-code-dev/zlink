@@ -17,7 +17,7 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot;
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoMatchQueue;
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocator;
@@ -87,8 +87,8 @@ public final class PlayServerApplication {
     }
 
     @Bean
-    BingoRoomSpotCreatedHandler bingoRoomSpotCreatedHandler(ObjectMapper json) {
-        return new BingoRoomSpotCreatedHandler(json);
+    BingoRoomSettingsInitializer bingoRoomSettingsInitializer() {
+        return new BingoRoomSettingsInitializer();
     }
 
     @Bean

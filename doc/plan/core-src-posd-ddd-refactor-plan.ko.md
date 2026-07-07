@@ -373,6 +373,9 @@ sockets/engine/transports/utils:
     확인, native fd capture, ASIO close, `event_closed` 방출 순서를
     `close_asio_socket_if_open`으로 통합했다. endpoint pair 생성은 호출처에
     유지했다.
+  - 2026-07-08 부분 완료: TCP/TLS/WS listener의 acceptor close + `event_closed`
+    방출도 `close_asio_socket_if_open`을 재사용하도록 정리했다. IPC listener는
+    filesystem cleanup과 close-failed event가 결합돼 있어 기존 구현을 유지했다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

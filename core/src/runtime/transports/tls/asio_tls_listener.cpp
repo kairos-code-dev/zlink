@@ -14,6 +14,7 @@
 #include "sockets/common/socket_base.hpp"
 #include "transports/asio/asio_tcp_acceptor_config.hpp"
 #include "transports/asio/asio_listener_accept_policy.hpp"
+#include "transports/asio/asio_socket_lifecycle.hpp"
 #include "transports/asio/asio_tcp_endpoint.hpp"
 #include "transports/asio/asio_tcp_tuning.hpp"
 #include "utils/config.hpp"
@@ -315,13 +316,9 @@ void zlink::asio_tls_listener_t::close ()
 {
     TLS_LISTENER_DBG ("close called");
 
-    if (_acceptor.is_open ()) {
-        fd_t fd = _acceptor.native_handle ();
-        boost::system::error_code ec;
-        _acceptor.close (ec);
-
+    close_asio_socket_if_open (_acceptor, [this] (fd_t fd) {
         _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint), fd);
-    }
+    });
 }
 
 int zlink::asio_tls_listener_t::tune_socket (fd_t fd_) const

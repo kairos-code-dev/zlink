@@ -780,6 +780,11 @@ sockets/engine/transports/utils:
   coordinator에서 묶는 지점이라, 별도 TU로 더 빼면 private actor/session 표면을
   새 internal header에 노출해야 한다. POSD 정보 은닉 기준으로 남기는 편이 더
   낫다고 판정했다.
+- 2026-07-08: spot actor 클러스터 완료 검증 — `nice -n 19 cmake --build
+  core/build -j1` 통과. full core CTest는 112/113 통과, `test_helper_more_bad_send`
+  1건이 segfault로 실패했다. 같은 테스트를 단독으로 3회 반복 재실행(`ctest
+  --test-dir core/build -R '^test_helper_more_bad_send$' -j1 --output-on-failure`)해
+  모두 0.30초대에 통과했으므로, 재현 실패로 기록한다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

@@ -398,6 +398,10 @@ sockets/engine/transports/utils:
   - 2026-07-08 부분 완료: endpoint runtime과 inproc endpoint map 구현을
     `socket_endpoint_runtime.cpp`로, command poll bookkeeping을
     `socket_command_runtime.cpp`로 분리했다.
+  - 2026-07-08 부분 완료: dispatch bridge/send-ready dispatch scope를
+    `socket_dispatch_bridge.cpp`로, lifecycle coordinator와 public/callback scope를
+    `socket_lifecycle_runtime.cpp`로 분리하고 원래 `socket_runtime.cpp` 구현 파일은
+    제거했다. `socket_runtime.hpp`의 내부 타입 표면은 그대로 유지했다.
 
 ### 3.3 티어 3 — 대형 구조 (6건)
 
@@ -581,6 +585,10 @@ sockets/engine/transports/utils:
 - 2026-07-08: T2-23 부분 완료 — endpoint/inproc runtime과 command runtime 구현을
   별도 TU로 분리했다. 확인: `cmake --build core/build -j1`, `ctest -R
   'unittest_socket_runtime|test_monitor|test_public_inproc_multipart_send|test_connect_rid'`.
+- 2026-07-08: T2-23 부분 완료 — dispatch bridge와 lifecycle coordinator 구현을
+  별도 TU로 분리하고 `socket_runtime.cpp` 구현 파일을 제거했다. 확인:
+  `cmake --build core/build -j1`, `ctest -R
+  'unittest_socket_runtime|test_socket_with_handler|test_thread_safe_contract_policy|test_public_inproc_multipart_send|test_monitor|test_multi_socket_contract_regressions'`.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

@@ -14,11 +14,19 @@
 
 namespace
 {
-bool command_targets_pipe (zlink::command_t::type_t type_)
+zlink::pipe_t *pipe_command_destination (const zlink::command_t &cmd_)
 {
-    return type_ == zlink::command_t::activate_read || type_ == zlink::command_t::activate_write
-           || type_ == zlink::command_t::hiccup || type_ == zlink::command_t::pipe_term
-           || type_ == zlink::command_t::pipe_term_ack || type_ == zlink::command_t::pipe_hwm;
+    switch (cmd_.type) {
+        case zlink::command_t::activate_read:
+        case zlink::command_t::activate_write:
+        case zlink::command_t::hiccup:
+        case zlink::command_t::pipe_term:
+        case zlink::command_t::pipe_term_ack:
+        case zlink::command_t::pipe_hwm:
+            return static_cast<zlink::pipe_t *> (cmd_.destination);
+        default:
+            return NULL;
+    }
 }
 }
 
@@ -141,8 +149,9 @@ void zlink::object_t::process_command (const command_t &cmd_)
             zlink_assert (false);
     }
 
-    if (command_targets_pipe (cmd_.type))
-        static_cast<pipe_t *> (cmd_.destination)->release_command_ref ();
+    pipe_t *pipe = pipe_command_destination (cmd_);
+    if (pipe)
+        pipe->release_command_ref ();
 }
 
 int zlink::object_t::register_endpoint (const char *addr_, const endpoint_t &endpoint_)
@@ -260,62 +269,47 @@ void zlink::object_t::send_bind (own_t *destination_, pipe_t *pipe_, bool inc_se
 void zlink::object_t::send_activate_read (pipe_t *destination_)
 {
     command_t cmd;
-    cmd.destination = destination_;
     cmd.type = command_t::activate_read;
-    destination_->retain_command_ref ();
-    send_command (cmd);
+    send_pipe_command (destination_, cmd, false);
 }
 
 void zlink::object_t::send_activate_write (pipe_t *destination_, uint64_t msgs_read_)
 {
     command_t cmd;
-    cmd.destination = destination_;
     cmd.type = command_t::activate_write;
     cmd.args.activate_write.msgs_read = msgs_read_;
-    destination_->retain_command_ref ();
-    if (destination_->get_tid () == _tid)
-        destination_->process_command (cmd);
-    else
-        send_command (cmd);
+    send_pipe_command (destination_, cmd, true);
 }
 
 void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
 {
     command_t cmd;
-    cmd.destination = destination_;
     cmd.type = command_t::hiccup;
     cmd.args.hiccup.pipe = pipe_;
-    destination_->retain_command_ref ();
-    send_command (cmd);
+    send_pipe_command (destination_, cmd, false);
 }
 
 void zlink::object_t::send_pipe_term (pipe_t *destination_)
 {
     command_t cmd;
-    cmd.destination = destination_;
     cmd.type = command_t::pipe_term;
-    destination_->retain_command_ref ();
-    send_command (cmd);
+    send_pipe_command (destination_, cmd, false);
 }
 
 void zlink::object_t::send_pipe_term_ack (pipe_t *destination_)
 {
     command_t cmd;
-    cmd.destination = destination_;
     cmd.type = command_t::pipe_term_ack;
-    destination_->retain_command_ref ();
-    send_command (cmd);
+    send_pipe_command (destination_, cmd, false);
 }
 
 void zlink::object_t::send_pipe_hwm (pipe_t *destination_, int inhwm_, int outhwm_)
 {
     command_t cmd;
-    cmd.destination = destination_;
     cmd.type = command_t::pipe_hwm;
     cmd.args.pipe_hwm.inhwm = inhwm_;
     cmd.args.pipe_hwm.outhwm = outhwm_;
-    destination_->retain_command_ref ();
-    send_command (cmd);
+    send_pipe_command (destination_, cmd, false);
 }
 
 void zlink::object_t::send_term_req (own_t *destination_, own_t *object_)
@@ -479,6 +473,18 @@ void zlink::object_t::process_seqnum ()
 void zlink::object_t::process_conn_failed ()
 {
     zlink_assert (false);
+}
+
+void zlink::object_t::send_pipe_command (pipe_t *destination_,
+                                         command_t &cmd_,
+                                         bool allow_self_dispatch_)
+{
+    cmd_.destination = destination_;
+    destination_->retain_command_ref ();
+    if (allow_self_dispatch_ && destination_->get_tid () == _tid)
+        destination_->process_command (cmd_);
+    else
+        send_command (cmd_);
 }
 
 void zlink::object_t::send_command (const command_t &cmd_)

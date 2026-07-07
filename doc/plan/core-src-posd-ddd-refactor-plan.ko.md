@@ -289,7 +289,7 @@ runtime/core:
   - `ctx.hpp:142-143` friend 2개가 private 멤버 ~10개를 직접 조작하는 전권 정적
     프로시저 — 줄만 옮기고 은닉 경계는 못 옮긴 추출. 좁은 인터페이스 경유로
     전환하거나 환원. (없음 / S–M)
-- [ ] **T2-20. `object.cpp` pipe retain/release 결합 응집**
+- [x] **T2-20. `object.cpp` pipe retain/release 결합 응집**
   - `retain_command_ref()`가 pipe 대상 sender 6곳(`:260-319`)에 수동 살포, 짝
     release는 `command_targets_pipe` 집합(`:17-22, 144-145`)으로 발화 — 불변식이
     두 단절 지점에 분산. `send_to_pipe` 헬퍼로 co-locate.
@@ -546,6 +546,9 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-21 완료 — `session_base_pipe_io.cpp`의 env-gate router trace
   `fprintf`와 로그 카운터를 같은 TU의 inline helper로 옮겨 `push_msg` 분기에서
   trace 세부 조립을 제거했다.
+- 2026-07-07: T2-20 완료 — pipe 대상 command 판정을 `pipe_command_destination`
+  helper 하나로 모으고, retain + send/self-dispatch는 `send_pipe_command`로
+  응집했다. `activate_write`의 같은-thread 직접 처리 조건은 유지했다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

@@ -118,6 +118,9 @@ class object_t
     uint32_t _tid;
 
     void send_command (const command_t &cmd_);
+    void send_pipe_command (zlink::pipe_t *destination_,
+                            command_t &cmd_,
+                            bool allow_self_dispatch_);
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (object_t)
 };

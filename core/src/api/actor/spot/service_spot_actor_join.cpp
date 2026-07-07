@@ -264,9 +264,14 @@ void create_join_active_route_locked (actor_handle_t *actor_)
     actor_runtime ().routes.publish_active (actor_, true);
 }
 
-bool actor_in_entry_spot_locked (const actor_handle_t *actor_)
+bool join_actor_in_entry_spot_locked (const actor_handle_t *actor_)
 {
     return actor_ && actor_->joined_spot_state && actor_->joined_spot_state->entry;
+}
+
+bool join_actor_in_user_spot_locked (const actor_handle_t *actor_)
+{
+    return actor_ && actor_->joined_spot_state && !actor_->joined_spot_state->entry;
 }
 
 uint64_t next_join_generation_for_node_locked (zlink::spot_node_t *node_)
@@ -295,7 +300,7 @@ zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *reque
     if (request_->entry_spot_join && request_->actor && request_->spot_state
         && zlink::spot_actor_internal::same_routing_id (request_->actor->node_rid,
                                                         request_->target_node_rid)
-        && actor_in_entry_spot_locked (request_->actor)) {
+        && join_actor_in_entry_spot_locked (request_->actor)) {
         if (!actor_runtime ().routes.active_matches (request_->actor))
             create_join_active_route_locked (request_->actor);
         return ZLINK_REQUEST_OK;

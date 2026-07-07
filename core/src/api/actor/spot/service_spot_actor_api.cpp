@@ -106,16 +106,6 @@ find_spot_facade_for_state_locked (zlink::spot_node_t *node_,
     return actor_runtime ().nodes.find_spot_for_state (node_, state_);
 }
 
-bool actor_in_entry_spot_locked (const actor_handle_t *actor_)
-{
-    return actor_ && actor_->joined_spot_state && actor_->joined_spot_state->entry;
-}
-
-bool actor_in_user_spot_locked (const actor_handle_t *actor_)
-{
-    return actor_ && actor_->joined_spot_state && !actor_->joined_spot_state->entry;
-}
-
 zlink_spot_kind_t spot_kind_for_state (const std::shared_ptr<spot_logical_state_t> &state_)
 {
     if (!state_)
@@ -871,7 +861,7 @@ zlink_request_result_t run_destroy_operation_locked (actor_reply_operation_arg_t
     if (resolved.result != ZLINK_REQUEST_OK)
         return resolved.result;
     actor_handle_t *actor = resolved.actor;
-    if (actor_in_user_spot_locked (actor)) {
+    if (join_actor_in_user_spot_locked (actor)) {
         errno = EBUSY;
         return ZLINK_REQUEST_INVALID_STATE;
     }
@@ -926,7 +916,7 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
         errno = ESTALE;
         return ZLINK_REQUEST_INVALID_STATE;
     }
-    if (actor_in_entry_spot_locked (actor)) {
+    if (join_actor_in_entry_spot_locked (actor)) {
         if (!actor_runtime ().routes.active_matches (actor)
             && actor_runtime ().routes.active_exists (actor))
             create_active_route_locked (actor);

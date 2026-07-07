@@ -424,7 +424,7 @@ sockets/engine/transports/utils:
     `request_reply`의 codec/ingress 분해와 대칭으로 분리.
     **egress `send_actor_gateway_*`는 send 경로 — header-inline code-motion만
     허용**, out-of-line 이관은 인라이닝 훼손으로 간주. (code-motion~조건부 / L)
-- [ ] **T3-03. `poller_api.cpp`(719줄, 5책임) 분해**
+- [x] **T3-03. `poller_api.cpp`(719줄, 5책임) 분해**
   - 등록 테이블 CRUD+인덱스(`:232-418`)와 native↔public 이벤트 변환(`:26-229`)은
     `service_poller_api.cpp`가 이미 내부를 직접 만지는 암묵적 공유 모듈 —
     추출이 기존 결합의 공식화. 일회성 `zlink_poll`(`:420-508`)도 별도 표면.
@@ -436,6 +436,9 @@ sockets/engine/transports/utils:
     `zlink_poller_event_t`/`zlink_pollitem_t::revents`로 변환하는 규칙을
     `poller_event_conversion.cpp`로 분리했다. `zlink_poller_wait` drain 루프는
     호출 순서 그대로 유지했다.
+  - 2026-07-08 완료: 일회성 `zlink_poll`을 `poller_poll_once.cpp`로 분리했다.
+    `poller_api.cpp`는 poller lifecycle/fd/timer API와 `zlink_poller_wait` drain
+    루프만 남긴다.
 - [ ] **T3-04. `socket_request_reply_router_api.cpp`(710줄) 분해**
   - 옵션 get/set(`:646-710`)·lifecycle(`:623-644`)은 무위험 추출.
     `recv_dealer_parts_once:375-495`의 envelope 파싱+토큰 할당은
@@ -667,6 +670,9 @@ sockets/engine/transports/utils:
 - 2026-07-08: T3-03 부분 완료 — native poller event와 public poller event 간
   변환 규칙을 `poller_event_conversion.cpp`로 분리했다. hidden completion drain
   loop와 `zlink_poller_wait` 반환 조건은 기존 위치와 순서를 유지했다.
+- 2026-07-08: T3-03 완료 — 일회성 `zlink_poll`을 `poller_poll_once.cpp`로
+  분리했다. `poller_api.cpp`는 poller handle lifecycle, fd/timer API,
+  `zlink_poller_wait`의 hidden-completion drain 루프를 소유한다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

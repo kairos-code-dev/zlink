@@ -74,6 +74,8 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
             if (value is not IMessage protobuf || !typeof(IMessage).IsAssignableFrom(type))
                 throw new InvalidOperationException($"Protobuf codec cannot serialize payload type '{type}'.");
 
+            // Hot path: write protobuf directly into a Message buffer so the
+            // framework does not allocate an intermediate byte[] per payload.
             var message = Message.Allocate(protobuf.CalculateSize());
             try
             {
@@ -97,6 +99,9 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
             if (!typeof(IMessage).IsAssignableFrom(type))
                 throw new InvalidOperationException($"Protobuf codec cannot deserialize payload type '{type}'.");
 
+            // Hot path: compiled factories avoid Activator reflection in every
+            // response decode while still honoring protobuf's parameterless ctor
+            // contract.
             var protobuf = Factories.GetOrAdd(type, CreateFactory)();
             protobuf.MergeFrom(payload);
             return protobuf;

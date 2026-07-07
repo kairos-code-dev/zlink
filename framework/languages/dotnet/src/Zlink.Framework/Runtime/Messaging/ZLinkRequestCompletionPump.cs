@@ -47,6 +47,9 @@ internal sealed class ZLinkRequestCompletionPump : IAsyncDisposable
     private static void Run(IZlinkSocket socket, CancellationToken stopToken)
     {
         using var poller = Systems.Zlink.Zlink.CreatePoller();
+        // Hot path support: the native socket completes async requests only when
+        // completion events are drained. A dedicated completion-only poll keeps
+        // request latency stable without coupling it to application receive loops.
         poller.Add(socket, PollEventFlags.PollCompletion, 0);
         Span<PollEvent> events = stackalloc PollEvent[1];
 

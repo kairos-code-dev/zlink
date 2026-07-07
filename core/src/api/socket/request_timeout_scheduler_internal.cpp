@@ -170,6 +170,9 @@ schedule (uint32_t timeout_ms_, handler_fn handler_, void *userdata_, cleanup_fn
     {
         scheduler_state_t &state = scheduler_state ();
         std::lock_guard<std::mutex> lock (state.mutex);
+        // Hot path: only wake the scheduler when this request becomes the next
+        // deadline. Notifying on every request reintroduces cross-thread wake
+        // churn in high-rate request/reply workloads.
         const bool should_notify = state.next_wake_ns == 0 || task->deadline_ns < state.next_wake_ns;
         task->schedule_it = state.schedule.insert (std::make_pair (task->deadline_ns, task));
         if (should_notify)

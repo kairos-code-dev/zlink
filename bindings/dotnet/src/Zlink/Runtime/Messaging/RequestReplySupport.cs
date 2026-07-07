@@ -167,6 +167,9 @@ internal static class RequestReplySupport
         Message[]? copiedParts = null;
         var sourceParts = PartsAsSpan(parts, ref copiedParts);
         ZlinkMsg[]? rentedNative = null;
+        // Hot path: request/reply messages are normally one or two parts. Keep
+        // native descriptors on the stack for that case and rent only for larger
+        // multipart frames.
         var nativeParts = sourceParts.Length <= StackPartLimit
             ? stackalloc ZlinkMsg[StackPartLimit]
             : rentedNative = ArrayPool<ZlinkMsg>.Shared.Rent(sourceParts.Length);

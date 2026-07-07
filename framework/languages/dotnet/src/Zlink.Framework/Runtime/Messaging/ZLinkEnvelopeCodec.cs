@@ -80,6 +80,9 @@ internal static class ZLinkEnvelopeCodec
     {
         if (IsSimpleHeader(header))
         {
+            // Hot path: route/request envelopes usually differ only in the body.
+            // Reusing immutable header bytes avoids JSON serialization and UTF-8
+            // allocation for every request.
             var bytes = SimpleHeaderCache.GetOrAdd(
                 new SimpleHeaderKey(header.Kind, header.ChannelName, header.MessageName, header.ContentType),
                 static key => EncodeJsonBytes(new ZLinkEnvelopeHeader(
@@ -248,6 +251,9 @@ internal static class ZLinkEnvelopeCodec
         if (codecs is not null
             && codecs.TryGetSerializer(contentType, out var customSerializer))
         {
+            // Hot path: span deserializers parse directly from the native message
+            // buffer. Avoid routing this through ZLinkEncodedPayload unless the
+            // codec only exposes the owned-memory contract.
             if (customSerializer is IZLinkMessageSpanDeserializer spanDeserializer)
                 return spanDeserializer.Deserialize(bodyMessage.AsReadOnlySpan(), bodyType);
 

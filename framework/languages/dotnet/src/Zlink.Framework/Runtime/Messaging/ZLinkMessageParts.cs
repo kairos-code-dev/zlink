@@ -8,6 +8,8 @@ internal static class ZLinkMessageParts
         Message header,
         Message body)
     {
+        // Hot path: most envelopes are exactly header + body. Keep this as a
+        // tiny IReadOnlyList wrapper so send/request avoids allocating arrays.
         return new TwoMessageParts(header, body);
     }
 

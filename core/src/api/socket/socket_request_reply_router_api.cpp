@@ -153,6 +153,9 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
             : NULL;
 
         if (blocking && !use_helper_queue && !state && !router_spot_state) {
+            // Hot path: plain router recv has no completion queues to service.
+            // Keep it on the direct blocking recv path instead of routing through
+            // the poll loop used by request/reply helpers.
             return reqrep::recv_router_message_direct (
                      handle, source_node_rid_out, source_spot_rid_out, request_seq_out, parts_out,
                      part_count_out, static_cast<int> (flags_))

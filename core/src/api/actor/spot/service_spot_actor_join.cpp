@@ -694,6 +694,46 @@ void collect_join_stream_live_erase_requests_locked (
     actor_runtime ().joins.collect_live_for_stream (stream_, queued_aborts_, live_aborts_);
 }
 
+void abort_join_requests_for_stream_locked (void *stream_,
+                                            join_actor_session_clear_fn clear_session_,
+                                            void *userdata_,
+                                            join_request_completion_batch_t *aborted_)
+{
+    if (!stream_ || !aborted_)
+        return;
+
+    std::vector<queued_join_request_t *> received_aborts;
+    collect_join_stream_queued_erase_requests_locked (stream_, &aborted_->requests);
+    for (std::deque<queued_join_request_t *>::iterator it = aborted_->requests.begin ();
+         it != aborted_->requests.end (); ++it) {
+        if (clear_session_)
+            clear_session_ ((*it)->actor, userdata_);
+        retire_join_request_locked (*it);
+    }
+    collect_join_stream_live_erase_requests_locked (stream_, aborted_->requests,
+                                                    &received_aborts);
+    for (std::vector<queued_join_request_t *>::iterator it = received_aborts.begin ();
+         it != received_aborts.end (); ++it) {
+        queued_join_request_t *request = *it;
+        remove_pending_join_request_locked (request);
+        if (clear_session_)
+            clear_session_ (request->actor, userdata_);
+        retire_join_request_locked (request);
+        aborted_->requests.push_back (request);
+    }
+}
+
+void complete_and_release_join_requests (join_request_completion_batch_t *requests_,
+                                         zlink_request_result_t result_)
+{
+    if (!requests_)
+        return;
+    for (std::deque<queued_join_request_t *>::iterator it = requests_->requests.begin ();
+         it != requests_->requests.end (); ++it)
+        complete_and_release_join_request (*it, result_);
+    requests_->requests.clear ();
+}
+
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
                                                       size_t part_count_,
                                                       zlink_actor_join_spot_handler_fn handler_,

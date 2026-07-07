@@ -581,6 +581,12 @@ void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_chang
         actor_->last_changed_ms = now_ms ();
 }
 
+void clear_join_actor_bound_session_locked (actor_handle_t *actor_, void *userdata_)
+{
+    (void) userdata_;
+    clear_actor_bound_session_locked (actor_, true);
+}
+
 std::unique_ptr<actor_handle_t> remove_actor_locked (actor_handle_t *actor_,
                                                      bool erase_session_binding_ = true)
 {
@@ -1544,31 +1550,14 @@ void erase_actor_stream_bindings (void *stream_)
 {
     if (!stream_)
         return;
-    std::deque<queued_join_request_t *> aborted_joins;
+    join_request_completion_batch_t aborted_joins;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        std::vector<queued_join_request_t *> received_aborts;
-        collect_join_stream_queued_erase_requests_locked (stream_, &aborted_joins);
-        for (std::deque<queued_join_request_t *>::iterator it = aborted_joins.begin ();
-             it != aborted_joins.end (); ++it) {
-            clear_actor_bound_session_locked ((*it)->actor, true);
-            retire_join_request_locked (*it);
-        }
-        collect_join_stream_live_erase_requests_locked (stream_, aborted_joins, &received_aborts);
-        for (std::vector<queued_join_request_t *>::iterator it = received_aborts.begin ();
-             it != received_aborts.end (); ++it) {
-            queued_join_request_t *request = *it;
-            remove_pending_join_request_locked (request);
-            clear_actor_bound_session_locked (request->actor, true);
-            retire_join_request_locked (request);
-            aborted_joins.push_back (request);
-        }
+        abort_join_requests_for_stream_locked (stream_, clear_join_actor_bound_session_locked, NULL,
+                                               &aborted_joins);
         actor_runtime ().sessions.clear_stream (stream_);
     }
-    for (std::deque<queued_join_request_t *>::iterator it = aborted_joins.begin ();
-         it != aborted_joins.end (); ++it) {
-        complete_and_release_join_request (*it, ZLINK_REQUEST_TERMINATED);
-    }
+    complete_and_release_join_requests (&aborted_joins, ZLINK_REQUEST_TERMINATED);
 }
 
 extern "C" zlink_config_result_t

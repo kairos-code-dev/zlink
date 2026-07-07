@@ -27,12 +27,13 @@ namespace spot_actor_api_internal
 struct actor_handle_t;
 struct queued_join_request_t;
 
-bool join_request_live_locked (queued_join_request_t *request_);
-void index_join_request_locked (queued_join_request_t *request_);
-void unindex_join_request_locked (queued_join_request_t *request_);
-void retire_join_request_locked (queued_join_request_t *request_);
-void remove_pending_join_request_locked (queued_join_request_t *request_);
-void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms_);
+struct join_request_completion_batch_t
+{
+    std::deque<queued_join_request_t *> requests;
+};
+
+typedef void (*join_actor_session_clear_fn) (actor_handle_t *actor_, void *userdata_);
+
 uint64_t next_join_commit_epoch_locked ();
 zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *actor_);
 bool join_actor_has_pending_request_locked (const actor_handle_t *actor_);
@@ -56,9 +57,6 @@ zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (
   const zlink_routing_id_t &current_spot_rid_,
   uint64_t join_epoch_);
 
-zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *request_,
-                                                    actor_handle_t **readable_actor_out_);
-
 int process_actor_gateway_join_packet_locked (
   zlink::spot_node_t *node_,
   const zlink_routing_id_t *source_node_rid_,
@@ -70,19 +68,15 @@ int process_actor_gateway_join_packet_locked (
   queued_join_request_t **completed_out_,
   actor_handle_t **source_actor_to_remove_out_);
 
-void collect_join_spot_facade_erase_locked (spot_handle_t *spot_,
-                                            std::deque<queued_join_request_t *> *pending_);
-bool join_spot_has_joined_or_pending_actor_locked (spot_handle_t *spot_);
-void collect_join_stream_queued_erase_requests_locked (
-  void *stream_,
-  std::deque<queued_join_request_t *> *queued_aborts_);
-void collect_join_stream_live_erase_requests_locked (
-  void *stream_,
-  const std::deque<queued_join_request_t *> &queued_aborts_,
-  std::vector<queued_join_request_t *> *live_aborts_);
+void abort_join_requests_for_stream_locked (void *stream_,
+                                            join_actor_session_clear_fn clear_session_,
+                                            void *userdata_,
+                                            join_request_completion_batch_t *aborted_);
 
 void complete_and_release_join_request (queued_join_request_t *request_,
                                         zlink_request_result_t result_);
+void complete_and_release_join_requests (join_request_completion_batch_t *requests_,
+                                         zlink_request_result_t result_);
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
                                                       size_t part_count_,
                                                       zlink_actor_join_spot_handler_fn handler_,

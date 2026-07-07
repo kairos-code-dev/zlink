@@ -42,12 +42,12 @@ internal sealed class CourierSessionBinder(
         return new BindCourierSessionRes(courierId, actor.NodeRid.ToString(), context.SessionId);
     }
 
-    private async ValueTask<ZLinkActorRefSnapshot> FindOrEnsureActorAsync(
+    private async ValueTask<ActorRefSnapshot> FindOrEnsureActorAsync(
         string courierId,
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var address = new ZLinkSpotAddress(placement.NodeRid, placement.NodeRid);
+        var address = new SpotRef(placement.NodeRid, placement.NodeRid);
         var found = await routes.RequestToSpot(
                 SampleNames.CourierActorDiscovery,
                 address,

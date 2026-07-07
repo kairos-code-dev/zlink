@@ -100,7 +100,7 @@ internal static class Program
                 RoutingId.From(request.OrderId),
                 new OrderWorkflowSpotCreateReq(request.OrderId),
                 cancellationToken);
-            var address = new ZLinkSpotAddress(instance.SpotRid, RoutingId.From(request.OrderId));
+            var address = new SpotRef(instance.SpotRid, RoutingId.From(request.OrderId));
             var response = await routes
                 .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, new PrepareInventoryReservedCheckpointReq(request))
                 .Async<StartOrderWorkflowRes>(cancellationToken);

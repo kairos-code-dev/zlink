@@ -36,7 +36,7 @@ internal sealed class AuthenticateBingoSessionHandler(
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
 
-        var playEntrySpot = new ZLinkSpotAddress(session.PreferredPlayNodeRid, session.PreferredPlayNodeRid);
+        var playEntrySpot = new SpotRef(session.PreferredPlayNodeRid, session.PreferredPlayNodeRid);
         var ensured = await routes.RequestToSpot(
                 SampleNames.RoomSpotDiscovery,
                 playEntrySpot,

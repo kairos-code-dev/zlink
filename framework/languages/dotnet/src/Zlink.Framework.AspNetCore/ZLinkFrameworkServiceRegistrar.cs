@@ -153,6 +153,10 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<ZLinkActorManagerService>();
             services.AddSingleton<IZLinkActorManager>(static provider =>
                 provider.GetRequiredService<ZLinkActorManagerService>());
+        }
+
+        if (HasActorCapableSpotNode(registration) || registration.Locations.Enabled)
+        {
             services.AddSingleton<IZLinkActorDirectory>(static provider =>
                 new ZLinkActorDirectory(
                     provider.GetRequiredService<ZLinkFrameworkRuntime>(),
@@ -167,19 +171,19 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkActorClient>());
         }
 
-        if (registration.SpotRemoteAddressResolverType is not null)
+        if (registration.SpotRouteRefResolverType is not null)
         {
-            services.TryAddSingleton(registration.SpotRemoteAddressResolverType);
+            services.TryAddSingleton(registration.SpotRouteRefResolverType);
             services.AddSingleton(
-                typeof(IZLinkSpotRemoteAddressResolver),
-                provider => provider.GetRequiredService(registration.SpotRemoteAddressResolverType));
+                typeof(IZLinkSpotRouteRefResolver),
+                provider => provider.GetRequiredService(registration.SpotRouteRefResolverType));
         }
         else if (registration.Locations.Enabled)
         {
-            // Default spot remote address resolution over the location
+            // Default spot route ref resolution over the location
             // store; a user-registered resolver always wins.
-            services.AddSingleton<IZLinkSpotRemoteAddressResolver>(static provider =>
-                new ZLinkLocationSpotRemoteAddressResolver(
+            services.AddSingleton<IZLinkSpotRouteRefResolver>(static provider =>
+                new ZLinkLocationSpotRouteRefResolver(
                     provider.GetRequiredService<ZLinkSpotLocationRidResolver>()));
         }
 
@@ -303,7 +307,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(provider => new ZLinkLocationAddressResolvers(
             registration,
             provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
-        services.AddSingleton<IZLinkSpotAddressResolver>(
+        services.AddSingleton<IZLinkSpotRefResolver>(
             static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());
         services.AddSingleton<IZLinkActorAddressResolver>(
             static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());

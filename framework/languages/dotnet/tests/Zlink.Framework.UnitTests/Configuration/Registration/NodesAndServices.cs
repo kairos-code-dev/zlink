@@ -433,17 +433,17 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Allows_SpotRemoteAddressResolver_Without_SpotNode()
+    public void AddZLinkFramework_Allows_SpotRouteRefResolver_Without_SpotNode()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
+            options.AddSpotRouteRefResolver<TestSpotRouteRefResolver>();
         });
 
         using var provider = services.BuildServiceProvider();
-        Assert.IsType<TestSpotRemoteAddressResolver>(provider.GetRequiredService<IZLinkSpotRemoteAddressResolver>());
+        Assert.IsType<TestSpotRouteRefResolver>(provider.GetRequiredService<IZLinkSpotRouteRefResolver>());
     }
 
     [Fact]
@@ -453,11 +453,26 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
+            options.AddSpotRouteRefResolver<TestSpotRouteRefResolver>();
         });
 
         using var provider = services.BuildServiceProvider();
         Assert.Null(provider.GetService<IZLinkSpotOutbound>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Registers_ActorDirectory_With_LocationStore_Without_ActorFactory()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseInMemoryLocationStores();
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetService<IZLinkActorDirectory>());
+        Assert.Null(provider.GetService<IZLinkActorManager>());
     }
 
     [Fact]

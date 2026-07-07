@@ -1,8 +1,8 @@
 namespace Zlink.Framework.Contracts.Spots;
 
-public interface IZLinkSpotRemoteAddressResolver
+public interface IZLinkSpotRouteRefResolver
 {
-    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+    ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }
@@ -14,7 +14,7 @@ public enum ZLinkSpotKind
     User = 2
 }
 
-public readonly record struct ZLinkSpotRemoteAddress(
+public readonly record struct ZLinkSpotRouteRef(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     RoutingId SpotRid,

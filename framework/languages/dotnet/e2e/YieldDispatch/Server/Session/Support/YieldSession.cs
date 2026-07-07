@@ -11,7 +11,7 @@ namespace YieldDispatch.Server.Session.Support;
 internal sealed partial class YieldSession(
     IZLinkSessionContext context,
     IZLinkRouteClient routes,
-    IZLinkSpotAddressResolver spots,
+    IZLinkSpotRefResolver spots,
     EvidenceStore evidence) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;

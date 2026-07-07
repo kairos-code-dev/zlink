@@ -303,14 +303,14 @@ public abstract class RegistrationValidationSupport
         }
     }
 
-    protected sealed class TestSpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
+    protected sealed class TestSpotRouteRefResolver : IZLinkSpotRouteRefResolver
     {
-        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+        public ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new ZLinkSpotRemoteAddress(
+            return ValueTask.FromResult(new ZLinkSpotRouteRef(
                 "spots",
                 RoutingId.From("03"),
                 spotRid,

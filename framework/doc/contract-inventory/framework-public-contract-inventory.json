@@ -79,7 +79,7 @@
     {"id": "route_location", "kind": "value"},
     {"id": "owner_lease", "kind": "value"},
     {"id": "owner_lease_snapshot", "kind": "value"},
-    {"id": "spot_address", "kind": "value"},
+    {"id": "spot_ref", "kind": "value"},
     {"id": "peer_location_key", "kind": "value"},
     {"id": "spot_location_key", "kind": "value"},
     {"id": "actor_location_key", "kind": "value"},
@@ -108,7 +108,7 @@
     {"id": "location_change_stamp_store", "kind": "interface"},
     {"id": "location_runtime_query", "kind": "interface"},
     {"id": "peer_location_resolver", "kind": "interface"},
-    {"id": "spot_address_resolver", "kind": "interface", "names": {"cpp": "spot_location_resolver_t"}},
+    {"id": "spot_ref_resolver", "kind": "interface", "names": {"cpp": "spot_location_resolver_t"}},
     {"id": "actor_address_resolver", "kind": "interface", "names": {"cpp": "actor_location_resolver_t"}},
     {"id": "location_readiness", "kind": "interface"}
   ],
@@ -142,8 +142,8 @@
     {"id": "location_change_stamp_store.get_change_stamp", "names": {"dotnet": "GetChangeStampAsync", "node": "getChangeStamp", "java": "getChangeStampAsync", "cpp": "get_change_stamp"}},
 
     {"id": "peer_location_resolver.list_live_peers", "names": {"dotnet": "ListLivePeersAsync", "node": "listLivePeers", "java": "listLivePeersAsync", "cpp": "list_live_peers"}},
-    {"id": "spot_address_resolver.resolve_spot_address", "names": {"dotnet": "ResolveSpotAddressAsync", "node": "resolveSpotAddress", "java": "resolveSpotAddressAsync", "cpp": "resolve_spot_address"}},
-    {"id": "actor_address_resolver.resolve_actor_spot_address", "names": {"dotnet": "ResolveActorSpotAddressAsync", "node": "resolveActorSpotAddress", "java": "resolveActorSpotAddressAsync", "cpp": "resolve_actor_spot_address"}},
+    {"id": "spot_ref_resolver.resolve_spot_ref", "names": {"dotnet": "ResolveSpotRefAsync", "node": "resolveSpotRef", "java": "resolveSpotRefAsync", "cpp": "resolve_spot_ref"}},
+    {"id": "actor_address_resolver.resolve_actor_spot_ref", "names": {"dotnet": "ResolveActorSpotRefAsync", "node": "resolveActorSpotRef", "java": "resolveActorSpotRefAsync", "cpp": "resolve_actor_spot_ref"}},
     {"id": "location_readiness.is_peer_ready", "names": {"dotnet": "IsPeerReadyAsync", "node": "isPeerReady", "java": "isPeerReadyAsync", "cpp": "is_peer_ready"}},
 
     {"id": "location_runtime_query.get_status", "names": {"dotnet": "GetStatusAsync", "node": "getStatus", "java": "getStatusAsync", "cpp": "get_status"}},

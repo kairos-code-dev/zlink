@@ -3,11 +3,11 @@ namespace Zlink.Framework.Contracts.Actors;
 public interface IZLinkActorClient
 {
     IZLinkActorSendCall SendToActor<TMessage>(
-        string actorId,
+        ActorRef actor,
         TMessage message);
 
     IZLinkActorRequestCall RequestToActor<TRequest>(
-        string actorId,
+        ActorRef actor,
         TRequest request);
 }
 

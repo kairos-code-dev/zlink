@@ -94,19 +94,19 @@ internal sealed class ZLinkSpotOutboundTransport(
 
     public bool SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         Message message,
         SendFlags flags)
     {
-        return nativeSpot.SendToSpot(targetRid, spotRid, message, flags);
+        return nativeSpot.SendToSpot(targetRid, targetSpotRid, message, flags);
     }
 
     public bool SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSpot.SendToSpot(targetRid, spotRid, parts, flags);
+        return nativeSpot.SendToSpot(targetRid, targetSpotRid, parts, flags);
     }
 }

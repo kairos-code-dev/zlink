@@ -443,14 +443,14 @@ public sealed class UnhandledDispatchPolicyTests
             return false;
         }
 
-        public bool SendToSpot(RoutingId targetRid, RoutingId spotRid, Message message, SendFlags flags)
+        public bool SendToSpot(RoutingId targetRid, RoutingId targetSpotRid, Message message, SendFlags flags)
         {
             return false;
         }
 
         public bool SendToSpot(
             RoutingId targetRid,
-            RoutingId spotRid,
+            RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             SendFlags flags)
         {
@@ -459,7 +459,7 @@ public sealed class UnhandledDispatchPolicyTests
 
         public bool RequestToSpot(
             RoutingId targetRid,
-            RoutingId spotRid,
+            RoutingId targetSpotRid,
             Message message,
             RequestCallback callback,
             SendFlags flags,
@@ -470,7 +470,7 @@ public sealed class UnhandledDispatchPolicyTests
 
         public bool RequestToSpot(
             RoutingId targetRid,
-            RoutingId spotRid,
+            RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,

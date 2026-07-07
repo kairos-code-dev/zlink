@@ -21,7 +21,7 @@ public sealed class BuilderContracts
         options.AddHandlersFromAssemblyOf<BuilderContracts>();
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
         options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");
-        options.AddSpotRemoteAddressResolver<SpotRemoteAddressResolver>();
+        options.AddSpotRouteRefResolver<SpotRouteRefResolver>();
         options.UseFilter<HandlerFilter>();
         options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 
@@ -208,8 +208,8 @@ public sealed class BuilderContracts
             return Metadata;
         }
 
-        public void AddSpotRemoteAddressResolver<TResolver>()
-            where TResolver : class, IZLinkSpotRemoteAddressResolver
+        public void AddSpotRouteRefResolver<TResolver>()
+            where TResolver : class, IZLinkSpotRouteRefResolver
         {
         }
 
@@ -643,13 +643,13 @@ public sealed class BuilderContracts
         }
     }
 
-    private sealed class SpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
+    private sealed class SpotRouteRefResolver : IZLinkSpotRouteRefResolver
     {
-        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+        public ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken)
         {
-            return ValueTask.FromResult(new ZLinkSpotRemoteAddress(
+            return ValueTask.FromResult(new ZLinkSpotRouteRef(
                 "play-router",
                 RoutingId.From("node"),
                 spotRid,

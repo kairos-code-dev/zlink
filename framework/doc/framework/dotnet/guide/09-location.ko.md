@@ -104,22 +104,22 @@ app.MapGet("/ops/locations", async (IZLinkLocationRuntimeQuery query) =>
 ## 4. spot / actor 위치 조회
 
 SPOT·actor 메시징이 원격 대상을 찾을 때도 같은 store 를 쓴다. resolver 는 **주소**
-(`ZLinkSpotAddress`) 를 반환하고 호출자가 보관한다 — 캐시는 없고, 전송이 실패하면
+(`SpotRef`) 를 반환하고 호출자가 보관한다 — 캐시는 없고, 전송이 실패하면
 다시 resolve 한다.
 
 ```csharp
-public sealed class OrderRouter(IZLinkSpotAddressResolver spots)
+public sealed class OrderRouter(IZLinkSpotRefResolver spots)
 {
-    public async Task<ZLinkSpotAddress> FindRoomAsync(RoutingId roomRid)
+    public async Task<SpotRef> FindRoomAsync(RoutingId roomRid)
     {
-        var address = await spots.ResolveSpotAddressAsync(roomRid)
+        var address = await spots.ResolveSpotRefAsync(roomRid)
                       ?? throw new InvalidOperationException($"room '{roomRid}' not found");
         return address; // 호출자가 보관하고, 전송 실패 시 재resolve
     }
 }
 ```
 
-`IZLinkActorAddressResolver.ResolveActorSpotAddressAsync(actorId)` 는 actor
+`IZLinkActorAddressResolver.ResolveActorSpotRefAsync(actorId)` 는 actor
 가 위치한 spot 의 주소를 돌려준다. 세부 흐름은 [06-actor-spot](06-actor-spot.ko.md)과
 [07-actor-session](07-actor-session.ko.md)를 참고한다.
 

@@ -16,7 +16,7 @@ internal sealed class CourierOfferPort(
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var address = new ZLinkSpotAddress(placement.NodeRid, placement.NodeRid);
+        var address = new SpotRef(placement.NodeRid, placement.NodeRid);
         var found = await DispatchRouteClient.RequestAsync<FindCourierActorReq, FindCourierActorRes>(
             routes,
             SampleNames.CourierActorDiscovery,
@@ -31,7 +31,7 @@ internal sealed class CourierOfferPort(
         var response = await DispatchRouteClient.RequestAsync<OfferDeliveryReq, OfferDeliveryRes>(
             routes,
             SampleNames.CourierActorDiscovery,
-            new ZLinkSpotAddress(found.Actor.NodeRid, found.Actor.NodeRid),
+            new SpotRef(found.Actor.NodeRid, found.Actor.NodeRid),
             new OfferDeliveryReq(courierId, delivery.DeliveryId, delivery.PickupAddress, delivery.DropoffAddress),
             cancellationToken,
             SampleTimings.OfferRequestTimeout);
@@ -84,7 +84,7 @@ internal static class DispatchRouteClient
     public static async ValueTask<TRes> RequestAsync<TReq, TRes>(
         IZLinkRouteClient routes,
         string routeChannelName,
-        ZLinkSpotAddress address,
+        SpotRef address,
         TReq request,
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)

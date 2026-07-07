@@ -327,7 +327,7 @@ core 모델에서 비롯된 핵심 제약은 다음과 같다.
   destroy 나 user Spot leave 를 자동으로 만들지 않는다.
 - Entry Spot destroy 는 `OnLeaveActorAsync(...)` 또는 다른 lifecycle callback 을 호출하지
   않고 actor 상태만 정리한다. 같은 actor instance 에 대한 중복 destroy 는 성공으로 끝난다.
-- **location store[^location-store] actor remote address publish 는 user Spot join 성공 뒤에
+- **location store[^location-store] actor ref publish 는 user Spot join 성공 뒤에
   갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
   session bind / unbind 도 active route 를 새로 만들거나 지우지 않는다.
 
@@ -869,7 +869,7 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
   router-capable SpotNode 를 relay ingress 로 자동 사용한다(별도 지정 없음). 이 연결이 있어야 session 에서
   actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 relay
   상태를 사용한다.
-- **`IZLinkSpotRemoteAddressResolver`** -- "spot rid → user Spot routing id" 를
+- **`IZLinkSpotRefResolver`** -- "spot rid → user Spot routing id" 를
   푼다. actor 가 `JoinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
 - **`IZLinkBoundSession`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
@@ -1045,7 +1045,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-actor remote address resolver 는 session relay 의 등록 요소가 아니다.
+actor ref resolver 는 session relay 의 등록 요소가 아니다.
 session 서버는 client packet 마다 application route lookup 을 수행하지 않고,
 framework 가 만든 actor handle 과 SessionRelay 경로를 사용한다.
 
@@ -1077,8 +1077,10 @@ public interface IZLinkFrameworkOptions
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    void AddSpotRemoteAddressResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRemoteAddressResolver;
+    void AddLocationStore(IZLinkLocationStore store);
+
+    void AddSpotRouteRefResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRouteRefResolver;
 
 }
 ```
@@ -1088,7 +1090,8 @@ public interface IZLinkFrameworkOptions
 | 메서드 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
-| `AddSpotRemoteAddressResolver<>()` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
+| `AddLocationStore(store)` | 여러 프로세스가 spot/actor 위치를 공유하는 서버 | location store 를 통해 `SpotRef` 와 actor 위치를 조회 |
+| `AddSpotRouteRefResolver<>()` | location store 없이 actor `JoinSpot(spotRid, ...)` route 를 직접 제공하는 advanced 구성 | spot rid → route channel 과 target spot ref |
 | `AddSpotMesh(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `AddSpotMesh(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 
@@ -1215,7 +1218,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
 [^attribute-scan]: attribute scan은 어셈블리 안의 타입과 메서드를 훑으면서
     특정 attribute가 붙은 항목을 찾아 자동으로 등록하는 방식이다.
 
-[^playroute]: **play remote address resolver**는 actor id를 받아 그 actor가 지금 어느
+[^playroute]: **play ref resolver**는 actor id를 받아 그 actor가 지금 어느
     routed channel의 어느 노드에 사는지를 돌려주는 resolver다.
     session actor dispatch 의 relay hot path 에서는 사용하지 않고, session actor
     ref 가 없는 backend actor messaging 경로에서 사용한다.

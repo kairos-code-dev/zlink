@@ -19,7 +19,7 @@ public interface IZLinkRouteClient
     /// </summary>
     IZLinkSendCall SendToSpot<TMessage>(
         string routerChannelId,
-        ZLinkSpotAddress address,
+        SpotRef address,
         TMessage message);
 
     /// <summary>
@@ -29,7 +29,7 @@ public interface IZLinkRouteClient
     /// </summary>
     IZLinkRequestCall RequestToSpot<TRequest>(
         string routerChannelId,
-        ZLinkSpotAddress address,
+        SpotRef address,
         TRequest request);
 }
 

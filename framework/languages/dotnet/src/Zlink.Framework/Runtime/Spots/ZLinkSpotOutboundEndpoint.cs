@@ -7,12 +7,12 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     ZLinkFrameworkRuntime runtime,
     string resolverErrorMessage)
 {
-    public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(activation, address, message);
     }
 
-    public IZLinkYieldRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
+    public IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request)
     {
         return new ZLinkRoutedSpotRequestCall<TRequest>(activation, address, request);
     }
@@ -162,20 +162,20 @@ internal sealed class ZLinkSpotOutboundEndpoint(
 
     public bool SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         Message message,
         SendFlags flags)
     {
-        return outbound.SendToSpot(targetRid, spotRid, message, flags);
+        return outbound.SendToSpot(targetRid, targetSpotRid, message, flags);
     }
 
     public bool SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return outbound.SendToSpot(targetRid, spotRid, parts, flags);
+        return outbound.SendToSpot(targetRid, targetSpotRid, parts, flags);
     }
 
     public ValueTask SendToSpotAsync(

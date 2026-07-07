@@ -32,7 +32,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
-            options.AddSpotRemoteAddressResolver<RedisSpotRemoteAddressResolver>();
+            options.AddSpotRouteRefResolver<RedisSpotRouteRefResolver>();
 
             options.AddClientServerChannel(SampleChannels.Api)
                 .EnableClient(settings.ApiChannelEndpoints[0])

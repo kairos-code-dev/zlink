@@ -13,7 +13,7 @@ namespace SpotService.Server.Session.Spots;
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    IZLinkSpotAddressResolver locator,
+    IZLinkSpotRefResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -46,7 +46,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
 internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    IZLinkSpotAddressResolver locator,
+    IZLinkSpotRefResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -80,7 +80,7 @@ internal static class MultiNodeScenario
 {
     public static async Task<StateRes> RequestStateWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver locator,
+        IZLinkSpotRefResolver locator,
         string channelName,
         string spotRid,
         int delta,

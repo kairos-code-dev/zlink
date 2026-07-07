@@ -112,7 +112,7 @@ public sealed class LocationContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkPeerLocationResolver),
-        typeof(IZLinkSpotAddressResolver),
+        typeof(IZLinkSpotRefResolver),
         typeof(IZLinkActorAddressResolver))]
     public async Task Resolvers_are_cacheless_lookup_surfaces_returning_addresses()
     {
@@ -127,11 +127,11 @@ public sealed class LocationContracts
         // Messaging lookups return spot addresses the caller holds and
         // re-resolves on failure; an entry spot address has
         // NodeRid == SpotRid.
-        var spotAddress = await resolver.ResolveSpotAddressAsync(RoutingId.From("spot-1"));
+        var spotAddress = await resolver.ResolveSpotRefAsync(RoutingId.From("spot-1"));
         Assert.NotNull(spotAddress);
         Assert.Equal(RoutingId.From("spot-1"), spotAddress.Value.SpotRid);
 
-        var actorAddress = await resolver.ResolveActorSpotAddressAsync("actor-1");
+        var actorAddress = await resolver.ResolveActorSpotRefAsync("actor-1");
         Assert.NotNull(actorAddress);
         Assert.True(actorAddress.Value.NodeRid.Size > 0);
 
@@ -441,7 +441,7 @@ public sealed class LocationContracts
 
     private sealed class ExampleLocationResolver :
         IZLinkPeerLocationResolver,
-        IZLinkSpotAddressResolver,
+        IZLinkSpotRefResolver,
         IZLinkActorAddressResolver
     {
         public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
@@ -452,17 +452,17 @@ public sealed class LocationContracts
             return ValueTask.FromResult(items);
         }
 
-        public ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+        public ValueTask<SpotRef?> ResolveSpotRefAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ZLinkSpotAddress?>(
-                new ZLinkSpotAddress(RoutingId.From("node-1"), spotRid));
+            ValueTask.FromResult<SpotRef?>(
+                new SpotRef(RoutingId.From("node-1"), spotRid));
 
-        public ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+        public ValueTask<SpotRef?> ResolveActorSpotRefAsync(
             string actorId,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ZLinkSpotAddress?>(
-                new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("spot-1")));
+            ValueTask.FromResult<SpotRef?>(
+                new SpotRef(RoutingId.From("node-1"), RoutingId.From("spot-1")));
 
     }
 

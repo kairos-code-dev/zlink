@@ -38,7 +38,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
 
     public IZLinkSendCall SendToSpot<TMessage>(
         string routerChannelId,
-        ZLinkSpotAddress address,
+        SpotRef address,
         TMessage message)
     {
         return new ZLinkRouteSpotSendCall<TMessage>(runtime, routerChannelId, address, message);
@@ -46,7 +46,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
 
     public IZLinkRequestCall RequestToSpot<TRequest>(
         string routerChannelId,
-        ZLinkSpotAddress address,
+        SpotRef address,
         TRequest request)
     {
         return new ZLinkRouteSpotRequestCall<TRequest>(runtime, routerChannelId, address, request);
@@ -155,7 +155,7 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
 internal sealed class ZLinkRouteSpotSendCall<TMessage>(
     ZLinkFrameworkRuntime runtime,
     string routerChannelId,
-    ZLinkSpotAddress address,
+    SpotRef address,
     TMessage message) : IZLinkSendCall
 {
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
@@ -190,7 +190,7 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
 internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
     ZLinkFrameworkRuntime runtime,
     string routerChannelId,
-    ZLinkSpotAddress address,
+    SpotRef address,
     TRequest request) : IZLinkRequestCall
 {
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);

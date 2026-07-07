@@ -124,7 +124,7 @@ proxy 를 등록하는 방식은 줄인다.
 | Interface | 등록 조건 | 권장 동작 |
 |-----------|-----------|-----------|
 | `IZLinkBoundSessionFactory` (internal runtime service) | framework runtime | 항상 등록 (public 표면은 `Context.BoundSession`) |
-| `IZLinkSpotRemoteAddressResolver` | `AddSpotRemoteAddressResolver<TResolver>()` | 조건을 만족할 때만 등록 |
+| `IZLinkSpotRefResolver` | `AddLocationStore(store)` 또는 location store 기본 구성 | 조건을 만족할 때만 등록 |
 
 기존 missing proxy 는 사용 시점까지 오류를 늦춘다. bound session factory 는
 항상 등록하고, 현재 actor 에 묶인 session binding 이 없을 때 호출 지점에서
@@ -165,12 +165,13 @@ ZLinkConfigurationException:
 Actor factory registration requires at least one SpotNode.
 ```
 
-### 4.2 Spot remote address resolver
+### 4.2 Spot ref resolver
 
-`AddSpotRemoteAddressResolver<TResolver>()` 자체는 `SpotNode` 를 직접 요구하지 않는다.
-resolver 는 `spotRid` 또는 `spotId` 를 route 로 바꾸는 정책 객체일 뿐이다.
-session gateway 나 API 서버가 route 정보를 저장하거나 전달하기 위해 같은 resolver
-구현을 등록할 수 있다.
+`AddLocationStore(store)` 자체는 `SpotNode` 를 직접 요구하지 않는다. store 는
+spot/actor/route 위치 정보를 보관하는 공유 저장소이고, framework 는 이 store 로
+`IZLinkSpotRefResolver` 를 구성한다. location store 없이 actor `JoinSpot(spotRid, ...)`
+route 를 직접 제공해야 하는 advanced 구성은 `AddSpotRouteRefResolver<TResolver>()` 를
+쓴다.
 
 다만 `IZLinkSpotOutbound` 는 local spot 실행 문맥을 전제로 하므로 `SpotNode` 가
 있을 때만 DI 에 등록한다. 따라서 `SpotNode` 없이 resolver 만 등록한 구성에서는
@@ -246,8 +247,8 @@ configuration error 로 표현한다.
 | `NodesAndServicesTests.AddZLinkFramework_Registers_ActorManager_When_SpotNode_And_ActorFactory_Exist` | SpotNode 와 actor factory 가 있으면 `IZLinkActorManager` 가 등록된다 |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_SpotPublisher_Client` | Spot publisher 역할이 있으면 Spot publisher service 가 DI 에 등록된다 |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_BoundSession_Factory` | bound session factory 는 framework runtime 과 함께 등록된다 |
-| `NodesAndServicesTests.AddZLinkFramework_Allows_SpotRemoteAddressResolver_Without_SpotNode` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
-| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotOutbound_With_Resolver_Only` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
+| `NodesAndServicesTests.AddZLinkFramework_Allows_SpotRouteRefResolver_Without_SpotNode` | route ref 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRouteRefResolver` 를 등록할 수 있다 |
+| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotOutbound_With_Resolver_Only` | Spot ref resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
 | `HandlerExposureTests.RouteClient_Throws_ConfigurationException_When_RouteChannel_Missing` | route channel 누락 오류가 configuration error 로 나온다 |
 | `HandlerExposureTests.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | channel client 역할 누락 오류가 configuration error 로 나온다 |
 

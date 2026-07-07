@@ -27,18 +27,18 @@ public sealed record EnsureCustomerActorReq(
 
 public sealed record EnsureCustomerActorRes(
     string CustomerId,
-    ZLinkActorRefSnapshot Actor);
+    ActorRefSnapshot Actor);
 
 public sealed record FindCustomerActorReq(
     string CustomerId);
 
 public sealed record FindCustomerActorRes(
     string CustomerId,
-    ZLinkActorRefSnapshot? Actor);
+    ActorRefSnapshot? Actor);
 
 public sealed record BindCourierSessionReq(
     string CourierId,
-    ZLinkActorRefSnapshot? Actor = null,
+    ActorRefSnapshot? Actor = null,
     string? SessionRoute = null);
 
 public sealed record BindCourierSessionRes(
@@ -57,14 +57,14 @@ public sealed record EnsureCourierActorReq(
 
 public sealed record EnsureCourierActorRes(
     string CourierId,
-    ZLinkActorRefSnapshot Actor);
+    ActorRefSnapshot Actor);
 
 public sealed record FindCourierActorReq(
     string CourierId);
 
 public sealed record FindCourierActorRes(
     string CourierId,
-    ZLinkActorRefSnapshot? Actor);
+    ActorRefSnapshot? Actor);
 
 public sealed record SubscribeDeliveryReq(
     string DeliveryId);

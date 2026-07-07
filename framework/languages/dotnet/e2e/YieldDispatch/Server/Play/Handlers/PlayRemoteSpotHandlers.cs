@@ -10,7 +10,7 @@ namespace YieldDispatch.Server.Play.Handlers;
 [ZLinkSpotRequestHandler("RemoteSpotYieldReq")]
 internal sealed class RemoteSpotYieldHandler(
     EvidenceStore evidence,
-    IZLinkSpotAddressResolver spots)
+    IZLinkSpotRefResolver spots)
     : IZLinkSpotRequestHandler<YieldProbeSpot, RemoteSpotYieldReq, YieldDispatchRes>
 {
     public async ValueTask<YieldDispatchRes> HandleAsync(
@@ -23,7 +23,7 @@ internal sealed class RemoteSpotYieldHandler(
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|handler=spot");
         // Resolve once, then message with the held address (spot-address
         // messaging draft §6).
-        var target = await spots.ResolveSpotAddressAsync(
+        var target = await spots.ResolveSpotRefAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live address.");
@@ -49,7 +49,7 @@ internal sealed class RemoteSpotYieldHandler(
 [ZLinkSpotPacketHandler("RemoteSpotYieldMsg")]
 internal sealed class RemoteSpotYieldCommandHandler(
     EvidenceStore evidence,
-    IZLinkSpotAddressResolver spots)
+    IZLinkSpotRefResolver spots)
     : IZLinkSpotPacketHandler<YieldProbeSpot, RemoteSpotYieldMsg>
 {
     public async ValueTask HandleAsync(
@@ -62,7 +62,7 @@ internal sealed class RemoteSpotYieldCommandHandler(
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|handler=spot");
         // Resolve once, then message with the held address (spot-address
         // messaging draft §6).
-        var target = await spots.ResolveSpotAddressAsync(
+        var target = await spots.ResolveSpotRefAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live address.");

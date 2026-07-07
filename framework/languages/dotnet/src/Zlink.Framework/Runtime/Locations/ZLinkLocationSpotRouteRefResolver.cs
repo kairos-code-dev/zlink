@@ -45,14 +45,14 @@ internal sealed class ZLinkSpotLocationRidResolver
 }
 
 /// <summary>
-/// Default <see cref="IZLinkSpotRemoteAddressResolver"/> over the location
+/// Default <see cref="IZLinkSpotRouteRefResolver"/> over the location
 /// store, replacing the removed registry-backed resolver. Registered only
 /// when location stores are enabled and no custom resolver was added.
 /// </summary>
-internal sealed class ZLinkLocationSpotRemoteAddressResolver(
-    ZLinkSpotLocationRidResolver resolver) : IZLinkSpotRemoteAddressResolver
+internal sealed class ZLinkLocationSpotRouteRefResolver(
+    ZLinkSpotLocationRidResolver resolver) : IZLinkSpotRouteRefResolver
 {
-    public async ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+    public async ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
@@ -64,7 +64,7 @@ internal sealed class ZLinkLocationSpotRemoteAddressResolver(
                 $"SPOT '{spotRid}' has no live location row in any registered spot mesh.");
         }
 
-        return new ZLinkSpotRemoteAddress(
+        return new ZLinkSpotRouteRef(
             row.MeshName,
             row.NodeRid,
             row.SpotRid,

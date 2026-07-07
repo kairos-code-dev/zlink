@@ -30,6 +30,6 @@ internal sealed class EnsureSupportUserActorHandler(
     private static EnsureSupportUserActorRes ToResponse(ActorRef actor)
     {
         return new EnsureSupportUserActorRes(
-            ZLinkActorRefSnapshot.From(actor));
+            ActorRefSnapshot.From(actor));
     }
 }

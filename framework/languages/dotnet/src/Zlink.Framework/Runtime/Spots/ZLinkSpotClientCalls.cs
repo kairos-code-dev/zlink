@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLinkSpotOutbound
 {
-    public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
@@ -12,7 +12,7 @@ internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLi
             message);
     }
 
-    public IZLinkYieldRequestCall RequestToSpot<TMessage>(ZLinkSpotAddress address, TMessage request)
+    public IZLinkYieldRequestCall RequestToSpot<TMessage>(SpotRef address, TMessage request)
     {
         return new ZLinkRoutedSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
@@ -39,7 +39,7 @@ internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLi
 
 internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     IZLinkCurrentSpotActivation activation,
-    ZLinkSpotAddress address,
+    SpotRef address,
     TMessage message) : IZLinkSendCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
@@ -76,7 +76,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
 
 internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     IZLinkCurrentSpotActivation activation,
-    ZLinkSpotAddress address,
+    SpotRef address,
     TRequest request) : IZLinkYieldRequestCall
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;

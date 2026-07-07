@@ -56,7 +56,7 @@ internal sealed partial class YieldSession
 
     private static async Task SendSpotWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver spots,
+        IZLinkSpotRefResolver spots,
         string spotRid,
         object message,
         string packetName,
@@ -69,7 +69,7 @@ internal sealed partial class YieldSession
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                var address = await spots.ResolveSpotAddressAsync(
+                var address = await spots.ResolveSpotRefAsync(
                                   RoutingId.From(spotRid), cancellationToken)
                               ?? throw new ZLinkFrameworkException(
                                   ZLinkFrameworkErrorKind.SpotRouteNotFound,
@@ -94,7 +94,7 @@ internal sealed partial class YieldSession
 
     private static async ValueTask<TRes> RequestSpotWithRetryAsync<TRes>(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver spots,
+        IZLinkSpotRefResolver spots,
         string spotRid,
         object request,
         string packetName,
@@ -107,7 +107,7 @@ internal sealed partial class YieldSession
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                var address = await spots.ResolveSpotAddressAsync(
+                var address = await spots.ResolveSpotRefAsync(
                                   RoutingId.From(spotRid), cancellationToken)
                               ?? throw new ZLinkFrameworkException(
                                   ZLinkFrameworkErrorKind.SpotRouteNotFound,

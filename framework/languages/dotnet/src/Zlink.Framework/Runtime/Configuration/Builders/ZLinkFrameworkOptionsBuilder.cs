@@ -59,11 +59,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkMetadataPolicyBuilder(_registration.MetadataPolicy);
     }
 
-    public void AddSpotRemoteAddressResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRemoteAddressResolver
+    public void AddSpotRouteRefResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRouteRefResolver
     {
-        EnsureSpotRemoteAddressResolverAvailable();
-        _registration.SpotRemoteAddressResolverType = typeof(TResolver);
+        EnsureSpotRouteRefResolverAvailable();
+        _registration.SpotRouteRefResolverType = typeof(TResolver);
     }
 
     public IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName)
@@ -173,9 +173,9 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             $"Duplicate channel name '{channelName}'.");
     }
 
-    private void EnsureSpotRemoteAddressResolverAvailable()
+    private void EnsureSpotRouteRefResolverAvailable()
     {
-        if (_registration.SpotRemoteAddressResolverType is not null)
+        if (_registration.SpotRouteRefResolverType is not null)
             throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
     }
 }

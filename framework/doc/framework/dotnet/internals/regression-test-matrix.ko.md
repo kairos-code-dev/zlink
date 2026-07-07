@@ -114,8 +114,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Spot publisher without publisher 역할 | `unit` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
 | Spot publisher with publisher 역할 | `unit` | Spot publisher 역할이 있으면 `IZLinkSpotPublisherClient` 가 DI 에 등록된다 |
 | bound session factory registration | `unit` | `IZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
-| Spot remote address resolver without SpotNode | `unit` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
-| Spot outbound with resolver only | `unit` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
+| Spot ref resolver without SpotNode | `unit` | ref 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRefResolver` 를 등록할 수 있다 |
+| Spot outbound with resolver only | `unit` | Spot ref resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
 | route channel missing at call time | `unit` | `IZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
 | channel client missing at call time | `unit` | `IZLinkChannelClient` 호출 시 channel client 역할이 없으면 `ZLinkConfigurationException` |
 

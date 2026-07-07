@@ -95,6 +95,7 @@ internal static class GatewayHostFactory
         });
         app.MapPost("/actor/push", async (
             ActorPushByActorReq request,
+            IZLinkActorDirectory actorDirectory,
             IZLinkActorClient actors,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
@@ -102,8 +103,12 @@ internal static class GatewayHostFactory
             evidence.Add($"actor-push-request|rid={options.Rid}|actor={request.ActorId}|value={request.Value}");
             try
             {
+                var actor = await actorDirectory.FindAsync(request.ActorId, cancellationToken)
+                            ?? throw new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                $"Actor route '{request.ActorId}' was not found.");
                 var reply = await actors.RequestToActor(
-                        request.ActorId,
+                        actor,
                         new ActorPushReq(request.Value))
                     .PacketName("ActorPushReq")
                     .Timeout(TimeSpan.FromSeconds(10))

@@ -112,7 +112,7 @@ public sealed class LocationRuntimeTests
         using var provider = services.BuildServiceProvider();
 
         Assert.NotNull(provider.GetRequiredService<IZLinkPeerLocationResolver>());
-        Assert.NotNull(provider.GetRequiredService<IZLinkSpotAddressResolver>());
+        Assert.NotNull(provider.GetRequiredService<IZLinkSpotRefResolver>());
         Assert.NotNull(provider.GetRequiredService<IZLinkActorAddressResolver>());
         Assert.NotNull(provider.GetRequiredService<IZLinkLocationRuntimeQuery>());
 

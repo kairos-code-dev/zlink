@@ -120,7 +120,7 @@ public sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
 
         // 반환된 ref 3종을 session bind 용으로 돌려준다
         return new CustomerActorEnsured(request.CustomerId,
-            new ZLinkActorRefSnapshot(actor.NodeRid, actor.ActorId, actor.Generation));
+            new ActorRefSnapshot(actor.NodeRid, actor.ActorId, actor.Generation));
     }
 }
 ```

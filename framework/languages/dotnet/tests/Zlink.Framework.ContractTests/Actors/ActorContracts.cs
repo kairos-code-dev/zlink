@@ -35,7 +35,7 @@ public sealed class ActorContracts
             "player-1",
             ZLinkMessage.From(new JoinRoom("room-1")),
             new ZLinkActorPlacement(RoutingId.From("actor-node")));
-        var snapshot = ZLinkActorRefSnapshot.From(actorRef);
+        var snapshot = ActorRefSnapshot.From(actorRef);
         var joinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
             .Async();
@@ -47,11 +47,11 @@ public sealed class ActorContracts
             .Timeout(TimeSpan.FromSeconds(1))
             .Yield();
         await actorClient
-            .SendToActor("player-1", new JoinRoom("room-1"))
+            .SendToActor(actorRef, new JoinRoom("room-1"))
             .PacketName(nameof(JoinRoom))
             .Async();
         var actorReply = await actorClient
-            .RequestToActor("player-1", new JoinRoom("room-1"))
+            .RequestToActor(actorRef, new JoinRoom("room-1"))
             .PacketName(nameof(JoinRoom))
             .Timeout(TimeSpan.FromSeconds(1))
             .Async<JoinedRoom>();
@@ -74,16 +74,16 @@ public sealed class ActorContracts
 
     private sealed class ActorClient : IZLinkActorClient
     {
-        public IZLinkActorSendCall SendToActor<TMessage>(string actorId, TMessage message)
+        public IZLinkActorSendCall SendToActor<TMessage>(ActorRef actor, TMessage message)
         {
-            _ = actorId;
+            _ = actor;
             _ = message;
             return new ActorSendCall();
         }
 
-        public IZLinkActorRequestCall RequestToActor<TRequest>(string actorId, TRequest request)
+        public IZLinkActorRequestCall RequestToActor<TRequest>(ActorRef actor, TRequest request)
         {
-            _ = actorId;
+            _ = actor;
             _ = request;
             return new ActorRequestCall();
         }

@@ -180,7 +180,7 @@ public sealed class ChannelContracts
 
         public IZLinkSendCall SendToSpot<TMessage>(
             string routerChannelId,
-            ZLinkSpotAddress address,
+            SpotRef address,
             TMessage message)
         {
             RouterChannelId = routerChannelId;
@@ -190,7 +190,7 @@ public sealed class ChannelContracts
 
         public IZLinkRequestCall RequestToSpot<TRequest>(
             string routerChannelId,
-            ZLinkSpotAddress address,
+            SpotRef address,
             TRequest request)
         {
             RouterChannelId = routerChannelId;

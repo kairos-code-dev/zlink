@@ -67,7 +67,7 @@
 | lifecycle | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user Spot에 actor가 join할 때 호출되는 admission callback | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkBoundSession` | 현재 actor -> 현재 client session 호출 | 5.6 |
-| resolver | `IZLinkSpotRemoteAddressResolver` | spot rid에서 user Spot route 조회 | 5.7 |
+| resolver | `IZLinkSpotRefResolver` | spot rid에서 user Spot route 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `IZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
@@ -375,14 +375,14 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotOutbound
 {
-    // 주소(ZLinkSpotAddress)는 IZLinkSpotAddressResolver 로 한 번 조회해 보관한다.
+    // 주소(SpotRef)는 IZLinkSpotRefResolver 로 한 번 조회해 보관한다.
     // 전송 시점에는 어떤 위치 조회도 일어나지 않는다(공통 spot 주소 메시징 스펙).
     IZLinkSendCall SendToSpot<TMessage>(
-        ZLinkSpotAddress address,
+        SpotRef address,
         TMessage message);
 
     IZLinkRequestCall RequestToSpot<TRequest>(
-        ZLinkSpotAddress address,
+        SpotRef address,
         TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(
@@ -899,7 +899,7 @@ Spot lifecycle callback 도 같은 규칙을 따른다. 즉 같은 Spot 안에�
 - `Context.Outbound.SendToSpot(...)` 과 `Context.Outbound.RequestToSpot(...)` 은 현재 SPOT 의
   실행 문맥에서 다른 SPOT 으로 routed send/request 를 보낸다. target 은
   `RoutingId` 로 지정하고, 실제 target node 와 route channel 은
-  `IZLinkSpotRemoteAddressResolver` 가 해소한다.
+  `IZLinkSpotRefResolver` 가 해소한다.
 - `Context.Outbound.Publish(topic, ...)` 는 편의 함수다. 현재 SPOT 이 속한 active
   SPOT channel 에 publish 하기 위한 것이다.
 - `Context.Outbound.SendToChannel(...)` 과 `Context.Outbound.RequestToChannel(...)` 은 현재 SPOT
@@ -2090,7 +2090,7 @@ await client
 - channel egress bridge를 거치는 다른 channel 의 send/request
 - spot rid 기반의 routed spot send/request
 
-spot rid 기반 호출의 흐름은 다음과 같다. `IZLinkSpotRemoteAddressResolver`
+spot rid 기반 호출의 흐름은 다음과 같다. `IZLinkSpotRefResolver`
 가 target node 와 spot rid 를 조회한다. 그다음 framework 내부의 route
 transport 가 실제 전송을 담당한다.
 
@@ -2131,7 +2131,7 @@ client 를 주입하지 않고 `Context.Outbound.SendToSpot(...)`, `Context.Outb
 
 - `Publish(topic, ...)` 가 포함된다. SPOT 쪽은 현재 channel 안에서 topic
   publish 를 함께 사용하는 경우가 많기 때문에, 같은 interface 에 둔다.
-- `SendToSpot(...)` / `RequestToSpot(...)` 은 spot remote address resolver 를 사용한다.
+- `SendToSpot(...)` / `RequestToSpot(...)` 은 spot ref resolver 를 사용한다.
 - `SendToChannel(...)` / `RequestToChannel(...)` 은 channel egress bridge를
   통해 해소한다.
 - 따라서 local `SpotNode` 나 local spot runtime 이 없는 앱이라면, 기본
@@ -2150,7 +2150,7 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 함수" 는 서로 별개의 경로다. 두 경로는 다음과 같이 갈라진다.
 
 - channel 이름 기준 호출은 channel egress bridge를 사용한다.
-- spot rid 기반 호출은 `IZLinkSpotRemoteAddressResolver` 가 해소한 위치값을,
+- spot rid 기반 호출은 `IZLinkSpotRefResolver` 가 해소한 위치값을,
   framework 내부 transport 가 사용한다.
 
 `targetRid + spotRid` 를 직접 넘기는 raw route 함수는 application public
@@ -2402,7 +2402,7 @@ public interface IZLinkBoundSessionSendCall
 `Submit(...)` 은 bound session send의 one-way terminator다. 호출자는 client push의
 송신 수락 완료를 기다리지 않는다. Entry Spot actor handler에서도 같은 규칙을 사용한다.
 
-### 5.7 actor/spot remote address resolver와 actor-session binding
+### 5.7 actor/spot ref resolver와 actor-session binding
 
 public resolver 는 두 축으로 제한한다. actor 와 spot 이다.
 
@@ -2423,9 +2423,9 @@ session 위치 resolver 나 session 위치 저장소는 제공하지 않는다.
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
 
-public interface IZLinkSpotRemoteAddressResolver
+public interface IZLinkSpotRefResolver
 {
-    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+    ValueTask<SpotRef> ResolveSpotRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }
@@ -2437,7 +2437,7 @@ public enum ZLinkSpotKind
     User = 2,
 }
 
-public readonly record struct ZLinkSpotRemoteAddress(
+public readonly record struct SpotRef(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     RoutingId SpotRid,
@@ -2639,8 +2639,10 @@ public interface IZLinkFrameworkOptions
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    void AddSpotRemoteAddressResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRemoteAddressResolver;
+    void AddLocationStore(IZLinkLocationStore store);
+
+    void AddSpotRouteRefResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRouteRefResolver;
 
 }
 ```
@@ -2665,9 +2667,13 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
   - session actor dispatch와 bound session 경로에서 전달할 metadata key를 등록한다.
 - `AddActorFactory(...)`
   - actor type 문자열에 대응하는 actor factory를 등록한다.
-- `AddSpotRemoteAddressResolver(...)`
-  - `IZLinkSpotOutbound`나 `JoinSpot(spotRid, ...)`이 spot rid로 user
-    Spot route를 찾을 때 사용할 resolver를 등록한다.
+- `AddLocationStore(...)`
+  - location store 인스턴스를 등록한다. framework 는 이 store 에서 `SpotRef`,
+    actor 위치, peer 위치, route 위치를 조회한다.
+- `AddSpotRouteRefResolver(...)`
+  - location store 없이 actor `JoinSpot(spotRid, ...)` route 를 직접 제공하는
+    advanced 구성에서만 사용한다. 일반 spot 메시징은 `SpotRef` 를 조회한 뒤
+    그 ref 로 전송한다.
 - actor-session binding
   - 별도 public registration 함수로 등록하지 않는다. stream session이 actor handle을
     만들거나 actor에 attach되면 framework/core가 binding 상태를 갱신하고,
@@ -2866,7 +2872,7 @@ SpotNode lifecycle 이 소유하므로 이 API의 대상이 아니다.
 현재 SPOT topology 초안에서는 높은 수준의 public API 표면에
 `spotRid -> targetRid` 주소를 직접 노출하지 않는다.
 
-주소 해석은 `IZLinkSpotRemoteAddressResolver` 가 담당한다. framework 의 기본
+주소 해석은 `IZLinkSpotRefResolver` 가 담당한다. framework 의 기본
 SPOT 표면은 다음 순서로 설명한다. spot `RoutingId`, channel publish, channel
 send/request 다.
 
@@ -3273,16 +3279,16 @@ public interface IZLinkLocationRuntimeQuery
     // ListTopologyAsync, ListServiceSummariesAsync — aspnet-core-location 참조
 }
 
-public interface IZLinkSpotAddressResolver
+public interface IZLinkSpotRefResolver
 {
-    ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+    ValueTask<SpotRef?> ResolveSpotRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorAddressResolver
 {
-    ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+    ValueTask<SpotRef?> ResolveActorSpotRefAsync(
         string actorId,
         CancellationToken cancellationToken = default);
 }
@@ -3290,7 +3296,7 @@ public interface IZLinkActorAddressResolver
 
 - 조회 API 가 비동기인 이유는 저장소가 프로세스 밖(store)에 있기 때문이다.
 - 죽은 서버의 row 는 owner lease 만료 후 성공 결과에서 자동 제외된다.
-- 메시징 resolver 는 주소(`ZLinkSpotAddress`)를 반환하고 호출자가 보관한다 —
+- 메시징 resolver 는 주소(`SpotRef`)를 반환하고 호출자가 보관한다 —
   전송 실패 시 재resolve 한다([spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md)).
 
 ### 10.3 runtime monitoring
@@ -3745,7 +3751,7 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkSpotPublisherClient` | Spot publisher client 역할이 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
 | `IZLinkBoundSessionFactory`, `IZLinkBoundSession` | actor bound session runtime 등록한다 |
-| `IZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록한다 |
+| `IZLinkSpotRefResolver` | 해당 resolver registration 이 있을 때 등록한다 |
 
 local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix 가
 아니라, 애플리케이션이 해당 channel 에서 server 역할을 수행한다는 의미다.

@@ -87,7 +87,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
             _scope.ServiceProvider,
             _outbound,
             _runtime,
-            "IZLinkEntrySpotContext spot routing requires AddSpotRemoteAddressResolver<TResolver>().");
+            "IZLinkEntrySpotContext spot routing requires AddSpotRouteRefResolver<TResolver>().");
         Handlers = new ZLinkSpotHandlerRegistrySurface(this);
         Outbound = new ZLinkSpotOutboundSurface(this);
         _dispatcher = new ZLinkSpotActivationDispatcher(

@@ -42,8 +42,8 @@ public sealed class SpotContracts
         await context.LeaveActorAsync(actor);
         await entryContext.DestroyActorAsync(actor);
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        context.Outbound.SendToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("opened")).Submit();
-        await context.Outbound.RequestToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
+        context.Outbound.SendToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("opened")).Submit();
+        await context.Outbound.RequestToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
         context.Outbound.Publish("room.events", new RoomEvent("opened")).Submit();
         context.Outbound.SendToChannel("api", new RoomEvent("opened")).Submit();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
@@ -86,14 +86,14 @@ public sealed class SpotContracts
         IZLinkSpotOutbound spotOutbound = new SpotContext(RoutingId.From("room-1"));
         IZLinkSpotOutbound entryOutbound = new EntrySpotContext(RoutingId.From("entry"));
 
-        spotOutbound.SendToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("spot-send")).Submit();
-        await spotOutbound.RequestToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
+        spotOutbound.SendToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("spot-send")).Submit();
+        await spotOutbound.RequestToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
         spotOutbound.Publish("room.events", new RoomEvent("spot-publish")).Submit();
         spotOutbound.SendToChannel("api", new RoomEvent("spot-channel-send")).Submit();
         await spotOutbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
 
-        entryOutbound.SendToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("entry-send")).Submit();
-        await entryOutbound.RequestToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
+        entryOutbound.SendToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("entry-send")).Submit();
+        await entryOutbound.RequestToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
         entryOutbound.Publish("room.events", new RoomEvent("entry-publish")).Submit();
         entryOutbound.SendToChannel("api", new RoomEvent("entry-channel-send")).Submit();
         await entryOutbound.RequestToChannel("api", new JoinRoom("entry")).Async<JoinedRoom>();
@@ -104,19 +104,19 @@ public sealed class SpotContracts
         typeof(IZLinkSpotManager),
         typeof(IZLinkSpotOutbound),
         typeof(IZLinkSpotPublisherClient),
-        typeof(IZLinkSpotRemoteAddressResolver))]
+        typeof(IZLinkSpotRouteRefResolver))]
     public async Task Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels()
     {
         var manager = new SpotManager();
         var created = await manager.GetOrCreateAsync<RoomSpot>(
             RoutingId.From("room-1"),
             ZLinkMessage.Empty);
-        var routeResolver = new SpotRemoteAddressResolver(created.SpotRid);
-        var route = await routeResolver.ResolveSpotRemoteAddressAsync(created.SpotRid, CancellationToken.None);
+        var routeResolver = new SpotRouteRefResolver(created.SpotRid);
+        var route = await routeResolver.ResolveSpotRouteRefAsync(created.SpotRid, CancellationToken.None);
 
         var localClient = new SpotOutbound();
-        localClient.SendToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), created.SpotRid), new RoomEvent("opened")).Submit();
-        var reply = await localClient.RequestToSpot(new ZLinkSpotAddress(RoutingId.From("node-1"), created.SpotRid), new JoinRoom("room-1")).Async<JoinedRoom>();
+        localClient.SendToSpot(new SpotRef(RoutingId.From("node-1"), created.SpotRid), new RoomEvent("opened")).Submit();
+        var reply = await localClient.RequestToSpot(new SpotRef(RoutingId.From("node-1"), created.SpotRid), new JoinRoom("room-1")).Async<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
         publisher.Publish("play-events", "room.events", new RoomEvent("opened")).Submit();
@@ -486,12 +486,12 @@ public sealed class SpotContracts
         {
         }
 
-        public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
+        public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
         {
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
+        public IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -594,12 +594,12 @@ public sealed class SpotContracts
         {
         }
 
-        public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
+        public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
         {
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
+        public IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -718,13 +718,13 @@ public sealed class SpotContracts
         }
     }
 
-    private sealed class SpotRemoteAddressResolver(RoutingId configuredSpotRid) : IZLinkSpotRemoteAddressResolver
+    private sealed class SpotRouteRefResolver(RoutingId configuredSpotRid) : IZLinkSpotRouteRefResolver
     {
-        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+        public ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken)
         {
-            return ValueTask.FromResult(new ZLinkSpotRemoteAddress(
+            return ValueTask.FromResult(new ZLinkSpotRouteRef(
                 "play-router",
                 RoutingId.From("spot-node"),
                 spotRid,
@@ -734,12 +734,12 @@ public sealed class SpotContracts
 
     private sealed class SpotOutbound : IZLinkSpotOutbound
     {
-        public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
+        public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
         {
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToSpot<TMessage>(ZLinkSpotAddress address, TMessage request)
+        public IZLinkYieldRequestCall RequestToSpot<TMessage>(SpotRef address, TMessage request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }

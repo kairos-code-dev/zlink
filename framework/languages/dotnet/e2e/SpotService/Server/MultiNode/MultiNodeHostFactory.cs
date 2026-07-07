@@ -181,13 +181,13 @@ internal static class MultiNodeHostFactory
             SpotOnlyJoinReq request,
             CancellationToken cancellationToken) =>
         {
-            await actors.GetOrCreateAsync(
+            var actor = await actors.GetOrCreateAsync(
                 request.ActorId,
                 SpotServiceNames.ActorType,
                 new ScenarioActorCreateReq($"spot-only-{request.ActorId}"),
                 cancellationToken);
             var result = await actorClient.RequestToActor(
-                    request.ActorId,
+                    actor,
                     request)
                 .PacketName("SpotOnlyJoinReq")
                 .Timeout(TimeSpan.FromSeconds(10))
@@ -204,7 +204,7 @@ internal static class MultiNodeHostFactory
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotAddressResolver locator,
+            IZLinkSpotRefResolver locator,
             NodeOptions node,
             MultiNodeStateRouteReq request,
             CancellationToken cancellationToken) =>

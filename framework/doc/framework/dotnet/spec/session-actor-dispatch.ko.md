@@ -1172,23 +1172,23 @@ session disconnect 는 bound actor 전체에 자동 전파되지 않는다. 연�
 actor 의 현재 Spot 실행 문맥에서 disconnected handler 를 실행할 뿐이며, actor 를
 room 에서 leave 시키지 않는다.
 
-## 6. Spot remote address resolver 등록
+## 6. Spot ref resolver 등록
 
 이 절은 actor 가 Spot 으로 join 하거나 Spot client 를 사용할 때 필요한 resolver 표면을 정리한다.
 
-- session 에 이미 attach 된 actor 로 relay 할 때는 actor remote address resolver 를
+- session 에 이미 attach 된 actor 로 relay 할 때는 actor ref resolver 를
   사용하지 않는다. session 은 framework 가 만든 actor handle 을 저장한다.
 - actor 가 현재 연결된 client session 으로 push 를 보낼 때는,
   framework / core 가 가진 actor-session binding 상태를 사용한다.
 - actor 가 `JoinSpot(spotRid, ...)` 로 user Spot 에 들어가는 경로가 node
-  경계를 넘을 수 있다면, spot remote address resolver 도 함께 등록한다.
+  경계를 넘을 수 있다면, spot ref resolver 도 함께 등록한다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
 
-public interface IZLinkSpotRemoteAddressResolver
+public interface IZLinkSpotRefResolver
 {
-    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+    ValueTask<SpotRef> ResolveSpotRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }
@@ -1200,7 +1200,7 @@ public enum ZLinkSpotKind
     User = 2,
 }
 
-public readonly record struct ZLinkSpotRemoteAddress(
+public readonly record struct SpotRef(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     RoutingId SpotRid,
@@ -1473,7 +1473,7 @@ public enum ZLinkFrameworkErrorKind
 registry 기반 spot route 조회에서 사용한다.
 `BindAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
 생성하지 않는다. bind 는 logical actor handle 을 core session relay binding 으로 넘기며,
-actor remote address resolver 를 fallback 으로 호출하지 않는다. actor 를 찾을 수 없거나
+actor ref resolver 를 fallback 으로 호출하지 않는다. actor 를 찾을 수 없거나
 gateway 경로로 relay 할 수 없으면 `ActorRouteNotFound` 로 분류한다. 현재 actor 에
 bound 된 session 이 없어서 client push 를 보낼 수 없으면 `ActorSessionNotBound` 로
 분류한다.
@@ -1506,7 +1506,7 @@ handler 를 찾지 못했거나 payload decode 에 실패한 inbound request 는
   [policy/session-gateway-usability.ko.md](../../common/spec/session-actor-dispatch.ko.md)
 - 인터페이스 전체 정의 → [handler-interfaces.ko.md](handler-interfaces.ko.md)
   §4.4 (session), §5.5 (session relay), §5.6 (`IZLinkBoundSession`), §5.7
-  (actor remote address resolver)
+  (actor ref resolver)
 - actor 라이프사이클과 actor handler 모델 →
   [aspnet-core-actor.ko.md](aspnet-core-actor.ko.md)
 - TicTacToe sample contract →

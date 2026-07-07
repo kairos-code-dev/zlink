@@ -9,7 +9,7 @@ public sealed record EnsureSupportUserActorReq(
     string Role,
     string ParticipantId);
 
-public sealed record EnsureSupportUserActorRes(ZLinkActorRefSnapshot Actor);
+public sealed record EnsureSupportUserActorRes(ActorRefSnapshot Actor);
 
 // One agent serves many conversations, so each assigned conversation gets its own
 // conversation actor (ParticipantId = the agent's roster id). The session asks the
@@ -20,5 +20,5 @@ public sealed record EnsureAgentConversationReq(
     string ConversationId);
 
 public sealed record EnsureAgentConversationRes(
-    ZLinkActorRefSnapshot Actor,
+    ActorRefSnapshot Actor,
     ConversationState State);

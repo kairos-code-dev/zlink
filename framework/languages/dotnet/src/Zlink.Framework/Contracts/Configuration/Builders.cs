@@ -174,8 +174,8 @@ public interface IZLinkFrameworkOptions
 
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
 
-    void AddSpotRemoteAddressResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRemoteAddressResolver;
+    void AddSpotRouteRefResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRouteRefResolver;
 
     IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName);
 

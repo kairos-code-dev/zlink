@@ -113,8 +113,8 @@ internal static class PlayHostFactory
 
     internal static async Task<StateRes> RequestSpotStateWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver locator,
-        string spotRid,
+        IZLinkSpotRefResolver locator,
+        string targetSpotRid,
         StateReq request,
         string failureMessage,
         string channelName = SpotServiceNames.ExternalSpotChannel)
@@ -126,7 +126,7 @@ internal static class PlayHostFactory
             {
                 return await routes.RequestToSpot(
                         channelName,
-                        await locator.ResolveRequiredAsync(spotRid),
+                        await locator.ResolveRequiredAsync(targetSpotRid),
                         request)
                     .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(1))
@@ -144,9 +144,9 @@ internal static class PlayHostFactory
 
     internal static async Task SendSpotCommandWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver locator,
+        IZLinkSpotRefResolver locator,
         string channelName,
-        string spotRid,
+        string targetSpotRid,
         object command,
         string packetName,
         string failureMessage)
@@ -156,7 +156,7 @@ internal static class PlayHostFactory
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                routes.SendToSpot(channelName, await locator.ResolveRequiredAsync(spotRid), command)
+                routes.SendToSpot(channelName, await locator.ResolveRequiredAsync(targetSpotRid), command)
                     .PacketName(packetName).Submit();
                 return;
             }
@@ -172,7 +172,7 @@ internal static class PlayHostFactory
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver locator,
+        IZLinkSpotRefResolver locator,
         string sourceSpotRid,
         SpotToSpotReq request,
         string failureMessage)

@@ -501,9 +501,9 @@ public sealed class RegressionTests
         Assert.DoesNotContain("public sealed record ActorRefSnapshot", sharedMessages, StringComparison.Ordinal);
         Assert.DoesNotContain("EnsureSupportUserActorReq", sharedMessages, StringComparison.Ordinal);
         Assert.DoesNotContain("public sealed record ActorRefSnapshot", serverContracts, StringComparison.Ordinal);
-        Assert.Contains("ZLinkActorRefSnapshot Actor", serverContracts, StringComparison.Ordinal);
-        Assert.Contains("ZLinkActorRefSnapshot.From(actor)", ensureUserHandler, StringComparison.Ordinal);
-        Assert.Contains("ZLinkActorRefSnapshot.From(actorRef)", ensureConversationHandler, StringComparison.Ordinal);
+        Assert.Contains("ActorRefSnapshot Actor", serverContracts, StringComparison.Ordinal);
+        Assert.Contains("ActorRefSnapshot.From(actor)", ensureUserHandler, StringComparison.Ordinal);
+        Assert.Contains("ActorRefSnapshot.From(actorRef)", ensureConversationHandler, StringComparison.Ordinal);
         Assert.Contains("public sealed record EnsureSupportUserActorReq", serverContracts, StringComparison.Ordinal);
         AssertLocationStoreHost(apiHost);
         AssertLocationStoreHost(sessionHost);
@@ -1299,7 +1299,7 @@ public sealed class RegressionTests
             Assert.DoesNotContain("RegistryRemoteAddressPublisher", text, StringComparison.Ordinal);
             Assert.DoesNotContain("AddActorRemoteAddressResolver<RegistryRemoteAddressStore>", text,
                 StringComparison.Ordinal);
-            Assert.DoesNotContain("AddSpotRemoteAddressResolver<RegistryRemoteAddressStore>", text,
+            Assert.DoesNotContain("AddSpotRouteRefResolver<RegistryRemoteAddressStore>", text,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("BindInitialActorRemoteAddressesAsync", text, StringComparison.Ordinal);
         }

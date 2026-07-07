@@ -10,7 +10,7 @@ internal sealed partial class YieldSession
 {
     private static async Task<YieldShutdownScenarioRes> RunShutdownThroughSpotRouteAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver spots,
+        IZLinkSpotRefResolver spots,
         YieldShutdownScenarioReq request,
         CancellationToken cancellationToken)
     {
@@ -19,7 +19,7 @@ internal sealed partial class YieldSession
             new EnsureSpotReq(request.SpotRid),
             "EnsureSpotReq",
             cancellationToken);
-        var address = await spots.ResolveSpotAddressAsync(
+        var address = await spots.ResolveSpotRefAsync(
                           RoutingId.From(request.SpotRid), cancellationToken)
                       ?? throw new InvalidOperationException(
                           $"Spot '{request.SpotRid}' has no live address.");
@@ -41,7 +41,7 @@ internal sealed partial class YieldSession
 
     private static async Task<YieldShutdownRecoveryRes> RunShutdownRecoveryThroughSpotRouteAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotAddressResolver spots,
+        IZLinkSpotRefResolver spots,
         YieldShutdownRecoveryReq request,
         CancellationToken cancellationToken)
     {

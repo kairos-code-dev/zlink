@@ -40,7 +40,7 @@ internal sealed class StartOrderWorkflowRouteHandler(
         return response;
     }
 
-    internal static async ValueTask<ZLinkSpotAddress> EnsureSpotAsync(
+    internal static async ValueTask<SpotRef> EnsureSpotAsync(
         IZLinkSpotManager spots,
         WorkflowInstanceTopology instance,
         string orderId,
@@ -50,7 +50,7 @@ internal sealed class StartOrderWorkflowRouteHandler(
             RoutingId.From(orderId),
             new OrderWorkflowSpotCreateReq(orderId),
             cancellationToken);
-        return new ZLinkSpotAddress(instance.SpotRid, RoutingId.From(orderId));
+        return new SpotRef(instance.SpotRid, RoutingId.From(orderId));
     }
 }
 

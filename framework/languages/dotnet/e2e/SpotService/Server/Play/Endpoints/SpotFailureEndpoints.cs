@@ -15,7 +15,7 @@ internal static class SpotFailureEndpoints
     {
         app.MapPost("/spot/missing-handler/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotAddressResolver locator,
+            IZLinkSpotRefResolver locator,
             EvidenceStore evidence,
             SpotMissingHandlerReq request) =>
         {
@@ -37,7 +37,7 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/missing-handler/command", async (
             IZLinkRouteClient routes,
-            IZLinkSpotAddressResolver locator,
+            IZLinkSpotRefResolver locator,
             EvidenceStore evidence,
             SpotMissingCommandReq request) =>
         {
@@ -66,7 +66,7 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/missing-target/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotAddressResolver locator,
+            IZLinkSpotRefResolver locator,
             SpotMissingTargetReq request) =>
         {
             // The missing spot has no live address, so the resolve itself
@@ -87,7 +87,7 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/slow/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotAddressResolver locator,
+            IZLinkSpotRefResolver locator,
             SpotSlowRouteReq request) =>
         {
             var timedOut = await FailsAsync(
@@ -102,7 +102,7 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/to-spot/timeout", async (
             IZLinkRouteClient routes,
-            IZLinkSpotAddressResolver locator,
+            IZLinkSpotRefResolver locator,
             SpotToSpotTimeoutRouteReq request) =>
         {
             var result = await routes.RequestToSpot(
@@ -116,7 +116,7 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/to-spot/negative", async (
             IZLinkRouteClient routes,
-            IZLinkSpotAddressResolver locator,
+            IZLinkSpotRefResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotToSpotNegativeRouteReq request) =>

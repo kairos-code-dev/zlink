@@ -25,7 +25,7 @@ internal sealed class ZLinkFrameworkRegistration
 
     public HashSet<Assembly> HandlerAssemblies { get; } = [];
 
-    public Type? SpotRemoteAddressResolverType { get; set; }
+    public Type? SpotRouteRefResolverType { get; set; }
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 

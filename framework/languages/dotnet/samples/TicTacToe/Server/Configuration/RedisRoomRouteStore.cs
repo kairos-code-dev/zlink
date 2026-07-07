@@ -101,16 +101,16 @@ internal sealed class RedisRoomRouteStore : IRoomRouteStore, IAsyncDisposable
     }
 }
 
-internal sealed class RedisSpotRemoteAddressResolver(IRoomRouteStore routes)
-    : IZLinkSpotRemoteAddressResolver
+internal sealed class RedisSpotRouteRefResolver(IRoomRouteStore routes)
+    : IZLinkSpotRouteRefResolver
 {
-    public async ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
+    public async ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
         var roomId = spotRid.ToString();
         var route = await routes.LoadAsync(roomId, cancellationToken).ConfigureAwait(false);
-        return new ZLinkSpotRemoteAddress(
+        return new ZLinkSpotRouteRef(
             route.RouteChannelId,
             RoutingId.From(route.OwnerNodeRid),
             RoutingId.From(route.SpotRid),

@@ -214,7 +214,7 @@ public sealed class LocationLifecycleTests
         var registration = new ZLinkFrameworkRegistration();
         registration.SpotMeshChannels.Add(
             "mesh", new ZLinkSpotMeshChannelRegistration { ChannelName = "mesh" });
-        var resolver = new ZLinkLocationSpotRemoteAddressResolver(
+        var resolver = new ZLinkLocationSpotRouteRefResolver(
             new ZLinkSpotLocationRidResolver(registration, node.Resolvers));
 
         var status = await node.Lifecycle.ClaimSpotAsync(
@@ -227,7 +227,7 @@ public sealed class LocationLifecycleTests
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
 
-        var address = await resolver.ResolveSpotRemoteAddressAsync(spotRid, CancellationToken.None);
+        var address = await resolver.ResolveSpotRouteRefAsync(spotRid, CancellationToken.None);
         Assert.Equal("mesh", address.RouterChannelId);
         Assert.Equal(RoutingId.From("node-a"), address.TargetNodeRid);
         Assert.Equal(spotRid, address.SpotRid);
@@ -238,7 +238,7 @@ public sealed class LocationLifecycleTests
         fixture.Time.Advance(fixture.Options.OwnerLeaseTtl + TimeSpan.FromSeconds(1));
 
         var miss = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
-            await resolver.ResolveSpotRemoteAddressAsync(spotRid, CancellationToken.None));
+            await resolver.ResolveSpotRouteRefAsync(spotRid, CancellationToken.None));
         Assert.Equal(ZLinkFrameworkErrorKind.SpotRouteNotFound, miss.Kind);
     }
 

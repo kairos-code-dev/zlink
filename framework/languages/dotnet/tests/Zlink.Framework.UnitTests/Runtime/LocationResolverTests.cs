@@ -132,13 +132,13 @@ public sealed class LocationResolverTests
             "play", new ZLinkSpotMeshChannelRegistration { ChannelName = "play" });
         var addresses = new ZLinkLocationAddressResolvers(registration, fixture.Resolvers);
 
-        var address = await addresses.ResolveSpotAddressAsync(RoutingId.From("spot-1"));
+        var address = await addresses.ResolveSpotRefAsync(RoutingId.From("spot-1"));
 
         Assert.NotNull(address);
         Assert.Equal(RoutingId.From("spot-1"), address.Value.SpotRid);
         Assert.True(address.Value.NodeRid.Size > 0);
 
-        Assert.Null(await addresses.ResolveSpotAddressAsync(RoutingId.From("no-such-spot")));
+        Assert.Null(await addresses.ResolveSpotRefAsync(RoutingId.From("no-such-spot")));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public sealed class LocationResolverTests
         };
         await fixture.Store.UpdateActorAsync(entryActor, ZLinkLocationWriteIntent.NewClaim);
 
-        var entryAddress = await addresses.ResolveActorSpotAddressAsync(entryActor.ActorId);
+        var entryAddress = await addresses.ResolveActorSpotRefAsync(entryActor.ActorId);
         Assert.NotNull(entryAddress);
         Assert.Equal(entryAddress.Value.NodeRid, entryAddress.Value.SpotRid);
 
@@ -167,7 +167,7 @@ public sealed class LocationResolverTests
         };
         await fixture.Store.UpdateActorAsync(userActor, ZLinkLocationWriteIntent.NewClaim);
 
-        var userAddress = await addresses.ResolveActorSpotAddressAsync(userActor.ActorId);
+        var userAddress = await addresses.ResolveActorSpotRefAsync(userActor.ActorId);
         Assert.NotNull(userAddress);
         Assert.Equal(RoutingId.From("spot-7"), userAddress.Value.SpotRid);
         Assert.Equal(userActor.NodeRid, userAddress.Value.NodeRid);

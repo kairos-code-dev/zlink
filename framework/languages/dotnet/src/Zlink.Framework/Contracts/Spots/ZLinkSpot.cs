@@ -196,7 +196,7 @@ public interface IZLinkSpotOutbound
     /// without notice (spot-address messaging draft §7).
     /// </summary>
     IZLinkSendCall SendToSpot<TMessage>(
-        ZLinkSpotAddress address,
+        SpotRef address,
         TMessage message);
 
     /// <summary>
@@ -206,7 +206,7 @@ public interface IZLinkSpotOutbound
     /// retry per the caller's policy.
     /// </summary>
     IZLinkYieldRequestCall RequestToSpot<TRequest>(
-        ZLinkSpotAddress address,
+        SpotRef address,
         TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(

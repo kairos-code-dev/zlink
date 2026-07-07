@@ -28,7 +28,7 @@ public sealed class EnvelopeCodecTests
     [Fact]
     public void JsonEnvelope_RoundTrips_ActorRefSnapshot_RoutingId_As_Hex()
     {
-        var snapshot = new ZLinkActorRefSnapshot(
+        var snapshot = new ActorRefSnapshot(
             RoutingId.From("delivery-courier-node-1"),
             "courier-a",
             3);
@@ -63,5 +63,5 @@ public sealed class EnvelopeCodecTests
         Assert.False(encoded.IsEmpty);
     }
 
-    private sealed record ActorSnapshotReply(ZLinkActorRefSnapshot Actor);
+    private sealed record ActorSnapshotReply(ActorRefSnapshot Actor);
 }

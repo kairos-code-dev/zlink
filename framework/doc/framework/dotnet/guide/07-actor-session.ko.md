@@ -340,14 +340,14 @@ public sealed class DeliveryStatusFanoutHandler(CustomerSessionDirectory session
 ## 4. resolver — 위치 조회는 주소 하나로
 
 session relay 는 actor id/type logical handle 과 core SessionRelay 를 사용한다. actor 가 어느
-spot 에 있는지 조회하고 싶으면 `IZLinkActorAddressResolver.ResolveActorSpotAddressAsync(
+spot 에 있는지 조회하고 싶으면 `IZLinkActorAddressResolver.ResolveActorSpotRefAsync(
 actorId)` 를 쓴다 — location store 를 읽어 actor 가 위치한 spot 의 주소
-(`ZLinkSpotAddress`)를 돌려준다(재연결 시 "있으면 re-bind, 없으면 생성" 판단이 대표 사용처,
+(`SpotRef`)를 돌려준다(재연결 시 "있으면 re-bind, 없으면 생성" 판단이 대표 사용처,
 [09-location §4](09-location.ko.md)). 반면 **actor↔session binding 은 framework 내부 상태**라
 조회용 public 표면이 없다 — actor 가 client 로 push 할 때는 `Context.BoundSession` 을 쓰면 된다.
 
 spot rid → 주소 변환을 기본(location store) 대신 직접 구현으로 바꾸고 싶을 때만
-`AddSpotRemoteAddressResolver<T>()` 를 등록한다. `JoinSpot(spotRid, ...)` 가 노드 경계를 넘을 때
+`AddLocationStore(...)` 를 등록한다. `JoinSpot(spotRid, ...)` 가 노드 경계를 넘을 때
 이 변환이 쓰인다.
 
 ## 5. 오류 처리 — `ZLinkFrameworkException`

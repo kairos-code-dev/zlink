@@ -9,7 +9,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// re-resolve on failure; nothing here caches.
 /// </summary>
 internal sealed class ZLinkLocationAddressResolvers :
-    IZLinkSpotAddressResolver,
+    IZLinkSpotRefResolver,
     IZLinkActorAddressResolver
 {
     private readonly IReadOnlyList<string> _meshNames;
@@ -27,7 +27,7 @@ internal sealed class ZLinkLocationAddressResolvers :
             .ToArray();
     }
 
-    public async ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+    public async ValueTask<SpotRef?> ResolveSpotRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
@@ -39,14 +39,14 @@ internal sealed class ZLinkLocationAddressResolvers :
                 .ConfigureAwait(false);
             if (row is not null)
             {
-                return new ZLinkSpotAddress(row.NodeRid, row.SpotRid);
+                return new SpotRef(row.NodeRid, row.SpotRid);
             }
         }
 
         return null;
     }
 
-    public async ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+    public async ValueTask<SpotRef?> ResolveActorSpotRefAsync(
         string actorId,
         CancellationToken cancellationToken = default)
     {
@@ -62,7 +62,7 @@ internal sealed class ZLinkLocationAddressResolvers :
         // An entry spot's address is the node itself (draft §4); a user
         // spot actor addresses its user spot.
         return row.LocationKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
-            ? new ZLinkSpotAddress(row.NodeRid, row.NodeRid)
-            : new ZLinkSpotAddress(row.NodeRid, row.SpotRid.Value);
+            ? new SpotRef(row.NodeRid, row.NodeRid)
+            : new SpotRef(row.NodeRid, row.SpotRid.Value);
     }
 }

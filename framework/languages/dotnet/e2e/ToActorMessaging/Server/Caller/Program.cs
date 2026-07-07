@@ -27,12 +27,17 @@ var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapPost("/send", async (
     ActorCallRequest request,
+    IZLinkActorDirectory actorDirectory,
     IZLinkActorClient actors,
     CancellationToken ct) =>
 {
     try
     {
-        await actors.SendToActor(request.ActorId, new ActorNotify(request.Scenario, request.ActorId, request.Value))
+        var actor = await actorDirectory.FindAsync(request.ActorId, ct)
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor route '{request.ActorId}' was not found.");
+        await actors.SendToActor(actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
             .PacketName(nameof(ActorNotify))
             .Async(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "sent"));
@@ -44,12 +49,17 @@ app.MapPost("/send", async (
 });
 app.MapPost("/request", async (
     ActorCallRequest request,
+    IZLinkActorDirectory actorDirectory,
     IZLinkActorClient actors,
     CancellationToken ct) =>
 {
     try
     {
-        var reply = await actors.RequestToActor(request.ActorId, new ActorAsk(request.Scenario, request.ActorId, request.Value))
+        var actor = await actorDirectory.FindAsync(request.ActorId, ct)
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor route '{request.ActorId}' was not found.");
+        var reply = await actors.RequestToActor(actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
             .PacketName(nameof(ActorAsk))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ActorReply>(ct);

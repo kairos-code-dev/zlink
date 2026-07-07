@@ -78,6 +78,6 @@ public sealed record ZLinkOwnerLeaseSnapshot(
 /// Logical messaging address of one spot in a mesh. Callers may hold the
 /// address and re-resolve after send failure; send paths do not resolve.
 /// </summary>
-public readonly record struct ZLinkSpotAddress(
+public readonly record struct SpotRef(
     RoutingId NodeRid,
     RoutingId SpotRid);

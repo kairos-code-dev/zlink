@@ -42,18 +42,18 @@ core는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 �
 
 이 순서는 Actor가 생성되기 전에 Entry Spot rid가 정해지도록 하기 위한 것이다.
 
-> **설계상 모델 — 미구현.** Actor remote address publish/sync 와
+> **설계상 모델 — 미구현.** Actor ref publish/sync 와
 > Actor remote location(`CurrentSpotKind`/`CurrentSpotRid`)은 현재 `.NET` framework
-> 표면에 없다. 구현된 remote address 표면은 아래 `ZLinkSpotRemoteAddress` 다.
+> 표면에 없다. 구현된 ref 표면은 아래 `SpotRef` 다.
 
 ## Route 의미
 
 framework가 spot location row를 노출할 때 Entry Spot과 user Spot을 구분한다.
-구현된 표면은 `ZLinkSpotRemoteAddress`(`TargetNodeRid`, `SpotRid`, `SpotKind`)다.
+구현된 표면은 `SpotRef`(`TargetNodeRid`, `SpotRid`, `SpotKind`)다.
 
-- `ZLinkSpotRemoteAddress.SpotKind`가 `Entry`이면 `SpotRid`는 Entry Spot rid다.
-- `ZLinkSpotRemoteAddress.SpotKind`가 `User`이면 `SpotRid`는 user Spot rid다.
-- Spot remote address resolver의 `ZLinkSpotRemoteAddress.SpotKind`는 core `ResolveSpot()` 결과를
+- `SpotRef.SpotKind`가 `Entry`이면 `SpotRid`는 Entry Spot rid다.
+- `SpotRef.SpotKind`가 `User`이면 `SpotRid`는 user Spot rid다.
+- Spot ref resolver의 `SpotRef.SpotKind`는 core `ResolveSpot()` 결과를
   보존한다.
 
 Spot RID route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는

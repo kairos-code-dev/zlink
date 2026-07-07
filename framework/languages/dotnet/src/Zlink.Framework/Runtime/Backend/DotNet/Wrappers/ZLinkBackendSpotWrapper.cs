@@ -121,11 +121,11 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
 
     public bool SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         Message message,
         SendFlags flags)
     {
-        return nativeSpot.SendToSpot(targetRid, spotRid)
+        return nativeSpot.SendToSpot(targetRid, targetSpotRid)
             .Message(message)
             .Flags(flags)
             .Submit();
@@ -133,11 +133,11 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
 
     public bool SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSpot.SendToSpot(targetRid, spotRid)
+        return nativeSpot.SendToSpot(targetRid, targetSpotRid)
             .Messages(parts)
             .Flags(flags)
             .Submit();
@@ -145,13 +145,13 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
 
     public bool RequestToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         Message message,
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSpot.RequestToSpot(targetRid, spotRid)
+        var operation = nativeSpot.RequestToSpot(targetRid, targetSpotRid)
             .Message(message)
             .Flags(flags);
         if (timeout is { } value) operation = operation.Timeout(value);
@@ -161,13 +161,13 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
 
     public bool RequestToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSpot.RequestToSpot(targetRid, spotRid).Messages(parts);
+        var operation = nativeSpot.RequestToSpot(targetRid, targetSpotRid).Messages(parts);
 
         if (timeout is { } value) operation = operation.Timeout(value);
 

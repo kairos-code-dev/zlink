@@ -9,6 +9,7 @@ namespace DeliveryDispatch.Server.Tracking;
 [ZLinkHandlerGroup(SampleNames.TrackingRouteChannel)]
 internal sealed class DeliveryStatusChangedHandler(
     EvidenceStore evidence,
+    IZLinkActorDirectory actorDirectory,
     IZLinkActorClient actors,
     ILogger<DeliveryStatusChangedHandler> logger)
     : IZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes>
@@ -25,7 +26,9 @@ internal sealed class DeliveryStatusChangedHandler(
             request.Status,
             request.CourierId,
             request.OccurredAt);
-        await actors.SendToActor(request.CustomerId, updated)
+        var actor = await actorDirectory.FindAsync(request.CustomerId, cancellationToken)
+                    ?? throw new InvalidOperationException($"Customer actor '{request.CustomerId}' was not found.");
+        await actors.SendToActor(actor, updated)
             .PacketName(nameof(DeliveryStatusUpdatedMsg))
             .Async(cancellationToken);
         logger.LogInformation(

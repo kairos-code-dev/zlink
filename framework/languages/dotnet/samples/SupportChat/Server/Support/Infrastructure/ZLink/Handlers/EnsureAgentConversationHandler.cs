@@ -49,7 +49,7 @@ internal sealed class EnsureAgentConversationHandler(
             request.ConversationId,
             request.RosterActorId);
         return new EnsureAgentConversationRes(
-            ZLinkActorRefSnapshot.From(actorRef),
+            ActorRefSnapshot.From(actorRef),
             state);
     }
 }

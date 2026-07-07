@@ -140,15 +140,15 @@ internal sealed class ZLinkActorRemoteJoiner(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask<ZLinkSpotRemoteAddress> ResolveRemoteActorJoinTargetAsync(
+    private async ValueTask<ZLinkSpotRouteRef> ResolveRemoteActorJoinTargetAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        var resolver = services.GetService(typeof(IZLinkSpotRemoteAddressResolver))
-            as IZLinkSpotRemoteAddressResolver;
+        var resolver = services.GetService(typeof(IZLinkSpotRouteRefResolver))
+            as IZLinkSpotRouteRefResolver;
         if (resolver is null) throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        return await resolver.ResolveSpotRemoteAddressAsync(spotRid, cancellationToken)
+        return await resolver.ResolveSpotRouteRefAsync(spotRid, cancellationToken)
             .ConfigureAwait(false);
     }
 

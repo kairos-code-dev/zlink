@@ -160,7 +160,7 @@ internal sealed class ScenarioAlternateSpot(
 internal sealed class SpotOnlyUserSpot(
     IZLinkSpotContext context,
     EvidenceStore evidence,
-    IZLinkSpotAddressResolver spots) : IZLinkSpot<ScenarioActor>
+    IZLinkSpotRefResolver spots) : IZLinkSpot<ScenarioActor>
 {
     private int _value;
 
@@ -193,7 +193,7 @@ internal sealed class SpotOnlyUserSpot(
         if (!request.IsEmpty)
         {
             var command = request.Decode<SpotOnlyMeshReq>();
-            var target = await spots.ResolveSpotAddressAsync(
+            var target = await spots.ResolveSpotRefAsync(
                              RoutingId.From(command.TargetSpotRid),
                              cancellationToken)
                          ?? throw new InvalidOperationException(

@@ -18,10 +18,10 @@ public interface IZLinkPeerLocationResolver
 /// Lifecycle flows that need generations read location rows through the
 /// store/runtime surfaces instead.
 /// </summary>
-public interface IZLinkSpotAddressResolver
+public interface IZLinkSpotRefResolver
 {
     /// <summary>Null when no live row exists (unknown spot or expired owner lease).</summary>
-    ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+    ValueTask<SpotRef?> ResolveSpotRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
@@ -33,7 +33,7 @@ public interface IZLinkSpotAddressResolver
 /// </summary>
 public interface IZLinkActorAddressResolver
 {
-    ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+    ValueTask<SpotRef?> ResolveActorSpotRefAsync(
         string actorId,
         CancellationToken cancellationToken = default);
 }

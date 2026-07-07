@@ -17,14 +17,14 @@ public readonly record struct ZLinkActorPlacement(
     RoutingId? PreferredNodeRid = null,
     string? RouteMesh = null);
 
-public sealed record ZLinkActorRefSnapshot(
+public sealed record ActorRefSnapshot(
     RoutingId NodeRid,
     string ActorId,
     ulong Generation)
 {
-    public static ZLinkActorRefSnapshot From(ActorRef actorRef)
+    public static ActorRefSnapshot From(ActorRef actorRef)
     {
-        return new ZLinkActorRefSnapshot(
+        return new ActorRefSnapshot(
             actorRef.NodeRid,
             actorRef.ActorId,
             actorRef.Generation);

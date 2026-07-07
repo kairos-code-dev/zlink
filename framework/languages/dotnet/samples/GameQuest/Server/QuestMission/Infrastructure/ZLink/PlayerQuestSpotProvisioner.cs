@@ -35,7 +35,7 @@ internal sealed class PlayerQuestOwnerProvisioner(
             .Async<SyncQuestProgressRes>(cancellationToken);
     }
 
-    private async ValueTask<ZLinkSpotAddress> EnsureAddressAsync(
+    private async ValueTask<SpotRef> EnsureAddressAsync(
         string playerId,
         CancellationToken cancellationToken)
     {
@@ -44,6 +44,6 @@ internal sealed class PlayerQuestOwnerProvisioner(
             spotRid,
             new PlayerQuestSpotCreateReq(playerId),
             cancellationToken);
-        return new ZLinkSpotAddress(instance.SpotRid, spotRid);
+        return new SpotRef(instance.SpotRid, spotRid);
     }
 }

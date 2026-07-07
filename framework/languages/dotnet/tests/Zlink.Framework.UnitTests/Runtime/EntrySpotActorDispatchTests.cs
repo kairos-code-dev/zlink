@@ -660,17 +660,17 @@ public sealed class EntrySpotActorDispatchTests
 
         public bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags) => false;
 
-        public bool SendToSpot(RoutingId targetRid, RoutingId spotRid, Message message, SendFlags flags) => false;
+        public bool SendToSpot(RoutingId targetRid, RoutingId targetSpotRid, Message message, SendFlags flags) => false;
 
         public bool SendToSpot(
             RoutingId targetRid,
-            RoutingId spotRid,
+            RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             SendFlags flags) => false;
 
         public bool RequestToSpot(
             RoutingId targetRid,
-            RoutingId spotRid,
+            RoutingId targetSpotRid,
             Message message,
             RequestCallback callback,
             SendFlags flags,
@@ -678,7 +678,7 @@ public sealed class EntrySpotActorDispatchTests
 
         public bool RequestToSpot(
             RoutingId targetRid,
-            RoutingId spotRid,
+            RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,
@@ -738,7 +738,7 @@ public sealed class EntrySpotActorDispatchTests
 
         public IZLinkBackendSpot CreateSpot() => new CapturingSpot();
 
-        public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
+        public IZLinkBackendSpot GetOrCreateSpot(RoutingId targetSpotRid, out bool created)
         {
             created = true;
             return new CapturingSpot();

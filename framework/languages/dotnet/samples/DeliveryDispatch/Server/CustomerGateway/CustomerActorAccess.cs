@@ -23,7 +23,7 @@ internal sealed class CustomerActorAccess(
         var actorRef = directory.RequireRef(request.CustomerId);
         return new FindCustomerActorRes(
             request.CustomerId,
-            ZLinkActorRefSnapshot.From(actorRef));
+            ActorRefSnapshot.From(actorRef));
     }
 
     public async ValueTask<EnsureCustomerActorRes> EnsureAsync(
@@ -42,6 +42,6 @@ internal sealed class CustomerActorAccess(
         var actorRef = directory.RequireRef(request.CustomerId);
         return new EnsureCustomerActorRes(
             request.CustomerId,
-            ZLinkActorRefSnapshot.From(actorRef));
+            ActorRefSnapshot.From(actorRef));
     }
 }

@@ -4,132 +4,54 @@ using System.Text.Json;
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorClient(
-    ZLinkFrameworkRuntime runtime,
-    ZLinkStoreLocationResolvers locations) : IZLinkActorClient
+    ZLinkFrameworkRuntime runtime) : IZLinkActorClient
 {
     public IZLinkActorSendCall SendToActor<TMessage>(
-        string actorId,
+        ActorRef actor,
         TMessage message)
     {
-        return new ZLinkActorSendCall<TMessage>(this, actorId, message);
+        return new ZLinkActorSendCall<TMessage>(this, actor, message);
     }
 
     public IZLinkActorRequestCall RequestToActor<TRequest>(
-        string actorId,
+        ActorRef actor,
         TRequest request)
     {
-        return new ZLinkActorRequestCall<TRequest>(this, actorId, request);
+        return new ZLinkActorRequestCall<TRequest>(this, actor, request);
     }
 
-    private async ValueTask SendAsync<TMessage>(
-        string actorId,
+    private ValueTask SendAsync<TMessage>(
+        ActorRef actor,
         string packetName,
         TMessage message,
         CancellationToken cancellationToken)
     {
-        var actor = await ResolveActorRefAsync(actorId, cancellationToken).ConfigureAwait(false);
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Send,
             null,
             packetName,
             message);
-        try
-        {
-            await SubmitActorSendAsync(actor, parts, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception error) when (IsStaleActorError(error))
-        {
-            actor = await ReResolveActorRefAsync(actorId, cancellationToken).ConfigureAwait(false);
-            parts = CreatePacketParts(
-                ZlinkStreamMessageKind.Send,
-                null,
-                packetName,
-                message);
-            try
-            {
-                await SubmitActorSendAsync(actor, parts, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception retryError) when (IsStaleActorError(retryError))
-            {
-                throw ActorLocationStale(actorId, retryError);
-            }
-        }
+        return SubmitActorSendAsync(actor.ToBackend(), parts, cancellationToken);
     }
 
     private async ValueTask<TReply> RequestAsync<TRequest, TReply>(
-        string actorId,
+        ActorRef actor,
         string packetName,
         TRequest request,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var actor = await ResolveActorRefAsync(actorId, cancellationToken).ConfigureAwait(false);
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Request,
             new ZlinkStreamRequestSeq(1),
             packetName,
             request);
-        try
-        {
-            return await SubmitActorRequestAsync<TReply>(
-                    actor,
-                    parts,
-                    timeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception error) when (IsStaleActorError(error))
-        {
-            actor = await ReResolveActorRefAsync(actorId, cancellationToken).ConfigureAwait(false);
-            parts = CreatePacketParts(
-                ZlinkStreamMessageKind.Request,
-                new ZlinkStreamRequestSeq(1),
-                packetName,
-                request);
-            try
-            {
-                return await SubmitActorRequestAsync<TReply>(
-                        actor,
-                        parts,
-                        timeout,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception retryError) when (IsStaleActorError(retryError))
-            {
-                throw ActorLocationStale(actorId, retryError);
-            }
-        }
-    }
-
-    private async ValueTask<ZLinkBackendActorRef> ResolveActorRefAsync(
-        string actorId,
-        CancellationToken cancellationToken)
-    {
-        var row = await locations.ResolveActorRowAsync(
-                new ZLinkActorLocationKey(actorId),
+        return await SubmitActorRequestAsync<TReply>(
+                actor.ToBackend(),
+                parts,
+                timeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (row?.ActorRef is { } actor) return actor.ToBackend();
-
-        throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            $"Actor route '{actorId}' was not found.");
-    }
-
-    private async ValueTask<ZLinkBackendActorRef> ReResolveActorRefAsync(
-        string actorId,
-        CancellationToken cancellationToken)
-    {
-        var row = await locations.ResolveActorRowAsync(
-                new ZLinkActorLocationKey(actorId),
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (row?.ActorRef is { } actor) return actor.ToBackend();
-
-        throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorLocationStale,
-            $"Actor route '{actorId}' became stale.");
     }
 
     private async ValueTask SubmitActorSendAsync(
@@ -276,15 +198,6 @@ internal sealed class ZLinkActorClient(
                ?? throw new InvalidOperationException("Actor request reply payload is null.");
     }
 
-    private static bool IsStaleActorError(Exception error)
-    {
-        return error is ZLinkFrameworkException
-        {
-            Kind: ZLinkFrameworkErrorKind.ActorRouteNotFound
-            or ZLinkFrameworkErrorKind.ActorLocationStale
-        };
-    }
-
     private static Exception MapSubmitException(
         ZlinkSubmitException error,
         string operationName)
@@ -330,20 +243,9 @@ internal sealed class ZLinkActorClient(
         };
     }
 
-    private static ZLinkFrameworkException ActorLocationStale(
-        string actorId,
-        Exception innerException)
-    {
-        return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorLocationStale,
-            $"Actor route '{actorId}' is stale after re-resolve.",
-            true,
-            innerException);
-    }
-
     private sealed class ZLinkActorSendCall<TMessage>(
         ZLinkActorClient client,
-        string actorId,
+        ActorRef actor,
         TMessage message) : IZLinkActorSendCall
     {
         private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
@@ -357,7 +259,7 @@ internal sealed class ZLinkActorClient(
         public ValueTask Async(CancellationToken cancellationToken = default)
         {
             return client.SendAsync(
-                actorId,
+                actor,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 message,
                 cancellationToken);
@@ -366,7 +268,7 @@ internal sealed class ZLinkActorClient(
 
     private sealed class ZLinkActorRequestCall<TRequest>(
         ZLinkActorClient client,
-        string actorId,
+        ActorRef actor,
         TRequest request) : IZLinkActorRequestCall
     {
         private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
@@ -387,7 +289,7 @@ internal sealed class ZLinkActorClient(
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         {
             return client.RequestAsync<TRequest, TReply>(
-                actorId,
+                actor,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 request,
                 _timeout,

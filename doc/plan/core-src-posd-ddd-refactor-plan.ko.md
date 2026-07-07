@@ -147,12 +147,17 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
     `*_attempt_arg_t`), `(void)` 처리된 vestigial 파라미터 2개
     (`route_ready_retry_ms_`, `fallback_on_missing_sndtimeo_`) 제거. 제거된
     재시도 루프의 잔재로 순수 삭제. (code-motion / S)
-- [ ] **T1-07. actor `gateway_parts` framing 3중 복붙 추출**
+- [x] **T1-07. actor `gateway_parts` framing 3중 복붙 추출**
   - `service_spot_actor_api.cpp:618-637`, `:1824-1842`, `:3485-3505`
   - control-prepend + `zlink_msg_move` 루프 + `close_built_parts` cleanup이 3중
     복제(꼬리가 미묘하게 달라 drift 위험). **header-inline** 헬퍼
     `build_gateway_parts(...)`로 추출 — A/C 블록이 send 경로이므로 out-of-line
     금지. 기존 `resize` 할당 외 추가 할당 없음을 유지. (code-motion / S)
+  - 2026-07-07 완료: `service_spot_actor_gateway_parts_internal.hpp`의 inline
+    helper로 control prepend, payload move, cleanup을 정본화했다. 호출처별 차이인
+    send-frame consume 여부와 no-bind pending erase는 호출처에 남겼다. 사용자
+    지시와 CPU 부하 조건에 따라 perf는 생략하고 빌드와 관련 actor/spot 테스트로
+    검증했다.
 - [ ] **T1-08. `err.cpp` backtrace 서브시스템 분리**
   - `runtime/utils/err.cpp:371-424` `print_backtrace`(demangle/backtrace 의존)를
     별도 진단 TU로. errno 번역과 무관한 관심사. (없음 / S)
@@ -434,3 +439,6 @@ sockets/engine/transports/utils:
   recv fast-path 분기 삭제, multipart send retry 잔재 삭제를 묶어 적용했다.
   T1-04는 원래 reqrep 벤치 게이트 대상이지만, 사용자 지시로 perf 실행은
   생략하고 빌드와 테스트로 검증한다.
+- 2026-07-07: T1-07 구현 — actor gateway multipart 조립의 3중 복제를 header
+  inline helper로 통일했다. send 경로의 기존 frame consume 정책과 no-bind pending
+  cleanup 정책은 호출처별로 유지했다.

@@ -20,6 +20,7 @@
 #include "api/socket/request_timeout_scheduler_internal.hpp"
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
+#include "api/actor/spot/service_spot_actor_gateway_parts_internal.hpp"
 #include "api/message/request_result_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
@@ -617,25 +618,10 @@ send_actor_gateway_multipart_from_source (zlink::spot_node_t *origin_node_,
         return errno_to_submit_result (errno);
 
     std::vector<zlink_msg_t> gateway_parts;
-    gateway_parts.resize (part_count_ + 1);
-    for (size_t i = 0; i < gateway_parts.size (); ++i)
-        zlink_msg_init (&gateway_parts[i]);
-    if (zlink_msg_move (&gateway_parts[0], &control) != 0) {
-        const int saved_errno = errno;
-        (void) zlink_msg_close (&control);
-        zlink::request_reply::close_built_parts (&gateway_parts);
-        errno = saved_errno;
+    if (zlink::spot_actor_internal::build_gateway_parts (&control, parts_, part_count_, true,
+                                                         &gateway_parts)
+        != 0)
         return errno_to_submit_result (errno);
-    }
-    for (size_t i = 0; i < part_count_; ++i) {
-        if (zlink_msg_move (&gateway_parts[i + 1], &parts_[i]) != 0) {
-            const int saved_errno = errno;
-            zlink::request_reply::close_built_parts (&gateway_parts);
-            zlink::request_reply::consume_send_frames_from (parts_, i, part_count_);
-            errno = saved_errno;
-            return errno_to_submit_result (errno);
-        }
-    }
 
     const std::string source_node = routing_id_key (source_node_rid_);
     const std::string target_node = routing_id_key (target_node_rid_);
@@ -1791,24 +1777,10 @@ zlink_submit_result_t send_no_bind_reply_from_owner (zlink::spot_node_t *owner_n
             return errno_to_submit_result (errno);
         }
         std::vector<zlink_msg_t> gateway_parts;
-        gateway_parts.resize (part_count_ + 1);
-        for (size_t i = 0; i < gateway_parts.size (); ++i)
-            zlink_msg_init (&gateway_parts[i]);
-        if (zlink_msg_move (&gateway_parts[0], &control) != 0) {
-            const int saved_errno = errno;
-            (void) zlink_msg_close (&control);
-            zlink::request_reply::close_built_parts (&gateway_parts);
-            errno = saved_errno;
+        if (zlink::spot_actor_internal::build_gateway_parts (&control, parts_, part_count_, false,
+                                                             &gateway_parts)
+            != 0)
             return errno_to_submit_result (errno);
-        }
-        for (size_t i = 0; i < part_count_; ++i) {
-            if (zlink_msg_move (&gateway_parts[i + 1], &parts_[i]) != 0) {
-                const int saved_errno = errno;
-                zlink::request_reply::close_built_parts (&gateway_parts);
-                errno = saved_errno;
-                return errno_to_submit_result (errno);
-            }
-        }
         const int rc = zlink::spot_actor_internal::process_gateway_delivery (
           owner_node_, &owner_node_rid_, gateway_parts.data (), gateway_parts.size ());
         const int saved_errno = errno;
@@ -3452,25 +3424,11 @@ zlink_submit_result_t submit_actor_no_bind (void *node_,
         }
 
         std::vector<zlink_msg_t> gateway_parts;
-        gateway_parts.resize (part_count_ + 1);
-        for (size_t i = 0; i < gateway_parts.size (); ++i)
-            zlink_msg_init (&gateway_parts[i]);
-        if (zlink_msg_move (&gateway_parts[0], &control) != 0) {
-            const int saved_errno = errno;
-            (void) zlink_msg_close (&control);
-            zlink::request_reply::close_built_parts (&gateway_parts);
+        if (zlink::spot_actor_internal::build_gateway_parts (&control, parts_, part_count_, false,
+                                                             &gateway_parts)
+            != 0) {
             erase_no_bind_pending (key);
-            errno = saved_errno;
             return errno_to_submit_result (errno);
-        }
-        for (size_t i = 0; i < part_count_; ++i) {
-            if (zlink_msg_move (&gateway_parts[i + 1], &parts_[i]) != 0) {
-                const int saved_errno = errno;
-                zlink::request_reply::close_built_parts (&gateway_parts);
-                erase_no_bind_pending (key);
-                errno = saved_errno;
-                return errno_to_submit_result (errno);
-            }
         }
         if (zlink::spot_actor_internal::process_gateway_delivery (
               request_node, &source_node_rid, gateway_parts.data (), gateway_parts.size ())

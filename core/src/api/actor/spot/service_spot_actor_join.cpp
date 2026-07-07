@@ -794,9 +794,18 @@ void collect_join_stream_live_erase_requests_locked (
     actor_runtime ().joins.collect_live_for_stream (stream_, queued_aborts_, live_aborts_);
 }
 
+void clear_join_request_actor_session_locked (actor_handle_t *actor_)
+{
+    if (!actor_)
+        return;
+    actor_->bound_session_node = NULL;
+    memset (&actor_->bound_session_node_rid, 0, sizeof (actor_->bound_session_node_rid));
+    actor_->bound_stream = NULL;
+    memset (&actor_->bound_session_rid, 0, sizeof (actor_->bound_session_rid));
+    actor_->last_changed_ms = zlink::clock_t ().now_ms ();
+}
+
 void abort_join_requests_for_stream_locked (void *stream_,
-                                            join_actor_session_clear_fn clear_session_,
-                                            void *userdata_,
                                             join_request_completion_batch_t *aborted_)
 {
     if (!stream_ || !aborted_)
@@ -806,8 +815,7 @@ void abort_join_requests_for_stream_locked (void *stream_,
     collect_join_stream_queued_erase_requests_locked (stream_, &aborted_->requests);
     for (std::deque<queued_join_request_t *>::iterator it = aborted_->requests.begin ();
          it != aborted_->requests.end (); ++it) {
-        if (clear_session_)
-            clear_session_ ((*it)->actor, userdata_);
+        clear_join_request_actor_session_locked ((*it)->actor);
         retire_join_request_locked (*it);
     }
     collect_join_stream_live_erase_requests_locked (stream_, aborted_->requests,
@@ -816,8 +824,7 @@ void abort_join_requests_for_stream_locked (void *stream_,
          it != received_aborts.end (); ++it) {
         queued_join_request_t *request = *it;
         remove_pending_join_request_locked (request);
-        if (clear_session_)
-            clear_session_ (request->actor, userdata_);
+        clear_join_request_actor_session_locked (request->actor);
         retire_join_request_locked (request);
         aborted_->requests.push_back (request);
     }

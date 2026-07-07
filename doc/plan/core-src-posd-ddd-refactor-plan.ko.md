@@ -750,6 +750,12 @@ sockets/engine/transports/utils:
   spot membership predicate도 join 모듈 정의 하나로 합쳤다. destroy/leave
   operation도 actor resolution 이후의 join lifecycle 본문을 join 모듈 helper로
   옮겨 API 파일은 비동기 reply operation wiring만 맡도록 줄였다.
+  이어서 stream binding 해제 시 join abort가 API 파일의 callback을 되부르는 구조를
+  제거하고, join 모듈이 queued/live join request의 actor session clear까지 직접
+  처리하게 했다. 확인: `nice -n 19 cmake --build core/build -j1`, `ctest --test-dir
+  core/build -R
+  'test_spot_actor_gateway_no_bind|unittest_spot_actor_gateway_no_bind_protocol|test_spot_service_introspection|test_spot_pubsub_scenario|test_stream_socket|test_stream_threadsafe'
+  -j1 --output-on-failure`.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

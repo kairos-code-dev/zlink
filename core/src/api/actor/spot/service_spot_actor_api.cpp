@@ -571,12 +571,6 @@ void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_chang
         actor_->last_changed_ms = now_ms ();
 }
 
-void clear_join_actor_bound_session_locked (actor_handle_t *actor_, void *userdata_)
-{
-    (void) userdata_;
-    clear_actor_bound_session_locked (actor_, true);
-}
-
 std::unique_ptr<actor_handle_t> remove_actor_locked (actor_handle_t *actor_,
                                                      bool erase_session_binding_ = true)
 {
@@ -1473,8 +1467,7 @@ void erase_actor_stream_bindings (void *stream_)
     join_request_completion_batch_t aborted_joins;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        abort_join_requests_for_stream_locked (stream_, clear_join_actor_bound_session_locked, NULL,
-                                               &aborted_joins);
+        abort_join_requests_for_stream_locked (stream_, &aborted_joins);
         actor_runtime ().sessions.clear_stream (stream_);
     }
     complete_and_release_join_requests (&aborted_joins, ZLINK_REQUEST_TERMINATED);

@@ -32,8 +32,6 @@ struct join_request_completion_batch_t
     std::deque<queued_join_request_t *> requests;
 };
 
-typedef void (*join_actor_session_clear_fn) (actor_handle_t *actor_, void *userdata_);
-
 uint64_t next_join_commit_epoch_locked ();
 zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *actor_);
 bool join_actor_has_pending_request_locked (const actor_handle_t *actor_);
@@ -75,8 +73,6 @@ int process_actor_gateway_join_packet_locked (
   actor_handle_t **source_actor_to_remove_out_);
 
 void abort_join_requests_for_stream_locked (void *stream_,
-                                            join_actor_session_clear_fn clear_session_,
-                                            void *userdata_,
                                             join_request_completion_batch_t *aborted_);
 
 void complete_and_release_join_requests (join_request_completion_batch_t *requests_,

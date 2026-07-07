@@ -124,6 +124,9 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
 
         try
         {
+            // Hot path: router request callback mirrors DealerSocket. Keep this
+            // on direct native callback state so router-router request windows
+            // do not pay TaskCompletionSource/continuation overhead.
             state = new RouterRequestCallbackState(callback,
                 RequestProgressPump.AttachSocketCallback(Handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
@@ -247,6 +250,9 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
 
         try
         {
+            // Hot path: route-to-spot callbacks share the router request pump.
+            // Preserve direct completion here; async requests keep their task
+            // based path separately.
             state = new RouterRequestCallbackState(callback,
                 RequestProgressPump.AttachSocketCallback(Handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);

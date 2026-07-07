@@ -86,6 +86,9 @@ zlink_recv_result_t zlink_recv_part (void *s_,
           wait_for_completion_signal ? (flags_ | ZLINK_DONTWAIT) : flags_);
 
         while (true) {
+            // Hot path: a socket can both receive normal messages and own
+            // request completions. Drain before each recv attempt so completed
+            // replies are delivered without waiting for another poll timeout.
             drain_socket_reply_completions_for_recv (s_, request_state);
             if (zlink_socket_recv_internal (s_, &source_rid, &parts, &part_count, recv_flags)
                 == 0) {

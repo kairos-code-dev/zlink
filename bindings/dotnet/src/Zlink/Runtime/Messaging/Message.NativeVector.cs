@@ -94,6 +94,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
                 var src = (ZlinkMsg*)parts;
                 for (var i = 0; i < length; i++)
                 {
+                    // Hot path: request completion returns native-owned reply
+                    // parts. Reuse the managed wrapper and move the native
+                    // message into it; do not copy payload bytes here.
                     var msg = RentFromPool();
                     msg.Init();
                     var rc = NativeMethods.zlink_msg_move(ref msg._msg,

@@ -184,6 +184,9 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
 
         try
         {
+            // Hot path: callback request is used by windowed perf and framework
+            // request pumps. Complete directly from native callback state instead
+            // of building a TaskCompletionSource/continuation per request.
             state = new DealerRequestCallbackState(callback,
                 RequestProgressPump.AttachSocketCallback(Handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);

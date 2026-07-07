@@ -465,6 +465,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
 
     private void InitializeManagedCopy(ReadOnlySpan<byte> data)
     {
+        // Hot path: Message.From(...) feeds request/reply submit loops. Store
+        // the caller snapshot directly in native message storage so submit can
+        // move it without a second managed-to-native payload copy.
         InitSize(data.Length);
         if (data.Length != 0)
             CopyPayloadToStorage(data);

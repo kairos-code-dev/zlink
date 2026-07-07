@@ -6,6 +6,9 @@ namespace Systems.Zlink;
 
 internal struct OperationMessageBuffer
 {
+    // Hot path: framework/raw request messages are commonly header + body.
+    // Keep the first two parts in fields and allocate List<Message> only when
+    // callers build a larger multipart message.
     private Message? _singlePart;
     private Message? _secondPart;
     private List<Message>? _parts;

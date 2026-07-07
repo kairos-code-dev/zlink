@@ -172,6 +172,9 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
             return -1;
         if (move_completion_parts (&completion.parts, parts_, part_count_) != 0)
             return -1;
+        // Hot path: many request replies may complete before the application
+        // drains the queue. Signal only the first pending batch; draining clears
+        // signal_pending and avoids one inproc wakeup per reply.
         const bool should_signal = state_->pending.empty () && !state_->signal_pending;
         state_->pending.push_back (std::move (completion));
         if (should_signal) {

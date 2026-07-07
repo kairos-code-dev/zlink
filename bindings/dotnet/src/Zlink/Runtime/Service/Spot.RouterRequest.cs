@@ -52,6 +52,8 @@ internal sealed partial class Spot : ISpot
 
         try
         {
+            // Hot path: spot-to-router callback requests should complete through
+            // the native callback state, not by wrapping the async request path.
             state = new SpotRequestCallbackState(callback,
                 RequestProgressPump.AttachSpotCallback(Handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
@@ -136,6 +138,8 @@ internal sealed partial class Spot : ISpot
 
         try
         {
+            // Hot path: spot-to-spot callback requests use the same direct
+            // completion path and owned-part submit as router callbacks.
             state = new SpotRequestCallbackState(callback,
                 RequestProgressPump.AttachSpotCallback(Handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);

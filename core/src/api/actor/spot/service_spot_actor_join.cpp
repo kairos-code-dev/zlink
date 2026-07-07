@@ -61,15 +61,6 @@ bool same_join_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
     return lhs_->logical_state && lhs_->logical_state == rhs_->logical_state;
 }
 
-zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *actor_)
-{
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    if (actor_ && actor_->joined_spot_state)
-        return actor_->joined_spot_state->routing_id;
-    return rid;
-}
-
 actor_handle_t *resolve_join_actor_ref_locked (const zlink_actor_ref_t *ref_)
 {
     if (!ref_ || !zlink::spot_actor_internal::valid_actor_id (ref_->actor_id)
@@ -218,6 +209,15 @@ uint64_t next_join_commit_epoch_locked ()
     if (actor_runtime ().next_join_epoch == 0)
         actor_runtime ().next_join_epoch = 1;
     return epoch == 0 ? actor_runtime ().next_join_epoch++ : epoch;
+}
+
+zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *actor_)
+{
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    if (actor_ && actor_->joined_spot_state)
+        return actor_->joined_spot_state->routing_id;
+    return rid;
 }
 
 zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (

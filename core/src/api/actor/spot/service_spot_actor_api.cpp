@@ -135,17 +135,6 @@ bool actor_route_is_current_location (const zlink_actor_route_t &route_, const c
 
 void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_changed_time_);
 
-zlink_routing_id_t actor_current_spot_rid_locked (const actor_handle_t *actor_)
-{
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    if (!actor_)
-        return rid;
-    if (actor_->joined_spot_state)
-        return actor_->joined_spot_state->routing_id;
-    return rid;
-}
-
 void set_actor_spot_locked (actor_handle_t *actor_, spot_handle_t *spot_)
 {
     if (!actor_)
@@ -919,7 +908,7 @@ zlink_request_result_t run_destroy_operation_locked (actor_reply_operation_arg_t
     fill_ref (actor, &previous_actor);
     std::shared_ptr<spot_logical_state_t> lifecycle_spot = actor->joined_spot_state;
     const zlink_spot_actor_lifecycle_info_t lifecycle_info =
-      make_lifecycle_info (previous_actor, zero_actor, actor_current_spot_rid_locked (actor),
+      make_lifecycle_info (previous_actor, zero_actor, join_actor_current_spot_rid_locked (actor),
                            zero_spot, actor->join_epoch);
     std::unique_ptr<actor_handle_t> actor_to_delete = remove_actor_locked (actor);
     LIBZLINK_UNUSED (actor_to_delete);
@@ -942,7 +931,7 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
         return ZLINK_REQUEST_BUSY;
     }
     if (!actor->joined_spot_state
-        || !same_routing_id (actor_current_spot_rid_locked (actor), arg_->rid)) {
+        || !same_routing_id (join_actor_current_spot_rid_locked (actor), arg_->rid)) {
         errno = ESTALE;
         return ZLINK_REQUEST_INVALID_STATE;
     }
@@ -955,7 +944,7 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
 
     zlink_actor_ref_t actor_ref;
     fill_ref (actor, &actor_ref);
-    const zlink_routing_id_t previous_spot = actor_current_spot_rid_locked (actor);
+    const zlink_routing_id_t previous_spot = join_actor_current_spot_rid_locked (actor);
     const uint64_t previous_epoch = actor->join_epoch;
     const uint64_t epoch = next_join_commit_epoch_locked ();
     std::shared_ptr<spot_logical_state_t> source_spot = actor->joined_spot_state;
@@ -964,7 +953,7 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
       zlink::spot_node_access_t::entry_spot_state (actor->node)->routing_id, previous_epoch);
     actor->join_epoch = epoch;
     set_actor_entry_spot_locked (actor);
-    const zlink_routing_id_t entry_spot = actor_current_spot_rid_locked (actor);
+    const zlink_routing_id_t entry_spot = join_actor_current_spot_rid_locked (actor);
     const zlink_spot_actor_lifecycle_info_t join_info =
       make_lifecycle_info (actor_ref, actor_ref, previous_spot, entry_spot, epoch);
     schedule_lifecycle_event_locked (source_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT, leave_info);
@@ -1469,7 +1458,8 @@ zlink_spot_node_actor_new_with_request (void *node_,
     memset (&zero_actor, 0, sizeof (zero_actor));
     memset (&zero_spot, 0, sizeof (zero_spot));
     const zlink_spot_actor_lifecycle_info_t info = make_lifecycle_info (
-      zero_actor, *actor_out_, zero_spot, actor_current_spot_rid_locked (actor), actor->join_epoch);
+      zero_actor, *actor_out_, zero_spot, join_actor_current_spot_rid_locked (actor),
+      actor->join_epoch);
     schedule_lifecycle_event_locked (actor->joined_spot_state, ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED,
                                      info, &request_parts);
     zlink::spot_clear_msg_parts (&request_parts);
@@ -2257,7 +2247,7 @@ extern "C" zlink_request_result_t zlink_spot_node_actor_close_bound_session (
 
         zlink_actor_ref_t actor_ref;
         fill_ref (actor, &actor_ref);
-        const zlink_routing_id_t spot_rid = actor_current_spot_rid_locked (actor);
+        const zlink_routing_id_t spot_rid = join_actor_current_spot_rid_locked (actor);
         const zlink_spot_actor_lifecycle_info_t lifecycle_info =
           make_lifecycle_info (actor_ref, actor_ref, spot_rid, spot_rid, actor->join_epoch);
         std::shared_ptr<spot_logical_state_t> lifecycle_spot = actor->joined_spot_state;

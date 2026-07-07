@@ -13,6 +13,16 @@ inline void cancel_asio_timer_if_started (bool *started_, cancel_fn_t cancel_fn_
     cancel_fn_ ();
     *started_ = false;
 }
+
+template <typename start_fn_t>
+inline bool start_asio_timer_if_positive (int interval_, bool *started_, start_fn_t start_fn_)
+{
+    if (interval_ <= 0 || !started_)
+        return false;
+    start_fn_ (interval_);
+    *started_ = true;
+    return true;
+}
 }
 
 #endif

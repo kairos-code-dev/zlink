@@ -228,23 +228,22 @@ void zlink::asio_ipc_connecter_t::on_connect (const boost::system::error_code &e
 
 void zlink::asio_ipc_connecter_t::add_connect_timer ()
 {
-    if (options.connect_timeout > 0) {
+    start_asio_timer_if_positive (
+      options.connect_timeout, &_connect_timer_started, [this] (int timeout) {
         IPC_CONNECTER_DBG ("add_connect_timer: timeout=%d", options.connect_timeout);
-        add_timer (options.connect_timeout, connect_timer_id);
-        _connect_timer_started = true;
-    }
+        add_timer (timeout, connect_timer_id);
+    });
 }
 
 void zlink::asio_ipc_connecter_t::add_reconnect_timer ()
 {
-    if (options.reconnect_ivl > 0) {
-        const int interval = get_new_reconnect_ivl ();
+    const int interval = options.reconnect_ivl > 0 ? get_new_reconnect_ivl () : 0;
+    start_asio_timer_if_positive (interval, &_reconnect_timer_started, [this] (int interval) {
         IPC_CONNECTER_DBG ("add_reconnect_timer: interval=%d", interval);
         add_timer (interval, reconnect_timer_id);
         _socket_ptr->event_connect_retried (make_unconnected_connect_endpoint_pair (_endpoint_str),
                                             interval);
-        _reconnect_timer_started = true;
-    }
+    });
 }
 
 int zlink::asio_ipc_connecter_t::get_new_reconnect_ivl ()

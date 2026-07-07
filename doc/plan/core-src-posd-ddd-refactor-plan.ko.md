@@ -344,6 +344,10 @@ sockets/engine/transports/utils:
   - 2026-07-07 부분 완료: 네 connecter의 `process_term`/connect completion에
     반복되던 timer started flag cancel 패턴을 `cancel_asio_timer_if_started`로
     통합했다. 실제 `cancel_timer` 호출은 각 connecter의 람다에 남겼다.
+  - 2026-07-07 부분 완료: 네 connecter의 connect/reconnect timer 시작 패턴을
+    `start_asio_timer_if_positive`로 통합했다. reconnect interval 계산과
+    `event_connect_retried` 순서는 기존 transport별 호출처에 남겨 동작 의미를
+    유지했다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

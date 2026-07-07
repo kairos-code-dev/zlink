@@ -123,19 +123,8 @@ int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_, boo
     }
 
     //  Construct boost endpoint from ws_address
-    boost::asio::ip::tcp::endpoint bind_endpoint;
-    const struct sockaddr *sa = addr_->addr ();
-    if (sa->sa_family == AF_INET) {
-        const struct sockaddr_in *sin = reinterpret_cast<const struct sockaddr_in *> (sa);
-        bind_endpoint = boost::asio::ip::tcp::endpoint (
-          boost::asio::ip::address_v4 (ntohl (sin->sin_addr.s_addr)), ntohs (sin->sin_port));
-    } else {
-        const struct sockaddr_in6 *sin6 = reinterpret_cast<const struct sockaddr_in6 *> (sa);
-        boost::asio::ip::address_v6::bytes_type bytes;
-        memcpy (bytes.data (), sin6->sin6_addr.s6_addr, 16);
-        bind_endpoint = boost::asio::ip::tcp::endpoint (
-          boost::asio::ip::address_v6 (bytes, sin6->sin6_scope_id), ntohs (sin6->sin6_port));
-    }
+    const boost::asio::ip::tcp::endpoint bind_endpoint =
+      asio_tcp_endpoint_from_sockaddr (addr_->addr ());
 
     //  Bind the acceptor
     _acceptor.bind (bind_endpoint, ec);

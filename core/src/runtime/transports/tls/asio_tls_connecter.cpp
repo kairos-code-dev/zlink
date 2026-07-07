@@ -12,6 +12,7 @@
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "core/address.hpp"
+#include "transports/asio/asio_tcp_endpoint.hpp"
 #include "transports/asio/asio_reconnect_interval.hpp"
 #include "transports/asio/asio_timer_flag.hpp"
 #include "transports/asio/asio_tcp_tuning.hpp"
@@ -214,22 +215,10 @@ void zlink::asio_tls_connecter_t::start_connecting ()
     const tcp_address_t *tcp_addr = _addr->resolved.tcp_addr;
 
     //  Create endpoint from resolved address
-    const struct sockaddr *sa = tcp_addr->addr ();
-    if (sa->sa_family == AF_INET) {
-        const struct sockaddr_in *sin = reinterpret_cast<const struct sockaddr_in *> (sa);
-        _endpoint = boost::asio::ip::tcp::endpoint (
-          boost::asio::ip::address_v4 (ntohl (sin->sin_addr.s_addr)), ntohs (sin->sin_port));
-    } else {
-        const struct sockaddr_in6 *sin6 = reinterpret_cast<const struct sockaddr_in6 *> (sa);
-        boost::asio::ip::address_v6::bytes_type bytes;
-        memcpy (bytes.data (), sin6->sin6_addr.s6_addr, 16);
-        _endpoint = boost::asio::ip::tcp::endpoint (
-          boost::asio::ip::address_v6 (bytes, sin6->sin6_scope_id), ntohs (sin6->sin6_port));
-    }
+    _endpoint = asio_tcp_endpoint_from_sockaddr (tcp_addr->addr ());
 
     //  Open the socket
-    boost::asio::ip::tcp protocol =
-      _endpoint.address ().is_v6 () ? boost::asio::ip::tcp::v6 () : boost::asio::ip::tcp::v4 ();
+    boost::asio::ip::tcp protocol = asio_tcp_protocol_for_endpoint (_endpoint);
 
     boost::system::error_code ec;
     _socket.open (protocol, ec);
@@ -244,20 +233,8 @@ void zlink::asio_tls_connecter_t::start_connecting ()
         _socket.set_option (boost::asio::socket_base::reuse_address (true), ec);
 
         //  Create source endpoint
-        boost::asio::ip::tcp::endpoint src_endpoint;
-        const struct sockaddr *src_sa = tcp_addr->src_addr ();
-        if (src_sa->sa_family == AF_INET) {
-            const struct sockaddr_in *sin = reinterpret_cast<const struct sockaddr_in *> (src_sa);
-            src_endpoint = boost::asio::ip::tcp::endpoint (
-              boost::asio::ip::address_v4 (ntohl (sin->sin_addr.s_addr)), ntohs (sin->sin_port));
-        } else {
-            const struct sockaddr_in6 *sin6 =
-              reinterpret_cast<const struct sockaddr_in6 *> (src_sa);
-            boost::asio::ip::address_v6::bytes_type bytes;
-            memcpy (bytes.data (), sin6->sin6_addr.s6_addr, 16);
-            src_endpoint = boost::asio::ip::tcp::endpoint (
-              boost::asio::ip::address_v6 (bytes, sin6->sin6_scope_id), ntohs (sin6->sin6_port));
-        }
+        const boost::asio::ip::tcp::endpoint src_endpoint =
+          asio_tcp_endpoint_from_sockaddr (tcp_addr->src_addr ());
 
         _socket.bind (src_endpoint, ec);
         if (ec) {

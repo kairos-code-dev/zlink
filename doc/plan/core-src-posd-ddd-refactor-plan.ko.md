@@ -356,6 +356,11 @@ sockets/engine/transports/utils:
     `sockaddr_storage` 변환을 `asio_tcp_endpoint_to_sockaddr` inline helper로
     통합했다. accept filter 입력 형식과 peer endpoint 조회 실패 시 zero storage를
     넘기는 기존 의미는 유지했다.
+  - 2026-07-08 부분 완료: TCP/TLS/WS connecter·listener의 `sockaddr` →
+    `boost::asio::ip::tcp::endpoint` 변환과 endpoint 기반 protocol 선택을
+    `asio_tcp_endpoint_from_sockaddr`/`asio_tcp_protocol_for_endpoint`로 통합했다.
+    source bind endpoint, listener bind endpoint, remote connect endpoint의
+    IPv4/IPv6 해석은 기존과 동일하게 유지했다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

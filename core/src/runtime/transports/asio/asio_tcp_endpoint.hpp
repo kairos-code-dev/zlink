@@ -20,6 +20,29 @@
 
 namespace zlink
 {
+inline boost::asio::ip::tcp::endpoint asio_tcp_endpoint_from_sockaddr (
+  const struct sockaddr *addr_)
+{
+    if (addr_->sa_family == AF_INET) {
+        const struct sockaddr_in *sin = reinterpret_cast<const struct sockaddr_in *> (addr_);
+        return boost::asio::ip::tcp::endpoint (
+          boost::asio::ip::address_v4 (ntohl (sin->sin_addr.s_addr)), ntohs (sin->sin_port));
+    }
+
+    const struct sockaddr_in6 *sin6 = reinterpret_cast<const struct sockaddr_in6 *> (addr_);
+    boost::asio::ip::address_v6::bytes_type bytes;
+    std::memcpy (bytes.data (), sin6->sin6_addr.s6_addr, bytes.size ());
+    return boost::asio::ip::tcp::endpoint (
+      boost::asio::ip::address_v6 (bytes, sin6->sin6_scope_id), ntohs (sin6->sin6_port));
+}
+
+inline boost::asio::ip::tcp asio_tcp_protocol_for_endpoint (
+  const boost::asio::ip::tcp::endpoint &endpoint_)
+{
+    return endpoint_.address ().is_v6 () ? boost::asio::ip::tcp::v6 ()
+                                         : boost::asio::ip::tcp::v4 ();
+}
+
 inline void asio_tcp_endpoint_to_sockaddr (const boost::asio::ip::tcp::endpoint &endpoint_,
                                            struct sockaddr_storage *storage_,
                                            socklen_t *storage_len_)

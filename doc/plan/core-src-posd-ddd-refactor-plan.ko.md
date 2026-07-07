@@ -439,7 +439,7 @@ sockets/engine/transports/utils:
   - 2026-07-08 완료: 일회성 `zlink_poll`을 `poller_poll_once.cpp`로 분리했다.
     `poller_api.cpp`는 poller lifecycle/fd/timer API와 `zlink_poller_wait` drain
     루프만 남긴다.
-- [ ] **T3-04. `socket_request_reply_router_api.cpp`(710줄) 분해**
+- [x] **T3-04. `socket_request_reply_router_api.cpp`(710줄) 분해**
   - 옵션 get/set(`:646-710`)·lifecycle(`:623-644`)은 무위험 추출.
     `recv_dealer_parts_once:375-495`의 envelope 파싱+토큰 할당은
     `runtime_io.cpp` 큐 경로와 로직 중복 — T1-04 선행 후, fast path 인라인 유지
@@ -448,6 +448,13 @@ sockets/engine/transports/utils:
     `socket_request_reply_router_control.cpp`로 분리했다. router/dealer recv 본문은
     변경하지 않았고, 파일-local socket type 검증 사본은 기존
     `reqrep::validate_socket_type` 정본 호출로 교체했다.
+  - 2026-07-08 완료 판정: `recv_dealer_parts_once`의 envelope parse와
+    reply-target export는 router/dealer recv hot path 안에 남긴다. T1-04에서
+    reply-token 할당 정본은 이미 재사용하도록 바꿨고, 남은 receive/parse/store
+    순서를 공통화하려면 per-message recv 본문에 out-of-line helper, callback,
+    또는 템플릿 드라이버를 추가해야 한다. 이는 2.3절의 hot-path 가드레일과
+    POSD의 얕은 모듈 위험을 동시에 키우므로 T3-04에서는 control-plane 분해까지만
+    완료로 닫는다. recv 시퀀싱 공통화는 T4-01 벤치 게이트에서만 다시 판단한다.
 - [x] **T3-05. ZMP handshake/control 중복 통합 (zmp ↔ ws 엔진)**
   - `engine/asio/asio_zmp_engine.cpp` vs `transports/ws/asio_ws_engine.cpp`:
     `receive_hello`/`parse_hello`/`process_handshake_input`/
@@ -682,6 +689,11 @@ sockets/engine/transports/utils:
   `zlink_router_enable_request_reply_receive`, default timeout get/set)를
   `socket_request_reply_router_control.cpp`로 분리했다. recv hot path는 변경하지
   않았고, socket type 검증은 기존 `reqrep::validate_socket_type` 정본을 재사용한다.
+- 2026-07-08: T3-04 완료 — 남은 dealer recv envelope parse와 reply-target export
+  중복은 hot recv 본문에 직접 걸려 있어 공통 helper로 빼면 per-message 호출 깊이나
+  콜백/템플릿 드라이버 복잡도가 늘어난다. T1-04로 reply-token allocator 정본은
+  이미 재사용되므로, control-plane 분해까지만 이 항목의 완료 범위로 닫고 recv
+  시퀀싱 정리는 T4-01 벤치 게이트 대상으로 남긴다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

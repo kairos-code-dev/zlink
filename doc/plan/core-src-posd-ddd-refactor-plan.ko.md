@@ -392,6 +392,9 @@ sockets/engine/transports/utils:
     방향으로 이동. (code-motion / M)
   - `utils/ip.cpp:300-750`: self-pipe/socketpair 구축 엔진(~440줄)은 자립
     서브시스템 → 분리. `create_ipc_wildcard_address`는 IPC 도메인으로. (없음 / M)
+  - 2026-07-08 부분 완료: `socket_monitor_runtime_t` 구현과 monitor ready-key
+    helper를 `socket_monitor_runtime.cpp`로 분리했다. monitor queue/ready
+    bookkeeping만 이동했고 lifecycle, dispatch, endpoint 경로는 유지했다.
 
 ### 3.3 티어 3 — 대형 구조 (6건)
 
@@ -569,6 +572,9 @@ sockets/engine/transports/utils:
   실제 공통 base 상속은 transport별 engine/session ownership 차이를 숨기는 얕은
   모듈이 되어 보류했다. 완료 확인은 `test_reconnect_ivl`,
   `test_reconnect_options`, `test_transport_matrix` 3개 focused core CTest로 수행했다.
+- 2026-07-08: T2-23 부분 완료 — `socket_monitor_runtime_t` 구현을 별도 TU로
+  분리했다. 확인: `cmake --build core/build -j1`, `ctest -R
+  'unittest_socket_runtime|test_monitor'`.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

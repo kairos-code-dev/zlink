@@ -1080,6 +1080,7 @@ set(socket-common-sources
     src/runtime/sockets/common/socket_base_msg.cpp
     src/runtime/sockets/common/socket_base_monitor.cpp
     src/runtime/sockets/common/socket_base_routing.cpp
+    src/runtime/sockets/common/socket_monitor_runtime.cpp
     src/runtime/sockets/common/socket_runtime.cpp
     src/runtime/sockets/common/socket_submit_retry_fault_injection.cpp)
 

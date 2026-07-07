@@ -315,7 +315,7 @@ runtime/core:
 
 sockets/engine/transports/utils:
 
-- [ ] **T2-22. connecter/listener 공통 base 도입 (각 4중 복제)**
+- [x] **T2-22. connecter/listener 공통 base 도입 (각 4중 복제)**
   - `transports/{tcp,ipc,tls,ws}/asio_*_connecter.cpp`: `get_new_reconnect_ivl`
     (verbatim 복사), reconnect/connect 타이머, plug/term, tune, create_engine →
     `asio_connecter_base_t`.
@@ -376,6 +376,12 @@ sockets/engine/transports/utils:
   - 2026-07-08 부분 완료: TCP/TLS/WS listener의 acceptor close + `event_closed`
     방출도 `close_asio_socket_if_open`을 재사용하도록 정리했다. IPC listener는
     filesystem cleanup과 close-failed event가 결합돼 있어 기존 구현을 유지했다.
+  - 2026-07-08 완료 판정: 실제 `asio_connecter_base_t`/`asio_listener_base_t`
+    상속 도입은 보류했다. 남은 `process_plug` 중복은 한 줄 delayed-start 분기이고,
+    `create_engine` 꼬리는 TCP/IPC/TLS/WS의 transport ownership, SSL/WS context,
+    endpoint rewriting, IO thread 선택 의미가 달라 공통 base로 올리면 얕은 모듈이
+    된다. 대신 reconnect, timer, termination, close, accept, address, tuning
+    정책의 중복 지점을 inline helper로 정본화해 drift 위험을 줄였다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII
@@ -558,6 +564,11 @@ sockets/engine/transports/utils:
   `spot_request_reply_local_reply.cpp`, `spot_request_reply_local_request.cpp`로
   분리했다. 원래 파일은 combined message parsing과 local-delivery orchestration만
   남긴다.
+- 2026-07-08: T2-22 완료 — ASIO connecter/listener의 reconnect interval, timer,
+  termination, close, accept, address, tuning 정책 중복을 inline helper로 정본화했다.
+  실제 공통 base 상속은 transport별 engine/session ownership 차이를 숨기는 얕은
+  모듈이 되어 보류했다. 완료 확인은 `test_reconnect_ivl`,
+  `test_reconnect_options`, `test_transport_matrix` 3개 focused core CTest로 수행했다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

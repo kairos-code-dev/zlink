@@ -186,13 +186,7 @@ void zlink::asio_tls_listener_t::process_term (int linger_)
     _terminating = true;
     _linger = linger_;
 
-    //  Close the acceptor - cancels pending async_accept
-    if (_acceptor.is_open ()) {
-        fd_t fd = _acceptor.native_handle ();
-        boost::system::error_code ec;
-        _acceptor.close (ec);
-        _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint), fd);
-    }
+    close ();
 
     //  Process pending handlers while object is still alive
     drain_asio_listener_pending_accepts (_io_context, &_accepting_count);

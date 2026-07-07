@@ -332,6 +332,9 @@ sockets/engine/transports/utils:
   - 2026-07-07 부분 완료: 네 listener의 종료 시 pending accept drain 루프를
     `drain_asio_listener_pending_accepts`로 통합했다. close/event 처리와 IPC 파일
     cleanup은 transport별 의미가 달라 유지했다.
+  - 2026-07-07 부분 완료: TCP/TLS/WS listener의 `process_term` 안에 재복제된
+    acceptor close/event_closed 블록을 기존 `close()` 호출로 접었다. IPC는 이미
+    cleanup 포함 `close()`를 쓰고 있어 변경하지 않았다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

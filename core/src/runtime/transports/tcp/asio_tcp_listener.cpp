@@ -189,13 +189,7 @@ void zlink::asio_tcp_listener_t::process_term (int linger_)
     _terminating = true;
     _linger = linger_;
 
-    //  Close the acceptor - this cancels any pending async_accept
-    if (_acceptor.is_open ()) {
-        fd_t fd = _acceptor.native_handle ();
-        boost::system::error_code ec;
-        _acceptor.close (ec);
-        _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint), fd);
-    }
+    close ();
 
     //  Process any pending handlers (including the cancelled async_accept)
     //  to ensure the callback fires while the object is still alive.

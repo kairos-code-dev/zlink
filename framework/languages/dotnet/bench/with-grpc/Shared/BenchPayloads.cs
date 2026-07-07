@@ -6,7 +6,7 @@ public static class BenchPayloads
 {
     public static BenchPayload Create(int payloadSize)
     {
-        return new BenchPayload { Body = ByteString.CopyFrom(CreateBytes(payloadSize)) };
+        return new BenchPayload { Body = UnsafeByteOperations.UnsafeWrap(CreateBytes(payloadSize)) };
     }
 
     public static byte[] CreateBytes(int payloadSize)

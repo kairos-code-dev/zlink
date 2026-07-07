@@ -125,7 +125,7 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_request_reply_state (handle);
     std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-      router_spot_state = zlink::spot_reqrep_internal::find_or_create_router_state (router_);
+      router_spot_state = handle.socket->router_spot_request_reply_state ();
     bool use_helper_queue = false;
     if (state) {
         std::lock_guard<std::mutex> lock (state->mutex);
@@ -151,6 +151,15 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
           router_spot_state
             ? zlink::spot_reqrep_internal::router_completion_signal_socket (router_spot_state)
             : NULL;
+
+        if (blocking && !use_helper_queue && !state && !router_spot_state) {
+            return reqrep::recv_router_message_direct (
+                     handle, source_node_rid_out, source_spot_rid_out, request_seq_out, parts_out,
+                     part_count_out, static_cast<int> (flags_))
+                     == 0
+                   ? ZLINK_RECV_OK
+                   : zlink::recv_result_internal::from_errno (errno);
+        }
 
         while (true) {
             zlink_recv_result_t rc =

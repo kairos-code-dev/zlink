@@ -6,6 +6,7 @@
 
 #include "core/msg.hpp"
 #include "core/recv_tls_view.hpp"
+#include "core/socket_poller.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/sleep.hpp"
@@ -364,6 +365,21 @@ int zlink::wait_socket_events_internal (void *socket_, short events_, long timeo
     socket_base_t *socket = static_cast<socket_base_t *> (socket_);
     if (!socket || !socket->check_tag ()) {
         errno = EFAULT;
+        return -1;
+    }
+
+    if (events_ == ZLINK_POLLIN) {
+        zlink::socket_poller_t poller;
+        if (poller.add (socket, NULL, ZLINK_POLLIN) != 0)
+            return -1;
+        zlink::socket_poller_t::event_t event;
+        const int rc = poller.wait (&event, 1, timeout_ms_);
+        if (rc > 0)
+            return 1;
+        if (rc == 0)
+            return 0;
+        if (errno == EAGAIN)
+            return 0;
         return -1;
     }
 

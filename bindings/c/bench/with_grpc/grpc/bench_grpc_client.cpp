@@ -299,6 +299,7 @@ int main ()
     const std::string target = zlink_c_bench::env_string ("GRPC_TARGET", "127.0.0.1:6071");
     const int window = zlink_c_bench::env_int ("WINDOW_SIZE", 100);
     const int max_outstanding = zlink_c_bench::env_int ("MAX_OUTSTANDING", 4096);
+    const std::string scenarios = zlink_c_bench::env_string ("GRPC_BENCH_SCENARIOS", "all");
     grpc::ChannelArguments args;
     args.SetInt (GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
     args.SetMaxReceiveMessageSize (16 * 1024 * 1024);
@@ -306,13 +307,18 @@ int main ()
     auto channel = grpc::CreateCustomChannel (target, grpc::InsecureChannelCredentials (), args);
     auto stub = zlink_c_bench_grpc::BenchService::NewStub (channel);
     for (const size_t size : zlink_c_bench::parse_sizes ()) {
-        zlink_c_bench::print_result (run_request_serial (stub.get (), size));
-        zlink_c_bench::print_result (
-          run_request_async (stub.get (), size, window, "grpc-c-request-window"));
-        zlink_c_bench::print_result (
-          run_request_async (stub.get (), size, max_outstanding, "grpc-c-request-saturation"));
-        zlink_c_bench::print_result (run_send_blocking (stub.get (), size));
-        zlink_c_bench::print_result (run_send_async (stub.get (), size, max_outstanding));
+        if (zlink_c_bench::scenario_enabled (scenarios, "request-serial"))
+            zlink_c_bench::print_result (run_request_serial (stub.get (), size));
+        if (zlink_c_bench::scenario_enabled (scenarios, "request-window"))
+            zlink_c_bench::print_result (
+              run_request_async (stub.get (), size, window, "grpc-c-request-window"));
+        if (zlink_c_bench::scenario_enabled (scenarios, "request-saturation"))
+            zlink_c_bench::print_result (run_request_async (stub.get (), size, max_outstanding,
+                                                            "grpc-c-request-saturation"));
+        if (zlink_c_bench::scenario_enabled (scenarios, "send-blocking"))
+            zlink_c_bench::print_result (run_send_blocking (stub.get (), size));
+        if (zlink_c_bench::scenario_enabled (scenarios, "send-saturation"))
+            zlink_c_bench::print_result (run_send_async (stub.get (), size, max_outstanding));
     }
     return 0;
 }

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
@@ -55,101 +56,128 @@ foreach (var payloadSize in options.PayloadSizes)
     if (options.Scenario is "all" or "request" or "request-serial")
     {
         Console.Error.WriteLine($"[bench] request payload={payloadSize} mode=serial");
-        Console.Error.WriteLine("[bench] running grpc-dotnet-request-serial");
-        results.Add(await RunRequestSerialAsync(
-            "grpc-dotnet-request-serial",
-            payloadSize,
-            options,
-            options.GrpcStatsUrl,
-            async (payload, ct) =>
-            {
-                return await grpc.EchoAsync(payload, cancellationToken: ct);
-            }));
-        Console.Error.WriteLine("[bench] finished grpc-dotnet-request-serial");
+        if (options.ShouldRunImplementation("grpc-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running grpc-dotnet-request-serial");
+            results.Add(await RunRequestSerialAsync(
+                "grpc-dotnet-request-serial",
+                payloadSize,
+                options,
+                options.GrpcStatsUrl,
+                async (payload, ct) =>
+                {
+                    return await grpc.EchoAsync(payload, cancellationToken: ct);
+                }));
+            Console.Error.WriteLine("[bench] finished grpc-dotnet-request-serial");
+        }
 
-        Console.Error.WriteLine("[bench] running zlink-framework-dotnet-request-serial");
-        results.Add(await RunRequestSerialAsync(
-            "zlink-framework-dotnet-request-serial",
-            payloadSize,
-            options,
-            options.ZLinkStatsUrl,
-            async (payload, ct) =>
-            {
-                return await zlink.RequestToChannel("bench", payload)
-                    .PacketName("BenchPayload")
-                    .Async<BenchPayload>(ct);
-            }));
-        Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-serial");
+        if (options.ShouldRunImplementation("zlink-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running zlink-dotnet-request-serial");
+            results.Add(await RunRawRequestSerialAsync(rawContext, payloadSize, options));
+            Console.Error.WriteLine("[bench] finished zlink-dotnet-request-serial");
+        }
 
-        Console.Error.WriteLine("[bench] running zlink-dotnet-request-serial");
-        results.Add(await RunRawRequestSerialAsync(rawContext, payloadSize, options));
-        Console.Error.WriteLine("[bench] finished zlink-dotnet-request-serial");
+        if (options.ShouldRunImplementation("zlink-framework-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running zlink-framework-dotnet-request-serial");
+            results.Add(await RunRequestSerialAsync(
+                "zlink-framework-dotnet-request-serial",
+                payloadSize,
+                options,
+                options.ZLinkStatsUrl,
+                async (payload, ct) =>
+                {
+                    return await zlink.RequestToChannel("bench", payload)
+                        .PacketName("BenchPayload")
+                        .Async<BenchPayload>(ct);
+                }));
+            Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-serial");
+        }
     }
 
-    if (options.Scenario is "all" or "request" or "request-saturation")
+    if (options.Scenario is "all" or "request" or "request-window")
     {
-        Console.Error.WriteLine($"[bench] request payload={payloadSize} mode=saturation");
-        Console.Error.WriteLine("[bench] running grpc-dotnet-request-saturation");
-        results.Add(await RunRequestAsync(
-            "grpc-dotnet-request-saturation",
-            payloadSize,
-            options,
-            options.GrpcStatsUrl,
-            async (payload, ct) =>
-            {
-                return await grpc.EchoAsync(payload, cancellationToken: ct);
-            }));
-        Console.Error.WriteLine("[bench] finished grpc-dotnet-request-saturation");
+        Console.Error.WriteLine($"[bench] request payload={payloadSize} mode=window window={options.RequestWindow}");
+        if (options.ShouldRunImplementation("grpc-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running grpc-dotnet-request-window");
+            results.Add(await RunRequestAsync(
+                "grpc-dotnet-request-window",
+                payloadSize,
+                options,
+                options.GrpcStatsUrl,
+                async (payload, ct) =>
+                {
+                    return await grpc.EchoAsync(payload, cancellationToken: ct);
+                }));
+            Console.Error.WriteLine("[bench] finished grpc-dotnet-request-window");
+        }
 
-        Console.Error.WriteLine("[bench] running zlink-framework-dotnet-request-saturation");
-        results.Add(await RunRequestAsync(
-            "zlink-framework-dotnet-request-saturation",
-            payloadSize,
-            options,
-            options.ZLinkStatsUrl,
-            async (payload, ct) =>
-            {
-                return await zlink.RequestToChannel("bench", payload)
-                    .PacketName("BenchPayload")
-                    .Async<BenchPayload>(ct);
-            }));
-        Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-saturation");
+        if (options.ShouldRunImplementation("zlink-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running zlink-dotnet-request-window");
+            results.Add(await RunRawRequestAsync(rawContext, payloadSize, options));
+            Console.Error.WriteLine("[bench] finished zlink-dotnet-request-window");
+        }
 
-        Console.Error.WriteLine("[bench] running zlink-dotnet-request-saturation");
-        results.Add(await RunRawRequestAsync(rawContext, payloadSize, options));
-        Console.Error.WriteLine("[bench] finished zlink-dotnet-request-saturation");
+        if (options.ShouldRunImplementation("zlink-framework-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running zlink-framework-dotnet-request-window");
+            results.Add(await RunRequestAsync(
+                "zlink-framework-dotnet-request-window",
+                payloadSize,
+                options,
+                options.ZLinkStatsUrl,
+                async (payload, ct) =>
+                {
+                    return await zlink.RequestToChannel("bench", payload)
+                        .PacketName("BenchPayload")
+                        .Async<BenchPayload>(ct);
+                }));
+            Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-window");
+        }
     }
 
     if (options.Scenario is "all" or "send" or "command" or "send-saturation")
     {
         Console.Error.WriteLine($"[bench] send payload={payloadSize} concurrency={options.SendConcurrency}");
-        Console.Error.WriteLine("[bench] running grpc-dotnet-send-saturation");
-        results.Add(await RunSendAsync(
-            "grpc-dotnet-send-saturation",
-            payloadSize,
-            options,
-            options.GrpcStatsUrl,
-            async (_, payload, ct) => await grpc.CommandAsync(payload, cancellationToken: ct)));
-        Console.Error.WriteLine("[bench] finished grpc-dotnet-send-saturation");
+        if (options.ShouldRunImplementation("grpc-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running grpc-dotnet-send-saturation");
+            results.Add(await RunSendAsync(
+                "grpc-dotnet-send-saturation",
+                payloadSize,
+                options,
+                options.GrpcStatsUrl,
+                async (_, payload, ct) => await grpc.CommandAsync(payload, cancellationToken: ct)));
+            Console.Error.WriteLine("[bench] finished grpc-dotnet-send-saturation");
+        }
 
-        Console.Error.WriteLine("[bench] running zlink-framework-dotnet-send-saturation");
-        results.Add(await RunSendAsync(
-            "zlink-framework-dotnet-send-saturation",
-            payloadSize,
-            options,
-            options.ZLinkStatsUrl,
-            (_, payload, ct) =>
-            {
-                zlink.SendToChannel("bench", payload)
-                    .PacketName("BenchPayload")
-                    .Submit(ct);
-                return ValueTask.CompletedTask;
-            }));
-        Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-send-saturation");
+        if (options.ShouldRunImplementation("zlink-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running zlink-dotnet-send-saturation");
+            results.Add(await RunRawSendAsync(rawContext, payloadSize, options));
+            Console.Error.WriteLine("[bench] finished zlink-dotnet-send-saturation");
+        }
 
-        Console.Error.WriteLine("[bench] running zlink-dotnet-send-saturation");
-        results.Add(await RunRawSendAsync(rawContext, payloadSize, options));
-        Console.Error.WriteLine("[bench] finished zlink-dotnet-send-saturation");
+        if (options.ShouldRunImplementation("zlink-framework-dotnet"))
+        {
+            Console.Error.WriteLine("[bench] running zlink-framework-dotnet-send-saturation");
+            results.Add(await RunSendAsync(
+                "zlink-framework-dotnet-send-saturation",
+                payloadSize,
+                options,
+                options.ZLinkStatsUrl,
+                (_, payload, ct) =>
+                {
+                    zlink.SendToChannel("bench", payload)
+                        .PacketName("BenchPayload")
+                        .Submit(ct);
+                    return ValueTask.CompletedTask;
+                }));
+            Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-send-saturation");
+        }
     }
 }
 
@@ -270,37 +298,54 @@ static async ValueTask<BenchResult> RunRequestAsync(
     reset.EnsureSuccessStatusCode();
 
     var samples = new List<long>();
-    var samplesGate = new object();
-    var next = 0L;
+    var pending = new List<PendingBenchRequest>(options.RequestWindow);
+    var next = 0UL;
     var errors = 0;
     var completed = 0;
-    var outstanding = 0;
-    var submittingStopped = 0;
-    var allCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var resources = ResourceSample.Start();
     var total = Stopwatch.StartNew();
     var activeUntil = total.Elapsed + TimeSpan.FromSeconds(options.DurationSeconds);
 
-    while (total.Elapsed < activeUntil)
+    while (total.Elapsed < activeUntil || pending.Count > 0)
     {
-        var index = Interlocked.Increment(ref next) - 1;
-        var payload = BenchMetricHeaders.CreatePayload(
-            payloadSize,
-            options.RunId,
-            BenchPhase.Active,
-            (ulong)index);
-        var started = Stopwatch.GetTimestamp();
-        Interlocked.Increment(ref outstanding);
-        _ = CompleteRequestAsync(index, payload, started);
+        while (total.Elapsed < activeUntil && pending.Count < options.RequestWindow)
+        {
+            var index = next++;
+            var payload = BenchMetricHeaders.CreatePayload(
+                payloadSize,
+                options.RunId,
+                BenchPhase.Active,
+                index);
+            var started = Stopwatch.GetTimestamp();
+            try
+            {
+                var request = operation(payload, cts.Token);
+                if (request.IsCompletedSuccessfully)
+                {
+                    ValidateReply(request.Result, options.RunId, BenchPhase.Active, payloadSize, index);
+                    completed++;
+                    AddLatencySample(samples, ElapsedMicros(started, Stopwatch.GetTimestamp()), options.LatencySampleLimit);
+                }
+                else
+                {
+                    pending.Add(new PendingBenchRequest(request.AsTask(), started, index));
+                }
+            }
+            catch
+            {
+                errors++;
+                AddLatencySample(samples, ElapsedMicros(started, Stopwatch.GetTimestamp()), options.LatencySampleLimit);
+            }
+        }
+
+        if (DrainCompletedRequests(pending, payloadSize, options, samples, ref completed, ref errors) == 0
+            && pending.Count > 0)
+        {
+            await WaitAnyPendingRequestAsync(pending, cts.Token);
+            DrainCompletedRequests(pending, payloadSize, options, samples, ref completed, ref errors);
+        }
     }
 
-    Volatile.Write(ref submittingStopped, 1);
-    if (Volatile.Read(ref outstanding) == 0)
-    {
-        allCompleted.TrySetResult();
-    }
-
-    await allCompleted.Task.WaitAsync(cts.Token);
     total.Stop();
     var clientCpuSeconds = resources.CpuSeconds();
     var clientMemoryMb = resources.WorkingSetMb();
@@ -329,32 +374,6 @@ static async ValueTask<BenchResult> RunRequestAsync(
         server.CpuSeconds,
         server.WorkingSetMb);
 
-    async Task CompleteRequestAsync(long index, BenchPayload payload, long started)
-    {
-        try
-        {
-            var reply = await operation(payload, cts.Token);
-            ValidateReply(reply, options.RunId, BenchPhase.Active, payloadSize, (ulong)index);
-            Interlocked.Increment(ref completed);
-        }
-        catch
-        {
-            Interlocked.Increment(ref errors);
-        }
-        finally
-        {
-            AddLatencySampleLocked(
-                samples,
-                samplesGate,
-                ElapsedMicros(started, Stopwatch.GetTimestamp()),
-                options.LatencySampleLimit);
-            if (Interlocked.Decrement(ref outstanding) == 0
-                && Volatile.Read(ref submittingStopped) != 0)
-            {
-                allCompleted.TrySetResult();
-            }
-        }
-    }
 }
 
 static void ConfigureQuietLogging(HostApplicationBuilder builder)
@@ -495,12 +514,12 @@ static async ValueTask<BenchResult> RunRawRequestSerialAsync(
         Encoding.ASCII.GetBytes($"bench-request-serial-{Environment.ProcessId}")));
     socket.Connect(options.ZLinkRawEndpoint);
 
-    return await RunRequestSerialAsync(
+    return await RunRawRequestSerialBytesAsync(
         "zlink-dotnet-request-serial",
         payloadSize,
         options,
         options.ZLinkRawStatsUrl,
-        async (payload, ct) => await RawRequestCallbackAsync(socket, payload, ct));
+        socket);
 }
 
 static async ValueTask<BenchResult> RunRawRequestAsync(
@@ -508,124 +527,75 @@ static async ValueTask<BenchResult> RunRawRequestAsync(
     int payloadSize,
     BenchOptions options)
 {
-    using var cts = new CancellationTokenSource(options.Timeout);
-    using var http = new HttpClient();
     using var socket = context.CreateDealerSocket();
     socket.SetRoutingId(RoutingId.From(
         Encoding.ASCII.GetBytes($"bench-request-{Environment.ProcessId}")));
     socket.Connect(options.ZLinkRawEndpoint);
 
+    return await RunRawRequestBytesAsync(
+        "zlink-dotnet-request-window",
+        payloadSize,
+        options,
+        options.ZLinkRawStatsUrl,
+        socket);
+}
+
+static async ValueTask<BenchResult> RunRawRequestSerialBytesAsync(
+    string name,
+    int payloadSize,
+    BenchOptions options,
+    string statsUrl,
+    IDealerSocket socket)
+{
+    using var cts = new CancellationTokenSource(options.Timeout);
+    using var http = new HttpClient();
+
     for (var i = 0; i < options.Warmup; i++)
     {
         var payload = BenchMetricHeaders.CreatePayload(payloadSize, options.RunId, BenchPhase.Warmup, (ulong)i);
-        var reply = await RawRequestCallbackAsync(socket, payload, cts.Token);
-        ValidateReply(reply, options.RunId, BenchPhase.Warmup, payloadSize, (ulong)i);
+        await RawRequestCallbackAsync(socket, payload, options.RunId, BenchPhase.Warmup, payloadSize, (ulong)i, cts.Token);
     }
 
-    using var reset = await http.PostAsync($"{options.ZLinkRawStatsUrl}/bench/reset", null, cts.Token);
+    using var reset = await http.PostAsync($"{statsUrl}/bench/reset", null, cts.Token);
     reset.EnsureSuccessStatusCode();
 
     var samples = new List<long>();
-    var samplesGate = new object();
-    var next = 0L;
-    var completed = 0;
     var errors = 0;
-    var outstanding = 0;
-    var submittingStopped = 0;
-    var allCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var completed = 0;
     var resources = ResourceSample.Start();
     var total = Stopwatch.StartNew();
     var activeUntil = total.Elapsed + TimeSpan.FromSeconds(options.DurationSeconds);
 
     while (total.Elapsed < activeUntil)
     {
-        var index = Interlocked.Increment(ref next) - 1;
-        var started = Stopwatch.GetTimestamp();
+        var index = completed + errors;
         var payload = BenchMetricHeaders.CreatePayload(
             payloadSize,
             options.RunId,
             BenchPhase.Active,
             (ulong)index);
-
-        Interlocked.Increment(ref outstanding);
+        var started = Stopwatch.GetTimestamp();
         try
         {
-            var accepted = SubmitRawRequestCallback(
-                socket,
-                payload,
-                (result, parts) =>
-                {
-                    try
-                    {
-                        if (result == RequestResult.Ok)
-                        {
-                            Interlocked.Increment(ref completed);
-                        }
-                        else
-                        {
-                            Interlocked.Increment(ref errors);
-                        }
-                    }
-                    catch
-                    {
-                        Interlocked.Increment(ref errors);
-                    }
-                    finally
-                    {
-                        foreach (var part in parts)
-                        {
-                            part.Dispose();
-                        }
-
-                        AddLatencySampleLocked(
-                            samples,
-                            samplesGate,
-                            ElapsedMicros(started, Stopwatch.GetTimestamp()),
-                            options.LatencySampleLimit);
-                        if (Interlocked.Decrement(ref outstanding) == 0
-                            && Volatile.Read(ref submittingStopped) != 0)
-                        {
-                            allCompleted.TrySetResult();
-                        }
-                    }
-                });
-
-            if (!accepted)
-            {
-                Interlocked.Increment(ref errors);
-                if (Interlocked.Decrement(ref outstanding) == 0
-                    && Volatile.Read(ref submittingStopped) != 0)
-                {
-                    allCompleted.TrySetResult();
-                }
-            }
+            await RawRequestCallbackAsync(socket, payload, options.RunId, BenchPhase.Active, payloadSize, (ulong)index, cts.Token);
+            completed++;
         }
         catch
         {
-            Interlocked.Increment(ref errors);
-            if (Interlocked.Decrement(ref outstanding) == 0
-                && Volatile.Read(ref submittingStopped) != 0)
-            {
-                allCompleted.TrySetResult();
-            }
+            errors++;
         }
+
+        AddLatencySample(samples, ElapsedMicros(started, Stopwatch.GetTimestamp()), options.LatencySampleLimit);
     }
 
-    Volatile.Write(ref submittingStopped, 1);
-    if (Volatile.Read(ref outstanding) == 0)
-    {
-        allCompleted.TrySetResult();
-    }
-
-    await allCompleted.Task.WaitAsync(cts.Token);
     total.Stop();
     var clientCpuSeconds = resources.CpuSeconds();
     var clientMemoryMb = resources.WorkingSetMb();
-    var server = await http.GetFromJsonAsync<BenchServerSnapshot>($"{options.ZLinkRawStatsUrl}/bench/stats", cts.Token)
+    var server = await http.GetFromJsonAsync<BenchServerSnapshot>($"{statsUrl}/bench/stats", cts.Token)
         ?? BenchServerSnapshot.Empty;
 
     return new BenchResult(
-        "zlink-dotnet-request-saturation",
+        name,
         "KOPS",
         payloadSize,
         options.DurationSeconds,
@@ -647,13 +617,169 @@ static async ValueTask<BenchResult> RunRawRequestAsync(
         server.WorkingSetMb);
 }
 
-static async ValueTask<BenchPayload> RawRequestCallbackAsync(
+static async ValueTask<BenchResult> RunRawRequestBytesAsync(
+    string name,
+    int payloadSize,
+    BenchOptions options,
+    string statsUrl,
+    IDealerSocket socket)
+{
+    using var cts = new CancellationTokenSource(options.Timeout);
+    using var http = new HttpClient();
+    using var poller = Systems.Zlink.Zlink.CreatePoller();
+    poller.Add(socket, PollEventFlags.PollCompletion, 0);
+    var pollEvents = new PollEvent[1];
+    var callback = new RawRequestWindowState(
+        options.RunId,
+        payloadSize,
+        options.LatencySampleLimit);
+
+    for (var i = 0; i < options.Warmup; i++)
+    {
+        callback.Reset(BenchPhase.Warmup);
+        SubmitRawRequestMessage(socket, payloadSize, options.RunId,
+            BenchPhase.Warmup, (ulong)i, callback, SendFlags.None);
+        while (Volatile.Read(ref callback.Outstanding) > 0)
+        {
+            poller.Wait(pollEvents, TimeSpan.FromMilliseconds(50));
+            cts.Token.ThrowIfCancellationRequested();
+        }
+    }
+
+    using var reset = await http.PostAsync($"{statsUrl}/bench/reset", null, cts.Token);
+    reset.EnsureSuccessStatusCode();
+
+    var next = 0L;
+    var submittedSincePoll = 0;
+    callback.Reset(BenchPhase.Active);
+    var resources = ResourceSample.Start();
+    var total = Stopwatch.StartNew();
+    var activeUntil = total.Elapsed + TimeSpan.FromSeconds(options.DurationSeconds);
+
+    while (total.Elapsed < activeUntil)
+    {
+        var submittedAny = false;
+        while (total.Elapsed < activeUntil
+               && Volatile.Read(ref callback.Outstanding) < options.RequestWindow)
+        {
+            var sequence = (ulong)Interlocked.Increment(ref next) - 1UL;
+            if (!SubmitRawRequestMessage(socket, payloadSize, options.RunId,
+                    BenchPhase.Active, sequence, callback,
+                    SendFlags.DontWait))
+            {
+                Interlocked.Increment(ref callback.SubmitErrors);
+                break;
+            }
+
+            submittedAny = true;
+            if (++submittedSincePoll >= 64)
+            {
+                submittedSincePoll = 0;
+                poller.Wait(pollEvents, TimeSpan.Zero);
+            }
+        }
+
+        if (!submittedAny && Volatile.Read(ref callback.Outstanding) == 0)
+        {
+            await Task.Delay(1, cts.Token);
+            continue;
+        }
+
+        poller.Wait(pollEvents, TimeSpan.FromMilliseconds(1));
+        cts.Token.ThrowIfCancellationRequested();
+    }
+
+    var drainUntil = total.Elapsed + TimeSpan.FromMilliseconds(5000);
+    while (Volatile.Read(ref callback.Outstanding) > 0
+           && total.Elapsed < drainUntil)
+    {
+        poller.Wait(pollEvents, TimeSpan.FromMilliseconds(50));
+        cts.Token.ThrowIfCancellationRequested();
+    }
+
+    var pending = Math.Max(0, Volatile.Read(ref callback.Outstanding));
+    if (pending > 0)
+    {
+        Interlocked.Add(ref callback.Errors, pending);
+        while (Volatile.Read(ref callback.Outstanding) > 0)
+            Interlocked.Decrement(ref callback.Outstanding);
+    }
+
+    total.Stop();
+    var clientCpuSeconds = resources.CpuSeconds();
+    var clientMemoryMb = resources.WorkingSetMb();
+    var server = await http.GetFromJsonAsync<BenchServerSnapshot>($"{statsUrl}/bench/stats", cts.Token)
+        ?? BenchServerSnapshot.Empty;
+
+    return new BenchResult(
+        name,
+        "KOPS",
+        payloadSize,
+        options.DurationSeconds,
+        callback.Completed,
+        callback.Errors + callback.SubmitErrors,
+        server.Errors,
+        options.Warmup,
+        Math.Max(1.0, options.DurationSeconds),
+        callback.Completed / Math.Max(1.0, options.DurationSeconds),
+        callback.Percentile(0.95),
+        callback.Percentile(0.99),
+        callback.Mean,
+        null,
+        null,
+        null,
+        clientCpuSeconds,
+        clientMemoryMb,
+        server.CpuSeconds,
+        server.WorkingSetMb);
+}
+
+static bool SubmitRawRequestMessage(
+    IDealerSocket socket,
+    int payloadSize,
+    uint runId,
+    BenchPhase phase,
+    ulong sequence,
+    RawRequestWindowState state,
+    SendFlags flags)
+{
+    var header = Message.From(RawEnvelopeHeaders.Request);
+    Message? body = null;
+    try
+    {
+        body = RawPayloadCodec.Encode(payloadSize, runId, phase, sequence);
+        Interlocked.Increment(ref state.Outstanding);
+        var submitted = socket.Request()
+            .Message(header)
+            .Message(body)
+            .Flags(flags)
+            .Submit(state.Callback);
+        if (!submitted)
+            Interlocked.Decrement(ref state.Outstanding);
+        return submitted;
+    }
+    catch
+    {
+        Interlocked.Decrement(ref state.Outstanding);
+        throw;
+    }
+    finally
+    {
+        header.Dispose();
+        body?.Dispose();
+    }
+}
+
+static async ValueTask RawRequestCallbackAsync(
     IDealerSocket socket,
     BenchPayload payload,
+    uint runId,
+    BenchPhase phase,
+    int payloadSize,
+    ulong sequence,
     CancellationToken cancellationToken)
 {
-    var completion = new TaskCompletionSource<BenchPayload>(
-        TaskCreationOptions.RunContinuationsAsynchronously);
+    var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
     try
     {
@@ -672,10 +798,8 @@ static async ValueTask<BenchPayload> RawRequestCallbackAsync(
                     }
 
                     var replyPart = parts.Count == 1 ? parts[0] : parts[^1];
-                    completion.TrySetResult(new BenchPayload
-                    {
-                        Body = ByteString.CopyFrom(replyPart.AsReadOnlySpan())
-                    });
+                    ValidateRawReply(replyPart.AsReadOnlySpan(), runId, phase, payloadSize, sequence);
+                    completion.TrySetResult();
                 }
                 catch (Exception ex)
                 {
@@ -695,7 +819,7 @@ static async ValueTask<BenchPayload> RawRequestCallbackAsync(
         completion.TrySetException(ex);
     }
 
-    return await completion.Task.WaitAsync(cancellationToken);
+    await completion.Task.WaitAsync(cancellationToken);
 }
 
 static bool SubmitRawRequestCallback(
@@ -703,11 +827,13 @@ static bool SubmitRawRequestCallback(
     BenchPayload payload,
     RequestCallback callback)
 {
-    var message = new Message(payload.Body.Memory);
+    var header = Message.From(RawEnvelopeHeaders.Request);
+    var body = EncodeRawPayload(payload);
     try
     {
         return socket.Request()
-            .Message(message)
+            .Message(header)
+            .Message(body)
             .Submit(callback);
     }
     catch
@@ -716,7 +842,8 @@ static bool SubmitRawRequestCallback(
     }
     finally
     {
-        message.Dispose();
+        header.Dispose();
+        body.Dispose();
     }
 }
 
@@ -759,14 +886,25 @@ static void ValidateReply(BenchPayload reply, uint runId, BenchPhase phase, int 
     }
 }
 
+static void ValidateRawReply(ReadOnlySpan<byte> reply, uint runId, BenchPhase phase, int payloadSize, ulong sequence)
+{
+    if (!RawPayloadCodec.TryDecodeHeader(reply, out var header)
+        || !BenchMetricHeaders.IsExpected(header, runId, phase, payloadSize, sequence))
+    {
+        throw new InvalidOperationException($"Raw echo reply did not carry the expected {phase} metric header.");
+    }
+}
+
 static void RawSend(IDealerSocket socket, BenchPayload payload)
 {
-    var message = new Message(payload.Body.Memory);
+    var header = Message.From(RawEnvelopeHeaders.Request);
+    var body = EncodeRawPayload(payload);
     try
     {
-        if (!socket.Send().Message(message).Submit())
+        if (!socket.Send().Message(header).Message(body).Submit())
         {
-            message.Dispose();
+            header.Dispose();
+            body.Dispose();
             throw new InvalidOperationException("Raw zlink send was not accepted.");
         }
     }
@@ -776,7 +914,23 @@ static void RawSend(IDealerSocket socket, BenchPayload payload)
     }
     finally
     {
-        message.Dispose();
+        header.Dispose();
+        body.Dispose();
+    }
+}
+
+static Message EncodeRawPayload(BenchPayload payload)
+{
+    var body = Message.Allocate(payload.CalculateSize());
+    try
+    {
+        payload.WriteTo(body.AsSpan());
+        return body;
+    }
+    catch
+    {
+        body.Dispose();
+        throw;
     }
 }
 
@@ -813,6 +967,61 @@ static void AddLatencySample(List<long> samples, long elapsedMicros, int limit)
     }
 }
 
+static int DrainCompletedRequests(
+    List<PendingBenchRequest> pending,
+    int payloadSize,
+    BenchOptions options,
+    List<long> samples,
+    ref int completed,
+    ref int errors)
+{
+    var drained = 0;
+    for (var i = pending.Count - 1; i >= 0; i--)
+    {
+        var item = pending[i];
+        if (!item.Task.IsCompleted) continue;
+
+        pending.RemoveAt(i);
+        drained++;
+        try
+        {
+            var reply = item.Task.GetAwaiter().GetResult();
+            ValidateReply(reply, options.RunId, BenchPhase.Active, payloadSize, item.Sequence);
+            completed++;
+        }
+        catch
+        {
+            errors++;
+        }
+        finally
+        {
+            AddLatencySample(samples, ElapsedMicros(item.Started, Stopwatch.GetTimestamp()), options.LatencySampleLimit);
+        }
+    }
+
+    return drained;
+}
+
+static async ValueTask WaitAnyPendingRequestAsync(
+    List<PendingBenchRequest> pending,
+    CancellationToken cancellationToken)
+{
+    var tasks = ArrayPool<Task<BenchPayload>>.Shared.Rent(pending.Count);
+    try
+    {
+        for (var i = 0; i < pending.Count; i++)
+            tasks[i] = pending[i].Task;
+
+        await Task.WhenAny(new ArraySegment<Task<BenchPayload>>(tasks, 0, pending.Count))
+            .WaitAsync(cancellationToken);
+    }
+    finally
+    {
+        Array.Clear(tasks, 0, pending.Count);
+        ArrayPool<Task<BenchPayload>>.Shared.Return(tasks);
+    }
+}
+
 static void AddLatencySampleLocked(List<long> samples, object gate, long elapsedMicros, int limit)
 {
     lock (gate)
@@ -841,7 +1050,7 @@ static string FormatText(BenchReport report)
         builder.AppendLine($"  dotnet_sdk: {report.Metadata.DotNetSdk}");
         builder.AppendLine($"  configuration: {report.Metadata.Configuration}");
         builder.AppendLine($"  payload_sizes: {string.Join(",", report.Metadata.PayloadSizes)}");
-        builder.AppendLine("  request_mode: native-capacity");
+        builder.AppendLine($"  request_window: {report.Metadata.RequestWindow}");
         builder.AppendLine($"  send_concurrency: {report.Metadata.SendConcurrency}");
         builder.AppendLine($"  latency_sample_limit: {report.Metadata.LatencySampleLimit}");
         builder.AppendLine($"  warmup: {report.Metadata.Warmup}");
@@ -858,16 +1067,16 @@ static string FormatText(BenchReport report)
     }
 
     builder.AppendLine();
-    foreach (var group in report.Results.GroupBy(static result => result.Scenario))
+    foreach (var group in report.Results.GroupBy(static result => result.Pattern))
     {
         builder.AppendLine($"  > Benchmarking current for {group.Key}...");
         builder.AppendLine("    Testing local:");
-        builder.AppendLine("      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | Client CPU | Client Mem | Server CPU | Server Mem |");
-        builder.AppendLine("      |----------|------------------|--------------|--------------|--------------|--------------|------------|------------|------------|------------|");
+        builder.AppendLine("      | Implementation          | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | Client CPU | Client Mem | Server CPU | Server Mem |");
+        builder.AppendLine("      |-------------------------|----------|------------------|--------------|--------------|--------------|--------------|------------|------------|------------|------------|");
         foreach (var result in group)
         {
             builder.AppendLine(
-                $"      | {result.SizeText,-8} | {result.ThroughputText,16} | {result.BandwidthText,12} | {result.LatencyMeanText,12} | {result.LatencyP95Text,12} | {result.LatencyP99Text,12} | {result.ClientCpuText,10} | {result.ClientMemoryText,10} | {result.ServerCpuText,10} | {result.ServerMemoryText,10} |");
+                $"      | {result.Implementation,-23} | {result.SizeText,-8} | {result.ThroughputText,16} | {result.BandwidthText,12} | {result.LatencyMeanText,12} | {result.LatencyP95Text,12} | {result.LatencyP99Text,12} | {result.ClientCpuText,10} | {result.ClientMemoryText,10} | {result.ServerCpuText,10} | {result.ServerMemoryText,10} |");
         }
 
         builder.AppendLine();
@@ -964,6 +1173,114 @@ static string CpuName()
 internal sealed record BenchReport(
     BenchReportMetadata Metadata,
     IReadOnlyList<BenchResult> Results);
+
+internal readonly record struct PendingBenchRequest(
+    Task<BenchPayload> Task,
+    long Started,
+    ulong Sequence);
+
+internal sealed class RawRequestWindowState
+{
+    private readonly int _latencySampleLimit;
+    private readonly int _payloadSize;
+    private readonly uint _runId;
+    private readonly List<long> _samples;
+    private BenchPhase _phase;
+    private long _sampleCount;
+    private long _sampleSum;
+
+    internal RawRequestWindowState(uint runId, int payloadSize, int latencySampleLimit)
+    {
+        _runId = runId;
+        _payloadSize = payloadSize;
+        _latencySampleLimit = latencySampleLimit;
+        _samples = new List<long>(latencySampleLimit);
+        Callback = OnReply;
+    }
+
+    internal RequestCallback Callback { get; }
+    internal int Completed;
+    internal int Errors;
+    internal int Outstanding;
+    internal int SubmitErrors;
+
+    internal double Mean => _sampleCount == 0
+        ? 0
+        : (double)_sampleSum / _sampleCount;
+
+    internal void Reset(BenchPhase phase)
+    {
+        _phase = phase;
+        Completed = 0;
+        Errors = 0;
+        Outstanding = 0;
+        SubmitErrors = 0;
+        _sampleCount = 0;
+        _sampleSum = 0;
+        _samples.Clear();
+    }
+
+    internal long Percentile(double q)
+    {
+        if (_samples.Count == 0)
+        {
+            return (long)Mean;
+        }
+
+        _samples.Sort();
+        var index = (int)Math.Min(
+            _samples.Count - 1,
+            q * Math.Max(0, _samples.Count - 1));
+        return _samples[index];
+    }
+
+    private void OnReply(RequestResult result, IReadOnlyList<Message> parts)
+    {
+        try
+        {
+            if (result != RequestResult.Ok || parts.Count == 0)
+            {
+                Errors++;
+                return;
+            }
+
+            var replyPart = parts.Count == 1 ? parts[0] : parts[^1];
+            if (!RawPayloadCodec.TryDecodeHeader(replyPart.AsReadOnlySpan(), out var header)
+                || header.RunId != _runId
+                || header.Phase != _phase
+                || header.PayloadSize != _payloadSize)
+            {
+                Errors++;
+                return;
+            }
+
+            var elapsedNs = Math.Max(0,
+                BenchMetricHeaders.NowNs() - header.SentTimestampNs);
+            var elapsedUs = elapsedNs / 1000;
+            _sampleSum += elapsedUs;
+            _sampleCount++;
+            if (_samples.Count < _latencySampleLimit)
+            {
+                _samples.Add(elapsedUs);
+            }
+
+            Completed++;
+        }
+        catch
+        {
+            Errors++;
+        }
+        finally
+        {
+            foreach (var part in parts)
+            {
+                part.Dispose();
+            }
+
+            Interlocked.Decrement(ref Outstanding);
+        }
+    }
+}
 
 internal readonly record struct RequestSample(long ElapsedMicros, bool Success);
 
@@ -1072,6 +1389,39 @@ internal sealed record BenchResult(
     public string ClientMemoryText => $"{ClientWorkingSetMb:F1} MB";
     public string ServerCpuText => $"{CpuPercent(ServerCpuSeconds):F1}%";
     public string ServerMemoryText => $"{ServerWorkingSetMb:F1} MB";
+    public string Implementation
+    {
+        get
+        {
+            if (Scenario.StartsWith("grpc-dotnet-", StringComparison.Ordinal))
+            {
+                return "grpc-dotnet";
+            }
+
+            if (Scenario.StartsWith("zlink-framework-dotnet-", StringComparison.Ordinal))
+            {
+                return "zlink-framework-dotnet";
+            }
+
+            if (Scenario.StartsWith("zlink-dotnet-", StringComparison.Ordinal))
+            {
+                return "zlink-dotnet";
+            }
+
+            return "unknown";
+        }
+    }
+
+    public string Pattern
+    {
+        get
+        {
+            return Implementation == "unknown"
+                ? Scenario
+                : Scenario[(Implementation.Length + 1)..];
+        }
+    }
+
     public IEnumerable<string> PerfLines
     {
         get
@@ -1108,11 +1458,12 @@ internal sealed record BenchResult(
 
 internal sealed record BenchOptions(
     string Scenario,
-	    int[] PayloadSizes,
-	    int RequestWindow,
-	    int SendConcurrency,
-	    int LatencySampleLimit,
-	    int Warmup,
+    string Implementation,
+    int[] PayloadSizes,
+    int RequestWindow,
+    int SendConcurrency,
+    int LatencySampleLimit,
+    int Warmup,
     int DurationSeconds,
     int CommandSettleMs,
     string GrpcUrl,
@@ -1120,13 +1471,13 @@ internal sealed record BenchOptions(
     string GrpcStatsUrl,
     string ZLinkStatsUrl,
     string ZLinkRawEndpoint,
-	    string ZLinkRawCommandEndpoint,
-	    string ZLinkRawStatsUrl,
-	    uint RunId,
-	    string Output,
-	    string ReportFile,
-	    string Configuration,
-	    TimeSpan Timeout)
+    string ZLinkRawCommandEndpoint,
+    string ZLinkRawStatsUrl,
+    uint RunId,
+    string Output,
+    string ReportFile,
+    string Configuration,
+    TimeSpan Timeout)
 {
     public string ReportPath =>
         Path.IsPathRooted(ReportFile)
@@ -1137,16 +1488,13 @@ internal sealed record BenchOptions(
     {
         var reportStamp = DateTimeOffset.Now.ToString("yyyyMMdd_HHmmss");
         return new BenchOptions(
-	            Value(args, "--scenario") ?? "all",
-	            ParseInts(Value(args, "--payload-sizes") ?? "1024,4096"),
-	            ParseInt(
-	                Value(args, "--request-window"),
-	                MaxParsedInt(Value(args, "--request-inflights"), 512)),
-	            ParseInt(
-	                Value(args, "--send-concurrency"),
-	                MaxParsedInt(Value(args, "--command-inflights"), 8)),
-	            ParseInt(Value(args, "--latency-sample-limit"), 200_000),
-	            ParseInt(Value(args, "--warmup"), 1000),
+            Value(args, "--scenario") ?? "all",
+            Value(args, "--implementation") ?? "all",
+            ParseInts(Value(args, "--payload-sizes") ?? "1024,4096"),
+            ParseInt(Value(args, "--request-window"), 100),
+            ParseInt(Value(args, "--send-concurrency"), 8),
+            ParseInt(Value(args, "--latency-sample-limit"), 200_000),
+            ParseInt(Value(args, "--warmup"), 1000),
             ParseInt(Value(args, "--duration-seconds") ?? Value(args, "--duration"), 5),
             ParseInt(Value(args, "--command-settle-ms"), 200),
             Value(args, "--grpc-url") ?? "http://127.0.0.1:5071",
@@ -1163,8 +1511,23 @@ internal sealed record BenchOptions(
             TimeSpan.FromSeconds(ParseInt(Value(args, "--timeout-seconds"), 300)));
     }
 
+    public bool ShouldRunImplementation(string implementation)
+    {
+        return Implementation == "all"
+            || string.Equals(Implementation, implementation, StringComparison.Ordinal);
+    }
+
     public void Validate()
     {
+        if (Implementation is not "all"
+            and not "grpc-dotnet"
+            and not "zlink-dotnet"
+            and not "zlink-framework-dotnet")
+        {
+            throw new InvalidOperationException(
+                "Implementation must be one of all, grpc-dotnet, zlink-dotnet, zlink-framework-dotnet.");
+        }
+
         if (PayloadSizes.Length == 0)
         {
             throw new InvalidOperationException("At least one payload size is required.");
@@ -1230,17 +1593,6 @@ internal sealed record BenchOptions(
             .ToArray();
     }
 
-    private static int MaxParsedInt(string? value, int fallback)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return fallback;
-        }
-
-        var parsed = ParseInts(value);
-        return parsed.Length == 0 ? fallback : parsed.Max();
-    }
-
     private static void ValidateHttpLoopback(string value, string name)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
@@ -1269,5 +1621,108 @@ internal sealed record BenchOptions(
         }
 
         return IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address);
+    }
+}
+
+static class RawEnvelopeHeaders
+{
+    public static readonly byte[] Request = Encoding.UTF8.GetBytes(
+        "{\"kind\":1,\"channelName\":\"bench\",\"messageName\":\"BenchPayload\",\"contentType\":\"application/x-protobuf\",\"correlationId\":null,\"deadline\":null,\"topic\":null,\"errorCode\":null,\"errorMessage\":null,\"source\":null}");
+}
+
+static class RawPayloadCodec
+{
+    public static Message Encode(int payloadSize, uint runId, BenchPhase phase, ulong sequence)
+    {
+        var bodySize = Math.Max(payloadSize, BenchMetricHeaders.HeaderSize);
+        var encodedSize = 1 + VarintSize(bodySize) + bodySize;
+        var body = Message.Allocate(encodedSize);
+        try
+        {
+            var span = body.AsSpan();
+            span[0] = 0x0a;
+            var offset = WriteVarint(span[1..], bodySize) + 1;
+            var payload = span[offset..(offset + bodySize)];
+            BenchMetricHeaders.FillPayload(payload, runId, phase, sequence);
+            return body;
+        }
+        catch
+        {
+            body.Dispose();
+            throw;
+        }
+    }
+
+    public static bool TryDecodeHeader(ReadOnlySpan<byte> encoded, out BenchMetricHeader header)
+    {
+        header = default;
+        var source = encoded;
+        while (!source.IsEmpty)
+        {
+            if (!TryReadVarint(ref source, out var key))
+                return false;
+            var field = key >> 3;
+            var wireType = key & 0x07;
+            if (wireType != 2)
+                return false;
+            if (!TryReadVarint(ref source, out var length) || source.Length < length)
+                return false;
+            var body = source[..length];
+            if (field == 1)
+                return BenchMetricHeaders.TryDecode(body, out header);
+            source = source[length..];
+        }
+
+        return false;
+    }
+
+    private static int VarintSize(int value)
+    {
+        var size = 1;
+        var remaining = (uint)value;
+        while (remaining >= 0x80)
+        {
+            remaining >>= 7;
+            size++;
+        }
+
+        return size;
+    }
+
+    private static int WriteVarint(Span<byte> destination, int value)
+    {
+        var remaining = (uint)value;
+        var index = 0;
+        while (remaining >= 0x80)
+        {
+            destination[index++] = (byte)((remaining & 0x7f) | 0x80);
+            remaining >>= 7;
+        }
+
+        destination[index++] = (byte)remaining;
+        return index;
+    }
+
+    private static bool TryReadVarint(ref ReadOnlySpan<byte> source, out int value)
+    {
+        var result = 0;
+        var shift = 0;
+        var span = source;
+        for (var i = 0; i < span.Length && shift < 32; i++)
+        {
+            var b = span[i];
+            result |= (b & 0x7f) << shift;
+            if ((b & 0x80) == 0)
+            {
+                source = span[(i + 1)..];
+                value = result;
+                return true;
+            }
+
+            shift += 7;
+        }
+
+        value = 0;
+        return false;
     }
 }

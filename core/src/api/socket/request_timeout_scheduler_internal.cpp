@@ -62,9 +62,10 @@ struct scheduler_state_t
     std::condition_variable cv;
     schedule_map_t schedule;
     std::thread thread;
+    uint64_t next_wake_ns;
     bool started;
 
-    scheduler_state_t () : started (false) {}
+    scheduler_state_t () : next_wake_ns (0), started (false) {}
 };
 
 scheduler_state_t &scheduler_state ()
@@ -81,9 +82,11 @@ void run_timeout_loop ()
         {
             std::unique_lock<std::mutex> lock (state.mutex);
             while (state.schedule.empty ()) {
+                state.next_wake_ns = monotonic_now_ns () + idle_exit_wait_ns;
                 if (state.cv.wait_for (lock, std::chrono::nanoseconds (idle_exit_wait_ns))
                       == std::cv_status::timeout
                     && state.schedule.empty ()) {
+                    state.next_wake_ns = 0;
                     state.started = false;
                     return;
                 }
@@ -96,6 +99,7 @@ void run_timeout_loop ()
                 const uint64_t now_ns = monotonic_now_ns ();
                 const schedule_map_t::iterator next = state.schedule.begin ();
                 if (next->first > now_ns) {
+                    state.next_wake_ns = next->first;
                     state.cv.wait_for (lock, std::chrono::nanoseconds (next->first - now_ns));
                     continue;
                 }
@@ -166,9 +170,11 @@ schedule (uint32_t timeout_ms_, handler_fn handler_, void *userdata_, cleanup_fn
     {
         scheduler_state_t &state = scheduler_state ();
         std::lock_guard<std::mutex> lock (state.mutex);
+        const bool should_notify = state.next_wake_ns == 0 || task->deadline_ns < state.next_wake_ns;
         task->schedule_it = state.schedule.insert (std::make_pair (task->deadline_ns, task));
+        if (should_notify)
+            state.cv.notify_all ();
     }
-    scheduler_state ().cv.notify_all ();
     return task;
 }
 
@@ -177,7 +183,6 @@ void cancel (const std::shared_ptr<task_t> &task_)
     if (!task_)
         return;
 
-    bool removed_from_schedule = false;
     {
         scheduler_state_t &state = scheduler_state ();
         std::lock_guard<std::mutex> schedule_lock (state.mutex);
@@ -186,11 +191,8 @@ void cancel (const std::shared_ptr<task_t> &task_)
                 state.schedule.erase (task_->schedule_it);
             task_->registered = false;
             task_->schedule_it = schedule_map_t::iterator ();
-            removed_from_schedule = true;
         }
     }
-    if (removed_from_schedule)
-        scheduler_state ().cv.notify_all ();
 
     std::unique_lock<std::mutex> lock (task_->mutex);
     task_->canceled = true;

@@ -133,6 +133,24 @@ inline std::string env_string (const char *name, const char *fallback)
     return value && *value ? std::string (value) : std::string (fallback);
 }
 
+inline bool scenario_enabled (const std::string &enabled, const char *scenario)
+{
+    if (enabled == "all")
+        return true;
+
+    size_t start = 0;
+    while (start <= enabled.size ()) {
+        const size_t comma = enabled.find (',', start);
+        const size_t end = comma == std::string::npos ? enabled.size () : comma;
+        if (enabled.compare (start, end - start, scenario) == 0)
+            return true;
+        if (comma == std::string::npos)
+            break;
+        start = comma + 1;
+    }
+    return false;
+}
+
 class latency_sampler_t
 {
   public:

@@ -14,7 +14,10 @@ RUN_STAMP="${RUN_STAMP:-$(date +%Y%m%d_%H%M%S)}"
 OUTPUT="${OUTPUT:-${ROOT_DIR}/log/with_grpc_dotnet_${RUN_STAMP}}"
 REPORT_FILE="${REPORT_FILE:-with_grpc_dotnet_${RUN_STAMP}.txt}"
 
-dotnet build "${ROOT_DIR}/WithGrpcBench.sln" -c "${CONFIGURATION}"
+dotnet build "${ROOT_DIR}/GrpcServer/WithGrpcBench.GrpcServer.csproj" -c "${CONFIGURATION}"
+dotnet build "${ROOT_DIR}/ZLinkServer/WithGrpcBench.ZLinkServer.csproj" -c "${CONFIGURATION}"
+dotnet build "${ROOT_DIR}/ZLinkRawServer/WithGrpcBench.ZLinkRawServer.csproj" -c "${CONFIGURATION}"
+dotnet build "${ROOT_DIR}/Client/WithGrpcBench.Client.csproj" -c "${CONFIGURATION}"
 
 grpc_log="${OUTPUT}/grpc-server.log"
 zlink_log="${OUTPUT}/zlink-server.log"
@@ -56,6 +59,7 @@ dotnet run --no-build -c "${CONFIGURATION}" --project "${ROOT_DIR}/Client/WithGr
   --zlink-stats-url "${ZLINK_STATS_URL}" \
   --zlink-raw-stats-url "${ZLINK_RAW_STATS_URL}" \
   --payload-sizes "${PAYLOAD_SIZES:-1024,4096}" \
+  --request-window "${REQUEST_WINDOW:-100}" \
   --send-concurrency "${SEND_CONCURRENCY:-8}" \
   --warmup "${WARMUP:-1000}" \
   --duration-seconds "${DURATION_SECONDS:-5}" \

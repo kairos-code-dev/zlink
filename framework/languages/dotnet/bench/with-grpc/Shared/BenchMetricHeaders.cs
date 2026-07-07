@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Google.Protobuf;
 
 namespace WithGrpcBench.Shared;
@@ -20,9 +21,16 @@ public static class BenchMetricHeaders
 {
     public const int HeaderSize = 29;
     private const uint Magic = 0x5A4C4E4B; // "ZLNK"
-    private const long UnixEpochTicks = 621355968000000000L;
 
     public static BenchPayload CreatePayload(int payloadSize, uint runId, BenchPhase phase, ulong sequence)
+    {
+        return new BenchPayload
+        {
+            Body = UnsafeByteOperations.UnsafeWrap(CreatePayloadBytes(payloadSize, runId, phase, sequence))
+        };
+    }
+
+    public static byte[] CreatePayloadBytes(int payloadSize, uint runId, BenchPhase phase, ulong sequence)
     {
         if (payloadSize < HeaderSize)
         {
@@ -34,7 +42,21 @@ public static class BenchMetricHeaders
 
         var bytes = BenchPayloads.CreateBytes(payloadSize);
         Stamp(bytes, runId, phase, payloadSize, sequence, NowNs());
-        return new BenchPayload { Body = ByteString.CopyFrom(bytes) };
+        return bytes;
+    }
+
+    public static void FillPayload(Span<byte> payload, uint runId, BenchPhase phase, ulong sequence)
+    {
+        if (payload.Length < HeaderSize)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(payload),
+                payload.Length,
+                $"Payload size must be at least {HeaderSize} bytes.");
+        }
+
+        payload.Fill(0xab);
+        Stamp(payload, runId, phase, payload.Length, sequence, NowNs());
     }
 
     public static bool TryDecode(BenchPayload payload, out BenchMetricHeader header)
@@ -57,7 +79,7 @@ public static class BenchMetricHeaders
 
     public static long NowNs()
     {
-        return (DateTimeOffset.UtcNow.UtcTicks - UnixEpochTicks) * 100L;
+        return Stopwatch.GetTimestamp() * 1_000_000_000L / Stopwatch.Frequency;
     }
 
     private static void Stamp(

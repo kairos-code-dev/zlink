@@ -346,7 +346,7 @@ sockets/engine/transports/utils:
     `process_ready|error|command_message`/heartbeat 등 ~10쌍이 사실상 동일.
     handshake는 연결당 1회라 안전 — 공유 handshake driver로.
     **`decode_and_push`/`push_one_then_decode`(hot recv)는 제외.** (code-motion / M–L)
-- [ ] **T3-06. runtime reqrep 층과 api reqrep 층의 분해 대칭화 마무리**
+- [x] **T3-06. runtime reqrep 층과 api reqrep 층의 분해 대칭화 마무리**
   - T2-08/T2-09 완료 후 남는 dispatch 잔여(`dispatch_spot_request_to_*`,
     local-delivery 파이프라인)를 api쪽 분해 어휘(submit/delivery/completion)와
     맞춰 정리. (code-motion / M)
@@ -488,3 +488,7 @@ sockets/engine/transports/utils:
   `spot_request_reply_local_reply.cpp`, `spot_request_reply_local_request.cpp`로
   분리했다. 원래 파일은 combined message parsing과 local-delivery orchestration만
   남긴다.
+- 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
+  `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
+  `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,
+  direct payload delivery와 공통 local queue 진입점을 별도 TU로 분리했다.

@@ -68,9 +68,9 @@ int zlink::spot_reqrep_internal::dispatch_local_request_impl (const std::string 
         return -1;
 
     if (spot_envelope.destination_class == routed_protocol::spot_endpoint_class)
-        return dispatch_spot_request_to_spot (spot_envelope, rr_envelope);
+        return deliver_request_to_spot (spot_envelope, rr_envelope);
 
-    return dispatch_spot_request_to_router (router_rid_, spot_envelope, rr_envelope);
+    return deliver_request_to_router (router_rid_, spot_envelope, rr_envelope);
 }
 
 int zlink::spot_reqrep_internal::dispatch_local_built_message (
@@ -113,9 +113,9 @@ int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_deliver
                                               spot_envelope_.payload_part_count, &rr_envelope)) {
         if (rr_envelope.message_type == zlink::request_reply::request_type) {
             if (spot_envelope_.destination_class == routed_protocol::spot_endpoint_class)
-                return dispatch_spot_request_to_spot (spot_envelope_, rr_envelope);
-            return dispatch_spot_request_to_router (spot_envelope_.destination_endpoint_rid,
-                                                    spot_envelope_, rr_envelope);
+                return deliver_request_to_spot (spot_envelope_, rr_envelope);
+            return deliver_request_to_router (spot_envelope_.destination_endpoint_rid,
+                                              spot_envelope_, rr_envelope);
         }
 
         if (spot_envelope_.destination_class == routed_protocol::spot_endpoint_class)
@@ -124,7 +124,7 @@ int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_deliver
     }
 
     if (spot_envelope_.destination_class == routed_protocol::spot_endpoint_class) {
-        return dispatch_local_direct_to_spot (
+        return deliver_direct_to_spot (
           spot_envelope_.source_class, spot_envelope_.source_node_rid,
           spot_envelope_.source_endpoint_rid, &spot_envelope_.source_node_rid_value,
           &spot_envelope_.source_endpoint_rid_value, spot_envelope_.destination_node_rid,
@@ -132,7 +132,7 @@ int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_deliver
           spot_envelope_.payload_part_count);
     }
 
-    return dispatch_local_direct_to_router (
+    return deliver_direct_to_router (
       spot_envelope_.destination_endpoint_rid, spot_envelope_.source_node_rid,
       spot_envelope_.source_endpoint_rid, &spot_envelope_.source_node_rid_value,
       &spot_envelope_.source_endpoint_rid_value, spot_envelope_.payload_parts,

@@ -440,6 +440,9 @@ sockets/engine/transports/utils:
     `process_ready|error|command_message`/heartbeat 등 ~10쌍이 사실상 동일.
     handshake는 연결당 1회라 안전 — 공유 handshake driver로.
     **`decode_and_push`/`push_one_then_decode`(hot recv)는 제외.** (code-motion / M–L)
+  - 2026-07-08 부분 완료: HELLO+READY frame construction 중복을
+    `zmp_control::build_hello_ready_frames`로 통합했다. hot recv 함수는 변경하지
+    않았다. 남은 parse/process/heartbeat 중복은 별도 하위 조각으로 이어간다.
 - [x] **T3-06. runtime reqrep 층과 api reqrep 층의 분해 대칭화 마무리**
   - T2-08/T2-09 완료 후 남는 dispatch 잔여(`dispatch_spot_request_to_*`,
     local-delivery 파이프라인)를 api쪽 분해 어휘(submit/delivery/completion)와
@@ -500,7 +503,14 @@ sockets/engine/transports/utils:
     동일 머신·동일 조건에서 throughput/latency 비교, 결과 요지를 커밋 메시지에
     남긴다.
 - 티어 4: 착수 전 설계 검토 기록 + 착수 후 벤치 무회귀 증명이 머지 조건.
-- 클러스터 완료 시점: full test gate(fail 0) 후 다음 클러스터로.
+- 항목별 검증은 직접 영향 범위의 `core` CTest만 짧게 수행한다. 전체 `core`
+  CTest는 티어 또는 클러스터 완료 시점에 한 번에 수행한다. framework/bindings
+  e2e는 이 core 리팩토링 루프의 완료 게이트가 아니며, 전체 core 정리 뒤 별도
+  단계에서 확인한다.
+- perf가 필요한 hot-path 인접 항목은 전체 크기 조합 대신 1k 메시지 기준의
+  lightweight 비교를 우선 사용한다. 노이즈가 큰 머신 상태에서는 결과를
+  회귀 의심 신호로만 보고, 숫자 단정은 하지 않는다.
+- 클러스터 완료 시점: full `core` test gate(fail 0) 후 다음 클러스터로.
 - 각 항목 완료 시 이 문서 체크박스 갱신. 계획과 실제가 어긋나면 코드가 아니라
   이 문서를 먼저 갱신한다.
 
@@ -610,6 +620,14 @@ sockets/engine/transports/utils:
   분리, `ip_fdpair.cpp` 분리까지 모두 닫았다. 확인: `cmake --build core/build -j1`,
   `ctest -R
   'test_pubsub|test_pubsub_filter_xpub|test_xpub_nodrop|unittest_socket_runtime|unittest_spot_subject_access|test_spot_pubsub_scenario'`.
+- 2026-07-08: T3-05 부분 완료 — ASIO ZMP 엔진과 WS 엔진에 중복되던
+  HELLO+READY control frame 조립을 `zmp_control::build_hello_ready_frames`로
+  모았다. `decode_and_push`/`push_one_then_decode`는 건드리지 않았다. 확인:
+  `cmake --build core/build -j1`, `ctest -R
+  'test_zmp_request_reply|test_zmp_request_reply_router_recv_surface|test_transport_matrix|test_stream_socket|test_stream_fastpath|test_reconnect_options'`.
+  1k STREAM lightweight perf도 baseline/patched로 실행했다
+  (`t305_baseline_hello_ready_1k`, `t305_patched_hello_ready_1k`). tcp/tls/ws는
+  같은 범위였고 wss는 노이즈가 커서 숫자 단정 없이 성공 여부만 확인했다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

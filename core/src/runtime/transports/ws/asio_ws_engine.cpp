@@ -439,41 +439,8 @@ void zlink::asio_ws_engine_t::start_zmp_handshake ()
     _last_error_code = 0;
     _last_error_reason.clear ();
 
-    const size_t identity_len =
-      std::min (static_cast<size_t> (_options.routing_id_size), static_cast<size_t> (255));
-    const size_t body_len = zmp_control::hello_min_body_size + identity_len;
-    _hello_send[0] = zmp_magic;
-    _hello_send[1] = zmp_version;
-    _hello_send[2] = zmp_flag_control;
-    _hello_send[3] = 0;
-    put_uint32 (_hello_send + 4, static_cast<uint32_t> (body_len));
-    _hello_send[zmp_header_size + 0] = zmp_control_hello;
-    _hello_send[zmp_header_size + 1] = static_cast<unsigned char> (_options.type);
-    _hello_send[zmp_header_size + 2] = static_cast<unsigned char> (identity_len);
-    if (identity_len > 0)
-        memcpy (_hello_send + zmp_header_size + zmp_control::hello_min_body_size,
-                _options.routing_id, identity_len);
-
-    _hello_send_size = zmp_header_size + body_len;
-    _ready_send.clear ();
-    _ready_send.reserve (_hello_send_size + zmp_header_size + 1);
-    _ready_send.insert (_ready_send.end (), _hello_send, _hello_send + _hello_send_size);
-
-    std::vector<unsigned char> ready_body;
-    ready_body.push_back (zmp_control_ready);
-    if (_options.zmp_metadata)
-        zmp_metadata::add_basic_properties (_options, ready_body);
-
-    std::vector<unsigned char> ready_frame;
-    ready_frame.resize (zmp_header_size + ready_body.size ());
-    ready_frame[0] = zmp_magic;
-    ready_frame[1] = zmp_version;
-    ready_frame[2] = zmp_flag_control;
-    ready_frame[3] = 0;
-    put_uint32 (&ready_frame[4], static_cast<uint32_t> (ready_body.size ()));
-    memcpy (&ready_frame[zmp_header_size], &ready_body[0], ready_body.size ());
-
-    _ready_send.insert (_ready_send.end (), ready_frame.begin (), ready_frame.end ());
+    zmp_control::build_hello_ready_frames (_options, _hello_send, sizeof (_hello_send),
+                                           &_hello_send_size, _ready_send);
     _outpos = &_ready_send[0];
     _outsize = _ready_send.size ();
     _hello_sent = true;

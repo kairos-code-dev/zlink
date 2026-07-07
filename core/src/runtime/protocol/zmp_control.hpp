@@ -10,6 +10,7 @@
 #include "utils/err.hpp"
 
 #include <errno.h>
+#include <algorithm>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -61,6 +62,53 @@ struct hello_parse_result_t
     const unsigned char *identity;
     size_t identity_len;
 };
+
+inline void build_hello_ready_frames (const options_t &options_,
+                                      unsigned char *hello_send_,
+                                      size_t hello_send_capacity_,
+                                      size_t *hello_send_size_out_,
+                                      std::vector<unsigned char> &ready_send_)
+{
+    zlink_assert (hello_send_);
+    zlink_assert (hello_send_size_out_);
+    zlink_assert (hello_send_capacity_ >= zmp_header_size + hello_max_body_size);
+
+    const size_t identity_len =
+      std::min (static_cast<size_t> (options_.routing_id_size), static_cast<size_t> (255));
+    const size_t body_len = hello_min_body_size + identity_len;
+    hello_send_[0] = zmp_magic;
+    hello_send_[1] = zmp_version;
+    hello_send_[2] = zmp_flag_control;
+    hello_send_[3] = 0;
+    put_uint32 (hello_send_ + 4, static_cast<uint32_t> (body_len));
+    hello_send_[zmp_header_size + 0] = zmp_control_hello;
+    hello_send_[zmp_header_size + 1] = static_cast<unsigned char> (options_.type);
+    hello_send_[zmp_header_size + 2] = static_cast<unsigned char> (identity_len);
+    if (identity_len > 0)
+        memcpy (hello_send_ + zmp_header_size + hello_min_body_size, options_.routing_id,
+                identity_len);
+
+    *hello_send_size_out_ = zmp_header_size + body_len;
+    ready_send_.clear ();
+    ready_send_.reserve (*hello_send_size_out_ + zmp_header_size + 1);
+    ready_send_.insert (ready_send_.end (), hello_send_, hello_send_ + *hello_send_size_out_);
+
+    std::vector<unsigned char> ready_body;
+    ready_body.push_back (zmp_control_ready);
+    if (options_.zmp_metadata)
+        zmp_metadata::add_basic_properties (options_, ready_body);
+
+    std::vector<unsigned char> ready_frame;
+    ready_frame.resize (zmp_header_size + ready_body.size ());
+    ready_frame[0] = zmp_magic;
+    ready_frame[1] = zmp_version;
+    ready_frame[2] = zmp_flag_control;
+    ready_frame[3] = 0;
+    put_uint32 (&ready_frame[4], static_cast<uint32_t> (ready_body.size ()));
+    memcpy (&ready_frame[zmp_header_size], &ready_body[0], ready_body.size ());
+
+    ready_send_.insert (ready_send_.end (), ready_frame.begin (), ready_frame.end ());
+}
 
 inline bool socket_types_compatible (int local_type_, int peer_type_)
 {

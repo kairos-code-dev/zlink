@@ -1107,6 +1107,7 @@ set(socket-pubsub-sources
     src/runtime/sockets/pubsub/sub.cpp
     src/runtime/sockets/pubsub/xpub.cpp
     src/runtime/sockets/pubsub/xsub.cpp
+    src/runtime/sockets/pubsub/xsub_dispatch_lifecycle.cpp
     src/runtime/sockets/pubsub/xsub_dispatch_context.cpp)
 
 set(socket-pair-sources

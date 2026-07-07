@@ -382,7 +382,7 @@ sockets/engine/transports/utils:
     endpoint rewriting, IO thread 선택 의미가 달라 공통 base로 올리면 얕은 모듈이
     된다. 대신 reconnect, timer, termination, close, accept, address, tuning
     정책의 중복 지점을 inline helper로 정본화해 drift 위험을 줄였다.
-- [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
+- [x] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII
     scope 3종 → 클래스별 TU 분리(순수 파일 분리). (code-motion / M)
@@ -408,6 +408,9 @@ sockets/engine/transports/utils:
   - 2026-07-08 부분 완료: stream dispatch start/register/stop/accessor와 packet
     dispatch state reset을 `stream_dispatch_lifecycle.cpp`로 분리했다. `xsend`/`xrecv`,
     `xstream_dispatch_msg`, raw/packet dispatch body는 기존 파일에 유지했다.
+  - 2026-07-08 완료: xsub dispatch start/stop/active와 inflight notify를
+    `xsub_dispatch_lifecycle.cpp`로 분리했다. `dispatch_ready_messages`,
+    `dispatch_message`, `xsocket_msg_dispatch`는 기존 파일에 유지했다.
 
 ### 3.3 티어 3 — 대형 구조 (6건)
 
@@ -602,6 +605,11 @@ sockets/engine/transports/utils:
   `stream_dispatch_lifecycle.cpp`로 분리했다. 확인: `cmake --build core/build -j1`,
   `ctest -R
   'test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_stream_fastpath|test_stream_routing_id_size|test_multi_stream_server_reassembly'`.
+- 2026-07-08: T2-23 완료 — xsub dispatch lifecycle/control 구현을
+  `xsub_dispatch_lifecycle.cpp`로 분리해 `socket_runtime.cpp` 분해, stream lifecycle
+  분리, `ip_fdpair.cpp` 분리까지 모두 닫았다. 확인: `cmake --build core/build -j1`,
+  `ctest -R
+  'test_pubsub|test_pubsub_filter_xpub|test_xpub_nodrop|unittest_socket_runtime|unittest_spot_subject_access|test_spot_pubsub_scenario'`.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

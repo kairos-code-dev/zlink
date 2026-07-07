@@ -4,9 +4,11 @@
 
 #include "api/actor/spot/service_spot_actor_join_internal.hpp"
 #include "api/actor/spot/service_spot_actor_state_internal.hpp"
+#include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/socket/request_timeout_scheduler_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "runtime/services/actor/gateway/service_spot_actor_gateway_protocol_internal.hpp"
+#include "runtime/services/actor/lifecycle/service_spot_actor_lifecycle_context_internal.hpp"
 #include "runtime/services/actor/multipart/service_spot_actor_multipart_internal.hpp"
 #include "runtime/services/actor/result/service_spot_actor_result_internal.hpp"
 #include "runtime/services/actor/service_spot_actor_internal.hpp"
@@ -24,6 +26,9 @@
 
 namespace
 {
+
+using zlink::spot_actor_api_internal::actor_handle_t;
+using zlink::spot_actor_api_internal::actor_runtime;
 
 struct idempotent_join_completion_t
 {
@@ -54,6 +59,71 @@ bool same_join_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
     if (lhs_ == rhs_)
         return true;
     return lhs_->logical_state && lhs_->logical_state == rhs_->logical_state;
+}
+
+zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *actor_)
+{
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    if (actor_ && actor_->joined_spot_state)
+        return actor_->joined_spot_state->routing_id;
+    return rid;
+}
+
+uint64_t next_join_commit_epoch_locked ()
+{
+    uint64_t epoch = actor_runtime ().next_join_epoch++;
+    if (actor_runtime ().next_join_epoch == 0)
+        actor_runtime ().next_join_epoch = 1;
+    return epoch == 0 ? actor_runtime ().next_join_epoch++ : epoch;
+}
+
+actor_handle_t *resolve_join_actor_ref_locked (const zlink_actor_ref_t *ref_)
+{
+    if (!ref_ || !zlink::spot_actor_internal::valid_actor_id (ref_->actor_id)
+        || !zlink::spot_actor_internal::valid_routing_id (&ref_->node_rid))
+        return NULL;
+
+    zlink::spot_node_t *node = actor_runtime ().nodes.resolve_node_by_rid (ref_->node_rid);
+    if (!node) {
+        errno = ENOENT;
+        return NULL;
+    }
+
+    std::map<std::string, actor_handle_t *> &actors =
+      zlink::spot_node_access_t::actors_by_id (node);
+    const std::map<std::string, actor_handle_t *>::iterator actor_it =
+      actors.find (ref_->actor_id);
+    if (actor_it == actors.end () || actor_it->second->pending_remote_join) {
+        errno = ENOENT;
+        return NULL;
+    }
+
+    actor_handle_t *actor = actor_it->second;
+    if (ref_->generation != 0 && actor->generation != ref_->generation) {
+        errno = ESTALE;
+        return NULL;
+    }
+    return actor;
+}
+
+bool join_node_has_pending_actor_locked (zlink::spot_node_t *node_, const char *actor_id_)
+{
+    if (!node_ || !actor_id_)
+        return false;
+    std::map<std::string, actor_handle_t *> &actors =
+      zlink::spot_node_access_t::actors_by_id (node_);
+    std::map<std::string, actor_handle_t *>::const_iterator actor_it = actors.find (actor_id_);
+    if (actor_it != actors.end () && actor_it->second->pending_remote_join)
+        return true;
+    return actor_runtime ().joins.has_pending_remote_actor (node_, actor_id_);
+}
+
+spot_handle_t *
+find_join_spot_facade_locked (zlink::spot_node_t *node_,
+                              const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    return actor_runtime ().nodes.find_spot_for_state (node_, state_);
 }
 
 }
@@ -578,6 +648,236 @@ zlink_submit_result_t complete_idempotent_join_async (zlink_msg_t *parts_,
 }
 
 using namespace zlink::spot_actor_api_internal;
+
+extern "C" zlink_submit_result_t
+zlink_spot_node_actor_join_spot (void *node_,
+                                 const zlink_actor_ref_t *actor_ref_,
+                                 const zlink_routing_id_t *dest_node_rid_,
+                                 const zlink_routing_id_t *dest_spot_rid_,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 zlink_actor_join_spot_handler_fn handler_,
+                                 void *userdata_,
+                                 zlink_send_flags_t flags_,
+                                 uint32_t timeout_ms_)
+{
+    if ((flags_ & ~ZLINK_DONTWAIT) != 0) {
+        errno = ENOTSUP;
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+    }
+    if (!node_ || !actor_ref_ || !dest_node_rid_ || !dest_spot_rid_ || !handler_
+        || !zlink::spot_actor_internal::valid_actor_id (actor_ref_->actor_id)
+        || !zlink::spot_actor_internal::valid_routing_id (&actor_ref_->node_rid)
+        || !zlink::spot_actor_internal::valid_routing_id (dest_node_rid_)
+        || !zlink::spot_actor_internal::valid_routing_id (dest_spot_rid_)) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (!zlink::spot_actor_internal::valid_multipart_payload (parts_, part_count_))
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    if (!as_spot_node_handle (node_)) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_ref_)) {
+        errno = EDEADLK;
+        return ZLINK_SUBMIT_INVALID_STATE;
+    }
+
+    queued_join_request_t *request = NULL;
+    spot_handle_t *spot = NULL;
+    zlink_request_result_t immediate_result = ZLINK_REQUEST_OK;
+    bool external_gateway_join = false;
+    zlink::spot_node_t *external_source_node = NULL;
+    zlink_routing_id_t external_source_node_rid;
+    memset (&external_source_node_rid, 0, sizeof (external_source_node_rid));
+    {
+        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+        zlink::spot_node_t *source_node =
+          actor_runtime ().nodes.resolve_node_by_rid (actor_ref_->node_rid);
+        if (!source_node) {
+            errno = ENOTCONN;
+            return ZLINK_SUBMIT_NOT_CONNECTED;
+        }
+
+        actor_handle_t *actor = NULL;
+        std::map<std::string, actor_handle_t *> &actors =
+          zlink::spot_node_access_t::actors_by_id (source_node);
+        std::map<std::string, actor_handle_t *>::iterator actor_it =
+          actors.find (actor_ref_->actor_id);
+        if (actor_it != actors.end ())
+            actor = actor_it->second;
+        if (!actor) {
+            immediate_result = ZLINK_REQUEST_NOT_FOUND;
+        } else if (actor_ref_->generation != 0 && actor->generation != actor_ref_->generation) {
+            immediate_result = ZLINK_REQUEST_CONFLICT;
+        }
+
+        if (immediate_result != ZLINK_REQUEST_OK) {
+            /* Complete outside the actor lock. */
+        } else if (actor_runtime ().joins.actor_has_pending (actor)) {
+            errno = EBUSY;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
+    }
+    if (immediate_result != ZLINK_REQUEST_OK)
+        return complete_immediate_join_result (parts_, part_count_, handler_, userdata_,
+                                               immediate_result);
+
+    {
+        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+        actor_handle_t *actor = resolve_join_actor_ref_locked (actor_ref_);
+        if (!actor)
+            immediate_result =
+              zlink::spot_actor_internal::actor_missing_request_result_from_errno ();
+        zlink::spot_node_t *target_node = immediate_result == ZLINK_REQUEST_OK
+                                            ? actor_runtime ().nodes.resolve_node_by_rid (
+                                                *dest_node_rid_)
+                                            : NULL;
+        if (immediate_result == ZLINK_REQUEST_OK && !target_node) {
+            request = new (std::nothrow) queued_join_request_t ();
+            if (!request) {
+                errno = ENOMEM;
+                return ZLINK_SUBMIT_INTERNAL_ERROR;
+            }
+            request->actor = actor;
+            request->target_node = NULL;
+            request->remote = true;
+            request->target_node_rid = *dest_node_rid_;
+            request->source_node_rid = actor->node_rid;
+            request->source_spot_rid = join_actor_current_spot_rid_locked (actor);
+            request->source_actor_ref = actor->ref_cache;
+            request->target_actor_ref.node_rid = *dest_node_rid_;
+            strncpy (request->target_actor_ref.actor_id, actor->actor_id.c_str (),
+                     ZLINK_ACTOR_ID_MAX - 1);
+            request->handler = handler_;
+            request->userdata = userdata_;
+            request->join_epoch = next_join_commit_epoch_locked ();
+            index_join_request_locked (request);
+            external_gateway_join = true;
+            external_source_node = actor_runtime ().nodes.resolve_node_by_rid (actor->node_rid);
+            external_source_node_rid = actor->node_rid;
+        } else if (immediate_result != ZLINK_REQUEST_OK) {
+            /* Complete outside the actor lock. */
+        } else {
+            std::shared_ptr<spot_logical_state_t> target_state =
+              zlink::spot_node_access_t::lookup_spot_state (target_node, dest_spot_rid_);
+            spot = find_join_spot_facade_locked (target_node, target_state);
+            if (!spot)
+                immediate_result = ZLINK_REQUEST_NOT_FOUND;
+            else if (spot->logical_state && spot->logical_state->entry) {
+                errno = EINVAL;
+                return ZLINK_SUBMIT_INVALID_ARGUMENT;
+            } else if (zlink::spot_actor_internal::same_routing_id (actor->node_rid,
+                                                                    *dest_node_rid_)
+                       && actor->joined_spot_state
+                       && zlink::spot_actor_internal::same_routing_id (
+                         join_actor_current_spot_rid_locked (actor), *dest_spot_rid_)) {
+                const zlink_actor_ref_t current_ref = actor->ref_cache;
+                const zlink_routing_id_t current_spot = join_actor_current_spot_rid_locked (actor);
+                if (!actor_runtime ().routes.active_matches (actor))
+                    create_join_active_route_locked (actor);
+                return complete_idempotent_join_async (parts_, part_count_, handler_, userdata_,
+                                                       &current_ref, &current_spot,
+                                                       actor->join_epoch);
+            } else if (!zlink::spot_actor_internal::same_routing_id (actor->node_rid,
+                                                                     *dest_node_rid_)
+                       && actor_runtime ().routes.is_disconnected (actor->node,
+                                                                   *dest_node_rid_)) {
+                immediate_result = ZLINK_REQUEST_NOT_CONNECTED;
+            } else if (!zlink::spot_actor_internal::same_routing_id (actor->node_rid,
+                                                                     *dest_node_rid_)) {
+                std::map<std::string, actor_handle_t *> &target_actors =
+                  zlink::spot_node_access_t::actors_by_id (target_node);
+                if (target_actors.count (actor->actor_id) != 0
+                    || join_node_has_pending_actor_locked (target_node,
+                                                           actor->actor_id.c_str ())) {
+                    immediate_result = ZLINK_REQUEST_CONFLICT;
+                }
+            }
+        }
+        if (immediate_result != ZLINK_REQUEST_OK)
+            request = NULL;
+        else if (!external_gateway_join) {
+            request = new (std::nothrow) queued_join_request_t ();
+            if (!request) {
+                errno = ENOMEM;
+                return ZLINK_SUBMIT_INTERNAL_ERROR;
+            }
+            request->actor = actor;
+            request->spot = spot;
+            request->spot_state = spot->logical_state;
+            request->target_node = target_node;
+            request->remote =
+              !zlink::spot_actor_internal::same_routing_id (actor->node_rid, *dest_node_rid_);
+            request->target_node_rid = *dest_node_rid_;
+            request->source_spot_rid = join_actor_current_spot_rid_locked (actor);
+            if (request->remote) {
+                request->target_actor_ref.node_rid = *dest_node_rid_;
+                strncpy (request->target_actor_ref.actor_id, actor->actor_id.c_str (),
+                         ZLINK_ACTOR_ID_MAX - 1);
+                request->target_actor_ref.generation =
+                  next_join_generation_for_node_locked (target_node);
+                request->pending_target = create_join_actor_locked_with_generation (
+                  target_node, *dest_node_rid_, actor->actor_id.c_str (),
+                  request->target_actor_ref.generation, true);
+                if (!request->pending_target) {
+                    delete request;
+                    return errno == EBUSY ? ZLINK_SUBMIT_INVALID_STATE
+                                          : zlink::spot_actor_internal::errno_to_submit_result (
+                                              errno);
+                }
+            } else {
+                request->target_actor_ref = actor->ref_cache;
+            }
+            request->handler = handler_;
+            request->userdata = userdata_;
+            request->join_epoch = next_join_commit_epoch_locked ();
+            const zlink_submit_result_t adopt_rc =
+              zlink::spot_actor_internal::adopt_multipart_payload (&request->message_parts, parts_,
+                                                                   part_count_);
+            if (adopt_rc != ZLINK_SUBMIT_OK) {
+                if (request->pending_target)
+                    remove_join_pending_target_locked (request);
+                delete request;
+                return adopt_rc;
+            }
+            index_join_request_locked (request);
+            actor_runtime ().joins.enqueue (request);
+        }
+    }
+
+    if (immediate_result != ZLINK_REQUEST_OK)
+        return complete_immediate_join_result (parts_, part_count_, handler_, userdata_,
+                                               immediate_result);
+
+    if (external_gateway_join) {
+        const zlink_submit_result_t send_rc =
+          zlink::spot_actor_internal::send_actor_gateway_multipart_from_source (
+            external_source_node, external_source_node_rid, *dest_node_rid_,
+            zlink::spot_actor_gateway::packet_spot_join_request, *dest_spot_rid_,
+            actor_ref_->actor_id, actor_ref_->generation, request->join_epoch, 0, parts_,
+            part_count_, flags_);
+        if (send_rc != ZLINK_SUBMIT_OK) {
+            const zlink_request_result_t failure =
+              zlink::spot_actor_internal::errno_to_request_result (errno);
+            {
+                std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+                retire_join_request_locked (request);
+            }
+            complete_join_request (request, failure);
+            release_join_request_after_completion (request);
+            return ZLINK_SUBMIT_OK;
+        }
+        schedule_join_timeout (request, timeout_ms_);
+        return ZLINK_SUBMIT_OK;
+    }
+
+    schedule_join_timeout (request, timeout_ms_);
+    zlink_spot_notify_dispatch_info (spot, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE,
+                                     ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, spot);
+    return ZLINK_SUBMIT_OK;
+}
 
 extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (void *spot_,
                                                            zlink_actor_join_info_t *info_out_,

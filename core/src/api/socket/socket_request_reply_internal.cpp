@@ -176,24 +176,44 @@ void on_socket_request_timeout (void *userdata_)
         return;
 
     pending_request_t pending;
-    bool found = false;
-    {
-        std::lock_guard<std::mutex> lock (ctx->state->mutex);
-        std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
-          ctx->state->pending_requests.find (ctx->key);
-        if (it == ctx->state->pending_requests.end ())
-            return;
-        pending = it->second;
-        ctx->state->pending_sequences.erase (ctx->key.request_seq);
-        ctx->state->pending_request_keys_by_seq.erase (ctx->key.request_seq);
-        ctx->state->pending_requests.erase (it);
-        found = true;
-    }
-
-    if (found)
-        (void) queue_reply_completion (ctx->state, pending.handler, pending.userdata, ETIMEDOUT,
-                                       NULL, 0);
+    if (remove_socket_pending_request (ctx->state, ctx->key, false, &pending))
+        queue_socket_pending_timeout_completion (ctx->state, pending);
 }
+}
+
+bool remove_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,
+                                    const pending_key_t &key_,
+                                    bool allow_sequence_fallback_,
+                                    pending_request_t *pending_out_)
+{
+    if (!state_)
+        return false;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    return remove_socket_pending_request_locked (state_.get (), key_, allow_sequence_fallback_,
+                                                 pending_out_);
+}
+
+int schedule_socket_pending_timeout (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  const pending_key_t &key_,
+  uint32_t timeout_ms_,
+  std::shared_ptr<zlink::request_timeout::task_t> *task_out_)
+{
+    return zlink::request_reply_runtime::schedule_timeout_task<socket_timeout_callback_ctx_t> (
+      timeout_ms_, &on_socket_request_timeout,
+      [&] (socket_timeout_callback_ctx_t &ctx_) {
+          ctx_.state = state_;
+          ctx_.key = key_;
+      },
+      task_out_);
+}
+
+void queue_socket_pending_timeout_completion (
+  const std::shared_ptr<socket_request_reply_state_t> &state_, const pending_request_t &pending_)
+{
+    (void) queue_reply_completion (state_, pending_.handler, pending_.userdata, ETIMEDOUT, NULL,
+                                   0);
 }
 
 std::shared_ptr<socket_request_reply_state_t>
@@ -253,19 +273,12 @@ int start_request (socket_handle_t handle_,
         pending.userdata = userdata_;
         resolved_timeout_ms =
           zlink::request_reply::resolve_timeout_ms (timeout_ms_, state->default_timeout_ms);
-        if (zlink::request_reply_runtime::schedule_timeout_task<socket_timeout_callback_ctx_t> (
-              resolved_timeout_ms, &on_socket_request_timeout,
-              [&] (socket_timeout_callback_ctx_t &ctx_) {
-                  ctx_.state = state;
-                  ctx_.key = key;
-              },
-              &pending.timeout_task)
+        if (schedule_socket_pending_timeout (state, key, resolved_timeout_ms,
+                                             &pending.timeout_task)
             != 0) {
             return -1;
         }
-        state->pending_sequences.insert (request_seq);
-        state->pending_requests[key] = pending;
-        state->pending_request_keys_by_seq[request_seq] = key;
+        add_socket_pending_request_locked (state.get (), key, pending);
     }
 
     const uint8_t message_type = zlink::request_reply::request_type;
@@ -274,9 +287,7 @@ int start_request (socket_handle_t handle_,
     if (rc != 0) {
         std::lock_guard<std::mutex> lock (state->mutex);
         zlink::request_timeout::cancel (pending.timeout_task);
-        state->pending_sequences.erase (key.request_seq);
-        state->pending_request_keys_by_seq.erase (key.request_seq);
-        state->pending_requests.erase (key);
+        (void) remove_socket_pending_request_locked (state.get (), key, false, NULL);
         return -1;
     }
     return 0;

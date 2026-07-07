@@ -187,7 +187,7 @@ framing, `zlink_spot_node_actor_send/recv/forward` 계열, spot data plane의
 
 api/socket reqrep 클러스터:
 
-- [ ] **T2-01. pending-request + timeout 북키핑 통합**
+- [x] **T2-01. pending-request + timeout 북키핑 통합**
   - `socket_request_reply_internal.cpp:163-283`,
     `socket_request_reply_pending_api.cpp:47-155`, `dispatch.cpp:87-93`
   - 3개 맵(`pending_sequences`/`pending_request_keys_by_seq`/`pending_requests`)
@@ -470,3 +470,6 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-05 구현 — public option 매핑 테이블과 `map_*`/`lookup_common_option`
   함수를 `zlink_option_mapping.cpp`로 분리했다. `zlink_option.cpp`는 handle resolve,
   socket option checked access, 공개 option 진입점 로직만 남겼다.
+- 2026-07-07: T2-01 구현 — socket reqrep pending request의 3개 map 삽입/삭제와
+  timeout task 생성/timeout 완료 큐잉을 공통 helper로 모았다. dispatch hot path의
+  잠금 범위와 key→sequence fallback 조회 순서는 유지했다.

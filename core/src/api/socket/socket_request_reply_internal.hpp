@@ -151,6 +151,57 @@ void claim_completion_owner (const std::shared_ptr<socket_request_reply_state_t>
 bool current_thread_is_completion_owner (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
 bool in_socket_request_completion_callback (void *socket_);
+inline void add_socket_pending_request_locked (socket_request_reply_state_t *state_,
+                                               const pending_key_t &key_,
+                                               const pending_request_t &pending_)
+{
+    if (!state_)
+        return;
+
+    state_->pending_sequences.insert (key_.request_seq);
+    state_->pending_requests[key_] = pending_;
+    state_->pending_request_keys_by_seq[key_.request_seq] = key_;
+}
+
+inline bool remove_socket_pending_request_locked (socket_request_reply_state_t *state_,
+                                                  const pending_key_t &key_,
+                                                  bool allow_sequence_fallback_,
+                                                  pending_request_t *pending_out_)
+{
+    if (!state_)
+        return false;
+
+    std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
+      state_->pending_requests.find (key_);
+    if (it == state_->pending_requests.end () && allow_sequence_fallback_) {
+        std::unordered_map<uint64_t, pending_key_t>::iterator seq_it =
+          state_->pending_request_keys_by_seq.find (key_.request_seq);
+        if (seq_it != state_->pending_request_keys_by_seq.end ())
+            it = state_->pending_requests.find (seq_it->second);
+    }
+
+    if (it == state_->pending_requests.end ())
+        return false;
+
+    if (pending_out_)
+        *pending_out_ = it->second;
+    state_->pending_sequences.erase (it->first.request_seq);
+    state_->pending_request_keys_by_seq.erase (it->first.request_seq);
+    state_->pending_requests.erase (it);
+    return true;
+}
+
+bool remove_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,
+                                    const pending_key_t &key_,
+                                    bool allow_sequence_fallback_,
+                                    pending_request_t *pending_out_);
+int schedule_socket_pending_timeout (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  const pending_key_t &key_,
+  uint32_t timeout_ms_,
+  std::shared_ptr<zlink::request_timeout::task_t> *task_out_);
+void queue_socket_pending_timeout_completion (
+  const std::shared_ptr<socket_request_reply_state_t> &state_, const pending_request_t &pending_);
 void register_spot_channel_dispatch_observer (
   const std::shared_ptr<socket_request_reply_state_t> &state_, void *spot_);
 void unregister_spot_channel_dispatch_observer (

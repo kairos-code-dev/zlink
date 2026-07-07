@@ -73,32 +73,14 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
     }
 
     pending_request_t pending;
-    bool found = false;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
-          state->pending_requests.find (key);
-        if (it == state->pending_requests.end ()) {
-            std::unordered_map<uint64_t, pending_key_t>::iterator seq_it =
-              state->pending_request_keys_by_seq.find (key.request_seq);
-            if (seq_it != state->pending_request_keys_by_seq.end ())
-                it = state->pending_requests.find (seq_it->second);
-        }
-        if (it != state->pending_requests.end ()) {
-            pending = it->second;
-            state->pending_sequences.erase (it->first.request_seq);
-            state->pending_request_keys_by_seq.erase (it->first.request_seq);
-            state->pending_requests.erase (it);
-            found = true;
+        if (!remove_socket_pending_request_locked (state, key, true, &pending)) {
+            zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+            return;
         }
     }
-
     zlink::request_timeout::cancel (pending.timeout_task);
-
-    if (!found) {
-        zlink::request_reply::close_request_reply_parts (parts_, part_count_);
-        return;
-    }
 
     int callback_errno = 0;
     zlink_msg_t *callback_parts = envelope.payload_parts;

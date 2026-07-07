@@ -608,16 +608,8 @@ int send_request_reply_message (void *socket_handle_,
     for (size_t i = 0; i < total_part_count; ++i)
         zlink_msg_init (&combined[i]);
 
-    unsigned char protocol_id = zlink::request_reply::protocol_id;
-    unsigned char version = zlink::request_reply::version;
-    unsigned char type = message_type_;
-    unsigned char seq_buf[8];
-    zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
-
-    if (zlink::request_reply::init_control_part (&combined[0], &protocol_id, 1) != 0
-        || zlink::request_reply::init_control_part (&combined[1], &version, 1) != 0
-        || zlink::request_reply::init_control_part (&combined[2], &type, 1) != 0
-        || zlink::request_reply::init_control_part (&combined[3], seq_buf, sizeof (seq_buf)) != 0) {
+    if (zlink::request_reply::init_envelope_control_parts (combined, message_type_, request_seq_)
+        != 0) {
         const int saved_errno = errno;
         zlink::request_reply::close_built_parts (combined, total_part_count);
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);

@@ -194,7 +194,7 @@ api/socket reqrep 클러스터:
     동시 erase + `queue_reply_completion(ETIMEDOUT)` 수명주기가 4곳 복제. 동일
     구조 timeout-callback ctx 구조체 재선언(2곳)도 함께 해소. state 메서드로
     통합(인라인 유지 시 indirection 추가 없음). (code-motion / M)
-- [ ] **T2-02. reqrep envelope 인코딩 정본화**
+- [x] **T2-02. reqrep envelope 인코딩 정본화**
   - `socket_request_reply_runtime_io.cpp:611-637`,
     `socket_request_reply_submit_api.cpp:56-71, 244-263, 382-398`
   - 4프레임 control prologue(protocol/version/type/seq via `encode_u64_be`) 조립이
@@ -473,3 +473,6 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-01 구현 — socket reqrep pending request의 3개 map 삽입/삭제와
   timeout task 생성/timeout 완료 큐잉을 공통 helper로 모았다. dispatch hot path의
   잠금 범위와 key→sequence fallback 조회 순서는 유지했다.
+- 2026-07-07: T2-02 구현 — reqrep envelope control frame의 protocol/version/type/seq
+  인코딩을 `request_reply_protocol_internal.hpp`의 공통 helper로 모았다. streaming
+  send 경로는 기존 4프레임 전송 형태를 유지하고, control bytes 생성만 정본화했다.

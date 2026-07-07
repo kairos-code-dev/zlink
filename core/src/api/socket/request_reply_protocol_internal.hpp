@@ -27,12 +27,28 @@ enum : uint8_t
 const uint32_t default_timeout_ms = 5000;
 const size_t control_part_count = 4;
 
+enum envelope_control_index_t
+{
+    envelope_protocol_index = 0,
+    envelope_version_index = 1,
+    envelope_type_index = 2,
+    envelope_sequence_index = 3
+};
+
 struct parsed_envelope_t
 {
     uint8_t message_type;
     uint64_t request_seq;
     zlink_msg_t *payload_parts;
     size_t payload_part_count;
+};
+
+struct envelope_control_data_t
+{
+    unsigned char protocol_id;
+    unsigned char version;
+    unsigned char message_type;
+    unsigned char request_seq[8];
 };
 
 inline void encode_u64_be (uint64_t value_, unsigned char *out_)
@@ -78,6 +94,28 @@ inline uint32_t resolve_timeout_ms (uint32_t per_call_timeout_ms_,
     return default_timeout_ms;
 }
 
+inline bool is_valid_message_type (uint8_t message_type_)
+{
+    return message_type_ == request_type || message_type_ == reply_type
+           || message_type_ == error_reply_type;
+}
+
+inline int encode_envelope_control_data (uint8_t message_type_,
+                                         uint64_t request_seq_,
+                                         envelope_control_data_t *out_)
+{
+    if (!out_ || !is_valid_message_type (message_type_) || request_seq_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    out_->protocol_id = protocol_id;
+    out_->version = version;
+    out_->message_type = message_type_;
+    encode_u64_be (request_seq_, out_->request_seq);
+    return 0;
+}
+
 inline bool frame_is_single_byte_value (zlink_msg_t *part_, uint8_t value_)
 {
     if (!part_)
@@ -110,8 +148,7 @@ inline bool parse_envelope (zlink_msg_t *parts_, size_t part_count_, parsed_enve
     }
 
     const unsigned char *type_data = static_cast<const unsigned char *> (type_msg->data ());
-    if (type_data[0] != request_type && type_data[0] != reply_type
-        && type_data[0] != error_reply_type) {
+    if (!is_valid_message_type (type_data[0])) {
         return false;
     }
 
@@ -185,6 +222,49 @@ inline int init_control_part (zlink_msg_t *part_, const void *data_, size_t size
     return 0;
 }
 
+inline int init_envelope_control_parts (zlink_msg_t *parts_,
+                                        uint8_t message_type_,
+                                        uint64_t request_seq_)
+{
+    if (!parts_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    envelope_control_data_t control;
+    if (encode_envelope_control_data (message_type_, request_seq_, &control) != 0)
+        return -1;
+
+    if (init_control_part (&parts_[envelope_protocol_index], &control.protocol_id, 1) != 0
+        || init_control_part (&parts_[envelope_version_index], &control.version, 1) != 0
+        || init_control_part (&parts_[envelope_type_index], &control.message_type, 1) != 0
+        || init_control_part (&parts_[envelope_sequence_index], control.request_seq,
+                              sizeof (control.request_seq))
+             != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+template <typename SendFrameFn>
+inline int send_envelope_control_frames (uint8_t message_type_,
+                                         uint64_t request_seq_,
+                                         SendFrameFn send_frame_)
+{
+    envelope_control_data_t control;
+    if (encode_envelope_control_data (message_type_, request_seq_, &control) != 0)
+        return -1;
+
+    if (send_frame_ (envelope_protocol_index, &control.protocol_id, 1) != 0
+        || send_frame_ (envelope_version_index, &control.version, 1) != 0
+        || send_frame_ (envelope_type_index, &control.message_type, 1) != 0
+        || send_frame_ (envelope_sequence_index, control.request_seq,
+                        sizeof (control.request_seq))
+             != 0) {
+        return -1;
+    }
+    return 0;
+}
 
 inline void consume_send_frame (zlink_msg_t *part_)
 {

@@ -19,18 +19,6 @@ namespace
 {
 const size_t stack_request_reply_part_capacity = 8;
 
-int init_reply_control_part (zlink_msg_t *part_, const void *data_, size_t size_, bool has_more_)
-{
-    if (zlink::request_reply::init_control_part (part_, data_, size_) != 0)
-        return -1;
-    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (part_);
-    if (has_more_)
-        msg->set_flags (zlink::msg_t::more);
-    else
-        msg->reset_flags (zlink::msg_t::more);
-    return 0;
-}
-
 int send_dealer_reply_to_target (const reqrep::dealer_reply_target_t &target_,
                                  zlink::part_helper_internal::handle_state_t *helper_state_,
                                  zlink_msg_t *final_part_)
@@ -53,17 +41,9 @@ int send_dealer_reply_to_target (const reqrep::dealer_reply_target_t &target_,
     for (size_t i = 0; i < total_part_count; ++i)
         zlink_msg_init (&combined[i]);
 
-    unsigned char protocol_id = zlink::request_reply::protocol_id;
-    unsigned char version = zlink::request_reply::version;
-    unsigned char type = zlink::request_reply::reply_type;
-    unsigned char seq_buf[8];
-    zlink::request_reply::encode_u64_be (target_.request_seq, seq_buf);
-
-    if (init_reply_control_part (&combined[0], &protocol_id, 1, true) != 0
-        || init_reply_control_part (&combined[1], &version, 1, true) != 0
-        || init_reply_control_part (&combined[2], &type, 1, true) != 0
-        || init_reply_control_part (&combined[3], seq_buf, sizeof (seq_buf), payload_count > 0)
-             != 0) {
+    if (zlink::request_reply::init_envelope_control_parts (
+          combined, zlink::request_reply::reply_type, target_.request_seq)
+        != 0) {
         const int saved_errno = errno;
         zlink::request_reply::close_built_parts (combined, total_part_count);
         errno = saved_errno;
@@ -241,26 +221,18 @@ zlink_submit_result_t request_part_common (void *handle_,
     }
 
     if (first_part || !state->send.buffered_parts.empty ()) {
-        const unsigned char protocol_id = zlink::request_reply::protocol_id;
-        const unsigned char version = zlink::request_reply::version;
         const unsigned char type = family_ == zlink::part_helper_internal::send_family_router_reply
                                      ? zlink::request_reply::reply_type
                                      : zlink::request_reply::request_type;
-        unsigned char seq_buf[8];
-        zlink::request_reply::encode_u64_be (spec.request_seq, seq_buf);
-        if (reqrep::send_request_frame (handle.socket, state.get (), peer_rid_, &protocol_id, 1,
-                                        ZLINK_SNDMORE | (flags_ & ZLINK_DONTWAIT))
-              != 0
-            || reqrep::send_request_frame (handle.socket, state.get (), NULL, &version, 1,
-                                           ZLINK_SNDMORE | (flags_ & ZLINK_DONTWAIT))
-                 != 0
-            || reqrep::send_request_frame (handle.socket, state.get (), NULL, &type, 1,
-                                           ZLINK_SNDMORE | (flags_ & ZLINK_DONTWAIT))
-                 != 0
-            || reqrep::send_request_frame (handle.socket, state.get (), NULL, seq_buf,
-                                           sizeof (seq_buf),
-                                           ZLINK_SNDMORE | (flags_ & ZLINK_DONTWAIT))
-                 != 0) {
+        if (zlink::request_reply::send_envelope_control_frames (
+              type, spec.request_seq,
+              [&] (size_t index_, const void *data_, size_t size_) {
+                  return reqrep::send_request_frame (
+                    handle.socket, state.get (),
+                    index_ == zlink::request_reply::envelope_protocol_index ? peer_rid_ : NULL,
+                    data_, size_, ZLINK_SNDMORE | (flags_ & ZLINK_DONTWAIT));
+              })
+            != 0) {
             const int saved_errno = errno;
             zlink::part_helper_internal::abort_send_step (state);
             reqrep::erase_socket_pending_request (request_state, pending_key);
@@ -379,23 +351,15 @@ zlink_submit_result_t zlink_router_reply_part (void *router_,
     }
 
     if (first_part) {
-        const unsigned char protocol_id = zlink::request_reply::protocol_id;
-        const unsigned char version = zlink::request_reply::version;
-        const unsigned char type = zlink::request_reply::reply_type;
-        unsigned char seq_buf[8];
-        zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
-        if (reqrep::send_request_frame (handle.socket, state.get (), peer_rid_, &protocol_id, 1,
-                                        ZLINK_SNDMORE)
-              != 0
-            || reqrep::send_request_frame (handle.socket, state.get (), NULL, &version, 1,
-                                           ZLINK_SNDMORE)
-                 != 0
-            || reqrep::send_request_frame (handle.socket, state.get (), NULL, &type, 1,
-                                           ZLINK_SNDMORE)
-                 != 0
-            || reqrep::send_request_frame (handle.socket, state.get (), NULL, seq_buf,
-                                           sizeof (seq_buf), ZLINK_SNDMORE)
-                 != 0) {
+        if (zlink::request_reply::send_envelope_control_frames (
+              zlink::request_reply::reply_type, request_seq_,
+              [&] (size_t index_, const void *data_, size_t size_) {
+                  return reqrep::send_request_frame (
+                    handle.socket, state.get (),
+                    index_ == zlink::request_reply::envelope_protocol_index ? peer_rid_ : NULL,
+                    data_, size_, ZLINK_SNDMORE);
+              })
+            != 0) {
             const int saved_errno = errno;
             zlink::part_helper_internal::abort_send_step (state);
             zlink::part_helper_internal::consume_send_part (part_);

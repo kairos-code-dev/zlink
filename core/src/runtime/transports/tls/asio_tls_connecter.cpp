@@ -13,6 +13,7 @@
 #include "core/session_base.hpp"
 #include "core/address.hpp"
 #include "transports/asio/asio_reconnect_interval.hpp"
+#include "transports/asio/asio_timer_flag.hpp"
 #include "transports/asio/asio_tcp_tuning.hpp"
 #include "transports/tcp/tcp_address.hpp"
 #include "utils/random.hpp"
@@ -143,15 +144,10 @@ void zlink::asio_tls_connecter_t::process_term (int linger_)
     _terminating = true;
     _linger = linger_;
 
-    if (_reconnect_timer_started) {
-        cancel_timer (reconnect_timer_id);
-        _reconnect_timer_started = false;
-    }
-
-    if (_connect_timer_started) {
-        cancel_timer (connect_timer_id);
-        _connect_timer_started = false;
-    }
+    cancel_asio_timer_if_started (&_reconnect_timer_started,
+                                  [this] () { cancel_timer (reconnect_timer_id); });
+    cancel_asio_timer_if_started (&_connect_timer_started,
+                                  [this] () { cancel_timer (connect_timer_id); });
 
     //  Close socket/stream - this cancels any pending operations
     close ();
@@ -301,10 +297,8 @@ void zlink::asio_tls_connecter_t::on_tcp_connect (const boost::system::error_cod
     }
 
     //  Cancel connect timer
-    if (_connect_timer_started) {
-        cancel_timer (connect_timer_id);
-        _connect_timer_started = false;
-    }
+    cancel_asio_timer_if_started (&_connect_timer_started,
+                                  [this] () { cancel_timer (connect_timer_id); });
 
     if (ec) {
         if (ec == boost::asio::error::operation_aborted) {

@@ -602,6 +602,12 @@ sockets/engine/transports/utils:
 
 ## 7. 진행 상태
 
+- 2026-07-08: 최종 검증 — `nice -n 19 cmake --build core/build -j1` 통과.
+  `nice -n 19 ctest --test-dir core/build -j1 --output-on-failure`도 full core
+  CTest 113/113 통과. 직전 full run에서 `test_spot_pubsub_scenario` aggregate가
+  한 번 실패했으나, 해당 aggregate 단독 3회 반복과 최종 full run에서 재현되지
+  않았다. 이 작업 범위는 core 전용이므로 framework/bindings E2E는 실행하지
+  않았다.
 - 2026-07-07: 전수 감사 완료(5영역 병렬), 본 계획 작성. 구현 미착수.
 - 2026-07-07: 외부 리뷰 반영 — T1 실행 순서 조정(1→2→4→5→6→7→3), T1-09
   규모 S→M(TLS 계약 고정 테스트 선행), T1-10 규모 S→S–M(하위 타입 연쇄),

@@ -10,9 +10,15 @@ internal static class MonD1FailureRecoveryScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
-        using var observer = ZLinkHttpClient.Create(options.ServiceUrl).Build();
-        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl)
+            .Timeout(TimeSpan.FromSeconds(20))
+            .Build();
+        using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
+            .Timeout(TimeSpan.FromSeconds(35))
+            .Build();
+        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl)
+            .Timeout(TimeSpan.FromSeconds(20))
+            .Build();
 
         await serviceB.Post("/shutdown").SubmitAsync<object>();
         var serviceBUri = new Uri(options.ServiceBUrl);
@@ -31,6 +37,16 @@ internal static class MonD1FailureRecoveryScenario
                 true,
                 "MON-D1 expected service-b to restart.");
 
+            var serviceBChannelUri = new Uri(options.ServiceBChannelEndpoint);
+            await WaitForPortStateAsync(
+                serviceBChannelUri.Host,
+                serviceBChannelUri.Port,
+                true,
+                "MON-D1 expected service-b channel endpoint to restart.");
+
+            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
+                .Timeout(TimeSpan.FromSeconds(35))
+                .Build();
             var reply = (await trigger.Post("/profile/request/service-b")
                 .Body(new ProfileReq("restart", "mon-d1-request"))
                 .SubmitAsync<ProfileRes>()).Body;
@@ -40,7 +56,6 @@ internal static class MonD1FailureRecoveryScenario
                 && reply.Value == "profile:restart",
                 "MON-D1 restarted service did not handle request.");
 
-            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
             var serviceBEvidence = (await restartedServiceB.Post("/evidence/wait")
                 .Body(new EvidenceWaitReq(
                     ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
@@ -74,9 +89,19 @@ internal static class MonD1FailureRecoveryScenario
         }
         finally
         {
-            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
+            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
+                .Timeout(TimeSpan.FromSeconds(20))
+                .Build();
             await PostBestEffortAsync(restartedServiceB, "/shutdown");
-            await restartedService.WaitForExitAsync();
+            try
+            {
+                await restartedService.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (TimeoutException)
+            {
+                if (!restartedService.HasExited) restartedService.Kill(true);
+                await restartedService.WaitForExitAsync();
+            }
         }
 
         Console.WriteLine("scenario MON-D1 passed");

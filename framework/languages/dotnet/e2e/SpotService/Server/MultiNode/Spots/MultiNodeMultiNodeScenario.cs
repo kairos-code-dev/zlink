@@ -3,10 +3,8 @@ using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Spots;
-
-using SpotService.Shared;
 using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Spots;
 
 namespace SpotService.Server.MultiNode.Spots;
 

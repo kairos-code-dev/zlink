@@ -66,6 +66,11 @@ internal sealed class ZLinkBoundSessionService(
             metadata,
             message,
             runtime.Registration.Codecs);
+        if (ZLinkBoundSessionDispatchScope.TryDefer(
+                actorId,
+                ct => SendFrameWithRetryAsync(actorId, frame, ct)))
+            return;
+
         await SendFrameWithRetryAsync(actorId, frame, cancellationToken)
             .ConfigureAwait(false);
     }

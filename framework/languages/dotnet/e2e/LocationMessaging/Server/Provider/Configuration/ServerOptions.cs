@@ -12,6 +12,7 @@ internal sealed record ServerOptions(
     string? ManualClientEndpoint,
     string? RouteEndpoint,
     int Weight,
+    long MaxMessageSize,
     IReadOnlyList<string> RoutePeers)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
@@ -47,6 +48,9 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("manual-client-endpoint"),
             values.GetValueOrDefault("route-endpoint"),
             int.TryParse(values.GetValueOrDefault("weight"), out var weight) ? weight : 100,
+            long.TryParse(values.GetValueOrDefault("max-message-size"), out var maxMessageSize)
+                ? maxMessageSize
+                : 0,
             routePeers);
     }
 }

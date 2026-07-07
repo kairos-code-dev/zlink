@@ -29,6 +29,7 @@ internal static class RlB2CrashDuringInflightScenario
             .SubmitAsync<string[]>();
 
         await providerB.Post("/admin/crash").SubmitRawAsync();
+        await processes.WaitProviderBExitedAsync();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
@@ -64,12 +65,15 @@ internal static class RlB2CrashDuringInflightScenario
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .SubmitAsync<TopologyEntryRes[]>();
-        var followUp = (await consumer.Post("/profile/request/new-client")
+        var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-b2-after-crash"))
             .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
 
-        await processes.StartProviderBAsync();
+        var restarted = await processes.StartProviderBAsync();
+        using var restartedProviderB = ZLinkHttpClient.Create(restarted.Url)
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .SubmitAsync<TopologyEntryRes[]>();
@@ -77,7 +81,7 @@ internal static class RlB2CrashDuringInflightScenario
         {
             try
             {
-                var health = await providerB.Get("/health").SubmitRawAsync();
+                var health = await restartedProviderB.Get("/health").SubmitRawAsync();
                 if (health.Status == 200) break;
             }
             catch
@@ -90,7 +94,7 @@ internal static class RlB2CrashDuringInflightScenario
 
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
             consumer,
-            providerB,
+            restartedProviderB,
             "rl-b2-restored",
             "RL-B2 restored provider traffic");
 

@@ -142,10 +142,9 @@ internal static class ZLinkEntrySpotActorDispatcher
         }
 
         var isNoBind = IsNoBindRequest(requestId, flags);
-        ZLinkBoundSessionDispatchScope? boundSessionScope = null;
+        var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
         if (!isNoBind)
         {
-            boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
             runtime.BindActorSession(
                 actor.ActorId,
                 sourceNodeRid,
@@ -193,9 +192,8 @@ internal static class ZLinkEntrySpotActorDispatcher
                             cancellationToken)
                         .ConfigureAwait(false);
 
-                if (!isNoBind)
-                    await boundSessionScope!.DrainAsync(cancellationToken)
-                        .ConfigureAwait(false);
+                await boundSessionScope.DrainAsync(cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -211,8 +209,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         }
         finally
         {
-            if (boundSessionScope is not null)
-                await boundSessionScope.DisposeAsync().ConfigureAwait(false);
+            await boundSessionScope.DisposeAsync().ConfigureAwait(false);
         }
     }
 

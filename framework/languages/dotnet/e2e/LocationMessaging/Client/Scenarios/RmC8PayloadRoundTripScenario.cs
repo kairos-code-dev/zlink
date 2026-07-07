@@ -10,9 +10,13 @@ namespace LocationMessaging.Client.Scenarios;
 // for several message sizes.
 internal static class RmC8PayloadRoundTripScenario
 {
-    public static async Task RunAsync(ZLinkHttpClient singleConsumer, ZLinkHttpClient providerA)
+    public static async Task RunAsync(
+        ZLinkHttpClient directConsumer,
+        ZLinkHttpClient providerA,
+        ZLinkHttpClient providerB)
     {
-        var before = providerA.Get("/evidence").Fetch<string[]>();
+        var beforeA = providerA.Get("/evidence").Fetch<string[]>();
+        var beforeB = providerB.Get("/evidence").Fetch<string[]>();
         var markers = new List<string>();
         foreach (var size in new[] { 1, 4096, 256 * 1024, 1024 * 1024 })
         {
@@ -20,7 +24,7 @@ internal static class RmC8PayloadRoundTripScenario
             markers.Add(marker);
             var payload = BuildPayload(size);
             var expectedHash = HashPayload(payload);
-            var reply = (await singleConsumer.Post("/profile/payload")
+            var reply = (await directConsumer.Post("/profile/payload")
                 .Body(new PayloadReq(marker, payload))
                 .SubmitAsync<PayloadRes>()).Body;
             ScenarioAssert.That(reply.Marker == marker, "RM-C8 marker mismatch.");
@@ -28,15 +32,23 @@ internal static class RmC8PayloadRoundTripScenario
             ScenarioAssert.That(reply.Sha256 == expectedHash, "RM-C8 payload hash mismatch.");
         }
 
-        var followUp = (await singleConsumer.Post("/profile/request")
+        var oversizedMarker = $"rm-c8-over-limit-{Guid.NewGuid():N}";
+        var oversized = (await directConsumer.Post("/profile/payload-over-limit")
+            .Body(new PayloadReq(oversizedMarker, BuildPayload(3 * 1024 * 1024)))
+            .SubmitAsync<RequestFailureRes>()).Body;
+        ScenarioAssert.That(oversized.Failed, "RM-C8 oversized payload should fail.");
+
+        var followUp = (await directConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c8-after"))
             .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:rm-c8-after", "RM-C8 follow-up request failed.");
 
-        var after = providerA.Get("/evidence").Fetch<string[]>();
+        var afterA = providerA.Get("/evidence").Fetch<string[]>();
+        var afterB = providerB.Get("/evidence").Fetch<string[]>();
         ScenarioAssert.That(
             markers.All(marker =>
-                ScenarioAssert.CountNewEvidence(after, before, "payload-request|rid=api-a", marker) == 1),
+                ScenarioAssert.CountNewEvidence(afterA, beforeA, "payload-request|rid=api-a", marker)
+                + ScenarioAssert.CountNewEvidence(afterB, beforeB, "payload-request|rid=api-b", marker) == 1),
             "RM-C8 payload evidence missing.");
         Console.WriteLine("scenario RM-C8 passed");
     }

@@ -24,6 +24,8 @@ internal static class ConsumerHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        var delayState = new LocationStoreDelayState();
+        builder.Services.AddSingleton(delayState);
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -39,9 +41,13 @@ internal static class ConsumerHostFactory
             // store-mode polling hides the change-stamp surface, forcing
             // the pure polling path (SF-A2: polling is the correctness
             // path; the stamp is only a latency optimization).
-            framework.AddLocationStore(options.StoreMode == "polling"
-                ? new PollingOnlyLocationStore(redisStore)
-                : redisStore);
+            IZLinkLocationStore store = options.StoreMode switch
+            {
+                "polling" => new PollingOnlyLocationStore(redisStore),
+                "delay" => new DelayableLocationStore(redisStore, delayState, redisStore),
+                _ => redisStore
+            };
+            framework.AddLocationStore(store);
             var locations = framework.ConfigureLocations();
             locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
@@ -156,6 +162,11 @@ internal static class ConsumerHostFactory
             {
                 await StopClientHostAsync(host);
             }
+        });
+        app.MapPost("/admin/store-delay", (StoreDelayReq request, LocationStoreDelayState state) =>
+        {
+            state.SetDelay(TimeSpan.FromMilliseconds(request.Milliseconds));
+            return Results.Ok(new { delayMilliseconds = state.DelayMilliseconds });
         });
         return app;
     }
@@ -285,4 +296,3 @@ internal sealed record ConsumerOptions(
             ? value
             : throw new ArgumentException($"--{key} is required.");
 }
-

@@ -15,7 +15,7 @@ internal static class SfC2GracefulRemovalScenario
         ManagedProcess providerB)
     {
         var stopwatch = Stopwatch.StartNew();
-        await providerB.StopAsync();
+        await providerB.RequestShutdownAsync();
 
         await SfProbe.WaitPeersAsync(
             consumer,
@@ -29,6 +29,8 @@ internal static class SfC2GracefulRemovalScenario
         ScenarioAssert.That(
             stopwatch.Elapsed < options.OwnerLeaseTtl,
             $"SF-C2: row removal took {stopwatch.Elapsed}, which does not beat the lease TTL.");
+
+        await providerB.StopAsync();
 
         await Task.Delay(options.PollingInterval * 4);
         for (var i = 0; i < 8; i++)

@@ -274,14 +274,20 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         lock (_submitGate)
         {
             retryableFailure = null;
+            IReadOnlyList<Message>? attempt = null;
             try
             {
-                return trySubmit(parts);
+                attempt = ZLinkMessageParts.CopyAll(parts);
+                return trySubmit(attempt);
             }
             catch (ZlinkException error)
             {
                 retryableFailure = error;
                 return false;
+            }
+            finally
+            {
+                if (attempt is not null) ZLinkMessageParts.DisposeAll(attempt);
             }
         }
     }

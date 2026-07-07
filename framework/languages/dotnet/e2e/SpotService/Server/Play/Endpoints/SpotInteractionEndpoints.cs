@@ -269,6 +269,26 @@ internal static class SpotInteractionEndpoints
                 "Expected spot-to-spot request evidence.");
             return Results.Ok(result);
         });
+        app.MapPost("/spot/to-spot/request-cross", async (
+            IZLinkRouteClient routes,
+            IZLinkSpotAddressResolver locator,
+            EvidenceStore evidence,
+            NodeOptions node,
+            SpotToSpotRouteReq request) =>
+        {
+            var before = evidence.Snapshot();
+            var result = await RequestSpotToSpotWithRetryAsync(
+                routes,
+                locator,
+                request.SourceSpotRid,
+                new SpotToSpotReq(request.TargetSpotRid, request.Marker),
+                "Cross-node spot-to-spot request timed out.");
+            await WaitUntilAsync(
+                () => CountNew(evidence.Snapshot(), before,
+                    $"spot-to-spot|rid={node.Rid}|source={request.SourceSpotRid}|target={request.TargetSpotRid}|value=") >= 1,
+                "Expected source spot-to-spot evidence.");
+            return Results.Ok(result);
+        });
         app.MapPost("/spot/publish/wait", async (
             SpotPublishReq request,
             EvidenceStore evidence,

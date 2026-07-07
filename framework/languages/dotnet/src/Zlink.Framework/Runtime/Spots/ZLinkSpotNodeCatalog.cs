@@ -34,7 +34,12 @@ internal sealed class ZLinkSpotNodeCatalog(
             _spots.Clear();
         }
 
-        foreach (var activation in activations) await activation.DisposeAsync();
+        foreach (var activation in activations)
+        {
+            await ReleaseSpotLocationAsync(activation.SpotRid).ConfigureAwait(false);
+            await activation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+            await activation.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(

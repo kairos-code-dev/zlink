@@ -65,7 +65,13 @@ cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
+      kill -TERM -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    fi
+  done
+  sleep 1
+  for pid in "${pids[@]:-}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
@@ -136,7 +142,7 @@ start_server() {
   local project="$2"
   shift
   shift
-  ZLINK_E2E_RID="$name" dotnet run --no-build --project "$project" -- "$@" \
+  setsid env ZLINK_E2E_RID="$name" dotnet run --no-build --project "$project" -- "$@" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -179,6 +185,7 @@ start_server consumer "$CONSUMER_PROJECT" \
   --location-lease-ttl-ms "$LOCATION_LEASE_TTL_MS" \
   --location-polling-ms "$LOCATION_POLLING_MS" \
   --location-grace-ms "$LOCATION_GRACE_MS" \
+  --store-mode delay \
   --log-dir "$LOG_DIR"
 wait_health "$CONSUMER_URL" consumer
 

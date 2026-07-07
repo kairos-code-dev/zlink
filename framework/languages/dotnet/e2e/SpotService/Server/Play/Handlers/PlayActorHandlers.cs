@@ -174,6 +174,45 @@ internal sealed class EntryUserSpotActorJoinHandler
     }
 }
 
+[ZLinkSpotActorRequestHandler("JoinAdmittedUserSpotActorReq")]
+internal sealed class EntryAdmittedUserSpotActorJoinHandler
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, JoinAdmittedUserSpotActorReq,
+        JoinAdmittedUserSpotActorRes>
+{
+    public async ValueTask<JoinAdmittedUserSpotActorRes> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        JoinAdmittedUserSpotActorReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = entrySpot;
+        _ = context;
+        if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Admission join request actor does not match dispatched actor.");
+
+        var joined = await actor.Context.JoinSpot(
+                RoutingId.From(request.SpotRid),
+                ZLinkMessage.From(request))
+            .Async(cancellationToken)
+            .ConfigureAwait(false);
+        if (!joined.Accepted || joined.Actor is not { } joinedActor)
+            return new JoinAdmittedUserSpotActorRes(
+                request.SpotRid,
+                request.ActorId,
+                false,
+                0,
+                "ActorJoinRejected");
+
+        return new JoinAdmittedUserSpotActorRes(
+            request.SpotRid,
+            joinedActor.ActorId,
+            true,
+            joinedActor.Generation,
+            string.Empty);
+    }
+}
+
 [ZLinkSpotActorRequestHandler("LeaveReq")]
 internal sealed class EntryActorLeaveHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, LeaveReq, LeaveRes>
@@ -275,7 +314,14 @@ internal sealed class EntryActorDestroyHandler(EvidenceStore evidence)
 internal sealed class ActorPushHandler
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingRes>
 {
-    public async ValueTask<ActorPingRes> HandleAsync(
+    public ActorPushHandler(EvidenceStore evidence)
+    {
+        Evidence = evidence;
+    }
+
+    private EvidenceStore Evidence { get; }
+
+    public ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -283,14 +329,17 @@ internal sealed class ActorPushHandler
         CancellationToken cancellationToken)
     {
         actor.Seen++;
+        Evidence.Add(
+            $"actor-push|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
+            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
         actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
             .PacketName("ActorPushNotify").Submit();
-        return new ActorPingRes(
+        return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
             entrySpot.Context.SpotRid.ToString(),
             request.Value,
-            actor.Seen);
+            actor.Seen));
     }
 }
 
@@ -298,7 +347,7 @@ internal sealed class ActorPushHandler
 internal sealed class EntryUserActorPushHandler
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingRes>
 {
-    public async ValueTask<ActorPingRes> HandleAsync(
+    public ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -310,12 +359,12 @@ internal sealed class EntryUserActorPushHandler
         actor.Seen++;
         actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
             .PacketName("ActorPushNotify").Submit();
-        return new ActorPingRes(
+        return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
             actor.DisplayName,
             request.Value,
-            actor.Seen);
+            actor.Seen));
     }
 }
 
@@ -323,7 +372,7 @@ internal sealed class EntryUserActorPushHandler
 internal sealed class UserActorPushHandler
     : IZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingRes>
 {
-    public async ValueTask<ActorPingRes> HandleAsync(
+    public ValueTask<ActorPingRes> HandleAsync(
         ScenarioUserSpot spot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -334,12 +383,12 @@ internal sealed class UserActorPushHandler
         actor.Seen++;
         actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
             .PacketName("ActorPushNotify").Submit();
-        return new ActorPingRes(
+        return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             spot.Context.NodeRid.ToString(),
             spot.Context.SpotRid.ToString(),
             request.Value,
-            actor.Seen);
+            actor.Seen));
     }
 }
 

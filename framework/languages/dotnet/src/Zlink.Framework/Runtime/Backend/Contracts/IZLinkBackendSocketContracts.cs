@@ -9,6 +9,8 @@ internal interface IZLinkBackendSocket : IZLinkBackendObject, IAsyncDisposable
 
 internal interface IZLinkBackendSocketOptions : IZLinkBackendSocket
 {
+    void SetMaxMessageSize(long value);
+
     void SetSendHighWaterMark(int value);
 
     void SetReceiveHighWaterMark(int value);

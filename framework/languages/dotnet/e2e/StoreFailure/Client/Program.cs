@@ -43,7 +43,12 @@ var scenarios = new (string Name, Func<Task> Run)[]
         await SfC1CrashLeaseExpiryScenario.RunAsync(options, consumer, processes, providerBProcess);
         await RestartProviderBAsync();
     }),
-    ("SF-D2", () => SfD2LongOutageRecoveryScenario.RunAsync(options, consumer, processes, providerBProcess))
+    ("SF-D2", async () =>
+    {
+        await SfD2LongOutageRecoveryScenario.RunAsync(options, consumer, processes, providerBProcess);
+        await RestartProviderBAsync();
+    }),
+    ("SF-E1", () => SfE1StoreDelayNonBlockingScenario.RunAsync(options, consumer))
 };
 
 foreach (var (name, run) in scenarios)

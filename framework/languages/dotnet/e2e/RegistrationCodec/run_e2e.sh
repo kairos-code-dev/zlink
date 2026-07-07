@@ -53,7 +53,13 @@ cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
+      kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    fi
+  done
+  sleep 0.5
+  for pid in "${pids[@]:-}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
@@ -122,7 +128,7 @@ dotnet build "$JSON_ONLY_PEER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CODEC_REQUESTER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-dotnet run --no-build --project "$SERVER_PROJECT" -- \
+setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
   --rid reg-codec-node \
   --http-url "$SERVER_URL" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
@@ -132,7 +138,7 @@ dotnet run --no-build --project "$SERVER_PROJECT" -- \
 pids+=("$!")
 wait_health "$SERVER_URL" server
 
-dotnet run --no-build --project "$JSON_ONLY_PEER_PROJECT" -- \
+setsid dotnet run --no-build --project "$JSON_ONLY_PEER_PROJECT" -- \
   --rid codec-mismatch-json-only \
   --http-url "$JSON_ONLY_URL" \
   --channel-endpoint "$JSON_ONLY_CHANNEL_ENDPOINT" \
@@ -142,7 +148,7 @@ dotnet run --no-build --project "$JSON_ONLY_PEER_PROJECT" -- \
 pids+=("$!")
 wait_health "$JSON_ONLY_URL" codec-mismatch-json-only
 
-dotnet run --no-build --project "$CODEC_REQUESTER_PROJECT" -- \
+setsid dotnet run --no-build --project "$CODEC_REQUESTER_PROJECT" -- \
   --rid codec-mismatch-requester \
   --http-url "$CODEC_REQUESTER_URL" \
   --channel-endpoint "$JSON_ONLY_CHANNEL_ENDPOINT" \

@@ -108,7 +108,10 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkHandlerRegistry>(),
                 provider.GetRequiredService<ZLinkHandlerDispatcher>()));
         services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
-        services.AddSingleton<IHostedService, ZLinkFrameworkHostedService>();
+        services.AddSingleton<IHostedService>(static provider =>
+            new ZLinkFrameworkHostedService(
+                provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetService<ZLinkMonitoringRegistration>()));
 
         return services;
     }

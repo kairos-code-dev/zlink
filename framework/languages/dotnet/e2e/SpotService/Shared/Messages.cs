@@ -17,6 +17,7 @@ public static class SpotServiceNames
     public const string EdgePublisherNode = "edge-publisher-node";
     public const string MultiSpotNodeA = "multi-node-a";
     public const string MultiSpotNodeB = "multi-node-b";
+    public const string SpotOnlyMesh = "spot-only.mesh";
     public const string MultiRouteChannelA = "multi-route-a";
     public const string MultiRouteChannelB = "multi-route-b";
     public const string ActorType = "scenario-player";
@@ -97,6 +98,15 @@ public sealed record JoinUserSpotActorReq(string SpotRid, string ActorId);
 
 public sealed record JoinUserSpotActorRes(string SpotRid, string ActorId, bool Accepted, ulong Generation);
 
+public sealed record JoinAdmittedUserSpotActorReq(string SpotRid, string ActorId, bool Allow, string Reason);
+
+public sealed record JoinAdmittedUserSpotActorRes(
+    string SpotRid,
+    string ActorId,
+    bool Accepted,
+    ulong Generation,
+    string ErrorKind);
+
 public sealed record ActorPingReq(string Value);
 
 public sealed record SlowActorPingReq(string Value, int DelayMs);
@@ -106,6 +116,10 @@ public sealed record ActorPingRes(string ActorId, string NodeRid, string SpotRid
 public sealed record ActorPushReq(string Value);
 
 public sealed record ActorPushNotify(string ActorId, string Value, int Seen);
+
+public sealed record ActorPushByActorReq(string ActorId, string Value);
+
+public sealed record ActorPushByActorRes(string ActorId, string Value, bool Delivered, string ErrorKind);
 
 public sealed record ComplexActorReq(
     string DisplayName,
@@ -209,6 +223,14 @@ public sealed record MultiNodeCreateSpotReq(string SpotRid, int Delta);
 public sealed record MultiNodeCreateSpotRes(string SpotRid, string NodeRid, string State, int Value);
 
 public sealed record MultiNodeStateRouteReq(string SpotRid, int Delta);
+
+public sealed record SpotOnlyMeshReq(string SourceSpotRid, string TargetSpotRid, string Marker);
+
+public sealed record SpotOnlyMeshRes(string SourceSpotRid, string TargetSpotRid, int TargetValue, string Marker);
+
+public sealed record SpotOnlyJoinReq(string TargetSpotRid, string ActorId, string Marker);
+
+public sealed record SpotOnlyJoinRes(string TargetSpotRid, string ActorId, bool Accepted, string Marker);
 
 public sealed record SpotPublishReq(string SpotRid, string Marker);
 

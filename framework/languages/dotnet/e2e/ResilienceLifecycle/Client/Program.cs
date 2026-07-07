@@ -49,11 +49,14 @@ if (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase))
 }
 else
 {
-    var selected = scenarios.FirstOrDefault(scenario =>
-        string.Equals(scenario.Name, options.Scenario, StringComparison.OrdinalIgnoreCase));
-    if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
+    foreach (var scenarioName in options.Scenario.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var selected = scenarios.FirstOrDefault(scenario =>
+            string.Equals(scenario.Name, scenarioName, StringComparison.OrdinalIgnoreCase));
+        if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{scenarioName}'.");
 
-    await selected.Run();
+        await selected.Run();
+    }
 }
 
 Console.WriteLine("resilience-lifecycle client result=passed");

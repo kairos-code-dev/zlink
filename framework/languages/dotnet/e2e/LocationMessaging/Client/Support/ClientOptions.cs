@@ -11,6 +11,7 @@ internal sealed record ClientOptions(
     string RedisEndpoint,
     string RedisKeyPrefix,
     string ProviderProject,
+    string ConsumerProject,
     string LogDir,
     string Scenario)
 {
@@ -65,6 +66,10 @@ internal sealed record ClientOptions(
             && !string.IsNullOrWhiteSpace(providerProject)
                 ? providerProject
                 : throw new ArgumentException("--provider-project is required."),
+            values.TryGetValue("consumer-project", out var consumerProject)
+            && !string.IsNullOrWhiteSpace(consumerProject)
+                ? consumerProject
+                : throw new ArgumentException("--consumer-project is required."),
             values.TryGetValue("log-dir", out var logDir) && !string.IsNullOrWhiteSpace(logDir)
                 ? logDir
                 : throw new ArgumentException("--log-dir is required."),

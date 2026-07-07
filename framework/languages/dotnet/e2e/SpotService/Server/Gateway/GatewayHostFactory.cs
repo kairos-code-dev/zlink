@@ -8,7 +8,9 @@ using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Locations.Redis;
@@ -52,14 +54,28 @@ internal static class GatewayHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                                .SetRoutingId(RoutingId.From(options.Rid))
+                .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid))
                 .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"));
         });
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
-        app.MapPost("/spot/publish", async (
+        app.MapPost("/evidence/wait", async (
+            EvidenceWaitReq request,
+            EvidenceStore evidence,
+            CancellationToken cancellationToken) =>
+        {
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
+            var snapshot = await evidence.WaitUntilAsync(
+                entries => request.ContainsAll.All(expected =>
+                    entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal))),
+                timeout,
+                cancellationToken);
+            return Results.Ok(snapshot);
+        });
+        app.MapPost("/spot/publish", (
             SpotPublishReq request,
             IZLinkSpotPublisherClient publisher,
             EvidenceStore evidence) =>
@@ -76,6 +92,49 @@ internal static class GatewayHostFactory
                 request.SpotRid,
                 request.Marker,
                 evidence.Snapshot()));
+        });
+        app.MapPost("/actor/push", async (
+            ActorPushByActorReq request,
+            IZLinkActorClient actors,
+            EvidenceStore evidence,
+            CancellationToken cancellationToken) =>
+        {
+            evidence.Add($"actor-push-request|rid={options.Rid}|actor={request.ActorId}|value={request.Value}");
+            try
+            {
+                var reply = await actors.RequestToActor(
+                        request.ActorId,
+                        new ActorPushReq(request.Value))
+                    .PacketName("ActorPushReq")
+                    .Timeout(TimeSpan.FromSeconds(10))
+                    .Async<ActorPingRes>(cancellationToken);
+                evidence.Add(
+                    $"actor-push-delivered|rid={options.Rid}|actor={reply.ActorId}"
+                    + $"|value={reply.Value}|node={reply.NodeRid}");
+                return Results.Ok(new ActorPushByActorRes(reply.ActorId, reply.Value, true, string.Empty));
+            }
+            catch (ZLinkFrameworkException ex)
+            {
+                evidence.Add(
+                    $"actor-push-failed|rid={options.Rid}|actor={request.ActorId}"
+                    + $"|error={ex.GetType().Name}|kind={ex.Kind}");
+                return Results.Ok(new ActorPushByActorRes(
+                    request.ActorId,
+                    request.Value,
+                    false,
+                    ex.Kind.ToString()));
+            }
+            catch (Exception ex)
+            {
+                evidence.Add(
+                    $"actor-push-failed|rid={options.Rid}|actor={request.ActorId}"
+                    + $"|error={ex.GetType().Name}");
+                return Results.Ok(new ActorPushByActorRes(
+                    request.ActorId,
+                    request.Value,
+                    false,
+                    ex.GetType().Name));
+            }
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {
@@ -95,6 +154,7 @@ internal sealed class EvidenceStore
 {
     readonly ConcurrentQueue<string> _entries = new();
     readonly string? _file;
+    readonly SemaphoreSlim _signal = new(0);
 
     public EvidenceStore(string rid, string? file)
     {
@@ -105,6 +165,7 @@ internal sealed class EvidenceStore
     public void Add(string value)
     {
         _entries.Enqueue(value);
+        _signal.Release();
         if (!string.IsNullOrWhiteSpace(_file))
         {
             File.AppendAllLines(_file, new[] { value });
@@ -112,6 +173,24 @@ internal sealed class EvidenceStore
     }
 
     public string[] Snapshot() => _entries.ToArray();
+
+    public async Task<string[]> WaitUntilAsync(
+        Func<string[], bool> condition,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (true)
+        {
+            var snapshot = Snapshot();
+            if (condition(snapshot)) return snapshot;
+
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero) throw new TimeoutException("Timed out waiting for spot service evidence.");
+
+            await _signal.WaitAsync(remaining, cancellationToken);
+        }
+    }
 }
 
 internal sealed record GatewayOptions(
@@ -121,6 +200,7 @@ internal sealed record GatewayOptions(
     string? EvidenceFile,
     string? RedisEndpoint,
     string? RedisKeyPrefix,
+    string? SpotRouterEndpoint,
     string? SpotPubEndpoint)
 {
     public static GatewayOptions Parse(string[] args)
@@ -153,6 +233,7 @@ internal sealed record GatewayOptions(
             values.GetValueOrDefault("evidence-file"),
             values.GetValueOrDefault("redis-endpoint"),
             values.GetValueOrDefault("redis-key-prefix"),
+            values.GetValueOrDefault("spot-router-endpoint"),
             values.GetValueOrDefault("spot-pub-endpoint"));
     }
 }

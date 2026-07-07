@@ -43,6 +43,8 @@ internal sealed class ZLinkMonitoringHostedService(
 
         try
         {
+            _sourceValidator.PreflightSocketSources(frameworkRuntime);
+
             if (frameworkRuntime is not null) await frameworkRuntime.StartAsync(cancellationToken);
 
             await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, cancellationToken);

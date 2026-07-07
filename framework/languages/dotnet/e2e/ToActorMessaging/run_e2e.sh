@@ -26,7 +26,11 @@ REDIS_CONTAINER=""
 cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
-    kill "$pid" >/dev/null 2>&1 || true
+    kill -- "-$pid" >/dev/null 2>&1 || kill "$pid" >/dev/null 2>&1 || true
+  done
+  sleep 0.5
+  for pid in "${pids[@]:-}"; do
+    kill -KILL -- "-$pid" >/dev/null 2>&1 || kill -KILL "$pid" >/dev/null 2>&1 || true
   done
   wait "${pids[@]:-}" >/dev/null 2>&1 || true
   if [[ -n "$REDIS_CONTAINER" ]]; then
@@ -75,7 +79,7 @@ PY
 }
 
 start_actor() {
-  dotnet run --no-build --project "$ACTOR_PROJECT" -- \
+  setsid dotnet run --no-build --project "$ACTOR_PROJECT" -- \
     --rid "$ACTOR_RID" \
     --http-url "$ACTOR_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -89,7 +93,7 @@ start_actor() {
 }
 
 start_caller() {
-  dotnet run --no-build --project "$CALLER_PROJECT" -- \
+  setsid dotnet run --no-build --project "$CALLER_PROJECT" -- \
     --rid "$CALLER_RID" \
     --http-url "$CALLER_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" \

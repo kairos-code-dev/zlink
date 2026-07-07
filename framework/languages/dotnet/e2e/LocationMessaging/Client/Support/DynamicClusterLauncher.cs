@@ -5,7 +5,7 @@ using Zlink.HttpClient;
 
 namespace LocationMessaging.Client.Support;
 
-internal sealed class DynamicClusterLauncher(string providerProject, string logDir) : IAsyncDisposable
+internal sealed class DynamicClusterLauncher(string providerProject, string consumerProject, string logDir) : IAsyncDisposable
 {
     private readonly List<DynamicProcess> _processes = [];
 
@@ -25,7 +25,7 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
         // No registry process exists. Each dynamic cluster shares the run's
         // Redis instance but isolates its peer location rows under a
         // scenario-specific key prefix (mirrors the doc's per-run isolation).
-        var launcher = new DynamicClusterLauncher(options.ProviderProject, options.LogDir)
+        var launcher = new DynamicClusterLauncher(options.ProviderProject, options.ConsumerProject, options.LogDir)
         {
             RedisEndpoint = options.RedisEndpoint,
             RedisKeyPrefix = $"{options.RedisKeyPrefix}:{scenarioName}"
@@ -55,6 +55,25 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
             channelEndpoint);
         await process.WaitReadyAsync();
         return new DynamicProvider(process, httpUrl, process.RequireChannelEndpoint());
+    }
+
+    public async Task<DynamicConsumer> StartConsumerAsync(string name)
+    {
+        var httpUrl = PickHttpUrl();
+        var process = StartServer(
+            name,
+            consumerProject,
+            [
+                "--http-url", httpUrl,
+                "--redis-endpoint", RedisEndpoint,
+                "--redis-key-prefix", RedisKeyPrefix,
+                "--trace-label", name,
+                "--log-dir", logDir
+            ],
+            httpUrl,
+            channelEndpoint: null);
+        await process.WaitReadyAsync();
+        return new DynamicConsumer(process, httpUrl);
     }
 
     public async Task StopAsync(DynamicProvider provider)
@@ -123,6 +142,8 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
 
 internal sealed record DynamicProvider(DynamicProcess Process, string HttpUrl, string ChannelEndpoint);
 
+internal sealed record DynamicConsumer(DynamicProcess Process, string HttpUrl);
+
 internal sealed class DynamicProcess(Process process, string httpUrl, string? channelEndpoint)
 {
     private bool _disposed;
@@ -178,7 +199,16 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
                 if (!process.HasExited) process.Kill(true);
             }
 
-        await process.WaitForExitAsync();
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (TimeoutException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            await process.WaitForExitAsync();
+        }
+
         process.Dispose();
     }
 }

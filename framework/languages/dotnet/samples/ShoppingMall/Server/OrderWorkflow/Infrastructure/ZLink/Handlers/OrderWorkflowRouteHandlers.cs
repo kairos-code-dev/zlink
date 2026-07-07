@@ -27,7 +27,7 @@ internal sealed class StartOrderWorkflowRouteHandler(
             request.OrderId);
         var address = await EnsureSpotAsync(spots, instance, request.OrderId, cancellationToken);
         var response = await routes
-            .RequestToSpot(SampleNames.OrderSpotDiscovery, address, request)
+            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
             .Async<StartOrderWorkflowRes>(cancellationToken);
         logger.LogInformation(
             "shoppingmall workflow route: delivered StartOrderWorkflowReq to spot owner. order={OrderId}, status={Status}",
@@ -71,7 +71,7 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
             request.OrderId,
             cancellationToken);
         return await routes
-            .RequestToSpot(SampleNames.OrderSpotDiscovery, address, request)
+            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
             .Async<ContinueOrderWorkflowRes>(cancellationToken);
     }
 }
@@ -94,7 +94,7 @@ internal sealed class RebuildOrderProjectionRouteHandler(
             request.OrderId,
             cancellationToken);
         var response = await routes
-            .RequestToSpot(SampleNames.OrderSpotDiscovery, address, request)
+            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
             .Async<RebuildOrderProjectionRes>(cancellationToken);
         logger.LogInformation(
             "shoppingmall order: projection rebuilt order={OrderId} status={Status}",

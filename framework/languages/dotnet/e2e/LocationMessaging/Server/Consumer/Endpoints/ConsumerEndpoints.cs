@@ -46,7 +46,7 @@ internal static class ConsumerEndpoints
             var result = await RequestMissingProfileAsync(channel, request);
             return Results.Ok(result);
         });
-        app.MapPost("/profile/missing-command", async (
+        app.MapPost("/profile/missing-command", (
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
@@ -61,6 +61,13 @@ internal static class ConsumerEndpoints
             var reply = await RequestPayloadWithRetryAsync(channel, request);
             return Results.Ok(reply);
         });
+        app.MapPost("/profile/payload-over-limit", async (
+            PayloadReq request,
+            IZLinkChannelClient channel) =>
+        {
+            var result = await RequestPayloadFailureAsync(channel, request);
+            return Results.Ok(result);
+        });
         app.MapPost("/profile/backpressure/reset", () => Results.Ok(new { status = "ready" }));
         app.MapPost("/profile/backpressure/send", (
             ProfileMsg command,
@@ -68,6 +75,11 @@ internal static class ConsumerEndpoints
         {
             var outcome = SubmitProfileUnderPressure(channel, command);
             return Results.Ok(outcome);
+        });
+        app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
+        {
+            lifetime.StopApplication();
+            return Results.Ok(new { status = "stopping" });
         });
     }
 
@@ -120,6 +132,24 @@ internal static class ConsumerEndpoints
         }
 
         throw new InvalidOperationException("Timed out waiting for payload profile endpoint.", last);
+    }
+
+    static async Task<RequestFailureRes> RequestPayloadFailureAsync(
+        IZLinkChannelClient channel,
+        PayloadReq request)
+    {
+        try
+        {
+            await channel.RequestToChannel("profile", request)
+                .PacketName("PayloadReq")
+                .Timeout(TimeSpan.FromSeconds(5))
+                .Async<PayloadRes>();
+            return new RequestFailureRes(false, "");
+        }
+        catch (Exception ex)
+        {
+            return new RequestFailureRes(true, ex.GetType().Name);
+        }
     }
 
     static async Task<RequestFailureRes> RequestProfileFailureAsync(

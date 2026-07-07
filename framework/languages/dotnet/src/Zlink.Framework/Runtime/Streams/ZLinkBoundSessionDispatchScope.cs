@@ -4,7 +4,7 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
 {
     private static readonly AsyncLocal<ZLinkBoundSessionDispatchScope?> CurrentScope = new();
     private readonly string _actorId;
-    private readonly List<Func<CancellationToken, ValueTask>> _deferredCloses = new();
+    private readonly List<Func<CancellationToken, ValueTask>> _deferredOperations = new();
     private readonly ZLinkBoundSessionDispatchScope? _previous;
     private bool _drained;
 
@@ -49,7 +49,7 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
             || scope._drained)
             return false;
 
-        scope._deferredCloses.Add(operationAsync);
+        scope._deferredOperations.Add(operationAsync);
         return true;
     }
 
@@ -58,8 +58,8 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
         if (_drained) return;
 
         _drained = true;
-        foreach (var closeAsync in _deferredCloses) await closeAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var operationAsync in _deferredOperations) await operationAsync(cancellationToken).ConfigureAwait(false);
 
-        _deferredCloses.Clear();
+        _deferredOperations.Clear();
     }
 }

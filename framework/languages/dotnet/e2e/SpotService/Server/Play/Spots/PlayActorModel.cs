@@ -115,6 +115,22 @@ internal sealed class ScenarioUserSpot(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!request.IsEmpty)
+        {
+            var admission = request.Decode<JoinAdmittedUserSpotActorReq>();
+            if (!admission.Allow)
+            {
+                evidence.Add(
+                    $"spot-actor-join-rejected|rid={evidence.Rid}|spot={Context.SpotRid}"
+                    + $"|actor={actor.ActorId}|reason={admission.Reason}");
+                return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject(admission));
+            }
+
+            evidence.Add(
+                $"spot-actor-join-admitted|rid={evidence.Rid}|spot={Context.SpotRid}"
+                + $"|actor={actor.ActorId}|reason={admission.Reason}");
+        }
+
         evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }

@@ -32,11 +32,11 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var courierABinding = await courierA.Request(new BindCourierSessionReq("courier-a"))
             .Async<BindCourierSessionRes>(cancellationToken);
         Ensure(courierABinding.CourierId == "courier-a");
-        Ensure(courierABinding.NodeRid == "delivery-courier-node-1");
+        Ensure(courierABinding.Actor.NodeRid == "delivery-courier-node-1");
         var courierBBinding = await courierB.Request(new BindCourierSessionReq("courier-b"))
             .Async<BindCourierSessionRes>(cancellationToken);
         Ensure(courierBBinding.CourierId == "courier-b");
-        Ensure(courierBBinding.NodeRid == "delivery-courier-node-2");
+        Ensure(courierBBinding.Actor.NodeRid == "delivery-courier-node-2");
         logger.LogInformation("topology=ready");
 
         // Run both dispatch paths: direct acceptance first, then timeout-based reassignment.

@@ -3,11 +3,30 @@ using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Codecs;
+using Zlink.Framework.Runtime.Configuration;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class RouteCodecTests
 {
+    [Fact]
+    public void ChannelBundleFactory_Applies_MaxMessageSize_To_BackendSocket()
+    {
+        var socket = new RecordingSocketOptions();
+        var config = new ZLinkSocketConfig
+        {
+            MaxMessageSize = 4096,
+            SendHighWaterMark = 12,
+            ReceiveHighWaterMark = 34
+        };
+
+        ZLinkChannelBundleFactory.ApplySocketConfig(socket, config);
+
+        Assert.Equal(4096, socket.MaxMessageSize);
+        Assert.Equal(12, socket.SendHighWaterMark);
+        Assert.Equal(34, socket.ReceiveHighWaterMark);
+    }
+
     [Fact]
     public async Task RouteHandlerInvoker_Uses_Configured_Codec()
     {
@@ -270,6 +289,47 @@ public sealed class RouteCodecTests
         }
     }
 
+    private sealed class RecordingSocketOptions : IZLinkBackendSocketOptions
+    {
+        public long MaxMessageSize { get; private set; }
+
+        public int SendHighWaterMark { get; private set; }
+
+        public int ReceiveHighWaterMark { get; private set; }
+
+        public object NativeInstance => this;
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        public void Bind(string endpoint)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetChannelName(string channelName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetMaxMessageSize(long value)
+        {
+            MaxMessageSize = value;
+        }
+
+        public void SetSendHighWaterMark(int value)
+        {
+            SendHighWaterMark = value;
+        }
+
+        public void SetReceiveHighWaterMark(int value)
+        {
+            ReceiveHighWaterMark = value;
+        }
+    }
+
     private sealed class RecordingRouter : IZLinkBackendRouterSocket
     {
         public string? ReplyContentType { get; private set; }
@@ -289,6 +349,11 @@ public sealed class RouteCodecTests
         }
 
         public void SetChannelName(string channelName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetMaxMessageSize(long value)
         {
             throw new NotSupportedException();
         }
@@ -438,6 +503,11 @@ public sealed class RouteCodecTests
         }
 
         public void SetChannelName(string channelName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetMaxMessageSize(long value)
         {
             throw new NotSupportedException();
         }

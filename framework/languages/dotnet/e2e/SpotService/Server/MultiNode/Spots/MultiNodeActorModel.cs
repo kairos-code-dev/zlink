@@ -2,6 +2,7 @@ using SpotService.Server.MultiNode.Handlers;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -134,9 +135,10 @@ internal sealed class ScenarioUserSpot(
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
+        _ = request;
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-created|rid={evidence.Rid}|spot={Context.SpotRid}");
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
@@ -153,4 +155,67 @@ internal sealed class ScenarioAlternateSpot(
     IZLinkSpotContext context) : IZLinkSpot
 {
     public IZLinkSpotContext Context { get; } = context;
+}
+
+internal sealed class SpotOnlyUserSpot(
+    IZLinkSpotContext context,
+    EvidenceStore evidence,
+    IZLinkSpotAddressResolver spots) : IZLinkSpot<ScenarioActor>
+{
+    private int _value;
+
+    public IZLinkSpotContext Context { get; } = context;
+
+    public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-initialize|rid={evidence.Rid}|spot={Context.SpotRid}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        ScenarioActor actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        _ = request;
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
+    }
+
+    public async ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-created|rid={evidence.Rid}|spot={Context.SpotRid}");
+        if (!request.IsEmpty)
+        {
+            var command = request.Decode<SpotOnlyMeshReq>();
+            var target = await spots.ResolveSpotAddressAsync(
+                             RoutingId.From(command.TargetSpotRid),
+                             cancellationToken)
+                         ?? throw new InvalidOperationException(
+                             $"Target spot '{command.TargetSpotRid}' has no live address.");
+            var reply = await Context.Outbound
+                .RequestToSpot(target, new StateReq("add", 7))
+                .PacketName("StateReq")
+                .Async<StateRes>(cancellationToken);
+            Context.Outbound.SendToSpot(target, new StateMsg($"sm-f6-send-{command.Marker}"))
+                .PacketName("StateMsg")
+                .Submit(cancellationToken);
+            evidence.Add(
+                $"spot-only-request|rid={evidence.Rid}|source={Context.SpotRid}"
+                + $"|target={command.TargetSpotRid}|value={reply.Value}|marker={command.Marker}");
+        }
+
+        return ZLinkSpotCreateResponse.Accept();
+    }
+
+    public int Add(int delta)
+    {
+        _value += delta;
+        return _value;
+    }
 }

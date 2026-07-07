@@ -36,4 +36,44 @@ internal sealed class ZLinkMonitoringSourceValidator(
 
         return Task.CompletedTask;
     }
+
+    public void PreflightSocketSources(ZLinkFrameworkRuntime? frameworkRuntime)
+    {
+        if (frameworkRuntime is null) return;
+
+        foreach (var source in registration.SocketSources.Values)
+        {
+            var (channelName, capability) = ParseChannelCapabilitySource(source.SourceName);
+            if (!frameworkRuntime.Registration.Channels.TryGetValue(channelName, out var channel)
+                || !HasCapability(channel, capability))
+            {
+                throw new ZLinkConfigurationException(
+                    $"Socket monitoring source '{source.SourceName}' is not registered.");
+            }
+        }
+    }
+
+    private static bool HasCapability(
+        ZLinkChannelRegistration channel,
+        string capability)
+    {
+        return capability switch
+        {
+            "server" => channel.Server is not null,
+            "subscriber" => channel.Subscriber is not null,
+            "publisher" => channel.Publisher is not null,
+            "client" => channel.Client is not null,
+            _ => false
+        };
+    }
+
+    private static (string ChannelName, string Capability) ParseChannelCapabilitySource(string sourceName)
+    {
+        var separatorIndex = sourceName.LastIndexOf('.');
+        if (separatorIndex <= 0 || separatorIndex == sourceName.Length - 1)
+            throw new ZLinkConfigurationException(
+                $"Socket monitoring source '{sourceName}' must use '<channel>.<capability>'.");
+
+        return (sourceName[..separatorIndex], sourceName[(separatorIndex + 1)..]);
+    }
 }

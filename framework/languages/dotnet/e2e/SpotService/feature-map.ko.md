@@ -20,10 +20,12 @@
 | SM-B6 | 구현 | actor leave/disconnect callback marker가 있다. |
 | SM-B7 | 구현 | Created → Joined → actor packet 순서 marker가 있다. |
 | SM-B8 | 구현 | explicit actor destroy marker가 있다. |
+| SM-B9 | 구현 | `JoinAdmittedUserSpotActorReq`가 local/remote user spot join admission의 허용과 거부를 확인하고, 거부 actor가 user spot에 join되지 않는 evidence를 검증한다. |
 | SM-C1 | 구현 | channel to spot messaging marker가 있다. |
 | SM-C2 | 구현 | spot to channel messaging marker가 있다. |
 | SM-C3 | 구현 | spot-to-spot request/send/publish와 missing target negative marker가 있다. |
 | SM-C4 | 구현 | spot publisher client marker가 있다. |
+| SM-C5 | 구현 | play-a spot이 publish한 SpotMesh event를 play-b 구독 spot의 수신 evidence로 확인한다. |
 | SM-D1 | 구현 | local actor session bind/relay marker가 있다. |
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
 | SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |
@@ -38,6 +40,7 @@
 | SM-D12 | 구현 | session reconnect migration marker가 있다. |
 | SM-D13 | 구현 | heartbeat-enabled stream이 유지된 뒤 request가 성공하는 marker가 있다. |
 | SM-D14 | 구현 | framework stream node의 `SetTlsServer(...)` public API로 TLS stream endpoint를 열고, TLS connector 성공 경로와 strict certificate validation 실패 경로를 함께 확인한다. |
+| SM-D15 | 구현 | gateway role의 HTTP request가 `IZLinkActorClient.RequestToActor(...)`로 actor handler에 도달하고, actor가 bound stream session으로 push한 notify를 client가 수신하는지 확인한다. |
 | SM-E1 | 구현 | spot route missing request marker가 있다. |
 | SM-E2 | 구현 | spot timer tick marker가 있다. |
 | SM-E3 | 구현 | idle timer가 spot close를 수행하고 closed spot request가 실패하는 marker가 있다. |
@@ -47,6 +50,7 @@
 | SM-F3 | 구현 | client/server egress와 route-mesh egress를 같은 spot에 혼재해 처리한 marker가 있다. |
 | SM-F4 | 구현 | missing target spot route request 실패 marker가 있다. malformed relay packet 주입은 public E2E 표면이 아니므로 직접 scenario로 만들지 않는다. |
 | SM-F5 | 구현 | client/server egress host 종료 후 route-mesh egress가 같은 spot으로 계속 동작하는 marker가 있다. |
+| SM-F6 | 구현 | `sm-f6` runner가 MultiNode 두 role을 RouteMesh channel 없이 같은 SpotMesh에 등록하고, source spot의 public outbound request/send와 source actor의 `JoinSpot(...)`이 remote target spot에 도달하는 evidence를 확인한다. |
 | SM-G1 | 구현 | client가 play-a crash endpoint로 프로세스를 kill한 뒤 play-a bound actor request 실패, play-b 격리 유지, play-b 재bind 복구를 확인한다. |
 | SM-G2 | 구현 | 앱이 같은 logical key의 owner spot RoutingId를 play-a에서 play-b로 remap하고, remap 전후 evidence가 새 owner에만 남는지 확인한다. |
 | SM-G3 | 구현 | 같은 user spot에 여러 stream session이 동시에 join/request/leave를 수행하고 actor별 join/leave lifecycle evidence가 1회씩 남는지 확인한다. |

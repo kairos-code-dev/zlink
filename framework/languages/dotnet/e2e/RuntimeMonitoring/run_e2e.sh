@@ -61,7 +61,13 @@ cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
+      kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    fi
+  done
+  sleep 0.5
+  for pid in "${pids[@]:-}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
@@ -142,7 +148,7 @@ docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpi
 REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 REDIS_KEY_PREFIX="monitoring-e2e:$$:"
 
-ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJECT" -- \
+setsid env ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJECT" -- \
   --rid svc-a \
   --http-url "$SVC_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -156,7 +162,7 @@ ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJECT" -- \
 pids+=("$!")
 wait_health "$SVC_URL" svc-a
 
-ZLINK_E2E_RID="svc-b" dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT" -- \
+setsid env ZLINK_E2E_RID="svc-b" dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT" -- \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -168,7 +174,7 @@ ZLINK_E2E_RID="svc-b" dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT
 pids+=("$!")
 wait_health "$SVC_B_URL" svc-b
 
-ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
+setsid env ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -180,7 +186,7 @@ ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --no-build --
 pids+=("$!")
 wait_health "$THROW_URL" svc-throw
 
-ZLINK_E2E_RID="trigger" dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
+setsid env ZLINK_E2E_RID="trigger" dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
   --http-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \

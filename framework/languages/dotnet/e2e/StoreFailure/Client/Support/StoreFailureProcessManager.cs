@@ -124,13 +124,14 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
         IReadOnlyList<string> arguments,
         string healthUrl)
     {
-        var startInfo = new ProcessStartInfo("dotnet")
+        var startInfo = new ProcessStartInfo("setsid")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false
         };
         startInfo.Environment["ZLINK_E2E_RID"] = rid;
+        startInfo.ArgumentList.Add("dotnet");
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--no-build");
         startInfo.ArgumentList.Add("--project");
@@ -161,6 +162,7 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
 
 internal sealed class ManagedProcess(Process process, string healthUrl)
 {
+    private bool _shutdownRequested;
     private bool _stopped;
 
     public async Task WaitReadyAsync()
@@ -197,6 +199,18 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         await process.WaitForExitAsync();
     }
 
+    public async Task RequestShutdownAsync()
+    {
+        if (_shutdownRequested || process.HasExited)
+        {
+            return;
+        }
+
+        using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(5)).Build();
+        await http.Post("/shutdown").SubmitRawAsync();
+        _shutdownRequested = true;
+    }
+
     public async Task StopAsync()
     {
         if (_stopped) return;
@@ -205,15 +219,17 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         if (!process.HasExited)
             try
             {
-                using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(5)).Build();
-                await http.Post("/shutdown").SubmitRawAsync();
+                if (!_shutdownRequested)
+                {
+                    await RequestShutdownAsync();
+                }
             }
             catch
             {
                 if (!process.HasExited) process.Kill(true);
             }
 
-        using var exitWait = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var exitWait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
             await process.WaitForExitAsync(exitWait.Token);
@@ -221,6 +237,7 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         catch (OperationCanceledException)
         {
             if (!process.HasExited) process.Kill(true);
+            await process.WaitForExitAsync();
         }
     }
 }

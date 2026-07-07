@@ -51,7 +51,9 @@ internal static class ProviderHostFactory
                     .EnableServer(options.ChannelEndpoint)
                     .EnableClient()
                     .SetRoutingId(RoutingId.From(options.Rid));
-                clientServer.ConfigureServerSocket().Weight = options.Weight;
+                var serverSocket = clientServer.ConfigureServerSocket();
+                serverSocket.Weight = options.Weight;
+                if (options.MaxMessageSize > 0) serverSocket.MaxMessageSize = options.MaxMessageSize;
                 clientServer.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
                 clientServer.AddRequestHandler<PayloadRequestHandler, PayloadReq, PayloadRes>("PayloadReq");
                 clientServer.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");

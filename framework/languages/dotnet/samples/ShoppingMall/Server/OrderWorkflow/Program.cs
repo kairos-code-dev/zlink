@@ -62,7 +62,7 @@ internal static class Program
                     ContinueOrderWorkflowRes>()
                 .AddRequestHandler<RebuildOrderProjectionRouteHandler, RebuildOrderProjectionReq,
                     RebuildOrderProjectionRes>();
-            options.AddSpotMesh(SampleNames.OrderSpotDiscovery)
+            options.AddSpotMesh(SampleNames.OrderWorkflowRouteChannel)
                 .EnableRouter(instance.SpotRouterEndpoint)
                 .SetRoutingId(instance.SpotRid)
                 .EnablePubSub(instance.SpotEndpoint)
@@ -102,7 +102,7 @@ internal static class Program
                 cancellationToken);
             var address = new ZLinkSpotAddress(instance.SpotRid, RoutingId.From(request.OrderId));
             var response = await routes
-                .RequestToSpot(SampleNames.OrderSpotDiscovery, address, new PrepareInventoryReservedCheckpointReq(request))
+                .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, new PrepareInventoryReservedCheckpointReq(request))
                 .Async<StartOrderWorkflowRes>(cancellationToken);
             return Results.Ok(response);
         });

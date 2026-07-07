@@ -2,8 +2,7 @@
 
 기준 문서: `framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md`
 
-이 문서는 `.NET` StoreFailure client가 실제로 실행하는 시나리오만 기록한다. 기준 문서의
-Store 응답 지연 비블로킹 시나리오는 현재 `.NET` client 실행 목록에 없다.
+이 문서는 `.NET` StoreFailure client가 실제로 실행하는 시나리오만 기록한다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
@@ -16,3 +15,4 @@ Store 응답 지연 비블로킹 시나리오는 현재 `.NET` client 실행 목
 | SF-C2 | 구현 | provider 정상 종료가 lease TTL보다 빠르게 row를 제거하고, 이후 request가 떠난 `api-b`로 가지 않는다. |
 | SF-C1 | 구현 | SIGKILL된 provider의 owner lease가 만료되면 `api-b` row가 peer list에서 제외되고, follow-up request가 살아 있는 `api-a`로만 빠르게 처리된다. |
 | SF-D2 | 구현 | lease TTL보다 긴 store 장애와 장애 중 provider crash 뒤에도 살아 있는 provider가 복구 후 재등록되고, 죽은 provider는 disconnect grace 이후 선택되지 않으며 post-recovery request가 `api-a`로 처리된다. |
+| SF-E1 | 구현 | consumer의 location store wrapper가 public peer query에 응답 지연을 주입한 동안 같은 consumer의 application request p99가 baseline 기반 budget 안에 머무르고, 지연 해제 뒤 follow-up request가 성공하는지 검증한다. |

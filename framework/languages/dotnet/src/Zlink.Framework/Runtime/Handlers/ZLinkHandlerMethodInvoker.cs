@@ -8,7 +8,9 @@ internal delegate object? ZLinkHandlerMethodInvoker(
     object target,
     object? arg0,
     object? arg1,
-    object? arg2);
+    object? arg2,
+    object? arg3,
+    object? arg4);
 
 internal static class ZLinkHandlerMethodInvokerFactory
 {
@@ -36,7 +38,9 @@ internal static class ZLinkHandlerMethodInvokerFactory
         var arg0 = Expression.Parameter(typeof(object), "arg0");
         var arg1 = Expression.Parameter(typeof(object), "arg1");
         var arg2 = Expression.Parameter(typeof(object), "arg2");
-        var argumentExpressions = new[] { arg0, arg1, arg2 };
+        var arg3 = Expression.Parameter(typeof(object), "arg3");
+        var arg4 = Expression.Parameter(typeof(object), "arg4");
+        var argumentExpressions = new[] { arg0, arg1, arg2, arg3, arg4 };
 
         var convertedArguments = new Expression[parameters.Length];
         for (var i = 0; i < parameters.Length; i++)
@@ -58,7 +62,7 @@ internal static class ZLinkHandlerMethodInvokerFactory
             : Expression.Convert(call, typeof(object));
 
         return Expression
-            .Lambda<ZLinkHandlerMethodInvoker>(body, target, arg0, arg1, arg2)
+            .Lambda<ZLinkHandlerMethodInvoker>(body, target, arg0, arg1, arg2, arg3, arg4)
             .Compile();
     }
 }

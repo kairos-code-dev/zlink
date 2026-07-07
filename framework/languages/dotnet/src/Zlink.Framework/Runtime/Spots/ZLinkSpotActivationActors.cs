@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
 {
+    private readonly HashSet<string> _actorsLeavingForEntrySpot = new(StringComparer.Ordinal);
+
     public ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
@@ -156,14 +158,24 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, ZLinkMessage.Empty, cancellationToken)
-            .ConfigureAwait(false);
+        _actorsLeavingForEntrySpot.Add(actor.ActorId);
+        try
+        {
+            await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, ZLinkMessage.Empty, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            _actorsLeavingForEntrySpot.Remove(actor.ActorId);
+            throw;
+        }
     }
 
     private async ValueTask NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
+        _actorsLeavingForEntrySpot.Remove(actor.ActorId);
         await NotifyActorLeftAfterJoinCommitCoreAsync(actor, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -194,6 +206,8 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
+        if (_actorsLeavingForEntrySpot.Remove(actor.ActorId)) return;
+
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveDisconnected(actor.GetType(), out var descriptor)
             && descriptor is not null)

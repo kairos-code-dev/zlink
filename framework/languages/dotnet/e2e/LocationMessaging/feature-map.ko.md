@@ -16,5 +16,5 @@
 | RM-C4 | 구현 | timeout 뒤 late reply 비오염 marker가 있다. |
 | RM-C5 | 구현 | 미등록 packet 처리 marker가 있다. |
 | RM-C7 | 구현 | build-time weight 75/25 provider를 location store 자동 연결로 붙이고 high-weight provider가 더 많이 처리하는 marker가 있다. |
-| RM-C8 | 구현 | 1B, 4KiB, 256KiB, 1MiB payload 왕복 hash/length marker가 있다. MaxMessageSize 초과 거부는 framework channel runtime 미배선으로 별도 한계다. |
+| RM-C8 | 구현 | 1B, 4KiB, 256KiB, 1MiB payload 왕복 hash/length marker를 확인하고, server socket `MaxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 검증한다. |
 | RM-C9 | 구현 | 느린 provider에 다량 one-way send를 제출하고, public bounded-failure oracle 없이 backlog 해소 뒤 후속 request와 evidence가 회복되는지 검증한다. |

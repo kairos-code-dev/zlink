@@ -297,7 +297,11 @@ public sealed class EntrySpotActorDispatchTests
             SpotNodeName = "entry",
             RoutingId = RoutingId.From("entry-node"),
             Router = new ZLinkSpotRouterCapabilityRegistration { BindEndpoint = "inproc://entry" },
-            EntrySpotType = typeof(ProbeEntrySpot)
+            EntrySpotType = typeof(ProbeEntrySpot),
+            ActorFactories =
+            {
+                ["probe"] = typeof(ProbeActorFactory)
+            }
         };
         var runtime = new ZLinkFrameworkRuntime(
             services,
@@ -456,6 +460,19 @@ public sealed class EntrySpotActorDispatchTests
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context => throw new NotSupportedException();
+    }
+
+    private sealed class ProbeActorFactory : IZLinkActorFactory
+    {
+        public ValueTask<IZLinkActor> CreateAsync(
+            string actorId,
+            IZLinkActorContext context,
+            CancellationToken cancellationToken = default)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IZLinkActor>(new ProbeActor(actorId));
+        }
     }
 
     private sealed class ProbeEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot

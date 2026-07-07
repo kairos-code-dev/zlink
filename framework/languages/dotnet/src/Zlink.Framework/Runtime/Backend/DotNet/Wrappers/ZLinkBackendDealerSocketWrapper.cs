@@ -20,6 +20,11 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         nativeSocket.SetChannelName(channelName);
     }
 
+    public void SetMaxMessageSize(long value)
+    {
+        nativeSocket.Options.MaxMessageSize = value;
+    }
+
     public void SetSendHighWaterMark(int value)
     {
         nativeSocket.Options.SendHighWaterMark = value;

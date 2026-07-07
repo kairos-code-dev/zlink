@@ -16,20 +16,23 @@ internal static class RlA5ProviderFlappingScenario
     {
         for (var cycle = 0; cycle < 3; cycle++)
         {
-            await providerB.Post("/shutdown").SubmitRawAsync();
-            for (var attempt = 0; attempt < 100; attempt++)
+            if (!await processes.TryStopProviderBAsync())
             {
-                try
+                await providerB.Post("/shutdown").SubmitRawAsync();
+                for (var attempt = 0; attempt < 100; attempt++)
                 {
-                    var health = await providerB.Get("/health").SubmitRawAsync();
-                    if (health.Status != 200) break;
-                }
-                catch
-                {
-                    break;
-                }
+                    try
+                    {
+                        var health = await providerB.Get("/health").SubmitRawAsync();
+                        if (health.Status != 200) break;
+                    }
+                    catch
+                    {
+                        break;
+                    }
 
-                await Task.Delay(100);
+                    await Task.Delay(100);
+                }
             }
 
             for (var i = 0; i < 4; i++)
@@ -44,13 +47,19 @@ internal static class RlA5ProviderFlappingScenario
             await providerA.Post("/evidence/wait")
                 .Body(new EvidenceWaitReq([$"marker=rl-a5-down-{cycle}-"], []))
                 .SubmitAsync<string[]>();
+            await registry.Post("/topology/wait")
+                .Body(new TopologyWaitReq("api-b", "Ready", 0))
+                .SubmitAsync<TopologyEntryRes[]>();
 
-            await processes.StartProviderBAsync();
+            var restarted = await processes.StartProviderBAsync();
+            using var restartedProviderB = ZLinkHttpClient.Create(restarted.Url)
+                .Timeout(TimeSpan.FromMinutes(5))
+                .Build();
             for (var attempt = 0; attempt < 100; attempt++)
             {
                 try
                 {
-                    var health = await providerB.Get("/health").SubmitRawAsync();
+                    var health = await restartedProviderB.Get("/health").SubmitRawAsync();
                     if (health.Status == 200) break;
                 }
                 catch
@@ -66,7 +75,7 @@ internal static class RlA5ProviderFlappingScenario
                 .SubmitAsync<TopologyEntryRes[]>();
             await ProviderTrafficProbe.DriveUntilProviderServesAsync(
                 consumer,
-                providerB,
+                restartedProviderB,
                 $"rl-a5-up-{cycle}",
                 "RL-A5",
                 $"profile-request|rid=api-b|marker=rl-a5-up-{cycle}-");

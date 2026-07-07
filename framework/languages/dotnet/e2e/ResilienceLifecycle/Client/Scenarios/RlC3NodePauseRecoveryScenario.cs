@@ -17,6 +17,9 @@ internal static class RlC3NodePauseRecoveryScenario
         await providerB.Post("/shutdown").SubmitRawAsync();
         await WaitUntilAsync(async () => !await IsHealthyAsync(providerB),
             "RL-C3 expected api-b simulated node pause/down.");
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryRes[]>();
 
         var during = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c3-during-down"))

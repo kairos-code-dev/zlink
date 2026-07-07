@@ -6,6 +6,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Samples.Logging;
 
 namespace DeliveryDispatch.Server.Dispatch;
@@ -52,7 +53,25 @@ public static class DispatchServerHostFactory
         });
 
         var app = builder.Build();
-        app.MapGet("/health", () => Results.Ok(new { ready = true, role = "dispatch" }));
+        app.MapGet("/health", async (
+            IZLinkLocationReadiness readiness,
+            CancellationToken cancellationToken) =>
+        {
+            var courierNode1Ready = await readiness.IsPeerReadyAsync(
+                SampleNames.CourierActorDiscovery,
+                ZLinkLocationRole.Spot,
+                topology.CourierActorNode1Rid,
+                cancellationToken);
+            var courierNode2Ready = await readiness.IsPeerReadyAsync(
+                SampleNames.CourierActorDiscovery,
+                ZLinkLocationRole.Spot,
+                topology.CourierActorNode2Rid,
+                cancellationToken);
+
+            return courierNode1Ready && courierNode2Ready
+                ? Results.Ok(new { ready = true, role = "dispatch" })
+                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        });
         app.MapPost("/deliveries", (
             CreateDeliveryReq request,
             Zlink.Framework.Contracts.Channels.IZLinkChannelClient channels,

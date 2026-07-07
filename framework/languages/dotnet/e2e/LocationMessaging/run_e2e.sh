@@ -82,7 +82,13 @@ cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
+      kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    fi
+  done
+  sleep 0.5
+  for pid in "${pids[@]:-}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
@@ -198,7 +204,7 @@ start_server() {
   local project="$2"
   shift
   shift
-  dotnet run --no-build --project "$project" -- "$@" \
+  setsid dotnet run --no-build --project "$project" -- "$@" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -215,6 +221,7 @@ start_server api-a "$PROVIDER_PROJECT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
+  --max-message-size 2097152 \
   --manual-client-endpoint "$API_A" \
   --route-endpoint "$ROUTE_A" \
   --route-peer "$ROUTE_B" \
@@ -228,6 +235,7 @@ start_server api-b "$PROVIDER_PROJECT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_B" \
+  --max-message-size 2097152 \
   --manual-client-endpoint "$API_B" \
   --route-endpoint "$ROUTE_B" \
   --route-peer "$ROUTE_A" \
@@ -288,6 +296,7 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --provider-project "$PROVIDER_PROJECT" \
+  --consumer-project "$CONSUMER_PROJECT" \
   --log-dir "$LOG_DIR" \
   --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

@@ -32,20 +32,23 @@ internal static class RlA4DrainAndGreenEndpointScenario
                 "RL-A4 rolling request used an unexpected provider.");
         }
 
-        await providerB.Post("/shutdown").SubmitRawAsync();
-        for (var attempt = 0; attempt < 100; attempt++)
+        if (!await processes.TryStopProviderBAsync())
         {
-            try
+            await providerB.Post("/shutdown").SubmitRawAsync();
+            for (var attempt = 0; attempt < 100; attempt++)
             {
-                var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status != 200) break;
-            }
-            catch
-            {
-                break;
-            }
+                try
+                {
+                    var health = await providerB.Get("/health").SubmitRawAsync();
+                    if (health.Status != 200) break;
+                }
+                catch
+                {
+                    break;
+                }
 
-            await Task.Delay(100);
+                await Task.Delay(100);
+            }
         }
 
         await registry.Post("/topology/wait")
@@ -55,13 +58,21 @@ internal static class RlA4DrainAndGreenEndpointScenario
             consumer, greenProvider, "rl-a4-green", "RL-A4");
 
         await greenProvider.Post("/shutdown").SubmitRawAsync();
-        await processes.StartProviderBAsync();
+        await WaitUntilUnavailableAsync(greenProvider);
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryRes[]>();
+
+        var restored = await processes.StartProviderBAsync();
+        using var restoredProviderB = ZLinkHttpClient.Create(restored.Url)
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
 
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
             {
-                var health = await providerB.Get("/health").SubmitRawAsync();
+                var health = await restoredProviderB.Get("/health").SubmitRawAsync();
                 if (health.Status == 200) break;
             }
             catch
@@ -76,7 +87,7 @@ internal static class RlA4DrainAndGreenEndpointScenario
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .SubmitAsync<TopologyEntryRes[]>();
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
-            consumer, providerB, "rl-a4-restored", "RL-A4");
+            consumer, restoredProviderB, "rl-a4-restored", "RL-A4");
 
         Console.WriteLine("scenario RL-A4 passed");
     }
@@ -86,5 +97,25 @@ internal static class RlA4DrainAndGreenEndpointScenario
         await provider.Post("/admin/weight/wait")
             .Body(new WeightWaitReq(expected))
             .SubmitRawAsync();
+    }
+
+    private static async Task WaitUntilUnavailableAsync(ZLinkHttpClient http)
+    {
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            try
+            {
+                var health = await http.Get("/health").SubmitRawAsync();
+                if (health.Status != 200) return;
+            }
+            catch
+            {
+                return;
+            }
+
+            await Task.Delay(100);
+        }
+
+        ScenarioAssert.That(false, "RL-A4 provider did not stop.");
     }
 }

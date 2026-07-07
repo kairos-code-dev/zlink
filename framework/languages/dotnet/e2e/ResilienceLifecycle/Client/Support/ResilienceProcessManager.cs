@@ -6,6 +6,7 @@ namespace ResilienceLifecycle.Client.Support;
 internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDisposable
 {
     private readonly List<ManagedProcess> _processes = [];
+    private ManagedProcess? _providerB;
 
     public async ValueTask DisposeAsync()
     {
@@ -35,7 +36,27 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
             options.ProviderBEndpoint,
             options.ProviderBEvidenceFile);
         await process.WaitReadyAsync();
+        _providerB = process;
         return new ProviderStartResult("api-b", "started", options.ProviderBUrl, options.ProviderBEndpoint);
+    }
+
+    public async Task<bool> TryStopProviderBAsync()
+    {
+        if (_providerB is not { } process) return false;
+
+        _providerB = null;
+        await process.StopAsync();
+        _processes.Remove(process);
+        return true;
+    }
+
+    public async Task WaitProviderBExitedAsync()
+    {
+        if (_providerB is not { } process) return;
+
+        _providerB = null;
+        await process.WaitExitedAsync(TimeSpan.FromSeconds(10));
+        _processes.Remove(process);
     }
 
     public async Task<ProviderStartResult> StartProviderBRemapAsync()
@@ -218,7 +239,34 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
                 if (!process.HasExited) process.Kill(true);
             }
 
-        await process.WaitForExitAsync();
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (TimeoutException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            await process.WaitForExitAsync();
+        }
+
+        process.Dispose();
+    }
+
+    public async Task WaitExitedAsync(TimeSpan timeout)
+    {
+        if (_disposed) return;
+
+        _disposed = true;
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(timeout);
+        }
+        catch (TimeoutException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            await process.WaitForExitAsync();
+        }
+
         process.Dispose();
     }
 }

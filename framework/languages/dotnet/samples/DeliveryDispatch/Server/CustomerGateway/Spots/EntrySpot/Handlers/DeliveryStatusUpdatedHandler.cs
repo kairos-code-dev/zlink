@@ -4,6 +4,8 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot.Handlers;
 
+using CustomerStatusPacketHandler = IZLinkSpotPacketHandler<CustomerEntrySpot, DeliveryStatusUpdatedMsg>;
+
 internal sealed class DeliveryStatusUpdatedHandler(
     ILogger<DeliveryStatusUpdatedHandler> logger)
     : IZLinkEntrySpotActorSendHandler<CustomerEntrySpot, CustomerActor, DeliveryStatusUpdatedMsg>

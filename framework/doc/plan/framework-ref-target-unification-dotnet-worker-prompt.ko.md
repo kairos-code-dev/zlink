@@ -8,6 +8,18 @@
 actor id 또는 spot id만 받아서 메시지를 보내는 API는 제거한다. id는 조회 입력이고, ref는 전송
 입력이다.
 
+## 선행 조건: .NET E2E gap closure
+
+ref 전환 작업을 시작하기 전에 `framework/doc/plan/framework-dotnet-e2e-gap-closure-plan.ko.md`를
+먼저 완료한다. 공통 framework E2E 문서의 config-1부터 config-9까지 모든 scenario가
+`framework/languages/dotnet/e2e/*/feature-map.ko.md`와 runner evidence에 구현 상태로 남아 있어야
+한다. 이 단계는 sample 작업을 포함하지 않는다.
+
+이 선행 작업에서 `partial`, `gap`, `public API gap`으로 남은 항목이 있으면 ref 전환 작업을 시작하지
+않는다. 필요한 public contract가 없으면 reflection, internal 접근, raw frame, 테스트 전용 adapter로
+우회하지 말고 설계 이슈로 분리한다. 선행 작업의 완료 증거는 `dotnet build`, sample을 제외한 framework
+test, 모든 .NET E2E runner pass, 누락 리뷰, POSD/DDD 리뷰다.
+
 ## Naming 규칙
 
 | 분류 | 최종 이름 |

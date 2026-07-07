@@ -19,7 +19,7 @@ internal static class ProviderTrafficProbe
         string? evidencePattern = null)
     {
         var pattern = evidencePattern ?? $"marker={markerPrefix}-";
-        for (var round = 0; round < 120; round++)
+        for (var round = 0; round < 300; round++)
         {
             var marker = $"{markerPrefix}-{round}";
             var reply = (await consumer.Post("/profile/request")
@@ -31,16 +31,13 @@ internal static class ProviderTrafficProbe
 
             try
             {
-                using var probeTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-                await provider.Post("/evidence/wait")
-                    .Body(new EvidenceWaitReq([pattern], []))
-                    .SubmitAsync<string[]>(probeTimeout.Token);
-                return;
+                var snapshot = (await provider.Get("/evidence").SubmitAsync<string[]>()).Body;
+                if (snapshot.Any(entry => entry.Contains(pattern, StringComparison.Ordinal))) return;
             }
-            catch (OperationCanceledException)
+            catch
             {
-                // The target provider has not seen the traffic yet; keep
-                // sending while its dealer link finishes reconnecting.
+                // The provider may still be settling after a stop/start cycle;
+                // keep sending while its dealer link finishes reconnecting.
             }
 
             await Task.Delay(100);

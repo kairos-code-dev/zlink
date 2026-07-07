@@ -143,7 +143,7 @@ public sealed class UnhandledDispatchPolicyTests
                 ZLinkMessageKind.Request,
                 "BrokenReq",
                 typeof(NeverInvokedHandler),
-                static (_, _) => null,
+                static (_, _, _, _, _, _) => null,
                 [],
                 typeof(TestRequest),
                 typeof(TestReply),

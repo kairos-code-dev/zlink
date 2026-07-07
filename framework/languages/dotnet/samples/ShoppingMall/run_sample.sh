@@ -49,13 +49,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -n "${SHOPPINGMALL_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 12); do
-    PORTS+=("$((SHOPPINGMALL_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
@@ -80,7 +74,6 @@ finally:
         sock.close()
 PY
 )"
-fi
 
 export SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:dotnet:${RUN_ID}:"
 export SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${PORTS[0]}"

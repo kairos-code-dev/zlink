@@ -32,7 +32,14 @@ case "$SCENARIO_SET" in
   sm-b8)
     NEED_PLAY_B=0
     ;;
+  sm-d15)
+    NEED_PLAY_B=0
+    ;;
   sm-g3|sm-g4)
+    NEED_PLAY_B=0
+    ;;
+  sm-f6)
+    NEED_SESSION_NODES=0
     NEED_PLAY_B=0
     ;;
   sm-d1-d6|sm-d10|sm-d12|sm-g1)
@@ -44,7 +51,7 @@ case "$SCENARIO_SET" in
     ;;
 esac
 mkdir -p "$LOG_DIR"
-LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_TIMEOUT_SECONDS=30
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
@@ -75,6 +82,12 @@ PY
 )"
 
 build_projects() {
+  if [[ "$SCENARIO_SET" == "sm-q9" || "$SCENARIO_SET" == "sm-f6" ]]; then
+    dotnet build "$MULTI_NODE_PROJECT" --maxcpucount:1 >/dev/null
+    dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
+    return
+  fi
+
   dotnet build "$PLAY_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$SESSION_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$MULTI_NODE_PROJECT" --maxcpucount:1 >/dev/null
@@ -85,7 +98,7 @@ build_projects() {
 if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   echo "log_dir=$LOG_DIR"
   build_projects
-  for child_group in default-batch sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
+  for child_group in default-batch sm-g2 sm-g3 sm-g4 sm-g1 sm-q9 sm-f6; do
     echo "child operation_group=${child_group}"
     child_ok=0
     for child_attempt in 1 2; do
@@ -203,7 +216,8 @@ CLIENT_MULTI_ROUTE_A="tcp://127.0.0.1:${PORTS[33]}"
 CLIENT_MULTI_ROUTE_B="tcp://127.0.0.1:${PORTS[34]}"
 MULTI_B_HTTP="http://127.0.0.1:${PORTS[35]}"
 GATEWAY_HTTP="http://127.0.0.1:${PORTS[36]}"
-WAIT_SOURCE_PORT_INDEX=37
+GATEWAY_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[37]}"
+WAIT_SOURCE_PORT_INDEX=38
 
 endpoint_port() {
   local endpoint="$1"
@@ -435,31 +449,40 @@ start_named_server() {
         --control-endpoint "$PLAY_B_CONTROL" \
         --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
         --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
+        --client-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
         --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
         --evidence-file "$LOG_DIR/play-b.evidence.log" \
         --log-dir "$LOG_DIR"
       ;;
     multi-node-a)
-      start_server multi-node-a "$MULTI_NODE_DLL" \
+      MULTI_NODE_A_ARGS=(
         --rid multi-node-a \
         --http-url "$MULTI_A_HTTP" \
         --redis-endpoint "$REDIS_ENDPOINT" \
         --redis-key-prefix "$REDIS_KEY_PREFIX" \
-        --multi-route-a-endpoint "$MULTI_ROUTE_A" \
         --multi-spot-router-a-endpoint "$MULTI_SPOT_ROUTER_A" \
         --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
         --log-dir "$LOG_DIR"
+      )
+      if [[ "$SCENARIO_SET" != "sm-f6" ]]; then
+        MULTI_NODE_A_ARGS+=(--multi-route-a-endpoint "$MULTI_ROUTE_A")
+      fi
+      start_server multi-node-a "$MULTI_NODE_DLL" "${MULTI_NODE_A_ARGS[@]}"
       ;;
     multi-node-b)
-      start_server multi-node-b "$MULTI_NODE_DLL" \
+      MULTI_NODE_B_ARGS=(
         --rid multi-node-b \
         --http-url "$MULTI_B_HTTP" \
         --redis-endpoint "$REDIS_ENDPOINT" \
         --redis-key-prefix "$REDIS_KEY_PREFIX" \
-        --multi-route-b-endpoint "$MULTI_ROUTE_B" \
         --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
         --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
         --log-dir "$LOG_DIR"
+      )
+      if [[ "$SCENARIO_SET" != "sm-f6" ]]; then
+        MULTI_NODE_B_ARGS+=(--multi-route-b-endpoint "$MULTI_ROUTE_B")
+      fi
+      start_server multi-node-b "$MULTI_NODE_DLL" "${MULTI_NODE_B_ARGS[@]}"
       ;;
     gateway)
       start_server gateway "$GATEWAY_DLL" \
@@ -467,6 +490,7 @@ start_named_server() {
         --http-url "$GATEWAY_HTTP" \
         --redis-endpoint "$REDIS_ENDPOINT" \
         --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --spot-router-endpoint "$GATEWAY_SPOT_ROUTER" \
         --spot-pub-endpoint "$CLIENT_SPOT_PUB" \
         --evidence-file "$LOG_DIR/gateway.evidence.log" \
         --log-dir "$LOG_DIR"
@@ -496,26 +520,33 @@ wait_named_server() {
       wait_health play-a "$PLAY_A_HTTP"
       wait_port play-a-control "$PLAY_A_CONTROL"
       wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
+      wait_port play-a-spot-pub "$PLAY_A_SPOT_PUB"
       wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
       ;;
     play-b)
       wait_health play-b "$PLAY_B_HTTP"
       wait_port play-b-control "$PLAY_B_CONTROL"
       wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
+      wait_port play-b-spot-pub "$PLAY_B_SPOT_PUB"
       wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
       ;;
     multi-node-a)
       wait_health multi-node-a "$MULTI_A_HTTP"
-      wait_port multi-route-a "$MULTI_ROUTE_A"
+      if [[ "$SCENARIO_SET" != "sm-f6" ]]; then
+        wait_port multi-route-a "$MULTI_ROUTE_A"
+      fi
       wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
       ;;
     multi-node-b)
       wait_health multi-node-b "$MULTI_B_HTTP"
-      wait_port multi-route-b "$MULTI_ROUTE_B"
+      if [[ "$SCENARIO_SET" != "sm-f6" ]]; then
+        wait_port multi-route-b "$MULTI_ROUTE_B"
+      fi
       wait_port multi-spot-router-b "$MULTI_SPOT_ROUTER_B"
       ;;
     gateway)
       wait_health gateway "$GATEWAY_HTTP"
+      wait_port gateway-spot-router "$GATEWAY_SPOT_ROUTER"
       ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
@@ -544,6 +575,16 @@ REDIS_CONTAINER="spotservice-e2e-redis-$$"
 docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
 REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 REDIS_KEY_PREFIX="spotservice-e2e:$$:"
+for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+  if docker exec "$REDIS_CONTAINER" redis-cli ping 2>/dev/null | grep -qx PONG; then
+    break
+  fi
+  sleep "$LOCAL_READINESS_POLL_SECONDS"
+done
+if ! docker exec "$REDIS_CONTAINER" redis-cli ping 2>/dev/null | grep -qx PONG; then
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for Redis container readiness" >&2
+  exit 1
+fi
 
 SERVER_ROLES=()
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
@@ -553,18 +594,18 @@ if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
   fi
 fi
 
-if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
+if [[ "$SCENARIO_SET" != "sm-q9" && "$SCENARIO_SET" != "sm-f6" ]]; then
   SERVER_ROLES+=(play-a)
   if [[ "$NEED_PLAY_B" == "1" ]]; then
     SERVER_ROLES+=(play-b)
   fi
 fi
 
-if [[ "$SCENARIO_SET" == "sm-q9" ]]; then
+if [[ "$SCENARIO_SET" == "sm-q9" || "$SCENARIO_SET" == "sm-f6" ]]; then
   SERVER_ROLES+=(multi-node-a multi-node-b)
 fi
 
-if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
+if [[ "$SCENARIO_SET" != "sm-q9" && "$SCENARIO_SET" != "sm-f6" ]]; then
   SERVER_ROLES+=(gateway)
 fi
 
@@ -614,6 +655,7 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-b1-b2-b3-b5
   run_client sm-b6
   run_client sm-b8
+  run_client sm-b9
   run_client sm-d1-d6
   run_client sm-d3
   run_client sm-d4
@@ -624,8 +666,10 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-d10
   run_client sm-d12
   run_client sm-d14
+  run_client sm-d15
   run_client sm-c1-c2
   run_client sm-c3
+  run_client sm-c5
   run_client sm-e4
   run_client sm-e1-f4
   run_client sm-e2-e3

@@ -14,15 +14,20 @@ internal static class RmC7WeightedProviderScenario
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-c7");
         var providerA = await cluster.StartProviderAsync("api-a-weighted", "api-a", 75);
         var providerB = await cluster.StartProviderAsync("api-b-weighted", "api-b", 25);
-        using var requester = ZLinkHttpClient.Create(providerA.HttpUrl)
+        var consumer = await cluster.StartConsumerAsync("weighted-consumer");
+        using var requester = ZLinkHttpClient.Create(consumer.HttpUrl)
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
+        using var providerAClient = ZLinkHttpClient.Create(providerA.HttpUrl)
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
         using var providerBClient = ZLinkHttpClient.Create(providerB.HttpUrl)
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 
-        var beforeA = await ReadEvidenceAsync(requester);
+        var beforeA = await ReadEvidenceAsync(providerAClient);
         var beforeB = await ReadEvidenceAsync(providerBClient);
+        await WaitForBothProvidersAsync(requester);
         var marker = $"rm-c7-{Guid.NewGuid():N}";
         var values = Enumerable.Range(0, 240)
             .Select(index => $"{marker}-{index}")
@@ -50,7 +55,7 @@ internal static class RmC7WeightedProviderScenario
             .Select(reply => reply.Value)
             .ToArray();
         ScenarioAssert.That(apiAValues.Length > 0 && apiBValues.Length > 0, "RM-C7 expected both weighted providers.");
-        var afterA = await WaitEvidenceAsync(requester, apiAValues[^1]);
+        var afterA = await WaitEvidenceAsync(providerAClient, apiAValues[^1]);
         var afterB = await WaitEvidenceAsync(providerBClient, apiBValues[^1]);
         var counts = new Dictionary<string, int>(StringComparer.Ordinal)
         {
@@ -77,5 +82,20 @@ internal static class RmC7WeightedProviderScenario
         return (await http.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(contains, 20000))
             .SubmitAsync<string[]>()).Body;
+    }
+
+    private static async Task WaitForBothProvidersAsync(ZLinkHttpClient requester)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var attempt = 0; attempt < 120 && seen.Count < 2; attempt++)
+        {
+            var reply = (await requester.Post("/profile/request")
+                .Body(new ProfileReq($"rm-c7-warm-{attempt}"))
+                .SubmitAsync<ProfileRes>()).Body;
+            seen.Add(reply.ProviderRid);
+            if (seen.Count < 2) await Task.Delay(150);
+        }
+
+        ScenarioAssert.That(seen.SetEquals(["api-a", "api-b"]), "RM-C7 warm-up never reached both weighted providers.");
     }
 }

@@ -3,6 +3,7 @@ using SpotService.Server.MultiNode.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
 
@@ -55,31 +56,47 @@ internal static class MultiNodeHostFactory
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             if (isNodeA)
             {
-                var routeEndpoint = Require(options.MultiRouteAEndpoint, "--multi-route-a-endpoint");
-                framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelA)
-                    .EnableServer(routeEndpoint)
-                    .EnableClient(routeEndpoint)
+                if (!string.IsNullOrWhiteSpace(options.MultiRouteAEndpoint))
+                {
+                    var routeEndpoint = options.MultiRouteAEndpoint;
+                    framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelA)
+                        .EnableServer(routeEndpoint)
+                        .EnableClient(routeEndpoint)
+                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
+                        .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
+                            "MultiNodeCreateSpotReq");
+                }
+
+                framework.AddSpotMesh(ResolveSpotMeshName(options))
+                    .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
-                    .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
-                        "MultiNodeCreateSpotReq");
-                framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeA)
-                                        .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
-                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
+                    .AddEntrySpot<ScenarioEntrySpot>()
+                    .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
+                    .AddSpotFactory<SpotOnlyUserSpot>()
+                    .AddSpotFactory<ScenarioUserSpot>()
                     .AddSpotFactory<MultiNodeSpotA>();
             }
 
             if (isNodeB)
             {
-                var routeEndpoint = Require(options.MultiRouteBEndpoint, "--multi-route-b-endpoint");
-                framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelB)
-                    .EnableServer(routeEndpoint)
-                    .EnableClient(routeEndpoint)
+                if (!string.IsNullOrWhiteSpace(options.MultiRouteBEndpoint))
+                {
+                    var routeEndpoint = options.MultiRouteBEndpoint;
+                    framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelB)
+                        .EnableServer(routeEndpoint)
+                        .EnableClient(routeEndpoint)
+                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
+                        .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
+                            "MultiNodeCreateSpotReq");
+                }
+
+                framework.AddSpotMesh(ResolveSpotMeshName(options))
+                    .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
-                    .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
-                        "MultiNodeCreateSpotReq");
-                framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeB)
-                                        .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
-                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
+                    .AddEntrySpot<ScenarioEntrySpot>()
+                    .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
+                    .AddSpotFactory<SpotOnlyUserSpot>()
+                    .AddSpotFactory<ScenarioUserSpot>()
                     .AddSpotFactory<MultiNodeSpotB>();
             }
         });
@@ -114,6 +131,76 @@ internal static class MultiNodeHostFactory
                 : await CreateLocalMultiNodeSpotAsync<MultiNodeSpotB>(spots, evidence, node.Rid, request.SpotRid,
                     cancellationToken);
             return Results.Ok(created);
+        });
+        app.MapPost("/spot/create-user-local", async (
+            IZLinkSpotManager spots,
+            EvidenceStore evidence,
+            NodeOptions node,
+            CreateSpotReq request,
+            CancellationToken cancellationToken) =>
+        {
+            var created = await spots.GetOrCreateAsync<SpotOnlyUserSpot>(
+                RoutingId.From(request.SpotRid),
+                cancellationToken);
+            evidence.Add($"create-user-spot|rid={node.Rid}|spot={created.SpotRid}|state={created.State}");
+            return Results.Ok(new CreateSpotRes(
+                created.SpotRid.ToString(),
+                node.Rid,
+                created.State.ToString()));
+        });
+        app.MapPost("/spot/spot-only/request-send", async (
+            IZLinkSpotManager spots,
+            EvidenceStore evidence,
+            NodeOptions node,
+            SpotOnlyMeshReq request,
+            CancellationToken cancellationToken) =>
+        {
+            var created = await spots.GetOrCreateAsync<SpotOnlyUserSpot, SpotOnlyMeshReq>(
+                RoutingId.From(request.SourceSpotRid),
+                request,
+                cancellationToken);
+            var snapshot = await evidence.WaitUntilAsync(
+                entries => entries.Any(entry =>
+                    entry.Contains(
+                        $"spot-only-request|rid={node.Rid}|source={request.SourceSpotRid}|target={request.TargetSpotRid}",
+                        StringComparison.Ordinal)
+                    && entry.Contains($"|marker={request.Marker}", StringComparison.Ordinal)),
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+            return Results.Ok(new SpotOnlyMeshRes(
+                created.SpotRid.ToString(),
+                request.TargetSpotRid,
+                ExtractSpotOnlyValue(snapshot, request),
+                request.Marker));
+        });
+        app.MapPost("/actor/spot-only-join", async (
+            IZLinkActorManager actors,
+            IZLinkActorClient actorClient,
+            EvidenceStore evidence,
+            NodeOptions node,
+            SpotOnlyJoinReq request,
+            CancellationToken cancellationToken) =>
+        {
+            await actors.GetOrCreateAsync(
+                request.ActorId,
+                SpotServiceNames.ActorType,
+                new ScenarioActorCreateReq($"spot-only-{request.ActorId}"),
+                cancellationToken);
+            var result = await actorClient.RequestToActor(
+                    request.ActorId,
+                    request)
+                .PacketName("SpotOnlyJoinReq")
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Async<SpotOnlyJoinRes>(cancellationToken);
+            await evidence.WaitUntilAsync(
+                entries => entries.Any(entry =>
+                    entry.Contains(
+                        $"spot-only-actor-join|rid={node.Rid}|actor={request.ActorId}|target={request.TargetSpotRid}",
+                        StringComparison.Ordinal)
+                    && entry.Contains($"|marker={request.Marker}", StringComparison.Ordinal)),
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+            return Results.Ok(result);
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
@@ -157,6 +244,29 @@ internal static class MultiNodeHostFactory
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{optionName} is required.")
             : value;
+    }
+
+    private static string ResolveSpotMeshName(ServerOptions options)
+    {
+        return string.IsNullOrWhiteSpace(options.MultiRouteAEndpoint)
+               && string.IsNullOrWhiteSpace(options.MultiRouteBEndpoint)
+            ? SpotServiceNames.SpotOnlyMesh
+            : options.Rid;
+    }
+
+    private static int ExtractSpotOnlyValue(string[] evidence, SpotOnlyMeshReq request)
+    {
+        const string key = "|value=";
+        var entry = evidence.Last(line =>
+            line.Contains($"source={request.SourceSpotRid}", StringComparison.Ordinal)
+            && line.Contains($"target={request.TargetSpotRid}", StringComparison.Ordinal)
+            && line.Contains($"marker={request.Marker}", StringComparison.Ordinal));
+        var index = entry.IndexOf(key, StringComparison.Ordinal);
+        if (index < 0) return 0;
+        index += key.Length;
+        var end = entry.IndexOf('|', index);
+        var valueText = end < 0 ? entry[index..] : entry[index..end];
+        return int.TryParse(valueText, out var value) ? value : 0;
     }
 
     private static async Task<MultiNodeCreateSpotRes> CreateLocalMultiNodeSpotAsync<TSpot>(

@@ -28,6 +28,9 @@ internal static class RlA2ProviderEndpointRemapScenario
 
         await replacementProvider.Post("/shutdown").SubmitRawAsync();
         await WaitUntilUnavailableAsync(replacementProvider);
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryRes[]>();
 
         await processes.StartProviderBAsync();
         await WaitUntilAvailableAsync(providerB);

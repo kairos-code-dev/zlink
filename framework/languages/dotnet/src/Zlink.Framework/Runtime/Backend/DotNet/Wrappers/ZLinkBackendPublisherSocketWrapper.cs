@@ -19,6 +19,11 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket
         nativeSocket.SetRoutingId(routingId);
     }
 
+    public void SetMaxMessageSize(long value)
+    {
+        nativeSocket.Options.MaxMessageSize = value;
+    }
+
     public void SetSendHighWaterMark(int value)
     {
         nativeSocket.Options.SendHighWaterMark = value;

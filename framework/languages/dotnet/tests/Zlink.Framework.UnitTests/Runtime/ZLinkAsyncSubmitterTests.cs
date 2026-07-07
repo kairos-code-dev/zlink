@@ -82,6 +82,41 @@ public sealed class ZLinkAsyncSubmitterTests
     }
 
     [Fact]
+    public async Task Async_RetainsOriginalWhenRetryableAttemptConsumesMessage()
+    {
+        Action? ready = null;
+        var submitted = 0;
+
+        await using var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        var task = submitter.Async(
+            Message.From("payload"),
+            message =>
+            {
+                submitted++;
+                Assert.Equal("payload", message.GetString());
+                if (submitted < 3)
+                {
+                    message.Dispose();
+                    return false;
+                }
+
+                return true;
+            });
+
+        Assert.False(task.IsCompleted);
+        Assert.Equal(2, submitted);
+
+        ready?.Invoke();
+        await task;
+
+        Assert.Equal(3, submitted);
+    }
+
+    [Fact]
     public async Task Async_FailsPendingItemWhenSendTimeoutExpires()
     {
         await using var submitter = new ZLinkAsyncSubmitter(

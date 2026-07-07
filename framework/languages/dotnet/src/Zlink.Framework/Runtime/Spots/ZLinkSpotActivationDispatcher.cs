@@ -335,10 +335,9 @@ internal sealed class ZLinkSpotActivationDispatcher
 
         var runtimeState = runtime.GetOrCreateActorState(actorId);
         var isNoBind = IsNoBindRequest(requestId, flags);
-        ZLinkBoundSessionDispatchScope? boundSessionScope = null;
+        var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
         if (!isNoBind)
         {
-            boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
             runtime.BindActorSession(
                 actorId,
                 sourceNodeRid,
@@ -375,10 +374,10 @@ internal sealed class ZLinkSpotActivationDispatcher
                 {
                     await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
                         .ConfigureAwait(false);
-
-                    await boundSessionScope!.DrainAsync(cancellationToken)
-                        .ConfigureAwait(false);
                 }
+
+                await boundSessionScope.DrainAsync(cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -392,8 +391,7 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
         finally
         {
-            if (boundSessionScope is not null)
-                await boundSessionScope.DisposeAsync().ConfigureAwait(false);
+            await boundSessionScope.DisposeAsync().ConfigureAwait(false);
         }
     }
 

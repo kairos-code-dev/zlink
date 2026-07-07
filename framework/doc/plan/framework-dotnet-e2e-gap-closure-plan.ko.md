@@ -82,6 +82,16 @@ dotnet test framework/languages/dotnet/Zlink.Framework.sln
 for f in framework/languages/dotnet/e2e/*/run_e2e.sh; do timeout 420s "$f"; done
 ```
 
+이 계획은 sample 작업을 포함하지 않는다. 따라서 전체 solution test가 sample regression test에서만
+실패하면, 실패한 sample test 이름과 실패 이유를 그대로 기록하고, E2E gap closure 범위의 test는
+sample regression test를 제외한 명령으로 별도 확인한다. sample 실패를 숨기기 위해 sample 코드,
+sample regression test, solution membership을 바꾸지 않는다.
+
+```bash
+dotnet test framework/languages/dotnet/Zlink.Framework.sln \
+  --filter 'FullyQualifiedName!~Zlink.Framework.SampleRegressionTests'
+```
+
 실행 환경이나 port 충돌 때문에 전체 루프가 실패하면 실패 config를 먼저 단독 재현하고, 단독 pass 후
 전체 루프를 다시 실행한다.
 

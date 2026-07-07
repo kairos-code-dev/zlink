@@ -20,6 +20,8 @@ public sealed record WeightWaitReq(
     int Expected,
     int TimeoutMilliseconds = 10000);
 
+public sealed record StoreDelayReq(int Milliseconds);
+
 public sealed record TopologyWaitReq(
     string RoutingId,
     string State,

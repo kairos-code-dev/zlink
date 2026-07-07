@@ -12,6 +12,7 @@
 #include "runtime/services/spot/node/spot_node.hpp"
 #include "runtime/services/spot/node/spot_node_access.hpp"
 #include "runtime/services/spot/runtime/spot_handle.hpp"
+#include "utils/clock.hpp"
 
 #include <new>
 #include <string.h>
@@ -136,12 +137,139 @@ void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms
       zlink::request_timeout::schedule (timeout_ms_, handle_join_timeout, request_);
 }
 
+zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (
+  const zlink_actor_ref_t &previous_actor_,
+  const zlink_actor_ref_t &current_actor_,
+  const zlink_routing_id_t &previous_spot_rid_,
+  const zlink_routing_id_t &current_spot_rid_,
+  uint64_t join_epoch_)
+{
+    zlink_spot_actor_lifecycle_info_t info;
+    memset (&info, 0, sizeof (info));
+    info.previous_actor = previous_actor_;
+    info.current_actor = current_actor_;
+    info.previous_spot_rid = previous_spot_rid_;
+    info.current_spot_rid = current_spot_rid_;
+    info.join_epoch = join_epoch_;
+    return info;
+}
+
+void set_join_actor_spot_locked (actor_handle_t *actor_, spot_handle_t *spot_)
+{
+    if (!actor_)
+        return;
+    actor_->joined_spot_state =
+      spot_ ? spot_->logical_state : std::shared_ptr<spot_logical_state_t> ();
+    actor_->last_changed_ms = zlink::clock_t ().now_ms ();
+    actor_runtime ().routes.publish_active (actor_, false);
+}
+
+void create_join_active_route_locked (actor_handle_t *actor_)
+{
+    actor_runtime ().routes.publish_active (actor_, true);
+}
+
+bool actor_in_entry_spot_locked (const actor_handle_t *actor_)
+{
+    return actor_ && actor_->joined_spot_state && actor_->joined_spot_state->entry;
+}
+
 uint64_t next_join_generation_for_node_locked (zlink::spot_node_t *node_)
 {
     uint64_t &next = zlink::spot_node_access_t::next_actor_generation (node_);
     if (next == 0)
         next = 1;
     return next++;
+}
+
+zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *request_,
+                                                    actor_handle_t **readable_actor_out_)
+{
+    if (readable_actor_out_)
+        *readable_actor_out_ = NULL;
+    if (!request_)
+        return ZLINK_REQUEST_INTERNAL_ERROR;
+
+    zlink_spot_actor_lifecycle_info_t source_leave_info;
+    zlink_spot_actor_lifecycle_info_t target_join_info;
+    std::shared_ptr<spot_logical_state_t> source_leave_spot;
+    std::shared_ptr<spot_logical_state_t> target_join_spot;
+    memset (&source_leave_info, 0, sizeof (source_leave_info));
+    memset (&target_join_info, 0, sizeof (target_join_info));
+
+    if (request_->entry_spot_join && request_->actor && request_->spot_state
+        && zlink::spot_actor_internal::same_routing_id (request_->actor->node_rid,
+                                                        request_->target_node_rid)
+        && actor_in_entry_spot_locked (request_->actor)) {
+        if (!actor_runtime ().routes.active_matches (request_->actor))
+            create_join_active_route_locked (request_->actor);
+        return ZLINK_REQUEST_OK;
+    }
+
+    if (request_->remote) {
+        actor_handle_t *source = request_->actor;
+        actor_handle_t *target = request_->pending_target;
+        if (!target || !target->pending_remote_join)
+            return ZLINK_REQUEST_CONFLICT;
+        const actor_bound_session_transfer_t bound_session_transfer =
+          actor_runtime ().sessions.capture_bound_session (source);
+
+        zlink_actor_ref_t source_ref;
+        zlink_actor_ref_t target_ref;
+        if (source)
+            source_ref = source->ref_cache;
+        else
+            source_ref = request_->source_actor_ref;
+        target_ref = target->ref_cache;
+        const uint64_t source_epoch = source ? source->join_epoch : 0;
+        target->join_epoch = request_->join_epoch;
+        if (source) {
+            source_leave_spot = source->joined_spot_state;
+            source_leave_info = make_join_lifecycle_info (
+              source_ref, target_ref, request_->source_spot_rid, request_->spot_state->routing_id,
+              source_epoch);
+        }
+        target_join_spot = request_->spot_state;
+        target_join_info =
+          make_join_lifecycle_info (source_ref, target_ref, request_->source_spot_rid,
+                                    request_->spot_state->routing_id, target->join_epoch);
+        target->pending_remote_join = false;
+        set_join_actor_spot_locked (target, request_->spot);
+        request_->pending_target = NULL;
+        if (source)
+            remove_join_actor_locked (source, false);
+        actor_runtime ().sessions.transfer_bound_session (bound_session_transfer, target,
+                                                          zlink::clock_t ().now_ms ());
+        create_join_active_route_locked (target);
+        if (readable_actor_out_ && !target->queue.empty ())
+            *readable_actor_out_ = target;
+    } else {
+        if (!request_->actor)
+            return ZLINK_REQUEST_CONFLICT;
+        const zlink_actor_ref_t actor_ref = request_->actor->ref_cache;
+        const uint64_t source_epoch = request_->actor->join_epoch;
+        request_->actor->join_epoch = request_->join_epoch;
+        source_leave_spot = request_->actor->joined_spot_state;
+        source_leave_info =
+          make_join_lifecycle_info (actor_ref, actor_ref, request_->source_spot_rid,
+                                    request_->spot_state->routing_id, source_epoch);
+        target_join_spot = request_->spot_state;
+        target_join_info = make_join_lifecycle_info (
+          actor_ref, actor_ref, request_->source_spot_rid, request_->spot_state->routing_id,
+          request_->actor->join_epoch);
+        set_join_actor_spot_locked (request_->actor, request_->spot);
+        create_join_active_route_locked (request_->actor);
+        if (readable_actor_out_ && !request_->actor->queue.empty ())
+            *readable_actor_out_ = request_->actor;
+    }
+
+    if (source_leave_spot)
+        schedule_join_lifecycle_event_locked (source_leave_spot,
+                                              ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT,
+                                              source_leave_info);
+    schedule_join_lifecycle_event_locked (target_join_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED,
+                                          target_join_info);
+    return ZLINK_REQUEST_OK;
 }
 
 queued_join_request_t *

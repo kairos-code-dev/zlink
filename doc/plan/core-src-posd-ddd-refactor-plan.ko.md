@@ -508,8 +508,10 @@ sockets/engine/transports/utils:
   예약 로직, join live/index/retire/release/timeout bookkeeping을
   `service_spot_actor_join.cpp`로 먼저 분리했다. gateway join request/reply
   helper도 같은 파일로 이동해 gateway ingress dispatcher가 join state 조작을
-  직접 소유하지 않게 줄였다. 공개 join 진입점과 join recv/reply public surface는
-  아직 `service_spot_actor_api.cpp`에 남아 있으므로 T3-01 체크박스는 유지한다.
+  직접 소유하지 않게 줄였다. 이어서 승인된 join을 actor 상태와 lifecycle event에
+  반영하는 commit helper도 같은 join 모듈로 옮겼다. 공개 join 진입점과 join
+  recv/reply public surface는 아직 `service_spot_actor_api.cpp`에 남아 있으므로
+  T3-01 체크박스는 유지한다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

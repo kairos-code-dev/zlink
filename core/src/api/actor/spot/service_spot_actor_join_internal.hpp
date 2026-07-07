@@ -5,8 +5,10 @@
 #include <zlink.h>
 
 #include <stddef.h>
+#include <memory>
 
 struct spot_handle_t;
+struct spot_logical_state_t;
 
 namespace zlink
 {
@@ -37,6 +39,14 @@ actor_handle_t *create_join_actor_locked_with_generation (zlink::spot_node_t *no
                                                           uint64_t generation_,
                                                           bool pending_remote_join_);
 void remove_join_pending_target_locked (queued_join_request_t *request_);
+void remove_join_actor_locked (actor_handle_t *actor_, bool erase_session_binding_);
+void schedule_join_lifecycle_event_locked (
+  const std::shared_ptr<spot_logical_state_t> &spot_state_,
+  zlink_spot_actor_lifecycle_event_kind_t kind_,
+  const zlink_spot_actor_lifecycle_info_t &info_);
+
+zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *request_,
+                                                    actor_handle_t **readable_actor_out_);
 
 int enqueue_actor_gateway_entry_join_request_locked (
   zlink::spot_node_t *node_,

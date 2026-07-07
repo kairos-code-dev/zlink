@@ -136,20 +136,6 @@ bool actor_route_is_current_location (const zlink_actor_route_t &route_, const c
 
 void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_changed_time_);
 
-void drain_queued_join_requests_for_stream_locked (void *stream_,
-                                                   std::deque<queued_join_request_t *> *aborted_)
-{
-    if (!aborted_)
-        return;
-    const size_t old_size = aborted_->size ();
-    actor_runtime ().joins.drain_queued_for_stream (stream_, aborted_);
-    for (std::deque<queued_join_request_t *>::iterator it = aborted_->begin () + old_size;
-         it != aborted_->end (); ++it) {
-        clear_actor_bound_session_locked ((*it)->actor, true);
-        retire_join_request_locked (*it);
-    }
-}
-
 zlink_routing_id_t actor_current_spot_rid_locked (const actor_handle_t *actor_)
 {
     zlink_routing_id_t rid;
@@ -1636,9 +1622,14 @@ void erase_actor_stream_bindings (void *stream_)
     std::deque<queued_join_request_t *> aborted_joins;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        drain_queued_join_requests_for_stream_locked (stream_, &aborted_joins);
         std::vector<queued_join_request_t *> received_aborts;
-        actor_runtime ().joins.collect_live_for_stream (stream_, aborted_joins, &received_aborts);
+        collect_join_stream_queued_erase_requests_locked (stream_, &aborted_joins);
+        for (std::deque<queued_join_request_t *>::iterator it = aborted_joins.begin ();
+             it != aborted_joins.end (); ++it) {
+            clear_actor_bound_session_locked ((*it)->actor, true);
+            retire_join_request_locked (*it);
+        }
+        collect_join_stream_live_erase_requests_locked (stream_, aborted_joins, &received_aborts);
         for (std::vector<queued_join_request_t *>::iterator it = received_aborts.begin ();
              it != received_aborts.end (); ++it) {
             queued_join_request_t *request = *it;

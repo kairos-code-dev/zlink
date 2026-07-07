@@ -625,6 +625,25 @@ bool join_spot_has_joined_or_pending_actor_locked (spot_handle_t *spot_)
     return actor_runtime ().joins.spot_has_pending (join_queue_key (spot_->logical_state));
 }
 
+void collect_join_stream_queued_erase_requests_locked (
+  void *stream_,
+  std::deque<queued_join_request_t *> *queued_aborts_)
+{
+    if (!stream_ || !queued_aborts_)
+        return;
+    actor_runtime ().joins.drain_queued_for_stream (stream_, queued_aborts_);
+}
+
+void collect_join_stream_live_erase_requests_locked (
+  void *stream_,
+  const std::deque<queued_join_request_t *> &queued_aborts_,
+  std::vector<queued_join_request_t *> *live_aborts_)
+{
+    if (!stream_ || !live_aborts_)
+        return;
+    actor_runtime ().joins.collect_live_for_stream (stream_, queued_aborts_, live_aborts_);
+}
+
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
                                                       size_t part_count_,
                                                       zlink_actor_join_spot_handler_fn handler_,

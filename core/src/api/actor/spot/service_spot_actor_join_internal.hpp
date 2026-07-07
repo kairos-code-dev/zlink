@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <deque>
 #include <memory>
+#include <vector>
 
 struct spot_handle_t;
 struct spot_logical_state_t;
@@ -72,6 +73,13 @@ void complete_join_request (queued_join_request_t *request_, zlink_request_resul
 void collect_join_spot_facade_erase_locked (spot_handle_t *spot_,
                                             std::deque<queued_join_request_t *> *pending_);
 bool join_spot_has_joined_or_pending_actor_locked (spot_handle_t *spot_);
+void collect_join_stream_queued_erase_requests_locked (
+  void *stream_,
+  std::deque<queued_join_request_t *> *queued_aborts_);
+void collect_join_stream_live_erase_requests_locked (
+  void *stream_,
+  const std::deque<queued_join_request_t *> &queued_aborts_,
+  std::vector<queued_join_request_t *> *live_aborts_);
 
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
                                                       size_t part_count_,

@@ -529,7 +529,8 @@ sockets/engine/transports/utils:
   pending join 조회도 join 모듈 helper 뒤로 숨겼다. join 완료 callback과 request
   release의 paired 수명주기도 join 모듈 helper로 모아 API 파일이 두 단계 완료
   순서를 직접 알지 않게 했다. spot facade 제거와 joined-or-pending 조회 진입점도
-  join 모듈로 옮겨 API 파일의 join teardown 책임을 더 줄였다.
+  join 모듈로 옮겨 API 파일의 join teardown 책임을 더 줄였다. lifecycle info 생성
+  규칙도 join 모듈 helper 하나로 합쳐 API 파일의 중복 구현을 제거했다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

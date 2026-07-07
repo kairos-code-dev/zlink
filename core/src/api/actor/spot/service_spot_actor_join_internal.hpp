@@ -49,6 +49,12 @@ void schedule_join_lifecycle_event_locked (
   const std::shared_ptr<spot_logical_state_t> &spot_state_,
   zlink_spot_actor_lifecycle_event_kind_t kind_,
   const zlink_spot_actor_lifecycle_info_t &info_);
+zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (
+  const zlink_actor_ref_t &previous_actor_,
+  const zlink_actor_ref_t &current_actor_,
+  const zlink_routing_id_t &previous_spot_rid_,
+  const zlink_routing_id_t &current_spot_rid_,
+  uint64_t join_epoch_);
 
 zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *request_,
                                                     actor_handle_t **readable_actor_out_);

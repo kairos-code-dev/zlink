@@ -287,38 +287,15 @@ bool zlink::asio_zmp_engine_t::handshake ()
 bool zlink::asio_zmp_engine_t::receive_hello ()
 {
     while (_insize > 0) {
-        if (_hello_header_bytes < zmp_header_size) {
-            const size_t to_copy = std::min (_insize, zmp_header_size - _hello_header_bytes);
-            memcpy (_hello_recv + _hello_header_bytes, _inpos, to_copy);
-            _hello_header_bytes += to_copy;
-            _inpos += to_copy;
-            _insize -= to_copy;
-            if (_hello_header_bytes < zmp_header_size)
-                return false;
-            _hello_body_len = get_uint32 (_hello_recv + 4);
-            if (_hello_body_len < zmp_control::hello_min_body_size) {
-                set_last_error (zmp_error_internal, "hello too short");
-                errno = EPROTO;
-                error (protocol_error);
-                return false;
-            }
-            if (_hello_body_len > zmp_control::hello_max_body_size) {
-                set_last_error (zmp_error_body_too_large, "hello too large");
-                errno = EPROTO;
-                error (protocol_error);
-                return false;
-            }
-        }
-
-        if (_hello_body_bytes < _hello_body_len) {
-            const size_t to_copy =
-              std::min (_insize, static_cast<size_t> (_hello_body_len) - _hello_body_bytes);
-            memcpy (_hello_recv + zmp_header_size + _hello_body_bytes, _inpos, to_copy);
-            _hello_body_bytes += to_copy;
-            _inpos += to_copy;
-            _insize -= to_copy;
-            if (_hello_body_bytes < _hello_body_len)
-                return false;
+        const zmp_control::hello_receive_result_t result =
+          zmp_control::receive_hello_bytes (_inpos, _insize, _hello_recv, _hello_header_bytes,
+                                            _hello_body_bytes, _hello_body_len);
+        if (result.status == zmp_control::hello_receive_incomplete)
+            return false;
+        if (result.status == zmp_control::hello_receive_error) {
+            set_last_error (result.error_code, result.error_reason);
+            error (protocol_error);
+            return false;
         }
 
         if (parse_hello (_hello_recv, zmp_header_size + _hello_body_len)) {

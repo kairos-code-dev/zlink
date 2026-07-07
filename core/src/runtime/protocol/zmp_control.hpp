@@ -63,6 +63,27 @@ struct hello_parse_result_t
     size_t identity_len;
 };
 
+enum hello_receive_status_t
+{
+    hello_receive_incomplete = 0,
+    hello_receive_ready,
+    hello_receive_error
+};
+
+struct hello_receive_result_t
+{
+    hello_receive_result_t () :
+        status (hello_receive_incomplete),
+        error_code (zmp_error_internal),
+        error_reason (NULL)
+    {
+    }
+
+    hello_receive_status_t status;
+    uint8_t error_code;
+    const char *error_reason;
+};
+
 inline void build_hello_ready_frames (const options_t &options_,
                                       unsigned char *hello_send_,
                                       size_t hello_send_capacity_,
@@ -108,6 +129,57 @@ inline void build_hello_ready_frames (const options_t &options_,
     memcpy (&ready_frame[zmp_header_size], &ready_body[0], ready_body.size ());
 
     ready_send_.insert (ready_send_.end (), ready_frame.begin (), ready_frame.end ());
+}
+
+inline hello_receive_result_t receive_hello_bytes (unsigned char *&inpos_,
+                                                   size_t &insize_,
+                                                   unsigned char *hello_recv_,
+                                                   size_t &hello_header_bytes_,
+                                                   size_t &hello_body_bytes_,
+                                                   uint32_t &hello_body_len_)
+{
+    zlink_assert (hello_recv_);
+    hello_receive_result_t result;
+
+    if (hello_header_bytes_ < zmp_header_size) {
+        const size_t to_copy = std::min (insize_, zmp_header_size - hello_header_bytes_);
+        memcpy (hello_recv_ + hello_header_bytes_, inpos_, to_copy);
+        hello_header_bytes_ += to_copy;
+        inpos_ += to_copy;
+        insize_ -= to_copy;
+        if (hello_header_bytes_ < zmp_header_size)
+            return result;
+
+        hello_body_len_ = get_uint32 (hello_recv_ + 4);
+        if (hello_body_len_ < hello_min_body_size) {
+            result.status = hello_receive_error;
+            result.error_code = zmp_error_internal;
+            result.error_reason = "hello too short";
+            errno = EPROTO;
+            return result;
+        }
+        if (hello_body_len_ > hello_max_body_size) {
+            result.status = hello_receive_error;
+            result.error_code = zmp_error_body_too_large;
+            result.error_reason = "hello too large";
+            errno = EPROTO;
+            return result;
+        }
+    }
+
+    if (hello_body_bytes_ < hello_body_len_) {
+        const size_t to_copy =
+          std::min (insize_, static_cast<size_t> (hello_body_len_) - hello_body_bytes_);
+        memcpy (hello_recv_ + zmp_header_size + hello_body_bytes_, inpos_, to_copy);
+        hello_body_bytes_ += to_copy;
+        inpos_ += to_copy;
+        insize_ -= to_copy;
+        if (hello_body_bytes_ < hello_body_len_)
+            return result;
+    }
+
+    result.status = hello_receive_ready;
+    return result;
 }
 
 inline bool socket_types_compatible (int local_type_, int peer_type_)

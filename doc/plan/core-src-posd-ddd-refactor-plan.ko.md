@@ -443,6 +443,10 @@ sockets/engine/transports/utils:
   - 2026-07-08 부분 완료: HELLO+READY frame construction 중복을
     `zmp_control::build_hello_ready_frames`로 통합했다. hot recv 함수는 변경하지
     않았다. 남은 parse/process/heartbeat 중복은 별도 하위 조각으로 이어간다.
+  - 2026-07-08 부분 완료: HELLO header/body 수집 상태기계를
+    `zmp_control::receive_hello_bytes`로 통합했다. malformed hello event 방출과
+    peer routing-id 저장은 엔진별 socket/session 접근 차이를 유지하기 위해
+    호출처에 남겼다.
 - [x] **T3-06. runtime reqrep 층과 api reqrep 층의 분해 대칭화 마무리**
   - T2-08/T2-09 완료 후 남는 dispatch 잔여(`dispatch_spot_request_to_*`,
     local-delivery 파이프라인)를 api쪽 분해 어휘(submit/delivery/completion)와
@@ -628,6 +632,9 @@ sockets/engine/transports/utils:
   1k STREAM lightweight perf도 baseline/patched로 실행했다
   (`t305_baseline_hello_ready_1k`, `t305_patched_hello_ready_1k`). tcp/tls/ws는
   같은 범위였고 wss는 노이즈가 커서 숫자 단정 없이 성공 여부만 확인했다.
+- 2026-07-08: T3-05 부분 완료 — ASIO ZMP 엔진과 WS 엔진의 HELLO header/body
+  수집 루프를 `zmp_control::receive_hello_bytes`로 모았다. 프로토콜 에러 기록과
+  malformed hello event 방출은 엔진별 호출처에 남겼다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

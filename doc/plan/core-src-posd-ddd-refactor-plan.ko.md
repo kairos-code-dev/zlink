@@ -405,6 +405,9 @@ sockets/engine/transports/utils:
   - 2026-07-08 부분 완료: `utils/ip.cpp`의 fdpair/self-pipe 구현을
     `utils/ip_fdpair.cpp`로 분리했다. `open_socket`, `make_socket_noninheritable`,
     socket tuning, IPC wildcard path 생성은 기존 파일에 남겼다.
+  - 2026-07-08 부분 완료: stream dispatch start/register/stop/accessor와 packet
+    dispatch state reset을 `stream_dispatch_lifecycle.cpp`로 분리했다. `xsend`/`xrecv`,
+    `xstream_dispatch_msg`, raw/packet dispatch body는 기존 파일에 유지했다.
 
 ### 3.3 티어 3 — 대형 구조 (6건)
 
@@ -595,6 +598,10 @@ sockets/engine/transports/utils:
 - 2026-07-08: T2-23 부분 완료 — fdpair/self-pipe 구현을 `utils/ip_fdpair.cpp`로
   분리했다. 확인: `cmake --build core/build -j1`, `ctest -R
   'unittest_ipc_address|unittest_socket_runtime|test_public_inproc_multipart_send|test_connect_resolve|test_connect_rid'`.
+- 2026-07-08: T2-23 부분 완료 — stream dispatch lifecycle/control 구현을
+  `stream_dispatch_lifecycle.cpp`로 분리했다. 확인: `cmake --build core/build -j1`,
+  `ctest -R
+  'test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_stream_fastpath|test_stream_routing_id_size|test_multi_stream_server_reassembly'`.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

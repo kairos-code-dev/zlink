@@ -1098,6 +1098,7 @@ set(socket-router-sources
 
 set(socket-stream-sources
     src/runtime/sockets/stream/stream.cpp
+    src/runtime/sockets/stream/stream_dispatch_lifecycle.cpp
     src/runtime/sockets/stream/stream_dispatch_send.cpp
     src/runtime/sockets/stream/stream_dispatch_context.cpp)
 

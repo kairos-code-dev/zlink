@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "core/ctx.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "core/mailbox.hpp"
 #include "core/msg.hpp"

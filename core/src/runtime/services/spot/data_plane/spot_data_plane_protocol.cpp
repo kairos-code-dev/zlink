@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_data_plane_protocol_internal.hpp"
 #include "services/spot/data_plane/spot_data_plane_message_io_internal.hpp"
 #include "services/spot/common/spot_message_parts_internal.hpp"
 #include "services/spot/data_plane/spot_mesh_pub_hwm.hpp"

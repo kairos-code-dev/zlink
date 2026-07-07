@@ -899,48 +899,84 @@ TU inline으로 제한하고, 의심되면 벤치 게이트를 적용한다.
     wrapper를 접는다. (없음 / S)
   - 2026-07-08: helper를 삭제하고 spot option internal 호출을 직접 반환하도록
     정리했다.
-- [ ] **W2-03. `consume_send_frame` 3중 정의 통합**
+- [x] **W2-03. `consume_send_frame` 3중 정의 통합**
   - `request_reply_protocol_internal.hpp`의 header-inline 정본,
     `socket_message_send_api.cpp` 익명 사본, `part_helper_internal` 사본을
     정본으로 수렴한다. send 경로이므로 인라이닝 보존이 조건이다. (code-motion / S)
+  - 2026-07-08: `socket_message_send_api.cpp`의 send-frame consume 사본을 제거하고
+    header-inline 정본을 직접 호출한다. `part_helper_internal::consume_send_part`도
+    같은 정본으로 위임한다.
 - [x] **W2-04. errno→result 역방향 로컬 사본 제거**
   - `service_spot_actor_no_bind.cpp`의 로컬 변환을
     `actor_missing_request_result_from_errno` 정본 호출로 교체한다. (없음 / S)
   - 2026-07-08: `enqueue_errno_`를 필요한 경우에만 `errno`로 복원하고 actor result
     정본을 호출하도록 교체했다.
-- [ ] **W2-05. routing-id shim 2종 제거**
+- [x] **W2-05. routing-id shim 2종 제거**
   - socket reqrep/part helper의 `has_valid_routing_id`와 `routing_id_key` 1줄
     포워더를 직접 primitive 호출로 줄인다. (없음 / S)
-- [ ] **W2-06. `ZLINK_ROUTED_PART_DEBUG` stderr 로깅 추출**
+  - 2026-07-08: socket reqrep shim 선언/정의와 part helper routing-id shim을
+    삭제하고 호출부를 `zlink::valid_routing_id`/`zlink::routing_id_key`로 바꿨다.
+- [x] **W2-06. `ZLINK_ROUTED_PART_DEBUG` stderr 로깅 추출**
   - `socket_message_send_api.cpp`의 env-gate 진단 출력을 T2-21처럼 진단 helper로
     분리한다. fast-path 타입 게이팅은 건드리지 않는다. (code-motion / S)
+  - 2026-07-08: routed part debug `fprintf` 3곳을 같은 TU의 trace helper로
+    추출했다. send type gating과 actual send 호출은 유지했다.
 
 ### 8.3 1차 미완수 마무리
 
-- [ ] **W2-07. T2-17 잔여: auto-HWM 엔진 캡슐화**
+- [x] **W2-07. T2-17 잔여: auto-HWM 엔진 캡슐화**
   - `ctx_t` 안에 남은 auto-HWM state와 two-mutex protocol을 owned member type으로
     숨긴다. (없음 / M)
-- [ ] **W2-08. T2-17 잔여: `thread_ctx_t` 실분리**
+  - 2026-07-08: `ctx_auto_hwm_state_t` owned member로 option snapshot, debounce,
+    generation, task id 상태를 옮겼다. 기존 `_opt_sync`/`_slot_sync` 잠금 순서는
+    유지하고 상태 전이만 state 메서드로 캡슐화했다.
+- [x] **W2-08. T2-17 잔여: `thread_ctx_t` 실분리**
   - `ctx.hpp`의 선언 동거와 `ctx_t` 상속을 줄이고, 자체 헤더와 멤버 구성을
     검토한다. (없음 / S-M)
-- [ ] **W2-09. T2-16 잔여: forwarding target 관리 추출**
+  - 2026-07-08: `thread_ctx_t`를 `ctx_thread.hpp`로 분리하고 `ctx_t` 상속을 멤버
+    보유로 바꿨다. poller 생성은 `ctx_->thread_context()`를 통해 thread option
+    객체만 받는다.
+- [x] **W2-09. T2-16 잔여: forwarding target 관리 추출**
   - `spot_data_plane_forwarding.cpp`에 남은 membership 갱신 control-plane을
     control 모듈로 옮기고 pending queue limit 정책 위치를 정리한다. (없음 / M)
-- [ ] **W2-10. `spot_data_plane_internal.hpp` fat 헤더 분해**
+  - 2026-07-08: `sync_local_fanout_targets`, `sync_remote_mesh_targets`,
+    `drop_remote_mesh_target`, `update_pending_queue_limits` 정의를 data-plane control
+    TU로 이동했다. `forward_*`/`stage`/`flush` hot 본체는 forwarding TU에 유지했다.
+- [x] **W2-10. `spot_data_plane_internal.hpp` fat 헤더 분해**
   - god struct 선언 3개가 공유되는 헤더를 W2-09와 함께 더 좁은 internal 헤더로
     나눈다. (없음 / M)
-- [ ] **W2-11. T3-05 잔여: ZMP control dispatch 핸들러 공유**
+  - 2026-07-08: pending/protocol/forwarding/poller-interest 선언을 전용 internal
+    헤더로 분리하고, data-plane 및 테스트 TU가 필요한 선언만 include하도록 좁혔다.
+    `spot_data_plane_internal.hpp`에는 runtime socket configure 선언만 남겼다.
+- [x] **W2-11. T3-05 잔여: ZMP control dispatch 핸들러 공유**
   - zmp/ws 엔진의 ready/error/command/heartbeat/pong wrapper 중 byte-identical
     control-plane 부분만 공유한다. send/recv 본체는 유지한다. (code-motion / M)
-- [ ] **W2-12. T2-22 잔여: connecter/listener 골격 선택적 정리**
+  - 2026-07-08: READY/error/heartbeat/pong은 이미 `zmp_control` primitive를 공유하고
+    있어, 남은 byte-identical command type dispatch를
+    `zmp_control::classify_command_message`로 정본화했다. 엔진별 member-function
+    pointer 설정 꼬리는 얕은 callback driver를 만들지 않고 유지했다.
+- [x] **W2-12. T2-22 잔여: connecter/listener 골격 선택적 정리**
   - plug/term/timer/close wrapper만 공유 후보로 검토한다. create_engine 꼬리는
     각 transport에 남긴다. (없음 / M)
+  - 2026-07-08 완료 판정: 남은 plug/term/timer/close wrapper는 transport별
+    lifecycle owner와 timer id/member 구성이 달라 CRTP/base를 추가해야만 묶인다.
+    기존 W1에서 reconnect interval과 listener accept policy drift는 이미 정본화돼
+    있으며, 이번 wave에서는 상속 구조 추가 대비 복잡도 감소가 작아 코드 변경 없이
+    닫는다.
 
 ### 8.4 구조·저우선
 
-- [ ] **W2-13. `join_spot` vs `join_entry_spot` 중복 해소**
+- [x] **W2-13. `join_spot` vs `join_entry_spot` 중복 해소**
   - `service_spot_actor_join.cpp` 내부의 request builder와 gateway-send/timeout
     꼬리를 공유 helper로 줄인다. (없음 / M)
-- [ ] **W2-14. `send_actor_gateway_packet/multipart_from_source` 스켈레톤 dedup**
+  - 2026-07-08: 안전하게 동일한 외부 gateway send 실패 처리와 queued join 제출
+    완료 꼬리를 helper로 추출했다. request-builder 전체 통합은 일반 spot join과
+    entry spot join의 target spot/entry semantics, idempotent completion,
+    pending-target 생성 순서가 달라 별도 driver가 호출자 조건을 더 많이 노출하므로
+    진행하지 않았다.
+- [x] **W2-14. `send_actor_gateway_packet/multipart_from_source` 스켈레톤 dedup**
   - send 경로이므로 같은 TU 또는 header-inline helper로만 정리한다.
     (code-motion / S)
+  - 2026-07-08: `service_spot_actor_api.cpp` 같은 TU의 inline
+    `dispatch_actor_gateway_parts_from_source`로 routed frame build, direct dispatch,
+    built-part cleanup을 정본화했다. payload ownership 처리는 기존 호출부에 유지했다.

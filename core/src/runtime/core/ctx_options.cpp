@@ -36,7 +36,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
         case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
             if (is_int && (value == 0 || value == 1)) {
                 scoped_lock_t locker (_opt_sync);
-                _auto_hwm_enabled = (value != 0);
+                _auto_hwm.set_enabled (value != 0);
                 refresh_auto_hwm = true;
                 break;
             }
@@ -45,7 +45,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
         case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
-                _auto_hwm_recalc_debounce_ms = value;
+                _auto_hwm.set_recalc_debounce_ms (value);
                 refresh_auto_hwm = true;
                 break;
             }
@@ -58,7 +58,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
                     || value == ZLINK_AUTO_HWM_PROFILE_BALANCED
                     || value == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT)) {
                 scoped_lock_t locker (_opt_sync);
-                _auto_hwm_profile = static_cast<zlink_auto_hwm_profile_t> (value);
+                _auto_hwm.set_profile (static_cast<zlink_auto_hwm_profile_t> (value));
                 refresh_auto_hwm = true;
                 break;
             }
@@ -67,7 +67,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
         case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
-                _auto_hwm_msg_unit_bytes = value;
+                _auto_hwm.set_msg_unit_bytes (value);
                 refresh_auto_hwm = true;
                 break;
             }
@@ -99,7 +99,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             break;
 
         default:
-            return thread_ctx_t::set (option_, optval_, optvallen_);
+            return _thread_context.set (option_, optval_, optvallen_);
     }
 
     if (refresh_auto_hwm) {
@@ -143,7 +143,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
         case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_enabled ? 1 : 0;
+                *value = _auto_hwm.enabled () ? 1 : 0;
                 return 0;
             }
             break;
@@ -151,7 +151,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
         case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_recalc_debounce_ms;
+                *value = _auto_hwm.recalc_debounce_ms ();
                 return 0;
             }
             break;
@@ -159,7 +159,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
         case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_profile;
+                *value = _auto_hwm.profile ();
                 return 0;
             }
             break;
@@ -167,7 +167,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
         case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm_msg_unit_bytes;
+                *value = _auto_hwm.msg_unit_bytes ();
                 return 0;
             }
             break;
@@ -206,7 +206,7 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             break;
 
         default:
-            return thread_ctx_t::get (option_, optval_, optvallen_);
+            return _thread_context.get (option_, optval_, optvallen_);
     }
 
     errno = EINVAL;

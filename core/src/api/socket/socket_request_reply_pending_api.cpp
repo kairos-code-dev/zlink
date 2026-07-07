@@ -7,6 +7,7 @@
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_pending_internal.hpp"
+#include "utils/routing_id.hpp"
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
@@ -75,8 +76,8 @@ int reqrep::ensure_socket_pending_request (
 
         key.request_seq = request_seq;
         if (handle_.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
-            && reqrep::has_valid_routing_id (peer_rid_)) {
-            key.peer_rid = reqrep::routing_id_key (peer_rid_);
+            && zlink::valid_routing_id (peer_rid_)) {
+            key.peer_rid = zlink::routing_id_key (peer_rid_);
         }
 
         pending.key = key;

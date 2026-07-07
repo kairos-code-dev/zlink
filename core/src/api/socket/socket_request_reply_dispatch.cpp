@@ -7,6 +7,7 @@
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "sockets/common/socket_base.hpp"
+#include "utils/routing_id.hpp"
 
 namespace zlink
 {
@@ -54,7 +55,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
                 zlink::request_reply::close_request_reply_parts (parts_, part_count_);
             }
         } else if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
-                   && has_valid_routing_id (source_rid_)) {
+                   && zlink::valid_routing_id (source_rid_)) {
             if (dispatch_router_message (state, source_rid_, NULL, envelope.request_seq,
                                          envelope.payload_parts, envelope.payload_part_count)
                 != 0) {
@@ -68,8 +69,8 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
 
     pending_key_t key;
     key.request_seq = envelope.request_seq;
-    if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER && has_valid_routing_id (source_rid_)) {
-        key.peer_rid = routing_id_key (source_rid_);
+    if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER && zlink::valid_routing_id (source_rid_)) {
+        key.peer_rid = zlink::routing_id_key (source_rid_);
     }
 
     pending_request_t pending;

@@ -15,7 +15,6 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/local/stream_protocol.hpp>
 
-#include "core/ctx.hpp"
 #include "utils/fd.hpp"
 #include "core/thread.hpp"
 #include "core/poller_base.hpp"

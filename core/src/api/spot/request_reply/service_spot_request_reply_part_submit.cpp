@@ -10,6 +10,7 @@
 #include "api/socket/part_helper_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/message/submit_result_internal.hpp"
+#include "utils/routing_id.hpp"
 
 zlink_submit_result_t spot_send_channel_impl (void *spot_,
                                               const char *channel_name_,
@@ -82,7 +83,6 @@ zlink_submit_result_t router_send_spot_impl (void *router_,
 
 namespace
 {
-using zlink::part_helper_internal::has_valid_routing_id;
 using zlink::part_helper_internal::send_sequence_spec_t;
 
 int validate_request_send_flags (zlink_send_flags_t flags_)
@@ -329,8 +329,8 @@ zlink_submit_result_t zlink_spot_request_spot_part (void *spot_,
                                                     zlink_part_flag_t part_flag_,
                                                     uint32_t timeout_ms_)
 {
-    if (!handler_ || !has_valid_routing_id (dest_node_rid_)
-        || !has_valid_routing_id (dest_spot_rid_)
+    if (!handler_ || !zlink::valid_routing_id (dest_node_rid_)
+        || !zlink::valid_routing_id (dest_spot_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
@@ -360,7 +360,7 @@ zlink_submit_result_t zlink_spot_request_router_part (void *spot_,
                                                       zlink_part_flag_t part_flag_,
                                                       uint32_t timeout_ms_)
 {
-    if (!handler_ || !has_valid_routing_id (peer_rid_)
+    if (!handler_ || !zlink::valid_routing_id (peer_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
@@ -418,7 +418,7 @@ zlink_submit_result_t zlink_spot_send_spot_part (void *spot_,
                                                  zlink_send_flags_t flags_,
                                                  zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
+    if (!zlink::valid_routing_id (dest_node_rid_) || !zlink::valid_routing_id (dest_spot_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
@@ -454,7 +454,7 @@ zlink_submit_result_t zlink_spot_reply_spot_part (void *spot_,
                                                   zlink_msg_t *part_,
                                                   zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
+    if (!zlink::valid_routing_id (dest_node_rid_) || !zlink::valid_routing_id (dest_spot_rid_)
         || request_seq_ == 0 || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
@@ -478,7 +478,7 @@ zlink_submit_result_t zlink_spot_reply_router_part (void *spot_,
                                                     zlink_msg_t *part_,
                                                     zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (peer_rid_) || request_seq_ == 0
+    if (!zlink::valid_routing_id (peer_rid_) || request_seq_ == 0
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
@@ -506,8 +506,8 @@ zlink_submit_result_t zlink_router_request_spot_part (void *router_,
                                                       zlink_part_flag_t part_flag_,
                                                       uint32_t timeout_ms_)
 {
-    if (!handler_ || !has_valid_routing_id (dest_node_rid_)
-        || !has_valid_routing_id (dest_spot_rid_)
+    if (!handler_ || !zlink::valid_routing_id (dest_node_rid_)
+        || !zlink::valid_routing_id (dest_spot_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
@@ -535,7 +535,7 @@ zlink_submit_result_t zlink_router_reply_spot_part (void *router_,
                                                     zlink_msg_t *part_,
                                                     zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
+    if (!zlink::valid_routing_id (dest_node_rid_) || !zlink::valid_routing_id (dest_spot_rid_)
         || request_seq_ == 0 || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
@@ -560,7 +560,7 @@ zlink_submit_result_t zlink_router_send_spot_part (void *router_,
                                                    zlink_send_flags_t flags_,
                                                    zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
+    if (!zlink::valid_routing_id (dest_node_rid_) || !zlink::valid_routing_id (dest_spot_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);

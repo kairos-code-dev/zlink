@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#include "core/ctx.hpp"
+#include "core/ctx_thread.hpp"
 #include "core/thread.hpp"
 
 #include <cstdlib>

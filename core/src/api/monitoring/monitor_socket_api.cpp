@@ -6,6 +6,7 @@
 #include "api/monitoring/monitor_api_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 
+#include "core/ctx.hpp"
 #include "utils/random.hpp"
 
 namespace

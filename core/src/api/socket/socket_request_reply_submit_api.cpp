@@ -12,6 +12,7 @@
 #include "api/message/submit_result_internal.hpp"
 #include "core/msg.hpp"
 #include "core/pipe.hpp"
+#include "utils/routing_id.hpp"
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
@@ -302,8 +303,7 @@ zlink_submit_result_t zlink_router_request_part (void *router_,
                                                  zlink_reply_handler_fn handler_,
                                                  void *userdata_)
 {
-    if ((!handler_ && part_flag_ == ZLINK_PART_FINAL)
-        || !reqrep::has_valid_routing_id (peer_rid_)) {
+    if ((!handler_ && part_flag_ == ZLINK_PART_FINAL) || !zlink::valid_routing_id (peer_rid_)) {
         zlink::part_helper_internal::consume_send_part (part_);
         errno = EINVAL;
         return zlink::submit_result_internal::from_errno (errno);
@@ -323,7 +323,7 @@ zlink_submit_result_t zlink_router_reply_part (void *router_,
                                                zlink_msg_t *part_,
                                                zlink_part_flag_t part_flag_)
 {
-    if (!reqrep::has_valid_routing_id (peer_rid_) || request_seq_ == 0) {
+    if (!zlink::valid_routing_id (peer_rid_) || request_seq_ == 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         errno = EINVAL;
         return zlink::submit_result_internal::from_errno (errno);

@@ -11,7 +11,7 @@
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "services/actor/service_spot_actor_internal.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_data_plane_forwarding_internal.hpp"
 #include "services/spot/common/spot_message_parts_internal.hpp"
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/node/spot_node_access.hpp"

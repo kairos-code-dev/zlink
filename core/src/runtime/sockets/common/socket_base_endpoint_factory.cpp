@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "core/address.hpp"
+#include "core/ctx_inproc_registry.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "transports/ipc/ipc_address.hpp"
 

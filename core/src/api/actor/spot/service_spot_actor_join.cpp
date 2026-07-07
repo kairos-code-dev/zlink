@@ -785,6 +785,26 @@ bool join_spot_has_joined_or_pending_actor_locked (spot_handle_t *spot_)
     return actor_runtime ().joins.spot_has_pending (join_queue_key (spot_->logical_state));
 }
 
+void complete_failed_external_gateway_join (queued_join_request_t *request_,
+                                            zlink_request_result_t failure_)
+{
+    {
+        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+        retire_join_request_locked (request_);
+    }
+    complete_and_release_join_request (request_, failure_);
+}
+
+zlink_submit_result_t finish_queued_join_submission (queued_join_request_t *request_,
+                                                     uint32_t timeout_ms_,
+                                                     spot_handle_t *spot_)
+{
+    schedule_join_timeout (request_, timeout_ms_);
+    zlink_spot_notify_dispatch_info (spot_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE,
+                                     ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, spot_);
+    return ZLINK_SUBMIT_OK;
+}
+
 void collect_join_stream_queued_erase_requests_locked (
   void *stream_,
   std::deque<queued_join_request_t *> *queued_aborts_)
@@ -1226,21 +1246,14 @@ zlink_spot_node_actor_join_spot (void *node_,
         if (send_rc != ZLINK_SUBMIT_OK) {
             const zlink_request_result_t failure =
               zlink::spot_actor_internal::errno_to_request_result (errno);
-            {
-                std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-                retire_join_request_locked (request);
-            }
-            complete_and_release_join_request (request, failure);
+            complete_failed_external_gateway_join (request, failure);
             return ZLINK_SUBMIT_OK;
         }
         schedule_join_timeout (request, timeout_ms_);
         return ZLINK_SUBMIT_OK;
     }
 
-    schedule_join_timeout (request, timeout_ms_);
-    zlink_spot_notify_dispatch_info (spot, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE,
-                                     ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, spot);
-    return ZLINK_SUBMIT_OK;
+    return finish_queued_join_submission (request, timeout_ms_, spot);
 }
 
 extern "C" zlink_submit_result_t
@@ -1427,21 +1440,14 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
         if (send_rc != ZLINK_SUBMIT_OK) {
             const zlink_request_result_t failure =
               zlink::spot_actor_internal::errno_to_request_result (errno);
-            {
-                std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-                retire_join_request_locked (request);
-            }
-            complete_and_release_join_request (request, failure);
+            complete_failed_external_gateway_join (request, failure);
             return ZLINK_SUBMIT_OK;
         }
         schedule_join_timeout (request, timeout_ms_);
         return ZLINK_SUBMIT_OK;
     }
 
-    schedule_join_timeout (request, timeout_ms_);
-    zlink_spot_notify_dispatch_info (spot, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE,
-                                     ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, spot);
-    return ZLINK_SUBMIT_OK;
+    return finish_queued_join_submission (request, timeout_ms_, spot);
 }
 
 extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (void *spot_,

@@ -5,7 +5,6 @@
 #include "core/ctx.hpp"
 #include "core/auto_hwm_policy.hpp"
 #include "core/multipart_send_txn.hpp"
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/data_plane/spot_mesh_pub_hwm.hpp"
 #include "services/spot/common/spot_auto_hwm_internal.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"

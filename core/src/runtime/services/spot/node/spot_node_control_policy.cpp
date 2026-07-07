@@ -4,7 +4,7 @@
 
 #include "services/spot/node/spot_node_control_policy.hpp"
 
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_mesh_peer_state.hpp"
 #include "services/spot/pubsub/spot_sub.hpp"
 
 namespace zlink

@@ -24,16 +24,6 @@ namespace socket_reqrep_internal
 {
 const size_t stack_request_reply_part_capacity = 8;
 
-bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
-{
-    return zlink::valid_routing_id (peer_rid_);
-}
-
-std::string routing_id_key (const zlink_routing_id_t *peer_rid_)
-{
-    return zlink::routing_id_key (peer_rid_);
-}
-
 int queue_router_message (socket_request_reply_state_t *state_,
                           const zlink_routing_id_t *source_node_rid_,
                           const zlink_routing_id_t *source_spot_rid_,
@@ -595,7 +585,7 @@ int send_request_reply_message (void *socket_handle_,
         return -1;
     }
 
-    const bool routed = has_valid_routing_id (peer_rid_);
+    const bool routed = zlink::valid_routing_id (peer_rid_);
     const size_t total_part_count = zlink::request_reply::control_part_count + part_count_;
     zlink_msg_t stack_combined[stack_request_reply_part_capacity];
     std::vector<zlink_msg_t> heap_combined;

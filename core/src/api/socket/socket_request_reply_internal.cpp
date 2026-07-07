@@ -11,6 +11,7 @@
 #include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
+#include "utils/routing_id.hpp"
 
 namespace zlink
 {
@@ -264,8 +265,8 @@ int start_request (socket_handle_t handle_,
 
         key.request_seq = request_seq;
         if (handle_.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
-            && has_valid_routing_id (peer_rid_)) {
-            key.peer_rid = routing_id_key (peer_rid_);
+            && zlink::valid_routing_id (peer_rid_)) {
+            key.peer_rid = zlink::routing_id_key (peer_rid_);
         }
 
         pending.key = key;

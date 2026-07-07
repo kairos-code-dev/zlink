@@ -29,6 +29,15 @@ enum heartbeat_action_kind_t
     heartbeat_action_send_ack
 };
 
+enum command_message_kind_t
+{
+    command_message_invalid = 0,
+    command_message_heartbeat,
+    command_message_ready,
+    command_message_error,
+    command_message_data_after_ready
+};
+
 struct heartbeat_action_t
 {
     heartbeat_action_t () :
@@ -333,6 +342,33 @@ inline int accept_ready_message (msg_t *msg_,
 
     ready_received_ = true;
     return 0;
+}
+
+inline command_message_kind_t classify_command_message (msg_t *msg_,
+                                                        bool ready_received_,
+                                                        const char **error_reason_out_)
+{
+    if (error_reason_out_)
+        *error_reason_out_ = NULL;
+    if (!msg_ || msg_->size () < 1) {
+        errno = EPROTO;
+        return command_message_invalid;
+    }
+
+    const uint8_t type = *(static_cast<const uint8_t *> (msg_->data ()));
+    if (type == zmp_control_heartbeat || type == zmp_control_heartbeat_ack)
+        return command_message_heartbeat;
+    if (type == zmp_control_ready)
+        return command_message_ready;
+    if (type == zmp_control_error)
+        return command_message_error;
+    if (ready_received_)
+        return command_message_data_after_ready;
+
+    if (error_reason_out_)
+        *error_reason_out_ = "unknown control";
+    errno = EPROTO;
+    return command_message_invalid;
 }
 
 inline int parse_error_frame (msg_t *msg_, uint8_t *code_out_, const char **error_reason_out_)

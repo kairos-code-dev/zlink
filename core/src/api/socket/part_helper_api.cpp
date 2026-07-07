@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "api/socket/part_helper_internal.hpp"
+#include "api/socket/request_reply_protocol_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
 #include "core/msg.hpp"
 #include "sockets/common/socket_base.hpp"
@@ -112,11 +113,6 @@ int zlink::part_helper_internal::validate_part_flag (zlink_part_flag_t part_flag
     return 0;
 }
 
-bool zlink::part_helper_internal::has_valid_routing_id (const zlink_routing_id_t *rid_)
-{
-    return zlink::valid_routing_id (rid_);
-}
-
 bool zlink::part_helper_internal::routing_id_equals (const zlink_routing_id_t &lhs_,
                                                      const zlink_routing_id_t &rhs_)
 {
@@ -139,17 +135,7 @@ void zlink::part_helper_internal::copy_routing_id (const zlink_routing_id_t *src
 
 void zlink::part_helper_internal::consume_send_part (zlink_msg_t *part_)
 {
-    if (!part_)
-        return;
-
-    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (part_);
-    if (!msg->check ())
-        return;
-
-    const int close_rc = msg->close ();
-    errno_assert (close_rc == 0);
-    const int init_rc = msg->init ();
-    errno_assert (init_rc == 0);
+    zlink::request_reply::consume_send_frame (part_);
 }
 
 bool zlink::part_helper_internal::send_spec_equals (const send_sequence_spec_t &lhs_,

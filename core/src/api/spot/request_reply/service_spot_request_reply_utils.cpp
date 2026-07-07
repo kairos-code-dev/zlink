@@ -7,7 +7,7 @@
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_data_plane_forwarding_internal.hpp"
 #include "core/ctx.hpp"
 #include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/node/spot_node.hpp"

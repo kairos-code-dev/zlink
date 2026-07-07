@@ -11,7 +11,7 @@
 
 zlink::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) : object_t (ctx_, tid_)
 {
-    _poller = new (std::nothrow) poller_t (*ctx_);
+    _poller = new (std::nothrow) poller_t (ctx_->thread_context ());
     alloc_assert (_poller);
     _mailbox.set_io_context (&_poller->get_io_context (), &io_thread_t::mailbox_handler, this,
                              NULL);

@@ -12,6 +12,8 @@
 #include <set>
 #include <cstring>
 
+#include "utils/macros.hpp"
+
 namespace zlink
 {
 typedef void (thread_fn) (void *);

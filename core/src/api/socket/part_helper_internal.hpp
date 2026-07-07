@@ -117,7 +117,6 @@ struct handle_state_t
 
 int validate_send_flags (zlink_send_flags_t flags_);
 int validate_part_flag (zlink_part_flag_t part_flag_);
-bool has_valid_routing_id (const zlink_routing_id_t *rid_);
 bool routing_id_equals (const zlink_routing_id_t &lhs_, const zlink_routing_id_t &rhs_);
 void copy_routing_id (const zlink_routing_id_t *src_, zlink_routing_id_t *dest_);
 void consume_send_part (zlink_msg_t *part_);

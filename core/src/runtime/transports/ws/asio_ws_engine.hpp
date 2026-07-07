@@ -40,6 +40,7 @@ namespace zlink
 
 class io_thread_t;
 class session_base_t;
+class socket_base_t;
 
 //  WebSocket ZMP Engine
 //

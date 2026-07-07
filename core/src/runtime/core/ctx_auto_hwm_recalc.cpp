@@ -15,21 +15,20 @@ void zlink::ctx_t::auto_hwm_recalc_task_main (void *arg_)
 
 void zlink::ctx_t::ensure_auto_hwm_recalc_task_started ()
 {
-    if (_auto_hwm_recalc_task_id != 0)
+    if (_auto_hwm.recalc_task_id () != 0)
         return;
 
     service_control_runtime_t *runtime = service_control_runtime ();
     if (!runtime)
         return;
 
-    _auto_hwm_recalc_task_id =
-      runtime->add_periodic_task (&ctx_t::auto_hwm_recalc_task_main, this, 10, false);
+    _auto_hwm.set_recalc_task_id (
+      runtime->add_periodic_task (&ctx_t::auto_hwm_recalc_task_main, this, 10, false));
 }
 
 void zlink::ctx_t::stop_auto_hwm_recalc_task ()
 {
-    const uint64_t task_id = _auto_hwm_recalc_task_id;
-    _auto_hwm_recalc_task_id = 0;
+    const uint64_t task_id = _auto_hwm.clear_recalc_task_id ();
     if (task_id == 0)
         return;
 
@@ -44,25 +43,19 @@ void zlink::ctx_t::schedule_auto_hwm_recalculate ()
     int debounce_ms = 0;
     {
         scoped_lock_t locker (_opt_sync);
-        debounce_ms = _auto_hwm_recalc_debounce_ms;
+        debounce_ms = _auto_hwm.recalc_debounce_ms ();
     }
 
     {
         scoped_lock_t lock (_slot_sync);
-        _auto_hwm_last_change_ms = now_ms;
-        ++_auto_hwm_pending_generation;
+        _auto_hwm.schedule (now_ms, debounce_ms);
 
-        if (debounce_ms <= 0) {
-            _auto_hwm_recalc_pending = false;
-            _auto_hwm_recalc_deadline_ms = now_ms;
-        } else {
-            _auto_hwm_recalc_pending = true;
-            _auto_hwm_recalc_deadline_ms = now_ms + static_cast<uint64_t> (debounce_ms);
+        if (debounce_ms > 0) {
             ensure_auto_hwm_recalc_task_started ();
-            if (_auto_hwm_recalc_task_id != 0) {
+            if (_auto_hwm.recalc_task_id () != 0) {
                 service_control_runtime_t *runtime = _runtime_resources.service_control_runtime ();
                 if (runtime)
-                    (void) runtime->wakeup_task (_auto_hwm_recalc_task_id);
+                    (void) runtime->wakeup_task (_auto_hwm.recalc_task_id ());
             }
         }
     }
@@ -78,15 +71,14 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
     int message_unit_bytes = ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT;
     {
         scoped_lock_t locker (_opt_sync);
-        enabled = _auto_hwm_enabled;
-        profile = _auto_hwm_profile;
-        message_unit_bytes = _auto_hwm_msg_unit_bytes;
+        const ctx_auto_hwm_options_t options = _auto_hwm.options ();
+        enabled = options.enabled;
+        profile = options.profile;
+        message_unit_bytes = options.msg_unit_bytes;
     }
 
     scoped_lock_t runtime_lock (_slot_sync);
-    _auto_hwm_recalc_pending = false;
-    _auto_hwm_recalc_deadline_ms = 0;
-    _auto_hwm_last_applied_generation = _auto_hwm_pending_generation;
+    _auto_hwm.mark_applied ();
 
     if (!enabled)
         return 0;
@@ -131,8 +123,7 @@ void zlink::ctx_t::auto_hwm_recalc_task ()
     bool should_run = false;
     {
         scoped_lock_t lock (_slot_sync);
-        if (_auto_hwm_recalc_pending && zlink::clock_t ().now_ms () >= _auto_hwm_recalc_deadline_ms
-            && _auto_hwm_pending_generation != _auto_hwm_last_applied_generation)
+        if (_auto_hwm.recalc_due (zlink::clock_t ().now_ms ()))
             should_run = true;
     }
 
@@ -143,17 +134,17 @@ void zlink::ctx_t::auto_hwm_recalc_task ()
 zlink_auto_hwm_profile_t zlink::ctx_t::auto_hwm_profile () const
 {
     scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
-    return _auto_hwm_profile;
+    return _auto_hwm.profile ();
 }
 
 bool zlink::ctx_t::auto_hwm_enabled () const
 {
     scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
-    return _auto_hwm_enabled;
+    return _auto_hwm.enabled ();
 }
 
 int zlink::ctx_t::auto_hwm_msg_unit_bytes () const
 {
     scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
-    return _auto_hwm_msg_unit_bytes;
+    return _auto_hwm.msg_unit_bytes ();
 }

@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_data_plane_pending_internal.hpp"
 #include "services/spot/common/spot_message_parts_internal.hpp"
 
 #include "core/auto_hwm_policy.hpp"

@@ -81,8 +81,6 @@ struct router_recv_metadata_tls_t
 
 router_recv_metadata_tls_t &router_recv_metadata_tls ();
 
-bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_);
-std::string routing_id_key (const zlink_routing_id_t *peer_rid_);
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
 int dispatch_router_message (socket_request_reply_state_t *state_,
                              const zlink_routing_id_t *source_node_rid_,

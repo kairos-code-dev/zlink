@@ -7,7 +7,7 @@
 
 #include "utils/clock.hpp"
 #include "utils/atomic_counter.hpp"
-#include "core/ctx.hpp"
+#include "core/ctx_thread.hpp"
 
 namespace zlink
 {

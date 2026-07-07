@@ -1605,23 +1605,21 @@ int zlink::asio_ws_engine_t::push_one_then_decode_and_push (msg_t *msg_)
 
 int zlink::asio_ws_engine_t::process_command_message (msg_t *msg_)
 {
-    if (msg_->size () < 1)
-        return -1;
-
-    const uint8_t type = *(static_cast<const uint8_t *> (msg_->data ()));
-    if (type == zmp_control_heartbeat || type == zmp_control_heartbeat_ack)
-        return process_heartbeat_message (msg_);
-    if (type == zmp_control_ready)
-        return process_ready_message (msg_);
-    if (type == zmp_control_error)
-        return process_error_message (msg_);
-
-    if (_ready_received)
-        return 1;
-
-    set_last_error (zmp_error_internal, "unknown control");
-    errno = EPROTO;
-    return -1;
+    const char *error_reason = NULL;
+    switch (zmp_control::classify_command_message (msg_, _ready_received, &error_reason)) {
+        case zmp_control::command_message_heartbeat:
+            return process_heartbeat_message (msg_);
+        case zmp_control::command_message_ready:
+            return process_ready_message (msg_);
+        case zmp_control::command_message_error:
+            return process_error_message (msg_);
+        case zmp_control::command_message_data_after_ready:
+            return 1;
+        case zmp_control::command_message_invalid:
+        default:
+            set_last_error (zmp_error_internal, error_reason ? error_reason : "invalid control");
+            return -1;
+    }
 }
 
 int zlink::asio_ws_engine_t::produce_ping_message (msg_t *msg_)

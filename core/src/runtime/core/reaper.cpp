@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
 
+#include "core/ctx.hpp"
 #include "core/reaper.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/err.hpp"
@@ -13,7 +14,7 @@ zlink::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
     if (!_mailbox.valid ())
         return;
 
-    _poller = new (std::nothrow) poller_t (*ctx_);
+    _poller = new (std::nothrow) poller_t (ctx_->thread_context ());
     alloc_assert (_poller);
     _mailbox.set_io_context (&_poller->get_io_context (), &reaper_t::mailbox_handler, this, NULL);
     _mailbox.schedule_if_needed ();

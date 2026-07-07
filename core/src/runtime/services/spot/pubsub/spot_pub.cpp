@@ -5,7 +5,7 @@
 #include "api/service/service_handle_internal.hpp"
 #include "services/spot/pubsub/spot_pub.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_data_plane_forwarding_internal.hpp"
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 #include "services/spot/pubsub/spot_subject_access.hpp"

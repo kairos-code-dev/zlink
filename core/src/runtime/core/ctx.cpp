@@ -70,16 +70,6 @@ zlink::ctx_t::ctx_t () :
     _max_sockets (ctx_t::clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
-    _auto_hwm_enabled (ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0),
-    _auto_hwm_recalc_debounce_ms (ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT),
-    _auto_hwm_profile (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT),
-    _auto_hwm_msg_unit_bytes (ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT),
-    _auto_hwm_recalc_pending (false),
-    _auto_hwm_last_change_ms (0),
-    _auto_hwm_recalc_deadline_ms (0),
-    _auto_hwm_pending_generation (0),
-    _auto_hwm_last_applied_generation (0),
-    _auto_hwm_recalc_task_id (0),
     _blocky (true),
     _ipv6 (false)
 {
@@ -118,6 +108,19 @@ bool zlink::ctx_t::valid () const
 zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
 {
     return ensure_service_runtime ();
+}
+
+void zlink::ctx_t::start_thread (thread_t &thread_,
+                                 thread_fn *tfn_,
+                                 void *arg_,
+                                 const char *name_) const
+{
+    _thread_context.start_thread (thread_, tfn_, arg_, name_);
+}
+
+const zlink::thread_ctx_t &zlink::ctx_t::thread_context () const
+{
+    return _thread_context;
 }
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const

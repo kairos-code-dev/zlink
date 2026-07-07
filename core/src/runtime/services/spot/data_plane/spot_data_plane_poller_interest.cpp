@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
+#include "services/spot/data_plane/spot_data_plane_poller_interest_internal.hpp"
 
 #include "core/socket_poller.hpp"
 #include "sockets/common/socket_base.hpp"

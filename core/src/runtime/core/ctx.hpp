@@ -9,9 +9,11 @@
 #include <stdarg.h>
 
 #include "core/mailbox.hpp"
+#include "core/ctx_auto_hwm_state.hpp"
 #include "core/ctx_inproc_registry.hpp"
 #include "core/ctx_runtime_resources.hpp"
 #include "core/ctx_socket_registry.hpp"
+#include "core/ctx_thread.hpp"
 #include "utils/array.hpp"
 #include "utils/config.hpp"
 #include "utils/mutex.hpp"
@@ -19,7 +21,6 @@
 #include "core/options.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
-#include "core/thread.hpp"
 
 namespace zlink
 {
@@ -30,34 +31,10 @@ class reaper_t;
 class pipe_t;
 class service_control_runtime_t;
 
-class thread_ctx_t
-{
-  public:
-    thread_ctx_t ();
-
-    //  Start a new thread with proper scheduling parameters.
-    void
-    start_thread (thread_t &thread_, thread_fn *tfn_, void *arg_, const char *name_ = NULL) const;
-
-    int set (int option_, const void *optval_, size_t optvallen_);
-    int get (int option_, void *optval_, const size_t *optvallen_);
-
-  protected:
-    //  Synchronisation of access to context options.
-    mutex_t _opt_sync;
-
-  private:
-    //  Thread parameters.
-    int _thread_priority;
-    int _thread_sched_policy;
-    std::set<int> _thread_affinity_cpus;
-    std::string _thread_name_prefix;
-};
-
 //  Context object encapsulates all the global state associated with
 //  the library.
 
-class ctx_t ZLINK_FINAL : public thread_ctx_t
+class ctx_t ZLINK_FINAL
 {
   public:
     //  Create the context object.
@@ -130,6 +107,9 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     bool valid () const;
     service_control_runtime_t *service_control_runtime ();
+    void
+    start_thread (thread_t &thread_, thread_fn *tfn_, void *arg_, const char *name_ = NULL) const;
+    const thread_ctx_t &thread_context () const;
     void schedule_auto_hwm_recalculate ();
     int auto_hwm_recalculate_now ();
     zlink_auto_hwm_profile_t auto_hwm_profile () const;
@@ -173,6 +153,10 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     ctx_inproc_registry_t _inproc_registry;
     ctx_runtime_resources_t _runtime_resources;
+    thread_ctx_t _thread_context;
+
+    //  Synchronisation of access to context options.
+    mutable mutex_t _opt_sync;
 
     //  Maximum socket ID.
     static atomic_counter_t max_socket_id;
@@ -186,16 +170,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Number of I/O threads to launch.
     int _io_thread_count;
 
-    bool _auto_hwm_enabled;
-    int _auto_hwm_recalc_debounce_ms;
-    zlink_auto_hwm_profile_t _auto_hwm_profile;
-    int _auto_hwm_msg_unit_bytes;
-    bool _auto_hwm_recalc_pending;
-    uint64_t _auto_hwm_last_change_ms;
-    uint64_t _auto_hwm_recalc_deadline_ms;
-    uint64_t _auto_hwm_pending_generation;
-    uint64_t _auto_hwm_last_applied_generation;
-    uint64_t _auto_hwm_recalc_task_id;
+    ctx_auto_hwm_state_t _auto_hwm;
 
     //  Does context wait (possibly forever) on termination?
     bool _blocky;

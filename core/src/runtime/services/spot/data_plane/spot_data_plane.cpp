@@ -4,7 +4,6 @@
 
 #include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/data_plane/spot_data_plane.hpp"
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/data_plane/spot_data_plane_loop.hpp"
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/node/spot_node_access.hpp"

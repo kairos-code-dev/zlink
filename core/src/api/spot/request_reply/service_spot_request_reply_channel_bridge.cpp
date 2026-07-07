@@ -9,6 +9,7 @@
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
+#include "api/message/request_result_internal.hpp"
 #include "api/message/submit_result_internal.hpp"
 
 namespace
@@ -25,25 +26,6 @@ struct channel_reply_bridge_ctx_t
     zlink_reply_handler_fn handler;
     void *userdata;
 };
-
-int request_result_to_errno (zlink_request_result_t result_)
-{
-    switch (result_) {
-        case ZLINK_REQUEST_OK:
-            return 0;
-        case ZLINK_REQUEST_TIMED_OUT:
-            return ETIMEDOUT;
-        case ZLINK_REQUEST_NOT_FOUND:
-            return ENOENT;
-        case ZLINK_REQUEST_TERMINATED:
-            return ETERM;
-        case ZLINK_REQUEST_PROTOCOL_ERROR:
-            return EPROTO;
-        case ZLINK_REQUEST_INTERNAL_ERROR:
-        default:
-            return EIO;
-    }
-}
 
 void decrement_pending_channel_requests (const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
@@ -71,7 +53,7 @@ void channel_reply_bridge_completion (zlink_request_result_t result_,
 
     decrement_pending_channel_requests (state);
 
-    const int errnum = request_result_to_errno (result_);
+    const int errnum = zlink::request_result_internal::to_errno (result_);
     (void) zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
       state, bridge->dealer, bridge->handler, bridge->userdata, errnum, parts_, part_count_);
 }

@@ -20,6 +20,7 @@
 #include "api/socket/request_timeout_scheduler_internal.hpp"
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
+#include "api/message/request_result_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
 #include "api/message/submit_result_internal.hpp"
@@ -681,8 +682,6 @@ no_bind_pending_key_t make_no_bind_pending_key (const zlink_routing_id_t &target
     return key;
 }
 
-int errno_from_request_result (zlink_request_result_t result_);
-
 void complete_no_bind_callback (zlink_reply_handler_fn handler_,
                                 void *userdata_,
                                 zlink_request_result_t result_,
@@ -708,7 +707,10 @@ void complete_no_bind_callback (zlink_reply_handler_fn handler_,
 
     zlink_msg_t *callback_parts = moved_parts.empty () ? NULL : &moved_parts[0];
     zlink::request_reply::complete_reply_callback (
-      handler_, errno_from_request_result (result_), callback_parts, moved_parts.size (),
+      handler_,
+      zlink::request_result_internal::to_errno (result_),
+      callback_parts,
+      moved_parts.size (),
       userdata_);
     zlink::request_reply::close_built_parts (&moved_parts);
 }
@@ -729,39 +731,6 @@ void erase_no_bind_pending (const no_bind_pending_key_t &key_)
 bool take_no_bind_pending (const no_bind_pending_key_t &key_, no_bind_pending_reply_t *out_)
 {
     return actor_runtime ().no_bind.take_pending (key_, out_);
-}
-
-int errno_from_request_result (zlink_request_result_t result_)
-{
-    switch (result_) {
-        case ZLINK_REQUEST_OK:
-            return 0;
-        case ZLINK_REQUEST_TIMED_OUT:
-            return ETIMEDOUT;
-        case ZLINK_REQUEST_NOT_FOUND:
-            return ENOENT;
-        case ZLINK_REQUEST_TERMINATED:
-            return ETERM;
-        case ZLINK_REQUEST_PROTOCOL_ERROR:
-            return EPROTO;
-        case ZLINK_REQUEST_REJECTED:
-            return EACCES;
-        case ZLINK_REQUEST_CONFLICT:
-            return ESTALE;
-        case ZLINK_REQUEST_BUSY:
-            return EBUSY;
-        case ZLINK_REQUEST_NOT_CONNECTED:
-            return ENOTCONN;
-        case ZLINK_REQUEST_INVALID_ARGUMENT:
-            return EINVAL;
-        case ZLINK_REQUEST_INVALID_STATE:
-            return EFSM;
-        case ZLINK_REQUEST_NOT_SUPPORTED:
-            return ENOTSUP;
-        case ZLINK_REQUEST_INTERNAL_ERROR:
-        default:
-            return EIO;
-    }
 }
 
 }

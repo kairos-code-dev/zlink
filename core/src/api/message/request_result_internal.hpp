@@ -9,6 +9,39 @@ namespace zlink
 {
 namespace request_result_internal
 {
+inline int to_errno (zlink_request_result_t result_)
+{
+    switch (result_) {
+        case ZLINK_REQUEST_OK:
+            return 0;
+        case ZLINK_REQUEST_TIMED_OUT:
+            return ETIMEDOUT;
+        case ZLINK_REQUEST_NOT_FOUND:
+            return ENOENT;
+        case ZLINK_REQUEST_TERMINATED:
+            return ETERM;
+        case ZLINK_REQUEST_PROTOCOL_ERROR:
+            return EPROTO;
+        case ZLINK_REQUEST_REJECTED:
+            return EACCES;
+        case ZLINK_REQUEST_CONFLICT:
+            return ESTALE;
+        case ZLINK_REQUEST_BUSY:
+            return EBUSY;
+        case ZLINK_REQUEST_NOT_CONNECTED:
+            return ENOTCONN;
+        case ZLINK_REQUEST_INVALID_ARGUMENT:
+            return EINVAL;
+        case ZLINK_REQUEST_INVALID_STATE:
+            return EFSM;
+        case ZLINK_REQUEST_NOT_SUPPORTED:
+            return ENOTSUP;
+        case ZLINK_REQUEST_INTERNAL_ERROR:
+        default:
+            return EIO;
+    }
+}
+
 inline zlink_request_result_t from_errno (int err_)
 {
     if (zlink::result_errno_internal::is_not_supported (err_))

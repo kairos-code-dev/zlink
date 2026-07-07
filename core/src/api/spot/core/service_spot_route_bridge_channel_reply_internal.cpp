@@ -6,6 +6,7 @@
 
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
+#include "api/message/request_result_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "sockets/common/socket_base.hpp"
 
@@ -13,39 +14,6 @@
 
 namespace
 {
-int request_result_errno (zlink_request_result_t result_)
-{
-    switch (result_) {
-        case ZLINK_REQUEST_OK:
-            return 0;
-        case ZLINK_REQUEST_TIMED_OUT:
-            return ETIMEDOUT;
-        case ZLINK_REQUEST_NOT_FOUND:
-            return ENOENT;
-        case ZLINK_REQUEST_TERMINATED:
-            return ETERM;
-        case ZLINK_REQUEST_REJECTED:
-            return EPERM;
-        case ZLINK_REQUEST_CONFLICT:
-            return EBUSY;
-        case ZLINK_REQUEST_BUSY:
-            return EAGAIN;
-        case ZLINK_REQUEST_NOT_CONNECTED:
-            return ENOTCONN;
-        case ZLINK_REQUEST_INVALID_ARGUMENT:
-            return EINVAL;
-        case ZLINK_REQUEST_INVALID_STATE:
-            return ESHUTDOWN;
-        case ZLINK_REQUEST_NOT_SUPPORTED:
-            return ENOTSUP;
-        case ZLINK_REQUEST_PROTOCOL_ERROR:
-            return EPROTO;
-        case ZLINK_REQUEST_INTERNAL_ERROR:
-        default:
-            return EIO;
-    }
-}
-
 int init_errno_part (zlink_msg_t *part_, int errnum_)
 {
     if (!part_) {
@@ -206,7 +174,7 @@ void send_channel_request_error (socket_base_t *router_socket_,
         return;
     zlink_msg_t errno_part;
     zlink_msg_init (&errno_part);
-    if (init_errno_part (&errno_part, request_result_errno (result_)) != 0)
+    if (init_errno_part (&errno_part, zlink::request_result_internal::to_errno (result_)) != 0)
         return;
     (void) socket_reqrep_internal::send_request_reply_message (
       router_socket_, peer_rid_, &errno_part, 1, ZLINK_DONTWAIT,
@@ -228,7 +196,7 @@ void reply_to_channel_request (zlink_request_result_t result_,
         zlink_multipart_close (parts_, part_count_);
         zlink_msg_t errno_part;
         zlink_msg_init (&errno_part);
-        if (init_errno_part (&errno_part, request_result_errno (result_)) == 0) {
+        if (init_errno_part (&errno_part, zlink::request_result_internal::to_errno (result_)) == 0) {
             (void) socket_reqrep_internal::send_request_reply_message (
               pending->router_socket, &pending->peer_rid, &errno_part, 1, ZLINK_DONTWAIT,
               request_reply::error_reply_type, pending->request_seq);

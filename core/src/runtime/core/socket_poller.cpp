@@ -60,37 +60,28 @@ int zlink::socket_poller_t::signaler_fd (fd_t *fd_) const
 
 int zlink::socket_poller_t::add (socket_base_t *socket_, void *user_data_, short events_)
 {
-    if (find_if2 (_items.begin (), _items.end (), socket_, &is_socket) != _items.end ()) {
+    if (find_socket_item (socket_) != _items.end ()) {
         errno = EINVAL;
         return -1;
     }
-
-    const item_t item = {socket_, 0, user_data_, events_
-#if defined ZLINK_POLL_BASED_ON_POLL
-                         ,
-                         -1
-#endif
-    };
-    try {
-        _items.push_back (item);
-    }
-    catch (const std::bad_alloc &) {
-        errno = ENOMEM;
-        return -1;
-    }
-    _need_rebuild = true;
-
-    return 0;
+    return add_item (socket_, 0, user_data_, events_);
 }
 
 int zlink::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
 {
-    if (find_if2 (_items.begin (), _items.end (), fd_, &is_fd) != _items.end ()) {
+    if (find_fd_item (fd_) != _items.end ()) {
         errno = EINVAL;
         return -1;
     }
+    return add_item (NULL, fd_, user_data_, events_);
+}
 
-    const item_t item = {NULL, fd_, user_data_, events_
+int zlink::socket_poller_t::add_item (socket_base_t *socket_,
+                                      fd_t fd_,
+                                      void *user_data_,
+                                      short events_)
+{
+    const item_t item = {socket_, fd_, user_data_, events_
 #if defined ZLINK_POLL_BASED_ON_POLL
                          ,
                          -1
@@ -110,93 +101,82 @@ int zlink::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
 
 int zlink::socket_poller_t::modify (const socket_base_t *socket_, short events_)
 {
-    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
-
-    if (it == _items.end ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (it->events == events_)
-        return 0;
-
-    it->events = events_;
-    _need_rebuild = true;
-
-    return 0;
+    return modify_item_events (find_socket_item (socket_), events_);
 }
 
 int zlink::socket_poller_t::modify_user_data (const socket_base_t *socket_, void *user_data_)
 {
-    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
-
-    if (it == _items.end ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    it->user_data = user_data_;
-    return 0;
+    return modify_item_user_data (find_socket_item (socket_), user_data_);
 }
 
 
 int zlink::socket_poller_t::modify_fd (fd_t fd_, short events_)
 {
-    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
-
-    if (it == _items.end ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (it->events == events_)
-        return 0;
-
-    it->events = events_;
-    _need_rebuild = true;
-
-    return 0;
+    return modify_item_events (find_fd_item (fd_), events_);
 }
 
 int zlink::socket_poller_t::modify_fd_user_data (fd_t fd_, void *user_data_)
 {
-    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
-
-    if (it == _items.end ()) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    it->user_data = user_data_;
-    return 0;
+    return modify_item_user_data (find_fd_item (fd_), user_data_);
 }
 
 
 int zlink::socket_poller_t::remove (socket_base_t *socket_)
 {
-    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
+    return remove_item (find_socket_item (socket_));
+}
 
-    if (it == _items.end ()) {
+int zlink::socket_poller_t::remove_fd (fd_t fd_)
+{
+    return remove_item (find_fd_item (fd_));
+}
+
+zlink::socket_poller_t::items_t::iterator
+zlink::socket_poller_t::find_socket_item (const socket_base_t *socket_)
+{
+    return find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
+}
+
+zlink::socket_poller_t::items_t::iterator zlink::socket_poller_t::find_fd_item (fd_t fd_)
+{
+    return find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
+}
+
+int zlink::socket_poller_t::modify_item_events (items_t::iterator it_, short events_)
+{
+    if (it_ == _items.end ()) {
         errno = EINVAL;
         return -1;
     }
 
-    _items.erase (it);
+    if (it_->events == events_)
+        return 0;
+
+    it_->events = events_;
     _need_rebuild = true;
 
     return 0;
 }
 
-int zlink::socket_poller_t::remove_fd (fd_t fd_)
+int zlink::socket_poller_t::modify_item_user_data (items_t::iterator it_, void *user_data_)
 {
-    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
-
-    if (it == _items.end ()) {
+    if (it_ == _items.end ()) {
         errno = EINVAL;
         return -1;
     }
 
-    _items.erase (it);
+    it_->user_data = user_data_;
+    return 0;
+}
+
+int zlink::socket_poller_t::remove_item (items_t::iterator it_)
+{
+    if (it_ == _items.end ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _items.erase (it_);
     _need_rebuild = true;
 
     return 0;
@@ -333,6 +313,22 @@ void zlink::socket_poller_t::zero_trail_events (zlink::socket_poller_t::event_t 
     }
 }
 
+int zlink::socket_poller_t::collect_socket_event (item_t &item_, event_t *event_)
+{
+    uint32_t events;
+    if (item_.socket->get_events_internal (item_.events, &events) == -1)
+        return -1;
+
+    if (!(item_.events & events))
+        return 0;
+
+    event_->socket = item_.socket;
+    event_->fd = zlink::retired_fd;
+    event_->user_data = item_.user_data;
+    event_->events = item_.events & events;
+    return 1;
+}
+
 int zlink::socket_poller_t::check_socket_events (zlink::socket_poller_t::event_t *events_,
                                                  int n_events_)
 {
@@ -342,17 +338,11 @@ int zlink::socket_poller_t::check_socket_events (zlink::socket_poller_t::event_t
         if (!it->socket)
             continue;
 
-        uint32_t events;
-        if (it->socket->get_events_internal (it->events, &events) == -1)
+        const int socket_event = collect_socket_event (*it, &events_[found]);
+        if (socket_event == -1)
             return -1;
-
-        if (it->events & events) {
-            events_[found].socket = it->socket;
-            events_[found].fd = zlink::retired_fd;
-            events_[found].user_data = it->user_data;
-            events_[found].events = it->events & events;
+        if (socket_event > 0)
             ++found;
-        }
     }
     return found;
 }
@@ -373,18 +363,11 @@ int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *event
         //  The poll item is a 0MQ socket. Retrieve pending events
         //  using the ZLINK_INTERNAL_OPT_EVENTS socket option.
         if (it->socket) {
-            uint32_t events;
-            if (it->socket->get_events_internal (it->events, &events) == -1) {
+            const int socket_event = collect_socket_event (*it, &events_[found]);
+            if (socket_event == -1)
                 return -1;
-            }
-
-            if (it->events & events) {
-                events_[found].socket = it->socket;
-                events_[found].fd = zlink::retired_fd;
-                events_[found].user_data = it->user_data;
-                events_[found].events = it->events & events;
+            if (socket_event > 0)
                 ++found;
-            }
         }
         //  Else, the poll item is a raw file descriptor, simply convert
         //  the events to zlink_pollitem_t-style format.

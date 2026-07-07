@@ -281,7 +281,7 @@ runtime/core:
     two-mutex 프로토콜)을 기존 `ctx_*_registry` 동급 모듈 `ctx_auto_hwm_recalc`로
     추출 + 컨텍스트 옵션 스위치보드(`:332-550`) 분리 + 동거 중인
     `thread_ctx_t`(`:648-760`) 분리. (없음 / M)
-- [ ] **T2-18. `socket_poller.cpp` socket/fd 쌍 dedup**
+- [x] **T2-18. `socket_poller.cpp` socket/fd 쌍 dedup**
   - `:61-203` add/modify/remove가 `is_socket` vs `is_fd`만 다른 쌍 4벌 +
     `check_socket_events:336-358`가 `check_events:371-388` 재구현. predicate
     파라미터화 헬퍼로. 관리 API라 hot 무관. (없음 / M)
@@ -554,6 +554,10 @@ sockets/engine/transports/utils:
   제거했다. 이어서 `ctx_t::set/get` option switchboard를 `ctx_options.cpp`로
   옮겼다. auto-HWM 재계산 엔진도 `ctx_auto_hwm_recalc.cpp`로 분리해 `ctx.cpp`는
   context lifecycle, socket registry, command routing 중심으로 줄였다.
+- 2026-07-07: T2-18 완료 — `socket_poller_t`의 socket/fd add/modify/remove
+  중복을 private item helper로 합치고, socket event 채우기 로직도
+  `collect_socket_event`로 공유했다. poll/select wait 루프와 drain 흐름은
+  그대로 유지했다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

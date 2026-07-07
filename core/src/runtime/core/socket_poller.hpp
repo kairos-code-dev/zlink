@@ -98,6 +98,14 @@ class socket_poller_t
     typedef std::vector<item_t> items_t;
     items_t _items;
 
+    items_t::iterator find_socket_item (const socket_base_t *socket_);
+    items_t::iterator find_fd_item (fd_t fd_);
+    int add_item (socket_base_t *socket_, fd_t fd_, void *user_data_, short events_);
+    int modify_item_events (items_t::iterator it_, short events_);
+    int modify_item_user_data (items_t::iterator it_, void *user_data_);
+    int remove_item (items_t::iterator it_);
+    static int collect_socket_event (item_t &item_, event_t *event_);
+
     //  Does the pollset needs rebuilding?
     bool _need_rebuild;
 

@@ -8,7 +8,6 @@
 
 #include "api/service/service_handle_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
-#include "services/discovery/discovery_access.hpp"
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/pubsub/spot_pub.hpp"
 
@@ -345,16 +344,6 @@ int spot_node_access_t::internal_sockets_snapshot (
     if (!admission.acquired ())
         return -1;
     return node_->snapshot_internal_sockets (filter_, out_);
-}
-
-int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
-{
-    if (!node_ || !discovery_) {
-        errno = EFAULT;
-        return -1;
-    }
-    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
-    return discovery ? node_->attach_discovery (discovery) : -1;
 }
 
 int spot_node_access_t::try_register_spot_facade (spot_node_t *node_, spot_handle_t *spot_)

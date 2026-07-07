@@ -92,7 +92,7 @@ zlink_set_tls_server(socket, cert_path, key_path, require_client_cert);
 |----------|------|------|
 | `cert_path` | string | 인증서 파일 경로 (PEM 형식) |
 | `key_path` | string | 개인키 파일 경로 (PEM 형식) |
-| `require_client_cert` | int | 클라이언트 인증서 요구(mTLS) 여부 (0 = 아니오, 1 = 예). raw socket/Registry TLS 경로에 적용되며, SpotNode TLS 경로는 이 인자를 사용하지 않는다 |
+| `require_client_cert` | int | 클라이언트 인증서 요구(mTLS) 여부 (0 = 아니오, 1 = 예). raw socket TLS 경로에 적용되며, SpotNode TLS 경로는 이 인자를 사용하지 않는다 |
 
 ```c
 /* PEM format file paths */

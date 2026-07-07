@@ -97,22 +97,13 @@ void spot_node_service_attachments_t::rebuild_caches_locked ()
          it != _state.attachments.end (); ++it) {
         spot_node_service_attachment_t &attachment = it->second;
         attachment.router_cache.clear ();
-        attachment.router_cache.reserve (attachment.manual.routers.size ()
-                                         + attachment.discovered.routers.size ());
+        attachment.router_cache.reserve (attachment.manual.routers.size ());
         attachment.router_cache.insert (attachment.router_cache.end (),
                                         attachment.manual.routers.begin (),
                                         attachment.manual.routers.end ());
-        for (std::map<std::string, socket_base_t *>::const_iterator router_it =
-               attachment.discovered.routers.begin ();
-             router_it != attachment.discovered.routers.end (); ++router_it) {
-            attachment.router_cache.push_back (router_it->second);
-        }
 
         if (it->second.has_manual_pubsub ()) {
             sub_recv_cache->add (it->first, it->second.manual.sub);
-        }
-        if (it->second.has_auto_pubsub ()) {
-            sub_recv_cache->add (it->first, it->second.discovered.sub);
         }
     }
 
@@ -143,57 +134,4 @@ void spot_node_service_attachments_t::remove_monitors_by_owner_locked (
     }
 }
 
-bool spot_node_service_attachments_t::detach_discovered_service_locked (
-  discovery_t *discovery_, std::vector<socket_base_t *> *sockets_to_close_out_)
-{
-    if (!sockets_to_close_out_)
-        return false;
-    sockets_to_close_out_->clear ();
-
-    for (std::map<std::string, discovery_t *>::iterator it = _state.discoveries.begin ();
-         it != _state.discoveries.end (); ++it) {
-        if (it->second != discovery_)
-            continue;
-        const std::string channel_name = it->first;
-
-        std::map<std::string, spot_node_service_attachment_t>::iterator attach_it =
-          _state.attachments.find (channel_name);
-        if (attach_it != _state.attachments.end ()) {
-            for (std::map<std::string, socket_base_t *>::iterator rit =
-                   attach_it->second.discovered.routers.begin ();
-                 rit != attach_it->second.discovered.routers.end (); ++rit) {
-                if (rit->second) {
-                    sockets_to_close_out_->push_back (rit->second);
-                    _state.socket_index.erase (rit->second);
-                }
-            }
-            if (attach_it->second.discovered.pub) {
-                sockets_to_close_out_->push_back (attach_it->second.discovered.pub);
-                _state.socket_index.erase (attach_it->second.discovered.pub);
-            }
-            if (attach_it->second.discovered.sub) {
-                sockets_to_close_out_->push_back (attach_it->second.discovered.sub);
-                _state.socket_index.erase (attach_it->second.discovered.sub);
-            }
-
-            attach_it->second.discovered.routers.clear ();
-            attach_it->second.discovered.pub = NULL;
-            attach_it->second.discovered.sub = NULL;
-            attach_it->second.discovered.router_endpoints.clear ();
-            attach_it->second.discovered.pub_endpoints.clear ();
-            attach_it->second.discovered.sub_endpoints.clear ();
-            attach_it->second.clear_auto_sub_replay ();
-            if (attach_it->second.manual.routers.empty ()
-                && !attach_it->second.has_manual_pubsub ())
-                _state.attachments.erase (attach_it);
-        }
-
-        remove_monitors_by_owner_locked (*sockets_to_close_out_);
-        _state.discoveries.erase (it);
-        _state.pending_refresh_services.erase (channel_name);
-        rebuild_caches_locked ();
-        return true;
-    }
-    return false;
-}
 }

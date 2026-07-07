@@ -6,9 +6,6 @@
 #include "api/service/service_handle_internal.hpp"
 #include "api/service/service_option_surface_internal.hpp"
 
-#include "services/discovery/discovery_access.hpp"
-#include "services/registry/registry_access.hpp"
-
 namespace
 {
 bool is_spot_service_handle_kind (zlink::service_handle_kind_t kind_)
@@ -50,9 +47,6 @@ int zlink_service_set_common_option (
 {
     const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
 
-    if (resolved.kind == zlink::service_handle_discovery)
-        return zlink::discovery_access_t::set_option (resolved.discovery, socket_option_, optval_,
-                                                      optvallen_);
     if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
     return finish_spot_option_forward (zlink_service_spot_set_common_option_internal (
@@ -64,9 +58,6 @@ int zlink_service_get_common_option (
 {
     const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
 
-    if (resolved.kind == zlink::service_handle_discovery)
-        return zlink::discovery_access_t::get_option (resolved.discovery, socket_option_, optval_,
-                                                      optvallen_);
     if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
     errno = 0;
@@ -78,8 +69,6 @@ int zlink_service_set_routing_id (void *handle_, const void *data_, size_t size_
 {
     const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
 
-    if (resolved.kind == zlink::service_handle_discovery)
-        return zlink::discovery_access_t::set_routing_id (resolved.discovery, data_, size_);
     if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
     return finish_spot_option_forward (
@@ -90,8 +79,6 @@ int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
 {
     const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
 
-    if (resolved.kind == zlink::service_handle_discovery)
-        return zlink::discovery_access_t::routing_id (resolved.discovery, out_);
     if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
     return finish_spot_option_forward (zlink_service_spot_get_routing_id_internal (handle_, out_));
@@ -104,9 +91,6 @@ int zlink_service_set_tls_server (void *handle_,
 {
     const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
 
-    if (resolved.kind == zlink::service_handle_registry)
-        return zlink::registry_access_t::set_tls_server (resolved.registry, cert_, key_,
-                                                         require_client_cert_);
     if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
     return finish_spot_option_forward (
@@ -120,12 +104,6 @@ int zlink_service_set_tls_client (void *handle_,
 {
     const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
 
-    if (resolved.kind == zlink::service_handle_discovery)
-        return zlink::discovery_access_t::set_tls_client (resolved.discovery, ca_cert_, hostname_,
-                                                          trust_system_);
-    if (resolved.kind == zlink::service_handle_registry)
-        return zlink::registry_access_t::set_tls_client (resolved.registry, ca_cert_, hostname_,
-                                                         trust_system_);
     if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
     return finish_spot_option_forward (

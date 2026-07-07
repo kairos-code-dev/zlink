@@ -52,11 +52,9 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) 기반의 현대적 메시�
 상태형 실시간 서비스(게임 룸·채팅·존)와 동적 토폴로지를 위한 상위 기능.
 **언제·왜 쓰는지**는 [서비스 개요 §멘탈 모델](07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)이 먼저.
 
-- [07-0 서비스 개요](07-0-services.ko.md) — raw 소켓 / Discovery / SPOT / Actor 멘탈 모델
-- [07-1 Discovery](07-1-discovery.ko.md) — 이름 기반 발견·자동 연결
+- [07-0 서비스 개요](07-0-services.ko.md) — raw 소켓 / SPOT / Actor 멘탈 모델
 - [07-3 SPOT](07-3-spot.ko.md) — 동적 상태 단위 + 직렬 실행
 - [07-4 Actor](07-4-actor.ko.md) — 세션↔엔티티 binding
-- [07-4 Registry](07-4-registry.ko.md) — 중앙 서비스 디렉토리
 
 ## Part 5 · 운영 (how-to)
 

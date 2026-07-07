@@ -87,7 +87,6 @@ but not forced through the heaviest serialization lane.
 
 - `zlink_close()` (sockets)
 - `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
-- removed discovery/registry destroy APIs
 - Monitor handle `close` / `destroy`
 
 **Admission gate mechanism:**

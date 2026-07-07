@@ -12,9 +12,8 @@
 메시지를 라우팅하며 서비스 수명주기까지 처리해야 한다. 서비스 계층은 현재 공개
 C API가 제공하는 범위에서 이런 작업을 흡수한다.
 
-현재 공개 core service 계약은 SPOT과 SPOT 위의 Actor다. 예전 공개 Discovery와
-Registry C API는 core 8.4.3에서 제거되었다. 오래된 링크는 현재 사용법이 아니라
-제거 안내 문서로 이어진다.
+현재 공개 core service 계약은 SPOT과 SPOT 위의 Actor다. Discovery와 Registry는
+core 공개 C API나 내부 런타임에 속하지 않는다.
 
 ### 1.1 왜 한 라이브러리에 메시징과 서비스 계층이 함께 있나
 
@@ -96,17 +95,7 @@ flowchart TB
 
 ## 3. 서비스 구성 요소
 
-### 3.1 제거된 Discovery / Registry API
-
-예전 공개 C Discovery와 Registry API는 현재 계약에 속하지 않는다. 응용과 바인딩은
-제거된 header, 함수 prefix, 호환 wrapper를 다시 도입하면 안 된다. 오래된 링크는
-[Discovery 제거 안내](07-1-discovery.ko.md)와
-[Registry 제거 안내](07-4-registry.ko.md)를 참고한다.
-
-framework 수준 자동 위치 조회와 라우팅은 별도 location runtime/store 설계에서
-추적한다.
-
-### 3.2 SPOT — channel 기반 routed + PUB/SUB 허브
+### 3.1 SPOT — channel 기반 routed + PUB/SUB 허브
 
 `SpotNode`는 SPOT 토폴로지의 핵심 런타임이다. SPOT channel runtime을 topic
 pub/sub와 routed messaging에 연결한다. 다른 channel을 호출할 때는 channel

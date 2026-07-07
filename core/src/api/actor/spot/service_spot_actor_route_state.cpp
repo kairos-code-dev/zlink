@@ -75,7 +75,7 @@ bool actor_route_state_t::find_active (const char *actor_id_, zlink_actor_route_
 
 void actor_route_state_t::publish_active (actor_handle_t *actor_, bool create_)
 {
-    if (!actor_ || !actor_->node->actor_route_sync_enabled ())
+    if (!actor_)
         return;
     if (!create_ && !active_matches (actor_))
         return;
@@ -88,7 +88,6 @@ void actor_route_state_t::publish_active (actor_handle_t *actor_, bool create_)
         route.current_spot_kind = spot_kind_for_state (actor_->joined_spot_state);
     }
     active[actor_->actor_id] = route;
-    (void) actor_->node->bind_actor_route (actor_->actor_id.c_str (), &route, sizeof (route));
 }
 
 void actor_route_state_t::remove_matching_active (actor_handle_t *actor_)
@@ -101,8 +100,6 @@ void actor_route_state_t::remove_matching_active (actor_handle_t *actor_)
     if (same_routing_id (it->second.actor.node_rid, actor_->node_rid)
         && it->second.actor.generation == actor_->generation) {
         active.erase (it);
-        if (actor_->node->actor_route_sync_enabled ())
-            (void) actor_->node->unbind_actor_route (actor_->actor_id.c_str ());
     }
 }
 

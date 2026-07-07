@@ -24,7 +24,6 @@ struct actor_handle_t;
 using spot_actor_api_internal::actor_handle_t;
 
 class ctx_t;
-class discovery_t;
 class mutex_t;
 class socket_base_t;
 struct spot_runtime_t;
@@ -92,7 +91,6 @@ struct spot_node_access_t
     static int internal_sockets_snapshot (spot_node_t *node_,
                                           const zlink_spot_node_socket_filter_t *filter_,
                                           std::vector<zlink_spot_node_socket_entry_t> *out_);
-    static int attach_discovery (spot_node_t *node_, void *discovery_);
     static int try_register_spot_facade (spot_node_t *node_, spot_handle_t *spot_);
     static void unregister_spot_facade (spot_node_t *node_, spot_handle_t *spot_);
     static bool is_last_spot_facade_for_logical_state (spot_node_t *node_, spot_handle_t *spot_);

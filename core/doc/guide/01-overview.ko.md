@@ -68,7 +68,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | 계층 | 역할 |
 |------|------|
 | Public API Facade | C API 진입점. validate + delegate만 수행 |
-| Service Layer | SPOT(+Actor) 의미와 lifecycle. access seam으로 API와 연결. (예전 Discovery/Registry 모듈은 내부 전용으로만 남아 있고 공개 계약이 아니다) |
+| Service Layer | SPOT(+Actor) 의미와 lifecycle. access seam으로 API와 연결 |
 | Socket Semantic/Runtime | socket family 의미와 공통 runtime이 분리 |
 | Runtime Core | context, shutdown, option dispatch, multipart send |
 | Engine Layer | Boost.Asio 기반 poller, io_context 실행 기반 |

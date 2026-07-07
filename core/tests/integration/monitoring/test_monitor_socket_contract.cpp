@@ -1405,7 +1405,7 @@ void test_pubsub_delivery_ready_reaches_1000_subscribers ()
 
     zlink_socket_monitor_open_options_t pub_ready_opts;
     memset (&pub_ready_opts, 0, sizeof (pub_ready_opts));
-    pub_ready_opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_MONITOR_EVENT_ERROR;
+    pub_ready_opts.events = ZLINK_EVENT_CONNECTION_READY;
     void *pub_ready_monitor = zlink_socket_monitor_open (pub, &pub_ready_opts);
     TEST_ASSERT_NOT_NULL (pub_ready_monitor);
     configure_pair_socket (pub_ready_monitor);

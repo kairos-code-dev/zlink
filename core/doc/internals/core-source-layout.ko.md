@@ -64,10 +64,8 @@ errno 정의를 담은 top-level 공개 헤더이며 `common.h`가 포함한다.
 | |-- actor/                                                 |
 | |   `-- spot/                                              |
 | |-- core/                                                  |
-| |-- discovery/                                             |
 | |-- message/                                               |
 | |-- monitoring/                                            |
-| |-- registry/                                              |
 | |-- service/                                               |
 | |-- socket/                                                |
 | `-- spot/                                                  |
@@ -104,8 +102,6 @@ SPOT API 구현은 함수 의미에 따라 `spot/core`, `spot/dispatch`,
 | |   |   `-- validation/                                    |
 | |   |-- common/                                            |
 | |   |-- control/                                           |
-| |   |-- discovery/                                         |
-| |   |-- registry/                                          |
 | |   `-- spot/                                              |
 | |       |-- common/                                         |
 | |       |-- data_plane/                                     |
@@ -133,7 +129,7 @@ SPOT API 구현은 함수 의미에 따라 `spot/core`, `spot/dispatch`,
 +------------------------------------------------------------+
 ```
 
-서비스 런타임은 서비스 종류별로 나눈다. actor, discovery, registry, spot은
+서비스 런타임은 서비스 종류별로 나눈다. actor와 spot은
 서로 다른 상태와 정책을 가지므로 같은 폴더에 섞지 않는다. 공통 기반 클래스나
 공통 변환 유틸리티만 `services/common`에 둔다.
 

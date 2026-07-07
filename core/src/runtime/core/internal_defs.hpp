@@ -87,13 +87,6 @@ enum
     ZLINK_INTERNAL_OPT_LAST_ENDPOINT = 0x1117
 };
 
-typedef enum zlink_registry_socket_role_t
-{
-    ZLINK_REGISTRY_SOCKET_PUB = 1,
-    ZLINK_REGISTRY_SOCKET_ROUTER = 2,
-    ZLINK_REGISTRY_SOCKET_PEER_SUB = 3
-} zlink_registry_socket_role_t;
-
 typedef enum zlink_spot_pub_option_t
 {
     ZLINK_SPOT_PUB_OPT_SNDHWM = 0x2201,

@@ -6,8 +6,6 @@
 #include "api/socket/part_helper_internal.hpp"
 #include "api/service/service_api_internal.hpp"
 
-#include "services/discovery/discovery_access.hpp"
-#include "services/registry/registry_access.hpp"
 #include "services/spot/dispatch/spot_dispatch_internal.hpp"
 #include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/node/spot_node.hpp"
@@ -15,82 +13,11 @@
 #include "services/spot/pubsub/spot_sub.hpp"
 #include "services/spot/pubsub/spot_subject_access.hpp"
 
-namespace
-{
-struct service_handle_registry_t
-{
-    std::mutex sync;
-    std::set<void *> discovery_handles;
-    std::set<void *> registry_handles;
-};
-
-service_handle_registry_t &service_handle_registry ()
-{
-    static service_handle_registry_t registry;
-    return registry;
-}
-}
-
-bool is_registered_discovery_handle (void *discovery_)
-{
-    service_handle_registry_t &registry = service_handle_registry ();
-    std::lock_guard<std::mutex> lock (registry.sync);
-    return discovery_
-           && registry.discovery_handles.find (discovery_) != registry.discovery_handles.end ();
-}
-
-bool is_registered_registry_handle (void *registry_)
-{
-    service_handle_registry_t &registry = service_handle_registry ();
-    std::lock_guard<std::mutex> lock (registry.sync);
-    return registry_
-           && registry.registry_handles.find (registry_) != registry.registry_handles.end ();
-}
-
-void register_discovery_handle (void *discovery_)
-{
-    if (!discovery_)
-        return;
-    service_handle_registry_t &registry = service_handle_registry ();
-    std::lock_guard<std::mutex> lock (registry.sync);
-    registry.discovery_handles.insert (discovery_);
-}
-
-void erase_discovery_handle (void *discovery_)
-{
-    if (!discovery_)
-        return;
-    service_handle_registry_t &registry = service_handle_registry ();
-    std::lock_guard<std::mutex> lock (registry.sync);
-    registry.discovery_handles.erase (discovery_);
-}
-
-void register_registry_handle (void *registry_)
-{
-    if (!registry_)
-        return;
-    service_handle_registry_t &registry = service_handle_registry ();
-    std::lock_guard<std::mutex> lock (registry.sync);
-    registry.registry_handles.insert (registry_);
-}
-
-void erase_registry_handle (void *registry_)
-{
-    if (!registry_)
-        return;
-    service_handle_registry_t &registry = service_handle_registry ();
-    std::lock_guard<std::mutex> lock (registry.sync);
-    registry.registry_handles.erase (registry_);
-}
-
 namespace zlink
 {
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
 
-service_handle_resolution_t::service_handle_resolution_t () :
-    kind (service_handle_unknown), discovery (NULL), registry (NULL)
-{
-}
+service_handle_resolution_t::service_handle_resolution_t () : kind (service_handle_unknown) {}
 
 service_handle_resolution_t resolve_service_handle (void *handle_)
 {
@@ -98,18 +25,6 @@ service_handle_resolution_t resolve_service_handle (void *handle_)
 
     if (!handle_)
         return resolved;
-
-    if (is_registered_discovery_handle (handle_)) {
-        resolved.kind = service_handle_discovery;
-        resolved.discovery = static_cast<discovery_t *> (handle_);
-        return resolved;
-    }
-
-    if (is_registered_registry_handle (handle_)) {
-        resolved.kind = service_handle_registry;
-        resolved.registry = static_cast<registry_t *> (handle_);
-        return resolved;
-    }
 
     if (as_spot_pub_side_handle (handle_)) {
         resolved.kind = service_handle_spot_pub_side;

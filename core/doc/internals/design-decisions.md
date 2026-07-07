@@ -87,32 +87,20 @@ optional one-way handler callback.
 - Simplifies implementation/usage by eliminating format branching logic
 
 ---
-
-## 3. Service Discovery Design
-
-### 3.1 Discovery Service
-
-**Decision**: Discovery answers service-location queries and is used standalone (service list queries).
-
-**Rationale**:
-- Separation of concerns: "where is it" and "how to send" are independent
-- Discovery can be attached to multiple downstream consumers
-- One Discovery instance can publish lookups to several socket subscribers
-
 ---
 
-## 4. SPOT Design
+## 3. SPOT Design
 
-### 4.1 PUB/SUB-Based Mesh
+### 3.1 PUB/SUB-Based Mesh
 
 **Decision**: SPOT cluster is composed of a PUB/SUB mesh.
 
 **Rationale**:
 - PUB/SUB is natural for topic-based fanout
 - Subscription filtering is more efficient than ROUTER-based approaches
-- Enables automatic mesh formation via Discovery
+- Explicit peer connections keep mesh formation under application control
 
-### 4.2 No Re-publishing Policy
+### 3.2 No Re-publishing Policy
 
 **Decision**: Remotely received messages are distributed locally only, not re-published.
 

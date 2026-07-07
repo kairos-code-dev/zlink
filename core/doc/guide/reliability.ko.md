@@ -126,8 +126,8 @@ SPOT routed 경로와 Actor 메시징은 raw 소켓 위에 라우팅을 얹은 �
 
 - SPOT routed 요청/응답은 raw 요청/응답과 같은 타임아웃 의미를 따른다(5절).
 - Actor가 이동(다른 Spot으로 join/leave) 중인 메시지는 유실되거나 다른 Spot으로
-  갈 수 있다. Discovery actor-route sync가 켜진 경우, 활성 경로는 user Spot
-  **join 성공 시점**에 게시된다([07-4 Actor](07-4-actor.ko.md)).
+  갈 수 있다. 활성 위치는 user Spot **join 성공 시점**에 내부 Actor 상태로
+  반영된다([07-4 Actor](07-4-actor.ko.md)).
 - SPOT 토픽 pub/sub은 raw PUB/SUB와 같은 특성(slow-joiner, 느린 구독자 흐름 제어)을
   가진다.
 

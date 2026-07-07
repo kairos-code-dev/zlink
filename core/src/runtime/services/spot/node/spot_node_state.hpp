@@ -26,7 +26,6 @@ struct actor_handle_t;
 
 using spot_actor_api_internal::actor_handle_t;
 
-class discovery_t;
 class socket_base_t;
 class spot_pub_t;
 class spot_sub_t;
@@ -63,21 +62,6 @@ struct spot_node_aggregate_subscription_state_t
 {
     std::unordered_map<std::string, uint32_t> local_exact_topic_refcount;
     std::unordered_map<std::string, uint32_t> local_prefix_topic_refcount;
-};
-
-struct spot_node_discovery_binding_state_t
-{
-    spot_node_discovery_binding_state_t () : discovery (NULL), discovery_seq (0), registered (false)
-    {
-    }
-
-    discovery_t *discovery;
-    std::string discovery_service;
-    uint64_t discovery_seq;
-    std::set<std::string> pending_service_updates;
-    bool registered;
-    std::string advertise_endpoint;
-    std::string registration_uplink_endpoint;
 };
 
 struct spot_node_tls_state_t

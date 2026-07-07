@@ -30,7 +30,6 @@
 #include "../include/zlink.h"
 #include "core/internal_errno.hpp"
 #include "core/internal_defs.hpp"
-#include "services/common/service_event_types_internal.hpp"
 
 #ifndef ZLINK_INTERNAL_EXPORT
 #if defined _WIN32 && defined DLL_EXPORT && !defined ZLINK_STATIC

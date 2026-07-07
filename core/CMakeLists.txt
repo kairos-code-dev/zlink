@@ -982,44 +982,6 @@ set(runtime-service-control-sources
 set(runtime-service-common-sources
     src/runtime/services/common/service_runtime_base.cpp)
 
-set(runtime-service-discovery-sources
-    src/runtime/services/discovery/discovery_access.cpp
-    src/runtime/services/discovery/discovery.cpp
-    src/runtime/services/discovery/discovery_bootstrap.cpp
-    src/runtime/services/discovery/discovery_registry_rpc.cpp
-    src/runtime/services/discovery/discovery_registry_client.cpp
-    src/runtime/services/discovery/discovery_service_state.cpp
-    src/runtime/services/discovery/socket_discovery_attachment.cpp
-    src/runtime/services/discovery/socket_discovery_attachment_lifecycle.cpp
-    src/runtime/services/discovery/socket_discovery_attachment_registration.cpp
-    src/runtime/services/discovery/discovery_registration_propagation.cpp
-    src/runtime/services/discovery/discovery_state.cpp
-    src/runtime/services/discovery/discovery_uplink.cpp
-    src/runtime/services/discovery/discovery_uplink_socket_owner.cpp
-    src/runtime/services/discovery/discovery_update.cpp
-    src/runtime/services/discovery/socket_discovery_attachment_peer.cpp)
-
-set(runtime-service-registry-sources
-    src/runtime/services/registry/registry_access.cpp
-    src/runtime/services/registry/registry_query_access.cpp
-    src/runtime/services/registry/registry.cpp
-    src/runtime/services/registry/registry_config.cpp
-    src/runtime/services/registry/registry_control.cpp
-    src/runtime/services/registry/registry_query.cpp
-    src/runtime/services/registry/registry_projection.cpp
-    src/runtime/services/registry/registry_projection_publish.cpp
-    src/runtime/services/registry/registry_route_rpc.cpp
-    src/runtime/services/registry/registry_runtime.cpp
-    src/runtime/services/registry/registry_socket_owner.cpp
-    src/runtime/services/registry/registry_state.cpp)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-  set_source_files_properties(
-    ${runtime-service-discovery-sources}
-    ${runtime-service-registry-sources}
-    PROPERTIES COMPILE_OPTIONS "-fvisibility=hidden")
-endif()
-
 set(runtime-service-actor-sources
     src/runtime/services/actor/gateway/service_spot_actor_gateway_protocol_internal.cpp
     src/runtime/services/actor/lifecycle/service_spot_actor_lifecycle_context_internal.cpp
@@ -1085,8 +1047,6 @@ set(runtime-service-spot-sources
 set(service-sources
     ${runtime-service-control-sources}
     ${runtime-service-common-sources}
-    ${runtime-service-discovery-sources}
-    ${runtime-service-registry-sources}
     ${runtime-service-actor-sources}
     ${runtime-service-spot-sources})
 

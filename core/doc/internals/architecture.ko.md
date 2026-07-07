@@ -229,7 +229,7 @@ I/O 코어는 Asio 기반 Proactor 로 구성하며 자체 기능을 별도로 �
 |  |  Native WS/WSS/TLS Transports                                 |  |
 |  |  - Beast WebSocket + OpenSSL 을 i_asio_transport 로 통합      |  |
 |  +---------------------------------------------------------------+  |
-|  |  Service Layer (Registry, Discovery, SPOT)                    |  |
+|  |  Service Layer (SPOT)                                         |  |
 |  |  - socket 위에 올리는 상위 서비스 추상                         |  |
 |  +---------------------------------------------------------------+  |
 |                                                                     |
@@ -1221,17 +1221,6 @@ core/
 |   |   |   +-- monitor_decode.hpp       # Monitor event decoding
 |   |   |   +-- service_runtime_base.hpp # Service lifecycle kernel
 |   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
-|   |   +-- discovery/               # Service discovery
-|   |   |   +-- discovery.cpp/hpp
-|   |   |   +-- discovery_access.cpp/hpp  # API seam
-|   |   |   +-- discovery_bootstrap.cpp   # Registry bootstrap
-|   |   |   +-- discovery_state.cpp       # Local service directory state
-|   |   |   +-- discovery_update.cpp      # Service list update
-|   |   |   +-- discovery_uplink.cpp      # Registry uplink/heartbeat
-|   |   |   +-- discovery_registry_client.cpp # Registry protocol client
-|   |   |   +-- discovery_protocol.hpp
-|   |   |   +-- registry_access.cpp/hpp   # Registry API seam
-|   |   |   +-- registry_query_access.cpp/hpp # Remote query API seam
 |   |   +-- spot/                    # SPOT service (POSD modular split)
 |   |       +-- spot_node.cpp/hpp    # Network control (PUB/SUB mesh)
 |   |       +-- spot_node_access.cpp/hpp  # SpotNode API seam

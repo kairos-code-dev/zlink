@@ -125,12 +125,6 @@ void spot_node_t::wake_control_task ()
 
 bool spot_node_t::can_suspend_control_task () const
 {
-    if (_discovery_state.discovery != NULL)
-        return false;
-    if (!service_attachments ().discoveries.empty ())
-        return false;
-    if (!_discovery_state.pending_service_updates.empty ())
-        return false;
     if (_peer_state.subscription_replay_pending || _peer_state.subscription_ready_refresh_pending
         || _peer_state.pub_delivery_ready_refresh_pending) {
         return false;
@@ -149,21 +143,12 @@ void spot_node_t::control_tick ()
     if (ensure_healthy () != 0)
         return;
 
-    bool has_pending_service_refresh = false;
-    {
-        scoped_lock_t lock (_sync);
-        has_pending_service_refresh = !service_attachments ().pending_refresh_services.empty ();
-    }
-    if (has_pending_service_refresh)
-        refresh_service_discovery_attachments ();
-    refresh_discovery_peers ();
     bool skip_extra = false;
     {
         scoped_lock_t lock (_sync);
         const uint64_t connected_peer_version =
           mesh_peer_version (&_runtime->execution.mesh_peer_state);
-        skip_extra = _discovery_state.discovery == NULL
-                     && connected_peer_version == _runtime->connected_peer_version_seen ()
+        skip_extra = connected_peer_version == _runtime->connected_peer_version_seen ()
                      && !_peer_state.subscription_replay_pending
                      && !_peer_state.subscription_ready_refresh_pending
                      && !_peer_state.pub_delivery_ready_refresh_pending;

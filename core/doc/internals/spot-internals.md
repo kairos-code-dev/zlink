@@ -222,14 +222,11 @@ flowchart LR
 ```
 
 Manual wiring stores endpoint strings in `manual_endpoints` and
-`active_endpoints`. Discovery wiring stores one discovery pointer per channel
-name and derives the active endpoint set from that discovery view. Manual
-endpoints and a discovery pointer cannot coexist for the same channel because
-the connection owner must stay unambiguous.
+`active_endpoints`.
 
 `zlink_spot_node_peers()` distinguishes SPOT mesh peers from router
 channel peers. A router channel peer row includes channel name, peer endpoint,
-source (manual or discovery), kind (router channel), and state. Operators use
+source, kind (router channel), and state. Operators use
 that split to diagnose "the mesh is down" separately from "router channel
 ingress is not ready yet."
 
@@ -645,10 +642,8 @@ the Actor from a user Spot back to the Entry Spot. Session bind and unbind are
 not prerequisites for the active route and do not change the Actor location.
 When the Actor named by an active route is destroyed, the route is removed;
 when a destroy targets an Actor of a different generation than the one in the
-route, the route is preserved. Public Discovery/Registry route synchronization
-APIs were removed from the current core contract, so this route state remains
-an internal SPOT/Actor lifecycle detail unless a future contract defines a
-new synchronization surface.
+route, the route is preserved. This route state remains an internal SPOT/Actor
+lifecycle detail.
 
 ### 9.4 Actor lifecycle event
 
@@ -721,7 +716,7 @@ flowchart TB
   dispatch pending queues"]
   Runtime["SpotNode runtime
   physical sockets / demux and fanout
-  transport backpressure / discovery sync"]
+  transport backpressure / control sync"]
 
   Facade --> Logical
   Logical --> Runtime
@@ -970,7 +965,7 @@ serialized by the single `actor_runtime().mutex`** unless noted otherwise.
 | `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | keyed by `(stream, session rid)`; holds the per-actor-id Actor entries of one session; the compare-and-swap on remote join commit uses this map as the transaction point |
 | `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode (the ActorGateway) |
 | `routes` | `actor_route_state_t` | published actor routes and disconnect notes (see sub-rows below) |
-| `routes.active` | `map<string, zlink_actor_route_t>` | actor id → active route published to Discovery |
+| `routes.active` | `map<string, zlink_actor_route_t>` | actor id → internal active route |
 | `routes.disconnected` | `set<pair<spot_node_t*, string>>` | `(source node, target node rid)` pairs marked disconnected; used to map relay failures to route-not-found |
 | `joins` | `actor_join_state_t` | pending join queues and bookkeeping (see sub-rows below) |
 | `joins.queues` | `map<spot_logical_state_t*, deque<queued_join_request_t*>>` | pending join requests per target Spot; entries added on enqueue, removed when replied or cleaned up |

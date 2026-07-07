@@ -39,9 +39,6 @@ zlink 가이드 전반에서 쓰는 용어를 모았다. 개념의 정식 정의
 
 ## 서비스 계층
 
-- **Discovery / Registry (제거됨)** — 예전 core의 이름 기반 자동 연결·카탈로그
-  계층. core 8.4.3에서 공개 C 계약에서 제거되었고, 위치 공유와 자동 연결은 상위
-  framework의 location runtime/store가 담당한다. ([제거 안내](07-1-discovery.ko.md))
 - **SPOT** — 동적으로 생성·소멸되는 논리 단위(room·stage·zone 등)로 메시지를
   라우팅하는 추상 단위. 한 단위로 들어온 메시지를 **단일 실행 큐로 직렬 처리**한다.
   ([07-3 SPOT](07-3-spot.ko.md))
@@ -53,8 +50,6 @@ zlink 가이드 전반에서 쓰는 용어를 모았다. 개념의 정식 정의
   같은 엔티티로 이어진다(재접속 이전성). ([07-4 Actor](07-4-actor.ko.md))
 - **Capability** — 한 노드(channel·spot 등)가 외부에 노출하는 역할 단위(server·
   subscriber·publisher 등). ([07-0 서비스](07-0-services.ko.md))
-- **Topology** — 어떤 노드가 어디에 있고 서로 어떻게 연결돼 있는지의 구성 정보.
-  ([07-4 Registry](07-4-registry.ko.md))
 - **Channel** — 논리 이름을 키로 메시지를 주고받는 단위. 서비스 계층 호출의 기준.
   ([07-0 서비스](07-0-services.ko.md))
 

@@ -3816,8 +3816,7 @@ zlink_spot_node_spots (void *node_, zlink_spot_node_spot_entry_t *entries_, size
         }
         entries_[i].pending_actor_join_count =
           actor_runtime ().joins.pending_count_for_spot (spots[i].state.get ());
-        entries_[i].route_synced =
-          static_cast<zlink::spot_node_t *> (node_)->spot_owner_route_synced () ? 1u : 0u;
+        entries_[i].route_synced = 0u;
         entries_[i].last_changed_ms = now_ms ();
     }
     *count_ = limit;

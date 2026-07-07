@@ -586,8 +586,7 @@ size_t len = 0;
 zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 ```
 
-The channel name is metadata only. It does not connect the socket and does not
-restore the removed public Discovery or Registry C APIs.
+The channel name is metadata only. It does not connect the socket.
 
 ---
 <!-- zlink-nav:bottom:start -->

@@ -5,7 +5,6 @@
 #include "services/spot/node/spot_node.hpp"
 
 #include "services/control/service_control_runtime.hpp"
-#include "services/discovery/discovery_access.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/request_completion_queue_internal.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
@@ -54,23 +53,16 @@ int spot_node_t::validate_destroyable_handles_locked () const
     return 0;
 }
 
-void spot_node_t::begin_destroy_detach_phase (
-  discovery_t **discovery_out_,
-  std::map<std::string, discovery_t *> *service_discoveries_out_,
-  std::vector<std::string> *active_peer_endpoints_out_,
-  std::string *bound_endpoint_out_,
-  std::string *router_bind_endpoint_out_)
+void spot_node_t::begin_destroy_detach_phase (std::vector<std::string> *active_peer_endpoints_out_,
+                                              std::string *bound_endpoint_out_,
+                                              std::string *router_bind_endpoint_out_)
 {
-    if (discovery_out_)
-        *discovery_out_ = NULL;
     if (active_peer_endpoints_out_)
         active_peer_endpoints_out_->clear ();
     if (bound_endpoint_out_)
         bound_endpoint_out_->clear ();
     if (router_bind_endpoint_out_)
         router_bind_endpoint_out_->clear ();
-    if (service_discoveries_out_)
-        service_discoveries_out_->clear ();
 
     scoped_lock_t lock (_sync);
     if (active_peer_endpoints_out_) {
@@ -81,15 +73,10 @@ void spot_node_t::begin_destroy_detach_phase (
         *bound_endpoint_out_ = _endpoint_state.bound_endpoint;
     if (router_bind_endpoint_out_)
         *router_bind_endpoint_out_ = _endpoint_state.router_bind_endpoint;
-    if (discovery_out_)
-        *discovery_out_ = _discovery_state.discovery;
 
-    reset_spot_discovery_state_locked ();
     _peer_state.manual_endpoints.clear ();
     _peer_state.active_endpoints.clear ();
     _endpoint_state.active_peer_count.store (0, std::memory_order_release);
-    if (service_discoveries_out_)
-        service_discoveries_out_->swap (service_attachments ().discoveries);
 }
 
 void spot_node_t::clear_service_attachment_runtime_locked (
@@ -102,7 +89,6 @@ void spot_node_t::clear_service_attachment_runtime_locked (
     monitors_out_->swap (service_attachments ().monitors);
     service_attachments ().attachments.clear ();
     service_attachments ().socket_index.clear ();
-    service_attachments ().pending_refresh_services.clear ();
     _service_attachments.rebuild_caches_locked ();
 }
 
@@ -172,8 +158,6 @@ int spot_node_t::destroy ()
             return -1;
     }
     _lifecycle.transition_to (service_state_stopping);
-    discovery_t *discovery = NULL;
-    std::map<std::string, discovery_t *> service_discoveries;
     std::vector<std::string> active_peer_endpoints;
     std::string bound_endpoint;
     std::string router_bind_endpoint;
@@ -182,20 +166,12 @@ int spot_node_t::destroy ()
     int final_error = 0;
     bool used_abortive = false;
 
-    spot_shutdown_logf_local (
-      false, "step=begin node=%p service=%s state=%d tracked=%zu", static_cast<void *> (this),
-      _discovery_state.discovery_service.c_str (), static_cast<int> (_lifecycle.state ()),
-      _lifecycle.owned_socket_count ());
-    if (_discovery_state.discovery && _discovery_state.registered) {
-        spot_shutdown_logf_local (false, "step=unregister_begin node=%p",
-                                  static_cast<void *> (this));
-        (void) unregister_registered ();
-        spot_shutdown_logf_local (false, "step=unregister_complete node=%p",
-                                  static_cast<void *> (this));
-    }
+    spot_shutdown_logf_local (false, "step=begin node=%p state=%d tracked=%zu",
+                              static_cast<void *> (this),
+                              static_cast<int> (_lifecycle.state ()),
+                              _lifecycle.owned_socket_count ());
     spot_shutdown_logf_local (false, "step=detach_phase_begin node=%p", static_cast<void *> (this));
-    begin_destroy_detach_phase (&discovery, &service_discoveries, &active_peer_endpoints,
-                                &bound_endpoint, &router_bind_endpoint);
+    begin_destroy_detach_phase (&active_peer_endpoints, &bound_endpoint, &router_bind_endpoint);
     spot_shutdown_logf_local (false, "step=detach_phase_complete node=%p peers=%zu",
                               static_cast<void *> (this), active_peer_endpoints.size ());
     for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
@@ -219,16 +195,6 @@ int spot_node_t::destroy ()
     std::deque<attachment_monitor_handle_t> monitors;
     clear_service_attachment_runtime_locked (&monitors);
     close_attachment_monitors (&monitors);
-
-    if (discovery)
-        preserve_first_error (discovery_access_t::remove_observer (discovery, this), &first_error);
-    for (std::map<std::string, discovery_t *>::iterator it = service_discoveries.begin ();
-         it != service_discoveries.end (); ++it) {
-        if (it->second)
-            preserve_first_error (discovery_access_t::remove_observer (it->second, this),
-                                  &first_error);
-    }
-    spot_shutdown_logf_local (false, "step=observer_removed node=%p", static_cast<void *> (this));
 
     if (_runtime)
         preserve_first_error (_runtime->stop_and_join (), &first_error);

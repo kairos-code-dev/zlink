@@ -38,10 +38,8 @@
 | 문서 | 설명 |
 |------|------|
 | [07-0-services.ko.md](../core/doc/guide/07-0-services.ko.md) | 서비스 계층 개요 |
-| [07-1-discovery.ko.md](../core/doc/guide/07-1-discovery.ko.md) | Service Discovery 기반 인프라 |
 | [07-3-spot.ko.md](../core/doc/guide/07-3-spot.ko.md) | SPOT 토픽 PUB/SUB (위치투명 발행/구독) |
 | [07-4-actor.ko.md](../core/doc/guide/07-4-actor.ko.md) | Actor 모델 (위치투명 actor) |
-| [07-4-registry.ko.md](../core/doc/guide/07-4-registry.ko.md) | Registry 서비스 |
 
 ### Reference
 | 문서 | 설명 |
@@ -78,7 +76,6 @@
 | [protocol-zmp.ko.md](../core/doc/internals/protocol-zmp.ko.md) | ZMP v1.0 프로토콜 상세 |
 | [protocol-raw.ko.md](../core/doc/internals/protocol-raw.ko.md) | RAW (STREAM) 프로토콜 상세 |
 | [stream-socket.ko.md](../core/doc/internals/stream-socket.ko.md) | STREAM 소켓 내부 구조, WS/WSS 최적화, 런타임 기본값 |
-| [peer-disconnect-rid.ko.md](../core/doc/internals/peer-disconnect-rid.ko.md) | routing id 기준 peer disconnect 내부 구조 |
 | [socket-option-defaults.ko.md](../core/doc/internals/socket-option-defaults.ko.md) | 코드 기준 소켓 옵션 실효 기본값 |
 | [threading-model.ko.md](../core/doc/internals/threading-model.ko.md) | 스레딩 및 동시성 모델 |
 | [services-internals.ko.md](../core/doc/internals/services-internals.ko.md) | 서비스 계층 내부 설계 |

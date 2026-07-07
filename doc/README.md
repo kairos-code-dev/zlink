@@ -50,7 +50,6 @@ internal context, link to the internals document instead.
 | Document | Description |
 |----------|-------------|
 | [07-0-services.md](../core/doc/guide/07-0-services.md) | Service layer overview |
-| [07-1-discovery.md](../core/doc/guide/07-1-discovery.md) | Service Discovery infrastructure |
 | [07-3-spot.md](../core/doc/guide/07-3-spot.md) | SPOT (location-transparent messaging: topic pub/sub + routed direct delivery) |
 
 ### Reference
@@ -89,13 +88,10 @@ language-specific rules.
 | [protocol-zmp.md](../core/doc/internals/protocol-zmp.md) | ZMP v1.0 protocol details |
 | [protocol-raw.md](../core/doc/internals/protocol-raw.md) | RAW (STREAM) protocol details |
 | [stream-socket.md](../core/doc/internals/stream-socket.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
-| [peer-disconnect-rid.md](../core/doc/internals/peer-disconnect-rid.md) | Peer disconnect by routing id internals |
 | [socket-option-defaults.md](../core/doc/internals/socket-option-defaults.md) | Effective socket option defaults from code |
 | [threading-model.md](../core/doc/internals/threading-model.md) | Threading and concurrency model |
 | [services-internals.md](../core/doc/internals/services-internals.md) | Service layer internal design (overview) |
 | [spot-internals.md](../core/doc/internals/spot-internals.md) | SPOT/SpotNode internal socket wiring and data flow |
-| [discovery-internals.md](../core/doc/internals/discovery-internals.md) | Discovery service internal architecture |
-| [registry-internals.md](../core/doc/internals/registry-internals.md) | Registry service internal architecture |
 | [design-decisions.md](../core/doc/internals/design-decisions.md) | Design decision records |
 
 ## Build and Development (building/)

@@ -36,16 +36,12 @@ flowchart TB
     end
 
     subgraph SAL ["Service Access Layer"]
-        discovery_access["discovery_access_t"]
-        registry_access["registry_access_t"]
-        registry_query_access["registry_query_access_t"]
         spot_node_access["spot_node_access_t"]
         spot_subject_access["spot_subject_access"]
     end
 
     subgraph SvcRT ["Service Runtime"]
         direction LR
-        discovery_rt["Discovery: bootstrap · state · update · uplink · registry_client"]
         spot_rt["SPOT: node · pub · sub · data_plane · handle · runtime"]
         common_rt["Common: runtime_base · api_guard · monitor · bridge"]
     end
@@ -108,9 +104,6 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 
 | Access Seam | Location | Role |
 |-------------|----------|------|
-| `discovery_access_t` | `services/discovery/discovery_access.hpp` | Discovery lifecycle, connect_registry, option, monitor |
-| `registry_access_t` | `services/registry/registry_access.hpp` | Registry lifecycle, bind, config, snapshot/query |
-| `registry_query_access_t` | `services/registry/registry_query_access.hpp` | Remote Registry topology query client |
 | `spot_node_access_t` | `services/spot/spot_node_access.hpp` | SpotNode lifecycle, bind, peer connect, internal attachment coordination |
 | `spot_subject_access` (free function) | `services/spot/spot_subject_access.hpp` | Publish, subscribe, option, handler, monitor, type casting |
 
@@ -124,7 +117,7 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 
 | Module | Role |
 |--------|------|
-| `spot_node.cpp/hpp` | SpotNode orchestration, discovery integration |
+| `spot_node.cpp/hpp` | SpotNode orchestration |
 | `spot_handle.hpp` | Public handle struct (tag validation, pub/sub refs, pending defaults) |
 | `spot_pub.cpp/hpp` | Publish path |
 | `spot_sub.cpp/hpp` | Subscribe path |
@@ -135,13 +128,13 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | `spot_data_plane_pending.cpp` | Pending message copy, reference accounting, and retry queues under backpressure |
 | `spot_data_plane_protocol.cpp` | Control messages, subscription updates, bootstrap |
 | `spot_data_plane_internal.hpp` | Data plane internal state and protocol definitions |
-| `spot_node_state.hpp` | Extracted SpotNode state bundles for discovery, TLS, endpoint, handle, and service attachment |
+| `spot_node_state.hpp` | Extracted SpotNode state bundles for TLS, endpoint, handle, and service attachment |
 | `spot_subject_access.cpp/hpp` | Subject-level API seam (publish, recv, option, handler) |
 | `spot_runtime.cpp/hpp` | Runtime lifecycle |
 
 Recent refactors moved the large internal state structs out of `spot_node_t`
 and into `spot_node_state.hpp`. `spot_node_t` still coordinates lifecycle and
-control flow, but discovery/service-attachment/summary ownership now lives in
+control flow, but TLS, service-attachment, and summary ownership now lives in
 explicit state bundles instead of one monolithic header body.
 
 The data-plane forwarding path follows the same split. `spot_data_plane_forwarding.cpp`
@@ -150,22 +143,6 @@ owns pending-queue memory admission, copied message parts, per-target reference
 accounting, and retry queue cleanup. This keeps slow-peer backpressure handling
 separate from the high-level forwarding sequence.
 
-**Discovery** (`services/discovery/`):
-
-| Module | Role |
-|--------|------|
-| `discovery.cpp/hpp` | Main coordinator |
-| `discovery_access.cpp/hpp` | API seam |
-| `discovery_bootstrap.cpp` | Registry bootstrap connection |
-| `discovery_state.cpp` | Local service directory state |
-| `discovery_update.cpp` | Service list update handling |
-| `discovery_uplink.cpp` | Registry uplink/heartbeat |
-| `discovery_registry_client.cpp` | Registry protocol client |
-| `discovery_protocol.hpp` | Protocol constants, message types, serialization helpers |
-| `discovery_owned_service.hpp` | Inline convenience API for discovery-owned service registration |
-| `socket_discovery_attachment.cpp/hpp` | Socket-side integration: attach, register, peer refresh, lifecycle |
-| `registry_access.cpp/hpp` | Registry service API seam |
-| `registry_query_access.cpp/hpp` | Remote Registry query API seam |
 
 ### 3.4 Socket Semantic/Runtime (`core/src/runtime/sockets/`)
 
@@ -283,8 +260,6 @@ core/src/
     services/
       common/           8 files — service_runtime_base, service_public_api_guard
       control/          2 files — service control runtime
-      discovery/       27 files — discovery runtime
-      registry/        16 files — registry runtime + registry access
       spot/            86 files — node/pub/sub/data_plane/dispatch/runtime
       actor/           15 files — actor relay multipart/packet/result/validation
     transports/        46 files — tcp/ipc/tls/ws/pgm

@@ -67,7 +67,7 @@ Key roles per layer:
 | Layer | Role |
 |-------|------|
 | Public API Facade | C API entry point. Validate + delegate only; does not know concrete service/socket details |
-| Service Layer | SPOT(+Actor) semantics and lifecycle. Connected to the API layer via service-local access seams. (The former Discovery/Registry modules remain internal-only and are not public contracts) |
+| Service Layer | SPOT(+Actor) semantics and lifecycle. Connected to the API layer via service-local access seams |
 | Socket Semantic/Runtime | Socket family semantics (semantic) and common mechanism (runtime components) are separated |
 | Runtime Core | Context, shutdown, close/drain orchestration, option dispatch, logical multipart send |
 | Engine Layer | Boost.Asio-based poller, io_context, mailbox execution backbone |

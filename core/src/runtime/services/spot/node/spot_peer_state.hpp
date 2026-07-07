@@ -24,7 +24,6 @@ struct spot_peer_state_t
     std::set<std::string> manual_endpoints;
     std::set<std::string> active_endpoints;
     std::set<std::string> connected_endpoints;
-    std::set<std::string> discovery_endpoints;
     std::set<std::string> pending_subscription_ready_filters;
     std::map<std::string, std::set<std::string>> pub_delivery_ready_sources;
     std::map<std::string, uint32_t> pending_pub_delivery_ready_counts;

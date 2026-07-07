@@ -9,9 +9,6 @@
 #include "services/spot/runtime/spot_runtime.hpp"
 #include "services/spot/pubsub/spot_sub.hpp"
 #include "services/control/service_control_runtime.hpp"
-#include "services/discovery/discovery_owned_service.hpp"
-#include "services/discovery/discovery_protocol.hpp"
-#include "services/discovery/routing_id_utils.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/err.hpp"
@@ -342,8 +339,7 @@ const std::string &spot_node_t::sub_fanout_endpoint () const
 std::string spot_node_t::public_endpoint () const
 {
     scoped_lock_t lock (_sync);
-    return _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint
-                                                        : _discovery_state.advertise_endpoint;
+    return _endpoint_state.bound_endpoint;
 }
 
 bool spot_node_t::has_active_peers () const

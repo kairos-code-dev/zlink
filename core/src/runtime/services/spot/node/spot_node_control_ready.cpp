@@ -403,9 +403,7 @@ void spot_node_t::notify_pub_delivery_ready_ack (const std::string &target_endpo
     std::string self_endpoint;
     {
         scoped_lock_t lock (_sync);
-        self_endpoint = _discovery_state.advertise_endpoint.empty ()
-                          ? _endpoint_state.bound_endpoint
-                          : _discovery_state.advertise_endpoint;
+        self_endpoint = _endpoint_state.bound_endpoint;
     }
     if (self_endpoint.empty () || self_endpoint != target_endpoint_)
         return;

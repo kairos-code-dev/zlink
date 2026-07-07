@@ -1,7 +1,7 @@
 [English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
 
 <!-- zlink-nav:start -->
-[← Discovery](07-1-discovery.ko.md) | [SPOT Actor →](07-4-actor.ko.md)
+[← 서비스](07-0-services.ko.md) | [SPOT Actor →](07-4-actor.ko.md)
 <!-- zlink-nav:end -->
 
 # SPOT 사용 가이드
@@ -9,7 +9,7 @@
 이 문서는 애플리케이션 개발자가 SPOT을 어떻게 쓰는지 설명한다.
 정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
-> SPOT을 **언제·왜** 쓰는지(raw 소켓·Discovery·Actor와의 관계, 실행 직렬성)는
+> SPOT을 **언제·왜** 쓰는지(raw 소켓·Actor와의 관계, 실행 직렬성)는
 > [서비스 개요 §멘탈 모델](07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)에서
 > 먼저 잡고 오면 이 문서의 how-to가 더 잘 읽힌다.
 
@@ -128,21 +128,15 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 
 이 방식은 테스트나 소규모 고정 토폴로지에 적합하다.
 
-### 3.2 자동 위치 연결
-
-예전 공개 discovery 기반 SPOT 연결은 core 8.4.3에서 C 계약에서 제거되었다.
-framework location runtime/store 대체 계약이 준비되기 전까지는 명시적 피어
-엔드포인트와 `connect_peer()`를 사용한다.
-
 피어 엔드포인트를 모르고 대상 노드의 라우팅 ID만 알고 있으면
 `zlink_spot_node_disconnect_peer_rid()`로 해당 피어 노드 연결을 종료할 수 있다.
 이 함수는 `SpotNode`에 호출한다. `Spot` facade는 개별 피어 연결을 직접
 소유하지 않으므로 별도의 라우팅 ID disconnect 함수를 제공하지 않는다.
 
-### 3.3 raw peer weight로 새 outbound만 배제하기
+### 3.2 raw peer weight로 새 outbound만 배제하기
 
 SpotNode와 Spot에는 weight 설정 옵션이 없다. 서비스가 raw ROUTER 또는 worker
-auto-connect 피어를 사용할 때 피어 연결은 유지한 채 새 routed/channel 요청만 잠시
+피어를 사용할 때 피어 연결은 유지한 채 새 routed/channel 요청만 잠시
 빼고 싶으면 해당 raw 소켓의 weight를 `0`으로 설정한다. 값 범위는 `0..100`,
 기본값은 `100`이다.
 
@@ -222,13 +216,7 @@ int rc = zlink_spot_subscribe(
 현재 공개 C API는 수동 연결 경로를 사용한다. 호출자가 `DEALER` 소켓을 만들고
 알고 있는 endpoint에 `connect()`를 호출한 뒤 route bridge에 등록한다.
 
-### 5.1 제거된 자동 연결 경로
-
-이전 자동 연결 경로는 공개 discovery handle을 사용했으며 core 8.4.3에서
-C 계약에서 제거되었다. 대체 location runtime/store 계약이 공개되기 전까지
-channel bridge 예제는 아래 수동 연결 경로를 기준으로 유지한다.
-
-### 5.2 수동 연결 경로
+### 5.1 수동 연결 경로
 
 고정 엔드포인트를 아는 경우에는 호출자가 `connect()`를 먼저 완료한 뒤 DEALER를 등록한다.
 
@@ -573,5 +561,5 @@ application이 알 필요가 없다.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Discovery](07-1-discovery.ko.md) | [SPOT Actor →](07-4-actor.ko.md)
+[← 서비스](07-0-services.ko.md) | [SPOT Actor →](07-4-actor.ko.md)
 <!-- zlink-nav:bottom:end -->

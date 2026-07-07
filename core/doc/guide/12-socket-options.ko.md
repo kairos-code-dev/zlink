@@ -590,8 +590,7 @@ size_t len = 0;
 zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 ```
 
-channel 이름은 metadata일 뿐이다. 이 API가 소켓을 연결하지 않으며, 제거된 공개
-Discovery 또는 Registry C API를 되살리지도 않는다.
+channel 이름은 metadata일 뿐이다. 이 API가 소켓을 연결하지 않는다.
 
 ---
 <!-- zlink-nav:bottom:start -->

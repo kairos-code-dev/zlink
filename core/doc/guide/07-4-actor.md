@@ -1,7 +1,7 @@
 [English](07-4-actor.md) | [한국어](07-4-actor.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT](07-3-spot.md) | [Registry →](07-4-registry.md)
+[← SPOT](07-3-spot.md) | [Routing ID →](08-routing-id.md)
 <!-- zlink-nav:end -->
 
 # SPOT Actor Guide
@@ -100,9 +100,7 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 Actor location belongs to the SPOT/Actor lifecycle. Creating an Actor places
 it on the Entry Spot, a successful join moves it to the joined user Spot, and
 a successful explicit leave moves it back to the Entry Spot. STREAM session
-bind and unbind do not change the Actor location. The removed
-Discovery/Registry route resolver APIs are not part of the current public
-contract.
+bind and unbind do not change the Actor location.
 
 To look up an existing Actor by id on the local node:
 
@@ -306,5 +304,5 @@ C samples showing three Actor patterns:
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT](07-3-spot.md) | [Registry →](07-4-registry.md)
+[← SPOT](07-3-spot.md) | [Routing ID →](08-routing-id.md)
 <!-- zlink-nav:bottom:end -->

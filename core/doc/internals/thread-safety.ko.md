@@ -81,7 +81,6 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 
 - `zlink_close()` (소켓)
 - `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
-- 제거된 discovery/registry destroy API
 - Monitor 핸들 `close` / `destroy`
 
 **입장 허용 게이트(Admission gate) 메커니즘:**

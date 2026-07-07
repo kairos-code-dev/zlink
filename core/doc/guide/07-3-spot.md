@@ -1,7 +1,7 @@
 [English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
 
 <!-- zlink-nav:start -->
-[← Discovery](07-1-discovery.md) | [SPOT Actor →](07-4-actor.md)
+[← Services](07-0-services.md) | [SPOT Actor →](07-4-actor.md)
 <!-- zlink-nav:end -->
 
 # SPOT Guide
@@ -121,21 +121,15 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 
 This is fine for tests and fixed topologies.
 
-### 3.2 Automatic location wiring
-
-The former public discovery-backed SPOT wiring was removed from the C contract
-in core 8.4.3. Use explicit peer endpoints with `connect_peer()` until the
-framework location runtime/store replacement is available.
-
 If you do not have the peer endpoint but you know the target node routing id,
 call `zlink_spot_node_disconnect_peer_rid()` on the `SpotNode` to close that
 peer node connection. The `Spot` facade does not expose a separate rid
 disconnect function because it does not directly own peer connections.
 
-### 3.3 Drain new outbound with raw peer weight
+### 3.2 Drain new outbound with raw peer weight
 
 SpotNode and Spot do not expose a weight setting. If a service uses raw
-ROUTER or worker auto-connect peers and you want to stop new outbound temporarily
+ROUTER peers and you want to stop new outbound temporarily
 without tearing down peer connections, set that raw socket's weight to `0`.
 The valid range is `0..100`; the default is `100`.
 
@@ -219,13 +213,7 @@ Two rules matter:
 The current public C API uses the manual path: create the `DEALER`, connect it
 to the known endpoints, and attach it to the route bridge.
 
-### 5.1 Removed automatic path
-
-The previous automatic path used public discovery handles and was removed from
-the C contract in core 8.4.3. Keep channel bridge examples on the manual path
-below until the replacement location runtime/store contract is published.
-
-### 5.2 Manual path
+### 5.1 Manual path
 
 ```c
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -551,5 +539,5 @@ See the [SPOT Actor Guide](07-4-actor.md#5-actor-c-samples).
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Discovery](07-1-discovery.md) | [SPOT Actor →](07-4-actor.md)
+[← Services](07-0-services.md) | [SPOT Actor →](07-4-actor.md)
 <!-- zlink-nav:bottom:end -->

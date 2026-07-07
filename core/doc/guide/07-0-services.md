@@ -12,10 +12,9 @@ Without the service layer, applications would need to manually manage socket
 connections, route messages to state owners, and handle service lifecycle. The
 service layer absorbs those tasks where the current public C API exposes them.
 
-The current public core service contract is SPOT and Actor on top of SPOT. The
-former public Discovery and Registry C APIs were removed in core 8.4.3. Older
-links for those APIs now point to removal notices rather than current usage
-guides.
+The current public core service contract is SPOT and Actor on top of SPOT.
+Discovery and Registry are not part of the core public C API or internal
+runtime.
 
 ## 2. Architecture
 
@@ -59,18 +58,7 @@ flowchart TB
 
 ## 3. Service Components
 
-### 3.1 Removed Discovery / Registry APIs
-
-The former public C Discovery and Registry APIs are not part of the current
-contract. Applications and bindings must not reintroduce their removed headers,
-function prefixes, or compatibility wrappers. See the
-[Discovery removal notice](07-1-discovery.md) and
-[Registry removal notice](07-4-registry.md) for older links.
-
-Framework-level automatic location and routing is tracked separately by the
-location runtime/store design.
-
-### 3.2 SPOT -- Channel-Based Routed + PUB/SUB Hub
+### 3.1 SPOT -- Channel-Based Routed + PUB/SUB Hub
 
 A `SpotNode` is the core runtime of the SPOT topology. It attaches one SPOT
 channel runtime to topic pub/sub and routed messaging. Channel send/request

@@ -1,7 +1,7 @@
 [English](07-4-actor.md) | [한국어](07-4-actor.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT](07-3-spot.ko.md) | [Registry →](07-4-registry.ko.md)
+[← SPOT](07-3-spot.ko.md) | [Routing ID →](08-routing-id.ko.md)
 <!-- zlink-nav:end -->
 
 # SPOT Actor 사용 가이드
@@ -17,25 +17,8 @@ SPOT 기본 설정과 dispatch 핸들러 등록은 [SPOT 가이드](07-3-spot.ko
 
 ## Actor 위치 조회와 전송
 
-Actor id로 현재 위치를 알아낸 뒤에는 Actor 전용 transport API를 쓰지 않는다.
-Discovery가 반환한 `actor.node_rid`와 `current_spot_rid`를 기존 Spot routed API에
-넘긴다. `current_spot_kind`는 대상이 Entry Spot인지 user Spot인지 구분해야 할 때만
-사용한다.
-
-```c
-zlink_actor_route_t route;
-zlink_config_result_t rc =
-  /* removed discovery actor resolver API */
-if (rc == ZLINK_CONFIG_OK) {
-  zlink_router_send_spot(
-    router,
-    &route.actor.node_rid,
-    &route.current_spot_rid,
-    parts,
-    part_count,
-    flags);
-}
-```
+Actor id만으로 원격 위치를 조회하는 공개 core API는 현재 제공하지 않는다.
+Actor 이동 상태는 SPOT/Actor 생명주기 안에서 관리된다.
 
 이 흐름에서 target Spot에 도착한 메시지를 어떤 Actor에게 넘길지는 application이
 정의하는 packet/handler 계약이다. core는 `router -> actor` direct send/request API를
@@ -128,8 +111,7 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 Actor 위치는 SPOT/Actor 생명주기에 속한다. Actor를 만들면 Entry Spot에 놓이고,
 user Spot join이 성공하면 join한 user Spot으로 이동하며, 명시적 leave가
 성공하면 다시 Entry Spot으로 돌아간다. STREAM 세션 바인딩이나 해제는 Actor
-위치를 바꾸지 않는다. 제거된 Discovery/Registry route resolver API는 현재
-공개 계약에 포함되지 않는다.
+위치를 바꾸지 않는다.
 
 로컬 노드에서 ID로 기존 Actor를 조회하려면:
 
@@ -325,5 +307,5 @@ C 샘플에는 Actor 흐름을 나누어 보여 주는 세 파일이 있다.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT](07-3-spot.ko.md) | [Registry →](07-4-registry.ko.md)
+[← SPOT](07-3-spot.ko.md) | [Routing ID →](08-routing-id.ko.md)
 <!-- zlink-nav:bottom:end -->

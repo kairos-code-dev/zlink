@@ -136,9 +136,7 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::create_logical_spot_state_loc
 
 bool spot_node_t::spot_owner_summary_publishable_locked () const
 {
-    return !_discovery_state.discovery_service.empty ()
-           && (!_endpoint_state.bound_endpoint.empty ()
-               || !_endpoint_state.router_bind_endpoint.empty ());
+    return false;
 }
 
 void spot_node_t::lock_entry_spot_rid ()
@@ -268,8 +266,7 @@ int spot_node_t::update_spot_routing_id (spot_handle_t *spot_, const void *data_
             if ((*it)->logical_state == spot_->logical_state)
                 (*it)->spot_routing_id = next;
         }
-        publish_summary =
-          !_discovery_state.discovery_service.empty () && !_endpoint_state.bound_endpoint.empty ();
+        publish_summary = false;
     }
     if (publish_summary) {
         submit_spot_owner_summary_for_rid (

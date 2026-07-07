@@ -229,12 +229,9 @@ flowchart LR
 ```
 
 수동 연결은 `manual_endpoints`와 `active_endpoints`에 엔드포인트 문자열로 저장된다.
-discovery 연결은 채널 이름별 discovery 포인터와, discovery가 알려 준 활성 엔드포인트
-집합으로 관리된다. 같은 채널 안에서 수동 엔드포인트와 discovery 포인터를 동시에 둘 수
-없게 한 이유는 연결 소유자를 하나로 유지하기 위해서다.
 
 `zlink_spot_node_peers()`은 SPOT mesh peer와 router channel peer를 구분한다. router
-channel peer 행에는 채널 이름, peer 엔드포인트, 출처(수동 또는 discovery),
+channel peer 행에는 채널 이름, peer 엔드포인트, 출처,
 종류(router channel), 상태가 함께 표시된다. 운영 도구는 이 구분을 사용해 "mesh가
 끊어진 것"과 "router channel로 메시지가 아직 들어올 수 없는 것"을 따로 진단할 수
 있다.
@@ -649,9 +646,7 @@ Entry Spot으로 leave가 성공해 위치가 실제로 바뀌면 다시 Entry S
 session bind/unbind는 active route의 필수 조건이 아니고, 위치를 직접 바꾸지도 않는다.
 active route가 가리키던 Actor가 destroy되면 그 route를 제거한다. 단, active route가
 다른 generation의 Actor를 가리키고 있으면 destroy는 그 route를 건드리지 않는다.
-Public Discovery/Registry route synchronization API는 현재 core 계약에서 제거되었으므로
-이 route 상태는 새 동기화 표면이 별도 계약으로 정의되기 전까지 내부 SPOT/Actor
-생명주기 정보다.
+이 route 상태는 내부 SPOT/Actor 생명주기 정보다.
 
 ### 9.4 Actor lifecycle event
 
@@ -727,7 +722,7 @@ flowchart TB
   dispatch pending queues"]
   Runtime["SpotNode runtime
   physical sockets / demux and fanout
-  transport backpressure / discovery sync"]
+  transport backpressure / control sync"]
 
   Facade --> Logical
   Logical --> Runtime
@@ -976,7 +971,7 @@ Actor, session, route, join, lifecycle 상태는 모두 프로세스마다 하�
 | `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | `(stream, session rid)` 복합키. 한 session의 actor id별 Actor 항목을 담는다. remote join을 commit할 때 이 binding의 actor ref를 target으로 바꾸는 지점 |
 | `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode(ActorGateway) |
 | `routes` | `actor_route_state_t` | 게시된 actor route와 disconnect note (아래 하위 행 참고) |
-| `routes.active` | `map<string, zlink_actor_route_t>` | actor id → Discovery에 게시된 active route |
+| `routes.active` | `map<string, zlink_actor_route_t>` | actor id → 내부 active route |
 | `routes.disconnected` | `set<pair<spot_node_t*, string>>` | disconnected로 표시된 `(source node, target node rid)` 쌍. relay 실패를 route-not-found로 매핑하는 데 사용 |
 | `joins` | `actor_join_state_t` | pending join 큐와 부가 상태 (아래 하위 행 참고) |
 | `joins.queues` | `map<spot_logical_state_t*, deque<queued_join_request_t*>>` | target Spot별 pending join request. enqueue 시 추가, reply 또는 cleanup 시 제거 |
@@ -987,23 +982,6 @@ Actor, session, route, join, lifecycle 상태는 모두 프로세스마다 하�
 | `lifecycle` | `actor_lifecycle_state_t` | Spot별 `on_join`/`on_leave` 등록과 이벤트 큐 |
 | `protocol_drop_count` | `uint64_t` | protocol 오류(stale ref, unknown actor id 등)로 drop된 relay frame 누적 카운터. relay 손실 진단에 활용 |
 | `next_join_epoch` | `uint64_t` | join sequence 번호를 단조 증가로 발급하는 카운터 |
-
-Actor active route row는 `ZLINK_ROUTE_KIND_ACTOR`와 Actor id key로 Registry에
-게시된다. value는 `zlink_actor_route_t`의 byte copy이며, Actor ref의 node rid와
-Actor id, current Spot rid, current Spot kind를 담는다. generation은 session attach
-같은 concrete Actor instance 검증에 쓰일 수 있지만, Actor id로 현재 위치를 찾는
-logical route의 필수 routing key가 아니다.
-
-Spot owner route는 별도 route value가 아니라 Registry topology entry에 저장된다.
-Spot owner topology row는 owner node의 endpoint와 logical Spot rid, 그리고
-`spot_kind`를 함께 담는다. Entry Spot row는 `ZLINK_SPOT_KIND_ENTRY`, user Spot row는
-`ZLINK_SPOT_KIND_USER`를 사용하고, Spot owner가 아닌 topology row는
-`ZLINK_SPOT_KIND_INVALID`를 사용한다.
-
-외부 ROUTER나 backend Spot이 Actor id를 출발점으로 메시지를 보낼 때, core 내부에서
-Actor queue로 곧장 전달하지는 않는다. 대신 Discovery가 `actor_id`를 current Spot route로
-풀어 주고, caller는 Spot routed transport에 `node_rid + current_spot_rid`를 넘긴다.
-그렇게 target Spot에 도착한 payload를 어떤 Actor로 처리할지는 상위 프로토콜의 몫이다.
 
 `queued_join_request_t`는 request와 reply payload를 owned multipart parts로
 저장한다. `zlink_spot_actor_join_recv()`는 호출자에게 thread-local parts view를

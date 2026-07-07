@@ -9,7 +9,6 @@
 
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
-#include "services/discovery/discovery_access.hpp"
 #include "utils/clock.hpp"
 
 #include <algorithm>
@@ -60,46 +59,11 @@ static uint32_t ready_subject_count_local (
     return ready_count;
 }
 
-static zlink_registry_topology_entry_t
-make_topology_summary_entry (const zlink_routing_id_t &rid_,
-                             zlink_service_kind_t service_kind_,
-                             zlink_spot_kind_t spot_kind_,
-                             const char *channel_name_,
-                             const char *endpoint_,
-                             discovery_t *discovery_,
-                             uint16_t state_,
-                             int error_code_)
-{
-    zlink_registry_topology_entry_t entry;
-    memset (&entry, 0, sizeof (entry));
-    entry.routing_id = rid_;
-    if (discovery_) {
-        entry.auto_connect_type =
-          static_cast<zlink_auto_connect_type_t> (discovery_->auto_connect_type ());
-    }
-    entry.service_kind = service_kind_;
-    entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
-    entry.spot_kind = spot_kind_;
-    copy_fixed_c_string_from_cstr (entry.channel_name, sizeof (entry.channel_name), channel_name_);
-    if (endpoint_)
-        copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint), endpoint_);
-    entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    entry.state = static_cast<zlink_topology_state_t> (state_);
-    entry.desired_count = 1;
-    entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
-    entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
-    entry.last_reported_ms = clock_t ().now_ms ();
-    return entry;
-}
 }
 
 std::string spot_node_t::summary_channel_name () const
 {
     scoped_lock_t lock (_sync);
-    if (!_discovery_state.discovery_service.empty ())
-        return _discovery_state.discovery_service;
-    if (service_attachments ().discoveries.size () == 1)
-        return service_attachments ().discoveries.begin ()->first;
     if (service_attachments ().attachments.size () == 1)
         return service_attachments ().attachments.begin ()->first;
     return std::string ();
@@ -119,56 +83,16 @@ void spot_node_t::mark_subject_changed (const std::string &subject_, uint32_t su
 
 void spot_node_t::submit_pub_summary (spot_pub_t *pub_, uint16_t state_, int error_code_)
 {
-    if (!pub_)
-        return;
-
-    discovery_t *discovery = NULL;
-    std::string channel_name;
-    std::string endpoint;
-    {
-        scoped_lock_t lock (_sync);
-        discovery = _discovery_state.discovery;
-        channel_name = _discovery_state.discovery_service;
-        endpoint = _discovery_state.advertise_endpoint.empty ()
-                     ? _endpoint_state.bound_endpoint
-                     : _discovery_state.advertise_endpoint;
-    }
-    if (!discovery || channel_name.empty ())
-        return;
-
-    zlink_routing_id_t rid;
-    if (pub_->routing_id (&rid) != 0 || rid.size == 0)
-        return;
-
-    zlink_registry_topology_entry_t entry = make_topology_summary_entry (
-      rid, ZLINK_SERVICE_KIND_SPOT_PUB, ZLINK_SPOT_KIND_INVALID, channel_name.c_str (),
-      endpoint.c_str (), discovery, state_, error_code_);
-    discovery_access_t::upsert_service_summary (discovery, entry);
+    LIBZLINK_UNUSED (pub_);
+    LIBZLINK_UNUSED (state_);
+    LIBZLINK_UNUSED (error_code_);
 }
 
 void spot_node_t::submit_sub_summary (spot_sub_t *sub_, uint16_t state_, int error_code_)
 {
-    if (!sub_)
-        return;
-
-    discovery_t *discovery = NULL;
-    std::string channel_name;
-    {
-        scoped_lock_t lock (_sync);
-        discovery = _discovery_state.discovery;
-        channel_name = _discovery_state.discovery_service;
-    }
-    if (!discovery || channel_name.empty ())
-        return;
-
-    zlink_routing_id_t rid;
-    if (sub_->routing_id (&rid) != 0 || rid.size == 0)
-        return;
-
-    zlink_registry_topology_entry_t entry =
-      make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_SUB, ZLINK_SPOT_KIND_INVALID,
-                                   channel_name.c_str (), NULL, discovery, state_, error_code_);
-    discovery_access_t::upsert_service_summary (discovery, entry);
+    LIBZLINK_UNUSED (sub_);
+    LIBZLINK_UNUSED (state_);
+    LIBZLINK_UNUSED (error_code_);
 }
 
 void spot_node_t::submit_spot_owner_summary_for_rid (const zlink_routing_id_t &rid_,
@@ -176,27 +100,10 @@ void spot_node_t::submit_spot_owner_summary_for_rid (const zlink_routing_id_t &r
                                                      uint16_t state_,
                                                      int error_code_)
 {
-    if (rid_.size == 0)
-        return;
-
-    discovery_t *discovery = NULL;
-    std::string channel_name;
-    std::string endpoint;
-    {
-        scoped_lock_t lock (_sync);
-        discovery = _discovery_state.discovery;
-        channel_name = _discovery_state.discovery_service;
-        endpoint = _discovery_state.advertise_endpoint.empty ()
-                     ? _endpoint_state.bound_endpoint
-                     : _discovery_state.advertise_endpoint;
-    }
-    if (!discovery || channel_name.empty ())
-        return;
-
-    zlink_registry_topology_entry_t entry = make_topology_summary_entry (
-      rid_, ZLINK_SERVICE_KIND_SPOT_PUB, spot_kind_, channel_name.c_str (), endpoint.c_str (),
-      discovery, state_, error_code_);
-    discovery_access_t::upsert_service_summary (discovery, entry);
+    LIBZLINK_UNUSED (rid_);
+    LIBZLINK_UNUSED (spot_kind_);
+    LIBZLINK_UNUSED (state_);
+    LIBZLINK_UNUSED (error_code_);
 }
 
 void spot_node_t::submit_spot_owner_summary (const std::shared_ptr<spot_logical_state_t> &state_,

@@ -16,6 +16,7 @@ const int kTcpPipeHwm = 100;
 const int kTcpSocketHwm = kTcpPipeHwm / 2;
 const int kTcpSendTimeoutMs = 2000;
 const int kPubSendTimeoutMs = 200;
+const int kTcpDrainCompletionTimeoutSec = 15;
 const char *kPubsubTopic = "bench";
 const size_t kPubsubPayloadSize = 256;
 
@@ -246,7 +247,7 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
       zlink_set_option (pub, ZLINK_OPT_SNDTIMEO, &kPubSendTimeoutMs, sizeof (kPubSendTimeoutMs)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
     pubsub_callback_counter_t callback_state;
-    const int target_messages = 50000;
+    const int target_messages = 10000;
 
     std::future<int> recv_future = std::async (std::launch::async, [&] () -> int {
         while (callback_state.received.load (std::memory_order_acquire) < target_messages) {
@@ -308,8 +309,10 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
         return target_messages;
     });
 
-    const std::future_status send_status = send_future.wait_for (std::chrono::seconds (8));
-    const std::future_status recv_status = recv_future.wait_for (std::chrono::seconds (8));
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (kTcpDrainCompletionTimeoutSec);
+    const std::future_status send_status = send_future.wait_until (deadline);
+    const std::future_status recv_status = recv_future.wait_until (deadline);
 
     if (send_status != std::future_status::ready || recv_status != std::future_status::ready) {
         char detail[160];

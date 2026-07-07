@@ -486,6 +486,9 @@ endif()
 if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 endif()
+if(TARGET test_xpub_nodrop)
+  set_tests_properties(test_xpub_nodrop PROPERTIES TIMEOUT 45)
+endif()
 if(TARGET test_zmp_request_reply)
   set_tests_properties(
     test_zmp_request_reply

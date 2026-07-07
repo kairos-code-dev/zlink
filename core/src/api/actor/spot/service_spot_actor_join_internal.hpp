@@ -4,6 +4,8 @@
 
 #include <zlink.h>
 
+#include "services/spot/common/spot_message_parts_internal.hpp"
+
 #include <stddef.h>
 #include <deque>
 #include <memory>
@@ -50,7 +52,8 @@ void notify_join_actor_readable (actor_handle_t *actor_);
 void schedule_join_lifecycle_event_locked (
   const std::shared_ptr<spot_logical_state_t> &spot_state_,
   zlink_spot_actor_lifecycle_event_kind_t kind_,
-  const zlink_spot_actor_lifecycle_info_t &info_);
+  const zlink_spot_actor_lifecycle_info_t &info_,
+  zlink::spot_owned_msg_parts_t *request_parts_ = NULL);
 zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (
   const zlink_actor_ref_t &previous_actor_,
   const zlink_actor_ref_t &current_actor_,

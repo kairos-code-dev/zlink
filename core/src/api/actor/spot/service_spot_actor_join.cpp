@@ -4,6 +4,8 @@
 
 #include "api/actor/spot/service_spot_actor_join_internal.hpp"
 #include "api/actor/spot/service_spot_actor_state_internal.hpp"
+#include "api/core/config_result_internal.hpp"
+#include "api/service/service_handle_internal.hpp"
 #include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/socket/request_timeout_scheduler_internal.hpp"
 #include "core/recv_tls_view.hpp"
@@ -107,6 +109,14 @@ find_join_spot_facade_locked (zlink::spot_node_t *node_,
                               const std::shared_ptr<spot_logical_state_t> &state_)
 {
     return actor_runtime ().nodes.find_spot_for_state (node_, state_);
+}
+
+void fill_join_actor_ref (const actor_handle_t *actor_, zlink_actor_ref_t *out_)
+{
+    memset (out_, 0, sizeof (*out_));
+    out_->node_rid = actor_->node_rid;
+    strncpy (out_->actor_id, actor_->actor_id.c_str (), ZLINK_ACTOR_ID_MAX - 1);
+    out_->generation = actor_->generation;
 }
 
 }
@@ -839,6 +849,76 @@ void complete_and_release_join_requests (join_request_completion_batch_t *reques
          it != requests_->requests.end (); ++it)
         complete_and_release_join_request (*it, result_);
     requests_->requests.clear ();
+}
+
+extern "C" zlink_config_result_t
+zlink_spot_node_actor_new_with_request (void *node_,
+                                        const char *actor_id_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        zlink_actor_ref_t *actor_out_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (!zlink::spot_actor_internal::valid_actor_id (actor_id_) || !actor_out_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    if (!zlink::spot_actor_internal::valid_multipart_payload (parts_, part_count_))
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    if (!is_registered_spot_node_handle (node_)) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->routed_enabled ()) {
+        errno = ENOTSUP;
+        return ZLINK_CONFIG_NOT_SUPPORTED;
+    }
+    zlink::spot_owned_msg_parts_t request_parts;
+    const zlink_submit_result_t adopt_rc =
+      zlink::spot_actor_internal::adopt_multipart_payload (&request_parts, parts_, part_count_);
+    if (adopt_rc != ZLINK_SUBMIT_OK) {
+        zlink::spot_clear_msg_parts (&request_parts);
+        return zlink::config_result_internal::from_errno (errno);
+    }
+
+    zlink_routing_id_t node_rid;
+    memset (&node_rid, 0, sizeof (node_rid));
+    if (node->node_routing_id (&node_rid) != 0) {
+        zlink::spot_clear_msg_parts (&request_parts);
+        return zlink::config_result_internal::from_errno (errno);
+    }
+
+    std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+    actor_handle_t *actor =
+      create_join_actor_locked_with_generation (node, node_rid, actor_id_, 0, false);
+    if (!actor) {
+        zlink::spot_clear_msg_parts (&request_parts);
+        return zlink::config_result_internal::from_errno (errno);
+    }
+    fill_join_actor_ref (actor, actor_out_);
+    actor->join_epoch = next_join_commit_epoch_locked ();
+    create_join_active_route_locked (actor);
+    zlink_actor_ref_t zero_actor;
+    zlink_routing_id_t zero_spot;
+    memset (&zero_actor, 0, sizeof (zero_actor));
+    memset (&zero_spot, 0, sizeof (zero_spot));
+    const zlink_spot_actor_lifecycle_info_t info = make_join_lifecycle_info (
+      zero_actor, *actor_out_, zero_spot, join_actor_current_spot_rid_locked (actor),
+      actor->join_epoch);
+    schedule_join_lifecycle_event_locked (
+      actor->joined_spot_state, ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED, info, &request_parts);
+    zlink::spot_clear_msg_parts (&request_parts);
+    return ZLINK_CONFIG_OK;
+}
+
+extern "C" zlink_config_result_t
+zlink_spot_node_actor_new (void *node_, const char *actor_id_, zlink_actor_ref_t *actor_out_)
+{
+    return zlink_spot_node_actor_new_with_request (node_, actor_id_, NULL, 0, actor_out_);
 }
 
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,

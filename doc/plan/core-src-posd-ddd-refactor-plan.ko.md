@@ -414,7 +414,7 @@ sockets/engine/transports/utils:
 
 ### 3.3 티어 3 — 대형 구조 (6건)
 
-- [ ] **T3-01. `service_spot_actor_api.cpp`(3,888줄) 분해 — join 오케스트레이션**
+- [x] **T3-01. `service_spot_actor_api.cpp`(3,888줄) 분해 — join 오케스트레이션**
   - join lifecycle ~1,200줄(`:917-1583, 1962-2117, 2570-3170`)이 최대 덩어리.
     `actor_join_state_t`가 이미 데이터를 소유하므로
     `service_spot_actor_join.cpp`가 오케스트레이션을 소유하도록.
@@ -755,6 +755,14 @@ sockets/engine/transports/utils:
   처리하게 했다. 확인: `nice -n 19 cmake --build core/build -j1`, `ctest --test-dir
   core/build -R
   'test_spot_actor_gateway_no_bind|unittest_spot_actor_gateway_no_bind_protocol|test_spot_service_introspection|test_spot_pubsub_scenario|test_stream_socket|test_stream_threadsafe'
+  -j1 --output-on-failure`.
+  마지막으로 `zlink_spot_node_actor_new(_with_request)` 생성 진입점의 join epoch,
+  active-route publish, joined lifecycle event 조립을 `service_spot_actor_join.cpp`로
+  이동했다. API 파일에 남은 join 참조는 join 모듈이 actor 생성/삭제 primitive를
+  호출하기 위한 좁은 bridge, T3-02 대상인 gateway ingress dispatch 연결, 그리고
+  introspection count/filter뿐이므로 T3-01은 완료로 닫는다. 확인:
+  `nice -n 19 cmake --build core/build -j1`, `ctest --test-dir core/build -R
+  'test_spot_actor_gateway_no_bind|unittest_spot_actor_gateway_no_bind_protocol|test_spot_service_introspection|test_spot_pubsub_scenario|test_spot_dispatch_event|test_spot_runtime_activation'
   -j1 --output-on-failure`.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor

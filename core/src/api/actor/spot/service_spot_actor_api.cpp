@@ -649,9 +649,10 @@ actor_handle_t *create_join_actor_locked_with_generation (zlink::spot_node_t *no
 void schedule_join_lifecycle_event_locked (
   const std::shared_ptr<spot_logical_state_t> &spot_state_,
   zlink_spot_actor_lifecycle_event_kind_t kind_,
-  const zlink_spot_actor_lifecycle_info_t &info_)
+  const zlink_spot_actor_lifecycle_info_t &info_,
+  zlink::spot_owned_msg_parts_t *request_parts_)
 {
-    schedule_lifecycle_event_locked (spot_state_, kind_, info_, NULL);
+    schedule_lifecycle_event_locked (spot_state_, kind_, info_, request_parts_);
 }
 
 }
@@ -1299,75 +1300,6 @@ int zlink::spot_actor_internal::process_gateway_delivery (
 void zlink_actor_run_lifecycle_for_spot (void *spot_)
 {
     drain_lifecycle_events_for_spot (as_spot_handle (spot_));
-}
-
-extern "C" zlink_config_result_t
-zlink_spot_node_actor_new (void *node_, const char *actor_id_, zlink_actor_ref_t *actor_out_)
-{
-    return zlink_spot_node_actor_new_with_request (node_, actor_id_, NULL, 0, actor_out_);
-}
-
-extern "C" zlink_config_result_t
-zlink_spot_node_actor_new_with_request (void *node_,
-                                        const char *actor_id_,
-                                        zlink_msg_t *parts_,
-                                        size_t part_count_,
-                                        zlink_actor_ref_t *actor_out_)
-{
-    if (!node_) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    if (!valid_actor_id (actor_id_) || !actor_out_) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    if (!valid_multipart_payload (parts_, part_count_))
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    if (!is_registered_spot_node_handle (node_)) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->routed_enabled ()) {
-        errno = ENOTSUP;
-        return ZLINK_CONFIG_NOT_SUPPORTED;
-    }
-    zlink::spot_owned_msg_parts_t request_parts;
-    const zlink_submit_result_t adopt_rc =
-      adopt_multipart_payload (&request_parts, parts_, part_count_);
-    if (adopt_rc != ZLINK_SUBMIT_OK) {
-        zlink::spot_clear_msg_parts (&request_parts);
-        return zlink::config_result_internal::from_errno (errno);
-    }
-
-    zlink_routing_id_t node_rid;
-    memset (&node_rid, 0, sizeof (node_rid));
-    if (node->node_routing_id (&node_rid) != 0) {
-        zlink::spot_clear_msg_parts (&request_parts);
-        return zlink::config_result_internal::from_errno (errno);
-    }
-
-    std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-    actor_handle_t *actor = create_actor_locked (node, node_rid, actor_id_);
-    if (!actor) {
-        zlink::spot_clear_msg_parts (&request_parts);
-        return zlink::config_result_internal::from_errno (errno);
-    }
-    fill_ref (actor, actor_out_);
-    actor->join_epoch = next_join_commit_epoch_locked ();
-    create_active_route_locked (actor);
-    zlink_actor_ref_t zero_actor;
-    zlink_routing_id_t zero_spot;
-    memset (&zero_actor, 0, sizeof (zero_actor));
-    memset (&zero_spot, 0, sizeof (zero_spot));
-    const zlink_spot_actor_lifecycle_info_t info = make_join_lifecycle_info (
-      zero_actor, *actor_out_, zero_spot, join_actor_current_spot_rid_locked (actor),
-      actor->join_epoch);
-    schedule_lifecycle_event_locked (actor->joined_spot_state, ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED,
-                                     info, &request_parts);
-    zlink::spot_clear_msg_parts (&request_parts);
-    return ZLINK_CONFIG_OK;
 }
 
 void register_actor_spot_facade (spot_handle_t *spot_)

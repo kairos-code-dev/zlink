@@ -227,6 +227,11 @@ bool join_actor_has_pending_request_locked (const actor_handle_t *actor_)
     return actor_runtime ().joins.actor_has_pending (actor_);
 }
 
+size_t join_pending_count_for_spot_locked (spot_logical_state_t *spot_state_)
+{
+    return actor_runtime ().joins.pending_count_for_spot (spot_state_);
+}
+
 zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (
   const zlink_actor_ref_t &previous_actor_,
   const zlink_actor_ref_t &current_actor_,

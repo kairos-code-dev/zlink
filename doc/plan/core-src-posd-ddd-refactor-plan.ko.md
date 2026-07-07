@@ -534,7 +534,8 @@ sockets/engine/transports/utils:
   binding 해제 시 queued/live join abort 선택, retire, 완료 callback 방출도 join
   모듈 batch helper로 모아 API 파일은 session binding 전체 해제 순서만 맡게 했다.
   gateway join reply 후 lock 밖에서 완료해야 하는 request도 같은 completion batch로
-  넘겨 API 파일이 `queued_join_request_t *`를 직접 들고 있지 않게 했다.
+  넘겨 API 파일이 `queued_join_request_t *`를 직접 들고 있지 않게 했다. spot
+  introspection의 pending join count 조회도 join 모듈 helper 뒤로 숨겼다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

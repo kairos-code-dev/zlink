@@ -2240,7 +2240,7 @@ zlink_spot_node_spots (void *node_, zlink_spot_node_spot_entry_t *entries_, size
                 ++entries_[i].joined_actor_count;
         }
         entries_[i].pending_actor_join_count =
-          actor_runtime ().joins.pending_count_for_spot (spots[i].state.get ());
+          join_pending_count_for_spot_locked (spots[i].state.get ());
         entries_[i].route_synced = 0u;
         entries_[i].last_changed_ms = now_ms ();
     }

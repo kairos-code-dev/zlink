@@ -941,6 +941,7 @@ set(core-sources
     src/runtime/core/recv_internal.cpp
     src/runtime/core/send_internal.cpp
     src/runtime/core/ctx.cpp
+    src/runtime/core/ctx_auto_hwm_recalc.cpp
     src/runtime/core/ctx_bootstrap.cpp
     src/runtime/core/ctx_inproc_registry.cpp
     src/runtime/core/ctx_io_thread_registry.cpp

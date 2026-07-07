@@ -276,7 +276,7 @@ runtime/services (spot):
 
 runtime/core:
 
-- [ ] **T2-17. `ctx.cpp` 잔여 3책임 분리**
+- [x] **T2-17. `ctx.cpp` 잔여 3책임 분리**
   - auto-HWM 재계산 엔진(`:128-276`, `ctx.hpp:187-196` — 디바운스/세대 카운터/
     two-mutex 프로토콜)을 기존 `ctx_*_registry` 동급 모듈 `ctx_auto_hwm_recalc`로
     추출 + 컨텍스트 옵션 스위치보드(`:332-550`) 분리 + 동거 중인
@@ -552,7 +552,8 @@ sockets/engine/transports/utils:
 - 2026-07-07: T2-17 진행 — `thread_ctx_t` 구현을 `ctx.cpp`에서
   `ctx_thread.cpp`로 분리해 ctx 본문에서 thread option/scheduling switchboard를
   제거했다. 이어서 `ctx_t::set/get` option switchboard를 `ctx_options.cpp`로
-  옮겼다. auto-HWM 엔진 분리는 후속으로 남았다.
+  옮겼다. auto-HWM 재계산 엔진도 `ctx_auto_hwm_recalc.cpp`로 분리해 `ctx.cpp`는
+  context lifecycle, socket registry, command routing 중심으로 줄였다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

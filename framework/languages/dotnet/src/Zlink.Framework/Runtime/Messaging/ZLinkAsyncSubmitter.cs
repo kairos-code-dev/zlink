@@ -144,7 +144,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         _stopToken.ThrowIfCancellationRequested();
 
-        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         bool Submit(IReadOnlyList<Message> pending)
         {
@@ -157,7 +157,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         if (TrySubmitNow(parts, Submit, out var retryableFailure))
         {
             ZLinkMessageParts.DisposeAll(parts);
-            return AwaitResultAsync<T>(completion.Task);
+            return new ValueTask<T>(completion.Task);
         }
 
         if (retryableFailure is ZlinkSubmitException submitError
@@ -167,14 +167,14 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             completion.TrySetException(ZLinkRequestFailureMapper.CreateSubmitException(
                 submitError,
                 "ZLink request submit"));
-            return AwaitResultAsync<T>(completion.Task);
+            return new ValueTask<T>(completion.Task);
         }
 
         var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
         if (retryableFailure is not null) pendingSubmit.RecordSubmitFailure(retryableFailure);
 
         EnqueuePending(pendingSubmit, cancellationToken);
-        return AwaitResultAsync<T>(pendingSubmit.Task);
+        return new ValueTask<T>(completion.Task);
     }
 
     private void OnSendReady()
@@ -274,19 +274,14 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         lock (_submitGate)
         {
             retryableFailure = null;
-            var submitParts = ZLinkMessageParts.CopyAll(parts);
             try
             {
-                return trySubmit(submitParts);
+                return trySubmit(parts);
             }
             catch (ZlinkException error)
             {
                 retryableFailure = error;
                 return false;
-            }
-            finally
-            {
-                ZLinkMessageParts.DisposeAll(submitParts);
             }
         }
     }
@@ -313,11 +308,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 "SendTimeout must be null, zero, or a positive duration.");
 
         return timeout;
-    }
-
-    private static async ValueTask<T> AwaitResultAsync<T>(Task<object?> task)
-    {
-        return (T)(await task.ConfigureAwait(false))!;
     }
 
     private static void EnsureNotEmpty(IReadOnlyList<Message> parts)

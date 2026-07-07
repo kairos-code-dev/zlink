@@ -317,4 +317,5 @@ public sealed partial class Received
             return GetEnumerator();
         }
     }
+
 }

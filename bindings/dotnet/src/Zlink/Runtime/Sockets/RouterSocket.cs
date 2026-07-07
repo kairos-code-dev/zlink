@@ -16,11 +16,23 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate SpotReplyHandler =
         OnSpotReply;
 
+    private static readonly NativeMethods.ZlinkReplyHandlerDelegate DirectRequestReplyHandler =
+        OnDirectRequestReply;
+
+    private static readonly NativeMethods.ZlinkReplyHandlerDelegate DirectSpotReplyHandler =
+        OnDirectSpotReply;
+
     private static readonly IntPtr RequestReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(RequestReplyHandler);
 
     private static readonly IntPtr SpotReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(SpotReplyHandler);
+
+    private static readonly IntPtr DirectRequestReplyHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(DirectRequestReplyHandler);
+
+    private static readonly IntPtr DirectSpotReplyHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(DirectSpotReplyHandler);
 
     public RouterSocket(Context context)
         : base(context, SocketType.Router)
@@ -100,31 +112,53 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         IReadOnlyList<Message> parts, RequestCallback callback,
         SendFlags flags, TimeSpan timeout)
     {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
+        var nativeRoutingId = peerRid.ToNative();
+        var timeoutMs = RequestReplySupport.NormalizeRequestTimeout(
+            timeout == TimeSpan.Zero ? TimeSpan.Zero : timeout,
+            DefaultRequestTimeout);
+        GCHandle handle = default;
+        RouterRequestCallbackState? state = null;
+
         try
         {
-            RequestReplySupport.AttachResultCallback(
-                () => RequestAsyncCore(peerRid, parts,
-                    timeout == TimeSpan.Zero ? TimeSpan.Zero : timeout,
-                    CancellationToken.None, (int)flags),
-                (result, reply) =>
-                {
-                    IReadOnlyList<Message> payload = Array.Empty<Message>();
-                    if (reply != null)
-                    {
-                        payload = RequestReplySupport.TakeOwnedParts(reply);
-                        reply.Dispose();
-                    }
+            state = new RouterRequestCallbackState(callback,
+                RequestProgressPump.AttachSocketCallback(Handle));
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            var userData = GCHandle.ToIntPtr(handle);
 
-                    callback(result, payload);
-                });
+            lock (SubmitGate)
+            {
+                RequestReplySupport.SubmitOwnedParts(parts,
+                    (ref ZlinkMsg nativePart,
+                            NativeMethods.ZlinkPartFlag partFlag) =>
+                        NativeMethods.zlink_router_request_part(Handle,
+                            ref nativeRoutingId, ref nativePart, (int)flags,
+                            partFlag, timeoutMs, DirectRequestReplyHandlerPtr,
+                            userData));
+            }
+
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
         {
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
+
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
                 return false;
 
+            throw;
+        }
+        catch
+        {
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
             throw;
         }
     }
@@ -135,12 +169,11 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         _ = flags;
         RequestReplySupport.EnsureParts(parts, nameof(parts));
         var nativeRoutingId = peerRid.ToNative();
-        var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             lock (SubmitGate)
             {
-                RequestReplySupport.SubmitClonedParts(cloned,
+                RequestReplySupport.SubmitOwnedParts(parts,
                     (ref ZlinkMsg nativePart,
                             NativeMethods.ZlinkPartFlag partFlag) =>
                         NativeMethods.zlink_router_reply_part(Handle,
@@ -150,7 +183,6 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         }
         catch
         {
-            RequestReplySupport.DisposeParts(cloned);
             throw;
         }
     }
@@ -204,30 +236,52 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         RoutingId destSpotRid, IReadOnlyList<Message> parts,
         RequestCallback callback, SendFlags flags, TimeSpan timeout)
     {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
+        var nodeRid = destNodeRid.ToNative();
+        var spotRid = destSpotRid.ToNative();
+        var timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
+        GCHandle handle = default;
+        RouterRequestCallbackState? state = null;
+
         try
         {
-            RequestReplySupport.AttachResultCallback(
-                () => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts,
-                    timeout, CancellationToken.None, (int)flags),
-                (result, reply) =>
-                {
-                    IReadOnlyList<Message> payload = Array.Empty<Message>();
-                    if (reply != null)
-                    {
-                        payload = RequestReplySupport.TakeOwnedParts(reply);
-                        reply.Dispose();
-                    }
+            state = new RouterRequestCallbackState(callback,
+                RequestProgressPump.AttachSocketCallback(Handle));
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            var userData = GCHandle.ToIntPtr(handle);
 
-                    callback(result, payload);
-                });
+            lock (SubmitGate)
+            {
+                RequestReplySupport.SubmitOwnedParts(parts,
+                    (ref ZlinkMsg nativePart,
+                            NativeMethods.ZlinkPartFlag partFlag) =>
+                        NativeMethods.zlink_router_request_spot_part(Handle,
+                            ref nodeRid, ref spotRid, ref nativePart,
+                            DirectSpotReplyHandlerPtr, userData, (int)flags,
+                            partFlag, timeoutMs));
+            }
+
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
         {
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
+
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
                 return false;
 
+            throw;
+        }
+        catch
+        {
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
             throw;
         }
     }
@@ -240,12 +294,11 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         RequestReplySupport.EnsureParts(parts, nameof(parts));
         var nodeRid = destNodeRid.ToNative();
         var spotRid = destSpotRid.ToNative();
-        var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             lock (SubmitGate)
             {
-                RequestReplySupport.SubmitClonedParts(cloned,
+                RequestReplySupport.SubmitOwnedParts(parts,
                     (ref ZlinkMsg nativePart,
                             NativeMethods.ZlinkPartFlag partFlag) =>
                         NativeMethods.zlink_router_reply_spot_part(Handle,
@@ -255,7 +308,6 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         }
         catch
         {
-            RequestReplySupport.DisposeParts(cloned);
             throw;
         }
     }
@@ -281,10 +333,6 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
             if (ct.CanBeCanceled)
                 state.SetCancellationRegistration(
                     ct.Register(static userdata => { RequestCallState.CancelFromUserData(userdata); }, handle));
-
-            state.SetTimeoutTimer(new System.Threading.Timer(
-                static userdata => { RequestCallState.TimeoutFromUserData(userdata); }, handle, (int)timeoutMs,
-                Timeout.Infinite));
 
             lock (SubmitGate)
             {
@@ -350,10 +398,6 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
                 state.SetCancellationRegistration(
                     ct.Register(static userdata => { RequestCallState.CancelFromUserData(userdata); }, handle));
 
-            state.SetTimeoutTimer(new System.Threading.Timer(
-                static userdata => { RequestCallState.RequestTimeoutFromUserData(userdata); }, handle, (int)timeoutMs,
-                Timeout.Infinite));
-
             var userData = GCHandle.ToIntPtr(handle);
             lock (SubmitGate)
             {
@@ -388,5 +432,86 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     {
         RequestReplySupport.CompleteReceivedReply(result, parts, partCount,
             userData);
+    }
+
+    private static void OnDirectSpotReply(int result, IntPtr parts,
+        nuint partCount, IntPtr userData)
+    {
+        CompleteDirectReply(result, parts, partCount, userData);
+    }
+
+    private static void OnDirectRequestReply(int result, IntPtr parts,
+        nuint partCount, IntPtr userData)
+    {
+        CompleteDirectReply(result, parts, partCount, userData);
+    }
+
+    private static void CompleteDirectReply(int result, IntPtr parts,
+        nuint partCount, IntPtr userData)
+    {
+        var handle = GCHandle.FromIntPtr(userData);
+        var state = (RouterRequestCallbackState)handle.Target!;
+        try
+        {
+            if (!state.TryStartCompletion())
+                return;
+
+            if (result != 0)
+            {
+                state.Invoke((RequestResult)result, Array.Empty<Message>());
+                return;
+            }
+
+            var replyParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            state.Invoke(RequestResult.Ok, replyParts);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+            handle.Free();
+        }
+    }
+
+    private sealed class RouterRequestCallbackState
+    {
+        private readonly RequestCallback _callback;
+        private readonly RequestProgressPump.ProgressLease _progress;
+        private int _completed;
+
+        internal RouterRequestCallbackState(
+            RequestCallback callback,
+            RequestProgressPump.ProgressLease progress)
+        {
+            _callback = callback;
+            _progress = progress;
+        }
+
+        internal bool TryStartCompletion()
+        {
+            if (Interlocked.Exchange(ref _completed, 1) != 0)
+                return false;
+            DisposeProgress();
+            return true;
+        }
+
+        internal void DisposeProgress()
+        {
+            _progress.Dispose();
+        }
+
+        internal void Invoke(RequestResult result, IReadOnlyList<Message> parts)
+        {
+            try
+            {
+                _callback(result, parts);
+            }
+            catch (Exception ex)
+            {
+                CallbackExceptionHub.Report(ex);
+            }
+        }
     }
 }

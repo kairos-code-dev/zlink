@@ -94,7 +94,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
                 var src = (ZlinkMsg*)parts;
                 for (var i = 0; i < length; i++)
                 {
-                    var msg = new Message(false);
+                    var msg = RentFromPool();
                     msg.Init();
                     var rc = NativeMethods.zlink_msg_move(ref msg._msg,
                         ref src[i]);
@@ -165,4 +165,5 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             throw;
         }
     }
+
 }

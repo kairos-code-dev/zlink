@@ -7,18 +7,32 @@ namespace Systems.Zlink;
 internal struct OperationMessageBuffer
 {
     private Message? _singlePart;
+    private Message? _secondPart;
     private List<Message>? _parts;
 
-    internal int Count => _parts?.Count ?? (_singlePart == null ? 0 : 1);
+    internal int Count =>
+        _parts?.Count ?? (_singlePart == null ? 0 : _secondPart == null ? 1 : 2);
 
-    internal bool IsSingle => _singlePart != null;
+    internal bool IsSingle => _singlePart != null && _secondPart == null;
 
     internal Message Single => _singlePart
                                ?? throw new ZlinkConfigException(
                                    ZlinkConfigException.ErrorCode.InvalidState);
 
-    internal IReadOnlyList<Message> Parts =>
-        _parts != null ? _parts : new SingleMessageReadOnlyList(Single);
+    internal IReadOnlyList<Message> Parts
+    {
+        get
+        {
+            if (_parts != null)
+                return _parts;
+            if (_singlePart == null)
+                throw new ZlinkConfigException(
+                    ZlinkConfigException.ErrorCode.InvalidState);
+            return _secondPart == null
+                ? new SingleMessageReadOnlyList(_singlePart)
+                : new TwoMessageReadOnlyList(_singlePart, _secondPart);
+        }
+    }
 
     internal IReadOnlyList<Message> PartsOrEmpty =>
         Count == 0 ? Array.Empty<Message>() : Parts;
@@ -39,8 +53,15 @@ internal struct OperationMessageBuffer
             return;
         }
 
-        _parts = new List<Message> { _singlePart, message };
+        if (_secondPart == null)
+        {
+            _secondPart = message;
+            return;
+        }
+
+        _parts = new List<Message> { _singlePart, _secondPart, message };
         _singlePart = null;
+        _secondPart = null;
     }
 
     internal void EnsureNotEmpty()
@@ -78,6 +99,44 @@ internal struct OperationMessageBuffer
 
         IEnumerator IEnumerable
             .GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
+
+    private sealed class TwoMessageReadOnlyList : IReadOnlyList<Message>
+    {
+        private readonly Message _first;
+        private readonly Message _second;
+
+        internal TwoMessageReadOnlyList(Message first, Message second)
+        {
+            _first = first;
+            _second = second;
+        }
+
+        public int Count => 2;
+
+        public Message this[int index]
+        {
+            get
+            {
+                return index switch
+                {
+                    0 => _first,
+                    1 => _second,
+                    _ => throw new ArgumentOutOfRangeException(nameof(index))
+                };
+            }
+        }
+
+        public IEnumerator<Message> GetEnumerator()
+        {
+            yield return _first;
+            yield return _second;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
         }

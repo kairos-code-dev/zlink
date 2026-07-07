@@ -20,7 +20,6 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         _registration = registration;
         _channelName = channelName;
         _message = message;
-        _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     }
 
     public IZLinkSendCall PacketName(string messageName)
@@ -39,14 +38,17 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
+        var traceSent = _runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             _channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."));
+            _messageName ?? ZLinkMessageNameResolver.ResolveFromMessage(_message),
+            includeCorrelationId: traceSent,
+            includeDeadline: false);
 
         var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType(), _registration.Codecs);
 
-        if (_runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
+        if (traceSent)
             _runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
@@ -74,7 +76,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
     : IZLinkYieldRequestCall
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
+    private string? _messageName;
     private TimeSpan? _timeout;
 
     public IZLinkYieldRequestCall PacketName(string messageName)
@@ -99,19 +101,23 @@ internal sealed class ZLinkRequestCall<TMessage>(
         return Timeout(timeout);
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var bundle = runtime.GetOrCreateClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var timeout = _timeout ?? registration.ResolveChannelRequestTimeout(channelName);
+        var traceSent = runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent);
+        var traceReply = runtime.Flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
-            timeout);
+            _messageName ?? ZLinkMessageNameResolver.ResolveFromMessage(request),
+            timeout,
+            includeCorrelationId: traceSent || traceReply,
+            includeDeadline: false);
         var message = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, registration.Codecs);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
+        if (traceSent)
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
@@ -122,8 +128,8 @@ internal sealed class ZLinkRequestCall<TMessage>(
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
 
-        var reply = await (bundle.Submitter
-                           ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+        var reply = (bundle.Submitter
+                    ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
             .SubmitRequestAsync<TReply>(
                 message,
                 (pending, complete, fail) => dealer.Request(
@@ -137,21 +143,32 @@ internal sealed class ZLinkRequestCall<TMessage>(
                         registration.Codecs),
                     SendFlags.DontWait,
                     timeout),
-                cancellationToken)
-            .ConfigureAwait(false);
+                cancellationToken);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
-            runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.ReplyReceived,
-                ZLinkDispatchErrorSurface.Channel,
-                ZLinkDispatchMessageKind.Response,
-                header.MessageName,
-                channelName,
-                CorrelationId: header.CorrelationId,
-                LocalRid: bundle.LocalRid,
-                SocketRole: bundle.SocketRole));
+        if (!traceReply) return reply;
 
-        return reply;
+        return TraceReplyAsync(reply, header, bundle.LocalRid, bundle.SocketRole);
+    }
+
+    private async ValueTask<TReply> TraceReplyAsync<TReply>(
+        ValueTask<TReply> reply,
+        ZLinkEnvelopeHeader header,
+        string? localRid,
+        string? socketRole)
+    {
+        var result = await reply.ConfigureAwait(false);
+
+        runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+            ZLinkMessageFlowOutcome.ReplyReceived,
+            ZLinkDispatchErrorSurface.Channel,
+            ZLinkDispatchMessageKind.Response,
+            header.MessageName,
+            channelName,
+            CorrelationId: header.CorrelationId,
+            LocalRid: localRid,
+            SocketRole: socketRole));
+
+        return result;
     }
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
@@ -175,7 +192,7 @@ internal sealed class ZLinkPublishCall(
     object? message)
     : IZLinkPublishCall
 {
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
+    private string? _messageName;
 
     public IZLinkPublishCall PacketName(string messageName)
     {
@@ -193,15 +210,18 @@ internal sealed class ZLinkPublishCall(
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetOrCreatePublisherBundle(channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
+        var traceSent = runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Publish,
             channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
+            _messageName ?? ZLinkMessageNameResolver.ResolveFromMessage(message),
             topic: topic,
-            source: channelName);
+            source: channelName,
+            includeCorrelationId: traceSent,
+            includeDeadline: false);
         var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType(), registration.Codecs);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
+        if (traceSent)
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,

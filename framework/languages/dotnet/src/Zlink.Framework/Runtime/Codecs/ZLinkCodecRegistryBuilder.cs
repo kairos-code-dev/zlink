@@ -11,6 +11,10 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
     private readonly Dictionary<string, ZlinkStreamCodec> _streamCodecsByContentType =
         new(StringComparer.OrdinalIgnoreCase);
 
+    private readonly Dictionary<Type, (string ContentType, IZLinkMessageSerializer Serializer)> _serializerByType = [];
+    private (string ContentType, IZLinkMessageSerializer Serializer)? _singleFallbackSerializer;
+    private bool _fallbackSerializerAmbiguous;
+
     public IReadOnlyDictionary<string, IZLinkMessageSerializer> Serializers =>
         _serializers.ToDictionary(entry => entry.Key, entry => entry.Value.Serializer,
             StringComparer.OrdinalIgnoreCase);
@@ -57,7 +61,10 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
         if (string.IsNullOrWhiteSpace(contentType))
             throw new ArgumentException("Custom serializer content type must not be blank.", nameof(contentType));
 
-        _serializers[contentType.Trim()] = new RegisteredSerializer(serializer, canSerialize, isFallbackSerializer);
+        var normalized = contentType.Trim();
+        _serializers[normalized] = new RegisteredSerializer(serializer, canSerialize, isFallbackSerializer);
+        _serializerByType.Clear();
+        RefreshFallbackSerializerCache();
     }
 
     /// <summary>
@@ -67,19 +74,14 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
     /// </summary>
     public (string ContentType, IZLinkMessageSerializer Serializer)? SingleCustomSerializer()
     {
-        var fallbackSerializers = _serializers
-            .Where(entry => entry.Value.IsFallbackSerializer)
-            .ToArray();
-
-        if (fallbackSerializers.Length == 0) return null;
-
-        if (fallbackSerializers.Length > 1)
+        if (_fallbackSerializerAmbiguous)
             throw new InvalidOperationException(
                 "Payload serializer is ambiguous because more than one custom serializer is registered: "
-                + string.Join(", ", fallbackSerializers.Select(entry => entry.Key)));
+                + string.Join(", ", _serializers
+                    .Where(entry => entry.Value.IsFallbackSerializer)
+                    .Select(entry => entry.Key)));
 
-        var entry = fallbackSerializers[0];
-        return (entry.Key, entry.Value.Serializer);
+        return _singleFallbackSerializer;
     }
 
     public bool TryGetSerializer(string contentType, out IZLinkMessageSerializer serializer)
@@ -96,24 +98,46 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
 
     public bool TryResolveSerializer(Type payloadType, out string contentType, out IZLinkMessageSerializer serializer)
     {
-        var matches = _serializers
-            .Where(entry => entry.Value.CanSerialize(payloadType))
-            .ToArray();
+        if (_serializerByType.TryGetValue(payloadType, out var cached))
+        {
+            contentType = cached.ContentType;
+            serializer = cached.Serializer;
+            return true;
+        }
 
-        if (matches.Length == 0)
+        string? resolvedContentType = null;
+        IZLinkMessageSerializer? resolvedSerializer = null;
+        var matches = 0;
+
+        foreach (var entry in _serializers)
+        {
+            if (!entry.Value.CanSerialize(payloadType))
+                continue;
+
+            matches++;
+            resolvedContentType = entry.Key;
+            resolvedSerializer = entry.Value.Serializer;
+            if (matches > 1)
+                break;
+        }
+
+        if (matches == 0)
         {
             contentType = string.Empty;
             serializer = null!;
             return false;
         }
 
-        if (matches.Length > 1)
+        if (matches > 1)
             throw new InvalidOperationException(
                 "Payload serializer is ambiguous for type '" + payloadType + "': "
-                + string.Join(", ", matches.Select(entry => entry.Key)));
+                + string.Join(", ", _serializers
+                    .Where(entry => entry.Value.CanSerialize(payloadType))
+                    .Select(entry => entry.Key)));
 
-        contentType = matches[0].Key;
-        serializer = matches[0].Value.Serializer;
+        contentType = resolvedContentType!;
+        serializer = resolvedSerializer!;
+        _serializerByType[payloadType] = (contentType, serializer);
         return true;
     }
 
@@ -133,4 +157,25 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
         IZLinkMessageSerializer Serializer,
         Func<Type, bool> CanSerialize,
         bool IsFallbackSerializer);
+
+    private void RefreshFallbackSerializerCache()
+    {
+        _singleFallbackSerializer = null;
+        _fallbackSerializerAmbiguous = false;
+
+        foreach (var entry in _serializers)
+        {
+            if (!entry.Value.IsFallbackSerializer)
+                continue;
+
+            if (_singleFallbackSerializer is not null)
+            {
+                _fallbackSerializerAmbiguous = true;
+                _singleFallbackSerializer = null;
+                return;
+            }
+
+            _singleFallbackSerializer = (entry.Key, entry.Value.Serializer);
+        }
+    }
 }

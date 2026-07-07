@@ -6,23 +6,25 @@ internal static class ZLinkHandlerResultAwaiter
 {
     private static readonly ConcurrentDictionary<Type, Func<object, ValueTask<object?>>> GenericAwaiters = new();
 
-    public static async ValueTask<object?> AwaitAsync(object? result)
+    public static ValueTask<object?> AwaitAsync(object? result)
     {
-        if (result is null) return null;
+        if (result is null) return new ValueTask<object?>((object?)null);
 
         switch (result)
         {
             case Task task when result.GetType() == typeof(Task):
-                await task.ConfigureAwait(false);
-                return null;
+                return task.IsCompletedSuccessfully
+                    ? new ValueTask<object?>((object?)null)
+                    : AwaitTaskAsync(task);
             case ValueTask valueTask:
-                await valueTask.ConfigureAwait(false);
-                return null;
+                return valueTask.IsCompletedSuccessfully
+                    ? new ValueTask<object?>((object?)null)
+                    : AwaitValueTaskAsync(valueTask);
         }
 
         return IsGenericAwaitable(result.GetType())
-            ? await GenericAwaiters.GetOrAdd(result.GetType(), CreateGenericAwaiter)(result).ConfigureAwait(false)
-            : result;
+            ? GenericAwaiters.GetOrAdd(result.GetType(), CreateGenericAwaiter)(result)
+            : new ValueTask<object?>(result);
     }
 
     private static bool IsGenericAwaitable(Type resultType)
@@ -44,13 +46,41 @@ internal static class ZLinkHandlerResultAwaiter
         return (Func<object, ValueTask<object?>>)method.CreateDelegate(typeof(Func<object, ValueTask<object?>>));
     }
 
-    public static async ValueTask<object?> AwaitTaskAsync<T>(object result)
+    public static ValueTask<object?> AwaitTaskAsync<T>(object result)
     {
-        return await ((Task<T>)result).ConfigureAwait(false);
+        var task = (Task<T>)result;
+        return task.IsCompletedSuccessfully
+            ? new ValueTask<object?>(task.Result)
+            : AwaitTaskSlowAsync(task);
     }
 
-    public static async ValueTask<object?> AwaitValueTaskAsync<T>(object result)
+    public static ValueTask<object?> AwaitValueTaskAsync<T>(object result)
     {
-        return await ((ValueTask<T>)result).ConfigureAwait(false);
+        var valueTask = (ValueTask<T>)result;
+        return valueTask.IsCompletedSuccessfully
+            ? new ValueTask<object?>(valueTask.Result)
+            : AwaitValueTaskSlowAsync(valueTask);
+    }
+
+    private static async ValueTask<object?> AwaitTaskAsync(Task task)
+    {
+        await task.ConfigureAwait(false);
+        return null;
+    }
+
+    private static async ValueTask<object?> AwaitValueTaskAsync(ValueTask valueTask)
+    {
+        await valueTask.ConfigureAwait(false);
+        return null;
+    }
+
+    private static async ValueTask<object?> AwaitTaskSlowAsync<T>(Task<T> task)
+    {
+        return await task.ConfigureAwait(false);
+    }
+
+    private static async ValueTask<object?> AwaitValueTaskSlowAsync<T>(ValueTask<T> valueTask)
+    {
+        return await valueTask.ConfigureAwait(false);
     }
 }

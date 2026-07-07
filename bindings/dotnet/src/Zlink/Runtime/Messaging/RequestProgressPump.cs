@@ -35,6 +35,11 @@ internal static class RequestProgressPump
         return Attach(SpotStates, handle);
     }
 
+    internal static ProgressLease AttachSocketCallback(IntPtr handle)
+    {
+        return Attach(SocketStates, handle);
+    }
+
     private static ProgressLease Attach(
         ConcurrentDictionary<nint, ProgressState> states, IntPtr handle)
     {

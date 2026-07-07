@@ -31,7 +31,7 @@ internal static class ZLinkEnvelopeReplyCompletion
                 return;
             }
 
-            complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), codecs)
+            complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), replyHeader.ContentType, codecs)
                      ?? throw new InvalidOperationException($"{operationName} reply body is null."));
         }
         catch (Exception exception)

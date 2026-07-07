@@ -66,7 +66,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
         if (received.Parts.Count == 0) return;
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
-
         if (_flow.Enabled(ZLinkMessageFlowOutcome.Received))
             _flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Received,

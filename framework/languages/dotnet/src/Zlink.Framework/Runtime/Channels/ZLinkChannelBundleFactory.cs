@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Messaging;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelBundleFactory(
@@ -29,13 +31,14 @@ internal sealed class ZLinkChannelBundleFactory(
             if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint)) dealer.Bind(channel.Client.BindEndpoint);
 
             bundle = new ZLinkChannelRuntimeBundle(
-                dealer,
-                new ZLinkAsyncSubmitter(
+                socket: dealer,
+                submitter: new ZLinkAsyncSubmitter(
                     dealer.OnSendReady,
                     channel.Client.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
                     state.StopTokenSource.Token),
-                localRid,
-                "dealer");
+                completionPump: ZLinkRequestCompletionPump.Start(dealer.NativeInstance),
+                localRid: localRid,
+                socketRole: "dealer");
 
             AttachManualConnections(bundle, dealer, channel.Client.ManualConnections);
 
@@ -148,13 +151,13 @@ internal sealed class ZLinkChannelBundleFactory(
 
             publisher.Bind(channel.Publisher!.BindEndpoint!);
             bundle = new ZLinkChannelRuntimeBundle(
-                publisher,
-                new ZLinkAsyncSubmitter(
+                socket: publisher,
+                submitter: new ZLinkAsyncSubmitter(
                     publisher.OnSendReady,
                     channel.Publisher.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
                     state.StopTokenSource.Token),
-                localRid,
-                "pub");
+                localRid: localRid,
+                socketRole: "pub");
 
             return bundle;
         }

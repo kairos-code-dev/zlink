@@ -465,9 +465,10 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
 
     private void InitializeManagedCopy(ReadOnlySpan<byte> data)
     {
-        _managedPayload = new ManagedPayloadState(data.ToArray(), data.Length);
+        InitSize(data.Length);
+        if (data.Length != 0)
+            CopyPayloadToStorage(data);
         _knownSize = data.Length;
-        IsValid = true;
     }
 
     private void ReleaseManagedBytes()

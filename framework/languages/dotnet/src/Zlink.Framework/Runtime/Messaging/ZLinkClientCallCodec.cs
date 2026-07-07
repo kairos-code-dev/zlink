@@ -10,15 +10,17 @@ internal static class ZLinkClientCallCodec
         string messageName,
         TimeSpan? timeout = null,
         string? topic = null,
-        string? source = null)
+        string? source = null,
+        bool includeCorrelationId = true,
+        bool includeDeadline = true)
     {
         return new ZLinkEnvelopeHeader(
             kind,
             channelName,
             messageName,
             ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            timeout is { } value ? DateTimeOffset.UtcNow.Add(value) : null,
+            includeCorrelationId ? Guid.NewGuid().ToString("N") : null,
+            includeDeadline && timeout is { } value ? DateTimeOffset.UtcNow.Add(value) : null,
             topic,
             null,
             null,
@@ -40,7 +42,7 @@ internal static class ZLinkClientCallCodec
         return ZLinkEnvelopeCodec.EncodeParts(
             header,
             message,
-            message?.GetType() ?? typeof(TMessage),
+            ZLinkClientCallTypeCache<TMessage>.Resolve(message),
             codecs);
     }
 
@@ -64,7 +66,7 @@ internal static class ZLinkClientCallCodec
         if (replyHeader.Kind == ZLinkMessageKind.Error)
             throw new InvalidOperationException(replyHeader.ErrorMessage ?? errorMessage);
 
-        return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), codecs)
+        return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), replyHeader.ContentType, codecs)
                ?? throw new InvalidOperationException("Reply body is null.");
     }
 
@@ -104,5 +106,16 @@ internal static class ZLinkClientCallCodec
         IReadOnlyDictionary<string, string> metadata)
     {
         return new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+    }
+}
+
+internal static class ZLinkClientCallTypeCache<TMessage>
+{
+    private static readonly Type StaticType = typeof(TMessage);
+
+    public static Type Resolve(TMessage message)
+    {
+        if (message is null) return StaticType;
+        return StaticType.IsSealed ? StaticType : message.GetType();
     }
 }

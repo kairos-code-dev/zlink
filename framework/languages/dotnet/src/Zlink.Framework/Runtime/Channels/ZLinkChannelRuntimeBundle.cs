@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Messaging;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
@@ -7,11 +9,13 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     public ZLinkChannelRuntimeBundle(
         IZLinkBackendSocket socket,
         ZLinkAsyncSubmitter? submitter = null,
+        ZLinkRequestCompletionPump? completionPump = null,
         RoutingId localRid = default,
         string? socketRole = null)
     {
         Socket = socket;
         Submitter = submitter;
+        CompletionPump = completionPump;
         LocalRid = localRid.Size > 0 ? localRid.ToString() : null;
         SocketRole = socketRole;
     }
@@ -19,6 +23,8 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     public IZLinkBackendSocket Socket { get; }
 
     public ZLinkAsyncSubmitter? Submitter { get; }
+
+    public ZLinkRequestCompletionPump? CompletionPump { get; }
 
     public string? LocalRid { get; }
 
@@ -31,6 +37,8 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (Submitter is not null) await Submitter.DisposeAsync();
+
+        if (CompletionPump is not null) await CompletionPump.DisposeAsync();
 
         if (SpotRouteBridge is not null) await SpotRouteBridge.DisposeAsync();
 

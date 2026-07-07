@@ -54,7 +54,11 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
         object? message;
         try
         {
-            message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, endpoint.MessageType, codecs);
+            message = ZLinkEnvelopeCodec.DecodeBody(
+                received.Parts,
+                endpoint.MessageType,
+                header.ContentType,
+                codecs);
         }
         catch (Exception ex)
         {

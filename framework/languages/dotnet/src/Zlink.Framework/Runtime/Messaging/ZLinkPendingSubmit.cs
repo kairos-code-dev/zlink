@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Messaging;
 
 internal sealed class PendingSubmit : IDisposable
 {
-    private readonly TaskCompletionSource<object?> _completion;
+    private readonly IPendingSubmitCompletion _completion;
     private readonly Action _wake;
     private CancellationTokenRegistration _cancellationRegistration;
     private int _completed;
@@ -15,7 +15,7 @@ internal sealed class PendingSubmit : IDisposable
         Func<IReadOnlyList<Message>, bool> trySubmit,
         DateTimeOffset? deadline,
         Action wake,
-        TaskCompletionSource<object?> completion,
+        IPendingSubmitCompletion completion,
         bool completeOnAccepted)
     {
         Parts = parts;
@@ -34,7 +34,7 @@ internal sealed class PendingSubmit : IDisposable
 
     public bool CompleteOnAccepted { get; }
 
-    public Task<object?> Task => _completion.Task;
+    public Task Task => _completion.Task;
 
     public bool IsCompleted => Volatile.Read(ref _completed) != 0;
 
@@ -57,23 +57,24 @@ internal sealed class PendingSubmit : IDisposable
             trySubmit,
             deadline,
             wake,
-            new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously),
+            new ObjectPendingSubmitCompletion(
+                new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously)),
             true);
     }
 
-    public static PendingSubmit CreateRequest(
+    public static PendingSubmit CreateRequest<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
         DateTimeOffset? deadline,
         Action wake,
-        TaskCompletionSource<object?> completion)
+        TaskCompletionSource<T> completion)
     {
         return new PendingSubmit(
             parts,
             trySubmit,
             deadline,
             wake,
-            completion,
+            new TypedPendingSubmitCompletion<T>(completion),
             false);
     }
 
@@ -175,5 +176,58 @@ internal sealed class PendingSubmit : IDisposable
             var item = (PendingSubmit)state!;
             item.TryCancel();
         }, this);
+    }
+
+    private interface IPendingSubmitCompletion
+    {
+        Task Task { get; }
+
+        void TrySetResult(object? result);
+
+        void TrySetCanceled();
+
+        void TrySetException(Exception exception);
+    }
+
+    private sealed class ObjectPendingSubmitCompletion(TaskCompletionSource<object?> source)
+        : IPendingSubmitCompletion
+    {
+        public Task Task => source.Task;
+
+        public void TrySetResult(object? result)
+        {
+            source.TrySetResult(result);
+        }
+
+        public void TrySetCanceled()
+        {
+            source.TrySetCanceled();
+        }
+
+        public void TrySetException(Exception exception)
+        {
+            source.TrySetException(exception);
+        }
+    }
+
+    private sealed class TypedPendingSubmitCompletion<T>(TaskCompletionSource<T> source)
+        : IPendingSubmitCompletion
+    {
+        public Task Task => source.Task;
+
+        public void TrySetResult(object? result)
+        {
+            source.TrySetResult((T)result!);
+        }
+
+        public void TrySetCanceled()
+        {
+            source.TrySetCanceled();
+        }
+
+        public void TrySetException(Exception exception)
+        {
+            source.TrySetException(exception);
+        }
     }
 }

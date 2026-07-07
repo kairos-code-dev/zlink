@@ -43,29 +43,45 @@ internal sealed partial class Spot : ISpot
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
+        var nativePeerRid = peerRid.ToNative();
+        var timeoutMs = RequestReplySupport.NormalizeTimeout(
+            timeout ?? TimeSpan.Zero);
+        GCHandle handle = default;
+        SpotRequestCallbackState? state = null;
+
         try
         {
-            RequestReplySupport.AttachResultCallback(
-                () => RequestToRouterAsyncInternal(peerRid, parts,
-                    timeout ?? TimeSpan.Zero, CancellationToken.None, (int)flags),
-                (result, reply) =>
-                {
-                    IReadOnlyList<Message> payload = Array.Empty<Message>();
-                    if (reply != null)
-                    {
-                        payload = RequestReplySupport.TakeOwnedParts(reply);
-                        reply.Dispose();
-                    }
+            state = new SpotRequestCallbackState(callback,
+                RequestProgressPump.AttachSpotCallback(Handle));
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            var userData = GCHandle.ToIntPtr(handle);
 
-                    callback(result, payload);
-                });
+            RequestReplySupport.SubmitOwnedParts(parts,
+                (ref ZlinkMsg nativePart,
+                        NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_spot_request_router_part(Handle,
+                        ref nativePeerRid, ref nativePart,
+                        RoutedReplyCallbackHandlerPtr, userData, (int)flags,
+                        partFlag, timeoutMs));
+
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
                                            && RequestReplySupport.MapSendNoWaitResult(error)
                                            == SendResult.Backpressured)
         {
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
             return false;
+        }
+        catch
+        {
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
         }
     }
 
@@ -112,15 +128,9 @@ internal sealed partial class Spot : ISpot
         TimeSpan timeout)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        // Reference the cached native routing ids rather than copying the
-        // 256-byte structs; parts are submitted synchronously in the loop
-        // below so the refs stay valid (no closure capture here).
-        ZlinkRoutingId nodeFallback = default;
-        ZlinkRoutingId spotFallback = default;
-        ref var nodeRid = ref destNodeRid.ToNativeRef(ref nodeFallback);
-        ref var spotRid = ref destSpotRid.ToNativeRef(ref spotFallback);
+        var nodeRid = destNodeRid.ToNative();
+        var spotRid = destSpotRid.ToNative();
         var timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
-        var cloned = RequestReplySupport.CloneParts(parts);
         GCHandle handle = default;
         SpotRequestCallbackState? state = null;
 
@@ -129,33 +139,15 @@ internal sealed partial class Spot : ISpot
             state = new SpotRequestCallbackState(callback,
                 RequestProgressPump.AttachSpotCallback(Handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            var userData = GCHandle.ToIntPtr(handle);
 
-            for (var i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                var submitted = false;
-                try
-                {
-                    var rc = NativeMethods.zlink_spot_request_spot_part(Handle,
+            RequestReplySupport.SubmitOwnedParts(parts,
+                (ref ZlinkMsg nativePart,
+                        NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_spot_request_spot_part(Handle,
                         ref nodeRid, ref spotRid, ref nativePart,
-                        RoutedReplyCallbackHandlerPtr, GCHandle.ToIntPtr(handle),
-                        (int)flags,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final,
-                        timeoutMs);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+                        RoutedReplyCallbackHandlerPtr, userData, (int)flags,
+                        partFlag, timeoutMs));
 
             return true;
         }
@@ -164,7 +156,6 @@ internal sealed partial class Spot : ISpot
             state?.DisposeProgress();
             if (handle.IsAllocated)
                 handle.Free();
-            RequestReplySupport.DisposeParts(cloned);
             throw;
         }
     }

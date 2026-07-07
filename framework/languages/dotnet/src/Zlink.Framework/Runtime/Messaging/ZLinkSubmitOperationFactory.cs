@@ -18,10 +18,10 @@ internal sealed class ZLinkSubmitOperationFactory(
         return PendingSubmit.CreateCommand(parts, trySubmit, ResolveDeadlineOrThrow(parts), wake);
     }
 
-    public PendingSubmit CreateRequest(
+    public PendingSubmit CreateRequest<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
-        TaskCompletionSource<object?> completion)
+        TaskCompletionSource<T> completion)
     {
         return PendingSubmit.CreateRequest(parts, trySubmit, ResolveDeadlineOrThrow(parts), wake, completion);
     }

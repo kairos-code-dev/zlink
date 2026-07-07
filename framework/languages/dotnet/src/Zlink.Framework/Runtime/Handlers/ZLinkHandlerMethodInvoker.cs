@@ -4,7 +4,11 @@ using System.Reflection;
 
 namespace Zlink.Framework.Runtime.Handlers;
 
-internal delegate object? ZLinkHandlerMethodInvoker(object target, object?[] arguments);
+internal delegate object? ZLinkHandlerMethodInvoker(
+    object target,
+    object? arg0,
+    object? arg1,
+    object? arg2);
 
 internal static class ZLinkHandlerMethodInvokerFactory
 {
@@ -29,12 +33,18 @@ internal static class ZLinkHandlerMethodInvokerFactory
                     $"Handler method '{method.DeclaringType?.FullName}.{method.Name}' must not use ref, in, or out parameters.");
 
         var target = Expression.Parameter(typeof(object), "target");
-        var arguments = Expression.Parameter(typeof(object?[]), "arguments");
+        var arg0 = Expression.Parameter(typeof(object), "arg0");
+        var arg1 = Expression.Parameter(typeof(object), "arg1");
+        var arg2 = Expression.Parameter(typeof(object), "arg2");
+        var argumentExpressions = new[] { arg0, arg1, arg2 };
 
         var convertedArguments = new Expression[parameters.Length];
         for (var i = 0; i < parameters.Length; i++)
         {
-            var argument = Expression.ArrayIndex(arguments, Expression.Constant(i));
+            if (i >= argumentExpressions.Length)
+                throw new ZLinkConfigurationException(
+                    $"Handler method '{method.DeclaringType?.FullName}.{method.Name}' has too many parameters.");
+            var argument = argumentExpressions[i];
             convertedArguments[i] = Expression.Convert(argument, parameters[i].ParameterType);
         }
 
@@ -48,7 +58,7 @@ internal static class ZLinkHandlerMethodInvokerFactory
             : Expression.Convert(call, typeof(object));
 
         return Expression
-            .Lambda<ZLinkHandlerMethodInvoker>(body, target, arguments)
+            .Lambda<ZLinkHandlerMethodInvoker>(body, target, arg0, arg1, arg2)
             .Compile();
     }
 }

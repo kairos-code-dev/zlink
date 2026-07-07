@@ -259,10 +259,15 @@ runtime/services (spot):
 - [x] **T2-13. `spot_sub_subject_state.cpp` ready-ack 상태기계 분리**
   - `:52-390`(구독/필터 관리·subject 열거) vs `:397-684`(readiness + ready-ack
     handshake + liveness). 구독 control plane. (없음 / M)
-- [ ] **T2-14. `spot_node_access.cpp` pass-through 축소 + spot_state 분리**
+- [x] **T2-14. `spot_node_access.cpp` pass-through 축소 + spot_state 분리**
   - 표면 2/3가 `return node_ ? node_->x() : -1` 개명 레이어(~50메서드), 나머지가
     별개 역할인 논리 spot state 수명주기(`:349-413`). 위임자 축소 + state 관리
     별도 유닛. (없음 / M)
+  - 2026-07-07 완료: logical spot state facade/access 위임자를
+    `spot_node_access_spot_state.cpp`로 분리해 access 본체의 별개 역할 혼재를
+    제거했다. 남은 얕은 위임자는 API/actor/pubsub 호출자가 `spot_node_t` 내부
+    타입에 직접 결합하지 않게 하는 내부 access boundary라, 공개/내부 경계를
+    흔드는 제거 대신 책임별 TU 분리로 축소했다.
 - [ ] **T2-15. data-plane 내부 state 헤더 노출 축소**
   - `spot_data_plane_runtime_state.hpp`(pending/target/backpressure 세부)가
     `runtime/spot_runtime_execution.hpp`로 누출. forward-decl/좁은 인터페이스로.

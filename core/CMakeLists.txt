@@ -1022,6 +1022,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/pubsub/spot_subject_publish.cpp
     src/runtime/services/spot/pubsub/spot_subject_query.cpp
     src/runtime/services/spot/node/spot_node_access.cpp
+    src/runtime/services/spot/node/spot_node_access_spot_state.cpp
     src/runtime/services/spot/node/spot_node.cpp
     src/runtime/services/spot/node/spot_node_control.cpp
     src/runtime/services/spot/node/spot_node_control_peer.cpp

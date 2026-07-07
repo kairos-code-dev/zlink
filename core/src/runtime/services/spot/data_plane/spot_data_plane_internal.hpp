@@ -35,6 +35,9 @@ struct spot_data_plane_protocol_state_t
     std::map<std::string, std::map<std::string, std::set<std::string>>> outbound_ready_filters;
 };
 
+int spot_data_plane_configure_runtime_sockets (spot_runtime_t *runtime_,
+                                               spot_data_plane_runtime_state_t *state_);
+
 struct spot_mesh_peer_state_t
 {
     spot_mesh_peer_state_t () :

@@ -250,7 +250,7 @@ runtime/services (spot):
     `service_spot_request_reply_channel_bridge.cpp:29-74`
   - error-reply 조립 + result→errno 분류가 api/runtime 3곳 구현. T1-01 정본을
     소비하는 형태로 통합. (없음 / S)
-- [ ] **T2-11. `spot_data_plane_runtime.cpp` 튜닝/lifecycle 분리**
+- [x] **T2-11. `spot_data_plane_runtime.cpp` 튜닝/lifecycle 분리**
   - `:49-101`(HWM 해석·옵션 정책) + 168줄 `configure_runtime_sockets:231-399` vs
     초기화/해체(`:442-728`). 1회성 경로라 무위험. (없음 / M)
 - [ ] **T2-12. `spot_node_handles.cpp` 튜닝/lifecycle 분리**
@@ -566,6 +566,9 @@ sockets/engine/transports/utils:
   cleanup 정책을 `part_helper_state.cpp`로 분리했다. `part_helper_api.cpp`는
   validation과 send/recv sequence step engine 중심으로 남겼고 공개 호출
   그래프는 유지했다.
+- 2026-07-07: T2-11 완료 — spot data-plane runtime socket tuning과 HWM 적용
+  정책을 `spot_data_plane_runtime_config.cpp`로 분리했다. runtime lifecycle 파일은
+  socket 생성, poller wiring, 실패 unwinding, teardown 흐름 중심으로 남겼다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

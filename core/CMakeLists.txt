@@ -1006,6 +1006,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/data_plane/spot_data_plane_mesh.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_message_io.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_runtime.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_runtime_config.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_protocol.cpp
     src/runtime/services/spot/data_plane/spot_mesh_pub_hwm.cpp

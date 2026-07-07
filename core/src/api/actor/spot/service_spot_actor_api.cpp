@@ -160,13 +160,7 @@ bool node_has_pending_join_actor_locked (zlink::spot_node_t *node_, const char *
     return actor_runtime ().joins.has_pending_remote_actor (node_, actor_id_);
 }
 
-bool join_request_live_locked (queued_join_request_t *request_)
-{
-    return actor_runtime ().joins.is_live (request_);
-}
-
 void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_changed_time_);
-void retire_join_request_locked (queued_join_request_t *request_);
 
 bool spot_has_pending_join_locked (spot_logical_state_t *key_)
 {
@@ -721,6 +715,29 @@ void notify_actor_readable (actor_handle_t *actor_)
                                          ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR, &actor_->ref_cache);
 }
 
+}
+
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
+void remove_join_pending_target_locked (queued_join_request_t *request_)
+{
+    if (!request_ || !request_->pending_target || !request_->pending_target->pending_remote_join)
+        return;
+    std::unique_ptr<actor_handle_t> pending =
+      remove_actor_locked (request_->pending_target, false);
+    LIBZLINK_UNUSED (pending);
+    request_->pending_target = NULL;
+}
+
+}
+}
+
+namespace
+{
+
 void schedule_lifecycle_event_locked (const std::shared_ptr<spot_logical_state_t> &spot_state_,
                                       zlink_spot_actor_lifecycle_event_kind_t kind_,
                                       const zlink_spot_actor_lifecycle_info_t &info_,
@@ -1157,92 +1174,6 @@ zlink_request_result_t run_actor_reply_operation (void *arg_)
 void drain_lifecycle_events_for_spot (spot_handle_t *spot_)
 {
     (void) spot_;
-}
-
-void index_join_request_locked (queued_join_request_t *request_)
-{
-    if (!request_ || request_->indexed || request_->replied)
-        return;
-
-    actor_runtime ().joins.mark_live (request_);
-    actor_runtime ().joins.increment_actor_pending (request_->actor);
-    actor_runtime ().joins.increment_spot_pending (join_queue_key (request_));
-    actor_runtime ().joins.track_pending_remote_actor (request_);
-    request_->indexed = true;
-}
-
-void unindex_join_request_locked (queued_join_request_t *request_)
-{
-    if (!request_ || !request_->indexed)
-        return;
-
-    actor_runtime ().joins.unmark_live (request_);
-    actor_runtime ().joins.decrement_actor_pending (request_->actor);
-    actor_runtime ().joins.decrement_spot_pending (join_queue_key (request_));
-    actor_runtime ().joins.untrack_pending_remote_actor (request_);
-    request_->indexed = false;
-}
-
-void retire_join_request_locked (queued_join_request_t *request_)
-{
-    if (!request_)
-        return;
-    unindex_join_request_locked (request_);
-    if (request_->pending_target && request_->pending_target->pending_remote_join) {
-        std::unique_ptr<actor_handle_t> pending =
-          remove_actor_locked (request_->pending_target, false);
-        request_->pending_target = NULL;
-    }
-    zlink::spot_clear_msg_parts (&request_->message_parts);
-    request_->replied = true;
-}
-
-void release_join_request_after_completion (queued_join_request_t *request_)
-{
-    if (!request_)
-        return;
-    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
-    {
-        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        unindex_join_request_locked (request_);
-        timeout_task.swap (request_->timeout_task);
-    }
-    zlink::request_timeout::cancel (timeout_task);
-    delete request_;
-}
-
-void remove_pending_join_request_locked (queued_join_request_t *request_)
-{
-    actor_runtime ().joins.remove_queued (request_);
-}
-
-void handle_join_timeout (void *userdata_)
-{
-    queued_join_request_t *request = static_cast<queued_join_request_t *> (userdata_);
-    if (!request)
-        return;
-    bool timed_out = false;
-    {
-        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        if (join_request_live_locked (request) && !request->replied) {
-            remove_pending_join_request_locked (request);
-            retire_join_request_locked (request);
-            request->timeout_task.reset ();
-            timed_out = true;
-        }
-    }
-    if (!timed_out)
-        return;
-    complete_join_request (request, ZLINK_REQUEST_TIMED_OUT);
-    delete request;
-}
-
-void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms_)
-{
-    if (!request_ || timeout_ms_ == 0)
-        return;
-    request_->timeout_task =
-      zlink::request_timeout::schedule (timeout_ms_, handle_join_timeout, request_);
 }
 
 bool spot_dispatch_handler_attached (const spot_handle_t *spot_)

@@ -382,7 +382,8 @@ sockets/engine/transports/utils:
 3. **reqrep 클러스터**: T2-01 → T2-02 → T2-10 → T2-08 → T2-09 → T3-06.
    같은 도메인이므로 연속 진행이 컨텍스트 효율적.
 4. **spot actor 클러스터**: T2-06 → T2-07 → T3-01 → T3-02.
-   각 단계 후 actor e2e(ToActorMessaging) 확인.
+   각 단계 후 core actor/spot 관련 테스트와 full core CTest를 확인한다. C++
+   framework/bindings E2E는 별도 확인 단계에서 수행한다.
 5. **services/spot 구조**: T2-11 → T2-12 → T2-13 → T2-14 → T2-15 → T2-16.
 6. **runtime/core**: T2-17 → T2-18 → T2-19 → T2-20 → T2-21, T1-06과 독립.
 7. **transports/sockets**: T2-22 → T2-23 → T3-05, 이후 T3-03/T3-04.
@@ -504,6 +505,11 @@ sockets/engine/transports/utils:
   통해 no-bind 응답 필드 지식을 직접 들고 있지 않게 줄였다. Core no-bind/spot
   관련 테스트와 C++ ToActorMessaging E2E로 확인했다.
 - 2026-07-07: T3-01 진행 중 — join 완료 callback과 즉시 완료/idempotent 완료
-  예약 로직을 `service_spot_actor_join.cpp`로 먼저 분리했다. 공개 join 진입점,
-  join timeout/bookkeeping, gateway join request/reply 처리는 아직
-  `service_spot_actor_api.cpp`에 남아 있으므로 T3-01 체크박스는 유지한다.
+  예약 로직, join live/index/retire/release/timeout bookkeeping을
+  `service_spot_actor_join.cpp`로 먼저 분리했다. 공개 join 진입점과 gateway join
+  request/reply 처리는 아직 `service_spot_actor_api.cpp`에 남아 있으므로 T3-01
+  체크박스는 유지한다.
+- 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
+  core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
+  클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,
+  bindings/framework 확인은 별도 단계로 넘긴다.

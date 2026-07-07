@@ -46,6 +46,93 @@ namespace zlink
 namespace spot_actor_api_internal
 {
 
+bool join_request_live_locked (queued_join_request_t *request_)
+{
+    return actor_runtime ().joins.is_live (request_);
+}
+
+void index_join_request_locked (queued_join_request_t *request_)
+{
+    if (!request_ || request_->indexed || request_->replied)
+        return;
+
+    actor_runtime ().joins.mark_live (request_);
+    actor_runtime ().joins.increment_actor_pending (request_->actor);
+    actor_runtime ().joins.increment_spot_pending (join_queue_key (request_));
+    actor_runtime ().joins.track_pending_remote_actor (request_);
+    request_->indexed = true;
+}
+
+void unindex_join_request_locked (queued_join_request_t *request_)
+{
+    if (!request_ || !request_->indexed)
+        return;
+
+    actor_runtime ().joins.unmark_live (request_);
+    actor_runtime ().joins.decrement_actor_pending (request_->actor);
+    actor_runtime ().joins.decrement_spot_pending (join_queue_key (request_));
+    actor_runtime ().joins.untrack_pending_remote_actor (request_);
+    request_->indexed = false;
+}
+
+void retire_join_request_locked (queued_join_request_t *request_)
+{
+    if (!request_)
+        return;
+    unindex_join_request_locked (request_);
+    remove_join_pending_target_locked (request_);
+    zlink::spot_clear_msg_parts (&request_->message_parts);
+    request_->replied = true;
+}
+
+void release_join_request_after_completion (queued_join_request_t *request_)
+{
+    if (!request_)
+        return;
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
+    {
+        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+        unindex_join_request_locked (request_);
+        timeout_task.swap (request_->timeout_task);
+    }
+    zlink::request_timeout::cancel (timeout_task);
+    delete request_;
+}
+
+void remove_pending_join_request_locked (queued_join_request_t *request_)
+{
+    actor_runtime ().joins.remove_queued (request_);
+}
+
+void handle_join_timeout (void *userdata_)
+{
+    queued_join_request_t *request = static_cast<queued_join_request_t *> (userdata_);
+    if (!request)
+        return;
+    bool timed_out = false;
+    {
+        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+        if (join_request_live_locked (request) && !request->replied) {
+            remove_pending_join_request_locked (request);
+            retire_join_request_locked (request);
+            request->timeout_task.reset ();
+            timed_out = true;
+        }
+    }
+    if (!timed_out)
+        return;
+    complete_join_request (request, ZLINK_REQUEST_TIMED_OUT);
+    delete request;
+}
+
+void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms_)
+{
+    if (!request_ || timeout_ms_ == 0)
+        return;
+    request_->timeout_task =
+      zlink::request_timeout::schedule (timeout_ms_, handle_join_timeout, request_);
+}
+
 void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_)
 {
     if (!request_ || (!request_->handler && !request_->entry_handler))

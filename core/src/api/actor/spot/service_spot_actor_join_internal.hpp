@@ -14,6 +14,16 @@ namespace spot_actor_api_internal
 struct actor_handle_t;
 struct queued_join_request_t;
 
+bool join_request_live_locked (queued_join_request_t *request_);
+void index_join_request_locked (queued_join_request_t *request_);
+void unindex_join_request_locked (queued_join_request_t *request_);
+void retire_join_request_locked (queued_join_request_t *request_);
+void release_join_request_after_completion (queued_join_request_t *request_);
+void remove_pending_join_request_locked (queued_join_request_t *request_);
+void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms_);
+
+void remove_join_pending_target_locked (queued_join_request_t *request_);
+
 void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_);
 
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,

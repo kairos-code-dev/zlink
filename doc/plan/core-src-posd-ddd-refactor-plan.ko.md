@@ -434,7 +434,7 @@ sockets/engine/transports/utils:
     `recv_dealer_parts_once:375-495`의 envelope 파싱+토큰 할당은
     `runtime_io.cpp` 큐 경로와 로직 중복 — T1-04 선행 후, fast path 인라인 유지
     조건으로 정리. (부분 없음, recv부는 조건부 / L)
-- [ ] **T3-05. ZMP handshake/control 중복 통합 (zmp ↔ ws 엔진)**
+- [x] **T3-05. ZMP handshake/control 중복 통합 (zmp ↔ ws 엔진)**
   - `engine/asio/asio_zmp_engine.cpp` vs `transports/ws/asio_ws_engine.cpp`:
     `receive_hello`/`parse_hello`/`process_handshake_input`/
     `process_ready|error|command_message`/heartbeat 등 ~10쌍이 사실상 동일.
@@ -451,6 +451,10 @@ sockets/engine/transports/utils:
     metadata parse/생성, ready flag 설정을 `zmp_control::accept_ready_message`로
     통합했다. peer address 기본 property 구성은 각 엔진의 기존
     `init_properties`에 남겼다.
+  - 2026-07-08 완료 판정: 남은 `process_handshake_input`/heartbeat next-message
+    중복은 decoder 상태와 엔진별 member-function pointer를 콜백으로 노출해야만
+    공통화할 수 있어 얕은 드라이버가 된다. POSD 기준으로 호출처 복잡도가 더
+    커지므로 추가 추출하지 않는다.
 - [x] **T3-06. runtime reqrep 층과 api reqrep 층의 분해 대칭화 마무리**
   - T2-08/T2-09 완료 후 남는 dispatch 잔여(`dispatch_spot_request_to_*`,
     local-delivery 파이프라인)를 api쪽 분해 어휘(submit/delivery/completion)와
@@ -643,6 +647,12 @@ sockets/engine/transports/utils:
   판정, peer metadata parse/생성, `_ready_received` 갱신을
   `zmp_control::accept_ready_message`로 모았다. 각 엔진의 peer address property
   준비는 기존 `init_properties` 위치에 남겼다.
+- 2026-07-08: T3-05 완료 — 남은 `process_handshake_input`/heartbeat 전환 중복은
+  decoder 상태와 engine별 member-function pointer를 공통 드라이버 콜백으로
+  넘겨야 줄어드는 형태라 얕은 모듈로 판정했다. 따라서 HELLO/READY protocol
+  state처럼 정보 은닉 효과가 있는 부분만 `zmp_control`로 내리고,
+  `decode_and_push`/`push_one_then_decode` 및 engine-specific transition은
+  제자리에 둔다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

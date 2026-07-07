@@ -115,23 +115,11 @@ void zlink::asio_tcp_connecter_t::process_term (int linger_)
 {
     CONNECTER_DBG ("process_term called, linger=%d, connecting=%d", linger_, _connecting);
 
-    _terminating = true;
-    _linger = linger_;
-
-    cancel_asio_timer_if_started (&_reconnect_timer_started,
-                                  [this] () { cancel_timer (reconnect_timer_id); });
-    cancel_asio_timer_if_started (&_connect_timer_started,
-                                  [this] () { cancel_timer (connect_timer_id); });
-
-    //  Close the socket - this cancels any pending async_connect
-    close ();
-
-    //  Process any pending handlers (including the cancelled async_connect)
-    //  to ensure the callback fires while the object is still alive.
-    //  The _terminating flag ensures the callback is a no-op.
-    if (_connecting) {
-        _io_context.poll ();
-    }
+    prepare_asio_connecter_termination (
+      linger_, &_terminating, &_linger, &_reconnect_timer_started, &_connect_timer_started,
+      &_connecting, [this] () { cancel_timer (reconnect_timer_id); },
+      [this] () { cancel_timer (connect_timer_id); }, [this] () { close (); },
+      [this] () { _io_context.poll (); });
 
     //  Now it's safe to proceed with termination
     own_t::process_term (linger_);

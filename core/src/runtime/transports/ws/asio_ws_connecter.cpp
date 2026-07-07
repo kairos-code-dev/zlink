@@ -127,21 +127,11 @@ void zlink::asio_ws_connecter_t::process_term (int linger_)
 {
     WS_CONNECTER_DBG ("process_term called, linger=%d, connecting=%d", linger_, _connecting);
 
-    _terminating = true;
-    _linger = linger_;
-
-    cancel_asio_timer_if_started (&_reconnect_timer_started,
-                                  [this] () { cancel_timer (reconnect_timer_id); });
-    cancel_asio_timer_if_started (&_connect_timer_started,
-                                  [this] () { cancel_timer (connect_timer_id); });
-
-    //  Close socket - cancels pending async_connect
-    close ();
-
-    //  Process pending handlers
-    if (_connecting) {
-        _io_context.poll ();
-    }
+    prepare_asio_connecter_termination (
+      linger_, &_terminating, &_linger, &_reconnect_timer_started, &_connect_timer_started,
+      &_connecting, [this] () { cancel_timer (reconnect_timer_id); },
+      [this] () { cancel_timer (connect_timer_id); }, [this] () { close (); },
+      [this] () { _io_context.poll (); });
 
     own_t::process_term (linger_);
 }

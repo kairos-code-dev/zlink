@@ -365,6 +365,10 @@ sockets/engine/transports/utils:
     v6-only, bind, listen 순서를 `configure_asio_tcp_acceptor`로 통합했다.
     TCP listener만 시도하던 `SO_REUSEPORT` 정책은 helper 인자로 보존했고,
     TLS/WS listener는 기존처럼 시도하지 않는다.
+  - 2026-07-08 부분 완료: 네 connecter의 termination 준비 순서(terminating flag,
+    linger 저장, reconnect/connect timer cancel, socket close, pending handler
+    poll)를 `prepare_asio_connecter_termination`으로 통합했다. `own_t::process_term`
+    호출 위치와 transport별 close/poll 동작은 호출처 람다에 남겼다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

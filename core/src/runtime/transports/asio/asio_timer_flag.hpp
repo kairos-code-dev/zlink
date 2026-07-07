@@ -49,6 +49,35 @@ inline bool handle_asio_connecter_timer_event (int id_,
 
     return false;
 }
+
+template <typename cancel_reconnect_fn_t,
+          typename cancel_connect_fn_t,
+          typename close_fn_t,
+          typename poll_fn_t>
+inline void prepare_asio_connecter_termination (int linger_,
+                                                bool *terminating_,
+                                                int *stored_linger_,
+                                                bool *reconnect_started_,
+                                                bool *connect_started_,
+                                                const bool *connecting_,
+                                                cancel_reconnect_fn_t cancel_reconnect_fn_,
+                                                cancel_connect_fn_t cancel_connect_fn_,
+                                                close_fn_t close_fn_,
+                                                poll_fn_t poll_fn_)
+{
+    if (terminating_)
+        *terminating_ = true;
+    if (stored_linger_)
+        *stored_linger_ = linger_;
+
+    cancel_asio_timer_if_started (reconnect_started_, cancel_reconnect_fn_);
+    cancel_asio_timer_if_started (connect_started_, cancel_connect_fn_);
+
+    close_fn_ ();
+
+    if (connecting_ && *connecting_)
+        poll_fn_ ();
+}
 }
 
 #endif

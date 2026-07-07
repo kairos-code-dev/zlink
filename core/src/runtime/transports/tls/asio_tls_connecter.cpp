@@ -142,21 +142,11 @@ void zlink::asio_tls_connecter_t::process_term (int linger_)
     TLS_CONNECTER_DBG ("process_term called, linger=%d, tcp_connecting=%d", linger_,
                        _tcp_connecting);
 
-    _terminating = true;
-    _linger = linger_;
-
-    cancel_asio_timer_if_started (&_reconnect_timer_started,
-                                  [this] () { cancel_timer (reconnect_timer_id); });
-    cancel_asio_timer_if_started (&_connect_timer_started,
-                                  [this] () { cancel_timer (connect_timer_id); });
-
-    //  Close socket/stream - this cancels any pending operations
-    close ();
-
-    //  Process pending handlers while object is still alive
-    if (_tcp_connecting) {
-        _io_context.poll ();
-    }
+    prepare_asio_connecter_termination (
+      linger_, &_terminating, &_linger, &_reconnect_timer_started, &_connect_timer_started,
+      &_tcp_connecting, [this] () { cancel_timer (reconnect_timer_id); },
+      [this] () { cancel_timer (connect_timer_id); }, [this] () { close (); },
+      [this] () { _io_context.poll (); });
 
     own_t::process_term (linger_);
 }

@@ -827,26 +827,16 @@ bool zlink::asio_ws_engine_t::process_zmp_handshake_input ()
 
 int zlink::asio_ws_engine_t::process_ready_message (msg_t *msg_)
 {
-    if (_ready_received) {
-        set_last_error (zmp_error_internal, "duplicate ready");
-        errno = EPROTO;
-        return -1;
-    }
-
     properties_t properties;
     init_properties (properties);
     const char *error_reason = NULL;
-    if (zmp_control::parse_ready_metadata (msg_, &properties, &error_reason) != 0) {
+    if (zmp_control::accept_ready_message (msg_, _ready_received, _metadata, properties,
+                                           &error_reason)
+        != 0) {
         set_last_error (zmp_error_internal, error_reason);
         return -1;
     }
 
-    if (!properties.empty ()) {
-        _metadata = new (std::nothrow) metadata_t (properties);
-        alloc_assert (_metadata);
-    }
-
-    _ready_received = true;
     return 0;
 }
 

@@ -308,6 +308,33 @@ parse_ready_metadata (msg_t *msg_, metadata_t::dict_t *properties_, const char *
     return 0;
 }
 
+inline int accept_ready_message (msg_t *msg_,
+                                 bool &ready_received_,
+                                 metadata_t *&metadata_,
+                                 metadata_t::dict_t &properties_,
+                                 const char **error_reason_out_)
+{
+    if (error_reason_out_)
+        *error_reason_out_ = NULL;
+    if (ready_received_) {
+        if (error_reason_out_)
+            *error_reason_out_ = "duplicate ready";
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (parse_ready_metadata (msg_, &properties_, error_reason_out_) != 0)
+        return -1;
+
+    if (!properties_.empty ()) {
+        metadata_ = new (std::nothrow) metadata_t (properties_);
+        alloc_assert (metadata_);
+    }
+
+    ready_received_ = true;
+    return 0;
+}
+
 inline int parse_error_frame (msg_t *msg_, uint8_t *code_out_, const char **error_reason_out_)
 {
     if (error_reason_out_)

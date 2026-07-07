@@ -447,6 +447,10 @@ sockets/engine/transports/utils:
     `zmp_control::receive_hello_bytes`로 통합했다. malformed hello event 방출과
     peer routing-id 저장은 엔진별 socket/session 접근 차이를 유지하기 위해
     호출처에 남겼다.
+  - 2026-07-08 부분 완료: READY control message의 duplicate-ready 판정,
+    metadata parse/생성, ready flag 설정을 `zmp_control::accept_ready_message`로
+    통합했다. peer address 기본 property 구성은 각 엔진의 기존
+    `init_properties`에 남겼다.
 - [x] **T3-06. runtime reqrep 층과 api reqrep 층의 분해 대칭화 마무리**
   - T2-08/T2-09 완료 후 남는 dispatch 잔여(`dispatch_spot_request_to_*`,
     local-delivery 파이프라인)를 api쪽 분해 어휘(submit/delivery/completion)와
@@ -635,6 +639,10 @@ sockets/engine/transports/utils:
 - 2026-07-08: T3-05 부분 완료 — ASIO ZMP 엔진과 WS 엔진의 HELLO header/body
   수집 루프를 `zmp_control::receive_hello_bytes`로 모았다. 프로토콜 에러 기록과
   malformed hello event 방출은 엔진별 호출처에 남겼다.
+- 2026-07-08: T3-05 부분 완료 — READY control message 처리 중 duplicate-ready
+  판정, peer metadata parse/생성, `_ready_received` 갱신을
+  `zmp_control::accept_ready_message`로 모았다. 각 엔진의 peer address property
+  준비는 기존 `init_properties` 위치에 남겼다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

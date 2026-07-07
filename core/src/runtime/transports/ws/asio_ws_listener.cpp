@@ -214,23 +214,14 @@ void zlink::asio_ws_listener_t::process_term (int linger_)
 
 void zlink::asio_ws_listener_t::start_accept ()
 {
-    if (!_acceptor.is_open ())
-        return;
-
-    const size_t target_accepts = asio_stream_accept_target (options);
-    while (_accepting_count < target_accepts && _acceptor.is_open ()) {
-        const std::shared_ptr<boost::asio::ip::tcp::socket> accept_socket (
-          new (std::nothrow) boost::asio::ip::tcp::socket (_io_context));
-        alloc_assert (accept_socket.get ());
-
-        ++_accepting_count;
-        WS_LISTENER_DBG ("start_accept: starting async_accept (%zu/%zu)", _accepting_count,
-                         target_accepts);
-        _acceptor.async_accept (*accept_socket,
-                                [this, accept_socket] (const boost::system::error_code &ec) {
-                                    on_accept (accept_socket, ec);
-                                });
-    }
+    start_asio_listener_accepts<boost::asio::ip::tcp::socket> (
+      _io_context, _acceptor, &_accepting_count, options,
+      [] (size_t accepting_count_, size_t target_accepts_) {
+          WS_LISTENER_DBG ("start_accept: starting async_accept (%zu/%zu)", accepting_count_,
+                           target_accepts_);
+      },
+      [this] (const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
+              const boost::system::error_code &ec_) { on_accept (accept_socket_, ec_); });
 }
 
 void zlink::asio_ws_listener_t::on_accept (

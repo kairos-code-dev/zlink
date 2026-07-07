@@ -338,6 +338,9 @@ sockets/engine/transports/utils:
   - 2026-07-07 부분 완료: TCP/TLS/WS connecter·listener의 accepted/connected TCP
     socket tuning sequence를 `tune_asio_tcp_socket` inline helper로 정본화했다.
     TCP 경로의 sndbuf/rcvbuf 적용 여부와 TLS/WS 경로의 미적용 의미는 유지했다.
+  - 2026-07-07 부분 완료: 네 listener의 `start_accept` 루프를
+    `start_asio_listener_accepts` template helper로 통합했다. transport별 socket
+    타입, callback, debug label은 호출처 람다에 남겼다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

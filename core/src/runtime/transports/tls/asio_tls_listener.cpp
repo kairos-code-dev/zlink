@@ -12,8 +12,8 @@
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
+#include "transports/asio/asio_listener_accept_policy.hpp"
 #include "utils/config.hpp"
-#include "utils/env.hpp"
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
@@ -39,21 +39,6 @@
 #else
 #define TLS_LISTENER_DBG(fmt, ...)
 #endif
-
-namespace
-{
-size_t parse_stream_accept_concurrency ()
-{
-    return zlink::env::asio_stream_accept_concurrency ();
-}
-
-size_t stream_accept_target (const zlink::options_t &options_)
-{
-    if (options_.type != ZLINK_CORE_SOCKET_STREAM)
-        return 1;
-    return parse_stream_accept_concurrency ();
-}
-}
 
 zlink::asio_tls_listener_t::asio_tls_listener_t (io_thread_t *io_thread_,
                                                  socket_base_t *socket_,
@@ -221,7 +206,7 @@ void zlink::asio_tls_listener_t::start_accept ()
     if (!_acceptor.is_open ())
         return;
 
-    const size_t target_accepts = stream_accept_target (options);
+    const size_t target_accepts = asio_stream_accept_target (options);
     while (_accepting_count < target_accepts && _acceptor.is_open ()) {
         const std::shared_ptr<boost::asio::ip::tcp::socket> accept_socket (
           new (std::nothrow) boost::asio::ip::tcp::socket (_io_context));

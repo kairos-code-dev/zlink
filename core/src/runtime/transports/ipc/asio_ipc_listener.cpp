@@ -11,8 +11,8 @@
 #include "core/address.hpp"
 #include "utils/err.hpp"
 #include "core/io_thread.hpp"
+#include "transports/asio/asio_listener_accept_policy.hpp"
 #include "transports/ipc/ipc_address.hpp"
-#include "utils/env.hpp"
 #include "utils/ip.hpp"
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
@@ -96,17 +96,6 @@ int unlink_existing_ipc_socket (const std::string &addr_)
     return ::unlink (addr_.c_str ());
 }
 
-size_t parse_stream_accept_concurrency ()
-{
-    return zlink::env::asio_stream_accept_concurrency ();
-}
-
-size_t stream_accept_target (const zlink::options_t &options_)
-{
-    if (options_.type != ZLINK_CORE_SOCKET_STREAM)
-        return 1;
-    return parse_stream_accept_concurrency ();
-}
 }
 
 zlink::asio_ipc_listener_t::asio_ipc_listener_t (io_thread_t *io_thread_,
@@ -238,7 +227,7 @@ void zlink::asio_ipc_listener_t::start_accept ()
     if (!_acceptor.is_open ())
         return;
 
-    const size_t target_accepts = stream_accept_target (options);
+    const size_t target_accepts = asio_stream_accept_target (options);
     while (_accepting_count < target_accepts && _acceptor.is_open ()) {
         const std::shared_ptr<boost::asio::local::stream_protocol::socket> accept_socket (
           new (std::nothrow) boost::asio::local::stream_protocol::socket (_io_context));

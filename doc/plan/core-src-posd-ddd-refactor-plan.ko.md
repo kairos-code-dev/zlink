@@ -326,6 +326,9 @@ sockets/engine/transports/utils:
     `transports/asio/asio_reconnect_interval.hpp`의 inline 정본으로 교체했다.
     reconnect/connect 타이머, plug/term, listener accept 루프 공통화는 남아 있어
     체크박스는 유지한다.
+  - 2026-07-07 부분 완료: 네 listener의 stream accept concurrency 계산을
+    `transports/asio/asio_listener_accept_policy.hpp`의 inline 정본으로 교체했다.
+    accept 루프와 engine/tune 공통화는 남아 있다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

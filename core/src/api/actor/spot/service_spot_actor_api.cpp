@@ -36,6 +36,7 @@
 #include "utils/clock.hpp"
 #include "utils/debug_log.hpp"
 #include "utils/routing_id.hpp"
+#include "api/actor/spot/service_spot_actor_join_internal.hpp"
 #include "api/actor/spot/service_spot_actor_no_bind_internal.hpp"
 #include "api/actor/spot/service_spot_actor_state_internal.hpp"
 #include "protocol/wire.hpp"
@@ -720,123 +721,6 @@ void notify_actor_readable (actor_handle_t *actor_)
                                          ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR, &actor_->ref_cache);
 }
 
-void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_)
-{
-    if (!request_ || (!request_->handler && !request_->entry_handler))
-        return;
-
-    zlink_actor_join_result_t result;
-    zlink_actor_join_entry_spot_result_t entry_result;
-    memset (&result, 0, sizeof (result));
-    memset (&entry_result, 0, sizeof (entry_result));
-    result.result = result_;
-    result.join_result_code = request_->join_result_code;
-    entry_result.result = result_;
-    entry_result.join_result_code = request_->join_result_code;
-    entry_result.target_node_rid = request_->target_node_rid;
-    if (result_ == ZLINK_REQUEST_OK) {
-        if (request_->join_result_code != 0) {
-            if (request_->actor)
-                fill_ref (request_->actor, &result.actor);
-            result.joined_spot_rid = request_->source_spot_rid;
-        } else if (request_->remote)
-            result.actor = request_->target_actor_ref;
-        else if (request_->actor)
-            fill_ref (request_->actor, &result.actor);
-        if (request_->join_result_code == 0 && request_->spot_state)
-            result.joined_spot_rid = request_->spot_state->routing_id;
-        else if (request_->join_result_code == 0 && request_->entry_spot_join
-                 && valid_routing_id (&request_->source_spot_rid))
-            result.joined_spot_rid = request_->source_spot_rid;
-        else if (request_->join_result_code == 0 && request_->remote
-                 && valid_routing_id (&request_->source_spot_rid))
-            result.joined_spot_rid = request_->source_spot_rid;
-        result.join_epoch = request_->join_epoch;
-        entry_result.actor = result.actor;
-        entry_result.joined_spot_rid = result.joined_spot_rid;
-        entry_result.join_epoch = result.join_epoch;
-        entry_result.flags = result.flags;
-    }
-
-    if (!request_->reply_parts.empty ()) {
-        std::vector<zlink_msg_t> reply_parts;
-        if (zlink::spot_move_msg_parts (&request_->reply_parts, &reply_parts) != 0) {
-            result.result = ZLINK_REQUEST_INTERNAL_ERROR;
-            entry_result.result = ZLINK_REQUEST_INTERNAL_ERROR;
-            if (request_->entry_spot_join)
-                request_->entry_handler (&entry_result, NULL, 0, request_->userdata);
-            else
-                request_->handler (&result, NULL, 0, request_->userdata);
-            return;
-        }
-        if (request_->entry_spot_join)
-            request_->entry_handler (&entry_result, reply_parts.empty () ? NULL : &reply_parts[0],
-                                     reply_parts.size (), request_->userdata);
-        else
-            request_->handler (&result, reply_parts.empty () ? NULL : &reply_parts[0],
-                               reply_parts.size (), request_->userdata);
-    } else {
-        if (request_->entry_spot_join)
-            request_->entry_handler (&entry_result, NULL, 0, request_->userdata);
-        else
-            request_->handler (&result, NULL, 0, request_->userdata);
-    }
-}
-
-zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,
-                                                      size_t part_count_,
-                                                      zlink_actor_join_spot_handler_fn handler_,
-                                                      void *userdata_,
-                                                      zlink_request_result_t result_)
-{
-    consume_multipart_payload (parts_, part_count_);
-    zlink_actor_join_result_t result;
-    memset (&result, 0, sizeof (result));
-    result.result = result_;
-    handler_ (&result, NULL, 0, userdata_);
-    return ZLINK_SUBMIT_OK;
-}
-
-zlink_submit_result_t
-complete_immediate_entry_join_result (zlink_msg_t *parts_,
-                                      size_t part_count_,
-                                      zlink_actor_join_entry_spot_handler_fn handler_,
-                                      void *userdata_,
-                                      const zlink_routing_id_t *target_node_rid_,
-                                      zlink_request_result_t result_)
-{
-    consume_multipart_payload (parts_, part_count_);
-    zlink_actor_join_entry_spot_result_t result;
-    memset (&result, 0, sizeof (result));
-    result.result = result_;
-    if (target_node_rid_)
-        result.target_node_rid = *target_node_rid_;
-    handler_ (&result, NULL, 0, userdata_);
-    return ZLINK_SUBMIT_OK;
-}
-
-struct idempotent_join_completion_t
-{
-    zlink_actor_join_spot_handler_fn handler;
-    void *userdata;
-    zlink_actor_join_result_t result;
-};
-
-void complete_idempotent_join_scheduled (void *userdata_)
-{
-    idempotent_join_completion_t *completion =
-      static_cast<idempotent_join_completion_t *> (userdata_);
-    if (!completion)
-        return;
-    completion->handler (&completion->result, NULL, 0, completion->userdata);
-    delete completion;
-}
-
-void cleanup_idempotent_join_completion (void *userdata_)
-{
-    delete static_cast<idempotent_join_completion_t *> (userdata_);
-}
-
 void schedule_lifecycle_event_locked (const std::shared_ptr<spot_logical_state_t> &spot_state_,
                                       zlink_spot_actor_lifecycle_event_kind_t kind_,
                                       const zlink_spot_actor_lifecycle_info_t &info_,
@@ -1273,34 +1157,6 @@ zlink_request_result_t run_actor_reply_operation (void *arg_)
 void drain_lifecycle_events_for_spot (spot_handle_t *spot_)
 {
     (void) spot_;
-}
-
-zlink_submit_result_t complete_idempotent_join_async (zlink_msg_t *parts_,
-                                                      size_t part_count_,
-                                                      zlink_actor_join_spot_handler_fn handler_,
-                                                      void *userdata_,
-                                                      const zlink_actor_ref_t *actor_,
-                                                      const zlink_routing_id_t *spot_rid_,
-                                                      uint64_t join_epoch_)
-{
-    consume_multipart_payload (parts_, part_count_);
-    idempotent_join_completion_t *completion = new (std::nothrow) idempotent_join_completion_t;
-    if (!completion) {
-        errno = ENOMEM;
-        return ZLINK_SUBMIT_OUT_OF_MEMORY;
-    }
-    completion->handler = handler_;
-    completion->userdata = userdata_;
-    memset (&completion->result, 0, sizeof (completion->result));
-    completion->result.result = ZLINK_REQUEST_OK;
-    if (actor_)
-        completion->result.actor = *actor_;
-    if (spot_rid_)
-        completion->result.joined_spot_rid = *spot_rid_;
-    completion->result.join_epoch = join_epoch_;
-    (void) zlink::request_timeout::schedule (1, complete_idempotent_join_scheduled, completion,
-                                             cleanup_idempotent_join_completion);
-    return ZLINK_SUBMIT_OK;
 }
 
 void index_join_request_locked (queued_join_request_t *request_)

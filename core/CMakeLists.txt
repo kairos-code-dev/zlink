@@ -916,6 +916,7 @@ set(api-spot-sources
     src/api/spot/core/service_option_spot_api.cpp)
 
 set(api-actor-sources
+    src/api/actor/spot/service_spot_actor_join.cpp
     src/api/actor/spot/service_spot_actor_join_state.cpp
     src/api/actor/spot/service_spot_actor_lifecycle_state.cpp
     src/api/actor/spot/service_spot_actor_no_bind.cpp

@@ -503,3 +503,7 @@ sockets/engine/transports/utils:
   `service_spot_actor_api.cpp`에 남기고, dispatcher는 `actor_no_bind_reply_t`를
   통해 no-bind 응답 필드 지식을 직접 들고 있지 않게 줄였다. Core no-bind/spot
   관련 테스트와 C++ ToActorMessaging E2E로 확인했다.
+- 2026-07-07: T3-01 진행 중 — join 완료 callback과 즉시 완료/idempotent 완료
+  예약 로직을 `service_spot_actor_join.cpp`로 먼저 분리했다. 공개 join 진입점,
+  join timeout/bookkeeping, gateway join request/reply 처리는 아직
+  `service_spot_actor_api.cpp`에 남아 있으므로 T3-01 체크박스는 유지한다.

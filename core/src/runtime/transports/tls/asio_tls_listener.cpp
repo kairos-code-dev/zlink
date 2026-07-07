@@ -13,6 +13,7 @@
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "transports/asio/asio_listener_accept_policy.hpp"
+#include "transports/asio/asio_tcp_endpoint.hpp"
 #include "transports/asio/asio_tcp_tuning.hpp"
 #include "utils/config.hpp"
 #include "utils/err.hpp"
@@ -254,23 +255,8 @@ void zlink::asio_tls_listener_t::on_tcp_accept (
     socklen_t ss_len = sizeof (ss);
     memset (&ss, 0, sizeof (ss));
 
-    if (!peer_ec) {
-        if (remote_endpoint.address ().is_v4 ()) {
-            struct sockaddr_in *sin = reinterpret_cast<struct sockaddr_in *> (&ss);
-            sin->sin_family = AF_INET;
-            sin->sin_port = htons (remote_endpoint.port ());
-            sin->sin_addr.s_addr = htonl (remote_endpoint.address ().to_v4 ().to_uint ());
-            ss_len = sizeof (struct sockaddr_in);
-        } else {
-            struct sockaddr_in6 *sin6 = reinterpret_cast<struct sockaddr_in6 *> (&ss);
-            sin6->sin6_family = AF_INET6;
-            sin6->sin6_port = htons (remote_endpoint.port ());
-            auto bytes = remote_endpoint.address ().to_v6 ().to_bytes ();
-            memcpy (sin6->sin6_addr.s6_addr, bytes.data (), 16);
-            sin6->sin6_scope_id = remote_endpoint.address ().to_v6 ().scope_id ();
-            ss_len = sizeof (struct sockaddr_in6);
-        }
-    }
+    if (!peer_ec)
+        asio_tcp_endpoint_to_sockaddr (remote_endpoint, &ss, &ss_len);
 
     //  Apply accept filters
     if (!apply_accept_filters (fd, ss, ss_len)) {

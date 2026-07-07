@@ -352,6 +352,10 @@ sockets/engine/transports/utils:
     reconnect/connect timer id 분기와 started flag 해제를
     `handle_asio_connecter_timer_event`로 통합했다. timeout 시 socket cancel과
     reconnect scheduling은 transport별 람다로 남겼다.
+  - 2026-07-08 부분 완료: TCP/TLS/WS listener의 accepted peer endpoint →
+    `sockaddr_storage` 변환을 `asio_tcp_endpoint_to_sockaddr` inline helper로
+    통합했다. accept filter 입력 형식과 peer endpoint 조회 실패 시 zero storage를
+    넘기는 기존 의미는 유지했다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

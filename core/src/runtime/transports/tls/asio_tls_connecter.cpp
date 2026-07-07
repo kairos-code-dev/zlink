@@ -12,6 +12,7 @@
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "core/address.hpp"
+#include "transports/asio/asio_reconnect_interval.hpp"
 #include "transports/tcp/tcp_address.hpp"
 #include "utils/random.hpp"
 #include "utils/err.hpp"
@@ -367,30 +368,7 @@ void zlink::asio_tls_connecter_t::add_reconnect_timer ()
 
 int zlink::asio_tls_connecter_t::get_new_reconnect_ivl ()
 {
-    if (options.reconnect_ivl_max > 0) {
-        int candidate_interval = 0;
-        if (_current_reconnect_ivl == -1)
-            candidate_interval = options.reconnect_ivl;
-        else if (_current_reconnect_ivl > std::numeric_limits<int>::max () / 2)
-            candidate_interval = std::numeric_limits<int>::max ();
-        else
-            candidate_interval = _current_reconnect_ivl * 2;
-
-        if (candidate_interval > options.reconnect_ivl_max)
-            _current_reconnect_ivl = options.reconnect_ivl_max;
-        else
-            _current_reconnect_ivl = candidate_interval;
-        return _current_reconnect_ivl;
-    } else {
-        if (_current_reconnect_ivl == -1)
-            _current_reconnect_ivl = options.reconnect_ivl;
-        const int random_jitter = generate_random () % options.reconnect_ivl;
-        const int interval =
-          _current_reconnect_ivl < std::numeric_limits<int>::max () - random_jitter
-            ? _current_reconnect_ivl + random_jitter
-            : std::numeric_limits<int>::max ();
-        return interval;
-    }
+    return next_asio_reconnect_interval (options, &_current_reconnect_ivl);
 }
 
 bool zlink::asio_tls_connecter_t::create_ssl_context (const std::string &hostname_)

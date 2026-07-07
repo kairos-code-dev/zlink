@@ -322,6 +322,10 @@ sockets/engine/transports/utils:
   - `transports/{tcp,ipc,tls,ws}/asio_*_listener.cpp`: accept 루프, 튜닝, 주소
     관리(tls/ws는 서버 인증서 로딩 추가 공유) → `asio_listener_base_t`.
   - 연결/수락은 control plane이라 무위험. (없음 / M+M)
+  - 2026-07-07 부분 완료: 네 connecter의 `get_new_reconnect_ivl` 중복을
+    `transports/asio/asio_reconnect_interval.hpp`의 inline 정본으로 교체했다.
+    reconnect/connect 타이머, plug/term, listener accept 루프 공통화는 남아 있어
+    체크박스는 유지한다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

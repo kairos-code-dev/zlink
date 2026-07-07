@@ -88,6 +88,8 @@ static inline poller_handle_t *as_poller_handle (void *poller_)
     return poller;
 }
 
+void *poller_index_user_data (size_t index_);
+bool poller_index_from_user_data (void *user_data_, size_t item_count_, size_t *index_out_);
 int validate_socket_callback_poller_events (socket_handle_t handle_, short events_);
 void release_poller_registration (const poller_registration_t &registration_);
 int poller_add_registration (poller_handle_t *poller_,

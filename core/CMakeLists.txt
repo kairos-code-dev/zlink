@@ -854,6 +854,7 @@ set(api-monitoring-sources
     src/api/monitoring/monitor_socket_api.cpp
     src/api/monitoring/poller_completion_internal.cpp
     src/api/monitoring/poller_api.cpp
+    src/api/monitoring/poller_registration.cpp
     src/api/monitoring/timer_api.cpp
     src/api/monitoring/timer_scheduler_backend.cpp)
 

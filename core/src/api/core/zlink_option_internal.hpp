@@ -7,11 +7,30 @@
 
 #include <cstddef>
 
+#include "api/service/service_handle_internal.hpp"
 #include "sockets/common/socket_base.hpp"
 
 namespace zlink
 {
 class socket_base_t;
+
+enum option_target_kind_t
+{
+    option_target_invalid = 0,
+    option_target_service,
+    option_target_socket
+};
+
+struct option_target_t
+{
+    option_target_t ();
+
+    option_target_kind_t kind;
+    service_handle_kind_t service_kind;
+    socket_base_t *socket;
+};
+
+option_target_t resolve_option_target (void *handle_);
 }
 
 zlink::socket_base_t *as_socket (void *handle_);

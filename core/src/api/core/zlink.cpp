@@ -40,6 +40,7 @@ struct iovec
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/core/close_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
+#include "api/core/zlink_option_internal.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
 #include "utils/config.hpp"
@@ -214,14 +215,17 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    const int service_rc = zlink_service_poller_add_internal (poller, socket_, user_data_, events_);
-    if (service_rc == 0)
-        return ZLINK_CONFIG_OK;
-    if (errno != EFAULT)
-        return zlink::config_result_internal::from_errno (errno);
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
+    const zlink::option_target_t target = zlink::resolve_option_target (socket_);
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::config_result_internal::from_rc (
+          zlink_service_poller_add_internal (poller, socket_, user_data_, events_));
+    }
+    if (target.kind != zlink::option_target_socket) {
+        errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    socket_handle_t handle = make_socket_handle (target.socket);
     const int type = socket_type (handle);
     if (events_ == ZLINK_POLLCOMPLETION) {
         if (type != ZLINK_CORE_SOCKET_DEALER && type != ZLINK_CORE_SOCKET_ROUTER) {
@@ -334,14 +338,17 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    const int service_rc = zlink_service_poller_modify_internal (poller, socket_, events_);
-    if (service_rc == 0)
-        return ZLINK_CONFIG_OK;
-    if (errno != EFAULT)
-        return zlink::config_result_internal::from_errno (errno);
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
+    const zlink::option_target_t target = zlink::resolve_option_target (socket_);
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::config_result_internal::from_rc (
+          zlink_service_poller_modify_internal (poller, socket_, events_));
+    }
+    if (target.kind != zlink::option_target_socket) {
+        errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    socket_handle_t handle = make_socket_handle (target.socket);
     if (validate_socket_callback_poller_events (handle, events_) != 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     const int index = poller_find_registration_index (poller, socket_);
@@ -358,15 +365,16 @@ zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_)
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return ZLINK_CONFIG_INVALID_HANDLE;
-    const int service_rc = zlink_service_poller_remove_internal (poller, socket_);
-    if (service_rc == 0)
-        return ZLINK_CONFIG_OK;
-    if (errno != EFAULT)
-        return zlink::config_result_internal::from_errno (errno);
-
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
+    const zlink::option_target_t target = zlink::resolve_option_target (socket_);
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::config_result_internal::from_rc (
+          zlink_service_poller_remove_internal (poller, socket_));
+    }
+    if (target.kind != zlink::option_target_socket) {
+        errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
+    }
     return zlink::config_result_internal::from_rc (
       poller_remove_all_registrations_for_subject (poller, socket_));
 }

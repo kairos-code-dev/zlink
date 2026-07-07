@@ -201,7 +201,7 @@ api/socket reqrep 클러스터:
     ≥4곳 수작업. decode(`parse_envelope`)는 이미
     `request_reply_protocol_internal.hpp`에 있으므로 encode가 비대칭 갭.
     스트리밍 send 사이트는 형태 유지, 인코딩/타입 선택만 통일. (code-motion / M)
-- [ ] **T2-03. `errno==EFAULT` 센티널 dispatch → 명시적 resolve**
+- [x] **T2-03. `errno==EFAULT` 센티널 dispatch → 명시적 resolve**
   - `core/zlink_option.cpp`(5곳), `core/zlink_option_specialized_api.cpp:246-320`,
     `socket/socket_message_handler_api.cpp:97-103`, send/recv service_mode 폴백
   - "service 표면 먼저, EFAULT면 socket" 판정이 errno 값 제어 흐름으로 ~8곳
@@ -462,3 +462,8 @@ sockets/engine/transports/utils:
 - 2026-07-07: T1-03 구현 — socket reqrep api/pending api의 파일-local `_impl`
   함수 본문을 `reqrep::...` 정의로 직접 병합하고 1줄 pass-through wrapper를
   삭제했다. 공개 C API 및 내부 헤더 시그니처는 유지했다.
+- 2026-07-07: T2-03 구현 — `resolve_option_target()`을 추가해 core option
+  진입점이 서비스/소켓/invalid handle을 먼저 판정하도록 바꿨다. common option,
+  routing-id, TLS helper, pub/sub specialized option, send-ready handler, poller
+  add/modify/remove에서 service 실패의 `errno == EFAULT`를 socket fallback 신호로
+  쓰던 분기를 제거했다.

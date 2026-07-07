@@ -252,15 +252,21 @@ zlink_config_result_t zlink_set_pub_option (void *handle_,
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+    const zlink::option_target_t target = zlink::resolve_option_target (handle_);
+    if (target.kind == zlink::option_target_socket) {
         return zlink::config_result_internal::from_rc (
-          set_socket_option_checked (socket, socket_type_of (socket), ZLINK_CORE_SOCKET_PUB,
+          set_socket_option_checked (target.socket, socket_type_of (target.socket),
+                                     ZLINK_CORE_SOCKET_PUB,
                                      ZLINK_CORE_SOCKET_XPUB, socket_option, optval_, optvallen_));
     }
-    errno = 0;
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::config_result_internal::from_rc (
+          zlink_service_set_pub_option (handle_, option_, socket_option, optval_, optvallen_));
+    }
 
-    return zlink::config_result_internal::from_rc (
-      zlink_service_set_pub_option (handle_, option_, socket_option, optval_, optvallen_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t
@@ -270,15 +276,21 @@ zlink_get_pub_option (void *handle_, zlink_pub_option_t option_, void *optval_, 
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+    const zlink::option_target_t target = zlink::resolve_option_target (handle_);
+    if (target.kind == zlink::option_target_socket) {
         return zlink::config_result_internal::from_rc (
-          get_socket_option_checked (socket, socket_type_of (socket), ZLINK_CORE_SOCKET_PUB,
+          get_socket_option_checked (target.socket, socket_type_of (target.socket),
+                                     ZLINK_CORE_SOCKET_PUB,
                                      ZLINK_CORE_SOCKET_XPUB, socket_option, optval_, optvallen_));
     }
-    errno = 0;
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::config_result_internal::from_rc (
+          zlink_service_get_pub_option (handle_, option_, socket_option, optval_, optvallen_));
+    }
 
-    return zlink::config_result_internal::from_rc (
-      zlink_service_get_pub_option (handle_, option_, socket_option, optval_, optvallen_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_set_sub_option (void *handle_,
@@ -290,15 +302,21 @@ zlink_config_result_t zlink_set_sub_option (void *handle_,
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+    const zlink::option_target_t target = zlink::resolve_option_target (handle_);
+    if (target.kind == zlink::option_target_socket) {
         return zlink::config_result_internal::from_rc (
-          set_socket_option_checked (socket, socket_type_of (socket), ZLINK_CORE_SOCKET_SUB,
+          set_socket_option_checked (target.socket, socket_type_of (target.socket),
+                                     ZLINK_CORE_SOCKET_SUB,
                                      ZLINK_CORE_SOCKET_XSUB, socket_option, optval_, optvallen_));
     }
-    errno = 0;
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::config_result_internal::from_rc (
+          zlink_service_set_sub_option (handle_, option_, socket_option, optval_, optvallen_));
+    }
 
-    return zlink::config_result_internal::from_rc (
-      zlink_service_set_sub_option (handle_, option_, socket_option, optval_, optvallen_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t
@@ -308,15 +326,21 @@ zlink_get_sub_option (void *handle_, zlink_sub_option_t option_, void *optval_, 
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+    const zlink::option_target_t target = zlink::resolve_option_target (handle_);
+    if (target.kind == zlink::option_target_socket) {
         return zlink::config_result_internal::from_rc (
-          get_socket_option_checked (socket, socket_type_of (socket), ZLINK_CORE_SOCKET_SUB,
+          get_socket_option_checked (target.socket, socket_type_of (target.socket),
+                                     ZLINK_CORE_SOCKET_SUB,
                                      ZLINK_CORE_SOCKET_XSUB, socket_option, optval_, optvallen_));
     }
-    errno = 0;
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::config_result_internal::from_rc (
+          zlink_service_get_sub_option (handle_, option_, socket_option, optval_, optvallen_));
+    }
 
-    return zlink::config_result_internal::from_rc (
-      zlink_service_get_sub_option (handle_, option_, socket_option, optval_, optvallen_));
+    errno = EFAULT;
+    return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
 zlink_config_result_t zlink_set_spot_node_option (void *handle_,

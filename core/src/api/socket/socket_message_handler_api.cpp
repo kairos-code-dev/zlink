@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/monitoring/poller_api_internal.hpp"
+#include "api/core/zlink_option_internal.hpp"
 #include "api/service/service_option_surface_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/message/handler_result_internal.hpp"
@@ -94,12 +95,19 @@ zlink_send_ready_handler (void *s_, zlink_send_ready_handler_fn handler_, void *
         return ZLINK_HANDLER_INVALID_ARGUMENT;
     }
 
-    const int service_rc = zlink_service_send_ready_handler_internal (s_, handler_, userdata_);
-    if (service_rc == 0 || errno != EFAULT)
-        return zlink::handler_result_internal::from_rc (service_rc);
+    const zlink::option_target_t target = zlink::resolve_option_target (s_);
+    if (target.kind == zlink::option_target_service) {
+        errno = 0;
+        return zlink::handler_result_internal::from_rc (
+          zlink_service_send_ready_handler_internal (s_, handler_, userdata_));
+    }
 
-    return zlink::handler_result_internal::from_rc (
-      socket_send_ready_handler_internal (s_, handler_, userdata_));
+    if (target.kind == zlink::option_target_socket)
+        return zlink::handler_result_internal::from_rc (
+          socket_send_ready_handler_internal (s_, handler_, userdata_));
+
+    errno = EFAULT;
+    return ZLINK_HANDLER_INVALID_HANDLE;
 }
 
 int validate_socket_callback_poller_events (socket_handle_t handle_, short events_)

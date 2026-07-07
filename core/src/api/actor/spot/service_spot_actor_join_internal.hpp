@@ -65,7 +65,7 @@ int process_actor_gateway_join_packet_locked (
   size_t part_count_,
   bool *handled_out_,
   spot_handle_t **notify_spot_out_,
-  queued_join_request_t **completed_out_,
+  join_request_completion_batch_t *completed_out_,
   actor_handle_t **source_actor_to_remove_out_);
 
 void abort_join_requests_for_stream_locked (void *stream_,
@@ -73,8 +73,6 @@ void abort_join_requests_for_stream_locked (void *stream_,
                                             void *userdata_,
                                             join_request_completion_batch_t *aborted_);
 
-void complete_and_release_join_request (queued_join_request_t *request_,
-                                        zlink_request_result_t result_);
 void complete_and_release_join_requests (join_request_completion_batch_t *requests_,
                                          zlink_request_result_t result_);
 zlink_submit_result_t complete_immediate_join_result (zlink_msg_t *parts_,

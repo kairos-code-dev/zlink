@@ -1305,7 +1305,7 @@ int zlink::spot_actor_internal::process_gateway_delivery (
 
     actor_handle_t *readable_actor = NULL;
     actor_handle_t *source_actor_to_remove = NULL;
-    queued_join_request_t *completed_join = NULL;
+    join_request_completion_batch_t completed_join;
     spot_handle_t *join_notify_spot = NULL;
     actor_no_bind_reply_t no_bind_reply;
     int rc = -1;
@@ -1376,9 +1376,8 @@ int zlink::spot_actor_internal::process_gateway_delivery (
         else
             rc = -1;
     }
-    if (rc == 0 && completed_join) {
-        complete_and_release_join_request (completed_join, ZLINK_REQUEST_OK);
-    }
+    if (rc == 0)
+        complete_and_release_join_requests (&completed_join, ZLINK_REQUEST_OK);
     return rc;
 }
 

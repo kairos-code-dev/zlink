@@ -477,11 +477,11 @@ int process_actor_gateway_entry_join_reply_locked (zlink::spot_node_t *node_,
                                                    zlink_msg_t *parts_,
                                                    size_t part_count_,
                                                    bool entry_spot_join_,
-                                                   queued_join_request_t **completed_out_,
+                                                   join_request_completion_batch_t *completed_out_,
                                                    actor_handle_t **source_actor_to_remove_out_)
 {
     if (completed_out_)
-        *completed_out_ = NULL;
+        completed_out_->requests.clear ();
     if (source_actor_to_remove_out_)
         *source_actor_to_remove_out_ = NULL;
     if (!node_ || !reply_source_node_rid_
@@ -524,7 +524,7 @@ int process_actor_gateway_entry_join_reply_locked (zlink::spot_node_t *node_,
 
     retire_join_request_locked (request);
     if (completed_out_)
-        *completed_out_ = request;
+        completed_out_->requests.push_back (request);
     return 0;
 }
 
@@ -536,7 +536,7 @@ int process_actor_gateway_join_packet_locked (
   size_t part_count_,
   bool *handled_out_,
   spot_handle_t **notify_spot_out_,
-  queued_join_request_t **completed_out_,
+  join_request_completion_batch_t *completed_out_,
   actor_handle_t **source_actor_to_remove_out_)
 {
     if (handled_out_)

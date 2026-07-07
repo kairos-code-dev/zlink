@@ -1074,8 +1074,10 @@ set(socket-common-sources
     src/runtime/sockets/common/socket_base_service_attachment.cpp
     src/runtime/sockets/common/socket_base_dispatch.cpp
     src/runtime/sockets/common/socket_dispatch_context.cpp
+    src/runtime/sockets/common/socket_command_runtime.cpp
     src/runtime/sockets/common/socket_base_endpoint.cpp
     src/runtime/sockets/common/socket_base_endpoint_factory.cpp
+    src/runtime/sockets/common/socket_endpoint_runtime.cpp
     src/runtime/sockets/common/socket_base_lifecycle.cpp
     src/runtime/sockets/common/socket_base_msg.cpp
     src/runtime/sockets/common/socket_base_monitor.cpp

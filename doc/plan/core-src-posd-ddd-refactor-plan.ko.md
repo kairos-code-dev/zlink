@@ -335,6 +335,9 @@ sockets/engine/transports/utils:
   - 2026-07-07 부분 완료: TCP/TLS/WS listener의 `process_term` 안에 재복제된
     acceptor close/event_closed 블록을 기존 `close()` 호출로 접었다. IPC는 이미
     cleanup 포함 `close()`를 쓰고 있어 변경하지 않았다.
+  - 2026-07-07 부분 완료: TCP/TLS/WS connecter·listener의 accepted/connected TCP
+    socket tuning sequence를 `tune_asio_tcp_socket` inline helper로 정본화했다.
+    TCP 경로의 sndbuf/rcvbuf 적용 여부와 TLS/WS 경로의 미적용 의미는 유지했다.
 - [ ] **T2-23. `socket_runtime.cpp` 클래스별 분리 + stream/xsub dispatch
   lifecycle 추출 + `ip.cpp` fdpair 분리**
   - `sockets/common/socket_runtime.cpp`(759줄): 독립 코디네이터 5클래스 + RAII

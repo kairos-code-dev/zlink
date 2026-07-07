@@ -11,6 +11,7 @@
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "transports/asio/asio_listener_accept_policy.hpp"
+#include "transports/asio/asio_tcp_tuning.hpp"
 #include "utils/config.hpp"
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
@@ -367,16 +368,7 @@ void zlink::asio_tcp_listener_t::close ()
 
 int zlink::asio_tcp_listener_t::tune_socket (fd_t fd_) const
 {
-    int rc = tune_tcp_socket (fd_, options.tcp_nodelay);
-    if (options.sndbuf >= 0)
-        rc = rc | set_tcp_send_buffer (fd_, options.sndbuf);
-    if (options.rcvbuf >= 0)
-        rc = rc | set_tcp_receive_buffer (fd_, options.rcvbuf);
-    rc = rc
-         | tune_tcp_keepalives (fd_, options.tcp_keepalive, options.tcp_keepalive_cnt,
-                                options.tcp_keepalive_idle, options.tcp_keepalive_intvl);
-    rc = rc | tune_tcp_maxrt (fd_, options.tcp_maxrt);
-    return rc;
+    return tune_asio_tcp_socket (fd_, options, true);
 }
 
 bool zlink::asio_tcp_listener_t::apply_accept_filters (fd_t fd_,

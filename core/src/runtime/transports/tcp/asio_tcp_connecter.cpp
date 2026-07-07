@@ -11,6 +11,7 @@
 #include "core/session_base.hpp"
 #include "core/address.hpp"
 #include "transports/asio/asio_reconnect_interval.hpp"
+#include "transports/asio/asio_tcp_tuning.hpp"
 #include "transports/tcp/tcp_address.hpp"
 #include "utils/random.hpp"
 #include "utils/err.hpp"
@@ -365,15 +366,7 @@ void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_, const std::string &lo
 
 bool zlink::asio_tcp_connecter_t::tune_socket (fd_t fd_)
 {
-    int rc = tune_tcp_socket (fd_, options.tcp_nodelay);
-    if (options.sndbuf >= 0)
-        rc = rc | set_tcp_send_buffer (fd_, options.sndbuf);
-    if (options.rcvbuf >= 0)
-        rc = rc | set_tcp_receive_buffer (fd_, options.rcvbuf);
-    rc = rc
-         | tune_tcp_keepalives (fd_, options.tcp_keepalive, options.tcp_keepalive_cnt,
-                                options.tcp_keepalive_idle, options.tcp_keepalive_intvl)
-         | tune_tcp_maxrt (fd_, options.tcp_maxrt);
+    const int rc = tune_asio_tcp_socket (fd_, options, true);
     return rc == 0;
 }
 

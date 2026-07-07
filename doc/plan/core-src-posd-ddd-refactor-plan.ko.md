@@ -212,7 +212,7 @@ api/socket reqrep 클러스터:
   - "어느 레지스트리가 state를 소유하나"(spot 레지스트리 4종 지식 하드코딩,
     cross-domain 누수)와 send/recv 스텝 엔진을 파일 분리. 호출 그래프 불변.
     (code-motion / M)
-- [ ] **T2-05. `zlink_option.cpp` 매핑 테이블/진입점 분리**
+- [x] **T2-05. `zlink_option.cpp` 매핑 테이블/진입점 분리**
   - `core/zlink_option.cpp:17-227`(순수 데이터, 타 파일이 이미 의존) vs 5개
     진입점 로직. T2-03과 같은 파일이므로 연달아 진행. (없음 / M)
 
@@ -467,3 +467,6 @@ sockets/engine/transports/utils:
   routing-id, TLS helper, pub/sub specialized option, send-ready handler, poller
   add/modify/remove에서 service 실패의 `errno == EFAULT`를 socket fallback 신호로
   쓰던 분기를 제거했다.
+- 2026-07-07: T2-05 구현 — public option 매핑 테이블과 `map_*`/`lookup_common_option`
+  함수를 `zlink_option_mapping.cpp`로 분리했다. `zlink_option.cpp`는 handle resolve,
+  socket option checked access, 공개 option 진입점 로직만 남겼다.

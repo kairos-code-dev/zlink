@@ -10,6 +10,13 @@
 #include "api/service/service_handle_internal.hpp"
 #include "sockets/common/socket_base.hpp"
 
+struct option_descriptor_t
+{
+    int public_option;
+    int internal_option;
+    bool service_only;
+};
+
 namespace zlink
 {
 class socket_base_t;
@@ -42,6 +49,7 @@ int map_dealer_option (zlink_dealer_option_t option_);
 int map_stream_option (zlink_stream_option_t option_);
 int map_pub_option (int option_);
 int map_sub_option (int option_);
+const option_descriptor_t *lookup_common_option (zlink_option_t option_);
 
 int set_socket_option_checked (zlink::socket_base_t *socket_,
                                int type_,

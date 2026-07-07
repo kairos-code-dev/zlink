@@ -419,11 +419,21 @@ sockets/engine/transports/utils:
     `actor_join_state_t`가 이미 데이터를 소유하므로
     `service_spot_actor_join.cpp`가 오케스트레이션을 소유하도록.
     join은 control plane이라 무위험. T2-06/T2-07 선행 시 수월. (없음 / L)
-- [ ] **T3-02. `service_spot_actor_api.cpp` 분해 — gateway ingress/codec**
+- [x] **T3-02. `service_spot_actor_api.cpp` 분해 — gateway ingress/codec**
   - egress framing(`:489-686`)과 ingress parse+dispatch(`:1698-2235`)를
     `request_reply`의 codec/ingress 분해와 대칭으로 분리.
     **egress `send_actor_gateway_*`는 send 경로 — header-inline code-motion만
     허용**, out-of-line 이관은 인라이닝 훼손으로 간주. (code-motion~조건부 / L)
+  - 2026-07-08 완료 판정: egress multipart framing은 T1-07에서
+    `service_spot_actor_gateway_parts_internal.hpp` header-inline helper로 정본화했고,
+    ingress에서 섞여 있던 no-bind 흐름은 T2-07, join request/reply orchestration은
+    T3-01로 빠졌다. 남은 `process_gateway_delivery` coordinator는 control frame
+    parse 후 actor/session queue, no-bind reply, join completion, readable notify를
+    한 lock 범위에서 연결하는 얇은 dispatch 중심부다. 이를 별도 TU로 더 옮기려면
+    API 파일의 actor/session queue primitive와 notification primitive를 새 internal
+    header로 넓게 노출해야 해서 정보 은닉이 후퇴한다. 따라서 codec/framing과
+    도메인별 ingress 동작 분리까지를 완료 범위로 닫고, coordinator 자체는
+    `service_spot_actor_api.cpp`에 남긴다.
 - [x] **T3-03. `poller_api.cpp`(719줄, 5책임) 분해**
   - 등록 테이블 CRUD+인덱스(`:232-418`)와 native↔public 이벤트 변환(`:26-229`)은
     `service_poller_api.cpp`가 이미 내부를 직접 만지는 암묵적 공유 모듈 —
@@ -764,6 +774,12 @@ sockets/engine/transports/utils:
   `nice -n 19 cmake --build core/build -j1`, `ctest --test-dir core/build -R
   'test_spot_actor_gateway_no_bind|unittest_spot_actor_gateway_no_bind_protocol|test_spot_service_introspection|test_spot_pubsub_scenario|test_spot_dispatch_event|test_spot_runtime_activation'
   -j1 --output-on-failure`.
+- 2026-07-08: T3-02 완료 — gateway egress framing은 T1-07의 header-inline helper로,
+  ingress의 no-bind와 join 세부 동작은 각각 T2-07/T3-01 모듈로 분리됐다. 남은
+  `process_gateway_delivery`는 actor/session queue primitive와 notification을 한
+  coordinator에서 묶는 지점이라, 별도 TU로 더 빼면 private actor/session 표면을
+  새 internal header에 노출해야 한다. POSD 정보 은닉 기준으로 남기는 편이 더
+  낫다고 판정했다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

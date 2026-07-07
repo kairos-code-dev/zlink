@@ -218,7 +218,7 @@ api/socket reqrep 클러스터:
 
 spot actor (api/actor):
 
-- [ ] **T2-06. `_locked` pass-through ~30개 인라인**
+- [x] **T2-06. `_locked` pass-through ~30개 인라인**
   - `service_spot_actor_api.cpp:331-360, 716-905` 등 78개 `_locked` 중
     `return actor_runtime().<state>.<method>(...)` 1–3줄 위임자
   - state 추출 후 콜사이트 미재지향의 잔재. 인라인하면 프레임이 하나 제거됨.
@@ -492,3 +492,8 @@ sockets/engine/transports/utils:
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,
   direct payload delivery와 공통 local queue 진입점을 별도 TU로 분리했다.
+- 2026-07-07: T2-06 구현 — actor runtime state 추출 뒤 남아 있던 `_locked`
+  단순 위임자 중 registry/session/route 접근만 제거하고 callsite를 state
+  메서드로 직접 연결했다. 조건 분기나 상태 갱신 의미가 있는 helper
+  (`stream_owner_for_actor_ref_locked`, `clear_actor_bound_session_locked`,
+  `next_*_locked` 등)는 유지했다.

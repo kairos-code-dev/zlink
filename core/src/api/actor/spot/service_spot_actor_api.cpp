@@ -85,11 +85,7 @@ uint64_t next_no_bind_request_id ()
 uint64_t now_ms ();
 uint64_t next_generation_for_node_locked (zlink::spot_node_t *node_);
 void update_active_route_locked (actor_handle_t *actor_);
-bool find_active_route_locked (const char *actor_id_, zlink_actor_route_t *route_out_);
 uint64_t next_commit_epoch_locked ();
-bool known_node_locked (zlink::spot_node_t *node_);
-std::set<actor_handle_t *> &actor_handles_locked (zlink::spot_node_t *node_);
-std::map<std::string, actor_handle_t *> &actors_by_id_locked (zlink::spot_node_t *node_);
 using zlink::routing_id_key;
 using zlink::spot_actor_internal::actor_missing_request_result_from_errno;
 using zlink::spot_actor_internal::actor_missing_submit_result_from_errno;
@@ -163,7 +159,8 @@ bool node_has_pending_join_actor_locked (zlink::spot_node_t *node_, const char *
 {
     if (!node_ || !actor_id_)
         return false;
-    std::map<std::string, actor_handle_t *> &actors = actors_by_id_locked (node_);
+    std::map<std::string, actor_handle_t *> &actors =
+      zlink::spot_node_access_t::actors_by_id (node_);
     std::map<std::string, actor_handle_t *>::const_iterator actor_it = actors.find (actor_id_);
     if (actor_it != actors.end () && actor_it->second->pending_remote_join)
         return true;
@@ -285,7 +282,8 @@ actor_handle_t *create_actor_locked_with_generation (zlink::spot_node_t *node_,
                                                      uint64_t generation_,
                                                      bool pending_remote_join_ = false)
 {
-    std::map<std::string, actor_handle_t *> &actors = actors_by_id_locked (node_);
+    std::map<std::string, actor_handle_t *> &actors =
+      zlink::spot_node_access_t::actors_by_id (node_);
     if (actors.count (actor_id_) != 0) {
         errno = EBUSY;
         return NULL;
@@ -307,7 +305,7 @@ actor_handle_t *create_actor_locked_with_generation (zlink::spot_node_t *node_,
 
     actor_handle_t *raw = actor.release ();
     actors[raw->actor_id] = raw;
-    actor_handles_locked (node_).insert (raw);
+    zlink::spot_node_access_t::actor_handles (node_).insert (raw);
     actor_runtime ().nodes.register_node (node_, node_rid_);
     if (!pending_remote_join_)
         set_actor_entry_spot_locked (raw);
@@ -324,35 +322,10 @@ actor_handle_t *create_actor_locked (zlink::spot_node_t *node_,
 actor_handle_t *as_actor_locked (void *actor_)
 {
     actor_handle_t *actor = static_cast<actor_handle_t *> (actor_);
-    if (!actor || !actor->check_tag () || !known_node_locked (actor->node)
-        || actor_handles_locked (actor->node).count (actor) == 0)
+    if (!actor || !actor->check_tag () || !actor_runtime ().nodes.known_node (actor->node)
+        || zlink::spot_node_access_t::actor_handles (actor->node).count (actor) == 0)
         return NULL;
     return actor;
-}
-
-zlink::spot_node_t *resolve_node_by_rid_locked (const zlink_routing_id_t &rid_)
-{
-    return actor_runtime ().nodes.resolve_node_by_rid (rid_);
-}
-
-bool known_node_locked (zlink::spot_node_t *node_)
-{
-    return actor_runtime ().nodes.known_node (node_);
-}
-
-std::set<actor_handle_t *> &actor_handles_locked (zlink::spot_node_t *node_)
-{
-    return zlink::spot_node_access_t::actor_handles (node_);
-}
-
-std::map<std::string, actor_handle_t *> &actors_by_id_locked (zlink::spot_node_t *node_)
-{
-    return zlink::spot_node_access_t::actors_by_id (node_);
-}
-
-void collect_actor_handles_locked (std::vector<actor_handle_t *> *out_)
-{
-    actor_runtime ().nodes.collect_actor_handles (out_);
 }
 
 bool actor_route_disconnected_locked (zlink::spot_node_t *source_node_,
@@ -367,13 +340,14 @@ actor_handle_t *resolve_actor_ref_locked (const zlink_actor_ref_t *ref_,
     if (!ref_ || !valid_actor_id (ref_->actor_id) || !valid_routing_id (&ref_->node_rid))
         return NULL;
 
-    zlink::spot_node_t *node = resolve_node_by_rid_locked (ref_->node_rid);
+    zlink::spot_node_t *node = actor_runtime ().nodes.resolve_node_by_rid (ref_->node_rid);
     if (!node) {
         errno = ENOENT;
         return NULL;
     }
 
-    std::map<std::string, actor_handle_t *> &actors = actors_by_id_locked (node);
+    std::map<std::string, actor_handle_t *> &actors =
+      zlink::spot_node_access_t::actors_by_id (node);
     const std::map<std::string, actor_handle_t *>::iterator actor_it = actors.find (ref_->actor_id);
     if (actor_it == actors.end () || (!include_pending_ && actor_it->second->pending_remote_join)) {
         errno = ENOENT;
@@ -395,7 +369,7 @@ actor_handle_t *resolve_logical_actor_ref_locked (const zlink_actor_ref_t *ref_,
         return NULL;
 
     zlink_actor_route_t route;
-    if (find_active_route_locked (ref_->actor_id, &route)
+    if (actor_runtime ().routes.find_active (ref_->actor_id, &route)
         && actor_route_is_current_location (route, ref_->actor_id)) {
         if (ref_->generation != 0 && route.actor.generation != ref_->generation) {
             errno = ESTALE;
@@ -430,13 +404,13 @@ actor_resolution_t resolve_actor_for_request_locked (zlink::spot_node_t *request
                                                      bool include_pending_ = false)
 {
     actor_resolution_t resolved;
-    if (!known_node_locked (request_node_)) {
+    if (!actor_runtime ().nodes.known_node (request_node_)) {
         resolved.result = ZLINK_REQUEST_NOT_CONNECTED;
         return resolved;
     }
 
     if (ref_ && valid_routing_id (&ref_->node_rid)) {
-        resolved.owner = resolve_node_by_rid_locked (ref_->node_rid);
+        resolved.owner = actor_runtime ().nodes.resolve_node_by_rid (ref_->node_rid);
         resolved.actor = resolve_actor_ref_locked (ref_, include_pending_);
     } else {
         resolved.actor = resolve_logical_actor_ref_locked (ref_, include_pending_);
@@ -471,7 +445,7 @@ bool is_external_remote_actor_ref_locked (zlink::spot_node_t *request_node_,
         && same_routing_id (local_rid, ref_->node_rid))
         return false;
 
-    return resolve_node_by_rid_locked (ref_->node_rid) == NULL;
+    return actor_runtime ().nodes.resolve_node_by_rid (ref_->node_rid) == NULL;
 }
 
 bool is_remote_actor_ref_for_node (zlink::spot_node_t *request_node_, const zlink_actor_ref_t *ref_)
@@ -724,50 +698,13 @@ bool take_no_bind_pending (const no_bind_pending_key_t &key_, no_bind_pending_re
 namespace
 {
 
-actor_session_state_t::binding_map_t::iterator
-find_session_binding_locked (void *stream_, const zlink_routing_id_t *session_rid_)
-{
-    return actor_runtime ().sessions.find_binding (stream_, session_rid_);
-}
-
-actor_session_state_t::binding_map_t::const_iterator
-find_session_binding_locked (const void *stream_, const zlink_routing_id_t *session_rid_)
-{
-    return actor_runtime ().sessions.find_binding (stream_, session_rid_);
-}
-
-actor_session_state_t::binding_map_t::iterator session_bindings_end_locked ()
-{
-    return actor_runtime ().sessions.bindings_end ();
-}
-
-actor_session_state_t::binding_map_t::const_iterator session_bindings_end_const_locked ()
-{
-    return actor_runtime ().sessions.bindings_end ();
-}
-
-void erase_session_binding_locked (actor_session_state_t::binding_map_t::iterator binding_it_)
-{
-    actor_runtime ().sessions.erase_binding (binding_it_);
-}
-
-zlink::spot_node_t *stream_owner_locked (void *stream_)
-{
-    return actor_runtime ().sessions.stream_owner (stream_, actor_runtime ().nodes);
-}
-
 zlink::spot_node_t *stream_owner_for_actor_ref_locked (void *stream_,
                                                        const zlink_actor_ref_t *actor_ref_)
 {
     if (!actor_ref_)
-        return stream_owner_locked (stream_);
+        return actor_runtime ().sessions.stream_owner (stream_, actor_runtime ().nodes);
     return actor_runtime ().sessions.stream_owner_for_actor_ref (stream_, *actor_ref_,
                                                                  actor_runtime ().nodes);
-}
-
-void erase_stream_owner_if_unused_locked (void *stream_)
-{
-    actor_runtime ().sessions.erase_stream_owner_if_unused (stream_);
 }
 
 uint64_t now_ms ()
@@ -791,21 +728,6 @@ uint64_t next_commit_epoch_locked ()
     return epoch == 0 ? actor_runtime ().next_join_epoch++ : epoch;
 }
 
-bool active_route_matches_locked (const actor_handle_t *actor_)
-{
-    return actor_runtime ().routes.active_matches (actor_);
-}
-
-bool active_route_exists_locked (const actor_handle_t *actor_)
-{
-    return actor_runtime ().routes.active_exists (actor_);
-}
-
-bool find_active_route_locked (const char *actor_id_, zlink_actor_route_t *route_out_)
-{
-    return actor_runtime ().routes.find_active (actor_id_, route_out_);
-}
-
 void publish_active_route_locked (actor_handle_t *actor_, bool create_)
 {
     actor_runtime ().routes.publish_active (actor_, create_);
@@ -819,11 +741,6 @@ void create_active_route_locked (actor_handle_t *actor_)
 void update_active_route_locked (actor_handle_t *actor_)
 {
     publish_active_route_locked (actor_, false);
-}
-
-void remove_matching_active_route_locked (actor_handle_t *actor_)
-{
-    actor_runtime ().routes.remove_matching_active (actor_);
 }
 
 void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_changed_time_)
@@ -849,11 +766,11 @@ std::unique_ptr<actor_handle_t> remove_actor_locked (actor_handle_t *actor_,
         clear_actor_bound_session_locked (actor_, false);
     }
 
-    if (known_node_locked (actor_->node))
-        actors_by_id_locked (actor_->node).erase (actor_->actor_id);
-    remove_matching_active_route_locked (actor_);
-    if (known_node_locked (actor_->node))
-        actor_handles_locked (actor_->node).erase (actor_);
+    if (actor_runtime ().nodes.known_node (actor_->node))
+        zlink::spot_node_access_t::actors_by_id (actor_->node).erase (actor_->actor_id);
+    actor_runtime ().routes.remove_matching_active (actor_);
+    if (actor_runtime ().nodes.known_node (actor_->node))
+        zlink::spot_node_access_t::actor_handles (actor_->node).erase (actor_);
     actor_->tag = 0;
     return std::unique_ptr<actor_handle_t> (actor_);
 }
@@ -1069,8 +986,8 @@ zlink_request_result_t unbind_actor_from_session_locked (zlink::spot_node_t *str
     }
 
     actor_session_state_t::binding_map_t::iterator binding_it =
-      find_session_binding_locked (stream_, &session_rid_);
-    if (binding_it == session_bindings_end_locked ())
+      actor_runtime ().sessions.find_binding (stream_, &session_rid_);
+    if (binding_it == actor_runtime ().sessions.bindings_end ())
         return ZLINK_REQUEST_OK;
     session_binding_t &binding = binding_it->second;
     std::map<std::string, session_binding_t::actor_entry_t>::iterator it =
@@ -1087,8 +1004,8 @@ zlink_request_result_t unbind_actor_from_session_locked (zlink::spot_node_t *str
         clear_actor_bound_session_locked (it->second.actor, true);
     binding.actors.erase (it);
     if (binding.actors.empty ()) {
-        erase_session_binding_locked (binding_it);
-        erase_stream_owner_if_unused_locked (stream_);
+        actor_runtime ().sessions.erase_binding (binding_it);
+        actor_runtime ().sessions.erase_stream_owner_if_unused (stream_);
     }
     return ZLINK_REQUEST_OK;
 }
@@ -1111,7 +1028,7 @@ zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *reque
     if (request_->entry_spot_join && request_->actor && request_->spot_state
         && same_routing_id (request_->actor->node_rid, request_->target_node_rid)
         && actor_in_entry_spot_locked (request_->actor)) {
-        if (!active_route_matches_locked (request_->actor))
+        if (!actor_runtime ().routes.active_matches (request_->actor))
             create_active_route_locked (request_->actor);
         return ZLINK_REQUEST_OK;
     }
@@ -1297,8 +1214,9 @@ zlink_request_result_t run_destroy_operation_locked (actor_reply_operation_arg_t
     }
     if (actor->bound_stream) {
         actor_session_state_t::binding_map_t::const_iterator binding_it =
-          find_session_binding_locked (actor->bound_stream, &actor->bound_session_rid);
-        if (binding_it != session_bindings_end_const_locked () && binding_it->second.in_progress
+          actor_runtime ().sessions.find_binding (actor->bound_stream, &actor->bound_session_rid);
+        if (binding_it != actor_runtime ().sessions.bindings_end ()
+            && binding_it->second.in_progress
             && binding_it->second.in_progress_actor_id == actor->actor_id) {
             errno = EBUSY;
             return ZLINK_REQUEST_BUSY;
@@ -1341,7 +1259,8 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
         return ZLINK_REQUEST_INVALID_STATE;
     }
     if (actor_in_entry_spot_locked (actor)) {
-        if (!active_route_matches_locked (actor) && active_route_exists_locked (actor))
+        if (!actor_runtime ().routes.active_matches (actor)
+            && actor_runtime ().routes.active_exists (actor))
             create_active_route_locked (actor);
         return ZLINK_REQUEST_OK;
     }
@@ -1398,7 +1317,8 @@ zlink_request_result_t run_unbind_operation_locked (actor_reply_operation_arg_t 
 {
     if (!arg_)
         return ZLINK_REQUEST_INVALID_STATE;
-    zlink::spot_node_t *stream_owner = stream_owner_locked (arg_->stream);
+    zlink::spot_node_t *stream_owner =
+      actor_runtime ().sessions.stream_owner (arg_->stream, actor_runtime ().nodes);
     if (!stream_owner) {
         return unbind_actor_from_session_locked (NULL, arg_->stream, arg_->rid, arg_->actor_id);
     }
@@ -1555,14 +1475,14 @@ zlink_submit_result_t validate_actor_bound_session_locked (actor_handle_t *actor
         errno = ENOENT;
         return ZLINK_SUBMIT_NOT_FOUND;
     }
-    if (!known_node_locked (actor_->bound_session_node)) {
+    if (!actor_runtime ().nodes.known_node (actor_->bound_session_node)) {
         errno = ENOTCONN;
         return ZLINK_SUBMIT_NOT_CONNECTED;
     }
 
     actor_session_state_t::binding_map_t::iterator binding_it =
-      find_session_binding_locked (actor_->bound_stream, &actor_->bound_session_rid);
-    if (binding_it == session_bindings_end_locked ()) {
+      actor_runtime ().sessions.find_binding (actor_->bound_stream, &actor_->bound_session_rid);
+    if (binding_it == actor_runtime ().sessions.bindings_end ()) {
         clear_actor_bound_session_locked (actor_, false);
         errno = ENOENT;
         return ZLINK_SUBMIT_NOT_FOUND;
@@ -1930,7 +1850,7 @@ int enqueue_actor_gateway_entry_join_request_locked (
         errno = ENOENT;
         return -1;
     }
-    if (actors_by_id_locked (node_).count (frame_.actor_id) != 0
+    if (zlink::spot_node_access_t::actors_by_id (node_).count (frame_.actor_id) != 0
         || node_has_pending_join_actor_locked (node_, frame_.actor_id)) {
         errno = EEXIST;
         return -1;
@@ -2275,8 +2195,9 @@ void erase_actor_spot_node (zlink::spot_node_t *node_)
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
         actor_runtime ().routes.erase_disconnected_for_node (node_);
         actor_runtime ().nodes.erase_node_routes (node_);
-        while (!actors_by_id_locked (node_).empty ()) {
-            actor_handle_t *actor = actors_by_id_locked (node_).begin ()->second;
+        while (!zlink::spot_node_access_t::actors_by_id (node_).empty ()) {
+            actor_handle_t *actor =
+              zlink::spot_node_access_t::actors_by_id (node_).begin ()->second;
             actors_to_delete.push_back (remove_actor_locked (actor, false));
         }
         actor_runtime ().sessions.erase_stream_owners_for_node (node_);
@@ -2341,7 +2262,7 @@ extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_)
     if (actor_runtime ().nodes.has_peer_spot_facade (spot))
         return 0;
     std::vector<actor_handle_t *> actors;
-    collect_actor_handles_locked (&actors);
+    actor_runtime ().nodes.collect_actor_handles (&actors);
     for (std::vector<actor_handle_t *>::const_iterator it = actors.begin (); it != actors.end ();
          ++it) {
         if ((*it)->joined_spot_state && (*it)->joined_spot_state == spot->logical_state)
@@ -2359,7 +2280,7 @@ extern "C" void zlink_actor_replay_readable_for_spot (void *spot_)
         return;
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
     std::vector<actor_handle_t *> actors;
-    collect_actor_handles_locked (&actors);
+    actor_runtime ().nodes.collect_actor_handles (&actors);
     for (std::vector<actor_handle_t *>::const_iterator it = actors.begin (); it != actors.end ();
          ++it) {
         actor_handle_t *actor = *it;
@@ -2380,7 +2301,11 @@ int node_has_any_actor (void *node_)
     if (!node_)
         return 0;
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-    return actors_by_id_locked (static_cast<zlink::spot_node_t *> (node_)).empty () ? 0 : 1;
+    return zlink::spot_node_access_t::actors_by_id (
+             static_cast<zlink::spot_node_t *> (node_))
+             .empty ()
+           ? 0
+           : 1;
 }
 }
 }
@@ -2435,7 +2360,7 @@ zlink_spot_node_actor_lookup (void *node_, const char *actor_id_, zlink_actor_re
 
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
     std::map<std::string, actor_handle_t *> &actors =
-      actors_by_id_locked (static_cast<zlink::spot_node_t *> (node_));
+      zlink::spot_node_access_t::actors_by_id (static_cast<zlink::spot_node_t *> (node_));
     const std::map<std::string, actor_handle_t *>::const_iterator actor_it =
       actors.find (actor_id_);
     if (actor_it == actors.end () || actor_it->second->pending_remote_join) {
@@ -2549,14 +2474,16 @@ zlink_spot_node_actor_join_spot (void *node_,
     memset (&external_source_node_rid, 0, sizeof (external_source_node_rid));
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        zlink::spot_node_t *source_node = resolve_node_by_rid_locked (actor_ref_->node_rid);
+        zlink::spot_node_t *source_node =
+          actor_runtime ().nodes.resolve_node_by_rid (actor_ref_->node_rid);
         if (!source_node) {
             errno = ENOTCONN;
             return ZLINK_SUBMIT_NOT_CONNECTED;
         }
 
         actor_handle_t *actor = NULL;
-        std::map<std::string, actor_handle_t *> &actors = actors_by_id_locked (source_node);
+        std::map<std::string, actor_handle_t *> &actors =
+          zlink::spot_node_access_t::actors_by_id (source_node);
         std::map<std::string, actor_handle_t *>::iterator actor_it =
           actors.find (actor_ref_->actor_id);
         if (actor_it != actors.end ())
@@ -2584,7 +2511,8 @@ zlink_spot_node_actor_join_spot (void *node_,
         if (!actor)
             immediate_result = actor_missing_request_result_from_errno ();
         zlink::spot_node_t *target_node = immediate_result == ZLINK_REQUEST_OK
-                                            ? resolve_node_by_rid_locked (*dest_node_rid_)
+                                            ? actor_runtime ().nodes.resolve_node_by_rid (
+                                                *dest_node_rid_)
                                             : NULL;
         if (immediate_result == ZLINK_REQUEST_OK && !target_node) {
             request = new (std::nothrow) queued_join_request_t ();
@@ -2607,7 +2535,7 @@ zlink_spot_node_actor_join_spot (void *node_,
             request->join_epoch = next_commit_epoch_locked ();
             index_join_request_locked (request);
             external_gateway_join = true;
-            external_source_node = resolve_node_by_rid_locked (actor->node_rid);
+            external_source_node = actor_runtime ().nodes.resolve_node_by_rid (actor->node_rid);
             external_source_node_rid = actor->node_rid;
         } else if (immediate_result != ZLINK_REQUEST_OK) {
             /* Complete outside the actor lock. */
@@ -2627,7 +2555,7 @@ zlink_spot_node_actor_join_spot (void *node_,
                 zlink_actor_ref_t current_ref;
                 fill_ref (actor, &current_ref);
                 const zlink_routing_id_t current_spot = actor_current_spot_rid_locked (actor);
-                if (!active_route_matches_locked (actor))
+                if (!actor_runtime ().routes.active_matches (actor))
                     create_active_route_locked (actor);
                 return complete_idempotent_join_async (parts_, part_count_, handler_, userdata_,
                                                        &current_ref, &current_spot,
@@ -2637,7 +2565,7 @@ zlink_spot_node_actor_join_spot (void *node_,
                 immediate_result = ZLINK_REQUEST_NOT_CONNECTED;
             } else if (!same_routing_id (actor->node_rid, *dest_node_rid_)) {
                 std::map<std::string, actor_handle_t *> &target_actors =
-                  actors_by_id_locked (target_node);
+                  zlink::spot_node_access_t::actors_by_id (target_node);
                 if (target_actors.count (actor->actor_id) != 0
                     || node_has_pending_join_actor_locked (target_node, actor->actor_id.c_str ())) {
                     immediate_result = ZLINK_REQUEST_CONFLICT;
@@ -2765,14 +2693,16 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
     memset (&external_source_spot_rid, 0, sizeof (external_source_spot_rid));
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        zlink::spot_node_t *source_node = resolve_node_by_rid_locked (actor_->node_rid);
+        zlink::spot_node_t *source_node =
+          actor_runtime ().nodes.resolve_node_by_rid (actor_->node_rid);
         if (!source_node) {
             errno = ENOTCONN;
             return ZLINK_SUBMIT_NOT_CONNECTED;
         }
 
         actor_handle_t *actor = NULL;
-        std::map<std::string, actor_handle_t *> &actors = actors_by_id_locked (source_node);
+        std::map<std::string, actor_handle_t *> &actors =
+          zlink::spot_node_access_t::actors_by_id (source_node);
         std::map<std::string, actor_handle_t *>::iterator actor_it = actors.find (actor_->actor_id);
         if (actor_it != actors.end ())
             actor = actor_it->second;
@@ -2785,7 +2715,8 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
             return ZLINK_SUBMIT_INVALID_STATE;
         }
         if (immediate_result == ZLINK_REQUEST_OK) {
-            zlink::spot_node_t *target_node = resolve_node_by_rid_locked (*dest_node_rid_);
+            zlink::spot_node_t *target_node =
+              actor_runtime ().nodes.resolve_node_by_rid (*dest_node_rid_);
             if (!target_node) {
                 request = new (std::nothrow) queued_join_request_t ();
                 if (!request) {
@@ -2839,7 +2770,7 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
                     request->join_epoch = next_commit_epoch_locked ();
                     if (request->remote) {
                         std::map<std::string, actor_handle_t *> &target_actors =
-                          actors_by_id_locked (target_node);
+                          zlink::spot_node_access_t::actors_by_id (target_node);
                         if (target_actors.count (actor->actor_id) != 0
                             || node_has_pending_join_actor_locked (target_node,
                                                                    actor->actor_id.c_str ())) {
@@ -3234,13 +3165,14 @@ zlink_stream_send_bound_actor_part (void *stream_,
             return ZLINK_SUBMIT_BACKPRESSURED;
         }
         actor_session_state_t::binding_map_t::iterator binding_it =
-          find_session_binding_locked (stream_, session_rid_);
-        if (binding_it == session_bindings_end_locked ()) {
+          actor_runtime ().sessions.find_binding (stream_, session_rid_);
+        if (binding_it == actor_runtime ().sessions.bindings_end ()) {
             errno = ENOENT;
             return ZLINK_SUBMIT_NOT_FOUND;
         }
         session_binding_t &binding = binding_it->second;
-        zlink::spot_node_t *stream_owner = stream_owner_locked (stream_);
+        zlink::spot_node_t *stream_owner =
+          actor_runtime ().sessions.stream_owner (stream_, actor_runtime ().nodes);
         if (!stream_owner) {
             errno = ENOTCONN;
             return ZLINK_SUBMIT_NOT_CONNECTED;
@@ -3632,10 +3564,10 @@ extern "C" zlink_config_result_t zlink_stream_bound_actors (void *stream_,
 
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
     actor_session_state_t::binding_map_t::const_iterator binding_it =
-      find_session_binding_locked (stream_, session_rid_);
+      actor_runtime ().sessions.find_binding (stream_, session_rid_);
     const size_t capacity = entries_ ? *count_ : 0;
     size_t written = 0;
-    if (binding_it != session_bindings_end_const_locked ()) {
+    if (binding_it != actor_runtime ().sessions.bindings_end ()) {
         const session_binding_t &binding = binding_it->second;
         for (std::map<std::string, session_binding_t::actor_entry_t>::const_iterator it =
                binding.actors.begin ();
@@ -3726,7 +3658,7 @@ zlink_spot_node_spots (void *node_, zlink_spot_node_spot_entry_t *entries_, size
         return ZLINK_CONFIG_OK;
     }
     std::vector<actor_handle_t *> actors;
-    collect_actor_handles_locked (&actors);
+    actor_runtime ().nodes.collect_actor_handles (&actors);
     const size_t limit = std::min (*count_, spots.size ());
     for (size_t i = 0; i != limit; ++i) {
         memset (&entries_[i], 0, sizeof (entries_[i]));
@@ -3760,7 +3692,7 @@ zlink_spot_node_actors (void *node_, zlink_spot_node_actor_entry_t *entries_, si
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
     std::vector<actor_handle_t *> actors;
     std::map<std::string, actor_handle_t *> &node_actors =
-      actors_by_id_locked (static_cast<zlink::spot_node_t *> (node_));
+      zlink::spot_node_access_t::actors_by_id (static_cast<zlink::spot_node_t *> (node_));
     for (std::map<std::string, actor_handle_t *>::const_iterator it = node_actors.begin ();
          it != node_actors.end (); ++it)
         if (!it->second->pending_remote_join)
@@ -3777,7 +3709,7 @@ zlink_spot_node_actors (void *node_, zlink_spot_node_actor_entry_t *entries_, si
             entries_[i].current_spot_rid = actors[i]->joined_spot_state->routing_id;
             entries_[i].current_spot_kind = spot_kind_for_state (actors[i]->joined_spot_state);
         }
-        entries_[i].route_synced = active_route_matches_locked (actors[i]) ? 1u : 0u;
+        entries_[i].route_synced = actor_runtime ().routes.active_matches (actors[i]) ? 1u : 0u;
         entries_[i].pending_message_count = static_cast<uint32_t> (actors[i]->queue.size ());
         entries_[i].last_changed_ms = actors[i]->last_changed_ms;
     }
@@ -3795,7 +3727,7 @@ zlink_spot_actors (void *spot_, zlink_actor_ref_t *entries_, size_t *count_)
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
     std::vector<actor_handle_t *> actors;
     spot_handle_t *spot = static_cast<spot_handle_t *> (spot_);
-    collect_actor_handles_locked (&actors);
+    actor_runtime ().nodes.collect_actor_handles (&actors);
     std::vector<actor_handle_t *> matching;
     for (std::vector<actor_handle_t *>::const_iterator it = actors.begin (); it != actors.end ();
          ++it) {

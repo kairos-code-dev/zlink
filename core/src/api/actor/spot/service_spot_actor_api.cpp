@@ -1365,27 +1365,16 @@ int zlink::spot_actor_internal::process_gateway_delivery (
             }
             prepare_no_bind_reply_after_enqueue (node, source_node_rid_, frame, rc, errno,
                                                  &no_bind_reply);
-        } else if (frame.kind == zlink::spot_actor_gateway::packet_entry_join_request) {
-            rc = enqueue_actor_gateway_entry_join_request_locked (
-              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
-              part_count_ > 1 ? part_count_ - 1 : 0, true, &join_notify_spot);
-        } else if (frame.kind == zlink::spot_actor_gateway::packet_entry_join_reply) {
-            rc = process_actor_gateway_entry_join_reply_locked (
-              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
-              part_count_ > 1 ? part_count_ - 1 : 0, true, &completed_join,
-              &source_actor_to_remove);
-        } else if (frame.kind == zlink::spot_actor_gateway::packet_spot_join_request) {
-            rc = enqueue_actor_gateway_entry_join_request_locked (
-              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
-              part_count_ > 1 ? part_count_ - 1 : 0, false, &join_notify_spot);
-        } else if (frame.kind == zlink::spot_actor_gateway::packet_spot_join_reply) {
-            rc = process_actor_gateway_entry_join_reply_locked (
-              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
-              part_count_ > 1 ? part_count_ - 1 : 0, false, &completed_join,
-              &source_actor_to_remove);
         } else {
-            errno = EPROTO;
-            rc = -1;
+            bool join_packet = false;
+            rc = process_actor_gateway_join_packet_locked (
+              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
+              part_count_ > 1 ? part_count_ - 1 : 0, &join_packet, &join_notify_spot,
+              &completed_join, &source_actor_to_remove);
+            if (!join_packet) {
+                errno = EPROTO;
+                rc = -1;
+            }
         }
     }
 

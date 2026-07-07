@@ -51,21 +51,14 @@ void schedule_join_lifecycle_event_locked (
 zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *request_,
                                                     actor_handle_t **readable_actor_out_);
 
-int enqueue_actor_gateway_entry_join_request_locked (
+int process_actor_gateway_join_packet_locked (
   zlink::spot_node_t *node_,
   const zlink_routing_id_t *source_node_rid_,
   const zlink::spot_actor_gateway::frame_t &frame_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  bool entry_spot_join_,
-  spot_handle_t **notify_spot_out_);
-int process_actor_gateway_entry_join_reply_locked (
-  zlink::spot_node_t *node_,
-  const zlink_routing_id_t *reply_source_node_rid_,
-  const zlink::spot_actor_gateway::frame_t &frame_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  bool entry_spot_join_,
+  bool *handled_out_,
+  spot_handle_t **notify_spot_out_,
   queued_join_request_t **completed_out_,
   actor_handle_t **source_actor_to_remove_out_);
 

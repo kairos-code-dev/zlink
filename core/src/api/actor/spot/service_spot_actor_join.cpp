@@ -521,6 +521,42 @@ int process_actor_gateway_entry_join_reply_locked (zlink::spot_node_t *node_,
     return 0;
 }
 
+int process_actor_gateway_join_packet_locked (
+  zlink::spot_node_t *node_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink::spot_actor_gateway::frame_t &frame_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  bool *handled_out_,
+  spot_handle_t **notify_spot_out_,
+  queued_join_request_t **completed_out_,
+  actor_handle_t **source_actor_to_remove_out_)
+{
+    if (handled_out_)
+        *handled_out_ = true;
+    if (frame_.kind == zlink::spot_actor_gateway::packet_entry_join_request) {
+        return enqueue_actor_gateway_entry_join_request_locked (
+          node_, source_node_rid_, frame_, parts_, part_count_, true, notify_spot_out_);
+    }
+    if (frame_.kind == zlink::spot_actor_gateway::packet_entry_join_reply) {
+        return process_actor_gateway_entry_join_reply_locked (
+          node_, source_node_rid_, frame_, parts_, part_count_, true, completed_out_,
+          source_actor_to_remove_out_);
+    }
+    if (frame_.kind == zlink::spot_actor_gateway::packet_spot_join_request) {
+        return enqueue_actor_gateway_entry_join_request_locked (
+          node_, source_node_rid_, frame_, parts_, part_count_, false, notify_spot_out_);
+    }
+    if (frame_.kind == zlink::spot_actor_gateway::packet_spot_join_reply) {
+        return process_actor_gateway_entry_join_reply_locked (
+          node_, source_node_rid_, frame_, parts_, part_count_, false, completed_out_,
+          source_actor_to_remove_out_);
+    }
+    if (handled_out_)
+        *handled_out_ = false;
+    return -1;
+}
+
 void complete_join_request (queued_join_request_t *request_, zlink_request_result_t result_)
 {
     if (!request_ || (!request_->handler && !request_->entry_handler))

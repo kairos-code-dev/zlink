@@ -885,7 +885,7 @@ zlink_request_result_t run_destroy_operation_locked (actor_reply_operation_arg_t
         errno = EBUSY;
         return ZLINK_REQUEST_INVALID_STATE;
     }
-    if (actor_runtime ().joins.actor_has_pending (actor)) {
+    if (join_actor_has_pending_request_locked (actor)) {
         errno = EBUSY;
         return ZLINK_REQUEST_BUSY;
     }
@@ -926,7 +926,7 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
     if (resolved.result != ZLINK_REQUEST_OK)
         return resolved.result;
     actor_handle_t *actor = resolved.actor;
-    if (actor_runtime ().joins.actor_has_pending (actor)) {
+    if (join_actor_has_pending_request_locked (actor)) {
         errno = EBUSY;
         return ZLINK_REQUEST_BUSY;
     }

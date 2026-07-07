@@ -36,6 +36,7 @@ void remove_pending_join_request_locked (queued_join_request_t *request_);
 void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms_);
 uint64_t next_join_commit_epoch_locked ();
 zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *actor_);
+bool join_actor_has_pending_request_locked (const actor_handle_t *actor_);
 
 actor_handle_t *create_join_actor_locked_with_generation (zlink::spot_node_t *node_,
                                                           const zlink_routing_id_t &node_rid_,

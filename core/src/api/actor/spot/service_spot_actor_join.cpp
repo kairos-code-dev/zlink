@@ -220,6 +220,11 @@ zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *act
     return rid;
 }
 
+bool join_actor_has_pending_request_locked (const actor_handle_t *actor_)
+{
+    return actor_runtime ().joins.actor_has_pending (actor_);
+}
+
 zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (
   const zlink_actor_ref_t &previous_actor_,
   const zlink_actor_ref_t &current_actor_,

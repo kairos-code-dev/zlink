@@ -134,59 +134,7 @@ bool actor_route_is_current_location (const zlink_actor_route_t &route_, const c
     return strncmp (route_.actor.actor_id, actor_id_, ZLINK_ACTOR_ID_MAX) == 0;
 }
 
-bool actor_has_pending_join_locked (const actor_handle_t *actor_)
-{
-    return actor_runtime ().joins.actor_has_pending (actor_);
-}
-
-bool node_has_pending_join_actor_locked (zlink::spot_node_t *node_, const char *actor_id_)
-{
-    if (!node_ || !actor_id_)
-        return false;
-    std::map<std::string, actor_handle_t *> &actors =
-      zlink::spot_node_access_t::actors_by_id (node_);
-    std::map<std::string, actor_handle_t *>::const_iterator actor_it = actors.find (actor_id_);
-    if (actor_it != actors.end () && actor_it->second->pending_remote_join)
-        return true;
-    return actor_runtime ().joins.has_pending_remote_actor (node_, actor_id_);
-}
-
 void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_changed_time_);
-
-bool spot_has_pending_join_locked (spot_logical_state_t *key_)
-{
-    return actor_runtime ().joins.spot_has_pending (key_);
-}
-
-void enqueue_join_request_locked (queued_join_request_t *request_)
-{
-    if (!request_)
-        return;
-    actor_runtime ().joins.enqueue (request_);
-}
-
-bool peek_join_request_for_spot_locked (spot_handle_t *spot_, queued_join_request_t **request_out_)
-{
-    return actor_runtime ().joins.peek_for_spot (spot_, request_out_);
-}
-
-void take_join_queue_locked (spot_logical_state_t *key_,
-                             std::deque<queued_join_request_t *> *pending_)
-{
-    actor_runtime ().joins.take_queue (key_, pending_);
-}
-
-void replace_live_join_spot_locked (spot_handle_t *from_, spot_handle_t *to_)
-{
-    actor_runtime ().joins.replace_live_spot (from_, to_);
-}
-
-void collect_live_join_requests_for_state_locked (
-  const std::shared_ptr<spot_logical_state_t> &state_,
-  std::deque<queued_join_request_t *> *pending_)
-{
-    actor_runtime ().joins.collect_live_for_state (state_, pending_);
-}
 
 void drain_queued_join_requests_for_stream_locked (void *stream_,
                                                    std::deque<queued_join_request_t *> *aborted_)
@@ -200,14 +148,6 @@ void drain_queued_join_requests_for_stream_locked (void *stream_,
         clear_actor_bound_session_locked ((*it)->actor, true);
         retire_join_request_locked (*it);
     }
-}
-
-void collect_received_join_requests_for_stream_locked (
-  void *stream_,
-  const std::deque<queued_join_request_t *> &already_aborted_,
-  std::vector<queued_join_request_t *> *received_aborts_)
-{
-    actor_runtime ().joins.collect_live_for_stream (stream_, already_aborted_, received_aborts_);
 }
 
 zlink_routing_id_t actor_current_spot_rid_locked (const actor_handle_t *actor_)
@@ -979,7 +919,7 @@ zlink_request_result_t run_destroy_operation_locked (actor_reply_operation_arg_t
         errno = EBUSY;
         return ZLINK_REQUEST_INVALID_STATE;
     }
-    if (actor_has_pending_join_locked (actor)) {
+    if (actor_runtime ().joins.actor_has_pending (actor)) {
         errno = EBUSY;
         return ZLINK_REQUEST_BUSY;
     }
@@ -1020,7 +960,7 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
     if (resolved.result != ZLINK_REQUEST_OK)
         return resolved.result;
     actor_handle_t *actor = resolved.actor;
-    if (actor_has_pending_join_locked (actor)) {
+    if (actor_runtime ().joins.actor_has_pending (actor)) {
         errno = EBUSY;
         return ZLINK_REQUEST_BUSY;
     }
@@ -1630,19 +1570,19 @@ void erase_actor_spot_facade (spot_handle_t *spot_)
           actor_runtime ().nodes.find_replacement_spot (spot_, logical_state);
         actor_runtime ().nodes.erase_spot (spot_);
         if (replacement) {
-            replace_live_join_spot_locked (spot_, replacement);
+            actor_runtime ().joins.replace_live_spot (spot_, replacement);
             return;
         }
         spot_logical_state_t *key = join_queue_key (logical_state);
         if (logical_state && logical_state->entry) {
             (void) key;
-            replace_live_join_spot_locked (spot_, NULL);
+            actor_runtime ().joins.replace_live_spot (spot_, NULL);
             actor_runtime ().lifecycle.clear (logical_state.get ());
             return;
         }
         actor_runtime ().lifecycle.clear (logical_state.get ());
-        take_join_queue_locked (key, &pending);
-        collect_live_join_requests_for_state_locked (logical_state, &pending);
+        actor_runtime ().joins.take_queue (key, &pending);
+        actor_runtime ().joins.collect_live_for_state (logical_state, &pending);
     }
     for (std::deque<queued_join_request_t *>::iterator it = pending.begin (); it != pending.end ();
          ++it) {
@@ -1672,7 +1612,7 @@ extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_)
         if ((*it)->joined_spot_state && (*it)->joined_spot_state == spot->logical_state)
             return 1;
     }
-    if (spot_has_pending_join_locked (join_queue_key (spot->logical_state)))
+    if (actor_runtime ().joins.spot_has_pending (join_queue_key (spot->logical_state)))
         return 1;
     return 0;
 }
@@ -1728,7 +1668,7 @@ void erase_actor_stream_bindings (void *stream_)
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
         drain_queued_join_requests_for_stream_locked (stream_, &aborted_joins);
         std::vector<queued_join_request_t *> received_aborts;
-        collect_received_join_requests_for_stream_locked (stream_, aborted_joins, &received_aborts);
+        actor_runtime ().joins.collect_live_for_stream (stream_, aborted_joins, &received_aborts);
         for (std::vector<queued_join_request_t *>::iterator it = received_aborts.begin ();
              it != received_aborts.end (); ++it) {
             queued_join_request_t *request = *it;

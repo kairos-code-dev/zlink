@@ -1054,6 +1054,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/pubsub/spot_sub_lifecycle.cpp
     src/runtime/services/spot/pubsub/spot_sub_option.cpp
     src/runtime/services/spot/pubsub/spot_sub_recv.cpp
+    src/runtime/services/spot/pubsub/spot_sub_subject_readiness.cpp
     src/runtime/services/spot/pubsub/spot_sub_subject_state.cpp
     src/runtime/services/spot/pubsub/spot_sub.cpp)
 

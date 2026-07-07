@@ -256,7 +256,7 @@ runtime/services (spot):
 - [x] **T2-12. `spot_node_handles.cpp` 튜닝/lifecycle 분리**
   - `:28-345`(HWM refresh, 튜닝 옵션 파싱/저장/검증) vs `:346-719`(핸들
     생성/파괴, 소켓 해체). `fast_*` 액세서는 제자리. (없음 / M)
-- [ ] **T2-13. `spot_sub_subject_state.cpp` ready-ack 상태기계 분리**
+- [x] **T2-13. `spot_sub_subject_state.cpp` ready-ack 상태기계 분리**
   - `:52-390`(구독/필터 관리·subject 열거) vs `:397-684`(readiness + ready-ack
     handshake + liveness). 구독 control plane. (없음 / M)
 - [ ] **T2-14. `spot_node_access.cpp` pass-through 축소 + spot_state 분리**
@@ -573,6 +573,10 @@ sockets/engine/transports/utils:
   HWM refresh 진입점을 `spot_node_tuning.cpp`로 분리했다. `spot_node_handles.cpp`는
   default pub/sub handle과 internal receiver lifecycle 중심으로 남겼고 fast
   accessor는 변경하지 않았다.
+- 2026-07-07: T2-13 완료 — spot subscriber의 ready subject, ready-probe,
+  ready-ack endpoint 상태기계를 `spot_sub_subject_readiness.cpp`로 분리했다.
+  `spot_sub_subject_state.cpp`는 subscribe/unsubscribe, raw filter, subject
+  enumeration 중심으로 남겼다.
 - 2026-07-07: 검증 배치 조정 — 항목마다 full CTest를 반복하지 않고 티어/클러스터
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로

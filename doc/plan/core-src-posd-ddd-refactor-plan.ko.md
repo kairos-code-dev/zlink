@@ -522,7 +522,9 @@ sockets/engine/transports/utils:
   queued/live join request를 찾는 로직도 join 모듈 API로 감춰, API 파일은 session
   binding 정리와 완료 콜백 방출만 맡도록 좁혔다. gateway ingress dispatcher의
   entry/spot join request/reply packet kind 분기도 join 모듈 helper로 이동해,
-  API 파일은 join packet 세부 종류를 직접 알지 않도록 줄였다.
+  API 파일은 join packet 세부 종류를 직접 알지 않도록 줄였다. join epoch 증가
+  규칙도 join 모듈의 locked helper로 모아 API 파일에 남아 있던 동일 구현을
+  제거했다.
 - 2026-07-07: 검증 범위 조정 — C++ framework 작업이 별도로 진행 중이므로, 이
   core 리팩토링 루프에서는 framework/bindings E2E를 실행하지 않는다. spot actor
   클러스터도 core build, 관련 core 테스트, full core CTest로만 검증하고,

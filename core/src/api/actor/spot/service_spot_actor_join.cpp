@@ -70,14 +70,6 @@ zlink_routing_id_t join_actor_current_spot_rid_locked (const actor_handle_t *act
     return rid;
 }
 
-uint64_t next_join_commit_epoch_locked ()
-{
-    uint64_t epoch = actor_runtime ().next_join_epoch++;
-    if (actor_runtime ().next_join_epoch == 0)
-        actor_runtime ().next_join_epoch = 1;
-    return epoch == 0 ? actor_runtime ().next_join_epoch++ : epoch;
-}
-
 actor_handle_t *resolve_join_actor_ref_locked (const zlink_actor_ref_t *ref_)
 {
     if (!ref_ || !zlink::spot_actor_internal::valid_actor_id (ref_->actor_id)
@@ -218,6 +210,14 @@ void schedule_join_timeout (queued_join_request_t *request_, uint32_t timeout_ms
         return;
     request_->timeout_task =
       zlink::request_timeout::schedule (timeout_ms_, handle_join_timeout, request_);
+}
+
+uint64_t next_join_commit_epoch_locked ()
+{
+    uint64_t epoch = actor_runtime ().next_join_epoch++;
+    if (actor_runtime ().next_join_epoch == 0)
+        actor_runtime ().next_join_epoch = 1;
+    return epoch == 0 ? actor_runtime ().next_join_epoch++ : epoch;
 }
 
 zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (

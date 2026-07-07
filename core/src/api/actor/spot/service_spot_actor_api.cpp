@@ -77,7 +77,6 @@ const bool actor_gateway_debug_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_
 uint64_t now_ms ();
 uint64_t next_generation_for_node_locked (zlink::spot_node_t *node_);
 void update_active_route_locked (actor_handle_t *actor_);
-uint64_t next_commit_epoch_locked ();
 using zlink::routing_id_key;
 using zlink::spot_actor_internal::actor_missing_request_result_from_errno;
 using zlink::spot_actor_internal::actor_missing_submit_result_from_errno;
@@ -566,14 +565,6 @@ uint64_t next_generation_for_node_locked (zlink::spot_node_t *node_)
     return next++;
 }
 
-uint64_t next_commit_epoch_locked ()
-{
-    uint64_t epoch = actor_runtime ().next_join_epoch++;
-    if (actor_runtime ().next_join_epoch == 0)
-        actor_runtime ().next_join_epoch = 1;
-    return epoch == 0 ? actor_runtime ().next_join_epoch++ : epoch;
-}
-
 void publish_active_route_locked (actor_handle_t *actor_, bool create_)
 {
     actor_runtime ().routes.publish_active (actor_, create_);
@@ -966,7 +957,7 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
     fill_ref (actor, &actor_ref);
     const zlink_routing_id_t previous_spot = actor_current_spot_rid_locked (actor);
     const uint64_t previous_epoch = actor->join_epoch;
-    const uint64_t epoch = next_commit_epoch_locked ();
+    const uint64_t epoch = next_join_commit_epoch_locked ();
     std::shared_ptr<spot_logical_state_t> source_spot = actor->joined_spot_state;
     const zlink_spot_actor_lifecycle_info_t leave_info = make_lifecycle_info (
       actor_ref, actor_ref, previous_spot,
@@ -1471,7 +1462,7 @@ zlink_spot_node_actor_new_with_request (void *node_,
         return zlink::config_result_internal::from_errno (errno);
     }
     fill_ref (actor, actor_out_);
-    actor->join_epoch = next_commit_epoch_locked ();
+    actor->join_epoch = next_join_commit_epoch_locked ();
     create_active_route_locked (actor);
     zlink_actor_ref_t zero_actor;
     zlink_routing_id_t zero_spot;

@@ -8,8 +8,8 @@ cannot do), see [Thread-Safety Guide](../guide/11-thread-safety.md).
 
 ## 1. Overview
 
-zlink's public handles (sockets, SPOT, Discovery, Registry,
-monitors) are thread-safe by default, but not all APIs carry the same
+zlink's public handles (sockets, SPOT, monitors) are thread-safe by default,
+but not all APIs carry the same
 cost. Internally the library classifies every public API into one of
 three tiers, each with its own ordering semantics, performance
 constraints, and error rules.
@@ -58,11 +58,9 @@ enqueued messages drain before teardown completes (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
-- Heavy queries: `zlink_registry_topology_query()`, snapshot functions
+- Snapshot/query functions that remain in the public contract
 
 **Correctness-first serialization:**
 
@@ -89,7 +87,6 @@ but not forced through the heaviest serialization lane.
 
 - `zlink_close()` (sockets)
 - `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
-- `zlink_discovery_destroy()` / `zlink_registry_destroy()`
 - Monitor handle `close` / `destroy`
 
 **Admission gate mechanism:**
@@ -153,27 +150,14 @@ concurrent entry.
 
 - **Public contract:** `spot_publish` follows the hot-path tier. `SpotNode`
   owns topology and configuration; it does not provide a direct publish hot
-  path. Subscription changes, peer mutations, and `attach_discovery` follow
-  the control path.
+  path. Subscription changes and peer mutations follow the control path.
 - **Internal children:** `spot_pub` / `spot_sub` are internal
   implementation units. They are not direct subjects of the public
   thread-safety contract — the parent/facade contract covers them.
   Child ordering and open/destroy linearization are internal
   implementation concerns.
 
-### 3.3 Discovery / Registry
-
-Discovery and Registry are control-plane-centric subjects. They have no
-hot-path send APIs.
-
-- Correctness and visibility are the primary concerns.
-- Internal serialization ensures that topology queries, peer mutations,
-  and heartbeat configuration are consistent.
-- Discovery/Registry serialization must not degrade the parent
-  data-plane performance when `attach_discovery` links them to a
-  SPOT Node.
-
-### 3.4 Monitor
+### 3.3 Monitor
 
 Monitor is a control-plane-centric subject.
 
@@ -185,7 +169,7 @@ Monitor is a control-plane-centric subject.
 ## 4. Service Public API Guard
 
 `service_public_api.hpp` provides the `service_public_api_guard_t`
-class used by SPOT, SPOT Node, Discovery, and Registry to
+class used by SPOT and SPOT Node to
 implement the lifecycle and control-path tiers.
 
 **Implementation:**
@@ -201,7 +185,7 @@ one word:
 
 | Tier | Guard role |
 |---|---|
-| Lifecycle strict | `begin_close_or_fail_busy()` checks in-flight count and closing bit atomically. Returns `EBUSY` if in-flight > 0, `EALREADY` if closing bit already set. On success, sets the closing bit. |
+| Lifecycle strict | `begin_close_or_fail_busy()` checks in-flight count and closing bit atomically. Returns `EBUSY` if in-flight > 0, `ESHUTDOWN` if closing bit already set. On success, sets the closing bit. |
 | Control path serialized | `enter_public_api()` increments the in-flight count after checking the closing bit. If closing bit is set, returns `ESHUTDOWN`. All control-path calls go through this gate, providing serialization. |
 | Hot path | Send paths bypass the guard's broad lock. They use separate minimal-cost admission (the socket-level admission gate) to avoid contention with control-path serialization. |
 
@@ -211,16 +195,27 @@ higher level can restore the handle to operational state.
 
 ## 5. Callback Dispatch Internals
 
-Most callbacks execute on the I/O thread. The exception is
-`zlink_spot_dispatch_event_handler()`, which runs on the Spot-specific worker
-runtime. The dispatch mechanism uses
-atomic loads to read handler pointers, ensuring visibility of handler
-replacements without broad locks on the hot path.
+Different callbacks run on different threads:
+
+- **Socket message handler** (`zlink_recv_handler`) runs on an I/O thread
+  via async mailbox processing.
+- **Monitor handler** runs on the service-control runtime thread — a
+  dedicated task (`monitor_handler_task`) that drains monitor events in a
+  recv loop, not the parent's I/O thread.
+- **Send-ready handler** can run synchronously on the *caller's* send
+  thread: an armed notification fires inline from
+  `notify_send_ready_if_armed()` during the send path.
+- **SPOT dispatch event handler** (`zlink_spot_dispatch_event_handler`)
+  runs on the SPOT dispatch worker pool.
+
+The dispatch mechanism uses atomic loads to read handler pointers, ensuring
+visibility of handler replacements without broad locks on the hot path.
 
 **Handler loading:**
 
 ```cpp
-handler = _socket_msg_handler.load(std::memory_order_acquire);
+// fields live in socket_dispatch_bridge_t
+handler = socket_msg_handler.load(std::memory_order_acquire);
 ```
 
 All handler function pointers and associated subject/userdata pointers
@@ -237,9 +232,10 @@ handler(subject, userdata);
 leave_callback_api();   // clears in-flight flag
 ```
 
-The `enter_callback_api` / `leave_callback_api` pair ensures that
-`close` sees the callback as an in-flight operation and returns `EBUSY`
-rather than tearing down the handle mid-callback.
+The `enter_callback_api` / `leave_callback_api` pair makes `close` see the
+callback as an in-flight operation. Depending on the callback kind, a `close`
+during the callback is either rejected with `EBUSY` (STREAM raw) or accepted and
+deferred to the epilogue (send-ready/monitor); see below.
 
 **STREAM raw callback constraint:**
 

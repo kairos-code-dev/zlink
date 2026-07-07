@@ -9,7 +9,7 @@
 This document describes the **behavior**, **scope of effect**, **defaults**,
 and **per-socket-type differences** of each socket option set via
 `zlink_set_option()` / `zlink_get_option()`. Unlike the
-[socket API reference](../api/socket.md) which covers API signatures,
+[socket API reference](../spec/core/socket/README.md) which covers API signatures,
 this guide focuses on **what each option changes at runtime**.
 
 ## Option Ownership Categories
@@ -81,9 +81,9 @@ must keep the legacy fixed HWM default `1000`.
 | STREAM | 8 | 16 | 64 | 256 |
 | control | 8 | 16 | 16 | 32 |
 
-The planner treats HWM as a per-connection queue depth. It does not divide a
-context memory budget by connection count. Instead, it keeps the profile's byte
-envelope stable:
+For ordinary sockets, the planner treats HWM as a per-connection queue depth.
+It does not divide a context memory budget by connection count. Instead, it
+keeps the profile's byte envelope stable:
 
 ```text
 scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
@@ -91,6 +91,29 @@ scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
 
 The minimum automatic HWM is `1`, and the result is capped by the profile's
 message-count cap.
+
+SPOT mesh internal sockets `mesh-pub`, `mesh-xsub`, and `routed-router` first
+apply a connection-count bucket when many peers are connected. Bucket values
+are HWM counts normalized to 4 KiB messages, and the final HWM is calculated as:
+
+```text
+base_hwm_4k = min(profile_hwm_4k, bucket_hwm_4k)
+unit_budget_bytes = base_hwm_4k * 4096
+scaled_hwm = ceil(unit_budget_bytes / effective_message_unit)
+```
+
+Bucket boundaries use hysteresis. A socket currently in the `1-64` bucket moves
+to the `65-128` bucket at `80` peers or more. A socket currently in the
+`65-128` bucket moves back to `1-64` only at `48` peers or fewer. This gap keeps
+HWM from changing repeatedly when peer count oscillates near a boundary. Profile
+or message-unit changes force recalculation even when hysteresis would otherwise
+retain the current bucket.
+
+This adjustment is an auxiliary bound on SPOT data-plane socket queues. Public
+publish and routed-send backpressure semantics are still owned by
+`publish_ingress_queue` and `routed_send_queue` admission. Local fanout, pub
+ingress, control sockets, and ordinary DEALER/PAIR/STREAM sockets do not use
+this connection bucket.
 
 Manual `SNDHWM` / `RCVHWM` settings always override the automatic values.
 
@@ -183,9 +206,10 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 |---|---|
 | **What it does** | Sets maximum wait time for send/recv operations |
 | **Applied at** | `zlink_send()` / `zlink_recv()` blocking paths, logical multipart send module |
-| **Default** | `-1` (infinite wait) |
+| **Default** | `1000` ms |
 | **0** | Equivalent to non-blocking (immediate return) |
-| **>0** | Wait up to specified time (ms), then return `ZLINK_SUBMIT_BACKPRESSURED` |
+| **-1** | Infinite wait when explicitly set |
+| **>0** | Wait up to specified time (ms), then send returns `ZLINK_SUBMIT_BACKPRESSURED`, recv returns `ZLINK_RECV_NO_DATA` |
 
 **Service application:** Propagated to SPOT pub/sub internal sockets.
 
@@ -300,7 +324,7 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 | Option | What it does | Default |
 |--------|-------------|---------|
 | `HEARTBEAT_IVL` | PING message send interval (ms) | `0` (disabled) |
-| `HEARTBEAT_TTL` | TTL transmitted to remote peer (0.1s units) | `0` |
+| `HEARTBEAT_TTL` | TTL transmitted to remote peer (ms; stored internally in 0.1s units) | `0` |
 | `HEARTBEAT_TIMEOUT` | PONG response wait time (ms) | `-1` (uses IVL value) |
 
 **Applied at:** `asio_zmp_engine` — ZMP protocol-level PING/PONG exchange.
@@ -316,7 +340,7 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 /* PING every 5s, remote TTL 15s, local PONG timeout 10s */
 int hb_ivl = 5000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-int hb_ttl = 150;  /* 0.1s units → 15s */
+int hb_ttl = 15000;  /* ms → 15s */
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
 int hb_timeout = 10000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
@@ -358,14 +382,13 @@ When enabled, HWM settings are ignored. Multipart messages cannot be received in
 | **What it does** | Sets kernel-level socket send/receive buffer sizes |
 | **Applied at** | `tcp.cpp` — `setsockopt(SO_SNDBUF/SO_RCVBUF)` |
 | **Default** | `-1` (keep OS default) |
-| **0** | Use OS default |
-| **>0** | Set to specified size (bytes) |
+| **>=0** | Request the specified size from the OS, in bytes |
 
 Independent of HWM. HWM limits message count in the zlink pipe; SNDBUF/RCVBUF limits byte size in the OS kernel socket buffer.
 
-**Per-socket-type:**
-- `STREAM`: if the application leaves the options unset, STREAM uses the
-  compatibility default `262144`.
+Auto-HWM profiles and STREAM defaults do not change these values automatically.
+For large meshes where connection count and memory ceilings matter, applications
+or deployment settings can set smaller explicit values.
 
 ---
 
@@ -513,8 +536,6 @@ Some socket types override common defaults at creation time:
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | Surface failures to unconnected peers instead of silently dropping |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
-| `STREAM` | `SNDBUF` | `262144` when unset | Compatibility default for stream sockets |
-| `STREAM` | `RCVBUF` | `262144` when unset | Compatibility default for stream sockets |
 
 > **Defaults and observable behavior:**
 >
@@ -541,19 +562,19 @@ Beyond common options, socket-type-specific options use dedicated APIs:
 
 | Socket | API | Representative Options |
 |--------|-----|----------------------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY` (default `1`), `PROBE`, `CONNECT_ROUTING_ID` |
-| DEALER | `zlink_set_dealer_option()` | `PROBE` |
-| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (default `1`), `MANUAL`, `WELCOME_MSG` |
-| SUB/XSUB | `zlink_set_sub_option()` | Subscription-related |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (default `1`), `PROBE`, `CONNECT_ROUTING_ID`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (default `100`) |
+| DEALER | `zlink_set_dealer_option()` | `PROBE`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (default `100`) |
+| PUB/XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (default `1`), `MANUAL`, `WELCOME_MSG`, `APPROVE_SUBSCRIBE`, `REJECT_SUBSCRIBE` |
+| SUB/XSUB | `zlink_set_sub_option()` (`TOPICS_COUNT`); subscription filters via `zlink_set_subscription()` / `zlink_unset_subscription()` | `TOPICS_COUNT` |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 
 ---
 
 ## Socket Channel Name
 
-Assign a logical channel name to any socket for use with Discovery and
-Registry. The channel name is what Discovery and Registry use to identify the
-service role of the socket.
+Assign a logical channel name to any socket. Frameworks and applications can
+use this metadata to keep route-channel configuration explicit without encoding
+the channel into transport endpoints.
 
 ```c
 /* Set the channel name */
@@ -565,9 +586,7 @@ size_t len = 0;
 zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 ```
 
-This is equivalent to setting the channel name at socket-attach time.
-Changing the channel name after a socket is attached to a Discovery is not
-supported.
+The channel name is metadata only. It does not connect the socket.
 
 ---
 <!-- zlink-nav:bottom:start -->

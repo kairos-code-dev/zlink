@@ -1,14 +1,14 @@
 [English](07-4-actor.md) | [한국어](07-4-actor.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT](07-3-spot.md) | [Registry →](07-4-registry.md)
+[← SPOT](07-3-spot.md) | [Routing ID →](08-routing-id.md)
 <!-- zlink-nav:end -->
 
 # SPOT Actor Guide
 
 This guide covers Actor creation, Spot join/leave, teardown, and session binding.
 For SPOT basic setup and dispatch handler registration see the [SPOT guide](07-3-spot.md).
-For exact API contracts see the [SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.md).
+For exact API contracts see the [SPOT spec](../spec/core/service/spot.md).
 
 ## 1. Distributing session messages with Actors
 
@@ -97,13 +97,10 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 }
 ```
 
-To make an Actor address discoverable from another node, enable
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on the Actor owner Discovery, move the
-Actor to a user Spot, then query with `zlink_discovery_resolve_actor()`.
-Creating an Actor alone does not publish an active route.
-**The active route is published when a user Spot join succeeds, and is
-updated to the Entry Spot location when an explicit leave succeeds.** STREAM
-session bind and unbind do not publish or remove the active route.
+Actor location belongs to the SPOT/Actor lifecycle. Creating an Actor places
+it on the Entry Spot, a successful join moves it to the joined user Spot, and
+a successful explicit leave moves it back to the Entry Spot. STREAM session
+bind and unbind do not change the Actor location.
 
 To look up an existing Actor by id on the local node:
 
@@ -191,8 +188,8 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
     while (zlink_spot_actor_join_recv(spot_, &info, &parts, &part_count,
                                       ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
         /* info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE means remote join */
-        int accept = /* inspect payload */;
-        zlink_spot_actor_join_reply(spot_, &info, accept, NULL, 0);
+        int join_result = 0; /* 0 = accept; non-zero = reject code */
+        zlink_spot_actor_join_reply(spot_, &info, join_result, NULL, 0);
         zlink_multipart_close(parts, part_count);
     }
     break;
@@ -213,41 +210,26 @@ in flags.
 > `timeout_ms == 0` it stays pending until a handler is installed or the
 > Spot/SpotNode terminates.
 
-### Spot lifecycle handler
+### Spot lifecycle events
 
-To observe Actor location changes (creation, join, leave, destroy) on a Spot,
-register a lifecycle handler. Callbacks run after the location change commits.
+To observe Actor location changes (creation, join, leave, destroy) on a Spot, install `zlink_spot_dispatch_event_handler()` before the Actor transition can occur. When it reports `ACTOR_LIFECYCLE_READABLE`, drain events with `zlink_spot_recv_actor_lifecycle()`.
 
 ```c
-static void on_spot_join(
-    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
-{
-    /* info->current_actor entered this Spot */
+zlink_spot_actor_lifecycle_event_t event;
+while (zlink_spot_recv_actor_lifecycle(spot, &event, ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
+    if (event.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
+        /* event.info.current_actor entered this Spot */
+    }
 }
-
-static void on_spot_leave(
-    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
-{
-    /* info->previous_actor left this Spot. For destroy,
-       info->current_actor is a zero-value ref. */
-}
-
-zlink_spot_actor_lifecycle_handler(spot, on_spot_join, on_spot_leave, userdata);
 ```
 
-Passing `NULL` for `on_join` or `on_leave` suppresses that callback. Passing
-both `NULL` removes the registered handler. Registration does not replay
-Actors that are already in the Spot; only transitions that occur after
-registration trigger callbacks.
-
-Lifecycle callbacks are observation-only. For deciding join completion, the
-application uses the join completion handler and the final Actor ref it returns.
+Lifecycle events are observation-only. For deciding join completion, the application uses the join completion handler and the final Actor ref it returns.
 
 ## 3. Spot leave
 
 `leave` is an async submit API that moves an Actor from its current Spot back
 to the same node's Entry Spot. If the Actor is already in the Entry Spot, the
-call is idempotent success and no lifecycle callbacks fire. After a successful
+call is idempotent success and no lifecycle events fire. After a successful
 leave, Actor messages surface through the Entry Spot dispatch event.
 
 ```c
@@ -293,7 +275,10 @@ route currently points at the same Actor ref, the route is also removed.
 Session attach state is independent of Actor location, so explicit
 `zlink_stream_unbind_actor()` is required if the session attach must be torn
 down separately. Use `zlink_spot_node_actor_close_bound_session()` to also
-close the client connection.
+close the client connection. When a STREAM session closes or disconnects, its
+Actor bindings are cleared automatically, but this does **not** move the Actor
+to the Entry Spot or change its joined Spot. To enumerate a session's bound
+Actors, call `zlink_stream_bound_actors()`.
 
 To push a message to the STREAM client from the Actor side (without a recv
 triggering it), use `zlink_spot_node_actor_send_bound_session_msg()`. This
@@ -319,5 +304,5 @@ C samples showing three Actor patterns:
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT](07-3-spot.md) | [Registry →](07-4-registry.md)
+[← SPOT](07-3-spot.md) | [Routing ID →](08-routing-id.md)
 <!-- zlink-nav:bottom:end -->

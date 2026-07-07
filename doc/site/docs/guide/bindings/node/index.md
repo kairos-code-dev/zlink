@@ -176,8 +176,6 @@ try {
 | `zlink_poller_new()` | `zlink.createPoller()` |
 | `zlink_timer_new()` | `zlink.createTimer()` |
 | `zlink_spot_node_new(ctx)` | `zlink.createSpotNode(ctx)` |
-| `zlink_registry_new(ctx)` | `zlink.createRegistry(ctx)` |
-| `zlink_discovery_new(ctx,...)` | `zlink.createDiscovery(ctx, type, ch)` |
 
 ---
 
@@ -215,8 +213,6 @@ console.log(`zlink ${major}.${minor}.${patch}`);
 | `stream_recv_sample.ts` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.ts` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.ts` | 모니터 이벤트 수신 |
-| `discovery_registry_sample.ts` | Registry + Discovery |
-| `registry_query_sample.ts` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.ts` | SpotNode/Spot PUB/SUB |
 | `spot_request_async_sample.ts` | SpotNode 비동기 요청 |
 | `actor_single_player_queue_sample.ts` | 액터 조인·이동·메시지 큐 |
@@ -270,7 +266,6 @@ JavaScript 코드로 바로 볼 수 있다.
 
 **서비스**
 - [서비스 개요](../../07-0-services.md)
-  — [Discovery](../../07-1-discovery.md) · [SPOT](../../07-3-spot.md) · [Actor](../../07-4-actor.md) · [Registry](../../07-4-registry.md)
 
 **운영**
 - [소켓 옵션](../../12-socket-options.md)

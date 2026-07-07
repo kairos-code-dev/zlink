@@ -250,8 +250,6 @@ try (Message msg = Message.from("data")) {
 | `zlink_spot_node_new(ctx)` | `ctx.createSpotNode()` |
 | `zlink_spot_node_create_spot(...)` | `node.createSpot()` |
 | `zlink_spot_node_actor_new(...)` | `node.createActor("id")` |
-| `zlink_registry_new(ctx)` | `ctx.createRegistry()` |
-| `zlink_discovery_new(ctx, ...)` | `ctx.createDiscovery(type, channel)` |
 
 ---
 
@@ -295,8 +293,6 @@ if (Zlink.has("draft")) {
 | `StreamRecvSample` | STREAM 원시 TCP |
 | `StreamPacketCallbackSample` | STREAM 패킷 콜백 |
 | `MonitorRecvSample` | 모니터 이벤트 수신 |
-| `DiscoveryRegistrySample` | Registry + Discovery 기본 |
-| `RegistryQuerySample` | Registry 토폴로지 쿼리 |
 | `SpotRecvSample` | SpotNode/Spot PUB/SUB |
 | `SpotRequestAsyncSample` | SpotNode 비동기 요청 |
 | `ActorSinglePlayerQueueSample` | 액터 조인/이동/메시지 큐 |
@@ -359,10 +355,8 @@ Kotlin 코드로 바로 볼 수 있습니다.
 
 **서비스**
 - [서비스 개요](../../07-0-services.md)
-  - [Discovery](../../07-1-discovery.md)
   - [SPOT](../../07-3-spot.md)
   - [Actor](../../07-4-actor.md)
-  - [Registry](../../07-4-registry.md)
 
 **운영**
 - [소켓 옵션](../../12-socket-options.md)

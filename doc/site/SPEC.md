@@ -73,9 +73,7 @@ doc/site/
 | 05-tls-security.md | 10 | TLS 보안 |
 | 06-monitoring.md | 18 | 모니터링 |
 | 07-0-services.md | 0 | 서비스 개요 (코드 없음) |
-| 07-1-discovery.md | 3 | Discovery |
 | 07-3-spot.md | 8 | SPOT |
-| 07-4-registry.md | 15 | Registry |
 | 08-routing-id.md | 14 | Routing ID |
 | 09-message-api.md | 20 | Message API |
 | 10-performance.md | 12 | 성능 |
@@ -275,9 +273,7 @@ nav:
     - Monitoring: guide/06-monitoring.md
     - Services:
       - Overview: guide/07-0-services.md
-      - Discovery: guide/07-1-discovery.md
       - SPOT: guide/07-3-spot.md
-      - Registry: guide/07-4-registry.md
     - Routing ID: guide/08-routing-id.md
     - Message API: guide/09-message-api.md
     - Performance: guide/10-performance.md

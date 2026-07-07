@@ -105,7 +105,7 @@ internal static partial class PerfRunner
         }
     }
 
-    // ITEM 3 (MULTI_SPOT fix): zlink_discovery_connect_registry is
+    // ITEM 3 (MULTI_SPOT fix): registry connection is
     // non-blocking; immediately after registry.Bind the registry PUB socket
     // is not yet connectable and the call returns EAGAIN (errno 11, code
     // 604). C's discovery layer tolerates this via its connect/retry loop;

@@ -79,7 +79,6 @@ plugins:
             Operations: 운영
             Reference: 레퍼런스
             Utilities: 유틸리티
-            Discovery: 디스커버리
             Internals: 내부 구조
             Architecture: 아키텍처
             Threading Model: 스레딩 모델
@@ -90,9 +89,6 @@ plugins:
             Protocol ZMP: ZMP 프로토콜
             Protocol Raw: Raw 프로토콜
             SPOT Internals: SPOT 내부 구조
-            Discovery Internals: Discovery 내부 구조
-            Registry Internals: Registry 내부 구조
-            Peer Disconnect RID: Peer RID 연결 종료
             I/O Thread: I/O 스레드
             Result Enums: 결과 Enum
             Actor: Actor
@@ -119,10 +115,8 @@ nav:
     - TLS Security: guide/05-tls-security.md
     - Services:
       - Overview: guide/07-0-services.md
-      - Discovery: guide/07-1-discovery.md
       - SPOT: guide/07-3-spot.md
       - Actor: guide/07-4-actor.md
-      - Registry: guide/07-4-registry.md
     - Operations:
       - Monitoring: guide/06-monitoring.md
       - Performance: guide/10-performance.md
@@ -151,9 +145,7 @@ nav:
     - Errors: api/errors.md
     - Result Enums: api/errno-map.md
     - Utilities: api/utilities.md
-    - Discovery: api/discovery.md
     - SPOT: api/spot.md
-    - Registry: api/registry.md
   - Internals:
     - Architecture: internals/architecture.md
     - Threading Model: internals/threading-model.md
@@ -162,10 +154,7 @@ nav:
     - POSD Module Structure: internals/posd-module-structure.md
     - Services Internals: internals/services-internals.md
     - SPOT Internals: internals/spot-internals.md
-    - Discovery Internals: internals/discovery-internals.md
-    - Registry Internals: internals/registry-internals.md
     - Stream Socket: internals/stream-socket.md
-    - Peer Disconnect RID: internals/peer-disconnect-rid.md
     - Socket Options: internals/socket-option-defaults.md
     - I/O Thread: internals/io-thread.md
     - Protocol ZMP: internals/protocol-zmp.md

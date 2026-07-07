@@ -146,8 +146,6 @@ except zlink.SubmitError as e:
 | `zlink_msg_data(msg)` | `part.to_bytes()` |
 | `zlink_routing_id_t` | `zlink.RoutingId(b"id")` |
 | `zlink_spot_node_new(ctx)` | `zlink.create_spot_node(ctx)` |
-| `zlink_registry_new(ctx)` | `zlink.create_registry(ctx)` |
-| `zlink_discovery_new(ctx,...)` | `zlink.create_discovery(ctx, type, ch)` |
 
 ---
 
@@ -179,8 +177,6 @@ print(f"zlink {major}.{minor}.{patch}")
 | `stream_recv_sample.py` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.py` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.py` | 모니터 이벤트 수신 |
-| `discovery_registry_sample.py` | Registry + Discovery |
-| `registry_query_sample.py` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.py` | SpotNode/Spot PUB/SUB |
 | `spot_request_async_sample.py` | SpotNode 비동기 요청 |
 | `actor_single_player_queue_sample.py` | 액터 조인·이동·메시지 큐 |
@@ -203,7 +199,6 @@ python run_samples.py   # 전체 실행
 
 **서비스**
 - [서비스 개요](../../07-0-services.md)
-  — [discovery](../../07-1-discovery.md) · [SPOT](../../07-3-spot.md) · [Actor](../../07-4-actor.md) · [registry](../../07-4-registry.md)
 
 **운영**
 - [소켓 옵션](../../12-socket-options.md)

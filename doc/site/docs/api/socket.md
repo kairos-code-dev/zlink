@@ -740,9 +740,6 @@ ROUTER and STREAM use their routing maps for lookup. For STREAM,
 the current connected-pipe source routing id snapshot. If more than one pipe
 has the same routing id, the target is ambiguous and the call fails.
 
-On sockets attached to Discovery, manual connection control is rejected with
-`ZLINK_CONNECT_BUSY`.
-
 **Returns:** `ZLINK_CONNECT_OK` on success. Missing target maps to
 `ZLINK_CONNECT_NOT_FOUND`, duplicate routing id maps to
 `ZLINK_CONNECT_CONFLICT`, and lifecycle ownership conflict maps to
@@ -750,25 +747,6 @@ On sockets attached to Discovery, manual connection control is rejected with
 diagnostics.
 
 **See also:** `zlink_disconnect`, `ZLINK_OPT_RID_DUPLICATE_POLICY`
-
----
-
-### zlink_socket_attach_discovery
-
-Attach a raw socket to a discovery service view.
-
-```c
-zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discovery_);
-```
-
-Attaches a raw ROUTER, DEALER, PUB, or SUB socket to a discovery service
-view. While attached, manual `connect`, `disconnect`, `unbind`, and `close`
-operations fail. Destroy the discovery instance to terminate the attached
-socket lifecycle.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**See also:** `zlink_socket`, `zlink_close`
 
 ---
 

@@ -16,8 +16,9 @@
 
 ### 2.1 콜백 모드
 
-I/O 스레드에서 이벤트 발생 즉시 핸들러가 호출된다.
-이벤트 유실 없이 실시간으로 처리하려면 콜백 모드가 적합하다.
+이벤트 발생 시 service-control 런타임 스레드(부모 소켓의 I/O 스레드가 아님)에서
+핸들러가 호출된다. 콜백 모드는 실시간 처리에 편리하지만, 모니터 전달은 lossy라
+부하 시 이벤트가 드롭될 수 있으므로 모든 이벤트 수신을 가정하면 안 된다.
 
 ```c
 /* Define event handler */
@@ -61,20 +62,20 @@ typedef struct {
 ## 4. 소켓 모니터 이벤트
 
 `zlink_socket_monitor_open()`으로 관찰하는 이벤트다.
-기반 소켓(raw socket)의 전송/세션 상태를 알려준다.
+기반 소켓(raw socket)의 transport·세션 상태를 알려준다.
 
 ### 이벤트 전체 표
 
-| 상수 | 값 | 설명 | `value` | 발생 측 |
+| 이벤트 이름 | 값 | 설명 | `value` | 발생 측 |
 |---|---|---|---|---|
 | `CONNECTION_READY` | `0x1000` | 핸드셰이크 이후 ready edge | reserved | 양쪽 |
 | `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | 클라이언트 |
 | `ACCEPTED` | `0x0020` | 수신 연결 accept | fd | 서버 |
 | `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 양쪽 |
 | `LISTENING` | `0x0008` | bind 성공, 수신 대기 중 | fd | 서버 |
-| `CLOSED` | `0x0080` | 의도적 close 완료 | — | 양쪽 |
+| `CLOSED` | `0x0080` | 의도적 close 완료 | fd | 양쪽 |
 | `CONNECT_DELAYED` | `0x0002` | 비동기 연결 재시도 예약 | errno | 클라이언트 |
-| `CONNECT_RETRIED` | `0x0004` | 비동기 재연결 진행 중 | — | 클라이언트 |
+| `CONNECT_RETRIED` | `0x0004` | 비동기 재연결 진행 중 | 재시도 interval (ms) | 클라이언트 |
 | `BIND_FAILED` | `0x0010` | bind 실패 | errno | 서버 |
 | `ACCEPT_FAILED` | `0x0040` | accept 실패 | errno | 서버 |
 | `CLOSE_FAILED` | `0x0100` | close 실패 | errno | 양쪽 |
@@ -107,8 +108,7 @@ flowchart LR
 `CONNECTION_READY` 이벤트의 `value` 필드는 예약(reserved)이며, 집계 준비 카운트 계약이 아니다.
 준비 상태 판정은 이벤트 에지(edge)와 주체별 이벤트 카운팅으로 한다.
 
-- ROUTER/STREAM에서는 `ev->routing_id`에 피어 신원(peer identity)이 포함된다.
-- PAIR/DEALER에서는 `routing_id`가 비어 있다.
+- `ev->routing_id`에는 연결이 전달하는 피어 신원(peer identity)이 담긴다(소켓 타입별 특수 처리 없음).
 
 ### DISCONNECTED reason 코드
 
@@ -116,7 +116,7 @@ flowchart LR
 |------|------|------|
 | 0 | `UNKNOWN` | 원인 불명 |
 | 3 | `HANDSHAKE_FAILED` | 핸드셰이크 실패 |
-| 4 | `TRANSPORT_ERROR` | 전송계층 오류 |
+| 4 | `TRANSPORT_ERROR` | transport 계층 오류 |
 | 5 | `CTX_TERM` | 컨텍스트 종료 |
 
 ### 프로토콜 에러 코드
@@ -160,9 +160,8 @@ DEALER는 가중치가 `0`인 ROUTER를 후보에서 자동으로 제외하므�
 ROUTER가 모두 `0`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
 실패하기 시작한다.
 
-서비스 계층에서 같은 변화를 보려면
-`zlink_discovery_member_peers()`를 주기적으로 읽고 이전 결과와 비교한다.
-현재 공개 계약에는 별도 서비스 이벤트 스트림이 없다.
+서비스 계층 진단에는 현재 SPOT node 스냅샷을 사용한다. core C API는
+Discovery 서비스 view를 제공하지 않는다.
 
 ## 5. 이벤트 흐름 다이어그램
 
@@ -214,7 +213,7 @@ flowchart LR
 |------|------|------|-----------|
 | 0 | UNKNOWN | 원인 불명 | 로그 기록 후 관찰 |
 | 3 | HANDSHAKE_FAILED | 핸드셰이크 실패 | TLS/프로토콜 설정 확인 |
-| 4 | TRANSPORT_ERROR | 전송계층 오류 | 네트워크 상태 확인 |
+| 4 | TRANSPORT_ERROR | transport 계층 오류 | 네트워크 상태 확인 |
 | 5 | CTX_TERM | 컨텍스트 종료 | 종료 처리 |
 
 ### reason 코드 처리 예제
@@ -331,8 +330,8 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(monitor, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(monitor, &snapshot);
 printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
@@ -344,8 +343,8 @@ printf("sndq=%llu, rcvq=%llu\n",
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
-        zlink_monitor_snapshot_t snapshot;
-        zlink_monitor_snapshot(g_monitor, &snapshot);
+        zlink_monitor_status_t snapshot;
+        zlink_monitor_status(g_monitor, &snapshot);
         printf("Monitor snapshot updated\n");
     }
 }
@@ -356,12 +355,9 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 현재 공개 C API에는 별도 서비스 이벤트 핸들이 없다. 서비스 계층
 상태는 스냅샷 또는 조회 결과를 읽고 시간에 따라 비교해서 확인한다.
 
-- Discovery membership: `zlink_discovery_member_peers()`
-- Registry overview: `zlink_registry_status_snapshot()`,
-  `zlink_registry_topology_snapshot()`
-- Spot node state: `zlink_spot_node_status_snapshot()`,
-  `zlink_spot_node_peers_snapshot()`,
-  `zlink_spot_node_subjects_snapshot()`
+- Spot node state: `zlink_spot_node_status()`,
+  `zlink_spot_node_peers()`,
+  `zlink_spot_node_subjects()`
 
 ## 9. 다중 소켓 모니터링
 
@@ -399,7 +395,7 @@ zlink_monitor_close(&mon_b);
 저빈도 제어 경로(설정/관리 경로) 계약에 속한다.
 즉 애플리케이션 스레드에서 호출할 수 있고,
 같은 핸들과 섞여도 정확성(동시 사용 시 데이터 무결성)이 유지된다.
-다만 모니터 콜백은 I/O 경로에서 실행되므로 콜백 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
+다만 모니터 콜백은 service-control 런타임 스레드(소켓의 I/O 스레드가 아님)에서 실행되므로 콜백 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
 
 ```c
 /* Open a monitor from an application thread */
@@ -409,8 +405,8 @@ void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 /* Snapshot reads may happen later from another worker thread */
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(mon, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(mon, &snapshot);
 ```
 
 ### 동시 모니터 제한
@@ -419,35 +415,17 @@ zlink_monitor_snapshot(mon, &snapshot);
 
 ### 콜백 처리 속도
 
-콜백 핸들러에서 블로킹 작업을 수행하면 I/O 진행에 영향을 줄 수 있다.
-느린 처리가 필요하면 콜백 안에서 사용자 큐로 넘기고 별도 스레드에서 처리한다.
+콜백 핸들러의 블로킹 작업은 소켓 I/O 경로를 막지는 않지만(콜백은 service-control
+스레드에서 실행), 이후 모니터 이벤트를 지연시킨다. 느린 처리가 필요하면 콜백
+안에서 사용자 큐로 넘기고 별도 스레드에서 처리한다.
 
 ### 원격 모니터링
 
-모니터 API는 **프로세스 내(inproc) 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
-원격 모니터링이 필요하면 소켓 모니터 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
-
-```c
-zlink_set_subscription(sub, "topic");
-
-/* SUB/PUB perf gate: wait for connection-ready */
-zlink_socket_monitor_open_options_t sub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY
-};
-void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
-
-zlink_socket_monitor_open_options_t pub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY
-};
-void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
-
-/* Start after expected clients are connection-ready */
-zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
-zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
-
-zlink_monitor_close(&pub_mon);
-zlink_monitor_close(&sub_mon);
-```
+모니터 API는 **프로세스 내(inproc) 전용**이다. `zlink_socket_monitor_open()`은
+내부적으로 `inproc://monitor-*` 엔드포인트를 만들며 tcp/wss 등 원격 transport는
+받지 않는다. 다른 프로세스로 이벤트를 노출하려면, 모니터 콜백(또는 recv)으로
+이벤트를 받은 뒤 애플리케이션이 직접 별도 PUB 소켓에 직렬화해 발행하는 중계
+계층을 둔다(zlink가 제공하는 기능이 아니라 애플리케이션 책임).
 
 ### 모니터 종료 절차
 
@@ -455,6 +433,10 @@ zlink_monitor_close(&sub_mon);
 /* Close the monitor handle */
 zlink_monitor_close(&mon);
 ```
+
+모니터 콜백 안에서 `zlink_monitor_close()`를 호출해도 된다. close는 콜백이
+반환될 때까지 지연되며(실패가 아니라 OK 반환), 콜백 depth가 0이 되면 최종
+정리가 수행된다.
 
 ## 11. 메시징 시작 전 준비 확인 (Ready Gate)
 
@@ -539,8 +521,8 @@ STREAM도 다른 기반 소켓과 동일하게
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(monitor, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(monitor, &snapshot);
 printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
@@ -573,15 +555,10 @@ broadcast_control_start();
 
 ### 11.5 스냅샷
 
-`zlink_monitor_snapshot()`과 `zlink_*_status_snapshot()`은
+`zlink_monitor_status()`과 `zlink_*_status()`은
 현재 상태를 조회하는 용도다. 운영 대시보드, 상태 확인(health check), 디버깅에 활용한다.
 
-```c
-/* Check current registry health */
-zlink_registry_status_t status;
-zlink_registry_status_snapshot(registry, &status);
-printf("state=%d\n", status.state);
-```
+core 수준 dashboard에는 현재 socket과 SPOT monitor snapshot을 사용한다.
 
 ## 12. Poller API
 
@@ -593,33 +570,37 @@ Poller API(`zlink_poller_*`)는 zlink 소켓, 파일 디스크립터(fd), 타이
 
 ```c
 void *poller = zlink_poller_new();
+zlink_poller_event_t events[16];
 
 /* 소켓 추가 (POLLIN) */
-zlink_poller_add(poller, router, my_router_ctx, ZMQ_POLLIN);
+zlink_poller_add(poller, router, my_router_ctx, ZLINK_POLLIN);
 
 /* 원시 fd 추가 */
-zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZMQ_POLLIN);
+zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZLINK_POLLIN);
 
 /* 타이머 추가 */
-void *timer = zlink_timer_new(ctx, 1000);  /* 1초 간격 */
+void *timer = zlink_timer_new();
+zlink_timer_start(timer, 1000000000, 0);  /* 1초 간격 */
 zlink_poller_add_timer(poller, timer, my_timer_ctx);
 
 for (;;) {
-    zlink_poller_event_t event;
-    int rc = zlink_poller_wait(poller, &event, 1, -1, NULL);
-    if (rc < 0)
+    int n = zlink_poller_wait(poller, events, 16, -1, NULL);
+    if (n < 0)
         break;
 
-    switch (event.source_kind) {
-    case ZLINK_POLLER_SOURCE_SOCKET:
-        handle_socket(event.socket, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_FD:
-        handle_fd(event.fd, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_TIMER:
-        handle_timer(event.timer, event.user_data);
-        break;
+    for (int i = 0; i < n; i++) {
+        zlink_poller_event_t *event = &events[i];
+        switch (event->source_kind) {
+        case ZLINK_POLLER_SOURCE_SOCKET:
+            handle_socket(event->socket, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_FD:
+            handle_fd(event->fd, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_TIMER:
+            handle_timer(event->timer, event->user_data);
+            break;
+        }
     }
 }
 
@@ -628,7 +609,8 @@ zlink_poller_destroy(&poller);
 
 `zlink_poller_wait()`는 기록한 이벤트 수를 반환하고, timeout이면 `0`,
 오류 시 `-1`을 반환한다. `timeout`은 밀리초 단위이며, `-1`은 무기한 대기,
-`0`은 non-blocking이다. 이벤트 하나만 필요하면 `n_events=1`을 넘긴다.
+`0`은 non-blocking이다. 이벤트 버퍼는 한 번 만들고 루프에서 재사용한다.
+각 wait 뒤에는 `events[0:n]` 범위만 유효하다.
 
 ### 12.2 일괄 대기
 
@@ -646,7 +628,7 @@ for (int i = 0; i < n; i++) {
 
 ```c
 /* 기존 소켓의 감시 이벤트 변경 */
-zlink_poller_modify(poller, router, ZMQ_POLLIN | ZMQ_POLLOUT);
+zlink_poller_modify(poller, router, ZLINK_POLLIN | ZLINK_POLLOUT);
 
 /* 소켓 제거 */
 zlink_poller_remove(poller, router);
@@ -667,7 +649,7 @@ zlink_poller_remove_timer(poller, timer);
 | `fd` | 파일 디스크립터 (`source_kind == FD`일 때 유효) |
 | `timer` | 타이머 핸들 (`source_kind == TIMER`일 때 유효) |
 | `user_data` | `add`/`add_fd`/`add_timer`로 등록한 포인터 |
-| `events` | 준비된 이벤트 플래그 (`ZMQ_POLLIN` / `ZMQ_POLLOUT`) |
+| `events` | 준비된 이벤트 플래그 (`ZLINK_POLLIN` / `ZLINK_POLLOUT`) |
 
 ### 12.5 저수준 `zlink_poll`
 
@@ -677,13 +659,13 @@ Poller 객체 없이 일회성 폴링이 필요하면 `zlink_poll()`을 사용�
 zlink_pollitem_t items[2];
 items[0].socket = router;
 items[0].fd     = 0;
-items[0].events = ZMQ_POLLIN;
+items[0].events = ZLINK_POLLIN;
 items[1].socket = NULL;
 items[1].fd     = pipe_fd;
-items[1].events = ZMQ_POLLIN;
+items[1].events = ZLINK_POLLIN;
 
 int n = zlink_poll(items, 2, 1000, NULL);
-if (items[0].revents & ZMQ_POLLIN)
+if (items[0].revents & ZLINK_POLLIN)
     /* router에 데이터 있음 */;
 ```
 

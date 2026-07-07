@@ -19,9 +19,7 @@ socket API.
 
 ## Services
 
-- [Discovery](guide/07-1-discovery.md) — Peer discovery
 - [SPOT](guide/07-3-spot.md) — Location-transparent pub/sub mesh
-- [Registry](guide/07-4-registry.md) — Service registry
 
 ## Code Examples
 

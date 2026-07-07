@@ -13,7 +13,7 @@ This document records the rationale and alternative analyses for key design deci
 **Decision**: Auto-generated own routing_id for every socket is a 16B UUID (binary).
 
 **Rationale**:
-- 16B UUID guarantees global uniqueness across nodes/processes
+- A 16B random UUID makes collisions across nodes/processes effectively negligible
 - Provides sufficient entropy for socket identification in monitoring/debugging
 - Avoids cross-process collisions that short (4B / 5B) identifiers would risk
 
@@ -28,7 +28,7 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 1.3 String Alias Retention
 
-**Decision**: `zlink_set_routing_id()` / `zlink_get_routing_id()` and `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) retain variable-length strings.
+**Decision**: `zlink_set_routing_id()` / `zlink_get_routing_id()` and `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) retain variable-length byte routing ids/aliases (usable as strings).
 
 **Rationale**:
 - String alias-based debugging/logging patterns are widely used with ROUTER
@@ -41,7 +41,7 @@ This document records the rationale and alternative analyses for key design deci
 
 **Rationale**:
 - Core already has socket_id-based auto-generation behavior
-- Service utility (routing_id_utils.hpp) is used only for override purposes
+- Service utility (routing_id_utils.hpp) applies an override, or fills in a routing_id for service sockets when none is given
 - Prevents layer violation (no services → core dependency inversion)
 
 ---
@@ -50,12 +50,15 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 2.1 Polling Approach Selection
 
-**Decision**: Monitoring provides only the polling (PAIR socket) approach.
+**Decision**: Monitoring exposes a direct receive surface by default, with an
+optional one-way handler callback.
 
 **Rationale**:
-- Callback approach risks deadlock when called from the I/O thread
-- Polling is safely processed in the user thread
-- Can combine multi-socket monitoring via zlink_poll
+- The default recv model is safely processed in the user thread and avoids the
+  I/O-thread callback deadlock risk
+- An application that prefers callback-driven delivery can attach a handler
+  (a one-way transition to callback-only mode)
+- Can combine multi-socket monitoring via the poller
 
 ### 2.2 CONNECTION_READY Event
 
@@ -68,10 +71,11 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 2.3 DISCONNECTED Reason Code
 
-**Decision**: Add reason codes (0~5) to the DISCONNECTED event.
+**Decision**: Add reason codes to the DISCONNECTED event (`UNKNOWN=0`,
+`HANDSHAKE_FAILED=3`, `TRANSPORT_ERROR=4`, `CTX_TERM=5`).
 
 **Rationale**:
-- Need to distinguish intentional shutdown (LOCAL) from unintentional shutdown (TRANSPORT_ERROR)
+- Need to distinguish context termination (`CTX_TERM`) from transport errors (`TRANSPORT_ERROR`) and handshake failures (`HANDSHAKE_FAILED`)
 - Identifying disconnect causes is essential for operational debugging
 
 ### 2.4 Single Event Format
@@ -83,32 +87,20 @@ This document records the rationale and alternative analyses for key design deci
 - Simplifies implementation/usage by eliminating format branching logic
 
 ---
-
-## 3. Service Discovery Design
-
-### 3.1 Discovery Service
-
-**Decision**: Discovery answers service-location queries and is used standalone (service list queries).
-
-**Rationale**:
-- Separation of concerns: "where is it" and "how to send" are independent
-- Discovery can be attached to multiple downstream consumers
-- One Discovery instance can publish lookups to several socket subscribers
-
 ---
 
-## 4. SPOT Design
+## 3. SPOT Design
 
-### 4.1 PUB/SUB-Based Mesh
+### 3.1 PUB/SUB-Based Mesh
 
 **Decision**: SPOT cluster is composed of a PUB/SUB mesh.
 
 **Rationale**:
 - PUB/SUB is natural for topic-based fanout
 - Subscription filtering is more efficient than ROUTER-based approaches
-- Enables automatic mesh formation via Discovery
+- Explicit peer connections keep mesh formation under application control
 
-### 4.2 No Re-publishing Policy
+### 3.2 No Re-publishing Policy
 
 **Decision**: Remotely received messages are distributed locally only, not re-published.
 

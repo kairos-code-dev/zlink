@@ -177,8 +177,6 @@ print(f"zlink {major}.{minor}.{patch}")
 | `stream_recv_sample.py` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.py` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.py` | 모니터 이벤트 수신 |
-| `discovery_registry_sample.py` | Registry + Discovery |
-| `registry_query_sample.py` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.py` | SpotNode/Spot PUB/SUB |
 | `spot_request_callback_sample.py` | SpotNode 콜백 요청 |
 | `actor_single_player_queue_sample.py` | 액터 조인·이동·메시지 큐 |
@@ -201,7 +199,6 @@ python run_samples.py   # 전체 실행
 
 **서비스**
 - [서비스 개요](../../../../core/doc/guide/07-0-services.ko.md)
-  — [discovery](../../../../core/doc/guide/07-1-discovery.ko.md) · [SPOT](../../../../core/doc/guide/07-3-spot.ko.md) · [Actor](../../../../core/doc/guide/07-4-actor.ko.md) · [registry](../../../../core/doc/guide/07-4-registry.ko.md)
 
 **운영**
 - [소켓 옵션](../../../../core/doc/guide/12-socket-options.ko.md)

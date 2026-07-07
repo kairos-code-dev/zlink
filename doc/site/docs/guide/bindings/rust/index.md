@@ -175,8 +175,6 @@ match socket.send().message(msg).submit() {
 | `zlink_poller_new()` | `Poller::new()` |
 | `zlink_timer_new()` | `Timer::new()` |
 | `zlink_spot_node_new(ctx)` | `SpotNode::new(&ctx)` |
-| `zlink_registry_new(ctx)` | `Registry::new(&ctx)` |
-| `zlink_discovery_new(ctx,...)` | `Discovery::new(&ctx, type, ch)` |
 
 ---
 
@@ -223,8 +221,6 @@ std::thread::spawn(move || {
 | `stream_recv_sample.rs` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.rs` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.rs` | 모니터 이벤트 수신 |
-| `discovery_registry_sample.rs` | Registry + Discovery |
-| `registry_query_sample.rs` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.rs` | SpotNode/Spot PUB/SUB |
 | `spot_request_async_sample.rs` | SpotNode 비동기 요청 |
 | `actor_single_player_queue_sample.rs` | 액터 조인·이동·메시지 큐 |
@@ -253,7 +249,6 @@ cargo doc --no-deps --open
 
 **서비스**
 - [서비스 개요](../../07-0-services.md)
-  — [Discovery](../../07-1-discovery.md) · [SPOT](../../07-3-spot.md) · [Actor](../../07-4-actor.md) · [Registry](../../07-4-registry.md)
 
 **운영**
 - [소켓 옵션](../../12-socket-options.md) · [TLS 보안](../../05-tls-security.md) · [모니터링](../../06-monitoring.md) · [스레드 안전성](../../11-thread-safety.md) · [메시지 API](../../09-message-api.md) · [라우팅 ID](../../08-routing-id.md)

@@ -8,7 +8,7 @@
 
 ## 1. 개요
 
-zlink의 공개 핸들(소켓, SPOT, Discovery, Registry, 모니터)은
+zlink의 공개 핸들(소켓, SPOT, 모니터)은
 기본적으로 thread-safe이지만, 모든 API의 비용이 같지는 않습니다.
 내부적으로 라이브러리는 모든 공개 API를 세 가지 계층 중 하나로 분류하고,
 각 계층은 고유한 순서 의미론과 성능 제약, 에러 규칙을 따릅니다.
@@ -54,11 +54,9 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
-- Heavy query: `zlink_registry_topology_query()`, 스냅샷 함수
+- 현재 공개 계약에 남아 있는 snapshot/query 함수
 
 **정확성 우선 직렬화:**
 
@@ -83,7 +81,6 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 
 - `zlink_close()` (소켓)
 - `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
-- `zlink_discovery_destroy()` / `zlink_registry_destroy()`
 - Monitor 핸들 `close` / `destroy`
 
 **입장 허용 게이트(Admission gate) 메커니즘:**
@@ -120,7 +117,7 @@ stateDiagram-v2
   자기 핸들의 `close` 를 호출하면, 실제 teardown 은 콜백 복귀(epilogue)까지
   지연된다. 콜백 내 use-after-free 를 방지한다.
 - **STREAM raw 콜백 제한.** STREAM raw 콜백 내에서 `close` 를
-  호출하면 `EBUSY` 로 실패한다 — raw 디스패치가 in-flight 상태이기 때문이다.
+  호출하면 `EBUSY` 로 실패한다 — raw dispatch가 in-flight 상태이기 때문이다.
 
 ## 3. Subject별 구현 참고
 
@@ -144,25 +141,13 @@ send queue에 발행합니다 — 단일 스레드 send에 쓰는 것과 같은
 
 - **공개 계약:** `spot_publish`는 hot-path 계층을 따릅니다. `SpotNode`는
   topology와 설정을 소유하며 직접 publish hot path를 제공하지 않습니다.
-  구독 변경, peer mutation, `attach_discovery`는 control path를 따릅니다.
+  구독 변경과 peer mutation은 control path를 따릅니다.
 - **Internal child:** `spot_pub` / `spot_sub`는 내부 구현 단위입니다.
   공개 thread-safety 계약의 직접 대상이 아닙니다 — parent/facade
   계약이 이들을 포함합니다. Child ordering과 open/destroy
   선형화는 내부 구현 관심사입니다.
 
-### 3.3 Discovery / Registry
-
-Discovery와 Registry는 control-plane 중심 subject입니다. Hot-path
-send API가 없습니다.
-
-- 정확성과 가시성이 주요 관심사입니다.
-- 내부 직렬화가 topology query, peer mutation, heartbeat 설정의
-  일관성을 보장합니다.
-- `attach_discovery`로 SPOT Node에 연결될 때,
-  Discovery/Registry 직렬화가 parent data-plane 성능을 저하시키면
-  안 됩니다.
-
-### 3.4 Monitor
+### 3.3 Monitor
 
 Monitor는 control-plane 중심 subject입니다.
 
@@ -174,8 +159,7 @@ Monitor는 control-plane 중심 subject입니다.
 
 ## 4. Service Public API Guard
 
-`service_public_api.hpp` 는 SPOT, SPOT Node, Discovery,
-Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
+`service_public_api.hpp` 는 SPOT과 SPOT Node가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 `service_public_api_guard_t` 클래스를 제공합니다.
 
 **구현:**
@@ -191,7 +175,7 @@ Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 
 | 계층 | 가드 역할 |
 |---|---|
-| Lifecycle strict | `begin_close_or_fail_busy()` 가 in-flight count 와 closing bit 를 원자적으로 확인합니다. in-flight > 0 이면 `EBUSY`, closing bit 가 이미 설정되어 있으면 `EALREADY` 를 반환합니다. 성공하면 closing bit 를 설정합니다. |
+| Lifecycle strict | `begin_close_or_fail_busy()` 가 in-flight count 와 closing bit 를 원자적으로 확인합니다. in-flight > 0 이면 `EBUSY`, closing bit 가 이미 설정되어 있으면 `ESHUTDOWN` 을 반환합니다. 성공하면 closing bit 를 설정합니다. |
 | Control path serialized | `enter_public_api()` 가 closing bit 를 확인한 후 in-flight count 를 증가시킵니다. Closing bit 가 설정되어 있으면 `ESHUTDOWN` 을 반환합니다. 모든 control-path 호출이 이 게이트를 거쳐 직렬화를 제공합니다. |
 | Hot path | Send 경로는 가드의 broad lock 경로를 우회합니다. Control-path 직렬화와의 경합을 피하기 위해 별도의 최소 비용 입장 허용(소켓 수준 입장 허용 게이트)을 사용합니다. |
 
@@ -201,20 +185,32 @@ Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 
 ## 5. Callback Dispatch 구현
 
-대부분의 콜백은 I/O 스레드에서 실행된다. 다만
-`zlink_spot_dispatch_event_handler()` 는 Spot 전용 worker runtime 에서
-실행된다. 디스패치 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,
+콜백마다 실행 스레드가 다르다:
+
+- **Socket message 핸들러**(`zlink_recv_handler`)는 async mailbox 처리를
+  통해 I/O 스레드에서 실행된다.
+- **Monitor 핸들러**는 service-control 런타임 스레드에서 실행된다 —
+  monitor 이벤트를 recv 루프로 비우는 전용 task(`monitor_handler_task`)이며,
+  부모의 I/O 스레드가 아니다.
+- **Send-ready 핸들러**는 *호출자의* send 스레드에서 동기적으로 실행될 수
+  있다. arm 된 알림이 send 경로의 `notify_send_ready_if_armed()` 에서 inline
+  으로 발화한다.
+- **SPOT dispatch 이벤트 핸들러**(`zlink_spot_dispatch_event_handler`)는
+  SPOT dispatch worker pool 에서 실행된다.
+
+dispatch 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,
 hot path 에 광범위 잠금 없이 핸들러 교체의 가시성을 보장한다.
 
 **핸들러 로딩:**
 
 ```cpp
-handler = _socket_msg_handler.load(std::memory_order_acquire);
+// 필드는 socket_dispatch_bridge_t 에 있음
+handler = socket_msg_handler.load(std::memory_order_acquire);
 ```
 
 모든 핸들러 함수 포인터와 관련 subject/userdata 포인터는
 `memory_order_acquire` load 를 씁니다. Setter 함수는 대응하는
-`memory_order_release` store 를 씁니다. 이 덕분에 콜백 디스패치가
+`memory_order_release` store 를 씁니다. 이 덕분에 콜백 dispatch가
 핸들러 포인터를 읽을 때, setter 스레드가 핸들러를 설치하기 전에 쓴
 모든 데이터도 함께 볼 수 있습니다.
 
@@ -226,20 +222,21 @@ handler(subject, userdata);
 leave_callback_api();   // clears in-flight flag
 ```
 
-`enter_callback_api` / `leave_callback_api` 쌍은 `close` 가 콜백을
-in-flight 연산으로 인식하게 하여, 핸들을 콜백 실행 중에 teardown 하는 대신
-`EBUSY` 를 반환하도록 보장합니다.
+`enter_callback_api` / `leave_callback_api` 쌍은 `close` 가 콜백을 in-flight
+연산으로 인식하게 한다. 콜백 종류에 따라 콜백 실행 중 `close` 는 `EBUSY` 로
+거부되거나(STREAM raw), close 를 수락하고 epilogue 로 지연한다(send-ready/monitor).
+자세한 것은 아래 참고.
 
 **STREAM raw 콜백 제약 근거:**
 
 STREAM raw 콜백은 더 엄격한 제한을 가진다 — raw 콜백 내에서의
 `close` 는 항상 `EBUSY` 로 실패한다. Send-ready/monitor 콜백에서
-`close` 가 epilogue 로 지연되는 것과 달리, STREAM raw 디스패치는 지연 close 를
+`close` 가 epilogue 로 지연되는 것과 달리, STREAM raw dispatch는 지연 close 를
 지원하지 않는다.
 
 **Send-ready 핸들러 `EDEADLK` 제약 근거:**
 
-자기 콜백 내에서 send-ready 핸들러를 교체하면 재진입(reentrant) 디스패치
+자기 콜백 내에서 send-ready 핸들러를 교체하면 재진입(reentrant) dispatch
 상황이 벌어진다. 이를 감지해 `EDEADLK` 로 거부한다.
 
 ## 6. 설계 원칙

@@ -278,10 +278,8 @@ RID 자산이 출력에 포함되는지 확인하세요 (`dotnet publish -r <rid
 
 **서비스**
 - [서비스 개요](../../../../core/doc/guide/07-0-services.ko.md)
-  - [Discovery](../../../../core/doc/guide/07-1-discovery.ko.md)
   - [SPOT](../../../../core/doc/guide/07-3-spot.ko.md)
   - [Actor](../../../../core/doc/guide/07-4-actor.ko.md)
-  - [Registry](../../../../core/doc/guide/07-4-registry.ko.md)
 
 **운영**
 - [소켓 옵션](../../../../core/doc/guide/12-socket-options.ko.md)

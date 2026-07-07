@@ -1748,10 +1748,6 @@ int zlink_spot_node_destroy(void **node_p);/* SPOT Node 해제 */
 int zlink_spot_node_set_pub_bind(void *node, const char *endpoint);
 int zlink_spot_node_connect_peer(void *node, const char *peer_endpoint);
 int zlink_spot_node_disconnect_peer(void *node, const char *peer_endpoint);
-int zlink_spot_node_attach_discovery(void *node, void *discovery);
-int zlink_spot_node_attach_channel_dealer(void *node, void *discovery, void *dealer);
-int zlink_spot_node_attach_channel_dealer_manual(void *node, const char *channel_name, void *dealer);
-int zlink_spot_node_attach_pub_ingress(void *node, void *pub);
 ```
 
 `options == NULL` 또는 `options->mode == 0`은 모든 SPOT 기능을 켠다. 바인딩은

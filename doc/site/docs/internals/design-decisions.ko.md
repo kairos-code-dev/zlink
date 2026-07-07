@@ -13,7 +13,7 @@
 **결정**: 모든 소켓의 자동 생성 own routing_id는 16B UUID(binary).
 
 **근거**:
-- 16B UUID는 노드/프로세스 간 전역 유일성을 보장한다
+- 16B random UUID는 노드/프로세스 간 충돌 가능성을 사실상 무시할 수준으로 낮춘다
 - 모니터링/디버깅에서 소켓 식별에 충분한 엔트로피를 제공한다
 - 4B/5B 등 짧은 식별자로는 확보하기 어려운, 프로세스 간 충돌 회피 여유를 준다
 
@@ -28,7 +28,7 @@
 
 ### 1.3 문자열 alias 유지
 
-**결정**: `zlink_set_routing_id()` / `zlink_get_routing_id()`와 `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`(`zlink_set_router_option()`으로 설정)는 가변 길이 문자열로 유지한다.
+**결정**: `zlink_set_routing_id()` / `zlink_get_routing_id()`와 `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`(`zlink_set_router_option()`으로 설정)는 가변 길이 byte routing id/alias(문자열로도 쓸 수 있음)로 유지한다.
 
 **근거**:
 - ROUTER에서 문자열 alias 기반 디버깅/로깅 패턴이 널리 쓰인다
@@ -41,7 +41,7 @@
 
 **근거**:
 - 코어에서 이미 socket_id 기반 자동 생성이 동작 중이다
-- 서비스 유틸(routing_id_utils.hpp)은 override 목적으로만 쓴다
+- 서비스 유틸(routing_id_utils.hpp)은 override를 적용하거나, override가 없으면 서비스 소켓에 routing_id를 채우는 데 쓴다
 - 계층 위반 방지(services → core 의존 역전 없음)
 
 ---
@@ -50,28 +50,32 @@
 
 ### 2.1 Polling 방식 선택
 
-**결정**: 모니터링은 Polling(PAIR 소켓) 방식만 제공한다.
+**결정**: 모니터링은 기본적으로 direct receive 표면을 제공하고, 선택적으로
+단방향 handler 콜백을 제공한다.
 
 **근거**:
-- 콜백 방식은 I/O 스레드에서 호출되어 데드락 위험이 있다
-- Polling은 사용자 스레드에서 안전하게 처리할 수 있다
-- `zlink_poll`로 다중 소켓 모니터링을 조합할 수 있다
+- 기본 recv 모델은 사용자 스레드에서 안전하게 처리되며 I/O 스레드 콜백 데드락
+  위험을 피한다
+- 콜백 기반 전달을 선호하면 handler를 부착할 수 있다(콜백 전용 모드로 단방향
+  전환)
+- poller로 다중 소켓 모니터링을 조합할 수 있다
 
 ### 2.2 CONNECTION_READY 이벤트
 
 **결정**: 송수신 준비 시점은 `CONNECTION_READY` 이벤트로 알린다.
 
 **근거**:
-- CONNECTED/ACCEPTED는 전송계층 레벨이라 혼동을 유발한다
+- CONNECTED/ACCEPTED는 transport 레벨이라 혼동을 유발한다
 - 사용자에게 "실제 송수신 가능 시점"을 명확히 알려 준다
 - 핸드셰이크 완료를 곧 연결 완료로 의미를 통일한다
 
 ### 2.3 DISCONNECTED reason 코드
 
-**결정**: DISCONNECTED 이벤트에 reason 코드(0~5)를 추가한다.
+**결정**: DISCONNECTED 이벤트에 reason 코드(`UNKNOWN=0`, `HANDSHAKE_FAILED=3`,
+`TRANSPORT_ERROR=4`, `CTX_TERM=5`)를 추가한다.
 
 **근거**:
-- 의도적 종료(LOCAL)와 비의도적 종료(TRANSPORT_ERROR)를 구분해야 한다
+- context 종료(`CTX_TERM`)와 transport 오류(`TRANSPORT_ERROR`), handshake 실패(`HANDSHAKE_FAILED`)를 구분해야 한다
 - 운영 디버깅에서 종료 원인 파악이 필수다
 
 ### 2.4 단일 이벤트 포맷
@@ -83,32 +87,20 @@
 - 포맷 분기 로직을 제거해 구현과 사용이 단순해진다
 
 ---
-
-## 3. Service Discovery 설계
-
-### 3.1 Discovery 서비스
-
-**결정**: Discovery는 서비스 위치 질의에 응답하며, 단독으로도 쓴다(서비스 목록 조회).
-
-**근거**:
-- 관심사 분리: "어디에 있는지"와 "어떻게 보낼지"는 서로 독립이다
-- Discovery는 여러 downstream consumer에 연결할 수 있다
-- Discovery 인스턴스 하나가 여러 socket subscriber에 조회 결과를 발행한다
-
 ---
 
-## 4. SPOT 설계
+## 3. SPOT 설계
 
-### 4.1 PUB/SUB 기반 mesh
+### 3.1 PUB/SUB 기반 mesh
 
 **결정**: SPOT 클러스터는 PUB/SUB mesh(각 노드가 서로 연결된 그물망 구조)로 구성한다.
 
 **근거**:
-- 토픽 기반 팬아웃(fanout, 한 발신자 → 다수 수신자 분배)에 PUB/SUB가 자연스럽다
+- 토픽 기반 fanout(한 발신자가 다수 수신자에게 보내기)에 PUB/SUB가 자연스럽다
 - ROUTER 기반보다 구독 필터링이 효율적이다
-- Discovery 기반 자동 mesh 구성이 가능하다
+- 명시적 peer 연결로 mesh 구성을 제어할 수 있다
 
-### 4.2 재발행 없음 정책
+### 3.2 재발행 없음 정책
 
 **결정**: 원격 수신 메시지는 로컬로만 분배하고 재발행하지 않는다.
 

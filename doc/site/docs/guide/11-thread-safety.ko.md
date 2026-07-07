@@ -8,9 +8,8 @@
 
 ## 1. 한줄 요약
 
-**네, zlink 핸들은 스레드 안전(thread-safe)합니다.** 소켓, SPOT, Discovery
-핸들 하나를 여러 스레드에서 공유하면서 별도의 mutex나 lock 없이 API를
-호출해도 됩니다.
+**네, zlink 핸들은 스레드 안전(thread-safe)합니다.** 소켓과 SPOT 핸들
+하나를 여러 스레드에서 공유하면서 별도의 mutex나 lock 없이 API를 호출해도 됩니다.
 
 ```
   Thread A --- zlink_send(socket, ...) ---+
@@ -32,7 +31,7 @@
 
 | 카테고리 | 포함 API | 스레드 안전? | 참고 |
 |---|---|---|---|
-| **전송** | `send`, `publish`, `send_rid` | 예 — 동시 호출 가능 | 핫 패스(hot path, 고빈도 데이터 경로) 위주로 최적화 |
+| **전송** | `send`, `publish`, `send_rid` | 예 — 동시 호출 가능 | hot path(고빈도 데이터 경로) 위주로 최적화 |
 | **설정·운영** | `bind`, `connect`, `set_option` 등 | 예 — 순차 처리 | 메시지마다 호출은 비권장 |
 | **정리** | `close`, `destroy` | 예 — 명확한 에러 코드 | 사용 중이면 `ZLINK_CLOSE_BUSY` 반환 |
 
@@ -40,7 +39,7 @@
 구독 변경, 옵션 변경도 전송 중에 마음껏 할 수 있습니다. 다 쓰고 나면
 핸들을 닫고 반환 코드를 확인하세요.
 
-### 2.1 전송 (핫 패스)
+### 2.1 전송 (hot path)
 
 다음 함수들은 같은 핸들에서 완전한 동시 호출을 허용합니다:
 
@@ -107,11 +106,9 @@ int main(void)
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
 - `zlink_socket_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()`
-- `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - 조회/스냅샷 함수
 
 **전송과 설정은 자유롭게 섞어 쓸 수 있습니다.** 예를 들어 한 스레드가
@@ -122,11 +119,12 @@ void *send_thread(void *arg)
 {
     void *socket = arg;
     char buf[] = "data";
-    for (int i = 0; i < 100000; i++)
+    for (int i = 0; i < 100000; i++) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, sizeof(buf) - 1);
         memcpy(zlink_msg_data(&part), buf, sizeof(buf) - 1);
         zlink_send(socket, &part, 1, 0);  /* hot path */
+    }
     return NULL;
 }
 
@@ -154,9 +152,7 @@ void *setup_thread(void *arg)
 |---|---|---|---|
 | Socket | `send` | bind, connect, set_option 등 | `close` |
 | SPOT | `publish` | subscribe, unsubscribe 등 | `destroy` |
-| SPOT Node | *(송신 없음; 데이터 평면은 `Spot` 사용)* | bind, connect_peer 등 | `destroy` |
-| Discovery | *(없음)* | connect_registry 등 | `destroy` |
-| Registry | *(없음)* | bind, add_peer 등 | `destroy` |
+| SPOT Node | *(송신 없음; data plane은 `Spot` 사용)* | bind, connect_peer 등 | `destroy` |
 
 ## 4. 핸들 안전하게 닫기
 
@@ -167,7 +163,7 @@ zlink가 명확한 에러 코드를 반환합니다:
 |---|---|---|
 | 다른 스레드가 핸들 사용 중 `close` 호출 | 닫기 **거부** | `ZLINK_CLOSE_BUSY` |
 | `close` 수락 후 API 호출 | 호출 **거부** | `ZLINK_CLOSE_SHUTDOWN` (또는 해당 함수군 `*_TERMINATED`) |
-| `close`/`destroy` 두 번 호출 | 즉시 반환 | `ZLINK_CLOSE_SHUTDOWN` |
+| `close`/`destroy` 두 번 호출 | 즉시 반환 | 소켓: 이미 닫힌 핸들은 `ZLINK_CLOSE_SHUTDOWN`(EALREADY는 close 결과 enum에 없음); 서비스 핸들: destroy 성공 시 포인터가 NULL이 되고, 같은 포인터로 재호출하면 `ZLINK_CLOSE_INVALID_HANDLE` |
 
 `ZLINK_CLOSE_BUSY` 이후에는 핸들이 정상 상태로 돌아갑니다 — 아무것도
 손상되지 않았으니 계속 쓰거나 나중에 다시 닫으면 됩니다.
@@ -207,8 +203,10 @@ void shutdown_socket(void *socket)
 ```
 
 **콜백에서의 self-close:** send-ready나 monitor 콜백에서 자기 핸들의
-`close`를 호출하면, 실제 닫기는 콜백이 반환될 때까지 미뤄집니다.
-콜백 안에서 use-after-free가 나는 것을 막아 줍니다.
+`close`를 호출하면, 실제 닫기는 콜백이 반환될 때까지 미뤄집니다(호출은 OK 반환).
+콜백 안에서 use-after-free가 나는 것을 막아 줍니다. 단, 소켓 메시지 핸들러나
+STREAM raw/packet dispatch 콜백 안에서의 self-close는 미뤄지지 않고
+`EBUSY`/`ZLINK_CLOSE_BUSY`를 반환합니다.
 
 ## 5. 유일한 예외: zlink_msg_t는 스레드 안전하지 않습니다
 
@@ -241,10 +239,16 @@ zlink_send(socket, &msg_a, 1, 0);    zlink_send(socket, &msg_b, 1, 0);  /* safe 
 
 ## 6. 콜백 규칙
 
-소켓 콜백(메시지, XPUB, 모니터, send-ready)은 I/O 스레드에서 실행됩니다.
-**SPOT 디스패치 콜백**(`zlink_spot_handler`, `zlink_spot_dispatch_handler`)은
-SpotNode 디스패치 워커(dispatch worker) 스레드에서 실행됩니다 — I/O 스레드가 아닙니다.
-블로킹 금지, 느린 연산 오프로드 규칙은 두 경우 모두 똑같이 적용됩니다.
+단일 "콜백 스레드"는 없습니다 — 콜백마다 실행 스레드가 다릅니다:
+
+| 콜백 | 스레드 |
+|------|--------|
+| 소켓 메시지 핸들러(`zlink_recv_handler`) | I/O 스레드 |
+| 모니터 핸들러 | service-control 런타임 스레드 (소켓 I/O 스레드 아님) |
+| send-ready 핸들러 | 호출자의 send 스레드에서 동기 실행될 수 있음 |
+| SPOT dispatch 이벤트 핸들러 | SPOT dispatch worker pool |
+
+블로킹 금지·오프로드 규칙은 모두에 적용됩니다.
 알아 둘 것:
 
 **콜백에서 할 수 있는 것:**
@@ -252,8 +256,9 @@ SpotNode 디스패치 워커(dispatch worker) 스레드에서 실행됩니다 �
 - 메시지 데이터를 읽어 자체 큐에 넣기.
 
 **콜백에서 하면 안 되는 것:**
-- **블로킹** (sleep, lock, 무거운 연산) — 해당 스레드의 모든 I/O가
-  멈춥니다. 작업을 큐에 넣고 워커(worker) 스레드에서 처리하세요.
+- **블로킹** (sleep, lock, 무거운 연산) — 소켓 메시지 핸들러는 그 스레드의
+  I/O를 멈추고, monitor/send-ready/SPOT-dispatch 콜백은 해당 서브시스템을
+  지연시킵니다. 작업을 큐에 넣고 워커(worker) 스레드에서 처리하세요.
 - **send-ready 콜백 안에서 자기 핸들러 교체** — `ZLINK_HANDLER_DEADLOCK`
   을 반환합니다.
 

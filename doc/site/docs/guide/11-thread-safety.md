@@ -8,9 +8,9 @@
 
 ## 1. The Short Answer
 
-**Yes, zlink handles are thread-safe.** You can share a single socket,
-SPOT, or Discovery handle across multiple threads and call its
-APIs without adding your own mutex or lock.
+**Yes, zlink handles are thread-safe.** You can share a single socket or SPOT
+handle across multiple threads and call its APIs without adding your own mutex
+or lock.
 
 ```
   Thread A --- zlink_send(socket, ...) ---+
@@ -33,7 +33,7 @@ public APIs into three categories so you know what to expect:
 | Category | What it covers | Thread-safe? | Notes |
 |---|---|---|---|
 | **Sending** | `send`, `publish`, `send_rid` | Yes — fully concurrent | Multiple threads can call these on the same handle simultaneously. This is the fast path, optimized for throughput. |
-| **Configuration** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
+| **Configuration** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
 | **Cleanup** | `close`, `destroy` | Yes — with clear error codes | If another thread is still using the handle, close returns `ZLINK_CLOSE_BUSY` instead of crashing. Details in [section 4](#4-closing-handles-safely). |
 
 **In plain terms:** send as much as you want from any thread. Connect,
@@ -109,11 +109,9 @@ Includes:
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
 - `zlink_socket_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()`
-- `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - Query/snapshot functions
 
 **You can mix sending and configuration freely.** For example, one thread
@@ -156,9 +154,7 @@ Every handle type follows the same three-category model:
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option | `zlink_spot_destroy` |
-| SPOT Node | *(no sending; data plane uses `Spot`)* | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe | `zlink_spot_node_destroy` |
-| Discovery | *(no sending — config only)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
-| Registry | *(no sending — config only)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology_query | `zlink_registry_destroy` |
+| SPOT Node | *(no sending; data plane uses `Spot`)* | bind, connect_peer, disconnect_peer, subscribe, unsubscribe | `zlink_spot_node_destroy` |
 
 ## 4. Closing Handles Safely
 
@@ -169,7 +165,7 @@ zlink returns a clear error code instead:
 |---|---|---|
 | You call `close`/`destroy` while another thread is mid-call on the same handle | Close is **rejected** — the handle stays alive | `ZLINK_CLOSE_BUSY` |
 | You call any API after `close` has been accepted | The call is **rejected** — the handle is shutting down | `ZLINK_CLOSE_SHUTDOWN` (or matching `*_TERMINATED` on the per-function result) |
-| You call `close`/`destroy` twice | Second call returns immediately | `ZLINK_CLOSE_SHUTDOWN` |
+| You call `close`/`destroy` twice | Second call returns immediately | Socket: `EALREADY`; SPOT service handle: `ESHUTDOWN` |
 
 After `ZLINK_CLOSE_BUSY`, the handle goes back to normal — nothing is
 damaged, you can keep using it or try closing again later.
@@ -210,7 +206,9 @@ void shutdown_socket(void *socket)
 
 **Self-close from callbacks:** If a send-ready or monitor callback calls
 `close` on its own handle, the actual close is deferred until the callback
-returns. This avoids use-after-free inside the callback.
+returns (the call returns OK). This avoids use-after-free inside the callback.
+A self-close from inside a socket message handler or STREAM raw/packet
+dispatch callback is **not** deferred — it returns `EBUSY`/`ZLINK_CLOSE_BUSY`.
 
 ## 5. The One Exception: zlink_msg_t Is NOT Thread-Safe
 
@@ -243,8 +241,18 @@ before returning and must not access them from another thread.
 
 ## 6. Callback Rules
 
-All callbacks (message, SPOT, XPUB, monitor, send-ready) run on the I/O
-thread. Here's what you need to know:
+There is no single "callback thread" — each callback runs on a different
+thread:
+
+| Callback | Thread |
+|----------|--------|
+| Socket message handler (`zlink_recv_handler`) | An I/O thread |
+| Monitor handler | The service-control runtime thread (not the socket I/O thread) |
+| Send-ready handler | May run synchronously on the caller's send thread |
+| SPOT dispatch event handler | The SPOT dispatch worker pool |
+
+The no-blocking and offload rules apply to all of them.
+Here's what you need to know:
 
 **What you CAN do in a callback:**
 - Call `send` / `publish` on the same handle — this is the recommended
@@ -252,8 +260,10 @@ thread. Here's what you need to know:
 - Read message data and push it to your own queue.
 
 **What you should NOT do in a callback:**
-- **Block** (sleep, lock, heavy computation) — this stalls all I/O on that
-  thread. Push work to a queue and process it on a worker thread.
+- **Block** (sleep, lock, heavy computation) — for the socket message handler
+  this stalls I/O on its thread; for monitor/send-ready/SPOT-dispatch callbacks
+  it delays that subsystem. Push work to a queue and process it on a worker
+  thread.
 - **Replace the send-ready handler from inside its own callback** — returns
   `EDEADLK`.
 

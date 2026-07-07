@@ -35,7 +35,7 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 |  validate + delegate, per-handle admission guard     |
 +------------------------------------------------------+
 |  Service Layer                                       |
-|  Discovery · SPOT · Registry                         |
+|  SPOT · Actor (public) · internal location runtime   |
 |  service access seam (*_access) · lifecycle · runtime|
 +------------------------------------------------------+
 |  Socket Semantic / Runtime                           |
@@ -67,7 +67,7 @@ Key roles per layer:
 | Layer | Role |
 |-------|------|
 | Public API Facade | C API entry point. Validate + delegate only; does not know concrete service/socket details |
-| Service Layer | Discovery/SPOT/Registry semantics and lifecycle. Connected to the API layer via service-local access seams |
+| Service Layer | SPOT(+Actor) semantics and lifecycle. Connected to the API layer via service-local access seams |
 | Socket Semantic/Runtime | Socket family semantics (semantic) and common mechanism (runtime components) are separated |
 | Runtime Core | Context, shutdown, close/drain orchestration, option dispatch, logical multipart send |
 | Engine Layer | Boost.Asio-based poller, io_context, mailbox execution backbone |
@@ -77,7 +77,7 @@ Key roles per layer:
 
 | Design Principle | Description |
 |------------------|-------------|
-| **Zero-Copy** | VSM (33B or less) stored inline; large messages use reference counting |
+| **Zero-Copy** | VSM (41B or less) stored inline; large messages use reference counting |
 | **Lock-Free** | YPipe (CAS-based FIFO) used for inter-thread communication |
 | **True Async** | Asynchronous I/O based on the Proactor pattern |
 | **Protocol Agnostic** | Clear separation between Transport and Protocol |
@@ -103,7 +103,21 @@ Key roles per layer:
 | wss | `wss://host:port` | WebSocket + TLS |
 | tls | `tls://host:port` | Native TLS |
 
-## 6. Quick Start
+## 6. Service Layer
+
+The service layer provides high-level distributed features on top of sockets.
+It automates socket connection management, peer address tracking, and service
+lifecycle.
+
+| Service | Role |
+|---------|------|
+| **SPOT** | Location-transparent topic pub/sub + routed communication mesh. `SpotNode` owns the transports; `Spot` facades provide the data plane |
+| **Actor** | Session-based addressing unit inside SPOT. Funnels STREAM session messages into a `Spot` dispatch context. `SpotNode` manages the Actor table; `Entry Spot` handles initial dispatch |
+
+See the [Service Layer Overview](07-0-services.md), [SPOT Guide](07-3-spot.md),
+and [SPOT Actor Guide](07-4-actor.md) for details.
+
+## 7. Quick Start
 
 ### Requirements
 
@@ -159,12 +173,15 @@ int main(void) {
 }
 ```
 
-## 7. Next Steps
+## 8. Next Steps
 
 - [Core API Details](02-core-api.md)
 - [Socket Pattern Usage](03-0-socket-patterns.md)
 - [Transport Guide](04-transports.md)
 - [TLS Security Configuration](05-tls-security.md)
+- [Service Layer Overview](07-0-services.md)
+- [SPOT Guide](07-3-spot.md)
+- [SPOT Actor Guide](07-4-actor.md)
 
 ---
 <!-- zlink-nav:bottom:start -->

@@ -221,8 +221,6 @@ std::thread::spawn(move || {
 | `stream_recv_sample.rs` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.rs` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.rs` | 모니터 이벤트 수신 |
-| `discovery_registry_sample.rs` | Registry + Discovery |
-| `registry_query_sample.rs` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.rs` | SpotNode/Spot PUB/SUB |
 | `spot_request_callback_sample.rs` | SpotNode 콜백 요청 |
 | `actor_single_player_queue_sample.rs` | 액터 조인·이동·메시지 큐 |
@@ -251,7 +249,6 @@ cargo doc --no-deps --open
 
 **서비스**
 - [서비스 개요](../../../../core/doc/guide/07-0-services.ko.md)
-  — [Discovery](../../../../core/doc/guide/07-1-discovery.ko.md) · [SPOT](../../../../core/doc/guide/07-3-spot.ko.md) · [Actor](../../../../core/doc/guide/07-4-actor.ko.md) · [Registry](../../../../core/doc/guide/07-4-registry.ko.md)
 
 **운영**
 - [소켓 옵션](../../../../core/doc/guide/12-socket-options.ko.md) · [TLS 보안](../../../../core/doc/guide/05-tls-security.ko.md) · [모니터링](../../../../core/doc/guide/06-monitoring.ko.md) · [스레드 안전성](../../../../core/doc/guide/11-thread-safety.ko.md) · [메시지 API](../../../../core/doc/guide/09-message-api.ko.md) · [라우팅 ID](../../../../core/doc/guide/08-routing-id.ko.md)

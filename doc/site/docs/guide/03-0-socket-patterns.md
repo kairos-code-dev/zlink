@@ -10,7 +10,7 @@ English | [한국어](03-0-socket-patterns.ko.md)
 
 zlink provides 8 socket types. Each socket implements a unique messaging pattern, and communication is only possible between valid socket combinations.
 
-> Terms such as **hot path**, **control path**, and **admission guard** used in this document are defined in [Section 8 (Terminology)](#8-terminology).
+> Terms such as **hot path**, **control path**, and **admission guard** used in this document are defined in [Section 9 (Terminology)](#9-terminology).
 
 ## 2. Socket Summary
 
@@ -102,6 +102,7 @@ See the individual documents for detailed usage of each socket type.
 | [03-3-dealer.md](03-3-dealer.md) | DEALER | Async request, round-robin |
 | [03-4-router.md](03-4-router.md) | ROUTER | ID-based routing |
 | [03-5-stream.md](03-5-stream.md) | STREAM | External client RAW communication |
+| [03-6-proxy.md](03-6-proxy.md) | (proxy) | XPUB/XSUB and DEALER/ROUTER message broker |
 
 ## 7. Disconnecting a Peer by Routing ID
 
@@ -119,8 +120,8 @@ zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
 ```
 
 Missing targets return `ZLINK_CONNECT_NOT_FOUND`, duplicate peer routing ids
-return `ZLINK_CONNECT_CONFLICT`, and Discovery-owned attached sockets return
-`ZLINK_CONNECT_BUSY`.
+return `ZLINK_CONNECT_CONFLICT`, and sockets whose connection lifecycle is
+managed by another owner (a higher-level runtime) return `ZLINK_CONNECT_BUSY`.
 
 ## 8. Common Receive Interface
 
@@ -157,7 +158,9 @@ zlink_recv_result_t zlink_recv (
   `ZLINK_RECV_NOT_SUPPORTED`. ROUTER uses a single unified typed surface —
   `zlink_router_recv()` — that returns `source_node_rid`,
   `source_spot_rid`, and `request_seq`. This one surface carries plain
-  ROUTER traffic and SPOT-originated routed traffic. Request replies are
+  ROUTER traffic and SPOT-originated routed traffic. In the opposite direction,
+  a router-capable channel's ROUTER can send to SPOT only after the target
+  `SpotNode` is connected as that router channel's peer. Request replies are
   delivered through a separate completion callback. See
   [03-4-router.md](03-4-router.md).
 - **SUB / XSUB**: use `zlink_subscribe()`. They are recv-only; no direct
@@ -166,25 +169,14 @@ zlink_recv_result_t zlink_recv (
   `zlink_recv()` (raw recv), `zlink_recv_handler()` (raw callback), or
   `zlink_stream_packet_handler()` (packet callback). A second attempt to
   activate a different mode on the same handle fails with `EBUSY`.
-- **SPOT**: two mutually exclusive handler registration modes exist.
-  - `zlink_spot_handler()` — routed-only direct callback. Routed payload is
-    delivered inline inside the callback. Subscribe, timer, channel reply, and
-    Actor events cannot be received through this mode.
-  - `zlink_spot_dispatch_event_handler()` — unified readiness notification for
-    subscribe, routed, channel reply, timer, and Actor events. The callback
-    signals that work is ready; data is pulled with the corresponding drain API
-    (`zlink_spot_recv()`, `zlink_spot_subscribe()`, etc.).
+- **SPOT**: uses `zlink_spot_dispatch_event_handler()` for unified readiness. Subscribe, routed, channel reply, timer, Actor join, Actor readable, and Actor lifecycle events are pulled with the corresponding drain API after the readiness signal.
 - **monitor / timer**: both recv and callback models are supported.
 
-In short, data-plane receive defaults to `recv + poller`. Callback-based
-receive is kept only for exception types whose usage pattern justifies
-it: `STREAM` and monitor/timer. SPOT offers `zlink_spot_handler()` (routed-only
-direct callback) and `zlink_spot_dispatch_event_handler()` (unified readiness
-for all event types); the two are mutually exclusive on the same Spot. Request
+In short, data-plane receive defaults to `recv + poller`. Callback-based receive is kept only for exception types whose usage pattern justifies it: `STREAM` and monitor/timer. SPOT uses `zlink_spot_dispatch_event_handler()` only as a readiness signal; payload is still pulled by receive APIs. Request
 completion callbacks live on a separate axis (async operation completion), not
 on the data-plane receive axis.
 
-## 8. Terminology
+## 9. Terminology
 
 Terms used throughout the documentation:
 
@@ -199,7 +191,7 @@ Terms used throughout the documentation:
 
 > For the full thread-safety contract, see the [Thread-Safety Guide](11-thread-safety.md).
 
-## 9. Basic Usage Flow
+## 10. Basic Usage Flow
 
 The basic pattern common to raw socket types is a `recv + poller` loop.
 For example, a DEALER client receiving replies uses the following shape:
@@ -218,8 +210,8 @@ zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
 /* 5. Poll and recv */
-void *poller = zlink_poller_new(ctx);
-zlink_poller_add(poller, socket, ZLINK_POLLIN, user_data);
+void *poller = zlink_poller_new();
+zlink_poller_add(poller, socket, user_data, ZLINK_POLLIN);
 
 while (running) {
     zlink_poller_event_t ev;
@@ -231,13 +223,12 @@ while (running) {
         if (zlink_recv(socket, &rid, &parts, &n, 0) == ZLINK_RECV_OK) {
             /* process parts, then close each */
             zlink_multipart_close(parts, n);
-            free(parts);
         }
     }
 }
 
 /* 6. Cleanup */
-zlink_poller_destroy(poller);
+zlink_poller_destroy(&poller);
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```
@@ -248,7 +239,9 @@ zlink_ctx_term(ctx);
 > Other options (`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO`, etc.) can be changed after bind/connect.
 
 > **Why callbacks are not the default:** raw `PAIR`, `DEALER`, `SUB`,
-> `XSUB`, and `ROUTER` are recv-only. Multiple sockets, monitors, and
+> `XSUB`, and `ROUTER` receive through the synchronous pull-mode loop (no
+> recv callback); they remain send-capable where the type allows. Multiple
+> sockets, monitors, and
 > timers compose naturally in the same poller loop, and the caller keeps
 > explicit control over which thread runs what in which order. Callback
 > surfaces are retained only where the usage pattern justifies them:

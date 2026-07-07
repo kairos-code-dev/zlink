@@ -4,205 +4,14 @@
 
 ## 1. Overview
 
-The zlink service layer provides two high-level services: Discovery and SPOT. This document covers the internal implementation details.
+The zlink service layer now covers SPOT and Actor-on-SPOT internals. Discovery and Registry are not part of the core runtime.
 
 For SPOT, transport-security ownership is intentionally narrow: the
 `SpotNode` owns TLS/WSS wiring for mesh/control sockets, while unified
 `Spot` remains a borrowed data-plane facade only. The facade never owns
 node lifecycle and is not itself a TLS configuration surface.
 
-## 2. Registry Internal Implementation
-
-### 2.1 Data Structures
-
-```cpp
-struct service_entry_t {
-    std::string service_name;
-    std::string endpoint;
-    zlink_routing_id_t routing_id;
-    uint16_t service_role;
-    uint64_t registered_at;
-    uint64_t last_heartbeat;
-    uint32_t weight;
-};
-
-struct registry_state_t {
-    uint32_t registry_id;
-    uint64_t list_seq;
-    std::map<std::string, std::vector<service_entry_t>> services;
-};
-```
-
-### 2.2 Registry State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> INIT
-    INIT --> RUNNING : start()
-    RUNNING --> STOPPED : stop()
-    STOPPED --> [*]
-```
-
-### 2.3 SERVICE_LIST Broadcast Triggers
-| Trigger | Description |
-|--------|------|
-| Registration | After successful service REGISTER |
-| Deregistration | UNREGISTER or Heartbeat timeout |
-| Periodic | 30 seconds (default, configurable) |
-
-### 2.4 Cluster Synchronization
-- Each Registry subscribes to other Registries' PUB via SUB
-- Immediate propagation via flooding
-- Duplicates/reversals ignored using registry_id + list_seq
-
-## 3. Discovery Internal Implementation
-
-### 3.1 State Machine (Per Service)
-
-```mermaid
-stateDiagram-v2
-    [*] --> EMPTY
-    EMPTY --> AVAILABLE : SERVICE_LIST (count > 0)
-    AVAILABLE --> UNAVAILABLE : SERVICE_LIST (count == 0)
-    UNAVAILABLE --> AVAILABLE : SERVICE_LIST (count > 0)
-```
-
-### 3.2 Service Types and Roles
-
-Discovery tracks providers with a (auto_connect_type, service_role) pair:
-
-```cpp
-// Service types
-static const uint16_t auto_connect_type_spot_node = 2;
-static const uint16_t auto_connect_type_socket = 3;
-
-// Service roles
-enum service_role_t {
-    service_role_invalid = 0,
-    service_role_spot    = 2,  // fixed for spot type
-    service_role_router  = 3,  // socket family
-    service_role_dealer  = 4,  // socket family
-    service_role_pub     = 5,  // socket family
-    service_role_sub     = 6   // socket family
-};
-```
-
-SPOT has a fixed role fixed by the SPOT role. Socket family
-services require an explicit role matching the socket type. Role
-matching rules for peer discovery:
-- PUB ↔ SUB
-- ROUTER ↔ ROUTER, ROUTER ↔ DEALER, DEALER ↔ DEALER
-- SPOT ↔ SPOT
-
-### 3.3 Discovery-Owned Service Execution
-
-Discovery acts as the lifecycle owner for attached services. Each service
-type registers its endpoint(s) through the `discovery_owned_service`
-convenience API:
-
-```cpp
-namespace discovery_owned_service {
-    int register_endpoint(discovery_t *, uint16_t auto_connect_type,
-                          const char *endpoint, uint32_t weight,
-                          std::string *resolved_endpoint_out,
-                          const zlink_routing_id_t *routing_id = NULL,
-                          uint16_t service_role = 0);
-    int update_weight(discovery_t *, uint16_t auto_connect_type,
-                      const char *endpoint, uint32_t weight,
-                      uint16_t service_role = 0);
-    int unregister_endpoint(discovery_t *, uint16_t auto_connect_type,
-                            const char *endpoint,
-                            uint16_t service_role = 0);
-}
-```
-
-Discovery internally maintains a `_registered_services` map keyed by
-`(auto_connect_type, service_role, service_name, endpoint)` and periodically
-refreshes heartbeats for all registered services via
-`refresh_registered_service_heartbeats()`.
-
-### 3.4 Socket Discovery Attachment
-
-`socket_discovery_attachment_t` integrates raw socket lifecycle with
-Discovery. When a socket is attached:
-
-1. Validates the socket type is supported (ROUTER/DEALER/PUB/SUB)
-2. Derives the service role from the socket type
-3. Registers the socket's bound endpoint via `discovery_owned_service`
-4. Observes service list updates and refreshes peer connections
-5. Reports topology state changes back to Discovery
-6. Blocks manual connect/disconnect/unbind/close operations
-
-### 3.5 Subscription Behavior
-- Subscribes to all Registry PUB (no network-level filtering)
-- subscribe/unsubscribe operate as internal filters
-
-### 3.6 Duplicate/Reversal Handling
-- Applies only the latest snapshot based on (registry_id, list_seq)
-- Ignores earlier list_seq from the same registry_id
-
-## 4. Message Protocol
-
-### 4.1 Frame Structure
-```
-Frame 0: msgId (uint16_t)
-Frame 1~N: Payload (variable)
-```
-
-### 4.2 Message Types
-| msgId | Name | Direction |
-|-------|------|------|
-| 0x0001 | REGISTER | Service → Registry |
-| 0x0002 | REGISTER_ACK | Registry → Service |
-| 0x0003 | UNREGISTER | Service → Registry |
-| 0x0004 | HEARTBEAT | Service → Registry |
-| 0x0005 | SERVICE_LIST | Registry → Discovery |
-| 0x0006 | REGISTRY_SYNC | Registry → Registry |
-| 0x0007 | UPDATE_ATTRIBUTES | Service → Registry |
-| 0x0008 | BOOTSTRAP_REQ | Discovery → Registry |
-| 0x0009 | BOOTSTRAP_REP | Registry → Discovery |
-| 0x000A | TOPOLOGY_REPORT | Discovery → Registry |
-| 0x000B | TOPOLOGY_QUERY | Client → Registry |
-| 0x000C | TOPOLOGY_REPLY | Registry → Client |
-| 0x000D | UNREGISTER_ACK | Registry → Service |
-
-#### Registration and Heartbeat Flow
-
-```mermaid
-sequenceDiagram
-    participant S as Service
-    participant R as Registry
-    participant D as Discovery
-
-    S->>R: REGISTER
-    R->>S: REGISTER_ACK
-    loop Every heartbeat interval
-        S->>R: HEARTBEAT
-    end
-    R->>D: SERVICE_LIST (broadcast)
-    Note over R,D: Triggered by registration,<br/>deregistration, or periodic timer
-
-    S->>R: UNREGISTER
-    R->>S: UNREGISTER_ACK
-    R->>D: SERVICE_LIST (updated)
-```
-
-### 4.3 SERVICE_LIST Format
-```
-Frame 0: msgId = 0x0005
-Frame 1: registry_id (uint32_t)
-Frame 2: list_seq (uint64_t)
-Frame 3: service_count (uint32_t)
-Frame 4~N: Service entries (repeated service_count times)
-  - auto_connect_type (uint16_t)
-  - service_name (string)
-  - provider_count (uint32_t)
-  - provider entries (repeated provider_count times):
-      service_role (uint16_t), endpoint (string),
-      routing_id, weight (uint32_t)
-```
-
-## 5. SPOT Internal Implementation
+## 2. SPOT Internal Implementation
 
 ### 5.1 Structure
 - `spot_node_t` -- Network control (owns PUB/SUB sockets, mesh management, worker thread)
@@ -226,7 +35,7 @@ Frame 4~N: Service entries (repeated service_count times)
 
 ### 5.4.1 SpotNode HWM Boundaries
 - Unified `Spot` handle HWM and SpotNode admission HWM are different layers.
-- `Spot` handles do not accept common `SNDHWM` or `RCVHWM` options.
+- A registered `Spot` handle accepts common `SNDHWM`/`RCVHWM` options and stores them as pub/sub pending options.
 - `SpotNode` HWM is an admission budget, not a relay or delivery queue budget:
   - pubsub admission controls local publish input.
   - router admission controls local routed input.
@@ -234,22 +43,14 @@ Frame 4~N: Service entries (repeated service_count times)
   start at `16` unless a positive numeric override is set.
 - Setting an admission numeric option to `0` clears the override and returns to
   the selected profile.
-- Relay and delivery sockets use HWM `0`; removed queue hard-limit behavior no
-  longer disconnects delivery targets.
+- Relay and delivery sockets use HWM `0` — delivery targets are not disconnected
+  due to queue growth.
 - `peer_ctrl` is a control-plane socket and is not grouped into the SpotNode
   admission HWM family.
 
 ### 5.5 Raw Socket Policy
 - `spot_pub_t`: Does not expose raw PUB socket (prevents thread-safety bypass)
 - `spot_sub_t`: Does not expose raw SUB socket; consumption is via callback/recv API only
-
-### 5.6 Discovery Type Segmentation
-- Separates spot_node/socket_family via auto_connect_type field
-  - `auto_connect_type_spot_node` (2), `auto_connect_type_socket` (3)
-- Socket family services additionally carry a `service_role` field
-  (ROUTER=3, DEALER=4, PUB=5, SUB=6) for role-based peer matching
-- Role matching is enforced by `service_roles_match()` -- PUB pairs with SUB,
-  ROUTER/DEALER pair with each other
 
 ## 6. SPOT Internal Architecture
 
@@ -725,47 +526,4 @@ Baseline behavior:
   the same refusal may surface first as `ZLINK_SUBMIT_NOT_CONNECTED` or
   `ZLINK_SUBMIT_NOT_FOUND`.
 - Raw socket changes are exposed to the application via the socket monitor
-  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. Discovery-learned service peer
-  weight changes update the local peer tables that feed discovery and SPOT
-  snapshot/query APIs.
-
-## 11. Pairwise initiator rule (Discovery auto-connect)
-
-When two ROUTERs in the same service discover each other via Discovery,
-the library decides internally that exactly one side dials. This is an
-internal Discovery auto-connect rule, not a user-facing knob.
-
-Comparison procedure:
-
-1. Verify that local and remote share the same `service_name` and that
-   both sides are in ROUTER role.
-2. Build a stable comparison key for each side. The primary key is the
-   `routing_id`; if `routing_id` is equal, the advertised endpoint string
-   is used as the tie-break.
-3. If the local key compares less than the remote key, the local side is
-   chosen as initiator. Otherwise the local side does not generate the
-   connect.
-4. Both peers compute the same total order from the same inputs, so each
-   pair has exactly one initiator.
-
-Interaction with provider-snapshot refresh:
-
-- Discovery sees a new provider set on every SERVICE_LIST update. Because
-  the comparison is deterministic for any pair, snapshot refresh does not
-  flap the initiator direction.
-- Environments where `routing_id` changes after restart may see the
-  initiator direction flip on the next run. This is not an error: the
-  contract is "exactly one side dials per pair at any given time," not
-  "the same side always dials."
-
-Relationship with manual connect and handover:
-
-- The rule applies only to Discovery-managed auto-connect. Manual
-  `zlink_connect()` calls made through the raw API are not mediated by
-  the library.
-- Distinct peers that happen to share the same `routing_id` are not
-  resolved by this rule. Such collisions are handled by the existing
-  ROUTER handover policy.
-- Pairwise initiator and handover are two separate layers: the initiator
-  rule prevents duplicate dials up-front, while handover cleans up
-  duplicates that still appear after the fact.
+  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.

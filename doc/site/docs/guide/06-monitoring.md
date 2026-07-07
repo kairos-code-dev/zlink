@@ -16,8 +16,10 @@ The zlink monitoring API allows real-time observation of socket events such as c
 
 ### 2.1 Callback Mode
 
-The handler is invoked on the I/O thread immediately when an event occurs.
-Callback mode is suitable for real-time processing without event loss.
+The handler is invoked on the service-control runtime thread (not the parent
+socket's I/O thread) when an event occurs. Callback mode is convenient for
+real-time processing; note that monitor delivery is lossy — events may be
+dropped under load, so do not rely on receiving every event.
 
 ```c
 /* Define event handler */
@@ -157,10 +159,8 @@ the application typically only needs this event to update diagnostics or
 dashboards. Once every known peer is `0`, new
 submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
 
-If you want the service-layer view of the same change, poll the
-`Discovery` view with `zlink_discovery_member_peers()` and compare the
-returned peer set over time. The public contract no longer exposes a
-separate service-event stream for Discovery.
+For service-layer diagnostics, use current SPOT node snapshots. The core C API
+does not provide a Discovery service view.
 
 ## 5. Event Flow Diagrams
 
@@ -333,8 +333,8 @@ applied-HWM fields.
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(monitor, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(monitor, &snapshot);
 printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
@@ -346,8 +346,8 @@ You can also combine snapshot queries inside event callbacks.
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
-        zlink_monitor_snapshot_t snapshot;
-        zlink_monitor_snapshot(g_monitor, &snapshot);
+        zlink_monitor_status_t snapshot;
+        zlink_monitor_status(g_monitor, &snapshot);
         printf("Monitor snapshot updated\n");
     }
 }
@@ -359,12 +359,9 @@ The current public C API does not expose a separate service-event
 handle. For service-layer checks, read snapshots or query results and
 compare them over time.
 
-- Discovery membership: `zlink_discovery_member_peers()`
-- Registry overview: `zlink_registry_status_snapshot()`,
-  `zlink_registry_topology_snapshot()`
-- Spot node state: `zlink_spot_node_status_snapshot()`,
-  `zlink_spot_node_peers_snapshot()`,
-  `zlink_spot_node_subjects_snapshot()`
+- Spot node state: `zlink_spot_node_status()`,
+  `zlink_spot_node_peers()`,
+  `zlink_spot_node_subjects()`
 
 ## 9. Multi-Socket Monitoring
 
@@ -401,8 +398,9 @@ zlink_monitor_close(&mon_b);
 `zlink_socket_monitor_open()` and monitor-handle close belong to the
 low-frequency control-path contract of raw and service handles. That means
 they may be called from application threads and remain correct when mixed with
-other concurrent operations on the same handle. The monitor callback itself still runs on the
-I/O path, so slow callback work should be offloaded to a user queue.
+other concurrent operations on the same handle. The monitor callback runs on
+the service-control runtime thread (not the socket's I/O thread), so slow
+callback work should be offloaded to a user queue.
 
 ```c
 /* Open a monitor from an application thread */
@@ -412,8 +410,8 @@ void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 /* Snapshot reads may happen later from another worker thread */
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(mon, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(mon, &snapshot);
 ```
 
 ### Concurrent Monitor Limitation
@@ -422,8 +420,10 @@ Multiple monitors cannot be set on the same socket simultaneously.
 
 ### Callback Processing Speed
 
-Blocking work in the callback handler can delay other I/O. For slow
-processing, enqueue from the callback and handle it on your own thread.
+Blocking work in the callback handler does not stall the socket's I/O path
+(the callback runs on the service-control thread), but it delays subsequent
+monitor events. For slow processing, enqueue from the callback and handle it
+on your own thread.
 
 ### Monitor Shutdown Procedure
 
@@ -431,6 +431,10 @@ processing, enqueue from the callback and handle it on your own thread.
 /* Close the monitor handle */
 zlink_monitor_close(&mon);
 ```
+
+Calling `zlink_monitor_close()` from inside the monitor callback is allowed:
+the close is deferred until the callback returns (it returns OK rather than
+failing), and final cleanup runs once the callback depth reaches zero.
 
 ## 11. Knowing When Messaging Is Ready
 
@@ -548,16 +552,11 @@ broadcast_control_start();
 
 ### 11.5 Snapshots
 
-`zlink_monitor_snapshot()` and `zlink_*_status_snapshot()` return
+`zlink_monitor_status()` and `zlink_*_status()` return
 a point-in-time view of the current state. Use them for dashboards,
 health checks, and debugging.
 
-```c
-/* Check current registry health */
-zlink_registry_status_t status;
-zlink_registry_status_snapshot(registry, &status);
-printf("state=%d\n", status.state);
-```
+Use current socket and SPOT monitor snapshots for core-level dashboards.
 
 ## 12. Poller API
 
@@ -570,36 +569,37 @@ sources.
 
 ```c
 void *poller = zlink_poller_new();
+zlink_poller_event_t events[16];
 
 /* add a socket (POLLIN) */
-zlink_poller_add(poller, router, my_router_ctx, ZMQ_POLLIN);
+zlink_poller_add(poller, router, my_router_ctx, ZLINK_POLLIN);
 
 /* add a raw fd */
-zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZMQ_POLLIN);
+zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZLINK_POLLIN);
 
 /* add a timer */
-void *timer = zlink_timer_new(ctx, 1000);  /* 1 s interval */
+void *timer = zlink_timer_new();
+zlink_timer_start(timer, 1000000000, 0);  /* 1 s interval */
 zlink_poller_add_timer(poller, timer, my_timer_ctx);
 
 for (;;) {
-    zlink_poller_event_t event;
-    int rc = zlink_poller_wait(poller, &event, 1, -1, NULL);
-    if (rc < 0)
+    int n = zlink_poller_wait(poller, events, 16, -1, NULL);
+    if (n < 0)
         break;
 
-    switch (event.source_kind) {
-    case ZLINK_POLLER_SOURCE_SOCKET:
-        /* event.socket, event.events, event.user_data */
-        handle_socket(event.socket, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_FD:
-        /* event.fd, event.events, event.user_data */
-        handle_fd(event.fd, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_TIMER:
-        /* event.timer, event.user_data */
-        handle_timer(event.timer, event.user_data);
-        break;
+    for (int i = 0; i < n; i++) {
+        zlink_poller_event_t *event = &events[i];
+        switch (event->source_kind) {
+        case ZLINK_POLLER_SOURCE_SOCKET:
+            handle_socket(event->socket, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_FD:
+            handle_fd(event->fd, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_TIMER:
+            handle_timer(event->timer, event->user_data);
+            break;
+        }
     }
 }
 
@@ -608,8 +608,9 @@ zlink_poller_destroy(&poller);
 
 `zlink_poller_wait()` returns the number of events written, 0 on timeout,
 and -1 on error (with `error_out` set). Pass `timeout` in milliseconds;
-`-1` means block indefinitely, `0` means non-blocking. Use `n_events=1`
-when a loop only needs one event.
+`-1` means block indefinitely, `0` means non-blocking. Allocate the event
+buffer once and reuse it in the loop. Only `events[0:n]` is valid after each
+wait.
 
 ### 12.2 Batch Wait
 
@@ -627,7 +628,7 @@ for (int i = 0; i < n; i++) {
 
 ```c
 /* change watched events on an existing socket */
-zlink_poller_modify(poller, router, ZMQ_POLLIN | ZMQ_POLLOUT);
+zlink_poller_modify(poller, router, ZLINK_POLLIN | ZLINK_POLLOUT);
 
 /* remove a socket */
 zlink_poller_remove(poller, router);
@@ -648,7 +649,7 @@ zlink_poller_remove_timer(poller, timer);
 | `fd` | File descriptor (valid when `source_kind == FD`) |
 | `timer` | Timer handle (valid when `source_kind == TIMER`) |
 | `user_data` | Pointer registered with `add` / `add_fd` / `add_timer` |
-| `events` | Ready event flags (`ZMQ_POLLIN` / `ZMQ_POLLOUT`) |
+| `events` | Ready event flags (`ZLINK_POLLIN` / `ZLINK_POLLOUT`) |
 
 ### 12.5 Low-level `zlink_poll`
 
@@ -658,13 +659,13 @@ For simple one-shot polls without the Poller object, use `zlink_poll()`:
 zlink_pollitem_t items[2];
 items[0].socket = router;
 items[0].fd     = 0;
-items[0].events = ZMQ_POLLIN;
+items[0].events = ZLINK_POLLIN;
 items[1].socket = NULL;
 items[1].fd     = pipe_fd;
-items[1].events = ZMQ_POLLIN;
+items[1].events = ZLINK_POLLIN;
 
 int n = zlink_poll(items, 2, 1000, NULL);
-if (items[0].revents & ZMQ_POLLIN)
+if (items[0].revents & ZLINK_POLLIN)
     /* router has data */;
 ```
 

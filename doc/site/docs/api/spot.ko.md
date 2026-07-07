@@ -62,7 +62,6 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
   수 있으며, 호출자는 destroy 전에 unread를 끝까지 drain(큐에 쌓인 메시지를 꺼내 소비하는 행위)해야 할 의무를 지지
   않는다.
 - `zlink_spot_node_destroy()`는 node와 내부 runtime 자원을 정리한다.
-- discovery에 attach된 node는 보통 `zlink_discovery_destroy()` 흐름에서 함께 정리된다.
 
 ## Entry Spot
 
@@ -211,8 +210,6 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
   void *node,
   const zlink_routing_id_t *target_node_rid);
-zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
-                                                       void *discovery);
 ```
 
 - `zlink_spot_node_set_pub_bind()`는 node endpoint를 bind한다.
@@ -221,13 +218,8 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
 - `zlink_spot_node_disconnect_peer_rid()`는 target node routing id를 기준으로
   peer node 연결을 종료한다. target node 아래의 개별 spot routing id는 이
   API의 대상이 아니다.
-- discovery가 이미 attach된 node에서 `connect_peer()` 또는
-  `disconnect_peer()`를 호출하면 `EBUSY`로 실패한다.
 - `Spot` facade에는 별도 peer rid disconnect 함수가 없다. peer 연결은
   `SpotNode` runtime이 소유하기 때문이다.
-- `zlink_spot_node_attach_discovery()`는 SPOT channel view를 제공하는
-  discovery만 받는다.
-- node에는 한 번에 하나의 active SPOT discovery view만 둘 수 있다.
 
 ### Channel 호출용 socket 등록
 

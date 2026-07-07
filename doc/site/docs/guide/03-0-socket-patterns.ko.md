@@ -11,7 +11,7 @@
 zlink는 8종의 소켓 타입을 제공한다.
 각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 안에서만 통신한다.
 
-> 이 문서 전체에서 사용되는 **hot path**, **control path**, **admission guard** 등의 용어는 [8절 (용어 정리)](#8-용어-정리)에 정의되어 있다.
+> 이 문서 전체에서 사용되는 **hot path**, **control path**, **admission guard** 등의 용어는 [9절 (용어 정리)](#9-용어-정리)에 정의되어 있다.
 
 ## 2. 소켓 요약
 
@@ -88,7 +88,7 @@ Is the communication peer an external client (browser, game)?
 | 웹 클라이언트 연동 | STREAM + ws/wss | WebSocket RAW 통신 |
 | 외부 TCP 클라이언트 | STREAM + tcp/tls | Length-Prefix RAW 통신 |
 
-> 위치 투명성이 필요한 경우(자동 연결 · 로드밸런싱 · 토픽 메시)에는
+> 위치 투명성이 필요한 경우(자동 연결 · 로드밸런싱 · topic mesh)에는
 > 소켓 대신 서비스 레이어(SPOT)를 사용한다.
 > 상세는 [서비스 개요](07-0-services.ko.md)를 참고.
 
@@ -103,21 +103,22 @@ Is the communication peer an external client (browser, game)?
 | [03-3-dealer.ko.md](03-3-dealer.ko.md) | DEALER | 비동기 요청, Round-robin |
 | [03-4-router.ko.md](03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
 | [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
+| [03-6-proxy.ko.md](03-6-proxy.ko.md) | (proxy) | XPUB/XSUB·DEALER/ROUTER 메시지 브로커 |
 
 ## 7. 피어를 routing id로 끊기
 
 일반적인 연결/해제 수명 주기는 엔드포인트 문자열을 기준으로 동작한다. 그런데
-메시지를 수신하면 `source_rid`(송신 피어의 고유 식별자)로 상대방을 직접 특정할 수 있다.
-엔드포인트 문자열을 저장하지 않고 수신한 `source_rid`만으로 해당 피어 연결을 끊으려면
-`zlink_disconnect_rid()`를 사용한다.
+STREAM(또는 ROUTER typed recv)에서 메시지를 수신하면 `source_rid`(송신 피어의 고유
+식별자)로 상대방을 직접 특정할 수 있다. 엔드포인트 문자열을 저장하지 않고 수신한
+`source_rid`만으로 해당 피어 연결을 끊으려면 `zlink_disconnect_rid()`를 사용한다.
 
 ```c
 zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
 ```
 
 대상이 없으면 `ZLINK_CONNECT_NOT_FOUND`, 같은 routing id를 가진 peer가 둘
-이상이면 `ZLINK_CONNECT_CONFLICT`, discovery가 소유한 소켓이면
-`ZLINK_CONNECT_BUSY`가 반환된다.
+이상이면 `ZLINK_CONNECT_CONFLICT`, 연결 lifecycle을 다른 소유자(상위 runtime)가
+관리하는 소켓이면 `ZLINK_CONNECT_BUSY`가 반환된다.
 
 ## 8. 공통 수신 인터페이스
 
@@ -135,9 +136,10 @@ zlink_recv_result_t zlink_recv (
     zlink_recv_flags_t flags);
 ```
 
-- **`source_rid`**: 이 수신 표면을 사용하는 모든 소켓에서 송신 피어의
-  routing_id가 채워진다. 메시지 프레임이 아니라 zlink가 피어의 identity를
-  자동으로 resolve해 전달하는 별도 파라미터다.
+- **`source_rid`**: STREAM 공통 recv에서 송신 피어의 routing_id가 채워진다
+  (PAIR/DEALER는 NULL). PUB/SUB/XPUB/XSUB/ROUTER는 이 공통 recv 대신 패턴별 typed
+  recv를 쓰며, ROUTER typed recv가 source rid를 별도로 돌려준다. 메시지 프레임이
+  아니라 zlink가 피어의 identity를 자동으로 resolve해 전달하는 별도 파라미터다.
 - **`parts` / `part_count`**: 모든 소켓에서 멀티파트가 기본이다.
   `part_count=1`이면 단일 프레임, `part_count=2+`이면 멀티파트.
 
@@ -153,6 +155,8 @@ zlink_recv_result_t zlink_recv (
   표면 — `zlink_router_recv()` — 을 사용하며, `source_node_rid`,
   `source_spot_rid`, `request_seq`를 함께 반환한다. 이 하나의 표면이 일반
   ROUTER 트래픽과 SPOT에서 시작된 routed 트래픽을 모두 전달한다.
+  반대로 router 역할이 있는 channel의 ROUTER에서 SPOT으로 보내려면
+  target `SpotNode`가 그 router channel의 peer로 연결되어 있어야 한다.
   request의 reply는 별도 완료 콜백으로 받는다. 자세한 내용은
   [03-4-router.ko.md](03-4-router.ko.md).
 - **SUB / XSUB**: `zlink_subscribe()`로 수신한다. recv-only이며, 직접
@@ -161,23 +165,13 @@ zlink_recv_result_t zlink_recv (
   `zlink_recv_handler()` (raw 콜백), `zlink_stream_packet_handler()`
   (packet 콜백) 세 모델 중 하나를 고른다. 한 핸들에서 두 번째 모델로
   전환하려 하면 `EBUSY`로 실패한다.
-- **SPOT**: 두 가지 상호 배타적 핸들러 등록 방식이 있다.
-  - `zlink_spot_handler()` — routed 전용 직접 콜백이다. routed payload(메시지의 실제 데이터 내용)를 콜백
-    안에서 바로 받는다. subscribe, 타이머, channel reply, Actor 이벤트는 이 방식으로
-    받을 수 없다.
-  - `zlink_spot_dispatch_event_handler()` — subscribe, routed, channel reply, 타이머,
-    Actor 이벤트를 readiness 형태로 통합 수신한다. 콜백은 "읽을 것이 있다"는 신호이며,
-    데이터는 각 drain API(`zlink_spot_recv()`, `zlink_spot_subscribe()` 등)로 읽는다.
+- **SPOT**: `zlink_spot_dispatch_event_handler()`로 readiness를 통합 수신한다. subscribe, routed, channel reply, timer, Actor join, Actor readable, Actor lifecycle event는 readiness 뒤 각 drain API로 읽는다.
 - **monitor / 타이머**: recv와 콜백 두 방식을 모두 지원한다.
 
-data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`,
-monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. SPOT은
-`zlink_spot_handler()` (routed 전용 직접 콜백)와
-`zlink_spot_dispatch_event_handler()` (전체 이벤트 readiness 통합) 두 방식 중
-하나를 선택해야 하며, 같은 Spot에서 동시에 쓸 수 없다. request completion
+data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. SPOT은 `zlink_spot_dispatch_event_handler()`를 readiness 신호로만 사용하고 payload는 receive API로 읽는다. request completion
 콜백은 data-plane 수신이 아니라 비동기 작업 완료 통지임에 유의한다.
 
-## 8. 용어 정리
+## 9. 용어 정리
 
 문서 전반에서 사용되는 전문 용어:
 
@@ -192,7 +186,7 @@ monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. SPOT�
 
 > 스레드 안전성 계약의 전체 설명은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 
-## 9. 기본 사용 흐름
+## 10. 기본 사용 흐름
 
 모든 소켓 타입에 공통되는 기본 패턴은 `recv + poller` 루프다. 예를 들어
 DEALER에서 응답을 받는 서버는 아래와 같은 형태를 쓴다.
@@ -211,8 +205,8 @@ zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
 /* 5. Poll and recv */
-void *poller = zlink_poller_new(ctx);
-zlink_poller_add(poller, socket, ZLINK_POLLIN, user_data);
+void *poller = zlink_poller_new();
+zlink_poller_add(poller, socket, user_data, ZLINK_POLLIN);
 
 while (running) {
     zlink_poller_event_t ev;
@@ -224,13 +218,12 @@ while (running) {
         if (zlink_recv(socket, &rid, &parts, &n, 0) == ZLINK_RECV_OK) {
             /* process parts, then close each */
             zlink_multipart_close(parts, n);
-            free(parts);
         }
     }
 }
 
 /* 6. Cleanup */
-zlink_poller_destroy(poller);
+zlink_poller_destroy(&poller);
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```
@@ -247,7 +240,8 @@ zlink_ctx_term(ctx);
 > bind/connect 이후에도 변경 가능하다.
 
 > **콜백이 기본이 아닌 이유:** raw `PAIR`, `DEALER`, `SUB`, `XSUB`,
-> `ROUTER`는 recv-only다. 여러 소켓, monitor, 타이머를 같은 poller에서
+> `ROUTER`는 동기 pull-mode 루프로 수신한다(recv 콜백 없음). 타입이
+> 허용하는 한 송신은 그대로 가능하다. 여러 소켓, monitor, 타이머를 같은 poller에서
 > 다루기 쉽고, 호출자가 실행 스레드와 순서를 직접 통제할 수 있기 때문이다.
 > 콜백은 `STREAM`, monitor/타이머, SPOT dispatch event, request
 > completion처럼 사용 패턴이 분명한 경우에만 쓴다.

@@ -21,8 +21,6 @@ is defined in `core/include/zlink.h`.
 | [monitoring.md](monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
 | [events.md](events.md) | Canonical event catalog and readiness semantics |
 | [service/README.md](spot.md) | Shared service-layer concepts and document split |
-| [service/registry.md](registry.md) | Service registry creation, configuration, and clustering |
-| [service/discovery.md](discovery.md) | Service discovery, subscription, and peer lookup |
 | [service/spot.md](spot.md) | SPOT topic-based PUB/SUB and routed messaging |
 | [polling.md](polling.md) | Proxy helpers and capability query |
 | [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |

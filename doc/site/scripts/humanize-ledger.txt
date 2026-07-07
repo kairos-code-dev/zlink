@@ -15,9 +15,7 @@ doc/guide/03-4-router.ko.md
 doc/guide/03-5-stream.ko.md
 doc/guide/03-6-proxy.ko.md
 doc/guide/07-0-services.ko.md
-doc/guide/07-1-discovery.ko.md
 doc/guide/07-4-actor.ko.md
-doc/guide/07-4-registry.ko.md
 doc/plan/documentation/tabbed-docs-consolidation-plan.ko.md
 doc/guide/01-overview.ko.md
 doc/guide/02-core-api.ko.md
@@ -42,14 +40,11 @@ doc/guide/zmp-protocol.ko.md
 doc/internals/architecture.ko.md
 doc/internals/core-source-layout.ko.md
 doc/internals/design-decisions.ko.md
-doc/internals/discovery-internals.ko.md
 doc/internals/io-thread.ko.md
 doc/internals/multipart-atomicity.ko.md
-doc/internals/peer-disconnect-rid.ko.md
 doc/internals/posd-module-structure.ko.md
 doc/internals/protocol-raw.ko.md
 doc/internals/protocol-zmp.ko.md
-doc/internals/registry-internals.ko.md
 doc/internals/services-internals.ko.md
 doc/internals/socket-option-defaults.ko.md
 doc/internals/spot-internals.ko.md

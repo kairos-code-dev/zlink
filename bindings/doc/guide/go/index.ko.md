@@ -304,8 +304,6 @@ if zlink.Has("draft") {
 | `stream_recv_sample` | STREAM 원시 TCP |
 | `stream_packet_callback_sample` | STREAM 패킷 콜백 |
 | `monitor_recv_sample` | 모니터 이벤트 수신 |
-| `discovery_registry_sample` | Registry + Discovery 기본 |
-| `registry_query_sample` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample` | SpotNode/Spot PUB/SUB |
 | `spot_request_async_sample` | SpotNode 비동기 요청 |
 | `actor_single_player_queue_sample` | 액터 조인/이동/메시지 큐 |
@@ -326,5 +324,4 @@ go run ./samples/pair_recv_sample/...
 ## 더 보기
 
 - **소켓 패턴**: [개요](../../../../core/doc/guide/03-0-socket-patterns.ko.md) — [PAIR](../../../../core/doc/guide/03-1-pair.ko.md) · [PUB/SUB](../../../../core/doc/guide/03-2-pubsub.ko.md) · [DEALER](../../../../core/doc/guide/03-3-dealer.ko.md) · [ROUTER](../../../../core/doc/guide/03-4-router.ko.md) · [STREAM](../../../../core/doc/guide/03-5-stream.ko.md) · [프록시](../../../../core/doc/guide/03-6-proxy.ko.md)
-- **서비스**: [개요](../../../../core/doc/guide/07-0-services.ko.md) — [discovery](../../../../core/doc/guide/07-1-discovery.ko.md) · [SPOT](../../../../core/doc/guide/07-3-spot.ko.md) · [Actor](../../../../core/doc/guide/07-4-actor.ko.md) · [registry](../../../../core/doc/guide/07-4-registry.ko.md)
 - **운영**: [소켓 옵션](../../../../core/doc/guide/12-socket-options.ko.md) · [TLS](../../../../core/doc/guide/05-tls-security.ko.md) · [모니터링](../../../../core/doc/guide/06-monitoring.ko.md) · [스레드 안전성](../../../../core/doc/guide/11-thread-safety.ko.md) · [메시지 API](../../../../core/doc/guide/09-message-api.ko.md) · [라우팅 ID](../../../../core/doc/guide/08-routing-id.ko.md)

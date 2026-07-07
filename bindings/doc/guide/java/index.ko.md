@@ -322,7 +322,6 @@ if (Zlink.has("draft")) {
 | `StreamRecvSample` | STREAM 원시 TCP |
 | `StreamPacketCallbackSample` | STREAM 패킷 콜백 |
 | `MonitorRecvSample` | 모니터 이벤트 수신 |
-| `RegistryQuerySample` | Registry 토폴로지 쿼리 |
 | `SpotRecvSample` | SpotNode/Spot PUB/SUB |
 | `SpotRequestAsyncSample` | SpotNode 비동기 요청 |
 | `ActorSinglePlayerQueueSample` | 액터 조인/이동/메시지 큐 |
@@ -385,10 +384,8 @@ Kotlin 코드로 바로 볼 수 있습니다.
 
 **서비스**
 - [서비스 개요](../../../../core/doc/guide/07-0-services.ko.md)
-  - [Discovery](../../../../core/doc/guide/07-1-discovery.ko.md)
   - [SPOT](../../../../core/doc/guide/07-3-spot.ko.md)
   - [Actor](../../../../core/doc/guide/07-4-actor.ko.md)
-  - [Registry](../../../../core/doc/guide/07-4-registry.ko.md)
 
 **운영**
 - [소켓 옵션](../../../../core/doc/guide/12-socket-options.ko.md)

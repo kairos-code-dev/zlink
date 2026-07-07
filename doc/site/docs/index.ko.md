@@ -18,9 +18,7 @@ zlink 문서에 오신 것을 환영합니다. zlink은 libzmq 기반의 현대�
 
 ## 서비스
 
-- [Discovery](guide/07-1-discovery.md) — 피어 발견
 - [SPOT](guide/07-3-spot.md) — 위치 투명 발행/구독 메시
-- [Registry](guide/07-4-registry.md) — 서비스 레지스트리
 
 ## 코드 예제
 

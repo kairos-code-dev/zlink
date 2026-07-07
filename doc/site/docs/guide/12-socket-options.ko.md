@@ -8,7 +8,7 @@
 
 이 문서는 `zlink_set_option()` / `zlink_get_option()`으로 설정하는 소켓 옵션
 각각의 **동작**, **영향 범위**, **기본값**, **소켓 타입별 차이**를 상세히 설명한다.
-API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 달리,
+API 시그니처만 다루는 [socket API 레퍼런스](../spec/core/socket/README.ko.md)와 달리,
 이 가이드는 **옵션이 런타임에 무엇을 바꾸는지**에 초점을 둔다.
 
 ## 옵션 소유권 카테고리
@@ -67,7 +67,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고 50 이하로 drain되어야 �
 `PUB/XPUB=fanout`, `SUB/XSUB=recv_ingress`다. SPOT 내부 토픽 퍼블리셔는
 `spot_data`, peer/control 소켓은 `control`, SPOT 라우터는 `routed`로 계산한다.
 
-컨텍스트 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 네 가지 프로필 중 하나를 선택한다.
+컨텍스트 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 네 가지 profile 중 하나를 선택한다.
 기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`이며 자동 HWM은 기본으로 켜져 있다.
 컨텍스트에서 기존 고정 HWM 기본값 `1000`을 유지해야 할 때만
 `ZLINK_CTX_OPT_AUTO_HWM_ENABLE`을 `0`으로 설정한다.
@@ -78,15 +78,36 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고 50 이하로 drain되어야 �
 | STREAM | 8 | 16 | 64 | 256 |
 | control | 8 | 16 | 16 | 32 |
 
-계획기(planner)는 HWM을 연결 하나의 큐 깊이(queue depth)로 본다. 컨텍스트 메모리 예산을
-연결 수로 나누지 않는다. 대신 프로필의 바이트 범위(byte envelope)가 유지되도록 다음
-공식을 적용한다.
+일반 소켓의 계획기(planner)는 HWM을 연결 하나의 큐 깊이(queue depth)로 본다. 컨텍스트
+메모리 예산을 연결 수로 나누지 않는다. 대신 profile의 바이트 범위(byte envelope)가 유지되도록
+다음 공식을 적용한다.
 
 ```text
 scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
 ```
 
 자동 HWM의 최소값은 `1`이고 결과는 profile별 메시지 수 cap으로 제한된다.
+
+SPOT mesh 내부 소켓 중 `mesh-pub`, `mesh-xsub`, `routed-router`는 연결 수가 많을 때 별도의
+connection bucket을 먼저 적용한다. bucket 값은 `4 KiB` 메시지 기준 HWM이며, 최종 HWM은 다음
+순서로 계산한다.
+
+```text
+base_hwm_4k = min(profile_hwm_4k, bucket_hwm_4k)
+unit_budget_bytes = base_hwm_4k * 4096
+scaled_hwm = ceil(unit_budget_bytes / effective_message_unit)
+```
+
+bucket 경계에는 hysteresis가 있다. 현재 `1-64` bucket이면 peer 수가 `80` 이상일 때
+`65-128` bucket으로 이동한다. 현재 `65-128` bucket이면 peer 수가 `48` 이하로 내려갈
+때 `1-64` bucket으로 돌아간다. 이 여유 구간은 peer 수가 경계 근처에서 흔들릴 때 HWM이
+반복해서 바뀌는 일을 막는다. profile 또는 메시지 단위를 바꾸면 같은 bucket에 머무를 수
+있는 상황이라도 새 설정으로 다시 계산한다.
+
+이 조정은 SPOT data-plane 내부 socket queue의 보조 상한이다. public publish와 routed send의
+backpressure 의미는 `publish_ingress_queue`와 `routed_send_queue`의 admission 규칙이 계속
+결정한다. local fanout, pub ingress, control socket, 일반 DEALER/PAIR/STREAM 소켓에는 이
+connection bucket을 적용하지 않는다.
 
 사용자가 `SNDHWM` / `RCVHWM`을 직접 설정하면 자동 HWM보다 그 값이 항상 우선한다.
 
@@ -133,7 +154,7 @@ raw socket option이 우선 적용됩니다.
 
 ### 수동 재계산 트리거
 
-런타임에 auto-HWM 프로파일이나 메시지 단위를 변경한 후, context 내 모든
+런타임에 auto-HWM profile이나 메시지 단위를 변경한 후, context 내 모든
 소켓에 즉시 재계산을 트리거하려면:
 
 ```c
@@ -143,7 +164,7 @@ zlink_ctx_auto_hwm_recalculate(ctx);
 auto HWM이 비활성화(`ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 0`)된 경우 no-op이다.
 컨텍스트 레벨의 `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` 설정은 자동
 백그라운드 재계산 빈도를 제어한다. `zlink_ctx_auto_hwm_recalculate()` 호출은
-디바운스를 우회하고 즉시 실행된다.
+debounce를 우회하고 즉시 실행된다.
 
 ---
 
@@ -179,9 +200,10 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 |------|------|
 | **하는 일** | send/recv 최대 대기 시간 설정 |
 | **적용 위치** | `zlink_send()` / `zlink_recv()` blocking 경로 |
-| **기본값** | `-1` (무한 대기) |
+| **기본값** | `1000` ms |
 | **0** | non-blocking과 동일 (즉시 반환) |
-| **>0** | 지정 시간(ms)까지 대기 후 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
+| **-1** | 명시적으로 설정한 경우 무한 대기 |
+| **>0** | 지정 시간(ms)까지 대기 후 send는 `ZLINK_SUBMIT_BACKPRESSURED`, recv는 `ZLINK_RECV_NO_DATA` 반환 |
 
 **서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.
 
@@ -299,7 +321,7 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 | 옵션 | 하는 일 | 기본값 |
 |------|---------|--------|
 | `HEARTBEAT_IVL` | PING 메시지 송신 간격 (ms) | `0` (비활성) |
-| `HEARTBEAT_TTL` | 원격 피어에 전달되는 TTL (0.1초 단위) | `0` |
+| `HEARTBEAT_TTL` | 원격 피어에 전달되는 TTL (ms; 내부적으로 0.1초 단위로 저장) | `0` |
 | `HEARTBEAT_TIMEOUT` | PONG 응답 대기 시간 (ms) | `-1` (IVL 값 사용) |
 
 **적용 위치:** `asio_zmp_engine` -- ZMP 프로토콜 수준 PING/PONG 교환.
@@ -317,7 +339,7 @@ ZMP(zlink 메시징 프로토콜) 하트비트는 애플리케이션 프로토�
 /* PING every 5s, remote TTL 15s, local PONG timeout 10s */
 int hb_ivl = 5000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-int hb_ttl = 150;  /* 0.1s units → 15s */
+int hb_ttl = 15000;  /* ms → 15s */
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
 int hb_timeout = 10000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
@@ -363,15 +385,14 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 | **하는 일** | 커널 소켓 송수신 버퍼 크기 설정 |
 | **적용 위치** | `tcp.cpp` -- `setsockopt(SO_SNDBUF/SO_RCVBUF)` |
 | **기본값** | `-1` (OS 기본값 유지) |
-| **0** | OS 기본값 사용 |
-| **>0** | 지정 크기(바이트)로 설정 |
+| **0 이상** | 지정 크기(바이트)를 OS에 요청 |
 
 HWM과 독립적이다. HWM은 zlink 파이프 수준의 메시지 수 제한이고
 SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기다.
 
-**소켓 타입별 차이:**
-- `STREAM`: 애플리케이션이 `SNDBUF` / `RCVBUF`를 주지 않으면 호환 기본값
-  `262144`를 사용한다.
+auto-HWM profile과 STREAM 기본값은 이 값을 자동으로 바꾸지 않는다. 대규모
+mesh처럼 연결 수가 많고 메모리 상한이 중요하면 애플리케이션이나 운영 설정에서
+작은 값을 명시할 수 있다.
 
 ---
 
@@ -520,8 +541,6 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | 미연결 peer 대상 전송 실패를 surface |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
-| `STREAM` | `SNDBUF` | 미설정이면 `262144` | stream 소켓 호환 기본값 |
-| `STREAM` | `RCVBUF` | 미설정이면 `262144` | stream 소켓 호환 기본값 |
 
 > **기본값과 관찰 가능한 동작:**
 >
@@ -538,7 +557,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 >   drop 하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 진행률을 위해
 >   drop 이 필요한 loss-tolerant workload 는 `0` 으로 명시 설정한다.
 >
-> 이 기본값은 **기본 프로파일** 에만 영향을 주며 옵션 상수 이름이나 on/off
+> 이 기본값은 **기본 profile** 에만 영향을 주며 옵션 상수 이름이나 on/off
 > 의미는 그대로다.
 
 ## 소켓 타입별 전용 옵션
@@ -547,18 +566,19 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 
 | 소켓 | API | 대표 옵션 |
 |------|-----|-----------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID` |
-| DEALER | `zlink_set_dealer_option()` | `PROBE` |
-| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG` |
-| SUB/XSUB | `zlink_set_sub_option()` | 구독 관련 |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (기본 `100`) |
+| DEALER | `zlink_set_dealer_option()` | `PROBE`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (기본 `100`) |
+| PUB/XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG`, `APPROVE_SUBSCRIBE`, `REJECT_SUBSCRIBE` |
+| SUB/XSUB | `zlink_set_sub_option()` (`TOPICS_COUNT`); 구독 필터는 `zlink_set_subscription()` / `zlink_unset_subscription()` | `TOPICS_COUNT` |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 
 ---
 
 ## 소켓 Channel 이름
 
-Discovery 및 Registry 사용을 위해 임의의 소켓에 논리적 채널 이름을 지정한다.
-채널 이름은 Discovery와 Registry가 소켓의 서비스 역할을 식별하는 데 사용한다.
+임의의 소켓에 논리적 채널 이름을 지정한다. framework와 응용은 이 metadata를
+사용해 transport endpoint에 channel을 섞어 넣지 않고 route-channel 설정을
+명시적으로 유지할 수 있다.
 
 ```c
 /* channel 이름 설정 */
@@ -570,7 +590,7 @@ size_t len = 0;
 zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 ```
 
-소켓을 Discovery에 등록한 이후에는 채널 이름 변경이 지원되지 않는다.
+channel 이름은 metadata일 뿐이다. 이 API가 소켓을 연결하지 않는다.
 
 ---
 <!-- zlink-nav:bottom:start -->

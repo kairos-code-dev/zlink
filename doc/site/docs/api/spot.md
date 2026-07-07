@@ -204,7 +204,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 - `PUBSUB` mode does not create routed sockets, and `ROUTED` mode does not
   create topic sockets. Snapshot calls do not activate disabled planes.
 
-### Topology and discovery
+### Topology
 
 ```c
 zlink_config_result_t zlink_spot_node_set_pub_bind(void *node, const char *endpoint);
@@ -215,8 +215,6 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
   void *node,
   const zlink_routing_id_t *target_node_rid);
-zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
-                                                       void *discovery);
 ```
 
 - `zlink_spot_node_set_pub_bind()` binds the node endpoint.
@@ -225,12 +223,8 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
 - `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target
   node routing id. It does not target an individual spot routing id under that
   node.
-- They fail with `EBUSY` when a discovery is already attached.
 - The `Spot` facade has no separate peer-rid disconnect function because peer
   connections are owned by the `SpotNode` runtime.
-- `zlink_spot_node_attach_discovery()` requires a discovery handle that exposes
-  a SPOT channel view.
-- A node may have only one active SPOT discovery view at a time.
 
 ### Channel-call socket registration
 

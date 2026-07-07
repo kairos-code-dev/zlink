@@ -730,34 +730,12 @@ ROUTER와 STREAM은 routing map을 사용해 대상을 찾습니다. STREAM에�
 현재 연결된 pipe의 source routing id snapshot에서 일치하는 peer를 찾습니다.
 동일한 routing id가 둘 이상이면 대상을 확정할 수 없으므로 실패합니다.
 
-Discovery에 attach된 socket에서는 수동 연결 제어를 허용하지 않으므로
-`ZLINK_CONNECT_BUSY`로 실패합니다.
-
 **반환값:** 성공 시 `ZLINK_CONNECT_OK`. 대상 없음은
 `ZLINK_CONNECT_NOT_FOUND`, 중복 routing id는 `ZLINK_CONNECT_CONFLICT`,
 lifecycle 소유권 충돌은 `ZLINK_CONNECT_BUSY`입니다. `zlink_errno()`는
 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_disconnect`, `ZLINK_OPT_RID_DUPLICATE_POLICY`
-
----
-
-### zlink_socket_attach_discovery
-
-raw 소켓을 discovery 서비스 뷰에 부착합니다.
-
-```c
-zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discovery_);
-```
-
-raw ROUTER, DEALER, PUB, SUB 소켓을 discovery 서비스 뷰에 부착합니다.
-부착된 동안 수동 `connect`, `disconnect`, `unbind`, `close` 작업은
-실패합니다. discovery 인스턴스를 파괴하면 부착된 소켓 생명주기가
-종료됩니다.
-
-**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
-
-**참고:** `zlink_socket`, `zlink_close`
 
 ---
 

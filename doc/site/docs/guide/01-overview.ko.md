@@ -17,11 +17,11 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |------|--------|-------|
 | **Socket Types** | 17종 (draft 포함) | **8종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
 | **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
-| **암호화** | CURVE (libsodium) | **TLS**(Transport Layer Security, 전송 계층 암호화) (OpenSSL) — `tls://`, `wss://` |
+| **암호화** | CURVE (libsodium) | **TLS**(Transport Layer Security) (OpenSSL) — `tls://`, `wss://` |
 | **Transport** | 10종+ (PGM, TIPC, VMCI 등) | **6종** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
 | **의존성** | libsodium, libbsd 등 | **OpenSSL만** |
 
-참고: `pgm://`, `epgm://`는 현재 zlink에서 임시로 비활성화되어 있으며 지원하지 않는다.
+참고: `pgm://`, `epgm://`는 기본 빌드에 포함되지 않는다(OpenPGM을 켠 빌드에서만 제공).
 
 ## 2. 아키텍처 개요
 
@@ -36,7 +36,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |  validate + delegate, per-handle admission guard     |
 +------------------------------------------------------+
 |  Service Layer                                       |
-|  Discovery · SPOT · Actor · Registry                 |
+|  SPOT · Actor (공개) · 내부 위치 런타임               |
 |  service access seam (*_access) · lifecycle · runtime|
 +------------------------------------------------------+
 |  Socket Semantic / Runtime                           |
@@ -68,7 +68,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | 계층 | 역할 |
 |------|------|
 | Public API Facade | C API 진입점. validate + delegate만 수행 |
-| Service Layer | Discovery/SPOT(+Actor)/Registry 의미와 lifecycle. access seam으로 API와 연결 |
+| Service Layer | SPOT(+Actor) 의미와 lifecycle. access seam으로 API와 연결 |
 | Socket Semantic/Runtime | socket family 의미와 공통 runtime이 분리 |
 | Runtime Core | context, shutdown, option dispatch, multipart send |
 | Engine Layer | Boost.Asio 기반 poller, io_context 실행 기반 |
@@ -78,7 +78,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 | 설계 원칙 | 설명 |
 |-----------|------|
-| **Zero-Copy** | VSM(Very Small Message, 33B 이하 메시지를 별도 힙 할당 없이 객체 안에 직접 저장)은 inline 저장, 대용량은 참조 카운팅 |
+| **Zero-Copy** | VSM(Very Small Message, 41B 이하 메시지를 별도 힙 할당 없이 객체 안에 직접 저장)은 inline 저장, 대용량은 참조 카운팅 |
 | **Lock-Free** | Thread 간 통신에 YPipe(락 없이 CAS(Compare-And-Swap) 연산으로 구현한 FIFO 큐) 사용 |
 | **True Async** | Proactor 패턴(I/O 완료 이벤트를 핸들러로 전달하는 비동기 설계) 기반 비동기 I/O |
 | **Protocol Agnostic** | Transport와 Protocol의 명확한 분리 |
@@ -111,9 +111,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 | 서비스 | 역할 |
 |--------|------|
-| **Discovery** | Registry를 구독해 서비스 목록을 로컬 캐시로 유지 |
-| **Registry** | 서비스 엔트리 등록·관리, SERVICE_LIST 브로드캐스트 |
-| **SPOT** | 위치 투명(location-transparent, 상대 주소를 몰라도 통신 가능) 토픽 pub/sub + routed 통신 메시(mesh). `SpotNode`가 transport를 소유하고 `Spot` facade가 데이터 평면을 제공 |
+| **SPOT** | 위치 투명(location-transparent, 상대 주소를 몰라도 통신 가능) 토픽 pub/sub + routed mesh 통신. `SpotNode`가 transport를 소유하고 `Spot` facade가 data plane을 제공 |
 | **Actor** | SPOT 안에서 STREAM 세션 메시지를 라우팅 대상으로 묶는 세션 기반 주소 지정 단위. `SpotNode`가 Actor 테이블을 관리하고 `Entry Spot`에서 메시지를 전달한다 |
 
 자세한 내용은 [서비스 계층 개요](07-0-services.ko.md), [SPOT 가이드](07-3-spot.ko.md),
@@ -165,8 +163,7 @@ int main(void) {
         printf("Received: %.*s\n",
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 
     zlink_close(client);
     zlink_close(server);

@@ -206,8 +206,6 @@ try {
 | `zlink_spot_node_new(ctx)` | `zlink::service::spot_node_t{ctx}` |
 | `zlink_spot_node_create_spot(...)` | `node.create_spot()` |
 | `zlink_spot_node_actor_new(...)` | `node.create_actor("id")` |
-| `zlink_registry_new(ctx)` | `zlink::service::registry_t{ctx}` |
-| `zlink_discovery_new(ctx,...)` | `zlink::service::discovery_t{ctx, type, ch}` |
 
 ---
 
@@ -256,8 +254,6 @@ std::thread worker ([&ctx] {
 | `stream_recv_sample.cpp` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.cpp` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.cpp` | 모니터 이벤트 수신 |
-| `discovery_registry_sample.cpp` | Registry + Discovery |
-| `registry_query_sample.cpp` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.cpp` | SpotNode/Spot PUB/SUB |
 | `spot_request_async_sample.cpp` | SpotNode 비동기 요청 |
 | `actor_single_player_queue_sample.cpp` | 액터 조인·이동·메시지 큐 |
@@ -275,5 +271,4 @@ cmake -B build && cmake --build build
 ## 더 보기
 
 - 소켓 패턴: [개요](../../03-0-socket-patterns.md) — [PAIR](../../03-1-pair.md) · [PUB/SUB](../../03-2-pubsub.md) · [DEALER](../../03-3-dealer.md) · [ROUTER](../../03-4-router.md) · [STREAM](../../03-5-stream.md) · [프록시](../../03-6-proxy.md)
-- 서비스: [개요](../../07-0-services.md) — [discovery](../../07-1-discovery.md) · [SPOT](../../07-3-spot.md) · [Actor](../../07-4-actor.md) · [registry](../../07-4-registry.md)
 - 운영: [소켓 옵션](../../12-socket-options.md) · [TLS](../../05-tls-security.md) · [모니터링](../../06-monitoring.md) · [스레드 안전성](../../11-thread-safety.md) · [메시지 API](../../09-message-api.md) · [라우팅 ID](../../08-routing-id.md)

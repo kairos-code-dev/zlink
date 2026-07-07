@@ -28,7 +28,6 @@
    - `doc/guide/02-core-api.ko.md`
    - `doc/guide/06-monitoring.ko.md`
    - `doc/guide/07-0-services.ko.md`
-   - `doc/guide/07-1-discovery.ko.md`
    - `doc/guide/07-3-spot.ko.md`
    - `doc/guide/09-message-api.ko.md`
    - `doc/guide/11-thread-safety.ko.md`

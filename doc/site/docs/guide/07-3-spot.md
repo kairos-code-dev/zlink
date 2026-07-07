@@ -1,37 +1,30 @@
 [English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
 
 <!-- zlink-nav:start -->
-[← Discovery](07-1-discovery.md) | [SPOT Actor →](07-4-actor.md)
+[← Services](07-0-services.md) | [SPOT Actor →](07-4-actor.md)
 <!-- zlink-nav:end -->
 
 # SPOT Guide
 
 This guide explains how application developers use SPOT.
-For exact API contracts, see the [SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.md).
+For exact API contracts, see the [SPOT spec](../spec/core/service/spot.md).
 
 ## 1. What SPOT does
-
-In application design, a Spot is a stateful coordination point with its own
-lifecycle. It represents a unit where state and events meet, such as a room,
-conversation, workflow instance, or player quest. Actor participation is
-optional: a Spot may accept actor joins, handle directed requests, publish
-events, run timers, or react to pub/sub events.
 
 SPOT has two layers.
 
 - `SpotNode`
-  Owns node topology, discovery-backed wiring, manual peer wiring,
-  channel-call `DEALER` attachments, and external publish ingress.
+  Owns node topology, manual peer wiring, route bridges, and external publish
+  ingress.
 - `Spot`
-  The public facade your application uses for a Spot. It exposes topic
-  publish/subscribe, routed recv, channel send/request, dispatch, timer, and
-  actor operation entry points.
+  The facade your application uses for topic publish/subscribe, routed recv,
+  and channel send/request.
 
 The usual flow is:
 
 1. Create a `SpotNode`.
-2. Bind it or attach discovery.
-3. Attach channel dealers if you need channel calls.
+2. Bind it or connect raw peers when your topology needs them.
+3. Create a route bridge if an external channel runtime must feed SPOT routes.
 4. Create a `Spot` facade.
 5. Use the `Spot` for topic traffic or channel calls.
 
@@ -60,8 +53,9 @@ zlink_spot_node_destroy(&node);
 zlink_ctx_term(&ctx);
 ```
 
-Passing `NULL` keeps both topic and routed features enabled. If a process only
-needs one plane, pass `zlink_spot_node_options_t` at creation time:
+Passing `NULL` keeps both topic and routed features enabled — equivalent to
+`ZLINK_SPOT_NODE_MODE_ALL`. If a process only needs one plane, pass
+`zlink_spot_node_options_t` at creation time:
 
 ```c
 zlink_spot_node_options_t opts = {
@@ -70,8 +64,45 @@ zlink_spot_node_options_t opts = {
 void *node = zlink_spot_node_new(ctx, &opts);
 ```
 
-Use `ZLINK_SPOT_NODE_MODE_ROUTED` for routed-only nodes. Disabled features fail
-with `ENOTSUP`; they do not create hidden internal sockets.
+The three mode values are:
+
+| Mode constant | Effect |
+|---|---|
+| `ZLINK_SPOT_NODE_MODE_ALL` (or `NULL`) | Both topic publish/subscribe and routed request/reply are enabled |
+| `ZLINK_SPOT_NODE_MODE_PUBSUB` | Only topic publish/subscribe; routed APIs fail with `ENOTSUP` |
+| `ZLINK_SPOT_NODE_MODE_ROUTED` | Only routed request/reply; topic APIs fail with `ENOTSUP` |
+
+Disabled planes do not create their internal sockets — there is no hidden
+resource cost for features you do not use.
+
+### 2.1 Acquiring a Spot with an application room id
+
+When an application already has a room id or group id, use
+`zlink_spot_node_spot_get_or_new()`. It handles the "get it if it exists,
+otherwise create it" flow inside the `SpotNode`, so application code does not
+need to combine lookup, creation, and routing-id reassignment itself.
+
+```c
+zlink_routing_id_t room_rid;
+memset(&room_rid, 0, sizeof(room_rid));
+room_rid.size = 8;
+memcpy(room_rid.data, "room-001", 8);
+
+void *room = NULL;
+uint32_t created = 0;
+zlink_config_result_t rc =
+  zlink_spot_node_spot_get_or_new(node, &room_rid, &room, &created);
+
+if (rc == ZLINK_CONFIG_OK && created) {
+  /* Only the first creator initializes room state. */
+}
+```
+
+The returned `room` is a normal `Spot` facade and must be closed with
+`zlink_spot_destroy()`. Actor join is still a separate step. Keeping Spot
+acquisition separate from join lets the application distinguish "the room was
+created or found" from "the actor reached the room but was rejected by room
+rules."
 
 ## 3. Bringing a node online
 
@@ -90,35 +121,15 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 
 This is fine for tests and fixed topologies.
 
-### 3.2 Discovery-backed wiring
-
-```c
-void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:0");
-
-void *discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_SPOT_MESH,
-  "alpha");
-zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
-
-zlink_spot_node_attach_discovery(node, discovery);
-```
-
-Here `"alpha"` is the SPOT channel view for this node.
-
-After `attach_discovery()`, do not mix in manual `connect_peer()` calls for the
-same node. The current contract blocks that with `EBUSY`.
-
 If you do not have the peer endpoint but you know the target node routing id,
 call `zlink_spot_node_disconnect_peer_rid()` on the `SpotNode` to close that
 peer node connection. The `Spot` facade does not expose a separate rid
 disconnect function because it does not directly own peer connections.
 
-### 3.3 Drain new outbound with raw peer weight
+### 3.2 Drain new outbound with raw peer weight
 
 SpotNode and Spot do not expose a weight setting. If a service uses raw
-ROUTER or worker auto-connect peers and you want to stop new outbound temporarily
+ROUTER peers and you want to stop new outbound temporarily
 without tearing down peer connections, set that raw socket's weight to `0`.
 The valid range is `0..100`; the default is `100`.
 
@@ -199,38 +210,18 @@ Two rules matter:
 - Channel calls always use attached `DEALER` sockets.
 - Attach functions never create sockets and never call `connect()` for you.
 
-### 5.1 Automatic path
+The current public C API uses the manual path: create the `DEALER`, connect it
+to the known endpoints, and attach it to the route bridge.
 
-```c
-void *node = zlink_spot_node_new(ctx, NULL);
-
-void *spot_discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_SPOT_MESH,
-  "alpha");
-zlink_discovery_connect_registry(spot_discovery, "tcp://127.0.0.1:5551");
-zlink_spot_node_attach_discovery(node, spot_discovery);
-
-void *orders_discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_CLIENT_SERVER,
-  "orders");
-zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
-
-void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
-zlink_socket_attach_discovery(dealer, orders_discovery);
-
-zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
-```
-
-### 5.2 Manual path
+### 5.1 Manual path
 
 ```c
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_connect(dealer, "tcp://127.0.0.1:7201");
 zlink_connect(dealer, "tcp://127.0.0.1:7202");
 
-zlink_spot_node_attach_channel_dealer_manual(node, "orders", dealer);
+void *bridge = zlink_spot_route_bridge_new(ctx, node, NULL);
+zlink_spot_route_bridge_attach_dealer_channel(bridge, "orders", dealer, NULL);
 ```
 
 ### 5.3 Channel send/request
@@ -253,8 +244,7 @@ zlink_spot_request_channel(
   2000);
 ```
 
-You cannot register two dealers for the same channel name. Automatic and manual
-attach collide in the same namespace.
+You cannot register two dealers for the same channel name.
 
 ### 5.4 Channel request reply and the dispatch stream
 
@@ -269,20 +259,7 @@ Bindings do not need a separate per-dealer progress pump.
 
 ## 6. Unified dispatch event handler
 
-There are two mutually exclusive handler registration modes for a Spot:
-
-- **`zlink_spot_handler()`** — routed-only direct callback. Routed message
-  payloads are delivered inline inside the callback. Subscribe, channel reply,
-  timer, and Actor events cannot be received through this handler. If any of
-  those event types are needed, this mode cannot be used.
-
-- **`zlink_spot_dispatch_event_handler()`** — unified readiness notification
-  for subscribe, routed, channel reply, timer, Actor join, and Actor readable
-  events. The callback signals that work is ready; data is pulled with the
-  corresponding drain API. Subscribe, channel reply, timer, and Actor events
-  can only be received through this mode.
-
-If Actors are needed, always use `zlink_spot_dispatch_event_handler()`.
+`zlink_spot_dispatch_event_handler()` is the single SPOT readiness handler. It reports subscribe, routed, channel reply, timer, Actor join, Actor readable, and Actor lifecycle readiness. The callback only signals that work is ready; payload and lifecycle data are pulled with the corresponding drain API.
 
 Registering `zlink_spot_dispatch_event_handler()` gives a callback with
 `event`, `subject_kind`, and `subject`:
@@ -306,10 +283,13 @@ void my_dispatch_handler(
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
         /* info_->subject is the timer handle */
-        zlink_timer_recv(info_->subject, NULL, 0);
+        zlink_timer_recv(info_->subject, NULL);
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
         /* drain with zlink_spot_actor_join_recv() */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE:
+        /* drain with zlink_spot_recv_actor_lifecycle() */
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
         /* info_->subject is const zlink_actor_ref_t* */
@@ -319,8 +299,8 @@ void my_dispatch_handler(
 ```
 
 Dispatch priority is fixed: `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
-`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
-`ACTOR_READABLE`.
+`ACTOR_JOIN_READABLE` → `ACTOR_LIFECYCLE_READABLE` → `ACTOR_READABLE` →
+`CHANNEL_REPLY_READABLE` → `TIMER_READABLE`.
 
 ### 6.1 Dispatch events are readiness, not message counts
 
@@ -401,10 +381,15 @@ zlink_spot_recv(
   0);
 ```
 
-Reply with:
+The `zlink_spot_recv()` output tells you which reply function to use:
 
-- `zlink_spot_reply_spot()` when the origin is another SPOT
-- `zlink_spot_reply_router()` when the origin is a ROUTER
+- If `source_spot_rid` is non-empty, the request came from another Spot — reply
+  with `zlink_spot_reply_spot()`, which routes back over the SPOT routed plane.
+- If `source_spot_rid` is empty but `source_node_rid` is set, the request came
+  from a ROUTER socket — reply with `zlink_spot_reply_router()`, which routes
+  back through the ROUTER plane.
+
+Using the wrong reply function returns `ZLINK_SUBMIT_INVALID_ARGUMENT`.
 
 ## 10. Initiating routed requests from Spot
 
@@ -473,15 +458,15 @@ zlink_router_request_spot(
 
 ## 12. Feeding SPOT from a generic PUB
 
-If a generic external `PUB` should feed the SPOT topic plane, attach it as
-publish ingress.
+If external code should feed the SPOT topic plane, create a publisher handle
+from the node and publish through that handle.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
-zlink_spot_node_attach_pub_ingress(node, pub);
+void *publisher = zlink_spot_node_publisher_new(node);
+zlink_spot_node_publisher_publish(publisher, "orders", parts, part_count, 0);
 ```
 
-Treat that `PUB` as a dedicated ingress source for the node.
+Close the publisher handle when the external publisher is done.
 
 ## 13. Observability
 
@@ -489,24 +474,35 @@ Use node snapshots and query results for status and debugging.
 
 ```c
 zlink_spot_node_status_t status;
-zlink_spot_node_status_snapshot(node, &status);
+zlink_spot_node_status(node, &status);
 
 size_t peer_count = 0;
-zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
+zlink_spot_node_peers(node, NULL, NULL, &peer_count);
 ```
 
 `status.disconnected_sub_target_count` and
-`status.disconnected_routed_target_count` are ABI compatibility fields. The
-current SPOT delivery path does not disconnect a target because an internal
-delivery queue grew, so these fields report `0`.
+`status.disconnected_routed_target_count` are **ABI compatibility fields** that
+always report `0`. The current SPOT delivery model does not disconnect delivery
+targets due to internal queue growth, so do not rely on these counters for
+diagnostics.
 
-For HWM diagnostics, use the internal socket snapshot and monitor snapshot
-fields. SpotNode HWM options apply to admission only: topic publish admission
-and routed admission. There is no per-Actor HWM option. Actor processing delays
-are diagnosed through dispatch events, recv results, and snapshot counts.
+**What to use instead for HWM diagnostics**: admission is enforced at the
+`publish_ingress_queue` and `routed_send_queue` queue limits — `ingress-sub`
+and `internal-router` have been removed and do not appear in snapshot output.
+Call `zlink_spot_node_internal_sockets()` and inspect the `monitor_status`
+field of the returned `mesh-pub`, `mesh-xsub`, and `external-router` entries to
+see transport socket HWM values. Relay and delivery sockets always show HWM
+`0`, which is expected. Queue admission limits are controlled by the HWM
+profile options: BALANCED 256 (default), COMPACT 64, LOW_LATENCY 128,
+THROUGHPUT 512 (message-count basis).
 
-For Actor state, use `zlink_spot_node_actors_snapshot()` and
-`zlink_spot_actors_snapshot()`. The unread count and joined state in a snapshot
+SpotNode HWM options apply to the admission boundary only — topic publish
+admission and routed admission. There is no per-Actor HWM knob. Actor
+processing backlog is diagnosed through dispatch events, recv results, and the
+`unread` count in `zlink_spot_actors()`.
+
+For Actor state, use `zlink_spot_node_actors()` and
+`zlink_spot_actors()`. The unread count and joined state in a snapshot
 are for operational diagnostics. Base flow-control decisions on dispatch events
 and recv results, not snapshot values.
 
@@ -524,11 +520,24 @@ if (rc == ZLINK_CONFIG_OK) {
 The returned facade is borrowed; close it with `zlink_spot_destroy()` when done.
 The underlying `SpotNode` is not affected.
 
-## 14. Actor C samples
+## 14. Receiving From Router Channels
+
+In addition to the regular SPOT mesh, a router-capable channel's `ROUTER` can
+send messages to a target `Spot`. In the framework, a RouteMesh and SpotMesh in
+the same process are wired automatically for this receive path.
+
+Fanout channels and dealer mesh channels do not have the router capability
+needed for this path.
+
+When using the core API directly, register the caller-owned channel socket on a
+`zlink_spot_route_bridge_*` handle. Applications do not need to know internal
+routed endpoints or port derivation rules.
+
+## 15. Actor C samples
 
 See the [SPOT Actor Guide](07-4-actor.md#5-actor-c-samples).
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Discovery](07-1-discovery.md) | [SPOT Actor →](07-4-actor.md)
+[← Services](07-0-services.md) | [SPOT Actor →](07-4-actor.md)
 <!-- zlink-nav:bottom:end -->

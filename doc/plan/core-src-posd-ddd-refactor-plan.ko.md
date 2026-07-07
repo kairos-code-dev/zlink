@@ -225,7 +225,7 @@ spot actor (api/actor):
     실질 로직 있는 2–3개(`stream_owner_for_actor_ref_locked` 등)만 유지.
     `find_session_binding_locked` 등 send/recv 경유분 포함이므로 code-motion
     원칙 준수. (code-motion / M)
-- [ ] **T2-07. no_bind 플로우 모듈화**
+- [x] **T2-07. no_bind 플로우 모듈화**
   - state는 `service_spot_actor_no_bind_state.cpp`로 분리됐으나 연산이 god file
     5곳 산재(`:686, 734, 1804, 1856, 3439-3520, 3554`). T1-01/T1-07 완료 후
     `service_spot_actor_no_bind.cpp`로 응집. (code-motion / M)
@@ -497,3 +497,9 @@ sockets/engine/transports/utils:
   메서드로 직접 연결했다. 조건 분기나 상태 갱신 의미가 있는 helper
   (`stream_owner_for_actor_ref_locked`, `clear_actor_bound_session_locked`,
   `next_*_locked` 등)는 유지했다.
+- 2026-07-07: T2-07 구현 — no-bind pending key/callback, submit, reply-frame
+  처리, 실패 응답 준비를 `service_spot_actor_no_bind.cpp`로 모았다. actor queue
+  삽입은 `actor_handle_t` 내부 구조와 강하게 결합된 locked 구간이라
+  `service_spot_actor_api.cpp`에 남기고, dispatcher는 `actor_no_bind_reply_t`를
+  통해 no-bind 응답 필드 지식을 직접 들고 있지 않게 줄였다. Core no-bind/spot
+  관련 테스트와 C++ ToActorMessaging E2E로 확인했다.

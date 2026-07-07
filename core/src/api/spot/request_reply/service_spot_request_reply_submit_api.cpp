@@ -39,9 +39,8 @@ using zlink::spot_reqrep_internal::dispatch_local_built_message;
 using zlink::spot_reqrep_internal::erase_spot_pending_request;
 using zlink::spot_reqrep_internal::find_or_create_router_state;
 using zlink::spot_reqrep_internal::find_or_create_spot_state;
-using zlink::spot_reqrep_internal::find_router_state_by_rid;
-using zlink::spot_reqrep_internal::find_spot_state_by_identity;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
+using zlink::spot_reqrep_internal::has_local_spot_route_target;
 using zlink::spot_reqrep_internal::pending_reply_t;
 using zlink::spot_reqrep_internal::pending_spot_key_t;
 using zlink::spot_reqrep_internal::register_router_spot_pending_request;
@@ -79,20 +78,6 @@ int validate_request_send_flags (zlink_send_flags_t flags_)
         return -1;
     }
     return 0;
-}
-
-bool has_local_spot_route_target (uint8_t destination_class_,
-                                  const std::string &destination_node_rid_,
-                                  const std::string &destination_endpoint_rid_,
-                                  const std::string &local_node_rid_)
-{
-    if (destination_class_ == routed_protocol::spot_endpoint_class) {
-        if (!local_node_rid_.empty () && destination_node_rid_ != local_node_rid_)
-            return false;
-        return static_cast<bool> (
-          find_spot_state_by_identity (destination_node_rid_, destination_endpoint_rid_));
-    }
-    return static_cast<bool> (find_router_state_by_rid (destination_endpoint_rid_));
 }
 
 bool spot_destination_has_positive_weight (void *spot_, const std::string &dest_node_rid_)

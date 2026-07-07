@@ -103,11 +103,6 @@ bool take_no_bind_pending (const zlink::spot_actor_api_internal::no_bind_pending
     return zlink::spot_actor_api_internal::actor_runtime ().no_bind.take_pending (key_, out_);
 }
 
-zlink_request_result_t request_result_from_actor_lookup_errno (int err_)
-{
-    return err_ == ESTALE ? ZLINK_REQUEST_CONFLICT : ZLINK_REQUEST_NOT_FOUND;
-}
-
 }
 
 namespace zlink
@@ -172,8 +167,12 @@ void prepare_no_bind_reply_after_enqueue (zlink::spot_node_t *node_,
     }
 
     out_->should_send = true;
-    out_->result =
-      enqueue_rc_ == 0 ? ZLINK_REQUEST_OK : request_result_from_actor_lookup_errno (enqueue_errno_);
+    if (enqueue_rc_ == 0) {
+        out_->result = ZLINK_REQUEST_OK;
+    } else {
+        errno = enqueue_errno_;
+        out_->result = zlink::spot_actor_internal::actor_missing_request_result_from_errno ();
+    }
     (void) node_->node_routing_id (&out_->source_node_rid);
     out_->target_node_rid = *source_node_rid_;
     out_->caller_endpoint_rid = frame_.session_rid;

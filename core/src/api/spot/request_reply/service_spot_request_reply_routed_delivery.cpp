@@ -33,8 +33,6 @@ namespace routed_protocol = zlink::spot_routed_protocol;
 
 const bool spot_direct_route_debug_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
 
-using zlink::spot_reqrep_internal::find_router_state_by_rid;
-using zlink::spot_reqrep_internal::find_spot_state_by_identity;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::process_route_combined_for_local_delivery;
@@ -288,16 +286,6 @@ int dispatch_routed_router_delivery (zlink::spot_node_t *origin_node_,
     }
     return dispatch_routed_router_delivery (origin_node_, flags_, &(*combined_)[0],
                                             combined_->size ());
-}
-
-bool has_local_spot_route_target (uint8_t destination_class_,
-                                  const std::string &destination_node_rid_,
-                                  const std::string &destination_endpoint_rid_)
-{
-    return destination_class_ == routed_protocol::spot_endpoint_class
-             ? static_cast<bool> (
-                 find_spot_state_by_identity (destination_node_rid_, destination_endpoint_rid_))
-             : static_cast<bool> (find_router_state_by_rid (destination_endpoint_rid_));
 }
 
 int dispatch_local_spot_routed_delivery (routed_spot_delivery_kind_t kind_,

@@ -602,6 +602,14 @@ sockets/engine/transports/utils:
 
 ## 7. 진행 상태
 
+- 2026-07-08: 2차 wave W2-01/W2-02/W2-04 완료 — route target predicate
+  정본화, option forward 잔재 삭제, actor no-bind errno→request-result 로컬 사본
+  제거를 적용했다. 검증: `nice -n 19 cmake --build core/build -j1` 통과,
+  `nice -n 19 ctest --test-dir core/build -R
+  '^(test_ctx_options|unittest_typed_option|test_spot_route_bridge_api|test_zmp_request_reply|test_spot_pubsub_scenario|test_spot_service_introspection_pub_sub_options|test_spot_actor_gateway_no_bind|unittest_spot_actor_gateway_no_bind_protocol)$'
+  -j1 --output-on-failure` 8/8 통과. 같은 테스트 묶음의 직전 실행에서
+  `test_zmp_request_reply`가 한 번 실패했으나 단독 재실행과 최종 묶음 재실행에서
+  재현되지 않았다.
 - 2026-07-08: 최종 검증 — `nice -n 19 cmake --build core/build -j1` 통과.
   `nice -n 19 ctest --test-dir core/build -j1 --output-on-failure`도 full core
   CTest 113/113 통과. 직전 full run에서 `test_spot_pubsub_scenario` aggregate가
@@ -861,3 +869,78 @@ sockets/engine/transports/utils:
   단위로 변경을 묶은 뒤 full core CTest를 실행한다. 개별 조각은 core build와
   좁은 관련 테스트(smoke)로 확인하고, framework/bindings E2E는 계속 별도 단계로
   둔다.
+
+## 8. 2차 wave — 재감사 후속 항목
+
+1차 42건 완료 뒤 재감사에서 확인한 후속 항목이다. 0절과 2절의 hot-path
+가드레일을 그대로 적용한다. send/recv 인접 code-motion은 header-inline 또는 같은
+TU inline으로 제한하고, 의심되면 벤치 게이트를 적용한다.
+
+### 8.1 버그 냄새 — 최우선
+
+- [x] **W2-01. `has_local_spot_route_target` divergent 이중 정의 통일**
+  - `service_spot_request_reply_submit_api.cpp`의 4-arg 판정은 local node rid가
+    알려졌으면 다른 node rid를 local target으로 받지 않는다. 반면
+    `service_spot_request_reply_routed_delivery.cpp`의 3-arg 판정은 같은 이름으로
+    같은 route predicate처럼 보이지만 이 가드가 없다.
+  - 의미 차이를 정본화한 뒤 `service_spot_request_reply_utils_internal.hpp` 쪽
+    helper로 단일화한다. 원격 node를 잘못 local delivery로 받는 일을 막기 위해
+    local node rid가 주어진 경우에는 4-arg 쪽의 더 엄격한 판정을 정본으로 삼는다.
+    (code-motion / S)
+  - 2026-07-08 확인: routed delivery 쪽 3-arg 사본은 현재 호출자가 없는 dead
+    definition이었다. submit 경로의 4-arg 판정을 정본 helper로 이동하고, 미사용
+    3-arg 사본은 삭제했다.
+
+### 8.2 소형·안전
+
+- [x] **W2-02. T2-03 죽은 잔재 제거**
+  - `service_option_api.cpp`의 `finish_spot_option_forward`는 EFAULT sentinel
+    fallback 제거 뒤 `rc == 0 ? 0 : -1`과 같다. 상류 target resolution 이후 남은
+    wrapper를 접는다. (없음 / S)
+  - 2026-07-08: helper를 삭제하고 spot option internal 호출을 직접 반환하도록
+    정리했다.
+- [ ] **W2-03. `consume_send_frame` 3중 정의 통합**
+  - `request_reply_protocol_internal.hpp`의 header-inline 정본,
+    `socket_message_send_api.cpp` 익명 사본, `part_helper_internal` 사본을
+    정본으로 수렴한다. send 경로이므로 인라이닝 보존이 조건이다. (code-motion / S)
+- [x] **W2-04. errno→result 역방향 로컬 사본 제거**
+  - `service_spot_actor_no_bind.cpp`의 로컬 변환을
+    `actor_missing_request_result_from_errno` 정본 호출로 교체한다. (없음 / S)
+  - 2026-07-08: `enqueue_errno_`를 필요한 경우에만 `errno`로 복원하고 actor result
+    정본을 호출하도록 교체했다.
+- [ ] **W2-05. routing-id shim 2종 제거**
+  - socket reqrep/part helper의 `has_valid_routing_id`와 `routing_id_key` 1줄
+    포워더를 직접 primitive 호출로 줄인다. (없음 / S)
+- [ ] **W2-06. `ZLINK_ROUTED_PART_DEBUG` stderr 로깅 추출**
+  - `socket_message_send_api.cpp`의 env-gate 진단 출력을 T2-21처럼 진단 helper로
+    분리한다. fast-path 타입 게이팅은 건드리지 않는다. (code-motion / S)
+
+### 8.3 1차 미완수 마무리
+
+- [ ] **W2-07. T2-17 잔여: auto-HWM 엔진 캡슐화**
+  - `ctx_t` 안에 남은 auto-HWM state와 two-mutex protocol을 owned member type으로
+    숨긴다. (없음 / M)
+- [ ] **W2-08. T2-17 잔여: `thread_ctx_t` 실분리**
+  - `ctx.hpp`의 선언 동거와 `ctx_t` 상속을 줄이고, 자체 헤더와 멤버 구성을
+    검토한다. (없음 / S-M)
+- [ ] **W2-09. T2-16 잔여: forwarding target 관리 추출**
+  - `spot_data_plane_forwarding.cpp`에 남은 membership 갱신 control-plane을
+    control 모듈로 옮기고 pending queue limit 정책 위치를 정리한다. (없음 / M)
+- [ ] **W2-10. `spot_data_plane_internal.hpp` fat 헤더 분해**
+  - god struct 선언 3개가 공유되는 헤더를 W2-09와 함께 더 좁은 internal 헤더로
+    나눈다. (없음 / M)
+- [ ] **W2-11. T3-05 잔여: ZMP control dispatch 핸들러 공유**
+  - zmp/ws 엔진의 ready/error/command/heartbeat/pong wrapper 중 byte-identical
+    control-plane 부분만 공유한다. send/recv 본체는 유지한다. (code-motion / M)
+- [ ] **W2-12. T2-22 잔여: connecter/listener 골격 선택적 정리**
+  - plug/term/timer/close wrapper만 공유 후보로 검토한다. create_engine 꼬리는
+    각 transport에 남긴다. (없음 / M)
+
+### 8.4 구조·저우선
+
+- [ ] **W2-13. `join_spot` vs `join_entry_spot` 중복 해소**
+  - `service_spot_actor_join.cpp` 내부의 request builder와 gateway-send/timeout
+    꼬리를 공유 helper로 줄인다. (없음 / M)
+- [ ] **W2-14. `send_actor_gateway_packet/multipart_from_source` 스켈레톤 dedup**
+  - send 경로이므로 같은 TU 또는 header-inline helper로만 정리한다.
+    (code-motion / S)

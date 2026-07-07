@@ -240,7 +240,7 @@ runtime/services (spot):
     내부 build skeleton 복붙(`build_spot_request_reply_message_into` vs
     `build_spot_routed_message_into`: header init + part move + cleanup 동일)도
     control-part prefix 파라미터화로 dedup. (code-motion / M)
-- [ ] **T2-09. `spot_request_reply_local_dispatch.cpp` 분해**
+- [x] **T2-09. `spot_request_reply_local_dispatch.cpp` 분해**
   - 670줄 단일 TU에 local dispatch + pending 조회 + reply 전달 + 에러 합성 +
     codec + local-delivery 파이프라인(api쪽 24파일과 극단 비대칭). T2-08 codec
     분리 후 에러 합성/전달을 concern별 분리. (code-motion / M)
@@ -483,3 +483,8 @@ sockets/engine/transports/utils:
   함수를 `service_spot_routed_codec.cpp`로 옮겨 decode/header-init과 같은 모듈에
   모았다. request/reply와 routed build의 header-prefix + payload move skeleton도
   공통 helper로 묶었다.
+- 2026-07-07: T2-09 구현 — `spot_request_reply_local_dispatch.cpp`에서 reply
+  completion/pending lookup과 request/direct local delivery를 각각
+  `spot_request_reply_local_reply.cpp`, `spot_request_reply_local_request.cpp`로
+  분리했다. 원래 파일은 combined message parsing과 local-delivery orchestration만
+  남긴다.

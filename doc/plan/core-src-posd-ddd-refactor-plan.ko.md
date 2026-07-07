@@ -694,6 +694,12 @@ sockets/engine/transports/utils:
   콜백/템플릿 드라이버 복잡도가 늘어난다. T1-04로 reply-token allocator 정본은
   이미 재사용되므로, control-plane 분해까지만 이 항목의 완료 범위로 닫고 recv
   시퀀싱 정리는 T4-01 벤치 게이트 대상으로 남긴다.
+- 2026-07-08: transports/sockets 클러스터 완료 검증 — `nice -n 19 cmake --build
+  core/build -j1` 통과. full core CTest는 외부 Node E2E CPU 부하가 겹친 상태에서
+  112/113 통과, `test_helper_request_sequence_failure` 1건 timeout이었다. 같은
+  테스트를 단독 재실행(`ctest --test-dir core/build -R
+  '^test_helper_request_sequence_failure$' -j1 --timeout 300 --output-on-failure`)해
+  0.52초에 통과했으므로, 남은 실패는 재현되지 않는 노이즈로 기록한다.
 - 2026-07-07: T3-06 구현 — runtime spot reqrep local delivery를 api쪽
   `local_reply`/`local_request`/`local_direct` 분해 어휘와 맞췄다.
   `dispatch_spot_request_to_*` 잔여 이름은 `deliver_request_to_*`로 바꾸고,

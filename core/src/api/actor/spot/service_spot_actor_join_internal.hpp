@@ -59,6 +59,9 @@ zlink_spot_actor_lifecycle_info_t make_join_lifecycle_info (
   const zlink_routing_id_t &previous_spot_rid_,
   const zlink_routing_id_t &current_spot_rid_,
   uint64_t join_epoch_);
+zlink_request_result_t destroy_join_actor_locked (actor_handle_t *actor_);
+zlink_request_result_t leave_join_actor_locked (actor_handle_t *actor_,
+                                                const zlink_routing_id_t &target_spot_rid_);
 
 int process_actor_gateway_join_packet_locked (
   zlink::spot_node_t *node_,

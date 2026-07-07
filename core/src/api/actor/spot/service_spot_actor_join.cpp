@@ -264,6 +264,15 @@ void create_join_active_route_locked (actor_handle_t *actor_)
     actor_runtime ().routes.publish_active (actor_, true);
 }
 
+void set_join_actor_entry_spot_locked (actor_handle_t *actor_)
+{
+    if (!actor_)
+        return;
+    actor_->joined_spot_state = zlink::spot_node_access_t::entry_spot_state (actor_->node);
+    actor_->last_changed_ms = zlink::clock_t ().now_ms ();
+    actor_runtime ().routes.publish_active (actor_, false);
+}
+
 bool join_actor_in_entry_spot_locked (const actor_handle_t *actor_)
 {
     return actor_ && actor_->joined_spot_state && actor_->joined_spot_state->entry;
@@ -272,6 +281,87 @@ bool join_actor_in_entry_spot_locked (const actor_handle_t *actor_)
 bool join_actor_in_user_spot_locked (const actor_handle_t *actor_)
 {
     return actor_ && actor_->joined_spot_state && !actor_->joined_spot_state->entry;
+}
+
+zlink_request_result_t destroy_join_actor_locked (actor_handle_t *actor_)
+{
+    if (!actor_)
+        return ZLINK_REQUEST_NOT_CONNECTED;
+    if (join_actor_in_user_spot_locked (actor_)) {
+        errno = EBUSY;
+        return ZLINK_REQUEST_INVALID_STATE;
+    }
+    if (join_actor_has_pending_request_locked (actor_)) {
+        errno = EBUSY;
+        return ZLINK_REQUEST_BUSY;
+    }
+    if (actor_->bound_stream) {
+        actor_session_state_t::binding_map_t::const_iterator binding_it =
+          actor_runtime ().sessions.find_binding (actor_->bound_stream,
+                                                  &actor_->bound_session_rid);
+        if (binding_it != actor_runtime ().sessions.bindings_end ()
+            && binding_it->second.in_progress
+            && binding_it->second.in_progress_actor_id == actor_->actor_id) {
+            errno = EBUSY;
+            return ZLINK_REQUEST_BUSY;
+        }
+    }
+
+    zlink_actor_ref_t zero_actor;
+    zlink_routing_id_t zero_spot;
+    memset (&zero_actor, 0, sizeof (zero_actor));
+    memset (&zero_spot, 0, sizeof (zero_spot));
+    std::shared_ptr<spot_logical_state_t> lifecycle_spot = actor_->joined_spot_state;
+    const zlink_spot_actor_lifecycle_info_t lifecycle_info =
+      make_join_lifecycle_info (actor_->ref_cache, zero_actor,
+                                join_actor_current_spot_rid_locked (actor_), zero_spot,
+                                actor_->join_epoch);
+    remove_join_actor_locked (actor_, true);
+    schedule_join_lifecycle_event_locked (lifecycle_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT,
+                                          lifecycle_info);
+    return ZLINK_REQUEST_OK;
+}
+
+zlink_request_result_t leave_join_actor_locked (actor_handle_t *actor_,
+                                                const zlink_routing_id_t &target_spot_rid_)
+{
+    if (!actor_)
+        return ZLINK_REQUEST_NOT_CONNECTED;
+    if (join_actor_has_pending_request_locked (actor_)) {
+        errno = EBUSY;
+        return ZLINK_REQUEST_BUSY;
+    }
+    if (!actor_->joined_spot_state
+        || !zlink::spot_actor_internal::same_routing_id (
+          join_actor_current_spot_rid_locked (actor_), target_spot_rid_)) {
+        errno = ESTALE;
+        return ZLINK_REQUEST_INVALID_STATE;
+    }
+    if (join_actor_in_entry_spot_locked (actor_)) {
+        if (!actor_runtime ().routes.active_matches (actor_)
+            && actor_runtime ().routes.active_exists (actor_))
+            create_join_active_route_locked (actor_);
+        return ZLINK_REQUEST_OK;
+    }
+
+    const zlink_actor_ref_t actor_ref = actor_->ref_cache;
+    const zlink_routing_id_t previous_spot = join_actor_current_spot_rid_locked (actor_);
+    const uint64_t previous_epoch = actor_->join_epoch;
+    const uint64_t epoch = next_join_commit_epoch_locked ();
+    std::shared_ptr<spot_logical_state_t> source_spot = actor_->joined_spot_state;
+    const zlink_spot_actor_lifecycle_info_t leave_info = make_join_lifecycle_info (
+      actor_ref, actor_ref, previous_spot,
+      zlink::spot_node_access_t::entry_spot_state (actor_->node)->routing_id, previous_epoch);
+    actor_->join_epoch = epoch;
+    set_join_actor_entry_spot_locked (actor_);
+    const zlink_routing_id_t entry_spot = join_actor_current_spot_rid_locked (actor_);
+    const zlink_spot_actor_lifecycle_info_t join_info =
+      make_join_lifecycle_info (actor_ref, actor_ref, previous_spot, entry_spot, epoch);
+    schedule_join_lifecycle_event_locked (source_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT,
+                                          leave_info);
+    schedule_join_lifecycle_event_locked (actor_->joined_spot_state,
+                                          ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED, join_info);
+    return ZLINK_REQUEST_OK;
 }
 
 uint64_t next_join_generation_for_node_locked (zlink::spot_node_t *node_)

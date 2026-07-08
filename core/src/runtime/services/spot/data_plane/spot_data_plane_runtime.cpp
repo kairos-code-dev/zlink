@@ -132,14 +132,14 @@ static void close_runtime_sockets (spot_node_t *node_, spot_data_plane_runtime_s
     if (!state_)
         return;
 
-    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::iterator it =
-           state_->remote_mesh.targets.begin ();
-         it != state_->remote_mesh.targets.end (); ++it) {
+    for (spot_data_plane_pending_state_t::remote_mesh_state_t::target_map_t::iterator it =
+           state_->pending.remote_mesh.targets.begin ();
+         it != state_->pending.remote_mesh.targets.end (); ++it) {
         if (it->second.sender_socket && !it->second.route_endpoint.empty ())
             (void) it->second.sender_socket->term_endpoint (it->second.route_endpoint.c_str ());
         spot_data_plane_t::close_socket_ptr (node_, it->second.sender_socket);
     }
-    state_->remote_mesh.targets.clear ();
+    state_->pending.remote_mesh.targets.clear ();
     LIBZLINK_DELETE (state_->poller);
     state_->poller = NULL;
     spot_data_plane_t::close_socket_ptr (node_, state_->fanout);
@@ -180,7 +180,6 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     peer_ctrl_sub (NULL),
     routed_router (NULL),
     fanout (NULL),
-    next_pending_message_id (0),
     last_attachment_version (UINT64_MAX),
     runtime_sockets_nodelay_applied (false),
     poller (NULL)
@@ -340,16 +339,16 @@ int spot_data_plane_t::initialize_runtime (spot_node_t *node_,
         || (state_out_->routed_router
             && state_out_->poller->add (state_out_->routed_router, NULL, ZLINK_POLLIN) != 0)
         || add_mesh_peer_observer_to_poller (state_out_) != 0
-        || (state_out_->publish_ingress.signaler.valid ()
-            && state_out_->poller->add_fd (state_out_->publish_ingress.signaler.get_fd (), NULL,
+        || (state_out_->pending.publish_ingress.signaler.valid ()
+            && state_out_->poller->add_fd (state_out_->pending.publish_ingress.signaler.get_fd (), NULL,
                                            ZLINK_POLLIN)
                  != 0)
-        || (state_out_->routed_send.signaler.valid ()
-            && state_out_->poller->add_fd (state_out_->routed_send.signaler.get_fd (), NULL,
+        || (state_out_->pending.routed_send.signaler.valid ()
+            && state_out_->poller->add_fd (state_out_->pending.routed_send.signaler.get_fd (), NULL,
                                            ZLINK_POLLIN)
                  != 0)
-        || (state_out_->routed_router_ingress.signaler.valid ()
-            && state_out_->poller->add_fd (state_out_->routed_router_ingress.signaler.get_fd (),
+        || (state_out_->pending.routed_router_ingress.signaler.valid ()
+            && state_out_->poller->add_fd (state_out_->pending.routed_router_ingress.signaler.get_fd (),
                                            NULL, ZLINK_POLLIN)
                  != 0)) {
         const int err = errno != 0 ? errno : ENOMEM;
@@ -434,42 +433,42 @@ void spot_data_plane_t::teardown_runtime (spot_node_t *node_,
     }
 
     {
-        std::lock_guard<std::mutex> lock (state_->publish_ingress.mutex);
-        state_->publish_ingress.closed = true;
-        while (!state_->publish_ingress.messages.empty ()) {
-            spot_clear_msg_parts (&state_->publish_ingress.messages.front ().parts);
-            state_->publish_ingress.messages.pop_front ();
+        std::lock_guard<std::mutex> lock (state_->pending.publish_ingress.mutex);
+        state_->pending.publish_ingress.closed = true;
+        while (!state_->pending.publish_ingress.messages.empty ()) {
+            spot_clear_msg_parts (&state_->pending.publish_ingress.messages.front ().parts);
+            state_->pending.publish_ingress.messages.pop_front ();
         }
-        state_->publish_ingress.queued_bytes = 0;
-        state_->publish_ingress.signal_armed = false;
-        state_->publish_ingress.cv.notify_all ();
+        state_->pending.publish_ingress.queued_bytes = 0;
+        state_->pending.publish_ingress.signal_armed = false;
+        state_->pending.publish_ingress.cv.notify_all ();
     }
     {
-        std::lock_guard<std::mutex> lock (state_->routed_send.mutex);
-        state_->routed_send.closed = true;
-        while (!state_->routed_send.messages.empty ()) {
-            zlink::request_reply::close_built_parts (&state_->routed_send.messages.front ().parts);
-            state_->routed_send.messages.pop_front ();
+        std::lock_guard<std::mutex> lock (state_->pending.routed_send.mutex);
+        state_->pending.routed_send.closed = true;
+        while (!state_->pending.routed_send.messages.empty ()) {
+            zlink::request_reply::close_built_parts (&state_->pending.routed_send.messages.front ().parts);
+            state_->pending.routed_send.messages.pop_front ();
         }
-        state_->routed_send.retry_after_ms = 0;
-        state_->routed_send.signal_armed = false;
-        state_->routed_send.cv.notify_all ();
+        state_->pending.routed_send.retry_after_ms = 0;
+        state_->pending.routed_send.signal_armed = false;
+        state_->pending.routed_send.cv.notify_all ();
     }
     {
-        std::lock_guard<std::mutex> lock (state_->routed_router_ingress.mutex);
-        state_->routed_router_ingress.closed = true;
-        while (!state_->routed_router_ingress.messages.empty ()) {
+        std::lock_guard<std::mutex> lock (state_->pending.routed_router_ingress.mutex);
+        state_->pending.routed_router_ingress.closed = true;
+        while (!state_->pending.routed_router_ingress.messages.empty ()) {
             zlink::request_reply::close_built_parts (
-              &state_->routed_router_ingress.messages.front ().parts);
-            state_->routed_router_ingress.messages.pop_front ();
+              &state_->pending.routed_router_ingress.messages.front ().parts);
+            state_->pending.routed_router_ingress.messages.pop_front ();
         }
-        state_->routed_router_ingress.signal_armed = false;
+        state_->pending.routed_router_ingress.signal_armed = false;
     }
 
     if (state_) {
-        for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::iterator it =
-               state_->remote_mesh.targets.begin ();
-             it != state_->remote_mesh.targets.end (); ++it) {
+        for (spot_data_plane_pending_state_t::remote_mesh_state_t::target_map_t::iterator it =
+               state_->pending.remote_mesh.targets.begin ();
+             it != state_->pending.remote_mesh.targets.end (); ++it) {
             if (state_->poller && it->second.sender_socket)
                 (void) state_->poller->remove (it->second.sender_socket);
             if (it->second.sender_socket && !it->second.route_endpoint.empty ())
@@ -478,8 +477,8 @@ void spot_data_plane_t::teardown_runtime (spot_node_t *node_,
                 (void) spot_node_access_t::close_owned_socket_and_wait (
                   runtime_->owner, it->second.sender_socket, 1000);
         }
-        state_->remote_mesh.targets.clear ();
-        state_->remote_mesh.pending_messages.clear ();
+        state_->pending.remote_mesh.targets.clear ();
+        state_->pending.remote_mesh.pending_messages.clear ();
     }
 
     spot_data_plane_debug_logf ("delete poller begin\n");

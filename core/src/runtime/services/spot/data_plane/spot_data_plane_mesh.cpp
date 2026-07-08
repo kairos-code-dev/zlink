@@ -281,7 +281,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         const size_t topic_size = topic.size ();
 
         if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (topic_data, topic_size)) {
-            if (!runtime_state_->local_fanout.targets.empty ()
+            if (!runtime_state_->pending.local_fanout.targets.empty ()
                 && spot_data_plane_forwarder_t::forward_local_fanout (runtime_, runtime_state_,
                                                                       topic, frames)
                      != 0) {

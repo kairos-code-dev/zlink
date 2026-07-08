@@ -35,14 +35,14 @@ struct spot_data_plane_pending_t
                                           const std::string &endpoint_);
     static bool
     enqueue_local_target_message (spot_data_plane_runtime_state_t *state_,
-                                  spot_data_plane_runtime_state_t::local_target_state_t *target_,
+                                  spot_data_plane_pending_state_t::local_target_state_t *target_,
                                   const std::string &topic_,
                                   const spot_owned_msg_parts_t &parts_,
                                   uint64_t *message_id_inout_,
                                   size_t precomputed_encoded_bytes_ = 0);
     static bool
     enqueue_mesh_pending (spot_data_plane_runtime_state_t *state_,
-                          spot_data_plane_runtime_state_t::remote_target_state_t *target_,
+                          spot_data_plane_pending_state_t::remote_target_state_t *target_,
                           const std::string &topic_,
                           const spot_owned_msg_parts_t &parts_,
                           uint64_t *message_id_inout_);
@@ -52,7 +52,7 @@ struct spot_data_plane_pending_t
                                                 uint64_t *message_id_inout_,
                                                 size_t precomputed_encoded_bytes_ = 0);
     static bool stage_publish_message (
-      std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> *queue_,
+      std::deque<spot_data_plane_pending_state_t::staged_publish_entry_t> *queue_,
       const std::string &topic_,
       const spot_owned_msg_parts_t &parts_,
       bool need_local_,

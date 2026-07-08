@@ -63,33 +63,92 @@ bool same_join_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
     return lhs_->logical_state && lhs_->logical_state == rhs_->logical_state;
 }
 
-actor_handle_t *resolve_join_actor_ref_locked (const zlink_actor_ref_t *ref_)
+zlink_submit_result_t validate_join_submit_common (void *node_,
+                                                   const zlink_actor_ref_t *actor_ref_,
+                                                   const zlink_routing_id_t *dest_node_rid_,
+                                                   const zlink_routing_id_t *dest_spot_rid_,
+                                                   bool require_dest_spot_,
+                                                   zlink_msg_t *parts_,
+                                                   size_t part_count_,
+                                                   bool handler_present_,
+                                                   zlink_send_flags_t flags_)
 {
-    if (!ref_ || !zlink::spot_actor_internal::valid_actor_id (ref_->actor_id)
-        || !zlink::spot_actor_internal::valid_routing_id (&ref_->node_rid))
-        return NULL;
+    if (!node_ || !actor_ref_ || !dest_node_rid_ || !handler_present_
+        || (require_dest_spot_ && !dest_spot_rid_)
+        || !zlink::spot_actor_internal::valid_actor_id (actor_ref_->actor_id)
+        || !zlink::spot_actor_internal::valid_routing_id (&actor_ref_->node_rid)
+        || !zlink::spot_actor_internal::valid_routing_id (dest_node_rid_)
+        || (require_dest_spot_
+            && !zlink::spot_actor_internal::valid_routing_id (dest_spot_rid_))) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (!zlink::spot_actor_internal::valid_multipart_payload (parts_, part_count_))
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    if ((flags_ & ~ZLINK_DONTWAIT) != 0) {
+        errno = ENOTSUP;
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+    }
+    if (!as_spot_node_handle (node_)) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_ref_)) {
+        errno = EDEADLK;
+        return ZLINK_SUBMIT_INVALID_STATE;
+    }
+    return ZLINK_SUBMIT_OK;
+}
 
-    zlink::spot_node_t *node = actor_runtime ().nodes.resolve_node_by_rid (ref_->node_rid);
-    if (!node) {
-        errno = ENOENT;
-        return NULL;
+zlink_submit_result_t resolve_join_source_actor_locked (
+  const zlink_actor_ref_t *actor_ref_,
+  zlink::spot_node_t **source_node_out_,
+  actor_handle_t **actor_out_,
+  zlink_request_result_t *immediate_result_out_)
+{
+    if (source_node_out_)
+        *source_node_out_ = NULL;
+    if (actor_out_)
+        *actor_out_ = NULL;
+    if (immediate_result_out_)
+        *immediate_result_out_ = ZLINK_REQUEST_OK;
+
+    zlink::spot_node_t *source_node =
+      actor_runtime ().nodes.resolve_node_by_rid (actor_ref_->node_rid);
+    if (!source_node) {
+        errno = ENOTCONN;
+        return ZLINK_SUBMIT_NOT_CONNECTED;
     }
 
     std::map<std::string, actor_handle_t *> &actors =
-      zlink::spot_node_access_t::actors_by_id (node);
+      zlink::spot_node_access_t::actors_by_id (source_node);
     const std::map<std::string, actor_handle_t *>::iterator actor_it =
-      actors.find (ref_->actor_id);
-    if (actor_it == actors.end () || actor_it->second->pending_remote_join) {
-        errno = ENOENT;
-        return NULL;
+      actors.find (actor_ref_->actor_id);
+    actor_handle_t *actor = actor_it == actors.end () ? NULL : actor_it->second;
+    if (!actor || actor->pending_remote_join) {
+        if (immediate_result_out_)
+            *immediate_result_out_ = ZLINK_REQUEST_NOT_FOUND;
+        if (source_node_out_)
+            *source_node_out_ = source_node;
+        return ZLINK_SUBMIT_OK;
+    }
+    if (actor_ref_->generation != 0 && actor->generation != actor_ref_->generation) {
+        if (immediate_result_out_)
+            *immediate_result_out_ = ZLINK_REQUEST_CONFLICT;
+        if (source_node_out_)
+            *source_node_out_ = source_node;
+        return ZLINK_SUBMIT_OK;
+    }
+    if (actor_runtime ().joins.actor_has_pending (actor)) {
+        errno = EBUSY;
+        return ZLINK_SUBMIT_INVALID_STATE;
     }
 
-    actor_handle_t *actor = actor_it->second;
-    if (ref_->generation != 0 && actor->generation != ref_->generation) {
-        errno = ESTALE;
-        return NULL;
-    }
-    return actor;
+    if (source_node_out_)
+        *source_node_out_ = source_node;
+    if (actor_out_)
+        *actor_out_ = actor;
+    return ZLINK_SUBMIT_OK;
 }
 
 bool join_node_has_pending_actor_locked (zlink::spot_node_t *node_, const char *actor_id_)
@@ -1074,28 +1133,11 @@ zlink_spot_node_actor_join_spot (void *node_,
                                  zlink_send_flags_t flags_,
                                  uint32_t timeout_ms_)
 {
-    if ((flags_ & ~ZLINK_DONTWAIT) != 0) {
-        errno = ENOTSUP;
-        return ZLINK_SUBMIT_NOT_SUPPORTED;
-    }
-    if (!node_ || !actor_ref_ || !dest_node_rid_ || !dest_spot_rid_ || !handler_
-        || !zlink::spot_actor_internal::valid_actor_id (actor_ref_->actor_id)
-        || !zlink::spot_actor_internal::valid_routing_id (&actor_ref_->node_rid)
-        || !zlink::spot_actor_internal::valid_routing_id (dest_node_rid_)
-        || !zlink::spot_actor_internal::valid_routing_id (dest_spot_rid_)) {
-        errno = EINVAL;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-    if (!zlink::spot_actor_internal::valid_multipart_payload (parts_, part_count_))
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    if (!as_spot_node_handle (node_)) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_ref_)) {
-        errno = EDEADLK;
-        return ZLINK_SUBMIT_INVALID_STATE;
-    }
+    const zlink_submit_result_t validate_rc =
+      validate_join_submit_common (node_, actor_ref_, dest_node_rid_, dest_spot_rid_, true, parts_,
+                                   part_count_, handler_ != NULL, flags_);
+    if (validate_rc != ZLINK_SUBMIT_OK)
+        return validate_rc;
 
     queued_join_request_t *request = NULL;
     spot_handle_t *spot = NULL;
@@ -1104,45 +1146,15 @@ zlink_spot_node_actor_join_spot (void *node_,
     zlink::spot_node_t *external_source_node = NULL;
     zlink_routing_id_t external_source_node_rid;
     memset (&external_source_node_rid, 0, sizeof (external_source_node_rid));
+
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        zlink::spot_node_t *source_node =
-          actor_runtime ().nodes.resolve_node_by_rid (actor_ref_->node_rid);
-        if (!source_node) {
-            errno = ENOTCONN;
-            return ZLINK_SUBMIT_NOT_CONNECTED;
-        }
-
+        zlink::spot_node_t *source_node = NULL;
         actor_handle_t *actor = NULL;
-        std::map<std::string, actor_handle_t *> &actors =
-          zlink::spot_node_access_t::actors_by_id (source_node);
-        std::map<std::string, actor_handle_t *>::iterator actor_it =
-          actors.find (actor_ref_->actor_id);
-        if (actor_it != actors.end ())
-            actor = actor_it->second;
-        if (!actor) {
-            immediate_result = ZLINK_REQUEST_NOT_FOUND;
-        } else if (actor_ref_->generation != 0 && actor->generation != actor_ref_->generation) {
-            immediate_result = ZLINK_REQUEST_CONFLICT;
-        }
-
-        if (immediate_result != ZLINK_REQUEST_OK) {
-            /* Complete outside the actor lock. */
-        } else if (actor_runtime ().joins.actor_has_pending (actor)) {
-            errno = EBUSY;
-            return ZLINK_SUBMIT_INVALID_STATE;
-        }
-    }
-    if (immediate_result != ZLINK_REQUEST_OK)
-        return complete_immediate_join_result (parts_, part_count_, handler_, userdata_,
-                                               immediate_result);
-
-    {
-        std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        actor_handle_t *actor = resolve_join_actor_ref_locked (actor_ref_);
-        if (!actor)
-            immediate_result =
-              zlink::spot_actor_internal::actor_missing_request_result_from_errno ();
+        const zlink_submit_result_t source_rc = resolve_join_source_actor_locked (
+          actor_ref_, &source_node, &actor, &immediate_result);
+        if (source_rc != ZLINK_SUBMIT_OK)
+            return source_rc;
         zlink::spot_node_t *target_node = immediate_result == ZLINK_REQUEST_OK
                                             ? actor_runtime ().nodes.resolve_node_by_rid (
                                                 *dest_node_rid_)
@@ -1168,7 +1180,7 @@ zlink_spot_node_actor_join_spot (void *node_,
             request->join_epoch = next_join_commit_epoch_locked ();
             index_join_request_locked (request);
             external_gateway_join = true;
-            external_source_node = actor_runtime ().nodes.resolve_node_by_rid (actor->node_rid);
+            external_source_node = source_node;
             external_source_node_rid = actor->node_rid;
         } else if (immediate_result != ZLINK_REQUEST_OK) {
             /* Complete outside the actor lock. */
@@ -1285,27 +1297,11 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
                                        zlink_send_flags_t flags_,
                                        uint32_t timeout_ms_)
 {
-    if (!node_ || !actor_ || !dest_node_rid_ || !handler_
-        || !zlink::spot_actor_internal::valid_actor_id (actor_->actor_id)
-        || !zlink::spot_actor_internal::valid_routing_id (&actor_->node_rid)
-        || !zlink::spot_actor_internal::valid_routing_id (dest_node_rid_)) {
-        errno = EINVAL;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-    if (!zlink::spot_actor_internal::valid_multipart_payload (parts_, part_count_))
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    if ((flags_ & ~ZLINK_DONTWAIT) != 0) {
-        errno = ENOTSUP;
-        return ZLINK_SUBMIT_NOT_SUPPORTED;
-    }
-    if (!as_spot_node_handle (node_)) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_)) {
-        errno = EDEADLK;
-        return ZLINK_SUBMIT_INVALID_STATE;
-    }
+    const zlink_submit_result_t validate_rc =
+      validate_join_submit_common (node_, actor_, dest_node_rid_, NULL, false, parts_, part_count_,
+                                   handler_ != NULL, flags_);
+    if (validate_rc != ZLINK_SUBMIT_OK)
+        return validate_rc;
 
     queued_join_request_t *request = NULL;
     spot_handle_t *spot = NULL;
@@ -1318,27 +1314,12 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
     memset (&external_source_spot_rid, 0, sizeof (external_source_spot_rid));
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-        zlink::spot_node_t *source_node =
-          actor_runtime ().nodes.resolve_node_by_rid (actor_->node_rid);
-        if (!source_node) {
-            errno = ENOTCONN;
-            return ZLINK_SUBMIT_NOT_CONNECTED;
-        }
-
+        zlink::spot_node_t *source_node = NULL;
         actor_handle_t *actor = NULL;
-        std::map<std::string, actor_handle_t *> &actors =
-          zlink::spot_node_access_t::actors_by_id (source_node);
-        std::map<std::string, actor_handle_t *>::iterator actor_it = actors.find (actor_->actor_id);
-        if (actor_it != actors.end ())
-            actor = actor_it->second;
-        if (!actor) {
-            immediate_result = ZLINK_REQUEST_NOT_FOUND;
-        } else if (actor_->generation != 0 && actor->generation != actor_->generation) {
-            immediate_result = ZLINK_REQUEST_CONFLICT;
-        } else if (actor_runtime ().joins.actor_has_pending (actor)) {
-            errno = EBUSY;
-            return ZLINK_SUBMIT_INVALID_STATE;
-        }
+        const zlink_submit_result_t source_rc =
+          resolve_join_source_actor_locked (actor_, &source_node, &actor, &immediate_result);
+        if (source_rc != ZLINK_SUBMIT_OK)
+            return source_rc;
         if (immediate_result == ZLINK_REQUEST_OK) {
             zlink::spot_node_t *target_node =
               actor_runtime ().nodes.resolve_node_by_rid (*dest_node_rid_);

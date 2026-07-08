@@ -68,7 +68,7 @@ size_t routed_parts_encoded_bytes (const std::vector<zlink_msg_t> &parts_)
 }
 
 bool routed_queue_has_room (
-  const zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue_,
+  const zlink::spot_data_plane_pending_state_t::routed_send_queue_t &queue_,
   int hwm_,
   size_t byte_limit_,
   size_t message_bytes_)
@@ -86,7 +86,7 @@ bool routed_queue_has_room (
 }
 
 bool routed_queue_can_resume (
-  const zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue_,
+  const zlink::spot_data_plane_pending_state_t::routed_send_queue_t &queue_,
   int hwm_,
   size_t byte_limit_)
 {
@@ -533,8 +533,8 @@ int zlink::spot_reqrep_internal::enqueue_runtime_routed_send (zlink::spot_runtim
         return -1;
     }
 
-    zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue =
-      runtime_->execution.data_plane_state.routed_send;
+    zlink::spot_data_plane_pending_state_t::routed_send_queue_t &queue =
+      runtime_->execution.data_plane_state.pending.routed_send;
     const int hwm = spot_node_router_admission_hwm (runtime_->runtime_tuning_snapshot ());
     const size_t entry_bytes = routed_parts_encoded_bytes (*parts_);
     const size_t message_limit = static_cast<size_t> (hwm > 0 ? hwm : 1);
@@ -569,7 +569,7 @@ int zlink::spot_reqrep_internal::enqueue_runtime_routed_send (zlink::spot_runtim
         return -1;
     }
 
-    zlink::spot_data_plane_runtime_state_t::routed_send_entry_t entry;
+    zlink::spot_data_plane_pending_state_t::routed_send_entry_t entry;
     entry.flags = flags_;
     entry.parts.swap (*parts_);
     queue.queued_bytes += entry_bytes;
@@ -589,11 +589,11 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (zlink::spot_ru
     if (!runtime_)
         return 0;
 
-    std::deque<zlink::spot_data_plane_runtime_state_t::routed_send_entry_t> local;
+    std::deque<zlink::spot_data_plane_pending_state_t::routed_send_entry_t> local;
     bool notify_recovery = false;
     {
-        zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue =
-          runtime_->execution.data_plane_state.routed_send;
+        zlink::spot_data_plane_pending_state_t::routed_send_queue_t &queue =
+          runtime_->execution.data_plane_state.pending.routed_send;
         std::lock_guard<std::mutex> lock (queue.mutex);
         if (queue.retry_after_ms != 0 && zlink::clock_t ().now_ms () < queue.retry_after_ms)
             return 0;
@@ -628,21 +628,21 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (zlink::spot_ru
         notify_spot_send_ready_recovery (runtime_->owner);
 
     while (!local.empty ()) {
-        zlink::spot_data_plane_runtime_state_t::routed_send_entry_t &entry = local.front ();
+        zlink::spot_data_plane_pending_state_t::routed_send_entry_t &entry = local.front ();
         const int rc =
           process_routed_send_entry_on_data_plane (runtime_, entry.flags, &entry.parts);
         const int saved_errno = errno;
         if (rc != 0) {
             if (is_queue_drain_retry_error (saved_errno)) {
-                std::deque<zlink::spot_data_plane_runtime_state_t::routed_send_entry_t> retry;
+                std::deque<zlink::spot_data_plane_pending_state_t::routed_send_entry_t> retry;
                 retry.push_back (std::move (entry));
                 local.pop_front ();
                 while (!local.empty ()) {
                     retry.push_back (std::move (local.front ()));
                     local.pop_front ();
                 }
-                zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue =
-                  runtime_->execution.data_plane_state.routed_send;
+                zlink::spot_data_plane_pending_state_t::routed_send_queue_t &queue =
+                  runtime_->execution.data_plane_state.pending.routed_send;
                 std::lock_guard<std::mutex> lock (queue.mutex);
                 if (!queue.closed) {
                     while (!retry.empty ()) {
@@ -680,15 +680,15 @@ int zlink::spot_reqrep_internal::enqueue_runtime_routed_router_ingress (
         return -1;
     }
 
-    zlink::spot_data_plane_runtime_state_t::routed_router_ingress_queue_t &queue =
-      runtime_->execution.data_plane_state.routed_router_ingress;
+    zlink::spot_data_plane_pending_state_t::routed_router_ingress_queue_t &queue =
+      runtime_->execution.data_plane_state.pending.routed_router_ingress;
     std::lock_guard<std::mutex> lock (queue.mutex);
     if (queue.closed) {
         errno = ESHUTDOWN;
         return -1;
     }
 
-    zlink::spot_data_plane_runtime_state_t::routed_router_ingress_entry_t entry;
+    zlink::spot_data_plane_pending_state_t::routed_router_ingress_entry_t entry;
     entry.parts.swap (*parts_);
     queue.messages.push_back (std::move (entry));
     if (!queue.signal_armed && queue.signaler.valid ()) {
@@ -704,16 +704,16 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_router_ingress_queue (
     if (!runtime_)
         return 0;
 
-    std::deque<zlink::spot_data_plane_runtime_state_t::routed_router_ingress_entry_t> local;
+    std::deque<zlink::spot_data_plane_pending_state_t::routed_router_ingress_entry_t> local;
     {
-        zlink::spot_data_plane_runtime_state_t::routed_router_ingress_queue_t &queue =
-          runtime_->execution.data_plane_state.routed_router_ingress;
+        zlink::spot_data_plane_pending_state_t::routed_router_ingress_queue_t &queue =
+          runtime_->execution.data_plane_state.pending.routed_router_ingress;
         std::lock_guard<std::mutex> lock (queue.mutex);
         local.swap (queue.messages);
     }
 
     while (!local.empty ()) {
-        zlink::spot_data_plane_runtime_state_t::routed_router_ingress_entry_t &entry =
+        zlink::spot_data_plane_pending_state_t::routed_router_ingress_entry_t &entry =
           local.front ();
         const int rc =
           process_routed_router_combined_for_data_plane (runtime_->owner, &entry.parts);

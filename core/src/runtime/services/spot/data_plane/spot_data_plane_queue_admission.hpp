@@ -65,7 +65,7 @@ spot_data_plane_make_queue_admission_plan (int slots_, size_t message_unit_)
 }
 
 inline bool spot_data_plane_publish_ingress_has_room (
-  const spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue_,
+  const spot_data_plane_pending_state_t::publish_ingress_queue_t &queue_,
   const spot_data_plane_queue_admission_plan_t &plan_,
   size_t message_bytes_)
 {
@@ -81,7 +81,7 @@ inline bool spot_data_plane_publish_ingress_has_room (
 }
 
 inline bool spot_data_plane_publish_ingress_can_resume (
-  const spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue_,
+  const spot_data_plane_pending_state_t::publish_ingress_queue_t &queue_,
   const spot_data_plane_queue_admission_plan_t &plan_)
 {
     if (plan_.unlimited)

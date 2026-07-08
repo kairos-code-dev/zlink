@@ -323,28 +323,28 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
         for (int i = 0; i < event_count_; ++i) {
             if ((events_[i].events & ZLINK_POLLIN) == 0)
                 continue;
-            if (!events_[i].socket && events_[i].fd == state_->publish_ingress.signaler.get_fd ()) {
-                (void) state_->publish_ingress.signaler.recv_failable ();
+            if (!events_[i].socket && events_[i].fd == state_->pending.publish_ingress.signaler.get_fd ()) {
+                (void) state_->pending.publish_ingress.signaler.recv_failable ();
                 {
-                    std::lock_guard<std::mutex> lock (state_->publish_ingress.mutex);
-                    state_->publish_ingress.signal_armed = false;
+                    std::lock_guard<std::mutex> lock (state_->pending.publish_ingress.mutex);
+                    state_->pending.publish_ingress.signal_armed = false;
                 }
                 continue;
             }
-            if (!events_[i].socket && events_[i].fd == state_->routed_send.signaler.get_fd ()) {
-                (void) state_->routed_send.signaler.recv_failable ();
+            if (!events_[i].socket && events_[i].fd == state_->pending.routed_send.signaler.get_fd ()) {
+                (void) state_->pending.routed_send.signaler.recv_failable ();
                 {
-                    std::lock_guard<std::mutex> lock (state_->routed_send.mutex);
-                    state_->routed_send.signal_armed = false;
+                    std::lock_guard<std::mutex> lock (state_->pending.routed_send.mutex);
+                    state_->pending.routed_send.signal_armed = false;
                 }
                 continue;
             }
             if (!events_[i].socket
-                && events_[i].fd == state_->routed_router_ingress.signaler.get_fd ()) {
-                (void) state_->routed_router_ingress.signaler.recv_failable ();
+                && events_[i].fd == state_->pending.routed_router_ingress.signaler.get_fd ()) {
+                (void) state_->pending.routed_router_ingress.signaler.recv_failable ();
                 {
-                    std::lock_guard<std::mutex> lock (state_->routed_router_ingress.mutex);
-                    state_->routed_router_ingress.signal_armed = false;
+                    std::lock_guard<std::mutex> lock (state_->pending.routed_router_ingress.mutex);
+                    state_->pending.routed_router_ingress.signal_armed = false;
                 }
                 continue;
             }
@@ -406,10 +406,10 @@ int resolve_data_plane_poll_timeout_ms (uint64_t next_bootstrap_ms_,
 {
     uint64_t next_due_ms = next_bootstrap_ms_;
     if (state_) {
-        std::lock_guard<std::mutex> lock (state_->routed_send.mutex);
-        if (state_->routed_send.retry_after_ms != 0
-            && (!next_due_ms || state_->routed_send.retry_after_ms < next_due_ms))
-            next_due_ms = state_->routed_send.retry_after_ms;
+        std::lock_guard<std::mutex> lock (state_->pending.routed_send.mutex);
+        if (state_->pending.routed_send.retry_after_ms != 0
+            && (!next_due_ms || state_->pending.routed_send.retry_after_ms < next_due_ms))
+            next_due_ms = state_->pending.routed_send.retry_after_ms;
     }
 
     if (next_due_ms == 0)

@@ -1023,18 +1023,21 @@ TU inline으로 제한하고, 의심되면 벤치 게이트를 적용한다.
 
 ### 9.3 구조 정리와 보류
 
-- [x] **W3-10. join external gateway tail dedup**
-  - 2026-07-08: spot join과 entry spot join의 external gateway send 실패 처리와
-    timeout scheduling 꼬리를 `finish_external_gateway_join_submission`으로 통합했다.
-    request-builder 전체 통합은 entry spot semantics와 idempotent join 경로를 helper
-    인자로 노출해야 하므로 보류한다.
+- [x] **W3-10. join prologue와 external gateway tail dedup**
+  - 2026-07-08: spot join과 entry spot join의 공통 입력 검증, source actor 해석,
+    external gateway send 실패 처리, timeout scheduling 꼬리를 공유 helper로 통합했다.
+    entry spot semantics와 idempotent join 경로 자체는 각 진입점의 domain branch로 남겨
+    helper 인자에 의미 차이를 과도하게 노출하지 않도록 했다.
 - [x] **W3-11. data-plane target-control TU 분리**
   - 2026-07-08: fanout target 재조정, remote mesh target 정리, pending limit 정책을
     `spot_data_plane_target_control.cpp`로 옮겨 command 처리 TU와 분리했다.
-- [ ] **W3-12. `spot_data_plane_runtime_state.hpp` raw state 은닉**
-  - 보류: nested state 13개를 owned 타입 뒤로 숨기는 작업은 call-site API를 새로
-    설계해야 하며 이번 wave의 code-motion 범위를 넘는다. hot forward/stage/flush
-    본체와 큐 불변식을 건드리므로 별도 설계와 벤치 게이트가 필요하다.
+- [x] **W3-12. `spot_data_plane_runtime_state.hpp` pending state 은닉**
+  - 2026-07-08: pending publish, local fanout target, remote mesh target, staged publish,
+    routed send queue, routed router ingress queue 상태를 `spot_data_plane_pending_state_t`
+    소유 타입으로 분리했다. runtime state 헤더는 socket wiring, poller interest,
+    mesh observer, pending state 소유 관계만 보유한다. 큐 조작 API를 새로 설계하는
+    pimpl 전환은 hot forward/stage/flush 본체와 불변식을 바꾸므로 이번 wave에서
+    진행하지 않는다.
 - [ ] **W3-13. connecter/listener base**
   - 보류: W2 판정 유지. free helper로 drift 위험은 낮아졌고, 남은 wrapper 통합은
     CRTP/base를 새로 도입해야 해서 현재 실익 대비 복잡도 증가가 크다.

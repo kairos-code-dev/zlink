@@ -35,9 +35,9 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
         retired_relays.swap (runtime_->attachment_state.retired_relay_sockets);
     }
 
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator it =
-           state_->local_fanout.targets.begin ();
-         it != state_->local_fanout.targets.end ();) {
+    for (spot_data_plane_pending_state_t::local_fanout_state_t::target_map_t::iterator it =
+           state_->pending.local_fanout.targets.begin ();
+         it != state_->pending.local_fanout.targets.end ();) {
         const std::unordered_map<uint64_t, socket_base_t *>::const_iterator snap_it =
           snapshot.find (it->first);
         if (snap_it == snapshot.end () || snap_it->second == NULL) {
@@ -48,23 +48,23 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
         }
         if (it->second.relay_socket != snap_it->second) {
             if (it->second.relay_socket)
-                state_->local_fanout.target_by_socket.erase (it->second.relay_socket);
+                state_->pending.local_fanout.target_by_socket.erase (it->second.relay_socket);
             it->second.relay_socket = snap_it->second;
             if (it->second.relay_socket)
-                state_->local_fanout.target_by_socket[it->second.relay_socket] = it->first;
+                state_->pending.local_fanout.target_by_socket[it->second.relay_socket] = it->first;
         }
         ++it;
     }
 
     for (std::unordered_map<uint64_t, socket_base_t *>::const_iterator it = snapshot.begin ();
          it != snapshot.end (); ++it) {
-        if (state_->local_fanout.targets.find (it->first) != state_->local_fanout.targets.end ())
+        if (state_->pending.local_fanout.targets.find (it->first) != state_->pending.local_fanout.targets.end ())
             continue;
-        spot_data_plane_runtime_state_t::local_target_state_t target;
+        spot_data_plane_pending_state_t::local_target_state_t target;
         target.attachment_id = it->first;
         target.relay_socket = it->second;
-        state_->local_fanout.targets[it->first] = target;
-        state_->local_fanout.target_by_socket[it->second] = it->first;
+        state_->pending.local_fanout.targets[it->first] = target;
+        state_->pending.local_fanout.target_by_socket[it->second] = it->first;
         if (state_->poller && it->second)
             (void) state_->poller->add (it->second, NULL, 0);
         if (it->second)
@@ -93,8 +93,8 @@ void spot_data_plane_forwarder_t::sync_remote_mesh_targets (
     if (!runtime_ || !state_)
         return;
 
-    while (!state_->remote_mesh.targets.empty ()) {
-        const std::string endpoint = state_->remote_mesh.targets.begin ()->first;
+    while (!state_->pending.remote_mesh.targets.empty ()) {
+        const std::string endpoint = state_->pending.remote_mesh.targets.begin ()->first;
         spot_data_plane_pending_t::drop_remote_target_state (runtime_, state_, endpoint);
     }
 }
@@ -116,13 +116,13 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
     const size_t pending_limit = static_cast<size_t> (
       std::max (fanout_hwm / 2,
                 static_cast<int> (spot_data_plane_default_queue_message_unit_bytes)));
-    state_->local_fanout.pending_hard_limit = pending_limit;
-    state_->remote_mesh.pending_hard_limit = pending_limit;
-    state_->local_fanout.pending_pause_threshold = pending_limit;
-    state_->local_fanout.pending_resume_threshold =
+    state_->pending.local_fanout.pending_hard_limit = pending_limit;
+    state_->pending.remote_mesh.pending_hard_limit = pending_limit;
+    state_->pending.local_fanout.pending_pause_threshold = pending_limit;
+    state_->pending.local_fanout.pending_resume_threshold =
       std::max (pending_limit / 2, spot_data_plane_default_queue_message_unit_bytes / 2);
-    state_->remote_mesh.pending_pause_threshold = pending_limit;
-    state_->remote_mesh.pending_resume_threshold =
+    state_->pending.remote_mesh.pending_pause_threshold = pending_limit;
+    state_->pending.remote_mesh.pending_resume_threshold =
       std::max (pending_limit / 2, spot_data_plane_default_queue_message_unit_bytes / 2);
 }
 }

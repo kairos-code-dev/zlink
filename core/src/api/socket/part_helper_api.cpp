@@ -25,11 +25,6 @@ bool &aggregate_send_mode_tls ()
     return active;
 }
 
-bool routed_part_debug_enabled ()
-{
-    return routed_part_debug_on;
-}
-
 bool send_family_requires_routed_scope (zlink::part_helper_internal::send_family_t family_)
 {
     using namespace zlink::part_helper_internal;
@@ -136,6 +131,47 @@ void zlink::part_helper_internal::copy_routing_id (const zlink_routing_id_t *src
 void zlink::part_helper_internal::consume_send_part (zlink_msg_t *part_)
 {
     zlink::request_reply::consume_send_frame (part_);
+}
+
+bool zlink::part_helper_internal::routed_part_debug_enabled ()
+{
+    return routed_part_debug_on;
+}
+
+void zlink::part_helper_internal::trace_routed_part_prepare_failed (send_family_t family_,
+                                                                    int err_)
+{
+    if (!routed_part_debug_enabled ())
+        return;
+
+    std::fprintf (stderr,
+                  "[routed-part-debug] prepare_send_step failed family=%d errno=%d\n",
+                  static_cast<int> (family_), err_);
+}
+
+void zlink::part_helper_internal::trace_routed_part_send_failed (send_family_t family_,
+                                                                bool first_part_,
+                                                                int err_)
+{
+    if (!routed_part_debug_enabled ())
+        return;
+
+    std::fprintf (stderr,
+                  "[routed-part-debug] send_fn failed family=%d first=%d errno=%d\n",
+                  static_cast<int> (family_), first_part_ ? 1 : 0, err_);
+}
+
+void zlink::part_helper_internal::trace_routed_part_first_send (
+  const zlink_routing_id_t &rid_, zlink_msg_t *part_, zlink_send_flags_t flags_)
+{
+    if (!routed_part_debug_enabled ())
+        return;
+
+    std::fprintf (stderr,
+                  "[routed-part-debug] routed send first_part "
+                  "rid_size=%u msg_size=%zu flags=%d\n",
+                  static_cast<unsigned> (rid_.size), zlink_msg_size (part_),
+                  static_cast<int> (flags_));
 }
 
 bool zlink::part_helper_internal::send_spec_equals (const send_sequence_spec_t &lhs_,
@@ -424,6 +460,96 @@ int zlink::part_helper_internal::prepare_send_step (void *handle_,
     }
 
     *state_out_ = state;
+    return 0;
+}
+
+int zlink::part_helper_internal::prepare_staged_send_step (
+  void *handle_,
+  const send_sequence_spec_t &spec_,
+  std::shared_ptr<handle_state_t> *state_out_,
+  bool *first_part_out_)
+{
+    if (!state_out_ || !first_part_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::shared_ptr<handle_state_t> state = find_or_create_handle_state (handle_);
+    if (!state)
+        return -1;
+
+    std::unique_lock<std::mutex> lock (state->mutex);
+    const std::thread::id current_thread = std::this_thread::get_id ();
+    while (state->send.active && state->send.owner_thread != current_thread) {
+        if (!aggregate_send_mode_active ()) {
+            errno = EINVAL;
+            return -1;
+        }
+        state->cv.wait (lock);
+    }
+
+    if (!state->send.active) {
+        state->send.active = true;
+        state->send.spec = spec_;
+        state->send.sink_socket = NULL;
+        state->send.owner_thread = current_thread;
+        *first_part_out_ = true;
+    } else {
+        if (!send_spec_equals (state->send.spec, spec_)) {
+            errno = EINVAL;
+            return -1;
+        }
+        *first_part_out_ = false;
+    }
+
+    *state_out_ = state;
+    return 0;
+}
+
+int zlink::part_helper_internal::stage_staged_send_part (handle_state_t *state_,
+                                                         zlink_msg_t *part_)
+{
+    if (!state_ || !part_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    state_->send.buffered_parts.resize (state_->send.buffered_parts.size () + 1);
+    zlink_msg_t &slot = state_->send.buffered_parts.back ();
+    zlink_msg_init (&slot);
+    if (zlink_msg_move (&slot, part_) != 0) {
+        zlink_msg_close (&slot);
+        state_->send.buffered_parts.pop_back ();
+        errno = EFAULT;
+        return -1;
+    }
+
+    return 0;
+}
+
+int zlink::part_helper_internal::move_staged_parts_for_submit (
+  const std::shared_ptr<handle_state_t> &state_, zlink_msg_t *part_, std::vector<zlink_msg_t> *parts_out_)
+{
+    if (!state_ || !part_ || !parts_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        parts_out_->swap (state_->send.buffered_parts);
+    }
+
+    parts_out_->resize (parts_out_->size () + 1);
+    zlink_msg_t &slot = parts_out_->back ();
+    zlink_msg_init (&slot);
+    if (zlink_msg_move (&slot, part_) != 0) {
+        zlink_msg_close (&slot);
+        parts_out_->pop_back ();
+        errno = EFAULT;
+        return -1;
+    }
+
     return 0;
 }
 

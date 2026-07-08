@@ -85,6 +85,14 @@ struct auto_hwm_socket_plan_t
     int effective_rcvbuf;
 };
 
+zlink_auto_hwm_profile_t auto_hwm_normalize_profile (zlink_auto_hwm_profile_t profile_);
+bool auto_hwm_valid_profile (int profile_);
+uint32_t auto_hwm_profile_message_hwm (zlink_auto_hwm_profile_t profile_);
+uint32_t auto_hwm_profile_stream_hwm (zlink_auto_hwm_profile_t profile_);
+uint32_t auto_hwm_profile_control_hwm (zlink_auto_hwm_profile_t profile_);
+uint32_t auto_hwm_profile_message_cap (zlink_auto_hwm_profile_t profile_);
+uint32_t auto_hwm_profile_stream_cap (zlink_auto_hwm_profile_t profile_);
+uint32_t auto_hwm_profile_routed_small_message_cap (zlink_auto_hwm_profile_t profile_);
 auto_hwm_role_t auto_hwm_default_role_for_socket_type (int socket_type_);
 auto_hwm_policy_class_t auto_hwm_policy_class_for_role (auto_hwm_role_t role_, int socket_type_);
 void auto_hwm_context_plan_make (bool enabled_,

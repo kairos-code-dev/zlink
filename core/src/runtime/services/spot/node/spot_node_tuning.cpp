@@ -77,48 +77,10 @@ refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_, const void *optval_
     runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count, &connected_peer_count,
                                         &active_peer_count);
     const spot_node_runtime_tuning_t hwm = runtime_->runtime_tuning_snapshot ();
-    const bool pubsub_hwm_override = spot_node_pubsub_hwm_overridden (hwm);
-    const bool router_hwm_override = spot_node_router_hwm_overridden (hwm);
-
-    apply_spot_internal_auto_hwm (
-      ctx, runtime_->mesh_pub,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
-                                      connected_peer_count, active_peer_count, 0, 0, true, false,
-                                      auto_hwm_scope_shared, 1, msg_unit, true});
-    apply_spot_internal_auto_hwm (
-      ctx, runtime_->local_fanout_xpub,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
-                                      local_sub_count, local_sub_count, 0, 0, true, false,
-                                      auto_hwm_scope_shared, 1, msg_unit, false});
-    apply_spot_internal_auto_hwm (
-      ctx, runtime_->mesh_xsub,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_XSUB,
-                                      connected_peer_count, active_peer_count, 0, 0, false, true,
-                                      auto_hwm_scope_shared, 1, msg_unit, true});
-    apply_spot_internal_auto_hwm (
-      ctx, runtime_->routed_router,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
-                                      connected_peer_count, active_peer_count, 0, 0, true, true,
-                                      auto_hwm_scope_shared, 1, msg_unit, true});
-
-    const int zero = 0;
-    const int pubsub_hwm = spot_node_pubsub_admission_hwm (hwm);
-    const int router_hwm = spot_node_router_admission_hwm (hwm);
-    if (pubsub_hwm_override && runtime_->mesh_pub)
-        (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &pubsub_hwm,
-                                               sizeof (pubsub_hwm));
-    if (runtime_->local_fanout_xpub)
-        (void) runtime_->local_fanout_xpub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &zero,
-                                                        sizeof (zero));
-    if (pubsub_hwm_override && runtime_->mesh_xsub)
-        (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &pubsub_hwm,
-                                                sizeof (pubsub_hwm));
-    if (router_hwm_override && runtime_->routed_router) {
-        (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &router_hwm,
-                                                    sizeof (router_hwm));
-        (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm,
-                                                    sizeof (router_hwm));
-    }
+    apply_spot_runtime_hwm_policy (ctx, hwm, local_sub_count, connected_peer_count,
+                                   active_peer_count, msg_unit, runtime_->mesh_pub,
+                                   runtime_->local_fanout_xpub, runtime_->mesh_xsub,
+                                   runtime_->routed_router, NULL);
 }
 
 static bool apply_runtime_tuning_option (spot_node_runtime_tuning_t *config_,

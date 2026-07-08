@@ -1013,6 +1013,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/data_plane/spot_data_plane_poller_interest.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_runtime.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_runtime_config.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_target_control.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_protocol.cpp
     src/runtime/services/spot/data_plane/spot_mesh_pub_hwm.cpp
@@ -1259,7 +1260,7 @@ endif()
 set(public_headers include/zlink.h include/zlink_enum.h include/zlink_errno.h)
 set(public_contract_subheaders
     include/zlink/common.h
-    include/zlink/service_common.h)
+    include/zlink/service/common.h)
 set(public_contract_group_headers
     include/zlink/core/api.h
     include/zlink/eventing/api.h

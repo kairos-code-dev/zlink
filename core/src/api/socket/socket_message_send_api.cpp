@@ -21,50 +21,6 @@
 
 namespace
 {
-const bool routed_part_debug_on = zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
-
-bool routed_part_debug_enabled ()
-{
-    return routed_part_debug_on;
-}
-
-void trace_routed_part_prepare_failed (zlink::part_helper_internal::send_family_t family_,
-                                       int err_)
-{
-    if (!routed_part_debug_enabled ())
-        return;
-
-    std::fprintf (stderr,
-                  "[routed-part-debug] prepare_send_step failed family=%d errno=%d\n",
-                  static_cast<int> (family_), err_);
-}
-
-void trace_routed_part_send_failed (zlink::part_helper_internal::send_family_t family_,
-                                    bool first_part_,
-                                    int err_)
-{
-    if (!routed_part_debug_enabled ())
-        return;
-
-    std::fprintf (stderr,
-                  "[routed-part-debug] send_fn failed family=%d first=%d errno=%d\n",
-                  static_cast<int> (family_), first_part_ ? 1 : 0, err_);
-}
-
-void trace_routed_part_first_send (const zlink_routing_id_t &rid_,
-                                   zlink_msg_t *part_,
-                                   zlink_send_flags_t flags_)
-{
-    if (!routed_part_debug_enabled ())
-        return;
-
-    std::fprintf (stderr,
-                  "[routed-part-debug] routed send first_part "
-                  "rid_size=%u msg_size=%zu flags=%d\n",
-                  static_cast<unsigned> (rid_.size), zlink_msg_size (part_),
-                  static_cast<int> (flags_));
-}
-
 int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)
 {
     if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
@@ -426,7 +382,7 @@ submit_simple_part (void *handle_,
     if (zlink::part_helper_internal::prepare_send_step (handle_, spec_, sink_socket_, &state,
                                                         &first_part)
         != 0) {
-        trace_routed_part_prepare_failed (spec_.family, errno);
+        zlink::part_helper_internal::trace_routed_part_prepare_failed (spec_.family, errno);
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
@@ -434,7 +390,8 @@ submit_simple_part (void *handle_,
     if (send_fn_ (first_part, state.get (), sink_socket_, spec_, part_, spec_.flags, part_flag_)
         != 0) {
         const int saved_errno = errno;
-        trace_routed_part_send_failed (spec_.family, first_part, saved_errno);
+        zlink::part_helper_internal::trace_routed_part_send_failed (spec_.family, first_part,
+                                                                    saved_errno);
         zlink::part_helper_internal::abort_send_step (state);
         zlink::part_helper_internal::consume_send_part (part_);
         errno = saved_errno;
@@ -488,7 +445,7 @@ int send_socket_part_routed_impl (bool first_part_,
     }
 
     if (first_part_) {
-        trace_routed_part_first_send (spec_.rid1, part_, flags_);
+        zlink::part_helper_internal::trace_routed_part_first_send (spec_.rid1, part_, flags_);
         return sink_socket_->send_routed_scoped (
           &spec_.rid1, reinterpret_cast<zlink::msg_t *> (part_),
           static_cast<int> (flags_ & ZLINK_DONTWAIT)

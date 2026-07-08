@@ -20,7 +20,7 @@
 #include <zlink/socket/api.h>
 #include <zlink/eventing/api.h>
 #include <zlink/service/spot.h>
-#include <zlink/service_common.h>
+#include <zlink/service/common.h>
 
 #undef ZLINK_EXPORT
 

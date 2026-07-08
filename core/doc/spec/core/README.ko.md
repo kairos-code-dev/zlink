@@ -25,7 +25,7 @@
 | `core/include/zlink/socket/api.h` | socket 생성, option, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, dispatch event handler, socket callback type |
 | `core/include/zlink/eventing/api.h` | socket monitor, monitor snapshot, poll/poller, timer |
 | `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, Actor operation, route bridge, publisher handle |
-| `core/include/zlink/service_common.h` | service 계층 공통 조회 타입 |
+| `core/include/zlink/service/common.h` | service 계층 공통 조회 타입 |
 | `core/include/zlink_enum.h` | 공개 enum domain |
 | `core/include/zlink_errno.h` | 공개 errno domain |
 

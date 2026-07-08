@@ -94,98 +94,6 @@ int validate_request_send_flags (zlink_send_flags_t flags_)
     return 0;
 }
 
-int prepare_staged_send_step (
-  void *handle_,
-  const zlink::part_helper_internal::send_sequence_spec_t &spec_,
-  std::shared_ptr<zlink::part_helper_internal::handle_state_t> *state_out_,
-  bool *first_part_out_)
-{
-    if (!state_out_ || !first_part_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state =
-      zlink::part_helper_internal::find_or_create_handle_state (handle_);
-    if (!state)
-        return -1;
-
-    std::unique_lock<std::mutex> lock (state->mutex);
-    const std::thread::id current_thread = std::this_thread::get_id ();
-    while (state->send.active && state->send.owner_thread != current_thread) {
-        if (!zlink::part_helper_internal::aggregate_send_mode_active ()) {
-            errno = EINVAL;
-            return -1;
-        }
-        state->cv.wait (lock);
-    }
-
-    if (!state->send.active) {
-        state->send.active = true;
-        state->send.spec = spec_;
-        state->send.sink_socket = NULL;
-        state->send.owner_thread = current_thread;
-        *first_part_out_ = true;
-    } else {
-        if (!zlink::part_helper_internal::send_spec_equals (state->send.spec, spec_)) {
-            errno = EINVAL;
-            return -1;
-        }
-        *first_part_out_ = false;
-    }
-
-    *state_out_ = state;
-    return 0;
-}
-
-int stage_staged_send_part (zlink::part_helper_internal::handle_state_t *state_, zlink_msg_t *part_)
-{
-    if (!state_ || !part_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    state_->send.buffered_parts.resize (state_->send.buffered_parts.size () + 1);
-    zlink_msg_t &slot = state_->send.buffered_parts.back ();
-    zlink_msg_init (&slot);
-    if (zlink_msg_move (&slot, part_) != 0) {
-        zlink_msg_close (&slot);
-        state_->send.buffered_parts.pop_back ();
-        errno = EFAULT;
-        return -1;
-    }
-
-    return 0;
-}
-
-int move_staged_parts_for_submit (
-  const std::shared_ptr<zlink::part_helper_internal::handle_state_t> &state_,
-  zlink_msg_t *part_,
-  std::vector<zlink_msg_t> *parts_out_)
-{
-    if (!state_ || !part_ || !parts_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        parts_out_->swap (state_->send.buffered_parts);
-    }
-
-    parts_out_->resize (parts_out_->size () + 1);
-    zlink_msg_t &slot = parts_out_->back ();
-    zlink_msg_init (&slot);
-    if (zlink_msg_move (&slot, part_) != 0) {
-        zlink_msg_close (&slot);
-        parts_out_->pop_back ();
-        errno = EFAULT;
-        return -1;
-    }
-
-    return 0;
-}
-
 template <typename FinalSubmit>
 zlink_submit_result_t finalize_staged_spot_submit (
   const std::shared_ptr<zlink::part_helper_internal::handle_state_t> &state_,
@@ -194,7 +102,7 @@ zlink_submit_result_t finalize_staged_spot_submit (
   FinalSubmit final_submit_)
 {
     if (part_flag_ == ZLINK_PART_MORE) {
-        if (stage_staged_send_part (state_.get (), part_) != 0) {
+        if (zlink::part_helper_internal::stage_staged_send_part (state_.get (), part_) != 0) {
             const int saved_errno = errno;
             zlink::part_helper_internal::abort_send_step (state_);
             zlink::part_helper_internal::consume_send_part (part_);
@@ -205,7 +113,7 @@ zlink_submit_result_t finalize_staged_spot_submit (
     }
 
     std::vector<zlink_msg_t> parts;
-    if (move_staged_parts_for_submit (state_, part_, &parts) != 0) {
+    if (zlink::part_helper_internal::move_staged_parts_for_submit (state_, part_, &parts) != 0) {
         const int saved_errno = errno;
         zlink::part_helper_internal::abort_send_step (state_);
         zlink_multipart_close (parts.data (), parts.size ());
@@ -228,7 +136,8 @@ submit_staged_sequence (void *handle_,
 {
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
     bool first_part = false;
-    if (prepare_staged_send_step (handle_, spec_, &state, &first_part) != 0) {
+    if (zlink::part_helper_internal::prepare_staged_send_step (handle_, spec_, &state, &first_part)
+        != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }

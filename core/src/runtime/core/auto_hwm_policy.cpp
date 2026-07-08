@@ -116,6 +116,21 @@ uint32_t size_cap_for_class (zlink_auto_hwm_profile_t profile_,
     return stream_policy_class (policy_class_) ? hwm.stream_cap : hwm.message_cap;
 }
 
+uint32_t routed_small_message_cap_for_profile (zlink_auto_hwm_profile_t profile_)
+{
+    switch (normalize_profile (profile_)) {
+        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+            return 32;
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+            return 64;
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+            return 128;
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        default:
+            return 128;
+    }
+}
+
 bool connection_bucket_policy_class (zlink::auto_hwm_policy_class_t policy_class_)
 {
     return policy_class_ == zlink::auto_hwm_policy_spot_data
@@ -277,6 +292,51 @@ zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     effective_sndbuf (-1),
     effective_rcvbuf (-1)
 {
+}
+
+zlink_auto_hwm_profile_t
+zlink::auto_hwm_normalize_profile (zlink_auto_hwm_profile_t profile_)
+{
+    return normalize_profile (profile_);
+}
+
+bool zlink::auto_hwm_valid_profile (int profile_)
+{
+    return profile_ == ZLINK_AUTO_HWM_PROFILE_COMPACT
+           || profile_ == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
+           || profile_ == ZLINK_AUTO_HWM_PROFILE_BALANCED
+           || profile_ == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
+}
+
+uint32_t zlink::auto_hwm_profile_message_hwm (zlink_auto_hwm_profile_t profile_)
+{
+    return profile_hwm (profile_).message_hwm;
+}
+
+uint32_t zlink::auto_hwm_profile_stream_hwm (zlink_auto_hwm_profile_t profile_)
+{
+    return profile_hwm (profile_).stream_hwm;
+}
+
+uint32_t zlink::auto_hwm_profile_control_hwm (zlink_auto_hwm_profile_t profile_)
+{
+    return profile_hwm (profile_).control_hwm;
+}
+
+uint32_t zlink::auto_hwm_profile_message_cap (zlink_auto_hwm_profile_t profile_)
+{
+    return profile_hwm (profile_).message_cap;
+}
+
+uint32_t zlink::auto_hwm_profile_stream_cap (zlink_auto_hwm_profile_t profile_)
+{
+    return profile_hwm (profile_).stream_cap;
+}
+
+uint32_t
+zlink::auto_hwm_profile_routed_small_message_cap (zlink_auto_hwm_profile_t profile_)
+{
+    return routed_small_message_cap_for_profile (profile_);
 }
 
 zlink::auto_hwm_role_t zlink::auto_hwm_default_role_for_socket_type (int socket_type_)

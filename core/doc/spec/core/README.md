@@ -27,7 +27,7 @@ headers.
 | `core/include/zlink/socket/api.h` | Socket creation, options, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, dispatch event handler, and socket callback types |
 | `core/include/zlink/eventing/api.h` | Socket monitors, monitor snapshots, poll/poller, and timers |
 | `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, actor operations, route bridge, and publisher handle |
-| `core/include/zlink/service_common.h` | Shared service-layer query types |
+| `core/include/zlink/service/common.h` | Shared service-layer query types |
 | `core/include/zlink_enum.h` | Public enum domains |
 | `core/include/zlink_errno.h` | Public errno domain |
 

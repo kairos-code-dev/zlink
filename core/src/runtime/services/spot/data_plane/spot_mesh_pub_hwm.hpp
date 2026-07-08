@@ -14,10 +14,6 @@ struct spot_runtime_t;
 
 namespace spot_mesh_pub_hwm_t
 {
-int resolve_default (const std::string &endpoint_, unsigned int ready_peers_);
-bool should_refresh (const std::string &endpoint_,
-                     unsigned int previous_ready_peers_,
-                     unsigned int next_ready_peers_);
 void reset_runtime_state (spot_runtime_t *runtime_);
 bool publish_ready_hint (spot_runtime_t *runtime_, uint32_t ready_count_);
 int resolve_runtime_default (const spot_runtime_t *runtime_);

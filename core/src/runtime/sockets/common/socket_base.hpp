@@ -339,6 +339,7 @@ class socket_base_t : public own_t,
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int xpeer_command (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual void xlocal_peer_weight_changed ();
+    virtual int apply_peer_weight (zlink::pipe_t *pipe_, uint32_t weight_);
     virtual void xarm_socket_msg_dispatch ();
     virtual void xdispatch_io ();
     virtual uint32_t monitor_ready_count () const;
@@ -360,6 +361,8 @@ class socket_base_t : public own_t,
     static void store_socket_msg_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_);
     static int init_peer_weight_command (zlink::msg_t *msg_, uint32_t weight_);
     static bool decode_peer_weight_command (const zlink::msg_t &msg_, uint32_t *weight_out_);
+    void broadcast_local_peer_weight ();
+    void send_local_peer_weight (pipe_t *pipe_);
 
     //  Delay actual destruction of the socket.
     void process_destroy () ZLINK_FINAL;

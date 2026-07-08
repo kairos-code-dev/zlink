@@ -121,6 +121,12 @@ bool routing_id_equals (const zlink_routing_id_t &lhs_, const zlink_routing_id_t
 void copy_routing_id (const zlink_routing_id_t *src_, zlink_routing_id_t *dest_);
 void consume_send_part (zlink_msg_t *part_);
 bool send_spec_equals (const send_sequence_spec_t &lhs_, const send_sequence_spec_t &rhs_);
+bool routed_part_debug_enabled ();
+void trace_routed_part_prepare_failed (send_family_t family_, int err_);
+void trace_routed_part_send_failed (send_family_t family_, bool first_part_, int err_);
+void trace_routed_part_first_send (const zlink_routing_id_t &rid_,
+                                   zlink_msg_t *part_,
+                                   zlink_send_flags_t flags_);
 std::shared_ptr<handle_state_t> find_or_create_handle_state (void *handle_);
 std::shared_ptr<handle_state_t> find_handle_state (void *handle_);
 bool recv_sequence_active (const std::shared_ptr<handle_state_t> &state_);
@@ -158,6 +164,14 @@ int prepare_send_step (void *handle_,
                        zlink::socket_base_t *sink_socket_,
                        std::shared_ptr<handle_state_t> *state_out_,
                        bool *first_part_out_);
+int prepare_staged_send_step (void *handle_,
+                              const send_sequence_spec_t &spec_,
+                              std::shared_ptr<handle_state_t> *state_out_,
+                              bool *first_part_out_);
+int stage_staged_send_part (handle_state_t *state_, zlink_msg_t *part_);
+int move_staged_parts_for_submit (const std::shared_ptr<handle_state_t> &state_,
+                                  zlink_msg_t *part_,
+                                  std::vector<zlink_msg_t> *parts_out_);
 int prepare_recv_step (void *handle_,
                        recv_family_t family_,
                        zlink::socket_base_t *source_socket_,

@@ -805,6 +805,34 @@ zlink_submit_result_t finish_queued_join_submission (queued_join_request_t *requ
     return ZLINK_SUBMIT_OK;
 }
 
+zlink_submit_result_t finish_external_gateway_join_submission (
+  queued_join_request_t *request_,
+  zlink::spot_node_t *source_node_,
+  const zlink_routing_id_t &source_node_rid_,
+  const zlink_routing_id_t &dest_node_rid_,
+  zlink::spot_actor_gateway::packet_kind_t packet_kind_,
+  const zlink_routing_id_t &source_spot_rid_,
+  const char *actor_id_,
+  uint64_t actor_generation_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_)
+{
+    const zlink_submit_result_t send_rc =
+      zlink::spot_actor_internal::send_actor_gateway_multipart_from_source (
+        source_node_, source_node_rid_, dest_node_rid_, packet_kind_, source_spot_rid_, actor_id_,
+        actor_generation_, request_->join_epoch, 0, parts_, part_count_, flags_);
+    if (send_rc != ZLINK_SUBMIT_OK) {
+        const zlink_request_result_t failure =
+          zlink::spot_actor_internal::errno_to_request_result (errno);
+        complete_failed_external_gateway_join (request_, failure);
+        return ZLINK_SUBMIT_OK;
+    }
+    schedule_join_timeout (request_, timeout_ms_);
+    return ZLINK_SUBMIT_OK;
+}
+
 void collect_join_stream_queued_erase_requests_locked (
   void *stream_,
   std::deque<queued_join_request_t *> *queued_aborts_)
@@ -1237,20 +1265,10 @@ zlink_spot_node_actor_join_spot (void *node_,
                                                immediate_result);
 
     if (external_gateway_join) {
-        const zlink_submit_result_t send_rc =
-          zlink::spot_actor_internal::send_actor_gateway_multipart_from_source (
-            external_source_node, external_source_node_rid, *dest_node_rid_,
-            zlink::spot_actor_gateway::packet_spot_join_request, *dest_spot_rid_,
-            actor_ref_->actor_id, actor_ref_->generation, request->join_epoch, 0, parts_,
-            part_count_, flags_);
-        if (send_rc != ZLINK_SUBMIT_OK) {
-            const zlink_request_result_t failure =
-              zlink::spot_actor_internal::errno_to_request_result (errno);
-            complete_failed_external_gateway_join (request, failure);
-            return ZLINK_SUBMIT_OK;
-        }
-        schedule_join_timeout (request, timeout_ms_);
-        return ZLINK_SUBMIT_OK;
+        return finish_external_gateway_join_submission (
+          request, external_source_node, external_source_node_rid, *dest_node_rid_,
+          zlink::spot_actor_gateway::packet_spot_join_request, *dest_spot_rid_,
+          actor_ref_->actor_id, actor_ref_->generation, parts_, part_count_, flags_, timeout_ms_);
     }
 
     return finish_queued_join_submission (request, timeout_ms_, spot);
@@ -1431,20 +1449,10 @@ zlink_spot_node_actor_join_entry_spot (void *node_,
                                                      dest_node_rid_, immediate_result);
 
     if (external_gateway_join) {
-        const zlink_submit_result_t send_rc =
-          zlink::spot_actor_internal::send_actor_gateway_multipart_from_source (
-            external_source_node, external_source_node_rid, *dest_node_rid_,
-            zlink::spot_actor_gateway::packet_entry_join_request, external_source_spot_rid,
-            actor_->actor_id, actor_->generation, request->join_epoch, 0, parts_, part_count_,
-            flags_);
-        if (send_rc != ZLINK_SUBMIT_OK) {
-            const zlink_request_result_t failure =
-              zlink::spot_actor_internal::errno_to_request_result (errno);
-            complete_failed_external_gateway_join (request, failure);
-            return ZLINK_SUBMIT_OK;
-        }
-        schedule_join_timeout (request, timeout_ms_);
-        return ZLINK_SUBMIT_OK;
+        return finish_external_gateway_join_submission (
+          request, external_source_node, external_source_node_rid, *dest_node_rid_,
+          zlink::spot_actor_gateway::packet_entry_join_request, external_source_spot_rid,
+          actor_->actor_id, actor_->generation, parts_, part_count_, flags_, timeout_ms_);
     }
 
     return finish_queued_join_submission (request, timeout_ms_, spot);

@@ -204,19 +204,6 @@ int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     return 1;
 }
 
-int zlink::dealer_t::xpeer_command (msg_t *msg_, pipe_t *pipe_)
-{
-    uint32_t weight = 100;
-    if (!decode_peer_weight_command (*msg_, &weight))
-        return 0;
-    return apply_peer_weight (pipe_, weight);
-}
-
-void zlink::dealer_t::xlocal_peer_weight_changed ()
-{
-    broadcast_local_peer_weight ();
-}
-
 void zlink::dealer_t::xarm_socket_msg_dispatch ()
 {
     socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
@@ -244,31 +231,4 @@ int zlink::dealer_t::apply_peer_weight (pipe_t *pipe_, uint32_t weight_)
         return 1;
     emit_peer_weight_changed (pipe_, weight_);
     return 1;
-}
-
-void zlink::dealer_t::broadcast_local_peer_weight ()
-{
-    std::vector<pipe_t *> pipes;
-    snapshot_attached_pipes (&pipes);
-    for (size_t i = 0; i < pipes.size (); ++i)
-        send_local_peer_weight (pipes[i]);
-}
-
-void zlink::dealer_t::send_local_peer_weight (pipe_t *pipe_)
-{
-    if (!pipe_)
-        return;
-
-    msg_t msg;
-    if (msg.init () != 0)
-        return;
-    if (init_peer_weight_command (&msg, local_peer_weight ()) != 0) {
-        const int close_rc = msg.close ();
-        errno_assert (close_rc == 0);
-        return;
-    }
-    const int rc = pipe_->write_and_flush (&msg);
-    LIBZLINK_UNUSED (rc);
-    const int close_rc = msg.close ();
-    errno_assert (close_rc == 0);
 }

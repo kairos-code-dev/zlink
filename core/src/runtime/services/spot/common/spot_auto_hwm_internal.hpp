@@ -6,6 +6,7 @@
 #include "core/auto_hwm_policy.hpp"
 #include "core/internal_defs.hpp"
 #include "core/ctx.hpp"
+#include "services/spot/runtime/spot_runtime_hwm.hpp"
 #include "sockets/common/socket_base.hpp"
 
 #include <algorithm>
@@ -16,17 +17,7 @@ namespace spot_auto_hwm_internal
 {
 inline uint32_t spot_routed_small_message_cap (zlink_auto_hwm_profile_t profile_)
 {
-    switch (profile_) {
-        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
-            return 32;
-        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
-            return 64;
-        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
-            return 128;
-        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
-        default:
-            return 128;
-    }
+    return auto_hwm_profile_routed_small_message_cap (profile_);
 }
 
 inline void apply_spot_routed_latency_floor (auto_hwm_socket_plan_t *socket_plan_,
@@ -45,6 +36,20 @@ inline void apply_spot_routed_latency_floor (auto_hwm_socket_plan_t *socket_plan
         socket_plan_->sndhwm = static_cast<int> (target_cap);
     if (socket_plan_->rcvhwm > 0 && socket_plan_->rcvhwm < static_cast<int> (target_cap))
         socket_plan_->rcvhwm = static_cast<int> (target_cap);
+}
+
+inline int current_socket_sndhwm (socket_base_t *socket_)
+{
+    if (!socket_)
+        return 0;
+
+    int value = 0;
+    size_t value_size = sizeof (value);
+    if (socket_->getsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &value, &value_size) == 0
+        && value_size == sizeof (value)) {
+        return value;
+    }
+    return 0;
 }
 }
 
@@ -176,6 +181,89 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
     }
     socket_->clear_auto_hwm_manual_overrides (policy_.apply_sndhwm, policy_.apply_rcvhwm, false,
                                               false);
+}
+
+inline void apply_spot_runtime_hwm_policy (ctx_t *ctx_,
+                                           const spot_node_runtime_tuning_t &hwm_,
+                                           size_t local_sub_count_,
+                                           size_t connected_peer_count_,
+                                           size_t active_peer_count_,
+                                           int message_unit_bytes_,
+                                           socket_base_t *mesh_pub_,
+                                           socket_base_t *local_fanout_xpub_,
+                                           socket_base_t *mesh_xsub_,
+                                           socket_base_t *routed_router_,
+                                           int *current_mesh_pub_hwm_out_)
+{
+    const bool pubsub_hwm_override = spot_node_pubsub_hwm_overridden (hwm_);
+    const bool router_hwm_override = spot_node_router_hwm_overridden (hwm_);
+
+    if (mesh_pub_) {
+        if (pubsub_hwm_override) {
+            const int desired = spot_node_pubsub_admission_hwm (hwm_);
+            if (desired > 0
+                && mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &desired, sizeof (desired))
+                     == 0
+                && current_mesh_pub_hwm_out_) {
+                *current_mesh_pub_hwm_out_ = desired;
+            }
+        } else {
+            apply_spot_internal_auto_hwm (
+              ctx_, mesh_pub_,
+              spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                              connected_peer_count_, active_peer_count_, 0, 0, true,
+                                              false, auto_hwm_scope_shared, 1, message_unit_bytes_,
+                                              true});
+            if (current_mesh_pub_hwm_out_)
+                *current_mesh_pub_hwm_out_ =
+                  spot_auto_hwm_internal::current_socket_sndhwm (mesh_pub_);
+        }
+    }
+
+    if (local_fanout_xpub_) {
+        apply_spot_internal_auto_hwm (
+          ctx_, local_fanout_xpub_,
+          spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                          local_sub_count_, local_sub_count_, 0, 0, true, false,
+                                          auto_hwm_scope_shared, 1, message_unit_bytes_, false});
+        const int zero = 0;
+        (void) local_fanout_xpub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
+    }
+
+    if (mesh_xsub_) {
+        if (pubsub_hwm_override) {
+            const int desired = spot_node_pubsub_admission_hwm (hwm_);
+            if (desired > 0)
+                (void) mesh_xsub_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &desired,
+                                               sizeof (desired));
+        } else {
+            apply_spot_internal_auto_hwm (
+              ctx_, mesh_xsub_,
+              spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_XSUB,
+                                              connected_peer_count_, active_peer_count_, 0, 0,
+                                              false, true, auto_hwm_scope_shared, 1,
+                                              message_unit_bytes_, true});
+        }
+    }
+
+    if (routed_router_) {
+        if (router_hwm_override) {
+            const int desired = spot_node_router_admission_hwm (hwm_);
+            if (desired > 0) {
+                (void) routed_router_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &desired,
+                                                   sizeof (desired));
+                (void) routed_router_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &desired,
+                                                   sizeof (desired));
+            }
+        } else {
+            apply_spot_internal_auto_hwm (
+              ctx_, routed_router_,
+              spot_internal_auto_hwm_policy_t{auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+                                              connected_peer_count_, active_peer_count_, 0, 0, true,
+                                              true, auto_hwm_scope_shared, 1, message_unit_bytes_,
+                                              true});
+        }
+    }
 }
 }
 

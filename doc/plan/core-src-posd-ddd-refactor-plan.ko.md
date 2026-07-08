@@ -980,3 +980,61 @@ TU inline으로 제한하고, 의심되면 벤치 게이트를 적용한다.
   - 2026-07-08: `service_spot_actor_api.cpp` 같은 TU의 inline
     `dispatch_actor_gateway_parts_from_source`로 routed frame build, direct dispatch,
     built-part cleanup을 정본화했다. payload ownership 처리는 기존 호출부에 유지했다.
+
+## 9. 3차 재리뷰 적용 결과
+
+### 9.1 정책 divergence 차단
+
+- [x] **W3-01. auto-HWM profile 값 테이블 단일화**
+  - 2026-07-08: profile별 message/stream/control HWM과 cap 조회를
+    `auto_hwm_policy` API로 올렸다. `spot_runtime_hwm.hpp`와
+    `spot_auto_hwm_internal.hpp`는 더 이상 자체 profile switch를 갖지 않는다.
+- [x] **W3-02. mesh socket HWM 적용 정책 통합**
+  - 2026-07-08: node option 갱신 경로와 data-plane live refresh 경로가 같은
+    `apply_spot_runtime_hwm_policy` helper를 호출하도록 바꿨다. override 처리와
+    auto-HWM 재계산 정책을 한 곳에서 결정한다.
+- [x] **W3-03. auto-HWM message unit 해석 경로 정리**
+  - 2026-07-08: runtime socket 재계산은 `apply_spot_runtime_hwm_policy`를 통해
+    caller-provided message unit이 있을 때만 넘기고, 없으면 context option을 쓰는
+    기존 `spot_internal_auto_hwm_plan` 경로로 합류한다.
+
+### 9.2 소형 삭제·정본화
+
+- [x] **W3-04. `spot_mesh_pub_hwm.cpp` dead scaffold 삭제**
+  - 2026-07-08: 항상 0을 반환하던 per-endpoint default/refresh helper를 제거하고,
+    해당 helper를 직접 검증하던 unittest도 runtime owner와 auto-HWM 정책 검증만
+    남기도록 정리했다.
+- [x] **W3-05. service spot subject dead shim 삭제**
+  - 2026-07-08: tree 전체에서 참조가 없던 `spot_*_internal` subject wrapper 선언과
+    정의를 제거하고, 같은 TU 내부 호출은 subject primitive를 직접 호출하게 했다.
+- [x] **W3-06. dealer/router peer-weight command wrapper pull-up**
+  - 2026-07-08: peer-weight command decode, local weight broadcast, command frame 전송을
+    `socket_base_t`로 올렸다. dealer/router는 실제 pipe weight 적용 hook만
+    override한다.
+- [x] **W3-07. staged-send helper 중복 제거**
+  - 2026-07-08: spot publish와 spot request/reply part-submit이 공유하는 staged-send
+    상태 전이를 `part_helper_internal`로 옮겼다.
+- [x] **W3-08. routed-part debug gate 통합**
+  - 2026-07-08: `ZLINK_ROUTED_PART_DEBUG` env gate와 trace helper를
+    `part_helper_internal` 정본으로 모았다.
+- [x] **W3-09. `service_common.h` 위치 교정**
+  - 2026-07-08: public service 공통 헤더를 `zlink/service/common.h`로 옮기고,
+    aggregate header, service actor header, 설치 목록, core 문서의 경로를 맞췄다.
+
+### 9.3 구조 정리와 보류
+
+- [x] **W3-10. join external gateway tail dedup**
+  - 2026-07-08: spot join과 entry spot join의 external gateway send 실패 처리와
+    timeout scheduling 꼬리를 `finish_external_gateway_join_submission`으로 통합했다.
+    request-builder 전체 통합은 entry spot semantics와 idempotent join 경로를 helper
+    인자로 노출해야 하므로 보류한다.
+- [x] **W3-11. data-plane target-control TU 분리**
+  - 2026-07-08: fanout target 재조정, remote mesh target 정리, pending limit 정책을
+    `spot_data_plane_target_control.cpp`로 옮겨 command 처리 TU와 분리했다.
+- [ ] **W3-12. `spot_data_plane_runtime_state.hpp` raw state 은닉**
+  - 보류: nested state 13개를 owned 타입 뒤로 숨기는 작업은 call-site API를 새로
+    설계해야 하며 이번 wave의 code-motion 범위를 넘는다. hot forward/stage/flush
+    본체와 큐 불변식을 건드리므로 별도 설계와 벤치 게이트가 필요하다.
+- [ ] **W3-13. connecter/listener base**
+  - 보류: W2 판정 유지. free helper로 drift 위험은 낮아졌고, 남은 wrapper 통합은
+    CRTP/base를 새로 도입해야 해서 현재 실익 대비 복잡도 증가가 크다.

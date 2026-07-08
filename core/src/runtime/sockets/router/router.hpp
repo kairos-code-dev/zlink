@@ -41,12 +41,10 @@ class router_t : public routing_socket_base_t
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
-    int xpeer_command (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int xterm_peer_rid (const zlink_routing_id_t *peer_rid_) ZLINK_OVERRIDE
     {
         return terminate_out_pipe_by_routing_id (peer_rid_);
     }
-    void xlocal_peer_weight_changed () ZLINK_OVERRIDE;
     void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;
     int get_peer_state (const void *routing_id_, size_t routing_id_size_) const ZLINK_FINAL;
@@ -63,9 +61,7 @@ class router_t : public routing_socket_base_t
                                         const blob_t &routing_id_,
                                         bool locally_initiated_) const;
     void promote_anonymous_pipe_for_dispatch (pipe_t *pipe_);
-    void broadcast_local_peer_weight ();
-    void send_local_peer_weight (pipe_t *pipe_);
-    int apply_peer_weight (pipe_t *pipe_, uint32_t weight_);
+    int apply_peer_weight (pipe_t *pipe_, uint32_t weight_) ZLINK_OVERRIDE;
 
     //  Fair queueing object for inbound pipes.
     fq_t _fq;

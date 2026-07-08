@@ -3,6 +3,7 @@
 #ifndef __ZLINK_SPOT_RUNTIME_HWM_HPP_INCLUDED__
 #define __ZLINK_SPOT_RUNTIME_HWM_HPP_INCLUDED__
 
+#include "core/auto_hwm_policy.hpp"
 #include "zlink.h"
 
 namespace zlink
@@ -29,17 +30,7 @@ struct spot_node_runtime_tuning_t
 
 inline int spot_node_admission_hwm_for_profile (zlink_auto_hwm_profile_t profile_)
 {
-    switch (profile_) {
-        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
-            return 64;
-        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
-            return 128;
-        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
-            return 512;
-        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
-        default:
-            return 256;
-    }
+    return static_cast<int> (auto_hwm_profile_message_hwm (profile_));
 }
 
 inline bool spot_node_router_hwm_overridden (const spot_node_runtime_tuning_t &config_)
@@ -54,10 +45,7 @@ inline bool spot_node_pubsub_hwm_overridden (const spot_node_runtime_tuning_t &c
 
 inline bool spot_node_valid_hwm_profile (int profile_)
 {
-    return profile_ == ZLINK_AUTO_HWM_PROFILE_COMPACT
-           || profile_ == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
-           || profile_ == ZLINK_AUTO_HWM_PROFILE_BALANCED
-           || profile_ == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
+    return auto_hwm_valid_profile (profile_);
 }
 
 inline int spot_node_router_admission_hwm (const spot_node_runtime_tuning_t &config_)

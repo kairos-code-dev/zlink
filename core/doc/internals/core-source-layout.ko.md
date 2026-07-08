@@ -39,7 +39,7 @@
 | |-- zlink_errno.h                                          |
 | `-- zlink/                                                 |
 |     |-- common.h                                           |
-|     |-- service_common.h                                   |
+|     |   |-- common.h                                           |
 |     |-- core/api.h                                         |
 |     |-- eventing/api.h                                     |
 |     |-- message/api.h                                      |

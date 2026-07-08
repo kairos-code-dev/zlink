@@ -234,52 +234,6 @@ void close_socket (zlink::ctx_t *ctx_, zlink::socket_base_t *&socket_)
     socket_ = NULL;
 }
 
-void test_mesh_pub_hwm_defaults_follow_transport_and_ready_peer_count ()
-{
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("tcp://127.0.0.1:9000", 0));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("tcp://127.0.0.1:9000", 1));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("tcp://127.0.0.1:9000", 2));
-
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("ws://127.0.0.1:9000", 0));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("ws://127.0.0.1:9000", 1));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("ws://127.0.0.1:9000", 2));
-
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("tls://127.0.0.1:9000", 0));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("tls://127.0.0.1:9000", 1));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("tls://127.0.0.1:9000", 2));
-
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("wss://127.0.0.1:9000", 0));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("wss://127.0.0.1:9000", 1));
-    TEST_ASSERT_EQUAL_INT (expected_mesh_pub_sndhwm (),
-                           zlink::spot_mesh_pub_hwm_t::resolve_default ("wss://127.0.0.1:9000", 2));
-}
-
-void test_mesh_pub_hwm_refresh_follows_ready_peer_count_changes ()
-{
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 0, 1));
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 0, 2));
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tcp://127.0.0.1:9000", 0, 1));
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tcp://127.0.0.1:9000", 1, 2));
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 1, 2));
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 2, 100));
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 2, 100));
-    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("ws://127.0.0.1:9000", 2, 100));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 2, 2));
-    TEST_ASSERT_FALSE (
-      zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 100, 100));
-}
-
 void test_ready_peer_count_is_clamped_to_connected_peers ()
 {
     TEST_ASSERT_EQUAL_UINT (2, zlink::clamp_ready_peer_count (100, 2));
@@ -876,8 +830,6 @@ void test_spot_node_hwm_options_expose_defaults ()
 int main (int argc, char **argv)
 {
     UNITY_BEGIN ();
-    RUN_TEST (test_mesh_pub_hwm_defaults_follow_transport_and_ready_peer_count);
-    RUN_TEST (test_mesh_pub_hwm_refresh_follows_ready_peer_count_changes);
     RUN_TEST (test_ready_peer_count_is_clamped_to_connected_peers);
     RUN_TEST (test_auto_hwm_v2_profile_caps_and_unit_budgets);
     RUN_TEST (test_auto_hwm_pc_profile_table_and_message_unit_scaling);

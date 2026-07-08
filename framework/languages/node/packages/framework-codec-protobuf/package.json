@@ -13,7 +13,6 @@
   "dependencies": {
     "@zlink-systems/framework": "0.1.0-SNAPSHOT",
     "@zlink-systems/stream-connector": "0.1.0-SNAPSHOT",
-    "@zlink-systems/zlink": "file:../../../../../bindings/node",
     "protobufjs": "^8.6.4"
   }
 }

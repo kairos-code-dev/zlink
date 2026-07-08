@@ -220,6 +220,28 @@ draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로
 
 ---
 
+## Bindings Local Package 배포 규칙
+
+framework가 bindings 라이브러리를 참조하는 방식, local package 생성 위치, 언어별 버전 고정 지점은
+**[`scripts/local-package/README.ko.md`](./scripts/local-package/README.ko.md)** 를 기준으로 한다.
+
+bindings 배포, local package, framework의 bindings 참조 버전, WSL/Windows local package 경로를
+수정할 때는 먼저 이 문서를 확인하고, 문서의 정책과 실제 스크립트가 어긋나지 않게 함께 갱신한다.
+
+핵심 원칙:
+
+- framework는 bindings 소스를 직접 참조하지 않고, 명시한 버전의 local package나 배포 package를 참조한다.
+- bindings 새 버전을 local package 위치에 배포해도 framework 참조 버전을 바꾸기 전까지는 기존 버전을
+  계속 사용해야 한다.
+- framework 참조 버전은 언어별 중앙 지점에서 바꾼다. Java/Kotlin은
+  `framework/languages/java/gradle/libs.versions.toml`, Node.js는
+  `framework/languages/node/package.json`, .NET은 `Directory.Packages.props`, C++는
+  `ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION`을 기준으로 한다.
+- local package 생성 스크립트는 `scripts/local-package/` 아래에서 관리한다. 같은 목적의 wrapper를
+  `bindings/<lang>/` 또는 다른 디렉터리에 다시 만들지 않는다.
+
+---
+
 ## Benchmark Build Rules
 
 `bindings/c/perf` 를 기준으로 성능을 볼 때는 빌드 산출물 경로를 혼동하면 안 된다.

@@ -9,9 +9,13 @@ kotlin {
 
 dependencies {
     implementation(project(":Shared"))
+    implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-framework-locations-redis:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink:6.0.4")
+    implementation(zlinkLibs.zlink.bindings)
     implementation("com.fasterxml.jackson.core:jackson-databind:2.19.2")
+    implementation("org.springframework.boot:spring-boot-starter:3.5.14")
 }
 
 application {

@@ -25,38 +25,46 @@ set(ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD 80 CACHE STRING
 set(ZLINK_FRAMEWORK_CPP_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(ZLINK_FRAMEWORK_CPP_REPO_ROOT "${ZLINK_FRAMEWORK_CPP_DIR}/../../.." CACHE PATH
   "Path to the zlink repository root")
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACHE PATH
+  "Root directory containing local package outputs")
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "8.6.3" CACHE STRING
+  "Exact local zlink_cpp package version consumed by the C++ framework")
+if(NOT ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT)
+  if(WIN32 AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}")
+    set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT
+      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows")
+  else()
+    set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT
+      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/wsl")
+  endif()
+endif()
+set(ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX
+  "${ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT}/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}" CACHE PATH
+  "Local zlink_cpp package install prefix")
+if(WIN32)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
-      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/native/linux-aarch64/libzlink.so")
+      "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/bin/zlink.dll")
   else()
     set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
-      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/native/linux-x86_64/libzlink.so")
+      "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/bin/zlink.dll")
   endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
-      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/native/darwin-aarch64/libzlink.dylib")
+      "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/lib/libzlink.dylib")
   else()
     set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
-      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/native/darwin-x86_64/libzlink.dylib")
+      "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/lib/libzlink.dylib")
   endif()
-elseif(WIN32)
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|aarch64|arm64)$")
-    set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
-      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/native/windows-aarch64/zlink.dll")
-  else()
-    set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
-      "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/native/windows-x86_64/zlink.dll")
-  endif()
+else()
+  set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
+    "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/lib/libzlink.so")
 endif()
 
 if(NOT TARGET zlink::cpp)
-  set(ZLINK_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(ZLINK_CPP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-  add_subdirectory(
-    "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp"
-    "${CMAKE_CURRENT_BINARY_DIR}/bindings_cpp")
+  list(PREPEND CMAKE_PREFIX_PATH "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}")
+  find_package(zlink_cpp ${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION} EXACT CONFIG REQUIRED)
 endif()
 
 add_library(zlink_framework STATIC
@@ -121,6 +129,29 @@ target_include_directories(zlink_framework PUBLIC
 target_include_directories(zlink_framework PRIVATE
   ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 target_link_libraries(zlink_framework PUBLIC zlink::cpp)
+set(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR "" CACHE PATH
+  "System Boost include directory used to match the local zlink_cpp package")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux"
+    AND EXISTS "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}"
+    AND (NOT ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR
+         OR ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR STREQUAL "/usr/include")
+    AND EXISTS "/usr/include/boost/asio.hpp"
+    AND EXISTS "/usr/include/boost/beast/http.hpp")
+  set(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/system-boost-include" CACHE PATH
+    "System Boost include directory used to match the local zlink_cpp package" FORCE)
+endif()
+if(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR)
+  if(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR
+      STREQUAL "${CMAKE_CURRENT_BINARY_DIR}/system-boost-include")
+    file(MAKE_DIRECTORY "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}")
+    file(CREATE_LINK "/usr/include/boost"
+      "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}/boost"
+      SYMBOLIC COPY_ON_ERROR)
+  endif()
+  target_include_directories(zlink_framework SYSTEM BEFORE PRIVATE
+    "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}")
+endif()
 find_package(Boost QUIET)
 if(Boost_FOUND AND Boost_INCLUDE_DIRS)
   target_include_directories(zlink_framework PRIVATE ${Boost_INCLUDE_DIRS})
@@ -176,6 +207,10 @@ target_link_libraries(zlink_http_client PUBLIC
   zlink::framework
   nlohmann_json::nlohmann_json)
 target_link_libraries(zlink_http_client PRIVATE Threads::Threads)
+if(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR)
+  target_include_directories(zlink_http_client SYSTEM BEFORE PRIVATE
+    "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}")
+endif()
 if(Boost_FOUND AND Boost_INCLUDE_DIRS)
   target_include_directories(zlink_http_client PRIVATE ${Boost_INCLUDE_DIRS})
 elseif(Boost_FOUND AND Boost_INCLUDE_DIR)
@@ -860,11 +895,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_location_key_codec.cpp)
   target_compile_features(test_cpp_framework_location_key_codec PRIVATE cxx_std_20)
   target_link_zlink_test_harness(test_cpp_framework_location_key_codec)
-  target_link_libraries(test_cpp_framework_location_key_codec PRIVATE GTest::gtest_main)
+  target_link_libraries(test_cpp_framework_location_key_codec PRIVATE
+    zlink::framework
+    GTest::gtest_main)
   target_include_directories(test_cpp_framework_location_key_codec PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
-    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   add_test(NAME test_cpp_framework_location_key_codec
     COMMAND test_cpp_framework_location_key_codec)
   set_tests_properties(test_cpp_framework_location_key_codec PROPERTIES
@@ -874,11 +910,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_in_memory_location_store.cpp)
   target_compile_features(test_cpp_framework_in_memory_location_store PRIVATE cxx_std_20)
   target_link_zlink_test_harness(test_cpp_framework_in_memory_location_store)
-  target_link_libraries(test_cpp_framework_in_memory_location_store PRIVATE GTest::gtest_main)
+  target_link_libraries(test_cpp_framework_in_memory_location_store PRIVATE
+    zlink::framework
+    GTest::gtest_main)
   target_include_directories(test_cpp_framework_in_memory_location_store PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
-    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   add_test(NAME test_cpp_framework_in_memory_location_store
     COMMAND test_cpp_framework_in_memory_location_store)
   set_tests_properties(test_cpp_framework_in_memory_location_store PROPERTIES
@@ -888,11 +925,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_location_runtime.cpp)
   target_compile_features(test_cpp_framework_location_runtime PRIVATE cxx_std_20)
   target_link_zlink_test_harness(test_cpp_framework_location_runtime)
-  target_link_libraries(test_cpp_framework_location_runtime PRIVATE GTest::gtest_main)
+  target_link_libraries(test_cpp_framework_location_runtime PRIVATE
+    zlink::framework
+    GTest::gtest_main)
   target_include_directories(test_cpp_framework_location_runtime PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
-    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   add_test(NAME test_cpp_framework_location_runtime
     COMMAND test_cpp_framework_location_runtime)
   set_tests_properties(test_cpp_framework_location_runtime PROPERTIES
@@ -902,11 +940,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_location_lifecycle.cpp)
   target_compile_features(test_cpp_framework_location_lifecycle PRIVATE cxx_std_20)
   target_link_zlink_test_harness(test_cpp_framework_location_lifecycle)
-  target_link_libraries(test_cpp_framework_location_lifecycle PRIVATE GTest::gtest_main)
+  target_link_libraries(test_cpp_framework_location_lifecycle PRIVATE
+    zlink::framework
+    GTest::gtest_main)
   target_include_directories(test_cpp_framework_location_lifecycle PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
-    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   add_test(NAME test_cpp_framework_location_lifecycle
     COMMAND test_cpp_framework_location_lifecycle)
   set_tests_properties(test_cpp_framework_location_lifecycle PROPERTIES
@@ -921,8 +960,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     GTest::gtest_main)
   target_include_directories(test_cpp_framework_store_location_resolvers PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
-    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   add_test(NAME test_cpp_framework_store_location_resolvers
     COMMAND test_cpp_framework_store_location_resolvers)
   set_tests_properties(test_cpp_framework_store_location_resolvers PROPERTIES
@@ -1619,6 +1657,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     samples/SupportChat/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE
     zlink::framework
+    zlink::http_client
     zlink::stream_connector
     zlink::stream_e2e_client)
 

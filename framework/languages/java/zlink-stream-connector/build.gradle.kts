@@ -7,7 +7,7 @@ description = "ZLink Java STREAM connector core"
 
 dependencies {
     api(project(":zlink-framework-core"))
-    api("systems.zlink:zlink:6.0.4")
+    api(zlinkLibs.zlink.bindings)
     api("io.netty:netty-buffer:4.1.100.Final")
     api("io.netty:netty-codec-http:4.1.100.Final")
     api("io.netty:netty-handler:4.1.100.Final")

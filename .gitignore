@@ -168,6 +168,7 @@ dist/
 core/dist/
 build_check/
 build-*/
+.artifacts/
 core/perf/comparison/build
 benchmark_result.txt
 /test_*

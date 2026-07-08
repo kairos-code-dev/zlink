@@ -9,8 +9,5 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
-  },
-  "dependencies": {
-    "@zlink-systems/zlink": "file:../../../../../bindings/node"
   }
 }

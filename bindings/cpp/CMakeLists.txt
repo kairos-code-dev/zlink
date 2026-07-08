@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
-project(zlink_cpp LANGUAGES CXX)
+project(zlink_cpp VERSION 8.6.3 LANGUAGES CXX)
 
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 get_filename_component(ZLINK_CPP_BINDINGS_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
 get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_CPP_BINDINGS_DIR}/../.." ABSOLUTE)
@@ -191,6 +192,7 @@ target_include_directories(zlink_cpp
 target_link_libraries(zlink_cpp PUBLIC ${ZLINK_CPP_CORE_TARGET})
 target_compile_features(zlink_cpp PUBLIC cxx_std_20)
 set_target_properties(zlink_cpp PROPERTIES
+  EXPORT_NAME cpp
   POSITION_INDEPENDENT_CODE ON
   CXX_EXTENSIONS OFF
 )
@@ -201,12 +203,48 @@ install(TARGETS zlink_cpp
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+get_target_property(ZLINK_CPP_RUNTIME_LIBRARY
+  ${ZLINK_CPP_CORE_TARGET}
+  IMPORTED_LOCATION)
+if(ZLINK_CPP_RUNTIME_LIBRARY AND EXISTS "${ZLINK_CPP_RUNTIME_LIBRARY}")
+  if(WIN32)
+    install(FILES "${ZLINK_CPP_RUNTIME_LIBRARY}"
+      DESTINATION ${CMAKE_INSTALL_BINDIR})
+  elseif(APPLE)
+    file(GLOB ZLINK_CPP_RUNTIME_LIBRARY_FILES
+      "${ZLINK_CPP_RUNTIME_DIR}/libzlink*.dylib"
+      "${ZLINK_CPP_RUNTIME_DIR}/libzlink*.dylib.*")
+    install(FILES ${ZLINK_CPP_RUNTIME_LIBRARY_FILES}
+      DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  else()
+    file(GLOB ZLINK_CPP_RUNTIME_LIBRARY_FILES
+      "${ZLINK_CPP_RUNTIME_DIR}/libzlink.so"
+      "${ZLINK_CPP_RUNTIME_DIR}/libzlink.so.*")
+    install(FILES ${ZLINK_CPP_RUNTIME_LIBRARY_FILES}
+      DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  endif()
+endif()
 install(DIRECTORY include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp"
 )
 install(EXPORT zlink_cppTargets
   NAMESPACE zlink::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_cpp
+)
+configure_package_config_file(
+  "${CMAKE_CURRENT_LIST_DIR}/cmake/zlink_cppConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/zlink_cppConfig.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_cpp
+)
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/zlink_cppConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/zlink_cppConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/zlink_cppConfigVersion.cmake"
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_cpp
 )
 

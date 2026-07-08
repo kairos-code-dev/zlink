@@ -200,7 +200,7 @@ final class LibraryLoader {
         if (runtimeBin != null && !runtimeBin.isEmpty())
             dirs.add(Path.of(runtimeBin));
         Path userDir = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath();
-        dirs.add(userDir.resolve("../dotnet/runtimes/win-x64/native").normalize());
+        dirs.add(userDir.resolve("../dotnet/native/win-x64").normalize());
         dirs.add(userDir.resolve("../node/prebuilds/win32-x64").normalize());
         dirs.add(Path.of("C:\\Program Files\\OpenSSL-Win64\\bin"));
         dirs.add(Path.of("C:\\Program Files\\Git\\mingw64\\bin"));

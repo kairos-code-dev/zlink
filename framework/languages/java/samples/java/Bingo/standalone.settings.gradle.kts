@@ -2,6 +2,7 @@ pluginManagement {
     plugins {
         id("org.jetbrains.kotlin.jvm") version "2.1.0"
         id("org.jetbrains.kotlin.plugin.spring") version "2.1.0"
+        id("com.google.protobuf") version "0.9.4"
     }
     repositories {
         gradlePluginPortal()
@@ -19,9 +20,27 @@ val zlinkGitHubPackagesToken = providers.gradleProperty("zlink.githubPackagesTok
     .orElse(providers.environmentVariable("MAVEN_REPOSITORY_PASSWORD"))
     .orElse(providers.environmentVariable("GITHUB_TOKEN"))
 
+fun zlinkLocalMavenRepository(): java.io.File {
+    val configuredRoot = providers.gradleProperty("zlink.localPackageRoot")
+        .orElse(providers.environmentVariable("ZLINK_LOCAL_PACKAGE_ROOT"))
+        .orNull
+    if (!configuredRoot.isNullOrBlank()) {
+        return file(configuredRoot).resolve("maven")
+    }
+    var current = settingsDir
+    while (current.parentFile != null && !current.resolve(".artifacts").exists()) {
+        current = current.parentFile
+    }
+    return current.resolve(".artifacts/wsl/maven")
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven {
+            name = "zlinkLocalPackages"
+            url = uri(zlinkLocalMavenRepository())
+        }
         mavenCentral()
         val packageUser = zlinkGitHubPackagesUser.orNull
         val packageToken = zlinkGitHubPackagesToken.orNull

@@ -57,16 +57,18 @@ publishing {
                 }
             }
             url = uri(repoUrl)
-            credentials {
-                def u = System.getenv('MAVEN_REPOSITORY_USERNAME')
-                def p = System.getenv('MAVEN_REPOSITORY_PASSWORD')
-                if ((u == null || u.trim().isEmpty())
-                    && (p == null || p.trim().isEmpty())) {
-                    u = System.getenv('GITHUB_ACTOR')
-                    p = System.getenv('GITHUB_TOKEN')
+            if (!url.scheme.equalsIgnoreCase('file')) {
+                credentials {
+                    def u = System.getenv('MAVEN_REPOSITORY_USERNAME')
+                    def p = System.getenv('MAVEN_REPOSITORY_PASSWORD')
+                    if ((u == null || u.trim().isEmpty())
+                        && (p == null || p.trim().isEmpty())) {
+                        u = System.getenv('GITHUB_ACTOR')
+                        p = System.getenv('GITHUB_TOKEN')
+                    }
+                    username = u
+                    password = p
                 }
-                username = u
-                password = p
             }
         }
     }

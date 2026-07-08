@@ -103,3 +103,8 @@ vcpkg install zlink --overlay-ports=./vcpkg/ports
 - [ ] vcpkg overlay 버전 갱신
 - [ ] 바인딩별 버전 파일 갱신
 - [ ] 바인딩별 태그로 개별 릴리즈
+
+## 8. 관련 문서
+
+- [Framework와 Bindings 의존 경계 정리](./framework-bindings-dependency-boundary.ko.md)
+- [Local Package 스크립트](../../scripts/local-package/README.ko.md)

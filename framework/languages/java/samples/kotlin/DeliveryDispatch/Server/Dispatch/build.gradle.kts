@@ -9,7 +9,7 @@ dependencies {
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-framework-kotlin:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink:6.0.4")
+    implementation(zlinkLibs.zlink.bindings)
     implementation("org.springframework.boot:spring-boot-starter:3.5.14")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2")

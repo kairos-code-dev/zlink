@@ -15,7 +15,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmB8(options: ClientOptions): Promise<void> {
   const actorId = `actor-sm-b8-destroy-${Date.now()}`;
@@ -28,7 +27,7 @@ export async function runSmB8(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId,
         displayName: 'destroy',
@@ -36,14 +35,14 @@ export async function runSmB8(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-B8 auth reply mismatch.');
 
-    const destroyed = decodeStreamReply<DestroyActorRes>(await client
+    const destroyed = await client
       .request({ actorId } satisfies DestroyActorReq)
       .packetName('DestroyActorReq')
       .timeout(5000)
-      .submit());
+      .submit<DestroyActorRes>();
     ensure(
       destroyed.actorId === actorId && destroyed.destroyed,
       'SM-B8 destroy reply mismatch.'

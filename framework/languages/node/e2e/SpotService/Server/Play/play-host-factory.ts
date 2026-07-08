@@ -2,13 +2,13 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
-import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotRefResolver } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_REF_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { parsePlayOptions } from './Configuration/play-options';
 import { createPlayEndpoints } from './Endpoints/play-endpoints';
 import { ChannelEchoHandler, ChannelNotifyHandler } from './Handlers/channel-handlers';
-import { ControlPingHandler, CreateSpotHandler, EnsureActorHandler } from './Handlers/control-handlers';
+import { ControlPingHandler, CreateSpotHandler, CrossRoleActorPushHandler, EnsureActorHandler } from './Handlers/control-handlers';
 import { EvidenceDispatchErrorObserver } from './Handlers/dispatch-error-observer';
 import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from './Handlers/spot-outbound-handlers';
 import { SpotToSpotHandler, SpotToSpotNegativeHandler, SpotToSpotTimeoutHandler } from './Handlers/spot-to-spot-handlers';
@@ -16,7 +16,6 @@ import { StageProbeHandler, StageTimerHandler, StageTimerStartHandler } from './
 import { SlowSpotHandler, StateCommandHandler, StateReqHandler } from './Handlers/state-req-handler';
 import { BasicTimerHandler, IdleCloseTimerHandler, OverrunTimerHandler } from './Handlers/timer-handlers';
 import { EvidenceStore } from './Infrastructure/evidence-store';
-import { InMemorySpotRouteStore } from './Infrastructure/spot-route-store';
 import {
   ComplexActorHandler,
   EntryActorDestroyHandler,
@@ -59,7 +58,6 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .options({ spotRemoteAddressResolver: InMemorySpotRouteStore })
             .configureDispatch()
               .setMessageFlowObserver(EvidenceDispatchErrorObserver)
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -72,6 +70,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
             .routingId(options.rid)
             .addRequestHandler('ControlPingReq', ControlPingHandler)
             .addRequestHandler('EnsureActorReq', EnsureActorHandler)
+            .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler)
             .addRequestHandler('CreateSpotReq', CreateSpotHandler);
           const externalSpotChannel = options.rid === 'play-b'
             ? SpotServiceNames.externalSpotChannelB
@@ -79,7 +78,8 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
           builder.addRouteMeshChannel(externalSpotChannel)
             .enableRouter(options.externalSpotEndpoint)
             .routingId(options.rid)
-            .addRequestHandler('ChannelEchoReq', ChannelEchoHandler);
+            .addRequestHandler('ChannelEchoReq', ChannelEchoHandler)
+            .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler);
           if (options.rid === 'play-b' && options.playAExternalSpotEndpoint !== undefined) {
             builder.addRouteMeshChannel(SpotServiceNames.externalSpotChannel)
               .connect(options.playAExternalSpotEndpoint);
@@ -92,8 +92,8 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
             .addSpotFactory(ScenarioUserSpot)
             .addSpotFactory(ScenarioAlternateSpot)
             .actorFactory(SpotServiceNames.actorType, ScenarioActorFactory);
-          if (options.clientSpotPubEndpoint !== undefined) {
-            spot.connectPeerPub(options.clientSpotPubEndpoint);
+          for (const endpoint of options.clientSpotPubEndpoints) {
+            spot.connectPeerPub(endpoint);
           }
           if (options.externalClientEndpoint !== undefined) {
             builder.addClientServerChannel(SpotServiceNames.externalClientChannel)
@@ -114,9 +114,9 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       ChannelEchoHandler,
       ChannelNotifyHandler,
       ControlPingHandler,
+      CrossRoleActorPushHandler,
       CreateSpotHandler,
       EnsureActorHandler,
-      InMemorySpotRouteStore,
       ScenarioEntrySpot,
       ScenarioActorFactory,
       EntryActorPingHandler,
@@ -151,8 +151,9 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   const app = await NestFactory.createApplicationContext(PlayModule, { logger: false, abortOnError: false });
   const spotManager = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
   const spotOutbound = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
+  const spotRefs = app.get(ZLINK_SPOT_REF_RESOLVER, { strict: false }) as ZLinkSpotRefResolver;
   const routeClient = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
-  const server = await startHttpServer(options.httpUrl, createPlayEndpoints(evidence, spotManager, spotOutbound, routeClient, () => { stopping = true; }));
+  const server = await startHttpServer(options.httpUrl, createPlayEndpoints(evidence, spotManager, spotOutbound, spotRefs, routeClient, () => { stopping = true; }));
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

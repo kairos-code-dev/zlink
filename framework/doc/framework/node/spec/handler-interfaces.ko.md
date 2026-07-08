@@ -39,6 +39,10 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 - attribute → decorator: `[ZLinkPacket("x")]` → `@ZLinkPacket('x')`.
   서버 간 channel handler 의 NestJS 노출은 `zlinkRequestHandler(...)`,
   `zlinkSendHandler(...)`, `zlinkPublishHandler(...)` class decorator 가 기준이다.
+  Spot packet handler 는 `zlinkEntrySpotPacketHandler(...)` 또는
+  `zlinkSpotPacketHandler(...)` 로, Spot subscription handler 는
+  `zlinkEntrySpotSubscriptionHandler(...)` 또는 `zlinkSpotSubscriptionHandler(...)` 로
+  등록한다.
 
 사용 예시나 프로그래밍 모델 설명은 여기 넣지 않는다. 실제 사용법은 아래 문서를 참고한다.
 
@@ -154,9 +158,9 @@ export interface ActorRef {
 | client | `ZLinkBoundSessionFactory` | actor id → 현재 client session proxy 생성 | 5.6 |
 | client | `ZLinkBoundSession` | 현재 actor → 현재 client session 호출 | 5.6 |
 | call | `ZLinkBoundSessionSendCall` | bound session send 빌더 | 5.6 |
-| resolver | `ZLinkSpotRemoteAddressResolver` | spot rid에서 user Spot route 조회 | 5.7 |
+| resolver | `ZLinkSpotRefResolver` | spot rid로 메시징 대상 `SpotRef` 조회 | 5.7 |
 | value | `ZLinkSpotKind` | spot 종류 enum (Entry/User) | 5.7 |
-| value | `ZLinkSpotRemoteAddress` | resolver 가 돌려주는 주소 | 5.7 |
+| value | `SpotRef` | spot 메시징 대상 handle | 5.7 |
 | manager | `ZLinkSpotManager` | spot 인스턴스 생성/조회/정상 종료 | 6.3 |
 | value | `ZLinkSpotCreateResult` | spot 생성 결과 | 6.3 |
 | value | `ZLinkSpotInfo` | spot 조회 결과 | 6.3 |
@@ -673,8 +677,8 @@ export class MatchSpot implements ZLinkSpot {
 `ZLinkSpotContext.outbound` 가 노출하는 호출 표면(§5.2 `ZLinkSpotOutbound`):
 
 - `context.outbound.sendToSpot(...)` / `requestToSpot(...)` 은 현재 SPOT 문맥에서 다른
-  SPOT 으로 routed send/request 를 보낸다. target 은 `RoutingId` 로 지정하고, target node 와
-  route channel 은 `ZLinkSpotRemoteAddressResolver` 가 해소한다.
+  SPOT 으로 routed send/request 를 보낸다. target 은 먼저 resolve한 `SpotRef` 로 지정한다.
+  전송 API 는 호출 중에 location store 를 다시 조회하지 않는다.
 - `context.outbound.publish(topic, ...)` 는 현재 SPOT 이 속한 active SPOT channel 로
   publish 한다.
 - `context.outbound.sendToChannel(...)` / `requestToChannel(...)` 은 route bridge channel socket을 호출한다.
@@ -1210,8 +1214,8 @@ attach 된 channel 의 send/request, spot rid 기반 routed spot send/request.
 
 ```ts
 export interface ZLinkSpotOutbound {
-  sendToSpot<TMessage>(spotRid: RoutingId, message: TMessage): ZLinkSendCall;
-  requestToSpot<TMessage>(spotRid: RoutingId, request: TMessage): ZLinkRequestCall;
+  sendToSpot<TMessage>(spot: SpotRef, message: TMessage): ZLinkSendCall;
+  requestToSpot<TMessage>(spot: SpotRef, request: TMessage): ZLinkRequestCall;
   publish<TEvent>(topic: string, message: TEvent): ZLinkPublishCall;
   sendToChannel<TMessage>(channelName: string, message: TMessage): ZLinkSendCall;
   requestToChannel<TMessage>(channelName: string, request: TMessage): ZLinkRequestCall;
@@ -1224,7 +1228,7 @@ lifecycle callback / handler 안에서는 별도 client 주입 없이 `context.o
 `ZLinkChannelClient` 와의 차이:
 
 - `publish(topic, ...)` 가 포함된다(SPOT 은 현재 channel 안 topic publish 를 함께 쓰는 경우가 많다).
-- `sendToSpot` / `requestToSpot` 은 spot remote address resolver 를 쓴다.
+- `sendToSpot` / `requestToSpot` 은 호출자가 넘긴 `SpotRef` 를 전송 대상으로 쓴다.
 - `sendToChannel` / `requestToChannel` 은 route bridge channel socket을 통해 해소한다.
 - local `SpotNode` 가 없는 앱의 기본 outbound 는 `ZLinkChannelClient` 다. 외부 SPOT channel
   publish 만 필요하면 `ZLinkSpotPublisherClient` 를 별도로 쓴다.
@@ -1326,23 +1330,26 @@ export interface ZLinkBoundSessionFactory {
 export interface ZLinkBoundSessionSendCall {
   packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
-  submit(signal?: AbortSignal): void;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
-`submit(...)` 은 bound session send의 one-way terminator다. caller는 client push의
-송신 수락 완료를 기다리지 않는다.
+`submit(...)` 은 bound session send의 one-way terminator다. 반환된 Promise 는 framework 가
+현재 bound session route 에 push frame 을 넘긴 뒤 완료된다. client application 이 그 frame 을
+처리했다는 확인까지 보장하지는 않는다.
 
 `disconnect()` 도 현재 actor 의 binding 상태를 쓴다. actor 가 client 연결을 끊기로 결정한
 경우 호출하며, session callback 으로 `onDisconnected(...)` 를 다시 올리지 않는다.
 
-### 5.7 spot remote address resolver
+### 5.7 SpotRef resolver
 
-public resolver 는 spot 축으로 둔다. spot rid 로부터 user Spot route 를 조회한다.
+public resolver 는 spot 축으로 둔다. spot rid 로부터 메시징 대상 `SpotRef` 를 조회한다.
+id 는 조회 입력이고, `SpotRef` 는 전송 입력이다. `sendToSpot(...)` / `requestToSpot(...)` 은
+spot rid 를 직접 받지 않는다.
 
 ```ts
-export interface ZLinkSpotRemoteAddressResolver {
-  resolveSpotRemoteAddress(spotRid: RoutingId): Promise<ZLinkSpotRemoteAddress>;
+export interface ZLinkSpotRefResolver {
+  resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotRef | undefined>;
 }
 
 export enum ZLinkSpotKind {
@@ -1351,16 +1358,16 @@ export enum ZLinkSpotKind {
   User = 'user',
 }
 
-export interface ZLinkSpotRemoteAddress {
-  readonly routerChannelId: string;
-  readonly targetNodeRid: RoutingId;
+export interface SpotRef {
+  readonly meshName: string;
+  readonly nodeRid: RoutingId;
   readonly spotRid: RoutingId;
-  readonly spotKind: ZLinkSpotKind;
 }
 ```
 
-`routerChannelId` 는 실제 RouteMesh channel 이름이다. 같은 프로세스에 RouteMesh와
-SpotMesh가 있으면 framework가 route bridge를 자동으로 연결한다. resolver 는 연결을 만들지 않는다.
+`meshName` 은 target Spot 이 속한 Spot mesh 이름이고, `nodeRid` 는 현재 owner node 다.
+framework 는 이 값을 내부 routed transport 로 바꾸지만, application 은 route channel id 나
+bridge 세부 값을 직접 보지 않는다.
 
 resolver 입력에는 metadata, packet name, raw message, decoded payload 를 넘기지 않는다.
 resolver 의 책임은 위치 저장소 접근뿐이다. actor-session route 는 public contract 가 아니라
@@ -1867,18 +1874,18 @@ export interface IZLinkPeerLocationResolver {
   listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
-export interface IZLinkSpotAddressResolver {
-  resolveSpotAddress(
+export interface ZLinkSpotRefResolver {
+  resolveSpotRef(
     spotRid: RoutingId,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotAddress | undefined>;
+  ): Promise<SpotRef | undefined>;
 }
 
 export interface IZLinkActorAddressResolver {
-  resolveActorSpotAddress(
+  resolveActorSpotRef(
     actorId: string,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotAddress | undefined>;
+  ): Promise<SpotRef | undefined>;
 }
 ```
 
@@ -2420,7 +2427,7 @@ class 구성 방식은 자유롭다(주제별 묶음 `UserHandlers`, packet 별 
 | `ZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록 |
 | `ZLinkBoundSessionFactory` | framework runtime 과 함께 항상 등록 |
 | `ZLinkBoundSession` | actor bound session runtime 등록 시 |
-| `ZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록 |
+| `ZLinkSpotRefResolver` | location store 가 등록되어 있을 때 등록 |
 
 channel 이름의 위치는 handler class/method decorator 가 아니라 channel registration 에 둔다.
 outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수도 있다.

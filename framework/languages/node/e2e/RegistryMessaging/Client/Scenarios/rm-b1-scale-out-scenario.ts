@@ -22,12 +22,15 @@ export async function runRmB1(options: ClientOptions): Promise<void> {
     const beforeB = await getJson<string[]>(providerB.httpUrl, '/evidence');
     const markerAfter = uniqueMarker('rm-b1-after');
     const values = Array.from({ length: 60 }, (_, index) => `${markerAfter}-${index}`);
-    const replies: ProfileRes[] = [];
+    const replies: Array<{ requestValue: string; reply: ProfileRes }> = [];
     for (const value of values) {
-      replies.push(await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value }));
+      replies.push({
+        requestValue: value,
+        reply: await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value })
+      });
     }
-    const apiAValues = replies.filter((reply) => reply.providerRid === 'api-a').map((reply) => reply.value);
-    const apiBValues = replies.filter((reply) => reply.providerRid === 'api-b').map((reply) => reply.value);
+    const apiAValues = replies.filter((entry) => entry.reply.providerRid === 'api-a').map((entry) => entry.requestValue);
+    const apiBValues = replies.filter((entry) => entry.reply.providerRid === 'api-b').map((entry) => entry.requestValue);
     ensure(apiAValues.length > 0 && apiBValues.length > 0, 'RM-B1 expected both providers after scale-out.');
     const afterA = await postJson<string[]>(providerA.httpUrl, '/evidence/wait', { contains: apiAValues[apiAValues.length - 1] });
     const afterB = await postJson<string[]>(providerB.httpUrl, '/evidence/wait', { contains: apiBValues[apiBValues.length - 1] });

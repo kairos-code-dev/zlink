@@ -104,9 +104,9 @@ Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 
 - `SpotNode.router` 는 peer topology 와 내부 routed delivery 를 위해 남겨 두되,
   framework core 의 public high-level API 에서는 `targetRid + spotRid` 를 직접
   받는 direct routed 호출 표면을 두지 않는다.
-- spot rid 를 다른 노드의 user Spot 위치로 변환해야 하면
-  `ZLinkSpotRemoteAddressResolver` 를 쓴다. resolver 구현체만 `RoutingId`(string)
-  를 알고, application handler 는 spot rid 만 기준으로 호출한다.
+- spot rid 를 다른 노드의 user Spot 위치로 변환해야 하면 location store 기반
+  `ZLinkSpotRefResolver` 로 `SpotRef` 를 얻는다. application handler 는 이 ref 를
+  전송 API 에 넘기며, route channel id 같은 내부 전송 값은 직접 다루지 않는다.
 - 외부 `PUB -> Spot` 입력은 generic pub/sub attach 가 아니라 별도의 ingress
   표면으로 분리한다.
 
@@ -131,17 +131,27 @@ dotnet 의 `options.AddSpotMesh("game.stage", mesh => ...)` 람다는 NestJS 의
 
 Spot 관련 application 객체는 NestJS DI 가 소유한다. `entrySpotType` 과 Spot
 factory type 은 module 의 `providers` 에 직접 등록한다. packet handler type,
-actor handler type, timer handler type 은 각 handler class 에 decorator 를 붙이고
-module 이 `zlinkDiscoverProviders(...)` 로 가져온다. framework 는 SpotNode 가
-Entry Spot 을 만들거나 SpotManager 가 user Spot 을 만들 때 NestJS provider
-resolver 를 통해 해당 타입을 resolve 한다. provider 로 등록되지 않은 경우에만
-NestJS 밖에서 쓰는 저수준 framework 경로가 직접 생성 fallback 을 사용할 수 있다.
+subscription handler type, actor handler type, timer handler type 은 각 handler
+class 에 decorator 를 붙이고 module 이 `zlinkDiscoverProviders(...)` 로 가져온다.
+framework 는 SpotNode 가 Entry Spot 을 만들거나 SpotManager 가 user Spot 을 만들 때
+NestJS provider resolver 를 통해 해당 타입을 resolve 한다. provider 로 등록되지 않은
+경우에만 NestJS 밖에서 쓰는 저수준 framework 경로가 직접 생성 fallback 을 사용할 수
+있다.
 
 node/channel handler group 은 module 설정에서 고른다. 그러나 Spot packet,
 subscribe, actor, timer handler 는 `main.ts` 에서 한꺼번에 나열하지 않는다. handler
 class 가 decorator 로 자신의 역할을 드러내고, Entry Spot 또는 user Spot 이 자기
 registry 에 필요한 handler 를 연결한다. Spot 이 어떤 메시지를 처리하는지는 Spot
 자체의 책임이기 때문이다.
+
+Entry Spot 의 일반 packet handler 는 `zlinkEntrySpotPacketHandler(...)`, user Spot 의
+일반 packet handler 는 `zlinkSpotPacketHandler(...)` 로 등록한다. Entry Spot 의
+subscription handler 는 `zlinkEntrySpotSubscriptionHandler(...)`, user Spot 의
+subscription handler 는 `zlinkSpotSubscriptionHandler(...)` 로 topic 을 metadata 에
+둔다. actor packet handler 는 기존 `zlinkEntrySpotActorRequestHandler(...)`,
+`zlinkEntrySpotActorSendHandler(...)`, `zlinkSpotActorRequestHandler(...)`,
+`zlinkSpotActorSendHandler(...)` 를 사용한다. timer handler 는
+`zlinkSpotTimerHandler(...)` 를 사용한다.
 
 ```ts
 @Module({
@@ -155,7 +165,7 @@ registry 에 필요한 handler 를 연결한다. Spot 이 어떤 메시지를 �
           .enablePubSub('tcp://0.0.0.0:9000')
           .addEntrySpot(StageEntrySpot)
           .addSpotFactory(StageSpot)
-        .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
+        .useInMemoryLocationStores()
         .build()
     ),
   ],
@@ -180,8 +190,8 @@ export class AppModule {}
 - 필요하다면 `spotPublishers` 로 외부 노드용 spot publish client attach
 - `entrySpotType` 으로 자동 Entry Spot 에 붙일 application registry 등록
 - `spotFactories` 로 이 노드가 생성·소유할 user Spot 클래스 등록
-- `registrySpotRemoteAddresses` 로 spot rid 기반 호출 또는 actor join 경로에서 사용할
-  Registry 기반 spot remote address resolver 등록
+- location store 등록으로 spot rid 조회와 actor join 경로에서 사용할 `SpotRef`
+  resolver 준비
 - host shutdown 시 lifecycle 정리
 
 `.addSpotMesh(name)` 은 실행할 `SpotNode` 를 이름으로 등록한다. 여러 `SpotNode` 가
@@ -673,8 +683,8 @@ resolve, activation, `onCreate(...)`, `onInitialize(...)` 실패는
 
 - `sendToChannel(...)` / `requestToChannel(...)` 는 route bridge channel socket을
   사용한다.
-- `sendToSpot(...)` / `requestToSpot(...)` 는 spot remote address resolver 가 찾은
-  target route 를 이용한다.
+- `sendToSpot(...)` / `requestToSpot(...)` 는 호출자가 넘긴 `SpotRef` 를 target 으로
+  사용한다.
 - `targetRid + spotRid` 를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
   application guide 의 기본 API 로는 문서화하지 않는다.
 
@@ -683,8 +693,8 @@ resolve, activation, `onCreate(...)`, `onInitialize(...)` 실패는
 
 | node 메서드 | dotnet | 의미 |
 | --- | --- | --- |
-| `sendToSpot(spotRid, message)` | `SendToSpot<TMessage>(RoutingId, TMessage)` | spot-routed 단방향 send |
-| `requestToSpot(spotRid, request)` | `RequestToSpot<TRequest>(RoutingId, TRequest)` | spot-routed request |
+| `sendToSpot(spotRef, message)` | `SendToSpot<TMessage>(SpotRef, TMessage)` | spot-routed 단방향 send |
+| `requestToSpot(spotRef, request)` | `RequestToSpot<TRequest>(SpotRef, TRequest)` | spot-routed request |
 | `publish(topic, message)` | `Publish<TEvent>(string topic, TEvent)` | 현재 SPOT channel topic publish |
 | `sendToChannel(channelName, message)` | `SendToChannel<TMessage>(string, TMessage)` | attach 된 channel 로 send |
 | `requestToChannel(channelName, request)` | `RequestToChannel<TRequest>(string, TRequest)` | attach 된 channel 로 request |
@@ -697,8 +707,8 @@ registration 표면으로 둔다.
 현재 framework 표면은 channel 이름 기준 호출과 spot key 기반 호출을 구분한다.
 `targetRid + spotRid` 를 직접 받는 raw route 함수가 하부 바인딩에 있어도,
 framework application 문서에서는 backend / internal transport helper 로만 다룬다.
-일반 application 은 `ZLinkSpotRemoteAddressResolver` 가 숨긴 위치값을 직접 보지
-않는다.
+일반 application 은 `SpotRef` 안의 mesh 이름, owner node rid, spot rid 만 본다.
+route channel id 나 bridge 값은 framework 내부 전송 계층에만 머문다.
 
 예를 들면 다음과 같이 사용할 수 있다.
 
@@ -711,7 +721,10 @@ const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
   { timeoutMs: 200 },
 );
 
-void spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
+const stageRef = await spotRefResolver.resolveSpotRef(stage.spotRid);
+if (stageRef !== undefined) {
+  void spot.context.outbound.sendToSpot(stageRef, new StageNoticeMessage());
+}
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer 도 함께 필요하다. 다만 현재
@@ -766,7 +779,10 @@ const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
   { timeoutMs: 200 },
 );
 
-void spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
+const stageRef = await spotRefResolver.resolveSpotRef(stage.spotRid);
+if (stageRef !== undefined) {
+  void spot.context.outbound.sendToSpot(stageRef, new StageNoticeMessage());
+}
 
 spot.context.outbound.publish('stage.state.updated', new StageStateUpdatedEvent());
 ```
@@ -1001,8 +1017,8 @@ route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 
 
 ## 11. Router channel route 수신
 
-`ZLinkSpotRemoteAddress.routerChannelId` 는 resolver 가 반환한 위치 정보 중 하나다. 이 값은
-metadata 로만 남으면 안 되고, 실제 transport 로 사용할 RouteMesh channel 을 가리켜야 한다.
+`SpotRef.meshName` 은 target Spot 이 속한 Spot mesh 이름이다. framework 는 이 값을
+내부 route bridge 전송 대상으로 바꾼다. application 은 route channel id 를 직접 넘기지 않는다.
 같은 프로세스에 RouteMesh와 SpotMesh가 있으면 framework가 route bridge를 자동으로 붙인다.
 
 ```ts
@@ -1034,8 +1050,9 @@ zlinkFramework()
     .connect('tcp://play-node-1:7201')
 ```
 
-node 에는 별도 route egress 표면이 없다. 실제 전송은 `outbound.sendToSpot(spotRid, ...)` /
-`outbound.requestToSpot(spotRid, ...)`으로 하며, target Spot 은 문자열 overload 없이 `RoutingId`로 지정한다.
+node 에는 별도 route egress 표면이 없다. 실제 전송은
+`outbound.sendToSpot(spotRef, ...)` / `outbound.requestToSpot(spotRef, ...)`으로 하며,
+target Spot 은 spot rid 문자열 overload 없이 `SpotRef` 값으로 지정한다.
 
 ## 12. 회귀 테스트
 

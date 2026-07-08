@@ -69,10 +69,10 @@
 | `Server/JsonOnlyPeer/Infrastructure/EvidenceStore.cs` | `Server/JsonOnlyPeer/Infrastructure/evidence-store.ts` | infrastructure | done | JSON-only evidence store |
 | `Server/JsonOnlyPeer/Infrastructure/Probes.cs` | `feature-map.ko.md` | infrastructure | not applicable | JsonOnlyPeer는 codec mismatch/recovery role이므로 DI lifecycle probe를 실행하지 않는다. RC-A4는 Main role에서 검증한다. |
 | `Server/JsonOnlyPeer/OperationalEndpoints.cs` | `Server/JsonOnlyPeer/Endpoints/operational-endpoints.ts` | endpoints | done | health/evidence/shutdown endpoint |
-| `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | 구현/gap 상태 |
+| `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | 구현 상태 |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | build, process startup, scenario execution |
 
-## Public Contract Gap
+## Public Contract 확인 결과
 
 `RC-A4`는 Node Nest adapter public handler dispatch path가 request마다 새 async scope를 만들도록 진전됐다.
 `logs/20260630-102915-3514768`에서 singleton id는 같고 scoped id는 `scoped-1`, `scoped-2`로 갈라진다.

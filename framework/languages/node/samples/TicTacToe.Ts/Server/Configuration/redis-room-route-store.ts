@@ -1,12 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import * as net from 'node:net';
-import { ZLinkSpotKind } from '@zlink-systems/framework';
-import { loadSampleConfig } from './sample-config';
-import { SampleNames } from './sample-settings';
-import type {
-  RoutingId,
-  ZLinkSpotRemoteAddress
-} from '@zlink-systems/framework';
+import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import type { TicTacToeSampleConfig } from './sample-config';
 
 const TICTACTOE_SAMPLE_CONFIG = Symbol.for('TICTACTOE_SAMPLE_CONFIG');
@@ -39,23 +33,13 @@ class RedisRoomRouteStore {
   }
 }
 
-@Injectable()
-class RedisSpotRemoteAddressResolver {
-  private readonly config = loadSampleConfig();
-
-  async resolve(spotRid: RoutingId): Promise<ZLinkSpotRemoteAddress> {
-    const value = await redisCommand(this.config.redisEndpoint, ['GET', routeKey(this.config, String(spotRid))]);
-    if (value === null) {
-      throw new Error(`Room route not found. roomId=${String(spotRid)}`);
-    }
-    const route = JSON.parse(value) as RoomRoute;
-    return {
-      routerChannelId: SampleNames.playSpotNode,
-      targetNodeRid: route.ownerSpotNodeRid,
-      spotRid,
-      spotKind: ZLinkSpotKind.User
-    };
-  }
+function createTicTacToeLocationStore(
+  config: Pick<TicTacToeSampleConfig, 'redisEndpoint' | 'redisKeyPrefix'>
+): ZLinkRedisLocationStore {
+  return new ZLinkRedisLocationStore({
+    url: `redis://${config.redisEndpoint}`,
+    keyPrefix: `${config.redisKeyPrefix}location`
+  });
 }
 
 function routeKey(config: TicTacToeSampleConfig, roomId: string): string {
@@ -120,8 +104,8 @@ function parseRedisEndpoint(endpoint: string): { host: string; port: number } {
 }
 
 export {
+  createTicTacToeLocationStore,
   RedisRoomRouteStore,
-  RedisSpotRemoteAddressResolver,
   TICTACTOE_SAMPLE_CONFIG
 };
 export type { RoomRoute };

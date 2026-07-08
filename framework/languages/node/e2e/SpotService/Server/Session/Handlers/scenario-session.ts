@@ -64,7 +64,8 @@ class ScenarioSession implements ZLinkSession {
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=bound`);
         await this.context.client.reply({
           actorId: ensured.actorId,
-          nodeRid: ensured.nodeRid
+          nodeRid: ensured.nodeRid,
+          generation: ensured.generation
         } satisfies AuthRes).submit(signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=replied`);
       } catch (error) {
@@ -91,7 +92,8 @@ class ScenarioSession implements ZLinkSession {
       }, signal);
       await this.context.client.reply({
         actorId: ensured.actorId,
-        nodeRid: ensured.nodeRid
+        nodeRid: ensured.nodeRid,
+        generation: ensured.generation
       } satisfies AuthRes).submit(signal);
       return;
     }

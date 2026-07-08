@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Configuration/sample-names';
+import { createSupportChatLocationStore, supportChatLocationOptions } from '../Configuration/location-store';
 import type { SupportChatServerConfig } from '../Configuration/sample-config';
 
 function createSupportChatSupportModule(config: SupportChatServerConfig) {
@@ -16,6 +17,8 @@ function createSupportChatSupportModule(config: SupportChatServerConfig) {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-support.log`)
             .traceLabel('support');
+          builder.addLocationStore(createSupportChatLocationStore(config));
+          Object.assign(builder.configureLocations(), supportChatLocationOptions());
           return builder
             .addClientServerChannel(SampleNames.supportChannel)
               .enableServer(config.supportChannelEndpoint)

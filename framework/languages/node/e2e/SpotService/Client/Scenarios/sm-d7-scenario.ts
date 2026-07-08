@@ -13,7 +13,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD7(options: ClientOptions): Promise<void> {
   const client = zlinkStreamConnectorFactory.create({
@@ -25,7 +24,7 @@ export async function runSmD7(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId: 'actor-sm-d7',
         displayName: 'stream auth',
@@ -33,14 +32,14 @@ export async function runSmD7(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === 'actor-sm-d7', 'SM-D7 auth reply actor mismatch.');
 
-    const reply = decodeStreamReply<ActorPingRes>(await client
+    const reply = await client
       .request({ value: 'auth-ok' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(reply.actorId === 'actor-sm-d7', 'SM-D7 relay actor mismatch.');
     ensure(reply.value === 'auth-ok', 'SM-D7 relay value mismatch.');
   } finally {

@@ -18,7 +18,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD3(options: ClientOptions): Promise<void> {
   const suffix = Date.now();
@@ -47,11 +46,11 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === entryActorId)
       .timeout(10000)
       .submit();
-    const entryReply = decodeStreamReply<ActorPingRes>(await entry
+    const entryReply = await entry
       .request({ value: 'entry-push' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     const entryNotify = await entryPushed;
     ensure(entryReply.actorId === entryActorId, 'SM-D3 entry bind actor mismatch.');
     ensure(entryReply.nodeRid === 'play-a', 'SM-D3 entry bind node mismatch.');
@@ -84,16 +83,16 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === userActorId)
       .timeout(10000)
       .submit();
-    const userReply = decodeStreamReply<ActorPingRes>(await user
+    const userReply = await user
       .request({ value: 'user-relay' } satisfies ActorPingReq)
       .packetName('UserActorPingReq')
       .timeout(5000)
-      .submit());
-    const userPushReply = decodeStreamReply<ActorPingRes>(await user
+      .submit<ActorPingRes>();
+    const userPushReply = await user
       .request({ value: 'user-push' } satisfies ActorPushReq)
       .packetName('UserActorPushReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     const userNotify = await userPushed;
 
     ensure(userReply.actorId === userActorId, 'SM-D3 user bind actor mismatch.');
@@ -128,11 +127,11 @@ async function joinUserSpotActor(
   spotRid: string,
   actorId: string
 ): Promise<void> {
-  const joined = decodeStreamReply<JoinUserSpotActorRes>(await client
+  const joined = await client
     .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
     .packetName('JoinUserSpotActorReq')
     .timeout(5000)
-    .submit());
+    .submit<JoinUserSpotActorRes>();
   ensure(joined.accepted && joined.actorId === actorId, `User spot actor join failed for ${actorId}.`);
 }
 

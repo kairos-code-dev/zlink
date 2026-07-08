@@ -2,7 +2,7 @@
 
 이 문서는 `framework/doc/plan/framework-node-sample-dotnet-porting-plan.ko.md`의
 샘플 단위 절차에 따라 현재 Node TicTacToe 샘플을 공통 샘플 문서와 `.NET` 기준 구현에
-매핑한다. `gap`은 완료 판정이 아니라 다음 수정 대상이다.
+매핑한다.
 
 ## 파일과 역할 매핑
 
@@ -43,6 +43,6 @@
 | `common: stream connector public wait` | `Client/tictactoe-client-scenario.ts` | validation | done | push notify를 connector wait interface로 검증한다. |
 | `common: success marker PASS TicTacToe.Ts` | `run_sample.sh` | validation | done | runner 성공 시 출력한다. |
 
-## 남은 확인
+## 남은 항목
 
 - 없음.

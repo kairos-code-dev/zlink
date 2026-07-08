@@ -10,6 +10,9 @@
       "@zlink-systems/framework": [
         "../../packages/framework/dist"
       ],
+      "@zlink-systems/framework-locations-redis": [
+        "../../packages/framework-locations-redis/dist"
+      ],
       "@zlink-systems/nestjs": [
         "../../packages/nestjs/dist"
       ],
@@ -17,7 +20,7 @@
         "../../packages/stream-connector/dist"
       ],
       "@zlink-systems/zlink": [
-        "../../../../../bindings/node/dist/index.d.ts"
+        "../../node_modules/-systems/zlink/dist/index.d.ts"
       ]
     }
   },

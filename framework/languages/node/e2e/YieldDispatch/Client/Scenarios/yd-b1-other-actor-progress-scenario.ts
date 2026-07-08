@@ -8,7 +8,6 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder, ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 export interface YieldActorScenarioContext {
@@ -26,11 +25,11 @@ export async function bindYieldActors(
   const actorA = existing?.actorA ?? `yield-actor-a-${uniqueId()}`;
   const actorB = existing?.actorB ?? `yield-actor-b-${uniqueId()}`;
   const requestedActorIds = actorIds ?? [actorA, actorB];
-  const reply = decodeStreamReply<BindYieldActorsRes>(await client
+  const reply = await client
     .request({ spotRid, actorIds: requestedActorIds } satisfies BindYieldActorsReq)
     .packetName('BindYieldActorsReq')
     .timeout(30000)
-    .submit());
+    .submit<BindYieldActorsRes>();
   ensure(reply.actors.length === requestedActorIds.length, 'YD-B actor bind count mismatch.');
   return { spotRid: reply.spotRid, actorA, actorB };
 }
@@ -56,12 +55,12 @@ export async function runYdB1(
     .submit();
   await Promise.all([yielding, fast]);
 
-  const evidence = decodeStreamReply<YieldEvidenceRes>(await yieldClient
+  const evidence = await yieldClient
     .request({ requestId } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
   containsRequestMarkersInOrder(evidence.evidence, requestId, [
     'actor-yield-started',
     'actor-yield-released',

@@ -2,15 +2,17 @@
 
 이 스위트는 공통 config-9 `to-actor messaging` 문서의 Node 구현 위치다.
 
-| 공통 항목 | Node 구현 |
-|-----------|-----------|
-| TA-A1 bind된 actor send/request | `Client/main.ts`가 actor를 생성한 뒤 caller 서버의 `/send`, `/request`를 호출한다. |
-| TA-A2 bind 안 된 actor send/request | `Client/main.ts`의 `TA-A2-unbound-*`가 session binding 없이 서버 측 caller에서 검증한다. |
-| TA-A3 no-bind 전달 뒤 이후 bind | `TA-A3-before-bind`가 생성 전 fail-fast를 확인하고, 생성 뒤 `TA-A3-after-bind-*`가 성공을 확인한다. |
-| TA-A4 unbind/disconnect 후 | `TA-A4-disconnected-*`가 session-bound 상태 없이 actor row가 유지되는 상태에서 호출한다. |
-| TA-B1 row 없음 | `TA-B1-missing*`가 `actorRouteNotFound`를 검증한다. |
-| TA-B2 stale location | caller 서버는 framework `actorLocationStale` kind를 그대로 JSON으로 반환한다. supervisor는 stale row 조작 뒤 같은 endpoint로 검증한다. |
-| TA-B3 route not connected | caller 서버는 framework `routeNotConnected` kind를 그대로 JSON으로 반환한다. supervisor는 actor row는 남기고 route plane을 끊은 뒤 같은 endpoint로 검증한다. |
+| 공통 ID | 상태 | Node 구현 | Runner 증거 |
+|---------|------|-----------|-------------|
+| TA-A1 | implemented | `Client/main.ts`의 `runTaA1()`이 session stream으로 actor를 bind하고 stream relay push를 확인한 뒤, caller 서버의 `/send`, `/request`로 no-bind 전달이 기존 session bind를 오염시키지 않는지 검증한다. | `run_e2e.sh TA-A1` 또는 전체 실행에서 `scenario TA-A1 passed`와 `to-actor-messaging e2e result=passed`를 출력한다. |
+| TA-A2 | implemented | `runTaA2()`가 session binding 없이 actor ref 기반 send/request를 검증한다. | `run_e2e.sh TA-A2` 또는 전체 실행에서 `scenario TA-A2 passed`를 출력한다. |
+| TA-A3 | implemented | `runTaA3()`가 session bind 전 no-bind send/request를 먼저 확인하고, 이후 stream bind와 relay push가 같은 actor에서 성공하는지 확인한다. | `run_e2e.sh TA-A3` 또는 전체 실행에서 `scenario TA-A3 passed`를 출력한다. |
+| TA-A4 | implemented | `runTaA4()`가 stream bind를 닫은 뒤 actor row가 유지되어 no-bind send/request가 성공하는지 확인한다. | `run_e2e.sh TA-A4` 또는 전체 실행에서 `scenario TA-A4 passed`를 출력한다. |
+| TA-B1 | implemented | `runTaB1()`이 없는 actor에 대해 send/request 모두 `actorRouteNotFound`를 검증한다. | `run_e2e.sh TA-B1` 또는 전체 실행에서 `scenario TA-B1 passed`를 출력한다. |
+| TA-B2 | implemented | `runTaB2()`가 정상 actor snapshot에서 generation만 오래된 값으로 바꾼 뒤 send/request 모두 `actorLocationStale`를 검증한다. | `run_e2e.sh TA-B2` 또는 전체 실행에서 `scenario TA-B2 passed`를 출력한다. |
+| TA-B3 | implemented | `runTaB3()`가 actor row는 만든 뒤 연결되지 않은 node rid를 가진 actor snapshot으로 send/request 모두 `routeNotConnected`를 검증한다. | `run_e2e.sh TA-B3` 또는 전체 실행에서 `scenario TA-B3 passed`를 출력한다. |
 
-`run_e2e.sh`는 Redis, actor owner 서버, caller 서버, client runner를 모두 띄운다. 실행 환경에서 Docker를
-쓸 수 없으면 `ZLINK_REDIS_E2E_ENDPOINT=host:port`로 외부 Redis를 지정한다.
+`run_e2e.sh`는 Redis, actor owner 서버, session stream 서버, caller 서버, client runner를 모두 띄운다.
+인자를 주지 않으면 전체 scenario를 실행하고, `TA-B2`처럼 공통 ID를 첫 인자로 주면 해당 scenario만
+실행한다. 실행 환경에서 Docker를 쓸 수 없으면 `ZLINK_REDIS_E2E_ENDPOINT=host:port`로 외부 Redis를
+지정한다.

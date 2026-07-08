@@ -33,18 +33,20 @@ import type {
   ZLinkMessage,
   ZLinkRouteClient,
   ZLinkSpotOutbound,
+  ZLinkSpotRefResolver,
   ZLinkSession,
   ZLinkSessionContext,
   ZLinkSessionDispatchContext,
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
-import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_REF_RESOLVER } from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Support/evidence-store';
 
 class YieldSession implements ZLinkSession {
   constructor(
     private readonly route: ZLinkRouteClient,
     private readonly outbound: ZLinkSpotOutbound,
+    private readonly spotRefs: ZLinkSpotRefResolver,
     private readonly evidence: EvidenceStore,
     readonly context: ZLinkSessionContext
   ) {}
@@ -135,47 +137,47 @@ class YieldSession implements ZLinkSession {
     }
 
     if (dispatch.packetName === 'HoldMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<HoldMsg>(Object as never), signal);
+      await this.relayToSpot(dispatch, payload.decode<HoldMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'YieldMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldMsg>(Object as never), signal);
+      await this.relayToSpot(dispatch, payload.decode<YieldMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'WorkerYieldMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<WorkerYieldMsg>(Object as never), signal);
+      await this.relayToSpot(dispatch, payload.decode<WorkerYieldMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'YieldTimeoutMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldTimeoutMsg>(Object as never), signal);
+      await this.relayToSpot(dispatch, payload.decode<YieldTimeoutMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'YieldCancelMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldCancelMsg>(Object as never), signal);
+      await this.relayToSpot(dispatch, payload.decode<YieldCancelMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'ProbeMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<ProbeMsg>(Object as never), signal);
+      await this.relayToSpot(dispatch, payload.decode<ProbeMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'TimerStartMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<TimerStartMsg>(Object as never), signal);
+      await this.relayTimerControl(dispatch, payload.decode<TimerStartMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'TimerStopMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<TimerStopMsg>(Object as never), signal);
+      await this.relayTimerControl(dispatch, payload.decode<TimerStopMsg>(Object as never), signal);
       return;
     }
 
     if (dispatch.packetName === 'RemoteSpotYieldReq') {
-      const reply = await this.relayToSpotRequestWithRetry(
+      const reply = await this.relayToSpotRequest(
         dispatch,
         payload.decode<RemoteSpotYieldReq>(Object as never),
         signal
@@ -185,7 +187,7 @@ class YieldSession implements ZLinkSession {
     }
 
     if (dispatch.packetName === 'RemoteSpotYieldMsg') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<RemoteSpotYieldMsg>(Object as never), signal);
+      await this.relayToSpot(dispatch, payload.decode<RemoteSpotYieldMsg>(Object as never), signal);
       return;
     }
 
@@ -248,8 +250,9 @@ class YieldSession implements ZLinkSession {
     signal?: AbortSignal
   ): Promise<YieldScenarioRes> {
     await this.ensurePlaySpot(request.spotRid, signal);
+    const spot = await this.requireSpotRef(request.spotRid, signal);
     await this.outbound
-      .requestToSpot(request.spotRid, {
+      .requestToSpot(spot, {
         requestId: request.requestId,
         delayMs: request.delayMs,
         correlationId: 'shutdown'
@@ -270,8 +273,9 @@ class YieldSession implements ZLinkSession {
     signal?: AbortSignal
   ): Promise<YieldScenarioRes> {
     await this.ensurePlaySpot(request.spotRid, signal);
+    const spot = await this.requireSpotRef(request.spotRid, signal);
     await this.outbound
-      .sendToSpot(request.spotRid, {
+      .sendToSpot(spot, {
         requestId: request.requestId,
         marker: 'shutdown-recovery-probe'
       } satisfies ProbeMsg)
@@ -321,7 +325,7 @@ class YieldSession implements ZLinkSession {
       .submit<YieldEvidenceRes>(signal);
   }
 
-  private async relayToSpotWithRetry(
+  private async relayToSpot(
     dispatch: ZLinkSessionDispatchContext,
     request: HoldMsg | YieldMsg | WorkerYieldMsg | YieldTimeoutMsg | YieldCancelMsg | ProbeMsg | TimerStartMsg | TimerStopMsg | RemoteSpotYieldMsg,
     signal?: AbortSignal
@@ -330,27 +334,15 @@ class YieldSession implements ZLinkSession {
     if (spotRid === undefined || spotRid.trim() === '') {
       throw new Error(`${YieldDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
     }
-    const deadline = Date.now() + 10000;
-    let lastError: unknown;
-    while (Date.now() < deadline) {
-      try {
-        await this.outbound
-          .sendToSpot(spotRid, request)
-          .packetName(dispatch.packetName)
-          .submit(signal);
-        this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=sent`);
-        return;
-      } catch (error) {
-        lastError = error;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
-    const message = lastError instanceof Error ? lastError.message : String(lastError);
-    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=failed|error=${message}`);
-    throw new Error(`Timed out relaying '${dispatch.packetName}' to spot '${spotRid}'. Last error: ${message}`);
+    const spot = await this.requireSpotRef(spotRid, signal);
+    await this.outbound
+      .sendToSpot(spot, await this.withTargetSpotRef(request, signal))
+      .packetName(dispatch.packetName)
+      .submit(signal);
+    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=sent`);
   }
 
-  private async relayToSpotRequestWithRetry(
+  private async relayToSpotRequest(
     dispatch: ZLinkSessionDispatchContext,
     request: RemoteSpotYieldReq,
     signal?: AbortSignal
@@ -359,25 +351,59 @@ class YieldSession implements ZLinkSession {
     if (spotRid === undefined || spotRid.trim() === '') {
       throw new Error(`${YieldDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
     }
-    const deadline = Date.now() + 10000;
-    let lastError: unknown;
-    while (Date.now() < deadline) {
-      try {
-        const reply = await this.outbound
-          .requestToSpot(spotRid, request)
-          .packetName(dispatch.packetName)
-          .timeout(5000)
-          .submit<YieldDispatchRes>(signal);
-        this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=replied`);
-        return reply;
-      } catch (error) {
-        lastError = error;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
+    const spot = await this.requireSpotRef(spotRid, signal);
+    const reply = await this.outbound
+      .requestToSpot(spot, await this.withTargetSpotRef(request, signal))
+      .packetName(dispatch.packetName)
+      .timeout(5000)
+      .submit<YieldDispatchRes>(signal);
+    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=replied`);
+    return reply;
+  }
+
+  private async relayTimerControl(
+    dispatch: ZLinkSessionDispatchContext,
+    request: TimerStartMsg | TimerStopMsg,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (!dispatch.canReply) {
+      await this.relayToSpot(dispatch, request, signal);
+      return;
     }
-    const message = lastError instanceof Error ? lastError.message : String(lastError);
-    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=failed|error=${message}`);
-    throw new Error(`Timed out relaying '${dispatch.packetName}' to spot '${spotRid}'. Last error: ${message}`);
+    const spotRid = dispatch.metadata.get(YieldDispatchNames.spotRidMetadata);
+    if (spotRid === undefined || spotRid.trim() === '') {
+      throw new Error(`${YieldDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
+    }
+    const spot = await this.requireSpotRef(spotRid, signal);
+    await this.outbound
+      .requestToSpot(spot, await this.withTargetSpotRef(request, signal))
+      .packetName(dispatch.packetName)
+      .timeout(5000)
+      .submit(signal);
+    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=replied`);
+    this.context.client.reply({ ok: true }).submit(signal);
+  }
+
+  private async requireSpotRef(spotRid: string, signal?: AbortSignal) {
+    const spot = await this.spotRefs.resolveSpotRef(spotRid, signal);
+    if (spot === undefined) {
+      throw new Error(`SpotRef '${spotRid}' was not found.`);
+    }
+    return spot;
+  }
+
+  private async withTargetSpotRef<T extends object>(
+    request: T,
+    signal?: AbortSignal
+  ): Promise<T> {
+    const candidate = request as { readonly targetSpotRid?: string; readonly targetSpot?: unknown };
+    if (candidate.targetSpot !== undefined || candidate.targetSpotRid === undefined) {
+      return request;
+    }
+    return {
+      ...request,
+      targetSpot: await this.requireSpotRef(candidate.targetSpotRid, signal)
+    };
   }
 }
 
@@ -386,10 +412,11 @@ export class YieldSessionFactory implements ZLinkSessionFactory<YieldSession> {
   constructor(
     @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
+    @Inject(ZLINK_SPOT_REF_RESOLVER) private readonly spotRefs: ZLinkSpotRefResolver,
     private readonly evidence: EvidenceStore
   ) {}
 
   create(context: ZLinkSessionContext): YieldSession {
-    return new YieldSession(this.route, this.outbound, this.evidence, context);
+    return new YieldSession(this.route, this.outbound, this.spotRefs, this.evidence, context);
   }
 }

@@ -5,7 +5,7 @@ const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 
-const zlink = require('../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 const framework = require('../packages/framework/dist/internal');
 const backend = require('../packages/framework/dist/runtime/backend');
 const connector = require('../packages/stream-connector/dist');

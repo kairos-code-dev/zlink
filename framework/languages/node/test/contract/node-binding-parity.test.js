@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const zlink = require('../../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 
 test('node binding exposes the public API required by framework P2-P8', () => {
   for (const name of [

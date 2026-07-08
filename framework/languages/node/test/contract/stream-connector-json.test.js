@@ -43,6 +43,28 @@ test('stream connector json codec writes json payload frame through connector', 
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { ready: true });
 });
 
+test('stream connector close drains submitted one-way send writes', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  transportFactory.connection.delayWrites = true;
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+  });
+
+  await instance.connect();
+  instance.send(new Ready()).packetName('Ready').submit();
+  const closing = instance.close();
+
+  assert.equal(transportFactory.connection.frames.length, 0);
+  transportFactory.connection.releaseWrites();
+  await closing;
+
+  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal(header.name, 'Ready');
+  assert.equal(transportFactory.connection.closed, true);
+});
+
 test('stream connector json codec decodes reply payload through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
@@ -52,6 +74,38 @@ test('stream connector json codec decodes reply payload through connector', asyn
 
   await instance.connect();
   const pending = instance.request(new Join()).timeout(1000).submit();
+
+  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
+    connector.ZlinkStreamHeaderCodec.encode({
+      kind: connector.ZlinkStreamMessageKind.Response,
+      codec: connector.ZlinkStreamCodec.Json,
+      flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+      requestSeq: requestHeader.requestSeq,
+      name: 'JoinReply',
+      metadata: connector.ZlinkStreamMetadataMap.empty
+    }),
+    new TextEncoder().encode('{"accepted":true}')
+  ));
+
+  await instance.dispatch();
+  assert.deepEqual(await pending, { accepted: true });
+});
+
+test('stream connector json codec decodes plain-object request replies through connector', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+  });
+
+  await instance.connect();
+  const pending = instance
+    .request({ join: true })
+    .packetName('Join')
+    .timeout(1000)
+    .submit();
 
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -194,9 +248,15 @@ class MemoryConnection {
   constructor() {
     this.frames = [];
     this.inbound = [];
+    this.closed = false;
+    this.delayWrites = false;
+    this.writeResolvers = [];
   }
 
   async write(frame) {
+    if (this.delayWrites) {
+      await new Promise((resolve) => this.writeResolvers.push(resolve));
+    }
     this.frames.push(frame);
   }
 
@@ -208,5 +268,14 @@ class MemoryConnection {
     this.inbound.push(frame);
   }
 
-  async close() {}
+  releaseWrites() {
+    const resolvers = this.writeResolvers.splice(0);
+    for (const resolve of resolvers) {
+      resolve();
+    }
+  }
+
+  async close() {
+    this.closed = true;
+  }
 }

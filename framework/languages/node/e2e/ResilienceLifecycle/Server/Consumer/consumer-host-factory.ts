@@ -7,7 +7,7 @@ import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { parseConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
-import { createConsumerEndpoints, requestProfileWithRetry } from './Endpoints/consumer-endpoints';
+import { createConsumerEndpoints, requestProfile } from './Endpoints/consumer-endpoints';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { createRedisLocationStore, resilienceLocationOptions } from '../../Shared/location-store';
 
@@ -36,7 +36,7 @@ async function requestWithNewClient(options: ConsumerOptions, request: ProfileRe
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
   try {
     const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
-    return await requestProfileWithRetry(channel, request, 5000);
+    return await requestProfile(channel, request, 5000);
   } finally {
     await Promise.race([
       app.close(),

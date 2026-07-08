@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { BINGO_SAMPLE_CONFIG } from '../../../Configuration/sample-config';
 import { SampleNames } from '../../../Configuration/sample-names';
-import { retry } from '../../../runtime-support';
 import { PacketNames, authenticatePlayerReq, authenticateSessionRes, ensurePlayerActorReq } from '../../../../Shared/Contracts/messages';
 import type { RoutingId, ZLinkChannelClient, ZLinkRouteClient } from '@zlink-systems/framework';
 import type { BingoSampleConfig } from '../../../Configuration/sample-config';
@@ -35,11 +34,11 @@ class SessionAuthenticator {
 
   async handle(request: AuthenticateReq, context: AuthenticateSessionContext): Promise<AuthenticateSessionRes> {
     console.log(`session-auth request api actor=${request.accessToken}`);
-    const authenticated = await retry(() => this.zlinkClient
+    const authenticated = await this.zlinkClient
         .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
         .packetName(PacketNames.authenticatePlayerReq)
         .timeout(500)
-        .submit<AuthenticatePlayerRes>(), { delayMs: 25, maxAttempts: 200 });
+        .submit<AuthenticatePlayerRes>();
     console.log(`session-auth api accepted=${authenticated.accepted} actor=${authenticated.actorId ?? '-'}`);
 
     if (
@@ -54,20 +53,17 @@ class SessionAuthenticator {
 
     console.log(`session-auth ensure actor=${authenticated.actorId}`);
     const ensureRequest = ensurePlayerActorReq(authenticated.actorId, authenticated.displayName);
-    const ensured = await retry(async () => {
-      if (this.config.preferredPlayNodeRid.length > 0) {
-        return await this.routeClient
-          .requestToNode(SampleNames.playChannel, this.config.preferredPlayNodeRid, ensureRequest)
-          .packetName(PacketNames.ensurePlayerActorReq)
-          .timeout(500)
-          .submit<EnsurePlayerActorRes>(AbortSignal.timeout(500));
-      }
-      return await this.zlinkClient
+    const ensured = this.config.preferredPlayNodeRid.length > 0
+      ? await this.routeClient
+        .requestToNode(SampleNames.playChannel, this.config.preferredPlayNodeRid, ensureRequest)
+        .packetName(PacketNames.ensurePlayerActorReq)
+        .timeout(500)
+        .submit<EnsurePlayerActorRes>(AbortSignal.timeout(500))
+      : await this.zlinkClient
         .requestToChannel(SampleNames.playChannel, ensureRequest)
         .packetName(PacketNames.ensurePlayerActorReq)
         .timeout(500)
         .submit<EnsurePlayerActorRes>();
-    }, { delayMs: 25, maxAttempts: 200 });
     console.log(`session-auth ensured actor=${ensured.actorId} node=${ensured.actor.nodeRid}`);
 
     await context.actors.bindOrGet({

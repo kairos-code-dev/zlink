@@ -5,12 +5,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-export BINGO_LOG_DIR="${BINGO_LOG_DIR:-${SCRIPT_DIR}/logs}"
+export BINGO_LOG_DIR="${BINGO_LOG_DIR:-${LOG_DIR}}"
 mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
 rm -f "${BINGO_LOG_DIR}"/*.log
 
 PIDS=()
+PID_NAMES=()
 REDIS_CONTAINER_ID=""
+source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 
 cleanup() {
   local status="$?"
@@ -41,7 +43,11 @@ cleanup() {
     fi
   done
   for pid in "${PIDS[@]}"; do
-    wait "${pid}" 2>/dev/null || true
+    wait "${pid}" 2>/dev/null
+    local wait_status="$?"
+    if [[ "${status}" == "0" && "${wait_status}" != "0" && "${wait_status}" != "130" && "${wait_status}" != "143" ]]; then
+      status="${wait_status}"
+    fi
   done
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
     docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
@@ -117,7 +123,7 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "bingo-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+start_redis_container "bingo-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
 export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 
 python3 - \
@@ -174,6 +180,9 @@ write(sys.argv[4], {
     ],
     "playSpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}",
     "playSpotPubSubEndpoint": "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}",
+    "playSpotPubSubPeerEndpoints": [
+        "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}"
+    ],
     "playSpotNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}"
 })
 write(sys.argv[5], {
@@ -187,6 +196,9 @@ write(sys.argv[5], {
     ],
     "playSpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}",
     "playSpotPubSubEndpoint": "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}",
+    "playSpotPubSubPeerEndpoints": [
+        "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}"
+    ],
     "playSpotNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}"
 })
 write(sys.argv[6], {
@@ -228,7 +240,8 @@ wait_port() {
   local port
   host="$(endpoint_host "${endpoint}")"
   port="$(endpoint_port "${endpoint}")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 300); do
+    check_servers
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -239,62 +252,16 @@ wait_port() {
 }
 
 wait_location_ready() {
-  node - \
-    "${BINGO_REDIS_ENDPOINT}" \
-    "${BINGO_REDIS_KEY_PREFIX}location" \
-    "${BINGO_API_A_ENDPOINT}" \
-    "${BINGO_API_B_ENDPOINT}" \
-    "${BINGO_PLAY_A_SPOT_ENDPOINT}" \
-    "${BINGO_PLAY_B_SPOT_ENDPOINT}" <<'NODE'
-const redisEndpoint = process.argv[2];
-const keyPrefix = process.argv[3];
-const expectedApiEndpoints = new Set(process.argv.slice(4, 6));
-const expectedSpotEndpoints = new Set(process.argv.slice(6));
-const framework = require('@zlink-systems/framework');
-const { ZLinkRedisLocationStore } = require('@zlink-systems/framework-locations-redis');
-
-const store = new ZLinkRedisLocationStore({
-  url: `redis://${redisEndpoint}`,
-  keyPrefix
-});
-
-async function main() {
-  let lastPeers = [];
-  let lastSpotPeers = [];
-  let lastLeases = [];
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    lastPeers = await store.listPeers({
-      autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
-      meshName: 'bingo.api',
-      role: framework.ZLinkLocationRole.Router
-    });
-    lastSpotPeers = await store.listPeers({
-      autoConnectType: framework.ZLinkLocationAutoConnectType.SpotMesh,
-      meshName: 'bingo.room',
-      role: framework.ZLinkLocationRole.Spot
-    });
-    lastLeases = (await store.listOwnerLeases()).leases;
-    if ([...expectedApiEndpoints].every((endpoint) =>
-      lastPeers.some((peer) => peer.endpoint === endpoint && lastLeases.some((lease) => lease.ownerId === peer.ownerId))) &&
-      [...expectedSpotEndpoints].every((endpoint) =>
-        lastSpotPeers.some((peer) => peer.endpoint === endpoint && lastLeases.some((lease) => lease.ownerId === peer.ownerId)))) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  console.error('Timed out waiting for Bingo location readiness.');
-  console.error(JSON.stringify({ peers: lastPeers, spotPeers: lastSpotPeers, leases: lastLeases }, (_key, value) =>
-    typeof value === 'bigint' ? value.toString() : value, 2));
-  process.exitCode = 1;
-}
-
-main()
-  .finally(() => store.dispose())
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-NODE
+  check_servers
+  node "${SCRIPT_DIR}/../../e2e/location-readiness.js" \
+    --redis-endpoint "${BINGO_REDIS_ENDPOINT}" \
+    --key-prefix "${BINGO_REDIS_KEY_PREFIX}location" \
+    --peer client-server bingo.api router \
+      "${BINGO_API_A_ENDPOINT}" \
+      "${BINGO_API_B_ENDPOINT}" \
+    --peer spot-mesh bingo.room spot \
+      "${BINGO_PLAY_A_SPOT_ENDPOINT}" \
+      "${BINGO_PLAY_B_SPOT_ENDPOINT}"
 }
 
 start_server() {
@@ -303,6 +270,26 @@ start_server() {
   local config="$3"
   ZLINK_SAMPLE_CONFIG="${config}" node "${SCRIPT_DIR}/${entry}" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
+  PID_NAMES+=("${name}")
+}
+
+check_servers() {
+  local index
+  for index in "${!PIDS[@]}"; do
+    local pid="${PIDS[$index]}"
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      local status
+      set +e
+      wait "${pid}" 2>/dev/null
+      status="$?"
+      set -e
+      echo "Bingo server ${PID_NAMES[$index]} exited before readiness with status ${status}" >&2
+      if [[ -f "${LOG_DIR}/${PID_NAMES[$index]}.log" ]]; then
+        cat "${LOG_DIR}/${PID_NAMES[$index]}.log" >&2
+      fi
+      return "${status}"
+    fi
+  done
 }
 
 (cd "${SCRIPT_DIR}" && npm run build >/dev/null)

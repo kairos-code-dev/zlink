@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkFrameworkException, ZLinkMessageFlowLogMode, type ZLinkActorClient } from '@zlink-systems/framework';
+import { ZLinkFrameworkErrorKind, ZLinkFrameworkException, ZLinkMessageFlowLogMode, type ActorRef, type ZLinkActorClient } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
-import { actorAsk, actorNotify, PacketNames, type ActorCallRequest, type ActorCallResponse, type ActorReply } from '../../Shared/messages';
+import { actorAsk, actorNotify, actorPush, PacketNames, type ActorCallRequest, type ActorCallResponse, type ActorRefSnapshot, type ActorReply } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
 import { parseServerOptions } from '../Support/options';
 
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           await actors
-            .sendToActor(request.actorId, actorNotify(request.scenario, request.actorId, request.value))
+            .sendToActor(requireActorRef(request), actorNotify(request.scenario, request.actorId, request.value))
             .packetName(PacketNames.actorNotify)
             .submit();
           return { scenario: request.scenario, actorId: request.actorId, result: 'sent' } satisfies ActorCallResponse;
@@ -68,8 +68,25 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           const reply = await actors
-            .requestToActor(request.actorId, actorAsk(request.scenario, request.actorId, request.value))
+            .requestToActor(requireActorRef(request), actorAsk(request.scenario, request.actorId, request.value))
             .packetName(PacketNames.actorAsk)
+            .timeout(5000)
+            .submit<ActorReply>();
+          return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;
+        } catch (error) {
+          return failure(request, error);
+        }
+      }
+    },
+    {
+      method: 'POST',
+      path: '/push',
+      handle: async (body) => {
+        const request = body as ActorCallRequest;
+        try {
+          const reply = await actors
+            .requestToActor(requireActorRef(request), actorPush(request.scenario, request.actorId, request.value))
+            .packetName(PacketNames.actorPush)
             .timeout(5000)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;
@@ -86,6 +103,24 @@ async function main(): Promise<void> {
   }
   await closeHttpServer(server);
   await app.close();
+}
+
+function requireActorRef(request: ActorCallRequest): ActorRef {
+  if (request.actor === undefined) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      `Actor route '${request.actorId}' was not found.`
+    );
+  }
+  return actorRefFromSnapshot(request.actor);
+}
+
+function actorRefFromSnapshot(actor: ActorRefSnapshot): ActorRef {
+  return {
+    nodeRid: actor.nodeRid,
+    actorId: actor.actorId,
+    generation: BigInt(actor.generation)
+  } as ActorRef;
 }
 
 function failure(request: ActorCallRequest, error: unknown): ActorCallResponse {

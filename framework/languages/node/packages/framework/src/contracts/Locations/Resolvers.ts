@@ -1,24 +1,23 @@
-import type { RoutingId } from '../Common';
+import type { RoutingId, SpotRef } from '../Common';
 import type {
   ZLinkPeerLocation,
   ZLinkPeerLocationFilter,
-  ZLinkSpotAddress,
 } from './Models';
 
 export interface IZLinkPeerLocationResolver {
   listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
-export interface IZLinkSpotAddressResolver {
-  resolveSpotAddress(
+export interface ZLinkSpotRefResolver {
+  resolveSpotRef(
     spotRid: RoutingId,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotAddress | undefined>;
+  ): Promise<SpotRef | undefined>;
 }
 
 export interface IZLinkActorAddressResolver {
-  resolveActorSpotAddress(
+  resolveActorSpotRef(
     actorId: string,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotAddress | undefined>;
+  ): Promise<SpotRef | undefined>;
 }

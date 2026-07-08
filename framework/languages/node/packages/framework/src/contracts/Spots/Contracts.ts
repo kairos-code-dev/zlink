@@ -1,6 +1,6 @@
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall, ZLinkYieldRequestCall } from '../Channels';
-import type { RoutingId, Type, ZLinkMessage } from '../Common';
+import type { RoutingId, SpotRef, Type, ZLinkMessage } from '../Common';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
 import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
@@ -129,8 +129,8 @@ export interface ZLinkSpotActorReplyOptions {
 }
 
 export interface ZLinkSpotOutbound {
-  sendToSpot(spotRid: RoutingId, message: unknown): ZLinkSendCall;
-  requestToSpot(spotRid: RoutingId, request: unknown): ZLinkYieldRequestCall;
+  sendToSpot(spot: SpotRef, message: unknown): ZLinkSendCall;
+  requestToSpot(spot: SpotRef, request: unknown): ZLinkYieldRequestCall;
   publish(topic: string, event: unknown): ZLinkPublishCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
   requestToChannel(channelName: string, request: unknown): ZLinkYieldRequestCall;

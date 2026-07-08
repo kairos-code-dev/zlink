@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const zlink = require('../../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const msgpack = require('../../packages/framework-codec-msgpack/dist');
 const protobuf = require('../../packages/framework-codec-protobuf/dist');
@@ -773,7 +773,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   ]);
 });
 
-test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote address is not a route channel', async () => {
+test('ZLinkActorNativeJoinCoordinator uses native spot-node join when spot route target is not routable', async () => {
   const events = [];
   const createdRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
   class PlayerActor {
@@ -809,7 +809,7 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
       return true;
     }
   });
-  const remoteAddressResolver = {
+  const spotRouteResolver = {
     async resolve(spotRid) {
       events.push(`resolve:${spotRid}`);
       return {
@@ -824,7 +824,7 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
       node,
-      remoteAddressResolver,
+      spotRouteResolver,
       routedTransport: {
         canRoutePacketChannel(routerChannelId) {
           events.push(`canRoutePacket:${routerChannelId}`);
@@ -886,7 +886,7 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
       throw new Error('native join must not be used when the route transport can route the SPOT node channel');
     }
   });
-  const remoteAddressResolver = {
+  const spotRouteResolver = {
     async resolve(spotRid) {
       events.push(`resolve:${spotRid}`);
       return {
@@ -901,7 +901,7 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
       node,
-      remoteAddressResolver,
+      spotRouteResolver,
       routedTransport: {
         canRoutePacketChannel(routerChannelId) {
           events.push(`canRoutePacket:${routerChannelId}`);

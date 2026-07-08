@@ -16,7 +16,7 @@
 | RM-C4 | done | timeout 뒤 후속 request 비오염을 검증한다. |
 | RM-C5 | done | 미등록 packet request/send와 dispatch error evidence를 검증한다. |
 | RM-C7 | done | public `configureServerSocket().weight`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
-| RM-C8 | done | payload length/hash 왕복을 검증한다. MaxMessageSize 초과 거부는 `.NET` feature-map과 같은 한계로 남긴다. |
+| RM-C8 | done | payload length/hash 왕복을 검증하고, server socket `maxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 확인한다. |
 | RM-C9 | done | 느린 provider에 다량 one-way send를 제출하고, public bounded-failure oracle 없이 backlog 해소 뒤 후속 request와 evidence가 회복되는지 검증한다. |
 
 검증:

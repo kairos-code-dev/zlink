@@ -33,5 +33,5 @@
 
 - `framework/languages/node/e2e/ResilienceLifecycle/run_e2e.sh`
   - PASS: `logs/20260703-211853-78546`
-- gap scenario: 없음
+- 남은 scenario: 없음
 - 미착수 scenario: 없음

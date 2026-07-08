@@ -19,7 +19,7 @@ export function createConsumerEndpoints(
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready' }) },
     { method: 'POST', path: '/profile/batch-request', handle: (body) => batchRequest(channel, body as ProfileReq[]) },
-    { method: 'POST', path: '/profile/request', handle: (body) => requestProfileWithRetry(channel, body as ProfileReq, 5000) },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, body as ProfileReq, 5000) },
     { method: 'POST', path: '/profile/request/no-retry', handle: (body) => requestProfileOnce(channel, body as ProfileReq, 10000) },
     { method: 'POST', path: '/profile/request/timeout/100', handle: (body) => requestProfileTimeout(channel, body as ProfileReq, 100) },
     { method: 'POST', path: '/profile/request/timeout/10000', handle: (body) => requestProfileTimeout(channel, body as ProfileReq, 10000) },
@@ -38,7 +38,7 @@ export function createConsumerEndpoints(
         return { status: 'sent' };
       }
     },
-    { method: 'POST', path: '/profile/payload', handle: (body) => requestPayloadWithRetry(channel, body as PayloadReq) },
+    { method: 'POST', path: '/profile/payload', handle: (body) => requestPayload(channel, body as PayloadReq) },
     { method: 'POST', path: '/profile/backpressure/reset', handle: () => ({ status: 'ready' }) },
     { method: 'POST', path: '/profile/backpressure/send', handle: (body) => submitProfileUnderPressure(channel, body as ProfileMsg) },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
@@ -48,21 +48,21 @@ export function createConsumerEndpoints(
 async function batchRequest(channel: ZLinkChannelClient, requests: readonly ProfileReq[]): Promise<ProfileRes[]> {
   const replies: ProfileRes[] = [];
   for (const request of requests) {
-    replies.push(await requestProfileWithRetry(channel, request, 5000));
+    replies.push(await requestProfile(channel, request, 5000));
   }
   return replies;
 }
 
-export async function requestProfileWithRetry(
+export async function requestProfile(
   channel: ZLinkChannelClient,
   request: ProfileReq,
   timeoutMs: number
 ): Promise<ProfileRes> {
-  return retryUntil(async () => channel
+  return await channel
     .requestToChannel('profile', request)
     .packetName(PacketNames.profileReq)
     .timeout(timeoutMs)
-    .submit<ProfileRes>(), 'direct profile endpoints');
+    .submit<ProfileRes>();
 }
 
 async function requestProfileOnce(
@@ -94,12 +94,12 @@ async function requestProfileTimeout(
   }
 }
 
-async function requestPayloadWithRetry(channel: ZLinkChannelClient, request: PayloadReq): Promise<PayloadRes> {
-  return retryUntil(async () => channel
+async function requestPayload(channel: ZLinkChannelClient, request: PayloadReq): Promise<PayloadRes> {
+  return await channel
     .requestToChannel('profile', request)
     .packetName(PacketNames.payloadReq)
     .timeout(10000)
-    .submit<PayloadRes>(), 'payload profile endpoint');
+    .submit<PayloadRes>();
 }
 
 function sendProfile(channel: ZLinkChannelClient, command: ProfileMsg): { readonly status: string } {
@@ -116,7 +116,7 @@ async function requestProfileFailure(
   timeoutMs: number
 ): Promise<RequestFailureRes> {
   try {
-    await requestProfileWithRetry(channel, request, timeoutMs);
+    await requestProfile(channel, request, timeoutMs);
     return { failed: false, failureType: '' };
   } catch (error) {
     return { failed: true, failureType: error instanceof Error ? error.name : 'Error' };
@@ -142,18 +142,4 @@ function submitProfileUnderPressure(channel: ZLinkChannelClient, command: Profil
     .packetName(PacketNames.profileMsg)
     .submit();
   return 'Submitted';
-}
-
-async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {
-  const deadline = Date.now() + 30000;
-  let last: unknown;
-  while (Date.now() < deadline) {
-    try {
-      return await operation();
-    } catch (error) {
-      last = error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  throw new Error(`Timed out waiting for ${label}: ${last instanceof Error ? last.message : String(last)}`);
 }

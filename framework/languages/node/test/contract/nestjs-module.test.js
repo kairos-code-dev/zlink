@@ -64,6 +64,20 @@ function fakeSpotRouteBridge(calls, reply) {
   };
 }
 
+function createNoopMonitoringAdapter() {
+  return {
+    openSocketMonitor() {
+      return {
+        nativeInstance: {},
+        onEvent() {},
+        recv() { return {}; },
+        status() { return {}; },
+        async dispose() {}
+      };
+    }
+  };
+}
+
 test('ZLinkModule.forRoot registers always-available providers for empty options', () => {
   const module = nestjs.ZLinkModule.forRoot();
   const tokens = providerTokens(module);
@@ -265,7 +279,7 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
   assert.doesNotThrow(
     () => spotPublisher.publish('spot-events', 'topic', { ok: true }).packetName('Event').submit(),
   );
-  assert.doesNotThrow(
+  await assert.rejects(
     () => boundSessionFactory.create('actor-1').send({ ok: true }).packetName('Push').submit()
   );
 });
@@ -978,6 +992,10 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
   class PlayerActor {}
   class EntrySpot {}
   class RoomSpot {}
+  class EntryPacketHandler {}
+  class EntrySubscriptionHandler {}
+  class RoomPacketHandler {}
+  class RoomSubscriptionHandler {}
   class EntryNoticeHandler {}
   class MatchHandler {}
   class RoomNoticeHandler {}
@@ -1008,6 +1026,22 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
     periodMs: 250,
     spot: () => RoomSpot
   })(RoomTimerHandler);
+  nestjs.zlinkEntrySpotPacketHandler({
+    entrySpot: () => EntrySpot,
+    packetName: 'entry.packet'
+  })(EntryPacketHandler);
+  nestjs.zlinkEntrySpotSubscriptionHandler({
+    entrySpot: () => EntrySpot,
+    topic: 'entry.topic'
+  })(EntrySubscriptionHandler);
+  nestjs.zlinkSpotPacketHandler({
+    packetName: 'room.packet',
+    spot: () => RoomSpot
+  })(RoomPacketHandler);
+  nestjs.zlinkSpotSubscriptionHandler({
+    spot: () => RoomSpot,
+    topic: 'room.topic'
+  })(RoomSubscriptionHandler);
 
   class TestModule {}
   Module({
@@ -1016,7 +1050,17 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
         .addEntrySpot(EntrySpot)
         .addSpotFactory(RoomSpot)
       .build())],
-    providers: [EntryNoticeHandler, MatchHandler, RoomNoticeHandler, SubmitHandler, RoomTimerHandler]
+    providers: [
+      EntryPacketHandler,
+      EntrySubscriptionHandler,
+      EntryNoticeHandler,
+      MatchHandler,
+      RoomPacketHandler,
+      RoomSubscriptionHandler,
+      RoomNoticeHandler,
+      SubmitHandler,
+      RoomTimerHandler
+    ]
   })(TestModule);
 
   const app = await NestFactory.createApplicationContext(TestModule, { logger: false, abortOnError: false });
@@ -1035,6 +1079,16 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
     handlerType: MatchHandler,
     packetName: 'match'
   }]);
+  assert.deepEqual(spotNode.entrySpotPacketHandlers, [{
+    entrySpotType: EntrySpot,
+    handlerType: EntryPacketHandler,
+    packetName: 'entry.packet'
+  }]);
+  assert.deepEqual(spotNode.entrySpotSubscriptionHandlers, [{
+    entrySpotType: EntrySpot,
+    handlerType: EntrySubscriptionHandler,
+    topic: 'entry.topic'
+  }]);
   assert.deepEqual(spotNode.spotActorSendHandlers, [{
     actorType: PlayerActor,
     handlerType: RoomNoticeHandler,
@@ -1046,6 +1100,16 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
     handlerType: SubmitHandler,
     packetName: 'submit',
     spotType: RoomSpot
+  }]);
+  assert.deepEqual(spotNode.spotPacketHandlers, [{
+    handlerType: RoomPacketHandler,
+    packetName: 'room.packet',
+    spotType: RoomSpot
+  }]);
+  assert.deepEqual(spotNode.spotSubscriptionHandlers, [{
+    handlerType: RoomSubscriptionHandler,
+    spotType: RoomSpot,
+    topic: 'room.topic'
   }]);
   assert.deepEqual(spotNode.spotTimerHandlers, [{
     handlerType: RoomTimerHandler,
@@ -1442,31 +1506,16 @@ test('ZLinkModule.forRoot maps one location store into runtime registration', as
   assert.equal(registration.locations.storeInstance, store);
 });
 
-test('ZLinkModule.forRoot registers custom spot remote address resolver as concrete provider', async () => {
-  class CustomSpotRemoteAddressResolver {
-    async resolve() {
-      return {
-        routerChannelId: 'play',
-        targetNodeRid: 'node-a',
-        spotRid: 'spot-a',
-        spotKind: framework.ZLinkSpotKind.User
-      };
-    }
-  }
+test('ZLinkModule.forRoot exposes SpotRef resolvers from location stores', async () => {
+  const store = new framework.ZLinkInMemoryLocationStore();
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .options({ spotRemoteAddressResolver: CustomSpotRemoteAddressResolver })
+    .addLocationStore(store)
     .build());
   const tokens = providerTokens(module);
-  const container = await resolveModuleProviders(module, [
-    CustomSpotRemoteAddressResolver,
-    nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER
-  ]);
 
-  assert.equal(tokens.has(CustomSpotRemoteAddressResolver), true);
-  assert.equal(
-    container.get(nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER),
-    container.get(CustomSpotRemoteAddressResolver)
-  );
+  assert.equal(tokens.has(nestjs.ZLINK_SPOT_REF_RESOLVER), true);
+  assert.equal(tokens.has(nestjs.ZLINK_ACTOR_SPOT_REF_RESOLVER), true);
+  assert.equal(Object.hasOwn(nestjs, 'ZLINK_SPOT_' + 'REMOTE_ADDRESS_RESOLVER'), false);
 });
 
 test('ZLinkModule.forRootFactory exposes capability providers through the real NestJS app context', async () => {
@@ -1590,10 +1639,13 @@ test('framework runtime host start and stop are idempotent and ordered', async (
               }
             };
           }
-        };
-      }
-    }
-  });
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.onApplicationBootstrap();
   await runtime.onApplicationBootstrap();
@@ -2000,16 +2052,19 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode(_context, mode) {
-            calls.push(`spot:create:${mode}`);
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode(_context, mode) {
+	            calls.push(`spot:create:${mode}`);
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   await new Promise((resolve) => setImmediate(resolve));
@@ -2114,7 +2169,7 @@ test('framework runtime host lets route router own accepted Spot route channel f
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addRouteMeshChannel('room.route')
         .enableRouter('tcp://0.0.0.0:9410')
-        .enableClient('tcp://127.0.0.1:9410')
+        .connect('tcp://127.0.0.1:9410')
         .routingId('room-node')
       .addSpotMesh('room')
         .enableRouter('tcp://0.0.0.0:9411', 'room-node')
@@ -2168,16 +2223,19 @@ test('framework runtime host lets route router own accepted Spot route channel f
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode(_context, mode) {
-            calls.push(`spot:create:${mode}`);
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode(_context, mode) {
+	            calls.push(`spot:create:${mode}`);
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   await waitForCondition(() => calls.includes('route:recv'), 'Spot route channel drain');
@@ -2315,16 +2373,19 @@ test('framework runtime host drains accepted Spot route channel without route ro
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode(_context, mode) {
-            calls.push(`spot:create:${mode}`);
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode(_context, mode) {
+	            calls.push(`spot:create:${mode}`);
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   await waitForCondition(() => calls.includes('route:recv'), 'accepted Spot route channel drain without route router bind');
@@ -2359,8 +2420,8 @@ test('framework route transport sends Spot request through accepted Spot route c
     setDispatchHandler() {},
     recvActorJoin() { return null; },
     replyActorJoin() { return { message() { return this; }, submit() {} }; },
-    requestToSpot(targetNodeRid, spotRid, request, callback, _flags, timeoutMs) {
-      calls.push(`entry:requestToSpot:${targetNodeRid}:${spotRid}:${timeoutMs}:${request.value}`);
+    requestToSpot(targetNodeRid, targetSpot, request, callback, _flags, timeoutMs) {
+      calls.push(`entry:requestToSpot:${targetNodeRid}:${targetSpot}:${timeoutMs}:${request.value}`);
       callback(0, [reply]);
       return true;
     }
@@ -2378,8 +2439,8 @@ test('framework route transport sends Spot request through accepted Spot route c
       calls.push(`routeSource:drainChannelReply:${subjectHandle.toString()}`);
       return 1;
     },
-    requestToSpot(targetNodeRid, spotRid, request, callback, _flags, timeoutMs) {
-      calls.push(`routeSource:requestToSpot:${targetNodeRid}:${spotRid}:${timeoutMs}:${request.value}`);
+    requestToSpot(targetNodeRid, targetSpot, request, callback, _flags, timeoutMs) {
+      calls.push(`routeSource:requestToSpot:${targetNodeRid}:${targetSpot}:${timeoutMs}:${request.value}`);
       callback(0, [reply]);
       return true;
     }
@@ -2467,16 +2528,19 @@ test('framework route transport sends Spot request through accepted Spot route c
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode(_context, mode) {
-            calls.push(`spot:create:${mode}`);
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode(_context, mode) {
+	            calls.push(`spot:create:${mode}`);
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   const replies = await runtime.routeTransport.requestRawToSpot({
@@ -2520,8 +2584,8 @@ test('framework route transport sends Spot request through accepted Spot route c
     setDispatchHandler() {},
     recvActorJoin() { return null; },
     replyActorJoin() { return { message() { return this; }, submit() {} }; },
-    requestToSpot(targetNodeRid, spotRid, request, callback, _flags, timeoutMs) {
-      calls.push(`entry:requestToSpot:${targetNodeRid}:${spotRid}:${timeoutMs}:${request.value}`);
+    requestToSpot(targetNodeRid, targetSpot, request, callback, _flags, timeoutMs) {
+      calls.push(`entry:requestToSpot:${targetNodeRid}:${targetSpot}:${timeoutMs}:${request.value}`);
       callback(0, [reply]);
       return true;
     }
@@ -2539,8 +2603,8 @@ test('framework route transport sends Spot request through accepted Spot route c
       calls.push(`routeSource:drainChannelReply:${subjectHandle.toString()}`);
       return 1;
     },
-    requestToSpot(targetNodeRid, spotRid, request, callback, _flags, timeoutMs) {
-      calls.push(`routeSource:requestToSpot:${targetNodeRid}:${spotRid}:${timeoutMs}:${request.value}`);
+    requestToSpot(targetNodeRid, targetSpot, request, callback, _flags, timeoutMs) {
+      calls.push(`routeSource:requestToSpot:${targetNodeRid}:${targetSpot}:${timeoutMs}:${request.value}`);
       callback(0, [reply]);
       return true;
     }
@@ -2621,9 +2685,9 @@ test('framework route transport sends Spot request through accepted Spot route c
               connect() {},
               disconnect() {},
               attachDiscovery() {},
-              requestToSpot(targetNodeRid, spotRid, request, callback, _flags, timeoutMs) {
+              requestToSpot(targetNodeRid, targetSpot, request, callback, _flags, timeoutMs) {
                 const raw = Array.isArray(request) ? request[0] : request;
-                calls.push(`route:requestToSpot:${targetNodeRid}:${spotRid}:${timeoutMs}:${raw.value}`);
+                calls.push(`route:requestToSpot:${targetNodeRid}:${targetSpot}:${timeoutMs}:${raw.value}`);
                 callback(0, [reply]);
                 return true;
               },
@@ -2635,16 +2699,19 @@ test('framework route transport sends Spot request through accepted Spot route c
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode(_context, mode) {
-            calls.push(`spot:create:${mode}`);
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode(_context, mode) {
+	            calls.push(`spot:create:${mode}`);
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   const replies = await runtime.routeTransport.requestRawToSpot({
@@ -2765,16 +2832,19 @@ test('framework runtime host starts router-only SessionRelay SpotNode without Di
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode(_context, mode) {
-            calls.push(`spot:create:${mode}`);
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode(_context, mode) {
+	            calls.push(`spot:create:${mode}`);
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   await runtime.stop();
@@ -2877,16 +2947,19 @@ test('framework runtime host starts router and pubSub SpotNode without Discovery
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode(_context, mode) {
-            calls.push(`spot:create:${mode}`);
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode(_context, mode) {
+	            calls.push(`spot:create:${mode}`);
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   await runtime.stop();
@@ -3016,16 +3089,19 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
           }
         };
       },
-      createSpotAdapter() {
-        return {
-          createSpotNode() {
-            calls.push('spot:create');
-            return spotNode;
-          }
-        };
-      }
-    }
-  });
+	      createSpotAdapter() {
+	        return {
+	          createSpotNode() {
+	            calls.push('spot:create');
+	            return spotNode;
+	          }
+	        };
+	      },
+	      createMonitoringAdapter() {
+	        return createNoopMonitoringAdapter();
+	      }
+	    }
+	  });
 
   await runtime.start();
   runtime.setActorManager({

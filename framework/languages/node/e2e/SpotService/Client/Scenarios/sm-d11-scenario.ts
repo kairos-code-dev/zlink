@@ -14,7 +14,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD11(options: ClientOptions): Promise<void> {
   const stream = zlinkStreamConnectorFactory.create({
@@ -27,7 +26,7 @@ export async function runSmD11(options: ClientOptions): Promise<void> {
 
   await stream.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await stream
+    const auth = await stream
       .request({
         actorId: 'actor-sm-d11',
         displayName: 'stream and channel',
@@ -35,14 +34,14 @@ export async function runSmD11(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === 'actor-sm-d11', 'SM-D11 auth reply actor mismatch.');
 
-    const streamReply = decodeStreamReply<ActorPingRes>(await stream
+    const streamReply = await stream
       .request({ value: 'stream-side' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(streamReply.actorId === 'actor-sm-d11', 'SM-D11 stream request actor mismatch.');
     ensure(streamReply.value === 'stream-side', 'SM-D11 stream reply value mismatch.');
   } finally {

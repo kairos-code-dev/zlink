@@ -165,7 +165,7 @@ test('entry spot public surface exposes create lifecycle and actor join admissio
   assert.equal(entryContext.includes('close('), false);
 });
 
-test('actor join call objects expose yield terminators, bound session send does not', () => {
+test('actor join call objects expose yield terminators, bound session send awaits dispatch only', () => {
   const actorContracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Actors', 'ZLinkActorFactory.ts'),
     'utf8');
@@ -185,8 +185,7 @@ test('actor join call objects expose yield terminators, bound session send does 
   assert.equal(interfaceExtends(actorJoinSpotCall, 'ZLinkActorYieldJoinCall'), true);
   assert.equal(interfaceExtends(actorJoinEntrySpotCall, 'ZLinkActorYieldJoinCall'), true);
   const boundSessionSendCall = declarationBody(boundSessionContracts, 'ZLinkBoundSessionSendCall');
-  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): void/);
-  assert.equal(boundSessionSendCall.includes('Promise<void>'), false);
+  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
   assert.equal(boundSessionSendCall.includes('yield('), false);
 });
 
@@ -325,8 +324,11 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
 
   assert.match(declarationBody(declarations, 'IZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
-  assert.match(declarationBody(declarations, 'IZLinkSpotAddressResolver'), /resolveSpotAddress\(\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotAddress \| undefined>/);
-  assert.match(declarationBody(declarations, 'IZLinkActorAddressResolver'), /resolveActorSpotAddress\(\s*actorId: string,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotAddress \| undefined>/);
+  assert.match(declarationBody(declarations, 'ZLinkSpotRefResolver'), /resolveSpotRef\(\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<SpotRef \| undefined>/);
+  assert.match(declarationBody(declarations, 'IZLinkActorAddressResolver'), /resolveActorSpotRef\(\s*actorId: string,\s*signal\?: AbortSignal\s*\): Promise<SpotRef \| undefined>/);
+  assert.match(declarationBody(declarations, 'SpotRef'), /readonly spotKind\?: ZLinkSpotKind/);
+  assert.equal(declarations.includes('IZLink' + 'SpotAddressResolver'), false);
+  assert.equal(declarations.includes('ZLink' + 'SpotAddress'), false);
   assert.equal(declarations.includes('IZLinkRouteLocationResolver'), false);
   assert.equal(declarations.includes('IZLinkActorRefResolver'), false);
 
@@ -362,8 +364,9 @@ test('actor convenience declarations expose directory snapshot and bind-or-get s
   const sessionActors = declarationBody(declarations, 'ZLinkSessionActors');
   const snapshot = declarationBody(declarations, 'ZLinkActorRefSnapshot');
 
-  assert.match(actorClient, /sendToActor\(actorId: string, message: unknown\): ZLinkActorSendCall/);
-  assert.match(actorClient, /requestToActor\(actorId: string, request: unknown\): ZLinkActorRequestCall/);
+  assert.match(actorClient, /sendToActor\(actor: ActorRef, message: unknown\): ZLinkActorSendCall/);
+  assert.match(actorClient, /requestToActor\(actor: ActorRef, request: unknown\): ZLinkActorRequestCall/);
+  assert.equal(actorClient.includes('actorId: string'), false);
   assert.match(actorSendCall, /packetName\(packetName: string\): this/);
   assert.match(actorSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
   assert.equal(actorSendCall.includes('submit(signal?: AbortSignal): void'), false);

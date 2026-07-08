@@ -7,7 +7,6 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder, ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type { YieldActorScenarioContext } from './yd-b1-other-actor-progress-scenario';
 
@@ -30,12 +29,12 @@ export async function runYdD4(
       .where((message) => message.payload.actorId === actors.actorA && message.payload.requestId === requestId)
       .timeout(30000)
       .submit();
-    const reply = decodeStreamReply<ActorYieldRes>(await client
+    const reply = await client
       .request({ requestId, delayMs: 250, value: 'bound-session-push' } satisfies ActorPushYieldReq)
       .packetName('ActorPushYieldReq')
       .metadata(YieldDispatchNames.actorIdMetadata, actors.actorA)
       .timeout(30000)
-      .submit());
+      .submit<ActorYieldRes>();
     const notify = await pushed;
     ensure(reply.scenarioId === 'YD-D4', 'YD-D4 reply scenario mismatch.');
     ensure(notify.payload.actorId === actors.actorA, 'YD-D4 push actor mismatch.');
@@ -44,12 +43,12 @@ export async function runYdD4(
     await new Promise((resolve) => setTimeout(resolve, 150));
     ensure(unboundPushCount === 0, 'YD-D4 unbound session received actor push.');
 
-    const evidence = decodeStreamReply<YieldEvidenceRes>(await client
+    const evidence = await client
       .request({ requestId } satisfies YieldEvidenceReq)
       .packetName('YieldEvidenceReq')
       .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
       .timeout(30000)
-      .submit());
+      .submit<YieldEvidenceRes>();
     containsRequestMarkersInOrder(evidence.evidence, requestId, [
       'actor-push-yield-started',
       'actor-push-yield-released',

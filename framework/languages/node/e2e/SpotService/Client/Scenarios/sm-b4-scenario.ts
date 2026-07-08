@@ -13,7 +13,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmB4(options: ClientOptions): Promise<void> {
   const actorId = `actor-sm-b4-remote-${Date.now()}`;
@@ -26,7 +25,7 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId,
         displayName: 'remote actor request',
@@ -34,7 +33,7 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-b', 'SM-B4 auth reply mismatch.');
 
     await postJson<string[]>(options.playBUrl, '/evidence/wait', {
@@ -42,11 +41,11 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
       timeoutMilliseconds: 10000
     } satisfies EvidenceWaitReq);
 
-    const reply = decodeStreamReply<ActorPingRes>(await client
+    const reply = await client
       .request({ value: 'sm-b4' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(reply.actorId === actorId, 'SM-B4 actor reply mismatch.');
     ensure(reply.nodeRid === 'play-b', 'SM-B4 remote actor request reached the wrong node.');
 

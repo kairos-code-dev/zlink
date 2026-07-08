@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     'RM-C4': () => runRmC4(options.locationConsumerUrl, options.providerAUrl, options.providerBUrl),
     'RM-C5': () => runRmC5(options.locationConsumerUrl, options.providerAUrl, options.providerBUrl),
     'RM-C7': () => runRmC7(options),
-    'RM-C8': () => runRmC8(options.singleConsumerUrl, options.providerAUrl),
+    'RM-C8': () => runRmC8(options.singleConsumerUrl, options.directConsumerUrl, options.providerAUrl),
     'RM-C9': () => runRmC9(options.backpressureConsumerUrl, options.providerAUrl)
   };
   const defaultScenarioIds = [

@@ -947,9 +947,9 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
   router-capable SpotNode 를 relay ingress 로 사용한다. 이 연결이 있어야 session 에서
   actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 relay
   상태를 사용한다.
-- **`ZLinkSpotRemoteAddressResolver`** -- "spot rid → user Spot routing id" 를
-  푼다. actor 가 `joinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 이
-  resolver 를 등록한다.
+- **`ZLinkSpotRefResolver`** -- spot rid 로 `SpotRef` 를 찾는다. actor 가
+  `joinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 location store 를 등록해서
+  framework 가 같은 위치 정보를 쓰게 한다.
 - **`ZLinkBoundSession`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
   때 쓰는 표면이다. 현재 actor id 는 framework 가 알고 있으므로 호출자가 다시
   넘기지 않는다.
@@ -1015,12 +1015,13 @@ export interface ZLinkBoundSession {
 export interface ZLinkBoundSessionSendCall {
   packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
-  submit(): void;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
-`submit(...)` 은 bound session send의 one-way terminator다. client push는 호출자가
-송신 수락 완료를 기다리는 흐름으로 만들지 않는다.
+`submit(...)` 은 bound session send의 one-way terminator다. 반환된 Promise 는 framework 가
+해당 actor 의 현재 bound session route 에 push frame 을 넘긴 뒤 완료된다. client application 이
+그 frame 을 처리했다는 확인까지 보장하지는 않는다.
 
 `ZLinkBoundSession` 은 server-to-client request API 를 제공하지 않는다.
 client request 에 대한 응답은 actor request handler 의 반환값으로 처리한다.
@@ -1120,7 +1121,7 @@ ZLinkModule.forRoot(
       .addEntrySpot(PlayerEntrySpot)
       .addSpotFactory(MatchSpot)
       .actorFactory('player', PlayerActorFactory)
-    .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
+    .useInMemoryLocationStores()
     .build()
 );
 ```
@@ -1195,7 +1196,7 @@ actor 관련 등록 표면은 `zlinkFramework()` builder 와 `.options(...)` 의
 | 키 / 표면 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
 | `.addSpotMesh(...).actorFactory(actorType, factoryType)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | 해당 SpotNode 가 소유할 factory 의 `actorType` 키를 매핑 |
-| `.options({ spotRemoteAddressResolver })` / `.options({ registrySpotRemoteAddresses })` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
+| `.useInMemoryLocationStores()` / `.addLocationStore(...)` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → `SpotRef` 조회 |
 | `.addSpotMesh(...).addEntrySpot(...)` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `.addSpotMesh(...).addSpotFactory(...)` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 | `.options({ metadata })` | metadata forward가 필요한 서버 | actor 경계 너머로 forward할 키 |

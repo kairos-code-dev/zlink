@@ -3,12 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
+source "$NODE_ROOT/e2e/redis-container.sh"
+source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-full}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=30
+LOCAL_READINESS_ATTEMPTS=150
 HTTP_PROBE_TIMEOUT_SECONDS=3
 CLIENT_SCENARIO="$SCENARIO"
 if [[ "$CLIENT_SCENARIO" == "all" ]]; then
@@ -16,39 +19,14 @@ if [[ "$CLIENT_SCENARIO" == "all" ]]; then
 fi
 mkdir -p "$LOG_DIR"
 
-pick_port() {
-  node - <<'NODE'
-const net = require('node:net');
-const blocked = new Set([
-  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104,
-  109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515,
-  526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049,
-  3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080
-]);
-
-function tryPort() {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1', () => {
-    const port = server.address().port;
-    server.close(() => {
-      if (blocked.has(port)) {
-        tryPort();
-      } else {
-        console.log(port);
-      }
-    });
-  });
+needs_secondary_topology() {
+  case "$CLIENT_SCENARIO" in
+    full|YD-D2|YD-D3|YD-D4) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
-tryPort();
-NODE
-}
-
-build_package() {
-  local dir="$1"
-  rm -rf "$dir/dist"
-  (cd "$dir" && npm run build >/dev/null)
-}
+used_ports=()
 
 static_checks() {
   if rg -n "['\"]/yield|fetch\\(|axios|node-fetch|undici|http\\.request|https\\.request" "$ROOT_DIR" -g '*.ts' -g '!**/dist/**' >/tmp/zlink-yield-dispatch-static-http.$$; then
@@ -94,24 +72,6 @@ static_checks() {
   fi
 }
 
-wait_health() {
-  local url="$1"
-  local name="$2"
-  local pid="${3:-}"
-  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
-    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "$url/health" >/dev/null 2>&1; then
-      return 0
-    fi
-    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
-      echo "$name exited before readiness at $url" >&2
-      return 1
-    fi
-    sleep "${LOCAL_READINESS_POLL_SECONDS}"
-  done
-  echo "Timed out waiting for $name at $url" >&2
-  return 1
-}
-
 wait_file_contains() {
   local file="$1"
   local pattern="$2"
@@ -137,10 +97,15 @@ wait_file_contains() {
 terminate_gracefully() {
   local name="$1"
   local pid="$2"
+  local shutdown_url="${3:-}"
   if ! kill -0 "$pid" 2>/dev/null; then
     return 0
   fi
-  kill -TERM "$pid" 2>/dev/null || true
+  if [[ -n "$shutdown_url" ]]; then
+    curl -fsS -X POST "$shutdown_url/shutdown" >/dev/null 2>&1 || true
+  else
+    kill -TERM "$pid" 2>/dev/null || true
+  fi
   for _ in $(seq 1 600); do
     local state
     state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
@@ -150,7 +115,17 @@ terminate_gracefully() {
     fi
     sleep 0.1
   done
-  echo "$name did not stop after SIGTERM while yield was pending" >&2
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 100); do
+    local state
+    state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+    if [[ -z "$state" || "$state" == Z* ]]; then
+      wait "$pid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "$name did not stop while yield was pending" >&2
   return 1
 }
 
@@ -158,51 +133,14 @@ pids=()
 REDIS_CONTAINER_ID=""
 cleanup() {
   local code=$?
-  for pid in "${pids[@]:-}"; do
-    if kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
-    fi
-  done
-  wait "${pids[@]:-}" 2>/dev/null || true
-  if [[ -n "$REDIS_CONTAINER_ID" ]]; then
-    docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
-  fi
+  stop_live_pids
+  wait_all_pids_ignoring_status
+  remove_redis_container
   if [[ "$code" -ne 0 ]]; then
-    echo "E2E failed. log_dir=$LOG_DIR" >&2
-    for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
-      if [[ -f "$file" ]]; then
-        echo "----- $file -----" >&2
-        tail -n 80 "$file" >&2 || true
-      fi
-    done
+    tail_failure_logs
   fi
 }
 trap cleanup EXIT
-
-start_server() {
-  local name="$1"
-  local main="$2"
-  shift
-  shift
-  node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
-  pids+=("$!")
-}
-
-wait_tcp() {
-  local name="$1"
-  local endpoint="$2"
-  local host_port="${endpoint#tcp://}"
-  local host="${host_port%:*}"
-  local port="${host_port##*:}"
-  for _ in $(seq 1 100); do
-    if node -e "const net=require('node:net'); const s=net.createConnection({host: process.argv[1], port: Number(process.argv[2])}); s.once('connect', () => { s.end(); process.exit(0); }); s.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 500);" "$host" "$port"; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "Timed out waiting for $name at $endpoint" >&2
-  return 1
-}
 
 echo "log_dir=$LOG_DIR"
 
@@ -218,35 +156,35 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run YieldDispatch because it provisions a dedicated Redis location store." >&2
   exit 1
 fi
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "yield-dispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+start_redis_container "yield-dispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
 REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 REDIS_KEY_PREFIX="yield-dispatch:node:${RUN_ID}:location"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 
-DELAY_HTTP_PORT="$(pick_port)"
-DELAY_B_HTTP_PORT="$(pick_port)"
-PLAY_HTTP_PORT="$(pick_port)"
-PLAY_B_HTTP_PORT="$(pick_port)"
-SESSION_HTTP_PORT="$(pick_port)"
-SESSION_B_HTTP_PORT="$(pick_port)"
-DELAY_PORT="$(pick_port)"
-DELAY_B_PORT="$(pick_port)"
-PLAY_CONTROL_PORT="$(pick_port)"
-PLAY_B_CONTROL_PORT="$(pick_port)"
-SESSION_CONTROL_PORT="$(pick_port)"
-SESSION_B_CONTROL_PORT="$(pick_port)"
-PLAY_SPOT_ROUTE_PORT="$(pick_port)"
-PLAY_B_SPOT_ROUTE_PORT="$(pick_port)"
-SESSION_SPOT_ROUTE_PORT="$(pick_port)"
-SESSION_B_SPOT_ROUTE_PORT="$(pick_port)"
-SESSION_SPOT_ROUTER_PORT="$(pick_port)"
-SESSION_B_SPOT_ROUTER_PORT="$(pick_port)"
-PLAY_SPOT_ROUTER_PORT="$(pick_port)"
-PLAY_B_SPOT_ROUTER_PORT="$(pick_port)"
-PLAY_SPOT_PUB_PORT="$(pick_port)"
-PLAY_B_SPOT_PUB_PORT="$(pick_port)"
-SESSION_STREAM_PORT="$(pick_port)"
-SESSION_B_STREAM_PORT="$(pick_port)"
+DELAY_HTTP_PORT="$(allocate_port)"
+DELAY_B_HTTP_PORT="$(allocate_port)"
+PLAY_HTTP_PORT="$(allocate_port)"
+PLAY_B_HTTP_PORT="$(allocate_port)"
+SESSION_HTTP_PORT="$(allocate_port)"
+SESSION_B_HTTP_PORT="$(allocate_port)"
+DELAY_PORT="$(allocate_port)"
+DELAY_B_PORT="$(allocate_port)"
+PLAY_CONTROL_PORT="$(allocate_port)"
+PLAY_B_CONTROL_PORT="$(allocate_port)"
+SESSION_CONTROL_PORT="$(allocate_port)"
+SESSION_B_CONTROL_PORT="$(allocate_port)"
+PLAY_SPOT_ROUTE_PORT="$(allocate_port)"
+PLAY_B_SPOT_ROUTE_PORT="$(allocate_port)"
+SESSION_SPOT_ROUTE_PORT="$(allocate_port)"
+SESSION_B_SPOT_ROUTE_PORT="$(allocate_port)"
+SESSION_SPOT_ROUTER_PORT="$(allocate_port)"
+SESSION_B_SPOT_ROUTER_PORT="$(allocate_port)"
+PLAY_SPOT_ROUTER_PORT="$(allocate_port)"
+PLAY_B_SPOT_ROUTER_PORT="$(allocate_port)"
+PLAY_SPOT_PUB_PORT="$(allocate_port)"
+PLAY_B_SPOT_PUB_PORT="$(allocate_port)"
+SESSION_STREAM_PORT="$(allocate_port)"
+SESSION_B_STREAM_PORT="$(allocate_port)"
 
 DELAY_URL="http://127.0.0.1:$DELAY_HTTP_PORT"
 DELAY_B_URL="http://127.0.0.1:$DELAY_B_HTTP_PORT"
@@ -283,20 +221,43 @@ start_server delay-a "$DELAY_MAIN" \
   --http-url "$DELAY_URL" \
   --delay-endpoint "$DELAY_ENDPOINT" \
   --evidence-file "$LOG_DIR/delay-a.evidence.log"
-wait_health "$DELAY_URL" delay-a "${pids[-1]}"
+DELAY_A_PID="${pids[-1]}"
 
 start_server delay-b "$DELAY_MAIN" \
   --rid delay-b \
   --http-url "$DELAY_B_URL" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
   --evidence-file "$LOG_DIR/delay-b.evidence.log"
-wait_health "$DELAY_B_URL" delay-b "${pids[-1]}"
+DELAY_B_PID="${pids[-1]}"
+
+if needs_secondary_topology; then
+  start_server play-b "$PLAY_MAIN" \
+    --rid play-b \
+    --http-url "$PLAY_B_URL" \
+    --control-endpoint "$PLAY_B_CONTROL" \
+    --spot-route-endpoint "$PLAY_B_SPOT_ROUTE" \
+    --peer-spot-route-endpoint "$PLAY_SPOT_ROUTE" \
+    --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
+    --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
+    --delay-endpoint "$DELAY_B_ENDPOINT" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --evidence-file "$LOG_DIR/play-b.evidence.log" \
+    --log-dir "$LOG_DIR"
+  PLAY_B_PID="${pids[-1]}"
+fi
+
+PLAY_A_PEER_ARGS=()
+if needs_secondary_topology; then
+  PLAY_A_PEER_ARGS+=(--peer-spot-route-endpoint "$PLAY_B_SPOT_ROUTE")
+fi
 
 start_server play-a "$PLAY_MAIN" \
   --rid play-a \
   --http-url "$PLAY_URL" \
   --control-endpoint "$PLAY_CONTROL" \
   --spot-route-endpoint "$PLAY_SPOT_ROUTE" \
+  "${PLAY_A_PEER_ARGS[@]}" \
   --spot-router-endpoint "$PLAY_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_SPOT_PUB" \
   --delay-endpoint "$DELAY_ENDPOINT" \
@@ -305,51 +266,58 @@ start_server play-a "$PLAY_MAIN" \
   --evidence-file "$LOG_DIR/play-a.evidence.log" \
   --log-dir "$LOG_DIR"
 PLAY_A_PID="${pids[-1]}"
-wait_health "$PLAY_URL" play-a "$PLAY_A_PID"
 
-start_server play-b "$PLAY_MAIN" \
-  --rid play-b \
-  --http-url "$PLAY_B_URL" \
-  --control-endpoint "$PLAY_B_CONTROL" \
-  --spot-route-endpoint "$PLAY_B_SPOT_ROUTE" \
-  --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
-  --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
-  --delay-endpoint "$DELAY_B_ENDPOINT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --evidence-file "$LOG_DIR/play-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$PLAY_B_URL" play-b "${pids[-1]}"
+PLAY_CONTROL_ENDPOINTS="$PLAY_CONTROL"
+PLAY_SPOT_ROUTE_ENDPOINTS="$PLAY_SPOT_ROUTE"
+if needs_secondary_topology; then
+  PLAY_CONTROL_ENDPOINTS="$PLAY_CONTROL,$PLAY_B_CONTROL"
+  PLAY_SPOT_ROUTE_ENDPOINTS="$PLAY_SPOT_ROUTE,$PLAY_B_SPOT_ROUTE"
+fi
 
 start_server session-a "$SESSION_MAIN" \
   --rid session-a \
   --http-url "$SESSION_URL" \
   --control-router-endpoint "$SESSION_CONTROL" \
-  --play-control-endpoint "$PLAY_CONTROL,$PLAY_B_CONTROL" \
+  --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
   --spot-route-endpoint "$SESSION_SPOT_ROUTE" \
   --spot-router-endpoint "$SESSION_SPOT_ROUTER" \
-  --play-spot-route-endpoint "$PLAY_SPOT_ROUTE,$PLAY_B_SPOT_ROUTE" \
+  --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
   --stream-endpoint "$SESSION_STREAM" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/session-a.evidence.log" \
   --log-dir "$LOG_DIR"
-wait_health "$SESSION_URL" session-a "${pids[-1]}"
+SESSION_A_PID="${pids[-1]}"
+wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
 
-start_server session-b "$SESSION_MAIN" \
-  --rid session-b \
-  --http-url "$SESSION_B_URL" \
-  --control-router-endpoint "$SESSION_B_CONTROL" \
-  --play-control-endpoint "$PLAY_CONTROL,$PLAY_B_CONTROL" \
-  --spot-route-endpoint "$SESSION_B_SPOT_ROUTE" \
-  --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
-  --play-spot-route-endpoint "$PLAY_SPOT_ROUTE,$PLAY_B_SPOT_ROUTE" \
-  --stream-endpoint "$SESSION_B_STREAM" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --evidence-file "$LOG_DIR/session-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$SESSION_B_URL" session-b "${pids[-1]}"
+SESSION_B_PID=""
+if needs_secondary_topology; then
+  start_server session-b "$SESSION_MAIN" \
+    --rid session-b \
+    --http-url "$SESSION_B_URL" \
+    --control-router-endpoint "$SESSION_B_CONTROL" \
+    --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
+    --spot-route-endpoint "$SESSION_B_SPOT_ROUTE" \
+    --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
+    --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
+    --stream-endpoint "$SESSION_B_STREAM" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --evidence-file "$LOG_DIR/session-b.evidence.log" \
+    --log-dir "$LOG_DIR"
+  SESSION_B_PID="${pids[-1]}"
+fi
+
+wait_health "$DELAY_URL" delay-a "$DELAY_A_PID"
+wait_health "$DELAY_B_URL" delay-b "$DELAY_B_PID"
+if [[ -n "${PLAY_B_PID:-}" ]]; then
+  wait_health "$PLAY_B_URL" play-b "$PLAY_B_PID"
+fi
+wait_health "$PLAY_URL" play-a "$PLAY_A_PID"
+wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
+if [[ -n "$SESSION_B_PID" ]]; then
+  wait_health "$SESSION_B_URL" session-b "$SESSION_B_PID"
+fi
 
 if [[ "$CLIENT_SCENARIO" != "YD-E3" ]]; then
   node "$CLIENT_MAIN" \
@@ -387,11 +355,17 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "YD-E3" ]]; then
   wait "$SHUTDOWN_CLIENT_PID"
   cat "$LOG_DIR/client-shutdown-wait.stdout.log"
 
+  terminate_gracefully session-a "$SESSION_A_PID" "$SESSION_URL"
+  if [[ -n "$SESSION_B_PID" ]]; then
+    terminate_gracefully session-b "$SESSION_B_PID" "$SESSION_B_URL"
+  fi
+
   start_server play-a "$PLAY_MAIN" \
     --rid play-a \
     --http-url "$PLAY_URL" \
     --control-endpoint "$PLAY_CONTROL" \
     --spot-route-endpoint "$PLAY_SPOT_ROUTE" \
+    --peer-spot-route-endpoint "$([[ "$CLIENT_SCENARIO" == "YD-E3" ]] && echo "" || echo "$PLAY_B_SPOT_ROUTE")" \
     --spot-router-endpoint "$PLAY_SPOT_ROUTER" \
     --spot-pub-endpoint "$PLAY_SPOT_PUB" \
     --delay-endpoint "$DELAY_ENDPOINT" \
@@ -402,6 +376,40 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "YD-E3" ]]; then
   PLAY_A_PID="${pids[-1]}"
   wait_health "$PLAY_URL" play-a "$PLAY_A_PID"
 
+  start_server session-a "$SESSION_MAIN" \
+    --rid session-a \
+    --http-url "$SESSION_URL" \
+    --control-router-endpoint "$SESSION_CONTROL" \
+    --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
+    --spot-route-endpoint "$SESSION_SPOT_ROUTE" \
+    --spot-router-endpoint "$SESSION_SPOT_ROUTER" \
+    --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
+    --stream-endpoint "$SESSION_STREAM" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --evidence-file "$LOG_DIR/session-a.evidence.log" \
+    --log-dir "$LOG_DIR"
+  SESSION_A_PID="${pids[-1]}"
+  wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
+
+  if [[ "$CLIENT_SCENARIO" != "YD-E3" ]]; then
+    start_server session-b "$SESSION_MAIN" \
+      --rid session-b \
+      --http-url "$SESSION_B_URL" \
+      --control-router-endpoint "$SESSION_B_CONTROL" \
+      --play-control-endpoint "$PLAY_CONTROL_ENDPOINTS" \
+      --spot-route-endpoint "$SESSION_B_SPOT_ROUTE" \
+      --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
+      --play-spot-route-endpoint "$PLAY_SPOT_ROUTE_ENDPOINTS" \
+      --stream-endpoint "$SESSION_B_STREAM" \
+      --redis-endpoint "$REDIS_ENDPOINT" \
+      --redis-key-prefix "$REDIS_KEY_PREFIX" \
+      --evidence-file "$LOG_DIR/session-b.evidence.log" \
+      --log-dir "$LOG_DIR"
+    SESSION_B_PID="${pids[-1]}"
+    wait_health "$SESSION_B_URL" session-b "$SESSION_B_PID"
+  fi
+
   node "$CLIENT_MAIN" \
     --session-a-stream-endpoint "$SESSION_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
@@ -411,5 +419,6 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "YD-E3" ]]; then
     >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
   cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
   echo "scenario YD-E3 passed" | tee -a "$LOG_DIR/client-shutdown-recovery.stdout.log"
-  echo "yield-dispatch e2e result=passed" | tee -a "$LOG_DIR/client-shutdown-recovery.stdout.log"
 fi
+
+echo "yield-dispatch e2e result=passed"

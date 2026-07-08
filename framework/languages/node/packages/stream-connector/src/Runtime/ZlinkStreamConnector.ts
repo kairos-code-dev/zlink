@@ -53,6 +53,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   private currentState = ZlinkStreamConnectionState.Created;
   private correlationCounter = 0n;
   private readonly pendingRequests = new ZlinkStreamPendingRequests();
+  private readonly pendingWrites = new Set<Promise<void>>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private receiveLoopAbort: AbortController | undefined;
   private lastInboundAt = 0;
@@ -127,9 +128,10 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       return;
     }
     const connection = this.connection;
-    this.connection = undefined;
     this.stopHeartbeat();
     this.stopReceiveLoop();
+    await this.drainPendingWrites(signal);
+    this.connection = undefined;
     if (connection !== undefined) {
       await connection.close(signal);
     }
@@ -336,7 +338,20 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     }
     const headerBytes = ZlinkStreamHeaderCodec.encode(header);
     const frame = ZlinkStreamFrameCodec.encode(headerBytes, payload, this.options.maxSendPayloadSize);
-    await connection.write(frame, signal);
+    const write = connection.write(frame, signal);
+    this.pendingWrites.add(write);
+    try {
+      await write;
+    } finally {
+      this.pendingWrites.delete(write);
+    }
+  }
+
+  private async drainPendingWrites(signal?: AbortSignal): Promise<void> {
+    while (this.pendingWrites.size > 0) {
+      throwIfAborted(signal);
+      await Promise.allSettled([...this.pendingWrites]);
+    }
   }
 
   private resolveNameOrDefault(payload: ZlinkStreamEncodedPayload): string | undefined {

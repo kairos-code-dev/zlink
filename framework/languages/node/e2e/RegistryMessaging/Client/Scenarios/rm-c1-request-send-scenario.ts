@@ -1,5 +1,5 @@
 import type { ProfileRes } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { getJson, postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
 export async function runRmC1(providerAUrl: string, providerBUrl: string): Promise<void> {
@@ -8,11 +8,31 @@ export async function runRmC1(providerAUrl: string, providerBUrl: string): Promi
 
   const commandId = uniqueMarker('cmd');
   await postJson(providerAUrl, '/profile/command', { commandId });
-  const evidence = await Promise.all([
-    postJson<string[]>(providerAUrl, '/evidence/wait', { contains: commandId }),
-    postJson<string[]>(providerBUrl, '/evidence/wait', { contains: commandId })
-  ]);
-  const lines = evidence.flat();
+  const lines = await waitForAnyCommandEvidence([providerAUrl, providerBUrl], commandId);
   ensure(lines.some((line) => line.includes('profile-command|')), 'RM-C1 send evidence missing.');
   console.log('scenario RM-C1 passed');
+}
+
+async function waitForAnyCommandEvidence(providerUrls: readonly string[], commandId: string): Promise<string[]> {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const snapshots = await Promise.all(providerUrls.map((url) => getEvidenceSnapshot(url)));
+    const lines = snapshots.flat();
+    if (lines.some((line) => line.includes(commandId))) {
+      return lines;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return (await Promise.all(providerUrls.map((url) => getEvidenceSnapshot(url)))).flat();
+}
+
+async function getEvidenceSnapshot(providerUrl: string): Promise<string[]> {
+  try {
+    return await Promise.race([
+      getJson<string[]>(providerUrl, '/evidence'),
+      new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 500))
+    ]);
+  } catch {
+    return [];
+  }
 }

@@ -5,7 +5,7 @@
 공통 기준 문서: `framework/doc/framework/common/e2e/config-1-location-messaging.ko.md`
 
 이 문서는 `.NET` Config 1 파일과 공통 scenario ID를 Node 파일로 매핑한다. 구현된 범위는 `done`,
-public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다.
+public contract가 필요한 범위는 모두 현재 Node public API로 구현했다.
 
 ## Scenario ID 매핑
 
@@ -23,7 +23,7 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 | `RM-C4` | `Client/Scenarios/RmC4TimeoutIsolationScenario.cs` | `Client/Scenarios/rm-c4-timeout-isolation-scenario.ts` | done | timeout 뒤 late reply 비오염 |
 | `RM-C5` | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm-c5-missing-packet-scenario.ts` | done | missing request/send dispatch error |
 | `RM-C7` | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | done | build-time provider weight 75/25 분산 검증 |
-| `RM-C8` | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | done | payload length/hash 왕복, max 초과는 .NET feature-map 한계 반영 |
+| `RM-C8` | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | done | payload length/hash 왕복과 server socket max 초과 실패, 이후 정상 request 회복을 검증 |
 | `RM-C9` | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | done | one-way send pressure 제출과 recovery 검증 |
 
 ## 파일 매핑
@@ -32,7 +32,7 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | Node dist, node_modules, logs 산출물 제외 |
 | `README.ko.md` | `README.ko.md` | docs | done | Node 보충 설명과 gap을 과장 없이 기록 |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 공통 scenario ID별 구현/gap 기록 |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 공통 scenario ID별 구현 기록 |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | build, port allocation, role process, readiness, cleanup, failure log 출력 |
 | `Shared/Messages.cs` | `Shared/messages.ts` | shared | done | request/reply/evidence DTO와 packet name 상수 |
 | `Shared/RegistryMessaging.Shared.csproj` | `Shared/messages.ts` | project | done | Node는 별도 shared package 없이 TypeScript shared module로 대응 |

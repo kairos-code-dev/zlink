@@ -10,5 +10,5 @@ export interface ZLinkBoundSessionFactory {
 export interface ZLinkBoundSessionSendCall {
   metadata(key: string, value: string): this;
   packetName(packetName: string): this;
-  submit(signal?: AbortSignal): void;
+  submit(signal?: AbortSignal): Promise<void>;
 }

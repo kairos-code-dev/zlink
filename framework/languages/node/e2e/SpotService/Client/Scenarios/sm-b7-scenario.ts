@@ -13,7 +13,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmB7(options: ClientOptions): Promise<void> {
   const actorId = `actor-sm-b7-order-${Date.now()}`;
@@ -26,7 +25,7 @@ export async function runSmB7(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId,
         displayName: 'order',
@@ -34,19 +33,19 @@ export async function runSmB7(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-B7 auth reply mismatch.');
 
-    const first = decodeStreamReply<ActorPingRes>(await client
+    const first = await client
       .request({ value: 'order-1' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
-    const second = decodeStreamReply<ActorPingRes>(await client
+      .submit<ActorPingRes>();
+    const second = await client
       .request({ value: 'order-2' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
 
     ensure(
       first.actorId === actorId && first.value === 'order-1' && first.seen === 1,

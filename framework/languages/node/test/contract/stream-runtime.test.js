@@ -600,6 +600,10 @@ test('runtime host remote bound session receiver forwards through actor remote t
     registration: framework.createFrameworkRegistration()
   });
   const routeCalls = [];
+  let resolveRoute;
+  const routeReleased = new Promise((resolve) => {
+    resolveRoute = resolve;
+  });
   host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
     const message = JSON.parse(request.getString('utf8'));
     routeCalls.push({
@@ -610,6 +614,7 @@ test('runtime host remote bound session receiver forwards through actor remote t
       packet: message,
       signal: options.signal
     });
+    await routeReleased;
     return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   host.setActorManager({
@@ -625,14 +630,22 @@ test('runtime host remote bound session receiver forwards through actor remote t
     }
   });
 
-  await host.receiveRemoteBoundSessionSend({
+  let completed = false;
+  const received = host.receiveRemoteBoundSessionSend({
     packetName: '__zlink.actor.bound_session.send',
     actorId: 'actor-hop',
     message: { hello: 'world' },
     boundPacketName: 'Notify',
     metadata: { seq: '1' }
+  }).then(() => {
+    completed = true;
   });
 
+  await waitForCondition(() => routeCalls.length === 1, 'remote bound session route submit');
+  assert.equal(completed, false);
+  resolveRoute();
+  await received;
+  assert.equal(completed, true);
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
@@ -696,6 +709,10 @@ test('runtime host routed bound session receiver forwards through actor remote t
     registration: framework.createFrameworkRegistration()
   });
   const routeCalls = [];
+  let resolveRoute;
+  const routeReleased = new Promise((resolve) => {
+    resolveRoute = resolve;
+  });
   host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
     const message = JSON.parse(request.getString('utf8'));
     routeCalls.push({
@@ -706,6 +723,7 @@ test('runtime host routed bound session receiver forwards through actor remote t
       packet: message,
       signal: options.signal
     });
+    await routeReleased;
     return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   host.setActorManager({
@@ -721,13 +739,21 @@ test('runtime host routed bound session receiver forwards through actor remote t
     }
   });
 
-  await host.createSpotManagerOptions().routedBoundSessionReceiver(
+  let completed = false;
+  const received = host.createSpotManagerOptions().routedBoundSessionReceiver(
     'actor-routed-hop',
     { hello: 'routed' },
     'Notify',
     new Map([['seq', '3']])
-  );
+  ).then(() => {
+    completed = true;
+  });
 
+  await waitForCondition(() => routeCalls.length === 1, 'routed bound session route submit');
+  assert.equal(completed, false);
+  resolveRoute();
+  await received;
+  assert.equal(completed, true);
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
@@ -1079,6 +1105,84 @@ test('runtime host relays bound remote actor request through route channel and c
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { matched: true });
 });
 
+test('runtime host relays bound remote actor send through route channel without waiting for reply', async () => {
+  const actorRef = { nodeRid: 'play-node', actorId: 'actor-remote-send', generation: 8n };
+  const routeSends = [];
+  const stream = recordingStream('session-remote-actor-send', 'session-node');
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      routeChannels: [{ routerChannelId: 'room.route' }],
+      spotNodes: {
+        session: {
+          router: { bind: 'tcp://127.0.0.1:1', routingId: 'session-node' }
+        }
+      }
+    })
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      routingId: 'session-node'
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      assert.equal(actorId, 'actor-remote-send');
+      return {
+        remoteActorPacketTarget: {
+          routerChannelId: 'room.route',
+          targetNodeRid: 'play-node',
+          spotRid: 'room-1',
+          spotKind: framework.ZLinkSpotKind.User
+        }
+      };
+    }
+  });
+  host.routeTransport.requestRawToSpot = async () => {
+    throw new Error('one-way actor send must not use request route');
+  };
+  host.routeTransport.sendToSpot = async (remoteAddress, request, options) => {
+    routeSends.push({
+      routerChannelId: remoteAddress.routerChannelId,
+      targetNodeRid: remoteAddress.targetNodeRid,
+      spotRid: remoteAddress.spotRid,
+      spotKind: remoteAddress.spotKind,
+      packetName: options.packetName,
+      request
+    });
+  };
+
+  const context = host.streamBindingRuntime.createSessionContext(stream);
+  const actor = await context.actors.bind(actorRef);
+  context.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Send,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: 'LeaveGameMsg',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await actor.relay(framework.ZLinkMessage.fromEncoded(
+      framework.ZLinkEncodedPayload.from(Buffer.from(JSON.stringify({ roomId: 'room-1' })))
+    ));
+  } finally {
+    context.exitDispatch();
+  }
+
+  assert.equal(routeSends.length, 1);
+  assert.equal(routeSends[0].routerChannelId, 'room.route');
+  assert.equal(routeSends[0].targetNodeRid, 'play-node');
+  assert.equal(routeSends[0].spotRid, 'room-1');
+  assert.equal(routeSends[0].spotKind, framework.ZLinkSpotKind.User);
+  assert.equal(routeSends[0].packetName, '__zlink.actor.packet.relay');
+  assert.equal(routeSends[0].request.packetName, '__zlink.actor.packet.relay');
+  assert.equal(routeSends[0].request.actorId, 'actor-remote-send');
+  const header = connector.ZlinkStreamHeaderCodec.decode(Buffer.from(routeSends[0].request.header, 'base64'));
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(header.name, 'LeaveGameMsg');
+  assert.deepEqual(JSON.parse(Buffer.from(routeSends[0].request.payload, 'base64').toString()), { roomId: 'room-1' });
+  assert.equal(stream.writes.length, 0);
+});
+
 test('runtime host completes local bound actor request without native SessionRelay response dependency', async () => {
   const actorRef = { nodeRid: 'play-node', actorId: 'actor-local', generation: 3n };
   const stream = recordingStream('session-local-actor', 'session-node');
@@ -1174,7 +1278,7 @@ test('bound session send and disconnect use current binding token and stale toke
 
   runtime.unbind('actor-a', oldContext, oldToken);
 
-  runtime.createBoundSession('actor-a').send({ hello: 'world' }).packetName('Hello').submit();
+  await runtime.createBoundSession('actor-a').send({ hello: 'world' }).packetName('Hello').submit();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].actorId, 'actor-a');
   assert.equal(sent[0].packetName, 'Hello');
@@ -1373,11 +1477,12 @@ test('stream session and bound session require packetName for structural payload
     () => context.client.send({ ok: true }).submit(),
     /Stream packetName is required when the payload type cannot provide one/
   );
-  assert.doesNotThrow(
+  await assert.rejects(
     () => runtime.createBoundSession('actor-structural').send({ ok: true }).submit(),
+    /Stream packetName is required when the payload type cannot provide one/
   );
   context.client.send({ ok: true }).packetName('Ready').submit();
-  runtime.createBoundSession('actor-structural').send({ ok: true }).packetName('ActorReady').submit();
+  await runtime.createBoundSession('actor-structural').send({ ok: true }).packetName('ActorReady').submit();
 
   assert.equal(written.length, 1);
   assert.equal(decodeFrame(written[0]).header.name, 'Ready');
@@ -1413,7 +1518,7 @@ test('bound session without binding is a retriable framework error', async () =>
     }
   });
 
-  assert.doesNotThrow(
+  await assert.rejects(
     () => runtime.createBoundSession('missing').send({}).submit(),
   );
 });
@@ -1777,6 +1882,43 @@ test('session client send uses default binding message factory when one is not s
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {});
 });
 
+test('stream node runtime does not reuse a disconnected session for the same routing id', async () => {
+  const socket = new FakeStreamSocket();
+  const contexts = [];
+  const dispatched = [];
+  const disconnected = [];
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    sessionFactory(context) {
+      contexts.push(context);
+      return {
+        context,
+        async onDispatch(dispatch) {
+          dispatched.push({ context, packetName: dispatch.packetName });
+        },
+        async onDisconnected() {
+          disconnected.push(context);
+        }
+      };
+    }
+  });
+  runtime.start();
+
+  socket.emitFrame('rid-reused', streamHeader('FirstPacket'), bindingMessage('{}'));
+  await waitForCondition(() => dispatched.length === 1, 'first stream dispatch');
+  assert.equal(contexts.length, 1);
+
+  runtime.markDisconnected('rid-reused', new Error('old session disconnected'));
+  socket.emitFrame('rid-reused', streamHeader('SecondPacket'), bindingMessage('{}'));
+  await waitForCondition(() => dispatched.length === 2, 'second stream dispatch');
+
+  assert.equal(contexts.length, 2);
+  assert.equal(dispatched[0].context, contexts[0]);
+  assert.equal(dispatched[1].context, contexts[1]);
+  assert.notEqual(contexts[0], contexts[1]);
+  await waitForCondition(() => disconnected.length === 1, 'old stream disconnect');
+});
+
 function fakeStream(sessionId, routingId) {
   return {
     sessionId,
@@ -1864,6 +2006,16 @@ function bindingMessage(payload) {
   };
 }
 
+function streamHeader(packetName) {
+  return bindingMessage(streamProtocol.encodeStreamHeader({
+    kind: streamProtocol.ZLinkStreamMessageKind.Send,
+    codec: streamProtocol.ZLinkStreamCodec.Json,
+    flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+    name: packetName,
+    metadata: new Map()
+  }));
+}
+
 function prefixCompressionCodec(prefix) {
   return {
     compress(payload) {
@@ -1927,7 +2079,14 @@ class FakeStreamSocket {
     return true;
   }
 
-  onFramedPacket() {}
+  onFramedPacket(handler) {
+    this.frameHandler = handler;
+  }
+
+  emitFrame(routingId, header, payload) {
+    this.frameHandler(routingId, header, payload);
+  }
+
   async dispose() {}
 }
 

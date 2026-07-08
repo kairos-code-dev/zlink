@@ -2,7 +2,6 @@
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
-const { ensureNodeBindingDist } = require('./ensure_node_binding_dist');
 
 const nodeRoot = path.resolve(__dirname, '..');
 const eslintEntry = path.resolve(nodeRoot, 'node_modules/eslint/bin/eslint.js');
@@ -20,14 +19,13 @@ if (expectedMajor !== 0 && actualMajor !== expectedMajor) {
   process.exit(1);
 }
 
-ensureNodeBindingDist();
 run('build', process.execPath, [
-  path.resolve(nodeRoot, '../../../bindings/node/node_modules/typescript/bin/tsc'),
+  path.resolve(nodeRoot, 'node_modules/typescript/bin/tsc'),
   '-b',
   'tsconfig.build.json'
 ]);
 run('typecheck', process.execPath, [
-  path.resolve(nodeRoot, '../../../bindings/node/node_modules/typescript/bin/tsc'),
+  path.resolve(nodeRoot, 'node_modules/typescript/bin/tsc'),
   '-p',
   'tsconfig.json',
   '--noEmit'

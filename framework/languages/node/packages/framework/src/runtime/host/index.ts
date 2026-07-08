@@ -20,12 +20,13 @@ import type {
   ZLinkBoundSessionSendCall,
   ZLinkProviderResolver,
   ZLinkRouteRequestContext,
+  ZLinkRouteSendContext,
   ZLinkRuntimeEventPublisher,
   ZLinkSessionActor,
   ZLinkSpot,
-  ZLinkSpotActorJoinResponse,
-  ZLinkSpotRemoteAddressResolver
+  ZLinkSpotActorJoinResponse
 } from '../../contracts';
+import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import type { Message } from '../../contracts/Common/Message';
 import { ZLinkMessageFlowLogMode, ZLinkSpotKind } from '../../contracts';
 import type { ZLinkMessageFlowControl } from '../../contracts';
@@ -81,7 +82,7 @@ import {
 } from '../streams';
 import {
   ZLinkInMemoryLocationStore,
-  ZLinkLocationSpotRemoteAddressResolver,
+  ZLinkLocationSpotRouteResolver,
   ZLinkLocationLifecycle,
   ZLinkLocationRuntime,
   ZLinkOwnerLeaseTracker,
@@ -245,6 +246,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         context,
         this.options.providerResolver,
         {
+          monitoringAdapter: this.backendAdapterFactory.createMonitoringAdapter(),
           messageFlowModeCell: this.messageFlowModeCell,
           internalRouteSendHandlers: new Map([
             [ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, {
@@ -260,6 +262,11 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
             [ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET, {
               handle: async (payload) => {
                 await this.receiveRemoteBoundSessionError(payload);
+              }
+            }],
+            [ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET, {
+              handle: async (payload, routeContext) => {
+                await this.receiveRemoteActorPacketRelay(payload, routeContext);
               }
             }]
           ]),
@@ -297,6 +304,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         channelClient: new DefaultZLinkChannelClient(this.options.registration, this.channelTransport),
         fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.channelTransport),
         spotPublisherClient: new DefaultZLinkSpotPublisherClient(this.options.registration, this.spotPublisherTransport),
+        routedTransport: this.routeTransport,
+        spotRouterChannelIdForMesh: this.spotRouterChannelIdByMesh(),
         providerResolver: this.options.providerResolver,
         dispatchErrors,
         runtimeEventPublisher: this.runtimeEventPublisher,
@@ -329,6 +338,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
           const state = this.actorManager?.getState(actorId);
           state?.setRemoteBoundSessionTarget(target);
         },
+        remoteBoundSessionTargetResolver: (sourceNodeRid) => this.remoteBoundSessionTargetForSource(sourceNodeRid),
         actorPacketTargetProvider: (actorId) => this.actorPacketTargetForState(actorId),
         localActorPacketRouter: async (actorId, parts, returnResponse, remoteBoundSessionTarget) => {
           const spotRid = this.actorManager?.getState(actorId)?.spotRid;
@@ -444,14 +454,15 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     state.abortController.abort();
     await monitoringRuntime?.dispose();
     await streamRuntime?.dispose();
-    await spotNodeRuntime?.dispose();
-    await channelRuntime?.dispose();
+    await spotNodeRuntime?.dispose(state.abortController.signal);
+    await channelRuntime?.dispose(state.abortController.signal);
     locationLifecycle?.dispose();
     await locationRuntime?.stop();
-    (state.context as { shutdown?: () => void }).shutdown?.();
     await Promise.allSettled(state.listenerTasks);
+    (state.context as unknown as { shutdown(): void }).shutdown();
     await new Promise<void>((resolve) => setImmediate(resolve));
     await state.dispose();
+    await new Promise<void>((resolve) => setImmediate(resolve));
     this.lifecycleSink?.push('framework:stopped');
   }
 
@@ -471,7 +482,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     this.spotManager = spotManager;
   }
 
-  createActorManagerOptions(remoteAddressResolver?: ZLinkSpotRemoteAddressResolver): Pick<
+  createActorManagerOptions(spotRouteResolver?: ZLinkSpotRouteResolver): Pick<
     ZLinkActorManagerOptions,
     | 'joinCoordinator'
     | 'messageSerializers'
@@ -484,7 +495,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     | 'boundSessionFactory'
   > {
     this.ensureLocationRuntime();
-    const effectiveRemoteAddressResolver = remoteAddressResolver ?? this.createLocationSpotRemoteAddressResolver();
+    const effectiveSpotRouteResolver = spotRouteResolver ?? this.createLocationSpotRouteResolver();
     return {
       joinCoordinator: new ZLinkLocalFirstActorJoinCoordinator({
         localSpotManager: () => this.spotManager,
@@ -494,7 +505,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
           : this.streamBindingRuntime.rebindActor(actorRef, signal),
         native: new ZLinkLazyNativeJoinCoordinator(
           () => this.requirePrimarySpotNode(),
-          effectiveRemoteAddressResolver,
+          effectiveSpotRouteResolver,
           this.routeTransport,
           (actorRef, signal, force) => force === true
             ? this.streamBindingRuntime.refreshActor(actorRef, signal)
@@ -540,6 +551,23 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     };
   }
 
+  createLocationRefResolver(): ZLinkStoreLocationResolvers | undefined {
+    this.ensureLocationRuntime();
+    const stores = this.locationStores;
+    if (stores === undefined) {
+      return undefined;
+    }
+    return new ZLinkStoreLocationResolvers({
+      stores,
+      leaseTracker: new ZLinkOwnerLeaseTracker({
+        store: stores.ownerLeaseStore,
+        options: this.options.registration.locations.options
+      }),
+      events: this.locationEvents,
+      spotMeshNames: this.spotLocationMeshNames()
+    });
+  }
+
   createSpotManagerOptions(): object {
     this.ensureLocationRuntime();
     return {
@@ -558,11 +586,13 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       channelClient: new DefaultZLinkChannelClient(this.options.registration, this.channelTransport),
       fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.channelTransport),
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(this.options.registration, this.spotPublisherTransport),
+      routedTransport: this.routeTransport,
+      spotRouterChannelIdForMesh: this.spotRouterChannelIdByMesh(),
       messageSerializers: this.options.registration.messageSerializers,
       runtimeEventPublisher: this.runtimeEventPublisher,
       locationLifecycle: this.locationLifecycle,
       locationMeshName: this.primarySpotMeshName(),
-      remoteAddressResolver: this.createLocationSpotRemoteAddressResolver(),
+      spotRouteResolver: this.createLocationSpotRouteResolver(),
       createNativeSpot: (spotRid: RoutingId) => this.spotNodeRuntime?.primaryNode?.getOrCreateSpot(spotRid).spot,
       nativeSpotNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       actorResolver: (actorId: string) => this.actorManager?.getState(actorId)?.actor,
@@ -652,6 +682,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         const state = this.actorManager?.getState(actorId);
         state?.setRemoteBoundSessionTarget(target);
       },
+      remoteBoundSessionTargetResolver: (sourceNodeRid: RoutingId) => this.remoteBoundSessionTargetForSource(sourceNodeRid),
       actorPacketTargetProvider: (actorId: string) => this.actorPacketTargetForState(actorId),
       actorResponseSender: async (
         actor: ZLinkActor,
@@ -756,7 +787,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     return runtime;
   }
 
-  private createLocationSpotRemoteAddressResolver(): ZLinkSpotRemoteAddressResolver | undefined {
+  private createLocationSpotRouteResolver(): ZLinkSpotRouteResolver | undefined {
     const stores = this.locationStores;
     if (stores === undefined) {
       return undefined;
@@ -769,7 +800,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       store: stores.ownerLeaseStore,
       options: this.options.registration.locations.options
     });
-    return new ZLinkLocationSpotRemoteAddressResolver(
+    return new ZLinkLocationSpotRouteResolver(
       new ZLinkStoreLocationResolvers({
         stores,
         leaseTracker,
@@ -866,7 +897,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     for (const [key, value] of metadata) {
       call.metadata(key, value);
     }
-    call.submit();
+    await call.submit();
   }
 
   private async receiveRoutedBoundSessionResponse(
@@ -933,7 +964,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     for (const [key, value] of metadata) {
       call.metadata(key, value);
     }
-    call.submit();
+    await call.submit();
     return { ok: true };
   }
 
@@ -1322,7 +1353,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
 
   private async receiveRemoteActorPacketRelay(
     payload: unknown,
-    routeContext: ZLinkRouteRequestContext
+    routeContext: ZLinkRouteSendContext
   ): Promise<{
     readonly ok: boolean;
     readonly error?: unknown;
@@ -1526,6 +1557,19 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       header: Buffer.from(encodeStreamHeader(frameHeader)).toString('base64'),
       payload: Buffer.from(messageToBytes(payload)).toString('base64')
     };
+    const remoteAddress = {
+      routerChannelId: remoteTarget.routerChannelId,
+      targetNodeRid: remoteTarget.targetNodeRid,
+      spotRid: remoteTarget.spotRid,
+      spotKind: remoteTarget.spotKind ?? ZLinkSpotKind.User
+    };
+    if (frameHeader.kind === ZLinkStreamMessageKind.Send || frameHeader.requestSeq === undefined) {
+      await this.routeTransport.sendToSpot(remoteAddress, request, {
+        packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+        signal
+      });
+      return true;
+    }
     try {
       let reply: {
         readonly ok?: boolean;
@@ -1536,10 +1580,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       };
       const payload = BindingMessage.from(Buffer.from(JSON.stringify(request)));
       try {
-        const parts = await this.routeTransport.requestRawToSpot({
-          ...remoteTarget,
-          spotKind: remoteTarget.spotKind ?? ZLinkSpotKind.User
-        }, payload, {
+        const parts = await this.routeTransport.requestRawToSpot(remoteAddress, payload, {
           timeoutMs: this.options.registration.requestTimeoutMs,
           signal
         });
@@ -1581,35 +1622,33 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         this.sessionActorPacketTargetsByActor.delete(sessionActorPacketTargetKey(actor));
         this.sessionActorPacketTargetsByActorId.delete(actor.actorId);
       }
-      if (frameHeader.requestSeq !== undefined) {
-          if (reply.deferredResponse === true && reply.ok !== false) {
-            return true;
-          }
-          if (reply.ok === false) {
-            const sent = this.sendCapturedOrCurrentBoundSessionError(
-              responseTarget,
-              actor.actorId,
-              frameHeader.name,
-              frameHeader.requestSeq,
-              reply.error ?? 'Remote actor request failed.',
-              streamMetadataMap(frameHeader.metadata)
-            );
-            if (!sent) {
-              throw new Error(`Actor '${actor.actorId}' local bound session error response route is not ready.`);
-            }
-            return true;
-          }
-          const sent = this.sendCapturedOrCurrentBoundSessionResponse(
-            responseTarget,
-            actor.actorId,
-            frameHeader.name,
-            frameHeader.requestSeq,
-            reply.response,
-            streamMetadataMap(frameHeader.metadata)
-          );
-          if (!sent) {
-            throw new Error(`Actor '${actor.actorId}' local bound session response route is not ready.`);
-          }
+      if (reply.deferredResponse === true && reply.ok !== false) {
+        return true;
+      }
+      if (reply.ok === false) {
+        const sent = this.sendCapturedOrCurrentBoundSessionError(
+          responseTarget,
+          actor.actorId,
+          frameHeader.name,
+          frameHeader.requestSeq,
+          reply.error ?? 'Remote actor request failed.',
+          streamMetadataMap(frameHeader.metadata)
+        );
+        if (!sent) {
+          throw new Error(`Actor '${actor.actorId}' local bound session error response route is not ready.`);
+        }
+        return true;
+      }
+      const sent = this.sendCapturedOrCurrentBoundSessionResponse(
+        responseTarget,
+        actor.actorId,
+        frameHeader.name,
+        frameHeader.requestSeq,
+        reply.response,
+        streamMetadataMap(frameHeader.metadata)
+      );
+      if (!sent) {
+        throw new Error(`Actor '${actor.actorId}' local bound session response route is not ready.`);
       }
     } finally {
       void request;
@@ -1739,6 +1778,20 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     return candidates.length === 1 ? candidates[0] : undefined;
   }
 
+  private remoteBoundSessionTargetForSource(sourceNodeRid: RoutingId): ZLinkRemoteBoundSessionTarget | undefined {
+    const routerChannelId = this.defaultSpotRouterChannelId()
+      ?? this.defaultRouterChannelId();
+    if (routerChannelId === undefined) {
+      return undefined;
+    }
+    const targetNodeRid = normalizeRuntimeRoutingId(sourceNodeRid);
+    return {
+      routerChannelId,
+      targetNodeRid,
+      spotRid: targetNodeRid
+    };
+  }
+
   private primarySpotMeshName(): string | undefined {
     const names = [...this.options.registration.spotNodes.keys()];
     return names.length === 1 ? names[0] : undefined;
@@ -1756,7 +1809,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     const mapped = new Map<string, string>();
     for (const [spotMeshName, spotNode] of this.options.registration.spotNodes.entries()) {
       const conventionalRouteChannelId = `${spotMeshName}.route`;
-      if (this.options.registration.routeChannelOptions.has(conventionalRouteChannelId)) {
+      if (
+        this.options.registration.routeChannels.has(conventionalRouteChannelId)
+        || this.options.registration.routeChannelOptions.has(conventionalRouteChannelId)
+      ) {
         mapped.set(spotMeshName, conventionalRouteChannelId);
         continue;
       }
@@ -2109,11 +2165,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     return this;
   }
 
-  submit(signal?: AbortSignal): void {
-    void this.submitAsync(signal).catch(() => undefined);
-  }
-
-  private async submitAsync(signal?: AbortSignal): Promise<void> {
+  async submit(signal?: AbortSignal): Promise<void> {
     if (this.executed) {
       throw new Error('Bound session send already submitted.');
     }
@@ -2285,7 +2337,7 @@ function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {
 class ZLinkLazyNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
   constructor(
     private readonly nodeProvider: () => ZLinkBackendSpotNode,
-    private readonly remoteAddressResolver?: ZLinkSpotRemoteAddressResolver,
+    private readonly spotRouteResolver?: ZLinkSpotRouteResolver,
     private readonly routedTransport?: ZLinkActorRoutedJoinTransport,
     private readonly remoteActorBinder?: (actorRef: ActorRef, signal?: AbortSignal, force?: boolean) => Promise<void>,
     private readonly locationLifecycleProvider?: () => ZLinkLocationLifecycle | undefined
@@ -2301,7 +2353,7 @@ class ZLinkLazyNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
   ): Promise<ZLinkActorJoinResult<Message>> {
     return new ZLinkActorNativeJoinCoordinator({
       node: this.nodeProvider(),
-      remoteAddressResolver: this.remoteAddressResolver,
+      spotRouteResolver: this.spotRouteResolver,
       routedTransport: this.routedTransport,
       locationLifecycle: this.locationLifecycleProvider?.(),
       remoteActorBinder: this.remoteActorBinder
@@ -2319,7 +2371,7 @@ class ZLinkLazyNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
   ): Promise<ZLinkActorJoinResult<Message>> {
     return new ZLinkActorNativeJoinCoordinator({
       node: this.nodeProvider(),
-      remoteAddressResolver: this.remoteAddressResolver,
+      spotRouteResolver: this.spotRouteResolver,
       routedTransport: this.routedTransport,
       locationLifecycle: this.locationLifecycleProvider?.(),
       remoteActorBinder: this.remoteActorBinder

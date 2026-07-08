@@ -2,7 +2,7 @@ import { Inject, Optional } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, ZLINK_ROUTE_CLIENT, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { courierActorNodeRid, SampleNames } from '../../Shared/Configuration/sample-names';
 import { PacketNames } from '../../Shared/Contracts/messages';
-import { delay } from '../Configuration/request-retry';
+import { delay } from '../Configuration/timing';
 import type { ZLinkActorManager, ZLinkRequestContext, ZLinkRequestHandler, ZLinkRouteClient } from '@zlink-systems/framework';
 import type { OfferDeliveryReq, OfferDeliveryRes } from '../../Shared/Contracts/messages';
 import type { CourierOptions } from './courier-module';

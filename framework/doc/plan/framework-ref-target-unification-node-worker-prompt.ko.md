@@ -93,6 +93,53 @@ framework/doc/framework/node
 사용자-facing 문서에는 `ActorRef` / `SpotRef` 기반 전송만 남긴다. `JoinSpot(spotRid, ...)`처럼
 lifecycle id 입력이 남아야 하는 경우에는 일반 메시징 API가 아니라는 설명을 붙인다.
 
+## 메시지 핸들러 등록 정책 동시 적용
+
+이 worker 작업 중 Node sample이나 E2E의 handler 등록 표면을 고치면
+`framework/doc/framework/common/spec/framework-api.ko.md`의 메시지 핸들러 정책도 같은 범위에서
+적용한다. 특히 handler 타입과 metadata로 알 수 있는 값은 등록 호출부에 반복 인자로 넘기지 않고,
+Node/NestJS에서는 decorator와 provider metadata를 활용한 automatic registration을 우선 사용한다.
+
+sample 정리는 아래 기준으로 함께 진행한다.
+
+- `TicTacToe.Ts`는 manual registration을 보여 주는 예시로 남긴다.
+- `Bingo.Ts`, `DeliveryDispatch.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts`, `SupportChat.Ts`는 manual
+  registration을 제거하고 automatic registration만 사용하도록 정리한다.
+- 자동 등록과 수동 등록이 같은 dispatch key를 만들면 startup validation 오류로 처리한다. 조용히
+  덮어쓰거나 특정 sample만 통과시키는 우회로 처리하지 않는다.
+
+## connection 복구 책임 경계
+
+Node framework는 이미 core/binding에 넘긴 connection의 복구를 직접 구현하지 않는다. 연결된
+connection의 끊김 감지와 reconnect는 core 또는 binding socket option 책임이다. framework는
+location/topology desired set 계산과 initial connect 실패 재시도까지만 맡는다.
+
+감사 대상:
+
+```text
+framework/languages/node/packages/framework/src/runtime/messaging/index.ts
+framework/languages/node/packages/framework/src/runtime/backend/
+framework/languages/node/packages/framework/src/runtime/locations/
+framework/languages/node/packages/framework/src/runtime/streams/
+bindings/node/src/
+```
+
+처리 기준:
+
+1. `ZLinkAsyncSubmitter`가 established connection reconnect를 수행하지 않는지 확인한다. ready
+   notification으로 pending submit을 drain하는 것은 reconnect가 아니지만, core/binding의
+   `submit_retry`, poller, ready notification과 같은 정책을 중복 구현하는지 감사한다.
+2. 중복이면 framework queue를 유지하지 말고 core/binding 옵션 전달과 error mapping으로 내린다. 단,
+   core/binding public surface가 부족하면 Node만 우회하지 말고 binding/core 버그로 분리한다.
+3. disconnected monitor event를 보고 framework가 같은 endpoint reconnect loop를 시작하는 코드가
+   있으면 제거한다.
+4. location runtime의 topology reconciliation이 있으면 initial connect retry와 topology handover만
+   허용한다. active/connected 상태를 core 상태보다 framework가 더 권위 있게 판단하면 수정한다.
+5. test fake가 reconnect 동작을 framework 책임처럼 고정하고 있으면 테스트 이름과 기대값을 바꾼다.
+
+완료 보고에는 `ZLinkAsyncSubmitter`를 유지/제거/축소한 판단 근거와 binding/core로 분리한 항목을
+포함한다.
+
 ## 완료 게이트
 
 ```bash
@@ -106,4 +153,8 @@ rg -n "ZLinkSpotAddress|resolveSpotAddress|resolveActorSpotAddress|sendToActor\\
 rg -n "SpotAddress|spot address|SpotRemoteAddress|spot remote address|sendToActor\\([^)]*actorId|requestToActor\\([^)]*actorId|sendToSpot\\([^)]*spotRid|requestToSpot\\([^)]*spotRid" \
   ../../doc/contract-inventory ../../doc/framework/common ../../doc/framework/node \
   -S -g '!../../doc/plan/**' -g '!../../doc/**/draft/**'
+
+rg -n "reconnect|retry|backoff|setTimeout|setInterval|disconnect.*connect|connect.*disconnect" \
+  packages/framework/src test \
+  -S -g '!**/dist/**' -g '!**/node_modules/**'
 ```

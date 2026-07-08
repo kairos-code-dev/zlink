@@ -5,6 +5,8 @@ type SupportChatServerConfig = {
   sessionStreamEndpoint: string;
   registryEndpoint: string;
   stateFile: string;
+  redisEndpoint: string;
+  redisKeyPrefix: string;
 };
 
 function loadSampleConfig(): SupportChatServerConfig {
@@ -15,8 +17,18 @@ function loadSampleConfig(): SupportChatServerConfig {
     supportChannelEndpoint: process.env.SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT ?? 'tcp://127.0.0.1:31182',
     sessionStreamEndpoint: process.env.SUPPORTCHAT_STREAM_ENDPOINT ?? 'tcp://127.0.0.1:31183',
     registryEndpoint: process.env.SUPPORTCHAT_REGISTRY_ENDPOINT ?? 'tcp://127.0.0.1:31184',
-    stateFile: process.env.SUPPORTCHAT_STATE_FILE ?? `${runDir}/supportchat-state.json`
+    stateFile: process.env.SUPPORTCHAT_STATE_FILE ?? `${runDir}/supportchat-state.json`,
+    redisEndpoint: requireEnv('SUPPORTCHAT_REDIS_ENDPOINT'),
+    redisKeyPrefix: process.env.SUPPORTCHAT_REDIS_KEY_PREFIX ?? 'supportchat:node:'
   };
+}
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value.length === 0) {
+    throw new Error(`${name} is required.`);
+  }
+  return value;
 }
 
 export { loadSampleConfig };

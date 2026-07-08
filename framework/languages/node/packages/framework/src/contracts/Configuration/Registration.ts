@@ -59,8 +59,6 @@ export interface ZLinkFrameworkRegistration {
   readonly streamCompression?: ZLinkStreamCompressionOptions;
   readonly spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>;
   readonly spotPublisherClients: ReadonlySet<string>;
-  readonly hasSpotRemoteAddressResolver: boolean;
-  readonly spotRemoteAddressResolverType?: Type;
   readonly filterTypes: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
@@ -122,7 +120,6 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly spotNodes?: readonly (string | ZLinkSpotNodeRegistrationOptions)[] |
     Readonly<Record<string, ZLinkSpotNodeOptions>>;
   readonly spotPublisherClients?: readonly string[];
-  readonly spotRemoteAddressResolver?: Type;
   readonly filters?: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
@@ -149,6 +146,7 @@ export interface ZLinkChannelOptions {
     readonly sendHighWaterMark?: number;
     readonly receiveHighWaterMark?: number;
     readonly sendTimeoutMs?: number;
+    readonly maxMessageSize?: number;
   };
   readonly subscriber?: ZLinkClientCapabilityOptions;
 }
@@ -158,6 +156,7 @@ export interface ZLinkClientCapabilityOptions {
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
   readonly sendTimeoutMs?: number;
+  readonly maxMessageSize?: number;
 }
 
 export interface ZLinkPublisherCapabilityOptions {
@@ -173,6 +172,7 @@ export interface ZLinkRouteMeshChannelOptions {
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
   readonly sendTimeoutMs?: number;
+  readonly maxMessageSize?: number;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
   readonly handlers?: readonly ZLinkRouteChannelHandlerOptions[];
@@ -188,6 +188,7 @@ export interface ZLinkRouteChannelOptions {
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
   readonly sendTimeoutMs?: number;
+  readonly maxMessageSize?: number;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
   readonly handlers?: readonly ZLinkRouteChannelHandlerOptions[];
@@ -218,9 +219,13 @@ export interface ZLinkSpotNodeOptions {
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
   readonly entrySpotTimerHandlers?: readonly ZLinkEntrySpotTimerHandlerRegistration[];
+  readonly entrySpotPacketHandlers?: readonly ZLinkEntrySpotPacketHandlerRegistration[];
+  readonly entrySpotSubscriptionHandlers?: readonly ZLinkEntrySpotSubscriptionHandlerRegistration[];
   readonly entrySpotActorSendHandlers?: readonly ZLinkEntrySpotActorSendHandlerRegistration[];
   readonly entrySpotActorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
   readonly spotTimerHandlers?: readonly ZLinkSpotTimerHandlerRegistration[];
+  readonly spotPacketHandlers?: readonly ZLinkSpotPacketHandlerRegistration[];
+  readonly spotSubscriptionHandlers?: readonly ZLinkSpotSubscriptionHandlerRegistration[];
   readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
 }
@@ -231,6 +236,18 @@ export interface ZLinkEntrySpotTimerHandlerRegistration {
   readonly name: string;
   readonly periodMs: number;
   readonly options?: ZLinkTimerOptions;
+}
+
+export interface ZLinkEntrySpotPacketHandlerRegistration {
+  readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly handlerType: Type;
+  readonly packetName?: string;
+}
+
+export interface ZLinkEntrySpotSubscriptionHandlerRegistration {
+  readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly handlerType: Type;
+  readonly topic: string;
 }
 
 export interface ZLinkEntrySpotActorSendHandlerRegistration {
@@ -253,6 +270,18 @@ export interface ZLinkSpotTimerHandlerRegistration {
   readonly name: string;
   readonly periodMs: number;
   readonly options?: ZLinkTimerOptions;
+}
+
+export interface ZLinkSpotPacketHandlerRegistration {
+  readonly spotType: Type<ZLinkSpot>;
+  readonly handlerType: Type;
+  readonly packetName?: string;
+}
+
+export interface ZLinkSpotSubscriptionHandlerRegistration {
+  readonly spotType: Type<ZLinkSpot>;
+  readonly handlerType: Type;
+  readonly topic: string;
 }
 
 export interface ZLinkSpotActorSendHandlerRegistration {
@@ -362,8 +391,6 @@ export function createFrameworkRegistration(
     streamCompression: normalizeStreamCompression(options.streamCompression),
     spotNodes,
     spotPublisherClients: toSpotPublisherClientSet(options.spotPublisherClients, spotNodes),
-    hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
-    spotRemoteAddressResolverType: options.spotRemoteAddressResolver,
     filterTypes: [...(options.filters ?? [])],
     worker: options.worker === undefined ? undefined : { ...options.worker },
     dispatch: options.dispatch === undefined ? undefined : { ...options.dispatch },
@@ -983,6 +1010,7 @@ interface MutableChannelOptions {
     sendHighWaterMark?: number;
     receiveHighWaterMark?: number;
     sendTimeoutMs?: number;
+    maxMessageSize?: number;
   };
   subscriber?: MutableClientCapabilityOptions;
 }
@@ -992,6 +1020,7 @@ interface MutableClientCapabilityOptions {
   sendHighWaterMark?: number;
   receiveHighWaterMark?: number;
   sendTimeoutMs?: number;
+  maxMessageSize?: number;
 }
 
 interface MutablePublisherCapabilityOptions {
@@ -1008,6 +1037,7 @@ interface MutableRouteMeshChannelOptions {
   sendHighWaterMark?: number;
   receiveHighWaterMark?: number;
   sendTimeoutMs?: number;
+  maxMessageSize?: number;
   sendHandlers?: ZLinkRouteChannelSendHandlerRegistration[];
   requestHandlers?: ZLinkRouteChannelRequestHandlerRegistration[];
   handlers?: ZLinkRouteChannelHandlerOptions[];
@@ -1163,10 +1193,6 @@ export function hasActorManager(registration: ZLinkFrameworkRegistration): boole
 
 export function hasSpotPublisherClient(registration: ZLinkFrameworkRegistration): boolean {
   return registration.spotPublisherClients.size > 0;
-}
-
-export function hasSpotRemoteAddressResolver(registration: ZLinkFrameworkRegistration): boolean {
-  return registration.hasSpotRemoteAddressResolver;
 }
 
 function toTypeMap(value: ZLinkSpotNodeOptions['actorFactories']): Map<string, Type> {

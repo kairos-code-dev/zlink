@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OrderStatuses } from '../../../Shared/Contracts/messages';
 import type { OrderState, ServerAssertionReq, StartOrderReq } from '../../../Shared/Contracts/messages';
+import type { CommerceOrderStorePort, OrderWorkflowStorePort } from '../Ports/Outbound/stores';
 
 interface StoreData {
-  idempotency: Record<string, string>;
-  orders: Record<string, OrderRecord>;
-  projections: Record<string, OrderState>;
+  idempotency: Record<string, string | undefined>;
+  orders: Record<string, OrderRecord | undefined>;
+  projections: Record<string, OrderState | undefined>;
   evidence: string[];
 }
 
@@ -15,7 +16,7 @@ interface OrderRecord {
   state: OrderState;
 }
 
-class OrderStore {
+class OrderStore implements CommerceOrderStorePort, OrderWorkflowStorePort {
   constructor(private readonly filePath: string) {}
 
   static fromEnvironment(): OrderStore {

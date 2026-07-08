@@ -145,11 +145,6 @@ export class DynamicProcess {
     const exited = new Promise<void>((resolve) => {
       this.process.once('exit', () => resolve());
     });
-    try {
-      await fetch(`${this.httpUrl}/shutdown`, { method: 'POST' });
-    } catch {
-      this.process.kill('SIGTERM');
-    }
     if (this.process.exitCode !== null) {
       return;
     }
@@ -158,6 +153,16 @@ export class DynamicProcess {
         this.process.kill('SIGKILL');
       }
     }, 5000);
+    try {
+      await Promise.race([
+        fetch(`${this.httpUrl}/shutdown`, { method: 'POST' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('shutdown request timed out')), 1000))
+      ]);
+    } catch {
+      if (this.process.exitCode === null) {
+        this.process.kill('SIGTERM');
+      }
+    }
     await exited.finally(() => clearTimeout(killer));
   }
 }

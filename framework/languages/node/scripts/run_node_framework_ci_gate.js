@@ -9,7 +9,6 @@ const e2eTestFiles = [
   'test/contract/stream-session-runtime.test.js'
 ];
 
-process.env.ZLINK_SKIP_NODE_SAMPLE_SELF_CHECK = '1';
 process.env.ZLINK_NODE_RUNTIME_GATE_SKIP_TESTS = [
   ...(process.env.ZLINK_NODE_RUNTIME_GATE_SKIP_TESTS ?? '')
     .split(',')

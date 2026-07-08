@@ -3,13 +3,16 @@ import {
   ZLinkFrameworkException,
   type ZLinkRouteClient,
   type ZLinkSpotManager,
-  type ZLinkSpotOutbound
+  type ZLinkSpotOutbound,
+  type ZLinkSpotRefResolver
 } from '@zlink-systems/framework';
 import type {
   ChannelEchoRes,
   ChannelRouteRes,
   ChannelRouteReq,
   CloseSpotReq,
+  CrossRoleActorPushReq,
+  CrossRoleActorPushRes,
   CreateSpotReq,
   EvidenceWaitReq,
   SpotIdleCloseReq,
@@ -51,6 +54,7 @@ export function createPlayEndpoints(
   evidence: EvidenceStore,
   spotManager: ZLinkSpotManager,
   spotOutbound: ZLinkSpotOutbound,
+  spotRefs: ZLinkSpotRefResolver,
   routeClient: ZLinkRouteClient,
   stop: () => void
 ): HttpRoute[] {
@@ -140,18 +144,19 @@ export function createPlayEndpoints(
     {
       method: 'POST',
       path: '/spot/state/request',
-      handle: (body) => requestSpotStateWithRetry(spotOutbound, body as SpotStateRouteReq)
+      handle: (body) => requestSpotState(spotOutbound, spotRefs, body as SpotStateRouteReq)
     },
     {
       method: 'POST',
       path: '/spot/stage/request',
-      handle: (body) => {
+      handle: async (body) => {
         const request = body as SpotStageProbeReq;
-        return retryUntil(async () => spotOutbound
-          .requestToSpot(request.spotRid, { marker: request.marker, delta: request.delta })
+        const spot = await requireSpotRef(spotRefs, request.spotRid);
+        return await spotOutbound
+          .requestToSpot(spot, { marker: request.marker, delta: request.delta })
           .packetName('StageProbeReq')
           .timeout(5000)
-          .submit<StateRes>(), 'spot stage route request');
+          .submit<StateRes>();
       }
     },
     {
@@ -160,10 +165,11 @@ export function createPlayEndpoints(
       handle: async (body) => {
         const request = body as SpotStageTimerReq;
         const before = evidence.snapshot();
-        await retryUntil(async () => spotOutbound
-          .sendToSpot(request.spotRid, { name: request.name, periodMs: request.periodMs })
+        const spot = await requireSpotRef(spotRefs, request.spotRid);
+        await spotOutbound
+          .sendToSpot(spot, { name: request.name, periodMs: request.periodMs })
           .packetName('StageTimerStartMsg')
-          .submit(), 'spot stage timer command route');
+          .submit();
         const marker = `stage-timer|rid=${evidence.rid}|spot=${request.spotRid}|name=${request.name}`;
         const snapshot = await evidence.waitUntil((entries) =>
           countNew(entries, before, marker) >= 1, 10000);
@@ -181,8 +187,9 @@ export function createPlayEndpoints(
       handle: async (body) => {
         const request = body as SpotStateMsgReq;
         const before = evidence.snapshot();
+        const spot = await requireSpotRef(spotRefs, request.spotRid);
         await spotOutbound
-          .sendToSpot(request.spotRid, { marker: request.marker })
+          .sendToSpot(spot, { marker: request.marker })
           .packetName('StateMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
@@ -202,8 +209,9 @@ export function createPlayEndpoints(
       handle: async (body) => {
         const request = body as SpotSlowRouteReq;
         const timedOut = await fails(async () => {
+          const spot = await requireSpotRef(spotRefs, request.spotRid);
           await spotOutbound
-            .requestToSpot(request.spotRid, { marker: request.marker, delayMs: request.delayMs })
+            .requestToSpot(spot, { marker: request.marker, delayMs: request.delayMs })
             .packetName('SlowSpotReq')
             .timeout(request.timeoutMs)
             .submit();
@@ -221,8 +229,9 @@ export function createPlayEndpoints(
       handle: async (body) => {
         const request = body as SpotOutboundRouteReq;
         const before = evidence.snapshot();
+        const spot = await requireSpotRef(spotRefs, request.spotRid);
         await spotOutbound
-          .sendToSpot(request.spotRid, { marker: request.marker })
+          .sendToSpot(spot, { marker: request.marker })
           .packetName('SpotOutboundMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
@@ -245,8 +254,9 @@ export function createPlayEndpoints(
       handle: async (body) => {
         const request = body as SpotOutboundRouteReq;
         const before = evidence.snapshot();
+        const spot = await requireSpotRef(spotRefs, request.spotRid);
         await spotOutbound
-          .sendToSpot(request.spotRid, { marker: request.marker })
+          .sendToSpot(spot, { marker: request.marker })
           .packetName('SpotOutboundNegativeMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
@@ -277,6 +287,22 @@ export function createPlayEndpoints(
     },
     {
       method: 'POST',
+      path: '/actor/cross-role/push',
+      handle: async (body) => {
+        const request = body as CrossRoleActorPushReq;
+        const reply = await routeClient
+          .requestToNode(SpotServiceNames.externalSpotChannel, request.nodeRid, request)
+          .packetName('CrossRoleActorPushReq')
+          .timeout(5000)
+          .submit<CrossRoleActorPushRes>();
+        evidence.add(
+          `cross-role-entry|rid=${evidence.rid}|target=${request.nodeRid}|actor=${request.actorId}|value=${request.value}`
+        );
+        return reply;
+      }
+    },
+    {
+      method: 'POST',
       path: '/spot/mixed-route/request',
       handle: async (body) => {
         const request = body as SpotMixedRouteReq;
@@ -286,11 +312,12 @@ export function createPlayEndpoints(
           .packetName('ChannelEchoReq')
           .timeout(5000)
           .submit<ChannelEchoRes>();
-        const state = await retryUntil(async () => spotOutbound
-          .requestToSpot(request.spotRid, { operation: 'add', delta: request.delta })
+        const spot = await requireSpotRef(spotRefs, request.spotRid);
+        const state = await spotOutbound
+          .requestToSpot(spot, { operation: 'add', delta: request.delta })
           .packetName('StateReq')
           .timeout(5000)
-          .submit<StateRes>(), 'mixed route spot request');
+          .submit<StateRes>();
         return {
           spotRid: request.spotRid,
           channelReply: channel.value,
@@ -301,11 +328,14 @@ export function createPlayEndpoints(
     {
       method: 'POST',
       path: '/spot/to-spot/request',
-      handle: (body) => {
+      handle: async (body) => {
         const request = body as SpotToSpotRouteReq;
-        return spotOutbound
-          .requestToSpot(request.sourceSpotRid, {
+        const sourceSpot = await requireSpotRef(spotRefs, request.sourceSpotRid);
+        const targetSpot = await requireSpotRef(spotRefs, request.targetSpotRid);
+        return await spotOutbound
+          .requestToSpot(sourceSpot, {
             targetSpotRid: request.targetSpotRid,
+            targetSpot,
             marker: request.marker
           })
           .packetName('SpotToSpotReq')
@@ -316,11 +346,14 @@ export function createPlayEndpoints(
     {
       method: 'POST',
       path: '/spot/to-spot/timeout',
-      handle: (body) => {
+      handle: async (body) => {
         const request = body as SpotToSpotTimeoutRouteReq;
+        const sourceSpot = await requireSpotRef(spotRefs, request.sourceSpotRid);
+        const targetSpot = await requireSpotRef(spotRefs, request.targetSpotRid);
         return spotOutbound
-          .requestToSpot(request.sourceSpotRid, {
+          .requestToSpot(sourceSpot, {
             targetSpotRid: request.targetSpotRid,
+            targetSpot,
             marker: request.marker
           })
           .packetName('SpotToSpotTimeoutReq')
@@ -331,11 +364,14 @@ export function createPlayEndpoints(
     {
       method: 'POST',
       path: '/spot/to-spot/negative',
-      handle: (body) => {
+      handle: async (body) => {
         const request = body as SpotToSpotNegativeRouteReq;
+        const sourceSpot = await requireSpotRef(spotRefs, request.sourceSpotRid);
+        const targetSpot = await requireSpotRef(spotRefs, request.targetSpotRid);
         return spotOutbound
-          .requestToSpot(request.sourceSpotRid, {
+          .requestToSpot(sourceSpot, {
             targetSpotRid: request.targetSpotRid,
+            targetSpot,
             marker: request.marker
           })
           .packetName('SpotToSpotNegativeReq')
@@ -363,13 +399,35 @@ export function createPlayEndpoints(
     },
     {
       method: 'POST',
+      path: '/spot/publish/local',
+      handle: async (body) => {
+        const request = body as SpotPublishReq;
+        await spotManager.executeOnSpot(ScenarioUserSpot, request.spotRid, async (spot) => {
+          await spot.context.outbound
+            .publish(SpotServiceNames.spotEventTopic, { marker: request.marker })
+            .packetName('SpotMsg')
+            .submit();
+          evidence.add(`spot-publish|rid=${evidence.rid}|spot=${request.spotRid}|marker=${request.marker}`);
+        });
+        return {
+          operation: 'spot.sm-c5-publish',
+          publisherRid: evidence.rid,
+          spotRid: request.spotRid,
+          marker: request.marker,
+          evidence: evidence.snapshot()
+        };
+      }
+    },
+    {
+      method: 'POST',
       path: '/spot/missing-handler/request',
       handle: async (body) => {
         const request = body as SpotMissingHandlerReq;
         const before = evidence.snapshot();
         const failed = await fails(async () => {
+          const spot = await requireSpotRef(spotRefs, request.spotRid);
           await spotOutbound
-            .requestToSpot(request.spotRid, { operation: 'noop', delta: 0 })
+            .requestToSpot(spot, { operation: 'noop', delta: 0 })
             .packetName('MissingSpotReq')
             .timeout(2000)
             .submit<StateRes>();
@@ -393,8 +451,9 @@ export function createPlayEndpoints(
         const abort = new AbortController();
         const timeout = setTimeout(() => abort.abort(), 2000);
         try {
+          const spot = await requireSpotRef(spotRefs, request.spotRid);
           await spotOutbound
-            .sendToSpot(request.spotRid, { marker: request.marker })
+            .sendToSpot(spot, { marker: request.marker })
             .packetName('MissingSpotMsg')
             .submit(abort.signal);
         } catch (error) {
@@ -423,8 +482,9 @@ export function createPlayEndpoints(
         InMemorySpotRouteStore.recordUserSpot(request.spotRid, evidence.rid);
         const before = evidence.snapshot();
         const failed = await fails(async () => {
+          const spot = staleLocalSpotRef(evidence.rid, request.spotRid);
           await spotOutbound
-            .requestToSpot(request.spotRid, { operation: 'noop', delta: 0 })
+            .requestToSpot(spot, { operation: 'noop', delta: 0 })
             .packetName('StateReq')
             .timeout(2000)
             .submit<StateRes>();
@@ -446,8 +506,9 @@ export function createPlayEndpoints(
         const request = body as SpotMissingTargetMsgReq;
         InMemorySpotRouteStore.recordUserSpot(request.spotRid, evidence.rid);
         const before = evidence.snapshot();
+        const spot = staleLocalSpotRef(evidence.rid, request.spotRid);
         await spotOutbound
-          .sendToSpot(request.spotRid, { marker: request.marker })
+          .sendToSpot(spot, { marker: request.marker })
           .packetName('StateMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
@@ -626,29 +687,36 @@ function delayWorker(marker: string, delayMs: number, signal?: AbortSignal): Pro
   });
 }
 
-async function requestSpotStateWithRetry(
-  spotOutbound: ZLinkSpotOutbound,
-  request: SpotStateRouteReq
-): Promise<StateRes> {
-  return retryUntil(async () => spotOutbound
-    .requestToSpot(request.spotRid, { operation: request.operation, delta: request.delta })
-    .packetName('StateReq')
-    .timeout(5000)
-    .submit<StateRes>(), 'spot state route request');
+function staleLocalSpotRef(nodeRid: string, spotRid: string) {
+  return {
+    meshName: SpotServiceNames.spotChannel,
+    nodeRid,
+    spotRid
+  };
 }
 
-async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {
-  const deadline = Date.now() + 30000;
-  let last: unknown;
-  while (Date.now() < deadline) {
-    try {
-      return await operation();
-    } catch (error) {
-      last = error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
+async function requestSpotState(
+  spotOutbound: ZLinkSpotOutbound,
+  spotRefs: ZLinkSpotRefResolver,
+  request: SpotStateRouteReq
+): Promise<StateRes> {
+  const spot = await requireSpotRef(spotRefs, request.spotRid);
+  return await spotOutbound
+    .requestToSpot(spot, { operation: request.operation, delta: request.delta })
+    .packetName('StateReq')
+    .timeout(5000)
+    .submit<StateRes>();
+}
+
+async function requireSpotRef(spotRefs: ZLinkSpotRefResolver, spotRid: string) {
+  const spot = await spotRefs.resolveSpotRef(spotRid);
+  if (spot === undefined) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.SpotRouteNotFound,
+      `SPOT '${spotRid}' has no live location row.`
+    );
   }
-  throw new Error(`Timed out waiting for ${label}: ${last instanceof Error ? last.message : String(last)}`);
+  return spot;
 }
 
 async function fails(operation: () => Promise<void>): Promise<boolean> {

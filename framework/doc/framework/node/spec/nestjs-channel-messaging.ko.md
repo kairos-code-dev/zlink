@@ -232,8 +232,9 @@ channel 별 연결 방식은, 해당 역할 builder 에 수동 endpoint 를 넘�
 SPOT으로 들어오는 routed 메시지는 RouteMesh `ROUTER` 역할이 필요하다. 같은 프로세스에
 `.addRouteMesh(name).enableServer(...)`와 `.addSpotMesh(name)`이 함께 있으면 framework가
 그 RouteMesh socket을 단일 SpotMesh 노드에 자동으로 연결한다. 별도 수락 메서드나 egress
-builder 메서드는 없다. 보내는 쪽은 RouteMesh를 등록하고 `outbound.sendToSpot(spotRid, ...)` /
-`outbound.requestToSpot(spotRid, ...)`으로 보낸다.
+builder 메서드는 없다. 보내는 쪽은 RouteMesh와 location store를 등록하고,
+`ZLinkSpotRefResolver` 로 얻은 `SpotRef` 를 `outbound.sendToSpot(spotRef, ...)` /
+`outbound.requestToSpot(spotRef, ...)`에 넘긴다.
 
 `publisher`/`subscriber`(fanout)는 router 역할이 없으므로 SPOT route 수신 대상이
 아니다. client-server channel 의 server `ROUTER`도 SPOT route 수신 대상으로 쓰지 않는다.

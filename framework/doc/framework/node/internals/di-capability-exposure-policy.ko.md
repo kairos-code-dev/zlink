@@ -144,7 +144,8 @@ proxy 를 등록하는 방식은 줄인다.
 | provider token | 주입 타입 | 등록 조건 | 권장 동작 |
 |----------------|-----------|-----------|-----------|
 | `ZLINK_BOUND_SESSION_FACTORY` | `ZLinkBoundSessionFactory` | framework runtime | 항상 등록 |
-| `ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER` | `ZLinkSpotRemoteAddressResolver` | `spot.remoteAddressResolver`(`AddSpotRemoteAddressResolver<TResolver>()` 대응) 또는 registry remote address 구성 | 조건을 만족할 때만 등록 |
+| `ZLINK_SPOT_REF_RESOLVER` | `ZLinkSpotRefResolver` | location store 등록 | 조건을 만족할 때만 등록 |
+| `ZLINK_ACTOR_SPOT_REF_RESOLVER` | `IZLinkActorAddressResolver` | location store 등록 | 조건을 만족할 때만 등록 |
 
 missing proxy 패턴은 사용 시점까지 오류를 늦춘다. bound session factory 는
 항상 등록하고, 현재 actor 에 묶인 session binding 이 없을 때 호출 지점에서
@@ -179,12 +180,12 @@ ZLinkConfigurationException:
 Actor factory registration requires at least one SpotNode.
 ```
 
-### 4.2 Spot remote address resolver
+### 4.2 SpotRef resolver
 
-`spot.remoteAddressResolver`(`AddSpotRemoteAddressResolver<TResolver>()` 대응)
-자체는 `SpotNode` 를 직접 요구하지 않는다. resolver 는 `spotRid` 또는 `spotId` 를
-route 로 바꾸는 정책 객체일 뿐이다. session gateway 나 API 서버가 route 정보를
-저장하거나 전달하기 위해 같은 resolver 구현을 등록할 수 있다.
+`ZLinkSpotRefResolver` 자체는 `SpotNode` 를 직접 요구하지 않는다. resolver 는
+location store 를 읽어 `spotRid` 를 `SpotRef` 로 바꾸는 조회 객체다. session gateway 나
+API 서버처럼 local SpotNode 가 없는 서버도 location store 를 등록하면 같은 resolver 를
+주입받을 수 있다.
 
 다만 `ZLinkSpotOutbound` 는 local spot 실행 문맥을 전제로 하므로 `SpotNode` 가
 있을 때만 DI 에 등록한다. 따라서 `SpotNode` 없이 resolver 만 등록한 구성에서는
@@ -270,8 +271,8 @@ configuration error 로 표현한다.
 | `NodesAndServices.forRoot_DoesNot_Register_SpotPublisher_Without_PublisherCapability` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
 | `NodesAndServices.forRoot_Registers_SpotPublisher_When_PublisherCapability_Exists` | Spot publisher 역할이 있으면 Spot publisher service 가 DI 에 등록된다 |
 | `NodesAndServices.forRoot_Registers_BoundSession_Factory` | bound session factory 는 framework runtime 과 함께 등록된다 |
-| `NodesAndServices.forRoot_Allows_SpotRemoteAddressResolver_Without_SpotNode` | remote address 정보만 제공하는 서버는 SpotNode 없이 `ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER` 를 등록할 수 있다 |
-| `NodesAndServices.forRoot_DoesNot_Register_SpotOutbound_With_Resolver_Only` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `ZLINK_SPOT_OUTBOUND` 는 DI 에 없다 |
+| `NodesAndServices.forRoot_Allows_SpotRefResolver_Without_SpotNode` | location store 를 등록한 서버는 SpotNode 없이 `ZLINK_SPOT_REF_RESOLVER` 를 등록할 수 있다 |
+| `NodesAndServices.forRoot_DoesNot_Register_SpotOutbound_With_Resolver_Only` | SpotRef resolver 만 있고 SpotNode 가 없으면 `ZLINK_SPOT_OUTBOUND` 는 DI 에 없다 |
 | `HandlerExposure.RouteClient_Throws_ConfigurationException_When_RouteChannel_Missing` | route channel 누락 오류가 configuration error 로 나온다 |
 | `HandlerExposure.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | channel client 역할 누락 오류가 configuration error 로 나온다 |
 

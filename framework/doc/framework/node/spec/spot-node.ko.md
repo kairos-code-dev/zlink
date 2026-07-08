@@ -209,7 +209,7 @@ framework 가 core discovery route 를 노출할 때 Entry Spot 과 user Spot �
   Entry Spot rid 다.
 - Actor remote location 의 `currentSpotKind` 가 `User` 면 `currentSpotRid` 는 user
   Spot rid 다.
-- Spot remote address resolver 의 `ZLinkSpotRemoteAddress.spotKind` 도 core
+- location runtime 이 만든 내부 spot route target 의 `spotKind` 도 core
   `resolveSpot()` 결과를 보존한다.
 
 Spot RID route 는 framework 가 관리하는 이름 색인이다. 이 색인은 Spot rid 를
@@ -221,7 +221,7 @@ Spot RID route 는 framework 가 관리하는 이름 색인이다. 이 색인은
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `entrySpot.routingId` 로 지정한 routing id 가 native Entry Spot facade 에 적용되고 Entry Spot activation 의 `spotRid` 로 노출된다. |
-| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid_And_Removes_Route` | Spot RID route 는 Spot rid 만 찾는 색인으로 쓰고, resolver 가 core `resolveSpot()` 결과의 owner node rid 와 `SpotKind.User` 를 보존한다. |
+| `LocationRuntimeTests.SpotRefResolver_Resolves_Created_Spot_By_Rid_And_Removes_Route` | Spot RID route 는 Spot rid 만 찾는 색인으로 쓰고, resolver 가 core `resolveSpot()` 결과의 owner node rid 와 `SpotKind.User` 를 보존한다. |
 | `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | `create`, `find`, `list`, `close` 와 scope 정리가 일관되게 동작한다(dotnet `CreateAsync` / `GetAsync`·`FindAsync` / `ListAsync` / `CloseAsync` 동등). |
 
 이름은 dotnet 회귀 테스트와 1:1 로 대응한다. node 구현은 같은 시나리오를 NestJS

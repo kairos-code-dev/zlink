@@ -71,6 +71,9 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore): 
               .routingId(options.rid)
               .enableClient();
             profile.configureServerSocket().weight = options.weight;
+            if (options.maxMessageSize > 0) {
+              profile.configureServerSocket().maxMessageSize = options.maxMessageSize;
+            }
             profile
               .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
               .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)

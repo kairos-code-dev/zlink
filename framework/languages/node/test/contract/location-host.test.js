@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const zlink = require('../../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const nestjs = require('../../packages/nestjs/dist');
 
@@ -91,15 +91,15 @@ test('framework runtime host starts location runtime and injects lifecycle into 
   assert.equal(actorOptions.locationLifecycle, preStartActorOptions.locationLifecycle);
   assert.equal(spotOptions.locationLifecycle, actorOptions.locationLifecycle);
   assert.equal(spotOptions.locationMeshName, 'play');
-  assert.equal(typeof spotOptions.remoteAddressResolver?.resolve, 'function');
+  assert.equal(typeof spotOptions.spotRouteResolver?.resolve, 'function');
 
   await actorOptions.locationLifecycle.claimActor('player', 'actor-1', nodeRid);
   await spotOptions.locationLifecycle.claimSpot('play', rid('spot-1'), 'StageSpot', nodeRid, framework.ZLinkSpotKind.User);
   assert.notEqual(await store.resolveActor({ actorType: 'player', actorId: 'actor-1' }), undefined);
   assert.notEqual(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
-  const remoteAddress = await spotOptions.remoteAddressResolver.resolve(rid('spot-1'));
-  assert.equal(remoteAddress.routerChannelId, 'play');
-  assert.equal(remoteAddress.targetNodeRid.toHex(), nodeRid.toHex());
+  const routeTarget = await spotOptions.spotRouteResolver.resolve(rid('spot-1'));
+  assert.equal(routeTarget.routerChannelId, 'play');
+  assert.equal(routeTarget.targetNodeRid.toHex(), nodeRid.toHex());
 
   await runtime.stop();
 
@@ -376,6 +376,26 @@ function fakeBackendAdapterFactory(calls, nodeRid) {
             async dispose() {
               calls.push('spot:dispose');
             }
+          };
+        }
+      };
+    },
+    createStreamAdapter() {
+      return {
+        createStreamSocket() {
+          throw new Error('not used');
+        }
+      };
+    },
+    createMonitoringAdapter() {
+      return {
+        openSocketMonitor() {
+          return {
+            nativeInstance: {},
+            onEvent() {},
+            recv() { return null; },
+            status() { return {}; },
+            async dispose() {}
           };
         }
       };

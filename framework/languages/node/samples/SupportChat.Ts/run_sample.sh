@@ -14,6 +14,8 @@ export SUPPORTCHAT_STATE_FILE="${WORK_DIR}/supportchat-state.json"
 mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${SUPPORTCHAT_LOG_DIR}"
 rm -f "${SUPPORTCHAT_LOG_DIR}"/*.log
 PIDS=()
+REDIS_CONTAINER_ID=""
+source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -39,6 +41,9 @@ cleanup() {
     fi
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
+    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+  fi
   if [[ "${SUPPORTCHAT_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=${RUN_DIR}"
   else
@@ -86,6 +91,7 @@ export SUPPORTCHAT_API_HTTP="http://127.0.0.1:${PORTS[0]}"
 export SUPPORTCHAT_API_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
 export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
 export SUPPORTCHAT_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+export SUPPORTCHAT_REDIS_KEY_PREFIX="supportchat:node:${RANDOM}:$$:"
 
 wait_port() {
   local endpoint="$1"
@@ -99,12 +105,58 @@ wait_port() {
   return 1
 }
 
+wait_tcp() {
+  local name="$1"
+  local endpoint="$2"
+  local host="${endpoint%:*}"
+  local port="${endpoint##*:}"
+  for _ in $(seq 1 300); do
+    if timeout 1 bash -c ":</dev/tcp/${host}/${port}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
+}
+
+wait_ready_log() {
+  local name="$1"
+  local pattern="$2"
+  local file="${LOG_DIR}/${name}.log"
+  for _ in $(seq 1 300); do
+    if grep -q "${pattern}" "${file}" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} ready marker" >&2
+  return 1
+}
+
 start_server() {
-  node "${SCRIPT_DIR}/dist/Server/Api/main.js" >"${LOG_DIR}/api.log" 2>&1 &
+  local name="$1"
+  local main="$2"
+  node "${SCRIPT_DIR}/${main}" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
-start_server
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the SupportChat sample because it provisions a dedicated Redis location store." >&2
+  exit 1
+fi
+
+start_redis_container "supportchat-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
+REDIS_PORT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed 's/.*://')"
+export SUPPORTCHAT_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+wait_tcp redis "${SUPPORTCHAT_REDIS_ENDPOINT}"
+
+start_server support "dist/Server/Support/main.js"
+wait_ready_log support '"role":"support"'
+start_server session "dist/Server/Session/main.js"
+wait_ready_log session '"role":"session"'
+start_server api "dist/Server/Api/main.js"
+wait_ready_log api '"role":"api"'
 wait_port "${SUPPORTCHAT_API_HTTP}"
 
 node "${SCRIPT_DIR}/dist/Server/Probe/main.js" >"${LOG_DIR}/probe.log" 2>&1

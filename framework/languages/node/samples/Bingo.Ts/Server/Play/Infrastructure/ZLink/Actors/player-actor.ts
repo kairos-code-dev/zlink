@@ -25,9 +25,9 @@ class PlayerActor implements ZLinkActor {
     this.disconnected = true;
   }
 
-  push(packetName: string, payload: unknown): void {
+  async push(packetName: string, payload: unknown): Promise<void> {
     this.nextSeq += 1;
-    void this.context.boundSession
+    await this.context.boundSession
       .send(payload)
       .packetName(packetName)
       .metadata('seq', String(this.nextSeq))

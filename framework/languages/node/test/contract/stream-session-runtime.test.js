@@ -3,7 +3,7 @@ const { once } = require('node:events');
 const net = require('node:net');
 const test = require('node:test');
 
-const zlink = require('../../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
@@ -493,6 +493,42 @@ test('stream session runtime replies to dispatch errors without session onError 
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
     code: 'Error',
     message: 'dispatch failed'
+  });
+});
+
+test('stream session runtime keeps request streams open after route disconnect error replies', async () => {
+  const socket = new FakeStreamSocket();
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch() {
+          throw new framework.ZLinkRouteDisconnectedError('yield.spot.route', 512, 4);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-route-error', fakeHeader({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    requestSeq: 9n,
+    name: 'YieldShutdownScenarioReq'
+  }), fakeMessage('p'));
+  await runtime.dispose();
+
+  assert.deepEqual(socket.disconnects, []);
+  assert.equal(socket.sent.length, 1);
+  const frame = connector.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Error);
+  assert.equal(header.requestSeq, 9n);
+  assert.equal(header.name, 'YieldShutdownScenarioReq');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
+    code: 'ZLinkRouteDisconnectedError',
+    message: 'yield.spot.route'
   });
 });
 

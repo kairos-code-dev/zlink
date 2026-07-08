@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode, type ZLinkEntrySpot } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -9,6 +9,8 @@ import { EvidenceStore } from './Support/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { parseSessionOptions } from './Configuration/session-options';
 import { YieldSessionFactory } from './Handlers/yield-session';
+
+class YieldSessionEntrySpot implements ZLinkEntrySpot {}
 
 export async function startSessionHost(args: readonly string[]): Promise<void> {
   const options = parseSessionOptions(args);
@@ -35,13 +37,16 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
 
           builder.addRouteMeshChannel(YieldDispatchNames.controlChannel)
             .enableRouter(options.controlRouterEndpoint)
-            .routingId(options.rid);
+            .routingId(options.rid)
+            .connect(options.playControlEndpoints);
           builder.addRouteMeshChannel(YieldDispatchNames.spotRouteChannel)
             .enableRouter(options.spotRouteEndpoint)
-            .routingId(options.rid);
-          builder.addSpotMesh(YieldDispatchNames.spotChannel)
             .routingId(options.rid)
-            .enableRouter(options.spotRouterEndpoint);
+            .connect(options.playSpotRouteEndpoints);
+          const spotMesh = builder.addSpotMesh(YieldDispatchNames.spotChannel)
+            .routingId(options.rid)
+            .enableRouter(options.spotRouterEndpoint)
+            .addEntrySpot(YieldSessionEntrySpot);
           builder.addStreamNode(YieldDispatchNames.streamNode)
             .bind(options.streamEndpoint)
             .registerSession(YieldSessionFactory);
@@ -52,6 +57,7 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
     ],
     providers: [
       { provide: EvidenceStore, useValue: evidence },
+      YieldSessionEntrySpot,
       YieldSessionFactory
     ]
   })(SessionModule);

@@ -39,6 +39,8 @@ export interface YieldScenarioRes {
   readonly evidence: readonly string[];
 }
 
+import type { SpotRef } from '@zlink-systems/framework';
+
 export interface HoldMsg {
   readonly requestId: string;
   readonly delayMs: number;
@@ -59,12 +61,14 @@ export interface YieldReq {
 export interface RemoteSpotYieldReq {
   readonly requestId: string;
   readonly targetSpotRid: string;
+  readonly targetSpot?: SpotRef;
   readonly delayMs: number;
 }
 
 export interface RemoteSpotYieldMsg {
   readonly requestId: string;
   readonly targetSpotRid: string;
+  readonly targetSpot?: SpotRef;
   readonly delayMs: number;
 }
 

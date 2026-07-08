@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
+source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
@@ -13,7 +15,7 @@ HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
 pick_port() {
-  node -e "const net=require('node:net'); const s=net.createServer(); s.listen(0,'127.0.0.1',()=>{console.log(s.address().port); s.close();});"
+  node "$NODE_ROOT/e2e/port-picker.js"
 }
 
 build_package() {
@@ -113,7 +115,7 @@ API_B="tcp://127.0.0.1:$API_B_PORT"
 API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
 API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "resilience-lifecycle-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+start_redis_container "resilience-lifecycle-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
 REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
 REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
 REDIS_KEY_PREFIX="resilience-lifecycle:node:$RUN_ID"

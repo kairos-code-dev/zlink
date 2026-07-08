@@ -1023,11 +1023,13 @@ interface ZLinkBoundSessionSendCall {
 
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
 
-  submit(signal?: AbortSignal): void;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
-`submit(...)` 은 bound session send의 one-way terminator다. client push는 호출자가
+`submit(...)` 은 bound session send의 one-way terminator다. 반환된 Promise 는 framework 가
+현재 bound session route 에 push frame 을 넘긴 뒤 완료된다. client application 이 그 frame 을
+처리했다는 확인까지 보장하지는 않는다.
 송신 수락 완료를 기다리는 흐름으로 만들지 않는다. 송신 수락과 backpressure 처리는
 framework 내부 책임이다.
 
@@ -1115,36 +1117,28 @@ session disconnect 는 bound actor 전체에 자동 전파되지 않는다. 연�
 actor 의 현재 Spot 실행 문맥에서 disconnected handler 를 실행할 뿐이며, actor 를
 room 에서 leave 시키지 않는다.
 
-## 6. Spot remote address resolver 등록
+## 6. SpotRef resolver 등록
 
-이 절은 actor 가 Spot 으로 join 하거나 Spot client 를 사용할 때 필요한 resolver 표면을 정리한다.
+이 절은 actor 가 Spot 으로 join 하거나 Spot outbound 를 사용할 때 필요한 resolver 표면을 정리한다.
 
 - session 에 이미 attach 된 actor 로 relay 할 때는 actor remote address resolver 를
   사용하지 않는다. session 은 framework 가 만든 actor handle 을 저장한다.
 - actor 가 현재 연결된 client session 으로 push 를 보낼 때는,
   framework / core 가 가진 actor-session binding 상태를 사용한다.
 - actor 가 `joinSpot(spotRid, ...)` 로 user Spot 에 들어가는 경로가 node
-  경계를 넘을 수 있다면, spot remote address resolver 도 함께 등록한다.
+  경계를 넘을 수 있다면, location store 를 등록해서 framework 가 `SpotRef` 를
+  조회할 수 있게 한다. `joinSpot(...)` 의 spot rid 는 lifecycle workflow 입력이고,
+  일반 spot 메시징 API 의 전송 대상은 `SpotRef` 다.
 
 ```ts
-interface ZLinkSpotRemoteAddressResolver {
-  resolve(
-    spotRid: RoutingId,
-    signal?: AbortSignal,
-  ): Promise<ZLinkSpotRemoteAddress>;
-}
-
-enum ZLinkSpotKind {
-  Invalid = 0,
-  Entry = 1,
-  User = 2,
-}
-
-interface ZLinkSpotRemoteAddress {
-  readonly routerChannelId: string;
-  readonly targetNodeRid: RoutingId;
+interface SpotRef {
+  readonly meshName: string;
+  readonly nodeRid: RoutingId;
   readonly spotRid: RoutingId;
-  readonly spotKind: ZLinkSpotKind;
+}
+
+interface ZLinkSpotRefResolver {
+  resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotRef | undefined>;
 }
 ```
 
@@ -1156,7 +1150,7 @@ ZLinkModule.forRoot(
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
     .addRouteMesh('game.rooms')
-    .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
+    .addLocationStore(redisLocationStore)
     .build()
 );
 ```
@@ -1168,7 +1162,7 @@ ZLinkModule.forRoot(
   zlinkFramework()
     .addSpotMesh('game')
       .actorFactory('player', PlayerActorFactory)
-    .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
+    .addLocationStore(redisLocationStore)
     .build()
 );
 ```

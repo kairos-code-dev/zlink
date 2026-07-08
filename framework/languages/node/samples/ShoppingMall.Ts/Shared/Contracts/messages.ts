@@ -60,6 +60,7 @@ const OrderStatuses = {
 const PacketNames = {
   startOrderReq: 'shoppingmall.start_order.req',
   continueOrderWorkflowReq: 'shoppingmall.continue_order_workflow.req',
+  prepareInventoryReservedReq: 'shoppingmall.prepare_inventory_reserved.req',
   rebuildOrderProjectionReq: 'shoppingmall.rebuild_order_projection.req'
 } as const;
 

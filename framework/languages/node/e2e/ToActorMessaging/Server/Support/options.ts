@@ -5,6 +5,7 @@ export interface ServerOptions {
   readonly redisKeyPrefix: string;
   readonly routerEndpoint: string;
   readonly pubSubEndpoint: string;
+  readonly streamEndpoint?: string;
   readonly evidenceFile?: string;
   readonly logDir: string;
 }
@@ -18,6 +19,7 @@ export function parseServerOptions(args: readonly string[], role: string): Serve
     redisKeyPrefix: values.get('redis-key-prefix') ?? 'zlink:e2e:to-actor',
     routerEndpoint: values.get('router-endpoint') ?? 'tcp://127.0.0.1:0',
     pubSubEndpoint: values.get('pubsub-endpoint') ?? 'tcp://127.0.0.1:0',
+    streamEndpoint: values.get('stream-endpoint'),
     evidenceFile: values.get('evidence-file'),
     logDir: values.get('log-dir') ?? 'logs'
   };

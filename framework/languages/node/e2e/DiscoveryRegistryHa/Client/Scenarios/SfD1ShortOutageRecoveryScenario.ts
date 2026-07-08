@@ -13,12 +13,20 @@ interface PeerDto {
 }
 
 export async function runSfD1(options: ClientOptions): Promise<void> {
-  await driveRequests(options.consumerUrl, 6000);
+  const traffic = driveRequests(options.consumerUrl, 6000);
+  console.log('scenario-control SF-D1 pause-redis');
+  await delay(1500);
+  console.log('scenario-control SF-D1 unpause-redis');
+  await traffic;
 
   await waitForHealthyStatus(options.consumerUrl);
   await waitForLiveProviders(options.consumerUrl);
 
   console.log('scenario SF-D1 passed');
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function driveRequests(baseUrl: string, windowMs: number): Promise<void> {

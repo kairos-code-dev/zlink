@@ -9,7 +9,11 @@ interface PeerDto {
 }
 
 export async function runSfD2(options: ClientOptions): Promise<void> {
-  const replies = await driveTolerantRequests(options.consumerUrl, 10000);
+  const traffic = driveTolerantRequests(options.consumerUrl, 10000);
+  console.log('scenario-control SF-D2 pause-redis-and-kill-api-b');
+  await delay(4000);
+  console.log('scenario-control SF-D2 unpause-redis');
+  const replies = await traffic;
   ensure(replies.some((reply) => reply.providerRid === 'api-a'), 'SF-D2 no request was served by surviving api-a.');
 
   await waitForPeer(options.consumerUrl, 'api-a');
@@ -22,6 +26,10 @@ export async function runSfD2(options: ClientOptions): Promise<void> {
   }
 
   console.log('scenario SF-D2 passed');
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function driveTolerantRequests(baseUrl: string, windowMs: number): Promise<ProfileRes[]> {

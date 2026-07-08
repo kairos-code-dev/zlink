@@ -28,6 +28,15 @@ export async function runSmC4(options: ClientOptions): Promise<void> {
     'SM-C4 unsubscribed spot was not created on play-a.'
   );
 
+  const readyMarker = `sm-c4-ready-${Date.now()}`;
+  await postJson<SpotPublishRes>(options.playAUrl, '/spot/publish/local', {
+    spotRid,
+    marker: readyMarker
+  } satisfies SpotPublishReq);
+  await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+    containsAll: [`spot-msg|rid=play-a|spot=${spotRid}|marker=${readyMarker}`]
+  });
+
   const marker = 'sm-c4-publish';
   const waitTask = postJson<SpotPublishObserveRes>(options.playAUrl, '/spot/publish/wait', {
     spotRid,

@@ -2,19 +2,24 @@ import { Inject, Injectable } from '@nestjs/common';
 import type {
   ControlPingRes,
   ControlPingReq,
+  CrossRoleActorPushReq,
+  CrossRoleActorPushRes,
   CreateSpotRes,
   CreateSpotReq,
   EnsureActorRes,
-  EnsureActorReq
+  EnsureActorReq,
+  ActorPingRes,
+  ActorPushReq
 } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
 import type {
+  ZLinkActorClient,
   ZLinkActorManager,
   ZLinkSpotManager,
   ZLinkRouteRequestContext,
   ZLinkRouteRequestHandler
 } from '@zlink-systems/framework';
-import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import { InMemorySpotRouteStore } from '../Infrastructure/spot-route-store';
 import { ScenarioUserSpot } from '../Spots/scenario-spots';
@@ -53,6 +58,40 @@ export class EnsureActorHandler implements ZLinkRouteRequestHandler<EnsureActorR
       actorId: actorRef.actorId,
       nodeRid: String(actorRef.nodeRid),
       generation: actorRef.generation.toString()
+    };
+  }
+}
+
+@Injectable()
+export class CrossRoleActorPushHandler
+  implements ZLinkRouteRequestHandler<CrossRoleActorPushReq, CrossRoleActorPushRes> {
+  constructor(
+    @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient,
+    private readonly evidence: EvidenceStore
+  ) {}
+
+  async handle(
+    request: CrossRoleActorPushReq,
+    context: ZLinkRouteRequestContext
+  ): Promise<CrossRoleActorPushRes> {
+    void context;
+    const reply = await this.actors
+      .requestToActor({
+        actorId: request.actorId,
+        nodeRid: request.nodeRid,
+        generation: BigInt(request.generation)
+      }, { value: request.value } satisfies ActorPushReq)
+      .packetName('ActorPushReq')
+      .timeout(5000)
+      .submit<ActorPingRes>();
+    this.evidence.add(
+      `cross-role-push|rid=${this.evidence.rid}|actor=${request.actorId}|value=${request.value}|seen=${reply.seen}`
+    );
+    return {
+      actorId: reply.actorId,
+      nodeRid: reply.nodeRid,
+      value: reply.value,
+      delivered: true
     };
   }
 }

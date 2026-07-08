@@ -12,7 +12,6 @@ import type {
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 interface BoundClient {
   readonly actorId: string;
@@ -66,11 +65,11 @@ export async function runSmG4(options: ClientOptions): Promise<void> {
         .where((message) => message.payload.actorId === entry.actorId)
         .timeout(10000)
         .submit();
-      const reply = decodeStreamReply<ActorPingRes>(await entry.client
+      const reply = await entry.client
         .request({ value: entry.value } satisfies ActorPushReq)
         .packetName('ActorPushReq')
         .timeout(5000)
-        .submit());
+        .submit<ActorPingRes>();
       const notify = await pushed;
       results.push({ entry, reply, notify });
     }

@@ -11,10 +11,15 @@ role은 제거했다.
 | Scenario | Client | Runner | 상태 |
 |----------|--------|--------|------|
 | SF-A1 | `Client/Scenarios/SfA1BaselineScenario.ts` | `run_e2e.sh SF-A1` | done |
+| SF-A2 | `Client/Scenarios/SfA2PollingFallbackScenario.ts` | `run_e2e.sh SF-A2` | done |
 | SF-B1 | `Client/Scenarios/SfB1StoreOutageScenario.ts` | `run_e2e.sh SF-B1` | done |
+| SF-B2 | `Client/Scenarios/SfB2StoreFailureGraceScenario.ts` | `run_e2e.sh SF-B2` | done |
 | SF-C1 | `Client/Scenarios/SfC1ProviderCrashScenario.ts` | `run_e2e.sh SF-C1` | done |
+| SF-C2 | `Client/Scenarios/SfC2GracefulShutdownScenario.ts` | `run_e2e.sh SF-C2` | done |
 | SF-D1 | `Client/Scenarios/SfD1ShortOutageRecoveryScenario.ts` | `run_e2e.sh SF-D1` | done |
 | SF-D2 | `Client/Scenarios/SfD2LongOutageRecoveryScenario.ts` | `run_e2e.sh SF-D2` | done |
+| SF-D3 | `Client/Scenarios/SfD3RuntimeStatusTransitionScenario.ts` | `run_e2e.sh SF-D3` | done |
+| SF-E1 | `Client/Scenarios/SfE1StoreResponseDelayScenario.ts` | `run_e2e.sh SF-E1` | done |
 
 ## Role inventory
 

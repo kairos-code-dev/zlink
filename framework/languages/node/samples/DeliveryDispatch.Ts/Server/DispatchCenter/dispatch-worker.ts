@@ -2,7 +2,6 @@ import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
 import { deliveryStatusChanged, offerDelivery } from '../../Shared/Contracts/messages';
-import { retry } from '../Configuration/request-retry';
 import { DispatchWorkQueue } from './dispatch-work-queue';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type { AssignDeliveryReq, DeliveryStatusReq, OfferDeliveryRes } from '../../Shared/Contracts/messages';
@@ -54,23 +53,11 @@ class DispatchWorker implements OnModuleInit {
   }
 
   private async tryOffer(request: AssignDeliveryReq, courierId: string): Promise<OfferDeliveryRes> {
-    const maxAttempts = request.deliveryId.toLowerCase().includes('reassign') ? 1 : 5;
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        return await this.channels
-          .requestToChannel(SampleNames.courierRouteChannel, offerDelivery(courierId, request.deliveryId, request.pickupAddress, request.dropoffAddress))
-          .timeout(SampleTimings.dispatchTimeout)
-          .submit<OfferDeliveryRes>();
-      } catch (error) {
-        lastError = error;
-        if (attempt < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-    }
     try {
-      throw lastError;
+      return await this.channels
+        .requestToChannel(SampleNames.courierRouteChannel, offerDelivery(courierId, request.deliveryId, request.pickupAddress, request.dropoffAddress))
+        .timeout(SampleTimings.dispatchTimeout)
+        .submit<OfferDeliveryRes>();
     } catch (error) {
       console.error(`deliverydispatch dispatch: courier timeout delivery=${request.deliveryId} courier=${courierId}`);
       return { deliveryId: request.deliveryId, courierId, accepted: false, reason: error instanceof Error ? error.message : String(error) };
@@ -88,7 +75,7 @@ class DispatchWorker implements OnModuleInit {
   }
 
   private async requestChannel<TReply>(channelName: string, request: unknown): Promise<TReply> {
-    return await retry(() => this.channels.requestToChannel(channelName, request).submit<TReply>());
+    return await this.channels.requestToChannel(channelName, request).submit<TReply>();
   }
 }
 

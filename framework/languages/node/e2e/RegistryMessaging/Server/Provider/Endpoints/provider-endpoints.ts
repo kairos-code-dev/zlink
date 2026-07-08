@@ -24,25 +24,25 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/profile/request',
-      handle: (body) => requestProfileWithRetry(channel, 'profile', body as ProfileReq)
+      handle: (body) => requestProfile(channel, 'profile', body as ProfileReq)
     },
     {
       method: 'POST',
       path: '/profile/manual',
-      handle: (body) => requestProfileWithRetry(channel, 'profile.manual', body as ProfileReq)
+      handle: (body) => requestProfile(channel, 'profile.manual', body as ProfileReq)
     },
     {
       method: 'POST',
       path: '/profile/command',
       handle: async (body) => {
-        await sendProfileWithRetry(channel, 'profile', body as ProfileMsg);
+        await sendProfile(channel, 'profile', body as ProfileMsg);
         return { status: 'sent' };
       }
     },
     {
       method: 'POST',
       path: '/profile/route/request',
-      handle: (body) => requestRouteWithRetry(route, 'api-b', body as ScenarioRouteReq)
+      handle: (body) => requestRoute(route, 'api-b', body as ScenarioRouteReq)
     },
     {
       method: 'POST',
@@ -68,58 +68,44 @@ export function createProviderEndpoints(
       handle: (body) => {
         const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
-        return evidence.waitUntil((line) => line.includes(request.contains), timeout);
+        return evidence.waitUntil((entries) => entries.some((line) => line.includes(request.contains)), timeout);
       }
     },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
 }
 
-async function requestProfileWithRetry(
+async function requestProfile(
   channel: ZLinkChannelClient,
   channelName: string,
   request: ProfileReq
 ): Promise<ProfileRes> {
-  return retryUntil(async () => channel
+  return channel
     .requestToChannel(channelName, request)
     .packetName(PacketNames.profileReq)
     .timeout(5000)
-    .submit<ProfileRes>(), 'profile request channel route');
+    .submit<ProfileRes>();
 }
 
-async function sendProfileWithRetry(
+async function sendProfile(
   channel: ZLinkChannelClient,
   channelName: string,
   command: ProfileMsg
 ): Promise<void> {
-  await retryUntil(async () => channel
+  await channel
     .sendToChannel(channelName, command)
     .packetName(PacketNames.profileMsg)
-    .submit(), 'profile send channel route');
+    .submit();
 }
 
-async function requestRouteWithRetry(
+async function requestRoute(
   route: ZLinkRouteClient,
   targetRid: string,
   request: ScenarioRouteReq
 ): Promise<ScenarioRouteRes> {
-  return retryUntil(async () => route
+  return route
     .requestToNode('profile.route', targetRid, request)
     .packetName(PacketNames.scenarioRouteReq)
     .timeout(5000)
-    .submit<ScenarioRouteRes>(), 'route mesh target');
-}
-
-async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {
-  const deadline = Date.now() + 30000;
-  let last: unknown;
-  while (Date.now() < deadline) {
-    try {
-      return await operation();
-    } catch (error) {
-      last = error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  throw new Error(`Timed out waiting for ${label}: ${last instanceof Error ? last.message : String(last)}`);
+    .submit<ScenarioRouteRes>();
 }

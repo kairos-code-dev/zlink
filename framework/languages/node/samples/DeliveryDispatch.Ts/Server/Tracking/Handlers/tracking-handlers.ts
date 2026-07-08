@@ -4,6 +4,7 @@ import {
   ZLINK_ACTOR_CLIENT,
   ZLINK_FANOUT_CLIENT,
   ZLINK_SPOT_MANAGER,
+  zlinkEntrySpotActorSendHandler,
   zlinkRequestHandler
 } from '@zlink-systems/nestjs';
 import { ZLinkMessage } from '@zlink-systems/framework';
@@ -12,6 +13,8 @@ import { actorRefForMessage, PacketNames } from '../../../Shared/Contracts/messa
 import { EvidenceStore } from '../../Configuration/evidence-store';
 import { DeliverySpotDirectory } from '../Spots/DeliveryTrackingSpot/delivery-spot-directory';
 import { DeliveryTrackingSpot } from '../Spots/DeliveryTrackingSpot/delivery-tracking-spot';
+import { CustomerEntrySpot } from '../Spots/EntrySpot/customer-entry-spot';
+import { CustomerActor } from '../customer-actor';
 import type {
   ZLinkActorManager,
   ZLinkActorClient,
@@ -69,14 +72,16 @@ class SubscribeCustomerToDeliveryHandler implements ZLinkRequestHandler<Subscrib
 class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatusReq, DeliveryStatusRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient
   ) {}
 
   async handle(request: DeliveryStatusReq, context: ZLinkRequestContext): Promise<DeliveryStatusRes> {
     void context;
     await this.spots.getOrCreate(DeliveryTrackingSpot, request.deliveryId, ZLinkMessage.from({ deliveryId: request.deliveryId }));
+    const customerActor = await this.actorManager.getOrCreate(request.customerId, SampleNames.customerActorType);
     await this.actors
-      .sendToActor(request.customerId, {
+      .sendToActor(customerActor, {
         deliveryId: request.deliveryId,
         customerId: request.customerId,
         status: request.status,
@@ -90,6 +95,11 @@ class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatus
   }
 }
 
+@zlinkEntrySpotActorSendHandler({
+  actor: () => CustomerActor,
+  entrySpot: () => CustomerEntrySpot,
+  packetName: PacketNames.deliveryStatusUpdated
+})
 class DeliveryStatusUpdatedHandler implements ZLinkEntrySpotActorSendHandler<unknown, ZLinkActor, DeliveryStatusUpdatedMsg> {
   constructor(
     @Inject(ZLINK_FANOUT_CLIENT) private readonly fanout: ZLinkFanoutClient,

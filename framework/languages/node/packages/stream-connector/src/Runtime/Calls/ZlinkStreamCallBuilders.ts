@@ -150,9 +150,9 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
     return this;
   }
 
-  submit<TReply = ZlinkStreamEncodedPayload>(signal?: AbortSignal): Promise<TReply>;
+  submit<TReply = unknown>(signal?: AbortSignal): Promise<TReply>;
   submit(callback: (result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void): void;
-  submit<TReply = ZlinkStreamEncodedPayload>(
+  submit<TReply = unknown>(
     signalOrCallback?: AbortSignal | ((result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void)
   ): Promise<TReply> | void {
     this.state.ensureNotExecuted();
@@ -171,12 +171,19 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
       );
       return;
     }
-    return operation.then((value) => {
-      if (this.payload.messageType === undefined) {
-        return value as TReply;
-      }
-      return (this.connector.options.codec ?? zlinkStreamJsonCodec).decode<TReply>(value);
-    });
+    return operation.then((value) => (this.connector.options.codec ?? zlinkStreamJsonCodec).decode<TReply>(value));
+  }
+
+  submitEncoded(signal?: AbortSignal): Promise<ZlinkStreamEncodedPayload> {
+    this.state.ensureNotExecuted();
+    return this.connector.requestEncoded(
+      this.state.resolveMessageName(),
+      this.payload,
+      this.state.metadata,
+      this.state.compress,
+      this.state.timeoutMs ?? this.connector.options.requestTimeoutMs,
+      signal
+    );
   }
 }
 

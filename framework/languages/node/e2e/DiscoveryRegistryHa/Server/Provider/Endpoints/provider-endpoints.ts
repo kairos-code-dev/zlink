@@ -12,7 +12,10 @@ export function createProviderEndpoints(evidence: EvidenceStore, stop: () => voi
       path: '/evidence/wait',
       handle: (body) => {
         const request = body as EvidenceWaitReq;
-        return evidence.waitUntil(request.contains, Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000)));
+        return evidence.waitUntil(
+          (entries) => entries.some((entry) => entry.includes(request.contains)),
+          Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000))
+        );
       }
     },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }

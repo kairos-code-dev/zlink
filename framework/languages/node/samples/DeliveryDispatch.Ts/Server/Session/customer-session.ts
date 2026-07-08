@@ -7,7 +7,6 @@ import {
   PacketNames,
   subscribeCustomerToDelivery
 } from '../../Shared/Contracts/messages';
-import { retry } from '../Configuration/request-retry';
 import { CustomerSessionDirectory } from './customer-session-directory';
 import type {
   ZLinkChannelClient,
@@ -54,18 +53,18 @@ class CustomerSession implements ZLinkSession {
 
     const request = payload.decode<SubscribeDeliveryReq>(Object as never);
     console.error(`deliverydispatch session: ensure customer delivery=${request.deliveryId}`);
-    const ensured = await retry(() => this.channels
+    const ensured = await this.channels
       .requestToChannel(SampleNames.trackingChannel, ensureCustomerActor(CustomerId))
       .timeout(500)
-      .submit<EnsureCustomerActorRes>(), { delayMs: 100, maxAttempts: 40 });
+      .submit<EnsureCustomerActorRes>();
     await this.context.actors.bindOrGet(actorRefFromMessage(ensured.actor));
     console.error(`deliverydispatch session: bound customer actor=${ensured.actor.actorId}`);
 
     console.error(`deliverydispatch session: subscribe delivery=${request.deliveryId}`);
-    const subscribed = await retry(() => this.channels
+    const subscribed = await this.channels
       .requestToChannel(SampleNames.trackingChannel, subscribeCustomerToDelivery(CustomerId, request.deliveryId))
       .timeout(500)
-      .submit<SubscribeCustomerToDeliveryRes>(), { delayMs: 100, maxAttempts: 40 });
+      .submit<SubscribeCustomerToDeliveryRes>();
     this.sessions.subscribe(this.context, subscribed.deliveryId);
     console.error(`deliverydispatch session: reply subscribed delivery=${subscribed.deliveryId}`);
     await this.context.client.reply({ deliveryId: subscribed.deliveryId } satisfies SubscribeDeliveryRes).submit();

@@ -8,16 +8,15 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder, ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 export async function runYdE1(client: ZlinkStreamConnector): Promise<void> {
   const spotRid = `yield-timeout-${uniqueId()}`;
-  const spot = decodeStreamReply<EnsureSpotRes>(await client
+  const spot = await client
     .request({ spotRid } satisfies EnsureSpotReq)
     .packetName('EnsureSpotReq')
     .timeout(30000)
-    .submit());
+    .submit<EnsureSpotRes>();
   ensure(spot.spotRid === spotRid, 'YD-E1 spot creation mismatch.');
 
   const requestId = `YD-E1-${uniqueId()}`;
@@ -60,12 +59,12 @@ async function waitForEvidence(
   requestId: string,
   marker: string
 ): Promise<YieldEvidenceRes> {
-  return decodeStreamReply<YieldEvidenceRes>(await client
+  return await client
     .request({ requestId, marker, timeoutMilliseconds: 30000 } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
 }
 
 function uniqueId(): string {

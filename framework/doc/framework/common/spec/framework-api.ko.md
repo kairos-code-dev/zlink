@@ -189,7 +189,33 @@ transport 축마다 wire shape도 섞으면 안 된다.
 달라도, 서버 간 payload를 JSON envelope의 필드로 넣어 다시 인코딩하는 방식은 이
 정책에 맞지 않는다.
 
-### 2.4 runtime monitoring
+### 2.4.1 transport 연결 책임
+
+framework는 이미 만든 zlink socket connection의 재연결 기능을 직접 구현하지 않는다. 연결이 끊겼을
+때 다시 연결을 시도하는 일은 core/binding socket의 책임이다. framework는 socket option을 전달하고,
+location store나 topology가 바뀌었을 때 어떤 endpoint를 연결 대상으로 둘지 갱신한다.
+
+따라서 framework runtime은 disconnected event를 보고 별도 reconnect loop, timer, backoff를 만들지
+않는다. 재시도 설정으로 transport 버그를 가리거나, 같은 요청을 반복해서 성공처럼 보이게 만들면 안
+된다. 허용되는 대기는 startup 또는 topology 수렴 대기다. 예를 들어 client/runner는 대상 server가
+location store에 나타나고 channel이 준비될 때까지 기다릴 수 있지만, server끼리 특정 순서로 떠야만
+동작하는 구조는 public contract에 맞지 않는다.
+
+socket connect 직후 아직 submit 준비가 끝나지 않은 짧은 구간은 readiness 대기로만 다룬다. 이 대기는
+요청 timeout 안에서 끝나야 하며, payload decode 실패, handler 오류, protocol 오류, 이미 끊긴
+connection의 복구를 반복 호출로 가리면 안 된다.
+
+drain은 새 요청의 선택 대상에서 빠지는 의미다. 이미 받은 request의 handler 실행과 reply는 drain
+이후에도 완료되어야 한다. weight 변경, endpoint handover, owner 변경을 같은 사건으로 다루면
+in-flight request가 끊길 수 있으므로, adapter는 weight-only 변경과 endpoint identity 변경을 구분해야
+한다.
+
+`PUB/SUB` 자동 연결 방향도 transport 책임 경계에 포함된다. subscriber 역할은 publisher endpoint를
+발견해 connect한다. publisher와 subscriber 양쪽이 같은 public endpoint를 동시에 connect하는 모델을
+공통 framework 계약으로 보지 않는다. publisher는 자신이 여는 endpoint를 location store에 게시하고,
+subscriber는 그 row를 보고 연결한다.
+
+### 2.4.2 runtime monitoring
 
 운영 이벤트는 일반 request/send/event handler와 다른 성격을 가진다. 따라서
 framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
@@ -207,7 +233,7 @@ framework는 모든 source를 같은 raw monitor API로 보이게 하지 않고,
 source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 편이 더
 자연스럽다.
 
-### 2.4.1 message dispatch error observer
+### 2.4.3 message dispatch error observer
 
 framework message dispatch 단계에서 등록되지 않은 packet, payload decode 실패, handler 예외,
 invalid frame 을 만나면 언어별 runtime 은 같은 의미의 dispatch error event 를 만든다. 이 event 는

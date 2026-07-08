@@ -13,7 +13,6 @@ import type {
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD10(options: ClientOptions): Promise<void> {
   const congested = createStreamClient(options.sessionAStreamEndpoint, 1);
@@ -55,11 +54,11 @@ export async function runSmD10(options: ClientOptions): Promise<void> {
       .submit();
 
     for (let index = 0; index < 8; index += 1) {
-      const reply = decodeStreamReply<ActorPingRes>(await congested
+      const reply = await congested
         .request({ value: `burst-${index}` } satisfies ActorPushReq)
         .packetName('ActorPushReq')
         .timeout(5000)
-        .submit());
+        .submit<ActorPingRes>();
       ensure(reply.actorId === 'actor-sm-d10-congested', 'SM-D10 congested reply actor mismatch.');
     }
 
@@ -67,11 +66,11 @@ export async function runSmD10(options: ClientOptions): Promise<void> {
     ensure(droppedCount > 0, 'SM-D10 expected received-message drop notification.');
     ensure(congestedPushCount < 8, 'SM-D10 expected bounded received-message queue for congested session.');
 
-    const stillAlive = decodeStreamReply<ActorPingRes>(await congested
+    const stillAlive = await congested
       .request({ value: 'after-backpressure' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(stillAlive.actorId === 'actor-sm-d10-congested', 'SM-D10 congested session stopped routing.');
     ensure(stillAlive.value === 'after-backpressure', 'SM-D10 congested session reply mismatch.');
     ensure(congestedPushValues.every((value) => value.startsWith('burst-')), 'SM-D10 congested push value mismatch.');
@@ -80,11 +79,11 @@ export async function runSmD10(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === 'actor-sm-d10-isolated')
       .timeout(10000)
       .submit();
-    const isolatedReply = decodeStreamReply<ActorPingRes>(await isolated
+    const isolatedReply = await isolated
       .request({ value: 'isolated-push' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     const isolatedNotify = await isolatedPush;
     ensure(isolatedReply.actorId === 'actor-sm-d10-isolated', 'SM-D10 isolated reply actor mismatch.');
     ensure(isolatedNotify.payload.actorId === 'actor-sm-d10-isolated', 'SM-D10 isolated push actor mismatch.');

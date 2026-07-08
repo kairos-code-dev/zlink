@@ -7,10 +7,9 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type { YieldActorScenarioContext } from './yd-b1-other-actor-progress-scenario';
-import { stopTimers, waitForEvidence } from './yd-c1-timer-isolation-scenario';
+import { startTimer, stopTimers, waitForEvidence } from './yd-c1-timer-isolation-scenario';
 
 export async function runYdC3(
   client: ZlinkStreamConnector,
@@ -25,21 +24,23 @@ export async function runYdC3(
     .timeout(30000)
     .submit();
   await new Promise((resolve) => setTimeout(resolve, 75));
-  await evidenceClient
-    .send({ requestId: actorThenTimer, timerName: `${actorThenTimer}-fast`, mode: 'fast', periodMs: 50, delayMs: 0 } satisfies TimerStartMsg)
-    .packetName('TimerStartMsg')
-    .metadata(YieldDispatchNames.spotRidMetadata, actors.spotRid)
-    .submit();
+  await startTimer(evidenceClient, actors.spotRid, {
+    requestId: actorThenTimer,
+    timerName: `${actorThenTimer}-fast`,
+    mode: 'fast',
+    periodMs: 50,
+    delayMs: 0
+  } satisfies TimerStartMsg);
   await waitForEvidence(evidenceClient, actorThenTimer, 'timer-fast-completed');
   await stopTimers(evidenceClient, actors.spotRid, actorThenTimer);
   await actorYield;
 
-  const actorThenTimerEvidence = decodeStreamReply<YieldEvidenceRes>(await evidenceClient
+  const actorThenTimerEvidence = await evidenceClient
     .request({ requestId: actorThenTimer } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
   containsRequestMarkersInOrder(actorThenTimerEvidence.evidence, actorThenTimer, [
     'actor-yield-started',
     'actor-yield-released',
@@ -50,11 +51,13 @@ export async function runYdC3(
   ], 'YD-C3 actor-then-timer marker order mismatch.');
 
   const timerThenActor = `YD-C3B-${uniqueId()}`;
-  await client
-    .send({ requestId: timerThenActor, timerName: `${timerThenActor}-yield`, mode: 'yield-on-first', periodMs: 50, delayMs: 350 } satisfies TimerStartMsg)
-    .packetName('TimerStartMsg')
-    .metadata(YieldDispatchNames.spotRidMetadata, actors.spotRid)
-    .submit();
+  await startTimer(client, actors.spotRid, {
+    requestId: timerThenActor,
+    timerName: `${timerThenActor}-yield`,
+    mode: 'yield-on-first',
+    periodMs: 50,
+    delayMs: 350
+  } satisfies TimerStartMsg);
   await waitForEvidence(client, timerThenActor, 'timer-yield-released');
   await client
     .request({ requestId: timerThenActor, marker: 'c3-actor-fast' } satisfies ActorFastReq)

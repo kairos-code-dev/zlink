@@ -1,9 +1,13 @@
-import type { PayloadRes, ProfileRes } from '../../Shared/messages';
+import type { PayloadRes, ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { sha256Hex } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
 
-export async function runRmC8(singleConsumerUrl: string, providerAUrl: string): Promise<void> {
+export async function runRmC8(
+  singleConsumerUrl: string,
+  directConsumerUrl: string,
+  providerAUrl: string
+): Promise<void> {
   const before = await getJson<string[]>(providerAUrl, '/evidence');
   const markers: string[] = [];
   for (const size of [1, 4096, 256 * 1024, 1024 * 1024]) {
@@ -15,7 +19,14 @@ export async function runRmC8(singleConsumerUrl: string, providerAUrl: string): 
     ensure(reply.length === payload.length, 'RM-C8 payload length mismatch.');
     ensure(reply.sha256 === sha256Hex(payload), 'RM-C8 payload hash mismatch.');
   }
-  const followUp = await postJson<ProfileRes>(singleConsumerUrl, '/profile/request', { value: 'rm-c8-after' });
+
+  const oversized = await postJson<RequestFailureRes>(directConsumerUrl, '/profile/payload-over-limit', {
+    marker: uniqueMarker('rm-c8-over-limit'),
+    payload: buildPayload(3 * 1024 * 1024)
+  });
+  ensure(oversized.failed === true, 'RM-C8 oversized payload should fail.');
+
+  const followUp = await postJson<ProfileRes>(directConsumerUrl, '/profile/request', { value: 'rm-c8-after' });
   ensure(followUp.value === 'profile:rm-c8-after', 'RM-C8 follow-up request failed.');
   const after = await getJson<string[]>(providerAUrl, '/evidence');
   ensure(markers.every((marker) => countNewEvidence(after, before, 'payload-request|rid=api-a', marker) === 1), 'RM-C8 payload evidence missing.');

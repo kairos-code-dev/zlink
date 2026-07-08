@@ -6,7 +6,6 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type { YieldActorScenarioContext } from './yd-b1-other-actor-progress-scenario';
 
@@ -29,12 +28,12 @@ export async function runYdB2(
     .submit();
   await yielding;
 
-  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
+  const evidence = await client
     .request({ requestId } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
   containsRequestMarkersInOrder(evidence.evidence, requestId, [
     'actor-yield-started',
     'actor-yield-released',

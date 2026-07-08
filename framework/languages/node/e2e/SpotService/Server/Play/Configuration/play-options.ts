@@ -5,7 +5,7 @@ export interface PlayOptions {
   readonly externalSpotEndpoint: string;
   readonly spotRouterEndpoint: string;
   readonly spotPubEndpoint: string;
-  readonly clientSpotPubEndpoint?: string;
+  readonly clientSpotPubEndpoints: readonly string[];
   readonly playAExternalSpotEndpoint?: string;
   readonly externalClientEndpoint?: string;
   readonly evidenceFile?: string;
@@ -33,12 +33,19 @@ export function parsePlayOptions(args: readonly string[]): PlayOptions {
     externalSpotEndpoint: required(values, 'external-spot-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
     spotPubEndpoint: required(values, 'spot-pub-endpoint'),
-    clientSpotPubEndpoint: values.get('client-spot-pub-endpoint'),
+    clientSpotPubEndpoints: splitList(values.get('client-spot-pub-endpoint')),
     playAExternalSpotEndpoint: values.get('play-a-external-spot-endpoint'),
     externalClientEndpoint: values.get('external-client-endpoint'),
     evidenceFile: values.get('evidence-file'),
     logDir: required(values, 'log-dir')
   };
+}
+
+function splitList(value: string | undefined): readonly string[] {
+  if (value === undefined || value.trim().length === 0) {
+    return [];
+  }
+  return value.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
 }
 
 function required(values: ReadonlyMap<string, string>, key: string): string {

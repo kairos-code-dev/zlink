@@ -12,12 +12,16 @@ export async function runRmB2(options: ClientOptions): Promise<void> {
     const markerBefore = uniqueMarker('rm-b2-before');
     const beforeA = await getJson<string[]>(providerA.httpUrl, '/evidence');
     const beforeB = await getJson<string[]>(providerB.httpUrl, '/evidence');
-    const repliesBefore: ProfileRes[] = [];
+    const repliesBefore: Array<{ requestValue: string; reply: ProfileRes }> = [];
     for (let i = 0; i < 40; i += 1) {
-      repliesBefore.push(await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value: `${markerBefore}-${i}` }));
+      const requestValue = `${markerBefore}-${i}`;
+      repliesBefore.push({
+        requestValue,
+        reply: await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value: requestValue })
+      });
     }
-    const apiABeforeValues = repliesBefore.filter((reply) => reply.providerRid === 'api-a').map((reply) => reply.value);
-    const apiBBeforeValues = repliesBefore.filter((reply) => reply.providerRid === 'api-b').map((reply) => reply.value);
+    const apiABeforeValues = repliesBefore.filter((entry) => entry.reply.providerRid === 'api-a').map((entry) => entry.requestValue);
+    const apiBBeforeValues = repliesBefore.filter((entry) => entry.reply.providerRid === 'api-b').map((entry) => entry.requestValue);
     ensure(apiABeforeValues.length > 0 && apiBBeforeValues.length > 0, 'RM-B2 expected both providers before scale-in.');
     const scaleOutA = await postJson<string[]>(providerA.httpUrl, '/evidence/wait', { contains: apiABeforeValues[apiABeforeValues.length - 1] });
     const scaleOutB = await postJson<string[]>(providerB.httpUrl, '/evidence/wait', { contains: apiBBeforeValues[apiBBeforeValues.length - 1] });

@@ -32,6 +32,7 @@ try {
   $workDir = Join-Path $runDir "work"
   New-Item -ItemType Directory -Force -Path $script:LogDir, $workDir | Out-Null
   $env:GAMEQUEST_WORK_DIR = $workDir
+  $env:GAMEQUEST_LOG_DIR = $script:LogDir
   $env:GAMEQUEST_API_A_HTTP = "http://127.0.0.1:31301"
   $env:GAMEQUEST_API_B_HTTP = "http://127.0.0.1:31302"
   $env:GAMEQUEST_API_A_STREAM = "tcp://127.0.0.1:31303"

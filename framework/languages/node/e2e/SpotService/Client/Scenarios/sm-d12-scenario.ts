@@ -10,12 +10,13 @@ import type {
   ActorPushReq,
   AuthRes,
   AuthReq,
+  EvidenceWaitReq,
   SnapshotRes,
   SnapshotReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD12(options: ClientOptions): Promise<void> {
   const actorId = 'actor-sm-d12-transfer';
@@ -34,16 +35,20 @@ export async function runSmD12(options: ClientOptions): Promise<void> {
       .timeout(5000)
       .submit<AuthRes>();
 
-    const firstReply = decodeStreamReply<ActorPingRes>(await first
+    const firstReply = await first
       .request({ value: 'before-transfer' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(firstReply.actorId === actorId, 'SM-D12 first api actor mismatch.');
     ensure(firstReply.nodeRid === 'play-a', 'SM-D12 first api node mismatch.');
     ensure(firstReply.seen === 1, 'SM-D12 expected initial actor state.');
 
     await first.close();
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-disconnected|rid=play-a|actor=${actorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
 
     second = createStreamClient(options.sessionBStreamEndpoint);
     await second.connect();
@@ -57,11 +62,11 @@ export async function runSmD12(options: ClientOptions): Promise<void> {
       .timeout(5000)
       .submit<AuthRes>();
 
-    const snapshot = decodeStreamReply<SnapshotRes>(await second
+    const snapshot = await second
       .request({ actorId } satisfies SnapshotReq)
       .packetName('SnapshotReq')
       .timeout(5000)
-      .submit());
+      .submit<SnapshotRes>();
     ensure(snapshot.actorId === actorId, 'SM-D12 snapshot actor mismatch.');
     ensure(snapshot.seen === 1, 'SM-D12 actor state was not preserved across apis.');
 
@@ -69,11 +74,11 @@ export async function runSmD12(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === actorId)
       .timeout(10000)
       .submit();
-    const resumed = decodeStreamReply<ActorPingRes>(await second
+    const resumed = await second
       .request({ value: 'after-transfer' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     const notify = await pushed;
     ensure(resumed.actorId === actorId, 'SM-D12 resumed actor mismatch.');
     ensure(resumed.nodeRid === 'play-a', 'SM-D12 resumed node mismatch.');

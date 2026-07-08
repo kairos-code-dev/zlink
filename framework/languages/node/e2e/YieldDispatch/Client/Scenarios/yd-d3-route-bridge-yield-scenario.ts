@@ -8,7 +8,6 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder, ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 export async function runYdD3(client: ZlinkStreamConnector): Promise<void> {
@@ -33,12 +32,12 @@ export async function runYdD3(client: ZlinkStreamConnector): Promise<void> {
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
 
-  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
+  const evidence = await client
     .request({ requestId, marker: 'yield-completed' } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-b')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
   containsRequestMarkersInOrder(evidence.evidence, requestId, [
     'yield-started',
     'yield-released',

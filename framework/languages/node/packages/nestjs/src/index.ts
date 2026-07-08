@@ -38,9 +38,13 @@ import type {
   ZLinkRouteSendContext,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
+  ZLinkEntrySpotPacketHandlerRegistration,
+  ZLinkEntrySpotSubscriptionHandlerRegistration,
   ZLinkEntrySpotActorSendHandlerRegistration,
   ZLinkEntrySpotActorRequestHandlerRegistration,
   ZLinkSpot,
+  ZLinkSpotPacketHandlerRegistration,
+  ZLinkSpotSubscriptionHandlerRegistration,
   ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorRequestHandlerRegistration,
   IZLinkLocationRuntimeQuery,
@@ -49,7 +53,6 @@ import type {
   ZLinkRuntimeEventPublisher,
   ZLinkSpotNodeRegistrationOptions,
   ZLinkSpotNodeOptions,
-  ZLinkSpotRemoteAddressResolver,
   ZLinkSession,
   ZLinkSessionFactory,
   ZLinkTimerOptions,
@@ -79,8 +82,9 @@ interface FrameworkRuntimeHost {
   onApplicationShutdown(): Promise<void>;
   setActorManager?(actorManager: unknown): void;
   setSpotManager?(spotManager: unknown): void;
-  createActorManagerOptions?(remoteAddressResolver?: ZLinkSpotRemoteAddressResolver): object;
+  createActorManagerOptions?(): object;
   createActorClientOptions?(): Record<string, unknown>;
+  createLocationRefResolver?(): unknown;
   createSpotManagerOptions?(): object;
 }
 
@@ -104,7 +108,6 @@ interface FrameworkModule {
   hasSpotNode(registration: ZLinkFrameworkRegistration): boolean;
   hasActorManager(registration: ZLinkFrameworkRegistration): boolean;
   hasSpotPublisherClient(registration: ZLinkFrameworkRegistration): boolean;
-  hasSpotRemoteAddressResolver(registration: ZLinkFrameworkRegistration): boolean;
 }
 
 const framework = loadFramework();
@@ -203,6 +206,26 @@ export interface ZLinkNestSpotActorSendHandlerOptions<TSpot extends ZLinkSpot, T
   readonly actor: ZLinkNestTypeResolver<TActor>;
   readonly packetName: string;
   readonly methodName?: string;
+}
+
+export interface ZLinkNestSpotPacketHandlerOptions<TSpot extends ZLinkSpot> {
+  readonly spot: ZLinkNestTypeResolver<TSpot>;
+  readonly packetName?: string;
+}
+
+export interface ZLinkNestEntrySpotPacketHandlerOptions<TEntrySpot extends ZLinkEntrySpot> {
+  readonly entrySpot: ZLinkNestTypeResolver<TEntrySpot>;
+  readonly packetName?: string;
+}
+
+export interface ZLinkNestSpotSubscriptionHandlerOptions<TSpot extends ZLinkSpot> {
+  readonly spot: ZLinkNestTypeResolver<TSpot>;
+  readonly topic: string;
+}
+
+export interface ZLinkNestEntrySpotSubscriptionHandlerOptions<TEntrySpot extends ZLinkEntrySpot> {
+  readonly entrySpot: ZLinkNestTypeResolver<TEntrySpot>;
+  readonly topic: string;
 }
 
 export interface ZLinkNestSpotActorRequestHandlerOptions<TSpot extends ZLinkSpot, TActor extends ZLinkActor> {
@@ -338,12 +361,14 @@ export const ZLINK_SPOT_MANAGER = Symbol.for('@zlink-systems/framework:spot-mana
 export const ZLINK_SPOT_OUTBOUND = Symbol.for('@zlink-systems/framework:spot-outbound');
 export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:spot-publisher-client');
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
-export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
+export const ZLINK_SPOT_REF_RESOLVER = Symbol.for('@zlink-systems/framework:spot-ref-resolver');
+export const ZLINK_ACTOR_SPOT_REF_RESOLVER = Symbol.for('@zlink-systems/framework:actor-spot-ref-resolver');
 export const ZLINK_RUNTIME_EVENT_PUBLISHER = Symbol.for('@zlink-systems/framework:runtime-event-publisher');
 export const ZLINK_LOCATION_RUNTIME_QUERY = Symbol.for('@zlink-systems/framework:location-runtime-query');
 
 const nestHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestHandlerMetadata[]>();
 const nestSpotActorHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotActorHandlerMetadata[]>();
+const nestSpotHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotHandlerMetadata[]>();
 const nestSpotTimerHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotTimerHandlerMetadata[]>();
 const nestSpotTimerHandlerTokens = new Set<unknown>();
 const nestRuntimeEventHandlerTokens = new Set<unknown>();
@@ -426,6 +451,62 @@ export function zlinkSpotActorRequestHandler<TSpot extends ZLinkSpot, TActor ext
       methodName: options.methodName ?? 'handle',
       packetName: options.packetName,
       spot: options.spot
+    });
+  };
+}
+
+export function zlinkSpotPacketHandler<TSpot extends ZLinkSpot>(
+  options: ZLinkNestSpotPacketHandlerOptions<TSpot>
+): ClassDecorator {
+  return (target: Function) => {
+    Injectable()(target as Type);
+    appendNestSpotHandlerMetadata(target as Type, {
+      handlerType: target as Type,
+      kind: 'spotPacket',
+      packetName: options.packetName,
+      spot: options.spot
+    });
+  };
+}
+
+export function zlinkEntrySpotPacketHandler<TEntrySpot extends ZLinkEntrySpot>(
+  options: ZLinkNestEntrySpotPacketHandlerOptions<TEntrySpot>
+): ClassDecorator {
+  return (target: Function) => {
+    Injectable()(target as Type);
+    appendNestSpotHandlerMetadata(target as Type, {
+      entrySpot: options.entrySpot,
+      handlerType: target as Type,
+      kind: 'entrySpotPacket',
+      packetName: options.packetName
+    });
+  };
+}
+
+export function zlinkSpotSubscriptionHandler<TSpot extends ZLinkSpot>(
+  options: ZLinkNestSpotSubscriptionHandlerOptions<TSpot>
+): ClassDecorator {
+  return (target: Function) => {
+    Injectable()(target as Type);
+    appendNestSpotHandlerMetadata(target as Type, {
+      handlerType: target as Type,
+      kind: 'spotSubscription',
+      spot: options.spot,
+      topic: options.topic
+    });
+  };
+}
+
+export function zlinkEntrySpotSubscriptionHandler<TEntrySpot extends ZLinkEntrySpot>(
+  options: ZLinkNestEntrySpotSubscriptionHandlerOptions<TEntrySpot>
+): ClassDecorator {
+  return (target: Function) => {
+    Injectable()(target as Type);
+    appendNestSpotHandlerMetadata(target as Type, {
+      entrySpot: options.entrySpot,
+      handlerType: target as Type,
+      kind: 'entrySpotSubscription',
+      topic: options.topic
     });
   };
 }
@@ -1055,6 +1136,21 @@ interface ZLinkNestSpotActorHandlerMetadata {
   readonly entrySpot?: ZLinkNestTypeResolver<ZLinkEntrySpot>;
 }
 
+type ZLinkNestSpotHandlerKind =
+  | 'spotPacket'
+  | 'spotSubscription'
+  | 'entrySpotPacket'
+  | 'entrySpotSubscription';
+
+interface ZLinkNestSpotHandlerMetadata {
+  readonly kind: ZLinkNestSpotHandlerKind;
+  readonly handlerType: Type;
+  readonly packetName?: string;
+  readonly topic?: string;
+  readonly spot?: ZLinkNestTypeResolver<ZLinkSpot>;
+  readonly entrySpot?: ZLinkNestTypeResolver<ZLinkEntrySpot>;
+}
+
 interface ZLinkNestSpotTimerHandlerMetadata {
   readonly handlerType: Type;
   readonly name: string;
@@ -1114,6 +1210,18 @@ function readNestSpotActorHandlerMetadata(handlerToken: InjectionToken | undefin
   return nestSpotActorHandlerMetadataByToken.get(handlerToken) ?? [];
 }
 
+function appendNestSpotHandlerMetadata(handlerToken: InjectionToken, metadata: ZLinkNestSpotHandlerMetadata): void {
+  const current = readNestSpotHandlerMetadata(handlerToken);
+  nestSpotHandlerMetadataByToken.set(handlerToken, [...current, metadata]);
+}
+
+function readNestSpotHandlerMetadata(handlerToken: InjectionToken | undefined): readonly ZLinkNestSpotHandlerMetadata[] {
+  if (handlerToken === undefined) {
+    return [];
+  }
+  return nestSpotHandlerMetadataByToken.get(handlerToken) ?? [];
+}
+
 function appendNestSpotTimerHandlerMetadata(handlerToken: InjectionToken, metadata: ZLinkNestSpotTimerHandlerMetadata): void {
   const current = readNestSpotTimerHandlerMetadata(handlerToken);
   nestSpotTimerHandlerMetadataByToken.set(handlerToken, [...current, metadata]);
@@ -1168,6 +1276,7 @@ function addDecoratedProviderModuleExports(providers: Set<Type>, filePath: strin
       && (
         readNestHandlerMetadata(value as Type).length > 0
         || readNestSpotActorHandlerMetadata(value as Type).length > 0
+        || readNestSpotHandlerMetadata(value as Type).length > 0
         || hasNestSpotTimerHandlerMetadata(value as Type)
       )
     ) {
@@ -1322,10 +1431,12 @@ function createDiscoveredOptions(
   const routerMeshes = new Map<string, ZLinkRouteChannelOptions>();
   const providerRefs = discoverProviderRefs(discovery, moduleRef);
   const spotActorProviderRefs = discoverSpotActorProviderRefs(discovery, moduleRef);
+  const spotProviderRefs = discoverSpotProviderRefs(discovery, moduleRef);
   const spotTimerProviderRefs = discoverSpotTimerProviderRefs(discovery, moduleRef);
   const spotNodes = createDiscoveredSpotNodeOptions(
     registrationOptions.spotNodes,
     spotActorProviderRefs,
+    spotProviderRefs,
     spotTimerProviderRefs);
 
   for (const [channelName, channel] of Object.entries(options.clientServerChannels ?? {})) {
@@ -1434,9 +1545,10 @@ function createDiscoveredOptions(
 function createDiscoveredSpotNodeOptions(
   value: ZLinkFrameworkRegistrationOptions['spotNodes'],
   refs: readonly DiscoveredNestSpotActorProvider[],
+  spotRefs: readonly DiscoveredNestSpotProvider[] = [],
   timerRefs: readonly DiscoveredNestSpotTimerProvider[] = []
 ): ZLinkFrameworkRegistrationOptions['spotNodes'] {
-  if (refs.length === 0 && timerRefs.length === 0) {
+  if (refs.length === 0 && spotRefs.length === 0 && timerRefs.length === 0) {
     return value;
   }
   const spotNodes = toMutableSpotNodeRecord(value);
@@ -1486,6 +1598,77 @@ function createDiscoveredSpotNodeOptions(
           spotType
         }
       ];
+    }
+  }
+
+  for (const ref of spotRefs) {
+    if (ref.metadata.kind === 'entrySpotPacket' || ref.metadata.kind === 'entrySpotSubscription') {
+      const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
+      const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
+      if (matches.length === 0) {
+        throw new framework.ZLinkConfigurationException(
+          `ZLink Entry Spot handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
+        );
+      }
+      for (const [, spotNode] of matches) {
+        if (ref.metadata.kind === 'entrySpotPacket') {
+          const next = {
+            entrySpotType,
+            handlerType: ref.handlerKey,
+            packetName: ref.metadata.packetName
+          };
+          assertUniqueEntrySpotPacketHandler(spotNode.entrySpotPacketHandlers, next);
+          spotNode.entrySpotPacketHandlers = [
+            ...(spotNode.entrySpotPacketHandlers ?? []),
+            next
+          ];
+        } else {
+          const next = {
+            entrySpotType,
+            handlerType: ref.handlerKey,
+            topic: requireSpotSubscriptionTopic(ref)
+          };
+          assertUniqueEntrySpotSubscriptionHandler(spotNode.entrySpotSubscriptionHandlers, next);
+          spotNode.entrySpotSubscriptionHandlers = [
+            ...(spotNode.entrySpotSubscriptionHandlers ?? []),
+            next
+          ];
+        }
+      }
+      continue;
+    }
+
+    const spotType = resolveNestType(ref.metadata.spot, 'spot');
+    const matches = spotNodeEntries.filter(([, spotNode]) => (spotNode.spotFactories ?? []).includes(spotType));
+    if (matches.length === 0) {
+      throw new framework.ZLinkConfigurationException(
+        `ZLink SPOT handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
+      );
+    }
+    for (const [, spotNode] of matches) {
+      if (ref.metadata.kind === 'spotPacket') {
+        const next = {
+          handlerType: ref.handlerKey,
+          packetName: ref.metadata.packetName,
+          spotType
+        };
+        assertUniqueSpotPacketHandler(spotNode.spotPacketHandlers, next);
+        spotNode.spotPacketHandlers = [
+          ...(spotNode.spotPacketHandlers ?? []),
+          next
+        ];
+      } else {
+        const next = {
+          handlerType: ref.handlerKey,
+          spotType,
+          topic: requireSpotSubscriptionTopic(ref)
+        };
+        assertUniqueSpotSubscriptionHandler(spotNode.spotSubscriptionHandlers, next);
+        spotNode.spotSubscriptionHandlers = [
+          ...(spotNode.spotSubscriptionHandlers ?? []),
+          next
+        ];
+      }
     }
   }
 
@@ -1621,6 +1804,70 @@ function assertUniqueSpotActorHandler(
   }
 }
 
+function assertUniqueEntrySpotPacketHandler(
+  existing: readonly ZLinkEntrySpotPacketHandlerRegistration[] | undefined,
+  next: ZLinkEntrySpotPacketHandlerRegistration
+): void {
+  if ((existing ?? []).some((handler) =>
+    handler.entrySpotType === next.entrySpotType &&
+    (handler.packetName ?? handler.handlerType.name) === (next.packetName ?? next.handlerType.name)
+  )) {
+    throw new framework.ZLinkConfigurationException(
+      `Duplicate Entry Spot packet handler '${next.entrySpotType.name}:${next.packetName ?? next.handlerType.name}'.`
+    );
+  }
+}
+
+function assertUniqueEntrySpotSubscriptionHandler(
+  existing: readonly ZLinkEntrySpotSubscriptionHandlerRegistration[] | undefined,
+  next: ZLinkEntrySpotSubscriptionHandlerRegistration
+): void {
+  if ((existing ?? []).some((handler) =>
+    handler.entrySpotType === next.entrySpotType &&
+    handler.topic === next.topic
+  )) {
+    throw new framework.ZLinkConfigurationException(
+      `Duplicate Entry Spot subscription handler '${next.entrySpotType.name}:${next.topic}'.`
+    );
+  }
+}
+
+function assertUniqueSpotPacketHandler(
+  existing: readonly ZLinkSpotPacketHandlerRegistration[] | undefined,
+  next: ZLinkSpotPacketHandlerRegistration
+): void {
+  if ((existing ?? []).some((handler) =>
+    handler.spotType === next.spotType &&
+    (handler.packetName ?? handler.handlerType.name) === (next.packetName ?? next.handlerType.name)
+  )) {
+    throw new framework.ZLinkConfigurationException(
+      `Duplicate SPOT packet handler '${next.spotType.name}:${next.packetName ?? next.handlerType.name}'.`
+    );
+  }
+}
+
+function assertUniqueSpotSubscriptionHandler(
+  existing: readonly ZLinkSpotSubscriptionHandlerRegistration[] | undefined,
+  next: ZLinkSpotSubscriptionHandlerRegistration
+): void {
+  if ((existing ?? []).some((handler) =>
+    handler.spotType === next.spotType &&
+    handler.topic === next.topic
+  )) {
+    throw new framework.ZLinkConfigurationException(
+      `Duplicate SPOT subscription handler '${next.spotType.name}:${next.topic}'.`
+    );
+  }
+}
+
+function requireSpotSubscriptionTopic(ref: DiscoveredNestSpotProvider): string {
+  const topic = ref.metadata.topic;
+  if (topic === undefined || topic.trim().length === 0) {
+    throw new framework.ZLinkConfigurationException(`ZLink SPOT subscription handler '${ref.handlerName}' requires a topic.`);
+  }
+  return topic;
+}
+
 function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions): ZLinkFrameworkRegistrationOptions {
   const channels: Record<string, ZLinkChannelOptions> = {};
   const routeChannels: ZLinkRouteChannelOptions[] = [];
@@ -1665,7 +1912,6 @@ function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions):
     spotFactories: options.spotFactories,
     spotNodes: options.spotNodes,
     spotPublisherClients: options.spotPublisherClients,
-    spotRemoteAddressResolver: options.spotRemoteAddressResolver,
     streamNodes: options.streams
   };
 }
@@ -1706,6 +1952,13 @@ interface DiscoveredNestSpotActorProvider {
   readonly handlerName: string;
   readonly token: InjectionToken;
   readonly metadata: ZLinkNestSpotActorHandlerMetadata;
+}
+
+interface DiscoveredNestSpotProvider {
+  readonly handlerKey: Type;
+  readonly handlerName: string;
+  readonly token: InjectionToken;
+  readonly metadata: ZLinkNestSpotHandlerMetadata;
 }
 
 interface DiscoveredNestSpotTimerProvider {
@@ -1922,6 +2175,67 @@ function discoverProviderRefs(discovery: DiscoveryService, moduleRef: ModuleRef)
         handlerName,
         token: handlerKey,
         instance,
+        metadata
+      });
+    }
+  }
+
+  return refs;
+}
+
+function discoverSpotProviderRefs(discovery: DiscoveryService, moduleRef: ModuleRef): DiscoveredNestSpotProvider[] {
+  const refs: DiscoveredNestSpotProvider[] = [];
+  const seen = new Set<string>();
+
+  for (const wrapper of discovery.getProviders()) {
+    const token = wrapper.token as InjectionToken | undefined;
+    if (token === undefined) {
+      continue;
+    }
+
+    const candidates = [wrapper.metatype, wrapper.instance?.constructor, token]
+      .filter((value): value is InjectionToken =>
+        typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol'
+      );
+    for (const handlerKey of new Set(candidates)) {
+      for (const metadata of readNestSpotHandlerMetadata(handlerKey)) {
+        if (typeof handlerKey !== 'function') {
+          throw new framework.ZLinkConfigurationException('ZLink SPOT handler decorators must be applied to class providers.');
+        }
+        const handlerName = handlerKeyName(handlerKey);
+        const key = `${String(token)}:${handlerName}:${metadata.kind}:${metadata.packetName ?? metadata.topic ?? ''}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        refs.push({
+          handlerKey: handlerKey as Type,
+          handlerName,
+          token,
+          metadata
+        });
+      }
+    }
+  }
+
+  for (const [handlerKey, metadataList] of nestSpotHandlerMetadataByToken) {
+    if (typeof handlerKey !== 'function') {
+      continue;
+    }
+    if (tryGetProviderInstance(moduleRef, handlerKey) === undefined) {
+      continue;
+    }
+    const handlerName = handlerKeyName(handlerKey);
+    for (const metadata of metadataList) {
+      const key = `${String(handlerKey)}:${handlerName}:${metadata.kind}:${metadata.packetName ?? metadata.topic ?? ''}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      refs.push({
+        handlerKey: handlerKey as Type,
+        handlerName,
+        token: handlerKey as Type,
         metadata
       });
     }
@@ -2261,14 +2575,9 @@ function alwaysAvailableClientTokens(): InjectionToken[] {
 }
 
 function conditionalClientProviders(registration: ZLinkFrameworkRegistration): Provider[] {
-  const providers = CONDITIONAL_CLIENT_PROVIDER_SPECS
+  return CONDITIONAL_CLIENT_PROVIDER_SPECS
     .filter((spec) => spec.isEnabled(registration))
     .map((spec) => createConditionalClientProvider(spec, registration));
-  if (framework.hasSpotRemoteAddressResolver(registration)) {
-    providers.push(...spotRemoteAddressResolverProviders(registration));
-  }
-
-  return providers;
 }
 
 interface ConditionalClientProviderSpec {
@@ -2318,10 +2627,7 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     isEnabled: (registration) => framework.hasActorManager(registration),
     create: async (registration, runtime, moduleRef, discovery) => {
       const host = requireRuntime(runtime);
-      const remoteAddressResolver = framework.hasSpotRemoteAddressResolver(registration)
-        ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery, host)
-        : undefined;
-      const hostActorOptions = host.createActorManagerOptions?.(remoteAddressResolver) as Record<string, unknown> | undefined;
+      const hostActorOptions = host.createActorManagerOptions?.() as Record<string, unknown> | undefined;
       const actorManager = new framework.DefaultZLinkActorManager({
         actorFactories: registration.actorFactories,
         ...hostActorOptions,
@@ -2343,28 +2649,35 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
       }
       return query;
     }
+  },
+  {
+    token: ZLINK_SPOT_REF_RESOLVER,
+    requiresRuntime: true,
+    isEnabled: (registration) => hasLocationStores(registration),
+    create: (_registration, runtime) => {
+      const resolver = requireRuntime(runtime).createLocationRefResolver?.();
+      if (resolver === undefined) {
+        throw new framework.ZLinkConfigurationException('SpotRef resolver requires location stores.');
+      }
+      return resolver;
+    }
+  },
+  {
+    token: ZLINK_ACTOR_SPOT_REF_RESOLVER,
+    requiresRuntime: true,
+    isEnabled: (registration) => hasLocationStores(registration),
+    create: (_registration, runtime) => {
+      const resolver = requireRuntime(runtime).createLocationRefResolver?.();
+      if (resolver === undefined) {
+        throw new framework.ZLinkConfigurationException('Actor SpotRef resolver requires location stores.');
+      }
+      return resolver;
+    }
   }
 ];
 
 function conditionalClientProvidersForFactory(): Provider[] {
-  return [
-    ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForFactory),
-    {
-      provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService, ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: async (
-        registration: ZLinkFrameworkRegistration,
-        moduleRef: ModuleRef,
-        discovery: DiscoveryService,
-        runtime: FrameworkRuntimeHost
-      ) => {
-        if (!framework.hasSpotRemoteAddressResolver(registration)) {
-          return null;
-        }
-        return await createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime);
-      }
-    }
-  ];
+  return CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForFactory);
 }
 
 function createConditionalClientProviderForFactory(spec: ConditionalClientProviderSpec): Provider {
@@ -2424,7 +2737,8 @@ function conditionalClientTokens(): InjectionToken[] {
     ZLINK_SPOT_PUBLISHER_CLIENT,
     ZLINK_ACTOR_CLIENT,
     ZLINK_ACTOR_MANAGER,
-    ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
+    ZLINK_SPOT_REF_RESOLVER,
+    ZLINK_ACTOR_SPOT_REF_RESOLVER,
     ZLINK_LOCATION_RUNTIME_QUERY
   ];
 }
@@ -2542,20 +2856,21 @@ async function createSpotManager(
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
 ): Promise<unknown> {
-  const resolver = framework.hasSpotRemoteAddressResolver(registration)
-    ? createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
-    : undefined;
   const hostSpotOptions = runtime.createSpotManagerOptions?.() as Record<string, unknown> | undefined;
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
     spotTimerHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotTimerHandlers ?? [])]),
+    spotPacketHandlers: [...registration.spotNodes.values()]
+      .flatMap((spotNode) => [...(spotNode.spotPacketHandlers ?? [])]),
+    spotSubscriptionHandlers: [...registration.spotNodes.values()]
+      .flatMap((spotNode) => [...(spotNode.spotSubscriptionHandlers ?? [])]),
     spotActorSendHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotActorSendHandlers ?? [])]),
     spotActorRequestHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
     ...hostSpotOptions,
-    remoteAddressResolver: await resolver ?? hostSpotOptions?.remoteAddressResolver,
+    spotRouteResolver: hostSpotOptions?.spotRouteResolver,
     routedTransport: runtime.routeTransport,
     providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery),
     workerRuntime: new framework.ZLinkSpotWorkerRuntime(registration.worker)
@@ -2570,59 +2885,18 @@ async function createSpotOutbound(
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
 ): Promise<unknown> {
-  const resolver = framework.hasSpotRemoteAddressResolver(registration)
-    ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
-    : undefined;
   const hostSpotOptions = runtime.createSpotManagerOptions?.() as Record<string, unknown> | undefined;
   return new framework.DefaultZLinkSpotOutbound(
     new framework.ZLinkSpotSerialExecutor(),
     undefined,
     undefined,
     undefined,
-    resolver ?? hostSpotOptions?.remoteAddressResolver,
-    runtime.routeTransport
+    runtime.routeTransport,
+    hostSpotOptions?.spotRouterChannelIdForMesh as ((meshName: string) => string) | undefined
   );
-}
-
-async function createSpotRemoteAddressResolver(
-  registration: ZLinkFrameworkRegistration,
-  moduleRef?: ModuleRef,
-  discovery?: DiscoveryService,
-  runtime?: FrameworkRuntimeHost
-): Promise<ZLinkSpotRemoteAddressResolver> {
-  if (registration.spotRemoteAddressResolverType !== undefined) {
-    const providerResolver = moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery);
-    const resolverType = registration.spotRemoteAddressResolverType as Type<ZLinkSpotRemoteAddressResolver>;
-    const resolver = await providerResolver?.create?.(resolverType);
-    if (resolver === undefined) {
-      throw new framework.ZLinkConfigurationException('Spot remote address resolver provider is not available.');
-    }
-    return resolver;
-  }
-  throw new framework.ZLinkConfigurationException('Spot remote address resolver is not registered.');
-}
-
-function spotRemoteAddressResolverProviders(registration: ZLinkFrameworkRegistration): Provider[] {
-  const resolverType = registration.spotRemoteAddressResolverType;
-  if (resolverType !== undefined) {
-    return [
-      { provide: resolverType, useClass: resolverType },
-      {
-        provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-        inject: [resolverType],
-        useFactory: (resolver: ZLinkSpotRemoteAddressResolver) => resolver
-      }
-    ];
-  }
-  return [{
-    provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-    inject: [ModuleRef, DiscoveryService, ZLINK_FRAMEWORK_RUNTIME],
-    useFactory: (moduleRef: ModuleRef, discovery: DiscoveryService, runtime: FrameworkRuntimeHost) =>
-      createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
-  }];
 }
 
 function loadFramework(): FrameworkModule {
   const requireFramework = createRequire(__filename);
-  return requireFramework(path.resolve(__dirname, '../../framework/dist/internal')) as FrameworkModule;
+  return requireFramework(path.resolve(__dirname, '../../framework/dist/nest-integration')) as FrameworkModule;
 }

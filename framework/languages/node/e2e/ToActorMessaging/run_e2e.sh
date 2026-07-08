@@ -3,13 +3,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
+source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+SCENARIO="${1:-all}"
 mkdir -p "$LOG_DIR"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 
 pick_port() {
-  node -e "const net=require('node:net'); const s=net.createServer(); s.listen(0,'127.0.0.1',()=>{console.log(s.address().port); s.close();});"
+  node "$NODE_ROOT/e2e/port-picker.js"
 }
 
 wait_health() {
@@ -39,6 +42,19 @@ wait_tcp() {
   done
   echo "Timed out waiting for $name at $endpoint" >&2
   return 1
+}
+
+wait_topology() {
+  node "$NODE_ROOT/e2e/location-readiness.js" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --key-prefix "$REDIS_KEY_PREFIX" \
+    --peer spot-mesh to-actor spot \
+      "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
+      "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
+      "tcp://127.0.0.1:$SESSION_ROUTER_PORT" \
+      "tcp://127.0.0.1:$SESSION_PUBSUB_PORT" \
+      "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
+      "tcp://127.0.0.1:$CALLER_PUBSUB_PORT"
 }
 
 pids=()
@@ -119,6 +135,17 @@ start_role() {
         --pubsub-endpoint "tcp://127.0.0.1:$CALLER_PUBSUB_PORT" \
         --log-dir "$LOG_DIR"
       ;;
+    session)
+      start_server session "$SESSION_MAIN" \
+        --rid to-actor-session \
+        --http-url "$SESSION_URL" \
+        --stream-endpoint "$SESSION_STREAM_ENDPOINT" \
+        --redis-endpoint "$REDIS_ENDPOINT" \
+        --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --router-endpoint "tcp://127.0.0.1:$SESSION_ROUTER_PORT" \
+        --pubsub-endpoint "tcp://127.0.0.1:$SESSION_PUBSUB_PORT" \
+        --log-dir "$LOG_DIR"
+      ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -127,6 +154,7 @@ wait_role() {
   case "$1" in
     actor) wait_health "$ACTOR_URL" actor ;;
     caller) wait_health "$CALLER_URL" caller ;;
+    session) wait_health "$SESSION_URL" session && wait_tcp session-stream "$SESSION_STREAM_ENDPOINT" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -137,6 +165,7 @@ echo "start_order=$E2E_START_ORDER"
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Server/Actor" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Server/Caller" && npm run build >/dev/null)
+(cd "$ROOT_DIR/Server/Session" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Client" && npm run build >/dev/null)
 
 if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
@@ -146,7 +175,7 @@ else
     echo "Docker is required unless ZLINK_REDIS_E2E_ENDPOINT is set." >&2
     exit 1
   fi
-  REDIS_CONTAINER_ID="$(docker run -d --rm --name "to-actor-messaging-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+  start_redis_container "to-actor-messaging-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
   REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
   REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
 fi
@@ -154,19 +183,26 @@ wait_tcp redis "tcp://$REDIS_ENDPOINT"
 REDIS_KEY_PREFIX="to-actor-messaging:node:$RUN_ID"
 
 ACTOR_HTTP_PORT="$(pick_port)"
+SESSION_HTTP_PORT="$(pick_port)"
 CALLER_HTTP_PORT="$(pick_port)"
 ACTOR_ROUTER_PORT="$(pick_port)"
 ACTOR_PUBSUB_PORT="$(pick_port)"
+SESSION_ROUTER_PORT="$(pick_port)"
+SESSION_PUBSUB_PORT="$(pick_port)"
+SESSION_STREAM_PORT="$(pick_port)"
 CALLER_ROUTER_PORT="$(pick_port)"
 CALLER_PUBSUB_PORT="$(pick_port)"
 
 ACTOR_URL="http://127.0.0.1:$ACTOR_HTTP_PORT"
+SESSION_URL="http://127.0.0.1:$SESSION_HTTP_PORT"
+SESSION_STREAM_ENDPOINT="tcp://127.0.0.1:$SESSION_STREAM_PORT"
 CALLER_URL="http://127.0.0.1:$CALLER_HTTP_PORT"
 ACTOR_MAIN="$ROOT_DIR/Server/Actor/dist/Server/Actor/main.js"
+SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 CALLER_MAIN="$ROOT_DIR/Server/Caller/dist/Server/Caller/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-SERVER_ROLES=(actor caller)
+SERVER_ROLES=(actor session caller)
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_role "$role"
@@ -174,11 +210,13 @@ done
 for role in "${SERVER_ROLES[@]}"; do
   wait_role "$role"
 done
-sleep 5
+wait_topology
 
 node "$CLIENT_MAIN" \
   --actor-url "$ACTOR_URL" \
   --caller-url "$CALLER_URL" \
+  --session-stream-endpoint "$SESSION_STREAM_ENDPOINT" \
+  --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

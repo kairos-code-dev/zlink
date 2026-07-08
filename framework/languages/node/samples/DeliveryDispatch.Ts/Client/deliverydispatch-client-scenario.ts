@@ -68,7 +68,6 @@ class DeliveryDispatchClientScenario {
       .packetName(PacketNames.subscribeDelivery)
       .submit<SubscribeDeliveryRes>(signal);
     ensure(() => subscribed.deliveryId === deliveryId);
-    await delay(4000, signal);
 
     const created = await http.post('/deliveries')
       .body({
@@ -117,7 +116,6 @@ class DeliveryDispatchClientScenario {
       .packetName(PacketNames.subscribeDelivery)
       .submit<SubscribeDeliveryRes>(signal);
     ensure(() => subscribed.deliveryId === deliveryId);
-    await delay(4000, signal);
 
     const created = await http.post('/deliveries')
       .body({
@@ -160,16 +158,6 @@ function ensure(condition: () => boolean): void {
   if (!condition()) {
     throw new Error(`Ensure failed: ${condition.toString()}`);
   }
-}
-
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer);
-      reject(new DOMException('Operation aborted.', 'AbortError'));
-    }, { once: true });
-  });
 }
 
 export {

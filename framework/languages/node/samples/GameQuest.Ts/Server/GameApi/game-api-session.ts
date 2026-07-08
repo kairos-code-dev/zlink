@@ -1,5 +1,5 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ACTOR_MANAGER, ZLINK_BOUND_SESSION_FACTORY, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_MANAGER, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { GameplayActionService } from './Application/gameplay-action-service';
 import { QuestProgressStore } from '../Shared/Store/quest-progress-store';
 import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
@@ -24,7 +24,6 @@ import type {
 } from '../../Shared/Contracts/messages';
 import type {
   ZLinkActorManager,
-  ZLinkBoundSessionFactory,
   ZLinkMessage,
   ZLinkRouteClient,
   ZLinkSession,
@@ -41,8 +40,7 @@ class GameQuestSession implements ZLinkSession {
     private readonly store: QuestProgressStore,
     private readonly actions: GameplayActionService,
     private readonly routes: ZLinkRouteClient,
-    private readonly actorManager: ZLinkActorManager,
-    private readonly boundSessions: ZLinkBoundSessionFactory
+    private readonly actorManager: ZLinkActorManager
   ) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
@@ -113,20 +111,15 @@ class GameQuestSession implements ZLinkSession {
     if (projection.length === 0) {
       return;
     }
-    const actor = this.context.actors.find(playerId);
-    if (actor === undefined) {
-      return;
-    }
-    const client = this.boundSessions.create(actor.actorId);
     const latest = projection[projection.length - 1];
-    client.send({
+    this.context.client.send({
       playerId,
       targetConnectionId: this.context.sessionId,
       progress: latest
     } satisfies QuestProgressNotify).packetName(PacketNames.questProgressNotify).submit();
     if (completedQuestId !== undefined || latest.status === QuestStatuses.RewardGranted) {
       const completed = projection.find((progress) => progress.questId === completedQuestId) ?? latest;
-      client.send({
+      this.context.client.send({
         playerId,
         targetConnectionId: this.context.sessionId,
         progress: completed,
@@ -149,12 +142,11 @@ class GameQuestSessionFactory implements ZLinkSessionFactory<GameQuestSession> {
     @Inject(QuestProgressStore) private readonly store: QuestProgressStore,
     private readonly actions: GameplayActionService,
     @Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient,
-    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
-    @Inject(ZLINK_BOUND_SESSION_FACTORY) private readonly boundSessions: ZLinkBoundSessionFactory
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager
   ) {}
 
   create(context: ZLinkSessionContext): GameQuestSession {
-    return new GameQuestSession(context, this.store, this.actions, this.routes, this.actorManager, this.boundSessions);
+    return new GameQuestSession(context, this.store, this.actions, this.routes, this.actorManager);
   }
 }
 

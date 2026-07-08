@@ -13,20 +13,23 @@ export async function runRmC7(options: ClientOptions): Promise<void> {
     const beforeB = await getJson<string[]>(providerB.httpUrl, '/evidence');
     const marker = uniqueMarker('rm-c7');
     const values = Array.from({ length: 240 }, (_, index) => `${marker}-${index}`);
-    const replies: ProfileRes[] = [];
+    const replies: Array<{ requestValue: string; reply: ProfileRes }> = [];
 
     for (const value of values) {
-      replies.push(await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value }));
+      replies.push({
+        requestValue: value,
+        reply: await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value })
+      });
     }
 
     ensure(replies.length === values.length, 'RM-C7 reply count mismatch.');
     ensure(
-      replies.every((reply) => reply.providerRid === 'api-a' || reply.providerRid === 'api-b'),
+      replies.every((entry) => entry.reply.providerRid === 'api-a' || entry.reply.providerRid === 'api-b'),
       'RM-C7 reply provider mismatch.'
     );
 
-    const apiAValues = replies.filter((reply) => reply.providerRid === 'api-a').map((reply) => reply.value);
-    const apiBValues = replies.filter((reply) => reply.providerRid === 'api-b').map((reply) => reply.value);
+    const apiAValues = replies.filter((entry) => entry.reply.providerRid === 'api-a').map((entry) => entry.requestValue);
+    const apiBValues = replies.filter((entry) => entry.reply.providerRid === 'api-b').map((entry) => entry.requestValue);
     ensure(apiAValues.length > 0 && apiBValues.length > 0, 'RM-C7 expected both weighted providers.');
 
     const afterA = await postJson<string[]>(providerA.httpUrl, '/evidence/wait', {

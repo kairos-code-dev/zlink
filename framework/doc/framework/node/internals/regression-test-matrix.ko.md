@@ -164,8 +164,8 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | Spot publisher without publisher 역할 | `unit` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
 | Spot publisher with publisher 역할 | `unit` | Spot publisher 역할이 있으면 `ZLinkSpotPublisherClient` 가 DI 에 등록된다 |
 | bound session factory registration | `unit` | `ZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
-| Spot remote address resolver without SpotNode | `unit` | remote address 정보만 제공하는 서버는 SpotNode 없이 `ZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
-| Spot outbound with resolver only | `unit` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `ZLinkSpotOutbound` 는 DI 에 없다 |
+| SpotRef resolver without SpotNode | `unit` | location store 를 등록한 서버는 SpotNode 없이 `ZLinkSpotRefResolver` 를 등록할 수 있다 |
+| Spot outbound with resolver only | `unit` | SpotRef resolver 만 있고 SpotNode 가 없으면 `ZLinkSpotOutbound` 는 DI 에 없다 |
 | route channel missing at call time | `unit` | `ZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
 | channel client missing at call time | `unit` | `ZLinkChannelClient` 호출 시 channel client 역할이 없으면 `ZLinkConfigurationException` |
 
@@ -229,7 +229,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | session actor reconnect 재사용 | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor 인스턴스와 spot membership을 유지하고, session binding token[^binding-token]만 갱신된다 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신이 실패하면 helper도 실패하고, local binding table의 같은 token entry도 제거된다 |
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale bound session 메시지가 새 binding을 지우거나 사용하지 못한다 |
-| Registry Spot route 기본 resolver 등록 | `unit` | `useRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `ZLinkSpotRemoteAddressResolver` 와 Spot RID directory 를 등록한다 |
+| location store 기반 SpotRef resolver 등록 | `unit` | location store 등록 시 기본 `ZLinkSpotRefResolver` 와 actor spot ref resolver 를 등록한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
 | Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
 | Registry route 기본 구현 discovery validation | `unit` | `useDiscovery().addRegistryEndpoint(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |

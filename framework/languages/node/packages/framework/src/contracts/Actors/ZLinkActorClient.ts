@@ -1,6 +1,8 @@
+import type { ActorRef } from '../Common';
+
 export interface ZLinkActorClient {
-  sendToActor(actorId: string, message: unknown): ZLinkActorSendCall;
-  requestToActor(actorId: string, request: unknown): ZLinkActorRequestCall;
+  sendToActor(actor: ActorRef, message: unknown): ZLinkActorSendCall;
+  requestToActor(actor: ActorRef, request: unknown): ZLinkActorRequestCall;
 }
 
 export interface ZLinkActorSendCall {

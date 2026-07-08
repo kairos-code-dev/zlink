@@ -2,7 +2,6 @@ import http from 'node:http';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { assignDelivery } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { retry } from '../Configuration/request-retry';
 import type { INestApplicationContext } from '@nestjs/common';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type {
@@ -64,11 +63,11 @@ async function requestDispatch(
   channels: ZLinkChannelClient,
   request: CreateDeliveryReq
 ): Promise<AssignDeliveryRes> {
-  return await retry(() => channels
+  return await channels
     .requestToChannel(
       SampleNames.dispatchChannel,
       assignDelivery(request.deliveryId, request.customerId, request.pickupAddress, request.dropoffAddress))
-    .submit<AssignDeliveryRes>(), { delayMs: 250, maxAttempts: 40 });
+    .submit<AssignDeliveryRes>();
 }
 
 function readJson<T>(request: http.IncomingMessage): Promise<T> {

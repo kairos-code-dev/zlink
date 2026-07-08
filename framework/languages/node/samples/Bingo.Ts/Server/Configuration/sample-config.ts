@@ -11,6 +11,7 @@ type BingoSampleConfig = {
   routePeerEndpoints: string[];
   playSpotEndpoint: string;
   playSpotPubSubEndpoint: string;
+  playSpotPubSubPeerEndpoints: string[];
   playSpotNodeRid: string;
   apiEndpoint: string;
   redisEndpoint: string;
@@ -36,6 +37,9 @@ function loadSampleConfig(): BingoSampleConfig {
     routePeerEndpoints: requireEnv('BINGO_ROUTE_PEER_ENDPOINTS').split(',').filter((endpoint) => endpoint.length > 0),
     playSpotEndpoint: requireEnv('BINGO_PLAY_SPOT_ENDPOINT'),
     playSpotPubSubEndpoint: requireEnv('BINGO_PLAY_SPOT_PUBSUB_ENDPOINT'),
+    playSpotPubSubPeerEndpoints: (process.env.BINGO_PLAY_SPOT_PUBSUB_PEER_ENDPOINTS ?? '')
+      .split(',')
+      .filter((endpoint) => endpoint.length > 0),
     playSpotNodeRid: process.env.BINGO_PLAY_SPOT_NODE_RID ?? 'bingo-play-node',
     apiEndpoint: requireEnv('BINGO_API_ENDPOINT'),
     redisEndpoint: requireEnv('BINGO_REDIS_ENDPOINT'),

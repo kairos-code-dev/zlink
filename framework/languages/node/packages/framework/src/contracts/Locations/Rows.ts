@@ -67,9 +67,3 @@ export interface ZLinkOwnerLeaseSnapshot {
   readonly leases: readonly ZLinkOwnerLease[];
   readonly storeNow: Date;
 }
-
-export interface ZLinkSpotAddress {
-  readonly meshName: string;
-  readonly nodeRid: RoutingId;
-  readonly spotRid: RoutingId;
-}

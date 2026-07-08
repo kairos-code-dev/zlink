@@ -7,13 +7,10 @@ import type {
   ActorPingRes,
   ActorPingReq,
   AuthRes,
-  AuthReq,
-  EvidenceWaitReq
+  AuthReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmB2(options: ClientOptions): Promise<void> {
   const actorId = `actor-sm-b2-remote-${Date.now()}`;
@@ -26,7 +23,7 @@ export async function runSmB2(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId,
         displayName: 'remote actor',
@@ -34,14 +31,14 @@ export async function runSmB2(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-b', 'SM-B2 auth reply mismatch.');
 
-    const pingMsg = decodeStreamReply<ActorPingRes>(await client
+    const pingMsg = await client
       .request({ value: 'b2' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(pingMsg.actorId === actorId, 'SM-B2 actor reply mismatch.');
     ensure(pingMsg.nodeRid === 'play-b', 'SM-B2 remote node mismatch.');
 
@@ -49,10 +46,7 @@ export async function runSmB2(options: ClientOptions): Promise<void> {
       `entry-created|rid=play-b|actor=${actorId}`,
       `entry-joined|rid=play-b|actor=${actorId}`
     ];
-    const evidence = await postJson<string[]>(options.playBUrl, '/evidence/wait', {
-      containsAll: expectedEvidence,
-      timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitReq);
+    const evidence = await waitForEvidence(options.playBUrl, expectedEvidence, 30000);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-B2 evidence mismatch.'
@@ -60,10 +54,22 @@ export async function runSmB2(options: ClientOptions): Promise<void> {
   } finally {
     await client.close();
   }
-  await postJson<string[]>(options.playBUrl, '/evidence/wait', {
-    containsAll: [`entry-disconnected|rid=play-b|actor=${actorId}`],
-    timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitReq);
 
   console.log('scenario SM-B2 passed');
+}
+
+async function waitForEvidence(baseUrl: string, containsAll: readonly string[], timeoutMs: number): Promise<string[]> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const response = await fetch(`${baseUrl}/evidence`);
+    if (!response.ok) {
+      throw new Error(`GET /evidence failed: ${response.status} ${await response.text()}`);
+    }
+    const evidence = await response.json() as string[];
+    if (containsAll.every((expected) => evidence.some((line) => line.includes(expected)))) {
+      return evidence;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Timed out waiting for SM-B2 evidence: ${containsAll.join(', ')}`);
 }

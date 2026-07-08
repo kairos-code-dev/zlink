@@ -64,8 +64,14 @@ export class ScenarioUserSpot implements ZLinkSpot {
   }
 
   async onActorJoin(actor: ScenarioActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actor;
-    void request;
+    const payload = request.decode<Partial<{ readonly actorId: string }>>(Object as never);
+    if (payload.actorId?.includes('reject') === true) {
+      const evidence = ScenarioUserSpot.requireEvidence();
+      evidence.add(
+        `spot-actor-join-rejected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+      );
+      return { accepted: false, reply: { accepted: false, actorId: actor.actorId } };
+    }
     return { accepted: true };
   }
 

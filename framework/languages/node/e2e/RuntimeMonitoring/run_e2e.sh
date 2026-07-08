@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
+source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
@@ -13,31 +15,7 @@ HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
 pick_port() {
-  node - <<'NODE'
-const net = require('node:net');
-const blocked = new Set([
-  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104,
-  109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515,
-  526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049,
-  3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080
-]);
-
-function tryPort() {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1', () => {
-    const port = server.address().port;
-    server.close(() => {
-      if (blocked.has(port)) {
-        tryPort();
-      } else {
-        console.log(port);
-      }
-    });
-  });
-}
-
-tryPort();
-NODE
+  node "$NODE_ROOT/e2e/port-picker.js"
 }
 
 build_package() {
@@ -59,19 +37,35 @@ wait_health() {
 }
 
 pids=()
+pid_names=()
 REDIS_CONTAINER_ID=""
 cleanup() {
   local code=$?
-  for pid in "${pids[@]:-}"; do
+  local background_failure=0
+  local index pid name status
+  for index in "${!pids[@]}"; do
+    pid="${pids[$index]}"
+    name="${pid_names[$index]}"
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
     fi
   done
-  wait "${pids[@]:-}" 2>/dev/null || true
+  for index in "${!pids[@]}"; do
+    pid="${pids[$index]}"
+    name="${pid_names[$index]}"
+    set +e
+    wait "$pid" 2>/dev/null
+    status=$?
+    set -e
+    if [[ "$status" -ne 0 && "$status" -ne 143 ]]; then
+      background_failure=1
+      echo "Background role $name exited unexpectedly with status $status." >&2
+    fi
+  done
   if [[ -n "$REDIS_CONTAINER_ID" ]]; then
     docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
   fi
-  if [[ "$code" -ne 0 ]]; then
+  if [[ "$code" -ne 0 || "$background_failure" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
       if [[ -f "$file" ]]; then
@@ -79,6 +73,9 @@ cleanup() {
         tail -n 80 "$file" >&2 || true
       fi
     done
+  fi
+  if [[ "$code" -eq 0 && "$background_failure" -ne 0 ]]; then
+    exit 1
   fi
 }
 trap cleanup EXIT
@@ -90,6 +87,7 @@ start_server() {
   shift
   node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
+  pid_names+=("$name")
 }
 
 wait_tcp() {
@@ -150,7 +148,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "runtime-monitoring-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+start_redis_container "runtime-monitoring-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
 REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
 REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
 REDIS_KEY_PREFIX="runtime-monitoring:node:$RUN_ID"

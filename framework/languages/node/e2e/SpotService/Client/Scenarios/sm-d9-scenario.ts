@@ -13,7 +13,6 @@ import type {
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD9(options: ClientOptions): Promise<void> {
   const observed: ZlinkStreamInboundObservation[] = [];
@@ -30,7 +29,7 @@ export async function runSmD9(options: ClientOptions): Promise<void> {
 
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId: 'actor-sm-d9',
         displayName: 'observer',
@@ -38,21 +37,21 @@ export async function runSmD9(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === 'actor-sm-d9', 'SM-D9 auth reply actor mismatch.');
 
-    const first = decodeStreamReply<ActorPingRes>(await client
+    const first = await client
       .request({ value: 'observer-1' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(first.value === 'observer-1', 'SM-D9 first pingMsg value mismatch.');
 
-    const second = decodeStreamReply<ActorPingRes>(await client
+    const second = await client
       .request({ value: 'observer-2' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(second.value === 'observer-2', 'SM-D9 second pingMsg value mismatch.');
 
     await waitForObservedReplies(observed, 2);

@@ -88,7 +88,7 @@ test('location runtime emits row events and resolvers emit resolve misses', asyn
   assert.equal(events[1][0], 'actor-removed');
 
   const resolvers = resolversFor(store, sink);
-  assert.equal(await resolvers.resolveActorSpotAddress('missing'), undefined);
+  assert.equal(await resolvers.resolveActorSpotRef('missing'), undefined);
   assert.equal(events[2][0], 'actor-miss');
   assert.equal(events[2][1].actorId, 'missing');
 });
@@ -268,31 +268,33 @@ test('store location resolvers return live spot actor and route rows without cac
     framework.ZLinkLocationWriteStatus.Stored
   );
   await node.lifecycle.claimActor('player', 'actor-1', rid('node-a'));
-  let actorAddress = await resolvers.resolveActorSpotAddress('actor-1');
+  let actorAddress = await resolvers.resolveActorSpotRef('actor-1');
   assert.equal(actorAddress, undefined);
 
   await node.lifecycle.setActorRef('player', 'actor-1', 'ref-1');
   await node.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', rid('spot-1'));
-  actorAddress = await resolvers.resolveActorSpotAddress('actor-1');
+  actorAddress = await resolvers.resolveActorSpotRef('actor-1');
   assert.equal(actorAddress.meshName, 'play');
-  assert.equal(actorAddress.spotRid.toHex(), rid('spot-1').toHex());
+  assert.equal(actorAddress.spotRid, String(rid('spot-1')));
+  assert.equal(actorAddress.spotKind, framework.ZLinkSpotKind.User);
 
-  const firstSpotAddress = await resolvers.resolveSpotAddress(rid('spot-1'));
-  const secondSpotAddress = await resolvers.resolveSpotAddress(rid('spot-1'));
-  assert.equal(firstSpotAddress.meshName, 'play');
-  assert.equal(firstSpotAddress.nodeRid.toHex(), rid('node-a').toHex());
-  assert.equal(secondSpotAddress.spotRid.toHex(), rid('spot-1').toHex());
+  const firstSpotRef = await resolvers.resolveSpotRef(rid('spot-1'));
+  const secondSpotRef = await resolvers.resolveSpotRef(rid('spot-1'));
+  assert.equal(firstSpotRef.meshName, 'play');
+  assert.equal(firstSpotRef.nodeRid, String(rid('node-a')));
+  assert.equal(firstSpotRef.spotKind, framework.ZLinkSpotKind.User);
+  assert.equal(secondSpotRef.spotRid, String(rid('spot-1')));
   assert.equal(spotResolveCount, 2);
 
   await node.runtime.stop();
-  assert.equal(await resolvers.resolveSpotAddress(rid('spot-1')), undefined);
-  assert.equal(await resolvers.resolveActorSpotAddress('actor-1'), undefined);
+  assert.equal(await resolvers.resolveSpotRef(rid('spot-1')), undefined);
+  assert.equal(await resolvers.resolveActorSpotRef('actor-1'), undefined);
 });
 
-test('location spot remote address resolver bridges current spot-rid outbound API', async () => {
+test('location spot route resolver bridges internal routed transport', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const node = await lifecycleNode(store, 'owner-a', 'node-a', 'play');
-  const resolver = new internal.ZLinkLocationSpotRemoteAddressResolver(resolversFor(store), ['play']);
+  const resolver = new internal.ZLinkLocationSpotRouteResolver(resolversFor(store), ['play']);
 
   await node.lifecycle.claimSpot('play', rid('spot-1'), 'game', rid('node-a'), framework.ZLinkSpotKind.User);
   const address = await resolver.resolve(rid('spot-1'));

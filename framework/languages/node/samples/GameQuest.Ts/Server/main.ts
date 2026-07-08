@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   for (const moduleType of modules) {
     apps.push(await NestFactory.createApplicationContext(moduleType, {
       logger: false,
-      abortOnError: false
+      abortOnError: true
     }));
   }
 

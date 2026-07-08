@@ -7,9 +7,6 @@ import {
 } from '../../../../../../Shared/Contracts/messages';
 import { createObserverRoomSettings } from '../../../../Domain/Bingo/bingo-room-models';
 import { BingoRoomSpot } from '../BingoRoomSpot/bingo-room-spot';
-import { MatchBingoActorHandler } from './Handlers/match-bingo-actor-handler';
-import { ObserveBingoEventsHandler } from './Handlers/observe-bingo-events-handler';
-import { PacketNames } from '../../../../../../Shared/Contracts/messages';
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -30,11 +27,6 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
   constructor(
     private readonly spots: ZLinkSpotManager
   ) {}
-
-  configure(): void {
-    this.context.handlers.actorRequest(PacketNames.matchBingoReq, MatchBingoActorHandler);
-    this.context.handlers.actorRequest(PacketNames.observeBingoEventsReq, ObserveBingoEventsHandler);
-  }
 
   async observeEvents(actor: PlayerActorType, request: ObserveBingoEventsReq): Promise<ObserveBingoEventsRes> {
     const observerRid = this.observerRoomRid(request.roomId);

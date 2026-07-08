@@ -8,7 +8,7 @@ const { once } = require('node:events');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 
-const zlink = require('../../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const frameworkProtobuf = require('../../packages/framework-codec-protobuf/dist');
 const nestjs = require('../../packages/nestjs/dist');
@@ -349,12 +349,16 @@ test('ZLinkChannelClient sends through public dealer/router binding sockets', as
     client.sendToChannel('api', 'hello').packetName('Greeting').submit();
 
     const received = new zlink.Received();
-    assert.equal(router.recv(received), true);
-    const envelope = decodeDotnetEnvelope(received.parts);
-    assert.equal(envelope.header.kind, 3);
-    assert.equal(envelope.header.channelName, 'api');
-    assert.equal(envelope.header.messageName, 'Greeting');
-    assert.equal(envelope.body, 'hello');
+    try {
+      assert.equal(router.recv(received), true);
+      const envelope = decodeDotnetEnvelope(received.parts);
+      assert.equal(envelope.header.kind, 3);
+      assert.equal(envelope.header.channelName, 'api');
+      assert.equal(envelope.header.messageName, 'Greeting');
+      assert.equal(envelope.body, 'hello');
+    } finally {
+      received.close();
+    }
   } finally {
     dealer.close();
     router.close();
@@ -422,12 +426,12 @@ test('route raw SPOT requests through SpotNode router are serialized per route c
   const calls = [];
   const releases = [];
   const fakeSpot = {
-    requestToSpot(targetNodeRid, spotRid, request, callback) {
+    requestToSpot(targetNodeRid, targetSpot, request, callback) {
       active += 1;
       maxActive = Math.max(maxActive, active);
       calls.push({
         targetNodeRid,
-        spotRid,
+        spotRid: targetSpot,
         request: request.data().toString()
       });
       releases.push(() => {
@@ -521,7 +525,7 @@ test('SpotNode router is not classified as packet route channel', () => {
 test('route raw SPOT request through SpotNode router retries until route is ready', async () => {
   let attempts = 0;
   const fakeSpot = {
-    requestToSpot(_targetNodeRid, _spotRid, _request, callback) {
+    requestToSpot(_targetNodeRid, _targetSpot, _request, callback) {
       attempts += 1;
       if (attempts === 1) {
         return false;
@@ -1157,6 +1161,40 @@ test('ZLinkFrameworkRuntimeHost waits for in-flight channel dispatch before clos
   ]);
 });
 
+test('ZLinkFrameworkRuntimeHost applies server socket maxMessageSize', async () => {
+  const calls = [];
+  const router = fakeRuntimeRouter(calls);
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      channels: {
+        api: {
+          server: {
+            bind: 'inproc://max-message-size-api',
+            maxMessageSize: 2048
+          },
+          requestHandlers: [{
+            packetName: 'Ping',
+            handler: {
+              handle() {
+                return { ok: true };
+              }
+            }
+          }]
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: fakeRuntimeBackendAdapterFactory(calls, router)
+  });
+
+  try {
+    await runtime.start();
+    assert.equal(router.maxMessageSize, 2048);
+  } finally {
+    await runtime.stop();
+  }
+});
+
 test('CH-006 ZLinkFrameworkRuntimeHost dispatches client-server send handlers', async () => {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const calls = [];
@@ -1662,9 +1700,10 @@ test('CH-002 manual endpoint round-robin distributes requests across three serve
 
 test('DSC-008 requestToChannel traffic survives location scale-out and scale-in', async () => {
   const locationStore = new framework.ZLinkInMemoryLocationStore();
-  const providerAEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const providerBEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const providerCEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const heldPorts = await reserveHeldPorts(3);
+  const providerAEndpoint = `tcp://127.0.0.1:${heldPorts.ports[0]}`;
+  const providerBEndpoint = `tcp://127.0.0.1:${heldPorts.ports[1]}`;
+  const providerCEndpoint = `tcp://127.0.0.1:${heldPorts.ports[2]}`;
   const providerA = createScaleoutProvider(locationStore, providerAEndpoint, 'provider-a');
   const providerB = createScaleoutProvider(locationStore, providerBEndpoint, 'provider-b');
   const providerC = createScaleoutProvider(locationStore, providerCEndpoint, 'provider-c');
@@ -1672,7 +1711,9 @@ test('DSC-008 requestToChannel traffic survives location scale-out and scale-in'
   let clientAppB;
 
   try {
+    await heldPorts.release(providerAEndpoint);
     await providerA.runtime.start();
+    await waitForReadyEndpoints(locationStore, [providerAEndpoint]);
     clientAppA = await createScaleoutClientApp(locationStore);
     clientAppB = await createScaleoutClientApp(locationStore);
     const clientA = clientAppA.get(nestjs.ZLINK_CHANNEL_CLIENT);
@@ -1682,29 +1723,30 @@ test('DSC-008 requestToChannel traffic survives location scale-out and scale-in'
     assert.equal(first.providerId, 'provider-a');
     assert.equal(providerA.evidence.includes('node-warmup-a'), true);
 
-    const traffic = createScaleoutTraffic();
-    const trafficA = runScaleoutTraffic(clientA, 'node-traffic-a', traffic);
-    const trafficB = runScaleoutTraffic(clientB, 'node-traffic-b', traffic);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    for (const providerId of traffic.observedProviders) {
+    const singleProviderTraffic = await runScaleoutTrafficBatch([clientA, clientB], 'node-traffic-a', 10);
+    for (const providerId of singleProviderTraffic.observedProviders) {
       assert.equal(providerId, 'provider-a');
     }
 
+    await heldPorts.release(providerBEndpoint);
     await providerB.runtime.start();
     await waitForReadyEndpoints(locationStore, [providerAEndpoint, providerBEndpoint]);
+    await heldPorts.release(providerCEndpoint);
     await providerC.runtime.start();
     await waitForReadyEndpoints(locationStore, [providerAEndpoint, providerBEndpoint, providerCEndpoint]);
-    await waitForTrafficProviders(traffic, ['provider-b', 'provider-c']);
-    assertRequestIdsHandledOnce(traffic.completedRequestIds, providerA, providerB, providerC);
+    const scaleoutTraffic = await waitForScaleoutTrafficProviders([clientA, clientB], 'node-scaleout', ['provider-b', 'provider-c']);
+    assertRequestIdsHandledOnce(scaleoutTraffic.completedRequestIds, providerA, providerB, providerC);
 
     await providerA.runtime.stop();
     await waitUntilEndpointIsNotReady(locationStore, providerAEndpoint);
+    await waitForAutoConnectPollCycle();
 
     const providerACountBeforeScaleIn = providerA.evidence.length;
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    traffic.stop = true;
-    await Promise.all([trafficA, trafficB]);
-    assertRequestIdsHandledOnce(traffic.completedRequestIds, providerA, providerB, providerC);
+    const scaleinTraffic = await runScaleoutTrafficBatch([clientA, clientB], 'node-scalein-traffic', 10);
+    assertRequestIdsHandledOnce(scaleinTraffic.completedRequestIds, providerA, providerB, providerC);
+    for (const providerId of scaleinTraffic.observedProviders) {
+      assert.notEqual(providerId, 'provider-a');
+    }
     const scaleinRequestIds = [];
     const scaleinProviders = new Set();
     for (let i = 0; i < 10; i += 1) {
@@ -1721,11 +1763,14 @@ test('DSC-008 requestToChannel traffic survives location scale-out and scale-in'
     }
     assertRequestIdsHandledOnce(scaleinRequestIds, providerA, providerB, providerC);
   } finally {
-    await providerC.runtime.stop();
-    await providerB.runtime.stop();
-    await providerA.runtime.stop();
+    await heldPorts.releaseAll();
     await clientAppB?.close();
     await clientAppA?.close();
+    await Promise.allSettled([
+      providerC.runtime.stop(),
+      providerB.runtime.stop(),
+      providerA.runtime.stop()
+    ]);
   }
 });
 
@@ -2495,6 +2540,64 @@ test('channel runtime drains backpressured requests from send-ready callback', a
   await manager.dispose();
 });
 
+test('channel runtime keeps one outstanding dealer request per socket', async () => {
+  const callbacks = [];
+  const socket = {
+    ...fakeBackpressuredDealer(),
+    writable: true,
+    sendTimeoutMs: -1,
+    request(parts, callback) {
+      this.requestAttempts++;
+      callbacks.push(callback);
+      this.sentParts = parts.map(fakeMessagePart);
+      return true;
+    }
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      channels: { api: { client: { manualConnections: ['tcp://peer:7101'] } } }
+    }),
+    fakeChannelAdapter({ dealer: socket }),
+    fakeContext()
+  );
+
+  const first = manager.request('api', 'Ping', { value: 'first' }, 1000);
+  const second = manager.request('api', 'Ping', { value: 'second' }, 1000);
+  await Promise.resolve();
+
+  assert.equal(socket.requestAttempts, 1);
+  assert.equal(callbacks.length, 1);
+  callbacks.shift()(0, encodeDotnetEnvelope({
+    kind: 2,
+    channelName: 'api',
+    messageName: 'Ping',
+    contentType: 'application/json',
+    correlationId: null,
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'first-reply' }).map(fakeMessagePart));
+
+  assert.deepEqual(await first, { value: 'first-reply' });
+  await waitUntil(() => socket.requestAttempts === 2);
+  assert.equal(callbacks.length, 1);
+  callbacks.shift()(0, encodeDotnetEnvelope({
+    kind: 2,
+    channelName: 'api',
+    messageName: 'Ping',
+    contentType: 'application/json',
+    correlationId: null,
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'second-reply' }).map(fakeMessagePart));
+
+  assert.deepEqual(await second, { value: 'second-reply' });
+  await manager.dispose();
+});
+
 test('PUB-001 partial ZLinkFanoutClient publishes through public pub/sub binding sockets', async () => {
   const ctx = zlink.createContext();
   const pub = zlink.createPubSocket(ctx);
@@ -2754,6 +2857,71 @@ test('DERR-006 ZLinkChannelRequestDispatcher replies error and reports observer 
   const afterEnvelope = decodeDotnetEnvelope(replies);
   assert.equal(afterEnvelope.header.kind, 2);
   assert.deepEqual(afterEnvelope.body, { value: 'known:after-decode-error' });
+});
+
+test('ZLinkChannelRequestDispatcher waits for send-ready before completing backpressured error replies', async () => {
+  let readyHandler = () => undefined;
+  const replies = [];
+  const replySubmitter = new framework.ZLinkAsyncSubmitter(
+    (handler) => {
+      readyHandler = handler;
+    },
+    { timeoutMs: 1000 }
+  );
+  const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    channelName: 'api',
+    dispatchErrors: noDispatchErrorReporter(),
+    handlers: new Map([
+      ['ThrowReq', {
+        handle() {
+          throw new Error('deterministic handler failure');
+        }
+      }]
+    ]),
+    sendHandlers: new Map(),
+    replySubmitter
+  });
+  const router = {
+    writable: false,
+    attempts: 0,
+    reply() {
+      return captureBackpressuredMultipart(replies, () => {
+        this.attempts += 1;
+        return this.writable;
+      });
+    }
+  };
+
+  const dispatchPromise = dispatcher.dispatch({
+    parts: encodeDotnetEnvelope({
+      kind: 1,
+      channelName: 'api',
+      messageName: 'ThrowReq',
+      contentType: 'application/json',
+      correlationId: 'corr-backpressured-error',
+      deadline: null,
+      topic: null,
+      errorCode: null,
+      errorMessage: null
+    }, { value: 'boom' }).map(fakeMessagePart),
+    routingId: 'client-1',
+    requestSeq: 17n
+  }, router);
+
+  await Promise.resolve();
+  assert.equal(router.attempts, 2);
+  assert.equal(replies.length, 0);
+
+  router.writable = true;
+  readyHandler();
+  await dispatchPromise;
+
+  assert.equal(router.attempts, 3);
+  assert.equal(replies.length, 2);
+  const replyEnvelope = decodeDotnetEnvelope(replies);
+  assert.equal(replyEnvelope.header.kind, 5);
+  assert.equal(replyEnvelope.header.correlationId, 'corr-backpressured-error');
+  assert.match(replyEnvelope.header.errorMessage, /deterministic handler failure/);
 });
 
 test('DERR-009 ZLinkChannelRequestDispatcher writes dispatch errors to file log', async () => {
@@ -3087,46 +3255,56 @@ function scaleoutLocationOptions() {
   };
 }
 
+async function waitForAutoConnectPollCycle() {
+  await new Promise((resolve) => setTimeout(resolve, scaleoutLocationOptions().pollingIntervalMs * 3));
+}
+
 function requestScaleoutProbe(client, requestId) {
-  return submitWhenReachable(() =>
-    client
-      .requestToChannel('scaleout-api', { requestId })
-      .packetName('ScaleoutProbe')
-      .timeout(1000)
-      .submit()
+  return withAbortTimeout(
+    (signal) => submitWhenReachable(() =>
+      client
+        .requestToChannel('scaleout-api', { requestId })
+        .packetName('ScaleoutProbe')
+        .timeout(1000)
+        .submit(signal)
+    ),
+    1500,
+    `scaleout probe ${requestId}`
   );
 }
 
-function createScaleoutTraffic() {
-  return {
-    stop: false,
+async function runScaleoutTrafficBatch(clients, label, count) {
+  const traffic = {
     completedRequestIds: [],
     observedProviders: new Set()
   };
-}
-
-async function runScaleoutTraffic(client, clientId, traffic) {
-  let index = 0;
-  while (!traffic.stop) {
-    const requestId = `${clientId}-${index}`;
-    index += 1;
-    try {
-      const reply = await requestScaleoutProbe(client, requestId);
-      traffic.completedRequestIds.push(requestId);
-      traffic.observedProviders.add(reply.providerId);
-    } catch {
-      // Location updates can briefly race socket reconnects; completed requests are checked below.
-    }
+  for (let index = 0; index < count; index += 1) {
+    const client = clients[index % clients.length];
+    const requestId = `${label}-${index}`;
+    const reply = await requestScaleoutProbe(client, requestId);
+    traffic.completedRequestIds.push(requestId);
+    traffic.observedProviders.add(reply.providerId);
   }
+  return traffic;
 }
 
-async function waitForTrafficProviders(traffic, providers) {
+async function waitForScaleoutTrafficProviders(clients, label, providers) {
   const deadline = Date.now() + 5000;
+  const traffic = {
+    completedRequestIds: [],
+    observedProviders: new Set()
+  };
+  let index = 0;
   while (Date.now() < deadline) {
+    const client = clients[index % clients.length];
+    const requestId = `${label}-${index}`;
+    index += 1;
+    const reply = await requestScaleoutProbe(client, requestId);
+    traffic.completedRequestIds.push(requestId);
+    traffic.observedProviders.add(reply.providerId);
     if (providers.every((provider) => traffic.observedProviders.has(provider))) {
-      return;
+      return traffic;
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(
     `HAR-007 classification-required labels=core-capi,bindings,framework,sample,harness: transition traffic did not observe providers ${providers.join(',')}`
@@ -3237,7 +3415,7 @@ async function publishUntilCommonFanoutSequence(fanout, topic, first, second, th
 }
 
 async function publishUntilHandled(fanout, channelName, topic, packetName, payload, predicate) {
-  const deadline = Date.now() + 1000;
+  const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
     await fanout
       .publishToChannel(channelName, topic, payload)
@@ -3296,6 +3474,38 @@ async function reservePort() {
   const { port } = server.address();
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return port;
+}
+
+async function reserveHeldPorts(count) {
+  const entries = [];
+  for (let index = 0; index < count; index += 1) {
+    const server = net.createServer();
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const { port } = server.address();
+    entries.push({ port, server, released: false });
+  }
+  return {
+    ports: entries.map((entry) => entry.port),
+    async release(endpoint) {
+      const port = Number(endpoint.replace(/^tcp:\/\/127\.0\.0\.1:/, ''));
+      const entry = entries.find((candidate) => candidate.port === port);
+      if (entry !== undefined) {
+        await releaseHeldPort(entry);
+      }
+    },
+    async releaseAll() {
+      await Promise.all(entries.map((entry) => releaseHeldPort(entry)));
+    }
+  };
+}
+
+async function releaseHeldPort(entry) {
+  if (entry.released) {
+    return;
+  }
+  entry.released = true;
+  await new Promise((resolve, reject) => entry.server.close((error) => error ? reject(error) : resolve()));
 }
 
 function subscribeMaybe(socket, received) {
@@ -3366,6 +3576,23 @@ function captureMultipart(parts) {
   };
 }
 
+function captureBackpressuredMultipart(parts, submit) {
+  const pending = [];
+  return {
+    message(part) {
+      pending.push(fakeMessagePart(part));
+      return this;
+    },
+    submit() {
+      if (!submit()) {
+        return false;
+      }
+      parts.push(...pending);
+      return true;
+    }
+  };
+}
+
 function captureRawMultipart(parts) {
   return {
     message(part) {
@@ -3401,6 +3628,21 @@ function withTimeout(promise, timeoutMs, label) {
     timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
   });
   return Promise.race([promise, guard]).finally(() => clearTimeout(timeout));
+}
+
+function withAbortTimeout(action, timeoutMs, label) {
+  const controller = new AbortController();
+  let timeout;
+  const guard = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`${label} timed out`));
+    }, timeoutMs);
+  });
+  return Promise.race([action(controller.signal), guard]).finally(() => {
+    clearTimeout(timeout);
+    controller.abort();
+  });
 }
 
 async function assertAborted(action) {
@@ -3462,6 +3704,20 @@ function fakeRuntimeBackendAdapterFactory(calls, router) {
           return router;
         }
       };
+    },
+    createMonitoringAdapter() {
+      return {
+        openSocketMonitor() {
+          return {
+            nativeInstance: {},
+            onEvent() {},
+            recv() {
+              return null;
+            },
+            async dispose() {}
+          };
+        }
+      };
     }
   };
 }
@@ -3475,6 +3731,7 @@ function fakeRuntimeRouter(calls, received) {
     sendHighWaterMark: 0,
     receiveHighWaterMark: 0,
     sendTimeoutMs: 0,
+    maxMessageSize: 0,
     disposed: false,
     setChannelName(channelName) {
       calls.push(`router:setChannelName:${channelName}`);

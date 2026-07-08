@@ -16,7 +16,8 @@
 | `Server/Support/Infrastructure/ZLink/Handlers` | `Server/Support/Infrastructure/ZLink/Handlers` | done |
 | `Server/Support/Infrastructure/ZLink/Spots/EntrySpot` | `Server/Support/Infrastructure/ZLink/Spots/EntrySpot` | done |
 | `Server/Support/Infrastructure/ZLink/Spots/ConversationSpot` | `Server/Support/Infrastructure/ZLink/Spots/ConversationSpot` | done |
-| `run_sample.sh` | `run_sample.sh` | done |
+| Redis location store | `Server/Configuration/location-store.ts` | done: Api, Support, Session role이 같은 Redis location store prefix를 공유한다. |
+| `run_sample.sh` | `run_sample.sh` | done: 전용 Redis를 띄우고 `Server/Support`, `Server/Session`, `Server/Api`를 별도 Node process로 실행한 뒤 client/probe 검증을 수행한다. PASS: `timeout 300s framework/languages/node/samples/SupportChat.Ts/run_sample.sh` |
 
 ## 시나리오 대응
 
@@ -31,5 +32,6 @@
 
 ## 검증 연결
 
-- `samples/run_samples.sh`에서 `SupportChat.Ts/run_sample.sh`를 실행한다.
+- `samples/run_samples.sh`에서 `SupportChat.Ts/run_sample.sh`를 실행한다. 이 runner는 dedicated Redis location store,
+  Support, Session, Api role을 모두 시작한 뒤 Api HTTP health와 client scenario를 검증한다.
 - `test/contract/sample-regression.test.js`의 required sample과 topology sample 목록에 `SupportChat.Ts`를 포함한다.

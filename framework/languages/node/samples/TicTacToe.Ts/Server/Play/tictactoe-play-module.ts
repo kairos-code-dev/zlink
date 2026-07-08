@@ -17,8 +17,8 @@ import { ZLinkTicTacToeGameRoomProvisioner } from './Infrastructure/ZLink/tictac
 import { PlaySessionFactory } from './Infrastructure/ZLink/Sessions/play-session-factory';
 import { PLAY_STREAM_ENDPOINT } from './play-tokens';
 import {
+  createTicTacToeLocationStore,
   RedisRoomRouteStore,
-  RedisSpotRemoteAddressResolver,
   TICTACTOE_SAMPLE_CONFIG
 } from '../Configuration/redis-room-route-store';
 function createTicTacToePlayModule(config: {
@@ -29,6 +29,8 @@ function createTicTacToePlayModule(config: {
   playSpotPubSubEndpoint: string;
   playRouteEndpoint: string;
   playStreamEndpoint: string;
+  redisEndpoint: string;
+  redisKeyPrefix: string;
   playSpotNodeRid: string;
   peerPlaySpotNodeRid: string;
   peerPlaySpotEndpoint: string;
@@ -46,10 +48,8 @@ function createTicTacToePlayModule(config: {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-play-${config.playSpotNodeRid}.log`)
             .traceLabel(config.playSpotNodeRid);
+          builder.addLocationStore(createTicTacToeLocationStore(config));
           return builder
-          .options({
-            spotRemoteAddressResolver: RedisSpotRemoteAddressResolver
-          })
           .addClientServerChannel(SampleNames.playChannel)
             .enableServer(config.playEndpoint)
             .addRequestHandler(PacketNames.createGameReq, CreateGameHandler)
@@ -74,7 +74,6 @@ function createTicTacToePlayModule(config: {
       { provide: TICTACTOE_SAMPLE_CONFIG, useValue: config },
       { provide: PLAY_STREAM_ENDPOINT, useValue: config.playStreamEndpoint },
       RedisRoomRouteStore,
-      RedisSpotRemoteAddressResolver,
       { provide: TICTACTOE_GAME_ROOM_PROVISIONER, useClass: ZLinkTicTacToeGameRoomProvisioner },
       TicTacToeGameCreator,
       CreateGameHandler,

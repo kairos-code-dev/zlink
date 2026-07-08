@@ -3,6 +3,7 @@ export * from './runtime/streams/protocol';
 export * from './runtime/channels';
 export * from './runtime/handlers';
 export * from './runtime/host';
+export * from './runtime/messaging';
 export * from './runtime/locations';
 export * from './runtime/locations/canonical-codec';
 export * from './runtime/locations/key-codec';

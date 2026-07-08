@@ -48,8 +48,11 @@ async function runRemoteSpotYield(
     `remote-yield-started|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
   );
+  if (request.targetSpot === undefined) {
+    throw new Error(`Remote spot target ref is required for '${request.targetSpotRid}'.`);
+  }
   const call = spot.context.outbound
-    .requestToSpot(request.targetSpotRid, {
+    .requestToSpot(request.targetSpot, {
       requestId: request.requestId,
       delayMs: request.delayMs,
       correlationId: 'remote-spot'

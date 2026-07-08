@@ -15,7 +15,7 @@ export function createConsumerEndpoints(
 ): readonly HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'consumer' }) },
-    { method: 'POST', path: '/profile/request', handle: (body) => requestProfileWithRetry(channel, body as ProfileReq) },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, body as ProfileReq) },
     { method: 'POST', path: '/profile/request-once', handle: (body) => requestProfileOnce(channel, body as ProfileReq) },
     { method: 'GET', path: '/location/status', handle: () => locationQuery.getStatus() },
     {
@@ -38,12 +38,12 @@ export function createConsumerEndpoints(
   ];
 }
 
-async function requestProfileWithRetry(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
-  return retryUntil(async () => channel
+async function requestProfile(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
+  return await channel
     .requestToChannel(ChannelNames.profile, request)
     .packetName(PacketNames.profileReq)
     .timeout(5000)
-    .submit<ProfileRes>(), 'discovered profile provider');
+    .submit<ProfileRes>();
 }
 
 async function requestProfileOnce(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
@@ -52,18 +52,4 @@ async function requestProfileOnce(channel: ZLinkChannelClient, request: ProfileR
     .packetName(PacketNames.profileReq)
     .timeout(1000)
     .submit<ProfileRes>();
-}
-
-async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {
-  const deadline = Date.now() + 30000;
-  let last: unknown;
-  while (Date.now() < deadline) {
-    try {
-      return await operation();
-    } catch (error) {
-      last = error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  throw new Error(`Timed out waiting for ${label}: ${last instanceof Error ? last.message : String(last)}`);
 }

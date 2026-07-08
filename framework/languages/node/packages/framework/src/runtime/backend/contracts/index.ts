@@ -150,6 +150,7 @@ export interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket 
   sendHighWaterMark: number;
   receiveHighWaterMark: number;
   sendTimeoutMs: number;
+  maxMessageSize: number;
   onSendReady(handler: () => void): void;
   send(message: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
   request(
@@ -189,6 +190,7 @@ export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
   sendHighWaterMark: number;
   receiveHighWaterMark: number;
   sendTimeoutMs: number;
+  maxMessageSize: number;
   onSendReady(handler: () => void): void;
   setRoutingId(routingId: RoutingId): void;
   recv(flags?: ZLinkBackendRecvFlags): Received | undefined;

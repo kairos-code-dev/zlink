@@ -16,7 +16,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD2(options: ClientOptions): Promise<void> {
   await waitForControlRoute(options.sessionAUrl, 'play-b');
@@ -31,7 +30,7 @@ export async function runSmD2(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId,
         displayName: 'remote relay',
@@ -39,7 +38,7 @@ export async function runSmD2(options: ClientOptions): Promise<void> {
     } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-b', 'SM-D2 auth reply mismatch.');
     await postJson<string[]>(options.playBUrl, '/evidence/wait', {
       containsAll: [`entry-joined|rid=play-b|actor=${actorId}`],
@@ -50,11 +49,11 @@ export async function runSmD2(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === actorId)
       .timeout(10000)
       .submit();
-    const reply = decodeStreamReply<ActorPingRes>(await client
+    const reply = await client
       .request({ value: 'push-remote' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     const notify = await pushed;
 
     ensure(reply.actorId === actorId, 'SM-D2 actor reply mismatch.');

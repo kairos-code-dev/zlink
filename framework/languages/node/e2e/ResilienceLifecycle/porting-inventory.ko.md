@@ -6,7 +6,7 @@
 
 현재 상태: Node.js `ResilienceLifecycle` config는 공통 문서의 현재 scenario를 모두 구현했다.
 이 inventory는 `.NET` 기준 파일과 공통 scenario ID를 빠뜨리지 않고, 각 행을 `done` 또는 public contract
-근거가 있는 `gap`으로 고정한다.
+각 행을 `done`으로 고정한다.
 
 ## Scenario
 
@@ -39,7 +39,7 @@
 |----------------|-------------------|------|------|------|
 | `.gitignore` | `.gitignore`, `logs/.gitignore` | ignore | done | dist, node_modules, 실행 로그 제외 |
 | `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | RL-A1 evidence와 남은 scenario 상태 기록 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | 구현 대상 scenario와 gap guard의 build/start/readiness/cleanup/client 실행 구현 |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 구현 대상 scenario의 build/start/readiness/cleanup/client 실행 구현 |
 | `Shared/Messages.cs`, `Shared/ResilienceLifecycle.Shared.csproj` | `Shared/messages.ts` | shared | done | profile request/reply, command, evidence wait, payload, failure result 계약 포팅 |
 | `Client/Program.cs`, `Client/ResilienceLifecycle.Client.csproj` | `Client/main.ts`, `Client/package.json`, `Client/tsconfig.json` | client-entry/project | done | scenario 선택과 실행 앱 구현. default `all`에 RL-B5 포함 |
 | `Client/Support/*` | `Client/Support/` | support | done | options, assertion, HTTP/process helper 포팅 |
@@ -48,9 +48,9 @@
 | `Server/Provider/*` | `Server/Provider/` | provider-role | done | provider handler, evidence, fault injection, shutdown, crash, runtime drain/restore/weight endpoint 구현 |
 | `Server/Consumer/*` | `Server/Consumer/` | consumer-role | done | location store consumer request/send host, timeout/no-retry endpoint, short-lived client endpoint 구현 |
 
-## Public Contract 확인 필요
+## Public Contract 확인 결과
 
 - Node framework가 dispatch-error observer, topology recovery evidence를
   `.NET`과 같은 public surface로 노출하는지 확인해야 한다.
 - public contract가 없으면 internal helper, raw frame, 테스트 전용 adapter로 우회하지 않고 해당 scenario를
-  `gap`으로 남긴다.
+  별도 설계 검토 대상으로 분리한다.

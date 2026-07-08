@@ -8,12 +8,13 @@ npm run build >/dev/null
 RUN_DIR="${GAMEQUEST_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
-export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-${SCRIPT_DIR}/logs}"
+export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-${LOG_DIR}}"
 export GAMEQUEST_WORK_DIR="${WORK_DIR}"
 mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${GAMEQUEST_LOG_DIR}"
 rm -f "${GAMEQUEST_LOG_DIR}"/*.log
 PIDS=()
 REDIS_CONTAINER_ID=""
+source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -57,7 +58,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 10:
+    while len(sockets) < 16:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -84,12 +85,18 @@ export GAMEQUEST_API_A_HTTP="http://127.0.0.1:${PORTS[0]}"
 export GAMEQUEST_API_B_HTTP="http://127.0.0.1:${PORTS[1]}"
 export GAMEQUEST_API_A_STREAM="tcp://127.0.0.1:${PORTS[2]}"
 export GAMEQUEST_API_B_STREAM="tcp://127.0.0.1:${PORTS[3]}"
-export GAMEQUEST_MISSION_A_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
-export GAMEQUEST_MISSION_B_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
-export GAMEQUEST_API_A_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
-export GAMEQUEST_API_B_ROUTE="tcp://127.0.0.1:${PORTS[7]}"
-export GAMEQUEST_MISSION_A_HTTP="http://127.0.0.1:${PORTS[8]}"
-export GAMEQUEST_MISSION_B_HTTP="http://127.0.0.1:${PORTS[9]}"
+export GAMEQUEST_API_A_ACTOR_SPOT="tcp://127.0.0.1:${PORTS[4]}"
+export GAMEQUEST_API_B_ACTOR_SPOT="tcp://127.0.0.1:${PORTS[5]}"
+export GAMEQUEST_MISSION_A_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
+export GAMEQUEST_MISSION_B_ROUTE="tcp://127.0.0.1:${PORTS[7]}"
+export GAMEQUEST_MISSION_A_SPOT="tcp://127.0.0.1:${PORTS[8]}"
+export GAMEQUEST_MISSION_B_SPOT="tcp://127.0.0.1:${PORTS[9]}"
+export GAMEQUEST_MISSION_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[10]}"
+export GAMEQUEST_MISSION_B_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[11]}"
+export GAMEQUEST_API_A_ROUTE="tcp://127.0.0.1:${PORTS[12]}"
+export GAMEQUEST_API_B_ROUTE="tcp://127.0.0.1:${PORTS[13]}"
+export GAMEQUEST_MISSION_A_HTTP="http://127.0.0.1:${PORTS[14]}"
+export GAMEQUEST_MISSION_B_HTTP="http://127.0.0.1:${PORTS[15]}"
 export GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:node:${RANDOM}:$$:}"
 
 endpoint_host() {
@@ -142,7 +149,7 @@ start_role() {
   PIDS+=("$!")
 }
 
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "gamequest-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+start_redis_container "gamequest-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
 export GAMEQUEST_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 wait_tcp_endpoint redis "tcp://${GAMEQUEST_REDIS_ENDPOINT}"
 
@@ -154,10 +161,12 @@ wait_tcp_endpoint mission-b "${GAMEQUEST_MISSION_B_ROUTE}"
 start_role api-a
 wait_tcp_endpoint api-a-route "${GAMEQUEST_API_A_ROUTE}"
 wait_tcp_endpoint api-a-stream "${GAMEQUEST_API_A_STREAM}"
+wait_tcp_endpoint api-a-actor-spot "${GAMEQUEST_API_A_ACTOR_SPOT}"
 wait_http api-a "${GAMEQUEST_API_A_HTTP}"
 start_role api-b
 wait_tcp_endpoint api-b-route "${GAMEQUEST_API_B_ROUTE}"
 wait_tcp_endpoint api-b-stream "${GAMEQUEST_API_B_STREAM}"
+wait_tcp_endpoint api-b-actor-spot "${GAMEQUEST_API_B_ACTOR_SPOT}"
 wait_http api-b "${GAMEQUEST_API_B_HTTP}"
 
 node "${SCRIPT_DIR}/dist/Client/main.js"

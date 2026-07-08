@@ -19,7 +19,8 @@ export interface ZlinkStreamRequestCall {
   metadata(metadata: ZlinkStreamMetadata): ZlinkStreamRequestCall;
   timeout(timeoutMs: number): ZlinkStreamRequestCall;
   compress(): ZlinkStreamRequestCall;
-  submit<TReply = ZlinkStreamEncodedPayload>(signal?: AbortSignal): Promise<TReply>;
+  submit<TReply = unknown>(signal?: AbortSignal): Promise<TReply>;
+  submitEncoded(signal?: AbortSignal): Promise<ZlinkStreamEncodedPayload>;
   submit(callback: (result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void): void;
 }
 

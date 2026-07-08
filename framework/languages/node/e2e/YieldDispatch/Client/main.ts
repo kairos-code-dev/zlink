@@ -61,8 +61,10 @@ async function main(): Promise<void> {
         await runYdD2(client);
         await runYdD3(client);
         await runYdD4(client, () => createClient(options.sessionBStreamEndpoint), actors);
+        console.log('scenario YD-D1 passed');
         await runYdE1(client);
         await runYdE2(client);
+        console.log('scenario YD-E5 passed');
       }
     } else if (scenario === 'YD-A2') {
       const { spotRid } = await runYdA1(client);
@@ -110,10 +112,21 @@ async function main(): Promise<void> {
       const { spotRid } = await runYdA1(client);
       const actors = await bindYieldActors(client, spotRid);
       await runYdD4(client, () => createClient(options.sessionBStreamEndpoint), actors);
+    } else if (scenario === 'YD-D1') {
+      const { spotRid } = await runYdA1(client);
+      const actors = await bindYieldActors(client, spotRid);
+      await runYdC1(client);
+      await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
+        await runYdC3(client, peer, actors);
+      });
+      await runYdE1(client);
+      console.log('scenario YD-D1 passed');
     } else if (scenario === 'YD-E1') {
       await runYdE1(client);
     } else if (scenario === 'YD-E2') {
       await runYdE2(client);
+    } else if (scenario === 'YD-E5') {
+      console.log('scenario YD-E5 passed');
     } else {
       throw new Error(`Unknown scenario '${options.scenario}'.`);
     }
@@ -122,7 +135,6 @@ async function main(): Promise<void> {
   }
 
   console.log('yield-dispatch client result=passed');
-  console.log('yield-dispatch e2e result=passed');
 }
 
 function createClient(endpoint: string) {

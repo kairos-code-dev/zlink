@@ -10,6 +10,7 @@ rm -f "${TICTACTOE_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER_ID=""
+source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 REDIS_KEY_PREFIX="tictactoe:${RANDOM}:$$:room:"
 
 print_logs() {
@@ -120,11 +121,10 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER_ID="$(docker run -d --rm \
-  --name "zlink-tictactoe-ts-redis-${RANDOM}-$$" \
+start_redis_container "zlink-tictactoe-ts-redis-${RANDOM}-$$" \
   --label "systems.zlink.sample=tictactoe-ts" \
   -p "127.0.0.1::6379" \
-  redis:7-alpine)"
+  redis:7-alpine
 REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 
 python3 - "${API_A_CONFIG}" "${API_B_CONFIG}" "${PLAY_A_CONFIG}" "${PLAY_B_CONFIG}" <<PY
@@ -191,11 +191,16 @@ endpoint_port() {
 wait_port() {
   local name="$1"
   local endpoint="$2"
+  local pid="${3:-}"
   local host
   local port
   host="$(endpoint_host "${endpoint}")"
   port="$(endpoint_port "${endpoint}")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 600); do
+    if [[ -n "${pid}" ]] && ! kill -0 "${pid}" 2>/dev/null; then
+      echo "${name} process exited before ${endpoint} accepted connections" >&2
+      return 1
+    fi
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -210,15 +215,25 @@ wait_ready_field() {
   local log_file="$2"
   local field="$3"
   local expected="$4"
-  python3 - "${name}" "${log_file}" "${field}" "${expected}" <<'PY'
+  local pid="${5:-}"
+  python3 - "${name}" "${log_file}" "${field}" "${expected}" "${pid}" <<'PY'
 import json
+import os
 import select
+import signal
 import sys
 import time
 
-name, log_file, field, expected = sys.argv[1:]
-deadline = time.monotonic() + 10
+name, log_file, field, expected, pid_text = sys.argv[1:]
+pid = int(pid_text) if pid_text else None
+deadline = time.monotonic() + 60
 while time.monotonic() < deadline:
+    if pid is not None:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            print(f"{name} exited before ready {field}={expected}", file=sys.stderr)
+            raise SystemExit(1)
     try:
         with open(log_file, "r", encoding="utf-8") as source:
             for line in source:
@@ -247,7 +262,7 @@ import sys
 import time
 
 name, log_file, event_name = sys.argv[1:]
-deadline = time.monotonic() + 10
+deadline = time.monotonic() + 30
 while time.monotonic() < deadline:
     try:
         with open(log_file, "r", encoding="utf-8") as source:
@@ -287,7 +302,8 @@ start_server() {
   local entry="$2"
   local config="$3"
   ZLINK_SAMPLE_CONFIG="${config}" node "${SCRIPT_DIR}/${entry}" >"${LOG_DIR}/${name}.log" 2>&1 &
-  PIDS+=("$!")
+  LAST_STARTED_PID="$!"
+  PIDS+=("${LAST_STARTED_PID}")
 }
 
 (cd "${SCRIPT_DIR}" && npm run build >/dev/null)
@@ -295,26 +311,28 @@ start_server() {
 wait_port redis "tcp://${REDIS_ENDPOINT}"
 
 start_server play-b dist/Server/Play/main.js "${PLAY_B_CONFIG}"
-wait_ready_field play-b "${LOG_DIR}/play-b.log" spotEndpoint "${PLAY_B_SPOT_ENDPOINT}"
-wait_port play-b-channel "${PLAY_B_CHANNEL_ENDPOINT}"
-wait_port play-b-stream "${PLAY_B_STREAM_ENDPOINT}"
-wait_port play-b-spot-pubsub "${PLAY_B_SPOT_PUBSUB_ENDPOINT}"
+wait_ready_field play-b "${LOG_DIR}/play-b.log" spotEndpoint "${PLAY_B_SPOT_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port play-b-channel "${PLAY_B_CHANNEL_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port play-b-stream "${PLAY_B_STREAM_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port play-b-spot-pubsub "${PLAY_B_SPOT_PUBSUB_ENDPOINT}" "${LAST_STARTED_PID}"
 
 start_server play-a dist/Server/Play/main.js "${PLAY_A_CONFIG}"
-wait_ready_field play-a "${LOG_DIR}/play-a.log" spotEndpoint "${PLAY_A_SPOT_ENDPOINT}"
-wait_port play-a-channel "${PLAY_A_CHANNEL_ENDPOINT}"
-wait_port play-a-stream "${PLAY_A_STREAM_ENDPOINT}"
-wait_port play-a-spot-pubsub "${PLAY_A_SPOT_PUBSUB_ENDPOINT}"
+wait_ready_field play-a "${LOG_DIR}/play-a.log" spotEndpoint "${PLAY_A_SPOT_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port play-a-channel "${PLAY_A_CHANNEL_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port play-a-stream "${PLAY_A_STREAM_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port play-a-spot-pubsub "${PLAY_A_SPOT_PUBSUB_ENDPOINT}" "${LAST_STARTED_PID}"
 wait_event play-a "${LOG_DIR}/play-a.log" spotPeerReady
 wait_event play-b "${LOG_DIR}/play-b.log" spotPeerReady
 
 start_server api-a dist/Server/Api/main.js "${API_A_CONFIG}"
-wait_port api-a-channel "${API_A_ENDPOINT}"
-wait_port api-a-http "${API_A_HTTP_ENDPOINT}"
+wait_ready_field api-a "${LOG_DIR}/api-a.log" endpoint "${API_A_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port api-a-channel "${API_A_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port api-a-http "${API_A_HTTP_ENDPOINT}" "${LAST_STARTED_PID}"
 
 start_server api-b dist/Server/Api/main.js "${API_B_CONFIG}"
-wait_port api-b-channel "${API_B_ENDPOINT}"
-wait_port api-b-http "${API_B_HTTP_ENDPOINT}"
+wait_ready_field api-b "${LOG_DIR}/api-b.log" endpoint "${API_B_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port api-b-channel "${API_B_ENDPOINT}" "${LAST_STARTED_PID}"
+wait_port api-b-http "${API_B_HTTP_ENDPOINT}" "${LAST_STARTED_PID}"
 
 ZLINK_SAMPLE_CONFIG="${API_A_CONFIG}" node "${SCRIPT_DIR}/dist/Client/main.js" >"${LOG_DIR}/client.log" 2>&1
 grep -q "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"

@@ -14,8 +14,11 @@ mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 PIDS=()
 REDIS_CONTAINER_ID=""
+source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 
 cleanup() {
+  local exit_status=$?
+  local cleanup_status=0
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     kill -INT "${pid}" >/dev/null 2>&1 || true
@@ -33,19 +36,32 @@ cleanup() {
     fi
     sleep 0.1
   done
-	  for pid in "${PIDS[@]}"; do
-	    if kill -0 "${pid}" >/dev/null 2>&1; then
-	      kill -9 "${pid}" >/dev/null 2>&1 || true
-	    fi
-	    wait "${pid}" 2>/dev/null || true
-	  done
+  for pid in "${PIDS[@]}"; do
+    if kill -0 "${pid}" >/dev/null 2>&1; then
+      kill -9 "${pid}" >/dev/null 2>&1 || true
+    fi
+    set +e
+    wait "${pid}" 2>/dev/null
+    local wait_status=$?
+    set -e
+    if [[ "${wait_status}" == "139" ]]; then
+      printf 'DeliveryDispatch server process %s exited with SIGSEGV\n' "${pid}" >&2
+      cleanup_status=139
+    fi
+  done
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
     docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
-	  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
-	    echo "runDir=${RUN_DIR}"
-	  else
+  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
+    echo "runDir=${RUN_DIR}"
+  else
     [[ -n "${DELIVERYDISPATCH_RUN_DIR:-}" ]] || rm -rf "${RUN_DIR}"
+  fi
+  if [[ "${exit_status}" != "0" ]]; then
+    return "${exit_status}"
+  fi
+  if [[ "${cleanup_status}" != "0" ]]; then
+    return "${cleanup_status}"
   fi
 }
 trap cleanup EXIT
@@ -144,7 +160,7 @@ start_role() {
   PIDS+=("$!")
 }
 
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "deliverydispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+start_redis_container "deliverydispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
 export DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 
@@ -153,7 +169,6 @@ wait_port tracking-route "${DELIVERYDISPATCH_TRACKING_ROUTE}"
 
 start_role session
 wait_port session-stream "${DELIVERYDISPATCH_SESSION_STREAM}"
-sleep 1
 
 start_role courier-session
 wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"

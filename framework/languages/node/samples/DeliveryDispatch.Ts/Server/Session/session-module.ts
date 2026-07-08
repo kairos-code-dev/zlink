@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { PacketNames } from '../../Shared/Contracts/messages';
 import { CustomerSessionDirectory } from './customer-session-directory';
 import { CustomerSessionFactory } from './customer-session';
 import { DeliveryStatusFanoutHandler } from './delivery-status-fanout-handler';
@@ -28,7 +27,7 @@ function createSessionModule(config: DeliveryDispatchServerConfig) {
               .enableClient()
             .addFanoutChannel(SampleNames.statusFanoutChannel)
               .enableSubscriber()
-              .addPublishHandler(PacketNames.deliveryStatusNotify, DeliveryStatusFanoutHandler)
+              .addHandlerGroup(SampleNames.statusFanoutChannel)
             .addSpotMesh(SampleNames.deliverySpotMesh)
               .enableRouter(config.sessionSpotRouterEndpoint, config.sessionSpotNodeRid)
               .enablePubSub(config.sessionSpotEndpoint, config.sessionSpotNodeRid)

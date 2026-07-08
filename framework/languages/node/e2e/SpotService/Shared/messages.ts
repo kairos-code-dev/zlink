@@ -1,3 +1,5 @@
+import type { SpotRef } from '@zlink-systems/framework';
+
 export const SpotServiceNames = {
   spotChannel: 'spot.service',
   controlChannel: 'spot.control',
@@ -10,6 +12,7 @@ export const SpotServiceNames = {
   playSpotNode: 'play-node',
   multiSpotNodeA: 'multi-node-a',
   multiSpotNodeB: 'multi-node-b',
+  spotOnlyMesh: 'spot-only.mesh',
   multiRouteChannelA: 'multi-route-a',
   multiRouteChannelB: 'multi-route-b',
   actorType: 'scenario-player',
@@ -67,6 +70,32 @@ export interface StateMsg {
   readonly marker: string;
 }
 
+export interface SpotOnlyMeshReq {
+  readonly sourceSpotRid: string;
+  readonly targetSpotRid: string;
+  readonly marker: string;
+}
+
+export interface SpotOnlyMeshRes {
+  readonly sourceSpotRid: string;
+  readonly targetSpotRid: string;
+  readonly targetValue: number;
+  readonly marker: string;
+}
+
+export interface SpotOnlyJoinReq {
+  readonly targetSpotRid: string;
+  readonly actorId: string;
+  readonly marker: string;
+}
+
+export interface SpotOnlyJoinRes {
+  readonly targetSpotRid: string;
+  readonly actorId: string;
+  readonly accepted: boolean;
+  readonly marker: string;
+}
+
 export interface StageProbeReq {
   readonly marker: string;
   readonly delta: number;
@@ -103,6 +132,7 @@ export interface SpotOutboundRouteRes {
 
 export interface SpotToSpotReq {
   readonly targetSpotRid: string;
+  readonly targetSpot: SpotRef;
   readonly marker: string;
 }
 
@@ -120,6 +150,7 @@ export interface SpotToSpotRouteReq {
 
 export interface SpotToSpotTimeoutReq {
   readonly targetSpotRid: string;
+  readonly targetSpot: SpotRef;
   readonly marker: string;
 }
 
@@ -137,6 +168,7 @@ export interface SpotToSpotTimeoutRouteReq {
 
 export interface SpotToSpotNegativeReq {
   readonly targetSpotRid: string;
+  readonly targetSpot: SpotRef;
   readonly marker: string;
 }
 
@@ -225,6 +257,7 @@ export interface AuthReq {
 export interface AuthRes {
   readonly actorId: string;
   readonly nodeRid: string;
+  readonly generation?: string;
 }
 
 export interface EnsureActorReq {
@@ -264,6 +297,20 @@ export interface ActorPushNotify {
   readonly actorId: string;
   readonly value: string;
   readonly seen: number;
+}
+
+export interface CrossRoleActorPushReq {
+  readonly actorId: string;
+  readonly nodeRid: string;
+  readonly generation: string;
+  readonly value: string;
+}
+
+export interface CrossRoleActorPushRes {
+  readonly actorId: string;
+  readonly nodeRid: string;
+  readonly value: string;
+  readonly delivered: boolean;
 }
 
 export interface MultiBindReq {

@@ -38,14 +38,14 @@ class MatchBingoActorHandler
     void context;
     const actorId = actor.actorId;
     const displayName = actor.displayName;
-    const matched = await retryStartupRoute(() => entrySpot.context.outbound
+    const matched = await entrySpot.context.outbound
         .requestToChannel(
           SampleNames.apiChannel,
           matchBingoApiReq(actorId, displayName, request.mode, String(entrySpot.context.nodeRid))
         )
         .packetName(PacketNames.matchBingoApiReq)
         .timeout(SampleTimings.requestTimeout)
-        .submit<MatchBingoApiRes>());
+        .submit<MatchBingoApiRes>();
 
     const roomId = matched.roomId;
     const joined = await actor.context
@@ -58,31 +58,6 @@ class MatchBingoActorHandler
 
     return matchBingoRes(roomId, joined.reply.state, matched.roomOwnerNodeRid);
   }
-}
-
-async function retryStartupRoute<TValue>(action: () => Promise<TValue>): Promise<TValue> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      return await action();
-    } catch (error) {
-      if (!isStartupRouteError(error)) {
-        throw error;
-      }
-      lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
-  throw lastError;
-}
-
-function isStartupRouteError(error: unknown): boolean {
-  const candidate = error as { kind?: unknown; cause?: unknown; message?: unknown };
-  if (candidate.kind === 'routeNotConnected') {
-    return true;
-  }
-  const cause = candidate.cause as { message?: unknown } | undefined;
-  return typeof cause?.message === 'string' && cause.message.includes('Connection refused');
 }
 
 export { MatchBingoActorHandler };

@@ -15,7 +15,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmB6(options: ClientOptions): Promise<void> {
   const suffix = Date.now();
@@ -42,11 +41,11 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
     } satisfies EvidenceWaitReq);
     await joinUserSpotActor(leaveClient, spotRid, leaveActorId);
 
-    const left = decodeStreamReply<LeaveRes>(await leaveClient
+    const left = await leaveClient
       .request({ actorId: leaveActorId } satisfies LeaveReq)
       .packetName('LeaveReq')
       .timeout(5000)
-      .submit());
+      .submit<LeaveRes>();
     ensure(left.accepted && left.actorId === leaveActorId, 'SM-B6 leave reply mismatch.');
   } finally {
     await leaveClient.close();
@@ -122,11 +121,11 @@ async function joinUserSpotActor(
   spotRid: string,
   actorId: string
 ): Promise<void> {
-  const joined = decodeStreamReply<JoinUserSpotActorRes>(await client
+  const joined = await client
     .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
     .packetName('JoinUserSpotActorReq')
     .timeout(5000)
-    .submit());
+    .submit<JoinUserSpotActorRes>();
   ensure(joined.accepted && joined.actorId === actorId, `User spot actor join failed for ${actorId}.`);
 }
 

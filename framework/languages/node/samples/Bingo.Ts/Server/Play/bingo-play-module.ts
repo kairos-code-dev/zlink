@@ -25,6 +25,7 @@ function createBingoPlayModule(config: {
 	  routePeerEndpoints: string[];
 	  playSpotEndpoint: string;
 	  playSpotPubSubEndpoint: string;
+  playSpotPubSubPeerEndpoints: string[];
   playSpotNodeRid: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
@@ -54,7 +55,7 @@ function createBingoPlayModule(config: {
             .enableClient()
           .addSpotMesh(SampleNames.roomSpotNode)
             .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
-            .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid)
+            .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid, config.playSpotPubSubPeerEndpoints)
             .addEntrySpot(BingoEntrySpot)
             .addSpotFactory(BingoRoomSpot)
             .actorFactory(SampleNames.playerActorType, PlayerActorFactory)

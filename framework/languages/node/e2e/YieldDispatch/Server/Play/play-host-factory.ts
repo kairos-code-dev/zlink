@@ -12,6 +12,7 @@ import { HoldCommandHandler, ProbeCommandHandler, WorkerYieldCommandHandler, Yie
 import {
   BindYieldActorsControlHandler,
   EnsureSpotControlHandler,
+  YIELD_PLAY_NODE_RID,
   YieldEvidenceControlHandler,
   YieldEvidenceWaitControlHandler
 } from './Handlers/control-handlers';
@@ -64,10 +65,13 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
             .addRequestHandler('YieldEvidenceWaitReq', YieldEvidenceWaitControlHandler);
           builder.addClientServerChannel(YieldDispatchNames.delayChannel)
             .enableClient(options.delayEndpoint);
-          builder.addRouteMeshChannel(YieldDispatchNames.spotRouteChannel)
+          const spotRoute = builder.addRouteMeshChannel(YieldDispatchNames.spotRouteChannel)
             .enableRouter(options.spotRouteEndpoint)
             .routingId(options.rid);
-          builder.addSpotMesh(YieldDispatchNames.spotChannel)
+          if (options.peerSpotRouteEndpoints.length > 0) {
+            spotRoute.connect(options.peerSpotRouteEndpoints);
+          }
+          const spotMesh = builder.addSpotMesh(YieldDispatchNames.spotChannel)
             .routingId(options.rid)
             .enableRouter(options.spotRouterEndpoint)
             .enablePubSub(options.spotPubEndpoint)
@@ -80,6 +84,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
     ],
     providers: [
       { provide: EvidenceStore, useValue: evidence },
+      { provide: YIELD_PLAY_NODE_RID, useValue: options.rid },
       EnsureSpotControlHandler,
       BindYieldActorsControlHandler,
       YieldEvidenceControlHandler,

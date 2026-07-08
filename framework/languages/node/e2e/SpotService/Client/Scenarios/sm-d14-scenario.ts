@@ -12,7 +12,6 @@ import type {
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD14(options: ClientOptions): Promise<void> {
   ensure(options.sessionATlsStreamEndpoint.length > 0, 'SM-D14 TLS stream endpoint is required.');
@@ -50,7 +49,7 @@ export async function runSmD14(options: ClientOptions): Promise<void> {
   });
   await tls.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await tls
+    const auth = await tls
       .request({
         actorId,
         displayName: 'stream tls',
@@ -58,18 +57,18 @@ export async function runSmD14(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-D14 auth reply mismatch.');
 
     const pushed = tls.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === actorId)
       .timeout(10000)
       .submit();
-    const reply = decodeStreamReply<ActorPingRes>(await tls
+    const reply = await tls
       .request({ value: 'tls-push' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     const notify = await pushed;
 
     ensure(reply.actorId === actorId, 'SM-D14 TLS actor reply mismatch.');

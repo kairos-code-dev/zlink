@@ -23,7 +23,7 @@
         "../../packages/framework-locations-redis/dist"
       ],
       "@zlink-systems/zlink": [
-        "../../../../../bindings/node/dist/index.d.ts"
+        "../../node_modules/-systems/zlink/dist/index.d.ts"
       ]
     }
   },

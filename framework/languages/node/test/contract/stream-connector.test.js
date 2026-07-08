@@ -127,7 +127,7 @@ test('stream connector send and request enforce payload limit before transport w
     () => requestInstance.request({
       codec: connector.ZlinkStreamCodec.Raw,
       payload: new TextEncoder().encode('bb')
-    }).packetName('h').timeout(1000).submit(),
+    }).packetName('h').timeout(1000).submitEncoded(),
     (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
   );
   assert.equal(requestTransportFactory.connection.frames.length, 0);
@@ -300,7 +300,7 @@ test('stream connector request resolves when dispatch reads matching response fr
     })
     .packetName('Join')
     .timeout(1000)
-    .submit();
+    .submitEncoded();
 
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -356,7 +356,7 @@ test('stream connector inbound observer sees response before pending request com
     })
     .packetName('Join')
     .timeout(1000)
-    .submit();
+    .submitEncoded();
 
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -557,7 +557,7 @@ test('stream connector inbound observer overflow reports observer-dropped and re
       })
       .packetName('Join')
       .timeout(1000)
-      .submit();
+      .submitEncoded();
 
     const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[index]);
     const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -657,7 +657,7 @@ test('stream connector received-message cap does not block request response fram
     })
     .packetName('Lookup')
     .timeout(1000)
-    .submit();
+    .submitEncoded();
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   transportFactory.connection.pushFrame(
@@ -699,7 +699,7 @@ test('stream connector request resolves compressed response payloads', async () 
     })
     .packetName('CompressedRequest')
     .timeout(1000)
-    .submit();
+    .submitEncoded();
 
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -740,7 +740,7 @@ test('stream connector rejects compressed response payloads above receive limit'
     })
     .packetName('CompressedRequest')
     .timeout(1000)
-    .submit();
+    .submitEncoded();
 
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -1007,7 +1007,7 @@ test('stream connector default TCP transport sends request and dispatches respon
     const pending = instance.request({
       codec: connector.ZlinkStreamCodec.Json,
       payload: new TextEncoder().encode('{"tcp":1}')
-    }).packetName('TcpRequest').timeout(1000).submit();
+    }).packetName('TcpRequest').timeout(1000).submitEncoded();
 
     await instance.dispatch();
     const reply = await pending;
@@ -1147,7 +1147,7 @@ test('stream connector default WebSocket transport sends request and dispatches 
     const pending = instance.request({
       codec: connector.ZlinkStreamCodec.Json,
       payload: new TextEncoder().encode('{"ws":1}')
-    }).packetName('WsRequest').timeout(1000).submit();
+    }).packetName('WsRequest').timeout(1000).submitEncoded();
 
     await instance.dispatch();
     const reply = await pending;
@@ -1324,7 +1324,7 @@ test('stream connector secure WebSocket transport sends request and dispatches b
     const pending = instance.request({
       codec: connector.ZlinkStreamCodec.Json,
       payload: new TextEncoder().encode('{"wss":1}')
-    }).packetName('WssRequest').timeout(1000).submit();
+    }).packetName('WssRequest').timeout(1000).submitEncoded();
 
     await instance.dispatch();
     const reply = await pending;

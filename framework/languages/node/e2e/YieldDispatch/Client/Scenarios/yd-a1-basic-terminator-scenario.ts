@@ -8,16 +8,15 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder, ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 export async function runYdA1(client: ZlinkStreamConnector): Promise<{ spotRid: string; requestId: string }> {
   const spotRid = `yield-track-a-${uniqueId()}`;
-  const spot = decodeStreamReply<EnsureSpotRes>(await client
+  const spot = await client
     .request({ spotRid } satisfies EnsureSpotReq)
     .packetName('EnsureSpotReq')
     .timeout(30000)
-    .submit());
+    .submit<EnsureSpotRes>();
   ensure(spot.spotRid === spotRid, 'YD-A1 spot creation mismatch.');
 
   const requestId = `YD-A1-${uniqueId()}`;
@@ -33,12 +32,12 @@ export async function runYdA1(client: ZlinkStreamConnector): Promise<{ spotRid: 
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
 
-  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
+  const evidence = await client
     .request({ requestId, marker: 'probe-completed', timeoutMilliseconds: 30000 } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
   containsRequestMarkersInOrder(evidence.evidence, requestId, [
     'hold-started',
     'hold-resumed',

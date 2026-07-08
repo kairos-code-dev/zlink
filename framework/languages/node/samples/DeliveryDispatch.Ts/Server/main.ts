@@ -17,7 +17,8 @@ async function main(): Promise<void> {
   const evidence = new EvidenceStore();
 
   if (role === 'probe') {
-    await waitForTopology(Number(readOption('--timeout-ms') ?? 10000));
+    await waitForTopology(config, Number(readOption('--timeout-ms') ?? 10000));
+    process.exit(0);
     return;
   }
 

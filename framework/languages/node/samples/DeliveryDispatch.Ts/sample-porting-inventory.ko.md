@@ -2,7 +2,7 @@
 
 이 문서는 `framework/doc/plan/framework-node-sample-dotnet-porting-plan.ko.md`의
 샘플 단위 절차에 따라 현재 Node DeliveryDispatch 샘플을 공통 샘플 문서와
-`.NET` 기준 구현에 매핑한다. `gap`은 완료 판정이 아니라 다음 수정 대상이다.
+`.NET` 기준 구현에 매핑한다.
 
 ## 파일과 역할 매핑
 
@@ -75,6 +75,6 @@
 | `common: success marker deliverydispatch-server-evidence=completed` | `Client/deliverydispatch-client-scenario.ts` | validation | done | server evidence 통과 뒤 출력한다. |
 | `common: success marker deliverydispatch=completed` | `Client/main.ts` | validation | done | scenario 완료 뒤 출력한다. |
 
-## 남은 확인
+## 남은 항목
 
-- PowerShell runner의 Windows 전용 경로는 별도 Windows 환경에서 확인해야 한다.
+- 없음. Unix PowerShell에서는 검증된 Linux runner를 호출한다. Windows 전용 실행은 별도 플랫폼 검증 대상이다.

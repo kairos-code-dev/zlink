@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const zlink = require('../../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 const backend = require('../../packages/framework/dist/runtime/backend');
 const framework = require('../../packages/framework/dist/internal');
 

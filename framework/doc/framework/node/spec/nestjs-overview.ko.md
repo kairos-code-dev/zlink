@@ -243,7 +243,8 @@ DI 단계에서 확정되기 전에는 어떤 역할이 필요한지 알 수 없
 | `ZLINK_SPOT_OUTBOUND` | `ZLinkSpotOutbound` | `SpotNode` 1개 이상 | DI resolve 실패 |
 | `ZLINK_SPOT_PUBLISHER_CLIENT` | `ZLinkSpotPublisherClient` | SpotNode publisher handle 1개 이상(`HasSpotPublisherClient`) | DI resolve 실패 |
 | `ZLINK_ACTOR_MANAGER` | `ZLinkActorManager` | `SpotNode` 1개 이상 **그리고** actor factory 1개 이상 | DI resolve 실패 |
-| `ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER` | `ZLinkSpotRemoteAddressResolver` | `spot.remoteAddressResolver` 또는 registry remote address 구성 | 조건 미충족 시 미등록 |
+| `ZLINK_SPOT_REF_RESOLVER` | `ZLinkSpotRefResolver` | location store 등록 | 조건 미충족 시 미등록 |
+| `ZLINK_ACTOR_SPOT_REF_RESOLVER` | `IZLinkActorAddressResolver` | location store 등록 | 조건 미충족 시 미등록 |
 
 handler / filter / actor factory / spot factory / stream header session 타입은
 .NET 과 동일하게 적절한 scope 로 등록한다(handler·filter 는 transient,

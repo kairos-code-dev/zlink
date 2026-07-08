@@ -115,7 +115,7 @@ class ZLinkNodeBackendContext implements ZLinkBackendContext {
   }
 
   async dispose(): Promise<void> {
-    this.nativeInstance.close();
+    await closeWithBusyRetry(this.nativeInstance);
   }
 
   close(): void {
@@ -281,18 +281,18 @@ function resolveBackendMessagingProperty(target: unknown, property: string | sym
     };
   }
   if (property === 'sendToSpot') {
-    return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) => {
+    return (targetRid: unknown, targetSpot: unknown, payload: unknown, flags: number) => {
       const operation = (target as unknown as {
-        sendToSpot(targetRid: unknown, spotRid: unknown): unknown;
-      }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
+        sendToSpot(targetRid: unknown, targetSpot: unknown): unknown;
+      }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(targetSpot));
       return submitSendOperation(operation, payload, flags);
     };
   }
   if (property === 'requestToSpot') {
-    return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
+    return (targetRid: unknown, targetSpot: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
       const operation = (target as unknown as {
-        requestToSpot(targetRid: unknown, spotRid: unknown): unknown;
-      }).requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
+        requestToSpot(targetRid: unknown, targetSpot: unknown): unknown;
+      }).requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(targetSpot));
       return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
     };
   }
@@ -549,7 +549,7 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
         if (options === undefined || !(socketOption in options)) {
           return false;
         }
-        options[socketOption] = value;
+        options[socketOption] = socketOption === 'maxMsgSize' ? BigInt(value as number) : value;
         return true;
       }
       return Reflect.set(target, property, value, receiver);
@@ -652,7 +652,8 @@ function resolveSocketLifecycleProperty(
   }
   const socketOption = socketConfigProperty(property);
   if (socketOption !== undefined) {
-    return (target as { options?: Record<string, unknown> }).options?.[socketOption];
+    const value = (target as { options?: Record<string, unknown> }).options?.[socketOption];
+    return socketOption === 'maxMsgSize' && typeof value === 'bigint' ? Number(value) : value;
   }
   return undefined;
 }
@@ -665,6 +666,8 @@ function socketConfigProperty(property: string | symbol): string | undefined {
       return 'recvHwm';
     case 'sendTimeoutMs':
       return 'sendTimeout';
+    case 'maxMessageSize':
+      return 'maxMsgSize';
     default:
       return undefined;
   }
@@ -766,19 +769,19 @@ function resolveSocketMessagingProperty(
     };
   }
   if (property === 'sendToSpot') {
-    return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) =>
+    return (targetRid: unknown, targetSpot: unknown, payload: unknown, flags: number) =>
       submitBindingSend(
-        (target as { sendToSpot(targetRid: unknown, spotRid: unknown): ZLinkBindingSendOperation })
-          .sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid)),
+        (target as { sendToSpot(targetRid: unknown, targetSpot: unknown): ZLinkBindingSendOperation })
+          .sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(targetSpot)),
         payload,
         flags
       );
   }
   if (property === 'requestToSpot') {
-    return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) =>
+    return (targetRid: unknown, targetSpot: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) =>
       submitBindingRequestCallback(
-        (target as { requestToSpot(targetRid: unknown, spotRid: unknown): ZLinkBindingRequestOperation })
-          .requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid)),
+        (target as { requestToSpot(targetRid: unknown, targetSpot: unknown): ZLinkBindingRequestOperation })
+          .requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(targetSpot)),
         payload,
         callback,
         flags,
@@ -858,7 +861,7 @@ function closeSocketRoutes(target: unknown, peerRoutingIds: Set<unknown>): void 
 }
 
 export function isDisconnectRouteNotFoundError(error: unknown): boolean {
-  return isBindingNotFound(error) || (
+  return isBindingNotFound(error) || isContextTerminatedError(error) || (
     error instanceof Error && 'code' in error &&
     ((error as { code: unknown }).code === zlink.ConnectResult.NotFound ||
       (error as { code: unknown }).code === zlink.ConnectResult.Busy ||
@@ -896,8 +899,10 @@ function closeSocketEndpoints(target: unknown, boundEndpoints: Set<string>, conn
 }
 
 function isEndpointCloseIgnorableError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error &&
-    ((error as { code: unknown }).code === 604 || (error as { code: unknown }).code === zlink.ConnectResult.NotFound);
+  return isContextTerminatedError(error) || (
+    error instanceof Error && 'code' in error &&
+    ((error as { code: unknown }).code === 604 || (error as { code: unknown }).code === zlink.ConnectResult.NotFound)
+  );
 }
 
 async function closeWithBusyRetry(target: { close(): void }): Promise<void> {
@@ -926,8 +931,14 @@ function isBusyCloseError(error: unknown): boolean {
 }
 
 function isSuccessfulOrAlreadyShutdownCloseError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error &&
-    ([0, 402, 403].includes((error as { code: number }).code));
+  return isContextTerminatedError(error) || (
+    error instanceof Error && 'code' in error &&
+    ([0, 402, 403].includes((error as { code: number }).code))
+  );
+}
+
+function isContextTerminatedError(error: unknown): boolean {
+  return error instanceof Error && /context was terminated/i.test(error.message);
 }
 
 function disableSocketLinger(target: unknown): void {
@@ -939,7 +950,13 @@ function disableSocketLinger(target: unknown): void {
     target.options !== null &&
     'linger' in target.options
   ) {
-    (target.options as { linger: number }).linger = 0;
+    try {
+      (target.options as { linger: number }).linger = 0;
+    } catch (error) {
+      if (!isContextTerminatedError(error)) {
+        throw error;
+      }
+    }
   }
 }
 

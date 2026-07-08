@@ -27,6 +27,7 @@ function createGameApiModule(config: GameQuestServerConfig, instanceId: 'api-a' 
   class GameApiModule {}
   const streamEndpoint = instanceId === 'api-a' ? config.apiAStreamEndpoint : config.apiBStreamEndpoint;
   const routeEndpoint = instanceId === 'api-a' ? config.apiARouteEndpoint : config.apiBRouteEndpoint;
+  const actorSpotEndpoint = instanceId === 'api-a' ? config.apiAActorSpotEndpoint : config.apiBActorSpotEndpoint;
   const apiRid = instanceId === 'api-a' ? 'gamequest-api-a' : 'gamequest-api-b';
 
   Module({
@@ -44,10 +45,12 @@ function createGameApiModule(config: GameQuestServerConfig, instanceId: 'api-a' 
             .addRouteMeshChannel(SampleNames.questMissionRouteChannel)
               .enableRouter(routeEndpoint)
               .routingId(apiRid)
+              .connect([config.missionAEndpoint, config.missionBEndpoint])
             .addStreamNode(SampleNames.playerStreamNode)
               .bind(streamEndpoint)
               .registerSession(GameQuestSessionFactory)
             .addSpotMesh(`${SampleNames.playerStreamNode}.${instanceId}.actors`)
+              .enableRouter(actorSpotEndpoint, apiRid)
               .actorFactory(SampleNames.playerActorType, GameQuestPlayerActorFactory)
             .build();
         }

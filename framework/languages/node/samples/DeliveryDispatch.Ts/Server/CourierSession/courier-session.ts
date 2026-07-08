@@ -2,7 +2,6 @@ import { Inject } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { bindCourier, PacketNames } from '../../Shared/Contracts/messages';
-import { retry } from '../Configuration/request-retry';
 import type {
   ZLinkChannelClient,
   ZLinkMessage,
@@ -30,10 +29,10 @@ class CourierSession implements ZLinkSession {
 
     const request = payload.decode<BindCourierSessionReq>(Object as never);
     const sessionRoute = this.context.sessionId;
-    const bound = await retry(() => this.channels
+    const bound = await this.channels
       .requestToChannel(SampleNames.courierRouteChannel, bindCourier(request.courierId, sessionRoute))
       .timeout(500)
-      .submit<BindCourierRes>(), { delayMs: 100, maxAttempts: 40 });
+      .submit<BindCourierRes>();
     console.error(`deliverydispatch courier-session: bound courier=${bound.courierId} actor=${bound.actor.actorId}`);
     await this.context.client.reply({
       courierId: bound.courierId,

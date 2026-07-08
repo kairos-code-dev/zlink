@@ -18,7 +18,13 @@ export async function runRlD5(options: ClientOptions): Promise<void> {
 
   const replies = await Promise.all(requestTasks);
   await Promise.all(sendTasks);
-  ensure(replies.every((reply) => reply.value === 'profile:fast'), 'RL-D5 mixed workload replies were invalid.');
+  const invalidReplies = replies
+    .map((reply, index) => ({ index, reply }))
+    .filter(({ reply }) => reply.value !== 'profile:fast');
+  ensure(
+    invalidReplies.length === 0,
+    `RL-D5 mixed workload replies were invalid: ${JSON.stringify(invalidReplies.slice(0, 5))}`
+  );
 
   await waitForEitherEvidence(options, 'marker=rl-d5-req-', 'RL-D5 evidence missing for marker=rl-d5-req-.');
   await waitForEitherEvidence(options, 'marker=rl-d5-cmd-', 'RL-D5 evidence missing for marker=rl-d5-cmd-.');

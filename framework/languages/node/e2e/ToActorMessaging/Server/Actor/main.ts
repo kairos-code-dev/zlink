@@ -22,7 +22,15 @@ import {
 } from '@zlink-systems/nestjs';
 import type { ZLinkActorManager } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
-import { PacketNames, type ActorAsk, type ActorNotify, type ActorReply } from '../../Shared/messages';
+import {
+  PacketNames,
+  type ActorAsk,
+  type ActorNotify,
+  type ActorPushNotify,
+  type ActorPushReq,
+  type ActorRefSnapshot,
+  type ActorReply
+} from '../../Shared/messages';
 import { EvidenceStore } from './evidence-store';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
 import { parseServerOptions } from '../Support/options';
@@ -84,6 +92,26 @@ class AskHandler {
   }
 }
 
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => TestActor,
+  entrySpot: () => TestEntrySpot,
+  packetName: PacketNames.actorPush
+})
+class PushHandler {
+  async handle(_spot: TestEntrySpot, actor: TestActor, _context: ZLinkSpotActorRequestContext, request: ActorPushReq): Promise<ActorReply> {
+    await actor.context.boundSession
+      .send({
+        scenario: request.scenario,
+        actorId: actor.actorId,
+        value: request.value
+      } satisfies ActorPushNotify)
+      .packetName(PacketNames.actorPush)
+      .submit();
+    evidence.append({ scenario: request.scenario, actorId: actor.actorId, kind: 'push', value: request.value });
+    return { scenario: request.scenario, actorId: actor.actorId, value: `pushed:${request.value}` };
+  }
+}
+
 class ActorModule {}
 Module({
   imports: [
@@ -112,7 +140,7 @@ Module({
       }
     })
   ],
-  providers: [TestActorFactory, TestEntrySpot, NotifyHandler, AskHandler]
+  providers: [TestActorFactory, TestEntrySpot, NotifyHandler, AskHandler, PushHandler]
 })(ActorModule);
 
 async function main(): Promise<void> {
@@ -125,32 +153,48 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a1/ensure',
       handle: async () => {
-        await actors.getOrCreate('ta-a1', 'test-actor');
-        return { actorId: 'ta-a1' };
+        const actor = await actors.getOrCreate('ta-a1', 'test-actor');
+        return { actorId: 'ta-a1', actor: actorSnapshot(actor) };
       }
     },
     {
       method: 'POST',
       path: '/actors/ta-a2/ensure',
       handle: async () => {
-        await actors.getOrCreate('ta-a2', 'test-actor');
-        return { actorId: 'ta-a2' };
+        const actor = await actors.getOrCreate('ta-a2', 'test-actor');
+        return { actorId: 'ta-a2', actor: actorSnapshot(actor) };
       }
     },
     {
       method: 'POST',
       path: '/actors/ta-a3/ensure',
       handle: async () => {
-        await actors.getOrCreate('ta-a3', 'test-actor');
-        return { actorId: 'ta-a3' };
+        const actor = await actors.getOrCreate('ta-a3', 'test-actor');
+        return { actorId: 'ta-a3', actor: actorSnapshot(actor) };
       }
     },
     {
       method: 'POST',
       path: '/actors/ta-a4/ensure',
       handle: async () => {
-        await actors.getOrCreate('ta-a4', 'test-actor');
-        return { actorId: 'ta-a4' };
+        const actor = await actors.getOrCreate('ta-a4', 'test-actor');
+        return { actorId: 'ta-a4', actor: actorSnapshot(actor) };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/actors/ta-b2/ensure',
+      handle: async () => {
+        const actor = await actors.getOrCreate('ta-b2', 'test-actor');
+        return { actorId: 'ta-b2', actor: actorSnapshot(actor) };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/actors/ta-b3/ensure',
+      handle: async () => {
+        const actor = await actors.getOrCreate('ta-b3', 'test-actor');
+        return { actorId: 'ta-b3', actor: actorSnapshot(actor) };
       }
     },
     { method: 'POST', path: '/shutdown', handle: () => { stopping = true; return { status: 'stopping' }; } }
@@ -161,6 +205,14 @@ async function main(): Promise<void> {
   }
   await closeHttpServer(server);
   await app.close();
+}
+
+function actorSnapshot(actor: { readonly nodeRid: unknown; readonly actorId: string; readonly generation: bigint }): ActorRefSnapshot {
+  return {
+    nodeRid: String(actor.nodeRid),
+    actorId: actor.actorId,
+    generation: actor.generation.toString()
+  };
 }
 
 main().catch((error: unknown) => {

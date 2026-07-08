@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const zlink = require('../../../../../bindings/node/dist');
+const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const connector = require('../../packages/stream-connector/dist');
@@ -386,6 +386,67 @@ test('ZLinkSpotManager reports SPOT subscription dispatch errors to global obser
   assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.Drop);
   assert.equal(dispatchEvents[0].topic, 'unmatched');
   assert.equal(dispatchEvents[0].sourceRid, 'source-node');
+});
+
+test('ZLinkSpotManager drains SPOT subscription events that arrive during dispatch', async () => {
+  let dispatchHandler;
+  const subscriptionQueue = [];
+  const events = [];
+  const nativeSpot = {
+    routingId: 'stage-subscription-redrain',
+    setDispatchHandler(handler) {
+      dispatchHandler = handler;
+    },
+    setSubscription(topic) {
+      events.push(`subscribe:${topic}`);
+    },
+    subscribe(result) {
+      const next = subscriptionQueue.shift();
+      if (next === undefined) {
+        return false;
+      }
+      result.topic = next.topic;
+      result.routingId = next.routingId;
+      result.parts = next.parts;
+      return true;
+    },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() {}
+  };
+  class StageSpot {}
+  class SubscribeHandler {
+    async handle(_spot, event) {
+      events.push(`event:${event.marker}`);
+      if (event.marker === 'first') {
+        subscriptionQueue.push(subscriptionMessage('stage.updated', 'second'));
+        dispatchHandler({ event: 1 });
+      }
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    createNativeSpot: () => nativeSpot,
+    spotSubscriptionHandlers: [{
+      spotType: StageSpot,
+      handlerType: SubscribeHandler,
+      topic: 'stage.updated'
+    }]
+  });
+
+  await manager.getOrCreate(StageSpot, 'stage-subscription-redrain');
+  subscriptionQueue.push(subscriptionMessage('stage.updated', 'first'));
+  dispatchHandler({ event: 1 });
+  await waitFor(() => events.filter((event) => event.startsWith('event:')).length === 2);
+
+  assert.deepEqual(events, [
+    'subscribe:stage.updated',
+    'event:first',
+    'event:second'
+  ]);
 });
 
 test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', async () => {
@@ -1140,33 +1201,26 @@ test('spot outbound requestToChannel completion runs on the spot serial executor
   assert.deepEqual(events, ['spot:start', 'spot:end', 'request:api:ping']);
 });
 
-test('spot outbound routed send and request resolve remote address inside serial executor', async () => {
+test('spot outbound routed send and request use SpotRef targets inside serial executor', async () => {
   const events = [];
   class StageSpot {}
-  const remoteAddress = {
-    routerChannelId: 'play.route',
-    targetNodeRid: 'node-b',
+  const targetSpot = {
+    meshName: 'play.route',
+    nodeRid: 'node-b',
     spotRid: 'stage-b',
-    spotKind: framework.ZLinkSpotKind.User
-  };
-  const remoteAddressResolver = {
-    async resolve(spotRid) {
-      events.push(`resolve:${spotRid}`);
-      return remoteAddress;
-    }
+    spotKind: framework.ZLinkSpotKind.Entry
   };
   const routedTransport = {
     async sendToSpot(address, message, options) {
-      events.push(`send:${address.targetNodeRid}:${address.spotRid}:${options.packetName}:${message}`);
+      events.push(`send:${address.targetNodeRid}:${address.spotRid}:${address.spotKind}:${options.packetName}:${message}`);
     },
     async requestToSpot(address, request, options) {
-      events.push(`request:${address.routerChannelId}:${address.spotRid}:${options.timeoutMs}:${request}`);
+      events.push(`request:${address.routerChannelId}:${address.spotRid}:${address.spotKind}:${options.timeoutMs}:${request}`);
       return 'routed-reply';
     }
   };
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    remoteAddressResolver,
     routedTransport
   });
   const created = await manager.create(StageSpot);
@@ -1180,8 +1234,8 @@ test('spot outbound routed send and request resolve remote address inside serial
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
   });
-  const send = outbound.sendToSpot('stage-b', 'notice').packetName('Notice').submit();
-  const reply = await outbound.requestToSpot('stage-b', 'ping').packetName('Ping').timeout(250).submit();
+  const send = outbound.sendToSpot(targetSpot, 'notice').packetName('Notice').submit();
+  const reply = await outbound.requestToSpot(targetSpot, 'ping').packetName('Ping').timeout(250).submit();
   await send;
   await first;
 
@@ -1189,14 +1243,12 @@ test('spot outbound routed send and request resolve remote address inside serial
   assert.deepEqual(events, [
     'spot:start',
     'spot:end',
-    'resolve:stage-b',
-    'send:node-b:stage-b:Notice:notice',
-    'resolve:stage-b',
-    'request:play.route:stage-b:250:ping'
+    `send:node-b:stage-b:${framework.ZLinkSpotKind.Entry}:Notice:notice`,
+    `request:play.route:stage-b:${framework.ZLinkSpotKind.Entry}:250:ping`
   ]);
 });
 
-test('spot outbound routed calls require resolver and runtime transport', async () => {
+test('spot outbound routed calls require runtime transport', async () => {
   class StageSpot {}
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
   const created = await manager.create(StageSpot);
@@ -1206,21 +1258,11 @@ test('spot outbound routed calls require resolver and runtime transport', async 
   });
 
   assert.throws(
-    () => outbound.sendToSpot('stage-b', 'notice'),
-    framework.ZLinkConfigurationException
-  );
-
-  const managerWithoutTransport = new framework.DefaultZLinkSpotManager({
-    spotFactories: [StageSpot],
-    remoteAddressResolver: { async resolve() { throw new Error('not used'); } }
-  });
-  const second = await managerWithoutTransport.create(StageSpot);
-  await managerWithoutTransport.executeOnSpot(StageSpot, second.spotRid, (spot) => {
-    outbound = spot.context.outbound;
-  });
-
-  assert.throws(
-    () => outbound.requestToSpot('stage-b', 'ping'),
+    () => outbound.sendToSpot({
+      meshName: 'play.route',
+      nodeRid: 'node-b',
+      spotRid: 'stage-b'
+    }, 'notice'),
     framework.ZLinkConfigurationException
   );
 });
@@ -1592,6 +1634,27 @@ async function locationLifecycleNode(store, ownerId, nodeRid) {
 
 function rid(value) {
   return zlink.RoutingId.from(value);
+}
+
+function subscriptionMessage(topic, marker) {
+  return {
+    topic,
+    routingId: 'publisher',
+    parts: [
+      zlink.Message.from(Buffer.from(JSON.stringify({
+        kind: 4,
+        channelName: '',
+        messageName: 'SpotMsg',
+        contentType: 'application/json',
+        correlationId: `corr-${marker}`,
+        deadline: null,
+        topic,
+        errorCode: null,
+        errorMessage: null
+      }))),
+      zlink.Message.from(Buffer.from(JSON.stringify({ marker })))
+    ]
+  };
 }
 
 async function waitFor(predicate, timeoutMs = 1000) {

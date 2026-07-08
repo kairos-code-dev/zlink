@@ -14,7 +14,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD8(options: ClientOptions): Promise<void> {
   const actorId = 'actor-sm-d8-reconnect';
@@ -75,11 +74,11 @@ export async function runSmD8(options: ClientOptions): Promise<void> {
       .timeout(5000)
       .submit<AuthRes>();
 
-    const resumed = decodeStreamReply<ActorPingRes>(await second
+    const resumed = await second
       .request({ value: 'after-reconnect' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(resumed.actorId === actorId, 'SM-D8 reconnected actor mismatch.');
     ensure(resumed.nodeRid === 'play-a', 'SM-D8 reconnected node mismatch.');
     ensure(resumed.value === 'after-reconnect', 'SM-D8 reconnected value mismatch.');

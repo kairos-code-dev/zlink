@@ -7,6 +7,7 @@ import {
   SendFlags
 } from '@zlink-systems/zlink';
 import type {
+  ActorRef,
   ZLinkActorClient,
   ZLinkActorRequestCall,
   ZLinkActorSendCall,
@@ -39,75 +40,55 @@ export interface ZLinkActorClientOptions {
 export class DefaultZLinkActorClient implements ZLinkActorClient {
   constructor(private readonly options: ZLinkActorClientOptions) {}
 
-  sendToActor(actorId: string, message: unknown): ZLinkActorSendCall {
+  sendToActor(actor: ActorRef, message: unknown): ZLinkActorSendCall {
     return new DefaultZLinkActorSendCall(
-      (packetName, signal) => this.send(actorId, packetName, message, signal),
+      (packetName, signal) => this.send(actor, packetName, message, signal),
       message
     );
   }
 
-  requestToActor(actorId: string, request: unknown): ZLinkActorRequestCall {
+  requestToActor(actor: ActorRef, request: unknown): ZLinkActorRequestCall {
     return new DefaultZLinkActorRequestCall(
-      (packetName, timeoutMs, signal) => this.request(actorId, packetName, request, timeoutMs, signal),
+      (packetName, timeoutMs, signal) => this.request(actor, packetName, request, timeoutMs, signal),
       request,
       this.options.defaultRequestTimeoutMs
     );
   }
 
   private async send(
-    actorId: string,
+    actor: ActorRef,
     explicitPacketName: string | undefined,
     message: unknown,
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    let actor = await this.resolveActor(actorId, signal, ZLinkFrameworkErrorKind.ActorRouteNotFound);
-    let parts = this.createPacketParts(ZLinkStreamMessageKind.Send, undefined, explicitPacketName, message);
+    const parts = this.createPacketParts(ZLinkStreamMessageKind.Send, undefined, explicitPacketName, message);
     try {
-      await this.submitActorSend(actor, parts);
+      await this.submitActorSend(actor as ZLinkBackendActorRef, parts);
     } catch (error) {
-      if (!isStaleActorError(error)) {
-        throw error;
+      if (isStaleActorError(error)) {
+        throw actorLocationStale(actor.actorId, error);
       }
-      actor = await this.resolveActor(actorId, signal, ZLinkFrameworkErrorKind.ActorLocationStale);
-      parts = this.createPacketParts(ZLinkStreamMessageKind.Send, undefined, explicitPacketName, message);
-      try {
-        await this.submitActorSend(actor, parts);
-      } catch (retryError) {
-        if (isStaleActorError(retryError)) {
-          throw actorLocationStale(actorId, retryError);
-        }
-        throw retryError;
-      }
+      throw error;
     }
   }
 
   private async request<TReply>(
-    actorId: string,
+    actor: ActorRef,
     explicitPacketName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
-    let actor = await this.resolveActor(actorId, signal, ZLinkFrameworkErrorKind.ActorRouteNotFound);
-    let parts = this.createPacketParts(ZLinkStreamMessageKind.Request, 1n, explicitPacketName, request);
+    const parts = this.createPacketParts(ZLinkStreamMessageKind.Request, 1n, explicitPacketName, request);
     try {
-      return await this.submitActorRequest<TReply>(actor, parts, timeoutMs, signal);
+      return await this.submitActorRequest<TReply>(actor as ZLinkBackendActorRef, parts, timeoutMs, signal);
     } catch (error) {
-      if (!isStaleActorError(error)) {
-        throw error;
+      if (isStaleActorError(error)) {
+        throw actorLocationStale(actor.actorId, error);
       }
-      actor = await this.resolveActor(actorId, signal, ZLinkFrameworkErrorKind.ActorLocationStale);
-      parts = this.createPacketParts(ZLinkStreamMessageKind.Request, 1n, explicitPacketName, request);
-      try {
-        return await this.submitActorRequest<TReply>(actor, parts, timeoutMs, signal);
-      } catch (retryError) {
-        if (isStaleActorError(retryError)) {
-          throw actorLocationStale(actorId, retryError);
-        }
-        throw retryError;
-      }
+      throw error;
     }
   }
 

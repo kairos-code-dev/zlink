@@ -8,11 +8,15 @@ const SampleNames = {
 } as const;
 
 function questMissionRouteRid(playerId: string): string {
-  return ownerIndex(playerId) === 0 ? 'gamequest-mission-a' : 'gamequest-mission-b';
+  return questMissionInstanceRid(questMissionOwnerInstanceId(playerId));
 }
 
 function questMissionInstanceRid(instanceId: 'mission-a' | 'mission-b'): string {
   return instanceId === 'mission-a' ? 'gamequest-mission-a' : 'gamequest-mission-b';
+}
+
+function questMissionOwnerInstanceId(playerId: string): 'mission-a' | 'mission-b' {
+  return ownerIndex(playerId) === 0 ? 'mission-a' : 'mission-b';
 }
 
 function questMissionSpotRid(playerId: string): string {
@@ -31,5 +35,6 @@ export {
   SampleNames,
   questMissionRouteRid,
   questMissionInstanceRid,
+  questMissionOwnerInstanceId,
   questMissionSpotRid
 };

@@ -1,94 +1,88 @@
+import 'reflect-metadata';
 import http from 'node:http';
 import { URL } from 'node:url';
+import { NestFactory } from '@nestjs/core';
+import { loadSampleConfig, type ShoppingMallServerConfig } from './Configuration/sample-config';
+import { createCommerceApiServer } from './CommerceApi/commerce-api-server';
+import { createShoppingMallCommerceApiModule } from './CommerceApi/commerce-api-module';
+import { OrderWorkflowRouterPort } from './CommerceApi/Application/order-workflow-router-port';
+import { StartOrderUseCase } from './CommerceApi/Application/start-order-use-case';
+import { createShoppingMallWorkflowModule } from './OrderWorkflow/shoppingmall-workflow-module';
 import { OrderStore } from './Shared/Store/order-store';
+import { SampleNames } from '../Shared/Configuration/sample-names';
 
-const role = readArg('--role') ?? 'api-a';
-const endpoint = role === 'api-b'
-  ? process.env.SHOPPINGMALL_API_B_HTTP
-  : process.env.SHOPPINGMALL_API_A_HTTP;
+const role = readArg('--role') ?? SampleNames.apiA;
+const config = loadSampleConfig();
+const endpoint = endpointForRole(role, config);
+const listenUrl = new URL(endpoint);
 
-if (endpoint === undefined) {
-  throw new Error(`Missing HTTP endpoint for ${role}.`);
+async function main(): Promise<void> {
+  const moduleType = isWorkflowRole(role)
+    ? createShoppingMallWorkflowModule(role, config)
+    : createShoppingMallCommerceApiModule(role, config);
+  const app = await NestFactory.createApplicationContext(moduleType, {
+    logger: false,
+    abortOnError: false
+  });
+  const server = isWorkflowRole(role)
+    ? createHealthServer(role)
+    : createCommerceApiServer(
+      endpoint,
+      role,
+      app.get(OrderStore, { strict: false }),
+      app.get(StartOrderUseCase, { strict: false }),
+      app.get(OrderWorkflowRouterPort, { strict: false })
+    );
+
+  server.listen(Number(listenUrl.port), listenUrl.hostname, () => {
+    console.log(`shoppingmall ${role} listening ${endpoint}`);
+  });
+  process.on('SIGINT', () => {
+    server.close(() => {
+      void app.close().finally(() => process.exit(0));
+    });
+  });
 }
 
-const listenUrl = new URL(endpoint);
-const store = OrderStore.fromEnvironment();
-
-const server = http.createServer(async (request, response) => {
-  try {
+function createHealthServer(roleName: string): http.Server {
+  return http.createServer((request, response) => {
     const url = new URL(request.url ?? '/', endpoint);
     if (request.method === 'GET' && url.pathname === '/health') {
-      sendJson(response, 200, { ok: true, role });
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ok: true, role: roleName }));
       return;
     }
-    if (request.method === 'POST' && url.pathname === '/orders/start') {
-      sendJson(response, 200, store.startOrder(await readJson(request), role));
-      return;
-    }
-    if (request.method === 'GET' && url.pathname.startsWith('/orders/')) {
-      sendJson(response, 200, store.getOrder(decodeURIComponent(url.pathname.substring('/orders/'.length))));
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/self-check/idempotency/pending') {
-      const body = await readJson(request);
-      sendJson(response, 200, store.createPendingMapping(body.idempotencyKey, body.orderId, body.ownerInstanceId));
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/self-check/workflow/inventory-reserved') {
-      sendJson(response, 200, store.createInventoryReserved(await readJson(request), role));
-      return;
-    }
-    const continueMatch = url.pathname.match(/^\/self-check\/workflow\/([^/]+)\/continue$/);
-    if (request.method === 'POST' && continueMatch !== null) {
-      sendJson(response, 200, store.continueOrder(decodeURIComponent(continueMatch[1]), role));
-      return;
-    }
-    const deleteMatch = url.pathname.match(/^\/self-check\/projection\/([^/]+)\/delete$/);
-    if (request.method === 'POST' && deleteMatch !== null) {
-      sendJson(response, 200, store.deleteProjection(decodeURIComponent(deleteMatch[1])));
-      return;
-    }
-    const rebuildMatch = url.pathname.match(/^\/self-check\/projection\/([^/]+)\/rebuild$/);
-    if (request.method === 'POST' && rebuildMatch !== null) {
-      sendJson(response, 200, store.rebuildProjection(decodeURIComponent(rebuildMatch[1])));
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/self-check/assert') {
-      sendJson(response, 200, store.assertEvidence(await readJson(request)));
-      return;
-    }
-    sendJson(response, 404, { error: `No route for ${request.method ?? 'GET'} ${url.pathname}` });
-  } catch (error) {
-    sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
+    response.writeHead(404, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: `No route for ${request.method ?? 'GET'} ${url.pathname}` }));
+  });
+}
+
+function endpointForRole(roleName: string, values: ShoppingMallServerConfig): string {
+  if (roleName === SampleNames.apiA) {
+    return values.apiAHttpUrl;
   }
-});
+  if (roleName === SampleNames.apiB) {
+    return values.apiBHttpUrl;
+  }
+  if (roleName === SampleNames.workflowA) {
+    return values.workflowAHttpUrl;
+  }
+  if (roleName === SampleNames.workflowB) {
+    return values.workflowBHttpUrl;
+  }
+  throw new Error(`Unknown ShoppingMall role '${roleName}'.`);
+}
 
-server.listen(Number(listenUrl.port), listenUrl.hostname, () => {
-  console.log(`shoppingmall ${role} listening ${endpoint}`);
-});
-
-process.on('SIGINT', () => {
-  server.close(() => process.exit(0));
-});
+function isWorkflowRole(roleName: string): boolean {
+  return roleName === SampleNames.workflowA || roleName === SampleNames.workflowB;
+}
 
 function readArg(name: string): string | undefined {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-function readJson(request: http.IncomingMessage): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    request.on('data', (chunk: Buffer) => chunks.push(chunk));
-    request.on('end', () => {
-      const text = Buffer.concat(chunks).toString('utf8');
-      resolve(text.length === 0 ? {} : JSON.parse(text));
-    });
-    request.on('error', reject);
-  });
-}
-
-function sendJson(response: http.ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { 'content-type': 'application/json' });
-  response.end(JSON.stringify(body));
-}
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

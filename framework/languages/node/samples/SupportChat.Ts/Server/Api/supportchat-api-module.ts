@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Configuration/sample-names';
+import { createSupportChatLocationStore, supportChatLocationOptions } from '../Configuration/location-store';
 import type { SupportChatServerConfig } from '../Configuration/sample-config';
 
 function createSupportChatApiModule(config: SupportChatServerConfig) {
@@ -9,12 +10,17 @@ function createSupportChatApiModule(config: SupportChatServerConfig) {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
-          .addClientServerChannel(SampleNames.apiChannel)
-            .enableServer(config.apiChannelEndpoint)
-          .addClientServerChannel(SampleNames.supportChannel)
-            .enableClient(config.supportChannelEndpoint)
-          .build()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.addLocationStore(createSupportChatLocationStore(config));
+          Object.assign(builder.configureLocations(), supportChatLocationOptions());
+          return builder
+            .addClientServerChannel(SampleNames.apiChannel)
+              .enableServer(config.apiChannelEndpoint)
+            .addClientServerChannel(SampleNames.supportChannel)
+              .enableClient()
+            .build();
+        }
       })
     ]
   })(SupportChatApiModule);

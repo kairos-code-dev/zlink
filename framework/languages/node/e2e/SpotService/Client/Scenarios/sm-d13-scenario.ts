@@ -6,7 +6,6 @@ import {
 import type { AuthRes, AuthReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD13(options: ClientOptions): Promise<void> {
   const stream = zlinkStreamConnectorFactory.create({
@@ -24,7 +23,7 @@ export async function runSmD13(options: ClientOptions): Promise<void> {
 
   await stream.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await stream
+    const auth = await stream
       .request({
         actorId: 'actor-sm-d13',
         displayName: 'heartbeat',
@@ -32,7 +31,7 @@ export async function runSmD13(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === 'actor-sm-d13', 'SM-D13 auth reply actor mismatch.');
 
     await new Promise((resolve) => setTimeout(resolve, 600));

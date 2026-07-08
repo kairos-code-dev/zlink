@@ -14,6 +14,7 @@ export class ZLinkAsyncSubmitter {
   private readonly queue: ZLinkPendingSubmit<unknown>[] = [];
   private queueOffset = 0;
   private readonly active = new Set<ZLinkPendingSubmit<unknown>>();
+  private requestActive = false;
   private readonly timeoutMs: number | undefined;
   private readonly capacity: number;
   private readyRegistered = false;
@@ -33,7 +34,7 @@ export class ZLinkAsyncSubmitter {
       true,
       signal
     );
-    if (pending.trySubmit()) {
+    if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
       return pending.promise;
     }
     return this.enqueue(pending);
@@ -41,7 +42,7 @@ export class ZLinkAsyncSubmitter {
 
   submitRequest<TReply>(submit: ZLinkRequestSubmit<TReply>, signal?: AbortSignal, timeoutMs?: number): Promise<TReply> {
     const pending = this.createPending<TReply>(submit, false, signal, timeoutMs);
-    if (pending.trySubmit()) {
+    if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
       return pending.promise;
     }
     return this.enqueue(pending);
@@ -59,6 +60,12 @@ export class ZLinkAsyncSubmitter {
       pending.reject(error);
     }
     this.active.clear();
+  }
+
+  rejectActive(error: unknown): void {
+    for (const pending of this.active) {
+      pending.reject(error);
+    }
   }
 
   private createPending<TReply>(
@@ -117,12 +124,39 @@ export class ZLinkAsyncSubmitter {
     }
     while (this.queueOffset < this.queue.length) {
       const pending = this.queue[this.queueOffset];
-      if (!pending.trySubmit()) {
+      if (!this.trySubmitPending(pending)) {
         return;
       }
       this.queueOffset += 1;
     }
     this.compactQueue();
+  }
+
+  private trySubmitPending<TReply>(pending: ZLinkPendingSubmit<TReply>): boolean {
+    if (pending.isRequest && this.requestActive) {
+      return false;
+    }
+    if (pending.isRequest) {
+      this.requestActive = true;
+    }
+    const accepted = pending.trySubmit();
+    if (!pending.isRequest) {
+      return accepted;
+    }
+    if (!accepted) {
+      this.requestActive = false;
+      return false;
+    }
+    pending.promise.then(
+      () => this.finishRequest(),
+      () => this.finishRequest()
+    );
+    return true;
+  }
+
+  private finishRequest(): void {
+    this.requestActive = false;
+    this.drain();
   }
 
   private pendingQueueLength(): number {
@@ -174,6 +208,10 @@ class ZLinkPendingSubmit<TReply> {
       this.abortHandler = () => this.reject(new Error('The operation was aborted.'));
       options.signal.addEventListener('abort', this.abortHandler, { once: true });
     }
+  }
+
+  get isRequest(): boolean {
+    return !this.completeOnAccepted;
   }
 
   trySubmit(): boolean {

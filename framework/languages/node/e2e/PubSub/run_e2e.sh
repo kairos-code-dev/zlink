@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
@@ -13,7 +14,7 @@ HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
 pick_port() {
-  node -e "const net=require('node:net'); const s=net.createServer(); s.listen(0,'127.0.0.1',()=>{console.log(s.address().port); s.close();});"
+  node "$NODE_ROOT/e2e/port-picker.js"
 }
 
 build_package() {

@@ -3,6 +3,11 @@ export interface MultiNodeOptions {
   readonly httpUrl: string;
   readonly routeEndpoint: string;
   readonly spotRouterEndpoint: string;
+  readonly spotPubEndpoint?: string;
+  readonly peerSpotRouterEndpoint?: string;
+  readonly redisEndpoint?: string;
+  readonly redisKeyPrefix?: string;
+  readonly spotOnly: boolean;
   readonly evidenceFile?: string;
   readonly logDir: string;
 }
@@ -26,6 +31,11 @@ export function parseMultiNodeOptions(args: readonly string[]): MultiNodeOptions
     httpUrl: required(values, 'http-url'),
     routeEndpoint: required(values, 'route-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
+    spotPubEndpoint: values.get('spot-pub-endpoint'),
+    peerSpotRouterEndpoint: values.get('peer-spot-router-endpoint'),
+    redisEndpoint: values.get('redis-endpoint'),
+    redisKeyPrefix: values.get('redis-key-prefix'),
+    spotOnly: values.get('spot-only') === 'true',
     evidenceFile: values.get('evidence-file'),
     logDir: required(values, 'log-dir')
   };

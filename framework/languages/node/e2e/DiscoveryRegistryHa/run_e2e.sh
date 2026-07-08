@@ -3,78 +3,44 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+export ZLINK_NODE_E2E_ROOT="$NODE_ROOT/e2e"
+source "$NODE_ROOT/e2e/redis-container.sh"
+source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
+ZLINK_E2E_RID_FROM_NAME=1
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
 HTTP_PROBE_TIMEOUT_SECONDS=3
 SCENARIOS=(
   SF-A1
+  SF-A2
   SF-B1
+  SF-B2
   SF-C1
+  SF-C2
   SF-D1
   SF-D2
+  SF-D3
+  SF-E1
 )
 mkdir -p "$LOG_DIR"
-
-pick_port() {
-  node -e "const net=require('node:net'); const s=net.createServer(); s.listen(0,'127.0.0.1',()=>{console.log(s.address().port); s.close();});"
-}
-
-build_package() {
-  local dir="$1"
-  (cd "$dir" && npm run build >/dev/null)
-}
-
-wait_health() {
-  local url="$1"
-  local name="$2"
-  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
-    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "$url/health" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep "${LOCAL_READINESS_POLL_SECONDS}"
-  done
-  echo "Timed out waiting for $name at $url" >&2
-  return 1
-}
 
 pids=()
 REDIS_CONTAINER_ID=""
 LAST_STARTED_PID=""
+PROVIDER_B_CHANNEL_PORT=""
 cleanup() {
   local code=$?
-  for pid in "${pids[@]:-}"; do
-    if kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
-    fi
-  done
-  wait "${pids[@]:-}" 2>/dev/null || true
-  if [[ -n "$REDIS_CONTAINER_ID" ]]; then
-    docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
-  fi
+  stop_live_pids
+  wait_all_pids_ignoring_status
+  remove_redis_container
   if [[ "$code" -ne 0 ]]; then
-    echo "E2E failed. log_dir=$LOG_DIR" >&2
-    for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
-      if [[ -f "$file" ]]; then
-        echo "----- $file -----" >&2
-        tail -n 80 "$file" >&2 || true
-      fi
-    done
+    tail_failure_logs
   fi
 }
 trap cleanup EXIT
-
-start_server() {
-  local name="$1"
-  local main="$2"
-  shift
-  shift
-  ZLINK_E2E_RID="$name" node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
-  LAST_STARTED_PID="$!"
-  pids+=("$LAST_STARTED_PID")
-}
 
 kill_pid() {
   local pid="$1"
@@ -92,19 +58,16 @@ run_all_scenarios() {
   echo "store-failure-recovery e2e result=passed"
 }
 
-wait_tcp() {
-  local name="$1"
-  local endpoint="$2"
-  local host_port="${endpoint#tcp://}"
-  local host="${host_port%:*}"
-  local port="${host_port##*:}"
-  for _ in $(seq 1 100); do
-    if node -e "const net=require('node:net'); const s=net.createConnection({host: process.argv[1], port: Number(process.argv[2])}); s.once('connect', () => { s.end(); process.exit(0); }); s.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 500);" "$host" "$port"; then
+wait_location_unhealthy() {
+  local url="$1"
+  local name="$2"
+  for _ in $(seq 1 150); do
+    if node -e "fetch(process.argv[1] + '/location/status').then(async (r) => { if (!r.ok) process.exit(1); const s = await r.json(); process.exit(!s.storeHealthy && !s.ownerLeaseHealthy ? 0 : 1); }).catch(() => process.exit(1));" "$url"; then
       return 0
     fi
     sleep 0.1
   done
-  echo "Timed out waiting for $name at $endpoint" >&2
+  echo "Timed out waiting for unhealthy location status on $name at $url" >&2
   return 1
 }
 
@@ -126,7 +89,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "store-failure-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+start_redis_container "store-failure-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
 REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
 REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
 REDIS_KEY_PREFIX="store-failure:node:$RUN_ID"
@@ -138,6 +101,7 @@ CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
 start_topology() {
+  local with_provider_b="${1:-yes}"
   local reg_http_port consumer_http_port provider_a_http_port provider_b_http_port
   local provider_a_channel_port provider_b_channel_port
   reg_http_port="$(pick_port)"
@@ -151,6 +115,7 @@ start_topology() {
   CONSUMER_URL="http://127.0.0.1:$consumer_http_port"
   PROVIDER_A_URL="http://127.0.0.1:$provider_a_http_port"
   PROVIDER_B_URL="http://127.0.0.1:$provider_b_http_port"
+  PROVIDER_B_CHANNEL_PORT="$provider_b_channel_port"
 
   start_server reg-1 "$LOCATION_PROBE_MAIN" \
     --rid reg-1 \
@@ -171,16 +136,9 @@ start_topology() {
     --log-dir "$LOG_DIR"
   wait_health "$PROVIDER_A_URL" api-a
 
-  start_server api-b "$PROVIDER_MAIN" \
-    --rid api-b \
-    --http-url "$PROVIDER_B_URL" \
-    --redis-endpoint "$REDIS_ENDPOINT" \
-    --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --channel-endpoint "tcp://127.0.0.1:$provider_b_channel_port" \
-    --evidence-file "$LOG_DIR/api-b.evidence.log" \
-    --log-dir "$LOG_DIR"
-  API_B_PID="$LAST_STARTED_PID"
-  wait_health "$PROVIDER_B_URL" api-b
+  if [[ "$with_provider_b" == "yes" ]]; then
+    start_provider_b
+  fi
 
   start_server consumer "$CONSUMER_MAIN" \
     --http-url "$CONSUMER_URL" \
@@ -189,6 +147,19 @@ start_topology() {
     --trace-label consumer \
     --log-dir "$LOG_DIR"
   wait_health "$CONSUMER_URL" consumer
+}
+
+start_provider_b() {
+  start_server api-b "$PROVIDER_MAIN" \
+    --rid api-b \
+    --http-url "$PROVIDER_B_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --channel-endpoint "tcp://127.0.0.1:$PROVIDER_B_CHANNEL_PORT" \
+    --evidence-file "$LOG_DIR/api-b.evidence.log" \
+    --log-dir "$LOG_DIR"
+  API_B_PID="$LAST_STARTED_PID"
+  wait_health "$PROVIDER_B_URL" api-b
 }
 
 run_client() {
@@ -213,12 +184,34 @@ run_sf_a1() {
   run_client SF-A1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
 
+run_sf_a2() {
+  local client_pid
+  start_topology no
+  run_client SF-A2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log" &
+  client_pid="$!"
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-A2 start-provider-b" \
+    "SF-A2 client did not request api-b startup" "$client_pid"
+  start_provider_b
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-A2 shutdown-provider-b" \
+    "SF-A2 client did not request api-b shutdown" "$client_pid"
+  curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS -X POST "$PROVIDER_B_URL/shutdown" >/dev/null
+  wait "$client_pid"
+}
+
 run_sf_b1() {
   start_topology
   run_warmup
   docker stop "$REDIS_CONTAINER_ID" >/dev/null
   REDIS_CONTAINER_ID=""
   run_client SF-B1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
+}
+
+run_sf_b2() {
+  start_topology
+  run_warmup
+  docker stop "$REDIS_CONTAINER_ID" >/dev/null
+  REDIS_CONTAINER_ID=""
+  run_client SF-B2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
 
 run_sf_c1() {
@@ -228,15 +221,24 @@ run_sf_c1() {
   run_client SF-C1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
 
+run_sf_c2() {
+  start_topology
+  run_warmup
+  curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS -X POST "$PROVIDER_B_URL/shutdown" >/dev/null
+  run_client SF-C2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
+}
+
 run_sf_d1() {
   local client_pid
   start_topology
   run_warmup
   run_client SF-D1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log" &
   client_pid="$!"
-  sleep 0.5
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D1 pause-redis" \
+    "SF-D1 client did not request Redis pause" "$client_pid"
   docker pause "$REDIS_CONTAINER_ID" >/dev/null
-  sleep 1.5
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D1 unpause-redis" \
+    "SF-D1 client did not request Redis unpause" "$client_pid"
   docker unpause "$REDIS_CONTAINER_ID" >/dev/null
   wait "$client_pid"
 }
@@ -247,12 +249,36 @@ run_sf_d2() {
   run_warmup
   run_client SF-D2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log" &
   client_pid="$!"
-  sleep 0.5
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D2 pause-redis-and-kill-api-b" \
+    "SF-D2 client did not request Redis pause and api-b kill" "$client_pid"
   docker pause "$REDIS_CONTAINER_ID" >/dev/null
   kill_pid "$API_B_PID"
-  sleep 4
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D2 unpause-redis" \
+    "SF-D2 client did not request Redis unpause" "$client_pid"
   docker unpause "$REDIS_CONTAINER_ID" >/dev/null
   wait "$client_pid"
+}
+
+run_sf_d3() {
+  local client_pid
+  start_topology
+  run_client SF-D3 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log" &
+  client_pid="$!"
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D3 stop-redis" \
+    "SF-D3 client did not request Redis stop" "$client_pid"
+  docker stop "$REDIS_CONTAINER_ID" >/dev/null
+  REDIS_CONTAINER_ID=""
+  wait_location_unhealthy "$CONSUMER_URL" consumer
+  start_redis_container "store-failure-node-redis-recover-${RANDOM}-$$" -p "127.0.0.1:$REDIS_PORT:6379" redis:7.2-alpine
+  wait_tcp redis "tcp://$REDIS_ENDPOINT"
+  wait "$client_pid"
+}
+
+run_sf_e1() {
+  start_topology
+  run_warmup
+  docker exec "$REDIS_CONTAINER_ID" redis-cli CLIENT PAUSE 3000 ALL >/dev/null
+  run_client SF-E1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
 
 case "$SCENARIO" in
@@ -260,13 +286,27 @@ case "$SCENARIO" in
     run_sf_a1
     cat "$LOG_DIR/client.stdout.log"
     ;;
+  SF-A2)
+    run_sf_a2
+    cat "$LOG_DIR/client.stdout.log"
+    ;;
   SF-B1)
     run_sf_b1
     cat "$LOG_DIR/client-warmup.stdout.log"
     cat "$LOG_DIR/client.stdout.log"
     ;;
+  SF-B2)
+    run_sf_b2
+    cat "$LOG_DIR/client-warmup.stdout.log"
+    cat "$LOG_DIR/client.stdout.log"
+    ;;
   SF-C1)
     run_sf_c1
+    cat "$LOG_DIR/client-warmup.stdout.log"
+    cat "$LOG_DIR/client.stdout.log"
+    ;;
+  SF-C2)
+    run_sf_c2
     cat "$LOG_DIR/client-warmup.stdout.log"
     cat "$LOG_DIR/client.stdout.log"
     ;;
@@ -277,6 +317,15 @@ case "$SCENARIO" in
     ;;
   SF-D2)
     run_sf_d2
+    cat "$LOG_DIR/client-warmup.stdout.log"
+    cat "$LOG_DIR/client.stdout.log"
+    ;;
+  SF-D3)
+    run_sf_d3
+    cat "$LOG_DIR/client.stdout.log"
+    ;;
+  SF-E1)
+    run_sf_e1
     cat "$LOG_DIR/client-warmup.stdout.log"
     cat "$LOG_DIR/client.stdout.log"
     ;;

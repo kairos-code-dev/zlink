@@ -16,7 +16,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD1(options: ClientOptions): Promise<void> {
   await waitForControlRoute(options.sessionAUrl, 'play-a');
@@ -31,7 +30,7 @@ export async function runSmD1(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthRes>(await client
+    const auth = await client
       .request({
         actorId,
         displayName: 'local relay',
@@ -39,7 +38,7 @@ export async function runSmD1(options: ClientOptions): Promise<void> {
     } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit());
+      .submit<AuthRes>();
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-D1 auth reply mismatch.');
     await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: [`entry-joined|rid=play-a|actor=${actorId}`],
@@ -50,11 +49,11 @@ export async function runSmD1(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === actorId)
       .timeout(10000)
       .submit();
-    const reply = decodeStreamReply<ActorPingRes>(await client
+    const reply = await client
       .request({ value: 'push-local' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     const notify = await pushed;
 
     ensure(reply.actorId === actorId, 'SM-D1 actor reply mismatch.');

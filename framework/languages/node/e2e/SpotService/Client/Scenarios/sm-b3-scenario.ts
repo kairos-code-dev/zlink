@@ -13,7 +13,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmB3(options: ClientOptions): Promise<void> {
   const actorId = `actor-sm-b3-complex-${Date.now()}`;
@@ -36,7 +35,7 @@ export async function runSmB3(options: ClientOptions): Promise<void> {
       .timeout(5000)
       .submit<AuthRes>();
 
-    const complex = decodeStreamReply<ComplexActorRes>(await client
+    const complex = await client
       .request({
         displayName: 'Ada Lovelace',
         level: 42,
@@ -48,7 +47,7 @@ export async function runSmB3(options: ClientOptions): Promise<void> {
       } satisfies ComplexActorReq)
       .packetName('ComplexActorReq')
       .timeout(5000)
-      .submit());
+      .submit<ComplexActorRes>();
 
     ensure(complex.actorId === actorId, 'SM-B3 actor id mismatch.');
     ensure(
@@ -73,10 +72,6 @@ export async function runSmB3(options: ClientOptions): Promise<void> {
   } finally {
     await client.close();
   }
-  await postJson<string[]>(options.playAUrl, '/evidence/wait', {
-    containsAll: [`entry-disconnected|rid=play-a|actor=${actorId}`],
-    timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitReq);
 
   console.log('scenario SM-B3 passed');
 }

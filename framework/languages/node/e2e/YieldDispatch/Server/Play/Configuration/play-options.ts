@@ -3,6 +3,7 @@ export interface PlayOptions {
   readonly httpUrl: string;
   readonly controlEndpoint: string;
   readonly spotRouteEndpoint: string;
+  readonly peerSpotRouteEndpoints: readonly string[];
   readonly spotRouterEndpoint: string;
   readonly spotPubEndpoint: string;
   readonly delayEndpoint: string;
@@ -29,6 +30,7 @@ export function parsePlayOptions(args: readonly string[]): PlayOptions {
     httpUrl: required(values, 'http-url'),
     controlEndpoint: required(values, 'control-endpoint'),
     spotRouteEndpoint: required(values, 'spot-route-endpoint'),
+    peerSpotRouteEndpoints: optionalList(values, 'peer-spot-route-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
     spotPubEndpoint: required(values, 'spot-pub-endpoint'),
     delayEndpoint: required(values, 'delay-endpoint'),
@@ -37,6 +39,10 @@ export function parsePlayOptions(args: readonly string[]): PlayOptions {
     evidenceFile: values.get('evidence-file'),
     logDir: required(values, 'log-dir')
   };
+}
+
+function optionalList(values: ReadonlyMap<string, string>, key: string): readonly string[] {
+  return (values.get(key) ?? '').split(',').map((value) => value.trim()).filter((value) => value.length > 0);
 }
 
 function required(values: ReadonlyMap<string, string>, key: string): string {

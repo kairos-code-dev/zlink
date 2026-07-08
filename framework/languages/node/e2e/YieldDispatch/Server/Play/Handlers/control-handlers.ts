@@ -15,16 +15,21 @@ import { YieldDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
 import { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
+export const YIELD_PLAY_NODE_RID = 'YIELD_PLAY_NODE_RID';
+
 @Injectable()
 export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotReq, EnsureSpotRes> {
-  constructor(@Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager) {}
+  constructor(
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
+    @Inject(YIELD_PLAY_NODE_RID) private readonly nodeRid: string
+  ) {}
 
   async handle(request: EnsureSpotReq, context: ZLinkHandlerContext): Promise<EnsureSpotRes> {
     void context;
     const created = await this.spots.getOrCreate(YieldProbeSpot, request.spotRid);
     return {
       spotRid: String(created.spotRid),
-      nodeRid: 'play-a'
+      nodeRid: this.nodeRid
     };
   }
 }

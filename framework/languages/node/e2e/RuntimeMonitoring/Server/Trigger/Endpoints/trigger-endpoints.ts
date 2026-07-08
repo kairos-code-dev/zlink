@@ -69,7 +69,7 @@ export async function requestProfile(channel: ZLinkChannelClient, request: Profi
   return await channel
     .requestToChannel(RuntimeMonitoringNames.channel, request)
     .packetName(PacketNames.profileReq)
-    .timeout(3000)
+    .timeout(10000)
     .submit<ProfileRes>();
 }
 

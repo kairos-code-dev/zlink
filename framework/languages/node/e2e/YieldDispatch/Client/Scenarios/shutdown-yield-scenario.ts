@@ -7,7 +7,6 @@ import {
 import type { YieldScenarioRes, YieldShutdownRecoveryReq, YieldShutdownScenarioReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runShutdownWait(options: ClientOptions): Promise<void> {
   const requestId = requireOption(options.requestId, 'request-id');
@@ -38,11 +37,11 @@ export async function runShutdownRecovery(options: ClientOptions): Promise<void>
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    const result = decodeStreamReply<YieldScenarioRes>(await client
+    const result = await client
       .request({ requestId, spotRid } satisfies YieldShutdownRecoveryReq)
       .packetName('YieldShutdownRecoveryReq')
       .timeout(30000)
-      .submit());
+      .submit<YieldScenarioRes>();
     ensure(result.operation === 'yield.e3-shutdown-recovery', 'YD-E3 recovery operation mismatch.');
     ensure(result.spotRid === spotRid, 'YD-E3 recovery spot rid mismatch.');
     ensure(
@@ -78,5 +77,5 @@ function requireOption(value: string | undefined, name: string): string {
 }
 
 function isAbortLike(error: unknown): boolean {
-  return error instanceof Error && /abort|cancel|close|closed|disconnect|terminated|request timed out/i.test(error.message);
+  return error instanceof Error && /abort|cancel|close|closed|disconnect|terminated/i.test(error.message);
 }

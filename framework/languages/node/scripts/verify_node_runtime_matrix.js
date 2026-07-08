@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 const childProcess = require('node:child_process');
 const path = require('node:path');
-const { ensureNodeBindingDist } = require('./ensure_node_binding_dist');
+const { ensureNodeBindingPackage } = require('./ensure_node_binding_dist');
 
 const nodeRoot = path.resolve(__dirname, '..');
 const gate = path.join(nodeRoot, 'scripts/run_node_runtime_gate.js');
 const currentMajor = Number(process.versions.node.split('.')[0]);
 
-ensureNodeBindingDist();
+ensureNodeBindingPackage();
 runNodeMajor(20);
 runNodeMajor(22);
 

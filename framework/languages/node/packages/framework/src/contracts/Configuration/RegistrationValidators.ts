@@ -451,10 +451,12 @@ function requireSocketOptions(
     readonly sendHighWaterMark?: number;
     readonly receiveHighWaterMark?: number;
     readonly sendTimeoutMs?: number;
+    readonly maxMessageSize?: number;
   }
 ): void {
   requireNonNegativeInteger(`${label} sendHighWaterMark`, options.sendHighWaterMark);
   requireNonNegativeInteger(`${label} receiveHighWaterMark`, options.receiveHighWaterMark);
+  requireNonNegativeInteger(`${label} maxMessageSize`, options.maxMessageSize);
   if (options.sendTimeoutMs !== undefined && (!Number.isInteger(options.sendTimeoutMs) || options.sendTimeoutMs < -1)) {
     throw new ZLinkConfigurationException(`${label} sendTimeoutMs must be -1 or a non-negative integer.`);
   }

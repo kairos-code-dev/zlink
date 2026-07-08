@@ -25,11 +25,11 @@ export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
   ): Promise<SpotToSpotRes> {
     void context;
     const reply = await spot.context.outbound
-      .requestToSpot(request.targetSpotRid, { operation: 'add', delta: 3 })
+      .requestToSpot(request.targetSpot, { operation: 'add', delta: 3 })
       .packetName('StateReq')
       .submit<StateRes>();
     await spot.context.outbound
-      .sendToSpot(request.targetSpotRid, { marker: `sm-c3-send-${request.marker}` })
+      .sendToSpot(request.targetSpot, { marker: `sm-c3-send-${request.marker}` })
       .packetName('StateMsg')
       .submit();
     await spot.context.outbound
@@ -62,7 +62,7 @@ export class SpotToSpotTimeoutHandler
     let failed = false;
     try {
       await spot.context.outbound
-        .requestToSpot(request.targetSpotRid, { marker: request.marker, delayMs: 1500 })
+        .requestToSpot(request.targetSpot, { marker: request.marker, delayMs: 1500 })
         .packetName('SlowSpotReq')
         .timeout(100)
         .submit<SlowSpotRes>();
@@ -95,7 +95,7 @@ export class SpotToSpotNegativeHandler
     let requestFailed = false;
     try {
       await spot.context.outbound
-        .requestToSpot(request.targetSpotRid, { operation: 'noop', delta: 0 })
+        .requestToSpot(request.targetSpot, { operation: 'noop', delta: 0 })
         .packetName('MissingSpotReq')
         .timeout(2000)
         .submit<StateRes>();
@@ -103,7 +103,7 @@ export class SpotToSpotNegativeHandler
       requestFailed = true;
     }
     await spot.context.outbound
-      .sendToSpot(request.targetSpotRid, { marker: `missing-${request.marker}` })
+      .sendToSpot(request.targetSpot, { marker: `missing-${request.marker}` })
       .packetName('MissingSpotMsg')
       .submit();
     this.evidence.add(

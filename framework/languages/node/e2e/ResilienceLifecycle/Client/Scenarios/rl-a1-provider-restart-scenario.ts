@@ -4,6 +4,7 @@ import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
   waitForProviderTraffic,
+  waitTopologyAbsent,
   waitTopologyReady,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -18,6 +19,7 @@ export async function runRlA1(options: ClientOptions, state: ScenarioState): Pro
     await postJson(options.providerBUrl, '/shutdown');
   }
   await waitUntilDown(options.providerBUrl);
+  await waitTopologyAbsent(options.topologyUrl, 'api-b');
   state.providerBProcess = undefined;
 
   for (let i = 0; i < 12; i += 1) {

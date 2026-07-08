@@ -14,7 +14,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmG1(options: ClientOptions): Promise<void> {
   await waitForControlRoute(options.sessionBUrl, 'play-b');
@@ -45,18 +44,18 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
       .timeout(5000)
       .submit<AuthRes>();
 
-    const beforeCrash = decodeStreamReply<ActorPingRes>(await playA
+    const beforeCrash = await playA
       .request({ value: 'before-crash' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(beforeCrash.nodeRid === 'play-a', 'SM-G1 play-a actor setup mismatch.');
 
-    const beforeSurvivor = decodeStreamReply<ActorPingRes>(await playB
+    const beforeSurvivor = await playB
       .request({ value: 'before-crash' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(beforeSurvivor.nodeRid === 'play-b', 'SM-G1 play-b actor setup mismatch.');
 
     const crash = await fetch(`${options.playAUrl}/crash`, { method: 'POST' });
@@ -72,11 +71,11 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
     });
     ensure(afterCrashFailed, 'SM-G1 expected play-a actor request to fail after crash.');
 
-    const survivor = decodeStreamReply<ActorPingRes>(await playB
+    const survivor = await playB
       .request({ value: 'after-crash' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(survivor.actorId === 'actor-sm-g1-survivor', 'SM-G1 survivor actor mismatch.');
     ensure(survivor.nodeRid === 'play-b', 'SM-G1 survivor node mismatch.');
 
@@ -91,11 +90,11 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
       .packetName('AuthReq')
       .timeout(5000)
       .submit<AuthRes>();
-    const rebound = decodeStreamReply<ActorPingRes>(await recovered
+    const rebound = await recovered
       .request({ value: 'rebound' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
-      .submit());
+      .submit<ActorPingRes>();
     ensure(rebound.actorId === 'actor-sm-g1-crash', 'SM-G1 rebound actor mismatch.');
     ensure(rebound.nodeRid === 'play-b', 'SM-G1 rebound node mismatch.');
   } finally {

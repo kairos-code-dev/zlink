@@ -316,7 +316,10 @@ test('node Bingo stop observing request is owned by the observer room Spot', () 
 
   assert.match(handler, /zlinkSpotActorRequestHandler/);
   assert.match(handler, /spot:\s*\(\)\s*=>\s*BingoRoomSpot/);
-  assert.match(room, /actorRequest\(PacketNames\.stopObservingBingoEventsReq,\s*StopObservingBingoEventsHandler\)/);
+  assert.match(handler, /actor:\s*\(\)\s*=>\s*PlayerActor/);
+  assert.match(handler, /packetName:\s*PacketNames\.stopObservingBingoEventsReq/);
+  assert.match(room, /async stopObserving\(/);
+  assert.doesNotMatch(room, /actorRequest\(PacketNames\.stopObservingBingoEventsReq/);
   assert.doesNotMatch(entry, /actorRequest\(PacketNames\.stopObservingBingoEventsReq/);
 });
 
@@ -360,7 +363,7 @@ test('node sample READMEs describe execution topology success condition and regr
   assert.deepEqual(missing, []);
 });
 
-test.skip('node dotnet-parity samples expose buildable scenario entrypoints', () => {
+test('node dotnet-parity samples expose buildable scenario entrypoints', () => {
   const cases = [
     ['DeliveryDispatch.Ts', '@zlink-systems/sample-deliverydispatch-ts', 'deliverydispatch-client-scenario.ts', 'DeliveryDispatchClientScenario', 'PASS DeliveryDispatch.Ts'],
     ['GameQuest.Ts', '@zlink-systems/sample-gamequest-ts', 'gamequest-client-scenario.ts', 'GameQuestClientScenario', 'PASS GameQuest.Ts'],
@@ -405,27 +408,25 @@ test.skip('node dotnet-parity samples expose buildable scenario entrypoints', ()
   assert.deepEqual(missing, []);
 });
 
-test.skip('SupportChat TypeScript Entry Spot uses API channel orchestration', () => {
-  const supportEntry = fs.readFileSync(
-    path.join(samplesRoot, 'SupportChat.Ts', 'Server', 'Support', 'Infrastructure', 'ZLink', 'Spots', 'EntrySpot', 'support-entry-spot.ts'),
-    'utf8'
+test('SupportChat TypeScript Entry Spot uses API channel orchestration', () => {
+  const conversationStarter = readSample(
+    'SupportChat.Ts',
+    'Server/Support/Infrastructure/ZLink/ConversationStarter.ts'
   );
   const apiHandler = fs.readFileSync(
     path.join(samplesRoot, 'SupportChat.Ts', 'Server', 'Api', 'Handlers', 'open-conversation-handler.ts'),
     'utf8'
   );
 
-  assert.match(supportEntry, /context\.outbound\s*\n?\s*\.requestToChannel/);
-  assert.match(supportEntry, /SampleNames\.apiChannel/);
-  assert.match(supportEntry, /openConversationApiReq/);
-  assert.doesNotMatch(supportEntry, /allocator\.allocate|assignNextAgent|actors\.get/);
+  assert.match(conversationStarter, /allocateConversation/);
+  assert.doesNotMatch(conversationStarter, /allocator\.allocate|assignNextAgent|actors\.get/);
 
   assert.match(apiHandler, /SampleNames\.supportChannel/);
   assert.match(apiHandler, /allocateConversationReq/);
   assert.match(apiHandler, /assignAgentReq/);
 });
 
-test.skip('DeliveryDispatch TypeScript sample uses framework channel topology', () => {
+test('DeliveryDispatch TypeScript sample uses framework channel topology', () => {
   const clientScenario = readSample('DeliveryDispatch.Ts', 'Client/deliverydispatch-client-scenario.ts');
   const dispatchApiModule = readSample('DeliveryDispatch.Ts', 'Server/DispatchApi/dispatch-api-module.ts');
   const dispatchCenterModule = readSample('DeliveryDispatch.Ts', 'Server/DispatchCenter/dispatch-center-module.ts');
@@ -436,20 +437,20 @@ test.skip('DeliveryDispatch TypeScript sample uses framework channel topology', 
   const runSample = fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'run_sample.sh'), 'utf8');
 
   assert.match(clientScenario, /ZLinkHttpClient/);
-  assert.match(clientScenario, /\.fetch<DeliveryCreated>\(\)/);
+  assert.match(clientScenario, /\.fetch<CreateDeliveryRes>\(\)/);
   assert.match(clientScenario, /\.fetch<ServerAssertionRes>\(\)/);
   assert.match(clientScenario, /customer\.request\(subscribeDelivery/);
   assert.match(clientScenario, /waitFor<DeliveryStatusNotify>/);
   assert.match(dispatchApiModule, /\.addClientServerChannel\(SampleNames\.dispatchChannel\)/);
   assert.match(dispatchApiModule, /\.enableClient\(\)/);
   assert.match(dispatchCenterModule, /\.enableServer\(config\.dispatchEndpoint\)/);
-  assert.match(dispatchCenterModule, /\.addClientServerChannel\(SampleNames\.courierAChannel\)/);
+  assert.match(dispatchCenterModule, /\.addClientServerChannel\(SampleNames\.courierRouteChannel\)/);
   assert.match(dispatchCenterModule, /\.addClientServerChannel\(SampleNames\.trackingChannel\)/);
-  assert.match(courierModule, /\.enableServer\(endpoint\)/);
+  assert.match(courierModule, /\.enableServer\(config\.courierRouteEndpoint\)/);
   assert.match(trackingModule, /\.addFanoutChannel\(SampleNames\.statusFanoutChannel\)/);
   assert.match(trackingModule, /\.addSpotMesh\(SampleNames\.deliverySpotMesh\)/);
   assert.match(sessionModule, /\.addStreamNode\(SampleNames\.customerStreamNode\)/);
-  assert.match(sessionModule, /\.addPublishHandler\(PacketNames\.deliveryStatusNotify/);
+  assert.match(sessionModule, /\.addHandlerGroup\(SampleNames\.statusFanoutChannel\)/);
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
   assert.match(runSample, /DELIVERYDISPATCH_CENTER_ROUTE/);
   assert.match(runSample, /DELIVERYDISPATCH_SESSION_STREAM/);
@@ -458,7 +459,7 @@ test.skip('DeliveryDispatch TypeScript sample uses framework channel topology', 
   assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
 });
 
-test.skip('GameQuest TypeScript sample uses framework channel topology', () => {
+test('GameQuest TypeScript sample uses framework channel topology', () => {
   const clientScenario = readSample('GameQuest.Ts', 'Client/gamequest-client-scenario.ts');
   const clientMain = readSample('GameQuest.Ts', 'Client/main.ts');
   const apiModule = readSample('GameQuest.Ts', 'Server/GameApi/game-api-module.ts');
@@ -485,9 +486,9 @@ test.skip('GameQuest TypeScript sample uses framework channel topology', () => {
 
   assert.match(clientMain, /ZLinkHttpClient\.create\(config\.apiAHttpUrl\)/);
   assert.match(clientMain, /zlinkStreamConnectorFactory\.create/);
-  assert.match(clientScenario, /post<EventRes>\(apiA, '\/combat\/kill'/);
-  assert.match(clientScenario, /apiB\.get\('\/quest\/progress\/player-alice'\)/);
-  assert.match(clientScenario, /apiAStream\.request\(subscribeQuestReq/);
+  assert.match(clientScenario, /apiAStream\.request\(killMonsterReq/);
+  assert.match(clientScenario, /waitForProjection\(apiB, 'player-alice'/);
+  assert.match(clientScenario, /apiAStream\.request\(joinSessionReq/);
   assert.match(clientScenario, /waitFor<QuestCompletedNotify>/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SampleNames\.questMissionRouteChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.match(apiModule, /\.addRouteMeshChannel\(SampleNames\.questMissionRouteChannel\)/);
@@ -495,59 +496,50 @@ test.skip('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(apiModule, /\.addStreamNode\(SampleNames\.playerStreamNode\)/);
   assert.match(apiServer, /http\.createServer/);
   assert.match(apiServer, /\/combat\/kill/);
-  assert.match(apiServer, /GameplayActionService/);
+  assert.match(apiServer, /QuestProgressStore/);
   assert.match(gameplayService, /publishAndNotify/);
   assert.match(gameplayDomain, /monsterKilled/);
-  assert.match(gameplayPublisher, /request<TResponse>/);
+  assert.match(gameplayPublisher, /submit<TResponse>/);
   assert.match(missionModule, /zlinkFramework\(\)/);
   assert.match(missionModule, /\.enableRouter\(missionEndpoint\)/);
-  assert.match(missionModule, /\.routingId\(instanceId\)/);
+  assert.match(missionModule, /\.routingId\(missionRid\)/);
   assert.match(missionModule, /QuestEventProcessor/);
-  assert.match(missionModule, /\.addSpotMesh\(SampleNames\.questMissionRouteChannel\)/);
+  assert.match(missionModule, /\.addSpotMesh\(SampleNames\.playerQuestSpotMesh\)/);
   assert.match(missionModule, /\.addSpotFactory\(PlayerQuestSpot\)/);
-  assert.match(missionModule, /addRequestHandler\(PacketNames\.enterAreaReq/);
-  assert.match(missionModule, /addRequestHandler\(PacketNames\.killMonsterReq/);
-  assert.match(missionModule, /addRequestHandler\(PacketNames\.collectItemReq/);
-  assert.match(missionModule, /addRequestHandler\(PacketNames\.completeMissionReq/);
+  assert.match(missionModule, /\.addHandlerGroup\('quest-owner'\)/);
   assert.match(questProcessor, /enterArea\(request: EnterAreaReq\)/);
-  assert.match(questProcessor, /this\.spots\.ensure\(request\.playerId\)/);
+  assert.match(playerQuestProvisioner, /this\.spots\.getOrCreate\(PlayerQuestSpot/);
   assert.match(questProcessor, /syncProgress\(request: SyncQuestProgressReq\)/);
   assert.match(questOwnerRouter, /routeRid\(playerId: string\)/);
-  assert.match(questOwnerRouter, /spotRid\(playerId: string\)/);
+  assert.match(playerQuestProvisioner, /questMissionSpotRid\(playerId\)/);
   assert.match(playerQuestProvisioner, /ZLINK_SPOT_MANAGER/);
   assert.match(playerQuestSpot, /gamequest player quest spot ready/);
   assert.match(questDomain, /questIdForArea/);
-  assert.match(questStore, /questStatus/);
+  assert.match(questStore, /QuestStatuses/);
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
   assert.match(runSample, /start_role mission-a/);
   assert.match(runSample, /start_role mission-b/);
   assert.match(runSample, /start_role api-a/);
   assert.match(runSample, /start_role api-b/);
-  assert.match(runSample, /ready\.length >= 2/);
+  assert.match(runSample, /wait_tcp_endpoint mission-a "\$\{GAMEQUEST_MISSION_A_ROUTE\}"/);
+  assert.match(runSample, /wait_http api-a "\$\{GAMEQUEST_API_A_HTTP\}"/);
   assert.match(runSample, /GAMEQUEST_API_A_HTTP/);
   assert.match(runSample, /GAMEQUEST_API_B_HTTP/);
   assert.match(runSample, /GAMEQUEST_API_A_STREAM/);
   assert.match(runSample, /GAMEQUEST_API_B_STREAM/);
-  assert.match(runSample, /flow-api-a\.log/);
-  assert.match(runSample, /flow-api-b\.log/);
-  assert.match(runSample, /flow-mission-a\.log/);
-  assert.match(runSample, /flow-mission-b\.log/);
-  assert.match(runSamplePs1, /Start-Role "mission-a"/);
-  assert.match(runSamplePs1, /Start-Role "mission-b"/);
-  assert.match(runSamplePs1, /Start-Role "api-a"/);
-  assert.match(runSamplePs1, /Start-Role "api-b"/);
+  assert.match(runSample, /GAMEQUEST_LOG_DIR/);
+  assert.match(runSample, /grep -Rq "message flow" "\$\{GAMEQUEST_LOG_DIR\}"/);
+  assert.match(runSamplePs1, /@\("mission-a", "mission-b", "api-a", "api-b"\)/);
+  assert.match(runSamplePs1, /ForEach-Object \{ Start-Role \$_/);
   assert.match(runSamplePs1, /Wait-Http -Url \$env:GAMEQUEST_API_A_HTTP/);
   assert.match(runSamplePs1, /Wait-Http -Url \$env:GAMEQUEST_API_B_HTTP/);
-  assert.match(runSamplePs1, /flow-api-a\.log/);
-  assert.match(runSamplePs1, /flow-api-b\.log/);
-  assert.match(runSamplePs1, /flow-mission-a\.log/);
-  assert.match(runSamplePs1, /flow-mission-b\.log/);
-  assert.match(runSamplePs1, /ready\.length >= 2/);
+  assert.match(runSamplePs1, /GAMEQUEST_LOG_DIR/);
+  assert.doesNotMatch(runSamplePs1, /ready\.length >= 2/);
   assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
   assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
 });
 
-test.skip('ShoppingMall TypeScript sample uses framework channel topology', () => {
+test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   const clientScenario = readSample('ShoppingMall.Ts', 'Client/shoppingmall-client-scenario.ts');
   const clientMain = readSample('ShoppingMall.Ts', 'Client/main.ts');
   const commerceApiModule = readSample('ShoppingMall.Ts', 'Server/CommerceApi/commerce-api-module.ts');
@@ -588,13 +580,12 @@ test.skip('ShoppingMall TypeScript sample uses framework channel topology', () =
   assert.match(clientMain, /ZLinkHttpClient\.create\(config\.apiBHttpUrl\)/);
   assert.match(clientScenario, /\.post\('\/orders\/start'\)/);
   assert.match(clientScenario, /\.get\(`\/orders\/\$\{orderId\}`\)/);
-  assert.match(clientScenario, /paymentFailedFromApiA/);
+  assert.match(clientScenario, /shoppingmall-payment-failure=completed/);
   assert.match(clientScenario, /\.post\('\/self-check\/assert'\)/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SampleNames\.orderWorkflowRouteChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.match(commerceApiModule, /zlinkFramework\(\)/);
-  assert.match(commerceApiModule, /\.addRegistryEndpoint\(config\.registryRouterEndpoint\)/);
-  assert.match(commerceApiModule, /\.addRouteMeshChannel\(SampleNames\.orderWorkflowRouteChannel\)/);
-  assert.match(commerceApiModule, /\.connect\(\[config\.workflowAEndpoint, config\.workflowBEndpoint\]\)/);
+  assert.match(commerceApiModule, /\.addClientServerChannel\(orderWorkflowChannelFor\(SampleNames\.workflowA\)\)/);
+  assert.match(commerceApiModule, /\.addClientServerChannel\(orderWorkflowChannelFor\(SampleNames\.workflowB\)\)/);
   for (const file of sampleSourceFiles(path.join(samplesRoot, 'ShoppingMall.Ts', 'Server', 'CommerceApi'))) {
     assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /OrderWorkflow\//);
   }
@@ -602,62 +593,53 @@ test.skip('ShoppingMall TypeScript sample uses framework channel topology', () =
   assert.match(commerceApiServer, /\/orders\/start/);
   assert.match(commerceApiServer, /StartOrderUseCase/);
   assert.match(startOrderUseCase, /reserveIdempotency/);
-  assert.match(startOrderUseCase, /startOrderWorkflowReq/);
+  assert.match(startOrderUseCase, /PacketNames\.startOrderReq/);
   assert.match(workflowRouter, /requestWorkflow<TResponse>/);
-  assert.match(workflowRouter, /workflowRouteRid\(payload\)/);
+  assert.match(workflowRouter, /workflowRouteRid\(payload: string\)/);
   assert.match(workflowModule, /zlinkFramework\(\)/);
-  assert.match(workflowModule, /\.addRouteMeshChannel\(SampleNames\.orderWorkflowRouteChannel\)/);
-  assert.match(workflowModule, /\.enableRouter\(workflowEndpoint\)/);
-  assert.match(workflowModule, /\.addSpotMesh\(SampleNames\.orderWorkflowRouteChannel\)/);
+  assert.match(workflowModule, /\.addClientServerChannel\(orderWorkflowChannelFor\(role\)\)/);
+  assert.match(workflowModule, /\.enableServer\(workflowChannelEndpointForRole\(role, config\)\)/);
+  assert.match(workflowModule, /\.addSpotMesh\(SampleNames\.orderWorkflowSpotMesh\)/);
   assert.match(workflowModule, /\.addSpotFactory\(OrderWorkflowSpot\)/);
   assert.match(workflowModule, /OrderWorkflowService/);
-  assert.match(workflowModule, /addRequestHandler\(PacketNames\.startOrderWorkflowReq/);
-  assert.match(workflowModule, /addRequestHandler\(PacketNames\.rebuildOrderProjectionReq/);
-  assert.match(orderWorkflowSpot, /context\.handlers\.packet\(PacketNames\.startOrderWorkflowReq/);
+  assert.match(workflowModule, /\.addHandlerGroup\('workflow'\)/);
+  assert.match(orderWorkflowSpot, /class OrderWorkflowSpot implements ZLinkSpot/);
   assert.match(startOrderSpotHandler, /ZLinkSpotRequestHandler<OrderWorkflowSpot/);
-  assert.match(workflowService, /start\(request: StartOrderWorkflowReq\)/);
-  assert.match(workflowService, /continue\(request: ContinueOrderWorkflowReq\)/);
+  assert.match(startOrderSpotHandler, /PacketNames\.startOrderReq/);
+  assert.match(workflowService, /start\(request: StartOrderReq/);
+  assert.match(workflowService, /continue\(request: \{ orderId: string \}/);
   assert.match(orderDomain, /advanceOrder/);
   assert.match(orderEvents, /type OrderDomainEvent/);
   assert.match(storePorts, /interface OrderWorkflowStorePort/);
   assert.match(storePorts, /interface CommerceOrderStorePort/);
-  assert.match(orderStore, /SHOPPINGMALL_STORE_DIR/);
+  assert.match(orderStore, /SHOPPINGMALL_WORK_DIR/);
   assert.match(orderStore, /implements CommerceOrderStorePort, OrderWorkflowStorePort/);
   assert.match(serverMain, /NestFactory\.createApplicationContext/);
-  assert.match(serverMain, /workflow-a/);
-  assert.match(serverMain, /api-b/);
-  assert.match(runSample, /SHOPPINGMALL_WORKFLOW_A_ENDPOINT/);
-  assert.match(runSample, /SHOPPINGMALL_WORKFLOW_B_ENDPOINT/);
+  assert.match(serverMain, /SampleNames\.workflowA/);
+  assert.match(serverMain, /SampleNames\.apiB/);
+  assert.match(runSample, /SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT/);
+  assert.match(runSample, /SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT/);
   assert.match(runSample, /SHOPPINGMALL_API_A_HTTP/);
   assert.match(runSample, /SHOPPINGMALL_API_B_HTTP/);
-  assert.match(runSample, /start_role registry/);
   assert.match(runSample, /start_role workflow-a/);
   assert.match(runSample, /start_role workflow-b/);
   assert.match(runSample, /start_role api-a/);
   assert.match(runSample, /start_role api-b/);
-  assert.match(runSample, /ready\.length >= 2/);
-  assert.match(runSample, /wait_http "\$\{SHOPPINGMALL_API_A_HTTP\}"/);
-  assert.match(runSample, /wait_http "\$\{SHOPPINGMALL_API_B_HTTP\}"/);
-  assert.match(runSamplePs1, /Start-Role "workflow-a"/);
-  assert.match(runSamplePs1, /Start-Role "workflow-b"/);
-  assert.match(runSamplePs1, /Start-Role "api-a"/);
-  assert.match(runSamplePs1, /Start-Role "api-b"/);
+  assert.match(runSample, /wait_http api-a "\$\{SHOPPINGMALL_API_A_HTTP\}"/);
+  assert.match(runSample, /wait_http api-b "\$\{SHOPPINGMALL_API_B_HTTP\}"/);
+  assert.match(runSamplePs1, /@\("workflow-a", "workflow-b", "api-a", "api-b"\)/);
+  assert.match(runSamplePs1, /ForEach-Object \{ Start-Role \$_/);
   assert.match(runSamplePs1, /Wait-Http -Url \$env:SHOPPINGMALL_API_A_HTTP/);
   assert.match(runSamplePs1, /Wait-Http -Url \$env:SHOPPINGMALL_API_B_HTTP/);
-  assert.match(runSamplePs1, /ready\.length >= 2/);
-  assert.match(runSample, /flow-api-a\.log/);
-  assert.match(runSample, /flow-api-b\.log/);
-  assert.match(runSample, /flow-workflow-a\.log/);
-  assert.match(runSample, /flow-workflow-b\.log/);
-  assert.match(runSamplePs1, /flow-api-a\.log/);
-  assert.match(runSamplePs1, /flow-api-b\.log/);
-  assert.match(runSamplePs1, /flow-workflow-a\.log/);
-  assert.match(runSamplePs1, /flow-workflow-b\.log/);
+  assert.match(commerceApiModule, /SHOPPINGMALL_LOG_DIR/);
+  assert.match(workflowModule, /SHOPPINGMALL_LOG_DIR/);
+  assert.match(runSample, /SHOPPINGMALL_LOG_DIR/);
+  assert.match(runSamplePs1, /SHOPPINGMALL_LOG_DIR/);
   assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
   assert.doesNotMatch(serverMain, /SAMPLE_ENDPOINT/);
 });
 
-test.skip('dotnet-parity TypeScript clients do not import server modules', () => {
+test('dotnet-parity TypeScript clients do not import server modules', () => {
   const violations = [];
   for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts']) {
     for (const file of sampleSourceFiles(path.join(samplesRoot, sample, 'Client'))) {
@@ -1026,10 +1008,8 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
   const allowedTimingFiles = new Set([
     'samples/Bingo.Ts/run_sample.ps1',
     'samples/Bingo.Ts/run_sample.sh',
-    'samples/Bingo.Ts/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/match-bingo-actor-handler.ts',
-    'samples/Bingo.Ts/Server/runtime-support.ts',
     'samples/DeliveryDispatch.Ts/Client/deliverydispatch-client-scenario.ts',
-    'samples/DeliveryDispatch.Ts/Server/Configuration/request-retry.ts',
+    'samples/DeliveryDispatch.Ts/Server/Configuration/timing.ts',
     'samples/DeliveryDispatch.Ts/Server/DispatchCenter/dispatch-worker.ts',
     'samples/DeliveryDispatch.Ts/Server/Probe/probe.ts',
     'samples/GameQuest.Ts/Client/gamequest-client-scenario.ts',
@@ -1049,6 +1029,45 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
     const content = fs.readFileSync(file, 'utf8');
     if (/\bsleep\s*\(|setTimeout\s*\(|beforeReady/.test(content)) {
       violations.push(relativePath(workspaceRoot, file));
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test('node top-level sample runner fails on first sample failure without retry masking', () => {
+  const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
+  const violations = [
+    /\bretry sample\b/,
+    /\bfor attempt\b/,
+    /\battempts\b/,
+    /\brun_sample\s*\(/
+  ]
+    .filter((pattern) => pattern.test(runSamples))
+    .map((pattern) => pattern.source);
+
+  assert.deepEqual(violations, []);
+});
+
+test('node RegistryMessaging e2e endpoints do not hide local routing failures with retry loops', () => {
+  const registryMessagingRoot = path.join(workspaceRoot, 'e2e', 'RegistryMessaging');
+  const endpointFiles = [
+    'Server/Provider/Endpoints/provider-endpoints.ts',
+    'Server/Consumer/Endpoints/consumer-endpoints.ts',
+    'Server/Workflow/Endpoints/workflow-endpoints.ts'
+  ];
+  const violations = [];
+  for (const relative of endpointFiles) {
+    const content = fs.readFileSync(path.join(registryMessagingRoot, relative), 'utf8');
+    for (const pattern of [
+      /\bWithRetry\b/,
+      /\bretryUntil\b/,
+      /Timed out waiting for .*route/,
+      /while\s*\(\s*Date\.now\(\)\s*<\s*deadline\s*\)/
+    ]) {
+      if (pattern.test(content)) {
+        violations.push(`${relative}:${pattern.source}`);
+      }
     }
   }
 
@@ -1340,7 +1359,7 @@ test('node samples keep contracts separate from sample configuration and applica
   assert.deepEqual(violations, []);
 });
 
-test('TicTacToe uses manual handler registration and Bingo keeps automatic registration', () => {
+test('TicTacToe uses manual handler registration and other samples keep automatic registration', () => {
   const apiMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const playMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
   const apiModule = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'tictactoe-api-module.ts'), 'utf8');
@@ -1406,6 +1425,10 @@ test('TicTacToe uses manual handler registration and Bingo keeps automatic regis
     [bingoTimerHandler, '@zlinkSpotTimerHandler({'],
     [fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8'), '.addHandlerGroup(\'api\')'],
     [bingoPlayModule, '.addHandlerGroup(\'play\')'],
+    [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'session-module.ts'), 'utf8'),
+      '.addHandlerGroup(SampleNames.statusFanoutChannel)'],
+    [fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'Server', 'Session', 'delivery-status-fanout-handler.ts'), 'utf8'),
+      '@zlinkPublishHandler(SampleNames.statusFanoutChannel, PacketNames.deliveryStatusNotify)'],
     [bingoPlayModule, 'zlinkModule(__dirname'],
     [playModule, '.addStreamNode(SampleNames.playStream']
   ];
@@ -1463,6 +1486,17 @@ test('TicTacToe uses manual handler registration and Bingo keeps automatic regis
   ]) {
     if (playModule.includes(text) || playHandler.includes(text) || ticTacToeTimerHandler.includes(text)) {
       violations.push(`TicTacToe.manual:${text}`);
+    }
+  }
+  for (const sample of requiredSamples.filter((name) => name !== 'TicTacToe.Ts')) {
+    for (const file of sampleSourceFiles(path.join(samplesRoot, sample))) {
+      const content = fs.readFileSync(file, 'utf8');
+      if (/\.add(?:Request|Send|Publish)Handler\(/.test(content)
+        || /\.addSubscribe\(/.test(content)
+        || /\.actor(?:Request|Send)\(/.test(content)
+        || /\.packet\(/.test(content)) {
+        violations.push(`${relativePath(samplesRoot, file)}:manual-handler-registration`);
+      }
     }
   }
 
@@ -1850,27 +1884,21 @@ test('node framework source tree does not keep emitted JavaScript beside TypeScr
   assert.deepEqual(emitted, []);
 });
 
-test(
-  'node run_samples.sh executes every sample self-check',
-  process.env.ZLINK_SKIP_NODE_SAMPLE_SELF_CHECK === '1'
-    ? { skip: 'sample self-checks are not part of the framework CI release gate' }
-    : {},
-  () => {
-    if (process.platform !== 'linux') {
-      return;
-    }
-
-    const output = childProcess.execFileSync(path.join(samplesRoot, 'run_samples.sh'), {
-      cwd: workspaceRoot,
-      encoding: 'utf8'
-    });
-
-    assert.match(output, /node actor lifecycle sample gate completed/);
-    for (const sample of requiredSamples) {
-      assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
-    }
+test('node run_samples.sh executes every sample self-check', () => {
+  if (process.platform !== 'linux') {
+    return;
   }
-);
+
+  const output = childProcess.execFileSync(path.join(samplesRoot, 'run_samples.sh'), {
+    cwd: workspaceRoot,
+    encoding: 'utf8'
+  });
+
+  assert.match(output, /node actor lifecycle sample gate completed/);
+  for (const sample of requiredSamples) {
+    assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
+  }
+});
 
 test('node cross-language smoke covers channel send publish and stream connector paths', () => {
   const smoke = fs.readFileSync(path.join(workspaceRoot, 'cross-language', 'node_dotnet_smoke.js'), 'utf8');

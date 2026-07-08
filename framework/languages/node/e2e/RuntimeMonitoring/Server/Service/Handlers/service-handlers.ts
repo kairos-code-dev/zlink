@@ -51,15 +51,21 @@ export class MonitoringEntrySpot implements ZLinkEntrySpot {
     if (this.context === undefined) {
       throw new Error('Monitoring entry spot context was not assigned.');
     }
-    await this.context.addTimer('failing', 50, FailingTimerHandler, { stopOnUnhandledException: false });
-    await this.context.addTimer('stopping', 50, FailingTimerHandler, { stopOnUnhandledException: true });
+    await this.context.addTimer('failing', 1000, FailingTimerHandler, { stopOnUnhandledException: false });
+    await this.context.addTimer('stopping', 1000, FailingTimerHandler, { stopOnUnhandledException: true });
   }
 }
 
 @Injectable()
 @zlinkSpotTimerHandler()
 export class FailingTimerHandler implements ZLinkSpotTimerHandler<MonitoringEntrySpot> {
-  async handle(_spot: MonitoringEntrySpot, _tick: ZLinkTimerTick): Promise<void> {
+  private readonly failedTimers = new Set<string>();
+
+  async handle(_spot: MonitoringEntrySpot, tick: ZLinkTimerTick): Promise<void> {
+    if (this.failedTimers.has(tick.name)) {
+      return;
+    }
+    this.failedTimers.add(tick.name);
     throw new Error('monitoring timer failure');
   }
 }

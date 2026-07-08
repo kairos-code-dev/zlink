@@ -9,7 +9,6 @@ import type {
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder, ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
@@ -28,21 +27,21 @@ export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
     .submit<EnsureSpotRes>();
 
   const requestId = `YD-D2-${uniqueId()}`;
-  const reply = decodeStreamReply<YieldDispatchRes>(await client
+  const reply = await client
     .request({ requestId, targetSpotRid, delayMs: 350 } satisfies RemoteSpotYieldReq)
     .packetName('RemoteSpotYieldReq')
     .metadata(YieldDispatchNames.spotRidMetadata, ownerSpotRid)
     .timeout(30000)
-    .submit());
+    .submit<YieldDispatchRes>();
   ensure(reply.scenarioId === 'YD-D2', 'YD-D2 reply scenario mismatch.');
   ensure(reply.nodeRid === 'play-a', 'YD-D2 caller continuation node mismatch.');
 
-  const ownerEvidence = decodeStreamReply<YieldEvidenceRes>(await client
+  const ownerEvidence = await client
     .request({ requestId, marker: 'remote-yield-completed' } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
   ensure(ownerEvidence.evidence.some((line) =>
     line.includes('remote-yield-resumed|rid=play-a') && line.includes('targetNode=play-b')),
   'YD-D2 continuation did not return to the owner node.');
@@ -53,12 +52,12 @@ export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
     'remote-yield-completed'
   ], 'YD-D2 owner marker order mismatch.');
 
-  const targetEvidence = decodeStreamReply<YieldEvidenceRes>(await client
+  const targetEvidence = await client
     .request({ requestId } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-b')
     .timeout(30000)
-    .submit());
+    .submit<YieldEvidenceRes>();
   ensure(targetEvidence.evidence.some((line) =>
     line.includes(`yield-started|rid=play-b|spot=${targetSpotRid}|request=${requestId}`)),
   'YD-D2 target play-b marker missing.');

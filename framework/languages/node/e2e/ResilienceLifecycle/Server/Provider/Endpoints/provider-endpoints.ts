@@ -24,13 +24,13 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/profile/request',
-      handle: (body) => requestProfileWithRetry(channel, 'profile', body as ProfileReq)
+      handle: (body) => requestProfile(channel, 'profile', body as ProfileReq)
     },
     {
       method: 'POST',
       path: '/profile/command',
       handle: async (body) => {
-        await sendProfileWithRetry(channel, 'profile', body as ProfileMsg);
+        await sendProfile(channel, 'profile', body as ProfileMsg);
         return { status: 'sent' };
       }
     },
@@ -115,7 +115,10 @@ export function createProviderEndpoints(
       handle: async (body) => {
         const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
-        const snapshot = await evidence.waitUntil((line) => line.includes(request.contains), timeout);
+        const snapshot = await evidence.waitUntil(
+          (entries) => entries.some((line) => line.includes(request.contains)),
+          timeout
+        );
         if (!snapshot.some((line) => line.includes(request.contains))) {
           throw new Error(`Evidence marker not found: ${request.contains}`);
         }
@@ -142,39 +145,25 @@ async function waitForWeight(
   throw new Error(`Provider weight did not become ${request.expected}.`);
 }
 
-async function requestProfileWithRetry(
+async function requestProfile(
   channel: ZLinkChannelClient,
   channelName: string,
   request: ProfileReq
 ): Promise<ProfileRes> {
-  return retryUntil(async () => channel
+  return await channel
     .requestToChannel(channelName, request)
     .packetName(PacketNames.profileReq)
     .timeout(5000)
-    .submit<ProfileRes>(), 'profile request channel route');
+    .submit<ProfileRes>();
 }
 
-async function sendProfileWithRetry(
+async function sendProfile(
   channel: ZLinkChannelClient,
   channelName: string,
   command: ProfileMsg
 ): Promise<void> {
-  await retryUntil(async () => channel
+  await channel
     .sendToChannel(channelName, command)
     .packetName(PacketNames.profileMsg)
-    .submit(), 'profile send channel route');
-}
-
-async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {
-  const deadline = Date.now() + 30000;
-  let last: unknown;
-  while (Date.now() < deadline) {
-    try {
-      return await operation();
-    } catch (error) {
-      last = error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  throw new Error(`Timed out waiting for ${label}: ${last instanceof Error ? last.message : String(last)}`);
+    .submit();
 }

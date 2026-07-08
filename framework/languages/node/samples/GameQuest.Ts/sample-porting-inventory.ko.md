@@ -17,4 +17,4 @@
 | shared event/projection/gameplay state | `Server/Shared/Store/quest-progress-store.ts` | 구현 |
 | runner orchestration | `run_sample.sh`, `run_sample.ps1` | 구현 |
 
-검증 기준은 `npm run build`, `GameQuest.Ts/run_sample.sh`, 그리고 Node sample regression required sample 확장이다. 남은 gap은 없다.
+검증 기준은 `npm run build`, `GameQuest.Ts/run_sample.sh`, 그리고 Node sample regression required sample 확장이다. 남은 항목은 없다.

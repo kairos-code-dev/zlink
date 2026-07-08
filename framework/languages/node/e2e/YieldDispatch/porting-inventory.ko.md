@@ -4,7 +4,8 @@
 
 기준 구현: `framework/languages/dotnet/e2e/YieldDispatch`
 
-현재 상태: Node.js `YieldDispatch` config는 YD-A1~YD-E5 범위를 구현했고, 실제 runner가 통과한다.
+현재 상태: Node.js `YieldDispatch` config는 YD-A1~YD-E5 범위를 구현했다. YD-E3 shutdown wait는
+`core/v8.6.3`과 Node native binding 갱신 뒤 `logs/20260708-141507-206725`에서 다시 통과했다.
 YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 별도 parity gate 입력이다.
 
 ## Scenario
@@ -27,7 +28,7 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 | YD-D4 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/Scenarios/yd-d4-session-relay-actor-yield-scenario.ts`, `Server/Session/Handlers/yield-session.ts`, `Server/Play/Spots/yield-actors.ts`, `Server/Play/Spots/yield-probe-spot.ts`, `run_e2e.sh` | done | bound actor relay, actor handler yield, bound session push, unbound session 미수신을 검증했다. `logs/20260702-051530-20410`에서 통과 |
 | YD-E1 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/Scenarios/yd-e1-timeout-scenario.ts`, `Server/Play/Handlers/failure-spot-handlers.ts`, `Server/Session/Handlers/yield-session.ts`, `run_e2e.sh` | done | timeout보다 늦은 delay request를 `yield()`로 기다린 뒤 timeout marker를 남기고, 같은 Spot의 probe가 정상 처리되는지 검증했다. `logs/20260702-051530-20410`에서 통과 |
 | YD-E2 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd-e2-cancellation-scenario.ts`, `Server/Play/Handlers/failure-spot-handlers.ts`, `Server/Session/Handlers/yield-session.ts`, `run_e2e.sh` | done | server-side cancellation signal을 `yield()`에 전달한 뒤 cancellation marker를 남기고, 같은 Spot의 probe가 정상 처리되는지 검증했다. `logs/20260702-051530-20410`에서 통과 |
-| YD-E3 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/Scenarios/shutdown-yield-scenario.ts`, `Server/Session/Handlers/yield-session.ts`, `run_e2e.sh` | done | pending yield 중 `play-a`를 종료한 뒤 stream request가 public closed/cancelled error로 끝나고, 같은 endpoint로 재시작한 `play-a`가 새 Spot probe를 처리하는지 검증했다. 선택 실행 `logs/20260702-051530-20410`, full 실행 `logs/20260702-051530-20410`에서 통과 |
+| YD-E3 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/Scenarios/shutdown-yield-scenario.ts`, `Server/Session/Handlers/yield-session.ts`, `run_e2e.sh` | done | pending yield 중 `play-a`를 종료한 뒤 stream request가 public closed/cancelled error로 끝나는지 검증했다. `logs/20260708-141507-206725`에서 `timeout 420s ./run_e2e.sh YD-E3`가 `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`, `scenario YD-E3 passed`, `yield-dispatch e2e result=passed`를 출력했다. 실행 중 `session-a`가 한동안 높은 CPU를 사용했지만 timeout이나 retry가 아니라 graceful shutdown 완료 뒤 pass했다. |
 | YD-E4 | `run_e2e.sh` | `run_e2e.sh` | done | yield 시작용 HTTP endpoint/client 사용, `Server/Play` 밖의 `.yield(...)` 사용, YD scenario 파일의 connector helper 우회, shutdown scenario의 stream connector 직접 생성 누락을 정적으로 검사한다. `logs/20260702-051530-20410`에서 `scenario YD-E4 passed` |
 | YD-E5 | `feature-map.ko.md` | `feature-map.ko.md` | done | Node 상태와 검증 로그는 공통 scenario id와 marker 이름으로 기록했다. 여러 framework 언어의 Config 8 report를 한 번에 모아 비교하는 aggregation은 별도 cross-language parity gate에서 수행한다. |
 
@@ -43,7 +44,7 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 |----------------|-------------------|------|------|------|
 | `.gitignore` | `.gitignore`, `logs/.gitignore` | ignore | done | dist, node_modules, 실행 로그 제외 |
 | `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | YD-A1~YD-E5 pass 상태 기록 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | build/start/readiness/client 실행이 있고 YD-A1/YD-E4 범위의 `full`은 통과한다. D2부터 `play-b`와 `delay-b`도 함께 구동하고, D4부터 `session-b`도 함께 구동한다. E3는 pending yield 중 `play-a` 종료와 재시작 뒤 recovery probe를 검증한다. E4는 금지된 yield 사용 표면을 정적으로 검사한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | build/start/readiness/client 실행이 있고 full 실행 `logs/20260708-003706-140692`가 통과했다. D2부터 `play-b`와 `delay-b`도 함께 구동하고, D4부터 `session-b`도 함께 구동한다. E3는 pending yield 중 `play-a` 종료와 재시작 뒤 recovery probe를 검증하며, 선택 실행 `logs/20260708-141507-206725`가 통과했다. E4는 금지된 yield 사용 표면을 정적으로 검사한다. |
 | `Shared/Messages.cs` | `Shared/messages.ts` | shared | done | YD-A1/YD-E4, control, evidence, delay, actor bind/yield/fast/join, timer start/stop, remote Spot yield, actor push, timeout/cancellation, shutdown payload를 포팅했다. |
 | `Shared/YieldDispatch.Shared.csproj` | `Shared/messages.ts` | shared-project | done | Node는 별도 shared package 없이 각 role `tsconfig.json`에서 Shared를 포함한다. |
 | `Client/GlobalUsings.cs` | not-needed | client-project | done | TypeScript에는 대응 파일이 필요 없다. |
@@ -91,11 +92,11 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 | `Server/Session/Support/YieldSession.cs` | `Server/Session/Handlers/yield-session.ts` | session-role | done | stream dispatch, public `ZLinkSpotOutbound.sendToSpot(...)` command relay, actor bind/relay, timer command relay, D4 actor push yield relay, E1/E2 failure command relay, E3 shutdown wait/recovery relay를 추가했다. |
 | `Server/Session/Support/SessionSupport.cs` | `Server/Session/Support/evidence-store.ts`, `Server/Session/Support/http-server.ts` | session-role | merged | Session role 내부 evidence와 HTTP readiness helper로 재분류했다. |
 | `Server/Session/Support/SessionSpotTypes.cs` | not-needed | session-role | not-needed | Node session actor relay는 runtime이 제공하는 bound actor reference와 `context.actors.bind(...)`/`actor.relay(...)`를 사용하므로 별도 session actor type 파일이 필요 없다. |
-| `Server/Session/Support/YieldSessionRelay.cs` | `Server/Session/Handlers/yield-session.ts` | session-role | merged | play control retry, Spot relay retry, actor relay, evidence 요청 helper 책임을 stream session handler 안으로 합쳤다. |
+| `Server/Session/Support/YieldSessionRelay.cs` | `Server/Session/Handlers/yield-session.ts` | session-role | merged | play control 요청, Spot relay, actor relay, evidence 요청 helper 책임을 stream session handler 안으로 합쳤다. Spot relay retry loop는 현재 checkout에서 제거했다. |
 | `Server/Session/Support/YieldShutdownRelay.cs` | `Server/Session/Handlers/yield-session.ts` | session-role | merged | Node에서는 shutdown cleanup relay를 stream session handler 안의 public Spot outbound request/send 경로로 합쳤다. 별도 raw frame 또는 private helper는 추가하지 않았다. |
 | `Server/Session/YieldDispatch.Session.csproj` | `Server/Session/package.json`, `Server/Session/tsconfig.json` | session-project | done | Session build 설정 추가 |
 
-## Public Contract 확인 필요
+## Public Contract 확인 결과
 
 - Node framework는 Spot handler 안에서 public `ZLinkRequestCall.yield<TReply>()`를 제공한다. YD-A2 handler는 이
   public API를 사용한다.

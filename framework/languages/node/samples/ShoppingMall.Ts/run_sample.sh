@@ -9,8 +9,11 @@ RUN_DIR="${SHOPPINGMALL_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
 export SHOPPINGMALL_WORK_DIR="${WORK_DIR}"
+export SHOPPINGMALL_LOG_DIR="${LOG_DIR}"
 mkdir -p "${LOG_DIR}" "${WORK_DIR}"
 PIDS=()
+REDIS_CONTAINER_ID=""
+source "${SCRIPT_DIR}/../../e2e/redis-container.sh"
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -36,6 +39,9 @@ cleanup() {
     fi
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
+    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+  fi
   if [[ "${SHOPPINGMALL_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=${RUN_DIR}"
   else
@@ -51,7 +57,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 2:
+    while len(sockets) < 8:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -73,7 +79,7 @@ if [[ -z "${PORT_OUTPUT}" ]]; then
   PORT_OUTPUT="$(python3 - <<'PY'
 import random
 base = random.randint(41000, 60000)
-print(f"{base} {base + 1}")
+print(" ".join(str(base + i) for i in range(8)))
 PY
 )"
 fi
@@ -81,8 +87,13 @@ read -r -a PORTS <<<"${PORT_OUTPUT}"
 
 export SHOPPINGMALL_API_A_HTTP="http://127.0.0.1:${PORTS[0]}"
 export SHOPPINGMALL_API_B_HTTP="http://127.0.0.1:${PORTS[1]}"
-export SHOPPINGMALL_WORKFLOW_A_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
-export SHOPPINGMALL_WORKFLOW_B_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
+export SHOPPINGMALL_WORKFLOW_A_HTTP="http://127.0.0.1:${PORTS[2]}"
+export SHOPPINGMALL_WORKFLOW_B_HTTP="http://127.0.0.1:${PORTS[3]}"
+export SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+export SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+export SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+export SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+export SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:node:${RANDOM}:$$:"
 
 wait_http() {
   local name="$1"
@@ -100,7 +111,17 @@ wait_http() {
 wait_tcp_endpoint() {
   local name="$1"
   local endpoint="$2"
-  wait_http "${name}" "${endpoint/tcp:\/\//http://}"
+  local host="${endpoint#tcp://}"
+  host="${host%:*}"
+  local port="${endpoint##*:}"
+  for _ in $(seq 1 300); do
+    if timeout 1 bash -c ":</dev/tcp/${host}/${port}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
 }
 
 start_role() {
@@ -109,6 +130,24 @@ start_role() {
   PIDS+=("$!")
 }
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the ShoppingMall sample because it provisions a dedicated Redis location store." >&2
+  exit 1
+fi
+
+start_redis_container "shoppingmall-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
+REDIS_PORT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed 's/.*://')"
+export SHOPPINGMALL_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+wait_tcp_endpoint redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
+
+start_role workflow-a
+wait_http workflow-a "${SHOPPINGMALL_WORKFLOW_A_HTTP}"
+wait_tcp_endpoint workflow-a-channel "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}"
+wait_tcp_endpoint workflow-a-spot "${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT}"
+start_role workflow-b
+wait_http workflow-b "${SHOPPINGMALL_WORKFLOW_B_HTTP}"
+wait_tcp_endpoint workflow-b-channel "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}"
+wait_tcp_endpoint workflow-b-spot "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}"
 start_role api-a
 wait_http api-a "${SHOPPINGMALL_API_A_HTTP}"
 start_role api-b

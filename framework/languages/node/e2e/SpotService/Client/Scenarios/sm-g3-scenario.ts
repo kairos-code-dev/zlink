@@ -17,7 +17,6 @@ import type {
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
-import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmG3(options: ClientOptions): Promise<void> {
   const actorCount = 2;
@@ -34,19 +33,19 @@ export async function runSmG3(options: ClientOptions): Promise<void> {
 
     await Promise.all(actorIds.map(async (actorId, index) => {
       const client = clients[index];
-      const pingMsg = decodeStreamReply<ActorPingRes>(await client
+      const pingMsg = await client
         .request({ value: actorId } satisfies ActorPingReq)
         .packetName('UserActorPingReq')
         .timeout(5000)
-        .submit());
+        .submit<ActorPingRes>();
       ensure(pingMsg.actorId === actorId, 'SM-G3 actor request target mismatch.');
       ensure(pingMsg.nodeRid === 'play-a', 'SM-G3 actor request reached the wrong node.');
 
-      const left = decodeStreamReply<LeaveRes>(await client
+      const left = await client
         .request({ actorId } satisfies LeaveReq)
         .packetName('LeaveReq')
         .timeout(5000)
-        .submit());
+        .submit<LeaveRes>();
       ensure(left.accepted && left.actorId === actorId, 'SM-G3 leave reply mismatch.');
     }));
 
@@ -116,11 +115,11 @@ async function joinUserSpotActor(
   spotRid: string,
   actorId: string
 ): Promise<void> {
-  const joined = decodeStreamReply<JoinUserSpotActorRes>(await client
+  const joined = await client
     .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
     .packetName('JoinUserSpotActorReq')
     .timeout(5000)
-    .submit());
+    .submit<JoinUserSpotActorRes>();
   ensure(joined.accepted && joined.actorId === actorId, `User spot actor join failed for ${actorId}.`);
 }
 

@@ -11,6 +11,7 @@ export interface ServerOptions {
   readonly routeEndpoint?: string;
   readonly routePeers: readonly string[];
   readonly weight: number;
+  readonly maxMessageSize: number;
 }
 
 export function parseServerOptions(args: readonly string[], defaultRole = 'provider'): ServerOptions {
@@ -46,7 +47,8 @@ export function parseServerOptions(args: readonly string[], defaultRole = 'provi
     manualClientEndpoint: values.get('manual-client-endpoint'),
     routeEndpoint: values.get('route-endpoint'),
     routePeers,
-    weight: parseWeight(values.get('weight'))
+    weight: parseWeight(values.get('weight')),
+    maxMessageSize: parseMaxMessageSize(values.get('max-message-size'))
   };
 }
 
@@ -59,4 +61,15 @@ function parseWeight(value: string | undefined): number {
     throw new Error('--weight must be an integer between 0 and 100.');
   }
   return weight;
+}
+
+function parseMaxMessageSize(value: string | undefined): number {
+  if (value === undefined) {
+    return 0;
+  }
+  const size = Number(value);
+  if (!Number.isInteger(size) || size < 0) {
+    throw new Error('--max-message-size must be a non-negative integer.');
+  }
+  return size;
 }

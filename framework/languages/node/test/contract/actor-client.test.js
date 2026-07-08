@@ -20,20 +20,10 @@ function createReplyParts(value) {
   ];
 }
 
-function createResolver(rows) {
-  const calls = [];
+function createFailingResolver() {
   return {
-    calls,
-    resolveActorRow(key) {
-      calls.push(key.actorId);
-      const next = rows.shift();
-      return Promise.resolve(next === undefined ? undefined : {
-        actorId: key.actorId,
-        actorRef: next,
-        ownerId: 'owner',
-        generation: next.generation,
-        updatedAt: new Date()
-      });
+    resolveActorRow() {
+      throw new Error('actor client must not resolve ActorRef targets');
     }
   };
 }
@@ -46,17 +36,16 @@ test('actor client sends multipart parts to a resolved actor and returns a promi
       return true;
     }
   };
-  const resolver = createResolver([actorRef()]);
+  const resolver = createFailingResolver();
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
     locationResolver: () => resolver
   });
 
-  const submitted = client.sendToActor('actor-1', { value: 'ping' }).packetName('ActorNotify').submit();
+  const submitted = client.sendToActor(actorRef(), { value: 'ping' }).packetName('ActorNotify').submit();
 
   assert.equal(submitted instanceof Promise, true);
   await submitted;
-  assert.deepEqual(resolver.calls, ['actor-1']);
   assert.equal(sends.length, 1);
   assert.equal(sends[0].actor.actorId, 'actor-1');
   assert.equal(sends[0].parts.length, 2);
@@ -74,13 +63,13 @@ test('actor client request decodes the handler reply and never auto-creates a mi
       return true;
     }
   };
-  const resolver = createResolver([actorRef()]);
+  const resolver = createFailingResolver();
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
     locationResolver: () => resolver
   });
 
-  const reply = await client.requestToActor('actor-1', { value: 'ping' })
+  const reply = await client.requestToActor(actorRef(), { value: 'ping' })
     .packetName('ActorAsk')
     .timeout(100)
     .submit();
@@ -88,42 +77,40 @@ test('actor client request decodes the handler reply and never auto-creates a mi
   assert.deepEqual(reply, { value: 'pong' });
 });
 
-test('actor client retries stale actor locations once and uses the refreshed ref', async () => {
+test('actor client maps stale ActorRef sends without resolving a replacement', async () => {
   const first = actorRef('actor-1', 1n);
-  const second = actorRef('actor-1', 2n);
   const sends = [];
   const node = {
     sendToActor(actor) {
       sends.push(actor);
-      if (sends.length === 1) {
-        throw new framework.ZLinkFrameworkException(
-          framework.ZLinkFrameworkErrorKind.ActorLocationStale,
-          'stale'
-        );
-      }
-      return true;
+      throw new framework.ZLinkFrameworkException(
+        framework.ZLinkFrameworkErrorKind.ActorLocationStale,
+        'stale'
+      );
     }
   };
-  const resolver = createResolver([first, second]);
+  const resolver = createFailingResolver();
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
     locationResolver: () => resolver
   });
 
-  await client.sendToActor('actor-1', { value: 'ping' }).packetName('ActorNotify').submit();
+  await assert.rejects(
+    () => client.sendToActor(first, { value: 'ping' }).packetName('ActorNotify').submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+  );
 
-  assert.deepEqual(resolver.calls, ['actor-1', 'actor-1']);
-  assert.deepEqual(sends.map((actor) => actor.generation), [1n, 2n]);
+  assert.deepEqual(sends.map((actor) => actor.generation), [1n]);
 });
 
-test('actor client maps missing, stale-after-reresolve, and disconnected route failures', async () => {
-  const missing = new framework.DefaultZLinkActorClient({
-    nodeProvider: () => ({}),
-    locationResolver: () => createResolver([])
+test('actor client maps stale and disconnected route failures', async () => {
+  const noNode = new framework.DefaultZLinkActorClient({
+    nodeProvider: () => undefined,
+    locationResolver: () => createFailingResolver()
   });
   await assert.rejects(
-    () => missing.requestToActor('missing', { value: 'ping' }).packetName('ActorAsk').submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorRouteNotFound
+    () => noNode.requestToActor(actorRef('missing'), { value: 'ping' }).packetName('ActorAsk').submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
   );
 
   const staleNode = {
@@ -134,10 +121,10 @@ test('actor client maps missing, stale-after-reresolve, and disconnected route f
   };
   const stale = new framework.DefaultZLinkActorClient({
     nodeProvider: () => staleNode,
-    locationResolver: () => createResolver([actorRef('actor-1', 1n), actorRef('actor-1', 2n)])
+    locationResolver: () => createFailingResolver()
   });
   await assert.rejects(
-    () => stale.requestToActor('actor-1', { value: 'ping' }).packetName('ActorAsk').submit(),
+    () => stale.requestToActor(actorRef('actor-1', 1n), { value: 'ping' }).packetName('ActorAsk').submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
 
@@ -149,10 +136,10 @@ test('actor client maps missing, stale-after-reresolve, and disconnected route f
   };
   const disconnected = new framework.DefaultZLinkActorClient({
     nodeProvider: () => disconnectedNode,
-    locationResolver: () => createResolver([actorRef()])
+    locationResolver: () => createFailingResolver()
   });
   await assert.rejects(
-    () => disconnected.requestToActor('actor-1', { value: 'ping' }).packetName('ActorAsk').submit(),
+    () => disconnected.requestToActor(actorRef(), { value: 'ping' }).packetName('ActorAsk').submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true
   );
 });

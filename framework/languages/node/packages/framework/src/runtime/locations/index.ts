@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ActorRef, RoutingId } from '../../contracts/Common';
+import type { ActorRef, RoutingId, SpotRef } from '../../contracts/Common';
 import {
   ZLinkRouteKind,
   ZLinkLocationKind,
@@ -12,7 +12,7 @@ import {
   type IZLinkLocationReadiness,
   type IZLinkActorAddressResolver,
   type IZLinkPeerLocationResolver,
-  type IZLinkSpotAddressResolver,
+  type ZLinkSpotRefResolver,
   type IZLinkActorLocationStore,
   type IZLinkLocationChangeStampStore,
   type IZLinkLocationWatchStore,
@@ -45,7 +45,6 @@ import {
   type ZLinkRouteLocation,
   type ZLinkRouteLocationFilter,
   type ZLinkRouteLocationKey,
-  type ZLinkSpotAddress,
   type ZLinkSpotLocation,
   type ZLinkSpotLocationFilter,
   type ZLinkSpotLocationKey
@@ -53,9 +52,11 @@ import {
 import type { ZLinkLocationOptions } from '../../contracts/Locations';
 import {
   ZLinkSpotKind,
-  type ZLinkSpotRemoteAddress,
-  type ZLinkSpotRemoteAddressResolver
 } from '../../contracts/Spots';
+import type {
+  ZLinkSpotRouteTarget,
+  ZLinkSpotRouteResolver
+} from '../spots/spot-routing-internal';
 import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contracts/Errors';
 import { zlinkLocationAutoConnectTypeName, zlinkLocationRoleName } from './canonical-codec';
 import { ZLinkLocationKeyCodec } from './key-codec';
@@ -1014,7 +1015,7 @@ export interface ZLinkStoreLocationResolversOptions {
 
 export class ZLinkStoreLocationResolvers implements
   IZLinkPeerLocationResolver,
-  IZLinkSpotAddressResolver,
+  ZLinkSpotRefResolver,
   IZLinkActorAddressResolver {
   constructor(private readonly options: ZLinkStoreLocationResolversOptions) {}
 
@@ -1041,20 +1042,25 @@ export class ZLinkStoreLocationResolvers implements
     return row;
   }
 
-  async resolveSpotAddress(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotAddress | undefined> {
+  async resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotRef | undefined> {
     for (const meshName of this.options.spotMeshNames ?? []) {
       const row = await this.resolveSpotRow({ meshName, spotRid }, signal);
       if (row !== undefined) {
-        return { meshName: row.meshName, nodeRid: row.nodeRid, spotRid: row.spotRid };
+        return {
+          meshName: row.meshName,
+          nodeRid: String(row.nodeRid),
+          spotRid: String(row.spotRid),
+          spotKind: row.spotKind
+        };
       }
     }
     return undefined;
   }
 
-  async resolveActorSpotAddress(
+  async resolveActorSpotRef(
     actorId: string,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotAddress | undefined> {
+  ): Promise<SpotRef | undefined> {
     const row = await this.resolveActorRow({ actorId }, signal);
     if (row === undefined) {
       return undefined;
@@ -1064,8 +1070,9 @@ export class ZLinkStoreLocationResolvers implements
       : row.spotRid;
     return {
       meshName: row.spotMeshName,
-      nodeRid: row.nodeRid,
-      spotRid
+      nodeRid: String(row.nodeRid),
+      spotRid: String(spotRid),
+      spotKind: row.locationKind
     };
   }
 
@@ -1120,14 +1127,14 @@ export class ZLinkLocationReadiness implements IZLinkLocationReadiness {
   }
 }
 
-export class ZLinkLocationSpotRemoteAddressResolver implements ZLinkSpotRemoteAddressResolver {
+export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
   constructor(
     private readonly rows: ZLinkStoreLocationResolvers,
     private readonly meshNames: readonly string[],
     private readonly routerChannelIdForMesh: (meshName: string) => string = (meshName) => meshName
   ) {}
 
-  async resolve(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRemoteAddress> {
+  async resolve(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRouteTarget> {
     for (const meshName of this.meshNames) {
       const row = await this.rows.resolveSpotRow({ meshName, spotRid }, signal);
       if (row !== undefined) {
@@ -1200,7 +1207,13 @@ export class ZLinkAutoConnectReconciler {
   }
 
   async tick(signal?: AbortSignal): Promise<void> {
-    await this.publishLocal(signal);
+    try {
+      await this.publishLocal(signal);
+    } catch {
+      this.storeFailedValue = true;
+      this.localPublished = false;
+      return;
+    }
 
     let rows: readonly ZLinkPeerLocation[];
     try {
@@ -1462,6 +1475,7 @@ export class ZLinkAutoConnectLoop {
     this.timer = this.setTimer(() => {
       this.timer = undefined;
       void this.tick(this.controller?.signal)
+        .catch(() => undefined)
         .finally(() => this.scheduleNext());
     }, this.options.pollingIntervalMs);
   }

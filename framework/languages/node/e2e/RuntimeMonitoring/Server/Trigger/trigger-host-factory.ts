@@ -50,6 +50,7 @@ async function requestWithTransientHost(
   const app = await NestFactory.createApplicationContext(TriggerModule, { logger: false, abortOnError: false });
   try {
     const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+    await waitForTransientChannelReady(evidence);
     return await requestProfile(channel, request);
   } finally {
     await Promise.race([
@@ -95,4 +96,15 @@ function createTriggerModule(
     ]
   })(TriggerModule);
   return TriggerModule;
+}
+
+async function waitForTransientChannelReady(evidence: EvidenceStore): Promise<void> {
+  const entries = await evidence.waitUntil((snapshot) =>
+    snapshot.some((line) =>
+      line.includes('monitor-socket|')
+      && line.includes('kind=ConnectionReady')
+    ), 10000);
+  if (!entries.some((line) => line.includes('kind=ConnectionReady'))) {
+    throw new Error('Timed out waiting for transient trigger channel readiness.');
+  }
 }

@@ -39,8 +39,13 @@ func main() {
 	apiRouterRID := zlink.NewRoutingID([]byte("room-channel-server"))
 	samplecommon.Must(roomRouter.SetRoutingID(roomRouterRID))
 	samplecommon.Must(apiRouter.SetRoutingID(apiRouterRID))
+	apiMon := samplecommon.OpenMonitor(apiRouter)
+	defer apiMon.Close()
+	roomMon := samplecommon.OpenMonitor(roomRouter)
+	defer roomMon.Close()
 	samplecommon.Must(apiRouter.Bind(endpoint))
 	samplecommon.Must(roomRouter.Connect(endpoint))
+	samplecommon.WaitConnected(apiMon, roomMon)
 	// "api" 채널 호출을 이 ROUTER로 내보내도록 bridge에 등록한다.
 	samplecommon.Must(bridge.AttachRouterChannel(channel, roomRouter, nil))
 

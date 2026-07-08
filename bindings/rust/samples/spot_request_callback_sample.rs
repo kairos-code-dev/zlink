@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use zlink::{Context, Message, RecvFlags, RoutingId, SendFlags, SpotNode};
+use zlink::{Context, Message, RecvFlags, RoutingId, SendFlags, SocketMonitor, SpotNode};
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
@@ -30,8 +30,14 @@ fn main() {
     responder
         .set_routing_id(&responder_rid)
         .expect("responder routing id failed");
+    let responder_monitor = SocketMonitor::open(&responder).expect("responder monitor open failed");
+    let requester_monitor =
+        SocketMonitor::open(&requester_router).expect("requester monitor open failed");
     responder.bind(&endpoint).expect("bind failed");
     requester_router.connect(&endpoint).expect("connect failed");
+    sample_support::wait_connected(&[&responder_monitor, &requester_monitor]);
+    drop(responder_monitor);
+    drop(requester_monitor);
     bridge
         .attach_router_channel(channel_name, &requester_router)
         .expect("attach router channel failed");

@@ -35,20 +35,25 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeCallbackSupport;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.RuntimeResources;
 
 final class SpotDispatchSupport implements AutoCloseable {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_DISPATCH_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS);
+    private static final Arena DISPATCH_CALLBACK_ARENA = Arena.ofShared();
+    private static final MemorySegment DISPATCH_CALLBACK =
+      LINKER.upcallStub(
+        callbackHandle("handleDispatchEventCallback",
+          MethodType.methodType(void.class, MemorySegment.class,
+            MemorySegment.class, MemorySegment.class)),
+        FD_DISPATCH_HANDLER, DISPATCH_CALLBACK_ARENA);
     private static final AtomicLong NEXT_CALLBACK_ID = new AtomicLong(1L);
     private static final ConcurrentMap<Long, SpotDispatchSupport> RECEIVERS =
       new ConcurrentHashMap<>();
 
     private final Spot spot;
     private SpotDispatchEventHandler dispatchEventHandler;
-    private Arena dispatchCallbackArena;
     private long dispatchCallbackId;
     private final NativeCallbackSupport callbacks =
         new NativeCallbackSupport("zlink-spot-dispatch-callback");
@@ -61,24 +66,19 @@ final class SpotDispatchSupport implements AutoCloseable {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         releaseDispatchEventHandlerSlot();
-        Arena arena = Arena.ofShared();
         long callbackId = NEXT_CALLBACK_ID.getAndIncrement();
-        MemorySegment callback = LINKER.upcallStub(
-          callbackHandle("handleDispatchEventCallback",
-            MethodType.methodType(void.class, MemorySegment.class,
-              MemorySegment.class, MemorySegment.class)),
-          FD_DISPATCH_HANDLER, arena);
-        int rc = Native.spotDispatchEventHandler(handle(), callback,
+        dispatchEventHandler = handler;
+        dispatchCallbackId = callbackId;
+        RECEIVERS.put(callbackId, this);
+        int rc = Native.spotDispatchEventHandler(handle(), DISPATCH_CALLBACK,
           MemorySegment.ofAddress(callbackId));
         if (rc != 0) {
-            RuntimeResources.closeArena(arena);
+            RECEIVERS.remove(callbackId, this);
+            dispatchCallbackId = 0L;
+            dispatchEventHandler = null;
             throw new ZlinkHandlerException(HandlerResult.fromValue(rc),
               Native.errno());
         }
-        dispatchEventHandler = handler;
-        dispatchCallbackArena = arena;
-        dispatchCallbackId = callbackId;
-        RECEIVERS.put(callbackId, this);
     }
 
     void ensureNoCallbackFailure() {
@@ -216,8 +216,6 @@ final class SpotDispatchSupport implements AutoCloseable {
             RECEIVERS.remove(callbackId);
             dispatchCallbackId = 0L;
         }
-        RuntimeResources.closeArena(dispatchCallbackArena);
-        dispatchCallbackArena = null;
         dispatchEventHandler = null;
     }
 

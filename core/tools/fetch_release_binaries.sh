@@ -115,9 +115,17 @@ copy_linux_soname() {
   fi
   soname="$(find "$pkg_dir" -maxdepth 1 -type f -name 'libzlink.so.[0-9]*' | sort -V | tail -n 1 || true)"
   if [ -n "$soname" ] && [ -f "$soname" ]; then
-    install -D -m 0755 "$soname" "$dst_dir/$(basename "$soname")"
-    find "$dst_dir" -maxdepth 1 -type f -name 'libzlink.so.[0-9]*' ! -name "$(basename "$soname")" -delete
-    find "$dst_dir" -maxdepth 1 -type l -name 'libzlink.so.[0-9]*' ! -name "$(basename "$soname")" -delete
+    soname_base="$(basename "$soname")"
+    install -D -m 0755 "$soname" "$dst_dir/$soname_base"
+    find "$dst_dir" -maxdepth 1 -type f -name 'libzlink.so.[0-9]*' ! -name "$soname_base" -delete
+    find "$dst_dir" -maxdepth 1 -type l -name 'libzlink.so.[0-9]*' ! -name "$soname_base" -delete
+    case "$dst_dir" in
+      *linux-x64|*linux-x86_64)
+        rm -f "$dst_dir/libzlink.so" "$dst_dir/libzlink.so.8"
+        ln -s "libzlink.so.8" "$dst_dir/libzlink.so"
+        ln -s "$soname_base" "$dst_dir/libzlink.so.8"
+        ;;
+    esac
   fi
 }
 

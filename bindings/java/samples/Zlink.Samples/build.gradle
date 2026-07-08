@@ -29,8 +29,6 @@ def sampleMainClasses = [
     runMonitorRecv: 'systems.zlink.samples.MonitorRecvSample',
     runSpotRecv: 'systems.zlink.samples.SpotRecvSample',
     runSpotRequestAsync: 'systems.zlink.samples.SpotRequestAsyncSample',
-    runDiscoveryRegistry: 'systems.zlink.samples.DiscoveryRegistrySample',
-    runRegistryQuery: 'systems.zlink.samples.RegistryQuerySample',
     runActorRoomServer: 'systems.zlink.samples.ActorRoomServerSample',
     runActorGatewayRelay: 'systems.zlink.samples.ActorGatewayRelaySample',
     runActorSinglePlayerQueue: 'systems.zlink.samples.ActorSinglePlayerQueueSample',

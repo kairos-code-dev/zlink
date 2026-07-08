@@ -394,6 +394,55 @@ elif not python_major_updated and not python_minor_updated and not python_patch_
     # Newer python tests may read expected version directly from core/include/zlink.h.
     pass
 
+def update_version_header(path: Path) -> None:
+    replace_regex(path, r"#define ZLINK_VERSION_MAJOR [0-9]+",
+                  f"#define ZLINK_VERSION_MAJOR {major}")
+    replace_regex(path, r"#define ZLINK_VERSION_MINOR [0-9]+",
+                  f"#define ZLINK_VERSION_MINOR {minor}")
+    replace_regex(path, r"#define ZLINK_VERSION_PATCH [0-9]+",
+                  f"#define ZLINK_VERSION_PATCH {patch}")
+
+c_top_header = repo_root / "bindings/c/include/zlink.h"
+c_common = repo_root / "bindings/c/include/zlink/common.h"
+c_common_version_test = repo_root / "bindings/c/tests/test_c_common_header_version.c"
+c_contract_surface_test = repo_root / "bindings/c/tests/test_c_contract_surface.c"
+go_top_header = repo_root / "bindings/go/include/zlink.h"
+go_common = repo_root / "bindings/go/include/zlink/common.h"
+go_contract_test = repo_root / "bindings/go/contract_test.go"
+rust_top_header = repo_root / "bindings/rust/include/zlink.h"
+rust_common = repo_root / "bindings/rust/include/zlink/common.h"
+rust_cargo_toml = repo_root / "bindings/rust/Cargo.toml"
+rust_cargo_lock = repo_root / "bindings/rust/Cargo.lock"
+
+update_version_header(c_top_header)
+update_version_header(c_common)
+for path in (c_common_version_test, c_contract_surface_test):
+    replace_regex(path, r"ZLINK_VERSION_MAJOR == [0-9]+",
+                  f"ZLINK_VERSION_MAJOR == {major}")
+    replace_regex(path, r"ZLINK_VERSION_MINOR == [0-9]+",
+                  f"ZLINK_VERSION_MINOR == {minor}")
+    replace_regex(path, r"ZLINK_VERSION_PATCH == [0-9]+",
+                  f"ZLINK_VERSION_PATCH == {patch}")
+    replace_regex(path, r"ZLINK_MAKE_VERSION \([0-9]+, [0-9]+, [0-9]+\)",
+                  f"ZLINK_MAKE_VERSION ({major}, {minor}, {patch})")
+
+update_version_header(go_top_header)
+update_version_header(go_common)
+replace_regex(go_contract_test,
+              r'got != "[0-9]+"',
+              f'got != "{patch}"')
+replace_regex(go_contract_test,
+              r'want [0-9]+"',
+              f'want {patch}"')
+
+update_version_header(rust_top_header)
+update_version_header(rust_common)
+replace_regex(rust_cargo_toml, r'^version\s*=\s*"[^"]+"$',
+              f'version = "{expect}"')
+replace_regex(rust_cargo_lock,
+              r'(?m)(\[\[package\]\]\nname = "zlink"\nversion = ")[^"]+(")',
+              rf'\g<1>{expect}\2')
+
 go_native = repo_root / "bindings/go/native"
 if go_native.exists():
     native_artifacts = sorted(
@@ -423,7 +472,11 @@ PY
 # cpp binding version markers (common.h fallback defines + contract test assertion)
 IFS='.' read -r EV_MAJOR EV_MINOR EV_PATCH <<<"${expect_version}"
 CPP_COMMON="${REPO_ROOT}/bindings/cpp/include/zlink/common.h"
+CPP_TOP_HEADER="${REPO_ROOT}/bindings/cpp/include/zlink.h"
 CPP_VER_TEST="${REPO_ROOT}/bindings/cpp/tests/contract/test_cpp_contract_common_header_version.cpp"
+if [[ -f "${CPP_TOP_HEADER}" ]]; then
+  sed -i -E "s/#define ZLINK_VERSION_MAJOR [0-9]+/#define ZLINK_VERSION_MAJOR ${EV_MAJOR}/; s/#define ZLINK_VERSION_MINOR [0-9]+/#define ZLINK_VERSION_MINOR ${EV_MINOR}/; s/#define ZLINK_VERSION_PATCH [0-9]+/#define ZLINK_VERSION_PATCH ${EV_PATCH}/" "${CPP_TOP_HEADER}"
+fi
 if [[ -f "${CPP_COMMON}" ]]; then
   sed -i -E "s/#define ZLINK_VERSION_MAJOR [0-9]+/#define ZLINK_VERSION_MAJOR ${EV_MAJOR}/; s/#define ZLINK_VERSION_MINOR [0-9]+/#define ZLINK_VERSION_MINOR ${EV_MINOR}/; s/#define ZLINK_VERSION_PATCH [0-9]+/#define ZLINK_VERSION_PATCH ${EV_PATCH}/" "${CPP_COMMON}"
 fi

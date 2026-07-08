@@ -22,8 +22,6 @@ TASKS=(
   ":samples:runSpotPubSubExample"
   ":samples:runSpotRpcExample"
   ":samples:runSpotTimerExample"
-  ":samples:runDiscoveryRegistry"
-  ":samples:runRegistryQuery"
   ":samples:runActorRoomServer"
   ":samples:runActorGatewayRelay"
   ":samples:runActorSinglePlayerQueue"

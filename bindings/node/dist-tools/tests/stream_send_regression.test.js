@@ -14,6 +14,23 @@ async function reservePort() {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     return port;
 }
+async function setPubBindOnReservedPort(node) {
+    let lastError;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+        try {
+            node.setPubBind(endpoint);
+            return endpoint;
+        }
+        catch (error) {
+            lastError = error;
+            if (!/Address already in use|EADDRINUSE/i.test(String(error?.message ?? error))) {
+                throw error;
+            }
+        }
+    }
+    throw lastError;
+}
 async function waitFor(condition, label, timeoutMs = 5000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -75,6 +92,68 @@ async function readFrames(socket, count, timeoutMs = 5000) {
     }
     return frames;
 }
+async function waitForSocketClosed(socket, timeoutMs = 2000) {
+    if (socket.destroyed) {
+        return;
+    }
+    await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            cleanup();
+            reject(new Error('socket close timed out'));
+        }, timeoutMs);
+        const cleanup = () => {
+            clearTimeout(timer);
+            socket.off('close', onClose);
+            socket.off('end', onClose);
+            socket.off('error', onError);
+        };
+        const onClose = () => {
+            cleanup();
+            resolve();
+        };
+        const onError = () => {
+            cleanup();
+            resolve();
+        };
+        socket.once('close', onClose);
+        socket.once('end', onClose);
+        socket.once('error', onError);
+    });
+}
+test('stream disconnectRid from packet handler closes the raw client', async () => {
+    const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const ctx = zlink.createContext();
+    const stream = zlink.createStreamSocket(ctx);
+    const client = new net.Socket();
+    try {
+        stream.bind(endpoint);
+        const packetHandled = new Promise((resolve, reject) => {
+            stream.setPacketHandler((rid, header, body) => {
+                try {
+                    header.close();
+                    body.close();
+                    stream.disconnectRid(rid);
+                    resolve();
+                }
+                catch (error) {
+                    reject(error);
+                }
+            });
+        });
+        await new Promise((resolve, reject) => {
+            client.once('error', reject);
+            client.connect(Number(endpoint.split(':').pop()), '127.0.0.1', resolve);
+        });
+        client.write(frame('request-header', 'request-body'));
+        await packetHandled;
+        await waitForSocketClosed(client);
+    }
+    finally {
+        client.destroy();
+        stream.close();
+        ctx.close();
+    }
+});
 test('stream routed send delivers consecutive frames to the same raw client', async () => {
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const ctx = zlink.createContext();
@@ -113,9 +192,7 @@ test('stream routed send delivers consecutive frames to the same raw client', as
 });
 test('stream routed send from spot-to-spot dispatch delivers repeated frames to raw client', async () => {
     const streamEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const responderPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const responderRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const requesterPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const requesterRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const ctx = zlink.createContext();
     const stream = zlink.createStreamSocket(ctx);
@@ -131,9 +208,9 @@ test('stream routed send from spot-to-spot dispatch delivers repeated frames to 
         requester.setRoutingId(zlink.RoutingId.from(Buffer.from('stream-requester-spot')));
         stream.bind(streamEndpoint);
         responderNode.setRouterBind(responderRouterEndpoint);
-        responderNode.setPubBind(responderPeerEndpoint);
+        const responderPeerEndpoint = await setPubBindOnReservedPort(responderNode);
         requesterNode.setRouterBind(requesterRouterEndpoint);
-        requesterNode.setPubBind(requesterPeerEndpoint);
+        const requesterPeerEndpoint = await setPubBindOnReservedPort(requesterNode);
         responderNode.connectPeer(requesterPeerEndpoint);
         requesterNode.connectPeer(responderPeerEndpoint);
         await new Promise((resolve, reject) => {
@@ -201,9 +278,7 @@ test('stream routed send from spot-to-spot dispatch delivers repeated frames to 
 });
 test('actor bound session send from spot-to-spot dispatch flushes final frame without later peer activity', async () => {
     const streamEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const responderPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const responderRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const requesterPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const requesterRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const ctx = zlink.createContext();
     const stream = zlink.createStreamSocket(ctx);
@@ -221,9 +296,9 @@ test('actor bound session send from spot-to-spot dispatch flushes final frame wi
         actor = responderNode.createActor('bound-target');
         stream.bind(streamEndpoint);
         responderNode.setRouterBind(responderRouterEndpoint);
-        responderNode.setPubBind(responderPeerEndpoint);
+        const responderPeerEndpoint = await setPubBindOnReservedPort(responderNode);
         requesterNode.setRouterBind(requesterRouterEndpoint);
-        requesterNode.setPubBind(requesterPeerEndpoint);
+        const requesterPeerEndpoint = await setPubBindOnReservedPort(requesterNode);
         responderNode.connectPeer(requesterPeerEndpoint);
         requesterNode.connectPeer(responderPeerEndpoint);
         let streamRid;

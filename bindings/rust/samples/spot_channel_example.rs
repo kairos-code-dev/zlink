@@ -6,7 +6,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use zlink::{Context, Message, Received, RecvFlags, RoutingId, SendFlags, SpotNode};
+use zlink::{
+    Context, Message, Received, RecvFlags, RoutingId, SendFlags, SocketMonitor, SpotNode,
+};
 
 #[path = "sample_support.rs"]
 mod sample_support;
@@ -26,8 +28,13 @@ fn main() {
     let api_router_rid = RoutingId::from(b"room-channel-server");
     room_router.set_routing_id(&room_router_rid).unwrap();
     api_router.set_routing_id(&api_router_rid).unwrap();
+    let api_monitor = SocketMonitor::open(&api_router).unwrap();
+    let room_monitor = SocketMonitor::open(&room_router).unwrap();
     api_router.bind(&endpoint).unwrap();
     room_router.connect(&endpoint).unwrap();
+    sample_support::wait_connected(&[&api_monitor, &room_monitor]);
+    drop(api_monitor);
+    drop(room_monitor);
     // "api" 채널 호출을 이 ROUTER로 내보내도록 bridge에 등록한다.
     bridge.attach_router_channel(channel, &room_router).unwrap();
 

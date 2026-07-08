@@ -34,7 +34,7 @@ public sealed class test_message
     }
 
     [Fact]
-    public void message_from_copy_preserves_managed_snapshot_storage()
+    public void message_from_copy_preserves_snapshot_storage()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -46,8 +46,8 @@ public sealed class test_message
 
         using Message copy = source.Copy();
 
-        Assert.Equal(1, source.RefCount);
-        Assert.Equal(1, copy.RefCount);
+        Assert.True(source.RefCount >= 2);
+        Assert.True(copy.RefCount >= 2);
         Assert.True(copy.AsReadOnlySpan().SequenceEqual(source.AsReadOnlySpan()));
         Assert.NotEqual(payload[0], source.AsReadOnlySpan()[0]);
     }

@@ -153,7 +153,7 @@ internal sealed class ZLinkRouteChannelInitializer(
                     handler.PacketName));
         }
 
-        foreach (var assembly in registration.HandlerAssemblies)
+        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
         foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
         {
             if (endpoint.Groups.Count == 0

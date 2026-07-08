@@ -2,7 +2,6 @@ using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions.Handlers;
@@ -11,19 +10,14 @@ internal sealed class AuthenticatePlaySessionHandler(
     IZLinkActorManager actors,
     IZLinkChannelClient channels,
     ILogger<AuthenticatePlaySessionHandler> logger)
-    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>
 {
-    public string PacketName => nameof(AuthenticateReq);
-
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        ZLinkMessage payload,
+        AuthenticateReq authenticate,
         CancellationToken cancellationToken)
     {
-
-        var authenticate = payload.Decode<AuthenticateReq>();
-
         logger.LogInformation(
             "play stream: authenticate requested. sessionId={SessionId}",
             context.SessionId);

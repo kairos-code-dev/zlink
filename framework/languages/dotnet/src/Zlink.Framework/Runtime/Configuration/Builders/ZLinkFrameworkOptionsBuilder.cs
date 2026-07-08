@@ -54,6 +54,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.HandlerAssemblies.Add(assembly);
     }
 
+    public void DisableImplicitHandlerAutoRegistration()
+    {
+        _registration.ImplicitHandlerAutoRegistrationEnabled = false;
+    }
+
     public IZLinkMetadataPolicyBuilder ConfigureMetadata()
     {
         return new ZLinkMetadataPolicyBuilder(_registration.MetadataPolicy);

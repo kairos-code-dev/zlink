@@ -55,11 +55,10 @@ public sealed class ContractSurfaceCoverage
             "payload",
             frameworkMessage,
             bindingMessage);
-        AssertMethodParameter(
-            typeof(IZLinkSessionPacketHandler<>),
-            nameof(IZLinkSessionPacketHandler<IZLinkSessionContext>.HandleAsync),
-            "payload",
-            frameworkMessage,
+        AssertMethodParameterIsNot(
+            typeof(IZLinkSessionPacketHandler<,>),
+            nameof(IZLinkSessionPacketHandler<IZLinkSessionContext, ZLinkMessage>.HandleAsync),
+            "message",
             bindingMessage);
         AssertMethodParameter(
             typeof(IZLinkActorContext),
@@ -110,6 +109,28 @@ public sealed class ContractSurfaceCoverage
             method => method.GetParameters()
                 .Single(parameter => parameter.Name == parameterName)
                 .ParameterType == requiredParameterType);
+
+        foreach (var method in matchingMethods)
+        {
+            var parameter = Assert.Single(
+                method.GetParameters(),
+                parameter => parameter.Name == parameterName);
+            Assert.NotEqual(disallowedParameterType, parameter.ParameterType);
+        }
+    }
+
+    private static void AssertMethodParameterIsNot(
+        Type contractType,
+        string methodName,
+        string parameterName,
+        Type disallowedParameterType)
+    {
+        var matchingMethods = EnumerateInterfaceMethods(contractType)
+            .Where(method => method.Name == methodName
+                             && method.GetParameters().Any(parameter => parameter.Name == parameterName))
+            .ToArray();
+
+        Assert.NotEmpty(matchingMethods);
 
         foreach (var method in matchingMethods)
         {

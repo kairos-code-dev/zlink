@@ -6,7 +6,6 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Handlers;
 
-[ZLinkSpotActorRequestHandler(nameof(SubmitBingoCardReq))]
 internal sealed class SubmitBingoCardHandler
     : IZLinkSpotActorRequestHandler<BingoRoom, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>
 {

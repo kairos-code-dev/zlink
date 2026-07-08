@@ -37,7 +37,7 @@ internal sealed class ZLinkSpotActivationFactory(
                 activation);
 
             activation.AttachSpot(spot);
-            foreach (var assembly in frameworkRegistration.HandlerAssemblies)
+            foreach (var assembly in frameworkRegistration.EnumerateHandlerScanAssemblies())
             foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))
                 await activation.ApplyScannedHandlerAsync(handler, cancellationToken)
                     .ConfigureAwait(false);

@@ -70,24 +70,22 @@ internal static class ZLinkScannedSpotHandlerScanner
             else if (definition == typeof(IZLinkEntrySpotActorSendHandler<,,>)
                      || definition == typeof(IZLinkSpotActorSendHandler<,,>))
             {
-                if (handlerType.GetCustomAttribute<ZLinkSpotActorSendHandlerAttribute>() is { } actorSend)
-                    yield return new ZLinkScannedSpotHandler(
-                        ZLinkScannedSpotHandlerKind.ActorSend,
-                        handlerType,
-                        arguments[0],
-                        arguments[1],
-                        actorSend.PacketName);
+                yield return new ZLinkScannedSpotHandler(
+                    ZLinkScannedSpotHandlerKind.ActorSend,
+                    handlerType,
+                    arguments[0],
+                    arguments[1],
+                    handlerType.GetCustomAttribute<ZLinkSpotActorSendHandlerAttribute>()?.PacketName);
             }
             else if (definition == typeof(IZLinkEntrySpotActorRequestHandler<,,,>)
                      || definition == typeof(IZLinkSpotActorRequestHandler<,,,>))
             {
-                if (handlerType.GetCustomAttribute<ZLinkSpotActorRequestHandlerAttribute>() is { } actorRequest)
-                    yield return new ZLinkScannedSpotHandler(
-                        ZLinkScannedSpotHandlerKind.ActorRequest,
-                        handlerType,
-                        arguments[0],
-                        arguments[1],
-                        actorRequest.PacketName);
+                yield return new ZLinkScannedSpotHandler(
+                    ZLinkScannedSpotHandlerKind.ActorRequest,
+                    handlerType,
+                    arguments[0],
+                    arguments[1],
+                    handlerType.GetCustomAttribute<ZLinkSpotActorRequestHandlerAttribute>()?.PacketName);
             }
     }
 

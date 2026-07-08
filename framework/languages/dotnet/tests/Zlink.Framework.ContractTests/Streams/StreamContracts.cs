@@ -13,8 +13,8 @@ public sealed class StreamContracts
         typeof(IZLinkSessionActors),
         typeof(IZLinkSessionSendCall),
         typeof(IZLinkSessionReplyCall),
-        typeof(IZLinkSessionPacketHandler<>),
-        typeof(IZLinkSessionPacketDispatcher<>),
+        typeof(IZLinkSessionHandlerRegistry),
+        typeof(IZLinkSessionPacketHandler<,>),
         typeof(IZLinkSessionActor),
         typeof(IZLinkStream))]
     public async Task Session_context_collects_identity_stream_and_actor_operations()
@@ -59,29 +59,26 @@ public sealed class StreamContracts
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkSessionPacketHandler<>),
-        typeof(IZLinkSessionPacketDispatcher<>))]
-    public async Task Session_packet_dispatcher_handles_only_registered_packets()
+        typeof(IZLinkSessionHandlerRegistry),
+        typeof(IZLinkSessionPacketHandler<,>))]
+    public async Task Session_configure_registers_typed_packet_handlers()
     {
         var sessionContext = new SessionPacketContext();
-        IZLinkSessionPacketDispatcher<SessionPacketContext> dispatcher =
-            new ExampleSessionPacketDispatcher<SessionPacketContext>(
-            [
-                new AuthenticatePacketHandler()
-            ]);
+        IZLinkSessionHandlerRegistry handlers =
+            new ExampleSessionHandlerRegistry(sessionContext);
 
-        var handled = await dispatcher.TryHandleAsync(
-            sessionContext,
-            new ZLinkSessionDispatchContext("auth"),
+        handlers.AddHandler<AuthenticatePacketHandler>();
+
+        var handled = await handlers.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(AuthenticateReply)),
             ZLinkMessage.From(new AuthenticateReply("token")));
-        var unhandled = await dispatcher.TryHandleAsync(
-            sessionContext,
+        var unhandled = await handlers.TryHandleAsync(
             new ZLinkSessionDispatchContext("gameplay"),
             ZLinkMessage.From(new PlayerJoined("player-1")));
 
         Assert.True(handled);
         Assert.False(unhandled);
-        Assert.Equal("auth", sessionContext.LastPacketName);
+        Assert.Equal(nameof(AuthenticateReply), sessionContext.LastPacketName);
     }
 
     [Fact]
@@ -126,44 +123,72 @@ public sealed class StreamContracts
 
     private sealed record AuthenticateReply(string PlayerId);
 
-    private sealed class SessionPacketContext
+    private sealed class SessionPacketContext : IZLinkSessionContext
     {
         public string? LastPacketName { get; set; }
+
+        public string SessionId => "session-1";
+
+        public RoutingId? RoutingId => Systems.Zlink.RoutingId.From("session-route");
+
+        public string? LocalAddr => "tcp://127.0.0.1:5000";
+
+        public string? RemoteAddr => "tcp://127.0.0.1:5001";
+
+        public IZLinkSessionClient Client => throw new NotSupportedException();
+
+        public IZLinkSessionActors Actors => throw new NotSupportedException();
+
+        public IZLinkSessionHandlerRegistry Handlers => throw new NotSupportedException();
+
+        public ValueTask CloseAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class AuthenticatePacketHandler : IZLinkSessionPacketHandler<SessionPacketContext>
+    private sealed class AuthenticatePacketHandler : IZLinkSessionPacketHandler<SessionPacketContext, AuthenticateReply>
     {
-        public string PacketName => "auth";
-
         public ValueTask HandleAsync(
             SessionPacketContext context,
             ZLinkSessionDispatchContext dispatch,
-            ZLinkMessage payload,
+            AuthenticateReply message,
             CancellationToken cancellationToken)
         {
-            _ = payload;
+            _ = message;
             cancellationToken.ThrowIfCancellationRequested();
             context.LastPacketName = dispatch.PacketName;
             return ValueTask.CompletedTask;
         }
     }
 
-    private sealed class ExampleSessionPacketDispatcher<TContext>(
-        IEnumerable<IZLinkSessionPacketHandler<TContext>> handlers)
-        : IZLinkSessionPacketDispatcher<TContext>
+    private sealed class ExampleSessionHandlerRegistry(SessionPacketContext context) : IZLinkSessionHandlerRegistry
     {
-        private readonly IReadOnlyDictionary<string, IZLinkSessionPacketHandler<TContext>> _handlers =
-            handlers.ToDictionary(static handler => handler.PacketName, StringComparer.Ordinal);
+        private Func<ZLinkSessionDispatchContext, ZLinkMessage, CancellationToken, ValueTask>? _handler;
+
+        public void AddHandler<THandler>()
+            where THandler : class
+        {
+            _handler = async (dispatch, payload, cancellationToken) =>
+            {
+                var handler = new AuthenticatePacketHandler();
+                await ((IZLinkSessionPacketHandler<SessionPacketContext, AuthenticateReply>)handler)
+                    .HandleAsync(context, dispatch, payload.Decode<AuthenticateReply>(), cancellationToken);
+            };
+        }
+
+        public void AddHandler<THandler>(string packetName)
+            where THandler : class
+        {
+            _ = packetName;
+            AddHandler<THandler>();
+        }
 
         public async ValueTask<bool> TryHandleAsync(
-            TContext context,
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload,
             CancellationToken cancellationToken = default)
         {
-            if (!_handlers.TryGetValue(dispatch.PacketName, out var handler)) return false;
+            if (dispatch.PacketName != nameof(AuthenticateReply) || _handler is null) return false;
 
-            await handler.HandleAsync(context, dispatch, payload, cancellationToken);
+            await _handler(dispatch, payload, cancellationToken);
             return true;
         }
     }
@@ -256,6 +281,9 @@ public sealed class StreamContracts
         public IZLinkSessionClient Client => this;
 
         public IZLinkSessionActors Actors => this;
+
+        public IZLinkSessionHandlerRegistry Handlers { get; } =
+            new ExampleSessionHandlerRegistry(new SessionPacketContext());
 
         public ValueTask CloseAsync()
         {

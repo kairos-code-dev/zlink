@@ -6,7 +6,6 @@ namespace GameQuest.GameApi.Session;
 
 internal sealed class GameQuestSession(
     IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     GameQuestSessionRegistry registry,
     GameQuestStore store) : IZLinkSession
 {
@@ -32,7 +31,7 @@ internal sealed class GameQuestSession(
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (!await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
+        if (!await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken))
             throw new InvalidOperationException($"Unsupported GameQuest packet '{dispatch.PacketName}'.");
     }
 }

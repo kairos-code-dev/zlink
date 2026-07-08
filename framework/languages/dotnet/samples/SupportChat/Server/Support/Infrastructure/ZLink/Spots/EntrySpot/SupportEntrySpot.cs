@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
@@ -18,12 +17,6 @@ internal sealed class SupportEntrySpot(
     ILogger<SupportEntrySpot> logger) : IZLinkEntrySpot<SupportUserActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
-
-    public void Configure()
-    {
-        Context.Handlers.AddHandler<OpenConversationActorHandler>();
-        Context.Handlers.AddHandler<SetAgentAvailableHandler>();
-    }
 
     public async ValueTask OnCreateActorAsync(
         SupportUserActor actor,

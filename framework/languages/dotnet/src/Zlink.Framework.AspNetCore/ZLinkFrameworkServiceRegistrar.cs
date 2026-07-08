@@ -22,7 +22,8 @@ internal static class ZLinkFrameworkServiceRegistrar
         this IServiceCollection services,
         ZLinkFrameworkRegistration registration)
     {
-        foreach (var assembly in registration.HandlerAssemblies) services.AddZLinkHandlersFromAssembly(assembly);
+        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
+            services.AddZLinkHandlersFromAssembly(assembly);
 
         foreach (var channel in registration.Channels.Values) AddExplicitChannelHandlers(services, channel);
 
@@ -98,7 +99,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkHandlerRegistry(
                 provider.GetServices<ZLinkHandlerEndpointDescriptor>()));
         services.TryAddSingleton<ZLinkHandlerDispatcher>();
-        services.TryAddScoped(typeof(IZLinkSessionPacketDispatcher<>), typeof(ZLinkSessionPacketDispatcher<>));
         services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
         services.AddSingleton(static provider =>
             new ZLinkFrameworkRuntime(

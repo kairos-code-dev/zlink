@@ -103,7 +103,7 @@ public sealed class RegressionTests
         AssertEnsureActorHandlersReturnSessionRelayRemoteAddresses(sampleRoot);
         AssertNoSampleSessionRelayJson(sampleRoot);
         AssertSessionPayloadPolicy(sampleRoot);
-        AssertUsesFrameworkSessionPacketDispatcher(sampleRoot);
+        AssertUsesAutoRegisteredSessionHandlers(sampleRoot);
     }
 
     [Fact]
@@ -197,6 +197,14 @@ public sealed class RegressionTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("intentionally derived here, not read", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("sleep 2", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("local assembly=\"${SCRIPT_DIR}/Server/bin/Debug/net8.0/TicTacToe.Server.dll\"",
+            shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("dotnet \"${assembly}\" \"${mode}\" --config \"${config_file}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run --no-build --project \"${SCRIPT_DIR}/Server/TicTacToe.Server.csproj\"",
+            shellRunner,
+            StringComparison.Ordinal);
 
         Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
             StringComparison.Ordinal);
@@ -1367,13 +1375,42 @@ public sealed class RegressionTests
         }
     }
 
-    private static void AssertUsesFrameworkSessionPacketDispatcher(string sampleRoot)
+    [Fact]
+    public void Only_TicTacToe_Sample_Uses_Manual_Handler_Registration()
+    {
+        var samplesRoot = ResolveSamplesRoot();
+        var manualRegistrationTokens = new[]
+        {
+            "Context.Handlers.AddHandler<",
+            "Context.Handlers.AddPacket<",
+            "Context.Handlers.AddSubscribe<",
+            "Context.Handlers.AddActorPacket<"
+        };
+        var manualRegistrations = EnumerateSourceFiles(samplesRoot)
+            .Where(file =>
+            {
+                var text = File.ReadAllText(file);
+                return manualRegistrationTokens.Any(token => text.Contains(token, StringComparison.Ordinal));
+            })
+            .ToArray();
+
+        Assert.NotEmpty(manualRegistrations);
+        Assert.All(manualRegistrations, file =>
+            Assert.Contains(
+                $"{Path.DirectorySeparatorChar}TicTacToe{Path.DirectorySeparatorChar}",
+                file,
+                StringComparison.Ordinal));
+    }
+
+    private static void AssertUsesAutoRegisteredSessionHandlers(string sampleRoot)
     {
         var sourceFiles = EnumerateSourceFiles(Path.Combine(sampleRoot, "Server", "Session")).ToArray();
         var allText = string.Join(Environment.NewLine, sourceFiles.Select(File.ReadAllText));
 
-        Assert.Contains("IZLinkSessionPacketDispatcher<", allText, StringComparison.Ordinal);
         Assert.Contains("IZLinkSessionPacketHandler<", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Context.Handlers.AddHandler<", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("IZLinkSessionPacketDispatcher<", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("PacketName =>", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("IBingoSessionHandler", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("ISessionRelayPacketHandler", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("ToDictionary(static handler => handler.PacketName", allText, StringComparison.Ordinal);

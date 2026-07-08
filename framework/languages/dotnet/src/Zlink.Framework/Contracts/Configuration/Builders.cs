@@ -172,6 +172,8 @@ public interface IZLinkFrameworkOptions
 
     void AddHandlersFromAssembly(System.Reflection.Assembly assembly);
 
+    void DisableImplicitHandlerAutoRegistration();
+
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
 
     void AddSpotRouteRefResolver<TResolver>()

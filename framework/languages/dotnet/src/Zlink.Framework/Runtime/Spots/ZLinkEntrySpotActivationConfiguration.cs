@@ -50,26 +50,6 @@ internal sealed partial class ZLinkEntrySpotActivation
         AddActorPacketCore<THandler, TActor>(packetName);
     }
 
-    public void AddActorSend<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        if (string.IsNullOrWhiteSpace(packetName))
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-
-        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Command);
-    }
-
-    public void AddActorRequest<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        if (string.IsNullOrWhiteSpace(packetName))
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-
-        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Request);
-    }
-
     internal async ValueTask ApplyScannedHandlerAsync(
         ZLinkScannedSpotHandler handler,
         CancellationToken cancellationToken)
@@ -124,17 +104,8 @@ internal sealed partial class ZLinkEntrySpotActivation
         where THandler : class
         where TActor : IZLinkActor
     {
-        AddActorPacketCore<THandler, TActor>(packetName, null);
-    }
-
-    private void AddActorPacketCore<THandler, TActor>(
-        string? packetName,
-        ZLinkMessageKind? expectedKind)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
         EnsureConfigurationOpen();
-        _actorHandlers.AddPacket(typeof(THandler), typeof(TActor), packetName, expectedKind);
+        _actorHandlers.AddPacket(typeof(THandler), typeof(TActor), packetName);
     }
 
     private void EnsureConfigurationOpen()

@@ -11,19 +11,16 @@ internal sealed class SubscribeDeliverySessionHandler(
     CustomerActorAccess actors,
     CustomerActorDirectory directory,
     ILogger<SubscribeDeliverySessionHandler> logger)
-    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, SubscribeDeliveryReq>
 {
     private const string CustomerId = "customer-1";
-
-    public string PacketName => nameof(SubscribeDeliveryReq);
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        SubscribeDeliveryReq request,
         CancellationToken cancellationToken)
     {
-        var request = payload.Decode<SubscribeDeliveryReq>();
         var found = await actors.FindAsync(
             new FindCustomerActorReq(CustomerId),
             cancellationToken);

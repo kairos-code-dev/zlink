@@ -4,6 +4,10 @@ public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; }
 
+    void Configure()
+    {
+    }
+
     ValueTask OnConnectedAsync(
         CancellationToken cancellationToken);
 
@@ -73,6 +77,8 @@ public interface IZLinkSessionContext
     IZLinkSessionClient Client { get; }
 
     IZLinkSessionActors Actors { get; }
+
+    IZLinkSessionHandlerRegistry Handlers { get; }
 
     ValueTask CloseAsync();
 }

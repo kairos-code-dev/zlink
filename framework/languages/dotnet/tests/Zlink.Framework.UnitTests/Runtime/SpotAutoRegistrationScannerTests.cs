@@ -33,13 +33,13 @@ public sealed class SpotAutoRegistrationScannerTests
             && handler.HandlerType == typeof(AutoRoomActorSendHandler)
             && handler.SpotType == typeof(AutoRoomSpot)
             && handler.ActorType == typeof(AutoActor)
-            && handler.PacketName == "actor.send");
+            && handler.PacketName is null);
         Assert.Contains(handlers, static handler =>
             handler.Kind == ZLinkScannedSpotHandlerKind.ActorRequest
             && handler.HandlerType == typeof(AutoEntryActorRequestHandler)
             && handler.SpotType == typeof(AutoEntrySpot)
             && handler.ActorType == typeof(AutoActor)
-            && handler.PacketName == "entry.request");
+            && handler.PacketName is null);
         Assert.Contains(handlers, static handler =>
             handler.Kind == ZLinkScannedSpotHandlerKind.Timer
             && handler.HandlerType == typeof(AutoRoomTimerHandler)
@@ -104,7 +104,6 @@ public sealed class SpotAutoRegistrationScannerTests
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
-    [ZLinkSpotActorSendHandler("actor.send")]
     private sealed class AutoRoomActorSendHandler
         : IZLinkSpotActorSendHandler<AutoRoomSpot, AutoActor, AutoActorMessage>
     {
@@ -116,7 +115,6 @@ public sealed class SpotAutoRegistrationScannerTests
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
-    [ZLinkSpotActorRequestHandler("entry.request")]
     private sealed class AutoEntryActorRequestHandler
         : IZLinkEntrySpotActorRequestHandler<AutoEntrySpot, AutoActor, AutoActorRequest, AutoActorReply>
     {

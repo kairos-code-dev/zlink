@@ -27,8 +27,8 @@ internal sealed class TicTacToeGame(
 
     public void Configure()
     {
-        Context.Handlers.AddActorRequest<PlayActorPlaceMarkHandler, PlayActor>(nameof(PlaceMarkReq));
-        Context.Handlers.AddActorSend<PlayActorLeaveGameHandler, PlayActor>(nameof(LeaveGameReq));
+        Context.Handlers.AddHandler<PlayActorPlaceMarkHandler>();
+        Context.Handlers.AddHandler<PlayActorLeaveGameHandler>();
     }
 
     public ValueTask OnJoinedActorAsync(

@@ -203,6 +203,10 @@ public sealed class BuilderContracts
         {
         }
 
+        public void DisableImplicitHandlerAutoRegistration()
+        {
+        }
+
         public IZLinkMetadataPolicyBuilder ConfigureMetadata()
         {
             return Metadata;

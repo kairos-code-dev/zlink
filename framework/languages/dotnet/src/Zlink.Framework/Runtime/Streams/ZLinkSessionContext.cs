@@ -14,11 +14,13 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     public ZLinkSessionContext(
         ZLinkFrameworkRuntime runtime,
         IZLinkStream stream,
+        IZLinkSessionHandlerRegistry handlers,
         Func<ValueTask> closeAsync,
         Func<CancellationToken, ValueTask> closeByProxyAsync)
     {
         Runtime = runtime;
         _stream = stream;
+        Handlers = handlers;
         _closeAsync = closeAsync;
         _closeByProxyAsync = closeByProxyAsync;
         ActorCoordinator = new ZLinkSessionActorCoordinator(runtime, stream);
@@ -50,6 +52,8 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     public IZLinkSessionClient Client => _client;
 
     public IZLinkSessionActors Actors => _actorSurface;
+
+    public IZLinkSessionHandlerRegistry Handlers { get; }
 
     public ValueTask CloseAsync()
     {

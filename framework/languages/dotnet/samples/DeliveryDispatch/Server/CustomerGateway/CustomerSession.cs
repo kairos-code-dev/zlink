@@ -3,8 +3,7 @@ using Zlink.Framework.Contracts.Streams;
 namespace DeliveryDispatch.Server.CustomerGateway;
 
 internal sealed class CustomerSession(
-    IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers) : IZLinkSession
+    IZLinkSessionContext context) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -33,7 +32,7 @@ internal sealed class CustomerSession(
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
+        if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken))
         {
             return;
         }

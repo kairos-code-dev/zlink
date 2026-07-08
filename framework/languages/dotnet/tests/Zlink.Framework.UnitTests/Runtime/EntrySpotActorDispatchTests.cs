@@ -288,7 +288,8 @@ public sealed class EntrySpotActorDispatchTests
             .BuildServiceProvider();
         var registration = new ZLinkFrameworkRegistration
         {
-            DefaultRequestTimeout = TimeSpan.FromSeconds(1)
+            DefaultRequestTimeout = TimeSpan.FromSeconds(1),
+            ImplicitHandlerAutoRegistrationEnabled = false
         };
         if (messageFlowObserver is not null)
             registration.DispatchOptions.SetMessageFlowObserver(messageFlowObserver);
@@ -482,11 +483,11 @@ public sealed class EntrySpotActorDispatchTests
         public void Configure()
         {
             Context.Handlers.AddPacket<ProbeRouteHandler>();
-            Context.Handlers.AddActorSend<ProbeActorSendHandler, ProbeActor>("first");
-            Context.Handlers.AddActorSend<ProbeActorSendHandler, ProbeActor>("second");
-            Context.Handlers.AddActorSend<ProbeActorYieldHandler, ProbeActor>("yield");
-            Context.Handlers.AddActorRequest<ProbeActorRequestHandler, ProbeActor>("request");
-            Context.Handlers.AddActorRequest<ProbeActorThrowingRequestHandler, ProbeActor>("throw");
+            Context.Handlers.AddHandler<ProbeActorSendHandler>("first");
+            Context.Handlers.AddHandler<ProbeActorSendHandler>("second");
+            Context.Handlers.AddHandler<ProbeActorYieldHandler>("yield");
+            Context.Handlers.AddHandler<ProbeActorRequestHandler>("request");
+            Context.Handlers.AddHandler<ProbeActorThrowingRequestHandler>("throw");
         }
     }
 

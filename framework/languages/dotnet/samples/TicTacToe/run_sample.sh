@@ -194,8 +194,8 @@ start_server() {
   local name="$1"
   local mode="$2"
   local config_file="$3"
-  dotnet run --no-build --project "${SCRIPT_DIR}/Server/TicTacToe.Server.csproj" -- \
-    "${mode}" --config "${config_file}" >"${LOG_DIR}/${name}.log" 2>&1 &
+  local assembly="${SCRIPT_DIR}/Server/bin/Debug/net8.0/TicTacToe.Server.dll"
+  dotnet "${assembly}" "${mode}" --config "${config_file}" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 

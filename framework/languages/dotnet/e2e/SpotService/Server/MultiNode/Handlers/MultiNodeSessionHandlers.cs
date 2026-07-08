@@ -11,10 +11,16 @@ namespace SpotService.Server.MultiNode.Handlers;
 
 internal sealed class ScenarioSession(
     IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     EvidenceStore evidence) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddHandler<AuthSessionHandler>();
+        Context.Handlers.AddHandler<MultiBindSessionHandler>();
+        Context.Handlers.AddHandler<UserSpotAuthSessionHandler>();
+    }
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -53,7 +59,7 @@ internal sealed class ScenarioSession(
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken)) return;
+        if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken)) return;
 
         var actorId = dispatch.Metadata.Find(SpotServiceNames.ActorIdMetadata);
         var actor = string.IsNullOrWhiteSpace(actorId)
@@ -83,18 +89,15 @@ internal sealed class AuthSessionHandler(
     IZLinkActorManager actors,
     NodeOptions node,
     EvidenceStore evidence)
-    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthReq>
 {
-    public string PacketName => "AuthReq";
-
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        ZLinkMessage payload,
+        AuthReq request,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var request = payload.Decode<AuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
             ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
             : await routes.RequestToNode(
@@ -133,18 +136,15 @@ internal sealed class AuthSessionHandler(
 
 internal sealed class MultiBindSessionHandler(
     IZLinkRouteClient routes)
-    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, MultiBindReq>
 {
-    public string PacketName => "MultiBindReq";
-
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        ZLinkMessage payload,
+        MultiBindReq request,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var request = payload.Decode<MultiBindReq>();
         foreach (var actorId in new[] { request.FirstActorId, request.SecondActorId })
         {
             var ensured = await routes.RequestToNode(
@@ -167,18 +167,15 @@ internal sealed class UserSpotAuthSessionHandler(
     IZLinkRouteClient routes,
     NodeOptions node,
     EvidenceStore evidence)
-    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, UserSpotAuthReq>
 {
-    public string PacketName => "UserSpotAuthReq";
-
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        ZLinkMessage payload,
+        UserSpotAuthReq request,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var request = payload.Decode<UserSpotAuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
             ? await EnsureLocalActorAsync(actors, evidence, request, cancellationToken)
             : await routes.RequestToNode(

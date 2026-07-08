@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Locations;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
@@ -15,17 +14,14 @@ internal sealed class AuthenticateBingoSessionHandler(
     IZLinkRouteClient routes,
     SampleSessionNode session,
     ILogger<AuthenticateBingoSessionHandler> logger)
-    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>
 {
-    public string PacketName => nameof(AuthenticateReq);
-
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        ZLinkMessage payload,
+        AuthenticateReq request,
         CancellationToken cancellationToken)
     {
-        var request = payload.Decode<AuthenticateReq>();
         var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,
                 new AuthenticatePlayerReq { AccessToken = request.AccessToken })

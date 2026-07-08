@@ -5,7 +5,6 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Handlers;
 
-[ZLinkSpotActorRequestHandler(nameof(StopObservingBingoEventsReq))]
 internal sealed class StopObservingBingoEventsHandler
     : IZLinkSpotActorRequestHandler<BingoRoom, PlayerActor, StopObservingBingoEventsReq, StopObservingBingoEventsRes>
 {

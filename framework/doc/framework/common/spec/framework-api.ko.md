@@ -409,6 +409,128 @@ public sealed class ProfileHandlers
 또한 framework는 startup 시점에 channel별 역할을 등록하고, 필요한 역할만
 여는 쪽을 기본 방향으로 본다.
 
+### 3.3 Handler 등록 정책
+
+handler 등록은 session, node/channel, Spot 에서 같은 원칙을 따라야 한다. 사용자는
+handler가 어느 실행 문맥에 속하는지만 알면 되고, packet 이름, actor 타입, request/send
+종류처럼 handler 타입에서 알 수 있는 정보를 등록 호출부에 반복해서 적지 않아야 한다.
+
+수동 등록은 handler를 소유한 실행 문맥의 `Configure()` 단계에서 한다. node/channel
+handler는 application startup 의 channel builder가 실행 문맥이므로 startup 구성에서
+등록한다. session handler는 session 객체의 `Configure()`에서, Entry Spot과 user Spot
+handler는 각 Spot 객체의 `Configure()`에서 등록한다.
+
+session handler 수동 등록은 session 객체 안에서 아래처럼 표현한다.
+
+```csharp
+public void Configure()
+{
+    Context.Handlers.AddHandler<AuthenticateHandler>();
+    Context.Handlers.AddHandler<JoinHandler>();
+}
+```
+
+Spot 메시지 handler 수동 등록은 Spot 객체 안에서 아래처럼 표현한다. actor request/send,
+Spot packet, Spot subscription 같은 메시지 handler는 모두 `AddHandler<THandler>()` 하나로
+등록한다. subscription topic처럼 handler interface만으로 알 수 없는 값은 handler metadata에
+둔다. timer는 메시지 dispatch handler가 아니며, timer 이름과 주기처럼 실행 계획에 속한 값이
+필요하므로 별도 timer 등록 API를 사용한다.
+
+```csharp
+public void Configure()
+{
+    Context.Handlers.AddHandler<JoinActorHandler>();    // actor request/send handler 등록
+    Context.Handlers.AddHandler<DomainEventHandler>();  // subscription topic은 handler metadata에서 읽는다
+}
+
+[ZLinkSpotSubscription("domain.events")]
+public sealed class DomainEventHandler :
+    IZLinkSpotSubscriptionHandler<DomainSpot, DomainEvent>
+{
+    // ...
+}
+```
+
+`AddHandler<THandler>()` 는 기본 등록 표면이다. handler가 구현한 typed interface에서
+session context, Spot 타입, actor 타입, 메시지 타입, request/send/subscription 종류를
+추론한다. packet 이름은 메시지 타입에서 정한다. 메시지 타입 이름과 다른 packet 이름이 필요한
+경우에만 handler metadata나 `AddHandler<THandler>("PacketName")`처럼 packet 이름 override를
+사용한다.
+
+아래처럼 handler 타입에서 이미 알 수 있는 정보를 반복해서 받는 API는 표준 표면으로 두지
+않는다.
+
+```csharp
+Context.Handlers.AddActorRequest<JoinHandler, PlayerActor>("JoinReq");
+Context.Handlers.AddPacket<StateHandler>();
+Context.Handlers.AddSubscribe<DomainEventHandler>("domain.events");
+```
+
+위 형태는 actor 타입, request/send/subscription 종류, packet 이름, topic을 호출부가 다시
+알아야 하므로 handler 등록 표면을 얕게 만든다. 같은 의미는 아래처럼 표현한다.
+
+```csharp
+Context.Handlers.AddHandler<JoinHandler>();
+Context.Handlers.AddHandler<StateHandler>();
+Context.Handlers.AddHandler<DomainEventHandler>();
+```
+
+자동 등록은 assembly, module, package scan 으로 handler 후보를 찾는 기능이다. 자동 등록도
+수동 등록과 같은 추론 규칙을 사용한다. interface 기반 handler는 attribute 없이도 자동 등록
+대상이 될 수 있어야 한다. attribute는 handler interface에서 알 수 없는 추가 metadata를
+제공하거나, method 기반 handler를 선언할 때 사용한다.
+
+자동 등록은 기본값으로 켠다. 이때 runtime은 사용자가 명시한 handler scan 범위뿐 아니라
+등록된 session, Entry Spot, user Spot, actor factory, 명시 channel handler 같은 application
+타입의 assembly/module/package도 scan 범위로 볼 수 있다. 그래야 샘플과 일반 application이
+handler class를 만든 뒤 별도 등록 호출을 반복하지 않아도 된다.
+
+다만 같은 테스트 assembly 안에 같은 실행 문맥과 같은 packet key를 가진 대체 handler를 여러
+개 둔 fixture처럼, 자동 등록이 의도하지 않은 후보까지 발견하는 경우가 있다. 이런 경우에는
+handler 타입이나 메시지 타입의 추론 규칙을 임시로 바꾸지 않는다. 대신 해당 host에서 implicit
+handler auto registration을 끄고, 필요한 handler만 `Configure()` 또는 명시 builder 호출로
+등록한다. 명시적으로 추가한 assembly/module/package scan은 사용자가 의도한 등록 범위이므로
+implicit auto registration을 꺼도 유지할 수 있어야 한다.
+
+C++ framework는 이 자동 등록 원칙의 예외다. C++은 runtime reflection 기반 scan을 전제로
+하지 않고 compile-time 타입과 명시 builder 호출을 기준으로 handler를 등록한다. 따라서 C++
+샘플과 E2E는 같은 메시지, 같은 handler 책임, 같은 충돌 검증 규칙을 유지하되 handler 발견과
+등록은 C++ public builder 표면에 맞게 명시한다.
+
+아래 표의 자동 등록 key는 C++을 제외하고 assembly, module, package scan 을 제공하는 언어에
+적용한다.
+
+| 영역 | 수동 등록 위치 | 자동 등록 key | attribute 역할 |
+|------|----------------|---------------|----------------|
+| node/channel | startup channel builder | channel + kind + packet name | handler group, method handler 선언 |
+| session | session `Configure()` | session type + packet name | method handler 선언 또는 packet name override |
+| Entry Spot | Entry Spot `Configure()` | Entry Spot type + actor/packet key | method handler 선언 또는 topic/timer metadata |
+| user Spot | user Spot `Configure()` | Spot type + actor/packet key | method handler 선언 또는 topic/timer metadata |
+
+channel handler는 한 assembly 안의 handler 후보를 여러 channel 중 어디에 노출할지 정해야
+하므로 handler group 또는 명시 channel 등록이 필요하다. Spot handler는 handler interface의
+Spot 타입이 실행 문맥을 정하므로 별도 group 없이 해당 Spot에 붙는다. session handler는
+session 타입이 실행 문맥을 정한다. 언어별 runtime이 session 타입을 안정적으로 알 수 없는
+경우에만 context 타입을 보조 key로 사용할 수 있으며, 이 경우에도 한 실행 문맥 안에서 같은
+packet 이름이 둘 이상 등록되면 startup에서 실패해야 한다.
+
+subscription topic은 interface만으로 알 수 없지만, 같은 메시지 handler 등록 원칙을 깨지 않기
+위해 수동 등록 호출의 인자로 받지 않는다. subscription handler는 attribute, annotation,
+decorator, 또는 언어별 metadata 선언으로 topic을 제공하고, 등록 호출은
+`AddHandler<THandler>()`로 유지한다. timer 이름과 주기는 메시지 handler metadata가 아니라
+timer 실행 계획이므로 `AddTimer<THandler>(name, period)`처럼 timer 등록 API에서 제공한다.
+반대로 actor send/request handler처럼 interface가 actor 타입, 메시지 타입, request/send
+종류를 모두 제공하는 경우 attribute를 필수로 요구하지 않는다.
+
+자동 등록과 수동 등록이 같은 dispatch key를 만들면 startup validation 오류로 처리한다.
+같은 handler 타입을 같은 key에 두 번 등록한 경우도 중복으로 본다. 조용히 덮어쓰거나
+수동 등록이 자동 등록을 대신하게 만들지 않는다. 오류 메시지는 충돌한 key, 자동/수동 등록
+출처, handler 타입을 함께 보여 주어야 한다. explicit scan 범위와 implicit scan 범위가 같은
+assembly/module/package를 가리키는 경우에는 scan source 자체를 먼저 de-duplicate해서 같은
+handler 후보를 두 번 만들지 않는다. 그래도 서로 다른 handler가 같은 key를 만들면 충돌로
+처리한다. 자동 등록과 수동 등록을 섞어야 하면 channel/session/Spot 처럼 scan 범위를 나누는
+명시 API를 제공하거나, 필요한 host에서 implicit handler auto registration을 끈다.
+
 수동 연결을 둘 때는 `channel` 전체가 아니라 `channel + capability` 기준으로
 설정해야 한다. 예를 들어 `account.client` 수동 연결과 `account.subscriber`
 수동 연결은 별도 집합으로 본다. 수동 연결 역할은 startup
@@ -418,6 +540,28 @@ public sealed class ProfileHandlers
 여기서 channel client manual 연결은 remote `RoutingId`를 따로 받지 않는 편이
 자연스럽다. 하부 `DEALER(client)`가 connect된 peer 집합으로 요청을 보내는
 모델이므로, startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
+
+transport 재접속은 framework가 별도 기능으로 다시 구현하지 않는다. 하부 zlink socket이
+이미 연결 단절 후 재접속, backoff, peer handover 같은 socket 수준의 동작을 담당한다.
+framework가 같은 endpoint를 주기적으로 disconnect/connect 하거나 자체 재접속 loop를 두면
+socket 내부 상태와 location runtime의 desired connection 상태가 서로 다른 결정을 내릴 수
+있다. framework가 해야 할 일은 공개 설정과 location row를 바탕으로 "연결되어 있어야 하는
+endpoint 집합"을 계산하고 socket에 전달하는 것이다. 이미 전달한 endpoint의 실제 재접속은
+socket 책임으로 둔다.
+
+따라서 framework 구현에는 transport reconnect manager, reconnect timer, reconnect retry
+queue, 주기적인 disconnect/connect loop를 두지 않는다. framework가 socket에 다시 connect를
+요청할 수 있는 경우는 desired endpoint 집합 자체가 바뀌었을 때뿐이다. 예를 들어 location
+row가 추가되었거나 제거되었을 때, 또는 사용자가 수동 연결 설정을 바꾸었을 때만 socket에
+반영한다. 같은 endpoint가 이미 desired set에 남아 있다면 연결이 끊겼더라도 framework는
+그 endpoint를 다시 연결하려고 반복 호출하지 않고 socket 내부 재접속 정책에 맡긴다.
+
+따라서 연결 수렴이 늦거나 첫 요청이 실패하는 문제를 framework-level retry, sleep, 또는
+재접속 loop로 가리지 않는다. 자동 연결이면 location runtime이 desired set을 갱신하고,
+수동 연결이면 사용자가 설정한 endpoint 집합을 유지한다. 둘 다 같은 endpoint에 대해
+framework가 임의로 연결을 끊었다 다시 붙이는 방식으로 복구를 시도하면 안 된다. 연결이
+없거나 아직 수렴하지 않았을 때의 오류는 정해진 public error로 드러나야 하며, 실제 transport
+재접속은 zlink socket의 책임이다.
 
 또한 send는 기본 one-way submit으로 둔다. 구현은 blocking send를 task로 감싸지
 않고, 먼저 nonblocking send를 시도한 뒤 temporary backpressure가 발생하면 pending

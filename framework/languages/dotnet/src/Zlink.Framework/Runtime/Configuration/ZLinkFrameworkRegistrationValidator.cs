@@ -65,7 +65,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ZLinkFrameworkRegistration registration)
     {
         var endpoints = new List<ZLinkHandlerEndpointDescriptor>();
-        foreach (var assembly in registration.HandlerAssemblies) endpoints.AddRange(ZLinkHandlerScanner.Scan(assembly));
+        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
+            endpoints.AddRange(ZLinkHandlerScanner.Scan(assembly));
 
         return endpoints;
     }
@@ -74,7 +75,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ZLinkFrameworkRegistration registration)
     {
         var endpoints = new List<ZLinkRouteHandlerEndpointDescriptor>();
-        foreach (var assembly in registration.HandlerAssemblies)
+        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
             endpoints.AddRange(ZLinkHandlerScanner.ScanRoute(assembly));
 
         return endpoints;

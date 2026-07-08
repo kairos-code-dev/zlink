@@ -6,7 +6,6 @@ namespace DeliveryDispatch.Server.CourierSession;
 
 internal sealed class CourierSession(
     IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     ILogger<CourierSession> logger) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -48,7 +47,7 @@ internal sealed class CourierSession(
             "deliverydispatch courier-session: dispatch packet={PacketName} session={SessionId}",
             dispatch.PacketName,
             Context.SessionId);
-        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
+        if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken))
         {
             return;
         }

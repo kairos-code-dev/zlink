@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Locations;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -347,32 +348,25 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public async Task AddZLinkFramework_Registers_SessionPacketDispatcher_And_Handlers()
+    public async Task SessionHandlerRegistry_Handles_ManuallyRegistered_Typed_Handler()
     {
         var services = new ServiceCollection();
-
-        services.AddZLinkFramework(options =>
-        {
-            {
-                var stream = options.AddStreamNode("client.stream");
-                stream.Bind("tcp://127.0.0.1:9100");
-                stream.RegisterSession<TestSessionWithPacketDispatcher>();
-            }
-        });
+        services.AddScoped<TestSessionPacketHandler>();
 
         using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
-        var dispatcher = scope.ServiceProvider
-            .GetRequiredService<IZLinkSessionPacketDispatcher<TestSessionPacketContext>>();
         var context = new TestSessionPacketContext();
-        var handled = await dispatcher.TryHandleAsync(
-            context,
-            new ZLinkSessionDispatchContext("test.session.packet"),
-            ZLinkMessage.From(new object()));
-        var unhandled = await dispatcher.TryHandleAsync(
-            context,
+        var registry = new ZLinkSessionHandlerRegistry(scope.ServiceProvider);
+        registry.BindContext(context);
+        registry.AddHandler<TestSessionPacketHandler>();
+        registry.Bind();
+
+        var handled = await registry.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(TestSessionPacketMessage)),
+            ZLinkMessage.From(new TestSessionPacketMessage()));
+        var unhandled = await registry.TryHandleAsync(
             new ZLinkSessionDispatchContext("test.unhandled"),
-            ZLinkMessage.From(new object()));
+            ZLinkMessage.From(new TestSessionPacketMessage()));
 
         Assert.True(handled);
         Assert.False(unhandled);
@@ -380,16 +374,104 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void SessionPacketDispatcher_Throws_When_PacketName_Is_Duplicated()
+    public async Task SessionHandlerRegistry_AutoRegisters_Compatible_Typed_Handlers_From_Assembly()
     {
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            new ZLinkSessionPacketDispatcher<DuplicateSessionPacketContext>(
-            [
-                new DuplicateSessionPacketHandler(),
-                new SecondDuplicateSessionPacketHandler()
-            ]));
+        using var provider = new ServiceCollection().BuildServiceProvider();
+        var context = new TestSessionPacketContext();
+        var registry = new ZLinkSessionHandlerRegistry(provider);
+        registry.BindContext(context);
+        registry.AddScannedHandlers([typeof(TestSessionPacketHandler).Assembly]);
+        registry.Bind();
 
-        Assert.Contains("Duplicate session packet handler 'duplicate.session.packet'", exception.Message,
+        var handled = await registry.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(TestSessionPacketMessage)),
+            ZLinkMessage.From(new TestSessionPacketMessage()));
+
+        Assert.True(handled);
+        Assert.Equal(1, context.HandledCount);
+    }
+
+    [Fact]
+    public void Registration_Includes_Registered_Application_Assemblies_In_Handler_Scan_By_Default()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddStreamNode("client.stream")
+                .Bind("tcp://127.0.0.1:9100")
+                .RegisterSession<TestHeaderSession>();
+            options.AddSpotMesh("stage-node")
+                .EnableRouter("tcp://127.0.0.1:9000")
+                .AddSpotFactory<TestSpot>()
+                .AddEntrySpot<TestEntrySpot>();
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        var assemblies = registration.EnumerateHandlerScanAssemblies().ToArray();
+
+        Assert.Contains(typeof(TestHeaderSession).Assembly, assemblies);
+        Assert.Contains(typeof(TestSpot).Assembly, assemblies);
+        Assert.Contains(typeof(TestEntrySpot).Assembly, assemblies);
+    }
+
+    [Fact]
+    public void Registration_Can_Disable_Implicit_Handler_Auto_Registration()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.DisableImplicitHandlerAutoRegistration();
+            options.AddStreamNode("client.stream")
+                .Bind("tcp://127.0.0.1:9100")
+                .RegisterSession<TestHeaderSession>();
+            options.AddSpotMesh("stage-node")
+                .EnableRouter("tcp://127.0.0.1:9000")
+                .AddSpotFactory<TestSpot>();
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+
+        Assert.Empty(registration.EnumerateHandlerScanAssemblies());
+    }
+
+    [Fact]
+    public void Registration_Disabling_Implicit_Auto_Registration_Keeps_Explicit_Handler_Assemblies()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.DisableImplicitHandlerAutoRegistration();
+            options.AddHandlersFromAssembly(typeof(TestSessionPacketHandler).Assembly);
+            options.AddSpotMesh("stage-node")
+                .EnableRouter("tcp://127.0.0.1:9000")
+                .AddSpotFactory<TestSpot>();
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        var assembly = Assert.Single(registration.EnumerateHandlerScanAssemblies());
+
+        Assert.Equal(typeof(TestSessionPacketHandler).Assembly, assembly);
+    }
+
+    [Fact]
+    public void SessionHandlerRegistry_Throws_When_PacketName_Is_Duplicated()
+    {
+        using var provider = new ServiceCollection()
+            .AddScoped<DuplicateSessionPacketHandler>()
+            .AddScoped<SecondDuplicateSessionPacketHandler>()
+            .BuildServiceProvider();
+        var registry = new ZLinkSessionHandlerRegistry(provider);
+        registry.BindContext(new DuplicateSessionPacketContext());
+        registry.AddHandler<DuplicateSessionPacketHandler>();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            registry.AddHandler<SecondDuplicateSessionPacketHandler>());
+
+        Assert.Contains($"Session packet handler '{nameof(DuplicateSessionPacketMessage)}' is already registered",
+            exception.Message,
             StringComparison.Ordinal);
     }
 

@@ -17,8 +17,8 @@ internal sealed class PlayEntrySpot(
 
     public void Configure()
     {
-        Context.Handlers.AddActorRequest<PlayActorJoinGameHandler, PlayActor>(nameof(JoinGameReq));
-        Context.Handlers.AddActorRequest<PlayActorObserveMilestoneHandler, PlayActor>(nameof(ObserveMilestoneReq));
+        Context.Handlers.AddHandler<PlayActorJoinGameHandler>();
+        Context.Handlers.AddHandler<PlayActorObserveMilestoneHandler>();
         Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(SampleTopics.PlayerMilestone);
     }
 

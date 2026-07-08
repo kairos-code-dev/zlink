@@ -1,4 +1,3 @@
-using DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
@@ -15,13 +14,6 @@ internal sealed class CourierEntrySpot(
     ILogger<CourierEntrySpot> logger) : IZLinkEntrySpot<CourierActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
-
-    public void Configure()
-    {
-        Context.Handlers.AddActorRequest<BindCourierSessionActorHandler, CourierActor>(
-            nameof(BindCourierSessionReq));
-        Context.Handlers.AddActorPacket<CourierDecisionActorHandler, CourierActor>(nameof(CourierDecisionMsg));
-    }
 
     public async ValueTask OnCreateActorAsync(
         CourierActor actor,

@@ -17,14 +17,6 @@ internal interface IZLinkSpotHandlerRegistrySink
     void AddActorPacket<THandler, TActor>(string packetName)
         where THandler : class
         where TActor : IZLinkActor;
-
-    void AddActorSend<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor;
-
-    void AddActorRequest<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor;
 }
 
 internal interface IZLinkSpotOutboundSink
@@ -77,19 +69,6 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
         activation.AddActorPacket<THandler, TActor>(packetName);
     }
 
-    public void AddActorSend<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        activation.AddActorSend<THandler, TActor>(packetName);
-    }
-
-    public void AddActorRequest<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        activation.AddActorRequest<THandler, TActor>(packetName);
-    }
 }
 
 internal sealed class ZLinkSpotOutboundSurface(IZLinkSpotOutboundSink activation)

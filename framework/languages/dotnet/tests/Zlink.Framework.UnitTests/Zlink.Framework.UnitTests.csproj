@@ -64,7 +64,6 @@
         <Compile Include="Runtime/OwnerLeaseTrackerTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
-        <Compile Include="Runtime/SpotActorHandlerRegistryTests.cs"/>
         <Compile Include="Runtime/SpotHandlerInvokerTests.cs"/>
         <Compile Include="Runtime/SpotPeerConnectionSetTests.cs"/>
         <Compile Include="Runtime/RequestFailureMappingTests.cs"/>

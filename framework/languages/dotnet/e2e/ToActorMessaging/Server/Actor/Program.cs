@@ -75,8 +75,8 @@ namespace ToActorMessaging.Actor
 
         public void Configure()
         {
-            Context.Handlers.AddActorPacket<NotifyHandler, TestActor>(nameof(ActorNotify));
-            Context.Handlers.AddActorRequest<AskHandler, TestActor>(nameof(ActorAsk));
+            Context.Handlers.AddHandler<NotifyHandler>();
+            Context.Handlers.AddHandler<AskHandler>();
         }
 
         public ValueTask OnCreateActorAsync(

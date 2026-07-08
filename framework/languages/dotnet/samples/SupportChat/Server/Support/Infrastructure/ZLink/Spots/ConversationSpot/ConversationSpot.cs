@@ -3,7 +3,6 @@ using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Support.Domain.SupportChat;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Handlers;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Messaging;
@@ -27,14 +26,6 @@ internal sealed class ConversationSpot(
     private Conversation? _conversation;
 
     public IZLinkSpotContext Context { get; } = context;
-
-    public void Configure()
-    {
-        Context.Handlers.AddHandler<JoinConversationHandler>();
-        Context.Handlers.AddHandler<SendChatMessageHandler>();
-        Context.Handlers.AddActorSend<SetTypingHandler, SupportUserActor>(nameof(SetTypingReq));
-        Context.Handlers.AddHandler<CloseConversationHandler>();
-    }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
         ZLinkMessage request,

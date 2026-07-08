@@ -1,7 +1,6 @@
 using Bingo.Server.Configuration;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Handlers;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
@@ -27,11 +26,6 @@ internal sealed class BingoRoom(
     internal bool IsReadyToDraw => _game?.IsReadyToDraw == true;
 
     public IZLinkSpotContext Context { get; } = context;
-
-    public void Configure()
-    {
-        Context.Handlers.AddSubscribe<BingoRewardAcquiredEventHandler>(SampleNames.RewardTopic);
-    }
 
     public ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {

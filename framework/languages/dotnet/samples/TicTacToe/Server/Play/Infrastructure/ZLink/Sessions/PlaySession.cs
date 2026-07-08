@@ -5,11 +5,15 @@ namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions;
 
 internal sealed class PlaySession(
     IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     ILogger<PlaySession> logger)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddHandler<Handlers.AuthenticatePlaySessionHandler>();
+    }
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -53,11 +57,7 @@ internal sealed class PlaySession(
             dispatch.CanReply ? "Request" : "Send",
             Context.SessionId);
 
-        if (await handlers.TryHandleAsync(
-                Context,
-                dispatch,
-                payload,
-                cancellationToken))
+        if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken))
             return;
 
         var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");

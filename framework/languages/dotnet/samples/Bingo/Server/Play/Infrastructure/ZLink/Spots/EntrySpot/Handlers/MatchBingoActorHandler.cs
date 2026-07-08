@@ -8,7 +8,6 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
-[ZLinkSpotActorRequestHandler(nameof(MatchBingoReq))]
 internal sealed class MatchBingoActorHandler(
     ILogger<MatchBingoActorHandler> logger)
     : IZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>

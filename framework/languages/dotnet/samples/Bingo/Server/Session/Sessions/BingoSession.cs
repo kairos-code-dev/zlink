@@ -4,8 +4,7 @@ using Zlink.Framework.Contracts.Streams;
 namespace Bingo.Server.Session.Sessions;
 
 internal sealed class BingoSession(
-    IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers) : IZLinkSession
+    IZLinkSessionContext context) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -31,11 +30,7 @@ internal sealed class BingoSession(
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (await handlers.TryHandleAsync(
-                Context,
-                dispatch,
-                payload,
-                cancellationToken))
+        if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken))
             return;
 
         var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");

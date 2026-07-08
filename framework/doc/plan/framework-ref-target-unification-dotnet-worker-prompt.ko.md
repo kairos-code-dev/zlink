@@ -140,6 +140,58 @@ framework/doc/framework/dotnet
 사용자-facing 문서에는 `ActorRef` / `SpotRef` 기반 전송만 남긴다. `JoinSpot(spotRid, ...)`처럼
 lifecycle id 입력이 남아야 하는 경우에는 일반 메시징 API가 아니라는 설명을 붙인다.
 
+## 메시지 핸들러 등록 정책 동시 적용
+
+Ref 대상 통일 작업 중 .NET sample이나 E2E의 handler 등록 표면을 고치면
+`framework/doc/framework/common/spec/framework-api.ko.md`의 `Handler 등록 정책`도 같은 범위에서
+적용한다. handler 타입과 attribute로 알 수 있는 packet 이름, actor 타입, request/send/subscription
+종류는 등록 호출부에 반복 인자로 넘기지 않는다.
+
+sample 정리는 아래 기준으로 함께 진행한다.
+
+- `TicTacToe` .NET sample은 manual handler registration을 보여 주는 예시로 남긴다.
+- `Bingo`, `DeliveryDispatch`, `ShoppingMall`, `SupportChat`, `GameQuest` .NET sample은 manual
+  registration을 제거하고 automatic registration만 사용하도록 정리한다.
+- 자동 등록은 test-only scan helper가 아니라 실제 `AddZLinkFramework(...)`/handler scan 표면을
+  사용한다.
+- README와 guide는 TicTacToe를 수동 등록 예시로, 나머지 sample을 자동 등록 예시로 설명한다.
+
+## connection 복구 책임 경계
+
+.NET framework는 이미 core/binding에 넘긴 connection의 복구를 직접 구현하지 않는다. 연결된
+connection의 끊김 감지, reconnect interval, reconnect backoff, monitor 기반 reconnect는 core 또는
+binding socket option 책임이다. framework가 해도 되는 일은 location/topology desired set 계산과,
+아직 성공적으로 core에 맡기지 못한 target에 대한 initial `connect` 재시도다.
+
+감사 대상:
+
+```text
+framework/languages/dotnet/src/Zlink.Framework/Runtime/Locations/ZLinkAutoConnectReconciler.cs
+framework/languages/dotnet/src/Zlink.Framework/Runtime/Locations/ZLinkLocationAutoConnectHost.cs
+framework/languages/dotnet/src/Zlink.Framework/Runtime/Locations/ZLinkAutoConnectLoop.cs
+framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots/ZLinkSpotActivationDispatcher.cs
+framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots/ZLinkEntrySpotActorDispatcher.cs
+```
+
+처리 기준:
+
+1. `ZLinkAutoConnectReconciler`가 하는 일을 initial connect retry와 topology handover로만 제한한다.
+   `Connect(...)`가 성공적으로 core/binding에 전달된 target을 active로 보는 것은 허용하지만, connect
+   실패를 삼킨 뒤 active에 넣는 동작이 있으면 수정한다.
+2. disconnected monitor event나 framework 상태만 보고 같은 endpoint에 reconnect timer/backoff를
+   시작하는 코드가 있으면 제거한다.
+3. endpoint 또는 owner 변경 때문에 기존 target을 끊고 새 target에 연결하는 코드는 topology handover로
+   남길 수 있다. 테스트 이름과 주석에는 connection recovery가 아니라 topology handover라고 적는다.
+4. `ZLinkSpotActivationDispatcher`와 `ZLinkEntrySpotActorDispatcher`의 fixed retry delay는
+   actor/session route readiness 수렴 대기인지 확인한다. 연결 복구를 대신하는 retry라면 제거하고
+   core/binding 재현으로 분리한다.
+5. public guide/spec에 framework가 established connection을 reconnect한다고 읽히는 문구가 있으면
+   core/binding 책임으로 바로잡는다.
+
+완료 보고에는 active target 기록이 connect 실패 뒤에 남지 않는다는 근거, disconnected event 기반
+framework reconnect loop가 없다는 검색 결과, fixed retry delay가 route readiness 대기인지 또는 분리한
+버그인지를 포함한다.
+
 ## 완료 게이트
 
 ```bash
@@ -156,4 +208,8 @@ rg -n "ZLinkSpotAddress|ResolveSpotAddress|ResolveActorSpotAddress|SendToActor\\
 rg -n "SpotAddress|spot address|SpotRemoteAddress|spot remote address|SendToActor\\([^)]*actorId|RequestToActor\\([^)]*actorId|SendToSpot\\([^)]*spotRid|RequestToSpot\\([^)]*spotRid" \
   framework/doc/contract-inventory framework/doc/framework/common framework/doc/framework/dotnet \
   -S -g '!framework/doc/plan/**' -g '!framework/doc/**/draft/**'
+
+rg -n "reconnect|retry|backoff|disconnect.*connect|connect.*disconnect|Disconnected" \
+  framework/languages/dotnet/src/Zlink.Framework/Runtime \
+  -S -g '!**/bin/**' -g '!**/obj/**'
 ```

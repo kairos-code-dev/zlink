@@ -186,7 +186,9 @@ public abstract class RegistrationValidationSupport
         }
     }
 
-    protected sealed class TestSessionPacketContext
+    protected sealed record TestSessionPacketMessage;
+
+    protected class TestSessionPacketContext : IZLinkSessionContext
     {
         public int HandledCount { get; private set; }
 
@@ -194,32 +196,49 @@ public abstract class RegistrationValidationSupport
         {
             HandledCount++;
         }
+
+        public string SessionId => "test-session";
+
+        public RoutingId? RoutingId => Systems.Zlink.RoutingId.From("test-session-route");
+
+        public string? LocalAddr => "tcp://127.0.0.1:9100";
+
+        public string? RemoteAddr => "tcp://127.0.0.1:9101";
+
+        public IZLinkSessionClient Client => throw new NotSupportedException();
+
+        public IZLinkSessionActors Actors => throw new NotSupportedException();
+
+        public IZLinkSessionHandlerRegistry Handlers => throw new NotSupportedException();
+
+        public ValueTask CloseAsync() => ValueTask.CompletedTask;
     }
 
-    protected sealed class TestSessionPacketHandler : IZLinkSessionPacketHandler<TestSessionPacketContext>
+    protected sealed class TestSessionPacketHandler : IZLinkSessionPacketHandler<TestSessionPacketContext, TestSessionPacketMessage>
     {
-        public string PacketName => "test.session.packet";
-
         public ValueTask HandleAsync(
             TestSessionPacketContext context,
             ZLinkSessionDispatchContext dispatch,
-            ZLinkMessage payload,
+            TestSessionPacketMessage message,
             CancellationToken cancellationToken)
         {
             _ = dispatch;
-            _ = payload;
+            _ = message;
             cancellationToken.ThrowIfCancellationRequested();
             context.MarkHandled();
             return ValueTask.CompletedTask;
         }
     }
 
-    protected sealed class TestSessionWithPacketDispatcher(
-        IZLinkSessionContext context,
-        IZLinkSessionPacketDispatcher<TestSessionPacketContext> dispatcher) : IZLinkSession
+    protected sealed class TestSessionWithConfiguredPacketHandler(
+        IZLinkSessionContext context) : IZLinkSession
     {
-        public IZLinkSessionPacketDispatcher<TestSessionPacketContext> Dispatcher { get; } = dispatcher;
         public IZLinkSessionContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.Handlers.AddHandler<TestSessionPacketHandler>();
+        }
 
         public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         {
@@ -245,16 +264,17 @@ public abstract class RegistrationValidationSupport
         }
     }
 
-    protected sealed class DuplicateSessionPacketContext;
+    protected sealed record DuplicateSessionPacketMessage;
 
-    protected sealed class DuplicateSessionPacketHandler : IZLinkSessionPacketHandler<DuplicateSessionPacketContext>
+    protected sealed class DuplicateSessionPacketContext : TestSessionPacketContext;
+
+    protected sealed class DuplicateSessionPacketHandler
+        : IZLinkSessionPacketHandler<DuplicateSessionPacketContext, DuplicateSessionPacketMessage>
     {
-        public string PacketName => "duplicate.session.packet";
-
         public ValueTask HandleAsync(
             DuplicateSessionPacketContext context,
             ZLinkSessionDispatchContext dispatch,
-            ZLinkMessage payload,
+            DuplicateSessionPacketMessage message,
             CancellationToken cancellationToken)
         {
             return ValueTask.CompletedTask;
@@ -262,14 +282,13 @@ public abstract class RegistrationValidationSupport
     }
 
     protected sealed class
-        SecondDuplicateSessionPacketHandler : IZLinkSessionPacketHandler<DuplicateSessionPacketContext>
+        SecondDuplicateSessionPacketHandler
+        : IZLinkSessionPacketHandler<DuplicateSessionPacketContext, DuplicateSessionPacketMessage>
     {
-        public string PacketName => "duplicate.session.packet";
-
         public ValueTask HandleAsync(
             DuplicateSessionPacketContext context,
             ZLinkSessionDispatchContext dispatch,
-            ZLinkMessage payload,
+            DuplicateSessionPacketMessage message,
             CancellationToken cancellationToken)
         {
             return ValueTask.CompletedTask;

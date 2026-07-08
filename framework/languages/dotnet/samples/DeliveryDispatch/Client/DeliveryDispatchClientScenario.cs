@@ -63,6 +63,10 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
             .Async<SubscribeDeliveryRes>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
+        var assignedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
+        var acceptedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
+        var pickedUpWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.PickedUp, cancellationToken);
+        var deliveredWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
 
         var created = http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
@@ -82,10 +86,10 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 null))
             .Submit(cancellationToken);
 
-        var assigned = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
-        var accepted = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
-        var pickedUp = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.PickedUp, cancellationToken);
-        var delivered = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
+        var assigned = await assignedWait;
+        var accepted = await acceptedWait;
+        var pickedUp = await pickedUpWait;
+        var delivered = await deliveredWait;
 
         Ensure(assigned.CourierId == "courier-a");
         Ensure(accepted.CourierId == "courier-a");
@@ -117,6 +121,10 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
             .Async<SubscribeDeliveryRes>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
+        var assignedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
+        var reassignedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Reassigned, cancellationToken);
+        var acceptedWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
+        var deliveredWait = WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
 
         var created = http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
@@ -138,10 +146,10 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 null))
             .Submit(cancellationToken);
 
-        var assigned = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
-        var reassigned = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Reassigned, cancellationToken);
-        var accepted = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
-        var delivered = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
+        var assigned = await assignedWait;
+        var reassigned = await reassignedWait;
+        var accepted = await acceptedWait;
+        var delivered = await deliveredWait;
 
         Ensure(assigned.CourierId == "courier-a");
         Ensure(reassigned.CourierId == "courier-b");

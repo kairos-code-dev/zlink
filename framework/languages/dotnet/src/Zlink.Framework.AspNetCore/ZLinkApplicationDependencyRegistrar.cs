@@ -17,12 +17,6 @@ internal static class ZLinkApplicationDependencyRegistrar
                 AddAssemblyImplementations(services, registeredType.Assembly, serviceType);
                 AddAssemblyImplementations(services, serviceType.Assembly, serviceType);
             }
-
-            foreach (var serviceType in FindSessionPacketHandlerConstructorServices(registeredType))
-            {
-                AddAssemblyImplementations(services, registeredType.Assembly, serviceType);
-                AddAssemblyImplementations(services, serviceType.Assembly, serviceType);
-            }
         }
     }
 
@@ -60,7 +54,7 @@ internal static class ZLinkApplicationDependencyRegistrar
             foreach (var handler in routed.RequestHandlers) yield return handler.HandlerType;
         }
 
-        foreach (var assembly in registration.HandlerAssemblies)
+        foreach (var assembly in registration.EnumerateHandlerScanAssemblies())
         {
             foreach (var endpoint in ZLinkHandlerScanner.Scan(assembly)) yield return endpoint.DeclaringType;
 
@@ -80,21 +74,6 @@ internal static class ZLinkApplicationDependencyRegistrar
 
             var serviceType = parameterType.GetGenericArguments()[0];
             if (serviceType.IsInterface) yield return serviceType;
-        }
-    }
-
-    private static IEnumerable<Type> FindSessionPacketHandlerConstructorServices(Type type)
-    {
-        foreach (var constructor in type.GetConstructors())
-        foreach (var parameter in constructor.GetParameters())
-        {
-            var parameterType = parameter.ParameterType;
-            if (!parameterType.IsGenericType
-                || parameterType.GetGenericTypeDefinition() != typeof(IZLinkSessionPacketDispatcher<>))
-                continue;
-
-            var contextType = parameterType.GetGenericArguments()[0];
-            yield return typeof(IZLinkSessionPacketHandler<>).MakeGenericType(contextType);
         }
     }
 

@@ -37,8 +37,8 @@ public sealed class SpotContracts
         context.Handlers.AddPacket<RoomPacketHandler>();
         context.Handlers.AddSubscribe<RoomEventHandler>("room.events");
         context.Handlers.AddActorPacket<PlayerActorPacketHandler, PlayerActor>();
-        context.Handlers.AddActorSend<PlayerActorPacketHandler, PlayerActor>("actor.packet");
-        context.Handlers.AddActorRequest<PlayerActorRequestHandler, PlayerActor>("actor.request");
+        context.Handlers.AddHandler<PlayerActorPacketHandler>("actor.packet");
+        context.Handlers.AddHandler<PlayerActorRequestHandler>("actor.request");
         await context.LeaveActorAsync(actor);
         await entryContext.DestroyActorAsync(actor);
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
@@ -464,18 +464,6 @@ public sealed class SpotContracts
         {
         }
 
-        public void AddActorSend<THandler, TActor>(string packetName)
-            where THandler : class
-            where TActor : IZLinkActor
-        {
-        }
-
-        public void AddActorRequest<THandler, TActor>(string packetName)
-            where THandler : class
-            where TActor : IZLinkActor
-        {
-        }
-
         public void AddPacket<THandler>()
             where THandler : class
         {
@@ -567,18 +555,6 @@ public sealed class SpotContracts
         }
 
         public void AddActorPacket<THandler, TActor>(string packetName)
-            where THandler : class
-            where TActor : IZLinkActor
-        {
-        }
-
-        public void AddActorSend<THandler, TActor>(string packetName)
-            where THandler : class
-            where TActor : IZLinkActor
-        {
-        }
-
-        public void AddActorRequest<THandler, TActor>(string packetName)
             where THandler : class
             where TActor : IZLinkActor
         {

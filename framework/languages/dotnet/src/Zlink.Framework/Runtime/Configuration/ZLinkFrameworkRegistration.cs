@@ -25,6 +25,8 @@ internal sealed class ZLinkFrameworkRegistration
 
     public HashSet<Assembly> HandlerAssemblies { get; } = [];
 
+    public bool ImplicitHandlerAutoRegistrationEnabled { get; set; } = true;
+
     public Type? SpotRouteRefResolverType { get; set; }
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
@@ -52,6 +54,45 @@ internal sealed class ZLinkFrameworkRegistration
         return RouteChannels.TryGetValue(routerChannelId, out var channel)
             ? channel.DefaultRequestTimeout ?? DefaultRequestTimeout
             : DefaultRequestTimeout;
+    }
+
+    public IEnumerable<Assembly> EnumerateHandlerScanAssemblies()
+    {
+        var assemblies = new HashSet<Assembly>(HandlerAssemblies);
+        if (!ImplicitHandlerAutoRegistrationEnabled) return assemblies;
+
+        foreach (var filterType in Filters) assemblies.Add(filterType.Assembly);
+
+        foreach (var stream in StreamNodes.Values)
+            if (stream.HeaderSessionType is not null)
+                assemblies.Add(stream.HeaderSessionType.Assembly);
+
+        foreach (var spotNode in SpotNodes.Values)
+        {
+            if (spotNode.EntrySpotType is not null) assemblies.Add(spotNode.EntrySpotType.Assembly);
+
+            foreach (var spotType in spotNode.SpotFactories) assemblies.Add(spotType.Assembly);
+
+            foreach (var actorFactoryType in spotNode.ActorFactories.Values) assemblies.Add(actorFactoryType.Assembly);
+        }
+
+        foreach (var channel in Channels.Values)
+        {
+            foreach (var handler in channel.SendHandlers) assemblies.Add(handler.HandlerType.Assembly);
+
+            foreach (var handler in channel.RequestHandlers) assemblies.Add(handler.HandlerType.Assembly);
+
+            foreach (var handler in channel.PublishHandlers) assemblies.Add(handler.HandlerType.Assembly);
+        }
+
+        foreach (var routeChannel in RouteChannels.Values)
+        {
+            foreach (var handler in routeChannel.SendHandlers) assemblies.Add(handler.HandlerType.Assembly);
+
+            foreach (var handler in routeChannel.RequestHandlers) assemblies.Add(handler.HandlerType.Assembly);
+        }
+
+        return assemblies;
     }
 }
 

@@ -1,5 +1,4 @@
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
@@ -12,12 +11,6 @@ internal sealed class BingoEntrySpot(
     ILogger<BingoEntrySpot> logger) : IZLinkEntrySpot<PlayerActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
-
-    public void Configure()
-    {
-        Context.Handlers.AddActorRequest<MatchBingoActorHandler, PlayerActor>(nameof(MatchBingoReq));
-        Context.Handlers.AddActorRequest<ObserveBingoEventsHandler, PlayerActor>(nameof(ObserveBingoEventsReq));
-    }
 
     public ValueTask OnCreateActorAsync(
         PlayerActor actor,

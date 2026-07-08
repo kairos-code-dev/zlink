@@ -27,7 +27,11 @@ internal static class ShutdownYieldScenario
             throw new InvalidOperationException(
                 $"YD-E3 expected play-a shutdown while yield was pending, but request completed as {result.Operation}.");
         }
-        catch (Exception ex) when (ex is ZlinkStreamException or OperationCanceledException)
+        catch (ZlinkStreamException ex) when (ex.Error.Code == ZlinkStreamErrorCode.Disconnected)
+        {
+            Console.WriteLine("yield-dispatch shutdown wait result=passed");
+        }
+        catch (OperationCanceledException)
         {
             Console.WriteLine("yield-dispatch shutdown wait result=passed");
         }

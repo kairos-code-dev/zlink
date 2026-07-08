@@ -42,6 +42,34 @@ public sealed class test_stream_socket
         return buffer;
     }
 
+    private static bool WaitForRawClientClose(NetworkStream stream, int timeoutMs)
+    {
+        int previousTimeout = stream.ReadTimeout;
+        stream.ReadTimeout = timeoutMs;
+        try
+        {
+            int read = stream.ReadByte();
+            return read < 0;
+        }
+        catch (IOException ex)
+            when (ex.InnerException is SocketException { SocketErrorCode: SocketError.TimedOut })
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode != SocketError.TimedOut)
+        {
+            return true;
+        }
+        finally
+        {
+            stream.ReadTimeout = previousTimeout;
+        }
+    }
+
     private static bool TryDrainOneMultipart(IStreamSocket streamSocket)
     {
         return CoreTestSupport.TryReceiveMultipartLastPart(streamSocket, 512, out _);
@@ -316,6 +344,44 @@ public sealed class test_stream_socket
         Assert.Equal(payload, echoed);
         Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref matched) >= 1,
             3000));
+
+        stream.DetachStream();
+    }
+
+    [Fact]
+    public void stream_packet_disconnect_rid_closes_raw_client()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-disconnect-rid");
+        int port = CoreTestSupport.ExtractPort(endpoint);
+        stream.Bind(endpoint);
+
+        using var receivedSignal = new ManualResetEventSlim(false);
+        RoutingId observedRid = default;
+        byte[] payload = "close-me"u8.ToArray();
+        stream.OnPacket((StreamPacketHandler)((rid, header, body) =>
+        {
+            header.Dispose();
+            body.Dispose();
+            observedRid = rid;
+            receivedSignal.Set();
+        }));
+
+        using var client = ConnectRawClient(port);
+        NetworkStream ns = client.GetStream();
+        SendAll(ns, CoreTestSupport.BuildStreamPacket(payload, "bye"u8));
+
+        Assert.True(receivedSignal.Wait(5000));
+        Assert.False(observedRid.IsEmpty);
+
+        stream.DisconnectRid(observedRid);
+        Assert.True(WaitForRawClientClose(ns, 3000),
+            "stream DisconnectRid(rid) did not close the raw TCP client.");
 
         stream.DetachStream();
     }

@@ -307,6 +307,11 @@ void zlink::socket_base_t::hiccuped (pipe_t *pipe_)
         xhiccuped (pipe_);
 }
 
+void zlink::socket_base_t::pipe_peer_terminated (pipe_t *pipe_)
+{
+    LIBZLINK_UNUSED (pipe_);
+}
+
 void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 {
     const bool term_pipe_ack_expected = is_terminating () && _term_pipes.erase (pipe_) != 0;

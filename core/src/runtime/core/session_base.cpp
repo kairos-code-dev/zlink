@@ -152,6 +152,10 @@ void zlink::session_base_t::pipe_terminated (pipe_t *pipe_)
             cancel_timer (linger_timer_id);
             _has_linger_timer = false;
         }
+        if (!_pending && _engine) {
+            _engine->terminate ();
+            _engine = NULL;
+        }
     } else
         // Remove the pipe from the detached pipes set
         _terminating_pipes.erase (pipe_);
@@ -164,6 +168,8 @@ void zlink::session_base_t::pipe_terminated (pipe_t *pipe_)
     if (_pending && !_pipe && _terminating_pipes.empty ()) {
         _pending = false;
         own_t::process_term (0);
+    } else if (!_pending && !_pipe && _terminating_pipes.empty () && !is_terminating ()) {
+        terminate ();
     }
 }
 
@@ -201,6 +207,15 @@ void zlink::session_base_t::hiccuped (pipe_t *)
     //  Hiccups are always sent from session to socket, not the other
     //  way round.
     zlink_assert (false);
+}
+
+void zlink::session_base_t::pipe_peer_terminated (pipe_t *pipe_)
+{
+    if (pipe_ != _pipe || _pending || !_engine)
+        return;
+
+    _engine->terminate ();
+    _engine = NULL;
 }
 
 zlink::socket_base_t *zlink::session_base_t::get_socket () const

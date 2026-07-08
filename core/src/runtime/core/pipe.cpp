@@ -657,6 +657,8 @@ void zlink::pipe_t::process_pipe_term ()
         else {
             _state = term_ack_sent;
             _out_pipe = NULL;
+            if (_sink)
+                _sink->pipe_peer_terminated (this);
             send_pipe_term_ack (_peer);
         }
     }
@@ -666,6 +668,8 @@ void zlink::pipe_t::process_pipe_term ()
     else if (_state == delimiter_received) {
         _state = term_ack_sent;
         _out_pipe = NULL;
+        if (_sink)
+            _sink->pipe_peer_terminated (this);
         send_pipe_term_ack (_peer);
     }
 
@@ -675,6 +679,8 @@ void zlink::pipe_t::process_pipe_term ()
     else if (_state == term_req_sent1) {
         _state = term_req_sent2;
         _out_pipe = NULL;
+        if (_sink)
+            _sink->pipe_peer_terminated (this);
         send_pipe_term_ack (_peer);
     }
 }

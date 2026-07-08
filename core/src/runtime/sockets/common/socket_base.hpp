@@ -218,6 +218,7 @@ class socket_base_t : public own_t,
     void read_activated (pipe_t *pipe_) ZLINK_FINAL;
     void write_activated (pipe_t *pipe_) ZLINK_FINAL;
     void hiccuped (pipe_t *pipe_) ZLINK_FINAL;
+    void pipe_peer_terminated (pipe_t *pipe_) ZLINK_FINAL;
     void pipe_terminated (pipe_t *pipe_) ZLINK_FINAL;
 
     int monitor (const char *endpoint_, uint64_t events_, int event_version_, int type_);

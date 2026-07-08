@@ -39,6 +39,7 @@ static const char *const stream_socket_smoke_cases[] = {
   "test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames",
   "test_stream_packet_handler_mode_gates",
   "test_stream_packet_framing_contracts",
+  "test_stream_packet_disconnect_rid_closes_client",
   "test_stream_packet_ordering_contracts",
   "test_stream_packet_malformed_close_contracts",
   "test_stream_connect_rejected",
@@ -233,6 +234,17 @@ static int recv_stream_packet (int fd_, void *buf_, size_t cap_)
     if (n <= 0)
         return -1;
     return static_cast<int> (n);
+}
+
+static bool wait_raw_fd_closed (int fd_)
+{
+    unsigned char probe[1];
+    const ssize_t n = recv (fd_, probe, sizeof (probe), 0);
+    if (n == 0)
+        return true;
+    if (n < 0 && (errno == ECONNRESET || errno == EPIPE))
+        return true;
+    return false;
 }
 
 static void close_raw_fd (int fd_)
@@ -2064,6 +2076,50 @@ void test_stream_packet_framing_contracts ()
     test_context_socket_close_zero_linger (server);
 }
 
+void test_stream_packet_disconnect_rid_closes_client ()
+{
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    stream_packet_probe_t probe;
+    probe.socket = server;
+    g_stream_packet_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_packet_handler (server, &stream_packet_callback, NULL));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 2000));
+
+    const unsigned char header[] = "bye";
+    const unsigned char body[] = "close-me";
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet_frame (client_fd, header, sizeof (header) - 1, body, sizeof (body) - 1));
+    TEST_ASSERT_TRUE (wait_counter_at_least (&probe.callbacks, 1, 5000));
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    {
+        std::lock_guard<std::mutex> lk (probe.mu);
+        TEST_ASSERT_EQUAL_UINT64 (1, probe.records.size ());
+        TEST_ASSERT_EQUAL_UINT64 (stream_routing_id_size, probe.records[0].source_rid.size ());
+        rid.size = stream_routing_id_size;
+        memcpy (rid.data, &probe.records[0].source_rid[0], stream_routing_id_size);
+    }
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_disconnect_rid (server, &rid));
+    TEST_ASSERT_TRUE (wait_raw_fd_closed (client_fd));
+
+    close_raw_fd (client_fd);
+    g_stream_packet_probe = NULL;
+    test_context_socket_close_zero_linger (server);
+}
+
 void test_stream_packet_ordering_contracts ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 2));
@@ -2233,6 +2289,8 @@ int main (void)
         RUN_TEST (test_stream_packet_handler_mode_gates);
     if (should_run_stream_socket_test ("test_stream_packet_framing_contracts"))
         RUN_TEST (test_stream_packet_framing_contracts);
+    if (should_run_stream_socket_test ("test_stream_packet_disconnect_rid_closes_client"))
+        RUN_TEST (test_stream_packet_disconnect_rid_closes_client);
     if (should_run_stream_socket_test ("test_stream_packet_ordering_contracts"))
         RUN_TEST (test_stream_packet_ordering_contracts);
     if (should_run_stream_socket_test ("test_stream_packet_malformed_close_contracts"))

@@ -203,6 +203,18 @@ int zlink::stream_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
         errno = EINVAL;
         return -1;
     }
+
+    const uint32_t routing_id = get_uint32 (peer_rid_->data);
+    route_shard_t &shard = route_shard_for (routing_id);
+    {
+        scoped_fast_lock_t shard_lock (shard.sync);
+        route_shard_t::routes_t::iterator it = shard.routes.find (routing_id);
+        if (it != shard.routes.end () && it->second) {
+            it->second->terminate (false);
+            return 0;
+        }
+    }
+
     return terminate_out_pipe_by_routing_id (peer_rid_);
 }
 

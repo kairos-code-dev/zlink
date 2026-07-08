@@ -48,6 +48,7 @@ struct i_pipe_events
     virtual void read_activated (zlink::pipe_t *pipe_) = 0;
     virtual void write_activated (zlink::pipe_t *pipe_) = 0;
     virtual void hiccuped (zlink::pipe_t *pipe_) = 0;
+    virtual void pipe_peer_terminated (zlink::pipe_t *pipe_) = 0;
     virtual void pipe_terminated (zlink::pipe_t *pipe_) = 0;
 };
 

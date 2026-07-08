@@ -5,6 +5,14 @@ pluginManagement {
     }
 }
 
+fun zlinkFrameworkJavaRoot(): java.io.File {
+    var current = settingsDir
+    while (current.parentFile != null && !current.resolve("gradle/libs.versions.toml").isFile) {
+        current = current.parentFile
+    }
+    return current
+}
+
 fun zlinkLocalMavenRepository(): java.io.File {
     val configuredRoot = providers.gradleProperty("zlink.localPackageRoot")
         .orElse(providers.environmentVariable("ZLINK_LOCAL_PACKAGE_ROOT"))
@@ -13,13 +21,18 @@ fun zlinkLocalMavenRepository(): java.io.File {
         return file(configuredRoot).resolve("maven")
     }
     var current = settingsDir
-    while (current.parentFile != null && !current.resolve(".artifacts").exists()) {
+    while (current.parentFile != null && !current.resolve(".git").exists()) {
         current = current.parentFile
     }
     return current.resolve(".artifacts/wsl/maven")
 }
 
 dependencyResolutionManagement {
+    versionCatalogs {
+        create("zlinkLibs") {
+            from(files(zlinkFrameworkJavaRoot().resolve("gradle/libs.versions.toml")))
+        }
+    }
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         maven {

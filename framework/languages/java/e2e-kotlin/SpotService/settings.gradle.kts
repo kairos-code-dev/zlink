@@ -31,7 +31,7 @@ fun zlinkLocalMavenRepository(): java.io.File {
         return file(configuredRoot).resolve("maven")
     }
     var current = settingsDir
-    while (current.parentFile != null && !current.resolve(".artifacts").exists()) {
+    while (current.parentFile != null && !current.resolve(".git").exists()) {
         current = current.parentFile
     }
     return current.resolve(".artifacts/wsl/maven")

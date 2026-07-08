@@ -25,7 +25,7 @@ val zlinkGitHubPackagesToken = providers.gradleProperty("zlink.githubPackagesTok
 val zlinkLocalPackageRoot = providers.gradleProperty("zlink.localPackageRoot")
     .orElse(providers.environmentVariable("ZLINK_LOCAL_PACKAGE_ROOT"))
 val zlinkLocalMavenRepo = zlinkLocalPackageRoot
-    .map { settingsDir.resolve("../../../$it/maven").normalize() }
+    .map { file(it).resolve("maven") }
     .orElse(
         providers.provider {
             val wslRepo = settingsDir.resolve("../../../.artifacts/wsl/maven").normalize()

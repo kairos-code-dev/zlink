@@ -22,6 +22,7 @@ builder.Logging.AddSimpleConsole(console =>
 });
 builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+builder.Services.AddSingleton<JoinedGateStore>();
 builder.Services.AddTransient<TransferActorAdapter>();
 builder.Services.AddZLinkFramework(framework =>
 {
@@ -44,6 +45,12 @@ builder.Services.AddZLinkFramework(framework =>
         .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeStateless)
         .AddStatelessActorTransfer<TransferActor>(SpotActorTransferNames.ActorTypeStateless)
         .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeNoAdapter)
+        .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeFailLeave)
+        .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeFailLeave)
+        .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeFailTransferOut)
+        .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeFailTransferOut)
+        .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeFailTransferIn)
+        .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeFailTransferIn)
         .AddSpotFactory<TransferUserSpot>();
 });
 
@@ -62,6 +69,12 @@ app.MapPost("/evidence/wait", async (
         timeout,
         cancellationToken);
     return Results.Ok(snapshot);
+});
+app.MapPost("/joined-gates/{spotRid}/release", (
+    string spotRid,
+    JoinedGateStore gates) =>
+{
+    return Results.Ok(new GateReleaseRes(spotRid, gates.Release(spotRid)));
 });
 app.MapPost("/spots", async (
     CreateSpotReq request,
@@ -207,6 +220,12 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (actor.ActorType == SpotActorTransferNames.ActorTypeFailTransferOut)
+            {
+                evidence.Add("ST-C3", actor.ActorId, "transfer_out_failed", actor.StateVersion.ToString());
+                throw new InvalidOperationException("injected transfer out failure");
+            }
+
             evidence.Add("transfer", actor.ActorId, "transfer_out", actor.StateVersion.ToString());
             return ValueTask.FromResult(ZLinkMessage.From(new TransferStateDto(actor.ActorId, actor.StateVersion)));
         }
@@ -219,6 +238,12 @@ namespace SpotActorTransfer.ActorNode
         {
             cancellationToken.ThrowIfCancellationRequested();
             var dto = state.Decode<TransferStateDto>();
+            if (actorId.StartsWith("actor-fail-transfer-in-", StringComparison.Ordinal))
+            {
+                evidence.Add("ST-C3", actorId, "transfer_in_failed", dto.StateVersion.ToString());
+                throw new InvalidOperationException("injected transfer in failure");
+            }
+
             var actor = new TransferActor(actorId, context)
             {
                 ActorType = SpotActorTransferNames.ActorTypeStateful,
@@ -276,6 +301,12 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (actor.ActorType == SpotActorTransferNames.ActorTypeFailLeave)
+            {
+                evidence.Add("ST-C3", actor.ActorId, "leave_failed", actor.StateVersion.ToString());
+                throw new InvalidOperationException("injected source leave failure");
+            }
+
             evidence.Add("transfer", actor.ActorId, "leave", actor.StateVersion.ToString());
             return ValueTask.CompletedTask;
         }
@@ -283,9 +314,11 @@ namespace SpotActorTransfer.ActorNode
 
     internal sealed class TransferUserSpot(
         IZLinkSpotContext context,
-        EvidenceStore evidence) : IZLinkSpot<TransferActor>
+        EvidenceStore evidence,
+        JoinedGateStore joinedGates) : IZLinkSpot<TransferActor>
     {
         private string _mode = "accept";
+        private readonly Dictionary<string, string> _joinScenarios = new(StringComparer.Ordinal);
 
         public IZLinkSpotContext Context { get; } = context;
 
@@ -306,6 +339,7 @@ namespace SpotActorTransfer.ActorNode
         {
             cancellationToken.ThrowIfCancellationRequested();
             var join = request.Decode<JoinTargetReq>();
+            _joinScenarios[admission.ActorId] = join.Scenario;
             evidence.Add(join.Scenario, admission.ActorId, "admission", $"spot={Context.SpotRid}|mode={_mode}");
             if (string.Equals(_mode, "reject", StringComparison.Ordinal)
                 || string.Equals(join.ExpectedMode, "reject", StringComparison.Ordinal))
@@ -330,10 +364,34 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (string.Equals(_mode, "delay-joined", StringComparison.Ordinal))
+            {
+                var scenario = _joinScenarios.GetValueOrDefault(actor.ActorId, "unknown");
+                evidence.Add(scenario, actor.ActorId, "joined_wait", Context.SpotRid.ToString());
+                return WaitForJoinedGateAsync(actor, cancellationToken);
+            }
+            if (string.Equals(_mode, "fail-joined", StringComparison.Ordinal))
+            {
+                var scenario = _joinScenarios.GetValueOrDefault(actor.ActorId, "unknown");
+                evidence.Add(scenario, actor.ActorId, "joined_failed", Context.SpotRid.ToString());
+                throw new InvalidOperationException("injected joined failure");
+            }
+
             evidence.Add("transfer", actor.ActorId, "joined", $"{Context.SpotRid}:{actor.StateVersion}");
-            if (actor.ActorType == SpotActorTransferNames.ActorTypeStateless)
+            if (actor.StateVersion == 0)
                 evidence.Add("transfer", actor.ActorId, "domain_state_loaded", actor.ActorId);
             return ValueTask.CompletedTask;
+        }
+
+        private async ValueTask WaitForJoinedGateAsync(
+            TransferActor actor,
+            CancellationToken cancellationToken)
+        {
+            var scenario = _joinScenarios.GetValueOrDefault(actor.ActorId, "unknown");
+            await joinedGates.WaitAsync(Context.SpotRid.ToString(), cancellationToken)
+                .ConfigureAwait(false);
+            evidence.Add(scenario, actor.ActorId, "joined_released", Context.SpotRid.ToString());
+            evidence.Add("transfer", actor.ActorId, "joined", $"{Context.SpotRid}:{actor.StateVersion}");
         }
 
         public ValueTask OnLeaveActorAsync(

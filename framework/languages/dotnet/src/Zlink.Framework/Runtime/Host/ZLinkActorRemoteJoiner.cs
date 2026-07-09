@@ -76,6 +76,9 @@ internal sealed class ZLinkActorRemoteJoiner(
                 cancellationToken)
             .ConfigureAwait(false);
 
+        await NotifySourceActorLeftAsync(actor, actorState, cancellationToken)
+            .ConfigureAwait(false);
+
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             routerChannelId,
@@ -110,13 +113,8 @@ internal sealed class ZLinkActorRemoteJoiner(
             registration.Codecs);
 
         if (reply.Accepted)
-        {
-            if (resultActorRef.NodeRid != actorRef.NodeRid)
-                await ApplyRemoteActorMigrationAsync(actorState, resultActorRef, cancellationToken)
-                    .ConfigureAwait(false);
-            else
-                actorState.BindNativeActorRef(resultActorRef);
-        }
+            await ApplyRemoteActorMigrationAsync(actor, actorState, resultActorRef, cancellationToken)
+                .ConfigureAwait(false);
 
         return new ZLinkActorJoinResult(
             reply.Accepted,
@@ -125,32 +123,58 @@ internal sealed class ZLinkActorRemoteJoiner(
     }
 
     private async ValueTask ApplyRemoteActorMigrationAsync(
+        IZLinkActor actor,
         ZLinkActorRuntimeState actorState,
         ZLinkBackendActorRef targetActorRef,
         CancellationToken cancellationToken)
     {
-        if (ZLinkBoundSessionDispatchScope.TryDefer(
-                actorState.ActorId,
-                ct => ApplyRemoteActorMigrationCoreAsync(actorState, targetActorRef, ct)))
-            return;
-
-        await ApplyRemoteActorMigrationCoreAsync(actorState, targetActorRef, cancellationToken)
+        await ApplyRemoteActorMigrationCoreAsync(actor, actorState, targetActorRef, cancellationToken)
             .ConfigureAwait(false);
     }
 
     private async ValueTask ApplyRemoteActorMigrationCoreAsync(
+        IZLinkActor actor,
         ZLinkActorRuntimeState actorState,
         ZLinkBackendActorRef targetActorRef,
         CancellationToken cancellationToken)
     {
+        _ = actor;
         actorState.BindNativeActorRef(targetActorRef);
         await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
             .ConfigureAwait(false);
         actorState.InvalidateContext();
         // The target runtime claimed the actor location with Takeover as
-        // part of hosting the joined instance; this owner releases its row.
-        await actorSessionManager.ReleaseActorLocationAfterMoveAsync(actorState, cancellationToken)
-            .ConfigureAwait(false);
+        // part of hosting the joined instance; releasing this owner's stale
+        // row is cleanup and must not hold back the accepted join reply.
+        _ = ReleaseActorLocationAfterMoveAsync(actorState);
+    }
+
+    private async ValueTask NotifySourceActorLeftAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        if (actorState.LiveActivation is { } previousActivation)
+            await previousActivation.NotifyActorLeftAfterManagedJoinSpotAsync(actor, cancellationToken)
+                .ConfigureAwait(false);
+        else
+            await runtime.NotifyEntrySpotActorLeftAsync(actor, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+    }
+
+    private async Task ReleaseActorLocationAfterMoveAsync(
+        ZLinkActorRuntimeState actorState)
+    {
+        try
+        {
+            await actorSessionManager.ReleaseActorLocationAfterMoveAsync(actorState, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"remote actor move cleanup failed for '{actorState.ActorId}': {exception.Message}");
+        }
     }
 
     private async ValueTask<ZLinkSpotRouteRef> ResolveRemoteActorJoinTargetAsync(

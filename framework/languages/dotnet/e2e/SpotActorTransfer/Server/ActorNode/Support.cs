@@ -75,3 +75,24 @@ internal sealed class EvidenceStore(string nodeRid, string path)
         return Snapshot();
     }
 }
+
+internal sealed class JoinedGateStore
+{
+    private readonly ConcurrentDictionary<string, TaskCompletionSource> _gates = new(StringComparer.Ordinal);
+
+    public Task WaitAsync(string spotRid, CancellationToken cancellationToken)
+    {
+        var gate = _gates.GetOrAdd(
+            spotRid,
+            static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        return gate.Task.WaitAsync(cancellationToken);
+    }
+
+    public bool Release(string spotRid)
+    {
+        var gate = _gates.GetOrAdd(
+            spotRid,
+            static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        return gate.TrySetResult();
+    }
+}

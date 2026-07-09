@@ -6,6 +6,9 @@ public static class SpotActorTransferNames
     public const string ActorTypeStateful = "transfer-stateful";
     public const string ActorTypeStateless = "transfer-stateless";
     public const string ActorTypeNoAdapter = "transfer-no-adapter";
+    public const string ActorTypeFailTransferOut = "transfer-fail-out";
+    public const string ActorTypeFailLeave = "transfer-fail-leave";
+    public const string ActorTypeFailTransferIn = "transfer-fail-in";
     public const string EntrySpotRid = "spot-actor-transfer-entry";
 }
 
@@ -28,6 +31,10 @@ public sealed record CreateSpotRes(
     string SpotRid,
     string NodeRid,
     string State);
+
+public sealed record GateReleaseRes(
+    string SpotRid,
+    bool Released);
 
 public sealed record JoinTargetReq(
     string Scenario,

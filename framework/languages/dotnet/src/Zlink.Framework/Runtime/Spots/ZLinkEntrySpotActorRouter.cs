@@ -125,6 +125,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.EntrySpotActorDispatch.TryResolveJoined(actorType, out descriptor),
+            throwOnFailure: false,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -142,6 +143,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.EntrySpotActorDispatch.TryResolveCreated(actorType, out descriptor),
+            throwOnFailure: false,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -157,6 +159,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.EntrySpotActorDispatch.TryResolveLeft(actorType, out descriptor),
+            throwOnFailure: true,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -193,6 +196,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
         IZLinkActor actor,
         RoutingId? targetNodeRid,
         TryResolveLifecycle resolve,
+        bool throwOnFailure,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
@@ -201,6 +205,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                 null,
                 targetNodeRid,
                 resolve,
+                throwOnFailure,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -211,6 +216,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
         ZLinkMessage? request,
         RoutingId? targetNodeRid,
         TryResolveLifecycle resolve,
+        bool throwOnFailure,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
@@ -234,6 +240,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             }
             catch
             {
+                if (throwOnFailure) throw;
             }
         }
     }

@@ -39,7 +39,8 @@ public static class CustomerGatewayHostFactory
                 .SetEntrySpotRoutingId(topology.CustomerSpotNodeRid)
                 .EnablePubSub(topology.CustomerSpotEndpoint)
                 .AddEntrySpot<CustomerEntrySpot>()
-                .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
+                .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType)
+                .AddStatelessActorTransfer<CustomerActor>(SampleNames.CustomerActorType);
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
                 .RegisterSession<CustomerSession>();

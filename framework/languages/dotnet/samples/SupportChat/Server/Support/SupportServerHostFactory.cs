@@ -52,6 +52,7 @@ public static class SupportServerHostFactory
                 .EnablePubSub(topology.SupportEntrySpotEndpoint)
                 .AddEntrySpot<SupportEntrySpot>()
                 .AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType)
+                .AddStatelessActorTransfer<SupportUserActor>(SampleNames.SupportActorType)
                 .AddSpotFactory<ConversationSpot>();
         });
 

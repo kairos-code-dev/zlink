@@ -72,6 +72,7 @@ internal static class MultiNodeHostFactory
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
+                    .AddStatelessActorTransfer<ScenarioActor>(SpotServiceNames.ActorType)
                     .AddSpotFactory<SpotOnlyUserSpot>()
                     .AddSpotFactory<ScenarioUserSpot>()
                     .AddSpotFactory<MultiNodeSpotA>();
@@ -95,6 +96,7 @@ internal static class MultiNodeHostFactory
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
+                    .AddStatelessActorTransfer<ScenarioActor>(SpotServiceNames.ActorType)
                     .AddSpotFactory<SpotOnlyUserSpot>()
                     .AddSpotFactory<ScenarioUserSpot>()
                     .AddSpotFactory<MultiNodeSpotB>();

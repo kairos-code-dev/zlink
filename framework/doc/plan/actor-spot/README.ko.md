@@ -95,13 +95,13 @@ worker 문서:
 
 | ID | 시나리오 | 우선순위 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| ST-A1 | local join accept 순서 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| ST-A1 | local join accept 순서 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
+| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
+| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
+| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
 | ST-B2 | source cleanup 실패는 성공 유지 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-B3 | transfer adapter 미등록 실패 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-B4 | remote transfer empty state(stateless adapter) | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| ST-B3 | transfer adapter 미등록 실패 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
+| ST-B4 | remote transfer empty state(stateless adapter) | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
 | ST-C1 | source down after admission/before commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | ST-C2 | source down after target commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | ST-C3 | callback/transfer 실패 분류 | P1 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -144,10 +144,10 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 
 | # | 계약 항목 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: |
-| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 2 | remote transfer에서 admission/commit 분리 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 3 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 4 | transfer adapter 미등록 시 remote transfer 명시 실패 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
+| 2 | remote transfer에서 admission/commit 분리 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
+| 3 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
+| 4 | transfer adapter 미등록 시 remote transfer 명시 실패 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
 | 5 | source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | 6 | source down signal 없이 pending admission deadline 정리 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | 7 | `OnJoinedActor` 완료 전 caller success 반환 안 함 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |

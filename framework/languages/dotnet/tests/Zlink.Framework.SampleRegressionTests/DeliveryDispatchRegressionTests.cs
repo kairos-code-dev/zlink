@@ -15,8 +15,10 @@ public sealed partial class RegressionTests
 
         Assert.Contains("if [[ -z \"${DELIVERYDISPATCH_REDIS_ENDPOINT:-}\" ]]", shellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        AssertShellRunnerUsesRedisDockerHelper(
+            shellRunner,
+            "deliverydispatch-dotnet-redis",
+            "DELIVERYDISPATCH_REDIS_ENDPOINT");
         Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("topology=ready", shellRunner, StringComparison.Ordinal);

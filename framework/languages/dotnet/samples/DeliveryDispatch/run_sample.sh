@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
@@ -178,9 +179,8 @@ if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
     echo "Docker is required to run the DeliveryDispatch sample when DELIVERYDISPATCH_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  REDIS_CONTAINER="deliverydispatch-dotnet-redis-${RANDOM}-$$"
-  docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-  export DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  zlink_redis_start_scoped_assign REDIS_CONTAINER DELIVERYDISPATCH_REDIS_ENDPOINT "deliverydispatch-dotnet-redis" redis:7.2-alpine
+  export DELIVERYDISPATCH_REDIS_ENDPOINT
 fi
 wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 

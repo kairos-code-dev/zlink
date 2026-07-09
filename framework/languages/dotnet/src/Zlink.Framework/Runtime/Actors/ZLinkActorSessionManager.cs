@@ -70,6 +70,26 @@ internal sealed partial class ZLinkActorSessionManager(
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask<CreateActorResult> TransferAndBindActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkActorTransferRegistration transfer,
+        ZLinkMessage transferState,
+        ZLinkActorClaimMode claimMode,
+        CancellationToken cancellationToken = default)
+    {
+        var state = _actorSessions.GetOrCreate(actorId);
+        return await ActorCreation.TransferAndBindActorAsync(
+                state,
+                actorId,
+                actorType,
+                transfer,
+                transferState,
+                claimMode,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask<CreateActorResult> CreateActorAsync(
         string actorId,
         string actorType,

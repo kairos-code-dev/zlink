@@ -93,11 +93,21 @@ internal sealed partial class ZLinkFrameworkRuntime
                              .ConfigureAwait(false)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
+        if (!ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor type '{request.ActorType}' is not registered for remote actor transfer.");
+
         // Hosting handoff: the source node still owns the location row, so
-        // the local claim may fence it out with Takeover (draft section 9).
-        var creation = await CreateLocalActorForHandoffAsync(
+        // the local claim may fence it out with Takeover. This path does not
+        // call the Entry Spot create callback; transfer materialization is
+        // not a new application-level actor creation.
+        var creation = await _actorSessionManager.TransferAndBindActorAsync(
                 request.ActorId,
                 request.ActorType,
+                transfer,
+                ZLinkRemoteActorJoinPackets.DecodeTransferState(request, Registration.Codecs),
+                ZLinkActorClaimMode.TakeoverExistingOwner,
                 cancellationToken)
             .ConfigureAwait(false);
         var actorId = request.ActorId;

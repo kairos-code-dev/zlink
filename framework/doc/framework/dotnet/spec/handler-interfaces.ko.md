@@ -364,6 +364,7 @@ public interface IZLinkActorTransferAdapter<TActor>
 
     ValueTask<TActor> TransferInAsync(
         string actorId,
+        IZLinkActorContext context,
         ZLinkMessage state,
         CancellationToken cancellationToken);
 }
@@ -605,6 +606,9 @@ public readonly record struct ZLinkSpotActorJoinResult(
 framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
 stateless transfer adapter 등록 API를 사용한다. 이 기본 adapter는 source에서 빈 `ZLinkMessage`를 보내고,
 target에서 기존 actor factory 또는 public actor 생성 경로로 `TActor` instance를 만든다.
+custom adapter의 target method는 actor를 만들 때 사용할 `IZLinkActorContext`를 받는다. `.NET` actor는
+factory가 받은 context를 그대로 노출해야 하므로, transfer adapter가 새 actor instance를 반환하는
+경우에도 framework가 넘긴 context를 actor 생성자에 전달해야 한다.
 
 actor join admission callback 의 request는 `ZLinkMessage`다. application은
 필요한 DTO를 `Decode<T>()`로 얻는다. reply는 DTO 또는

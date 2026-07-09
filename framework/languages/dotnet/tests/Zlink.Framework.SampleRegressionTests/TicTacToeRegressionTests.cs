@@ -16,8 +16,11 @@ public sealed partial class RegressionTests
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("export TICTACTOE_REDIS_KEY_PREFIX=\"tictactoe:dotnet:${RUN_ID}:\"", shellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("--name \"zlink-tictactoe-dotnet-redis-${RUN_ID}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        AssertShellRunnerUsesRedisDockerHelper(
+            shellRunner,
+            "zlink-tictactoe-dotnet-redis",
+            "TICTACTOE_REDIS_ENDPOINT",
+            "REDIS_CONTAINER_ID");
         Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("export TICTACTOE_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("if [[ -z \"${TICTACTOE_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);

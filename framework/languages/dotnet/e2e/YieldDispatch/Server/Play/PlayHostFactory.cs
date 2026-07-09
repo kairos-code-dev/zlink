@@ -59,6 +59,7 @@ internal static class PlayHostFactory
                 .EnablePubSub(options.SpotPubEndpoint)
                 .AddEntrySpot<YieldEntrySpot>()
                 .AddActorFactory<YieldActorFactory>(YieldDispatchNames.ActorType)
+                .AddStatelessActorTransfer<YieldActor>(YieldDispatchNames.ActorType)
                 .AddSpotFactory<YieldProbeSpot>();
         });
 

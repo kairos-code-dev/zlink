@@ -40,9 +40,10 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-supportchat-dotnet-redis-${RUN_ID}\"", shellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        AssertShellRunnerUsesRedisDockerHelper(
+            shellRunner,
+            "zlink-supportchat-dotnet-redis",
+            "SUPPORTCHAT_REDIS_ENDPOINT");
         Assert.DoesNotContain("if [[ -z \"${SUPPORTCHAT_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when SUPPORTCHAT_REDIS_ENDPOINT is not set", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("SUPPORTCHAT_BASE_PORT", shellRunner, StringComparison.Ordinal);

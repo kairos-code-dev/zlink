@@ -29,7 +29,8 @@ ValueTask OnJoinedActorAsync(TActor actor, ...);   // join 완료 신호
 // transfer adapter (actor type별)
 public interface IZLinkActorTransferAdapter<TActor> where TActor : IZLinkActor {
     ValueTask<ZLinkMessage> TransferOutAsync(TActor actor, CancellationToken ct);
-    ValueTask<TActor> TransferInAsync(string actorId, ZLinkMessage state, CancellationToken ct);
+    ValueTask<TActor> TransferInAsync(
+        string actorId, IZLinkActorContext context, ZLinkMessage state, CancellationToken ct);
 }
 // 등록: 기본(stateless) / custom adapter
 void AddStatelessActorTransfer<TActor>(string actorType);
@@ -47,32 +48,46 @@ audit·보정, (c) **guide 정합**, (d) 샘플·e2e, (e) P5 리팩토링이다.
 
 코드로 확인하고 [README 마스터표](README.ko.md#3-마스터-체크-표--config-10-시나리오--언어) .NET 열에 반영.
 
-- [ ] SPOT runtime(예: `ZLinkSpotRuntime` 등 실제 파일 확인)에서 local join이
+- [x] SPOT runtime(예: `ZLinkSpotRuntime` 등 실제 파일 확인)에서 local join이
       `OnActorJoinAsync → OnLeaveActorAsync → OnJoinedActorAsync` 순서이고, join success가
       `OnJoinedActorAsync` 완료 뒤에 반환되는지.
-- [ ] remote 이동이 admission/commit 분리 + `IZLinkActorTransferAdapter` 호출로 되는지, 아니면 아직
+- [x] remote 이동이 admission/commit 분리 + `IZLinkActorTransferAdapter` 호출로 되는지, 아니면 아직
       factory 재생성(guide 다이어그램) 모델인지.
-- [ ] `AddStatelessActorTransfer`/`AddActorTransferAdapter` 등록·조회, 빈 state transfer vs 미등록 실패
+- [x] `AddStatelessActorTransfer`/`AddActorTransferAdapter` 등록·조회, 빈 state transfer vs 미등록 실패
       구분.
-- [ ] moving dispatch 차단, pending/committed location, generation fencing, pending admission
+- [x] moving dispatch 차단, pending/committed location, generation fencing, pending admission
       deadline, 멱등 source cleanup, bound session A→B transfer.
 - audit 결과를 이 문서 하단 `## 현황`에 정리하고 각 P를 gap 중심으로 좁힌다.
 
+### P0 audit 결과 (2026-07-10 current source)
+
+`framework/languages/dotnet` source 기준으로 확인한 상태다.
+
+| 항목 | 상태 | 근거/판단 |
+| --- | --- | --- |
+| local join admission surface | 완료 | public source가 `ZLinkActorJoinAdmission` 기반 `OnActorJoinAsync`를 요구한다. handler invoker, descriptor factory, local activation dispatch가 admission 객체를 넘긴다. |
+| local join success gate | 부분 충족 | `ZLinkSpotActivationActors`와 `ZLinkEntrySpotActivation` 경로에서 accept 뒤 leave/joined를 호출하는 구조다. 다만 config-10 ST-A1/A2/A3의 배포형 evidence가 아직 없다. |
+| remote transfer adapter | 진행 | source `ZLinkActorRemoteJoiner`가 remote routed join 전에 actor type별 transfer registration을 확인하고, 미등록이면 source leave 전에 실패한다. 등록되어 있으면 `TransferOutAsync` 결과를 routed join request에 싣는다. |
+| adapter registration | 진행 | `AddStatelessActorTransfer`/`AddActorTransferAdapter`와 `ActorTransfers` registration storage가 있고, runtime 조회가 remote routed join source/target 양쪽에 연결됐다. |
+| target materialize 설계 | 보정됨 | `.NET` actor는 `IZLinkActorContext`를 생성자에서 받아야 하므로 `TransferInAsync(actorId, context, state, ct)`로 언어별 interface를 보정했다. target은 stateless이면 factory 경로, custom이면 adapter 경로로 actor를 materialize하고, 둘 다 location claim/native ref/context bind 검증을 통과한다. |
+| config-10 e2e | 미착수 | `framework/languages/dotnet/e2e/SpotActorTransfer` 디렉터리가 없다. |
+| verification | 부분 완료 | `dotnet build Zlink.Framework.sln --no-restore`, unit test 294개, contract test 35개, sample regression test 25개는 통과했다. sample 전체 runner는 `TicTacToe/run_sample.sh`의 `docker run -d redis:7.2-alpine` 명령이 컨테이너 기동 후에도 반환하지 않아 중단·정리했다. e2e 전체 runner와 config-10은 아직 없다. |
+
 ## P1. Public interface 정렬 + guide reconcile
 
-- [ ] 실제 source public interface를 목표 정본으로 변경:
+- [x] 실제 source public interface를 목표 정본으로 변경:
   `OnActorJoinAsync(ZLinkActorJoinAdmission, ZLinkMessage, CancellationToken)`,
   `IZLinkActorTransferAdapter<TActor>`, `AddStatelessActorTransfer<TActor>`,
   `AddActorTransferAdapter<TActor, TAdapter>`.
-- [ ] 기존 `OnActorJoinAsync(TActor actor, ...)` 호출부와 샘플 compile break를 정본 시그니처로 변경.
-- [ ] adapter 등록 API가 actor type별 1개 등록, stateless/custom 구분, 미등록 실패 정책을 표현하는지 확인.
+- [x] 기존 `OnActorJoinAsync(TActor actor, ...)` 호출부와 샘플 compile break를 정본 시그니처로 변경.
+- [x] adapter 등록 API가 actor type별 1개 등록, stateless/custom 구분, 미등록 실패 정책을 표현하는지 확인.
 
 - [ ] `06-actor-spot.ko.md`의 "② 다른 노드 — actor migration" 다이어그램/표를 정본으로 교체:
   - remote path의 `OnCreateActorAsync` 제거(정본 §7: remote materialize는 새 actor 생성이 아님 →
     target Entry Spot create callback 호출 안 함).
   - "in-memory 상태 전송 안 됨(payload/DB)" 서술을 **transfer adapter로 state 이동**으로 교체.
     `IZLinkActorTransferAdapter<TActor>.TransferOutAsync(actor) → ZLinkMessage`,
-    `TransferInAsync(actorId, state) → actor`로 복원. state가 필요 없으면 **stateless adapter**
+    `TransferInAsync(actorId, context, state) → actor`로 복원. state가 필요 없으면 **stateless adapter**
     (`AddStatelessActorTransfer`)로 빈 `ZLinkMessage` + factory 경로임을 명시.
   - callback 순서: source `TransferOut` → source `OnLeaveActorAsync` → commit → target `TransferIn`
     → `OnJoinedActorAsync`(정본 §5 다이어그램과 동일 의미).
@@ -83,6 +98,11 @@ audit·보정, (c) **guide 정합**, (d) 샘플·e2e, (e) P5 리팩토링이다.
 ## P2. Framework runtime 구현/보정
 
 정본 의미를 만족하도록 보정한다(P0에서 이미 만족하면 그대로).
+
+> .NET 보정: custom `TransferInAsync`가 반환한 actor instance도 기존 actor factory 계약처럼
+> `IZLinkActorContext`를 노출해야 한다. 그래서 `.NET` 언어별 interface는
+> `TransferInAsync(actorId, context, state, ct)`로 고정한다. runtime은 이 context를 먼저 만들고 adapter에
+> 넘긴 뒤, 반환 actor가 같은 context를 노출하는지 기존 bind 검증으로 확인한다.
 
 | 항목 | 요구 |
 | --- | --- |
@@ -143,14 +163,14 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 - [ ] 1~10 (README §4 .NET 열). runtime audit로 각 항목 `✅`/`🚫` 확정.
 
 ### interface/문서
-- [ ] 실제 source public interface를 admission/adapter 모델로 변경
-- [ ] 기존 샘플/e2e compile break 정리
+- [x] 실제 source public interface를 admission/adapter 모델로 변경
+- [x] 기존 샘플/e2e compile break 정리
 - [ ] `06-actor-spot.ko.md` remote 다이어그램·표를 transfer-adapter 모델로 reconcile
 - [ ] transfer adapter 등록 API(stateless/custom)를 guide에 추가
 - [ ] admission=identity 규칙 guide 명시
 
 ### 샘플
-- [ ] Bingo/TicTacToe local join 순서 정합
+- [x] Bingo/TicTacToe local join 순서 정합
 - [ ] DeliveryDispatch(+SupportChat) `IZLinkActorTransferAdapter` 등록·순서 정합
 - [ ] sample 전체 runner 통과
 

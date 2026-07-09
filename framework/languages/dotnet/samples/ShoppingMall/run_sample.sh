@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
@@ -154,8 +155,8 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 REDIS_CONTAINER="zlink-shoppingmall-dotnet-redis-${RUN_ID}"
-docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-export SHOPPINGMALL_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+zlink_redis_start_scoped_assign REDIS_CONTAINER SHOPPINGMALL_REDIS_ENDPOINT "zlink-shoppingmall-dotnet-redis" redis:7.2-alpine
+export SHOPPINGMALL_REDIS_ENDPOINT
 wait_port redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
 
 start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --instance workflow-a

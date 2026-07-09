@@ -32,7 +32,7 @@ internal sealed class TicTacToeGame(
         Context.Handlers.AddHandler<PlayActorLeaveGameHandler>();
     }
 
-    public ValueTask OnJoinedActorAsync(
+    public async ValueTask OnJoinedActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -41,13 +41,18 @@ internal sealed class TicTacToeGame(
             actor.JoinRoom(join.RoomId);
             actor.ApplyPlayer(join.Player);
             _actors[actor.ActorId] = actor;
+            var state = _match.Snapshot();
+            var mark = string.Equals(state.XActorId, actor.ActorId, StringComparison.Ordinal)
+                ? TicTacToeMarks.X
+                : TicTacToeMarks.O;
+            await NotifyPlayerJoinedAsync(actor, mark, state, cancellationToken);
+            await BroadcastAsync(state, actor.ActorId, cancellationToken);
         }
 
         logger.LogInformation(
             "game spot: actor joined. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
             _roomId);
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnLeaveActorAsync(
@@ -114,7 +119,7 @@ internal sealed class TicTacToeGame(
         if (_gameTick is not null) await _gameTick.CancelAsync();
     }
 
-    public async ValueTask<TicTacToeGameJoinRes> JoinPlayerAsync(
+    public ValueTask<TicTacToeGameJoinRes> JoinPlayerAsync(
         string actorId,
         string roomId,
         PlayerInfo player,
@@ -135,8 +140,7 @@ internal sealed class TicTacToeGame(
 
         var change = _match.JoinPlayer(actorId, DateTimeOffset.UtcNow);
 
-        await BroadcastAsync(change.State, actorId, cancellationToken);
-        return new TicTacToeGameJoinRes(change.State);
+        return ValueTask.FromResult(new TicTacToeGameJoinRes(change.State));
     }
 
     public async ValueTask<PlaceMarkRes> PlaceMarkAsync(

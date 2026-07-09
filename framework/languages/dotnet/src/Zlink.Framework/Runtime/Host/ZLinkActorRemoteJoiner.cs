@@ -64,6 +64,18 @@ internal sealed class ZLinkActorRemoteJoiner(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor '{actor.ActorId}' does not have an actor type for remote SPOT join.");
 
+        if (!ZLinkActorTransferRegistry.TryResolve(registration, actorState.ActorType, out var transfer))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor type '{actorState.ActorType}' is not registered for remote actor transfer.");
+
+        var transferState = await ZLinkActorTransferRegistry.TransferOutAsync(
+                services,
+                transfer,
+                actor,
+                cancellationToken)
+            .ConfigureAwait(false);
+
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             routerChannelId,
@@ -76,6 +88,7 @@ internal sealed class ZLinkActorRemoteJoiner(
             actorState.ActorType,
             boundSession.SessionNodeRid,
             boundSession.SessionRid,
+            transferState,
             request,
             registration.Codecs);
 

@@ -58,6 +58,9 @@ actor 는 factory 로 만든다. factory 는 `actorType` 짧은 문자열로 등
 builder.Services.AddZLinkFramework(options =>
 {
     spot.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate 가 이 키로 factory 를 고른다.
+    spot.AddStatelessActorTransfer<PlayerActor>("player"); // remote 이동 때 state 전송이 필요 없으면 빈 state 로 이동한다.
+    // spot.AddActorTransferAdapter<PlayerActor, PlayerTransferAdapter>("player");
+    // remote 이동 때 actor state 를 message 로 옮겨야 하면 custom adapter 를 등록한다.
     // Entry Spot / user Spot 등록(AddEntrySpot / AddSpotFactory)은 SpotNode 쪽에서
     // ([07-actor-session](07-actor-session.ko.md) §6 등록 코드)
 });
@@ -140,7 +143,7 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 | spot-side 콜백 | 언제(트리거) | Entry Spot | user Spot |
 |----------------|---------------|:----------:|:---------:|
 | `OnCreateActorAsync(actor, createReq, ct)` | factory 가 actor 를 **최초 생성**할 때(`IZLinkActorManager.GetOrCreateAsync`) | ✅ 전용 | — |
-| `OnActorJoinAsync(actor, req, ct) → ZLinkSpotActorJoinResult` | actor 의 `Context.JoinSpot(spotRid, req)` / `JoinEntrySpot(...)` — **admission 결정 지점**(Accept/Reject) | ✅ | ✅ |
+| `OnActorJoinAsync(admission, req, ct) → ZLinkSpotActorJoinResult` | actor 의 `Context.JoinSpot(spotRid, req)` / `JoinEntrySpot(...)` — **admission 결정 지점**(Accept/Reject). actor instance 가 아니라 `ActorId`, source/target rid snapshot 을 받는다 | ✅ | ✅ |
 | `OnJoinedActorAsync(actor, ct)` | 위 join 이 **Accept 된 직후** | ✅ | ✅ |
 | `OnLeaveActorAsync(actor, ct)` | actor 가 **그 Spot 을 떠날 때** — 다른 Spot 으로 join(Entry→room 포함) 또는 `leaveActor`/framework leave | ✅ | ✅ |
 | `OnDisconnectActorAsync(actor, ct)` | 응용이 그 actor 에 `NotifyDisconnectedAsync(...)` | ✅ | ✅ |
@@ -150,6 +153,8 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 > 면 통과, `Reject(reply)` 면 거부다. reply `ZLinkMessage` 는 join 호출자에게 그대로 돌아간다.
 > **reply 는 선택**이라, 돌려줄 게 없으면 인자 없는 `Accept()` / `Reject()` 를 쓴다(샘플의 흔한 형태:
 > Entry Spot 은 보통 `Accept()`, user Spot 은 조건 불일치 시 `Reject()`).
+> 이 콜백은 admission 만 담당한다. 여기서 membership 확정, location 확정, client event 발행, actor
+> instance 변경을 하지 않는다. 그런 처리는 join 이 확정된 뒤 `OnJoinedActorAsync`에서 한다.
 
 > **`OnCreateActorAsync` 는 Entry Spot 전용**이다(actor 가 처음 머무는 곳). user Spot 은 이미 만들어진
 > actor 가 join 으로 들어오므로 create 콜백이 없다.
@@ -179,40 +184,49 @@ sequenceDiagram
 
 > admission 이 **Reject** 면 이동·leave 없이 actor 는 Entry Spot 에 그대로 남는다.
 
-**② 다른 노드 — actor migration(인스턴스 이주).** A 의 인스턴스를 제거하고 B 에 새 인스턴스를 만든다.
-콜백이 두 노드에 나뉘어 돈다.
+**② 다른 노드 — actor transfer(인스턴스 이주).** source node의 actor state를 transfer adapter가
+`ZLinkMessage`로 만들고, target node가 그 message로 actor instance를 materialize한다. `OnActorJoinAsync`
+는 target admission만 결정하고, remote materialize는 새 actor 생성이 아니므로 Entry Spot
+`OnCreateActorAsync`는 호출하지 않는다.
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant CA as framework @노드 A
+  participant EA as Entry/User Spot @A
   participant CB as framework @노드 B
-  participant EB as Entry Spot @B
   participant R as BingoRoom @B
   Note over CA: JoinSpot(roomRid@B) — 대상이 원격
-  CA->>CB: remote join 요청 (actor gateway route)
-  Note over CB: actor 위치 소유권 Takeover<br/>actor 인스턴스 신규 생성 (B)
-  CB->>EB: OnCreateActorAsync
+  CA->>CA: TransferOutAsync(actor) -> state
+  CA->>CB: remote admission 요청
   CB->>R: OnActorJoinAsync — admission
   R-->>CB: Accept(reply)
-  CB->>EB: OnLeaveActorAsync
+  CB-->>CA: admission accepted
+  CA->>EA: OnLeaveActorAsync
+  CA->>CB: commit(state)
+  CB->>CB: TransferInAsync(actorId, context, state)
   CB->>R: OnJoinedActorAsync
   Note over CB: actor 위치를 room route 로 갱신
-  CB-->>CA: join OK (reply)
+  CB-->>CA: commit ack + join OK (reply)
   Note over CA: actor ref 를 B 로 갱신<br/>bound session 을 A 에서 B 로 이동<br/>A 의 actor context 무효화
   Note over CA: A 의 이전 actor 위치 기록 release
 ```
 
-> **B 의 인스턴스는 factory 로 새로 생성**되므로 A 의 in-memory 상태는 자동으로 넘어가지 않는다. room
-> 상태는 `BingoRoom`(B)이 들고, actor 가 가져갈 값은 join req payload(또는 DB)로 전달한다. **bound
-> session(STREAM)은 A→B 로 transfer** 되어 client push 는 끊기지 않는다(이주 후 B 의 actor 가
+> remote transfer를 지원할 actor type은 transfer adapter 등록이 필요하다. state를 옮길 값이 없으면
+> `AddStatelessActorTransfer<TActor>(actorType)`를 등록한다. 이 경우 source는 빈 `ZLinkMessage`를 보내고,
+> target은 기존 actor factory 경로로 actor를 만든다. state를 옮겨야 하면
+> `AddActorTransferAdapter<TActor, TAdapter>(actorType)`를 등록하고, adapter의 `TransferOutAsync`에서
+> state message를 만들고 `TransferInAsync(actorId, context, state, ct)`에서 target actor를 만든다.
+> adapter가 없으면 remote transfer는 source `OnLeaveActorAsync` 전에 실패한다.
+>
+> **bound session(STREAM)은 A→B 로 transfer** 되어 client push 는 끊기지 않는다(이주 후 B 의 actor 가
 > `BoundSession.Send` → 같은 client).
 
 | | 같은 노드 | 다른 노드(migration) |
 |---|---|---|
-| actor 인스턴스 | 그대로(route 만 갱신) | A retire + B 신규 생성 |
-| in-memory 상태 | 유지 | **전송 안 됨**(payload/DB 로) |
-| OnLeave / OnJoined | 같은 노드에서 둘 다 | A 에서 OnLeave / B 에서 OnActorJoin·OnJoined |
+| actor 인스턴스 | 그대로(route 만 갱신) | A retire + B materialize |
+| in-memory 상태 | 유지 | **transfer adapter state** 또는 stateless 빈 state |
+| OnLeave / OnJoined | 같은 노드에서 둘 다 | B 에서 admission accept 후 A 에서 OnLeave / B 에서 TransferIn·OnJoined |
 | bound session | 그대로 | A→B transfer |
 | 식별 | 같은 `actorId` | 같은 `actorId`, `generation+1` |
 
@@ -294,7 +308,8 @@ internal sealed class BingoEntrySpot(IZLinkEntrySpotContext context, ILogger<Bin
     }
 
     // 트리거: actor.Context.JoinEntrySpot(...) — Entry Spot admission. 여기선 무조건 Accept.
-    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(PlayerActor actor, ZLinkMessage request, CancellationToken ct)
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        ZLinkActorJoinAdmission admission, ZLinkMessage request, CancellationToken ct)
         => ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
 
     // 트리거: 위 join Accept 직후. 옵션에 따라 Entry Spot 에서 바로 actor 종료.
@@ -349,13 +364,13 @@ internal sealed class BingoRoom(IZLinkSpotContext context, /* … */) : IZLinkSp
 
     // 트리거: ②의 actor.Context.JoinSpot(roomRid, req). 입장 admission — Accept 면 join 확정.
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        PlayerActor actor, ZLinkMessage request, CancellationToken ct)
+        ZLinkActorJoinAdmission admission, ZLinkMessage request, CancellationToken ct)
     {
-        var reply = await JoinAsync(actor, request.Decode<BingoRoomJoinReq>(), ct);  // room 상태에 등록
+        var reply = await JoinAsync(admission.ActorId, request.Decode<BingoRoomJoinReq>(), ct);  // admission 결과만 결정
         return ZLinkSpotActorJoinResult.Accept(reply);   // 정원 초과 등에서 Reject(...) 가능
     }
 
-    public ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken ct) { /* 로깅 등 */ return ValueTask.CompletedTask; }
+    public ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken ct) { /* room membership 확정 */ return ValueTask.CompletedTask; }
 
     // 트리거: Context.leaveActor(actor) 또는 framework leave. room 상태에서 제거.
     public ValueTask OnLeaveActorAsync(PlayerActor actor, CancellationToken ct) { _actors.Remove(actor.ActorId); return ValueTask.CompletedTask; }

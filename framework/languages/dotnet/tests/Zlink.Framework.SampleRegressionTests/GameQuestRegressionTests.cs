@@ -44,7 +44,10 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-gamequest-dotnet-redis-${RUN_ID}\"", shellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        AssertShellRunnerUsesRedisDockerHelper(
+            shellRunner,
+            "zlink-gamequest-dotnet-redis",
+            "GAMEQUEST_REDIS_ENDPOINT");
         Assert.DoesNotContain("GAMEQUEST_BASE_PORT", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL:-", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("${GAMEQUEST_REDIS_KEY_PREFIX:-", shellRunner, StringComparison.Ordinal);

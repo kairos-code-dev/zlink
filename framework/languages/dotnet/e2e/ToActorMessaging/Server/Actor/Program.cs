@@ -25,7 +25,8 @@ builder.Services.AddZLinkFramework(framework =>
         .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
         .EnablePubSub(options.PubSubEndpoint)
         .AddEntrySpot<TestEntrySpot>()
-        .AddActorFactory<TestActorFactory>("test-actor");
+        .AddActorFactory<TestActorFactory>("test-actor")
+        .AddStatelessActorTransfer<TestActor>("test-actor");
 });
 
 var app = builder.Build();

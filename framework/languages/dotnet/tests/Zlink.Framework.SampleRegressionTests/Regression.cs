@@ -91,6 +91,23 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("IZLinkLocationRuntimeQuery", allText, StringComparison.Ordinal);
     }
 
+    private static void AssertShellRunnerUsesRedisDockerHelper(
+        string shellRunner,
+        string scope,
+        string endpointVariable,
+        string containerVariable = "REDIS_CONTAINER")
+    {
+        Assert.Contains("source \"${SCRIPT_DIR}/../redis-common.sh\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains(
+            $"zlink_redis_start_scoped_assign {containerVariable} {endpointVariable} \"{scope}\" redis:7.2-alpine",
+            shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains($"if [[ -n \"${{{containerVariable}}}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        Assert.Contains($"docker rm -f \"${{{containerVariable}}}\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("docker run -d --rm", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void DotNet_Samples_Do_Not_Use_Legacy_Registry_Discovery()
     {

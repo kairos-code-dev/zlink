@@ -39,9 +39,10 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-shoppingmall-dotnet-redis-${RUN_ID}\"", shellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        AssertShellRunnerUsesRedisDockerHelper(
+            shellRunner,
+            "zlink-shoppingmall-dotnet-redis",
+            "SHOPPINGMALL_REDIS_ENDPOINT");
         Assert.DoesNotContain("SHOPPINGMALL_BASE_PORT", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("${SHOPPINGMALL_API_A_HTTP_URL:-", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("${SHOPPINGMALL_API_B_HTTP_URL:-", shellRunner, StringComparison.Ordinal);

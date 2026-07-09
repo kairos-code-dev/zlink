@@ -38,7 +38,8 @@ public static class NodeHostFactory
                 .ConnectRouter(topology.CourierSessionSpotNodeRid, topology.CourierSessionSpotRouterEndpoint)
                 .EnablePubSub(nodeConfig.SpotEndpoint)
                 .AddEntrySpot<CourierEntrySpot>()
-                .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
+                .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType)
+                .AddStatelessActorTransfer<CourierActor>(SampleNames.CourierActorType);
         });
 
         return builder.Build();

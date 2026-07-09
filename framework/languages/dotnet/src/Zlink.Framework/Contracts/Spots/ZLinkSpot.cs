@@ -44,6 +44,7 @@ public interface IZLinkActorTransferAdapter<TActor>
 
     ValueTask<TActor> TransferInAsync(
         string actorId,
+        IZLinkActorContext context,
         ZLinkMessage state,
         CancellationToken cancellationToken);
 }

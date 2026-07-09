@@ -271,7 +271,7 @@ cancellation 표현, 등록 API는 언어별 spec에서 고정한다. 특정 언
 | stateless 등록 | actor type만 등록해 framework 기본 stateless adapter를 사용한다. |
 | source method | `TransferOut(actor, cancellation)` |
 | source 반환 | `ZLinkMessage` 또는 그 언어의 framework message type |
-| target method | `TransferIn(actorId, state, cancellation)` |
+| target method | `TransferIn(actorId, state, cancellation)`. actor 생성에 별도 runtime context가 필요한 언어는 언어별 spec에서 해당 context 인자를 추가로 고정한다. |
 | target 반환 | target node에서 사용할 actor instance |
 | 미등록 정책 | remote transfer 시작 전 실패. source `OnLeaveActor`를 호출하지 않는다. |
 | 빈 state 정책 | adapter가 등록되어 있으면 `TransferOut`이 빈 `ZLinkMessage`를 반환해도 정상 transfer로 처리할 수 있다. |
@@ -283,9 +283,13 @@ cancellation 표현, 등록 API는 언어별 spec에서 고정한다. 특정 언
 
 `TransferIn`은 target node에서 아직 actor instance가 없을 때 호출된다. framework는 복원할
 `actorId`와 source가 보낸 state message를 넘긴다. 이 method는 target node에서 사용할 actor instance를
-반환한다. state가 비어 있으면 adapter는 actor id와 언어별 actor factory 또는 public actor 생성 경로를
-사용해 actor instance를 만들 수 있다. 필요한 domain state는 target `OnJoinedActor` 이후 별도 저장소에서
-읽어 올 수 있다.
+반환한다. `.NET`처럼 actor 객체가 framework context를 생성자에서 받아야 하는 언어는, 언어별 spec에서
+그 context 인자를 함께 정의한다. 이 context는 검증이나 admission 판단을 위한 값이 아니라 actor instance가
+기존 actor factory 계약과 같은 runtime context를 노출하게 하려는 생성 인자다.
+
+state가 비어 있으면 adapter는 actor id와 언어별 actor factory 또는 public actor 생성 경로를 사용해
+actor instance를 만들 수 있다. 필요한 domain state는 target `OnJoinedActor` 이후 별도 저장소에서 읽어
+올 수 있다.
 
 framework는 transfer adapter 미등록과 빈 state transfer를 구분해야 한다. adapter가 없으면 remote
 transfer를 시작하지 않고 실패한다. adapter가 등록되어 있고 빈 `ZLinkMessage`를 반환하면 이는 명시적인

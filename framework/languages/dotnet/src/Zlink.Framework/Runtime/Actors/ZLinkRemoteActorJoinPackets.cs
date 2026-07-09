@@ -12,15 +12,19 @@ internal static class ZLinkRemoteActorJoinPackets
         string actorType,
         RoutingId? boundSessionNodeRid,
         RoutingId boundSessionRid,
+        ZLinkMessage transferState,
         ZLinkMessage request,
         ZLinkCodecRegistryBuilder codecs)
     {
         var encodedRequest = request.Encode(codecs);
+        var encodedTransferState = transferState.Encode(codecs);
         var payload = new ZLinkRemoteActorJoinRequest(
             actorId,
             actorType,
             boundSessionNodeRid?.ToBytes().ToArray(),
             boundSessionRid.Size > 0 ? boundSessionRid.ToBytes().ToArray() : null,
+            encodedTransferState.ContentType,
+            encodedTransferState.Payload.ToArray(),
             encodedRequest.ContentType,
             encodedRequest.Payload.ToArray());
 
@@ -53,6 +57,16 @@ internal static class ZLinkRemoteActorJoinPackets
         return DecodeJoinRequestPayload(
             request.RequestContentType,
             request.Request,
+            codecs);
+    }
+
+    public static ZLinkMessage DecodeTransferState(
+        ZLinkRemoteActorJoinRequest request,
+        ZLinkCodecRegistryBuilder codecs)
+    {
+        return DecodeJoinRequestPayload(
+            request.TransferStateContentType,
+            request.TransferState,
             codecs);
     }
 
@@ -155,6 +169,8 @@ internal sealed record ZLinkRemoteActorJoinRequest(
     string ActorType,
     byte[]? BoundSessionNodeRid,
     byte[]? BoundSessionRid,
+    string TransferStateContentType,
+    byte[] TransferState,
     string RequestContentType,
     byte[] Request);
 

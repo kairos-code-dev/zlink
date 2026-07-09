@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
@@ -102,8 +103,8 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the TicTacToe sample." >&2
   exit 1
 fi
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "zlink-tictactoe-dotnet-redis-${RUN_ID}" -p "127.0.0.1::6379" redis:7.2-alpine)"
-export TICTACTOE_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+zlink_redis_start_scoped_assign REDIS_CONTAINER_ID TICTACTOE_REDIS_ENDPOINT "zlink-tictactoe-dotnet-redis" redis:7.2-alpine
+export TICTACTOE_REDIS_ENDPOINT
 REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT}"
 
 python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" <<PY

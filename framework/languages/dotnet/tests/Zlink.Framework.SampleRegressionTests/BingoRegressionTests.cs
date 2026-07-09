@@ -30,9 +30,7 @@ public sealed partial class RegressionTests
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("export BINGO_REDIS_KEY_PREFIX=\"bingo:dotnet:${RUN_ID}:\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-bingo-dotnet-redis-${RUN_ID}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        AssertShellRunnerUsesRedisDockerHelper(shellRunner, "zlink-bingo-dotnet-redis", "BINGO_REDIS_ENDPOINT");
         Assert.DoesNotContain("if [[ -z \"${BINGO_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when BINGO_REDIS_ENDPOINT is not set", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("BINGO_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);

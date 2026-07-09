@@ -47,7 +47,8 @@ internal static class SessionHostFactory
                                 .EnableRouter(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<SessionYieldEntrySpot>()
-                .AddActorFactory<SessionYieldActorFactory>(YieldDispatchNames.ActorType);
+                .AddActorFactory<SessionYieldActorFactory>(YieldDispatchNames.ActorType)
+                .AddStatelessActorTransfer<SessionYieldActor>(YieldDispatchNames.ActorType);
             framework.AddStreamNode(YieldDispatchNames.StreamNode)
                 .Bind(options.StreamEndpoint)
                 .RegisterSession<YieldStreamSession>();

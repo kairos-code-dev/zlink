@@ -7,49 +7,6 @@ namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed partial class SocketKernel
 {
-    private Received ReceiveCore(int flags)
-    {
-        if (!ReceiveBasicParts(flags, out _, out var singlePart,
-                out var parts))
-            throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-        return singlePart != null
-            ? Received.Create(null, singlePart)
-            : Received.Create(null, parts!);
-    }
-
-    private Received? TryReceiveMessageCore(int flags)
-    {
-        if (!ReceiveBasicParts(flags, out _, out var singlePart,
-                out var parts, true))
-            return null;
-        return singlePart != null
-            ? Received.Create(null, singlePart)
-            : Received.Create(null, parts!);
-    }
-
-    private Received ReceiveRoutedCore(int flags)
-    {
-        if (!ReceiveRoutedParts(flags, out var routingId,
-                out var spotRid, out var requestSeq,
-                out var singlePart, out var parts))
-            throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-        return singlePart != null
-            ? CreateRoutedReceived(singlePart, routingId, spotRid, requestSeq)
-            : CreateRoutedReceived(parts!, routingId, spotRid, requestSeq);
-    }
-
-    private Received? TryReceiveRoutedCore(int flags)
-    {
-        if (!ReceiveRoutedParts(flags, out var routingId,
-                out var spotRid, out var requestSeq,
-                out var singlePart, out var parts,
-                true))
-            return null;
-        return singlePart != null
-            ? CreateRoutedReceived(singlePart, routingId, spotRid, requestSeq)
-            : CreateRoutedReceived(parts!, routingId, spotRid, requestSeq);
-    }
-
     // HOT PATH: caller-provided Received storage lets the kernel rewrite
     // internal state on each successful receive without allocating a new
     // Received value per call.
@@ -60,10 +17,9 @@ internal sealed partial class SocketKernel
         // The typed socket classes that expose Recv(Received, RecvFlags) on
         // their public surface only inherit from MessageSocketBase /
         // RoutedMessageSocketBase, so the message-receive capability is
-        // already guaranteed by the class hierarchy. Mirror the legacy
-        // RecvMessageNoWaitUnchecked fast path and skip the per-call
-        // EnsureSupports lookup; this keeps DR/RR 64B-1024B recv at the
-        // same hot-path cost as before the canonical migration.
+        // already guaranteed by the class hierarchy. Skipping the per-call
+        // EnsureSupports lookup keeps DR/RR 64B-1024B recv on the direct
+        // storage-reuse path.
         if (result == null)
             throw new ArgumentNullException(nameof(result));
         return TryReceiveIntoMessageCore(result, flags);
@@ -141,7 +97,7 @@ internal sealed partial class SocketKernel
             int rc;
             int more;
             IntPtr sourceRoutingId;
-            if (Type == SocketType.Router)
+            if (_policy.UsesRouterRoutedReceiveEnvelope)
             {
                 IntPtr sourceSpotRid;
                 ulong requestSeq;
@@ -258,13 +214,13 @@ internal sealed partial class SocketKernel
         var replySpotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        ReceivedReplyHandler replyHandler = (replyParts, sendFlags) =>
+        ReceivedReplyHandler replyHandler = replyParts =>
         {
             if (replyRoutingId is null)
                 throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                     (int)ErrorCode.EInval);
             SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
-                replyParts, sendFlags);
+                replyParts);
         };
 
         if (singlePart != null)

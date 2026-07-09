@@ -7,9 +7,11 @@ internal sealed class SocketTypePolicy
     public SocketTypePolicy(SocketType socketType)
     {
         SocketType = socketType;
+        UsesRouterRoutedReceiveEnvelope = socketType == SocketType.Router;
     }
 
     public SocketType SocketType { get; }
+    public bool UsesRouterRoutedReceiveEnvelope { get; }
 
     public void EnsureSupportsMember(string memberName, SocketCapability capability)
     {
@@ -61,9 +63,6 @@ internal sealed class SocketTypePolicy
     {
         return option switch
         {
-            SocketOption.Subscribe or SocketOption.Unsubscribe
-                or SocketOption.OnlyFirstSubscribe => SocketType == SocketType.Sub
-                                                      || SocketType == SocketType.XSub,
             SocketOption.StreamNotify => SocketType == SocketType.Stream,
             SocketOption.XPubVerbose or SocketOption.XPubVerboser
                 or SocketOption.XPubManual or SocketOption.XPubManualLastValue

@@ -36,21 +36,6 @@ internal sealed partial class SpotNode : ISpotNode
             throw new ObjectDisposedException(nameof(SpotNode));
     }
 
-    internal bool TryGetChannelDealerHandle(string channelName, out IntPtr handle)
-    {
-        lock (_channelDealers)
-        {
-            if (_channelDealers.TryGetValue(channelName, out var dealer))
-            {
-                handle = dealer.Handle;
-                return handle != IntPtr.Zero;
-            }
-        }
-
-        handle = IntPtr.Zero;
-        return false;
-    }
-
     internal void RegisterSpot(Spot spot)
     {
         lock (_spotsGate)
@@ -92,16 +77,7 @@ internal sealed partial class SpotNode : ISpotNode
             {
             }
 
-        lock (_channelDealers)
-        {
-            _channelDealers.Clear();
-        }
-
-        ClearPendingActorMessages();
-
-        _sendReadyHandler = null;
-        _sendReadyHandlerContext = null;
-        _sendReadyHandlerNative = null;
+        ActorInbox.Clear();
 
         var originalHandle = Handle;
         var handle = Handle;
@@ -122,22 +98,4 @@ internal sealed partial class SpotNode : ISpotNode
             throw firstError;
     }
 
-    private void OnNativeSendReady(IntPtr subject, IntPtr userData)
-    {
-        var handler = _sendReadyHandler;
-        var context = _sendReadyHandlerContext;
-        if (handler == null)
-            return;
-        CallbackDelivery.Post(context, () =>
-        {
-            try
-            {
-                handler();
-            }
-            catch (Exception ex)
-            {
-                CallbackExceptionHub.Report(ex);
-            }
-        });
-    }
 }

@@ -114,6 +114,23 @@ public sealed class test_socket_options
     }
 
     [Fact]
+    public void xpub_welcome_message_preserves_binary_payload()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var xpub = ctx.CreateXPubSocket();
+        byte[] payload = [0x00, 0x41, 0xFF, 0x42, 0x00];
+
+        using Message welcome = Message.From(payload);
+        xpub.Options.WelcomeMessage = welcome;
+
+        using Message actual = xpub.Options.WelcomeMessage;
+        Assert.Equal(payload, actual.ToArray());
+    }
+
+    [Fact]
     public void peer_weight_options_validate_documented_range()
     {
         if (!CoreTestSupport.IsNativeAvailable())

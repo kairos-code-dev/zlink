@@ -5,103 +5,119 @@ namespace Systems.Zlink;
 public sealed partial class ZlinkSubmitException
 {
     internal ZlinkSubmitException(SubmitResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkSubmitException(SubmitResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 }
 
 public sealed partial class ZlinkRequestException
 {
     internal ZlinkRequestException(RequestResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkRequestException(RequestResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 }
 
 public sealed partial class ZlinkRecvException
 {
     internal ZlinkRecvException(RecvResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkRecvException(RecvResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 }
 
 public sealed partial class ZlinkHandlerException
 {
     internal ZlinkHandlerException(HandlerResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkHandlerException(HandlerResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 }
 
 public sealed partial class ZlinkCloseException
 {
     internal ZlinkCloseException(CloseResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkCloseException(CloseResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 }
 
 public sealed partial class ZlinkBindException
 {
     internal ZlinkBindException(BindResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkBindException(BindResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 }
 
 public sealed partial class ZlinkConnectException
 {
     internal ZlinkConnectException(ConnectResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkConnectException(ConnectResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 }
 
 public sealed partial class ZlinkConfigException
 {
     internal ZlinkConfigException(ConfigResult result, int nativeErrno)
-        : this((ErrorCode)result, nativeErrno)
+        : base((int)result, nativeErrno)
     {
+        Result = (ErrorCode)(int)result;
     }
 
     internal ZlinkConfigException(ConfigResult result)
-        : this((ErrorCode)result, 0)
+        : base((int)result, 0)
     {
+        Result = (ErrorCode)(int)result;
     }
 }

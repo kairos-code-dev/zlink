@@ -150,43 +150,6 @@ public readonly partial struct RoutingId
         return created;
     }
 
-    private readonly struct RouteCacheKey : IEquatable<RouteCacheKey>
-    {
-        private RouteCacheKey(int length, ulong hash)
-        {
-            Length = length;
-            Hash = hash;
-        }
-
-        private int Length { get; }
-        internal ulong Hash { get; }
-
-        internal static RouteCacheKey FromHash(int length, ulong hash)
-        {
-            return new RouteCacheKey(length, hash);
-        }
-
-        internal static RouteCacheKey Create(ReadOnlySpan<byte> bytes)
-        {
-            return new RouteCacheKey(bytes.Length, RouteHash.Fnv1a(bytes));
-        }
-
-        public bool Equals(RouteCacheKey other)
-        {
-            return Length == other.Length && Hash == other.Hash;
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is RouteCacheKey other && Equals(other);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(Length, Hash);
-        }
-    }
-
     private sealed class RouteCacheEntry
     {
         internal RouteCacheEntry(byte[] bytes, RoutingId routingId)
@@ -245,19 +208,4 @@ public readonly partial struct RoutingId
         ulong Hi,
         RoutingId? RoutingId);
 
-    private sealed class NativeRoutingIdBox
-    {
-        internal ZlinkRoutingId Value;
-
-        internal NativeRoutingIdBox(ReadOnlySpan<byte> bytes)
-        {
-            Value = NativeHelpers.WriteRoutingId(bytes);
-        }
-
-        internal ref ZlinkRoutingId RefValue
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Value;
-        }
-    }
 }

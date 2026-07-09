@@ -235,6 +235,59 @@ public sealed class test_spot_pubsub_basic
         Assert.Equal(payload, sent.ToArray());
     }
 
+    [Fact]
+    public void spot_channel_nowait_failure_preserves_single_message_ownership()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using var sender = node.CreateSpot();
+
+        byte[] payload = "hello-failed-spot-channel"u8.ToArray();
+        using Message sent = Message.From(payload);
+
+        try
+        {
+            Assert.False(sender.SendToChannel("spot:missing-channel")
+                .Message(sent)
+                .Flags(SendFlags.DontWait)
+                .Submit());
+        }
+        catch (ZlinkSubmitException ex)
+            when (ex.Result == ZlinkSubmitException.ErrorCode.NotConnected
+                  || ex.Result == ZlinkSubmitException.ErrorCode.Backpressured
+                  || ex.Result == ZlinkSubmitException.ErrorCode.NotFound)
+        {
+        }
+
+        Assert.Equal(payload.Length, sent.Size);
+        Assert.Equal(payload, sent.ToArray());
+    }
+
+    [Fact]
+    public void spot_publish_submit_failure_preserves_single_message_ownership()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using var publisher = node.CreateSpot();
+
+        byte[] payload = "hello-failed-spot-publish"u8.ToArray();
+        using Message sent = Message.From(payload);
+
+        Assert.Throws<ZlinkSubmitException>(() =>
+            publisher.Publish("spot:invalid-flags")
+                .Message(sent)
+                .Flags((SendFlags)2)
+                .Submit());
+        Assert.Equal(payload.Length, sent.Size);
+        Assert.Equal(payload, sent.ToArray());
+    }
+
 
     [Fact]
     public void spot_node_delivers_to_spot_subscribed_after_peer_connected()

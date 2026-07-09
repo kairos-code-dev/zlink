@@ -2,12 +2,6 @@
 
 namespace Systems.Zlink;
 
-internal enum ActorJoinSource
-{
-    Actor,
-    Node
-}
-
 internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation
 {

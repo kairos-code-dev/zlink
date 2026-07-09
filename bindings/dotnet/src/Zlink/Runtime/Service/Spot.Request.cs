@@ -8,10 +8,9 @@ namespace Systems.Zlink;
 internal sealed partial class Spot : ISpot
 {
     internal void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSeq, Message message, SendFlags flags = SendFlags.None)
+        ulong requestSeq, Message message)
     {
-        ReplyToSpot(destNodeRid, destSpotRid, requestSeq, new[] { message },
-            flags);
+        ReplyToSpot(destNodeRid, destSpotRid, requestSeq, new[] { message });
     }
 
     internal Task<IReadOnlyList<Message>> RequestToSpotAsync(
@@ -77,7 +76,7 @@ internal sealed partial class Spot : ISpot
                 message, (int)flags);
             if (rc == 0)
                 return true;
-            throw ZlinkException.CreateSubmitException(NativeMethods.zlink_errno());
+            throw ZlinkException.CreateSubmitException((SubmitResult)rc);
         }
         catch (ZlinkException ex) when ((flags & SendFlags.DontWait) != 0
                                         && RequestReplySupport.MapSendNoWaitResult(ex)
@@ -141,10 +140,8 @@ internal sealed partial class Spot : ISpot
     }
 
     internal void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSeq, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+        ulong requestSeq, IReadOnlyList<Message> parts)
     {
-        _ = flags;
         RequestReplySupport.EnsureParts(parts, nameof(parts));
         var nodeRid = destNodeRid.ToNative();
         var spotRid = destSpotRid.ToNative();
@@ -205,7 +202,7 @@ internal sealed partial class Spot : ISpot
                     submitted = true;
                     if (rc != 0)
                         throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
+                            (SubmitResult)rc);
                 }
                 finally
                 {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
@@ -10,12 +11,6 @@ internal static class RequestReplySupport
 {
     private const int ErrnoEAgainWin = 35;
     private const int ErrnoEWouldBlockWin = 10035;
-    private const int StackPartLimit = 8;
-
-    internal static Message CloneMessage(Message source)
-    {
-        return source.Copy();
-    }
 
     internal static Message[] CloneParts(IReadOnlyList<Message> parts)
     {
@@ -23,7 +18,7 @@ internal static class RequestReplySupport
             throw new ArgumentException("parts must not be empty", nameof(parts));
         var cloned = new Message[parts.Count];
         for (var i = 0; i < parts.Count; i++)
-            cloned[i] = CloneMessage(parts[i]);
+            cloned[i] = parts[i].Copy();
         return cloned;
     }
 
@@ -52,33 +47,10 @@ internal static class RequestReplySupport
             nameof(timeout));
     }
 
-    internal static IReadOnlyList<Message> TakeOwnedParts(Received source)
-    {
-        return source.TakePartsOwnership();
-    }
-
     internal static void DisposeParts(IEnumerable<Message> parts)
     {
         foreach (var part in parts)
             part.Dispose();
-    }
-
-    internal static void CloneAndSubmitParts(IReadOnlyList<Message> parts,
-        NativePartSubmitter submit)
-    {
-        if (submit == null)
-            throw new ArgumentNullException(nameof(submit));
-
-        var cloned = CloneParts(parts);
-        try
-        {
-            SubmitClonedParts(cloned, submit);
-        }
-        catch
-        {
-            DisposeParts(cloned);
-            throw;
-        }
     }
 
     internal static void SubmitClonedParts(IReadOnlyList<Message> parts,
@@ -122,29 +94,28 @@ internal static class RequestReplySupport
         if (submit == null)
             throw new ArgumentNullException(nameof(submit));
 
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
-        {
-            part.MoveTo(ref nativePart);
-            shouldRestore = true;
-            var rc = submit(ref nativePart, NativeMethods.ZlinkPartFlag.Final);
-            if (rc == 0)
-            {
-                shouldRestore = false;
-                return;
-            }
+        var submitter = new DelegateSinglePartSubmitter(submit);
+        var rc = SinglePartSubmit.Submit(part, ref submitter);
+        if (rc != 0)
+            throw ZlinkException.CreateSubmitException(NativeMethods.zlink_errno());
+    }
 
-            var errno = NativeMethods.zlink_errno();
-            part.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            throw ZlinkException.CreateSubmitException(errno);
-        }
-        catch
+    private readonly struct DelegateSinglePartSubmitter
+        : INativeSinglePartSubmitter<DelegateSinglePartSubmitter>
+    {
+        private readonly NativePartSubmitter _submit;
+
+        internal DelegateSinglePartSubmitter(NativePartSubmitter submit)
         {
-            if (shouldRestore)
-                part.RestoreFrom(ref nativePart);
-            throw;
+            _submit = submit;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Submit(ref DelegateSinglePartSubmitter submitter,
+            ref ZlinkMsg nativePart)
+        {
+            return submitter._submit(ref nativePart,
+                NativeMethods.ZlinkPartFlag.Final);
         }
     }
 
@@ -165,13 +136,13 @@ internal static class RequestReplySupport
         }
 
         Message[]? copiedParts = null;
-        var sourceParts = PartsAsSpan(parts, ref copiedParts);
+        var sourceParts = NativeMessageParts.AsSpan(parts, ref copiedParts);
         ZlinkMsg[]? rentedNative = null;
         // Hot path: request/reply messages are normally one or two parts. Keep
         // native descriptors on the stack for that case and rent only for larger
         // multipart frames.
-        var nativeParts = sourceParts.Length <= StackPartLimit
-            ? stackalloc ZlinkMsg[StackPartLimit]
+        var nativeParts = sourceParts.Length <= NativeMessageParts.StackPartLimit
+            ? stackalloc ZlinkMsg[NativeMessageParts.StackPartLimit]
             : rentedNative = ArrayPool<ZlinkMsg>.Shared.Rent(sourceParts.Length);
         nativeParts = nativeParts[..sourceParts.Length];
 
@@ -205,18 +176,6 @@ internal static class RequestReplySupport
             if (rentedNative != null)
                 ArrayPool<ZlinkMsg>.Shared.Return(rentedNative);
         }
-    }
-
-    private static ReadOnlySpan<Message> PartsAsSpan(IReadOnlyList<Message> parts,
-        ref Message[]? copiedParts)
-    {
-        if (parts is Message[] array)
-            return array;
-
-        copiedParts = new Message[parts.Count];
-        for (var i = 0; i < copiedParts.Length; i++)
-            copiedParts[i] = parts[i];
-        return copiedParts;
     }
 
     internal static void AttachResultCallback(Func<Task<Received>> invoke,
@@ -280,7 +239,7 @@ internal static class RequestReplySupport
             var replyParts = Message.FromNativeVector(parts, partCount);
             parts = IntPtr.Zero;
             partCount = 0;
-            var received = Received.Create(null, replyParts);
+            var received = new Received((RoutingId?)null, replyParts);
             if (!state.TrySetResult(received))
                 DisposeParts(replyParts);
         }

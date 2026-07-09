@@ -8,9 +8,9 @@ namespace Systems.Zlink;
 internal sealed partial class Spot : ISpot
 {
     internal void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
-        Message message, SendFlags flags = SendFlags.None)
+        Message message)
     {
-        ReplyToRouter(peerRid, requestSeq, new[] { message }, flags);
+        ReplyToRouter(peerRid, requestSeq, new[] { message });
     }
 
     internal Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
@@ -88,9 +88,8 @@ internal sealed partial class Spot : ISpot
     }
 
     internal void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts)
     {
-        _ = flags;
         RequestReplySupport.EnsureParts(parts, nameof(parts));
         var routingId = peerRid.ToNative();
         var cloned = RequestReplySupport.CloneParts(parts);

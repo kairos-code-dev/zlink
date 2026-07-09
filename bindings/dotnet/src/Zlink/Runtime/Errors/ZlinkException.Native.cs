@@ -31,58 +31,34 @@ public abstract partial class ZlinkException
     private const int EtermNative = ZlinkHausnumero + 53;
     private const int EmThreadNative = ZlinkHausnumero + 54;
 
-    internal static ZlinkException FromLastError()
-    {
-        var errno = NativeMethods.zlink_errno();
-        return new LegacyZlinkException(errno);
-    }
-
-    internal static void ThrowIfError(int rc)
-    {
-        if (rc != 0)
-            throw FromLastError();
-    }
-
     internal static void ThrowConfigIfError(int rc)
     {
         if (rc != 0)
-            throw CreateConfigException(NativeMethods.zlink_errno());
-    }
-
-    internal static void ThrowBindIfError(int rc)
-    {
-        if (rc != 0)
-            throw CreateBindException(NativeMethods.zlink_errno());
+            throw CreateConfigException((ConfigResult)rc);
     }
 
     internal static void ThrowConnectIfError(int rc)
     {
         if (rc != 0)
-            throw CreateConnectException(NativeMethods.zlink_errno());
-    }
-
-    internal static void ThrowRecvIfError(int rc)
-    {
-        if (rc != 0)
-            throw CreateRecvException(NativeMethods.zlink_errno());
+            throw CreateConnectException((ConnectResult)rc);
     }
 
     internal static void ThrowSubmitIfError(int rc)
     {
         if (rc != 0)
-            throw CreateSubmitException(NativeMethods.zlink_errno());
+            throw CreateSubmitException((SubmitResult)rc);
     }
 
     internal static void ThrowHandlerIfError(int rc)
     {
         if (rc != 0)
-            throw CreateHandlerException(NativeMethods.zlink_errno());
+            throw CreateHandlerException((HandlerResult)rc);
     }
 
     internal static void ThrowCloseIfError(int rc)
     {
         if (rc != 0)
-            throw CreateCloseException(NativeMethods.zlink_errno());
+            throw CreateCloseException((CloseResult)rc);
     }
 
     internal static ErrorCode MapErrorCode(int errno)
@@ -143,15 +119,14 @@ public abstract partial class ZlinkException
         };
     }
 
-    internal static bool TryMapErrorCode(int errno, out ErrorCode code)
-    {
-        code = MapErrorCode(errno);
-        return code != ErrorCode.Unknown;
-    }
-
     internal static ZlinkSubmitException CreateSubmitException(int errno)
     {
         return new ZlinkSubmitException(MapSubmitResult(errno), errno);
+    }
+
+    internal static ZlinkSubmitException CreateSubmitException(SubmitResult result)
+    {
+        return new ZlinkSubmitException(result);
     }
 
     internal static ZlinkRequestException CreateRequestException(int errno)
@@ -159,9 +134,19 @@ public abstract partial class ZlinkException
         return new ZlinkRequestException(MapRequestResult(errno), errno);
     }
 
+    internal static ZlinkRequestException CreateRequestException(RequestResult result)
+    {
+        return new ZlinkRequestException(result);
+    }
+
     internal static ZlinkRecvException CreateRecvException(int errno)
     {
         return new ZlinkRecvException(MapRecvResult(errno), errno);
+    }
+
+    internal static ZlinkRecvException CreateRecvException(RecvResult result)
+    {
+        return new ZlinkRecvException(result);
     }
 
     internal static ZlinkHandlerException CreateHandlerException(int errno)
@@ -169,9 +154,19 @@ public abstract partial class ZlinkException
         return new ZlinkHandlerException(MapHandlerResult(errno), errno);
     }
 
+    internal static ZlinkHandlerException CreateHandlerException(HandlerResult result)
+    {
+        return new ZlinkHandlerException(result);
+    }
+
     internal static ZlinkCloseException CreateCloseException(int errno)
     {
         return new ZlinkCloseException(MapCloseResult(errno), errno);
+    }
+
+    internal static ZlinkCloseException CreateCloseException(CloseResult result)
+    {
+        return new ZlinkCloseException(result);
     }
 
     internal static ZlinkBindException CreateBindException(int errno)
@@ -179,14 +174,29 @@ public abstract partial class ZlinkException
         return new ZlinkBindException(MapBindResult(errno), errno);
     }
 
+    internal static ZlinkBindException CreateBindException(BindResult result)
+    {
+        return new ZlinkBindException(result);
+    }
+
     internal static ZlinkConnectException CreateConnectException(int errno)
     {
         return new ZlinkConnectException(MapConnectResult(errno), errno);
     }
 
+    internal static ZlinkConnectException CreateConnectException(ConnectResult result)
+    {
+        return new ZlinkConnectException(result);
+    }
+
     internal static ZlinkConfigException CreateConfigException(int errno)
     {
         return new ZlinkConfigException(MapConfigResult(errno), errno);
+    }
+
+    internal static ZlinkConfigException CreateConfigException(ConfigResult result)
+    {
+        return new ZlinkConfigException(result);
     }
 
     private static string BuildMessage(int code, int nativeErrno)
@@ -321,11 +331,4 @@ public abstract partial class ZlinkException
         };
     }
 
-    private sealed class LegacyZlinkException : ZlinkException
-    {
-        internal LegacyZlinkException(int errno)
-            : base(MapErrorCode(errno) == ErrorCode.Unknown ? errno : (int)MapErrorCode(errno), errno)
-        {
-        }
-    }
 }

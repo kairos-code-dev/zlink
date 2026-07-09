@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Buffers;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
 internal sealed class SpotNodePublisher : ISpotNodePublisher
 {
-    private const int StackPartLimit = 8;
     private IntPtr _handle;
 
     internal SpotNodePublisher(SpotNode node)
@@ -64,38 +62,12 @@ internal sealed class SpotNodePublisher : ISpotNodePublisher
         Dispose(false);
     }
 
-    private static unsafe void SubmitParts(IReadOnlyList<Message> parts,
+    private static void SubmitParts(IReadOnlyList<Message> parts,
         NativePublisherSubmitter submit)
     {
-        RequestReplySupport.EnsureParts(parts, nameof(parts));
-        if (submit == null)
-            throw new ArgumentNullException(nameof(submit));
-
-        var cloned = RequestReplySupport.CloneParts(parts);
-        ZlinkMsg[]? rented = null;
-        var nativeParts = cloned.Length <= StackPartLimit
-            ? stackalloc ZlinkMsg[StackPartLimit]
-            : rented = ArrayPool<ZlinkMsg>.Shared.Rent(cloned.Length);
-        nativeParts = nativeParts.Slice(0, cloned.Length);
-        var built = 0;
-        try
-        {
-            NativeMessageParts.MoveToNative(cloned, nativeParts, nameof(parts),
-                ref built);
-            fixed (ZlinkMsg* nativePtr = nativeParts)
-            {
-                var rc = submit((IntPtr)nativePtr, (nuint)built);
-                ZlinkException.ThrowSubmitIfError(rc);
-            }
-        }
-        finally
-        {
-            for (var i = 0; i < built; i++)
-                NativeMethods.zlink_msg_close(ref nativeParts[i]);
-            RequestReplySupport.DisposeParts(cloned);
-            if (rented != null)
-                ArrayPool<ZlinkMsg>.Shared.Return(rented);
-        }
+        NativeMessageParts.SubmitClonedVector(parts, nameof(parts),
+            (nativeParts, partCount) => submit(nativeParts, partCount),
+            ZlinkException.ThrowSubmitIfError);
     }
 
     private void EnsureNotDisposed()

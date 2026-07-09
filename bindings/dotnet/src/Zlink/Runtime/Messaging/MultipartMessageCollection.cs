@@ -124,24 +124,6 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
         return new MultipartMessageCollection(nativeParts, nativePartCount);
     }
 
-    internal Message First()
-    {
-        if (Count == 0)
-            throw new ZlinkRecvException(RecvResult.NoData,
-                (int)ErrorCode.EAgain);
-
-        return this[0];
-    }
-
-    internal Message Single()
-    {
-        if (Count != 1)
-            throw new ZlinkRecvException(RecvResult.NotSupported,
-                (int)ErrorCode.ENotSup);
-
-        return this[0];
-    }
-
     internal Message[] TakeMessages()
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)

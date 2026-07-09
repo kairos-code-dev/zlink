@@ -4,16 +4,10 @@ using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
-internal sealed class ZlinkStopwatch : IZlinkStopwatch
+internal sealed class ZlinkStopwatch : NativeOwner, IZlinkStopwatch
 {
-    private IntPtr _handle;
-
-    public ZlinkStopwatch()
+    public ZlinkStopwatch() : base(CreateHandle())
     {
-        _handle = NativeMethods.zlink_stopwatch_start();
-        if (_handle == IntPtr.Zero)
-            throw ZlinkException.CreateConfigException(
-                NativeMethods.zlink_errno());
     }
 
     public ulong Intermediate()
@@ -26,14 +20,14 @@ internal sealed class ZlinkStopwatch : IZlinkStopwatch
     {
         EnsureNotDisposed();
         var elapsed = NativeMethods.zlink_stopwatch_stop(_handle);
-        _handle = IntPtr.Zero;
+        MarkClosed();
         GC.SuppressFinalize(this);
         return elapsed;
     }
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
+        if (IsClosed)
             return;
         try
         {
@@ -43,7 +37,7 @@ internal sealed class ZlinkStopwatch : IZlinkStopwatch
         {
         }
 
-        _handle = IntPtr.Zero;
+        MarkClosed();
         GC.SuppressFinalize(this);
     }
 
@@ -60,7 +54,15 @@ internal sealed class ZlinkStopwatch : IZlinkStopwatch
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
-            throw new ObjectDisposedException(nameof(ZlinkStopwatch));
+        EnsureNativeHandle(nameof(ZlinkStopwatch));
+    }
+
+    private static IntPtr CreateHandle()
+    {
+        var handle = NativeMethods.zlink_stopwatch_start();
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
+        return handle;
     }
 }

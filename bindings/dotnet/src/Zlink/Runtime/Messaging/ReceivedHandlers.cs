@@ -2,8 +2,7 @@
 
 namespace Systems.Zlink;
 
-internal delegate void ReceivedReplyHandler(IReadOnlyList<Message> parts,
-    SendFlags flags);
+internal delegate void ReceivedReplyHandler(IReadOnlyList<Message> parts);
 
 internal delegate bool ReceivedSendSingleHandler(Message part, SendFlags flags);
 

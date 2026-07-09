@@ -17,18 +17,15 @@ internal sealed partial class SocketKernel : IDisposable
         var context = SynchronizationContext.Current;
         var socketNative = new NativeMethods.ZlinkSocketMsgHandlerDelegate(
             OnNativeReceive);
-        var rc = NativeMethods.zlink_recv_handler(Handle, socketNative, IntPtr.Zero);
-        if (rc != 0)
-        {
-            _callbacks.RecvHandler = null;
-            _callbacks.RecvHandlerContext = null;
-            _callbacks.RecvHandlerNative = null;
-            ZlinkException.ThrowHandlerIfError(rc);
-        }
-
         _callbacks.RecvHandler = handler;
         _callbacks.RecvHandlerContext = context;
         _callbacks.RecvHandlerNative = socketNative;
+        var rc = NativeMethods.zlink_recv_handler(Handle, socketNative, IntPtr.Zero);
+        if (rc != 0)
+        {
+            _callbacks.ClearReceive();
+            ZlinkException.ThrowHandlerIfError(rc);
+        }
     }
 
     public void SendReadyHandler(Action handler)
@@ -39,19 +36,16 @@ internal sealed partial class SocketKernel : IDisposable
         var context = SynchronizationContext.Current;
         var native = new NativeMethods.ZlinkSendReadyHandlerDelegate(
             OnNativeSendReady);
+        _callbacks.SendReadyHandler = handler;
+        _callbacks.SendReadyHandlerContext = context;
+        _callbacks.SendReadyHandlerNative = native;
         var rc = NativeMethods.zlink_send_ready_handler(Handle, native,
             IntPtr.Zero);
         if (rc != 0)
         {
-            _callbacks.SendReadyHandler = null;
-            _callbacks.SendReadyHandlerContext = null;
-            _callbacks.SendReadyHandlerNative = null;
+            _callbacks.ClearSendReady();
             ZlinkException.ThrowHandlerIfError(rc);
         }
-
-        _callbacks.SendReadyHandler = handler;
-        _callbacks.SendReadyHandlerContext = context;
-        _callbacks.SendReadyHandlerNative = native;
     }
 
     public unsafe void SubscribeHandler(SocketSubscribeHandler handler)
@@ -64,19 +58,16 @@ internal sealed partial class SocketKernel : IDisposable
         var context = SynchronizationContext.Current;
         var native = new NativeMethods.ZlinkSubscribeHandlerDelegate(
             OnNativeSubscribe);
+        _callbacks.SubscribeHandler = handler;
+        _callbacks.SubscribeHandlerContext = context;
+        _callbacks.SubscribeHandlerNative = native;
         var rc = NativeMethods.zlink_subscribe_handler(Handle, native,
             IntPtr.Zero);
         if (rc != 0)
         {
-            _callbacks.SubscribeHandler = null;
-            _callbacks.SubscribeHandlerContext = null;
-            _callbacks.SubscribeHandlerNative = null;
+            _callbacks.ClearSubscribe();
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
         }
-
-        _callbacks.SubscribeHandler = handler;
-        _callbacks.SubscribeHandlerContext = context;
-        _callbacks.SubscribeHandlerNative = native;
     }
 
     private unsafe void OnNativeSubscribe(IntPtr sourceRoutingId, byte* topic,

@@ -8,12 +8,11 @@ namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed class SocketOptionAccessor
 {
-    private readonly Func<IntPtr> _handleProvider;
+    private readonly SocketHandle _handle;
 
-    public SocketOptionAccessor(Func<IntPtr> handleProvider)
+    public SocketOptionAccessor(SocketHandle handle)
     {
-        _handleProvider = handleProvider
-                          ?? throw new ArgumentNullException(nameof(handleProvider));
+        _handle = handle ?? throw new ArgumentNullException(nameof(handle));
     }
 
     public unsafe void SetInt32(SocketOption option, int value)
@@ -42,7 +41,7 @@ internal sealed class SocketOptionAccessor
 
     public unsafe void SetBytes(SocketOption option, ReadOnlySpan<byte> value)
     {
-        var handle = _handleProvider();
+        var handle = _handle.DangerousGetHandle();
         if (option == SocketOption.RoutingId)
         {
             int rc;
@@ -67,21 +66,6 @@ internal sealed class SocketOptionAccessor
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
-
-        var handle = _handleProvider();
-        if (option == SocketOption.Subscribe)
-        {
-            var rc = NativeMethods.zlink_set_subscription(handle, value);
-            ZlinkException.ThrowConfigIfError(rc);
-            return;
-        }
-
-        if (option == SocketOption.Unsubscribe)
-        {
-            var rc = NativeMethods.zlink_unset_subscription(handle, value);
-            ZlinkException.ThrowConfigIfError(rc);
-            return;
-        }
 
         var maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
         if (maxByteCount <= 512)
@@ -136,7 +120,7 @@ internal sealed class SocketOptionAccessor
 
     public byte[] GetBytes(SocketOption option, int initialSize = 256)
     {
-        var handle = _handleProvider();
+        var handle = _handle.DangerousGetHandle();
         if (option == SocketOption.RoutingId)
         {
             var rc = NativeMethods.zlink_get_routing_id(handle, out var routingId);
@@ -212,7 +196,7 @@ internal sealed class SocketOptionAccessor
 
     private int SetCore(SocketOption option, IntPtr value, nuint length)
     {
-        var handle = _handleProvider();
+        var handle = _handle.DangerousGetHandle();
         var code = (int)option;
         if ((code & 0xFF00) == 0x3100)
             return NativeMethods.zlink_set_router_option(handle, code, value,
@@ -234,7 +218,7 @@ internal sealed class SocketOptionAccessor
 
     private int GetCore(SocketOption option, IntPtr value, ref nuint length)
     {
-        var handle = _handleProvider();
+        var handle = _handle.DangerousGetHandle();
         var code = (int)option;
         if ((code & 0xFF00) == 0x3100)
             return NativeMethods.zlink_get_router_option(handle, code, value,

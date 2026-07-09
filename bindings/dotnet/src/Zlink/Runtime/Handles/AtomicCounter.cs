@@ -4,16 +4,10 @@ using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
-internal sealed class AtomicCounter : IAtomicCounter
+internal sealed class AtomicCounter : NativeOwner, IAtomicCounter
 {
-    private IntPtr _handle;
-
-    public AtomicCounter()
+    public AtomicCounter() : base(CreateHandle())
     {
-        _handle = NativeMethods.zlink_atomic_counter_new();
-        if (_handle == IntPtr.Zero)
-            throw ZlinkException.CreateConfigException(
-                NativeMethods.zlink_errno());
     }
 
     public int Value
@@ -45,10 +39,10 @@ internal sealed class AtomicCounter : IAtomicCounter
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
+        if (IsClosed)
             return;
         NativeMethods.zlink_atomic_counter_destroy(ref _handle);
-        _handle = IntPtr.Zero;
+        MarkClosed();
         GC.SuppressFinalize(this);
     }
 
@@ -65,7 +59,15 @@ internal sealed class AtomicCounter : IAtomicCounter
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
-            throw new ObjectDisposedException(nameof(AtomicCounter));
+        EnsureNativeHandle(nameof(AtomicCounter));
+    }
+
+    private static IntPtr CreateHandle()
+    {
+        var handle = NativeMethods.zlink_atomic_counter_new();
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
+        return handle;
     }
 }

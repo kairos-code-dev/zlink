@@ -4,6 +4,25 @@ namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {
+    private static readonly string[] RequiredPollerExportNames =
+    {
+        "zlink_poller_new",
+        "zlink_poller_destroy",
+        "zlink_poller_size",
+        "zlink_poller_add",
+        "zlink_poller_add_fd",
+        "zlink_poller_add_timer",
+        "zlink_poller_modify",
+        "zlink_poller_modify_fd",
+        "zlink_poller_remove",
+        "zlink_poller_remove_fd",
+        "zlink_poller_remove_timer",
+        "zlink_poller_wait"
+    };
+
+    internal static ReadOnlySpan<string> RequiredPollerExports =>
+        RequiredPollerExportNames;
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_poller_new();
 

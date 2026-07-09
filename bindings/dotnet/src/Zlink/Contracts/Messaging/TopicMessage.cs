@@ -22,9 +22,7 @@ public sealed partial class TopicMessage : IDisposable
     {
         get
         {
-            if (_routingIdSnapshot.HasValue)
-                _routingId ??= _routingIdSnapshot.ToRoutingId();
-            return _routingId;
+            return _routingIdSnapshot.GetOrCreateRoutingId(ref _routingId);
         }
     }
 
@@ -48,20 +46,7 @@ public sealed partial class TopicMessage : IDisposable
     /// </summary>
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _closed, 1) != 0)
-            return;
-        if (_parts != null)
-            _parts.Dispose();
-        else
-            _singlePart?.Dispose();
-        _parts = null;
-        _singlePart = null;
-        _routingId = null;
-        _routingIdSnapshot = default;
-        _topicBytes = null;
-        _topicWriteBuffer = null;
-        _topicLength = 0;
-        _topic = string.Empty;
+        DisposeCore();
     }
 
     /// <summary>
@@ -69,7 +54,8 @@ public sealed partial class TopicMessage : IDisposable
     /// </summary>
     public Message FirstPart()
     {
-        return _singlePart ?? PartsCollection.First();
+        return _singlePart
+               ?? MessageEnvelopeParts.First(PartsCollection, nameof(TopicMessage));
     }
 
     /// <summary>
@@ -78,6 +64,7 @@ public sealed partial class TopicMessage : IDisposable
     /// </summary>
     public Message SinglePartOrThrow()
     {
-        return _singlePart ?? PartsCollection.Single();
+        return _singlePart
+               ?? MessageEnvelopeParts.Single(PartsCollection, nameof(TopicMessage));
     }
 }

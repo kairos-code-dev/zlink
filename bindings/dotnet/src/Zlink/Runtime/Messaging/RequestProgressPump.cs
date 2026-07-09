@@ -15,64 +15,60 @@ internal static class RequestProgressPump
     private static readonly long IdleKeepaliveTicks =
         Stopwatch.Frequency;
 
-    private static readonly ConcurrentDictionary<nint, ProgressState> SocketStates = new();
-    private static readonly ConcurrentDictionary<nint, ProgressState> SpotStates = new();
-    private static readonly ConcurrentDictionary<nint, int> ExternalSocketProgress = new();
-    private static readonly ConcurrentDictionary<nint, int> ExternalSpotProgress = new();
+    private static readonly ConcurrentDictionary<nint, ProgressState> States = new();
+    private static readonly ConcurrentDictionary<nint, int> ExternalProgress = new();
 
     internal static Task<T> AttachSocket<T>(IntPtr handle, Task<T> task)
     {
-        return Attach(SocketStates, handle, task);
+        return Attach(handle, task);
     }
 
     internal static Task<T> AttachSpot<T>(IntPtr handle, Task<T> task)
     {
-        return Attach(SpotStates, handle, task);
+        return Attach(handle, task);
     }
 
     internal static ProgressLease AttachSpotCallback(IntPtr handle)
     {
-        return Attach(SpotStates, handle);
+        return Attach(handle);
     }
 
     internal static ProgressLease AttachSocketCallback(IntPtr handle)
     {
-        return Attach(SocketStates, handle);
+        return Attach(handle);
     }
 
-    private static ProgressLease Attach(
-        ConcurrentDictionary<nint, ProgressState> states, IntPtr handle)
+    private static ProgressLease Attach(IntPtr handle)
     {
         if (handle == IntPtr.Zero)
             return default;
 
         var key = handle;
-        if (ExternalProgressCount(states, key) > 0)
+        if (ExternalProgressCount(key) > 0)
             return default;
-        var state = states.GetOrAdd(key, _ => new ProgressState());
+        var state = States.GetOrAdd(key, _ => new ProgressState());
         Interlocked.Increment(ref state.ActiveCount);
-        EnsureWorker(states, key, state, handle);
-        return new ProgressLease(states, key, state);
+        EnsureWorker(key, state, handle);
+        return new ProgressLease(key, state);
     }
 
-    private static Task<T> Attach<T>(ConcurrentDictionary<nint, ProgressState> states,
-        IntPtr handle, Task<T> task)
+    private static Task<T> Attach<T>(IntPtr handle, Task<T> task)
     {
         if (handle == IntPtr.Zero || task.IsCompleted)
             return task;
 
         var key = handle;
-        if (ExternalProgressCount(states, key) > 0)
+        if (ExternalProgressCount(key) > 0)
             return task;
-        var state = states.GetOrAdd(key, _ => new ProgressState());
+        var state = States.GetOrAdd(key, _ => new ProgressState());
         Interlocked.Increment(ref state.ActiveCount);
-        EnsureWorker(states, key, state, handle);
+        EnsureWorker(key, state, handle);
 
         _ = task.ContinueWith(completedTask =>
             {
                 if (Interlocked.Decrement(ref state.ActiveCount) == 0
                     && Volatile.Read(ref state.WorkerRunning) == 0)
-                    states.TryRemove(key, out _);
+                    States.TryRemove(key, out _);
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
 
@@ -83,59 +79,47 @@ internal static class RequestProgressPump
     {
         if (handle == IntPtr.Zero)
             return;
-        AddExternalProgress(ExternalSocketProgress, handle);
-        AddExternalProgress(ExternalSpotProgress, handle);
+        AddExternalProgress(handle);
     }
 
     internal static void ReleaseExternalProgress(IntPtr handle)
     {
         if (handle == IntPtr.Zero)
             return;
-        RemoveExternalProgress(ExternalSocketProgress, handle);
-        RemoveExternalProgress(ExternalSpotProgress, handle);
+        RemoveExternalProgress(handle);
     }
 
-    private static int ExternalProgressCount(
-        ConcurrentDictionary<nint, ProgressState> states, nint key)
+    private static int ExternalProgressCount(nint key)
     {
         // External poll loops already drive completion for their handles;
         // starting a private pump would split ownership of the same readiness.
-        var external =
-            ReferenceEquals(states, SpotStates)
-                ? ExternalSpotProgress
-                : ExternalSocketProgress;
-        return external.TryGetValue(key, out var count) ? count : 0;
+        return ExternalProgress.TryGetValue(key, out var count) ? count : 0;
     }
 
-    private static void AddExternalProgress(
-        ConcurrentDictionary<nint, int> external, IntPtr handle)
+    private static void AddExternalProgress(IntPtr handle)
     {
         var key = handle;
-        external.AddOrUpdate(key, 1, (_, count) => count + 1);
+        ExternalProgress.AddOrUpdate(key, 1, (_, count) => count + 1);
     }
 
-    private static void RemoveExternalProgress(
-        ConcurrentDictionary<nint, int> external, IntPtr handle)
+    private static void RemoveExternalProgress(IntPtr handle)
     {
         var key = handle;
-        while (external.TryGetValue(key, out var count))
+        while (ExternalProgress.TryGetValue(key, out var count))
         {
             if (count <= 1)
             {
-                if (external.TryRemove(key, out _))
+                if (ExternalProgress.TryRemove(key, out _))
                     return;
                 continue;
             }
 
-            if (external.TryUpdate(key, count - 1, count))
+            if (ExternalProgress.TryUpdate(key, count - 1, count))
                 return;
         }
     }
 
-    private static void EnsureWorker(
-        ConcurrentDictionary<nint, ProgressState> states,
-        nint key,
-        ProgressState state,
+    private static void EnsureWorker(nint key, ProgressState state,
         IntPtr handle)
     {
         if (Interlocked.CompareExchange(ref state.WorkerRunning, 1, 0) != 0)
@@ -205,9 +189,9 @@ internal static class RequestProgressPump
 
                 Interlocked.Exchange(ref state.WorkerRunning, 0);
                 if (Volatile.Read(ref state.ActiveCount) == 0)
-                    states.TryRemove(key, out _);
+                    States.TryRemove(key, out _);
                 else
-                    EnsureWorker(states, key, state, handle);
+                    EnsureWorker(key, state, handle);
             }
         })
         {
@@ -225,16 +209,12 @@ internal static class RequestProgressPump
 
     internal readonly struct ProgressLease
     {
-        private readonly ConcurrentDictionary<nint, ProgressState> _states;
         private readonly nint _key;
         private readonly ProgressState _state;
         private readonly bool _active;
 
-        internal ProgressLease(
-            ConcurrentDictionary<nint, ProgressState> states, nint key,
-            ProgressState state)
+        internal ProgressLease(nint key, ProgressState state)
         {
-            _states = states;
             _key = key;
             _state = state;
             _active = true;
@@ -246,7 +226,7 @@ internal static class RequestProgressPump
                 return;
             if (Interlocked.Decrement(ref _state.ActiveCount) == 0
                 && Volatile.Read(ref _state.WorkerRunning) == 0)
-                _states.TryRemove(_key, out _);
+                States.TryRemove(_key, out _);
         }
     }
 }

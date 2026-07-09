@@ -20,37 +20,16 @@ internal abstract class ConnectableSocketBase : SocketBase, IConnectableSocket
 
     public void Connect(string address)
     {
-        try
-        {
-            Kernel.Connect(address);
-        }
-        catch (ZlinkException ex)
-        {
-            throw ZlinkException.CreateConnectException(ex.NativeErrno);
-        }
+        SocketConnectionOperations.Connect(Kernel, address);
     }
 
     public void Disconnect(string address)
     {
-        try
-        {
-            Kernel.Disconnect(address);
-        }
-        catch (ZlinkException ex)
-        {
-            throw ZlinkException.CreateConnectException(ex.NativeErrno);
-        }
+        SocketConnectionOperations.Disconnect(Kernel, address);
     }
 
     public void DisconnectRid(RoutingId peerRid)
     {
-        try
-        {
-            Kernel.DisconnectRid(peerRid);
-        }
-        catch (ZlinkException ex)
-        {
-            throw ZlinkException.CreateConnectException(ex.NativeErrno);
-        }
+        SocketConnectionOperations.DisconnectRid(Kernel, peerRid);
     }
 }

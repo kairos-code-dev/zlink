@@ -5,7 +5,7 @@ namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {
-    internal static ReadOnlySpan<string> RequiredExports => new[]
+    private static readonly string[] RequiredExportNames =
     {
         "zlink_version",
         "zlink_ctx_new",
@@ -31,7 +31,6 @@ internal static partial class NativeMethods
         "zlink_msg_close",
         "zlink_msg_move",
         "zlink_msg_copy",
-        "zlink_msg_adopt",
         "zlink_msg_data",
         "zlink_msg_size",
         "zlink_msg_refcnt",
@@ -92,7 +91,6 @@ internal static partial class NativeMethods
         "zlink_spot_actor_join_reply",
         "zlink_spot_node_actor_leave_spot",
         "zlink_spot_node_actor_recv_part",
-        "zlink_spot_recv_actor_lifecycle",
         "zlink_spot_recv_actor_lifecycle_with_request",
         "zlink_spot_node_entry_spot",
         "zlink_spot_node_spot_get_or_new",
@@ -124,6 +122,8 @@ internal static partial class NativeMethods
         "zlink_stopwatch_intermediate",
         "zlink_stopwatch_stop"
     };
+
+    internal static ReadOnlySpan<string> RequiredExports => RequiredExportNames;
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_version(out int major, out int minor,
@@ -188,10 +188,6 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_copy(ref ZlinkMsg dest,
         ref ZlinkMsg src);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_adopt(ref ZlinkMsg dest,
-        IntPtr src);
 
     [LibraryImport(LibraryName)]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Runtime.CompilerServices;
 using System.Text;
 using Systems.Zlink.Runtime.Native;
 
@@ -9,22 +8,15 @@ namespace Systems.Zlink;
 internal static class RoutingIdCodec
 {
     private const string HexPrefix = "hex:";
-    private const int ThreadCacheMaxEntries = 256;
     private const int SharedCacheMaxKeys = 4096;
     private static readonly object PublicCacheLock = new();
     private static readonly object CanonicalCacheLock = new();
-    private static readonly object RoutingCacheLock = new();
-
-    [ThreadStatic] private static Dictionary<RouteCacheKey, List<byte[]>>? t_ownedBytesCache;
 
     private static readonly Dictionary<RouteCacheKey, List<RouteCacheEntry>>
         ByteToPublicCache = new();
 
     private static readonly Dictionary<RouteCacheKey, List<byte[]>>
         ByteCanonicalCache = new();
-
-    private static readonly Dictionary<RouteCacheKey, List<RouteRoutingEntry>>
-        ByteToRoutingCache = new();
 
     private static readonly Dictionary<string, byte[]> PublicToByteCache =
         new(StringComparer.Ordinal);
@@ -90,50 +82,6 @@ internal static class RoutingIdCodec
     internal static RoutingId? ToRoutingId(byte[] routingId)
     {
         return routingId.Length == 0 ? null : ToRoutingIdCached(routingId);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static byte[] FromRoutingId(RoutingId routingId)
-    {
-        return routingId.AsByteArrayUnsafe();
-    }
-
-    internal static unsafe byte[]? ToOwnedBytes(ref ZlinkRoutingId routingId)
-    {
-        int size = routingId.Size;
-        if (size <= 0)
-            return null;
-
-        fixed (byte* src = routingId.Data)
-        {
-            return CanonicalizeThreadLocal(new ReadOnlySpan<byte>(src, size));
-        }
-    }
-
-    internal static unsafe byte[]? CopyOwnedBytes(ref ZlinkRoutingId routingId)
-    {
-        int size = routingId.Size;
-        if (size <= 0)
-            return null;
-
-        var bytes = new byte[size];
-        fixed (byte* src = routingId.Data)
-        {
-            new ReadOnlySpan<byte>(src, size).CopyTo(bytes);
-        }
-
-        return bytes;
-    }
-
-    internal static byte[] FromUInt32(uint routingId)
-    {
-        return
-        [
-            (byte)(routingId >> 24),
-            (byte)(routingId >> 16),
-            (byte)(routingId >> 8),
-            (byte)routingId
-        ];
     }
 
     internal static unsafe ZlinkRoutingId ToNative(uint routingId)
@@ -262,54 +210,11 @@ internal static class RoutingIdCodec
         }
     }
 
-    private static byte[] CanonicalizeThreadLocal(ReadOnlySpan<byte> routingId)
-    {
-        var key = RouteCacheKey.Create(routingId);
-        var cache =
-            t_ownedBytesCache ??= new Dictionary<RouteCacheKey, List<byte[]>>();
-        if (cache.TryGetValue(key, out var cachedEntries))
-            for (var i = 0; i < cachedEntries.Count; i++)
-                if (routingId.SequenceEqual(cachedEntries[i]))
-                    return cachedEntries[i];
-
-        var copy = routingId.ToArray();
-        if (cache.Count >= ThreadCacheMaxEntries)
-            cache.Clear();
-        if (!cache.TryGetValue(key, out cachedEntries))
-        {
-            cachedEntries = new List<byte[]>(1);
-            cache[key] = cachedEntries;
-        }
-
-        cachedEntries.Add(copy);
-        return copy;
-    }
-
     private static RoutingId ToRoutingIdCached(ReadOnlySpan<byte> routingId)
     {
         var canonical = Canonicalize(routingId);
-        var key = RouteCacheKey.Create(canonical);
-        lock (RoutingCacheLock)
-        {
-            TrimRoutingCacheIfNeeded();
-            if (ByteToRoutingCache.TryGetValue(key,
-                    out var cachedEntries))
-                for (var i = 0; i < cachedEntries.Count; i++)
-                    if (ReferenceEquals(canonical, cachedEntries[i].Bytes)
-                        || canonical.AsSpan().SequenceEqual(cachedEntries[i].Bytes))
-                        return cachedEntries[i].RoutingId;
-
-            var created = RoutingId.FromOwnedOptionalBytes(canonical)
-                          ?? throw new InvalidOperationException("routingId must not be empty.");
-            if (!ByteToRoutingCache.TryGetValue(key, out cachedEntries))
-            {
-                cachedEntries = new List<RouteRoutingEntry>(1);
-                ByteToRoutingCache[key] = cachedEntries;
-            }
-
-            cachedEntries.Add(new RouteRoutingEntry(canonical, created));
-            return created;
-        }
+        return RoutingId.FromOwnedOptionalBytes(canonical)
+               ?? throw new InvalidOperationException("routingId must not be empty.");
     }
 
     private static void TrimPublicCachesIfNeeded()
@@ -330,46 +235,6 @@ internal static class RoutingIdCodec
         ByteCanonicalCache.Clear();
     }
 
-    private static void TrimRoutingCacheIfNeeded()
-    {
-        if (ByteToRoutingCache.Count < SharedCacheMaxKeys)
-            return;
-
-        ByteToRoutingCache.Clear();
-    }
-
-    private readonly struct RouteCacheKey : IEquatable<RouteCacheKey>
-    {
-        private RouteCacheKey(int length, ulong hash)
-        {
-            Length = length;
-            Hash = hash;
-        }
-
-        internal int Length { get; }
-        internal ulong Hash { get; }
-
-        internal static RouteCacheKey Create(ReadOnlySpan<byte> bytes)
-        {
-            return new RouteCacheKey(bytes.Length, RouteHash.Fnv1a(bytes));
-        }
-
-        public bool Equals(RouteCacheKey other)
-        {
-            return Length == other.Length && Hash == other.Hash;
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is RouteCacheKey other && Equals(other);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(Length, Hash);
-        }
-    }
-
     private sealed class RouteCacheEntry
     {
         internal RouteCacheEntry(byte[] bytes, string @public)
@@ -380,17 +245,5 @@ internal static class RoutingIdCodec
 
         internal byte[] Bytes { get; }
         internal string Public { get; }
-    }
-
-    private sealed class RouteRoutingEntry
-    {
-        internal RouteRoutingEntry(byte[] bytes, RoutingId routingId)
-        {
-            Bytes = bytes;
-            RoutingId = routingId;
-        }
-
-        internal byte[] Bytes { get; }
-        internal RoutingId RoutingId { get; }
     }
 }

@@ -38,8 +38,4 @@ internal abstract class SubscriberSocketBase : ConnectableSocketBase, ISubscribe
         return Kernel.SubscribeIntoSubscriber(result, (int)flags);
     }
 
-    internal bool SubscribeNoWait(TopicMessage result)
-    {
-        return Kernel.SubscribeIntoSubscriber(result, (int)RecvFlags.DontWait);
-    }
 }

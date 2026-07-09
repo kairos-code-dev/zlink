@@ -82,8 +82,13 @@ public sealed partial class PubSocketOptions : CommonSocketOptions
     public Message WelcomeMessage
     {
         get => Message.From(Socket.GetOption(SocketOptions.XPubWelcomeMsg));
-        set => Socket.SetOption(SocketOptions.XPubWelcomeMsg,
-            value?.GetString() ?? throw new ArgumentNullException(nameof(value)));
+        set
+        {
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
+            Socket.SetOption(SocketOptions.XPubWelcomeMsg,
+                value.AsReadOnlySpan());
+        }
     }
 
     /// <summary>

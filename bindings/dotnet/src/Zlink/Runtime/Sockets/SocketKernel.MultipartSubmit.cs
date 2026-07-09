@@ -78,8 +78,8 @@ internal sealed partial class SocketKernel
         }
 
         ZlinkMsg[]? rented = null;
-        var nativeParts = parts.Length <= StackSendPartLimit
-            ? stackalloc ZlinkMsg[StackSendPartLimit]
+        var nativeParts = parts.Length <= NativeMessageParts.StackPartLimit
+            ? stackalloc ZlinkMsg[NativeMessageParts.StackPartLimit]
             : rented = ArrayPool<ZlinkMsg>.Shared.Rent(parts.Length);
         nativeParts = nativeParts.Slice(0, parts.Length);
 
@@ -121,7 +121,8 @@ internal sealed partial class SocketKernel
 
                 if (mapNoWaitResult)
                 {
-                    var sendResult = SendResultErrno.TryMapCurrent();
+                    var result = (SubmitResult)rc;
+                    var sendResult = SendResultErrno.TryMap(result);
                     if (sendResult != null)
                     {
                         NativeMessageParts.RestoreManaged(parts, nativeParts,
@@ -130,8 +131,7 @@ internal sealed partial class SocketKernel
                     }
                 }
 
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
+                throw ZlinkException.CreateSubmitException((SubmitResult)rc);
             }
 
             return SendResult.Sent;

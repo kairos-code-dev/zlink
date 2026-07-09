@@ -18,8 +18,4 @@ internal sealed class XPubSocket : PublisherSocketBase, IXPubSocket
         return Kernel.ReceiveSubscriptionEvent(result, flags);
     }
 
-    internal bool ReceiveSubscriptionEventNoWait(SubscriptionEvent result)
-    {
-        return Kernel.ReceiveSubscriptionEvent(result, RecvFlags.DontWait);
-    }
 }

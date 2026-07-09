@@ -134,6 +134,7 @@ internal sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
                                            && RequestReplySupport.MapSendNoWaitResult(error)
                                            == SendResult.Backpressured)
         {
+            RequestReplySupport.DisposeParts(cloned);
             return false;
         }
         catch

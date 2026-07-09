@@ -74,39 +74,6 @@ internal struct OperationMessageBuffer
                 ZlinkConfigException.ErrorCode.InvalidArgument);
     }
 
-    private sealed class SingleMessageReadOnlyList : IReadOnlyList<Message>
-    {
-        private readonly Message _message;
-
-        internal SingleMessageReadOnlyList(Message message)
-        {
-            _message = message;
-        }
-
-        public int Count => 1;
-
-        public Message this[int index]
-        {
-            get
-            {
-                if (index != 0)
-                    throw new ArgumentOutOfRangeException(nameof(index));
-                return _message;
-            }
-        }
-
-        public IEnumerator<Message> GetEnumerator()
-        {
-            yield return _message;
-        }
-
-        IEnumerator IEnumerable
-            .GetEnumerator()
-        {
-            return GetEnumerator();
-        }
-    }
-
     private sealed class TwoMessageReadOnlyList : IReadOnlyList<Message>
     {
         private readonly Message _first;

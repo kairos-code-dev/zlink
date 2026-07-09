@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 using Systems.Zlink.Runtime.Sockets.Internal;
 
@@ -46,22 +45,7 @@ internal sealed partial class Spot
             return SocketKernel.TrySendOrThrow(PublishNoWaitResult(topic,
                 parts));
 
-        if (parts is Message[] array)
-        {
-            PublishPartsWithFlags(topic, array, (int)flags, nameof(parts));
-            return true;
-        }
-
-        if (parts is List<Message> list)
-        {
-            PublishPartsWithFlags(topic, list, (int)flags, nameof(parts));
-            return true;
-        }
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        PublishPartsWithFlags(topic, copied, (int)flags, nameof(parts));
+        PublishPartsWithFlags(topic, parts, (int)flags, nameof(parts));
         return true;
     }
 
@@ -74,16 +58,7 @@ internal sealed partial class Spot
         EnsureNotDisposed();
         RequestReplySupport.EnsureParts(parts, nameof(parts));
 
-        if (parts is Message[] array)
-            return PublishNoWaitParts(topic, array, nameof(parts));
-
-        if (parts is List<Message> list)
-            return PublishNoWaitParts(topic, list, nameof(parts));
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        return PublishNoWaitParts(topic, copied, nameof(parts));
+        return PublishNoWaitParts(topic, parts, nameof(parts));
     }
 
     internal bool SendToChannel(string channelName, Message message,
@@ -118,24 +93,9 @@ internal sealed partial class Spot
 
         try
         {
-            if (parts is Message[] array)
-            {
-                SendToChannelCore(channelName, array, (int)flags,
-                    nameof(parts));
-                return true;
-            }
-
-            if (parts is List<Message> list)
-            {
-                SendToChannelCore(channelName, CollectionsMarshal.AsSpan(list),
-                    (int)flags, nameof(parts));
-                return true;
-            }
-
-            var copied = new Message[parts.Count];
-            for (var i = 0; i < copied.Length; i++)
-                copied[i] = parts[i];
-            SendToChannelCore(channelName, copied.AsSpan(), (int)flags,
+            Message[]? copied = null;
+            SendToChannelCore(channelName,
+                NativeMessageParts.AsSpan(parts, ref copied), (int)flags,
                 nameof(parts));
             return true;
         }
@@ -157,24 +117,30 @@ internal sealed partial class Spot
         int flags)
     {
         ZlinkMsg nativePart = default;
-        var submitted = false;
+        var shouldRestore = false;
         try
         {
             message.MoveTo(ref nativePart);
+            shouldRestore = true;
             fixed (byte* topicPtr = topicUtf8)
             {
                 var rc = NativeMethods.zlink_spot_publish_part_utf8(Handle,
                     topicPtr, ref nativePart, flags,
                     NativeMethods.ZlinkPartFlag.Final);
-                submitted = true;
-                if (rc != 0)
-                    throw ZlinkException.CreateSubmitException(
-                        NativeMethods.zlink_errno());
+                if (rc == 0)
+                {
+                    shouldRestore = false;
+                    return;
+                }
+
+                message.RestoreFrom(ref nativePart);
+                shouldRestore = false;
+                throw ZlinkException.CreateSubmitException((SubmitResult)rc);
             }
         }
         catch
         {
-            if (!submitted)
+            if (shouldRestore)
                 message.RestoreFrom(ref nativePart);
             throw;
         }
@@ -237,38 +203,16 @@ internal sealed partial class Spot
     private void PublishPartsWithFlags(string topic, IReadOnlyList<Message> parts,
         int flags, string paramName)
     {
-        if (parts is Message[] array)
-        {
-            PublishCore(topic, array.AsSpan(), flags, paramName);
-            return;
-        }
-
-        if (parts is List<Message> list)
-        {
-            PublishCore(topic, CollectionsMarshal.AsSpan(list), flags,
-                paramName);
-            return;
-        }
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        PublishCore(topic, copied.AsSpan(), flags, paramName);
+        Message[]? copied = null;
+        PublishCore(topic, NativeMessageParts.AsSpan(parts, ref copied), flags,
+            paramName);
     }
 
     private SendResult PublishNoWaitParts(string topic,
         IReadOnlyList<Message> parts, string paramName)
     {
-        if (parts is Message[] array)
-            return PublishNoWaitCore(topic, array.AsSpan(), paramName);
-
-        if (parts is List<Message> list)
-            return PublishNoWaitCore(topic, CollectionsMarshal.AsSpan(list),
-                paramName);
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        return PublishNoWaitCore(topic, copied.AsSpan(), paramName);
+        Message[]? copied = null;
+        return PublishNoWaitCore(topic, NativeMessageParts.AsSpan(parts, ref copied),
+            paramName);
     }
 }

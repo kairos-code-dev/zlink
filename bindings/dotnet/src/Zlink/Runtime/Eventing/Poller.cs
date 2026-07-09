@@ -4,38 +4,13 @@ using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
-internal sealed class Poller : IPoller
+internal sealed class Poller : NativeOwner, IPoller
 {
-    private static readonly string[] RequiredExports = new[]
-    {
-        "zlink_poller_new",
-        "zlink_poller_destroy",
-        "zlink_poller_size",
-        "zlink_poller_add",
-        "zlink_poller_add_fd",
-        "zlink_poller_add_timer",
-        "zlink_poller_modify",
-        "zlink_poller_modify_fd",
-        "zlink_poller_remove",
-        "zlink_poller_remove_fd",
-        "zlink_poller_remove_timer",
-        "zlink_poller_wait"
-    };
-
     private readonly List<PollItem> _items = new();
-    private IntPtr _handle;
     private ZlinkPollerEvent[] _nativeEvents = Array.Empty<ZlinkPollerEvent>();
 
-    public Poller()
+    public Poller() : base(CreateHandle())
     {
-        var missing = GetMissingExports();
-        if (missing.Count > 0)
-            throw new ZlinkConfigException(ConfigResult.NotSupported,
-                (int)ErrorCode.ENotSup);
-
-        _handle = NativeMethods.zlink_poller_new();
-        if (_handle == IntPtr.Zero)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _items.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     }
@@ -45,10 +20,9 @@ internal sealed class Poller : IPoller
         get
         {
             EnsureNotDisposed();
-            var rc = NativeMethods.zlink_poller_size(_handle, out _);
+            var rc = NativeMethods.zlink_poller_size(_handle, out var errorOut);
             if (rc < 0)
-                throw ZlinkException.CreateConfigException(
-                    NativeMethods.zlink_errno());
+                throw ZlinkException.CreateConfigException((ConfigResult)errorOut);
             return rc;
         }
     }
@@ -184,13 +158,17 @@ internal sealed class Poller : IPoller
     {
         EnsureNotDisposed();
 
-        var handle = _handle;
-        var rc = NativeMethods.zlink_poller_destroy(ref handle);
-        ZlinkException.ThrowConfigIfError(rc);
+        _ = DestroyHandle(DestroyNative, throwOnError: true);
 
         _handle = NativeMethods.zlink_poller_new();
         if (_handle == IntPtr.Zero)
+        {
+            _handle = IntPtr.Zero;
+            UnregisterAllExternalProgress();
+            _items.Clear();
+            _nativeEvents = Array.Empty<ZlinkPollerEvent>();
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        }
         UnregisterAllExternalProgress();
         _items.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
@@ -212,9 +190,10 @@ internal sealed class Poller : IPoller
 
         var capacity = Math.Min(destination.Length, _items.Count);
         EnsureEventCapacity(capacity);
-        var ready = WaitNative(ToTimeoutMilliseconds(timeout), capacity);
+        var ready = WaitNative(ToTimeoutMilliseconds(timeout), capacity,
+            out var errorOut);
         if (ready < 0)
-            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+            throw ZlinkException.CreateConfigException((ConfigResult)errorOut);
         if (ready == 0)
             return 0;
 
@@ -225,30 +204,7 @@ internal sealed class Poller : IPoller
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
-            return;
-
-        var handle = _handle;
-        int rc;
-        while (true)
-        {
-            rc = NativeMethods.zlink_poller_destroy(ref handle);
-            if (rc == 0)
-                break;
-
-            var errno = NativeMethods.zlink_errno();
-            var code = ZlinkException.MapErrorCode(errno);
-            if (code == ErrorCode.EIntr || errno == 4)
-                continue;
-            break;
-        }
-
-        _handle = IntPtr.Zero;
-        UnregisterAllExternalProgress();
-        _items.Clear();
-        _nativeEvents = Array.Empty<ZlinkPollerEvent>();
-        if (rc != 0)
-            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
+        Destroy(true);
         GC.SuppressFinalize(this);
     }
 
@@ -260,16 +216,28 @@ internal sealed class Poller : IPoller
 
     ~Poller()
     {
-        Dispose();
+        Destroy(false);
+    }
+
+    private static int DestroyNative(ref IntPtr handle)
+    {
+        return NativeMethods.zlink_poller_destroy(ref handle);
+    }
+
+    private void Destroy(bool throwOnError)
+    {
+        _ = DestroyHandle(DestroyNative, throwOnError, _ =>
+        {
+            UnregisterAllExternalProgress();
+            _items.Clear();
+            _nativeEvents = Array.Empty<ZlinkPollerEvent>();
+        });
     }
 
     private static List<string> GetMissingExports()
     {
-        var missing = new List<string>();
-        foreach (var symbol in RequiredExports)
-            if (!NativeLibraryLoader.HasExport(symbol))
-                missing.Add(symbol);
-        return missing;
+        return NativeLibraryLoader.GetMissingExports(
+            NativeMethods.RequiredPollerExports);
     }
 
     private static int ToTimeoutMilliseconds(TimeSpan timeout)
@@ -288,12 +256,13 @@ internal sealed class Poller : IPoller
             _nativeEvents = new ZlinkPollerEvent[count];
     }
 
-    private unsafe int WaitNative(int timeoutMs, int capacity)
+    private unsafe int WaitNative(int timeoutMs, int capacity,
+        out int errorOut)
     {
         fixed (ZlinkPollerEvent* events = _nativeEvents)
         {
             return NativeMethods.zlink_poller_wait_pinned(_handle, events,
-                capacity, timeoutMs, out _);
+                capacity, timeoutMs, out errorOut);
         }
     }
 
@@ -386,8 +355,20 @@ internal sealed class Poller : IPoller
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
-            throw new ObjectDisposedException(nameof(Poller));
+        EnsureNativeHandle(nameof(Poller));
+    }
+
+    private static IntPtr CreateHandle()
+    {
+        var missing = GetMissingExports();
+        if (missing.Count > 0)
+            throw new ZlinkConfigException(ConfigResult.NotSupported,
+                (int)ErrorCode.ENotSup);
+
+        var handle = NativeMethods.zlink_poller_new();
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        return handle;
     }
 
     private enum PollItemKind

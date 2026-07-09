@@ -13,7 +13,6 @@ public sealed partial class Message
     [ThreadStatic] private static int t_poolCount;
 
     private int _knownSize = -1;
-    private ManagedPayloadState? _managedPayload;
     private ZlinkMsg _msg;
     private bool _pooled;
 

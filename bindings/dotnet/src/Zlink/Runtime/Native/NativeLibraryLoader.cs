@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -10,6 +11,7 @@ internal static class NativeLibraryLoader
     private const string LinuxSoname = "libzlink.so.8";
 
     private static readonly object Sync = new();
+    private static readonly ConcurrentDictionary<string, bool> ExportCache = new();
     private static IntPtr _handle = IntPtr.Zero;
     private static bool _resolverInstalled;
     private static bool _exportsValidated;
@@ -115,6 +117,29 @@ internal static class NativeLibraryLoader
                 nameof(symbol));
 
         EnsureLoaded();
+        return ExportCache.GetOrAdd(symbol, HasLoadedExport);
+    }
+
+    internal static List<string> GetMissingExports(IEnumerable<string> symbols)
+    {
+        var missing = new List<string>();
+        foreach (var symbol in symbols)
+            if (!HasExport(symbol))
+                missing.Add(symbol);
+        return missing;
+    }
+
+    internal static List<string> GetMissingExports(ReadOnlySpan<string> symbols)
+    {
+        var missing = new List<string>();
+        foreach (var symbol in symbols)
+            if (!HasExport(symbol))
+                missing.Add(symbol);
+        return missing;
+    }
+
+    private static bool HasLoadedExport(string symbol)
+    {
         return _handle != IntPtr.Zero
                && NativeLibrary.TryGetExport(_handle, symbol, out _);
     }

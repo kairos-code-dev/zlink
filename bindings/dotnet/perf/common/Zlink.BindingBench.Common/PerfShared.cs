@@ -244,19 +244,19 @@ public static class PerfShared
         };
     }
 
-    private static string SpotSocketTypeName(SpotNodeSocketType type)
+    private static string SpotSocketTypeName(SocketType type)
     {
         // Mirrors perf_spot.cpp socket_type_name.
         return type switch
         {
-            SpotNodeSocketType.Pair => "pair",
-            SpotNodeSocketType.Pub => "pub",
-            SpotNodeSocketType.Sub => "sub",
-            SpotNodeSocketType.Dealer => "dealer",
-            SpotNodeSocketType.Router => "router",
-            SpotNodeSocketType.XPub => "xpub",
-            SpotNodeSocketType.XSub => "xsub",
-            SpotNodeSocketType.Stream => "stream",
+            SocketType.Pair => "pair",
+            SocketType.Pub => "pub",
+            SocketType.Sub => "sub",
+            SocketType.Dealer => "dealer",
+            SocketType.Router => "router",
+            SocketType.XPub => "xpub",
+            SocketType.XSub => "xsub",
+            SocketType.Stream => "stream",
             _ => "unknown",
         };
     }

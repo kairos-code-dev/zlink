@@ -8,12 +8,7 @@ internal static partial class ActorInterop
 {
     internal static void ValidateActorId(string actorId, string paramName)
     {
-        if (actorId == null)
-            throw new ArgumentNullException(paramName);
-        if (actorId.IndexOf('\0') >= 0)
-            throw new ArgumentException("Actor id must not contain NUL.",
-                paramName);
-        BoundaryValidation.ValidateFixedUtf8(actorId, paramName);
+        ActorContractValidation.ValidateActorId(actorId, paramName);
     }
 
     internal static unsafe ActorRef FromNative(ref ZlinkActorRef native)
@@ -31,7 +26,7 @@ internal static partial class ActorInterop
 
     internal static unsafe ActorRef? FromOptionalNative(ref ZlinkActorRef native)
     {
-        var nodeRid = RoutingIdInterop.FromNative(ref native.NodeRid);
+        var nodeRid = RoutingId.FromNative(ref native.NodeRid);
         if (nodeRid == null)
             return null;
 
@@ -61,10 +56,10 @@ internal static partial class ActorInterop
     {
         return new ActorRecvInfo(
             FromNative(ref native.Actor),
-            RoutingIdInterop.FromNative(ref native.SourceNodeRid)
+            RoutingId.FromNative(ref native.SourceNodeRid)
             ?? throw new ZlinkRecvException(
                 ZlinkRecvException.ErrorCode.InternalError),
-            RoutingIdInterop.FromNative(ref native.SourceSessionRid)
+            RoutingId.FromNative(ref native.SourceSessionRid)
             ?? throw new ZlinkRecvException(
                 ZlinkRecvException.ErrorCode.InternalError),
             native.RequestId,
@@ -76,16 +71,16 @@ internal static partial class ActorInterop
         return new ActorJoinInfo(
             FromNative(ref native.SourceActor),
             FromNative(ref native.TargetActor),
-            RoutingIdInterop.FromNative(ref native.SourceNodeRid)
+            RoutingId.FromNative(ref native.SourceNodeRid)
             ?? throw new ZlinkRecvException(
                 ZlinkRecvException.ErrorCode.InternalError),
-            RoutingIdInterop.FromNative(ref native.SourceSpotRid)
+            RoutingId.FromNative(ref native.SourceSpotRid)
             ?? throw new ZlinkRecvException(
                 ZlinkRecvException.ErrorCode.InternalError),
-            RoutingIdInterop.FromNative(ref native.TargetNodeRid)
+            RoutingId.FromNative(ref native.TargetNodeRid)
             ?? throw new ZlinkRecvException(
                 ZlinkRecvException.ErrorCode.InternalError),
-            RoutingIdInterop.FromNative(ref native.TargetSpotRid)
+            RoutingId.FromNative(ref native.TargetSpotRid)
             ?? throw new ZlinkRecvException(
                 ZlinkRecvException.ErrorCode.InternalError),
             native.JoinEpoch,
@@ -96,7 +91,7 @@ internal static partial class ActorInterop
     {
         return new ActorRoute(
             FromNative(ref native.Actor),
-            RoutingIdInterop.FromNative(ref native.CurrentSpotRid)
+            RoutingId.FromNative(ref native.CurrentSpotRid)
             ?? throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InternalError),
             (SpotKind)native.CurrentSpotKind);
@@ -108,8 +103,8 @@ internal static partial class ActorInterop
         return new SpotActorLifecycleInfo(
             FromOptionalNative(ref native.PreviousActor) ?? default,
             FromOptionalNative(ref native.CurrentActor) ?? default,
-            RoutingIdInterop.FromNative(ref native.PreviousSpotRid),
-            RoutingIdInterop.FromNative(ref native.CurrentSpotRid),
+            RoutingId.FromNative(ref native.PreviousSpotRid),
+            RoutingId.FromNative(ref native.CurrentSpotRid),
             native.JoinEpoch,
             native.Flags);
     }

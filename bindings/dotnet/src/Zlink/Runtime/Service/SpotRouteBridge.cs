@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Buffers;
 using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
@@ -8,7 +7,11 @@ namespace Systems.Zlink;
 
 internal sealed class SpotRouteBridge : ISpotRouteBridge
 {
-    private const int StackPartLimit = 8;
+    private static readonly NativeMethods.ZlinkReplyHandlerDelegate DirectReplyHandler =
+        OnDirectReply;
+    private static readonly IntPtr DirectReplyHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(DirectReplyHandler);
+
     private readonly Dictionary<string, IntPtr> _endpointHandles = new();
     private readonly object _gate = new();
     private IntPtr _handle;
@@ -81,46 +84,47 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        var ownedParts = RequestReplySupport.CloneParts(parts);
+        var nativeNodeRid = targetNodeRid.ToNative();
+        var nativeSpotRid = targetSpotRid.ToNative();
+        var timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
+        GCHandle handle = default;
+        SpotRouteBridgeRequestCallbackState? state = null;
         try
         {
-            RequestReplySupport.AttachResultCallback(
-                () => Task.Run(async () =>
-                {
-                    try
-                    {
-                        return await RequestAsyncInternal(channelName,
-                                targetNodeRid, targetSpotRid, ownedParts, flags, timeout)
-                            .ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        RequestReplySupport.DisposeParts(ownedParts);
-                    }
-                }),
-                (result, reply) =>
-                {
-                    IReadOnlyList<Message> payload = Array.Empty<Message>();
-                    if (reply != null)
-                    {
-                        payload = RequestReplySupport.TakeOwnedParts(reply);
-                        reply.Dispose();
-                    }
+            state = new SpotRouteBridgeRequestCallbackState(
+                callback,
+                RequestProgressPump.AttachSocketCallback(EndpointHandle(channelName)));
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            var userData = GCHandle.ToIntPtr(handle);
 
-                    callback(result, payload);
-                });
+            SubmitParts(parts, (nativeParts, partCount) =>
+                NativeMethods.zlink_spot_route_bridge_request(
+                    _handle,
+                    channelName,
+                    ref nativeNodeRid,
+                    ref nativeSpotRid,
+                    nativeParts,
+                    partCount,
+                    DirectReplyHandlerPtr,
+                    userData,
+                    (int)flags,
+                    timeoutMs));
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
                                            && RequestReplySupport.MapSendNoWaitResult(error)
                                            == SendResult.Backpressured)
         {
-            RequestReplySupport.DisposeParts(ownedParts);
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
             return false;
         }
         catch
         {
-            RequestReplySupport.DisposeParts(ownedParts);
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
             throw;
         }
     }
@@ -150,7 +154,8 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
     {
         EnsureNotDisposed();
         var rc = NativeMethods.zlink_spot_route_bridge_drain(_handle);
-        ZlinkException.ThrowConfigIfError(rc);
+        if (rc < 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Close()
@@ -209,6 +214,35 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
         }
     }
 
+    private static void OnDirectReply(int result, IntPtr parts,
+        nuint partCount, IntPtr userData)
+    {
+        var handle = GCHandle.FromIntPtr(userData);
+        var state = (SpotRouteBridgeRequestCallbackState)handle.Target!;
+        try
+        {
+            if (!state.TryStartCompletion())
+                return;
+
+            if (result != 0)
+            {
+                state.Invoke((RequestResult)result, Array.Empty<Message>());
+                return;
+            }
+
+            var replyParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            state.Invoke(RequestResult.Ok, replyParts);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+            handle.Free();
+        }
+    }
+
     private IntPtr EndpointHandle(string channelName)
     {
         lock (_gate)
@@ -219,40 +253,19 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
         }
     }
 
-    private static unsafe void SubmitParts(IReadOnlyList<Message> parts,
+    private static void SubmitParts(IReadOnlyList<Message> parts,
         NativeBridgeSubmitter submit, bool throwSubmit = true)
     {
-        RequestReplySupport.EnsureParts(parts, nameof(parts));
-        if (submit == null)
-            throw new ArgumentNullException(nameof(submit));
+        NativeMessageParts.SubmitClonedVector(parts, nameof(parts),
+            (nativeParts, partCount) => submit(nativeParts, partCount),
+            throwSubmit ? ThrowBridgeSubmitIfError : null);
+    }
 
-        var cloned = RequestReplySupport.CloneParts(parts);
-        ZlinkMsg[]? rented = null;
-        var nativeParts = cloned.Length <= StackPartLimit
-            ? stackalloc ZlinkMsg[StackPartLimit]
-            : rented = ArrayPool<ZlinkMsg>.Shared.Rent(cloned.Length);
-        nativeParts = nativeParts.Slice(0, cloned.Length);
-        var built = 0;
-        try
-        {
-            NativeMessageParts.MoveToNative(cloned, nativeParts, nameof(parts),
-                ref built);
-            fixed (ZlinkMsg* nativePtr = nativeParts)
-            {
-                var rc = submit((IntPtr)nativePtr, (nuint)built);
-                if (rc != 0 && throwSubmit)
-                    throw ZlinkException.CreateSubmitException(
-                        NativeMethods.zlink_errno());
-            }
-        }
-        finally
-        {
-            for (var i = 0; i < built; i++)
-                NativeMethods.zlink_msg_close(ref nativeParts[i]);
-            RequestReplySupport.DisposeParts(cloned);
-            if (rented != null)
-                ArrayPool<ZlinkMsg>.Shared.Return(rented);
-        }
+    private static void ThrowBridgeSubmitIfError(int rc)
+    {
+        if (rc != 0)
+            throw ZlinkException.CreateSubmitException(
+                NativeMethods.zlink_errno());
     }
 
     private static ZlinkSpotRouteBridgeOptions ToNativeOptions(
@@ -303,4 +316,40 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
     }
 
     private delegate int NativeBridgeSubmitter(IntPtr parts, nuint partCount);
+
+    private sealed class SpotRouteBridgeRequestCallbackState
+    {
+        private readonly Action<RequestResult, IReadOnlyList<Message>> _callback;
+        private readonly SynchronizationContext? _callbackContext;
+        private readonly RequestProgressPump.ProgressLease _progress;
+        private int _completed;
+
+        internal SpotRouteBridgeRequestCallbackState(
+            Action<RequestResult, IReadOnlyList<Message>> callback,
+            RequestProgressPump.ProgressLease progress)
+        {
+            _callback = callback;
+            _callbackContext = SynchronizationContext.Current;
+            _progress = progress;
+        }
+
+        internal bool TryStartCompletion()
+        {
+            if (Interlocked.Exchange(ref _completed, 1) != 0)
+                return false;
+            DisposeProgress();
+            return true;
+        }
+
+        internal void DisposeProgress()
+        {
+            _progress.Dispose();
+        }
+
+        internal void Invoke(RequestResult result, IReadOnlyList<Message> payload)
+        {
+            CallbackDelivery.Post(_callbackContext,
+                () => _callback(result, payload));
+        }
+    }
 }

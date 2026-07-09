@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
@@ -54,22 +53,9 @@ internal sealed partial class SocketKernel : IDisposable
         EnsureSupports(nameof(Send), SocketTypePolicy.SocketCapability.MessageSend);
         RequestReplySupport.EnsureParts(parts, nameof(parts));
 
-        if (parts is Message[] array)
-        {
-            SendCore(array.AsSpan(), (int)flags, nameof(parts));
-            return;
-        }
-
-        if (parts is List<Message> list)
-        {
-            SendCore(CollectionsMarshal.AsSpan(list), (int)flags, nameof(parts));
-            return;
-        }
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        SendCore(copied.AsSpan(), (int)flags, nameof(parts));
+        Message[]? copied = null;
+        SendCore(NativeMessageParts.AsSpan(parts, ref copied), (int)flags,
+            nameof(parts));
     }
 
     public SendResult SendNoWaitResult(IReadOnlyList<Message> parts)
@@ -199,23 +185,9 @@ internal sealed partial class SocketKernel : IDisposable
             nameof(routingId));
         var nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
 
-        if (parts is Message[] array)
-        {
-            SendCore(ref nativeRoutingId, array.AsSpan(), (int)flags, nameof(parts));
-            return;
-        }
-
-        if (parts is List<Message> list)
-        {
-            SendCore(ref nativeRoutingId, CollectionsMarshal.AsSpan(list), (int)flags,
-                nameof(parts));
-            return;
-        }
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        SendCore(ref nativeRoutingId, copied.AsSpan(), (int)flags, nameof(parts));
+        Message[]? copied = null;
+        SendCore(ref nativeRoutingId, NativeMessageParts.AsSpan(parts, ref copied),
+            (int)flags, nameof(parts));
     }
 
     public void Send(RoutingId routingId, IReadOnlyList<Message> parts,
@@ -228,23 +200,9 @@ internal sealed partial class SocketKernel : IDisposable
         ref var nativeRoutingId =
             ref routingId.ToNativeRef(ref fallback);
 
-        if (parts is Message[] array)
-        {
-            SendCore(ref nativeRoutingId, array.AsSpan(), (int)flags, nameof(parts));
-            return;
-        }
-
-        if (parts is List<Message> list)
-        {
-            SendCore(ref nativeRoutingId, CollectionsMarshal.AsSpan(list), (int)flags,
-                nameof(parts));
-            return;
-        }
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        SendCore(ref nativeRoutingId, copied.AsSpan(), (int)flags, nameof(parts));
+        Message[]? copied = null;
+        SendCore(ref nativeRoutingId, NativeMessageParts.AsSpan(parts, ref copied),
+            (int)flags, nameof(parts));
     }
 
     public SendResult SendNoWaitResult(string routingId, IReadOnlyList<Message> parts)
@@ -267,17 +225,9 @@ internal sealed partial class SocketKernel : IDisposable
         ref var nativeRoutingId =
             ref routingId.ToNativeRef(ref fallback);
 
-        if (parts is Message[] array)
-            return SendNoWaitResultCore(ref nativeRoutingId, array.AsSpan(), nameof(parts));
-
-        if (parts is List<Message> list)
-            return SendNoWaitResultCore(ref nativeRoutingId,
-                CollectionsMarshal.AsSpan(list), nameof(parts));
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        return SendNoWaitResultCore(ref nativeRoutingId, copied.AsSpan(), nameof(parts));
+        Message[]? copied = null;
+        return SendNoWaitResultCore(ref nativeRoutingId,
+            NativeMessageParts.AsSpan(parts, ref copied), nameof(parts));
     }
 
     public void Publish(string topic, Message message, SendFlags flags = SendFlags.None)
@@ -306,23 +256,9 @@ internal sealed partial class SocketKernel : IDisposable
         BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         RequestReplySupport.EnsureParts(parts, nameof(parts));
 
-        if (parts is Message[] array)
-        {
-            PublishCore(topic, array.AsSpan(), (int)flags, nameof(parts));
-            return;
-        }
-
-        if (parts is List<Message> list)
-        {
-            PublishCore(topic, CollectionsMarshal.AsSpan(list), (int)flags,
-                nameof(parts));
-            return;
-        }
-
-        var copied = new Message[parts.Count];
-        for (var i = 0; i < copied.Length; i++)
-            copied[i] = parts[i];
-        PublishCore(topic, copied.AsSpan(), (int)flags, nameof(parts));
+        Message[]? copied = null;
+        PublishCore(topic, NativeMessageParts.AsSpan(parts, ref copied),
+            (int)flags, nameof(parts));
     }
 
     internal SendResult PublishNoWaitResult(string topic, IReadOnlyList<Message> parts)

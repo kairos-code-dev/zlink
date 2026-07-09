@@ -7,7 +7,6 @@ namespace Systems.Zlink;
 
 internal sealed partial class Spot : ISpot
 {
-    private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int DontWaitFlag = 1;
 
@@ -127,12 +126,18 @@ internal sealed partial class Spot : ISpot
         var context = SynchronizationContext.Current;
         var native = new NativeMethods.ZlinkSendReadyHandlerDelegate(
             OnNativeSendReady);
-        var rc = NativeMethods.zlink_send_ready_handler(Handle, native,
-            IntPtr.Zero);
-        ZlinkException.ThrowHandlerIfError(rc);
         _sendReadyHandler = () => handler();
         _sendReadyHandlerContext = context;
         _sendReadyHandlerNative = native;
+        var rc = NativeMethods.zlink_send_ready_handler(Handle, native,
+            IntPtr.Zero);
+        if (rc != 0)
+        {
+            _sendReadyHandler = null;
+            _sendReadyHandlerContext = null;
+            _sendReadyHandlerNative = null;
+            ZlinkException.ThrowHandlerIfError(rc);
+        }
     }
 
     public bool RecvRouted(Received result,
@@ -239,37 +244,11 @@ internal sealed partial class Spot : ISpot
     public ActorRef[] Actors()
     {
         EnsureNotDisposed();
-        nuint count = 0;
-        var rc = NativeMethods.zlink_spot_actors(Handle,
-            IntPtr.Zero, ref count);
-        ZlinkException.ThrowConfigIfError(rc);
-        if (count == 0)
-            return Array.Empty<ActorRef>();
-
-        var entrySize = Marshal.SizeOf<ZlinkActorRef>();
-        var entries = Marshal.AllocHGlobal(
-            checked((int)(count * (nuint)entrySize)));
-        try
-        {
-            var actual = count;
-            rc = NativeMethods.zlink_spot_actors(Handle, entries,
-                ref actual);
-            ZlinkException.ThrowConfigIfError(rc);
-            var result = new ActorRef[(int)actual];
-            for (var i = 0; i < result.Length; i++)
-            {
-                var native =
-                    Marshal.PtrToStructure<ZlinkActorRef>(
-                        IntPtr.Add(entries, i * entrySize));
-                result[i] = ActorInterop.FromNative(ref native);
-            }
-
-            return result;
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(entries);
-        }
+        return NativeSnapshotReader.Read<ZlinkActorRef, ActorRef>(
+            (IntPtr entries, ref nuint count) =>
+                NativeMethods.zlink_spot_actors(Handle, entries, ref count),
+            static (ref ZlinkActorRef native) =>
+                ActorInterop.FromNative(ref native));
     }
 
     public void SetDispatchHandler(SpotDispatchHandler handler)
@@ -301,28 +280,6 @@ internal sealed partial class Spot : ISpot
                 nameof(topicBuffer));
         return SubscribePartInto(result, topicBuffer, out topicLength,
             out hasMore, (int)flags);
-    }
-
-    internal bool SubscribeNoWait(TopicMessage result)
-    {
-        return Subscribe(result, RecvFlags.DontWait);
-    }
-
-    internal int? TryReceiveRawSubscribedFrame(Span<byte> destination, int flags,
-        out byte[][] pendingFrames)
-    {
-        EnsureNotDisposed();
-        try
-        {
-            return ReceiveRawSubscribedFrameCore(destination, flags,
-                out pendingFrames);
-        }
-        catch (ZlinkException ex) when (ZlinkException.MapErrorCode(ex.NativeErrno)
-                                        == ErrorCode.EAgain)
-        {
-            pendingFrames = Array.Empty<byte[]>();
-            return null;
-        }
     }
 
     internal bool RecvRoutedPart(Message result, out RoutingId? routingId,
@@ -446,71 +403,6 @@ internal sealed partial class Spot : ISpot
             dealerSubject);
         if (rc < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-    }
-
-    private static SendResult MapSendResult(int rc)
-    {
-        return rc switch
-        {
-            0 => SendResult.Sent,
-            1 => SendResult.Backpressured,
-            2 => SendResult.NotReady,
-            _ => throw new InvalidOperationException(
-                $"Unexpected send result code '{rc}'.")
-        };
-    }
-
-    private static unsafe int CopyFirstFrameAndCollectPending(IntPtr nativeParts,
-        nuint partCount, Span<byte> destination, out byte[][] pendingFrames)
-    {
-        var total = checked((int)partCount);
-        if (total <= 0)
-        {
-            pendingFrames = Array.Empty<byte[]>();
-            return 0;
-        }
-
-        var src = (ZlinkMsg*)nativeParts;
-        var firstPtr = new IntPtr(src);
-        var firstSize = checked((int)NativeMethods.zlink_msg_size(firstPtr));
-        if (firstSize > destination.Length)
-            throw new ArgumentException("Destination buffer is too small.",
-                nameof(destination));
-
-        var firstData = NativeMethods.zlink_msg_data(firstPtr);
-        if (firstSize != 0 && firstData != IntPtr.Zero)
-            new ReadOnlySpan<byte>((void*)firstData, firstSize).CopyTo(destination);
-
-        if (total == 1)
-        {
-            pendingFrames = Array.Empty<byte[]>();
-            return firstSize;
-        }
-
-        pendingFrames = new byte[total - 1][];
-        for (var i = 1; i < total; i++)
-        {
-            var msgPtr = new IntPtr(src + i);
-            var size = checked((int)NativeMethods.zlink_msg_size(msgPtr));
-            if (size == 0)
-            {
-                pendingFrames[i - 1] = Array.Empty<byte>();
-                continue;
-            }
-
-            var dataPtr = NativeMethods.zlink_msg_data(msgPtr);
-            if (dataPtr == IntPtr.Zero)
-            {
-                pendingFrames[i - 1] = Array.Empty<byte>();
-                continue;
-            }
-
-            var payload = new byte[size];
-            new ReadOnlySpan<byte>((void*)dataPtr, size).CopyTo(payload);
-            pendingFrames[i - 1] = payload;
-        }
-
-        return firstSize;
     }
 
     private sealed unsafe class RoutedPartRoutingIdCache

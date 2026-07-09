@@ -45,9 +45,7 @@ public sealed partial class Received : IDisposable
     {
         get
         {
-            if (_routingIdSnapshot.HasValue)
-                _routingId ??= _routingIdSnapshot.ToRoutingId();
-            return _routingId;
+            return _routingIdSnapshot.GetOrCreateRoutingId(ref _routingId);
         }
     }
 
@@ -105,7 +103,8 @@ public sealed partial class Received : IDisposable
     /// </summary>
     public Message FirstPart()
     {
-        return _singlePart ?? PartsCollection.First();
+        return _singlePart
+               ?? MessageEnvelopeParts.First(PartsCollection, nameof(Received));
     }
 
     /// <summary>
@@ -113,7 +112,8 @@ public sealed partial class Received : IDisposable
     /// </summary>
     public Message SinglePartOrThrow()
     {
-        return _singlePart ?? PartsCollection.Single();
+        return _singlePart
+               ?? MessageEnvelopeParts.Single(PartsCollection, nameof(Received));
     }
 
     /// <summary>

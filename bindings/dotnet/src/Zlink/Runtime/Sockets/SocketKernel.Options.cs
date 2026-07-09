@@ -9,21 +9,18 @@ internal sealed partial class SocketKernel : IDisposable
     public void SetOption(SocketOptionKey<int> option, int value)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         _options.SetInt32(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<long> option, long value)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         _options.SetInt64(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<ulong> option, ulong value)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         _options.SetUInt64(option.Option, value);
     }
 
@@ -38,56 +35,48 @@ internal sealed partial class SocketKernel : IDisposable
     public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         _options.SetBytes(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<string> option, string value)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         _options.SetString(option.Option, value);
     }
 
     public int GetOption(SocketOptionKey<int> option)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         return _options.GetInt32(option.Option);
     }
 
     public long GetOption(SocketOptionKey<long> option)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         return _options.GetInt64(option.Option);
     }
 
     public ulong GetOption(SocketOptionKey<ulong> option)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         return _options.GetUInt64(option.Option);
     }
 
     public byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         return _options.GetBytes(option.Option, initialSize);
     }
 
     public int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         return _options.GetBytesInto(option.Option, destination);
     }
 
     public string GetOption(SocketOptionKey<string> option, int initialSize = 256)
     {
         EnsureOptionSupported(option.Option);
-        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         return _options.GetString(option.Option, initialSize);
     }
 

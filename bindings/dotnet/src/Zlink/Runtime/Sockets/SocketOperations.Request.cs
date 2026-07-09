@@ -100,39 +100,14 @@ internal sealed class DealerRequestOperation : RequestOperation,
     }
 }
 
-internal enum RouterOperationKind
-{
-    Request,
-    RequestToSpot,
-    SendToSpot,
-    Reply,
-    ReplyToSpot
-}
-
-internal sealed class RouterRequestOperation : RequestOperation,
+internal abstract class RouterRequestOperation : RequestOperation,
     RequestSubmitOperation, RequestCallbackSubmitOperation
 {
-    private readonly RoutingId _destNodeRid;
-    private readonly RoutingId _destSpotRid;
-    private readonly RouterOperationKind _kind;
-    private readonly RoutingId _peerRid;
-    private readonly RouterSocket _socket;
     private bool _callbackStage;
     private SendFlags _flags;
     private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
     private TimeSpan _timeout;
-
-    internal RouterRequestOperation(RouterSocket socket,
-        RouterOperationKind kind, RoutingId peerRid, RoutingId destNodeRid,
-        RoutingId destSpotRid)
-    {
-        _socket = socket;
-        _kind = kind;
-        _peerRid = peerRid;
-        _destNodeRid = destNodeRid;
-        _destSpotRid = destSpotRid;
-    }
 
     RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Message(
         Message message)
@@ -186,15 +161,7 @@ internal sealed class RouterRequestOperation : RequestOperation,
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
         _submission.MarkSubmitted();
-        return _kind switch
-        {
-            RouterOperationKind.Request => _socket.RequestCore(_peerRid,
-                _parts.Parts, _timeout, ct),
-            RouterOperationKind.RequestToSpot => _socket.RequestToSpotCore(
-                _destNodeRid, _destSpotRid, _parts.Parts, _timeout, ct),
-            _ => throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState)
-        };
+        return AsyncCore(_parts.Parts, _timeout, ct);
     }
 
     public bool Submit(RequestCallback callback)
@@ -203,16 +170,7 @@ internal sealed class RouterRequestOperation : RequestOperation,
             throw new ArgumentNullException(nameof(callback));
         EnsureReady();
         _submission.MarkSubmitted();
-        return _kind switch
-        {
-            RouterOperationKind.Request => _socket.RequestCallbackCore(_peerRid,
-                _parts.Parts, callback, _flags, _timeout),
-            RouterOperationKind.RequestToSpot => _socket
-                .RequestToSpotCallbackCore(_destNodeRid, _destSpotRid,
-                    _parts.Parts, callback, _flags, _timeout),
-            _ => throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState)
-        };
+        return SubmitCore(_parts.Parts, callback, _flags, _timeout);
     }
 
     private void AddMessage(Message message)
@@ -230,5 +188,84 @@ internal sealed class RouterRequestOperation : RequestOperation,
     private void EnsureNotSubmitted()
     {
         _submission.EnsureNotSubmitted();
+    }
+
+    protected abstract Task<IReadOnlyList<Message>> AsyncCore(
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken ct);
+
+    protected abstract bool SubmitCore(
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan timeout);
+}
+
+internal sealed class RouterPeerRequestOperation : RouterRequestOperation
+{
+    private readonly RoutingId _peerRid;
+    private readonly RouterSocket _socket;
+
+    internal RouterPeerRequestOperation(
+        RouterSocket socket,
+        RoutingId peerRid)
+    {
+        _socket = socket;
+        _peerRid = peerRid;
+    }
+
+    protected override Task<IReadOnlyList<Message>> AsyncCore(
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken ct)
+    {
+        return _socket.RequestCore(_peerRid, parts, timeout, ct);
+    }
+
+    protected override bool SubmitCore(
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan timeout)
+    {
+        return _socket.RequestCallbackCore(_peerRid, parts, callback, flags,
+            timeout);
+    }
+}
+
+internal sealed class RouterSpotRequestOperation : RouterRequestOperation
+{
+    private readonly RoutingId _destNodeRid;
+    private readonly RoutingId _destSpotRid;
+    private readonly RouterSocket _socket;
+
+    internal RouterSpotRequestOperation(
+        RouterSocket socket,
+        RoutingId destNodeRid,
+        RoutingId destSpotRid)
+    {
+        _socket = socket;
+        _destNodeRid = destNodeRid;
+        _destSpotRid = destSpotRid;
+    }
+
+    protected override Task<IReadOnlyList<Message>> AsyncCore(
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken ct)
+    {
+        return _socket.RequestToSpotCore(_destNodeRid, _destSpotRid, parts,
+            timeout, ct);
+    }
+
+    protected override bool SubmitCore(
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan timeout)
+    {
+        return _socket.RequestToSpotCallbackCore(_destNodeRid, _destSpotRid,
+            parts, callback, flags, timeout);
     }
 }

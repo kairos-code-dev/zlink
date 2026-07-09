@@ -155,7 +155,7 @@ internal sealed partial class SocketKernel : IDisposable
         var spotRid = destSpotRid.ToNative();
         // Preserve SendToSpotCore ownership semantics without the temporary
         // IReadOnlyList wrapper used by the multipart path.
-        var cloned = RequestReplySupport.CloneMessage(part);
+        var cloned = part.Copy();
         ZlinkMsg nativePart = default;
         var submitted = false;
         try

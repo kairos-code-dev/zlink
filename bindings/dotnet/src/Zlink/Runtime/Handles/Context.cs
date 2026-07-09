@@ -4,17 +4,14 @@ using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
-internal sealed class Context : IContext
+internal sealed class Context : NativeOwner, IContext
 {
-    public Context()
+    public Context() : base(CreateHandle())
     {
         Options = new ContextOptions(this);
-        Handle = NativeMethods.zlink_ctx_new();
-        if (Handle == IntPtr.Zero)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
-    internal IntPtr Handle { get; private set; }
+    internal IntPtr Handle => _handle;
 
     public ContextOptions Options { get; }
 
@@ -88,36 +85,16 @@ internal sealed class Context : IContext
 
     public void Dispose()
     {
-        if (Handle == IntPtr.Zero)
+        if (IsClosed)
             return;
-        while (true)
-        {
-            var shutdownRc = NativeMethods.zlink_ctx_shutdown(Handle);
-            if (shutdownRc == 0)
-                break;
-            var shutdownErrno = NativeMethods.zlink_errno();
-            var shutdownCode = ZlinkException.MapErrorCode(shutdownErrno);
-            if (shutdownCode == ErrorCode.EIntr || shutdownErrno == 4)
-                continue;
-            break;
-        }
 
-        int rc;
-        while (true)
-        {
-            rc = NativeMethods.zlink_ctx_term(Handle);
-            if (rc == 0)
-                break;
-            var errno = NativeMethods.zlink_errno();
-            var code = ZlinkException.MapErrorCode(errno);
-            if (code == ErrorCode.EIntr || errno == 4)
-                continue;
-            break;
-        }
-
-        Handle = IntPtr.Zero;
+        _ = RetryWhileInterrupted(
+            () => NativeMethods.zlink_ctx_shutdown(Handle), out _);
+        var rc = RetryWhileInterrupted(
+            () => NativeMethods.zlink_ctx_term(Handle), out var errno);
+        MarkClosed();
         if (rc < 0)
-            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
+            throw ZlinkException.CreateCloseException(errno);
         GC.SuppressFinalize(this);
     }
 
@@ -150,7 +127,7 @@ internal sealed class Context : IContext
 
     ~Context()
     {
-        if (Handle == IntPtr.Zero)
+        if (IsClosed)
             return;
 
         try
@@ -164,7 +141,14 @@ internal sealed class Context : IContext
 
     private void EnsureNotDisposed()
     {
-        if (Handle == IntPtr.Zero)
-            throw new ObjectDisposedException(nameof(Context));
+        EnsureNativeHandle(nameof(Context));
+    }
+
+    private static IntPtr CreateHandle()
+    {
+        var handle = NativeMethods.zlink_ctx_new();
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        return handle;
     }
 }

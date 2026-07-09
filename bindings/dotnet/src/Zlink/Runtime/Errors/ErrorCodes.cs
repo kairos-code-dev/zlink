@@ -82,16 +82,3 @@ internal enum ErrorCode
     Eterm = 156384765,
     EmThread = 156384766
 }
-
-internal enum ProtocolError
-{
-    ZmpMalformedCommandHello = 0x10000013
-}
-
-internal enum DisconnectReason
-{
-    Unknown = 0,
-    HandshakeFailed = 3,
-    TransportError = 4,
-    CtxTerm = 5
-}

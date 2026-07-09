@@ -21,37 +21,16 @@ internal static partial class ActorInterop
     internal static readonly IntPtr NoopReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(NoopReplyHandler);
 
-    internal static readonly NativeMethods.ZlinkActorJoinHandlerDelegate JoinHandler =
-        OnJoinReply;
-
-    internal static readonly IntPtr JoinHandlerPtr =
-        Marshal.GetFunctionPointerForDelegate(JoinHandler);
-
     internal static readonly NativeMethods.ZlinkActorJoinEntrySpotHandlerDelegate
         JoinEntrySpotHandler = OnActorJoinEntrySpot;
 
     internal static readonly IntPtr JoinEntrySpotHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(JoinEntrySpotHandler);
 
-    internal static Message CopyMessageFromPointer(IntPtr message)
-    {
-        if (message == IntPtr.Zero)
-            return Message.From(ReadOnlySpan<byte>.Empty);
-        var size = checked((int)NativeMethods.zlink_msg_size(message));
-        if (size == 0)
-            return Message.From(ReadOnlySpan<byte>.Empty);
-        var data = NativeMethods.zlink_msg_data(message);
-        if (data == IntPtr.Zero)
-            return Message.From(ReadOnlySpan<byte>.Empty);
-        var copy = new byte[size];
-        Marshal.Copy(data, copy, 0, copy.Length);
-        return Message.From(copy);
-    }
-
     internal static ActorReceived? RecvActor(SpotNode node, ActorRef actor,
         RecvFlags flags = RecvFlags.None)
     {
-        var pending = node.TakePendingActorMessage(actor);
+        var pending = node.ActorInbox.Take(actor);
         var nativeActor = ToNative(actor);
         List<Message> parts = pending?.Parts ?? new List<Message>();
         ActorRecvInfo? managedInfo = pending?.Info;
@@ -77,7 +56,7 @@ internal static partial class ActorInterop
                     {
                         if (!firstPart && managedInfo != null)
                         {
-                            node.StorePendingActorMessage(actor, managedInfo, parts);
+                            node.ActorInbox.Store(actor, managedInfo, parts);
                             transferred = true;
                         }
 
@@ -138,7 +117,7 @@ internal static partial class ActorInterop
             var received = completed.Result;
             try
             {
-                return RequestReplySupport.TakeOwnedParts(received);
+                return received.TakePartsOwnership();
             }
             finally
             {
@@ -153,7 +132,7 @@ internal static partial class ActorInterop
         IReadOnlyList<Message> parts = Array.Empty<Message>();
         if (received != null)
         {
-            parts = RequestReplySupport.TakeOwnedParts(received);
+            parts = received.TakePartsOwnership();
             received.Dispose();
         }
 
@@ -175,31 +154,48 @@ internal static partial class ActorInterop
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
+        AttachTaskCallback(invoke,
+            parts => () => callback(RequestResult.Ok, parts),
+            error => () => callback(MapRequestFailure(error),
+                Array.Empty<Message>()),
+            () => callback(RequestResult.Terminated, Array.Empty<Message>()));
+    }
+
+    internal static void AttachTaskCallback<T>(
+        Func<Task<T>> invoke,
+        Func<T, Action> onSuccess,
+        Func<Exception, Action> onFault,
+        Action onCanceled)
+    {
         var context = SynchronizationContext.Current;
         _ = invoke().ContinueWith(task =>
         {
+            Action delivery;
             if (task.IsFaulted)
             {
                 var error = task.Exception?.GetBaseException()
-                            ?? new ZlinkRequestException(RequestResult.InternalError);
-                var result = error is ZlinkRequestException requestError
-                    ? (RequestResult)requestError.Code
-                    : RequestResult.InternalError;
-                CallbackDelivery.Post(context, () => callback(result,
-                    Array.Empty<Message>()));
-                return;
+                            ?? new ZlinkRequestException(
+                                RequestResult.InternalError);
+                delivery = onFault(error);
             }
-
-            if (task.IsCanceled)
+            else if (task.IsCanceled)
             {
-                CallbackDelivery.Post(context, () => callback(
-                    RequestResult.Terminated, Array.Empty<Message>()));
-                return;
+                delivery = onCanceled;
+            }
+            else
+            {
+                delivery = onSuccess(task.Result);
             }
 
-            CallbackDelivery.Post(context, () => callback(RequestResult.Ok,
-                task.Result));
+            CallbackDelivery.Post(context, delivery);
         }, TaskScheduler.Default);
+    }
+
+    internal static RequestResult MapRequestFailure(Exception error)
+    {
+        return error is ZlinkRequestException requestError
+            ? (RequestResult)requestError.Code
+            : RequestResult.InternalError;
     }
 
     internal static void SubmitAndWait(IntPtr progressHandle,

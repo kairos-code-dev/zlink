@@ -71,7 +71,7 @@ internal struct ZlinkSpotNodeOptions
 internal unsafe struct ZlinkSpotNodeSocketFilter
 {
     public SpotNodeSocketOwner Owner;
-    public SpotNodeSocketType SocketType;
+    public SocketType SocketType;
     public fixed byte SocketName[64];
 }
 
@@ -82,7 +82,7 @@ internal unsafe struct ZlinkSpotNodeSocketEntry
     public ulong OwnerId;
     public fixed byte OwnerName[64];
     public fixed byte SocketName[64];
-    public SpotNodeSocketType SocketType;
+    public SocketType SocketType;
     public uint AutoHwmVisible;
     public ZlinkMonitorStatus MonitorStatus;
 }

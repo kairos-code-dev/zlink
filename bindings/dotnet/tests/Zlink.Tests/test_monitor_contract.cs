@@ -51,7 +51,7 @@ public sealed class test_monitor_contract
         MonitorStatus snapshot = monitor.Status();
         Assert.Equal<MonitorSourceKind>(MonitorSourceKind.Socket, snapshot.SourceKind);
         Assert.True(snapshot.SndPendingMsgs >= 0);
-        Assert.True(snapshot.AutoHwmProfile >= 0);
+        Assert.True(Enum.IsDefined(snapshot.AutoHwmProfile));
         Assert.True(snapshot.AutoHwmPolicyClass >= 0);
         Assert.True(snapshot.AutoHwmUnitBudgetBytes >= 0);
         Assert.True(snapshot.AutoHwmSizeCap >= 0);

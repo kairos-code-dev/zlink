@@ -159,7 +159,7 @@ public interface ReplyOperation
 }
 
 /// <summary>
-///     Accepts further parts, flags, and the terminal submit of a reply builder.
+///     Accepts further parts and the terminal submit of a reply builder.
 /// </summary>
 public interface ReplySubmitOperation
 {
@@ -168,11 +168,6 @@ public interface ReplySubmitOperation
     ///     see <see cref="SendOperation" /> for the ownership contract.
     /// </summary>
     ReplySubmitOperation Message(Message message);
-
-    /// <summary>
-    ///     Sets the send flags applied at submit time, replacing any previous flags.
-    /// </summary>
-    ReplySubmitOperation Flags(SendFlags flags);
 
     /// <summary>
     ///     Submits the reply. Failures throw <see cref="ZlinkException" />.

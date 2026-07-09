@@ -168,29 +168,34 @@ internal sealed partial class Spot
         // not add benchmark-only caches that depend on repeated topic or payload
         // values.
         ZlinkMsg nativePart = default;
-        var submitted = false;
+        var shouldRestore = false;
         try
         {
             message.MoveTo(ref nativePart);
+            shouldRestore = true;
             fixed (byte* topicPtr = topicUtf8)
             {
                 var rc = NativeMethods.zlink_spot_publish_part_utf8(Handle,
                     topicPtr, ref nativePart, DontWaitFlag,
                     NativeMethods.ZlinkPartFlag.Final);
-                submitted = true;
                 if (rc == 0)
+                {
+                    shouldRestore = false;
                     return SendResult.Sent;
+                }
             }
 
-            var sendResult = SendResultErrno.TryMapCurrent();
+            var errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            var sendResult = SendResultErrno.TryMap(errno);
             if (sendResult == null)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
+                throw ZlinkException.CreateSubmitException(errno);
             return sendResult.Value;
         }
         catch
         {
-            if (!submitted)
+            if (shouldRestore)
                 message.RestoreFrom(ref nativePart);
             throw;
         }

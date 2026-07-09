@@ -28,26 +28,6 @@ internal static class MonitorConverters
 
     internal static MonitorStatus FromNative(ref ZlinkMonitorStatus native)
     {
-        return new MonitorStatus((MonitorSourceKind)native.MonitorSourceKind,
-            native.StateFlags, native.DetailFlags, native.SndPendingMsgs,
-            native.RcvPendingMsgs, native.AutoHwmEnabled,
-            native.AutoHwmProfile, native.AutoHwmRole,
-            native.AutoHwmPolicyClass,
-            native.AutoHwmUnitBudgetBytes,
-            native.AutoHwmSizeCap,
-            native.AutoHwmSocketMessageSlots,
-            native.AutoHwmConnectionBucketEnabled,
-            native.AutoHwmConnectionBucketCount,
-            native.AutoHwmConnectionBucketIndex,
-            native.AutoHwmConnectionBucketHwm4K,
-            native.AutoHwmConnectionBucketHysteresisRetained,
-            native.AutoHwmEffectiveMessageBytes,
-            native.AutoHwmAppliedSndHwm, native.AutoHwmAppliedRcvHwm,
-            native.AutoHwmEffectiveSndbuf, native.AutoHwmEffectiveRcvbuf,
-            native.AutoHwmLastRecalcMs,
-            native.AutoHwmLastRecalcReason,
-            native.AutoHwmSendBlockedRatioPpm,
-            native.AutoHwmDeferredSndHwm,
-            native.AutoHwmDeferredRcvHwm);
+        return new MonitorStatus(in native);
     }
 }

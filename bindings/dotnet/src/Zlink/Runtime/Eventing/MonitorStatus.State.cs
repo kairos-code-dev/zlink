@@ -1,53 +1,42 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using Systems.Zlink.Runtime.Native;
+
 namespace Systems.Zlink;
 
 public sealed partial class MonitorStatus
 {
-    internal MonitorStatus(MonitorSourceKind sourceKind, uint stateFlags,
-        uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs,
-        uint autoHwmEnabled, uint autoHwmProfile, uint autoHwmRole,
-        uint autoHwmPolicyClass,
-        ulong autoHwmUnitBudgetBytes, uint autoHwmSizeCap,
-        ulong autoHwmSocketMessageSlots,
-        uint autoHwmConnectionBucketEnabled, uint autoHwmConnectionBucketCount,
-        uint autoHwmConnectionBucketIndex, uint autoHwmConnectionBucketHwm4K,
-        uint autoHwmConnectionBucketHysteresisRetained,
-        ulong autoHwmEffectiveMessageBytes,
-        int autoHwmAppliedSndHwm,
-        int autoHwmAppliedRcvHwm,
-        int autoHwmEffectiveSndbuf, int autoHwmEffectiveRcvbuf,
-        ulong autoHwmLastRecalcMs,
-        uint autoHwmLastRecalcReason, uint autoHwmSendBlockedRatioPpm,
-        int autoHwmDeferredSndHwm, int autoHwmDeferredRcvHwm)
+    internal MonitorStatus(in ZlinkMonitorStatus native)
     {
-        SourceKind = sourceKind;
-        StateFlags = stateFlags;
-        DetailFlags = detailFlags;
-        SndPendingMsgs = sndPendingMsgs;
-        RcvPendingMsgs = rcvPendingMsgs;
-        AutoHwmEnabled = autoHwmEnabled != 0;
-        AutoHwmProfile = autoHwmProfile;
-        AutoHwmRole = autoHwmRole;
-        AutoHwmPolicyClass = autoHwmPolicyClass;
-        AutoHwmUnitBudgetBytes = autoHwmUnitBudgetBytes;
-        AutoHwmSizeCap = autoHwmSizeCap;
-        AutoHwmSocketMessageSlots = autoHwmSocketMessageSlots;
-        AutoHwmConnectionBucketEnabled = autoHwmConnectionBucketEnabled != 0;
-        AutoHwmConnectionBucketCount = autoHwmConnectionBucketCount;
-        AutoHwmConnectionBucketIndex = autoHwmConnectionBucketIndex;
-        AutoHwmConnectionBucketHwm4K = autoHwmConnectionBucketHwm4K;
+        SourceKind = (MonitorSourceKind)native.MonitorSourceKind;
+        StateFlags = (MonitorStateFlags)native.StateFlags;
+        DetailFlags = (MonitorStatusDetailFlags)native.DetailFlags;
+        SndPendingMsgs = native.SndPendingMsgs;
+        RcvPendingMsgs = native.RcvPendingMsgs;
+        AutoHwmEnabled = native.AutoHwmEnabled != 0;
+        AutoHwmProfile = (AutoHwmProfile)native.AutoHwmProfile;
+        AutoHwmRole = native.AutoHwmRole;
+        AutoHwmPolicyClass = native.AutoHwmPolicyClass;
+        AutoHwmUnitBudgetBytes = native.AutoHwmUnitBudgetBytes;
+        AutoHwmSizeCap = native.AutoHwmSizeCap;
+        AutoHwmSocketMessageSlots = native.AutoHwmSocketMessageSlots;
+        AutoHwmConnectionBucketEnabled =
+            native.AutoHwmConnectionBucketEnabled != 0;
+        AutoHwmConnectionBucketCount = native.AutoHwmConnectionBucketCount;
+        AutoHwmConnectionBucketIndex = native.AutoHwmConnectionBucketIndex;
+        AutoHwmConnectionBucketHwm4K = native.AutoHwmConnectionBucketHwm4K;
         AutoHwmConnectionBucketHysteresisRetained =
-            autoHwmConnectionBucketHysteresisRetained != 0;
-        AutoHwmEffectiveMessageBytes = autoHwmEffectiveMessageBytes;
-        AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
-        AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;
-        AutoHwmEffectiveSndbuf = autoHwmEffectiveSndbuf;
-        AutoHwmEffectiveRcvbuf = autoHwmEffectiveRcvbuf;
-        AutoHwmLastRecalcMs = autoHwmLastRecalcMs;
-        AutoHwmLastRecalcReason = autoHwmLastRecalcReason;
-        AutoHwmSendBlockedRatioPpm = autoHwmSendBlockedRatioPpm;
-        AutoHwmDeferredSndHwm = autoHwmDeferredSndHwm;
-        AutoHwmDeferredRcvHwm = autoHwmDeferredRcvHwm;
+            native.AutoHwmConnectionBucketHysteresisRetained != 0;
+        AutoHwmEffectiveMessageBytes = native.AutoHwmEffectiveMessageBytes;
+        AutoHwmAppliedSndHwm = native.AutoHwmAppliedSndHwm;
+        AutoHwmAppliedRcvHwm = native.AutoHwmAppliedRcvHwm;
+        AutoHwmEffectiveSndbuf = native.AutoHwmEffectiveSndbuf;
+        AutoHwmEffectiveRcvbuf = native.AutoHwmEffectiveRcvbuf;
+        AutoHwmLastRecalcMs = native.AutoHwmLastRecalcMs;
+        AutoHwmLastRecalcReason =
+            (AutoHwmRecalcReason)native.AutoHwmLastRecalcReason;
+        AutoHwmSendBlockedRatioPpm = native.AutoHwmSendBlockedRatioPpm;
+        AutoHwmDeferredSndHwm = native.AutoHwmDeferredSndHwm;
+        AutoHwmDeferredRcvHwm = native.AutoHwmDeferredRcvHwm;
     }
 }

@@ -5,8 +5,6 @@ namespace Systems.Zlink;
 internal enum SocketOption
 {
     RoutingId = 0x7F000001,
-    Subscribe = 0x7F000002,
-    Unsubscribe = 0x7F000003,
     Affinity = 0x3001,
     Rate = 0x3003,
     RecoveryIvl = 0x3004,
@@ -81,8 +79,7 @@ internal enum SocketOption
     XPubRejectSubscribe = 0x3309,
     StreamNotify = 0x3501,
     SubTopicsCount = 0x3400,
-    UseFd = 0x7F000005,
-    OnlyFirstSubscribe = 0x7F000006
+    UseFd = 0x7F000005
 }
 
 internal enum SpotOption

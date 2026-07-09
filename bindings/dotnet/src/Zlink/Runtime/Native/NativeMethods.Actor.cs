@@ -101,12 +101,6 @@ internal static partial class NativeMethods
         int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_recv_actor_lifecycle(
-        IntPtr spot,
-        out ZlinkSpotActorLifecycleEvent lifecycleEvent,
-        int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_recv_actor_lifecycle_with_request(
         IntPtr spot,
         out ZlinkSpotActorLifecycleEvent lifecycleEvent,

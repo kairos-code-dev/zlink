@@ -66,7 +66,7 @@ internal sealed partial class Spot : ISpot
                     IReadOnlyList<Message> payload = Array.Empty<Message>();
                     if (reply != null)
                     {
-                        payload = RequestReplySupport.TakeOwnedParts(reply);
+                        payload = reply.TakePartsOwnership();
                         reply.Dispose();
                     }
 

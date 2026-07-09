@@ -183,6 +183,73 @@ public sealed class test_validation_contract
     }
 
     [Fact]
+    public void typed_exception_public_constructors_reject_ok_result()
+    {
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.Ok),
+            () => new ZlinkSubmitException(
+                ZlinkSubmitException.ErrorCode.InvalidArgument),
+            typeof(ZlinkSubmitException),
+            typeof(ZlinkSubmitException.ErrorCode));
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkRequestException(ZlinkRequestException.ErrorCode.Ok),
+            () => new ZlinkRequestException(
+                ZlinkRequestException.ErrorCode.InvalidArgument),
+            typeof(ZlinkRequestException),
+            typeof(ZlinkRequestException.ErrorCode));
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkRecvException(ZlinkRecvException.ErrorCode.Ok),
+            () => new ZlinkRecvException(ZlinkRecvException.ErrorCode.NoData),
+            typeof(ZlinkRecvException),
+            typeof(ZlinkRecvException.ErrorCode));
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkHandlerException(ZlinkHandlerException.ErrorCode.Ok),
+            () => new ZlinkHandlerException(
+                ZlinkHandlerException.ErrorCode.InvalidArgument),
+            typeof(ZlinkHandlerException),
+            typeof(ZlinkHandlerException.ErrorCode));
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkCloseException(ZlinkCloseException.ErrorCode.Ok),
+            () => new ZlinkCloseException(
+                ZlinkCloseException.ErrorCode.InvalidHandle),
+            typeof(ZlinkCloseException),
+            typeof(ZlinkCloseException.ErrorCode));
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkBindException(ZlinkBindException.ErrorCode.Ok),
+            () => new ZlinkBindException(
+                ZlinkBindException.ErrorCode.InvalidArgument),
+            typeof(ZlinkBindException),
+            typeof(ZlinkBindException.ErrorCode));
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkConnectException(ZlinkConnectException.ErrorCode.Ok),
+            () => new ZlinkConnectException(
+                ZlinkConnectException.ErrorCode.InvalidArgument),
+            typeof(ZlinkConnectException),
+            typeof(ZlinkConnectException.ErrorCode));
+        AssertPublicExceptionConstructorRejectsOk(
+            () => new ZlinkConfigException(ZlinkConfigException.ErrorCode.Ok),
+            () => new ZlinkConfigException(
+                ZlinkConfigException.ErrorCode.InvalidArgument),
+            typeof(ZlinkConfigException),
+            typeof(ZlinkConfigException.ErrorCode));
+    }
+
+    private static void AssertPublicExceptionConstructorRejectsOk(
+        Action createOk,
+        Func<ZlinkException> createFailure,
+        Type exceptionType,
+        Type errorCodeType)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(createOk);
+        Assert.IsType(exceptionType, createFailure());
+        Assert.Null(exceptionType.GetConstructor(new[]
+        {
+            errorCodeType,
+            typeof(int)
+        }));
+    }
+
+    [Fact]
     public void service_surface_accepts_255_byte_fixed_utf8_inputs()
     {
         if (!CoreTestSupport.IsNativeAvailable())

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Buffers;
 using System.Text;
 using Systems.Zlink.Runtime.Native;
 
@@ -8,24 +7,6 @@ namespace Systems.Zlink;
 
 internal sealed partial class Spot : ISpot
 {
-    private int ReceiveRawSubscribedFrameCore(Span<byte> destination,
-        int flags, out byte[][] pendingFrames)
-    {
-        var topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
-        try
-        {
-            var frames = ReceiveSpotSubscribedFrames(flags, topicBuffer);
-            if (frames.Count == 0)
-                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            return CopyFirstFrameAndCollectPending(frames, destination,
-                out pendingFrames);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(topicBuffer);
-        }
-    }
-
     private MultipartMessageCollection? ReceiveSpotRoutedParts(int flags,
         out byte[]? nodeRidBytes, out byte[]? spotRidBytes,
         out ulong requestSeq, bool allowNoData = false)
@@ -146,112 +127,6 @@ internal sealed partial class Spot : ISpot
             CloseNativeParts(nativeParts, nativePartCount);
             singlePart?.Dispose();
             throw;
-        }
-    }
-
-    private List<byte[]> ReceiveSpotSubscribedFrames(int flags,
-        byte[] topicBuffer)
-    {
-        List<byte[]> frames = new();
-        while (true)
-        {
-            ZlinkMsg part = default;
-            var initRc = NativeMethods.zlink_msg_init(ref part);
-            if (initRc != 0)
-                throw ZlinkException.CreateRecvException(
-                    NativeMethods.zlink_errno());
-            var initialized = true;
-            var rc = NativeMethods.zlink_spot_subscribe_part(Handle,
-                out _, topicBuffer, (nuint)topicBuffer.Length, out _, ref part,
-                out var hasMore, flags);
-            if (rc != 0)
-            {
-                if (initialized)
-                    NativeMethods.zlink_msg_close(ref part);
-                throw ZlinkException.CreateRecvException(
-                    NativeMethods.zlink_errno());
-            }
-
-            initialized = false;
-            frames.Add(CopyAndClosePart(ref part));
-            if (hasMore == 0)
-                return frames;
-        }
-    }
-
-    private unsafe void DiscardRemainingSubscribedParts(int flags)
-    {
-        var hasMore = 1;
-        var topicBuffer = stackalloc byte[TopicBufferSize];
-        while (hasMore != 0)
-        {
-            ZlinkMsg part = default;
-            var initRc = NativeMethods.zlink_msg_init(ref part);
-            if (initRc != 0)
-                throw ZlinkException.CreateRecvException(
-                    NativeMethods.zlink_errno());
-            try
-            {
-                var rc = NativeMethods.zlink_spot_subscribe_part_buffer(
-                    Handle, out _, topicBuffer, TopicBufferSize, out _,
-                    ref part, out hasMore, flags);
-                if (rc != 0)
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-            }
-            finally
-            {
-                NativeMethods.zlink_msg_close(ref part);
-            }
-        }
-    }
-
-    private static int CopyFirstFrameAndCollectPending(IReadOnlyList<byte[]> frames,
-        Span<byte> destination, out byte[][] pendingFrames)
-    {
-        if (frames.Count == 0)
-        {
-            pendingFrames = Array.Empty<byte[]>();
-            return 0;
-        }
-
-        var first = frames[0];
-        if (first.Length > destination.Length)
-            throw new ArgumentException("Destination buffer is too small.",
-                nameof(destination));
-
-        first.AsSpan().CopyTo(destination);
-        if (frames.Count <= 1)
-        {
-            pendingFrames = Array.Empty<byte[]>();
-            return first.Length;
-        }
-
-        pendingFrames = new byte[frames.Count - 1][];
-        for (var i = 1; i < frames.Count; i++)
-            pendingFrames[i - 1] = frames[i];
-        return first.Length;
-    }
-
-    private static unsafe byte[] CopyAndClosePart(ref ZlinkMsg part)
-    {
-        try
-        {
-            var size = checked((int)NativeMethods.zlink_msg_size(ref part));
-            if (size == 0)
-                return Array.Empty<byte>();
-
-            var data = NativeMethods.zlink_msg_data(ref part);
-            if (data == IntPtr.Zero)
-                return Array.Empty<byte>();
-
-            var payload = new byte[size];
-            new ReadOnlySpan<byte>((void*)data, size).CopyTo(payload);
-            return payload;
-        }
-        finally
-        {
-            NativeMethods.zlink_msg_close(ref part);
         }
     }
 

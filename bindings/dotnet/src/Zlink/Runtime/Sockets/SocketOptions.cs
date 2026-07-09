@@ -2,25 +2,14 @@
 
 namespace Systems.Zlink;
 
-internal enum SocketOptionValueKind
-{
-    Int32,
-    Int64,
-    UInt64,
-    Bytes,
-    String
-}
-
 internal readonly struct SocketOptionKey<T>
 {
-    internal SocketOptionKey(SocketOption option, SocketOptionValueKind valueKind)
+    internal SocketOptionKey(SocketOption option)
     {
         Option = option;
-        ValueKind = valueKind;
     }
 
     public SocketOption Option { get; }
-    internal SocketOptionValueKind ValueKind { get; }
 
     public override string ToString()
     {
@@ -35,12 +24,6 @@ internal static class SocketOptions
 
     public static SocketOptionKey<byte[]> RoutingId { get; } =
         Bytes(SocketOption.RoutingId);
-
-    public static SocketOptionKey<string> Subscribe { get; } =
-        String(SocketOption.Subscribe);
-
-    public static SocketOptionKey<string> Unsubscribe { get; } =
-        String(SocketOption.Unsubscribe);
 
     public static SocketOptionKey<int> Rate { get; } = Int(SocketOption.Rate);
 
@@ -163,8 +146,8 @@ internal static class SocketOptions
     public static SocketOptionKey<int> XPubManual { get; } =
         Int(SocketOption.XPubManual);
 
-    public static SocketOptionKey<string> XPubWelcomeMsg { get; } =
-        String(SocketOption.XPubWelcomeMsg);
+    public static SocketOptionKey<byte[]> XPubWelcomeMsg { get; } =
+        Bytes(SocketOption.XPubWelcomeMsg);
 
     public static SocketOptionKey<int> StreamNotify { get; } =
         Int(SocketOption.StreamNotify);
@@ -224,9 +207,6 @@ internal static class SocketOptions
     public static SocketOptionKey<int> XPubManualLastValue { get; } =
         Int(SocketOption.XPubManualLastValue);
 
-    public static SocketOptionKey<int> OnlyFirstSubscribe { get; } =
-        Int(SocketOption.OnlyFirstSubscribe);
-
     public static SocketOptionKey<int> TopicsCount { get; } =
         Int(SocketOption.TopicsCount);
 
@@ -244,26 +224,26 @@ internal static class SocketOptions
 
     private static SocketOptionKey<int> Int(SocketOption option)
     {
-        return new SocketOptionKey<int>(option, SocketOptionValueKind.Int32);
+        return new SocketOptionKey<int>(option);
     }
 
     private static SocketOptionKey<long> Int64(SocketOption option)
     {
-        return new SocketOptionKey<long>(option, SocketOptionValueKind.Int64);
+        return new SocketOptionKey<long>(option);
     }
 
     private static SocketOptionKey<ulong> UInt64(SocketOption option)
     {
-        return new SocketOptionKey<ulong>(option, SocketOptionValueKind.UInt64);
+        return new SocketOptionKey<ulong>(option);
     }
 
     private static SocketOptionKey<byte[]> Bytes(SocketOption option)
     {
-        return new SocketOptionKey<byte[]>(option, SocketOptionValueKind.Bytes);
+        return new SocketOptionKey<byte[]>(option);
     }
 
     private static SocketOptionKey<string> String(SocketOption option)
     {
-        return new SocketOptionKey<string>(option, SocketOptionValueKind.String);
+        return new SocketOptionKey<string>(option);
     }
 }

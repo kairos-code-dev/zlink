@@ -164,6 +164,25 @@ public sealed class test_socket_surface
     }
 
     [Fact]
+    public void service_surface_removes_duplicate_socket_type_enum()
+    {
+        string[] exportedTypeNames = typeof(Zlink).Assembly.GetExportedTypes()
+            .Select(type => type.FullName!)
+            .ToArray();
+
+        Assert.DoesNotContain("Systems.Zlink.SpotNodeSocketType",
+            exportedTypeNames);
+        Assert.Equal(typeof(SocketType?),
+            typeof(SpotNodeSocketFilter)
+                .GetProperty(nameof(SpotNodeSocketFilter.SocketType))!
+                .PropertyType);
+        Assert.Equal(typeof(SocketType),
+            typeof(SpotNodeSocketEntry)
+                .GetProperty(nameof(SpotNodeSocketEntry.SocketType))!
+                .PropertyType);
+    }
+
+    [Fact]
     public void typed_contract_surface_hides_irrelevant_methods()
     {
         AssertNoPublicInstanceMethod(typeof(IPubSocket), "Recv");
@@ -194,6 +213,7 @@ public sealed class test_socket_surface
         AssertNoPublicInstanceMethod(typeof(IStreamSocket), "OnFramedPacket");
         AssertNoPublicInstanceMethod(typeof(IDealerSocket), "ReceiveSubscriptionEvent");
         AssertNoPublicInstanceMethod(typeof(IPubSocket), "ReceiveSubscriptionEvent");
+        AssertNoPublicInstanceMethod(typeof(ReplySubmitOperation), "Flags");
 
         Assert.True(HasPublicInstanceMethod(typeof(IPairSocket), "Recv",
             typeof(Received), typeof(RecvFlags)));
@@ -298,6 +318,14 @@ public sealed class test_socket_surface
     [Fact]
     public void service_surface_uses_contract_interfaces()
     {
+        Assert.True(typeof(ISpotNodeConfiguration).IsAssignableFrom(
+            typeof(ISpotNode)));
+        Assert.True(typeof(ISpotNodePeers).IsAssignableFrom(typeof(ISpotNode)));
+        Assert.True(typeof(ISpotNodeSpots).IsAssignableFrom(typeof(ISpotNode)));
+        Assert.True(typeof(ISpotNodeActors).IsAssignableFrom(typeof(ISpotNode)));
+        Assert.True(typeof(ISpotNodeTopology).IsAssignableFrom(
+            typeof(ISpotNode)));
+
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "Status"));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "Peers"));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "PeersQuery",
@@ -360,6 +388,14 @@ public sealed class test_socket_surface
             nameof(ISpot.RecvActorLifecycle), typeof(RecvFlags)));
         Assert.NotNull(typeof(SpotActorLifecycleEvent)
             .GetProperty(nameof(SpotActorLifecycleEvent.RequestParts)));
+        Assert.True(typeof(IDisposable).IsAssignableFrom(typeof(ActorJoinRequest)));
+        Assert.True(typeof(IDisposable).IsAssignableFrom(typeof(ActorReceived)));
+        Assert.True(typeof(IDisposable).IsAssignableFrom(
+            typeof(SpotActorLifecycleEvent)));
+        Assert.Null(typeof(ActorReceived).GetMethod("<Clone>$",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
+        Assert.Null(typeof(SpotActorLifecycleEvent).GetMethod("<Clone>$",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
         AssertNoPublicInstanceMethod(typeof(ISpot), "SetActorLifecycleHandlers");
         AssertNoPublicInstanceMethod(typeof(ISpot), "SetRoutedReceiveHandler");
         Assert.False(HasPublicInstanceMethod(typeof(ISpot), "Publish",

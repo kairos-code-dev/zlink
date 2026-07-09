@@ -86,10 +86,86 @@ internal sealed class RequestCallState
             new ZlinkRequestException(RequestResult.TimedOut));
     }
 
-    internal static void RequestTimeoutFromUserData(object? userdata)
+    private void DisposeRegistrations()
     {
-        FromUserData(userdata)?.TrySetException(new ZlinkRequestException(
-            RequestResult.TimedOut, (int)ErrorCode.ETimedOut));
+        _timeoutTimer?.Dispose();
+        _cancellationRegistration.Dispose();
+    }
+}
+
+internal sealed class RequestCallState<T>
+{
+    private CancellationTokenRegistration _cancellationRegistration;
+    private int _completed;
+    private System.Threading.Timer? _timeoutTimer;
+
+    internal RequestCallState(TaskCompletionSource<T> completion)
+    {
+        Completion = completion;
+    }
+
+    internal TaskCompletionSource<T> Completion { get; }
+
+    internal bool TrySetResult(T result)
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            return false;
+        DisposeRegistrations();
+        return Completion.TrySetResult(result);
+    }
+
+    internal bool TrySetException(Exception error)
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            return false;
+        DisposeRegistrations();
+        return Completion.TrySetException(error);
+    }
+
+    internal bool TrySetCanceled(CancellationToken token = default)
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            return false;
+        DisposeRegistrations();
+        return token.CanBeCanceled
+            ? Completion.TrySetCanceled(token)
+            : Completion.TrySetCanceled();
+    }
+
+    internal void SetCancellationRegistration(
+        CancellationTokenRegistration cancellationRegistration)
+    {
+        _cancellationRegistration = cancellationRegistration;
+    }
+
+    internal void SetTimeoutTimer(System.Threading.Timer? timeoutTimer)
+    {
+        _timeoutTimer = timeoutTimer;
+    }
+
+    internal void Dispose()
+    {
+        DisposeRegistrations();
+    }
+
+    internal static RequestCallState<T>? FromUserData(object? userdata)
+    {
+        if (userdata is not GCHandle handle || !handle.IsAllocated)
+            return null;
+
+        try
+        {
+            return handle.Target as RequestCallState<T>;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    internal static void CancelFromUserData(object? userdata)
+    {
+        FromUserData(userdata)?.TrySetCanceled();
     }
 
     private void DisposeRegistrations()

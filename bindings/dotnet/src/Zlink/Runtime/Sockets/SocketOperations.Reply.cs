@@ -2,30 +2,11 @@
 
 namespace Systems.Zlink;
 
-internal sealed class RouterReplyOperation : ReplyOperation,
+internal abstract class RouterReplyOperation : ReplyOperation,
     ReplySubmitOperation
 {
-    private readonly RoutingId _destNodeRid;
-    private readonly RoutingId _destSpotRid;
-    private readonly RouterOperationKind _kind;
-    private readonly RoutingId _peerRid;
-    private readonly ulong _requestSeq;
-    private readonly RouterSocket _socket;
-    private SendFlags _flags;
     private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
-
-    internal RouterReplyOperation(RouterSocket socket, RouterOperationKind kind,
-        RoutingId peerRid, RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSeq)
-    {
-        _socket = socket;
-        _kind = kind;
-        _peerRid = peerRid;
-        _destNodeRid = destNodeRid;
-        _destSpotRid = destSpotRid;
-        _requestSeq = requestSeq;
-    }
 
     public ReplySubmitOperation Message(Message message)
     {
@@ -34,30 +15,11 @@ internal sealed class RouterReplyOperation : ReplyOperation,
         return this;
     }
 
-    public ReplySubmitOperation Flags(SendFlags flags)
-    {
-        EnsureNotSubmitted();
-        _flags = flags;
-        return this;
-    }
-
     public void Submit()
     {
         EnsureReady();
         _submission.MarkSubmitted();
-        switch (_kind)
-        {
-            case RouterOperationKind.Reply:
-                _socket.ReplyCore(_peerRid, _requestSeq, _parts.Parts, _flags);
-                break;
-            case RouterOperationKind.ReplyToSpot:
-                _socket.ReplyToSpotCore(_destNodeRid, _destSpotRid, _requestSeq,
-                    _parts.Parts, _flags);
-                break;
-            default:
-                throw new ZlinkConfigException(
-                    ZlinkConfigException.ErrorCode.InvalidState);
-        }
+        SubmitCore(_parts.Parts);
     }
 
     private void EnsureReady()
@@ -70,13 +32,62 @@ internal sealed class RouterReplyOperation : ReplyOperation,
     {
         _submission.EnsureNotSubmitted();
     }
+
+    protected abstract void SubmitCore(IReadOnlyList<Message> parts);
+}
+
+internal sealed class RouterPeerReplyOperation : RouterReplyOperation
+{
+    private readonly RoutingId _peerRid;
+    private readonly ulong _requestSeq;
+    private readonly RouterSocket _socket;
+
+    internal RouterPeerReplyOperation(
+        RouterSocket socket,
+        RoutingId peerRid,
+        ulong requestSeq)
+    {
+        _socket = socket;
+        _peerRid = peerRid;
+        _requestSeq = requestSeq;
+    }
+
+    protected override void SubmitCore(IReadOnlyList<Message> parts)
+    {
+        _socket.ReplyCore(_peerRid, _requestSeq, parts);
+    }
+}
+
+internal sealed class RouterSpotReplyOperation : RouterReplyOperation
+{
+    private readonly RoutingId _destNodeRid;
+    private readonly RoutingId _destSpotRid;
+    private readonly ulong _requestSeq;
+    private readonly RouterSocket _socket;
+
+    internal RouterSpotReplyOperation(
+        RouterSocket socket,
+        RoutingId destNodeRid,
+        RoutingId destSpotRid,
+        ulong requestSeq)
+    {
+        _socket = socket;
+        _destNodeRid = destNodeRid;
+        _destSpotRid = destSpotRid;
+        _requestSeq = requestSeq;
+    }
+
+    protected override void SubmitCore(IReadOnlyList<Message> parts)
+    {
+        _socket.ReplyToSpotCore(_destNodeRid, _destSpotRid, _requestSeq,
+            parts);
+    }
 }
 
 internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     ReplySubmitOperation
 {
     private readonly Received _received;
-    private SendFlags _flags;
     private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
@@ -92,18 +103,11 @@ internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
         return this;
     }
 
-    public ReplySubmitOperation Flags(SendFlags flags)
-    {
-        EnsureNotSubmitted();
-        _flags = flags;
-        return this;
-    }
-
     public void Submit()
     {
         EnsureReady();
         _submission.MarkSubmitted();
-        _received.ReplyCore(_parts.Parts, _flags);
+        _received.ReplyCore(_parts.Parts);
     }
 
     private void EnsureReady()

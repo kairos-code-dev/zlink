@@ -204,6 +204,101 @@ public enum MonitorSourceKind
 }
 
 /// <summary>
+///     State bits reported by a monitor status snapshot.
+/// </summary>
+[Flags]
+public enum MonitorStateFlags : uint
+{
+    /// <summary>
+    ///     No monitor state bits are set.
+    /// </summary>
+    None = 0,
+
+    /// <summary>
+    ///     The monitored source is ready for traffic.
+    /// </summary>
+    Ready = 1u << 0,
+
+    /// <summary>
+    ///     The monitored source has a ready bound endpoint.
+    /// </summary>
+    BoundReady = 1u << 1,
+
+    /// <summary>
+    ///     The monitored source is closed.
+    /// </summary>
+    Closed = 1u << 3
+}
+
+/// <summary>
+///     Detail bits describing which monitor status fields are populated.
+/// </summary>
+[Flags]
+public enum MonitorStatusDetailFlags : uint
+{
+    /// <summary>
+    ///     No detail fields are marked as populated.
+    /// </summary>
+    None = 0,
+
+    /// <summary>
+    ///     Send pending message telemetry is populated.
+    /// </summary>
+    SendPendingMessages = 1u << 1,
+
+    /// <summary>
+    ///     Receive pending message telemetry is populated.
+    /// </summary>
+    ReceivePendingMessages = 1u << 2,
+
+    /// <summary>
+    ///     Automatic high-water-mark budget telemetry is populated.
+    /// </summary>
+    AutoHwmBudget = 1u << 3,
+
+    /// <summary>
+    ///     Automatic high-water-mark buffer telemetry is populated.
+    /// </summary>
+    AutoHwmBuffers = 1u << 4
+}
+
+/// <summary>
+///     Reason for the last automatic high-water-mark recalculation.
+/// </summary>
+public enum AutoHwmRecalcReason : uint
+{
+    /// <summary>
+    ///     No recalculation has been recorded.
+    /// </summary>
+    None = 0,
+
+    /// <summary>
+    ///     The initial plan was calculated.
+    /// </summary>
+    Initial = 1,
+
+    /// <summary>
+    ///     The socket role changed.
+    /// </summary>
+    RoleChange = 2,
+
+    /// <summary>
+    ///     The policy was enabled or disabled.
+    /// </summary>
+    PolicyToggle = 3,
+
+    /// <summary>
+    ///     The plan was refreshed.
+    /// </summary>
+    Refresh = 4,
+
+    /// <summary>
+    ///     A shrink was deferred to avoid abrupt queue reduction.
+    /// </summary>
+    DeferredShrink = 5
+}
+
+/// <summary>
 ///     Identifies what kind of source a poll event came from.
 /// </summary>
 public enum PollSourceKind

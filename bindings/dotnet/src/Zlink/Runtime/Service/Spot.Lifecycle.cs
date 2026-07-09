@@ -80,16 +80,4 @@ internal sealed partial class Spot : ISpot
         }
     }
 
-    private static T? TryReceiveCore<T>(Func<T> operation) where T : class
-    {
-        try
-        {
-            return operation();
-        }
-        catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
-                                            ex.NativeErrno) is ErrorCode.EAgain or ErrorCode.EBusy)
-        {
-            return null;
-        }
-    }
 }

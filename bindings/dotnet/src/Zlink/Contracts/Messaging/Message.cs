@@ -64,11 +64,11 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     public bool IsEmpty => Size == 0;
 
     /// <summary>
-    ///     Gets the native reference count when available.
+    ///     Gets the native payload reference count.
     /// </summary>
     /// <remarks>
-    ///     Managed-copy messages report 1 because their storage is owned solely by
-    ///     this instance.
+    ///     Newly created messages own their native storage directly. A moved or
+    ///     disposed message cannot report a reference count.
     /// </remarks>
     public int RefCount => GetRefCountCore();
 

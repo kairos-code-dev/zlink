@@ -37,7 +37,15 @@ public abstract partial class ZlinkException : Exception
     public int NativeErrno { get; }
 
     /// <summary>
-    ///     Gets the formatted error message.
+    ///     Rejects success codes for public exception construction.
     /// </summary>
-    public override string Message => base.Message;
+    protected static TErrorCode ValidatePublicErrorCode<TErrorCode>(
+        TErrorCode result)
+        where TErrorCode : struct, Enum
+    {
+        if (Convert.ToInt32(result) == 0)
+            throw new ArgumentOutOfRangeException(nameof(result),
+                "An exception result code must not be Ok.");
+        return result;
+    }
 }

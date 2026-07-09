@@ -127,34 +127,14 @@ internal static partial class ActorInterop
     private static bool SubmitReplyCallback(
         Func<Task<IReadOnlyList<Message>>> invoker, ReplyHandler callback)
     {
-        var syncCtx = SynchronizationContext.Current;
         try
         {
-            _ = invoker().ContinueWith(t =>
-            {
-                RequestResult result;
-                IReadOnlyList<Message> parts;
-                if (t.IsFaulted)
-                {
-                    var err = t.Exception!.GetBaseException();
-                    result = err is ZlinkRequestException rex
-                        ? (RequestResult)rex.Code
-                        : RequestResult.InternalError;
-                    parts = Array.Empty<Message>();
-                }
-                else if (t.IsCanceled)
-                {
-                    result = RequestResult.Terminated;
-                    parts = Array.Empty<Message>();
-                }
-                else
-                {
-                    result = RequestResult.Ok;
-                    parts = t.Result;
-                }
-
-                CallbackDelivery.Post(syncCtx, () => callback(result, parts));
-            }, TaskScheduler.Default);
+            AttachTaskCallback(invoker,
+                parts => () => callback(RequestResult.Ok, parts),
+                error => () => callback(MapRequestFailure(error),
+                    Array.Empty<Message>()),
+                () => callback(RequestResult.Terminated,
+                    Array.Empty<Message>()));
             return true;
         }
         catch (ZlinkException error) when (

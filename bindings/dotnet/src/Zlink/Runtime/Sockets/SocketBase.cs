@@ -30,26 +30,12 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
 
     public void Bind(string address)
     {
-        try
-        {
-            Kernel.Bind(address);
-        }
-        catch (ZlinkException ex)
-        {
-            throw ZlinkException.CreateBindException(ex.NativeErrno);
-        }
+        Kernel.Bind(address);
     }
 
     public void Unbind(string address)
     {
-        try
-        {
-            Kernel.Unbind(address);
-        }
-        catch (ZlinkException ex)
-        {
-            throw ZlinkException.CreateConnectException(ex.NativeErrno);
-        }
+        Kernel.Unbind(address);
     }
 
     public ISocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All)
@@ -125,70 +111,70 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
 
     void ISocketOptionEndpoint.SetOption(SocketOptionKey<int> option, int value)
     {
-        SetOption(option, value);
+        Kernel.SetOption(option, value);
     }
 
     void ISocketOptionEndpoint.SetOption(SocketOptionKey<long> option,
         long value)
     {
-        SetOption(option, value);
+        Kernel.SetOption(option, value);
     }
 
     void ISocketOptionEndpoint.SetOption(SocketOptionKey<ulong> option,
         ulong value)
     {
-        SetOption(option, value);
+        Kernel.SetOption(option, value);
     }
 
     void ISocketOptionEndpoint.SetOption(SocketOptionKey<byte[]> option,
         byte[] value)
     {
-        SetOption(option, value);
+        Kernel.SetOption(option, value);
     }
 
     void ISocketOptionEndpoint.SetOption(SocketOptionKey<byte[]> option,
         ReadOnlySpan<byte> value)
     {
-        SetOption(option, value);
+        Kernel.SetOption(option, value);
     }
 
     void ISocketOptionEndpoint.SetOption(SocketOptionKey<string> option,
         string value)
     {
-        SetOption(option, value);
+        Kernel.SetOption(option, value);
     }
 
     int ISocketOptionEndpoint.GetOption(SocketOptionKey<int> option)
     {
-        return GetOption(option);
+        return Kernel.GetOption(option);
     }
 
     long ISocketOptionEndpoint.GetOption(SocketOptionKey<long> option)
     {
-        return GetOption(option);
+        return Kernel.GetOption(option);
     }
 
     ulong ISocketOptionEndpoint.GetOption(SocketOptionKey<ulong> option)
     {
-        return GetOption(option);
+        return Kernel.GetOption(option);
     }
 
     byte[] ISocketOptionEndpoint.GetOption(SocketOptionKey<byte[]> option,
         int initialSize)
     {
-        return GetOption(option, initialSize);
+        return Kernel.GetOption(option, initialSize);
     }
 
     int ISocketOptionEndpoint.GetOption(SocketOptionKey<byte[]> option,
         Span<byte> destination)
     {
-        return GetOption(option, destination);
+        return Kernel.GetOption(option, destination);
     }
 
     string ISocketOptionEndpoint.GetOption(SocketOptionKey<string> option,
         int initialSize)
     {
-        return GetOption(option, initialSize);
+        return Kernel.GetOption(option, initialSize);
     }
 
     SocketType ISocketOptionEndpoint.SocketType => Kernel.Type;
@@ -216,75 +202,4 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
         return GetChannelNameCore();
     }
 
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal void SetOption(SocketOptionKey<int> option, int value)
-    {
-        Kernel.SetOption(option, value);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal void SetOption(SocketOptionKey<long> option, long value)
-    {
-        Kernel.SetOption(option, value);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal void SetOption(SocketOptionKey<ulong> option, ulong value)
-    {
-        Kernel.SetOption(option, value);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal void SetOption(SocketOptionKey<byte[]> option, byte[] value)
-    {
-        Kernel.SetOption(option, value);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
-    {
-        Kernel.SetOption(option, value);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal void SetOption(SocketOptionKey<string> option, string value)
-    {
-        Kernel.SetOption(option, value);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal int GetOption(SocketOptionKey<int> option)
-    {
-        return Kernel.GetOption(option);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal long GetOption(SocketOptionKey<long> option)
-    {
-        return Kernel.GetOption(option);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal ulong GetOption(SocketOptionKey<ulong> option)
-    {
-        return Kernel.GetOption(option);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256)
-    {
-        return Kernel.GetOption(option, initialSize);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination)
-    {
-        return Kernel.GetOption(option, destination);
-    }
-
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    internal string GetOption(SocketOptionKey<string> option, int initialSize = 256)
-    {
-        return Kernel.GetOption(option, initialSize);
-    }
 }

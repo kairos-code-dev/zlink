@@ -19,16 +19,15 @@ internal static partial class ActorInterop
         GCHandle handle = default;
         try
         {
-            ActorLookupCallState state = new(completion);
+            RequestCallState<ActorLookupResult> state = new(completion);
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
             if (ct.CanBeCanceled)
-                state.CancelReg = ct.Register(static h =>
-                {
-                    var gh = (GCHandle)h!;
-                    if (gh.Target is ActorLookupCallState s)
-                        if (s.Completion.TrySetCanceled())
-                            s.Cleanup();
-                }, handle);
+                state.SetCancellationRegistration(ct.Register(
+                    static h =>
+                    {
+                        RequestCallState<ActorLookupResult>
+                            .CancelFromUserData(h);
+                    }, handle));
             var rc = NativeMethods.zlink_remote_actor_get_ref(node.Handle,
                 ref nativeNodeRid, actorId, LookupHandlerPtr,
                 GCHandle.ToIntPtr(handle), timeoutMs);
@@ -53,33 +52,16 @@ internal static partial class ActorInterop
         RoutingId targetNodeRid, string actorId, TimeSpan timeout,
         ActorLookupHandler callback)
     {
-        var syncCtx = SynchronizationContext.Current;
         try
         {
-            _ = RemoteActorGetRefAsync(node, targetNodeRid, actorId, timeout,
-                CancellationToken.None).ContinueWith(t =>
-            {
-                ActorLookupResult r;
-                if (t.IsFaulted)
-                {
-                    var err = t.Exception!.GetBaseException();
-                    var rr = err is ZlinkRequestException re
-                        ? (RequestResult)re.Code
-                        : RequestResult.InternalError;
-                    r = new ActorLookupResult(rr, default, 0);
-                }
-                else if (t.IsCanceled)
-                {
-                    r = new ActorLookupResult(RequestResult.Terminated,
-                        default, 0);
-                }
-                else
-                {
-                    r = t.Result;
-                }
-
-                CallbackDelivery.Post(syncCtx, () => callback(r));
-            }, TaskScheduler.Default);
+            AttachTaskCallback(
+                () => RemoteActorGetRefAsync(node, targetNodeRid, actorId,
+                    timeout, CancellationToken.None),
+                result => () => callback(result),
+                error => () => callback(new ActorLookupResult(
+                    MapRequestFailure(error), default, 0)),
+                () => callback(new ActorLookupResult(RequestResult.Terminated,
+                    default, 0)));
             return true;
         }
         catch (ZlinkException error) when (

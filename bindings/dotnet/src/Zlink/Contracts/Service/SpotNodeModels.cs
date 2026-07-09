@@ -285,57 +285,6 @@ public enum SpotNodeSocketOwner
 }
 
 /// <summary>
-///     The socket type of a spot node socket; mirrors <see cref="SocketType" />.
-/// </summary>
-public enum SpotNodeSocketType
-{
-    /// <summary>
-    ///     Any socket type (no filter).
-    /// </summary>
-    Any = 0,
-
-    /// <summary>
-    ///     A PAIR socket.
-    /// </summary>
-    Pair = 0x1001,
-
-    /// <summary>
-    ///     A PUB socket.
-    /// </summary>
-    Pub = 0x1002,
-
-    /// <summary>
-    ///     A SUB socket.
-    /// </summary>
-    Sub = 0x1003,
-
-    /// <summary>
-    ///     A DEALER socket.
-    /// </summary>
-    Dealer = 0x1004,
-
-    /// <summary>
-    ///     A ROUTER socket.
-    /// </summary>
-    Router = 0x1005,
-
-    /// <summary>
-    ///     An XPUB socket.
-    /// </summary>
-    XPub = 0x1006,
-
-    /// <summary>
-    ///     An XSUB socket.
-    /// </summary>
-    XSub = 0x1007,
-
-    /// <summary>
-    ///     A STREAM socket.
-    /// </summary>
-    Stream = 0x1008
-}
-
-/// <summary>
 ///     Filter for a spot node socket query; null fields match anything.
 /// </summary>
 /// <param name="Owner">Restrict to sockets owned by this component.</param>
@@ -343,7 +292,7 @@ public enum SpotNodeSocketType
 /// <param name="SocketName">Restrict to this socket name.</param>
 public sealed record SpotNodeSocketFilter(
     SpotNodeSocketOwner? Owner = null,
-    SpotNodeSocketType? SocketType = null,
+    SocketType? SocketType = null,
     string? SocketName = null);
 
 /// <summary>
@@ -361,7 +310,7 @@ public sealed record SpotNodeSocketEntry(
     ulong OwnerId,
     string OwnerName,
     string SocketName,
-    SpotNodeSocketType SocketType,
+    SocketType SocketType,
     bool AutoHwmVisible,
     MonitorStatus MonitorStatus);
 

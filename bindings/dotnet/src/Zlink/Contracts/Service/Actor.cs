@@ -14,7 +14,7 @@ public readonly partial struct ActorRef : IEquatable<ActorRef>
     /// </summary>
     public ActorRef(RoutingId nodeRid, string actorId, ulong generation)
     {
-        ActorInterop.ValidateActorId(actorId, nameof(actorId));
+        ActorContractValidation.ValidateActorId(actorId, nameof(actorId));
         NodeRid = nodeRid;
         ActorId = actorId;
         Generation = generation;
@@ -174,12 +174,30 @@ public enum SpotActorLifecycleEventKind
 /// <summary>
 ///     An actor join/leave lifecycle event observed on a spot.
 /// </summary>
-/// <param name="Kind">Whether the actor joined or left.</param>
-/// <param name="Info">Details of the actor and spots involved.</param>
-public sealed record SpotActorLifecycleEvent(
-    SpotActorLifecycleEventKind Kind,
-    SpotActorLifecycleInfo Info) : IDisposable
+public sealed class SpotActorLifecycleEvent : IDisposable
 {
+    private int _closed;
+
+    /// <summary>
+    ///     Creates a lifecycle event.
+    /// </summary>
+    public SpotActorLifecycleEvent(SpotActorLifecycleEventKind kind,
+        SpotActorLifecycleInfo info)
+    {
+        Kind = kind;
+        Info = info;
+    }
+
+    /// <summary>
+    ///     Gets whether the actor joined or left.
+    /// </summary>
+    public SpotActorLifecycleEventKind Kind { get; }
+
+    /// <summary>
+    ///     Gets details of the actor and spots involved.
+    /// </summary>
+    public SpotActorLifecycleInfo Info { get; }
+
     /// <summary>
     ///     Gets the request parts supplied when the actor was created. The event
     ///     owns these messages and disposes them when disposed.
@@ -192,6 +210,8 @@ public sealed record SpotActorLifecycleEvent(
     /// </summary>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+            return;
         foreach (var part in RequestParts)
             part.Dispose();
     }
@@ -201,13 +221,28 @@ public sealed record SpotActorLifecycleEvent(
 ///     A message received for an actor: its metadata and parts. Owns its parts
 ///     until disposed.
 /// </summary>
-/// <param name="Info">Metadata about the received message.</param>
-/// <param name="Parts">The message parts, owned by this envelope.</param>
-public sealed record ActorReceived(
-    ActorRecvInfo Info,
-    IReadOnlyList<Message> Parts) : IDisposable
+public sealed class ActorReceived : IDisposable
 {
     private int _closed;
+
+    /// <summary>
+    ///     Creates an actor receive envelope.
+    /// </summary>
+    public ActorReceived(ActorRecvInfo info, IReadOnlyList<Message> parts)
+    {
+        Info = info;
+        Parts = parts ?? throw new ArgumentNullException(nameof(parts));
+    }
+
+    /// <summary>
+    ///     Gets metadata about the received message.
+    /// </summary>
+    public ActorRecvInfo Info { get; }
+
+    /// <summary>
+    ///     Gets the message parts owned by this envelope.
+    /// </summary>
+    public IReadOnlyList<Message> Parts { get; }
 
     /// <summary>
     ///     Returns the first message part without transferring ownership.
@@ -231,9 +266,7 @@ public sealed record ActorReceived(
     /// </summary>
     public Message FirstPart()
     {
-        return Parts.Count > 0
-            ? Parts[0]
-            : throw new InvalidOperationException("Actor message has no parts.");
+        return MessageEnvelopeParts.First(Parts, nameof(ActorReceived));
     }
 
     /// <summary>
@@ -242,18 +275,17 @@ public sealed record ActorReceived(
     /// </summary>
     public Message SinglePartOrThrow()
     {
-        if (Parts.Count != 1)
-            throw new InvalidOperationException(
-                "Actor message does not contain exactly one part.");
-        return Parts[0];
+        return MessageEnvelopeParts.Single(Parts, nameof(ActorReceived));
     }
 }
 
 /// <summary>
 ///     A pending request from an actor to join a spot, awaiting a reply.
 /// </summary>
-public sealed partial class ActorJoinRequest
+public sealed partial class ActorJoinRequest : IDisposable
 {
+    private int _closed;
+
     /// <summary>
     ///     Gets the info.
     /// </summary>
@@ -268,6 +300,23 @@ public sealed partial class ActorJoinRequest
     ///     Gets the parts.
     /// </summary>
     public IReadOnlyList<Message> Parts { get; }
+
+    /// <summary>
+    ///     Releases request parts owned by this join request.
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+            return;
+        if (Parts.Count == 0)
+        {
+            Message.Dispose();
+            return;
+        }
+
+        foreach (var part in Parts)
+            part.Dispose();
+    }
 }
 
 /// <summary>

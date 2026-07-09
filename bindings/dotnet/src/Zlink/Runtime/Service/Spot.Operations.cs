@@ -7,13 +7,13 @@ internal sealed partial class Spot : ISpot
     public SendOperation Publish(string topic)
     {
         return new SpotSendOperation(this, SpotOperationKind.Publish,
-            topicOrChannel: topic);
+            topic: topic);
     }
 
     public SendOperation SendToChannel(string channelName)
     {
         return new SpotSendOperation(this, SpotOperationKind.SendToChannel,
-            topicOrChannel: channelName);
+            channelName: channelName);
     }
 
     public RequestOperation RequestToChannel(string channelName)

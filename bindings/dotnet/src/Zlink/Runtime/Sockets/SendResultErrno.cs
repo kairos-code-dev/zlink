@@ -4,11 +4,6 @@ using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
 
-// Maps the platform errno reported after a non-blocking native send onto a
-// non-faulting SendResult. The Unix/Windows errno pairs that mean "would
-// block" (backpressure) or "peer not reachable yet" (not ready) live here as
-// the single source of truth, so the socket and spot send surfaces cannot
-// drift apart.
 internal static class SendResultErrno
 {
     private const int EAgain = 11;
@@ -19,6 +14,17 @@ internal static class SendResultErrno
     private const int EHostUnreachWin = 10065;
     private const int ETimedOut = 110;
     private const int ETimedOutWin = 10060;
+
+    public static SendResult? TryMap(SubmitResult result)
+    {
+        return result switch
+        {
+            SubmitResult.Backpressured => SendResult.Backpressured,
+            SubmitResult.NotConnected => SendResult.NotReady,
+            SubmitResult.NotFound => SendResult.NotReady,
+            _ => null
+        };
+    }
 
     public static SendResult? TryMap(int errno)
     {

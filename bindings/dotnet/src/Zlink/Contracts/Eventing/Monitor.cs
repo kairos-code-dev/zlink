@@ -58,12 +58,12 @@ public sealed partial class MonitorStatus
     /// <summary>
     ///     Gets the state flags.
     /// </summary>
-    public uint StateFlags { get; }
+    public MonitorStateFlags StateFlags { get; }
 
     /// <summary>
     ///     Gets the detail flags.
     /// </summary>
-    public uint DetailFlags { get; }
+    public MonitorStatusDetailFlags DetailFlags { get; }
 
     /// <summary>
     ///     Gets the send pending message count.
@@ -83,7 +83,7 @@ public sealed partial class MonitorStatus
     /// <summary>
     ///     Gets the automatic high water mark profile.
     /// </summary>
-    public uint AutoHwmProfile { get; }
+    public AutoHwmProfile AutoHwmProfile { get; }
 
     /// <summary>
     ///     Gets the automatic high water mark role.
@@ -168,7 +168,7 @@ public sealed partial class MonitorStatus
     /// <summary>
     ///     Gets the automatic high water mark last recalc reason.
     /// </summary>
-    public uint AutoHwmLastRecalcReason { get; }
+    public AutoHwmRecalcReason AutoHwmLastRecalcReason { get; }
 
     /// <summary>
     ///     Gets the automatic high water mark send blocked ratio ppm.
@@ -189,5 +189,5 @@ public sealed partial class MonitorStatus
     ///     Gets whether the monitored socket source is in the ready state.
     /// </summary>
     public bool IsReady => SourceKind == MonitorSourceKind.Socket
-                           && (StateFlags & 0x1u) != 0;
+                           && (StateFlags & MonitorStateFlags.Ready) != 0;
 }

@@ -87,14 +87,14 @@ public sealed partial class ZlinkSubmitException : ZlinkException
     ///     Creates a zlink submit exception instance.
     /// </summary>
     public ZlinkSubmitException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink submit exception instance.
     /// </summary>
-    public ZlinkSubmitException(ErrorCode result, int nativeErrno)
+    internal ZlinkSubmitException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;
@@ -186,14 +186,14 @@ public sealed partial class ZlinkRequestException : ZlinkException
     ///     Creates a zlink request exception instance.
     /// </summary>
     public ZlinkRequestException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink request exception instance.
     /// </summary>
-    public ZlinkRequestException(ErrorCode result, int nativeErrno)
+    internal ZlinkRequestException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;
@@ -255,14 +255,14 @@ public sealed partial class ZlinkRecvException : ZlinkException
     ///     Creates a zlink receive exception instance.
     /// </summary>
     public ZlinkRecvException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink receive exception instance.
     /// </summary>
-    public ZlinkRecvException(ErrorCode result, int nativeErrno)
+    internal ZlinkRecvException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;
@@ -324,14 +324,14 @@ public sealed partial class ZlinkHandlerException : ZlinkException
     ///     Creates a zlink handler exception instance.
     /// </summary>
     public ZlinkHandlerException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink handler exception instance.
     /// </summary>
-    public ZlinkHandlerException(ErrorCode result, int nativeErrno)
+    internal ZlinkHandlerException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;
@@ -383,14 +383,14 @@ public sealed partial class ZlinkCloseException : ZlinkException
     ///     Creates a zlink close exception instance.
     /// </summary>
     public ZlinkCloseException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink close exception instance.
     /// </summary>
-    public ZlinkCloseException(ErrorCode result, int nativeErrno)
+    internal ZlinkCloseException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;
@@ -447,14 +447,14 @@ public sealed partial class ZlinkBindException : ZlinkException
     ///     Creates a zlink bind exception instance.
     /// </summary>
     public ZlinkBindException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink bind exception instance.
     /// </summary>
-    public ZlinkBindException(ErrorCode result, int nativeErrno)
+    internal ZlinkBindException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;
@@ -521,14 +521,14 @@ public sealed partial class ZlinkConnectException : ZlinkException
     ///     Creates a zlink connect exception instance.
     /// </summary>
     public ZlinkConnectException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink connect exception instance.
     /// </summary>
-    public ZlinkConnectException(ErrorCode result, int nativeErrno)
+    internal ZlinkConnectException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;
@@ -590,14 +590,14 @@ public sealed partial class ZlinkConfigException : ZlinkException
     ///     Creates a zlink config exception instance.
     /// </summary>
     public ZlinkConfigException(ErrorCode result)
-        : this(result, 0)
+        : this(ValidatePublicErrorCode(result), 0)
     {
     }
 
     /// <summary>
     ///     Creates a zlink config exception instance.
     /// </summary>
-    public ZlinkConfigException(ErrorCode result, int nativeErrno)
+    internal ZlinkConfigException(ErrorCode result, int nativeErrno)
         : base((int)result, nativeErrno)
     {
         Result = result;

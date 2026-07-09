@@ -6,8 +6,7 @@ namespace Systems.Zlink;
 // Received.cs.
 public sealed partial class Received : IDisposable
 {
-    internal void ReplyCore(IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+    internal void ReplyCore(IReadOnlyList<Message> parts)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
@@ -19,7 +18,7 @@ public sealed partial class Received : IDisposable
             throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                 (int)ErrorCode.EInval);
 
-        replyHandler(parts, flags);
+        replyHandler(parts);
     }
 
     internal bool SendCore(Message part, SendFlags flags = SendFlags.None)
@@ -31,7 +30,7 @@ public sealed partial class Received : IDisposable
                 _sendSpotRidSnapshot, part, flags);
         if (_sendSingleHandler != null)
             return _sendSingleHandler(part, flags);
-        return SendCore(new SingleMessageList(part), flags);
+        return SendCore(new SingleMessageReadOnlyList(part), flags);
     }
 
     internal bool SendCore(IReadOnlyList<Message> parts,

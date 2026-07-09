@@ -5,7 +5,7 @@ using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
-internal sealed class SocketMonitor : ISocketMonitor
+internal sealed class SocketMonitor : NativeOwner, ISocketMonitor
 {
     private static readonly NativeMethods.ZlinkMonitorHandlerDelegate NativeIgnore =
         OnIgnoredNativeEvent;
@@ -15,16 +15,14 @@ internal sealed class SocketMonitor : ISocketMonitor
 
     public static readonly Action<MonitorEvent> IgnoreHandler = static _ => { };
 
-    private IntPtr _handle;
     private Action<MonitorEvent>? _handler;
     private GCHandle _selfHandle;
     private bool _selfHandleAllocated;
 
-    internal SocketMonitor(IntPtr handle)
+    internal SocketMonitor(IntPtr handle) : base(handle)
     {
         if (handle == IntPtr.Zero)
             throw new ArgumentException("Invalid monitor handle.", nameof(handle));
-        _handle = handle;
     }
 
     internal IntPtr Handle => _handle;
@@ -43,7 +41,7 @@ internal sealed class SocketMonitor : ISocketMonitor
             useNativeIgnore ? NativeIgnore : NativeCallback,
             useNativeIgnore ? IntPtr.Zero : GCHandle.ToIntPtr(_selfHandle));
         if (rc != 0)
-            throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
+            throw ZlinkException.CreateHandlerException((HandlerResult)rc);
     }
 
     public MonitorEvent? Recv(RecvFlags flags = RecvFlags.None)
@@ -54,9 +52,9 @@ internal sealed class SocketMonitor : ISocketMonitor
         if (rc == 0)
             return MonitorConverters.FromNative(ref native);
         if ((flags & RecvFlags.DontWait) != 0
-            && ZlinkException.MapErrorCode(NativeMethods.zlink_errno()) == ErrorCode.EAgain)
+            && (RecvResult)rc == RecvResult.NoData)
             return null;
-        throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+        throw ZlinkException.CreateRecvException((RecvResult)rc);
     }
 
     public MonitorStatus Status()
@@ -64,19 +62,17 @@ internal sealed class SocketMonitor : ISocketMonitor
         EnsureNotDisposed();
         var rc = NativeMethods.zlink_monitor_status(_handle, out var native);
         if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+            throw ZlinkException.CreateConfigException((ConfigResult)rc);
         return MonitorConverters.FromNative(ref native);
     }
 
     public void Close()
     {
-        if (_handle == IntPtr.Zero)
+        if (IsClosed)
             return;
         _handler = null;
-        var rc = NativeMethods.zlink_monitor_close(ref _handle);
-        if (rc != 0)
-            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
-        ReleaseSelfHandle();
+        _ = DestroyHandle(NativeMethods.zlink_monitor_close,
+            throwOnError: true, _ => ReleaseSelfHandle());
     }
 
     public void Dispose()
@@ -123,8 +119,7 @@ internal sealed class SocketMonitor : ISocketMonitor
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
-            throw new ObjectDisposedException(nameof(SocketMonitor));
+        EnsureNativeHandle(nameof(SocketMonitor));
     }
 
     private void EnsureSelfHandle()

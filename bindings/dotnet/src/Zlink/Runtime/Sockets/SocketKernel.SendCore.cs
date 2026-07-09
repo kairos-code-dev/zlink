@@ -9,98 +9,24 @@ internal sealed partial class SocketKernel
 {
     private void SendSingleCore(Message message, int flags)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
-        {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            var rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
-                NativeMethods.ZlinkPartFlag.Final);
-            if (rc == 0)
-            {
-                shouldRestore = false;
-                return;
-            }
-
-            var errno = NativeMethods.zlink_errno();
-            message.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            throw ZlinkException.CreateSubmitException(errno);
-        }
-        catch
-        {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
-        }
+        var submitter = new SendSingleSubmitter(Handle, flags);
+        var rc = SinglePartSubmit.Submit(message, ref submitter);
+        if (rc != 0)
+            throw ZlinkException.CreateSubmitException((SubmitResult)rc);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private SendResult SendSingleResultCore(Message message, int flags)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
-        {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            var rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
-                NativeMethods.ZlinkPartFlag.Final);
-            if (rc == 0)
-            {
-                shouldRestore = false;
-                return SendResult.Sent;
-            }
-
-            var errno = NativeMethods.zlink_errno();
-            message.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            var mappedResult = SendResultErrno.TryMap(errno);
-            if (mappedResult == null)
-                throw ZlinkException.CreateSubmitException(errno);
-            return mappedResult.Value;
-        }
-        catch
-        {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
-        }
+        var submitter = new SendSingleSubmitter(Handle, flags);
+        return MapSendResult(SinglePartSubmit.Submit(message, ref submitter));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private SendResult SendSingleNoWaitResultCore(Message message)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
-        {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            // DONT_WAIT-only critical variant: contractually non-blocking.
-            var rc = NativeMethods.zlink_send_part_nowait(Handle, ref nativePart,
-                DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
-            if (rc == 0)
-            {
-                shouldRestore = false;
-                return SendResult.Sent;
-            }
-
-            var errno = NativeMethods.zlink_errno();
-            message.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            var mappedResult = SendResultErrno.TryMap(errno);
-            if (mappedResult == null)
-                throw ZlinkException.CreateSubmitException(errno);
-            return mappedResult.Value;
-        }
-        catch
-        {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
-        }
+        var submitter = new SendSingleNoWaitSubmitter(Handle);
+        return MapSendResult(SinglePartSubmit.Submit(message, ref submitter));
     }
 
     private void PublishSingleCore(string topic, Message message,
@@ -112,34 +38,12 @@ internal sealed partial class SocketKernel
     private unsafe void PublishSingleCore(byte[] topicUtf8, Message message,
         int flags)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
+        fixed (byte* topicPtr = topicUtf8)
         {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            fixed (byte* topicPtr = topicUtf8)
-            {
-                var rc = NativeMethods.zlink_publish_part_utf8(Handle,
-                    topicPtr, ref nativePart, flags,
-                    NativeMethods.ZlinkPartFlag.Final);
-                if (rc == 0)
-                {
-                    shouldRestore = false;
-                    return;
-                }
-
-                var errno = NativeMethods.zlink_errno();
-                message.RestoreFrom(ref nativePart);
-                shouldRestore = false;
-                throw ZlinkException.CreateSubmitException(errno);
-            }
-        }
-        catch
-        {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
+            var submitter = new PublishSingleSubmitter(Handle, topicPtr, flags);
+            var rc = SinglePartSubmit.Submit(message, ref submitter);
+            if (rc != 0)
+                throw ZlinkException.CreateSubmitException((SubmitResult)rc);
         }
     }
 
@@ -151,37 +55,11 @@ internal sealed partial class SocketKernel
     private unsafe SendResult PublishNoWaitSingleCore(byte[] topicUtf8,
         Message message)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
+        fixed (byte* topicPtr = topicUtf8)
         {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            fixed (byte* topicPtr = topicUtf8)
-            {
-                var rc = NativeMethods.zlink_publish_part_utf8(Handle,
-                    topicPtr, ref nativePart, DontWaitFlag,
-                    NativeMethods.ZlinkPartFlag.Final);
-                if (rc == 0)
-                {
-                    shouldRestore = false;
-                    return SendResult.Sent;
-                }
-            }
-
-            var errno = NativeMethods.zlink_errno();
-            message.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            var sendResult = SendResultErrno.TryMap(errno);
-            if (sendResult == null)
-                throw ZlinkException.CreateSubmitException(errno);
-            return sendResult.Value;
-        }
-        catch
-        {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
+            var submitter = new PublishSingleSubmitter(Handle, topicPtr,
+                DontWaitFlag);
+            return MapSendResult(SinglePartSubmit.Submit(message, ref submitter));
         }
     }
 
@@ -216,109 +94,171 @@ internal sealed partial class SocketKernel
         return encoded;
     }
 
-    private void SendSingleCore(ref ZlinkRoutingId routingId,
+    private unsafe void SendSingleCore(ref ZlinkRoutingId routingId,
         Message message, int flags)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
+        fixed (ZlinkRoutingId* routingIdPtr = &routingId)
         {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            var rc = (flags & DontWaitFlag) != 0
-                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
-                    ref routingId, ref nativePart, flags,
-                    NativeMethods.ZlinkPartFlag.Final)
-                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
-            if (rc == 0)
-            {
-                shouldRestore = false;
-                return;
-            }
-
-            var errno = NativeMethods.zlink_errno();
-            message.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            throw ZlinkException.CreateSubmitException(errno);
-        }
-        catch
-        {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
+            var submitter = new RoutedSendSingleSubmitter(Handle, routingIdPtr,
+                flags);
+            var rc = SinglePartSubmit.Submit(message, ref submitter);
+            if (rc != 0)
+                throw ZlinkException.CreateSubmitException((SubmitResult)rc);
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private SendResult SendSingleResultCore(ref ZlinkRoutingId routingId,
+    private unsafe SendResult SendSingleResultCore(ref ZlinkRoutingId routingId,
         Message message, int flags)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
+        fixed (ZlinkRoutingId* routingIdPtr = &routingId)
         {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            var rc = (flags & DontWaitFlag) != 0
-                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
-                    ref routingId, ref nativePart, flags,
-                    NativeMethods.ZlinkPartFlag.Final)
-                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
-            if (rc == 0)
-            {
-                shouldRestore = false;
-                return SendResult.Sent;
-            }
-
-            var errno = NativeMethods.zlink_errno();
-            message.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            var mappedResult = SendResultErrno.TryMap(errno);
-            if (mappedResult == null)
-                throw ZlinkException.CreateSubmitException(errno);
-            return mappedResult.Value;
-        }
-        catch
-        {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
+            var submitter = new RoutedSendSingleSubmitter(Handle, routingIdPtr,
+                flags);
+            return MapSendResult(SinglePartSubmit.Submit(message, ref submitter));
         }
     }
 
-    private SendResult SendSingleNoWaitResultCore(ref ZlinkRoutingId routingId,
-        Message message)
+    private unsafe SendResult SendSingleNoWaitResultCore(
+        ref ZlinkRoutingId routingId, Message message)
     {
-        ZlinkMsg nativePart = default;
-        var shouldRestore = false;
-        try
+        fixed (ZlinkRoutingId* routingIdPtr = &routingId)
         {
-            message.MoveTo(ref nativePart);
-            shouldRestore = true;
-            var rc = NativeMethods.zlink_send_part_rid_nowait(Handle,
-                ref routingId, ref nativePart, DontWaitFlag,
-                NativeMethods.ZlinkPartFlag.Final);
-            if (rc == 0)
-            {
-                shouldRestore = false;
-                return SendResult.Sent;
-            }
-
-            var errno = NativeMethods.zlink_errno();
-            message.RestoreFrom(ref nativePart);
-            shouldRestore = false;
-            var mappedResult = SendResultErrno.TryMap(errno);
-            if (mappedResult == null)
-                throw ZlinkException.CreateSubmitException(errno);
-            return mappedResult.Value;
+            var submitter = new RoutedSendSingleNoWaitSubmitter(Handle,
+                routingIdPtr);
+            return MapSendResult(SinglePartSubmit.Submit(message, ref submitter));
         }
-        catch
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static SendResult MapSendResult(int rc)
+    {
+        if (rc == 0)
+            return SendResult.Sent;
+        var result = (SubmitResult)rc;
+        var mappedResult = SendResultErrno.TryMap(result);
+        if (mappedResult == null)
+            throw ZlinkException.CreateSubmitException(result);
+        return mappedResult.Value;
+    }
+
+    private readonly struct SendSingleSubmitter
+        : INativeSinglePartSubmitter<SendSingleSubmitter>
+    {
+        private readonly IntPtr _handle;
+        private readonly int _flags;
+
+        internal SendSingleSubmitter(IntPtr handle, int flags)
         {
-            if (shouldRestore)
-                message.RestoreFrom(ref nativePart);
-            throw;
+            _handle = handle;
+            _flags = flags;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Submit(ref SendSingleSubmitter submitter,
+            ref ZlinkMsg nativePart)
+        {
+            return NativeMethods.zlink_send_part(submitter._handle,
+                ref nativePart, submitter._flags,
+                NativeMethods.ZlinkPartFlag.Final);
+        }
+    }
+
+    private readonly struct SendSingleNoWaitSubmitter
+        : INativeSinglePartSubmitter<SendSingleNoWaitSubmitter>
+    {
+        private readonly IntPtr _handle;
+
+        internal SendSingleNoWaitSubmitter(IntPtr handle)
+        {
+            _handle = handle;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Submit(ref SendSingleNoWaitSubmitter submitter,
+            ref ZlinkMsg nativePart)
+        {
+            // DONT_WAIT-only critical variant: contractually non-blocking.
+            return NativeMethods.zlink_send_part_nowait(submitter._handle,
+                ref nativePart, DontWaitFlag,
+                NativeMethods.ZlinkPartFlag.Final);
+        }
+    }
+
+    private unsafe readonly struct PublishSingleSubmitter
+        : INativeSinglePartSubmitter<PublishSingleSubmitter>
+    {
+        private readonly IntPtr _handle;
+        private readonly byte* _topicPtr;
+        private readonly int _flags;
+
+        internal PublishSingleSubmitter(IntPtr handle, byte* topicPtr,
+            int flags)
+        {
+            _handle = handle;
+            _topicPtr = topicPtr;
+            _flags = flags;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Submit(ref PublishSingleSubmitter submitter,
+            ref ZlinkMsg nativePart)
+        {
+            return NativeMethods.zlink_publish_part_utf8(submitter._handle,
+                submitter._topicPtr, ref nativePart, submitter._flags,
+                NativeMethods.ZlinkPartFlag.Final);
+        }
+    }
+
+    private unsafe readonly struct RoutedSendSingleSubmitter
+        : INativeSinglePartSubmitter<RoutedSendSingleSubmitter>
+    {
+        private readonly IntPtr _handle;
+        private readonly ZlinkRoutingId* _routingId;
+        private readonly int _flags;
+
+        internal RoutedSendSingleSubmitter(IntPtr handle,
+            ZlinkRoutingId* routingId, int flags)
+        {
+            _handle = handle;
+            _routingId = routingId;
+            _flags = flags;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Submit(ref RoutedSendSingleSubmitter submitter,
+            ref ZlinkMsg nativePart)
+        {
+            return (submitter._flags & DontWaitFlag) != 0
+                ? NativeMethods.zlink_send_part_rid_nowait(submitter._handle,
+                    ref *submitter._routingId, ref nativePart, submitter._flags,
+                    NativeMethods.ZlinkPartFlag.Final)
+                : NativeMethods.zlink_send_part_rid(submitter._handle,
+                    ref *submitter._routingId, ref nativePart,
+                    submitter._flags, NativeMethods.ZlinkPartFlag.Final);
+        }
+    }
+
+    private unsafe readonly struct RoutedSendSingleNoWaitSubmitter
+        : INativeSinglePartSubmitter<RoutedSendSingleNoWaitSubmitter>
+    {
+        private readonly IntPtr _handle;
+        private readonly ZlinkRoutingId* _routingId;
+
+        internal RoutedSendSingleNoWaitSubmitter(IntPtr handle,
+            ZlinkRoutingId* routingId)
+        {
+            _handle = handle;
+            _routingId = routingId;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Submit(ref RoutedSendSingleNoWaitSubmitter submitter,
+            ref ZlinkMsg nativePart)
+        {
+            return NativeMethods.zlink_send_part_rid_nowait(submitter._handle,
+                ref *submitter._routingId, ref nativePart, DontWaitFlag,
+                NativeMethods.ZlinkPartFlag.Final);
         }
     }
 }

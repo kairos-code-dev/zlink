@@ -180,15 +180,14 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         var timeoutMs = RequestReplySupport.NormalizeRequestTimeout(
             timeout ?? TimeSpan.Zero, DefaultRequestTimeout);
         GCHandle handle = default;
-        DealerRequestCallbackState? state = null;
+        RequestCallbackCompletion? state = null;
 
         try
         {
             // Hot path: callback request is used by windowed perf and framework
             // request pumps. Complete directly from native callback state instead
             // of building a TaskCompletionSource/continuation per request.
-            state = new DealerRequestCallbackState(callback,
-                RequestProgressPump.AttachSocketCallback(Handle));
+            state = new RequestCallbackCompletion(callback);
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
             var userData = GCHandle.ToIntPtr(handle);
 
@@ -202,6 +201,7 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
                             DirectRequestReplyHandlerPtr, userData));
             }
 
+            state.AttachProgress(RequestProgressPump.AttachSocketCallback(Handle));
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
@@ -269,31 +269,22 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
 
     private ReceivedReplyHandler CreateReplyHandler(ulong requestSeq)
     {
-        return (replyParts, sendFlags) => ReplyCore(
-            requestSeq, replyParts, sendFlags);
+        return replyParts => ReplyCore(requestSeq, replyParts);
     }
 
     private void ReplyCore(ulong requestSeq,
-        IReadOnlyList<Message> parts, SendFlags flags)
+        IReadOnlyList<Message> parts)
     {
-        _ = flags;
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
 
-        try
+        lock (SubmitGate)
         {
-            lock (SubmitGate)
-            {
-                RequestReplySupport.SubmitOwnedParts(parts,
-                    (ref ZlinkMsg nativePart,
-                            NativeMethods.ZlinkPartFlag partFlag) =>
-                        NativeMethods.zlink_dealer_reply_part(Handle, requestSeq,
-                            ref nativePart, partFlag));
-            }
-        }
-        catch
-        {
-            throw;
+            RequestReplySupport.SubmitOwnedParts(parts,
+                (ref ZlinkMsg nativePart,
+                        NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_dealer_reply_part(Handle, requestSeq,
+                        ref nativePart, partFlag));
         }
     }
 
@@ -314,7 +305,7 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         nuint partCount, IntPtr userData)
     {
         var handle = GCHandle.FromIntPtr(userData);
-        var state = (DealerRequestCallbackState)handle.Target!;
+        var state = (RequestCallbackCompletion)handle.Target!;
         try
         {
             if (!state.TryStartCompletion())
@@ -339,43 +330,4 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         }
     }
 
-    private sealed class DealerRequestCallbackState
-    {
-        private readonly RequestCallback _callback;
-        private readonly RequestProgressPump.ProgressLease _progress;
-        private int _completed;
-
-        internal DealerRequestCallbackState(
-            RequestCallback callback,
-            RequestProgressPump.ProgressLease progress)
-        {
-            _callback = callback;
-            _progress = progress;
-        }
-
-        internal bool TryStartCompletion()
-        {
-            if (Interlocked.Exchange(ref _completed, 1) != 0)
-                return false;
-            DisposeProgress();
-            return true;
-        }
-
-        internal void DisposeProgress()
-        {
-            _progress.Dispose();
-        }
-
-        internal void Invoke(RequestResult result, IReadOnlyList<Message> parts)
-        {
-            try
-            {
-                _callback(result, parts);
-            }
-            catch (Exception ex)
-            {
-                CallbackExceptionHub.Report(ex);
-            }
-        }
-    }
 }

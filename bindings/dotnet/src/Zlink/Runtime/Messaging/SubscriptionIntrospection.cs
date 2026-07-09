@@ -7,59 +7,65 @@ namespace Systems.Zlink;
 
 internal static class SubscriptionIntrospection
 {
+    private const int Enoent = 2;
+    private const int Esrch = 3;
+
     internal static unsafe SubscriptionEntry? At(IntPtr handle, int index)
     {
         if (index < 0)
             throw new ArgumentOutOfRangeException(nameof(index));
 
+        return TryAt(handle, checked((nuint)index), out var entry)
+            ? entry
+            : null;
+    }
+
+    private static unsafe bool TryAt(
+        IntPtr handle,
+        nuint index,
+        out SubscriptionEntry? entry)
+    {
+        entry = null;
         nuint length = 0;
-        var rc = NativeMethods.zlink_subscription_at(handle, (nuint)index,
+        var rc = NativeMethods.zlink_subscription_at(handle, index,
             IntPtr.Zero, ref length, out var isPattern);
         if (rc != 0 && length == 0)
         {
-            var error = ZlinkException.CreateConfigException(
-                NativeMethods.zlink_errno());
-            if (error.Result == ZlinkConfigException.ErrorCode.NotFound)
-                return null;
-            throw error;
+            if (IsMissingSubscription())
+                return false;
         }
 
         var buffer = new byte[checked((int)length)];
         if (buffer.Length == 0)
         {
-            rc = NativeMethods.zlink_subscription_at(handle, (nuint)index,
+            rc = NativeMethods.zlink_subscription_at(handle, index,
                 IntPtr.Zero, ref length, out isPattern);
-            try
-            {
-                ZlinkException.ThrowConfigIfError(rc);
-            }
-            catch (ZlinkConfigException error)
-                when (error.Result == ZlinkConfigException.ErrorCode.NotFound)
-            {
-                return null;
-            }
+            if (rc != 0 && IsMissingSubscription())
+                return false;
+            ZlinkException.ThrowConfigIfError(rc);
 
-            return new SubscriptionEntry(string.Empty, isPattern != 0);
+            entry = new SubscriptionEntry(string.Empty, isPattern != 0);
+            return true;
         }
 
         fixed (byte* ptr = buffer)
         {
-            rc = NativeMethods.zlink_subscription_at(handle, (nuint)index,
+            rc = NativeMethods.zlink_subscription_at(handle, index,
                 (IntPtr)ptr, ref length, out isPattern);
         }
 
-        try
-        {
-            ZlinkException.ThrowConfigIfError(rc);
-        }
-        catch (ZlinkConfigException error)
-            when (error.Result == ZlinkConfigException.ErrorCode.NotFound)
-        {
-            return null;
-        }
+        if (rc != 0 && IsMissingSubscription())
+            return false;
+        ZlinkException.ThrowConfigIfError(rc);
 
-        return new SubscriptionEntry(
+        entry = new SubscriptionEntry(
             Encoding.UTF8.GetString(buffer, 0, checked((int)length)),
             isPattern != 0);
+        return true;
+    }
+
+    private static bool IsMissingSubscription()
+    {
+        return NativeMethods.zlink_errno() is Enoent or Esrch;
     }
 }

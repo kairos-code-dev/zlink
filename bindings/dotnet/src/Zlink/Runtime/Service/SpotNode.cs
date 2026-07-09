@@ -7,18 +7,9 @@ namespace Systems.Zlink;
 
 internal sealed partial class SpotNode : ISpotNode
 {
-    private readonly Dictionary<string, DealerSocket> _channelDealers =
-        new(StringComparer.Ordinal);
-
-    private readonly Dictionary<ActorRef, PendingActorMessage> _pendingActorMessages =
-        new();
-
+    private readonly ActorMessageInbox _actorInbox = new();
     private readonly HashSet<Spot> _spots = new();
     private readonly object _spotsGate = new();
-    private Action? _sendReadyHandler;
-    private SynchronizationContext? _sendReadyHandlerContext;
-    private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
-
     public SpotNode(Context context)
         : this(context, null)
     {
@@ -66,49 +57,7 @@ internal sealed partial class SpotNode : ISpotNode
 
     internal IntPtr Handle { get; private set; }
 
-    internal PendingActorMessage? TakePendingActorMessage(ActorRef actor)
-    {
-        lock (_pendingActorMessages)
-        {
-            if (!_pendingActorMessages.Remove(actor, out var pending))
-                return null;
-            return pending;
-        }
-    }
-
-    internal void StorePendingActorMessage(
-        ActorRef actor,
-        ActorRecvInfo info,
-        List<Message> parts)
-    {
-        lock (_pendingActorMessages)
-        {
-            if (_pendingActorMessages.Remove(actor, out var existing))
-                existing.Dispose();
-            _pendingActorMessages[actor] = new PendingActorMessage(info, parts);
-        }
-    }
-
-    internal void ClearPendingActorMessages()
-    {
-        lock (_pendingActorMessages)
-        {
-            foreach (var pending in _pendingActorMessages.Values)
-                pending.Dispose();
-            _pendingActorMessages.Clear();
-        }
-    }
-
-    internal sealed class PendingActorMessage(ActorRecvInfo info, List<Message> parts) : IDisposable
-    {
-        internal ActorRecvInfo Info { get; } = info;
-        internal List<Message> Parts { get; } = parts;
-
-        public void Dispose()
-        {
-            RequestReplySupport.DisposeParts(Parts);
-        }
-    }
+    internal ActorMessageInbox ActorInbox => _actorInbox;
 
     public void SetRoutingId(RoutingId routingId)
     {
@@ -152,22 +101,22 @@ internal sealed partial class SpotNode : ISpotNode
         }
     }
 
-    ISpot ISpotNode.CreateSpot()
+    ISpot ISpotNodeSpots.CreateSpot()
     {
         return CreateSpot();
     }
 
-    ISpot ISpotNode.EntrySpot()
+    ISpot ISpotNodeSpots.EntrySpot()
     {
         return EntrySpot();
     }
 
-    ISpot ISpotNode.GetOrCreateSpot(RoutingId spotRid, out bool created)
+    ISpot ISpotNodeSpots.GetOrCreateSpot(RoutingId spotRid, out bool created)
     {
         return GetOrCreateSpot(spotRid, out created);
     }
 
-    ISpot? ISpotNode.SpotLookup(RoutingId spotRid)
+    ISpot? ISpotNodeSpots.SpotLookup(RoutingId spotRid)
     {
         return SpotLookup(spotRid);
     }

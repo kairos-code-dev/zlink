@@ -16,7 +16,6 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
         var result = RentFromPool();
         result._msg = source;
         result.IsValid = true;
-        result._managedPayload = null;
         result._knownSize = -1;
         source = default;
         return result;
@@ -33,10 +32,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             var result = pool[count];
             pool[count] = null!;
             t_poolCount = count;
-            result._msg = default;
-            result.IsValid = false;
-            result._managedPayload = null;
-            result._knownSize = -1;
+            result.Invalidate(clearHandle: true);
             result._pooled = true;
             return result;
         }
@@ -49,11 +45,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
         if (!_pooled)
             return;
-        // Defensive: only return when fully released (no managed payload
-        // in flight, no native handle pending close).
+        // Defensive: only return when fully released with no native handle
+        // pending close.
         if (IsValid)
-            return;
-        if (_managedPayload != null)
             return;
         _pooled = false;
         var pool = t_pool;

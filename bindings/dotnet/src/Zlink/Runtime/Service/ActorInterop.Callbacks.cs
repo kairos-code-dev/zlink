@@ -26,15 +26,6 @@ internal static partial class ActorInterop
             userData);
     }
 
-    internal static void OnJoinReply(IntPtr resultPtr, IntPtr parts,
-        nuint partCount, IntPtr userData)
-    {
-        var result = resultPtr == IntPtr.Zero
-            ? (int)RequestResult.InternalError
-            : Marshal.PtrToStructure<ZlinkActorJoinResult>(resultPtr).Result;
-        OnReply(result, parts, partCount, userData);
-    }
-
     internal static void OnNoopReply(int result, IntPtr parts, nuint partCount,
         IntPtr userData)
     {
@@ -47,7 +38,7 @@ internal static partial class ActorInterop
     {
         var handle = GCHandle.FromIntPtr(userData);
         var state =
-            (ActorJoinEntrySpotCallState)handle.Target!;
+            (RequestCallState<ActorJoinEntrySpotResultEnvelope>)handle.Target!;
         try
         {
             if (resultPtr == IntPtr.Zero)
@@ -55,7 +46,7 @@ internal static partial class ActorInterop
                 ActorJoinEntrySpotResult fail = new(
                     RequestResult.InternalError, 0, default, default, default,
                     0, 0);
-                state.Completion.TrySetResult(
+                state.TrySetResult(
                     new ActorJoinEntrySpotResultEnvelope(fail,
                         Array.Empty<Message>()));
                 return;
@@ -68,7 +59,7 @@ internal static partial class ActorInterop
                 ActorJoinEntrySpotResult fail = new((RequestResult)native.Result,
                     native.JoinResultCode, default, default, default,
                     native.JoinEpoch, native.Flags);
-                state.Completion.TrySetResult(
+                state.TrySetResult(
                     new ActorJoinEntrySpotResultEnvelope(fail,
                         Array.Empty<Message>()));
                 return;
@@ -88,14 +79,14 @@ internal static partial class ActorInterop
                 : Array.Empty<Message>();
             parts = IntPtr.Zero;
             partCount = 0;
-            state.Completion.TrySetResult(
+            state.TrySetResult(
                 new ActorJoinEntrySpotResultEnvelope(result, replyParts));
         }
         finally
         {
             if (parts != IntPtr.Zero)
                 NativeMethods.zlink_multipart_close(parts, partCount);
-            state.Cleanup();
+            state.Dispose();
             handle.Free();
         }
     }
@@ -104,14 +95,14 @@ internal static partial class ActorInterop
         nuint partCount, IntPtr userData)
     {
         var handle = GCHandle.FromIntPtr(userData);
-        var state = (ActorJoinCallState)handle.Target!;
+        var state = (RequestCallState<ActorJoinResultEnvelope>)handle.Target!;
         try
         {
             if (resultPtr == IntPtr.Zero)
             {
                 ActorJoinResult fail = new(RequestResult.InternalError, 0,
                     default, default, 0, 0);
-                state.Completion.TrySetResult(
+                state.TrySetResult(
                     new ActorJoinResultEnvelope(fail,
                         Array.Empty<Message>()));
                 return;
@@ -124,7 +115,7 @@ internal static partial class ActorInterop
                 ActorJoinResult fail = new((RequestResult)native.Result,
                     native.JoinResultCode, default, default, native.JoinEpoch,
                     native.Flags);
-                state.Completion.TrySetResult(
+                state.TrySetResult(
                     new ActorJoinResultEnvelope(fail,
                         Array.Empty<Message>()));
                 return;
@@ -141,14 +132,14 @@ internal static partial class ActorInterop
                 : Array.Empty<Message>();
             parts = IntPtr.Zero;
             partCount = 0;
-            state.Completion.TrySetResult(
+            state.TrySetResult(
                 new ActorJoinResultEnvelope(result, replyParts));
         }
         finally
         {
             if (parts != IntPtr.Zero)
                 NativeMethods.zlink_multipart_close(parts, partCount);
-            state.Cleanup();
+            state.Dispose();
             handle.Free();
         }
     }
@@ -156,7 +147,7 @@ internal static partial class ActorInterop
     internal static void OnLookupReply(IntPtr resultPtr, IntPtr userData)
     {
         var handle = GCHandle.FromIntPtr(userData);
-        var state = (ActorLookupCallState)handle.Target!;
+        var state = (RequestCallState<ActorLookupResult>)handle.Target!;
         try
         {
             ActorLookupResult r;
@@ -183,69 +174,12 @@ internal static partial class ActorInterop
                 r = new ActorLookupResult(result, actor, native.Flags);
             }
 
-            state.Completion.TrySetResult(r);
+            state.TrySetResult(r);
         }
         finally
         {
-            state.Cleanup();
+            state.Dispose();
             handle.Free();
-        }
-    }
-
-    internal sealed class ActorJoinCallState
-    {
-        public ActorJoinCallState(
-            TaskCompletionSource<ActorJoinResultEnvelope> completion)
-        {
-            Completion = completion;
-        }
-
-        public TaskCompletionSource<ActorJoinResultEnvelope> Completion { get; }
-        public CancellationTokenRegistration? CancelReg { get; set; }
-        public System.Threading.Timer? TimeoutTimer { get; set; }
-
-        public void Cleanup()
-        {
-            CancelReg?.Dispose();
-            TimeoutTimer?.Dispose();
-        }
-    }
-
-    internal sealed class ActorLookupCallState
-    {
-        public ActorLookupCallState(
-            TaskCompletionSource<ActorLookupResult> completion)
-        {
-            Completion = completion;
-        }
-
-        public TaskCompletionSource<ActorLookupResult> Completion { get; }
-        public CancellationTokenRegistration? CancelReg { get; set; }
-        public System.Threading.Timer? TimeoutTimer { get; set; }
-
-        public void Cleanup()
-        {
-            CancelReg?.Dispose();
-            TimeoutTimer?.Dispose();
-        }
-    }
-
-    internal sealed class ActorJoinEntrySpotCallState
-    {
-        public ActorJoinEntrySpotCallState(
-            TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> completion)
-        {
-            Completion = completion;
-        }
-
-        public TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> Completion { get; }
-        public CancellationTokenRegistration? CancelReg { get; set; }
-        public System.Threading.Timer? TimeoutTimer { get; set; }
-
-        public void Cleanup()
-        {
-            CancelReg?.Dispose();
-            TimeoutTimer?.Dispose();
         }
     }
 

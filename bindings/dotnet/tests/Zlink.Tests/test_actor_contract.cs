@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,9 +14,21 @@ public sealed class test_actor_contract
     public void spot_node_actor_ref_send_and_request_surface_exists()
     {
         Assert.Equal(typeof(SendOperation),
-            typeof(ISpotNode).GetMethod(nameof(ISpotNode.SendToActor))!.ReturnType);
+            FindPublicInstanceMethod(typeof(ISpotNode),
+                nameof(ISpotNode.SendToActor))!.ReturnType);
         Assert.Equal(typeof(RequestOperation),
-            typeof(ISpotNode).GetMethod(nameof(ISpotNode.RequestToActor))!.ReturnType);
+            FindPublicInstanceMethod(typeof(ISpotNode),
+                nameof(ISpotNode.RequestToActor))!.ReturnType);
+    }
+
+    private static System.Reflection.MethodInfo? FindPublicInstanceMethod(
+        Type type,
+        string name)
+    {
+        return type.GetMethods()
+            .Concat(type.GetInterfaces().SelectMany(current =>
+                current.GetMethods()))
+            .FirstOrDefault(method => method.Name == name);
     }
 
     [Fact]
@@ -42,14 +55,14 @@ public sealed class test_actor_contract
         }, 2000));
 
         Assert.NotNull(request);
-        using (request!.Message)
-        {
-            Assert.Equal("join:hello", request.Message.GetString());
-        }
+        Message receivedJoinMessage = request!.Message;
+        Assert.Equal("join:hello", receivedJoinMessage.GetString());
         Assert.Equal(actor.Ref.ActorId, request.Info.TargetActor.ActorId);
 
         using Message reply = Message.From("join:accepted");
         spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
+        request.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => _ = receivedJoinMessage.Size);
 
         IReadOnlyList<Message> replies =
             (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
@@ -215,6 +228,8 @@ public sealed class test_actor_contract
             Assert.Equal("display-name",
                 created.RequestParts[1].GetString());
         }
+
+        created.Dispose();
     }
 
     [Fact]

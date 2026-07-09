@@ -2,13 +2,6 @@
 
 namespace Systems.Zlink;
 
-internal enum RegistrySocketRole
-{
-    Pub = 1,
-    Router = 2,
-    PeerSub = 3
-}
-
 internal enum SpotNodeSocketRole
 {
     Node = 0,
@@ -25,10 +18,4 @@ internal enum SpotNodeOption
     PubSubHwm = 0x3611,
     DispatchWorkersMin = 0x3612,
     DispatchWorkersMax = 0x3613
-}
-
-internal enum SpotSocketRole
-{
-    Pub = 1,
-    Sub = 2
 }

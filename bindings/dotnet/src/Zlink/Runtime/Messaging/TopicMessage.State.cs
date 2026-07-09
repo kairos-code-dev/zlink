@@ -65,10 +65,8 @@ public sealed partial class TopicMessage
         MultipartMessageCollection parts)
     {
         ResetForReuse();
-        _routingId = routingId;
-        _routingIdSnapshot = default;
         SetTopic(topic);
-        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+        PopulatePartsCore(routingId, default, parts);
     }
 
     internal void PopulateSinglePart(RoutingId? routingId, string topic,
@@ -77,19 +75,16 @@ public sealed partial class TopicMessage
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
         ResetForReuse();
-        _routingId = routingId;
-        _routingIdSnapshot = default;
         SetTopic(topic);
-        _singlePart = singlePart;
+        PopulateSinglePartCore(routingId, default, singlePart);
     }
 
     internal void Populate(RoutingIdSnapshot routingId, string topic,
         MultipartMessageCollection parts)
     {
         ResetForReuse();
-        _routingIdSnapshot = routingId;
         SetTopic(topic);
-        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+        PopulatePartsCore(null, routingId, parts);
     }
 
     internal void PopulateSinglePart(RoutingIdSnapshot routingId, string topic,
@@ -98,19 +93,16 @@ public sealed partial class TopicMessage
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
         ResetForReuse();
-        _routingIdSnapshot = routingId;
         SetTopic(topic);
-        _singlePart = singlePart;
+        PopulateSinglePartCore(null, routingId, singlePart);
     }
 
     internal void Populate(RoutingId? routingId, byte[] topicBuffer,
         int topicLength, MultipartMessageCollection parts)
     {
         ResetForReuse();
-        _routingId = routingId;
-        _routingIdSnapshot = default;
         CopyTopic(topicBuffer, topicLength);
-        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+        PopulatePartsCore(routingId, default, parts);
     }
 
     internal void PopulateSinglePart(RoutingId? routingId, byte[] topicBuffer,
@@ -119,10 +111,8 @@ public sealed partial class TopicMessage
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
         ResetForReuse();
-        _routingId = routingId;
-        _routingIdSnapshot = default;
         CopyTopic(topicBuffer, topicLength);
-        _singlePart = singlePart;
+        PopulateSinglePartCore(routingId, default, singlePart);
     }
 
     internal byte[] GetWritableTopicBuffer(int minimumLength)
@@ -143,10 +133,8 @@ public sealed partial class TopicMessage
         int topicLength, MultipartMessageCollection parts)
     {
         ResetForReuse(false);
-        _routingId = routingId;
-        _routingIdSnapshot = default;
         SetTopicFromWritableBuffer(topicLength);
-        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+        PopulatePartsCore(routingId, default, parts);
     }
 
     internal void PopulateSinglePartFromWritableTopicBuffer(
@@ -155,10 +143,8 @@ public sealed partial class TopicMessage
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
         ResetForReuse(false);
-        _routingId = routingId;
-        _routingIdSnapshot = default;
         SetTopicFromWritableBuffer(topicLength);
-        _singlePart = singlePart;
+        PopulateSinglePartCore(routingId, default, singlePart);
     }
 
     internal void PopulateFromWritableTopicBuffer(
@@ -166,9 +152,8 @@ public sealed partial class TopicMessage
         MultipartMessageCollection parts)
     {
         ResetForReuse(false);
-        _routingIdSnapshot = routingId;
         SetTopicFromWritableBuffer(topicLength);
-        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+        PopulatePartsCore(null, routingId, parts);
     }
 
     internal void PopulateSinglePartFromWritableTopicBuffer(
@@ -177,12 +162,27 @@ public sealed partial class TopicMessage
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
         ResetForReuse(false);
-        _routingIdSnapshot = routingId;
         SetTopicFromWritableBuffer(topicLength);
+        PopulateSinglePartCore(null, routingId, singlePart);
+    }
+
+    private void PopulatePartsCore(RoutingId? routingId,
+        RoutingIdSnapshot routingIdSnapshot, MultipartMessageCollection? parts)
+    {
+        _routingId = routingId;
+        _routingIdSnapshot = routingIdSnapshot;
+        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+    }
+
+    private void PopulateSinglePartCore(RoutingId? routingId,
+        RoutingIdSnapshot routingIdSnapshot, Message singlePart)
+    {
+        _routingId = routingId;
+        _routingIdSnapshot = routingIdSnapshot;
         _singlePart = singlePart;
     }
 
-    private void ResetForReuse(bool resetTopic = true)
+    private void ResetForReuse(bool resetTopic = true, bool reopen = true)
     {
         if (_parts != null)
             _parts.Dispose();
@@ -198,7 +198,18 @@ public sealed partial class TopicMessage
             _topicLength = 0;
         }
 
-        _closed = 0;
+        if (reopen)
+            _closed = 0;
+    }
+
+    private void DisposeCore()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+            return;
+
+        ResetForReuse(reopen: false);
+        _topicBytes = null;
+        _topicWriteBuffer = null;
     }
 
     private void SetTopic(string? topic)

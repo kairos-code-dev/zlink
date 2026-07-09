@@ -438,7 +438,7 @@ internal static partial class PerfRunner
             string scope = entry.Owner == SpotNodeSocketOwner.Node
                 ? "shared"
                 : "per-spot";
-            string socketType = SpotNodeSocketTypeName(entry.SocketType);
+            string socketType = SocketTypeName(entry.SocketType);
             string pattern = AutoHwmEnvOrDefault("PERF_MULTI_PATTERN",
                 "unknown");
             string component = AutoHwmEnvOrDefault("PERF_MULTI_COMPONENT",
@@ -459,7 +459,7 @@ internal static partial class PerfRunner
                 + $",role={AutoHwmRoleName(snapshot.AutoHwmRole)}"
                 + $",role_id={snapshot.AutoHwmRole}"
                 + $",profile={AutoHwmProfileName(snapshot.AutoHwmProfile)}"
-                + $",profile_id={snapshot.AutoHwmProfile}"
+                + $",profile_id={(uint)snapshot.AutoHwmProfile}"
                 + $",policy_class={AutoHwmPolicyClassName(snapshot.AutoHwmPolicyClass)}"
                 + $",policy_class_id={snapshot.AutoHwmPolicyClass}"
                 + $",unit_budget_bytes={snapshot.AutoHwmUnitBudgetBytes}"
@@ -583,20 +583,6 @@ internal static partial class PerfRunner
             _ => "any",
         };
 
-    private static string SpotNodeSocketTypeName(SpotNodeSocketType type)
-        => type switch
-        {
-            SpotNodeSocketType.Pair => "pair",
-            SpotNodeSocketType.Pub => "pub",
-            SpotNodeSocketType.Sub => "sub",
-            SpotNodeSocketType.Dealer => "dealer",
-            SpotNodeSocketType.Router => "router",
-            SpotNodeSocketType.XPub => "xpub",
-            SpotNodeSocketType.XSub => "xsub",
-            SpotNodeSocketType.Stream => "stream",
-            _ => "any",
-        };
-
     private static string AutoHwmEnvOrDefault(string name, string fallback)
     {
         string value = PerfEnv.ReadString(name, string.Empty);
@@ -655,13 +641,13 @@ internal static partial class PerfRunner
             _ => "none",
         };
 
-    private static string AutoHwmProfileName(uint profile)
+    private static string AutoHwmProfileName(AutoHwmProfile profile)
         => profile switch
         {
-            0 => "compact",
-            1 => "low_latency",
-            2 => "balanced",
-            3 => "throughput",
+            AutoHwmProfile.Compact => "compact",
+            AutoHwmProfile.LowLatency => "low_latency",
+            AutoHwmProfile.Balanced => "balanced",
+            AutoHwmProfile.Throughput => "throughput",
             _ => "unknown",
         };
 
@@ -678,24 +664,25 @@ internal static partial class PerfRunner
             _ => "none",
         };
 
-    private static string AutoHwmRecalcReasonName(uint reason)
+    private static string AutoHwmRecalcReasonName(AutoHwmRecalcReason reason)
         => reason switch
         {
-            1 => "initial",
-            2 => "role_change",
-            3 => "policy_toggle",
-            4 => "refresh",
-            5 => "deferred_shrink",
+            AutoHwmRecalcReason.Initial => "initial",
+            AutoHwmRecalcReason.RoleChange => "role_change",
+            AutoHwmRecalcReason.PolicyToggle => "policy_toggle",
+            AutoHwmRecalcReason.Refresh => "refresh",
+            AutoHwmRecalcReason.DeferredShrink => "deferred_shrink",
             _ => "none",
         };
 
     private readonly struct AutoHwmSnapshotFields
     {
-        private AutoHwmSnapshotFields(bool enabled, uint profile, uint role,
+        private AutoHwmSnapshotFields(bool enabled, AutoHwmProfile profile, uint role,
             uint policyClass, ulong unitBudgetBytes, uint sizeCap,
             ulong socketMessageSlots, ulong effectiveMessageBytes,
             int sndHwm, int rcvHwm, int effectiveSndbuf,
-            int effectiveRcvbuf, ulong lastRecalcMs, uint lastRecalcReason,
+            int effectiveRcvbuf, ulong lastRecalcMs,
+            AutoHwmRecalcReason lastRecalcReason,
             uint sendBlockedRatioPpm, int deferredSndHwm, int deferredRcvHwm)
         {
             Enabled = enabled;
@@ -718,7 +705,7 @@ internal static partial class PerfRunner
         }
 
         internal bool Enabled { get; }
-        internal uint Profile { get; }
+        internal AutoHwmProfile Profile { get; }
         internal uint Role { get; }
         internal uint PolicyClass { get; }
         internal ulong UnitBudgetBytes { get; }
@@ -730,7 +717,7 @@ internal static partial class PerfRunner
         internal int EffectiveSndbuf { get; }
         internal int EffectiveRcvbuf { get; }
         internal ulong LastRecalcMs { get; }
-        internal uint LastRecalcReason { get; }
+        internal AutoHwmRecalcReason LastRecalcReason { get; }
         internal uint SendBlockedRatioPpm { get; }
         internal int DeferredSndHwm { get; }
         internal int DeferredRcvHwm { get; }
@@ -753,12 +740,12 @@ internal static partial class PerfRunner
                 snapshot.AutoHwmDeferredRcvHwm);
 
         internal static AutoHwmSnapshotFields FromSocketOptions(ISocket socket)
-            => new(false, 0, 0, 0, 0, 0, 0, 0,
+            => new(false, (AutoHwmProfile)0, 0, 0, 0, 0, 0, 0,
                 ReadSocketOption(() => socket.Options.SendHighWaterMark),
                 ReadSocketOption(() => socket.Options.ReceiveHighWaterMark),
                 ReadSocketOption(() => socket.Options.SendBufferSize),
                 ReadSocketOption(() => socket.Options.ReceiveBufferSize),
-                0, 0, 0, 0, 0);
+                0, (AutoHwmRecalcReason)0, 0, 0, 0);
     }
 
     internal static int ResolveMultiLatencySampleCap(PerfOptions options)

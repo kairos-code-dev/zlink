@@ -86,6 +86,15 @@ internal unsafe struct RoutingIdSnapshot
         return bytes == null ? null : RoutingId.FromOwnedOptionalBytes(bytes);
     }
 
+    internal RoutingId? GetOrCreateRoutingId(ref RoutingId? cache)
+    {
+        if (!HasValue)
+            return cache;
+
+        cache ??= ToRoutingId();
+        return cache;
+    }
+
     internal byte[]? ToByteArray()
     {
         if (_size <= 0)

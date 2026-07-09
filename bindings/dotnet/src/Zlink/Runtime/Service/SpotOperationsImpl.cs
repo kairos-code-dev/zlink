@@ -16,24 +16,24 @@ internal enum SpotOperationKind
 
 internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
 {
-    private readonly string? _channelName;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
     private readonly SpotOperationKind _kind;
     private readonly Spot _spot;
-    private readonly string? _topicOrChannel;
+    private readonly string? _channelName;
+    private readonly string? _topic;
     private SendFlags _flags;
     private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal SpotSendOperation(Spot spot, SpotOperationKind kind,
-        string? channelName = null, string? topicOrChannel = null,
+        string? topic = null, string? channelName = null,
         RoutingId destNodeRid = default, RoutingId destSpotRid = default)
     {
         _spot = spot;
         _kind = kind;
+        _topic = topic;
         _channelName = channelName;
-        _topicOrChannel = topicOrChannel;
         _destNodeRid = destNodeRid;
         _destSpotRid = destSpotRid;
     }
@@ -59,11 +59,11 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
         return _kind switch
         {
             SpotOperationKind.Publish => _parts.IsSingle
-                ? _spot.Publish(_topicOrChannel!, _parts.Single, _flags)
-                : _spot.Publish(_topicOrChannel!, _parts.Parts, _flags),
+                ? _spot.Publish(_topic!, _parts.Single, _flags)
+                : _spot.Publish(_topic!, _parts.Parts, _flags),
             SpotOperationKind.SendToChannel => _parts.IsSingle
-                ? _spot.SendToChannel(_topicOrChannel!, _parts.Single, _flags)
-                : _spot.SendToChannel(_topicOrChannel!, _parts.Parts, _flags),
+                ? _spot.SendToChannel(_channelName!, _parts.Single, _flags)
+                : _spot.SendToChannel(_channelName!, _parts.Parts, _flags),
             SpotOperationKind.SendToSpot => _parts.IsSingle
                 ? _spot.SendToSpot(_destNodeRid, _destSpotRid, _parts.Single,
                     _flags)
@@ -216,7 +216,6 @@ internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
     private readonly RoutingId _peerRid;
     private readonly ulong _requestSeq;
     private readonly Spot _spot;
-    private SendFlags _flags;
     private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
@@ -239,13 +238,6 @@ internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
         return this;
     }
 
-    public ReplySubmitOperation Flags(SendFlags flags)
-    {
-        EnsureNotSubmitted();
-        _flags = flags;
-        return this;
-    }
-
     public void Submit()
     {
         EnsureReadyToSubmit();
@@ -254,11 +246,10 @@ internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
         {
             case SpotOperationKind.ReplyToSpot:
                 _spot.ReplyToSpot(_destNodeRid, _destSpotRid, _requestSeq,
-                    _parts.Parts, _flags);
+                    _parts.Parts);
                 break;
             case SpotOperationKind.ReplyToRouter:
-                _spot.ReplyToRouter(_peerRid, _requestSeq, _parts.Parts,
-                    _flags);
+                _spot.ReplyToRouter(_peerRid, _requestSeq, _parts.Parts);
                 break;
             default:
                 throw new ZlinkConfigException(

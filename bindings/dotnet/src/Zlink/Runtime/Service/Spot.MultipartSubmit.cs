@@ -49,8 +49,8 @@ internal sealed partial class Spot
         }
 
         ZlinkMsg[]? rented = null;
-        var nativeParts = parts.Length <= StackPublishPartLimit
-            ? stackalloc ZlinkMsg[StackPublishPartLimit]
+        var nativeParts = parts.Length <= NativeMessageParts.StackPartLimit
+            ? stackalloc ZlinkMsg[NativeMessageParts.StackPartLimit]
             : rented = ArrayPool<ZlinkMsg>.Shared.Rent(parts.Length);
         nativeParts = nativeParts.Slice(0, parts.Length);
 
@@ -86,7 +86,8 @@ internal sealed partial class Spot
 
                     if (mapNoWaitResult)
                     {
-                        var sendResult = SendResultErrno.TryMapCurrent();
+                        var result = (SubmitResult)rc;
+                        var sendResult = SendResultErrno.TryMap(result);
                         if (sendResult != null)
                         {
                             NativeMessageParts.RestoreManaged(parts, nativeParts,
@@ -95,8 +96,7 @@ internal sealed partial class Spot
                         }
                     }
 
-                    throw ZlinkException.CreateSubmitException(
-                        NativeMethods.zlink_errno());
+                    throw ZlinkException.CreateSubmitException((SubmitResult)rc);
                 }
             }
 
@@ -126,10 +126,11 @@ internal sealed partial class Spot
     {
         var channelNameUtf8 = GetChannelNameUtf8(channelName);
         ZlinkMsg nativePart = default;
-        var submitted = false;
+        var shouldRestore = false;
         try
         {
             part.MoveTo(ref nativePart);
+            shouldRestore = true;
             int rc;
             fixed (byte* channelPtr = channelNameUtf8)
             {
@@ -138,23 +139,27 @@ internal sealed partial class Spot
                     NativeMethods.ZlinkPartFlag.Final);
             }
 
-            submitted = true;
             if (rc == 0)
+            {
+                shouldRestore = false;
                 return SendResult.Sent;
+            }
 
+            part.RestoreFrom(ref nativePart);
+            shouldRestore = false;
             if (mapNoWaitResult)
             {
-                var sendResult = SendResultErrno.TryMapCurrent();
+                var result = (SubmitResult)rc;
+                var sendResult = SendResultErrno.TryMap(result);
                 if (sendResult != null)
                     return sendResult.Value;
             }
 
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
+            throw ZlinkException.CreateSubmitException((SubmitResult)rc);
         }
         catch
         {
-            if (!submitted)
+            if (shouldRestore)
                 part.RestoreFrom(ref nativePart);
             throw;
         }

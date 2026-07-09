@@ -14,17 +14,15 @@ internal sealed partial class Spot
         var targetNode = nodeRid ?? throw new ZlinkSubmitException(
             SubmitResult.InvalidArgument, (int)ErrorCode.EInval);
         return spotRid.HasValue
-            ? (replyParts, sendFlags) => ReplyToSpot(
+            ? replyParts => ReplyToSpot(
                 targetNode,
                 spotRid.Value,
                 requestSeq,
-                replyParts,
-                sendFlags)
-            : (replyParts, sendFlags) => ReplyToRouter(
+                replyParts)
+            : replyParts => ReplyToRouter(
                 targetNode,
                 requestSeq,
-                replyParts,
-                sendFlags);
+                replyParts);
     }
 
     private ReceivedSendHandler? CreateRoutedSendHandler(RoutingId? nodeRid,

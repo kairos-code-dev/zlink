@@ -97,15 +97,6 @@ internal sealed class Actor : IActor
         return ValueTask.CompletedTask;
     }
 
-    internal bool SendBoundSessionDirect(Message message,
-        SendFlags flags = SendFlags.None)
-    {
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
-        EnsureNotDisposed();
-        return SendBoundSessionCore(_node, _ref, new[] { message }, flags);
-    }
-
     internal static bool SendBoundSessionCore(SpotNode node, ActorRef actorRef,
         IReadOnlyList<Message> parts, SendFlags flags)
     {

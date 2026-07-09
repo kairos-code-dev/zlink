@@ -64,7 +64,7 @@ internal static class ZLinkClientCallCodec
 
         var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
         if (replyHeader.Kind == ZLinkMessageKind.Error)
-            throw new InvalidOperationException(replyHeader.ErrorMessage ?? errorMessage);
+            throw ZLinkEnvelopeErrorMapper.CreateException(replyHeader, errorMessage);
 
         return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), replyHeader.ContentType, codecs)
                ?? throw new InvalidOperationException("Reply body is null.");
@@ -106,6 +106,22 @@ internal static class ZLinkClientCallCodec
         IReadOnlyDictionary<string, string> metadata)
     {
         return new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+    }
+}
+
+internal static class ZLinkEnvelopeErrorMapper
+{
+    public static Exception CreateException(
+        ZLinkEnvelopeHeader header,
+        string fallbackMessage)
+    {
+        var message = header.ErrorMessage ?? fallbackMessage;
+        return header.ErrorCode switch
+        {
+            nameof(TaskCanceledException) => new TaskCanceledException(message),
+            nameof(OperationCanceledException) => new OperationCanceledException(message),
+            _ => new InvalidOperationException(message)
+        };
     }
 }
 

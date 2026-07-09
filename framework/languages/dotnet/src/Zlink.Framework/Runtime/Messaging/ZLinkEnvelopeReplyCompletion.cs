@@ -27,7 +27,7 @@ internal static class ZLinkEnvelopeReplyCompletion
             var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
             if (replyHeader.Kind == ZLinkMessageKind.Error)
             {
-                fail(new InvalidOperationException(replyHeader.ErrorMessage ?? $"{operationName} failed."));
+                fail(ZLinkEnvelopeErrorMapper.CreateException(replyHeader, $"{operationName} failed."));
                 return;
             }
 

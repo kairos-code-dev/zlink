@@ -171,7 +171,7 @@ internal sealed class FixtureStageSpot(IZLinkSpotContext context) : IZLinkSpot
 internal sealed class FixtureSpotTimerHandler
     : IZLinkSpotTimerHandler<FixtureStageSpot>
 {
-    public async ValueTask HandleAsync(
+    public ValueTask HandleAsync(
         FixtureStageSpot spot,
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
@@ -179,6 +179,7 @@ internal sealed class FixtureSpotTimerHandler
         _ = tick;
         spot.Context.Outbound.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
                 .Submit(cancellationToken);
+        return ValueTask.CompletedTask;
     }
 }
 

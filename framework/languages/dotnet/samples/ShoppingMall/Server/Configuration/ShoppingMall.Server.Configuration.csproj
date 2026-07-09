@@ -10,6 +10,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <ProjectReference Include="..\..\..\..\src\Zlink.Framework\Zlink.Framework.csproj" />
-    <ProjectReference Include="../../../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
+    <PackageReference Include="Systems.Zlink"/>
   </ItemGroup>
 </Project>

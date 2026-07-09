@@ -8,6 +8,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../../../../../../bindings/dotnet/src/Zlink/Zlink.csproj"/>
+        <PackageReference Include="Systems.Zlink"/>
     </ItemGroup>
 </Project>

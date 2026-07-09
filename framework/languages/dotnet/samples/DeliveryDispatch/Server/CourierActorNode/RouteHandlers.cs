@@ -8,8 +8,7 @@ using Zlink.Framework.Contracts.Spots;
 namespace DeliveryDispatch.Server.CourierActorNode;
 
 internal sealed class FindCourierActorRouteHandler(
-    IZLinkActorManager actorManager,
-    ActorDirectory actors)
+    IZLinkActorManager actorManager)
     : IZLinkSpotRequestHandler<CourierEntrySpot, FindCourierActorReq, FindCourierActorRes>
 {
     public async ValueTask<FindCourierActorRes> HandleAsync(
@@ -31,7 +30,6 @@ internal sealed class FindCourierActorRouteHandler(
 
 internal sealed class EnsureCourierActorRouteHandler(
     IZLinkActorManager actorManager,
-    ActorDirectory actors,
     ILogger<EnsureCourierActorRouteHandler> logger)
     : IZLinkSpotRequestHandler<CourierEntrySpot, EnsureCourierActorReq, EnsureCourierActorRes>
 {

@@ -31,8 +31,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Systems.Zlink.Stream.Connec
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework", "..\..\src\Zlink.Framework\Zlink.Framework.csproj", "{3A610FF2-B7AD-4D23-9585-C7FB7BF1AAFE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink", "..\..\..\..\..\bindings\dotnet\src\Zlink\Zlink.csproj", "{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.AspNetCore", "..\..\src\Zlink.Framework.AspNetCore\Zlink.Framework.AspNetCore.csproj", "{A231691A-B533-4C8B-BF2B-A47A9013EF8D}"
 EndProject
 Global
@@ -141,18 +139,6 @@ Global
 		{3A610FF2-B7AD-4D23-9585-C7FB7BF1AAFE}.Release|x64.Build.0 = Release|Any CPU
 		{3A610FF2-B7AD-4D23-9585-C7FB7BF1AAFE}.Release|x86.ActiveCfg = Release|Any CPU
 		{3A610FF2-B7AD-4D23-9585-C7FB7BF1AAFE}.Release|x86.Build.0 = Release|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Debug|x64.Build.0 = Debug|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Debug|x86.Build.0 = Debug|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Release|x64.ActiveCfg = Release|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Release|x64.Build.0 = Release|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Release|x86.ActiveCfg = Release|Any CPU
-		{E4A380E5-1FE1-4A8B-8F9F-3DBE9030FCA6}.Release|x86.Build.0 = Release|Any CPU
 		{A231691A-B533-4C8B-BF2B-A47A9013EF8D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A231691A-B533-4C8B-BF2B-A47A9013EF8D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A231691A-B533-4C8B-BF2B-A47A9013EF8D}.Debug|x64.ActiveCfg = Debug|Any CPU

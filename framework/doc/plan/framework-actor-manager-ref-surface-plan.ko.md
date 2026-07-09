@@ -87,7 +87,7 @@ core 테스트는 framework나 bindings를 거치지 않고 C API 계약을 직�
 ## Core 변경의 bindings 배포 계획
 
 core C API가 바뀌면 bindings와 framework를 같은 checkout에서 바로 검증해야 한다. 릴리스 전 개발
-검증은 `bindings/dev_sync_local_core_libs.sh`를 사용한다.
+검증은 `scripts/local-package/native/sync-local-core-libs.sh`를 사용한다.
 
 ### 로컬 core 산출물 동기화
 
@@ -100,7 +100,7 @@ cmake --build core/build
 2. 로컬 core headers와 `libzlink.so*`를 bindings 워크스페이스로 동기화한다.
 
 ```bash
-bindings/dev_sync_local_core_libs.sh
+scripts/local-package/native/sync-local-core-libs.sh
 ```
 
 스크립트 기준:
@@ -537,7 +537,7 @@ Codex 에이전트 교차 리뷰가 이슈를 찾으면 다시 수정하고 같�
 1. core C API의 actor 생성 payload 계약과 ABI 정책을 확정한다.
 2. core actor 생성 payload 저장, lifecycle 전달, 실패/동시성 테스트를 구현한다.
 3. `cmake --build core/build`와 core actor/spot regression을 통과시킨다.
-4. `bindings/dev_sync_local_core_libs.sh`로 로컬 core headers/runtime을 bindings 워크스페이스에 동기화한다.
+4. `scripts/local-package/native/sync-local-core-libs.sh`로 로컬 core headers/runtime을 bindings 워크스페이스에 동기화한다.
 5. C, .NET, Java, Node, C++ bindings가 새 core C API를 호출하도록 갱신한다.
 6. bindings test를 실행하고 native library 산출물이 커밋 대상에 들어가지 않도록 확인한다.
 7. 언어별 framework backend adapter의 `createActor`에 payload 인자를 연결한다.
@@ -558,7 +558,7 @@ Codex 에이전트 교차 리뷰가 이슈를 찾으면 다시 수정하고 같�
 - core C API actor 생성 요청이 optional payload를 받고, create callback까지 전달한다.
 - core actor/spot 회귀 테스트가 payload 전달, 실패, 동시성, cleanup을 검증한다.
 - bindings 라이브러리가 새 core C API를 감싸고, local dev sync 후 각 binding test가 통과한다.
-- `bindings/dev_sync_local_core_libs.sh`가 만든 native runtime 산출물은 커밋하지 않는다.
+- `scripts/local-package/native/sync-local-core-libs.sh`가 만든 native runtime 산출물은 커밋하지 않는다.
 - public actor manager에서 actor 객체나 actor context를 받을 수 없다.
 - 모든 언어에서 `Create` / `Find` / `GetOrCreate` 계열 함수 이름은 유지되고 반환 타입만 actor ref로 바뀐다.
 - 새 actor 생성 시 초기화 payload가 Spot-owned create callback에서 처리된다.

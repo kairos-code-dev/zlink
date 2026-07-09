@@ -348,12 +348,12 @@ core 구현이 끝나면 local core runtime을 bindings에 동기화한다.
 
 ```bash
 cmake --build core/build
-bindings/dev_sync_local_core_libs.sh
+scripts/local-package/native/sync-local-core-libs.sh
 ```
 
 주의:
 
-- `bindings/dev_sync_local_core_libs.sh`는 개발 검증용 배포 단계다.
+- `scripts/local-package/native/sync-local-core-libs.sh`는 개발 검증용 배포 단계다.
 - 복사된 native library 산출물은 release artifact이므로 커밋하지 않는다.
 - header sync 뒤 각 binding의 native declarations를 갱신한다.
 
@@ -549,7 +549,7 @@ customer도 같은 원칙을 따른다.
 3. core C API 구현
 4. core 회귀 테스트 작성/통과
 5. `cmake --build core/build`
-6. `bindings/dev_sync_local_core_libs.sh`
+6. `scripts/local-package/native/sync-local-core-libs.sh`
 7. bindings native declarations/wrappers 추가
 8. binding별 회귀 테스트 통과
 9. .NET framework resolver/publisher 구현

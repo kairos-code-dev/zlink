@@ -256,7 +256,7 @@ source rid를 **무조건** bound-session route로 갱신하고(`ZLinkEntrySpotA
 실행 절차(사용자 지시 확정):
 1. core 설계 draft(`server_to_actor_no_bind` packet kind + reply correlation) → core 구현 + **회귀 테스트 작성**(actor gateway 경로).
 2. 버전 업(VERSION 파일 + core/include/zlink.h의 ZLINK_VERSION_* — 두 곳 동기, 현행 8.4.3 → protocol 추가이므로 8.5.0) → `core/v8.5.0` 태그 push → GitHub Actions(build.yml)가 빌드·릴리즈. **릴리즈 런은 gh CLI로 모니터링**(`gh run watch`).
-3. `bindings/update_zlink_libs.sh core/v8.5.0 --expect-version 8.5.0`으로 7개 바인딩 native 교체+버전 마커 갱신.
+3. `scripts/local-package/native/update-zlink-libs.sh core/v8.5.0 --expect-version 8.5.0`으로 7개 바인딩 native 교체+버전 마커 갱신.
 4. 신규 kind가 바인딩 표면에 필요하면 bindings 라이브러리 수정(doc/spec/bindings가 target blueprint) + 바인딩 테스트.
 5. framework L13 구현 재개: dotnet 레퍼런스 → node/java/cpp, 샘플 Tracking 이식, `session-actor-dispatch.ko.md` 동명 API 구분 각주, e2e.
 6. **e2e 시나리오 추가(사용자 지시 2026-07-04)**: to-actor 메시지의 bind 상태 매트릭스 — ⑴ bind된 actor ⑵ bind 안 된 actor ⑶ bind 안 됐다가 이후 bind ⑷ bind 됐다가 unbind/disconnect 된 후 — 각각 send/request 전송·수신 확인(+bind 비오염 검증). 공통 e2e 문서에 시나리오 정의 후 4언어 구현, 실측 그린 확인.

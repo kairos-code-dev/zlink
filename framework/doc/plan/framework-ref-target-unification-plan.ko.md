@@ -125,6 +125,10 @@ spotOutbound.RequestToSpot(nodeRid, spotRid, request);
 ## 4. 공통 변경 순서
 
 1. 공통 문서에서 `SpotAddress` 기반 설명을 `SpotRef` 기반 설명으로 바꾼다.
+   이때 `framework/doc/framework/common/spec/framework-api.ko.md`의 메시지 handler 등록
+   정책도 함께 적용한다. actor/spot ref 전송 표면을 고치는 과정에서 handler 등록 호출부가
+   packet 이름, actor 타입, request/send 종류처럼 handler 타입에서 추론할 수 있는 값을 다시
+   받는 형태로 남지 않아야 한다.
 2. 각 언어의 public contract 타입을 추가/rename한다.
 3. resolver 이름과 반환 타입을 `SpotRef` 기준으로 바꾼다.
 4. actor id만 받는 actor 메시징 API를 제거하고, `ActorRef`를 받는 API를 추가한다.
@@ -334,9 +338,18 @@ framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framew
 
 Kotlin은 Java core public contract 위에 coroutine extension을 얹는다. 따라서 Java 변경을 먼저
 적용한 뒤 Kotlin extension과 Kotlin sample/e2e를 맞춘다.
+`framework-ref-target-unification-kotlin-worker-prompt.ko.md`의 지시는 이 섹션에 흡수한 완료 조건으로
+취급한다. Kotlin 작업자는 별도 worker prompt가 아니라 이 기준 계획과 Kotlin E2E/sample gap 제거 계획을
+함께 보고 완료 여부를 판단한다.
+
+Kotlin 전용 helper도 값 개념에는 `ZLink` 접두어를 붙이지 않는다. Manager, client, store, runtime처럼
+service나 role을 나타내는 타입은 Java 이름을 따른다.
 
 Public contract 변경:
 
+- `ZLinkActorRef` -> `ActorRef`
+- `ZLinkActorRefSnapshot` -> `ActorRefSnapshot`
+- `ZLinkSpotAddress` -> `SpotRef`
 - Kotlin extension의 `ZLinkSpotAddress` import를 `SpotRef`로 변경
 - suspending resolver 이름을 `resolveSpotRef`, `resolveActorSpotRef`로 변경
 - `sendToSpot`, `requestToSpot` extension 인자를 `spotRef`로 변경
@@ -344,6 +357,7 @@ Public contract 변경:
   `ActorRef` 인자 extension을 추가
 - spot id만 받는 suspending messaging helper가 있으면 제거하고 `SpotRef` 인자 helper만 남김
 - Kotlin sample/e2e에서 `ZLinkSpotAddress(...)` 생성자를 `SpotRef(...)`로 변경
+- Kotlin sample/e2e의 `ZLinkActorRef` import를 `ActorRef` import로 변경
 
 현재 변경 대상 파일:
 
@@ -365,6 +379,42 @@ framework/languages/java/samples/kotlin/DeliveryDispatch/Shared/src/main/kotlin/
 framework/languages/java/zlink-framework-kotlin/src/main/kotlin/systems/zlink/framework/kotlin/ZLinkFrameworkExtensions.kt
 framework/languages/java/zlink-framework-kotlin/src/main/kotlin/systems/zlink/framework/kotlin/ZLinkLocationExtensions.kt
 framework/languages/java/zlink-framework-kotlin/src/test/kotlin/systems/zlink/framework/kotlin/KotlinFrameworkExtensionsContractTest.kt
+```
+
+위 목록에 없더라도 `framework/languages/java/e2e-kotlin/SpotService/`,
+`framework/languages/java/e2e-kotlin/YieldDispatch/`, `framework/languages/java/samples/kotlin/` 안에서
+이전 이름이나 id-only helper를 쓰는 파일은 같은 작업에서 정리한다.
+
+Kotlin 최소 검증:
+
+```bash
+cd framework/languages/java
+./gradlew :zlink-framework-kotlin:test
+./e2e-kotlin/SpotService/run_e2e.sh
+./e2e-kotlin/YieldDispatch/run_e2e.sh
+```
+
+Kotlin 완료 검색:
+
+```bash
+cd framework/languages/java
+rg -n "ZLinkActorRef|ZLinkActorRefSnapshot|ZLinkSpotAddress|resolveSpotAddress|resolveActorSpotAddress|sendToActorAwait\\([^)]*actorId|requestToActorAwait\\([^)]*actorId|sendToSpot\\([^)]*spotRid|requestToSpot\\([^)]*spotRid" \
+  zlink-framework-kotlin e2e-kotlin samples/kotlin \
+  -S -g '!**/build/**'
+
+rg -n "ZLinkActorRef|ZLinkActorRefSnapshot|SpotAddress|spot address|SpotRemoteAddress|spot remote address|sendToActorAwait\\([^)]*actorId|requestToActorAwait\\([^)]*actorId|sendToSpot\\([^)]*spotRid|requestToSpot\\([^)]*spotRid" \
+  ../../doc/contract-inventory ../../doc/framework/common ../../doc/framework/kotlin \
+  -S -g '!../../doc/plan/**' -g '!../../doc/**/draft/**'
+```
+
+Kotlin 문서와 관련 공통 문서도 코드와 테스트를 바꾸는 같은 작업 안에서 갱신한다. 사용자-facing 문서에는
+`ActorRef`와 `SpotRef` 기반 전송만 남기고, Kotlin 문서가 Java API를 설명하는 경우에도 이전 Java 이름을
+남기지 않는다.
+
+```text
+framework/doc/contract-inventory/framework-public-contract-inventory.json
+framework/doc/framework/common/
+framework/doc/framework/kotlin/
 ```
 
 ### 5.4 Node
@@ -736,6 +786,97 @@ rg -n "SpotAddress|spot address|SpotRemoteAddress|spot remote address|SendToActo
 
 위 검색에서 남는 항목은 내부 구현 설명인지, lifecycle id 입력인지, 실제 오래된 메시징 표면인지
 분류해야 한다. 사용자-facing 메시징 설명에 남아 있으면 실패다.
+
+또한 각 worker는 `framework/doc/framework/common/spec/framework-api.ko.md`의
+`Handler 등록 정책`을 자기 언어 코드와 문서에 적용했는지 확인한다. 메시지 handler는
+session, node/channel, Entry Spot, user Spot 의 실행 문맥 안에서 등록하고, typed handler
+interface에서 알 수 있는 packet 이름, actor 타입, request/send/subscription 종류를 등록
+호출부에 반복해서 적지 않는다. timer는 메시지 dispatch handler가 아니므로 이 정책의
+`AddHandler<THandler>()` 대상에 섞지 않고, 별도 timer 등록 API로 유지한다. 언어별 이름은
+각 언어의 관례를 따르되, 같은 의미의 public 표면이 `AddActorRequest`, `AddPacket`,
+`AddSubscribe`처럼 세분된 메시지 handler 등록 API로 다시 갈라지면 완료로 보지 않는다.
+
+샘플은 handler 등록 정책을 보여 주는 public contract 예시이므로, ref 전송 대상 정리와
+같은 작업 흐름에서 등록 방식을 함께 맞춘다. TicTacToe 샘플만 수동 handler 등록 예시로 남기고,
+Bingo, DeliveryDispatch, ShoppingMall, SupportChat, GameQuest 등 나머지 샘플은 자동 등록만
+사용한다. TicTacToe는 session, Entry Spot, user Spot 같은 실행 문맥별 수동 등록 위치를 보여
+주는 역할을 맡으며, 이 경우에도 `framework-api.ko.md`의 정책처럼 typed handler에서 알 수 있는
+값을 등록 호출부에 반복해서 넘기지 않는다. 나머지 샘플에서 handler를 명시적으로 나열하는 코드는
+자동 scan, annotation, attribute, decorator, module metadata 같은 언어별 자동 등록 표면으로
+옮긴다. 자동 등록으로 바꾼 뒤에도 handler 충돌과 누락은 startup validation에서 드러나야 하며,
+샘플별 임시 adapter나 test-only 등록 helper로 통과시키면 완료로 보지 않는다.
+
+샘플 handler 등록 방식 정리 완료 조건:
+
+- TicTacToe 샘플은 언어별 public 표면에 맞는 수동 등록만 사용한다.
+- TicTacToe 외 샘플은 handler를 직접 나열하는 수동 등록 호출을 남기지 않는다.
+- 자동 등록은 샘플 코드 바깥의 test-only scan helper가 아니라 실제 framework 등록 표면을
+  사용한다.
+- sample README와 guide는 TicTacToe를 수동 등록 예시로, 나머지 샘플을 자동 등록 예시로 설명한다.
+- 각 언어 worker는 자기 언어 sample regression 또는 최소 compile/startup gate로 자동 등록이 실제
+  샘플 실행에서 동작함을 확인한다.
+
+### 8.1 connection 복구 책임 경계
+
+이미 `connect`가 core/socket에 전달되어 연결된 connection의 끊김 감지와 복구는 core가 맡는다.
+framework는 연결된 socket의 disconnected event를 보고 별도 reconnect timer, backoff, 상태
+machine을 돌리면 안 된다. 이 경계를 언어마다 다르게 구현하면 같은 연결 장애가 언어별로 다른
+재시도 횟수, 지연, event 순서로 보이게 된다.
+
+framework가 해도 되는 일은 location/topology 관점의 desired set 계산과 아직 연결되지 않은
+target에 대한 initial `connect` 재시도다. 예를 들어 peer row는 보였지만 상대 process가 아직 bind
+전이라 `connect`가 실패한 경우, 다음 topology tick에서 같은 desired target에 다시 `connect`를
+요청할 수 있다. 이것은 이미 연결된 connection의 transport-level reconnect가 아니라, 아직 core에
+성공적으로 맡기지 못한 초기 연결 시도다.
+
+적용 규칙:
+
+- connected connection 복구, reconnect interval, reconnect backoff, monitor 기반 reconnect는
+  core 또는 binding의 public socket option에 둔다.
+- framework auto-connect는 desired topology reconciliation만 수행한다. `connect`가 성공적으로
+  core/binding에 전달된 뒤의 연결 유지와 재연결은 framework active set이 아니라 core 상태를
+  기준으로 한다.
+- framework는 connect 실패를 삼키고 다음 tick에서 다시 시도할 수 있지만, 실패한 target을
+  connected/active 로 기록하면 안 된다.
+- framework가 endpoint/owner 변경을 보고 기존 target을 끊고 새 target에 연결하는 것은 topology
+  handover로만 허용한다. 동일 endpoint의 disconnected event를 이유로 끊고 다시 연결하는 코드는
+  제거한다.
+- send/request submit backpressure queue는 connection reconnect가 아니다. 다만 core/binding의
+  `submit_retry`, poller, ready notification이 이미 제공하는 기능을 언어별 framework가 다시
+  구현하고 있으면 별도 public 계약 검토 후 core/binding 표면으로 내린다.
+
+현재 계획에 추가로 반영해야 하는 수정/감사 대상:
+
+| 대상 | 현재 코드 위치 | 판정 | 필요한 조치 |
+|------|----------------|------|-------------|
+| .NET location auto-connect | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Locations/ZLinkAutoConnectReconciler.cs`, `ZLinkLocationAutoConnectHost.cs` | 허용 가능한 topology reconciliation이지만 책임 경계 감사 필요 | connect 실패 시 active set에 넣지 않는지, disconnected event 기반 reconnect loop가 없는지 테스트로 고정한다. endpoint/owner 변경으로 인한 disconnect/connect는 topology handover로 문서화한다. |
+| Java location auto-connect | `framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/locations/ZLinkAutoConnectReconciler.java`, `ZLinkLocationAutoConnectHost.java` | 허용 가능한 topology reconciliation이지만 책임 경계 감사 필요 | `.NET`과 같은 기준으로 initial connect retry만 허용한다. `reconnect disconnect/connect` 로그와 동작이 connected connection 복구로 오해되지 않도록 이름과 문서를 정리한다. |
+| Node async submit queue | `framework/languages/node/packages/framework/src/runtime/messaging/index.ts` | connection 복구는 아니지만 core/binding submit retry·poller와 책임 중복 가능 | framework queue가 public async 호출 표면을 위한 backpressure인지, core/binding `submit_retry`와 중복인지 분리한다. 중복이면 core/binding 옵션으로 내리고 framework는 옵션 전달과 error mapping만 남긴다. |
+| C++ async submit queue | `framework/languages/cpp/framework/src/runtime/messaging/submit_queue.cpp`, `submit_queue.hpp` | connection 복구는 아니지만 core/binding submit retry·poller와 책임 중복 가능 | Node와 같은 기준으로 감사한다. C++ framework만 별도 pending queue 정책을 갖지 않도록 core/binding 기능으로 대체 가능한지 확인한다. |
+| Java actor/session route retry | `framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/actors/ZLinkActorClientRuntime.java`, `ZLinkSessionActorsRuntime.java`, `ZLinkNativeBoundSessionRuntime.java`, `ZLinkBoundSessionRuntime.java` | connection 복구는 아니지만 ready-wait/retry 정책이 framework에 있음 | native actor/session binding 준비 대기인지, disconnected connection 복구인지 분리한다. 연결 복구 목적이면 제거하고, binding 준비 수렴 대기라면 timeout과 목적을 문서화한다. |
+| .NET Spot actor dispatch retry delay | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots/ZLinkSpotActivationDispatcher.cs`, `ZLinkEntrySpotActorDispatcher.cs` | connection 복구는 아니지만 fixed retry delay가 framework에 있음 | actor/session route readiness 수렴 대기인지 확인한다. connected connection 복구를 대신하는 retry라면 core/binding 쪽 결함으로 분리한다. |
+| Kotlin stream connector wrapper | `framework/languages/java/zlink-framework-kotlin/src/main/kotlin/systems/zlink/framework/kotlin/ZLinkConnectorExtensions.kt` | 재구현 아님 | `inner.reconnect()`와 reconnect option을 감싸는 wrapper로 유지 가능하다. Kotlin 쪽에서 별도 reconnect loop를 추가하지 않는다는 no-new-loop gate만 둔다. |
+
+이 표의 “감사 필요” 항목은 완료 판정 전에 각 언어 worker가 코드와 테스트로 결론을 내려야 한다.
+문제 없음으로 판정하려면 “initial connect retry 또는 topology handover일 뿐, established connection
+recovery를 framework가 수행하지 않는다”는 근거를 남긴다. 위반으로 확인되면 Kotlin/Java/Node 등
+한 언어에서만 우회하지 말고, core/binding 기능 누락 또는 framework 책임 초과로 분리해 고친다.
+
+### 8.2 connection 복구 책임 경계 언어별 작업 위치
+
+상세 처리 지시는 언어별 worker prompt에 둔다. 공통 계획 문서는 책임 경계와 감사 대상 요약만 유지한다.
+각 worker는 자기 언어 문서의 `connection 복구 책임 경계` 섹션을 기준으로 작업한다.
+
+| 언어 | worker 문서 |
+|------|-------------|
+| .NET | `framework/doc/plan/framework-ref-target-unification-dotnet-worker-prompt.ko.md` |
+| Java | `framework/doc/plan/framework-ref-target-unification-java-worker-prompt.ko.md` |
+| Kotlin | `framework/doc/plan/framework-ref-target-unification-kotlin-worker-prompt.ko.md` |
+| Node | `framework/doc/plan/framework-ref-target-unification-node-worker-prompt.ko.md` |
+| C++ | `framework/doc/plan/framework-ref-target-unification-cpp-worker-prompt.ko.md` |
+
+완료 판정 때는 공통 정책과 언어별 worker prompt가 둘 다 맞아야 한다. 언어별 worker prompt와 이 공통
+계획이 충돌하면 공통 정책을 우선하고, worker prompt를 고친 뒤 진행한다.
 
 ## 9. 검증 기준
 

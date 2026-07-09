@@ -359,3 +359,36 @@ rg -n "reconnect|retry|backoff|submit_queue|on_retry|disconnect.*connect|connect
   'test_cpp_framework_(channel_messaging|ActorGateway_actor_session_relay)$' -j1` 통과.
 - 검증: `for i in 1 2 3; do TICTACTOE_CPP_STARTUP_SETTLE_SECONDS=0 timeout 300s
   framework/languages/cpp/samples/TicTacToe/run_sample.sh; done` 3회 연속 통과.
+- 2026-07-09 runner 계약 재점검 중 C++ sample runner들이 Redis helper 실패를 숨길 수 있는
+  `read ... < <(zlink_redis_start_scoped ...)` 호출을 아직 쓰고 있음을 확인했다. C++ sample 공통
+  helper에 `zlink_redis_start_scoped_assign`를 추가하고, Bingo/DeliveryDispatch/GameQuest/
+  ShoppingMall/SupportChat/TicTacToe 개별 runner를 assign helper로 바꿨다.
+- C++ 통합 e2e/sample runner의 transient bind retry pattern은 문서 허용 범위와 맞춰
+  `EADDRINUSE`와 `errno=98`만 추가했다. assertion 실패, runtime semantic failure, native abort,
+  cleanup failure는 retry 대상이 아니다.
+- C++ sample runner의 cleanup에서 child process가 SIGTERM으로 종료되지 않아 `kill -9`가 필요하면
+  `forced cleanup process <pid>`를 출력하고 성공 실행도 실패로 바꾸도록 정리했다. cleanup hang을
+  sample self-check 성공으로 가리지 않기 위한 변경이다.
+- C++ 통합 e2e runner는 config 디렉터리로 `cd`하기 전에 상대 `ZLINK_CPP_E2E_BUILD_DIR`를 호출
+  위치 기준 절대 경로로 정규화한다. 이렇게 해야 aggregate runner에서 개별 config runner로 위임해도
+  이미 빌드한 산출물 경로가 깨지지 않는다.
+- 검증: `cmake --build framework/languages/cpp/build --target zlink_framework
+  zlink_cpp_e2e_spot_service_client zlink_cpp_e2e_spot_service_gateway
+  zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester
+  zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session -j2` 통과.
+- 검증: `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build timeout 900s
+  framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-B6` 통과
+  (`framework/languages/cpp/e2e/SpotService/logs/20260709-152900-963358`).
+- 검증: `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build ZLINK_CPP_E2E_SKIP_BUILD=1
+  timeout 1200s framework/languages/cpp/e2e/run_e2e_all.sh SpotService:SM-B6` 통과. forward,
+  reverse, `shuffle:20260709` start order가 모두 `scenario SM-B6 passed`와
+  `scenario SM-B6 evidence passed`를 남겼다. 로그:
+  `framework/languages/cpp/e2e/SpotService/logs/20260709-153247-974417`,
+  `framework/languages/cpp/e2e/SpotService/logs/20260709-153259-974923`,
+  `framework/languages/cpp/e2e/SpotService/logs/20260709-153310-975954`.
+- 검증: `timeout 900s framework/languages/cpp/samples/run_samples.sh TicTacToe` 통과. 출력은
+  `PASS TicTacToe.Cpp`, `tictactoe full client/server self-check completed`,
+  `sample all result=passed`를 포함한다.
+- 검증: 위 e2e/sample 실행 뒤 `pgrep -af 'zlink_cpp_e2e_spot_service|zlink_cpp_|sample_cpp_framework|redis-server|docker.*redis'`
+  결과에는 기존 host Redis(`/usr/bin/redis-server 127.0.0.1:6379`)만 남았고,
+  `docker ps -a --format ... | rg 'zlink-redis-cpp-(e2e|sample)'`는 no-hit였다.

@@ -156,6 +156,59 @@ framework/doc/framework/java
 사용자-facing 문서에는 `ActorRef` / `SpotRef` 기반 전송만 남긴다. `JoinSpot(spotRid, ...)`처럼
 lifecycle id 입력이 남아야 하는 경우에는 일반 메시징 API가 아니라는 설명을 붙인다.
 
+## 메시지 핸들러 등록 정책 동시 적용
+
+Ref 대상 통일 작업 중 Java sample이나 E2E의 handler 등록 표면을 고치면
+`framework/doc/framework/common/spec/framework-api.ko.md`의 `Handler 등록 정책`도 같은 범위에서
+적용한다. handler 타입과 metadata로 알 수 있는 packet 이름, actor 타입, request/send/subscription
+종류는 등록 호출부에 반복 인자로 넘기지 않는다.
+
+sample 정리는 아래 기준으로 함께 진행한다.
+
+- `TicTacToe` Java sample은 manual handler registration을 보여 주는 예시로 남긴다.
+- `Bingo`, `DeliveryDispatch`, `ShoppingMall`, `SupportChat`, `GameQuest` Java sample은 manual
+  registration을 제거하고 automatic registration만 사용하도록 정리한다.
+- 자동 등록과 수동 등록이 같은 dispatch key를 만들면 startup validation 오류로 처리한다. 조용히
+  덮어쓰거나 특정 sample만 통과시키는 helper로 처리하지 않는다.
+- README와 guide는 TicTacToe를 수동 등록 예시로, 나머지 sample을 자동 등록 예시로 설명한다.
+
+## connection 복구 책임 경계
+
+Java framework는 이미 core/binding에 넘긴 connection의 복구를 직접 구현하지 않는다. 연결된
+connection의 끊김 감지, reconnect interval, reconnect backoff, monitor 기반 reconnect는 core 또는
+binding socket option 책임이다. Java framework가 할 수 있는 일은 location/topology desired set을
+계산하고, 아직 성공적으로 core에 맡기지 못한 target에 initial `connect`를 다음 tick에서 다시
+요청하는 것까지다.
+
+감사 대상:
+
+```text
+framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/locations/ZLinkAutoConnectReconciler.java
+framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/locations/ZLinkLocationAutoConnectHost.java
+framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/locations/ZLinkAutoConnectLoop.java
+framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/actors/ZLinkActorClientRuntime.java
+framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/actors/ZLinkSessionActorsRuntime.java
+framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/actors/ZLinkNativeBoundSessionRuntime.java
+framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/runtime/actors/ZLinkBoundSessionRuntime.java
+```
+
+처리 기준:
+
+1. `ZLinkAutoConnectReconciler`의 `reconnect disconnect/connect` 로그와 코드는 established connection
+   recovery로 오해되지 않게 정리한다. 실제 의미가 endpoint/owner 변경이면 `topology handover`로
+   이름과 주석을 바꾼다.
+2. connect 실패 시 target을 active/connected로 남기면 안 된다. initial connect 실패는 다음 topology
+   tick에서 다시 시도해야 하며, 성공한 connection처럼 기록하지 않는다.
+3. disconnected event를 trigger로 같은 endpoint reconnect loop를 돌리는 코드가 있으면 제거한다.
+4. actor/session runtime의 `retry`, `route-ready`, `native-bound-session-retry` 계열 코드는 연결
+   복구인지 binding 준비 수렴 대기인지 분류한다. binding 준비 수렴 대기라면 timeout과 목적을 주석과
+   테스트명에 드러낸다. 연결 복구라면 제거하고 core/binding 버그로 분리한다.
+5. Java E2E나 sample이 framework reconnect를 전제로 대기하거나 sleep으로 복구를 숨기면 수정 대상에
+   포함한다.
+
+완료 보고에는 `reconnect` 이름이 topology handover로 정리되었는지, actor/session retry가 연결 복구가
+아니라는 근거 또는 분리한 버그, `.NET` 정책과 Java 정책이 달라지지 않았다는 비교를 포함한다.
+
 ## 완료 게이트
 
 ```bash
@@ -174,6 +227,10 @@ rg -n "ZLinkActorRef|ZLinkActorRefSnapshot|ZLinkSpotAddress|resolveSpotAddress|r
 rg -n "ZLinkActorRef|ZLinkActorRefSnapshot|SpotAddress|spot address|SpotRemoteAddress|spot remote address|sendToActor\\([^)]*actorId|requestToActor\\([^)]*actorId|sendToSpot\\([^)]*spotRid|requestToSpot\\([^)]*spotRid" \
   ../../doc/contract-inventory ../../doc/framework/common ../../doc/framework/java \
   -S -g '!../../doc/plan/**' -g '!../../doc/**/draft/**'
+
+rg -n "reconnect|retry|backoff|disconnect.*connect|connect.*disconnect|route-ready|native-bound-session-retry" \
+  zlink-framework-core/src/main/java/systems/zlink/framework/runtime e2e samples/java \
+  -S -g '!**/build/**'
 ```
 
 Java E2E/sample gap 제거 계획의 완료 게이트도 함께 통과해야 한다.

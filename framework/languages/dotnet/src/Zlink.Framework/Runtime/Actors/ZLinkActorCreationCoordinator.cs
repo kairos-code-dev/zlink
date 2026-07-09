@@ -18,6 +18,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         string actorType,
         ZLinkMessage createRequest,
         bool failIfExists,
+        ZLinkActorClaimMode claimMode,
         CancellationToken cancellationToken)
     {
         var actorNode = runtime.Registration.SpotNodes.Values
@@ -37,6 +38,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                     actorType,
                     factoryType,
                     createRequest,
+                    claimMode,
                     CancellationToken.None).AsTask(),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -63,6 +65,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         string actorType,
         Type factoryType,
         ZLinkMessage createRequest,
+        ZLinkActorClaimMode claimMode,
         CancellationToken cancellationToken)
     {
         if (Lifecycle is not { } lifecycle)
@@ -78,7 +81,8 @@ internal sealed class ZLinkActorCreationCoordinator(
                 getActorSpotNode()?.RoutingId ?? default,
                 deactivate: _ => runtime.DeactivateActorOnOwnershipLossAsync(actorId),
                 activate: ct => ActivateActorCoreAsync(state, actorId, factoryType, createRequest, ct),
-                cancellationToken)
+                cancellationToken,
+                claimMode)
             .ConfigureAwait(false);
         if (outcome.Activated is not { } actor)
         {

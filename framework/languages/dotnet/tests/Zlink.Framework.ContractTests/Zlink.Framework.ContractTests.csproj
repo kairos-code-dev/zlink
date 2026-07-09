@@ -10,6 +10,7 @@
         <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
         <PackageReference Include="Microsoft.Extensions.Hosting"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="Systems.Zlink"/>
         <PackageReference Include="coverlet.collector">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
@@ -28,7 +29,6 @@
     <ItemGroup>
         <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj"/>
         <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
-        <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

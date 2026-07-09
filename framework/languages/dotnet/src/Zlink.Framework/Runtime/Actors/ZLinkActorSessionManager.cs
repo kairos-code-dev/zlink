@@ -48,6 +48,24 @@ internal sealed partial class ZLinkActorSessionManager(
                 actorType,
                 createRequest,
                 false,
+                ZLinkActorClaimMode.NewOwner,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<CreateActorResult> CreateAndBindActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        ZLinkActorClaimMode claimMode,
+        CancellationToken cancellationToken = default)
+    {
+        return await CreateAndBindActorAsync(
+                actorId,
+                actorType,
+                createRequest,
+                false,
+                claimMode,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -76,6 +94,7 @@ internal sealed partial class ZLinkActorSessionManager(
                 actorType,
                 createRequest,
                 true,
+                ZLinkActorClaimMode.NewOwner,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -141,6 +160,7 @@ internal sealed partial class ZLinkActorSessionManager(
         string actorType,
         ZLinkMessage createRequest,
         bool failIfExists,
+        ZLinkActorClaimMode claimMode,
         CancellationToken cancellationToken)
     {
         var state = _actorSessions.GetOrCreate(actorId);
@@ -150,6 +170,7 @@ internal sealed partial class ZLinkActorSessionManager(
                 actorType,
                 createRequest,
                 failIfExists,
+                claimMode,
                 cancellationToken)
             .ConfigureAwait(false);
     }

@@ -38,7 +38,7 @@ internal static class ZlinkStreamMetadataCodec
         for (var i = 0; i < count; i++)
         {
             var key = DecodeString(metadata, ref offset, true, "key");
-            var value = DecodeString(metadata, ref offset, false, "value");
+            var value = DecodeString(metadata, ref offset, false, "value", allowEmpty: true);
 
             if (!values.TryAdd(key, value))
                 throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Duplicate metadata key.");
@@ -79,12 +79,13 @@ internal static class ZlinkStreamMetadataCodec
         ReadOnlySpan<byte> metadata,
         ref int offset,
         bool byteLength,
-        string name)
+        string name,
+        bool allowEmpty = false)
     {
         var length = byteLength
             ? ReadByteLength(metadata, ref offset, name)
             : ReadUInt16Length(metadata, ref offset, name);
-        if (length == 0 || metadata.Length - offset < length)
+        if ((!allowEmpty && length == 0) || metadata.Length - offset < length)
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, $"Metadata {name} is invalid.");
 
         var value = Encoding.UTF8.GetString(metadata.Slice(offset, length));

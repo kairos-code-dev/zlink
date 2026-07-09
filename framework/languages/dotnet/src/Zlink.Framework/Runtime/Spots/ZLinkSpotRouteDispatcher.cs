@@ -25,18 +25,14 @@ internal sealed class ZLinkSpotRouteDispatcher(
             if (received.Parts.Count == 0) return;
 
             var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            var dispatchSpotRid = received.SpotRid?.ToString() ?? spotRid;
+            var kind = header.Kind == ZLinkMessageKind.Request
+                ? ZLinkDispatchMessageKind.Request
+                : ZLinkDispatchMessageKind.Send;
+            var kindName = header.Kind == ZLinkMessageKind.Request ? "Request" : "Send";
+            var scope = CreateScope(header, kind, kindName, dispatchSpotRid);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowOutcome.Received,
-                    ZLinkDispatchErrorSurface.SpotRoute,
-                    header.Kind == ZLinkMessageKind.Request
-                        ? ZLinkDispatchMessageKind.Request
-                        : ZLinkDispatchMessageKind.Send,
-                    header.MessageName,
-                    channelName,
-                    SpotRid: received.SpotRid?.ToString() ?? spotRid,
-                    CorrelationId: header.CorrelationId));
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
             if (internalPackets is not null
                 && await internalPackets(received, header, cancellationToken).ConfigureAwait(false))
@@ -44,96 +40,52 @@ internal sealed class ZLinkSpotRouteDispatcher(
 
             if (!packets.TryResolve(header, out var descriptor) || descriptor is null)
             {
-                var dispatchSpotRid = received.SpotRid?.ToString() ?? spotRid;
                 if (header.Kind == ZLinkMessageKind.Request)
                 {
-                    ZLinkMessageFlowLogger.HandlerMissing(
+                    var error = new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.HandlerNotFound,
+                        $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'.");
+                    scope.HandlerMissing(
                         _logger,
+                        dispatchErrors,
                         LogLevel.Error,
-                        "Spot",
-                        "Request",
-                        header.MessageName,
-                        "reply-error",
-                        "no-handler",
-                        channelName,
-                        spotRid: dispatchSpotRid);
-                    ReplyError(
-                        received,
-                        header,
-                        new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.HandlerNotFound,
-                            $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'."));
-                    dispatchErrors.Report(new ZLinkDispatchFailure(
-                        ZLinkDispatchErrorSurface.SpotRoute,
-                        ZLinkDispatchMessageKind.Request,
-                        ZLinkDispatchErrorReason.HandlerMissing,
                         ZLinkDispatchErrorAction.ReplyError,
-                        header.MessageName,
-                        channelName,
-                        SpotRid: dispatchSpotRid,
-                        CorrelationId: header.CorrelationId,
-                        Exception: new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.HandlerNotFound,
-                            $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'.")));
+                        error);
+                    ReplyError(received, header, error);
                 }
                 else
                 {
-                    ZLinkMessageFlowLogger.Dropped(
-                        _logger,
-                        LogLevel.Warning,
-                        "Spot",
-                        "Send",
-                        header.MessageName,
-                        "no-handler",
-                        channelName,
-                        spotRid: dispatchSpotRid);
-                    dispatchErrors.Report(new ZLinkDispatchFailure(
-                        ZLinkDispatchErrorSurface.SpotRoute,
-                        ZLinkDispatchMessageKind.Send,
-                        ZLinkDispatchErrorReason.HandlerMissing,
-                        ZLinkDispatchErrorAction.Drop,
-                        header.MessageName,
-                        channelName,
-                        SpotRid: dispatchSpotRid,
-                        CorrelationId: header.CorrelationId));
+                    scope.Dropped(_logger, dispatchErrors, LogLevel.Warning);
                 }
 
                 return;
             }
 
             object? message;
-            try
+            if (descriptor.IsRequest)
             {
-                message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, descriptor.MessageType, codecs);
-            }
-            catch (Exception ex) when (descriptor.IsRequest)
-            {
-                ZLinkMessageFlowLogger.PayloadDecodeFailed(
-                    _logger,
-                    "Spot",
-                    "Request",
-                    header.MessageName,
-                    "reply-error",
-                    "payload-decode-failed",
-                    ex,
-                    channelName);
-                ReplyError(
-                    received,
-                    header,
-                    new ZLinkFrameworkException(
+                ZLinkFrameworkException? decodeError = null;
+                if (!scope.TryDecode(
+                        received.Parts,
+                        descriptor.MessageType,
+                        header.ContentType,
+                        codecs,
+                        _logger,
+                        dispatchErrors,
+                        ZLinkDispatchErrorAction.ReplyError,
+                        out message,
+                        ex => decodeError = new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.PayloadDecodeFailed,
                         $"PayloadDecodeFailed: failed to decode SPOT route request payload for '{channelName}:{header.MessageName}'.",
-                        innerException: ex));
-                dispatchErrors.Report(new ZLinkDispatchFailure(
-                    ZLinkDispatchErrorSurface.SpotRoute,
-                    ZLinkDispatchMessageKind.Request,
-                    ZLinkDispatchErrorReason.PayloadDecodeFailed,
-                    ZLinkDispatchErrorAction.ReplyError,
-                    header.MessageName,
-                    channelName,
-                    CorrelationId: header.CorrelationId,
-                    Exception: ex));
-                return;
+                        innerException: ex)))
+                {
+                    ReplyError(received, header, decodeError!);
+                    return;
+                }
+            }
+            else
+            {
+                message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, descriptor.MessageType, codecs);
             }
 
             if (!descriptor.IsRequest)
@@ -144,36 +96,16 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         .InvokePacketAsync(descriptor, message, cancellationToken)
                         .ConfigureAwait(false);
 
-                    if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                        dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                            ZLinkMessageFlowOutcome.Dispatched,
-                            ZLinkDispatchErrorSurface.SpotRoute,
-                            ZLinkDispatchMessageKind.Send,
-                            header.MessageName,
-                            channelName,
-                            SpotRid: spotRid,
-                            CorrelationId: header.CorrelationId));
+                    scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);
                 }
                 catch (Exception ex)
                 {
-                    ZLinkMessageFlowLogger.Rejected(
+                    scope.HandlerException(
                         _logger,
+                        dispatchErrors,
                         LogLevel.Error,
-                        "Spot",
-                        "Send",
-                        header.MessageName,
-                        "handler-exception",
-                        ex,
-                        channelName);
-                    dispatchErrors.Report(new ZLinkDispatchFailure(
-                        ZLinkDispatchErrorSurface.SpotRoute,
-                        ZLinkDispatchMessageKind.Send,
-                        ZLinkDispatchErrorReason.HandlerException,
                         ZLinkDispatchErrorAction.Drop,
-                        header.MessageName,
-                        channelName,
-                        CorrelationId: header.CorrelationId,
-                        Exception: ex));
+                        ex);
                 }
 
                 return;
@@ -193,15 +125,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     descriptor.ReplyType,
                     codecs);
 
-                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-                    dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowOutcome.Replied,
-                        ZLinkDispatchErrorSurface.SpotRoute,
-                        ZLinkDispatchMessageKind.Request,
-                        header.MessageName,
-                        channelName,
-                        SpotRid: spotRid,
-                        CorrelationId: header.CorrelationId));
+                scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);
             }
             catch (Exception ex)
             {
@@ -210,29 +134,34 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     descriptor.MessageName,
                     header.CorrelationId,
                     ex);
-                dispatchErrors.Report(new ZLinkDispatchFailure(
-                    ZLinkDispatchErrorSurface.SpotRoute,
-                    ZLinkDispatchMessageKind.Request,
-                    ZLinkDispatchErrorReason.HandlerException,
+                scope.HandlerException(
+                    _logger,
+                    dispatchErrors,
+                    null,
                     ZLinkDispatchErrorAction.ReplyError,
-                    header.MessageName,
-                    channelName,
-                    CorrelationId: header.CorrelationId,
-                    Exception: ex));
+                    ex);
             }
 
-            try
-            {
-                received.Reply()
-                    .Message(replyParts[0])
-                    .Message(replyParts[1])
-                    .Submit();
-            }
-            finally
-            {
-                ZLinkMessageParts.DisposeAll(replyParts);
-            }
+            ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
         }
+    }
+
+    private ZLinkDispatchFlowScope CreateScope(
+        ZLinkEnvelopeHeader header,
+        ZLinkDispatchMessageKind kind,
+        string kindName,
+        string dispatchSpotRid)
+    {
+        return new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.SpotRoute,
+            "Spot",
+            kind,
+            kindName,
+            header.MessageName,
+            channelName,
+            header.ContentType,
+            header.CorrelationId,
+            spotRid: dispatchSpotRid);
     }
 
     private void ReplyError(
@@ -245,16 +174,6 @@ internal sealed class ZLinkSpotRouteDispatcher(
             header.MessageName,
             header.CorrelationId,
             exception);
-        try
-        {
-            received.Reply()
-                .Message(replyParts[0])
-                .Message(replyParts[1])
-                .Submit();
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-        }
+        ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
     }
 }

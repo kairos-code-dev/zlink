@@ -24,16 +24,13 @@ internal sealed class ZLinkRoutePacketDispatcher(
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.Received,
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
+        CreateScope(
+                header,
                 header.Kind == ZLinkMessageKind.Request
                     ? ZLinkDispatchMessageKind.Request
                     : ZLinkDispatchMessageKind.Send,
-                header.MessageName,
-                routerChannelId,
-                CorrelationId: header.CorrelationId));
+                header.Kind == ZLinkMessageKind.Request ? "Request" : "Send")
+            .Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
         switch (header.Kind)
         {
@@ -64,26 +61,19 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 out var descriptor)
             || descriptor is null)
         {
-            ZLinkMessageFlowLogger.Dropped(
-                _logger,
-                LogLevel.Warning,
-                "RouteMeshChannel",
-                "Send",
-                header.MessageName,
-                "no-handler",
-                routerChannelId);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Send,
-                ZLinkDispatchErrorReason.HandlerMissing,
-                ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                routerChannelId,
-                CorrelationId: header.CorrelationId));
+            CreateScope(header, ZLinkDispatchMessageKind.Send, "Send")
+                .Dropped(_logger, dispatchErrors, LogLevel.Warning);
             return;
         }
 
         var sourceRid = RequireSourceRoutingId(received, "Route send");
+        var source = sourceRid.ToString();
+        var scope = CreateScope(
+            header,
+            ZLinkDispatchMessageKind.Send,
+            "Send",
+            sourceRid: source,
+            logSpotRid: source);
 
         try
         {
@@ -96,38 +86,16 @@ internal sealed class ZLinkRoutePacketDispatcher(
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowOutcome.Dispatched,
-                    ZLinkDispatchErrorSurface.RouteMeshChannel,
-                    ZLinkDispatchMessageKind.Send,
-                    header.MessageName,
-                    routerChannelId,
-                    CorrelationId: header.CorrelationId,
-                    SourceRid: sourceRid.ToString()));
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);
         }
         catch (Exception ex)
         {
-            ZLinkMessageFlowLogger.Rejected(
+            scope.HandlerException(
                 _logger,
+                dispatchErrors,
                 LogLevel.Error,
-                "RouteMeshChannel",
-                "Send",
-                header.MessageName,
-                "handler-exception",
-                ex,
-                routerChannelId,
-                spotRid: sourceRid.ToString());
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Send,
-                ZLinkDispatchErrorReason.HandlerException,
                 ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                routerChannelId,
-                SourceRid: sourceRid.ToString(),
-                CorrelationId: header.CorrelationId,
-                Exception: ex));
+                ex);
         }
     }
 
@@ -141,13 +109,18 @@ internal sealed class ZLinkRoutePacketDispatcher(
             await DispatchInternalRequestAsync(
                     received,
                     header,
-                    cancellationToken,
-                    (_, requestHeader, token) => internalPackets.DispatchRequestAsync(received, requestHeader, token))
+                    cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
 
         var sourceRid = RequireSourceRoutingId(received, "Route request");
+        var source = sourceRid.ToString();
+        var scope = CreateScope(
+            header,
+            ZLinkDispatchMessageKind.Request,
+            "Request",
+            sourceRid: source);
 
         if (!handlers.TryGet(
                 routerChannelId,
@@ -156,34 +129,16 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 out var descriptor)
             || descriptor is null)
         {
-            ZLinkMessageFlowLogger.HandlerMissing(
+            var error = new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RouteHandlerNotFound,
+                $"No routed request handler is registered for '{routerChannelId}:{header.MessageName}'.");
+            scope.HandlerMissing(
                 _logger,
+                dispatchErrors,
                 LogLevel.Error,
-                "RouteMeshChannel",
-                "Request",
-                header.MessageName,
-                "reply-error",
-                "no-handler",
-                routerChannelId);
-            ReplyError(
-                sourceRid,
-                received.RequestSeq,
-                header,
-                new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteHandlerNotFound,
-                    $"No routed request handler is registered for '{routerChannelId}:{header.MessageName}'."));
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.HandlerMissing,
                 ZLinkDispatchErrorAction.ReplyError,
-                header.MessageName,
-                routerChannelId,
-                SourceRid: sourceRid.ToString(),
-                CorrelationId: header.CorrelationId,
-                Exception: new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteHandlerNotFound,
-                    $"No routed request handler is registered for '{routerChannelId}:{header.MessageName}'.")));
+                error);
+            ReplyError(sourceRid, received.RequestSeq, header, error);
             return;
         }
 
@@ -199,68 +154,49 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 .ConfigureAwait(false);
             Reply(sourceRid, received.RequestSeq, header, reply.Message, reply.MessageType);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowOutcome.Replied,
-                    ZLinkDispatchErrorSurface.RouteMeshChannel,
-                    ZLinkDispatchMessageKind.Request,
-                    header.MessageName,
-                    routerChannelId,
-                    CorrelationId: header.CorrelationId,
-                    SourceRid: sourceRid.ToString()));
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);
         }
         catch (Exception ex)
         {
             ReplyError(sourceRid, received.RequestSeq, header, ex);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.HandlerException,
+            scope.HandlerException(
+                _logger,
+                dispatchErrors,
+                null,
                 ZLinkDispatchErrorAction.ReplyError,
-                header.MessageName,
-                routerChannelId,
-                SourceRid: sourceRid.ToString(),
-                CorrelationId: header.CorrelationId,
-                Exception: ex));
+                ex);
         }
     }
 
     private async ValueTask DispatchInternalRequestAsync(
         Received received,
         ZLinkEnvelopeHeader header,
-        CancellationToken cancellationToken,
-        Func<RoutingId, ZLinkEnvelopeHeader, CancellationToken, ValueTask<Message>> dispatch)
+        CancellationToken cancellationToken)
     {
         var sourceRid = RequireSourceRoutingId(received, "Internal routed request");
+        var scope = CreateScope(
+            header,
+            ZLinkDispatchMessageKind.Request,
+            "Request",
+            sourceRid: sourceRid.ToString());
 
         try
         {
-            using var reply = await dispatch(sourceRid, header, cancellationToken).ConfigureAwait(false);
+            using var reply = await internalPackets.DispatchRequestAsync(received, header, cancellationToken)
+                .ConfigureAwait(false);
             ReplyRaw(sourceRid, received.RequestSeq, header, reply);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowOutcome.Replied,
-                    ZLinkDispatchErrorSurface.RouteMeshChannel,
-                    ZLinkDispatchMessageKind.Request,
-                    header.MessageName,
-                    routerChannelId,
-                    CorrelationId: header.CorrelationId,
-                    SourceRid: sourceRid.ToString()));
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);
         }
         catch (Exception ex)
         {
             ReplyError(sourceRid, received.RequestSeq, header, ex);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.HandlerException,
+            scope.HandlerException(
+                _logger,
+                dispatchErrors,
+                null,
                 ZLinkDispatchErrorAction.ReplyError,
-                header.MessageName,
-                routerChannelId,
-                SourceRid: sourceRid.ToString(),
-                CorrelationId: header.CorrelationId,
-                Exception: ex));
+                ex);
         }
     }
 
@@ -282,6 +218,28 @@ internal sealed class ZLinkRoutePacketDispatcher(
             reply,
             replyType,
             codecs);
+    }
+
+    private ZLinkDispatchFlowScope CreateScope(
+        ZLinkEnvelopeHeader header,
+        ZLinkDispatchMessageKind messageKind,
+        string kindName,
+        string? sourceRid = null,
+        string? spotRid = null,
+        string? logSpotRid = null)
+    {
+        return new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.RouteMeshChannel,
+            "RouteMeshChannel",
+            messageKind,
+            kindName,
+            header.MessageName,
+            routerChannelId,
+            header.ContentType,
+            header.CorrelationId,
+            sourceRid: sourceRid,
+            spotRid: spotRid,
+            logSpotRid: logSpotRid);
     }
 
     private static RoutingId RequireSourceRoutingId(

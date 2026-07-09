@@ -10,6 +10,14 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class RouteCodecTests
 {
     [Fact]
+    public void SocketConfig_Uses_The_Framework_Default_PeerWeight()
+    {
+        var config = new ZLinkSocketConfig();
+
+        Assert.Equal(ZLinkSocketConfig.DefaultPeerWeight, config.Weight);
+    }
+
+    [Fact]
     public void ChannelBundleFactory_Applies_MaxMessageSize_To_BackendSocket()
     {
         var socket = new RecordingSocketOptions();
@@ -109,7 +117,7 @@ public sealed class RouteCodecTests
     {
         var runtime = CreateRouteChannelRuntime();
         var bridge = new RecordingSpotRouteBridge(sendAccepted: true, requestAccepted: true);
-        runtime.AttachSpotRouteBridge(bridge, null!);
+        runtime.AttachSpotRouteBridge(bridge);
         var parts = new[] { Message.From("payload") };
 
         try
@@ -133,7 +141,7 @@ public sealed class RouteCodecTests
     {
         var runtime = CreateRouteChannelRuntime();
         var bridge = new RecordingSpotRouteBridge(sendAccepted: true, requestAccepted: true);
-        runtime.AttachSpotRouteBridge(bridge, null!);
+        runtime.AttachSpotRouteBridge(bridge);
         var parts = new[] { Message.From("payload") };
 
         try
@@ -411,6 +419,10 @@ public sealed class RouteCodecTests
             throw new NotSupportedException();
         }
 
+        public void SetHandover(bool enabled)
+        {
+        }
+
         public Received? Recv(RecvFlags flags = RecvFlags.None)
         {
             throw new NotSupportedException();
@@ -568,6 +580,11 @@ public sealed class RouteCodecTests
         public void SetMandatory(bool mandatory)
         {
             throw new NotSupportedException();
+        }
+
+        public void SetHandover(bool enabled)
+        {
+            Events.Add("handover");
         }
 
         public Received? Recv(RecvFlags flags = RecvFlags.None)

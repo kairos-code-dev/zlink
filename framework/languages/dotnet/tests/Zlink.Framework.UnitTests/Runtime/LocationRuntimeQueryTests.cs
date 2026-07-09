@@ -98,10 +98,10 @@ public sealed class LocationRuntimeQueryTests
             [InMemoryLocationStoreTests.Actor(LiveOwner, 1)]);
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            options, store, store, lagging, store, tracker, time, observed: observed);
+            store, store, lagging, store, tracker, observed: observed);
         var runtime = new ZLinkLocationRuntime(options, store, store, store, lagging, store, store, time);
         var query = new ZLinkLocationRuntimeQueryService(
-            options, store, store, lagging, store, tracker, runtime, resolvers, observed);
+            options, store, store, lagging, store, tracker, runtime, observed);
 
         var first = await query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
         Assert.Equal(2, Assert.Single(first.Items).Generation);
@@ -212,11 +212,12 @@ public sealed class LocationRuntimeQueryTests
             // bypass assertion contrasts cache hits with direct reads.
         };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            options, store, store, store, store, tracker, time);
+            store, store, store, store, tracker, observed);
         var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
         var query = new ZLinkLocationRuntimeQueryService(
-            options, store, store, store, store, tracker, runtime, resolvers);
+            options, store, store, store, store, tracker, runtime, observed);
         return new QueryFixture(store, resolvers, query, time);
     }
 

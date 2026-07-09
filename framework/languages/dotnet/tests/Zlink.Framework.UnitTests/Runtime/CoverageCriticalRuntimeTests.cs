@@ -19,7 +19,7 @@ public sealed class CoverageCriticalRuntimeTests
         var compressed = LZ4Pickler.Pickle(new byte[64 * 1024 + 1]);
 
         Assert.Throws<InvalidOperationException>(() =>
-            ZLinkStreamProtocolDefaults.Lz4Decompress(compressed));
+            ZLinkLz4StreamCompressionCodec.DecompressPayload(compressed, 64 * 1024));
     }
 
     [Fact]

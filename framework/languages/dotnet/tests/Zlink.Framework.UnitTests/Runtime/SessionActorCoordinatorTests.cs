@@ -32,8 +32,8 @@ public sealed class SessionActorCoordinatorTests
 
         Assert.NotSame(first, second);
         Assert.Equal(secondRef, second.Ref);
-        Assert.Single(context.BoundActors);
-        Assert.DoesNotContain(first, context.BoundActors);
+        Assert.Single(context.Actors.Bound);
+        Assert.DoesNotContain(first, context.Actors.Bound);
         Assert.False(runtime.TryGetSessionActorContext("actor-1", firstToken, out _));
         Assert.True(runtime.TryGetActorBoundSession("actor-1", out var secondSession));
         Assert.NotEqual(firstToken, secondSession.BindingToken);

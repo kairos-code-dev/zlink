@@ -3,59 +3,52 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Zlink.Framework.Runtime.Channels;
 
-internal sealed class ZLinkChannelPacketDispatcher(
-    ZLinkHandlerRegistry handlerRegistry,
-    ZLinkHandlerDispatcher dispatcher,
-    ZLinkFrameworkRegistration registration,
-    ZLinkFrameworkRuntime runtime,
-    ILogger<ZLinkChannelPacketDispatcher>? logger = null)
+internal sealed class ZLinkChannelPacketDispatcher
 {
     private static readonly IReadOnlySet<string> EmptyGroups = new HashSet<string>(StringComparer.Ordinal);
+    private readonly ZLinkChannelCommandDispatchPipeline _commandPipeline;
+    private readonly ZLinkDispatchErrorReporter _dispatchErrors;
+    private readonly ZLinkChannelPublishDispatchPipeline _publishPipeline;
+    private readonly ZLinkChannelRequestDispatchPipeline _requestPipeline;
+    private readonly ZLinkFrameworkRegistration _registration;
 
-    private readonly ZLinkChannelCommandDispatchPipeline _commandPipeline = new(
-        handlerRegistry,
-        dispatcher,
-        channelName => ResolveMappedGroups(registration, channelName),
-        registration.DispatchOptions.Unhandled.SendLogLevel,
-        new ZLinkDispatchErrorReporter(
+    public ZLinkChannelPacketDispatcher(
+        ZLinkHandlerRegistry handlerRegistry,
+        ZLinkHandlerDispatcher dispatcher,
+        ZLinkFrameworkRegistration registration,
+        ZLinkFrameworkRuntime runtime,
+        ILogger<ZLinkChannelPacketDispatcher>? logger = null)
+    {
+        _registration = registration;
+        var resolvedLogger = logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
+        _dispatchErrors = new ZLinkDispatchErrorReporter(
             registration.DispatchOptions,
             ResolveServices(runtime),
-            logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance),
-        registration.Codecs,
-        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
-
-    private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
-        registration.DispatchOptions,
-        ResolveServices(runtime),
-        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
-
-    private readonly ZLinkMessageFlowTracer _flow = new(
-        registration.DispatchOptions,
-        ResolveServices(runtime),
-        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
-
-    private readonly ZLinkChannelPublishDispatchPipeline _publishPipeline = new(
-        handlerRegistry,
-        dispatcher,
-        channelName => ResolveMappedGroups(registration, channelName),
-        registration.DispatchOptions.Unhandled.PublishLogLevel,
-        new ZLinkDispatchErrorReporter(
-            registration.DispatchOptions,
-            ResolveServices(runtime),
-            logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance),
-        registration.Codecs,
-        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
-
-    private readonly ZLinkChannelRequestDispatchPipeline _requestPipeline = new(
-        handlerRegistry,
-        dispatcher,
-        channelName => ResolveMappedGroups(registration, channelName),
-        registration.Codecs,
-        new ZLinkDispatchErrorReporter(
-            registration.DispatchOptions,
-            ResolveServices(runtime),
-            logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance),
-        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
+            resolvedLogger);
+        _commandPipeline = new ZLinkChannelCommandDispatchPipeline(
+            handlerRegistry,
+            dispatcher,
+            channelName => ResolveMappedGroups(registration, channelName),
+            registration.DispatchOptions.Unhandled.SendLogLevel,
+            _dispatchErrors,
+            registration.Codecs,
+            resolvedLogger);
+        _publishPipeline = new ZLinkChannelPublishDispatchPipeline(
+            handlerRegistry,
+            dispatcher,
+            channelName => ResolveMappedGroups(registration, channelName),
+            registration.DispatchOptions.Unhandled.PublishLogLevel,
+            _dispatchErrors,
+            registration.Codecs,
+            resolvedLogger);
+        _requestPipeline = new ZLinkChannelRequestDispatchPipeline(
+            handlerRegistry,
+            dispatcher,
+            channelName => ResolveMappedGroups(registration, channelName),
+            registration.Codecs,
+            _dispatchErrors,
+            resolvedLogger);
+    }
 
     public async Task DispatchServerMessageAsync(
         string channelName,
@@ -66,8 +59,8 @@ internal sealed class ZLinkChannelPacketDispatcher(
         if (received.Parts.Count == 0) return;
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
-        if (_flow.Enabled(ZLinkMessageFlowOutcome.Received))
-            _flow.Trace(new ZLinkMessageFlowEvent(
+        if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
+            _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.Channel,
                 header.Kind == ZLinkMessageKind.Request
@@ -141,7 +134,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
                     replyHeader,
                     reply,
                     replyType,
-                    registration.Codecs),
+                    _registration.Codecs),
                 errorHeader => ZLinkChannelReplyWriter.ReplyRequest(
                     router,
                     received,

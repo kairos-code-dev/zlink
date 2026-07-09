@@ -41,7 +41,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             options.MaxInboundObserverNotifications,
             options.MaxInboundObserverPayloadPreviewBytes);
 
-        _headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        _headerCodec = new ZlinkStreamHeaderCodec();
         _compressionCodec = CreateCompressionCodec(options);
 
         _nameResolver = options.NameResolver;
@@ -161,16 +161,22 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return _receivedMessages.WaitForAsync(name, predicate, timeout, cancellationToken);
     }
 
-    async ValueTask IZlinkStreamConnectorInternal.SendEncodedAsync(
+    ZlinkStreamOutboundFrame IZlinkStreamConnectorInternal.BuildSendFrame(
         ZlinkStreamMessageKind kind,
         string name,
         ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
-        bool compress,
-        CancellationToken cancellationToken)
+        bool compress)
     {
         var frame = _frameSender.BuildOutboundFrame(kind, name, payload, metadata, compress, null);
         _frameSender.ValidateSendReady(frame.HeaderBytes, frame.PayloadBytes);
+        return frame;
+    }
+
+    async ValueTask IZlinkStreamConnectorInternal.SendFrameAsync(
+        ZlinkStreamOutboundFrame frame,
+        CancellationToken cancellationToken)
+    {
         try
         {
             await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.PayloadBytes, cancellationToken)
@@ -181,17 +187,6 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             await _lifecycle.HandleTransportErrorAsync(ex.Error, cancellationToken).ConfigureAwait(false);
             throw;
         }
-    }
-
-    void IZlinkStreamConnectorInternal.ValidateSendEncoded(
-        ZlinkStreamMessageKind kind,
-        string name,
-        ZlinkStreamEncodedPayload payload,
-        ZlinkStreamMetadata metadata,
-        bool compress)
-    {
-        var frame = _frameSender.BuildOutboundFrame(kind, name, payload, metadata, compress, null);
-        _frameSender.ValidateSendReady(frame.HeaderBytes, frame.PayloadBytes);
     }
 
     async ValueTask<ZlinkStreamEncodedPayload> IZlinkStreamConnectorInternal.RequestEncodedAsync(
@@ -375,7 +370,6 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
         return options.Compression switch
         {
-            ZlinkStreamCompression.None => null,
             ZlinkStreamCompression.Lz4 => new ZlinkStreamLz4CompressionCodec(),
             _ => throw Error(ZlinkStreamErrorCode.ConfigurationError, "Compression option is not supported.")
         };

@@ -159,7 +159,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             channelName);
         spotNode.SpotMeshChannelName = discovery.ChannelName;
 
-        return new ZLinkSpotMeshBuilder(spotNode);
+        return new ZLinkSpotNodeBuilder(spotNode);
     }
 
     private ZLinkChannelRegistration AddChannelRegistration(
@@ -182,95 +182,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     {
         if (_registration.SpotRouteRefResolverType is not null)
             throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
-    }
-}
-
-internal sealed class ZLinkSpotMeshBuilder(ZLinkSpotNodeRegistration spotNode)
-    : IZLinkSpotMeshBuilder
-{
-    private ZLinkSpotNodeBuilder? _nodeBuilder;
-
-    public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
-    {
-        return DefaultNode().EnableRouter(endpoint);
-    }
-
-    public IZLinkSpotNodeBuilder ConnectRouter(string endpoint)
-    {
-        return DefaultNode().ConnectRouter(endpoint);
-    }
-
-    public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
-    {
-        return DefaultNode().ConnectRouter(peerRid, endpoint);
-    }
-
-    public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
-    {
-        return DefaultNode().SetRoutingId(routingId);
-    }
-
-    public IZLinkSocketConfig ConfigureRouterSocket()
-    {
-        return DefaultNode().ConfigureRouterSocket();
-    }
-
-    public IZLinkRouteConfig ConfigureRouterRouting()
-    {
-        return DefaultNode().ConfigureRouterRouting();
-    }
-
-    public IZLinkSpotNodeBuilder EnablePubSub(string endpoint)
-    {
-        return DefaultNode().EnablePubSub(endpoint);
-    }
-
-    public IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint)
-    {
-        return DefaultNode().ConnectPeerPub(endpoint);
-    }
-
-    public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
-    {
-        return DefaultNode().ConfigurePubSubPublisher();
-    }
-
-    public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
-    {
-        return DefaultNode().ConfigurePubSubSubscriber();
-    }
-
-    public IZLinkEntrySpotOptions ConfigureEntrySpot()
-    {
-        return DefaultNode().ConfigureEntrySpot();
-    }
-
-    public IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
-    {
-        return DefaultNode().SetEntrySpotRoutingId(routingId);
-    }
-
-    public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
-        where TSpot : IZLinkSpot
-    {
-        return DefaultNode().AddSpotFactory<TSpot>();
-    }
-
-    public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
-        where TEntrySpot : IZLinkEntrySpot
-    {
-        return DefaultNode().AddEntrySpot<TEntrySpot>();
-    }
-
-    public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory
-    {
-        return DefaultNode().AddActorFactory<TFactory>(actorType);
-    }
-
-    private ZLinkSpotNodeBuilder DefaultNode()
-    {
-        return _nodeBuilder ??= new ZLinkSpotNodeBuilder(spotNode);
     }
 }
 

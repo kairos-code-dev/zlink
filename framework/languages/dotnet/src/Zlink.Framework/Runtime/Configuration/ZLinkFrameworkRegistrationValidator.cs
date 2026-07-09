@@ -17,7 +17,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateChannel(
                 channel,
                 registration.Locations.Enabled,
-                false,
                 handlerGroups,
                 channelHandlerEndpoints);
 

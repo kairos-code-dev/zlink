@@ -4,17 +4,17 @@ internal sealed partial class ZLinkFrameworkRuntime
 {
     internal ZLinkChannelRuntimeBundle GetOrCreateClientBundle(string channelName)
     {
-        return _channelFacade.GetOrCreateClientBundle(channelName);
+        return _channels.GetOrCreateClientBundle(GetOrStartState(), channelName);
     }
 
     internal ZLinkChannelRuntimeBundle GetOrCreatePublisherBundle(string channelName)
     {
-        return _channelFacade.GetOrCreatePublisherBundle(channelName);
+        return _channels.GetOrCreatePublisherBundle(GetOrStartState(), channelName);
     }
 
     internal ZLinkRouteChannelRuntime GetRouteChannel(string routerChannelId)
     {
-        return _channelFacade.GetRouteChannel(routerChannelId);
+        return _channels.GetRouteChannel(GetOrStartState(), routerChannelId);
     }
 
     /// <summary>
@@ -156,6 +156,6 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkBackendSocket GetMonitoringSocket(string sourceName)
     {
-        return _channelFacade.GetMonitoringSocket(sourceName);
+        return _channels.GetMonitoringSocket(GetOrStartState(), sourceName);
     }
 }

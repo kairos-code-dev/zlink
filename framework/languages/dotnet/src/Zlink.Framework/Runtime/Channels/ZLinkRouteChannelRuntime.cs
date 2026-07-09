@@ -6,10 +6,7 @@ namespace Zlink.Framework.Runtime.Channels;
 internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 {
     private readonly ZLinkRouteChannelCalls _calls;
-    private readonly ZLinkCodecRegistryBuilder _codecs;
     private readonly ZLinkRouteConnectionSet _connections;
-    private readonly ZLinkRouteHandlerRegistry _handlers;
-    private readonly IZLinkRouteInternalPacketDispatcher _internalPackets;
     private readonly ZLinkRouteReceivePump _receivePump;
     private readonly ZLinkRouteChannelRegistration _registration;
     private readonly IZLinkBackendRouterSocket _router;
@@ -18,7 +15,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private Task? _receiveTask;
     private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
-    private ZLinkSpotNodeRuntime? _spotRouteBridgeOwner;
 
     public ZLinkRouteChannelRuntime(
         IServiceProvider services,
@@ -31,9 +27,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     {
         _registration = registration;
         _router = router;
-        _handlers = handlers;
-        _internalPackets = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
-        _codecs = frameworkRegistration.Codecs;
+        var internalPacketDispatcher = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
+        var codecs = frameworkRegistration.Codecs;
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
         _taskRunner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), _stopSource.Token);
         _submitter = new ZLinkAsyncSubmitter(
@@ -55,9 +50,9 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 registration.RouterChannelId,
                 router,
                 handlers,
-                new ZLinkRouteHandlerInvoker(services, _codecs),
-                _codecs,
-                _internalPackets,
+                new ZLinkRouteHandlerInvoker(services, codecs),
+                codecs,
+                internalPacketDispatcher,
                 new ZLinkDispatchErrorReporter(
                     frameworkRegistration.DispatchOptions,
                     services,
@@ -69,8 +64,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
     // route mesh 의 serving socket(weight 적용 대상). server·client 가 공유하는 단일 ROUTER.
     internal IZLinkBackendWeightedSocket ServingSocket => _router;
-
-    internal bool HasSpotRouteBridge => _spotRouteBridge is not null;
 
     public async ValueTask DisposeAsync()
     {
@@ -98,23 +91,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _stopSource.Dispose();
     }
 
-    internal bool CanDispatchRoutePacket(
-        ZLinkMessageKind kind,
-        string packetName)
-    {
-        return kind switch
-        {
-            ZLinkMessageKind.Command => _internalPackets.CanHandleSend(packetName)
-                                        || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
-            ZLinkMessageKind.Request => _internalPackets.CanHandleRequest(packetName)
-                                        || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
-            _ => false
-        };
-    }
-
     public void AttachSpotRouteBridge(
-        IZLinkBackendSpotRouteBridge bridge,
-        ZLinkSpotNodeRuntime owner)
+        IZLinkBackendSpotRouteBridge bridge)
     {
         if (_spotRouteBridge is not null)
             throw new ZLinkConfigurationException(
@@ -124,7 +102,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             RouterChannelId,
             _router);
         _spotRouteBridge = bridge;
-        _spotRouteBridgeOwner = owner;
     }
 
     internal bool TrySendViaSpotRouteBridge(
@@ -144,8 +121,9 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RouteNotConnected,
                 $"Route channel '{RouterChannelId}' is not ready for SPOT route bridge send.");
-        if (accepted) _spotRouteBridge.Drain();
-        return accepted;
+
+        _spotRouteBridge.Drain();
+        return true;
     }
 
     internal bool TryRequestViaSpotRouteBridge(
@@ -169,8 +147,9 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RouteNotConnected,
                 $"Route channel '{RouterChannelId}' is not ready for SPOT route bridge request.");
-        if (accepted) _spotRouteBridge.Drain();
-        return accepted;
+
+        _spotRouteBridge.Drain();
+        return true;
     }
 
     public void Start()
@@ -178,16 +157,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _receiveTask = _taskRunner.Run(
             $"route-channel:{RouterChannelId}",
             ct => new ValueTask(_receivePump.RunAsync(ct)));
-    }
-
-    /// <summary>
-    /// Called by the auto-connect host when a reconcile loop manages this
-    /// channel's mesh. Route submits still use the socket writability window
-    /// so a peer discovered just after the request can connect without
-    /// caller-level retry.
-    /// </summary>
-    internal void MarkAutoConnectManaged()
-    {
     }
 
     public void Connect(string endpoint)
@@ -238,36 +207,34 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             cancellationToken);
     }
 
-    public async ValueTask<TReply> RequestAsync<TRequest, TReply>(
+    public ValueTask<TReply> RequestAsync<TRequest, TReply>(
         RoutingId targetNodeRid,
         string packetName,
         TRequest request,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        return await _calls.RequestAsync<TRequest, TReply>(
-                targetNodeRid,
-                packetName,
-                request,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return _calls.RequestAsync<TRequest, TReply>(
+            targetNodeRid,
+            packetName,
+            request,
+            timeout,
+            cancellationToken);
     }
 
-    public async ValueTask<TReply> RequestPartsAsync<TReply>(
+    public ValueTask<TReply> RequestPartsAsync<TReply>(
         RoutingId targetNodeRid,
         ZLinkEnvelopeHeader header,
         IReadOnlyList<Message> payloadParts,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        return await _calls.RequestPartsAsync<TReply>(
-                targetNodeRid,
-                header,
-                payloadParts,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return _calls.RequestPartsAsync<TReply>(
+            targetNodeRid,
+            header,
+            payloadParts,
+            timeout,
+            cancellationToken);
     }
 
 }

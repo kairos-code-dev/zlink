@@ -4,9 +4,9 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 {
     private readonly object _gate = new();
 
-    // DEALER 바인딩의 PeerWeight 옵션은 set-only 이므로 마지막으로 적용한 값을 캐시한다(core 기본 100).
+    // DEALER 바인딩의 PeerWeight 옵션은 set-only 이므로 마지막으로 적용한 값을 캐시한다.
     // framework 가 유일한 writer 이므로 set 한 값을 read 로 돌려주는 것은 정합하다.
-    private int _peerWeight = 100;
+    private int _peerWeight = ZLinkSocketConfig.DefaultPeerWeight;
 
     public object NativeInstance => nativeSocket;
 
@@ -70,18 +70,24 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 
     public bool Send(Message message, SendFlags flags)
     {
-        return nativeSocket.Send()
-            .Message(message)
-            .Flags(flags)
-            .Submit();
+        lock (_gate)
+        {
+            return nativeSocket.Send()
+                .Message(message)
+                .Flags(flags)
+                .Submit();
+        }
     }
 
     public bool Send(IReadOnlyList<Message> parts, SendFlags flags)
     {
-        return nativeSocket.Send()
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        lock (_gate)
+        {
+            return nativeSocket.Send()
+                .Messages(parts)
+                .Flags(flags)
+                .Submit();
+        }
     }
 
     public bool Request(
@@ -90,12 +96,15 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSocket.Request()
-            .Message(message)
-            .Flags(flags);
-        if (timeout is { } value) operation = operation.Timeout(value);
+        lock (_gate)
+        {
+            var operation = nativeSocket.Request()
+                .Message(message)
+                .Flags(flags);
+            if (timeout is { } value) operation = operation.Timeout(value);
 
-        return operation.Submit(callback);
+            return operation.Submit(callback);
+        }
     }
 
     public bool Request(
@@ -104,11 +113,14 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSocket.Request().Messages(parts);
+        lock (_gate)
+        {
+            var operation = nativeSocket.Request().Messages(parts);
 
-        if (timeout is { } value) operation = operation.Timeout(value);
+            if (timeout is { } value) operation = operation.Timeout(value);
 
-        return operation.Flags(flags).Submit(callback);
+            return operation.Flags(flags).Submit(callback);
+        }
     }
 
     public Received? Recv(RecvFlags flags = RecvFlags.None)

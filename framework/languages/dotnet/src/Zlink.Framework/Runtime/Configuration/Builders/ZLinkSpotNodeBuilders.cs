@@ -1,7 +1,8 @@
 namespace Zlink.Framework.Runtime.Configuration.Builders;
 
 internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registration)
-    : IZLinkSpotNodeBuilder
+    : IZLinkSpotNodeBuilder,
+        IZLinkSpotMeshBuilder
 {
     public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
     {

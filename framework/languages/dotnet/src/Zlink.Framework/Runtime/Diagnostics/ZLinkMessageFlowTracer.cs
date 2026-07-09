@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,8 +19,10 @@ internal sealed class ZLinkMessageFlowTracer
 {
     private static long _tracedCount;
     private readonly ILogger _logger;
+    private readonly object _observerDispatcherGate = new();
     private readonly ZLinkDispatchOptionsModel _options;
     private readonly IServiceProvider _services;
+    private ZLinkMessageFlowObserverDispatcher? _observerDispatcher;
     private long _sampleCounter;
 
     public ZLinkMessageFlowTracer(
@@ -64,20 +67,22 @@ internal sealed class ZLinkMessageFlowTracer
 
         if (_options.MessageFlowObserver is null && _options.MessageFlowObserverType is null) return;
 
-        _ = Task.Run(async () =>
+        ObserverDispatcher.Enqueue(flow);
+    }
+
+    private ZLinkMessageFlowObserverDispatcher ObserverDispatcher
+    {
+        get
         {
-            try
+            if (_observerDispatcher is { } dispatcher) return dispatcher;
+
+            lock (_observerDispatcherGate)
             {
-                var observer = ResolveObserver();
-                if (observer is not null)
-                    await observer.OnMessageFlowAsync(flow, CancellationToken.None)
-                        .ConfigureAwait(false);
+                return _observerDispatcher ??= new ZLinkMessageFlowObserverDispatcher(
+                    _options,
+                    _services);
             }
-            catch (Exception ex)
-            {
-                ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
-            }
-        });
+        }
     }
 
     private static ZLinkMessageFlowLogMode RequiredMode(ZLinkMessageFlowOutcome outcome)
@@ -98,17 +103,6 @@ internal sealed class ZLinkMessageFlowTracer
         if (stride < 1) stride = 1;
 
         return Interlocked.Increment(ref _sampleCounter) % stride == 0;
-    }
-
-    private IZLinkMessageFlowObserver? ResolveObserver()
-    {
-        if (_options.MessageFlowObserver is { } observer) return observer;
-
-        if (_options.MessageFlowObserverType is not { } observerType) return null;
-
-        return (IZLinkMessageFlowObserver)ActivatorUtilities.GetServiceOrCreateInstance(
-            _services,
-            observerType);
     }
 
     private void LogDefault(ZLinkMessageFlowEvent flow)
@@ -151,6 +145,62 @@ internal sealed class ZLinkMessageFlowTracer
             flow.ErrorType,
             flow.ErrorMessage,
             size);
+    }
+}
+
+internal sealed class ZLinkMessageFlowObserverDispatcher
+{
+    private readonly Channel<ZLinkMessageFlowEvent> _events = Channel.CreateBounded<ZLinkMessageFlowEvent>(
+        new BoundedChannelOptions(1024)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
+    private readonly ZLinkDispatchOptionsModel _options;
+    private readonly IServiceProvider _services;
+
+    public ZLinkMessageFlowObserverDispatcher(
+        ZLinkDispatchOptionsModel options,
+        IServiceProvider services)
+    {
+        _options = options;
+        _services = services;
+        _ = Task.Run(DrainAsync);
+    }
+
+    public void Enqueue(ZLinkMessageFlowEvent flow)
+    {
+        _events.Writer.TryWrite(flow);
+    }
+
+    private async Task DrainAsync()
+    {
+        await foreach (var flow in _events.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            try
+            {
+                var observer = ResolveObserver();
+                if (observer is not null)
+                    await observer.OnMessageFlowAsync(flow, CancellationToken.None)
+                        .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
+            }
+        }
+    }
+
+    private IZLinkMessageFlowObserver? ResolveObserver()
+    {
+        if (_options.MessageFlowObserver is { } observer) return observer;
+
+        if (_options.MessageFlowObserverType is not { } observerType) return null;
+
+        return (IZLinkMessageFlowObserver)ActivatorUtilities.GetServiceOrCreateInstance(
+            _services,
+            observerType);
     }
 }
 

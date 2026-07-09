@@ -10,7 +10,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task InboundObserverSeesResponseBeforeRequestCompletesWithoutWaitingForCallback()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -68,7 +68,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task InboundObserverSeesSendAndControlFrames()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -145,7 +145,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task InboundObserverRegistrationIsRejectedAfterConnectAndStopsAfterDispose()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -210,7 +210,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task InboundObserverFailureReportsObserverFailedAndMessageStillDispatches()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -264,7 +264,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task InboundObserverOverflowReportsObserverDroppedAndRequestStillCompletes()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;

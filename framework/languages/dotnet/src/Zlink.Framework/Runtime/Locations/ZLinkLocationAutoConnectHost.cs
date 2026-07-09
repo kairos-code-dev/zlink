@@ -54,7 +54,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         {
             if (!state.RouteChannels.TryGetValue(name, out var runtime)) continue;
 
-            runtime.MarkAutoConnectManaged();
             var manual = new HashSet<string>(route.ManualConnections, StringComparer.Ordinal);
             AddLoop(
                 ZLinkLocationAutoConnectType.RouteMesh,

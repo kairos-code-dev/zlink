@@ -25,7 +25,8 @@ internal static class ZLinkSpotActorFrameReader
         catch
         {
             DisposeContinuationParts(parts, ref index, headerPart.More);
-            throw;
+            frame = default;
+            return false;
         }
         finally
         {

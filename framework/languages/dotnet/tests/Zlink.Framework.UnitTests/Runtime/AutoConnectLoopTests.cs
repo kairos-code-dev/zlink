@@ -15,7 +15,8 @@ public sealed class AutoConnectLoopTests
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
-        var resolvers = new ZLinkStoreLocationResolvers(options, store, store, store, store, tracker, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var countingResolver = new CountingPeerResolver(resolvers);
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -60,7 +61,8 @@ public sealed class AutoConnectLoopTests
         await runtime.RenewOwnerLeaseOnceAsync();
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
-        var resolvers = new ZLinkStoreLocationResolvers(options, store, store, store, store, tracker, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,

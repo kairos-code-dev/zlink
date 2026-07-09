@@ -3,25 +3,7 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotSubscriptionPump
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(20);
-    private Exception? _lastError;
     private Task? _task;
-
-    public string State
-    {
-        get
-        {
-            var task = _task;
-            if (task is null) return "null";
-
-            if (task.IsFaulted) return task.Exception?.GetBaseException().ToString() ?? "faulted";
-
-            if (task.IsCanceled) return "canceled";
-
-            if (task.IsCompleted && _lastError is not null) return _lastError.ToString();
-
-            return task.IsCompleted ? "completed" : "running";
-        }
-    }
 
     public void StartIfNeeded(
         bool hasSubscriptions,
@@ -78,11 +60,6 @@ internal sealed class ZLinkSpotSubscriptionPump
                           or ZlinkRecvException.ErrorCode.InvalidHandle)
             {
                 return;
-            }
-            catch (Exception ex)
-            {
-                _lastError = ex;
-                throw;
             }
     }
 }

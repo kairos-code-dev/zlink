@@ -191,26 +191,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return _peerConnector.ConnectPubSubAsync(endpoint, cancellationToken);
     }
 
-    public void DisconnectRouter(string endpoint)
-    {
-        _peerConnector.DisconnectRouter(endpoint);
-    }
-
-    public void DisconnectPubSub(string endpoint)
-    {
-        _peerConnector.DisconnectPubSub(endpoint);
-    }
-
-    public IReadOnlyList<string> ListRouterConnections()
-    {
-        return _peerConnections.ListRouterManual();
-    }
-
-    public IReadOnlyList<string> ListPubSubConnections()
-    {
-        return _peerConnections.ListPubSubManual();
-    }
-
     private async ValueTask<ZLinkEntrySpotActivation?> CreateEntrySpotActivationAsync(
         IZLinkBackendSpot entrySpot)
     {

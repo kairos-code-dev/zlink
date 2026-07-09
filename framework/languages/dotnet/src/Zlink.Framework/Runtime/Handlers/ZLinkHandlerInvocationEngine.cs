@@ -1,22 +1,7 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.Handlers;
 
 internal static class ZLinkHandlerInvocationEngine
 {
-    public static ValueTask<object?> InvokeAsync(
-        IServiceProvider services,
-        Type handlerType,
-        ZLinkHandlerMethodInvoker invoker,
-        IReadOnlyList<ZLinkHandlerArgumentKind> argumentPlan,
-        object? message,
-        ZLinkHandlerContext context,
-        CancellationToken cancellationToken)
-    {
-        var handler = ActivatorUtilities.GetServiceOrCreateInstance(services, handlerType);
-        return InvokeAsync(handler, invoker, argumentPlan, message, context, cancellationToken);
-    }
-
     public static ValueTask<object?> InvokeAsync(
         object handler,
         ZLinkHandlerMethodInvoker invoker,

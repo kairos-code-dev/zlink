@@ -4,31 +4,31 @@ internal sealed partial class ZLinkFrameworkRuntime
 {
     internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string channelName)
     {
-        return _spotFacade.GetPublisherBundle(channelName);
+        return _spots.GetPublisherBundle(GetOrStartState(), channelName);
     }
 
-    internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync<TSpot>(
+    internal ValueTask<ZLinkSpotCreateResult> CreateSpotAsync<TSpot>(
         ZLinkMessage request,
         CancellationToken cancellationToken)
         where TSpot : IZLinkSpot
     {
-        return await _spotFacade.CreateAsync(typeof(TSpot), request, cancellationToken);
+        return _spots.CreateAsync(GetOrStartState(), typeof(TSpot), request, cancellationToken);
     }
 
-    internal async ValueTask<ZLinkSpotCreateResult> GetOrCreateSpotAsync<TSpot>(
+    internal ValueTask<ZLinkSpotCreateResult> GetOrCreateSpotAsync<TSpot>(
         RoutingId spotRid,
         ZLinkMessage request,
         CancellationToken cancellationToken)
         where TSpot : IZLinkSpot
     {
-        return await _spotFacade.GetOrCreateAsync(typeof(TSpot), spotRid, request, cancellationToken);
+        return _spots.GetOrCreateAsync(GetOrStartState(), typeof(TSpot), spotRid, request, cancellationToken);
     }
 
-    internal async ValueTask<ZLinkSpotInfo?> GetSpotAsync(
+    internal ValueTask<ZLinkSpotInfo?> GetSpotAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        return await _spotFacade.GetAsync(spotRid, cancellationToken);
+        return _spots.GetAsync(GetOrStartState(), spotRid, cancellationToken);
     }
 
     internal async ValueTask<ZLinkSpotActivation?> GetSpotActivationByRidAsync(
@@ -40,17 +40,17 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _spots.GetActivationBySpotRid(state, spotRid);
     }
 
-    internal async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListSpotsAsync(
+    internal ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListSpotsAsync(
         CancellationToken cancellationToken)
     {
-        return await _spotFacade.ListAsync(cancellationToken);
+        return _spots.ListAsync(GetOrStartState(), cancellationToken);
     }
 
-    internal async ValueTask<bool> CloseSpotAsync(
+    internal ValueTask<bool> CloseSpotAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        return await _spotFacade.CloseAsync(spotRid, cancellationToken);
+        return _spots.CloseAsync(GetOrStartState(), spotRid, cancellationToken);
     }
 
     internal IZLinkBackendSpotNode? GetActorSpotNode()
@@ -68,7 +68,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
     {
         var state = GetOrStartState();
-        return await _spots.TrySubmitEntrySpotActorAsync(
+        return await _spots.EntrySpotActors.TryAsync(
                 state,
                 actor,
                 runtimeState,
@@ -87,7 +87,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
     {
         var state = GetOrStartState();
-        return await _spots.TrySubmitEntrySpotActorForReplyAsync(
+        return await _spots.EntrySpotActors.TrySubmitForReplyAsync(
                 state,
                 actor,
                 runtimeState,
@@ -106,7 +106,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
     {
         GetOrStartState();
-        await _spots.SubmitResolvedEntrySpotActorAsync(
+        await _spots.EntrySpotActors.SubmitResolvedAsync(
                 actor,
                 runtimeState,
                 header,
@@ -122,7 +122,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (_state is null) return;
 
-        await _spots.NotifyEntrySpotActorJoinedAsync(
+        await _spots.EntrySpotActors.NotifyJoinedAsync(
                 _state,
                 actor,
                 targetNodeRid,
@@ -151,7 +151,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (_state is null) return;
 
-        await _spots.NotifyEntrySpotActorCreatedAsync(
+        await _spots.EntrySpotActors.NotifyCreatedAsync(
                 _state,
                 actor,
                 createRequest,
@@ -167,7 +167,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (_state is null) return;
 
-        await _spots.NotifyEntrySpotActorLeftAsync(
+        await _spots.EntrySpotActors.NotifyLeftAsync(
                 _state,
                 actor,
                 targetNodeRid,
@@ -182,7 +182,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (_state is null) return false;
 
-        return await _spots.TryNotifyEntrySpotActorDisconnectedAsync(
+        return await _spots.EntrySpotActors.TryNotifyDisconnectedAsync(
                 _state,
                 actor,
                 targetNodeRid,
@@ -196,7 +196,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (_state is null) return false;
 
-        if (_actors.TryGetCreatedActorState(actorId, out var actorState)
+        if (_actorSessionManager.TryGetCreatedActorState(actorId, out var actorState)
             && actorState is { Actor: { } actor, LiveActivation: { } activation })
         {
             await activation.NotifyActorDisconnectedAsync(actor, cancellationToken)
@@ -213,7 +213,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal ZLinkSpotMonitoringSnapshot GetSpotMonitoringSnapshot(string spotNodeName)
     {
-        return _spotFacade.GetMonitoringSnapshot(spotNodeName);
+        return _spots.GetMonitoringSnapshot(GetOrStartState(), spotNodeName);
     }
 
     internal ZLinkSpotNodeRuntime GetSpotNodeRuntime(string spotNodeName)

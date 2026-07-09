@@ -5,7 +5,7 @@ namespace Zlink.Framework.AspNetCore;
 internal sealed class ZLinkMonitoringHostedService(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkMonitoringRegistration registration,
-    ZLinkRuntimeEventDispatcher dispatcher,
+    IZLinkRuntimeEventPublisher publisher,
     ZLinkFrameworkRuntime? frameworkRuntime,
     IZLinkLocationRuntimeQuery? locationQuery) : IHostedService, IAsyncDisposable
 {
@@ -149,7 +149,7 @@ internal sealed class ZLinkMonitoringHostedService(
 
         taskRunner.RunDetached(
             "monitoring-event-dispatch",
-            async ct => { await dispatcher.DispatchAsync(@event, ct).ConfigureAwait(false); });
+            async ct => { await publisher.PublishAsync(@event, ct).ConfigureAwait(false); });
     }
 
     private async ValueTask DisposeMonitorsAsync()

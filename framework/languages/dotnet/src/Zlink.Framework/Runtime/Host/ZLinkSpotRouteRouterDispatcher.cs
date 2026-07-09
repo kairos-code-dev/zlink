@@ -43,35 +43,6 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                    $"Routed SPOT target channel '{targetSpotNodeChannelName}' is not owned by a router-capable SPOT node in this process.");
     }
 
-    private static bool TryResolveLocalAcceptedSpotNode(
-        ZLinkFrameworkRuntimeState state,
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        out ZLinkSpotNodeRuntime spotNodeRuntime)
-    {
-        var candidate = ResolveRouterSpotNodeByRoutingId(state, targetNodeRid);
-        if (candidate is not null)
-        {
-            spotNodeRuntime = candidate;
-            return true;
-        }
-
-        spotNodeRuntime = null!;
-        return false;
-    }
-
-    private static ZLinkSpotNodeRuntime? ResolveRouterSpotNodeByRoutingId(
-        ZLinkFrameworkRuntimeState state,
-        RoutingId targetNodeRid)
-    {
-        foreach (var candidate in state.SpotNodes.Values)
-            if (candidate.Registration.Router is not null
-                && candidate.Node.RoutingId == targetNodeRid)
-                return candidate;
-
-        return null;
-    }
-
     private static ZLinkSpotNodeRuntime? ResolveSingleRouterSpotNode(
         ZLinkFrameworkRuntimeState state)
     {
@@ -92,15 +63,8 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
 
     private static ZLinkSpotNodeRuntime? ResolveRouterSpotNode(
         ZLinkFrameworkRuntimeState state,
-        string routerChannelId,
-        RoutingId? targetNodeRid = null)
+        string routerChannelId)
     {
-        if (targetNodeRid is { } rid)
-            foreach (var candidate in state.SpotNodes.Values)
-                if (candidate.Registration.Router is not null
-                    && candidate.Node.RoutingId == rid)
-                    return candidate;
-
         if (state.SpotNodes.TryGetValue(routerChannelId, out var named)
             && named.Registration.Router is not null)
             return named;
@@ -111,11 +75,8 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     private IRouterTarget ResolveTarget(string routerChannelId, RoutingId targetNodeRid)
     {
         var state = getState();
-        if (TryResolveLocalAcceptedSpotNode(
-                state,
-                routerChannelId,
-                targetNodeRid,
-                out var localSpotNode))
+        if (state.TryGetSpotNodeByRoutingId(targetNodeRid, out var localSpotNode)
+            && localSpotNode.Registration.Router is not null)
             return new SpotNodeRouterTarget(
                 routerChannelId,
                 localSpotNode.Node.EntrySpot(),
@@ -123,15 +84,6 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
 
         if (state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
             return new RouteChannelTarget(routeChannel);
-
-        if (state.ServerBundles.TryGetValue(routerChannelId, out var serverBundle)
-            && serverBundle.Socket is IZLinkBackendRouterSocket)
-            return new ServerRouterTarget(
-                routerChannelId,
-                serverBundle.SpotRouteBridge
-                ?? throw new ZLinkConfigurationException(
-                    $"Router channel '{routerChannelId}' is not attached to a SPOT route bridge."),
-                serverBundle.ReceiveGate);
 
         if (state.SpotNodes.TryGetValue(routerChannelId, out var spotNodeRuntime))
             return new SpotNodeRouterTarget(
@@ -197,19 +149,19 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-
+            using var completion = new ZLinkSpotRouteRequestCompletion(
+                timeout,
+                cancellationToken,
+                "SPOT node router request timed out.");
             try
             {
                 if (!entrySpot.RequestToSpot(
                         targetNodeRid,
                         targetSpotRid,
                         parts,
-                        (result, reply) => ZLinkRawReplyCompletion.Complete(
+                        (result, reply) => completion.Complete(
                             result,
                             reply,
-                            completion,
                             $"SpotNode router '{routerChannelId}' SPOT request failed with result '{result}'."),
                         SendFlags.None,
                         timeout))
@@ -222,21 +174,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                 ZLinkMessageParts.DisposeAll(parts);
             }
 
-            using var timeoutSource = new CancellationTokenSource();
-            timeoutSource.CancelAfter(timeout);
-            using var timeoutRegistration = timeoutSource.Token.Register(
-                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!).TrySetException(
-                    new TimeoutException("SPOT node router request timed out.")),
-                completion);
-            using var cancellationRegistration = cancellationToken.Register(
-                static state =>
-                {
-                    var (source, token) =
-                        ((TaskCompletionSource<IReadOnlyList<Message>>, CancellationToken))state!;
-                    source.TrySetCanceled(token);
-                },
-                (completion, cancellationToken));
-            return await completion.Task.ConfigureAwait(false);
+            return await completion.WaitAsync().ConfigureAwait(false);
         }
     }
 
@@ -270,142 +208,112 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!routeChannel.TryRequestViaSpotRouteBridge(
-                    targetNodeRid,
-                    targetSpotRid,
-                    parts,
-                    (result, reply) =>
-                    {
-                        // NotFound from a spot-addressed request means the
-                        // target node answered "no such spot here": a stale
-                        // spot address, not an unknown node.
-                        if (result == RequestResult.NotFound)
-                        {
-                            ZLinkMessageParts.DisposeAll(reply);
-                            completion.TrySetException(new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.SpotRouteNotFound,
-                                $"SPOT '{targetSpotRid}' does not live on node '{targetNodeRid}'."));
-                            return;
-                        }
-
-                        ZLinkRawReplyCompletion.Complete(
-                            result,
-                            reply,
-                            completion,
-                            $"SPOT route bridge request failed with result '{result}'.");
-                    },
-                    timeout))
-                throw new ZLinkConfigurationException(
-                    $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot requests.");
-
-            ZLinkMessageParts.DisposeAll(parts);
-            using var timeoutSource = new CancellationTokenSource();
-            timeoutSource.CancelAfter(timeout);
-            using var timeoutRegistration = timeoutSource.Token.Register(
-                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!).TrySetException(
-                    new TimeoutException("SPOT route bridge request timed out.")),
-                completion);
-            using var cancellationRegistration = cancellationToken.Register(
-                static state =>
-                {
-                    var (source, token) =
-                        ((TaskCompletionSource<IReadOnlyList<Message>>, CancellationToken))state!;
-                    source.TrySetCanceled(token);
-                },
-                (completion, cancellationToken));
+            using var completion = new ZLinkSpotRouteRequestCompletion(
+                timeout,
+                cancellationToken,
+                $"SPOT route bridge request to '{targetSpotRid}' timed out.");
             try
             {
-                return await completion.Task.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw new TimeoutException(
-                    $"SPOT route bridge request to '{targetSpotRid}' timed out.");
-            }
-        }
-    }
-
-    private sealed class ServerRouterTarget(
-        string routerChannelId,
-        IZLinkBackendSpotRouteBridge bridge,
-        SemaphoreSlim receiveGate)
-        : IRouterTarget
-    {
-        public ValueTask SendAsync(
-            RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
-            IReadOnlyList<Message> parts,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                if (!bridge.Send(
-                        routerChannelId,
+                if (!routeChannel.TryRequestViaSpotRouteBridge(
                         targetNodeRid,
                         targetSpotRid,
                         parts,
-                        SendFlags.None))
-                    throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                        $"Router channel '{routerChannelId}' is not ready for SPOT send.");
+                        (result, reply) =>
+                        {
+                            // NotFound from a spot-addressed request means the
+                            // target node answered "no such spot here": a stale
+                            // spot address, not an unknown node.
+                            if (result == RequestResult.NotFound)
+                            {
+                                completion.Fail(
+                                    new ZLinkFrameworkException(
+                                        ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                                        $"SPOT '{targetSpotRid}' does not live on node '{targetNodeRid}'."),
+                                    reply);
+                                return;
+                            }
+
+                            completion.Complete(
+                                result,
+                                reply,
+                                $"SPOT route bridge request failed with result '{result}'.");
+                        },
+                        timeout))
+                    throw new ZLinkConfigurationException(
+                        $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot requests.");
             }
             finally
             {
                 ZLinkMessageParts.DisposeAll(parts);
             }
 
-            return ValueTask.CompletedTask;
-        }
-
-        public async ValueTask<IReadOnlyList<Message>> RequestAsync(
-            RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
-            IReadOnlyList<Message> parts,
-            TimeSpan timeout,
-            CancellationToken cancellationToken)
-        {
-            var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-
-            await receiveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                try
-                {
-                    if (!bridge.Request(
-                            routerChannelId,
-                            targetNodeRid,
-                            targetSpotRid,
-                            parts,
-                            (result, reply) => ZLinkRawReplyCompletion.Complete(
-                                result,
-                                reply,
-                                completion,
-                                $"Router channel '{routerChannelId}' SPOT request failed with result '{result}'."),
-                            SendFlags.None,
-                            timeout))
-                        throw new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                            $"Router channel '{routerChannelId}' is not ready for SPOT request.");
-                }
-                finally
-                {
-                    ZLinkMessageParts.DisposeAll(parts);
-                }
-
-                using var _ = cancellationToken.Register(
-                    static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!)
-                        .TrySetCanceled(),
-                    completion);
-
-                return await completion.Task.ConfigureAwait(false);
-            }
-            finally
-            {
-                receiveGate.Release();
-            }
+            return await completion.WaitAsync().ConfigureAwait(false);
         }
     }
+
+    private sealed class ZLinkSpotRouteRequestCompletion : IDisposable
+    {
+        private readonly TaskCompletionSource<IReadOnlyList<Message>> _completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly CancellationTokenRegistration _cancellationRegistration;
+        private readonly CancellationTokenSource _timeoutSource = new();
+        private readonly CancellationTokenRegistration _timeoutRegistration;
+
+        public ZLinkSpotRouteRequestCompletion(
+            TimeSpan timeout,
+            CancellationToken cancellationToken,
+            string timeoutMessage)
+        {
+            _timeoutSource.CancelAfter(timeout);
+            _timeoutRegistration = _timeoutSource.Token.Register(
+                static state =>
+                {
+                    var (completion, message) =
+                        ((TaskCompletionSource<IReadOnlyList<Message>>, string))state!;
+                    completion.TrySetException(new TimeoutException(message));
+                },
+                (_completion, timeoutMessage));
+            _cancellationRegistration = cancellationToken.Register(
+                static state =>
+                {
+                    var (completion, token) =
+                        ((TaskCompletionSource<IReadOnlyList<Message>>, CancellationToken))state!;
+                    completion.TrySetCanceled(token);
+                },
+                (_completion, cancellationToken));
+        }
+
+        public void Complete(
+            RequestResult result,
+            IReadOnlyList<Message> reply,
+            string failureMessageFormat)
+        {
+            ZLinkRawReplyCompletion.Complete(
+                result,
+                reply,
+                _completion,
+                failureMessageFormat);
+        }
+
+        public void Fail(
+            Exception exception,
+            IReadOnlyList<Message> reply)
+        {
+            ZLinkMessageParts.DisposeAll(reply);
+            _completion.TrySetException(exception);
+        }
+
+        public async ValueTask<IReadOnlyList<Message>> WaitAsync()
+        {
+            return await _completion.Task.ConfigureAwait(false);
+        }
+
+        public void Dispose()
+        {
+            _cancellationRegistration.Dispose();
+            _timeoutRegistration.Dispose();
+            _timeoutSource.Dispose();
+        }
+    }
+
 }

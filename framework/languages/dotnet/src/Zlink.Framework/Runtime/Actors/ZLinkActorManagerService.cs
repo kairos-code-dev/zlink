@@ -39,7 +39,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             || state.NativeActorRef is not { } actorRef)
             return ValueTask.FromResult<ActorRef?>(null);
 
-        return ValueTask.FromResult<ActorRef?>(ToPublicActorRef(actorRef));
+        return ValueTask.FromResult<ActorRef?>(actorRef.ToNative());
     }
 
     public async ValueTask<ActorRef> GetOrCreateAsync(
@@ -77,11 +77,6 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                        ?? throw new ZLinkFrameworkException(
                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
                            $"Actor '{actorId}' does not have a native Actor ref.");
-        return ToPublicActorRef(actorRef);
-    }
-
-    private static ActorRef ToPublicActorRef(ZLinkBackendActorRef actorRef)
-    {
         return actorRef.ToNative();
     }
 }

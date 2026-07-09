@@ -206,10 +206,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             var ownerTask = turn.OwnerTask;
             if (ownerTask is null || ownerTask.IsCompleted) return;
 
-            var completed = await Task.WhenAny(ownerTask, turn.Suspended).ConfigureAwait(false);
-            if (ReferenceEquals(completed, turn.Suspended))
-            {
-            }
+            await Task.WhenAny(ownerTask, turn.Suspended).ConfigureAwait(false);
         });
         if (!_queue.Writer.TryWrite(item))
         {

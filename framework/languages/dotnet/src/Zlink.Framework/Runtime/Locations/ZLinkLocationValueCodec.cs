@@ -46,36 +46,6 @@ internal static class ZLinkLocationValueCodec
         throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown location role.");
     }
 
-    internal static bool TryParseAutoConnectType(string value, out ZLinkLocationAutoConnectType type)
-    {
-        foreach (var entry in AutoConnectTypes)
-        {
-            if (entry.Name == value)
-            {
-                type = entry.Type;
-                return true;
-            }
-        }
-
-        type = ZLinkLocationAutoConnectType.Invalid;
-        return false;
-    }
-
-    internal static bool TryParseRole(string value, out ZLinkLocationRole role)
-    {
-        foreach (var entry in Roles)
-        {
-            if (entry.Name == value)
-            {
-                role = entry.Role;
-                return true;
-            }
-        }
-
-        role = ZLinkLocationRole.Invalid;
-        return false;
-    }
-
     internal static bool IsKnown(ZLinkLocationAutoConnectType type)
     {
         foreach (var entry in AutoConnectTypes)

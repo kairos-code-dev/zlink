@@ -13,11 +13,9 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkFrameworkActorFacade _actors;
     private readonly ZLinkActorSessionManager _actorSessionManager;
     private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
-    private readonly ZLinkFrameworkChannelFacade _channelFacade;
     private readonly ZLinkChannelRuntimeManager _channels;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
-    private readonly ZLinkFrameworkSpotFacade _spotFacade;
+    private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
     private readonly ZLinkSpotRuntimeManager _spots;
     private readonly ZLinkFrameworkRuntimeStateFactory _stateFactory;
@@ -52,8 +50,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         _stateFactory = components.StateFactory;
         _actorSessionManager = components.ActorSessionManager;
         _actors = components.Actors;
-        _channelFacade = components.ChannelFacade;
-        _spotFacade = components.SpotFacade;
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
     }
 
@@ -147,22 +143,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             if (_state is not null) return;
 
             _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
-            _state.ListenerTasks.Add(_state.TaskRunner.Run(
-                "spot-route-bridge-drain",
-                RunSpotRouteBridgeDrainLoopAsync));
         }
         finally
         {
             _gate.Release();
-        }
-    }
-
-    private async ValueTask RunSpotRouteBridgeDrainLoopAsync(CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            DrainSpotRouteBridges();
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -207,6 +191,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             throw new InvalidOperationException(
                 "ZLink framework runtime is not started. Call StartAsync before using synchronous runtime APIs.");
 
-        return _state ?? throw new InvalidOperationException("ZLink framework runtime is not started.");
+        return _state;
     }
 }

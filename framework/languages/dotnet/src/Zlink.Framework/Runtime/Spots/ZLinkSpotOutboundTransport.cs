@@ -19,66 +19,25 @@ internal sealed class ZLinkSpotOutboundTransport(
     public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
-        Message message,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        var requestTimeout = timeout ?? defaultRequestTimeout;
-        return await _submitter
-            .SubmitRequestAsync<IReadOnlyList<Message>>(
-                message,
-                (pending, complete, fail) => nativeSpot.RequestToSpot(
-                    targetNodeRid,
-                    targetSpotRid,
-                    pending,
-                    (result, reply) => ZLinkRawReplyCompletion.Complete(
-                        result,
-                        reply,
-                        complete,
-                        fail,
-                        $"SPOT request failed with result '{result}'."),
-                    SendFlags.DontWait,
-                    requestTimeout),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
         var requestTimeout = timeout ?? defaultRequestTimeout;
-        return await _submitter
-            .SubmitRequestAsync<IReadOnlyList<Message>>(
+        return await ZLinkRawRequestSubmitter.SubmitAsync(
+                _submitter,
                 parts,
-                (pending, complete, fail) => nativeSpot.RequestToSpot(
+                (pending, callback, currentTimeout) => nativeSpot.RequestToSpot(
                     targetNodeRid,
                     targetSpotRid,
                     pending,
-                    (result, reply) => ZLinkRawReplyCompletion.Complete(
-                        result,
-                        reply,
-                        complete,
-                        fail,
-                        $"SPOT request failed with result '{result}'."),
+                    callback,
                     SendFlags.DontWait,
-                    requestTimeout),
+                    currentTimeout),
+                requestTimeout,
+                "SPOT request failed with result '{0}'.",
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    public ValueTask PublishCurrentAsync(
-        string topic,
-        Message message,
-        CancellationToken cancellationToken)
-    {
-        return _submitter.Async(
-            message,
-            pending => nativeSpot.Publish(topic, pending, SendFlags.DontWait),
-            cancellationToken);
     }
 
     public ValueTask PublishCurrentAsync(
@@ -90,15 +49,6 @@ internal sealed class ZLinkSpotOutboundTransport(
             parts,
             pending => nativeSpot.Publish(topic, pending, SendFlags.DontWait),
             cancellationToken);
-    }
-
-    public bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId targetSpotRid,
-        Message message,
-        SendFlags flags)
-    {
-        return nativeSpot.SendToSpot(targetRid, targetSpotRid, message, flags);
     }
 
     public bool SendToSpot(

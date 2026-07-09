@@ -45,6 +45,13 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder, IZLi
         string contentType,
         ZlinkStreamCodec codec)
     {
+        if (string.IsNullOrWhiteSpace(contentType))
+            throw new ArgumentException("HTTP stream codec content type must not be blank.", nameof(contentType));
+
+        var normalizedContentType = NormalizeContentType(contentType);
+        if (!_serializers.ContainsKey(normalizedContentType))
+            throw new ZLinkConfigurationException(
+                $"HTTP client stream codec '{normalizedContentType}' must be paired with an HTTP payload serializer.");
     }
 
     public HttpClientCodecRegistry Snapshot()

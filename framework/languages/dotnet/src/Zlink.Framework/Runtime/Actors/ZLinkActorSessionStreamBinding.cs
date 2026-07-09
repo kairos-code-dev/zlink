@@ -68,11 +68,11 @@ internal sealed partial class ZLinkActorSessionManager
         CancellationToken cancellationToken)
     {
         if (getActorSpotNode() is null
-            || state.NativeActorRef is not { } actorRef
-            || stream is not ZLinkManagedStream managedStream)
+            || state.NativeActorRef is not { } actorRef)
             return;
 
-        await managedStream.BindActorAsync(
+        await ZLinkNativeActorStreamBinding.BindAsync(
+                stream,
                 actorRef,
                 runtime.Registration.DefaultRequestTimeout,
                 cancellationToken)
@@ -86,13 +86,13 @@ internal sealed partial class ZLinkActorSessionManager
         CancellationToken cancellationToken)
     {
         if (getActorSpotNode() is null
-            || state.NativeActorRef is null
-            || stream is not ZLinkManagedStream managedStream)
+            || state.NativeActorRef is null)
             return;
 
         try
         {
-            await managedStream.UnbindActorAsync(
+            await ZLinkNativeActorStreamBinding.UnbindAsync(
+                    stream,
                     actorId,
                     runtime.Registration.DefaultRequestTimeout,
                     cancellationToken)

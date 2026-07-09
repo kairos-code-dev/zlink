@@ -18,6 +18,15 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
+        var scope = new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.Channel,
+            transportName,
+            ZLinkDispatchMessageKind.Send,
+            "Send",
+            header.MessageName,
+            channelName,
+            header.ContentType,
+            header.CorrelationId);
         if (!handlerRegistry.TryGetCommand(
                 channelName,
                 resolveMappedGroups(channelName),
@@ -25,101 +34,41 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 out var endpoint)
             || endpoint is null)
         {
-            ZLinkMessageFlowLogger.Dropped(
-                logger,
-                unhandledLogLevel,
-                transportName,
-                "Send",
-                header.MessageName,
-                "no-handler",
-                channelName);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ResolveSurface(transportName),
-                ZLinkDispatchMessageKind.Send,
-                ZLinkDispatchErrorReason.HandlerMissing,
-                ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                channelName,
-                CorrelationId: header.CorrelationId));
+            scope.Dropped(logger, dispatchErrors, unhandledLogLevel);
             return;
         }
 
-        object? message;
-        try
-        {
-            message = ZLinkEnvelopeCodec.DecodeBody(
+        if (!scope.TryDecode(
                 parts,
                 endpoint.MessageType,
-                header.ContentType,
-                codecs);
-        }
-        catch (Exception ex)
-        {
-            ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                scope.ContentType!,
+                codecs,
                 logger,
-                transportName,
-                "Send",
-                header.MessageName,
-                "drop",
-                "payload-decode-failed",
-                ex,
-                channelName);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ResolveSurface(transportName),
-                ZLinkDispatchMessageKind.Send,
-                ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                dispatchErrors,
                 ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                channelName,
-                CorrelationId: header.CorrelationId,
-                Exception: ex));
+                out var message))
             return;
-        }
 
         var context = new ZLinkSendContext(
-            channelName,
-            header.MessageName,
-            header.ContentType,
+            scope.ChannelName,
+            scope.PacketName,
+            scope.ContentType,
             cancellationToken);
         try
         {
             await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowOutcome.Dispatched,
-                    ResolveSurface(transportName),
-                    ZLinkDispatchMessageKind.Send,
-                    header.MessageName,
-                    channelName,
-                    CorrelationId: header.CorrelationId));
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);
         }
         catch (Exception ex)
         {
-            ZLinkMessageFlowLogger.Rejected(
+            scope.HandlerException(
                 logger,
+                dispatchErrors,
                 LogLevel.Error,
-                transportName,
-                "Send",
-                header.MessageName,
-                "handler-exception",
-                ex,
-                channelName);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ResolveSurface(transportName),
-                ZLinkDispatchMessageKind.Send,
-                ZLinkDispatchErrorReason.HandlerException,
                 ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                channelName,
-                CorrelationId: header.CorrelationId,
-                Exception: ex));
+                ex);
         }
-    }
-
-    private static ZLinkDispatchErrorSurface ResolveSurface(string transportName)
-    {
-        return ZLinkDispatchErrorSurface.Channel;
     }
 }

@@ -43,7 +43,7 @@ public sealed class ZlinkStreamConnectorOptions
     public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
     public IZlinkStreamPacketNameResolver NameResolver { get; init; } =
-        ZlinkStreamDefaultCodecFactory.PacketNameResolver();
+        new ZlinkStreamPacketNameResolver();
 
     /// <summary>
     ///     Optional custom payload codec for the typed connector API. When set, the

@@ -97,7 +97,7 @@ internal static class ZLinkSpotDescriptorFactory
 
     public static IEnumerable<ZLinkSpotActorJoinDescriptor> CreateSpotActorJoinDescriptors(Type spotType)
     {
-        var contract = GetSpotActorContract(spotType);
+        var contract = ZLinkSpotActorContractInspector.GetSpotOrEntryContract(spotType);
         foreach (var method in EnumerateActorJoinMethods(spotType, contract?.ContractType))
         {
             if (contract is null)
@@ -187,35 +187,7 @@ internal static class ZLinkSpotDescriptorFactory
 
         return contractType is null
             ? []
-            : EnumerateInterfaceMethods(contractType)
+            : ZLinkSpotActorContractInspector.EnumerateInterfaceMethods(contractType)
                 .Where(method => method.Name == ActorJoinMethodName);
     }
-
-    private static IEnumerable<MethodInfo> EnumerateInterfaceMethods(Type interfaceType)
-    {
-        foreach (var method in interfaceType.GetMethods())
-            yield return method;
-
-        foreach (var inheritedInterface in interfaceType.GetInterfaces())
-        {
-            foreach (var method in inheritedInterface.GetMethods())
-                yield return method;
-        }
-    }
-
-    private static SpotActorContract? GetSpotActorContract(Type spotType)
-    {
-        foreach (var contract in spotType.GetInterfaces())
-        {
-            if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IZLinkSpot<>))
-                return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
-
-            if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IZLinkEntrySpot<>))
-                return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
-        }
-
-        return null;
-    }
-
-    private sealed record SpotActorContract(Type ContractType, Type ActorType);
 }

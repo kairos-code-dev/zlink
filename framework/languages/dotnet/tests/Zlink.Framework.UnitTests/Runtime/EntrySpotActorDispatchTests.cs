@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.UnitTests.Runtime;
@@ -241,6 +242,91 @@ public sealed class EntrySpotActorDispatchTests
         }
     }
 
+    [Fact]
+    public async Task EntrySpotActorDispatch_MalformedHeader_DisposesFrame_AndContinuesBatch()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
+        using var badHeader = Message.From([0x01, 0x02, 0x03]);
+        using var badBody = Message.From("discarded-body");
+        try
+        {
+            RegisterProbeActor(runtime, actorRef);
+            var validParts = CreateActorRequestParts(actorRef, "request", "ok", requestId: 45, flags: 1);
+            var parts = new List<ZLinkBackendActorPart>
+            {
+                new(
+                    actorRef,
+                    RoutingId.From("source-node"),
+                    RoutingId.From("source-session"),
+                    44,
+                    1,
+                    badHeader,
+                    true),
+                new(
+                    actorRef,
+                    RoutingId.From("source-node"),
+                    RoutingId.From("source-session"),
+                    44,
+                    1,
+                    badBody,
+                    false)
+            };
+            parts.AddRange(validParts);
+
+            await ZLinkEntrySpotActorDispatcher.DispatchAsync(
+                runtime,
+                null,
+                parts,
+                CancellationToken.None);
+
+            Assert.Throws<ObjectDisposedException>(() => badHeader.AsReadOnlySpan());
+            Assert.Throws<ObjectDisposedException>(() => badBody.AsReadOnlySpan());
+            var reply = Assert.Single(node.NoBindReplies);
+            var decoded = DecodeReplyFrame<ProbeReply>(Assert.Single(reply.Parts));
+            Assert.Equal("ok:actor-a", decoded.Payload.Value);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task EntrySpotJoin_NotConnected_DisposesNativeReplyPartsBeforeRemoteFallback()
+    {
+        var node = new CapturingSpotNode();
+        using var leakedPart = Message.From("not-connected-reply");
+        node.EntrySpotJoinReplyParts = [leakedPart];
+        node.EntrySpotJoinResult = new ZLinkBackendActorJoinEntrySpotResult(
+            RequestResult.NotConnected,
+            0,
+            new ZLinkBackendActorRef(RoutingId.From("actor-node"), "actor-a", 1),
+            RoutingId.From("remote-node"),
+            RoutingId.From("entry-spot"),
+            0,
+            0);
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var actor = RegisterProbeActor(runtime, actorRef);
+
+            var exception = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+                await runtime.JoinActorEntrySpotAsync(
+                    RoutingId.From("remote-node"),
+                    actor,
+                    ZLinkMessage.Empty,
+                    CancellationToken.None));
+
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, exception.Kind);
+            Assert.Throws<ObjectDisposedException>(() => leakedPart.AsReadOnlySpan());
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
     private static async Task DispatchAsync(
         ZLinkEntrySpotActivation activation,
         ZLinkSpotActorPacketDescriptor descriptor,
@@ -405,7 +491,8 @@ public sealed class EntrySpotActorDispatchTests
             nameof(ProbeRouteMessage));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
             header,
-            new ProbeRouteMessage(value));
+            new ProbeRouteMessage(value),
+            null);
         using var context = global::Systems.Zlink.Zlink.CreateContext();
         using var node = context.CreateSpotNode();
         using var sender = node.CreateSpot();
@@ -712,6 +799,10 @@ public sealed class EntrySpotActorDispatchTests
 
         public List<(ZLinkBackendActorRef Actor, IReadOnlyList<byte[]> Parts)> BoundSessionReplies { get; } = [];
 
+        public ZLinkBackendActorJoinEntrySpotResult? EntrySpotJoinResult { get; set; }
+
+        public IReadOnlyList<Message> EntrySpotJoinReplyParts { get; set; } = [];
+
         public object NativeInstance => this;
 
         public RoutingId RoutingId { get; private set; }
@@ -794,7 +885,13 @@ public sealed class EntrySpotActorDispatchTests
             RoutingId destNodeRid,
             Message request,
             ActorJoinEntrySpotCallback callback,
-            TimeSpan? timeout) => false;
+            TimeSpan? timeout)
+        {
+            if (EntrySpotJoinResult is not { } result) return false;
+
+            callback(result, EntrySpotJoinReplyParts);
+            return true;
+        }
 
         public ValueTask DestroyActorAsync(
             ZLinkBackendActorRef actor,
@@ -851,10 +948,10 @@ public sealed class EntrySpotActorDispatchTests
             RoutingId sourceNodeRid,
             RoutingId sourceSessionRid) { }
 
-        public ValueTask CloseActorBoundSessionAsync(
+        public void CloseActorBoundSession(
             ZLinkBackendActorRef actor,
             TimeSpan timeout,
-            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+            CancellationToken cancellationToken) { }
 
         private static IReadOnlyList<byte[]> CopyParts(IReadOnlyList<Message> parts)
         {

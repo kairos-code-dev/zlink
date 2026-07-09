@@ -2,20 +2,16 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal interface IZlinkStreamConnectorInternal : IZlinkStreamConnector
 {
-    ValueTask SendEncodedAsync(
-        ZlinkStreamMessageKind kind,
-        string name,
-        ZlinkStreamEncodedPayload payload,
-        ZlinkStreamMetadata metadata,
-        bool compress,
-        CancellationToken cancellationToken);
-
-    void ValidateSendEncoded(
+    ZlinkStreamOutboundFrame BuildSendFrame(
         ZlinkStreamMessageKind kind,
         string name,
         ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress);
+
+    ValueTask SendFrameAsync(
+        ZlinkStreamOutboundFrame frame,
+        CancellationToken cancellationToken);
 
     ValueTask<ZlinkStreamEncodedPayload> RequestEncodedAsync(
         string name,

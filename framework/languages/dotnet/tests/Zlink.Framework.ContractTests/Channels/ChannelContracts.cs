@@ -70,7 +70,7 @@ public sealed class ChannelContracts
     [ContractExample(
         typeof(IZLinkFanoutClient),
         typeof(IZLinkPublishCall))]
-    public async Task Fanout_client_publishes_events_to_a_topic()
+    public void Fanout_client_publishes_events_to_a_topic()
     {
         var publisher = new ExampleFanoutPublisher();
 

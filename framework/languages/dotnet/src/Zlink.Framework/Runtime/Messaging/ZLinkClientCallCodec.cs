@@ -29,13 +29,6 @@ internal static class ZLinkClientCallCodec
 
     public static IReadOnlyList<Message> EncodeEnvelopeParts<TMessage>(
         ZLinkEnvelopeHeader header,
-        TMessage message)
-    {
-        return EncodeEnvelopeParts(header, message, null);
-    }
-
-    public static IReadOnlyList<Message> EncodeEnvelopeParts<TMessage>(
-        ZLinkEnvelopeHeader header,
         TMessage message,
         ZLinkCodecRegistryBuilder? codecs)
     {
@@ -44,14 +37,6 @@ internal static class ZLinkClientCallCodec
             message,
             ZLinkClientCallTypeCache<TMessage>.Resolve(message),
             codecs);
-    }
-
-    public static TReply DecodeEnvelopeReply<TReply>(
-        IReadOnlyList<Message> reply,
-        string emptyMessage,
-        string errorMessage)
-    {
-        return DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage, null);
     }
 
     public static TReply DecodeEnvelopeReply<TReply>(
@@ -68,14 +53,6 @@ internal static class ZLinkClientCallCodec
 
         return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), replyHeader.ContentType, codecs)
                ?? throw new InvalidOperationException("Reply body is null.");
-    }
-
-    public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
-        IReadOnlyList<Message> reply,
-        string emptyMessage,
-        string errorMessage)
-    {
-        return DecodeEnvelopeReplyAndDispose<TReply>(reply, emptyMessage, errorMessage, null);
     }
 
     public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
@@ -100,12 +77,6 @@ internal static class ZLinkClientCallCodec
     {
         return JsonSerializer.Deserialize<TReply>(reply, ZLinkJsonSerializerOptions.Default)
                ?? throw new InvalidOperationException(nullMessage);
-    }
-
-    public static Dictionary<string, string> CopyMetadata(
-        IReadOnlyDictionary<string, string> metadata)
-    {
-        return new Dictionary<string, string>(metadata, StringComparer.Ordinal);
     }
 }
 

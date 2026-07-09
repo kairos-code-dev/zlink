@@ -141,7 +141,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkSpotOutbound, ZLinkSpotOutboundService>();
         }
 
-        if (HasSpotPublisherClient(registration))
+        if (HasSpotNode(registration))
         {
             services.AddSingleton<ZLinkSpotPublisherClientService>();
             services.AddSingleton<IZLinkSpotPublisherClient>(static provider =>
@@ -184,7 +184,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             // store; a user-registered resolver always wins.
             services.AddSingleton<IZLinkSpotRouteRefResolver>(static provider =>
                 new ZLinkLocationSpotRouteRefResolver(
-                    provider.GetRequiredService<ZLinkSpotLocationRidResolver>()));
+                    provider.GetRequiredService<ZLinkSpotMeshLocationResolver>()));
         }
 
         return services;
@@ -222,11 +222,6 @@ internal static class ZLinkFrameworkServiceRegistrar
     }
 
     private static bool HasSpotNode(ZLinkFrameworkRegistration registration)
-    {
-        return registration.SpotNodes.Count > 0;
-    }
-
-    private static bool HasSpotPublisherClient(ZLinkFrameworkRegistration registration)
     {
         return registration.SpotNodes.Count > 0;
     }
@@ -294,19 +289,21 @@ internal static class ZLinkFrameworkServiceRegistrar
         // surface, so no read path ever rolls the view backwards.
         services.AddSingleton<ZLinkObservedLocationGenerations>();
         services.AddSingleton(static provider => new ZLinkStoreLocationResolvers(
-            provider.GetRequiredService<ZLinkLocationOptions>(),
             provider.GetRequiredService<IZLinkPeerLocationStore>(),
             provider.GetRequiredService<IZLinkSpotLocationStore>(),
             provider.GetRequiredService<IZLinkActorLocationStore>(),
             provider.GetRequiredService<IZLinkRouteLocationStore>(),
             provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
-            events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
-            observed: provider.GetRequiredService<ZLinkObservedLocationGenerations>()));
+            provider.GetRequiredService<ZLinkObservedLocationGenerations>(),
+            events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
         services.AddSingleton<IZLinkPeerLocationResolver>(
             static provider => provider.GetRequiredService<ZLinkStoreLocationResolvers>());
-        services.AddSingleton(provider => new ZLinkLocationAddressResolvers(
+        services.AddSingleton(provider => new ZLinkSpotMeshLocationResolver(
             registration,
             provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
+        services.AddSingleton(provider => new ZLinkLocationAddressResolvers(
+            provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
+            provider.GetRequiredService<ZLinkSpotMeshLocationResolver>()));
         services.AddSingleton<IZLinkSpotRefResolver>(
             static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());
         services.AddSingleton<IZLinkActorAddressResolver>(
@@ -329,7 +326,6 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<IZLinkRouteLocationStore>(),
                 provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
                 provider.GetRequiredService<ZLinkLocationRuntime>(),
-                provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
                 provider.GetRequiredService<ZLinkObservedLocationGenerations>()));
         services.AddSingleton<IZLinkLocationReadiness>(
             static provider => new ZLinkLocationReadiness(
@@ -338,10 +334,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<ZLinkLocationRuntime>(),
             provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
         services.AddSingleton<IZLinkActorLocationLifecycle>(
-            static provider => provider.GetRequiredService<ZLinkLocationLifecycle>());
-        services.AddSingleton(provider => new ZLinkSpotLocationRidResolver(
-            registration,
-            provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
+            static provider => provider.GetRequiredService<ZLinkLocationLifecycle>().ActorOwnership);
         services.AddSingleton(static provider => new ZLinkLocationAutoConnectHost(
             provider.GetRequiredService<ZLinkLocationRuntime>(),
             provider.GetRequiredService<IZLinkPeerLocationResolver>(),

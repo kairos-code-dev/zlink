@@ -65,7 +65,7 @@ internal sealed partial class ZLinkActorSessionManager
             _actorSessions.RemoveIfCurrent(actor.ActorId, state);
 
             if (LocationLifecycle is { } lifecycle)
-                await lifecycle.ReleaseActorAsync(
+                await lifecycle.ActorOwnership.ReleaseActorAsync(
                         actorType ?? string.Empty,
                         actor.ActorId,
                         CancellationToken.None)

@@ -106,7 +106,7 @@ internal sealed class RequestPerformer(
             Version = HttpVersion.Version11
         };
 
-        var contentType = FindRequestHeader(requestHeaders, "content-type");
+        var contentType = HttpHeaderLookup.Find(requestHeaders, "content-type");
         var streaming = bodyProvider is not null;
         HttpContent? content = null;
         if (bodyProvider is not null)
@@ -177,16 +177,6 @@ internal sealed class RequestPerformer(
             ZLinkHttpMethod.Options => HttpMethod.Options,
             _ => HttpMethod.Get
         };
-    }
-
-    // Request-side header lookup: request construction must not depend on the response decoder.
-    private static string? FindRequestHeader(IReadOnlyDictionary<string, string> headers, string name)
-    {
-        foreach (var (key, value) in headers)
-            if (key.Equals(name, StringComparison.OrdinalIgnoreCase))
-                return value;
-
-        return null;
     }
 
     private static ZLinkFrameworkException RequestError(string message)

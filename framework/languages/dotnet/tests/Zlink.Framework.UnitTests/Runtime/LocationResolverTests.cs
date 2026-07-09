@@ -17,12 +17,12 @@ public sealed class LocationResolverTests
         // takeover behind the caller's back is visible on the very next read.
         var fixture = await FixtureAsync();
         var counting = new CountingActorStore(fixture.Store);
+        var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero },
             fixture.Store, fixture.Store, counting, fixture.Store,
             new ZLinkOwnerLeaseTracker(
                 fixture.Store, new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero }, fixture.Time),
-            fixture.Time);
+            observed);
         await fixture.Store.UpdateActorAsync(
             InMemoryLocationStoreTests.Actor(OwnerA, 0), ZLinkLocationWriteIntent.NewClaim);
 
@@ -130,7 +130,8 @@ public sealed class LocationResolverTests
             "other", new ZLinkSpotMeshChannelRegistration { ChannelName = "other" });
         registration.SpotMeshChannels.Add(
             "play", new ZLinkSpotMeshChannelRegistration { ChannelName = "play" });
-        var addresses = new ZLinkLocationAddressResolvers(registration, fixture.Resolvers);
+        var spots = new ZLinkSpotMeshLocationResolver(registration, fixture.Resolvers);
+        var addresses = new ZLinkLocationAddressResolvers(fixture.Resolvers, spots);
 
         var address = await addresses.ResolveSpotRefAsync(RoutingId.From("spot-1"));
 
@@ -146,7 +147,8 @@ public sealed class LocationResolverTests
     {
         var fixture = await FixtureAsync();
         var registration = new ZLinkFrameworkRegistration();
-        var addresses = new ZLinkLocationAddressResolvers(registration, fixture.Resolvers);
+        var spots = new ZLinkSpotMeshLocationResolver(registration, fixture.Resolvers);
+        var addresses = new ZLinkLocationAddressResolvers(fixture.Resolvers, spots);
 
         var entryActor = InMemoryLocationStoreTests.Actor(OwnerA, 0) with
         {
@@ -197,7 +199,8 @@ public sealed class LocationResolverTests
             {
                 AutoConnectType = (ZLinkLocationAutoConnectType)77
             });
-        var resolvers = new ZLinkStoreLocationResolvers(options, junk, store, store, store, tracker, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            junk, store, store, store, tracker, new ZLinkObservedLocationGenerations());
 
         var rows = await resolvers.ListLivePeersAsync(new ZLinkPeerLocationFilter(MeshName: "play"));
 
@@ -263,7 +266,7 @@ public sealed class LocationResolverTests
             InMemoryLocationStoreTests.Actor(OwnerA, 1),
             InMemoryLocationStoreTests.Actor(OwnerA, 2));
         var resolvers = new ZLinkStoreLocationResolvers(
-            options, store, store, replica, store, tracker, time);
+            store, store, replica, store, tracker, new ZLinkObservedLocationGenerations());
 
         var first = await resolvers.ResolveActorRowAsync(ActorKey);
         Assert.Equal(2, first!.Generation);
@@ -350,8 +353,9 @@ public sealed class LocationResolverTests
         };
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            options, store, store, store, store, tracker, time);
+            store, store, store, store, tracker, observed);
         return new ResolverFixture(store, resolvers, time);
     }
 

@@ -125,14 +125,12 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
         if (currentDispatchHeader?.RequestSeq is not { } requestSeq)
             throw new InvalidOperationException("Reply is only available while handling a request packet.");
 
-        return new ZlinkStreamHeader(
+        return ZLinkStreamReplyHeaders.CreateForRequest(
+            currentDispatchHeader,
             ZlinkStreamMessageKind.Response,
             codec,
-            flags | ZlinkStreamHeaderFlags.HasRequestSeq,
+            flags,
             requestSeq,
-            currentDispatchHeader.Name,
-            metadata,
-            // Echo the request's correlation id onto the reply.
-            currentDispatchHeader.CorrelationId);
+            metadata);
     }
 }

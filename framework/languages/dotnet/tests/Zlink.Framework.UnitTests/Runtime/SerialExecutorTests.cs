@@ -399,6 +399,69 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task SerialExecutionQueue_YieldTurn_Caller_Cancellation_Allows_Later_Work_Before_Operation_Completes()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        using var cancelYield = new CancellationTokenSource();
+        var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completeIo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thirdRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new ConcurrentQueue<string>();
+
+        var first = queue.RunAsync(
+            async ct =>
+            {
+                var turn = ZLinkSerialTurn.Current
+                           ?? throw new InvalidOperationException("serial turn was not available");
+                try
+                {
+                    await turn.YieldFrameworkCallAsync(
+                        async _ =>
+                        {
+                            ioStarted.SetResult();
+                            await completeIo.Task.ConfigureAwait(false);
+                        },
+                        cancelYield.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    order.Enqueue("first-cancelled");
+                }
+            },
+            CancellationToken.None).AsTask();
+
+        await ioStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await queue.RunAsync(
+            _ =>
+            {
+                order.Enqueue("second");
+                secondRan.SetResult();
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        await cancelYield.CancelAsync();
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await queue.RunAsync(
+            _ =>
+            {
+                order.Enqueue("third");
+                thirdRan.SetResult();
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(completeIo.Task.IsCompleted);
+        completeIo.SetResult();
+        await secondRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await thirdRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new[] { "second", "first-cancelled", "third" }, order.ToArray());
+    }
+
+    [Fact]
     public async Task ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch()
     {
         var state = new ZLinkActorRuntimeState("test-actor");

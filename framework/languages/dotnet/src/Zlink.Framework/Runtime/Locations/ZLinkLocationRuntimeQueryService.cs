@@ -16,8 +16,8 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
     private readonly IZLinkRouteLocationStore _routeStore;
     private readonly ZLinkOwnerLeaseTracker _leaseTracker;
     private readonly ZLinkLocationRuntime _runtime;
-    private readonly ZLinkStoreLocationResolvers _resolvers;
     private readonly ZLinkObservedLocationGenerations _observed;
+    private readonly ZLinkLiveLocationRows _liveRows;
 
     internal ZLinkLocationRuntimeQueryService(
         ZLinkLocationOptions options,
@@ -27,8 +27,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         IZLinkRouteLocationStore routeStore,
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkLocationRuntime runtime,
-        ZLinkStoreLocationResolvers resolvers,
-        ZLinkObservedLocationGenerations? observed = null)
+        ZLinkObservedLocationGenerations observed)
     {
         _options = options;
         _peerStore = peerStore;
@@ -37,8 +36,8 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         _routeStore = routeStore;
         _leaseTracker = leaseTracker;
         _runtime = runtime;
-        _resolvers = resolvers;
-        _observed = observed ?? new ZLinkObservedLocationGenerations();
+        _observed = observed;
+        _liveRows = new ZLinkLiveLocationRows(leaseTracker);
     }
 
     public ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(
@@ -57,7 +56,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         CancellationToken cancellationToken = default)
     {
         var rows = await _peerStore.ListPeersAsync(filter, cancellationToken).ConfigureAwait(false);
-        return await FilterLiveAsync(
+        return await _liveRows.FilterAsync(
                 rows, static row => row.OwnerId, row => _observed.AcceptPeer(row), cancellationToken)
             .ConfigureAwait(false);
     }
@@ -69,7 +68,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
     {
         var raw = await _spotStore.ListSpotsAsync(filter, Normalize(page), cancellationToken)
             .ConfigureAwait(false);
-        var live = await FilterLiveAsync(
+        var live = await _liveRows.FilterAsync(
                 raw.Items, static row => row.OwnerId, row => _observed.AcceptSpot(row), cancellationToken)
             .ConfigureAwait(false);
         return new ZLinkLocationPage<ZLinkSpotLocation>(live, raw.ContinuationToken);
@@ -83,7 +82,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         var raw = await _actorStore.ListActorsAsync(filter, Normalize(page), cancellationToken)
             .ConfigureAwait(false);
         var published = raw.Items.Where(static row => row.ActorRef is not null).ToArray();
-        var live = await FilterLiveAsync(
+        var live = await _liveRows.FilterAsync(
                 published, static row => row.OwnerId, row => _observed.AcceptActor(row), cancellationToken)
             .ConfigureAwait(false);
         return new ZLinkLocationPage<ZLinkActorLocation>(live, raw.ContinuationToken);
@@ -96,7 +95,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
     {
         var raw = await _routeStore.ListRoutesAsync(filter, Normalize(page), cancellationToken)
             .ConfigureAwait(false);
-        var live = await FilterLiveAsync(
+        var live = await _liveRows.FilterAsync(
                 raw.Items, static row => row.OwnerId, row => _observed.AcceptRoute(row), cancellationToken)
             .ConfigureAwait(false);
         return new ZLinkLocationPage<ZLinkRouteLocation>(live, raw.ContinuationToken);
@@ -246,32 +245,6 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         return new ZLinkLocationPage<T>(
             items,
             nextOffset < entries.Count ? nextOffset.ToString() : null);
-    }
-
-    private async ValueTask<IReadOnlyList<TRow>> FilterLiveAsync<TRow>(
-        IReadOnlyList<TRow> rows,
-        Func<TRow, string> ownerOf,
-        Func<TRow, bool> acceptObserved,
-        CancellationToken cancellationToken)
-    {
-        var live = new List<TRow>(rows.Count);
-        foreach (var row in rows)
-        {
-            if (!acceptObserved(row))
-            {
-                // A lagging store replica returned a generation this runtime
-                // already saw superseded; stale rows never count as success.
-                continue;
-            }
-
-            if (await _leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken)
-                    .ConfigureAwait(false))
-            {
-                live.Add(row);
-            }
-        }
-
-        return live;
     }
 
     private sealed class Accumulator

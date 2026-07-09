@@ -24,7 +24,9 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             topic,
             message,
             activation.Codecs);
-        ZLinkUnawaitedSubmit.Observe(activation.PublishCurrentAsync(topic, parts, cancellationToken), "spot publish submit");
+        ZLinkUnawaitedSubmit.Observe(
+            activation.OutboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken),
+            "spot publish submit");
     }
 }
 

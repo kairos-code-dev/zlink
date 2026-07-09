@@ -69,14 +69,13 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         var payloadObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
         var message = new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(header.Name, header.Metadata, payloadObject);
         receivedMessages.Record(message);
-        var dispatchMessage = new ZlinkStreamMessage(header.Name, header.Metadata, payloadObject);
 
         var handlers = typedHandlers.Snapshot(header.Name);
         foreach (var handler in handlers)
             try
             {
                 await callbacks.DispatchUserCallbackAsync(
-                        dispatchedToken => handler.Invoke(dispatchMessage, payloadObject, dispatchedToken),
+                        dispatchedToken => handler.Invoke(message, dispatchedToken),
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -107,5 +106,5 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         }
     }
 
-    private sealed record WireError(string? Code, string? Message);
+    private sealed record WireError(string? Message);
 }

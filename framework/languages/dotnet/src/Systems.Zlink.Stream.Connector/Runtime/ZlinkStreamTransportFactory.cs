@@ -131,11 +131,19 @@ internal static class ZlinkStreamTransportFactory
         CancellationToken cancellationToken)
     {
         var webSocket = new ClientWebSocket();
-        if (options.SkipServerCertificateValidation)
-            webSocket.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+        try
+        {
+            if (options.SkipServerCertificateValidation)
+                webSocket.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 
-        await webSocket.ConnectAsync(options.Endpoint, cancellationToken).ConfigureAwait(false);
-        return new WebSocketConnection(webSocket, options.MaxReceivePayloadSize);
+            await webSocket.ConnectAsync(options.Endpoint, cancellationToken).ConfigureAwait(false);
+            return new WebSocketConnection(webSocket, options.MaxReceivePayloadSize);
+        }
+        catch
+        {
+            webSocket.Dispose();
+            throw;
+        }
     }
 
     private static async ValueTask<IZlinkStreamConnection> ConnectStreamAsync(
@@ -144,23 +152,40 @@ internal static class ZlinkStreamTransportFactory
         CancellationToken cancellationToken)
     {
         var tcp = new TcpClient();
-        tcp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-        await tcp.ConnectAsync(options.Endpoint.Host, options.Endpoint.Port, cancellationToken).ConfigureAwait(false);
-        System.IO.Stream stream = tcp.GetStream();
-        if (transport == ZlinkStreamTransport.Tls)
+        try
         {
-            var ssl = new SslStream(
-                stream,
-                false,
-                options.SkipServerCertificateValidation
-                    ? (_, _, _, _) => true
-                    : null);
-            await ssl.AuthenticateAsClientAsync(options.Endpoint.Host).WaitAsync(cancellationToken)
+            tcp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+            await tcp.ConnectAsync(options.Endpoint.Host, options.Endpoint.Port, cancellationToken)
                 .ConfigureAwait(false);
-            stream = ssl;
-        }
+            System.IO.Stream stream = tcp.GetStream();
+            if (transport == ZlinkStreamTransport.Tls)
+            {
+                var ssl = new SslStream(
+                    stream,
+                    false,
+                    options.SkipServerCertificateValidation
+                        ? (_, _, _, _) => true
+                        : null);
+                try
+                {
+                    await ssl.AuthenticateAsClientAsync(options.Endpoint.Host).WaitAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    stream = ssl;
+                }
+                catch
+                {
+                    await ssl.DisposeAsync().ConfigureAwait(false);
+                    throw;
+                }
+            }
 
-        return new StreamConnection(tcp, stream);
+            return new StreamConnection(tcp, stream);
+        }
+        catch
+        {
+            tcp.Dispose();
+            throw;
+        }
     }
 
     private static ZlinkStreamTransport ResolveTransport(ZlinkStreamConnectorOptions options)

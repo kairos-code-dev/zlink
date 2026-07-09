@@ -19,18 +19,6 @@ internal sealed class ZLinkActorReply(
 
     public static ZLinkActorReply FromPayload(
         ZlinkStreamCodec codec,
-        byte[] payload)
-    {
-        return new ZLinkActorReply(
-            ZlinkStreamMessageKind.Response,
-            codec,
-            payload,
-            ZlinkStreamHeaderFlags.None,
-            ZlinkStreamMetadata.Empty);
-    }
-
-    public static ZLinkActorReply FromPayload(
-        ZlinkStreamCodec codec,
         byte[] payload,
         ZLinkSpotActorReplyOptionsSnapshot options,
         IZlinkStreamCompressionCodec? compressionCodec)
@@ -64,15 +52,13 @@ internal sealed class ZLinkActorReply(
         if (requestHeader.RequestSeq is not { } requestSeq)
             throw new InvalidOperationException("Actor reply frame requires a request sequence.");
 
-        var responseHeader = new ZlinkStreamHeader(
+        var responseHeader = ZLinkStreamReplyHeaders.CreateForRequest(
+            requestHeader,
             Kind,
             Codec,
-            Flags | ZlinkStreamHeaderFlags.HasRequestSeq,
+            Flags,
             requestSeq,
-            requestHeader.Name,
-            Metadata,
-            // Echo the request's correlation id so a request/reply pair shares one corr.
-            requestHeader.CorrelationId);
+            Metadata);
         return ZLinkStreamFrameCodec.Encode(
             ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span,
             Payload);

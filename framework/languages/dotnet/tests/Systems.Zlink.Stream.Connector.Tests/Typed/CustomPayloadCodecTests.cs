@@ -55,7 +55,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task AutoCodecFallsBackToBuiltInWhenNoCustomCodecIsRegistered()
+    public void AutoCodecFallsBackToBuiltInWhenNoCustomCodecIsRegistered()
     {
         // Without a custom codec the typed API keeps the built-in JSON auto-selection.
         var connector = new RecordingConnector();

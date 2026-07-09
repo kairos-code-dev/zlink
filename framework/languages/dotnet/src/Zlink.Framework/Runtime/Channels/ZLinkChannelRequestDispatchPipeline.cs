@@ -19,6 +19,15 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
         Action<ZLinkEnvelopeHeader> replyError,
         CancellationToken cancellationToken)
     {
+        var scope = new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.Channel,
+            transportName,
+            ZLinkDispatchMessageKind.Request,
+            "Request",
+            header.MessageName,
+            channelName,
+            header.ContentType,
+            header.CorrelationId);
         if (!handlerRegistry.TryGetRequest(
                 channelName,
                 resolveMappedGroups(channelName),
@@ -29,69 +38,39 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
             var error = new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.HandlerNotFound,
                 $"No request handler is registered for '{channelName}:{header.MessageName}'.");
-            ZLinkMessageFlowLogger.HandlerMissing(
+            scope.HandlerMissing(
                 logger,
+                dispatchErrors,
                 LogLevel.Error,
-                transportName,
-                "Request",
-                header.MessageName,
-                "reply-error",
-                "no-handler",
-                channelName);
-            replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ResolveSurface(transportName),
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.HandlerMissing,
                 ZLinkDispatchErrorAction.ReplyError,
-                header.MessageName,
-                channelName,
-                CorrelationId: header.CorrelationId,
-                Exception: error));
+                error);
+            replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
             return;
         }
 
-        object? message;
-        try
-        {
-            message = ZLinkEnvelopeCodec.DecodeBody(
+        ZLinkFrameworkException? decodeError = null;
+        if (!scope.TryDecode(
                 received.Parts,
                 endpoint.MessageType,
-                header.ContentType,
-                codecs);
-        }
-        catch (Exception ex)
-        {
-            var error = new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
-                $"PayloadDecodeFailed: failed to decode request payload for '{channelName}:{header.MessageName}'.",
-                innerException: ex);
-            ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                scope.ContentType!,
+                codecs,
                 logger,
-                transportName,
-                "Request",
-                header.MessageName,
-                "reply-error",
-                "payload-decode-failed",
-                ex,
-                channelName);
-            replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ResolveSurface(transportName),
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                dispatchErrors,
                 ZLinkDispatchErrorAction.ReplyError,
-                header.MessageName,
-                channelName,
-                CorrelationId: header.CorrelationId,
-                Exception: error));
+                out var message,
+                ex => decodeError = new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                    $"PayloadDecodeFailed: failed to decode request payload for '{channelName}:{header.MessageName}'.",
+                    innerException: ex)))
+        {
+            replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, decodeError!));
             return;
         }
 
         var context = new ZLinkRequestContext(
-            channelName,
-            header.MessageName,
-            header.ContentType,
+            scope.ChannelName,
+            scope.PacketName,
+            scope.ContentType,
             cancellationToken);
 
         try
@@ -103,32 +82,17 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 response,
                 endpoint.ReplyType);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowOutcome.Replied,
-                    ResolveSurface(transportName),
-                    ZLinkDispatchMessageKind.Request,
-                    header.MessageName,
-                    channelName,
-                    CorrelationId: header.CorrelationId));
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);
         }
         catch (Exception ex)
         {
             replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, ex));
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ResolveSurface(transportName),
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.HandlerException,
+            scope.HandlerException(
+                logger,
+                dispatchErrors,
+                null,
                 ZLinkDispatchErrorAction.ReplyError,
-                header.MessageName,
-                channelName,
-                CorrelationId: header.CorrelationId,
-                Exception: ex));
+                ex);
         }
-    }
-
-    private static ZLinkDispatchErrorSurface ResolveSurface(string transportName)
-    {
-        return ZLinkDispatchErrorSurface.Channel;
     }
 }

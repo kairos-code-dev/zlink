@@ -193,6 +193,41 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public async Task Local_Row_Publish_Takes_Over_Same_Key_After_Process_Restart()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.Store.RenewOwnerLeaseAsync(
+            "old-local-owner",
+            RoutingId.From("old-local-node"),
+            LeaseTtl);
+        await fixture.Store.UpdatePeerAsync(
+            new ZLinkPeerLocation(
+                ZLinkLocationAutoConnectType.ClientServer,
+                "play",
+                RoutingId.From("local"),
+                ZLinkLocationRole.Dealer,
+                "tcp://l:1",
+                100,
+                0,
+                null,
+                null,
+                "old-local-owner",
+                0,
+                default),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        await fixture.Reconciler.TickAsync();
+
+        var rows = await fixture.Store.ListPeersAsync(new ZLinkPeerLocationFilter(
+            MeshName: "play",
+            Role: ZLinkLocationRole.Dealer,
+            Endpoint: "tcp://l:1"));
+        var row = Assert.Single(rows);
+        Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
+        Assert.True(row.Generation > 1);
+    }
+
+    [Fact]
     public async Task Store_Outage_Is_Fail_Static_And_Recovery_Defers_Disconnects()
     {
         var fixture = await FixtureAsync();
@@ -304,7 +339,8 @@ public sealed class AutoConnectReconcilerTests
             ZLinkLocationWriteIntent.NewClaim);
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
-        var resolvers = new ZLinkStoreLocationResolvers(options, store, store, store, store, tracker, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
 
         // An EnableClient() dealer has neither a routing id nor an endpoint:
@@ -353,7 +389,8 @@ public sealed class AutoConnectReconcilerTests
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
-        var resolvers = new ZLinkStoreLocationResolvers(options, store, store, store, store, tracker, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var failable = new FailablePeerResolver(resolvers);
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(

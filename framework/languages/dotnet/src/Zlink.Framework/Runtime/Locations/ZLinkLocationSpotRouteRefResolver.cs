@@ -7,50 +7,13 @@ namespace Zlink.Framework.Runtime.Locations;
 /// try reads the store — resolvers have no cache. Scheduled for removal
 /// with the address-based egress (spot-address messaging draft §10.3).
 /// </summary>
-internal sealed class ZLinkSpotLocationRidResolver
-{
-    private readonly IReadOnlyList<string> _meshNames;
-    private readonly ZLinkStoreLocationResolvers _rows;
-
-    internal ZLinkSpotLocationRidResolver(
-        ZLinkFrameworkRegistration registration,
-        ZLinkStoreLocationResolvers rows)
-    {
-        _rows = rows;
-        _meshNames = registration.SpotNodes.Values
-            .Select(static node => node.SpotMeshChannelName ?? node.SpotNodeName)
-            .Concat(registration.SpotMeshChannels.Keys)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-    }
-
-    internal async ValueTask<ZLinkSpotLocation?> ResolveAsync(
-        RoutingId spotRid,
-        CancellationToken cancellationToken)
-    {
-        foreach (var meshName in _meshNames)
-        {
-            var row = await _rows.ResolveSpotRowAsync(
-                    new ZLinkSpotLocationKey(meshName, spotRid),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (row is not null)
-            {
-                return row;
-            }
-        }
-
-        return null;
-    }
-}
-
 /// <summary>
 /// Default <see cref="IZLinkSpotRouteRefResolver"/> over the location
 /// store, replacing the removed registry-backed resolver. Registered only
 /// when location stores are enabled and no custom resolver was added.
 /// </summary>
 internal sealed class ZLinkLocationSpotRouteRefResolver(
-    ZLinkSpotLocationRidResolver resolver) : IZLinkSpotRouteRefResolver
+    ZLinkSpotMeshLocationResolver resolver) : IZLinkSpotRouteRefResolver
 {
     public async ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
         RoutingId spotRid,

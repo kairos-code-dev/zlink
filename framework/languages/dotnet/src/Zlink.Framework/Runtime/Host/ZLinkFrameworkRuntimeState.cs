@@ -43,6 +43,21 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
     public List<Task> ListenerTasks { get; } = [];
 
+    public bool TryGetSpotNodeByRoutingId(
+        RoutingId nodeRid,
+        out ZLinkSpotNodeRuntime nodeRuntime)
+    {
+        foreach (var candidate in SpotNodes.Values)
+            if (candidate.Node.RoutingId == nodeRid)
+            {
+                nodeRuntime = candidate;
+                return true;
+            }
+
+        nodeRuntime = null!;
+        return false;
+    }
+
     public async ValueTask DisposeAsync()
     {
         StopTokenSource.Cancel();

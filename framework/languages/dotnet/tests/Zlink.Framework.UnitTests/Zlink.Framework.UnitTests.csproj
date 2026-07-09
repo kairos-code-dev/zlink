@@ -10,6 +10,7 @@
         <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
         <PackageReference Include="Microsoft.Extensions.Hosting"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="Systems.Zlink"/>
         <PackageReference Include="coverlet.collector">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
@@ -30,7 +31,6 @@
         <ProjectReference Include="../../src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj"/>
         <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj"/>
         <ProjectReference Include="../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj"/>
-        <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
@@ -64,8 +64,8 @@
         <Compile Include="Runtime/OwnerLeaseTrackerTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
+        <Compile Include="Runtime/StreamWireInteropTests.cs"/>
         <Compile Include="Runtime/SpotHandlerInvokerTests.cs"/>
-        <Compile Include="Runtime/SpotPeerConnectionSetTests.cs"/>
         <Compile Include="Runtime/RequestFailureMappingTests.cs"/>
         <Compile Include="Runtime/RouteCodecTests.cs"/>
         <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs"/>

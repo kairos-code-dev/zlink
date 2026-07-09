@@ -14,6 +14,8 @@ internal sealed class ZLinkSpotRuntimeManager(
         backendAdapterFactory,
         registration);
 
+    public ZLinkEntrySpotActorRouter EntrySpotActors => _entrySpotActors;
+
     public async ValueTask InitializeSpotNodesAsync(ZLinkFrameworkRuntimeState state)
     {
         await _nodeInitializer.InitializeAsync(state).ConfigureAwait(false);
@@ -104,114 +106,10 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var activation = GetActivation(state, spotRid)
+        var activation = GetActivationBySpotRid(state, spotRid)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
         return await activation.JoinActorAsync(actor, request, cancellationToken);
-    }
-
-    public async ValueTask<bool> TrySubmitEntrySpotActorAsync(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkActor actor,
-        ZLinkActorRuntimeState runtimeState,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
-    {
-        return await _entrySpotActors.TryAsync(
-                state,
-                actor,
-                runtimeState,
-                header,
-                body,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<EntrySpotActorReplyDispatchResult> TrySubmitEntrySpotActorForReplyAsync(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkActor actor,
-        ZLinkActorRuntimeState runtimeState,
-        ZlinkStreamHeader header,
-        Message body,
-        bool callerOwnsDispatchTurn,
-        CancellationToken cancellationToken)
-    {
-        return await _entrySpotActors.TrySubmitForReplyAsync(
-                state,
-                actor,
-                runtimeState,
-                header,
-                body,
-                callerOwnsDispatchTurn,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask SubmitResolvedEntrySpotActorAsync(
-        IZLinkActor actor,
-        ZLinkActorRuntimeState runtimeState,
-        ZlinkStreamHeader header,
-        Func<CancellationToken, ValueTask> operation,
-        CancellationToken cancellationToken)
-    {
-        await _entrySpotActors.SubmitResolvedAsync(
-                actor,
-                runtimeState,
-                header,
-                operation,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask NotifyEntrySpotActorJoinedAsync(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkActor actor,
-        RoutingId? targetNodeRid,
-        CancellationToken cancellationToken)
-    {
-        await _entrySpotActors.NotifyJoinedAsync(state, actor, targetNodeRid, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask NotifyEntrySpotActorCreatedAsync(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkActor actor,
-        ZLinkMessage createRequest,
-        RoutingId? targetNodeRid,
-        CancellationToken cancellationToken)
-    {
-        await _entrySpotActors.NotifyCreatedAsync(
-                state,
-                actor,
-                createRequest,
-                targetNodeRid,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask NotifyEntrySpotActorLeftAsync(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkActor actor,
-        RoutingId? targetNodeRid,
-        CancellationToken cancellationToken)
-    {
-        await _entrySpotActors.NotifyLeftAsync(state, actor, targetNodeRid, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<bool> TryNotifyEntrySpotActorDisconnectedAsync(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkActor actor,
-        RoutingId? targetNodeRid,
-        CancellationToken cancellationToken)
-    {
-        return await _entrySpotActors.TryNotifyDisconnectedAsync(
-                state,
-                actor,
-                targetNodeRid,
-                cancellationToken)
-            .ConfigureAwait(false);
     }
 
     public async ValueTask<bool> TryNotifyJoinedSpotActorDisconnectedAsync(
@@ -259,13 +157,6 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public ZLinkSpotActivation? GetActivationBySpotRid(
-        ZLinkFrameworkRuntimeState state,
-        RoutingId spotRid)
-    {
-        return GetActivation(state, spotRid);
-    }
-
-    private static ZLinkSpotActivation? GetActivation(
         ZLinkFrameworkRuntimeState state,
         RoutingId spotRid)
     {

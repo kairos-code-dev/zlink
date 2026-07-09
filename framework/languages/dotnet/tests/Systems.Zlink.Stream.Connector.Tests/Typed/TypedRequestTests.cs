@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 using Xunit;
 
 public sealed partial class StreamConnectorTests
@@ -9,7 +10,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task TcpTypedRequestCorrelatesResponse()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -56,7 +57,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task CallbackRequestReturnsTypedResult()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -102,7 +103,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task PacketNameAttributeIsUsedByDefault()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -158,8 +159,8 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task ClientToServerCompressionIsExplicit()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
-        var compressionCodec = ZlinkStreamDefaultCodecFactory.Lz4Compression();
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var compressionCodec = new ZlinkStreamLz4CompressionCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;

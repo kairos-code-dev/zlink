@@ -8,7 +8,8 @@ internal interface IZLinkActorLocationLifecycle
         RoutingId nodeRid,
         Func<CancellationToken, ValueTask>? deactivate,
         Func<CancellationToken, ValueTask<TActor>> activate,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ZLinkActorClaimMode claimMode = ZLinkActorClaimMode.NewOwner)
         where TActor : class;
 
     ValueTask<ZLinkActorClaimResult> ClaimActorAsync(

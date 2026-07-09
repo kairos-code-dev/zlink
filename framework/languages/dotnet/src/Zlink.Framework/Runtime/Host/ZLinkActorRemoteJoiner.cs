@@ -107,7 +107,7 @@ internal sealed class ZLinkActorRemoteJoiner(
 
         return new ZLinkActorJoinResult(
             reply.Accepted,
-            reply.Accepted ? ToActorRef(resultActorRef) : null,
+            reply.Accepted ? resultActorRef.ToNative() : null,
             replyMessage);
     }
 
@@ -237,7 +237,7 @@ internal sealed class ZLinkActorRemoteJoiner(
 
         return new ZLinkActorJoinResult(
             accepted,
-            accepted ? ToActorRef(joinResult.Actor) : null,
+            accepted ? joinResult.Actor.ToNative() : null,
             reply);
     }
 
@@ -257,16 +257,11 @@ internal sealed class ZLinkActorRemoteJoiner(
 
         await context.ActorCoordinator.BindActorAsync(
                 context,
-                ToActorRef(targetActorRef),
+                targetActorRef.ToNative(),
                 cancellationToken)
             .ConfigureAwait(false);
         runtime.UnbindSessionActor(actorState.ActorId, context, session.BindingToken);
         runtime.UnbindActorSession(actorState.ActorId, session.BindingToken);
-    }
-
-    private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
-    {
-        return actorRef.ToNative();
     }
 
     private ZLinkMessage DecodeNativeJoinReply(

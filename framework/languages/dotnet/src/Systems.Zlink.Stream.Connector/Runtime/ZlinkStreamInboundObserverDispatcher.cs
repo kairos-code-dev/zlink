@@ -11,6 +11,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
     private readonly ConcurrentQueue<ZlinkStreamInboundObservation> _queue = new();
     private readonly SemaphoreSlim _signal = new(0);
     private readonly ZlinkStreamTaskRunner _taskRunner;
+    private int _drainStarted;
     private int _dropReportPending;
     private ObserverRegistration? _observers;
     private int _queuedCount;
@@ -25,7 +26,6 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
         _callbacks = callbacks;
         _maxNotifications = maxNotifications;
         _maxPayloadPreviewBytes = maxPayloadPreviewBytes;
-        _taskRunner.RunDetached("stream-inbound-observer-dispatch", DrainAsync);
     }
 
     public IDisposable Add(Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer)
@@ -39,6 +39,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
             _observers = registration;
         }
 
+        StartDrain();
         return registration;
     }
 
@@ -126,6 +127,12 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
                 }
             }
         }
+    }
+
+    private void StartDrain()
+    {
+        if (Interlocked.Exchange(ref _drainStarted, 1) == 0)
+            _taskRunner.RunDetached("stream-inbound-observer-dispatch", DrainAsync);
     }
 
     private void ReportDropped()

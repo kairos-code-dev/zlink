@@ -213,34 +213,27 @@ internal sealed class ZLinkActorDispatchRouter(
         ZLinkDispatchErrorAction action,
         Exception? exception = null)
     {
-        var actionText = action == ZLinkDispatchErrorAction.ReplyError
-            ? "reply-error"
-            : "drop";
         var level = action == ZLinkDispatchErrorAction.ReplyError
             ? LogLevel.Error
             : LogLevel.Warning;
         var kindText = kind == ZLinkDispatchMessageKind.ActorRequest
             ? "ActorRequest"
             : "ActorSend";
-
-        ZLinkMessageFlowLogger.HandlerMissing(
-            _logger,
-            level,
+        var scope = new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.SpotActor,
             "SpotActor",
+            kind,
             kindText,
             header.Name,
-            actionText,
-            "no-handler",
+            correlationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
             actorId: actor.ActorId,
             actorType: actor.GetType().FullName);
-        _dispatchErrors.Report(new ZLinkDispatchFailure(
-            ZLinkDispatchErrorSurface.SpotActor,
-            kind,
-            ZLinkDispatchErrorReason.HandlerMissing,
+
+        scope.HandlerMissing(
+            _logger,
+            _dispatchErrors,
+            level,
             action,
-            header.Name,
-            ActorId: actor.ActorId,
-            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
-            Exception: exception));
+            exception);
     }
 }

@@ -103,7 +103,7 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid);
 
-    ValueTask CloseActorBoundSessionAsync(
+    void CloseActorBoundSession(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken);

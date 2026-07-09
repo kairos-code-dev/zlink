@@ -39,6 +39,6 @@ internal static class ZLinkSpotReplyEnvelope
             null,
             exception.GetType().Name,
             exception.Message);
-        return ZLinkEnvelopeCodec.EncodeParts(replyHeader, null, null);
+        return ZLinkEnvelopeCodec.EncodeParts(replyHeader, null, null, null);
     }
 }

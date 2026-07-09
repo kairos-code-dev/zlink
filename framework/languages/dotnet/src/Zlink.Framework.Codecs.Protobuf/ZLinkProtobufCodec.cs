@@ -10,6 +10,8 @@ namespace Zlink.Framework.Codecs.Protobuf;
 
 public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPayloadCodec
 {
+    private static readonly ConcurrentDictionary<Type, Func<IMessage>> Factories = new();
+
     private ZLinkProtobufCodec()
     {
     }
@@ -45,11 +47,24 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
         if (!typeof(IMessage).IsAssignableFrom(typeof(TPayload)))
             throw new InvalidOperationException($"Protobuf codec cannot decode payload type '{typeof(TPayload)}'.");
 
-        var protobuf = (IMessage?)Activator.CreateInstance(typeof(TPayload))
-                       ?? throw new InvalidOperationException(
-                           $"{typeof(TPayload).FullName} must have a public parameterless constructor.");
+        var protobuf = CreateMessage(typeof(TPayload));
         protobuf.MergeFrom(payload.Payload.Span);
         return (TPayload)protobuf;
+    }
+
+    private static IMessage CreateMessage(Type type)
+    {
+        return Factories.GetOrAdd(type, CreateFactory)();
+    }
+
+    private static Func<IMessage> CreateFactory(Type type)
+    {
+        var constructor = type.GetConstructor(Type.EmptyTypes)
+                          ?? throw new InvalidOperationException(
+                              $"{type.FullName} must have a public parameterless constructor.");
+        var create = Expression.New(constructor);
+        var convert = Expression.Convert(create, typeof(IMessage));
+        return Expression.Lambda<Func<IMessage>>(convert).Compile();
     }
 
     private sealed class ProtobufSerializer :
@@ -57,8 +72,6 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
         IZLinkMessagePartSerializer,
         IZLinkMessageSpanDeserializer
     {
-        private static readonly ConcurrentDictionary<Type, Func<IMessage>> Factories = new();
-
         public static ProtobufSerializer Instance { get; } = new();
 
         public ZLinkEncodedPayload Serialize(object value, Type type)
@@ -102,19 +115,9 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
             // Hot path: compiled factories avoid Activator reflection in every
             // response decode while still honoring protobuf's parameterless ctor
             // contract.
-            var protobuf = Factories.GetOrAdd(type, CreateFactory)();
+            var protobuf = CreateMessage(type);
             protobuf.MergeFrom(payload);
             return protobuf;
-        }
-
-        private static Func<IMessage> CreateFactory(Type type)
-        {
-            var constructor = type.GetConstructor(Type.EmptyTypes)
-                              ?? throw new InvalidOperationException(
-                                  $"{type.FullName} must have a public parameterless constructor.");
-            var create = Expression.New(constructor);
-            var convert = Expression.Convert(create, typeof(IMessage));
-            return Expression.Lambda<Func<IMessage>>(convert).Compile();
         }
     }
 }

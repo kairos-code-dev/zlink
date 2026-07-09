@@ -5,6 +5,9 @@ namespace Systems.Zlink.Stream.Connector.Runtime.Protocol;
 
 internal sealed class ZlinkStreamHeaderCodec
 {
+    // Keep byte-compatible with Zlink.Framework stream headers; StreamWireInteropTests is the drift gate.
+    private const int MaxMetadataPayloadSize = 1024;
+
     private const ZlinkStreamHeaderFlags KnownFlags =
         ZlinkStreamHeaderFlags.HasRequestSeq |
         ZlinkStreamHeaderFlags.HasMetadata |
@@ -38,6 +41,11 @@ internal sealed class ZlinkStreamHeaderCodec
             : flags & ~ZlinkStreamHeaderFlags.HasCorrelationId;
 
         var metadataSize = hasMetadata ? ZlinkStreamMetadataCodec.GetPayloadSize(header.Metadata) : 0;
+        if (metadataSize > MaxMetadataPayloadSize)
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                $"Metadata payload exceeds fixed limit ({MaxMetadataPayloadSize}).");
+
         var size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.Length
                    + (hasMetadata ? 2 + metadataSize : 0)
                    + (hasCorrelationId ? 1 + correlationBytes.Length : 0);
@@ -160,11 +168,6 @@ internal sealed class ZlinkStreamHeaderCodec
         ValidateHeaderSemantics(kind, codec, flags, requestSeq is not null, metadata.Count > 0,
             correlationId is not null);
         return new ZlinkStreamHeader(kind, codec, flags, requestSeq, name, metadata, correlationId);
-    }
-
-    internal static int GetMetadataPayloadSize(ZlinkStreamMetadata metadata)
-    {
-        return ZlinkStreamMetadataCodec.GetPayloadSize(metadata);
     }
 
     private static void ValidateEnum(

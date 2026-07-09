@@ -16,15 +16,13 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
         CancellationToken cancellationToken)
     {
         using var dispatch = runtimeState.EnterDispatch(header);
+        var scope = CreateScope(
+            actor,
+            header,
+            ZLinkDispatchMessageKind.ActorSend,
+            "ActorSend");
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.Received,
-                ZLinkDispatchErrorSurface.SpotActor,
-                ZLinkDispatchMessageKind.ActorSend,
-                header.Name,
-                ActorId: actor.ActorId,
-                CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
+        scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
             && descriptor is not null)
@@ -35,58 +33,22 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     .InvokeActorPacketAsync(descriptor, actor, header, body, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                    dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowOutcome.Dispatched,
-                        ZLinkDispatchErrorSurface.SpotActor,
-                        ZLinkDispatchMessageKind.ActorSend,
-                        header.Name,
-                        ActorId: actor.ActorId,
-                        CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
+                scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);
             }
             catch (Exception ex)
             {
-                ZLinkMessageFlowLogger.Rejected(
+                scope.HandlerException(
                     logger,
+                    dispatchErrors,
                     LogLevel.Error,
-                    "SpotActor",
-                    "ActorSend",
-                    header.Name,
-                    "handler-exception",
-                    ex,
-                    actorId: actor.ActorId,
-                    actorType: actor.GetType().FullName);
-                dispatchErrors.Report(new ZLinkDispatchFailure(
-                    ZLinkDispatchErrorSurface.SpotActor,
-                    ZLinkDispatchMessageKind.ActorSend,
-                    ZLinkDispatchErrorReason.HandlerException,
                     ZLinkDispatchErrorAction.Drop,
-                    header.Name,
-                    ActorId: actor.ActorId,
-                    CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
-                    Exception: ex));
+                    ex);
             }
 
             return;
         }
 
-        ZLinkMessageFlowLogger.Dropped(
-            logger,
-            LogLevel.Warning,
-            "SpotActor",
-            "ActorSend",
-            header.Name,
-            "no-handler",
-            actorId: actor.ActorId,
-            actorType: actor.GetType().FullName);
-        dispatchErrors.Report(new ZLinkDispatchFailure(
-            ZLinkDispatchErrorSurface.SpotActor,
-            ZLinkDispatchMessageKind.ActorSend,
-            ZLinkDispatchErrorReason.HandlerMissing,
-            ZLinkDispatchErrorAction.Drop,
-            header.Name,
-            ActorId: actor.ActorId,
-            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
+        scope.Dropped(logger, dispatchErrors, LogLevel.Warning);
     }
 
     public async ValueTask<ZLinkActorReply?> DispatchForReplyAsync(
@@ -97,15 +59,13 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
         CancellationToken cancellationToken)
     {
         using var dispatch = runtimeState.EnterDispatch(header);
+        var scope = CreateScope(
+            actor,
+            header,
+            ZLinkDispatchMessageKind.ActorRequest,
+            "ActorRequest");
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.Received,
-                ZLinkDispatchErrorSurface.SpotActor,
-                ZLinkDispatchMessageKind.ActorRequest,
-                header.Name,
-                ActorId: actor.ActorId,
-                CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
+        scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
             && descriptor is not null)
@@ -115,64 +75,48 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     .InvokeActorPacketForReplyAsync(descriptor, actor, header, body, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-                    dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowOutcome.Replied,
-                        ZLinkDispatchErrorSurface.SpotActor,
-                        ZLinkDispatchMessageKind.ActorRequest,
-                        header.Name,
-                        ActorId: actor.ActorId,
-                        CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
+                scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);
 
                 return reply;
             }
             catch (Exception ex)
             {
-                ZLinkMessageFlowLogger.Rejected(
+                scope.HandlerException(
                     logger,
+                    dispatchErrors,
                     LogLevel.Error,
-                    "SpotActor",
-                    "ActorRequest",
-                    header.Name,
-                    "handler-exception",
-                    ex,
-                    actorId: actor.ActorId,
-                    actorType: actor.GetType().FullName);
-                dispatchErrors.Report(new ZLinkDispatchFailure(
-                    ZLinkDispatchErrorSurface.SpotActor,
-                    ZLinkDispatchMessageKind.ActorRequest,
-                    ZLinkDispatchErrorReason.HandlerException,
                     ZLinkDispatchErrorAction.ReplyError,
-                    header.Name,
-                    ActorId: actor.ActorId,
-                    CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
-                    Exception: ex));
+                    ex);
                 return ZLinkActorReply.FromError(ex);
             }
 
-        ZLinkMessageFlowLogger.HandlerMissing(
-            logger,
-            LogLevel.Error,
-            "SpotActor",
-            "ActorRequest",
-            header.Name,
-            "reply-error",
-            "no-handler",
-            actorId: actor.ActorId,
-            actorType: actor.GetType().FullName);
         var error = new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
             $"No Spot actor request handler is registered for '{header.Name}'.");
-        dispatchErrors.Report(new ZLinkDispatchFailure(
-            ZLinkDispatchErrorSurface.SpotActor,
-            ZLinkDispatchMessageKind.ActorRequest,
-            ZLinkDispatchErrorReason.HandlerMissing,
+        scope.HandlerMissing(
+            logger,
+            dispatchErrors,
+            LogLevel.Error,
             ZLinkDispatchErrorAction.ReplyError,
-            header.Name,
-            ActorId: actor.ActorId,
-            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
-            Exception: error));
+            error);
         return ZLinkActorReply.FromError(error);
+    }
+
+    private static ZLinkDispatchFlowScope CreateScope(
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        ZLinkDispatchMessageKind kind,
+        string kindName)
+    {
+        return new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.SpotActor,
+            "SpotActor",
+            kind,
+            kindName,
+            header.Name,
+            correlationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            actorId: actor.ActorId,
+            actorType: actor.GetType().FullName);
     }
 
     private bool TryResolveActorPacketDescriptor(

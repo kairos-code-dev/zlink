@@ -585,7 +585,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.NotNull(provider.GetService<IZLinkLocationRuntimeQuery>());
         Assert.NotNull(provider.GetService<IZLinkPeerLocationResolver>());
         Assert.Same(
-            provider.GetRequiredService<ZLinkLocationLifecycle>(),
+            provider.GetRequiredService<ZLinkLocationLifecycle>().ActorOwnership,
             provider.GetRequiredService<IZLinkActorLocationLifecycle>());
     }
 

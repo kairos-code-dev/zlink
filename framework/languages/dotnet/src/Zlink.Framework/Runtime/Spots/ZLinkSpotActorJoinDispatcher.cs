@@ -195,15 +195,19 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         ZLinkMessageFlowLogger.Rejected(
             _logger,
             level,
+            new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowOutcome.Error,
+                ZLinkDispatchErrorSurface.SpotActor,
+                ZLinkDispatchMessageKind.Request,
+                messageName,
+                channelName,
+                ActorId: joinRequest.TargetActor.ActorId,
+                SpotRid: joinRequest.TargetSpotRid.ToHex()),
+            reason,
             "EntrySpot",
             "Request",
-            messageName,
-            reason,
             exception,
-            channelName,
-            joinRequest.TargetActor.ActorId,
-            actorType?.Name,
-            joinRequest.TargetSpotRid.ToHex());
+            actorType?.Name);
         using var emptyReply = Message.From(ReadOnlySpan<byte>.Empty);
         nativeSpot.ReplyActorJoin(joinRequest, 1, emptyReply);
     }

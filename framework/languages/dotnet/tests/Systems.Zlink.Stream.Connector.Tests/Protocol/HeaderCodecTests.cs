@@ -8,7 +8,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderProtocolRoundTripsMetadataAndRequestSeq()
     {
-        var codec = ZlinkStreamDefaultCodecFactory.Header();
+        var codec = new ZlinkStreamHeaderCodec();
         var source = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -26,12 +26,29 @@ public sealed partial class StreamConnectorTests
         Assert.Equal("abc", decoded.Metadata.Get("traceId"));
     }
 
+    [Fact]
+    public void HeaderProtocolRoundTripsEmptyMetadataValue()
+    {
+        var codec = new ZlinkStreamHeaderCodec();
+        var source = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "profile.update",
+            ZlinkStreamMetadata.Empty.With("optional", ""));
+
+        var decoded = codec.Decode(codec.Encode(source));
+
+        Assert.Equal("", decoded.Metadata.Get("optional"));
+    }
+
     // MFLOW-009: correlation id is a first-class header trailer (flag 0x08), wire layout
     // = after metadata, u8 length + UTF-8 bytes. Round-trips and is byte-exact.
     [Fact]
     public void HeaderProtocolRoundTripsCorrelationIdAfterMetadata()
     {
-        var codec = ZlinkStreamDefaultCodecFactory.Header();
+        var codec = new ZlinkStreamHeaderCodec();
         var source = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -55,7 +72,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderProtocolRejectsUnknownFlag()
     {
-        var codec = ZlinkStreamDefaultCodecFactory.Header();
+        var codec = new ZlinkStreamHeaderCodec();
         var bytes = new byte[] { 1, 1, 0x80, 1, (byte)'x' };
 
         var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decode(bytes));
@@ -66,7 +83,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderProtocolRejectsInvalidRequestSeqAndErrorCodecCombinations()
     {
-        var codec = ZlinkStreamDefaultCodecFactory.Header();
+        var codec = new ZlinkStreamHeaderCodec();
 
         var sendWithRequestSeq = new byte[12];
         sendWithRequestSeq[0] = (byte)ZlinkStreamMessageKind.Send;
@@ -103,7 +120,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderProtocolEnforcesControlPacketContract()
     {
-        var codec = ZlinkStreamDefaultCodecFactory.Header();
+        var codec = new ZlinkStreamHeaderCodec();
 
         var control = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Control,

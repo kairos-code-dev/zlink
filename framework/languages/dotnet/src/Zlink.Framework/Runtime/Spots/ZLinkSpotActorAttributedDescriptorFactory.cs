@@ -43,7 +43,7 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
         ZLinkSpotActorHandlerSurface surface,
         Type spotType)
     {
-        var contract = GetSpotActorContract(surface, spotType);
+        var contract = ZLinkSpotActorContractInspector.GetSurfaceContract(surface, spotType);
         foreach (var method in EnumerateSpotLifecycleMethods(spotType, contract?.ContractType))
             if (method.Name == ActorCreatedMethodName)
             {
@@ -180,7 +180,6 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             spotType,
             actorType,
             ZLinkHandlerMethodInvokerFactory.Create(method),
-            false,
             passRequestArgument);
     }
 
@@ -232,32 +231,8 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
 
         return contractType is null
             ? []
-            : EnumerateInterfaceMethods(contractType)
+            : ZLinkSpotActorContractInspector.EnumerateInterfaceMethods(contractType)
                 .Where(method => method.Name == methodName);
-    }
-
-    private static IEnumerable<MethodInfo> EnumerateInterfaceMethods(Type interfaceType)
-    {
-        foreach (var method in interfaceType.GetMethods())
-            yield return method;
-
-        foreach (var inheritedInterface in interfaceType.GetInterfaces())
-        {
-            foreach (var method in inheritedInterface.GetMethods())
-                yield return method;
-        }
-    }
-
-    private static SpotActorContract? GetSpotActorContract(ZLinkSpotActorHandlerSurface surface, Type spotType)
-    {
-        var expectedDefinition = surface == ZLinkSpotActorHandlerSurface.EntrySpot
-            ? typeof(IZLinkEntrySpot<>)
-            : typeof(IZLinkSpot<>);
-        foreach (var contract in spotType.GetInterfaces())
-            if (contract.IsGenericType && contract.GetGenericTypeDefinition() == expectedDefinition)
-                return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
-
-        return null;
     }
 
     private static IEnumerable<MethodInfo> EnumeratePacketMethods(Type handlerType)
@@ -269,5 +244,4 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
                 || method.GetCustomAttribute<ZLinkSpotActorRequestAttribute>() is not null);
     }
 
-    private sealed record SpotActorContract(Type ContractType, Type ActorType);
 }

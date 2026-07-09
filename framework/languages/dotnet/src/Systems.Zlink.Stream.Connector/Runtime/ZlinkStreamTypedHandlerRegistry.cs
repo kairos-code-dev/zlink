@@ -9,13 +9,7 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
         string name,
         Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler)
     {
-        var typed = new TypedHandler(async (message, payload, cancellationToken) =>
-        {
-            await handler(
-                    new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(message.Name, message.Metadata,
-                        (ZlinkStreamEncodedPayload)payload!), cancellationToken)
-                .ConfigureAwait(false);
-        });
+        var typed = new TypedHandler(handler);
 
         lock (_gate)
         {
@@ -75,7 +69,7 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
     }
 
     internal sealed record TypedHandler(
-        Func<ZlinkStreamMessage, object?, CancellationToken, ValueTask> Invoke);
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> Invoke);
 
     private sealed class Subscription(Action dispose) : IDisposable
     {

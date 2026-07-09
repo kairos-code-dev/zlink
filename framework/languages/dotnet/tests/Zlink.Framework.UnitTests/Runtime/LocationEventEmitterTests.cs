@@ -131,8 +131,9 @@ public sealed class LocationEventEmitterTests
         await store.RenewOwnerLeaseAsync("other-owner", RoutingId.From("node-7"), TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            options, store, store, store, store, tracker, time, emitter);
+            store, store, store, store, tracker, observed, emitter);
 
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,

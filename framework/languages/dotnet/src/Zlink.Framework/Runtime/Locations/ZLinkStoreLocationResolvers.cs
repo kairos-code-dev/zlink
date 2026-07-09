@@ -15,30 +15,26 @@ internal sealed class ZLinkStoreLocationResolvers :
     private readonly IZLinkSpotLocationStore _spotStore;
     private readonly IZLinkActorLocationStore _actorStore;
     private readonly IZLinkRouteLocationStore _routeStore;
-    private readonly ZLinkOwnerLeaseTracker _leaseTracker;
     private readonly ZLinkLocationEventEmitter _events;
     private readonly ZLinkObservedLocationGenerations _observed;
+    private readonly ZLinkLiveLocationRows _liveRows;
 
     internal ZLinkStoreLocationResolvers(
-        ZLinkLocationOptions options,
         IZLinkPeerLocationStore peerStore,
         IZLinkSpotLocationStore spotStore,
         IZLinkActorLocationStore actorStore,
         IZLinkRouteLocationStore routeStore,
         ZLinkOwnerLeaseTracker leaseTracker,
-        TimeProvider? timeProvider = null,
-        ZLinkLocationEventEmitter? events = null,
-        ZLinkObservedLocationGenerations? observed = null)
+        ZLinkObservedLocationGenerations observed,
+        ZLinkLocationEventEmitter? events = null)
     {
-        _ = options;
-        _ = timeProvider;
         _peerStore = peerStore;
         _spotStore = spotStore;
         _actorStore = actorStore;
         _routeStore = routeStore;
-        _leaseTracker = leaseTracker;
         _events = events ?? ZLinkLocationEventEmitter.Disabled;
-        _observed = observed ?? new ZLinkObservedLocationGenerations();
+        _observed = observed;
+        _liveRows = new ZLinkLiveLocationRows(leaseTracker);
     }
 
     public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
@@ -70,7 +66,8 @@ internal sealed class ZLinkStoreLocationResolvers :
             }
         }
 
-        return await FilterLiveAsync(fresh, cancellationToken).ConfigureAwait(false);
+        return await _liveRows.FilterAsync(fresh, static row => row.OwnerId, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal async ValueTask<ZLinkSpotLocation?> ResolveSpotRowAsync(
@@ -147,44 +144,11 @@ internal sealed class ZLinkStoreLocationResolvers :
         where TKey : notnull
         where TRow : class
     {
-        var row = await resolve(store, key, cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            return null;
-        }
-
-        if (!acceptObserved(row))
-        {
-            // A lagging store replica returned a generation this runtime
-            // already saw superseded; stale rows never count as success.
-            return null;
-        }
-
-        if (!await _leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken)
-                .ConfigureAwait(false))
-        {
-            return null;
-        }
-
-        return row;
-    }
-
-    private async ValueTask<IReadOnlyList<ZLinkPeerLocation>> FilterLiveAsync(
-        IReadOnlyList<ZLinkPeerLocation> rows,
-        CancellationToken cancellationToken)
-    {
-        // Liveness is joined on every read so an expired owner drops out of
-        // the desired set within one polling interval.
-        var live = new List<ZLinkPeerLocation>(rows.Count);
-        foreach (var row in rows)
-        {
-            if (await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
-                    .ConfigureAwait(false))
-            {
-                live.Add(row);
-            }
-        }
-
-        return live;
+        return await _liveRows.ResolveAsync(
+                await resolve(store, key, cancellationToken).ConfigureAwait(false),
+                ownerOf,
+                acceptObserved,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 }

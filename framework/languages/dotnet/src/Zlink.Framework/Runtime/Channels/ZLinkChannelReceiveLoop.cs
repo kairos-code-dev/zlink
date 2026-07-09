@@ -6,7 +6,6 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
         string channelName,
         IZLinkBackendRouterSocket router,
         SemaphoreSlim receiveGate,
-        Func<IZLinkBackendSpotRouteBridge?> spotRouteBridge,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -22,12 +21,6 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
                 {
                     continue;
                 }
-
-                if (TryHandleSpotRouteBridgePacket(
-                        channelName,
-                        spotRouteBridge(),
-                        received))
-                    continue;
 
                 await dispatcher.DispatchServerMessageAsync(channelName, router, received, cancellationToken)
                     .ConfigureAwait(false);
@@ -46,23 +39,6 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
                 if (gateHeld) receiveGate.Release();
             }
         }
-    }
-
-    private static bool TryHandleSpotRouteBridgePacket(
-        string channelName,
-        IZLinkBackendSpotRouteBridge? bridge,
-        Received received)
-    {
-        if (bridge is null
-            || received.RoutingId is not { } sourceNodeRid)
-            return false;
-
-        var handled = received.RequestSeq is { } requestSeq
-            ? bridge.HandleRouterReceived(channelName, sourceNodeRid, requestSeq, received.Parts)
-            : bridge.HandleRouterReceived(channelName, sourceNodeRid, 0, received.Parts);
-        if (handled) bridge.Drain();
-
-        return handled;
     }
 
     public async Task RunSubscriberLoopAsync(

@@ -244,11 +244,23 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamErrorCode.RemoteError,
                 "missing callback result"));
 
-        public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived;
+        public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived
+        {
+            add { }
+            remove { }
+        }
 
-        public event Func<CancellationToken, ValueTask>? Disconnected;
+        public event Func<CancellationToken, ValueTask>? Disconnected
+        {
+            add { }
+            remove { }
+        }
 
-        public event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? ConnectionStateChanged;
+        public event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? ConnectionStateChanged
+        {
+            add { }
+            remove { }
+        }
 
         public bool IsConnected => true;
 

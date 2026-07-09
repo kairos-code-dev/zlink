@@ -70,6 +70,8 @@ internal sealed class ZLinkSpotActivationDispatcher
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotRouteDispatcher>());
     }
 
+    public ZLinkSpotActorPacketDispatcher ActorPackets => _actorPacketDispatcher;
+
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -165,38 +167,6 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
     }
 
-    public async ValueTask DispatchActorPacketAsync(
-        IZLinkActor actor,
-        ZLinkActorRuntimeState runtimeState,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
-    {
-        await _actorPacketDispatcher.DispatchAsync(
-                actor,
-                runtimeState,
-                header,
-                body,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<ZLinkActorReply?> DispatchActorPacketForReplyAsync(
-        IZLinkActor actor,
-        ZLinkActorRuntimeState runtimeState,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
-    {
-        return await _actorPacketDispatcher.DispatchForReplyAsync(
-                actor,
-                runtimeState,
-                header,
-                body,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -264,17 +234,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             header.MessageName,
             header.CorrelationId,
             reply);
-        try
-        {
-            received.Reply()
-                .Message(replyParts[0])
-                .Message(replyParts[1])
-                .Submit();
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-        }
+        ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
 
         return true;
     }
@@ -289,17 +249,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             header.MessageName,
             header.CorrelationId,
             exception);
-        try
-        {
-            received.Reply()
-                .Message(replyParts[0])
-                .Message(replyParts[1])
-                .Submit();
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-        }
+        ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
     }
 
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
@@ -358,7 +308,6 @@ internal sealed class ZLinkSpotActivationDispatcher
                     .ConfigureAwait(false);
                 if (reply is null) return;
 
-                var frame = reply.ToFrame(streamHeader);
                 if (isNoBind)
                 {
                     ReplyNoBind(
@@ -372,6 +321,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 }
                 else
                 {
+                    var frame = reply.ToFrame(streamHeader);
                     await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -498,23 +448,19 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
         catch (Exception ex)
         {
-            ZLinkMessageFlowLogger.Rejected(
-                _logger,
-                LogLevel.Error,
+            var scope = new ZLinkDispatchFlowScope(
+                ZLinkDispatchErrorSurface.SpotSubscription,
                 "SpotSubscription",
+                ZLinkDispatchMessageKind.Publish,
                 "Publish",
                 descriptor.MessageName,
-                "handler-exception",
-                ex,
-                descriptor.Topic);
-            _dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.SpotSubscription,
-                ZLinkDispatchMessageKind.Publish,
-                ZLinkDispatchErrorReason.HandlerException,
+                topic: descriptor.Topic);
+            scope.HandlerException(
+                _logger,
+                _dispatchErrors,
+                LogLevel.Error,
                 ZLinkDispatchErrorAction.Drop,
-                descriptor.MessageName,
-                Topic: descriptor.Topic,
-                Exception: ex));
+                ex);
         }
     }
 }

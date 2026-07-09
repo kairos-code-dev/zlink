@@ -130,36 +130,6 @@ internal static class ZLinkRedisLocationScripts
         """;
 
     /// <summary>
-    /// Bulk remove of one owner's rows for one kind, driven by the per-owner
-    /// index set. Change stamps are bumped per removed row using the mesh
-    /// name stored on the row, matching the in-memory store. Returns the
-    /// removed row count. Generation counters survive.
-    ///
-    /// KEYS[1] owner index set, KEYS[2] kind index set.
-    /// ARGV[1] row hash key prefix, ARGV[2] stamp key base (kind, null
-    /// scope); the mesh scope key is ARGV[2] .. ':' .. mesh.
-    /// </summary>
-    internal const string RemoveByOwner = """
-        if redis.replicate_commands then redis.replicate_commands() end
-        local rowKeys = redis.call('SMEMBERS', KEYS[1])
-        local removed = 0
-        for _, rowKey in ipairs(rowKeys) do
-            local rowHash = ARGV[1] .. rowKey
-            local mesh = redis.call('HGET', rowHash, 'mesh')
-            if redis.call('DEL', rowHash) == 1 then
-                removed = removed + 1
-                redis.call('SREM', KEYS[2], rowKey)
-                if mesh then
-                    redis.call('INCR', ARGV[2] .. ':' .. mesh)
-                end
-                redis.call('INCR', ARGV[2])
-            end
-        end
-        redis.call('DEL', KEYS[1])
-        return removed
-        """;
-
-    /// <summary>
     /// Bulk remove of one owner's rows across all location kinds in one
     /// atomic script. Generation counters survive.
     ///

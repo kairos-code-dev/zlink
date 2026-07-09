@@ -140,18 +140,38 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await _actorLifecycle.JoinAsync(actor, cancellationToken).ConfigureAwait(false);
+        await JoinActorToSpotCoreAsync(actor, cancellationToken).ConfigureAwait(false);
 
         if (_runtime.LocationLifecycle is { } locations)
         {
             var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
-            await locations.NotifyActorJoinedSpotAsync(
+            await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
                     actorState.ActorType ?? string.Empty,
                     actor.ActorId,
                     SpotRid,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    private async ValueTask JoinActorToSpotCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        var previousActivation = _runtime.GetOrCreateActorState(actor.ActorId).Activation;
+        _actors.Add(actor);
+        await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken).ConfigureAwait(false);
+        if (ReferenceEquals(previousActivation, this)) return;
+
+        if (previousActivation is null)
+            await _runtime.NotifyEntrySpotActorLeftAsync(actor, NodeRid, cancellationToken)
+                .ConfigureAwait(false);
+
+        if (_actorHandlers is not null
+            && _actorHandlers.TryResolveJoined(actor.GetType(), out var descriptor)
+            && descriptor is not null)
+            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
+                .ConfigureAwait(false);
     }
 
     private async ValueTask LeaveActorCoreAsync(
@@ -189,7 +209,7 @@ internal sealed partial class ZLinkSpotActivation
         if (ReferenceEquals(actorState.Activation, this)) actorState.Activation = null;
 
         if (_runtime.LocationLifecycle is { } locations)
-            await locations.NotifyActorLeftSpotAsync(
+            await locations.ActorOwnership.NotifyActorLeftSpotAsync(
                     actorState.ActorType ?? string.Empty,
                     actor.ActorId,
                     cancellationToken)

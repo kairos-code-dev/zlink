@@ -8,19 +8,6 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         new(StringComparer.Ordinal);
 
     private readonly List<ZLinkSpotSubscriptionRegistration> _registrations = [];
-    private int _dispatchCount;
-    private int _ignoreCount;
-    private int _messageCount;
-
-    public int MessageCount => Volatile.Read(ref _messageCount);
-
-    public int DispatchCount => Volatile.Read(ref _dispatchCount);
-
-    public int IgnoreCount => Volatile.Read(ref _ignoreCount);
-
-    public string? LastTopic { get; private set; }
-
-    public string? LastMessageName { get; private set; }
 
     public bool HasSubscriptions => _descriptorsByTopic.Count > 0;
 
@@ -90,63 +77,34 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
         CancellationToken cancellationToken)
     {
-        Interlocked.Increment(ref _messageCount);
-        LastTopic = message.Topic;
-
         if (message.Parts.Count == 0)
         {
-            Interlocked.Increment(ref _ignoreCount);
-            ZLinkMessageFlowLogger.Dropped(
-                logger,
-                LogLevel.Warning,
-                "SpotSubscription",
-                "Publish",
-                "<unknown>",
-                "invalid-frame",
-                message.Topic);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.SpotSubscription,
-                ZLinkDispatchMessageKind.Publish,
-                ZLinkDispatchErrorReason.InvalidFrame,
-                ZLinkDispatchErrorAction.Drop,
-                null,
-                Topic: message.Topic));
+            CreateScope("<unknown>", message.Topic)
+                .Dropped(
+                    logger,
+                    dispatchErrors,
+                    LogLevel.Warning,
+                    ZLinkDispatchErrorReason.InvalidFrame,
+                    "invalid-frame");
             return;
         }
 
         if (!_descriptorsByTopic.TryGetValue(message.Topic, out var descriptors))
         {
-            Interlocked.Increment(ref _ignoreCount);
-            ZLinkMessageFlowLogger.Dropped(
-                logger,
-                LogLevel.Debug,
-                "SpotSubscription",
-                "Publish",
-                "<unknown>",
-                "no-handler",
-                message.Topic);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.SpotSubscription,
-                ZLinkDispatchMessageKind.Publish,
-                ZLinkDispatchErrorReason.HandlerMissing,
-                ZLinkDispatchErrorAction.Drop,
-                null,
-                Topic: message.Topic));
+            CreateScope("<unknown>", message.Topic)
+                .Dropped(logger, dispatchErrors, LogLevel.Debug);
             return;
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts);
-        LastMessageName = header.MessageName;
+        var scope = CreateScope(
+            header.MessageName,
+            message.Topic,
+            header.ContentType,
+            header.CorrelationId,
+            header.Source);
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.Received,
-                ZLinkDispatchErrorSurface.SpotSubscription,
-                ZLinkDispatchMessageKind.Publish,
-                header.MessageName,
-                Topic: message.Topic,
-                SourceRid: header.Source,
-                CorrelationId: header.CorrelationId));
+        scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
         var dispatched = false;
         foreach (var descriptor in descriptors)
@@ -156,39 +114,33 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             var body = ZLinkEnvelopeCodec.DecodeBody(message.Parts, descriptor.MessageType, codecs);
             await dispatchAsync(descriptor, body, cancellationToken).ConfigureAwait(false);
             dispatched = true;
-            Interlocked.Increment(ref _dispatchCount);
         }
 
-        if (dispatched && dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.Dispatched,
-                ZLinkDispatchErrorSurface.SpotSubscription,
-                ZLinkDispatchMessageKind.Publish,
-                header.MessageName,
-                Topic: message.Topic,
-                SourceRid: header.Source,
-                CorrelationId: header.CorrelationId));
+        if (dispatched)
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);
 
         if (!dispatched)
         {
-            Interlocked.Increment(ref _ignoreCount);
-            ZLinkMessageFlowLogger.Dropped(
-                logger,
-                LogLevel.Debug,
-                "SpotSubscription",
-                "Publish",
-                header.MessageName,
-                "no-handler",
-                message.Topic);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.SpotSubscription,
-                ZLinkDispatchMessageKind.Publish,
-                ZLinkDispatchErrorReason.HandlerMissing,
-                ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                Topic: message.Topic,
-                SourceRid: header.Source,
-                CorrelationId: header.CorrelationId));
+            scope.Dropped(logger, dispatchErrors, LogLevel.Debug);
         }
+    }
+
+    private static ZLinkDispatchFlowScope CreateScope(
+        string? packetName,
+        string topic,
+        string? contentType = null,
+        string? correlationId = null,
+        string? sourceRid = null)
+    {
+        return new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.SpotSubscription,
+            "SpotSubscription",
+            ZLinkDispatchMessageKind.Publish,
+            "Publish",
+            packetName ?? "<unknown>",
+            topic: topic,
+            contentType: contentType,
+            correlationId: correlationId,
+            sourceRid: sourceRid);
     }
 }

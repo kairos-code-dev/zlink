@@ -288,7 +288,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         if (Lifecycle is not { } lifecycle) return;
 
         var spotRid = activation.SpotRid;
-        var status = await lifecycle.ClaimSpotAsync(
+        var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotChannelName,
                 spotRid,
                 spotType.FullName,
@@ -310,7 +310,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     private async ValueTask ReleaseSpotLocationAsync(RoutingId spotRid)
     {
         if (Lifecycle is { } lifecycle)
-            await lifecycle.ReleaseSpotAsync(spotChannelName, spotRid).ConfigureAwait(false);
+            await lifecycle.SpotLocations.ReleaseAsync(spotChannelName, spotRid).ConfigureAwait(false);
     }
 
     private IReadOnlyCollection<ZLinkSpotActivation> SnapshotActivations()

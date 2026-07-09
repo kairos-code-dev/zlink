@@ -2,8 +2,10 @@ namespace Zlink.Framework.Runtime.Configuration;
 
 internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
 {
+    internal const int DefaultPeerWeight = 100;
+
     private TimeSpan? _sendTimeout;
-    private int _weight = 100;
+    private int _weight = DefaultPeerWeight;
 
     public long MaxMessageSize { get; set; }
 
@@ -57,7 +59,8 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
 
     internal static void ValidatePeerWeight(int value)
     {
-        if (value is < 0 or > 100) throw new ZLinkConfigurationException("Weight must be between 0 and 100.");
+        if (value is < 0 or > DefaultPeerWeight)
+            throw new ZLinkConfigurationException($"Weight must be between 0 and {DefaultPeerWeight}.");
     }
 }
 

@@ -4,7 +4,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     IServiceProvider services,
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration,
-    ZLinkChannelMessagePump channelMessagePump)
+    ZLinkChannelReceiveLoop receiveLoop)
 {
     private readonly ZLinkChannelBundleFactory _bundleFactory = new(backendAdapterFactory, registration);
     private readonly ZLinkRouteChannelInitializer _routeChannels = new(services, registration);
@@ -69,11 +69,10 @@ internal sealed class ZLinkChannelRuntimeManager(
                 state.ServerBundles.Add(channelName, bundle);
                 state.ListenerTasks.Add(state.TaskRunner.Run(
                     $"channel-server:{channelName}",
-                    ct => new ValueTask(channelMessagePump.RunServerLoopAsync(
+                    ct => new ValueTask(receiveLoop.RunServerLoopAsync(
                         channelName,
                         (IZLinkBackendRouterSocket)bundle.Socket,
                         bundle.ReceiveGate,
-                        () => bundle.SpotRouteBridge,
                         ct))));
             }
 
@@ -83,7 +82,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                 state.SubscriberBundles.Add(channelName, bundle);
                 state.ListenerTasks.Add(state.TaskRunner.Run(
                     $"channel-subscriber:{channelName}",
-                    ct => new ValueTask(channelMessagePump.RunSubscriberLoopAsync(
+                    ct => new ValueTask(receiveLoop.RunSubscriberLoopAsync(
                         channelName,
                         (IZLinkBackendSubscriberSocket)bundle.Socket,
                         ct))));

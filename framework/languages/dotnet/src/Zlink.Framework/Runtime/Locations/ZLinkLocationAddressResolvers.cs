@@ -12,38 +12,23 @@ internal sealed class ZLinkLocationAddressResolvers :
     IZLinkSpotRefResolver,
     IZLinkActorAddressResolver
 {
-    private readonly IReadOnlyList<string> _meshNames;
     private readonly ZLinkStoreLocationResolvers _rows;
+    private readonly ZLinkSpotMeshLocationResolver _spots;
 
     internal ZLinkLocationAddressResolvers(
-        ZLinkFrameworkRegistration registration,
-        ZLinkStoreLocationResolvers rows)
+        ZLinkStoreLocationResolvers rows,
+        ZLinkSpotMeshLocationResolver spots)
     {
         _rows = rows;
-        _meshNames = registration.SpotNodes.Values
-            .Select(static node => node.SpotMeshChannelName ?? node.SpotNodeName)
-            .Concat(registration.SpotMeshChannels.Keys)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+        _spots = spots;
     }
 
     public async ValueTask<SpotRef?> ResolveSpotRefAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
-        foreach (var meshName in _meshNames)
-        {
-            var row = await _rows.ResolveSpotRowAsync(
-                    new ZLinkSpotLocationKey(meshName, spotRid),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (row is not null)
-            {
-                return new SpotRef(row.NodeRid, row.SpotRid);
-            }
-        }
-
-        return null;
+        var row = await _spots.ResolveAsync(spotRid, cancellationToken).ConfigureAwait(false);
+        return row is null ? null : new SpotRef(row.NodeRid, row.SpotRid);
     }
 
     public async ValueTask<SpotRef?> ResolveActorSpotRefAsync(

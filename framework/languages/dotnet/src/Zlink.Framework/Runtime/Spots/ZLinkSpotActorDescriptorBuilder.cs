@@ -51,8 +51,7 @@ internal static class ZLinkSpotActorDescriptorBuilder
         Type handlerType,
         Type spotType,
         Type actorType,
-        ZLinkHandlerMethodInvoker? invoker = null,
-        bool passSpotArgument = true,
+        ZLinkHandlerMethodInvoker invoker,
         bool passRequestArgument = false)
     {
         return new ZLinkSpotActorLifecycleDescriptor
@@ -60,9 +59,9 @@ internal static class ZLinkSpotActorDescriptorBuilder
             HandlerType = handlerType,
             SpotType = spotType,
             ActorType = actorType,
-            Invoker = invoker ?? CreateInterfaceInvoker(handlerType),
+            Invoker = invoker,
             Surface = surface,
-            PassSpotArgument = passSpotArgument,
+            PassSpotArgument = false,
             PassRequestArgument = passRequestArgument
         };
     }

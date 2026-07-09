@@ -199,7 +199,7 @@ public sealed class ZLinkHttpRequestBuilder
         T body;
         try
         {
-            var contentType = FindHeader(raw.Headers, "content-type");
+            var contentType = HttpHeaderLookup.Find(raw.Headers, "content-type");
             body = (T?)codecs.Decode(
                        raw.BodyBytes,
                        typeof(T),
@@ -315,15 +315,6 @@ public sealed class ZLinkHttpRequestBuilder
         }
 
         return encoded.ToString();
-    }
-
-    private static string? FindHeader(IReadOnlyDictionary<string, string> headers, string name)
-    {
-        foreach (var (key, value) in headers)
-            if (key.Equals(name, StringComparison.OrdinalIgnoreCase))
-                return value;
-
-        return null;
     }
 
     private string EncodeMultipartBody(string boundary)

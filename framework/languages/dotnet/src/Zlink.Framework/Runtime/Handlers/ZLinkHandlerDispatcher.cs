@@ -39,11 +39,10 @@ internal sealed class ZLinkHandlerDispatcher(
         CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var scopedContext = RebindContext(context);
         var invocation = new ZLinkHandlerInvocation(
             message,
-            scopedContext);
-        var pipeline = BuildPipeline(endpoint, message, scopedContext, invocation, scope.ServiceProvider);
+            context);
+        var pipeline = BuildPipeline(endpoint, message, context, invocation, scope.ServiceProvider);
         return await pipeline(cancellationToken).ConfigureAwait(false);
     }
 
@@ -115,28 +114,4 @@ internal sealed class ZLinkHandlerDispatcher(
             .ConfigureAwait(false);
     }
 
-    private static ZLinkHandlerContext RebindContext(ZLinkHandlerContext context)
-    {
-        return context switch
-        {
-            ZLinkRequestContext request => new ZLinkRequestContext(
-                request.ChannelName,
-                request.PacketName,
-                request.ContentType,
-                request.ConnectionAborted),
-            ZLinkSendContext send => new ZLinkSendContext(
-                send.ChannelName,
-                send.PacketName,
-                send.ContentType,
-                send.ConnectionAborted),
-            ZLinkPublishContext publish => new ZLinkPublishContext(
-                publish.ChannelName,
-                publish.PacketName,
-                publish.ContentType,
-                publish.Topic,
-                publish.Source,
-                publish.ConnectionAborted),
-            _ => throw new InvalidOperationException("Unknown handler context type.")
-        };
-    }
 }

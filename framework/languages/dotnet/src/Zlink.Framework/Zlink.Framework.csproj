@@ -10,10 +10,10 @@
         <PackageReference Include="K4os.Compression.LZ4"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
+        <PackageReference Include="Systems.Zlink"/>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
-        <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj"/>
     </ItemGroup>
 </Project>

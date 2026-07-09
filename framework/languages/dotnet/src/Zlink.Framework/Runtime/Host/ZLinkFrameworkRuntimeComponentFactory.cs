@@ -9,9 +9,7 @@ internal sealed record ZLinkFrameworkRuntimeComponents(
     ZLinkSpotRuntimeManager Spots,
     ZLinkFrameworkRuntimeStateFactory StateFactory,
     ZLinkActorSessionManager ActorSessionManager,
-    ZLinkFrameworkActorFacade Actors,
-    ZLinkFrameworkChannelFacade ChannelFacade,
-    ZLinkFrameworkSpotFacade SpotFacade);
+    ZLinkFrameworkActorFacade Actors);
 
 internal static class ZLinkFrameworkRuntimeComponentFactory
 {
@@ -29,12 +27,13 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             services,
             backendAdapterFactory,
             registration,
-            new ZLinkChannelMessagePump(
-                handlerRegistry,
-                dispatcher,
-                registration,
-                runtime,
-                services.GetService<ILoggerFactory>()));
+            new ZLinkChannelReceiveLoop(
+                new ZLinkChannelPacketDispatcher(
+                    handlerRegistry,
+                    dispatcher,
+                    registration,
+                    runtime,
+                    services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkChannelPacketDispatcher>())));
         var streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         var spots = new ZLinkSpotRuntimeManager(services, runtime, backendAdapterFactory, registration);
         var stateFactory = new ZLinkFrameworkRuntimeStateFactory(
@@ -52,21 +51,12 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             actorSessionManager,
             getOrStartState,
             getActorSpotNode);
-        var channelFacade = new ZLinkFrameworkChannelFacade(
-            channels,
-            getOrStartState);
-        var spotFacade = new ZLinkFrameworkSpotFacade(
-            spots,
-            getOrStartState);
-
         return new ZLinkFrameworkRuntimeComponents(
             channels,
             streams,
             spots,
             stateFactory,
             actorSessionManager,
-            actors,
-            channelFacade,
-            spotFacade);
+            actors);
     }
 }

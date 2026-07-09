@@ -66,6 +66,11 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         nativeSocket.Options.Mandatory = mandatory;
     }
 
+    public void SetHandover(bool enabled)
+    {
+        nativeSocket.Options.Handover = enabled;
+    }
+
     public void SetPeerWeight(int weight)
     {
         nativeSocket.Options.PeerWeight = weight;

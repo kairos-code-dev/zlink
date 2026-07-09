@@ -29,11 +29,10 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     }
 
     private ZLinkSessionStreamTransport Transport
-        => _transport ??= new ZLinkSessionStreamTransport(_stream, _requests, Runtime.Flow);
+        => _transport ??= new ZLinkSessionStreamTransport(_stream);
 
     internal ZLinkFrameworkRuntime Runtime { get; }
 
-    internal IReadOnlyCollection<IZLinkSessionActor> BoundActors => ActorCoordinator.BoundActors;
     internal ZLinkSessionActorCoordinator ActorCoordinator { get; }
 
     internal ZLinkCodecRegistryBuilder Codecs => Runtime.Registration.Codecs;
@@ -125,35 +124,6 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     internal bool Write(Message payload)
     {
         return Transport.Write(payload);
-    }
-
-    internal ValueTask SendRawAsync(
-        string packetName,
-        ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> payload,
-        CancellationToken cancellationToken)
-    {
-        return Transport.SendRawAsync(packetName, codec, payload, cancellationToken);
-    }
-
-    internal async ValueTask<Message> RequestRawAsync(
-        string packetName,
-        ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> payload,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        return await Transport.RequestRawAsync(packetName, codec, payload, timeout, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    internal ValueTask ReplyRawAsync(
-        ZlinkStreamHeader requestHeader,
-        ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> payload,
-        CancellationToken cancellationToken)
-    {
-        return Transport.ReplyRawAsync(requestHeader, codec, payload, cancellationToken);
     }
 
     internal ValueTask ReplyActorRawAsync(

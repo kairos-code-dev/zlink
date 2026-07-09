@@ -2,10 +2,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundEndpoint(
     IZLinkCurrentSpotActivation activation,
-    IServiceProvider services,
     ZLinkSpotOutboundTransport outbound,
-    ZLinkFrameworkRuntime runtime,
-    string resolverErrorMessage)
+    ZLinkFrameworkRuntime runtime) : IZLinkSpotOutbound
 {
     public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
     {
@@ -32,32 +30,13 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
-        string channelName,
-        Message message,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        return await RequestToChannelThroughSharedClientAsync(channelName, [message], timeout, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
+    public ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await RequestToChannelThroughSharedClientAsync(channelName, parts, timeout, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public ValueTask SendToChannelAsync(
-        string channelName,
-        Message message,
-        CancellationToken cancellationToken)
-    {
-        return SendToChannelThroughSharedClientAsync(channelName, [message], cancellationToken);
+        return RequestToChannelThroughSharedClientAsync(channelName, parts, timeout, cancellationToken);
     }
 
     public ValueTask SendToChannelAsync(
@@ -77,20 +56,17 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         var bundle = runtime.GetOrCreateClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
-        return await (bundle.Submitter
-                      ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
-            .SubmitRequestAsync<IReadOnlyList<Message>>(
+        return await ZLinkRawRequestSubmitter.SubmitAsync(
+                bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."),
                 parts,
-                (pending, complete, fail) => dealer.Request(
+                (pending, callback, currentTimeout) => dealer.Request(
                     pending,
-                    (result, reply) => ZLinkRawReplyCompletion.Complete(
-                        result,
-                        reply,
-                        complete,
-                        fail,
-                        $"SPOT channel request failed with result '{result}'."),
+                    callback,
                     SendFlags.DontWait,
-                    requestTimeout),
+                    currentTimeout),
+                requestTimeout,
+                "SPOT channel request failed with result '{0}'.",
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -110,23 +86,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
                 cancellationToken);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        Message message,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        return await outbound.RequestToSpotAsync(
-                targetNodeRid,
-                targetSpotRid,
-                message,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
+    public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
@@ -134,22 +94,13 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await runtime.RequestToSpotViaRouterChannelAsync(
-                routerChannelId,
-                targetNodeRid,
-                targetSpotRid,
-                parts,
-                timeout ?? activation.DefaultRequestTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public ValueTask PublishCurrentAsync(
-        string topic,
-        Message message,
-        CancellationToken cancellationToken)
-    {
-        return outbound.PublishCurrentAsync(topic, message, cancellationToken);
+        return runtime.RequestToSpotViaRouterChannelAsync(
+            routerChannelId,
+            targetNodeRid,
+            targetSpotRid,
+            parts,
+            timeout ?? activation.DefaultRequestTimeout,
+            cancellationToken);
     }
 
     public ValueTask PublishCurrentAsync(
@@ -158,15 +109,6 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         CancellationToken cancellationToken)
     {
         return outbound.PublishCurrentAsync(topic, parts, cancellationToken);
-    }
-
-    public bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId targetSpotRid,
-        Message message,
-        SendFlags flags)
-    {
-        return outbound.SendToSpot(targetRid, targetSpotRid, message, flags);
     }
 
     public bool SendToSpot(

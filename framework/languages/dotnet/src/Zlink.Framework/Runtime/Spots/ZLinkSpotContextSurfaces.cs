@@ -19,19 +19,6 @@ internal interface IZLinkSpotHandlerRegistrySink
         where TActor : IZLinkActor;
 }
 
-internal interface IZLinkSpotOutboundSink
-{
-    IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message);
-
-    IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request);
-
-    IZLinkPublishCall Publish<TEvent>(string topic, TEvent message);
-
-    IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message);
-
-    IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request);
-}
-
 internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistrySink activation)
     : IZLinkSpotHandlerRegistry
 {
@@ -69,33 +56,4 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
         activation.AddActorPacket<THandler, TActor>(packetName);
     }
 
-}
-
-internal sealed class ZLinkSpotOutboundSurface(IZLinkSpotOutboundSink activation)
-    : IZLinkSpotOutbound
-{
-    public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
-    {
-        return activation.SendToSpot(address, message);
-    }
-
-    public IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request)
-    {
-        return activation.RequestToSpot(address, request);
-    }
-
-    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
-    {
-        return activation.Publish(topic, message);
-    }
-
-    public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
-    {
-        return activation.SendToChannel(channelName, message);
-    }
-
-    public IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
-    {
-        return activation.RequestToChannel(channelName, request);
-    }
 }

@@ -37,14 +37,6 @@ internal static class ZLinkEnvelopeCodec
     public static IReadOnlyList<Message> EncodeParts(
         ZLinkEnvelopeHeader header,
         object? body,
-        Type? bodyType)
-    {
-        return EncodeParts(header, body, bodyType, null);
-    }
-
-    public static IReadOnlyList<Message> EncodeParts(
-        ZLinkEnvelopeHeader header,
-        object? body,
         Type? bodyType,
         ZLinkCodecRegistryBuilder? codecs)
     {
@@ -99,11 +91,6 @@ internal static class ZLinkEnvelopeCodec
         }
 
         return EncodeJsonPart(header);
-    }
-
-    public static Message EncodeBody(object? body, Type? bodyType)
-    {
-        return EncodeBody(body, bodyType, null);
     }
 
     public static Message EncodeBody(object? body, Type? bodyType, ZLinkCodecRegistryBuilder? codecs)
@@ -266,12 +253,6 @@ internal static class ZLinkEnvelopeCodec
             bodyMessage.AsReadOnlySpan(),
             bodyType,
             ZLinkJsonSerializerOptions.Default);
-    }
-
-    public static byte[] DecodeBytes(IReadOnlyList<Message> parts)
-    {
-        EnsurePart(parts, 1, "body");
-        return parts[1].ToArray();
     }
 
     public static Message EncodeJsonPart<T>(T value)

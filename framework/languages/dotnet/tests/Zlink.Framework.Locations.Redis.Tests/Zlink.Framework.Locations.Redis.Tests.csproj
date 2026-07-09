@@ -8,6 +8,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.NET.Test.Sdk"/>
         <PackageReference Include="StackExchange.Redis"/>
+        <PackageReference Include="Systems.Zlink"/>
         <PackageReference Include="xunit"/>
         <PackageReference Include="xunit.runner.visualstudio">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -19,6 +20,5 @@
     <ItemGroup>
         <ProjectReference Include="../../src/Zlink.Framework.Locations.Redis/Zlink.Framework.Locations.Redis.csproj"/>
         <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj"/>
-        <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj"/>
     </ItemGroup>
 </Project>

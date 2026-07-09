@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Reflection;
-using K4os.Compression.LZ4;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -20,30 +19,9 @@ internal static class ZLinkStreamProtocolDefaults
         return ZLinkStreamHeaderCodec.Decode(header);
     }
 
-    public static ReadOnlyMemory<byte> Lz4Compress(ReadOnlyMemory<byte> payload)
-    {
-        return LZ4Pickler.Pickle(payload.Span);
-    }
-
-    public static ReadOnlyMemory<byte> Lz4Decompress(ReadOnlyMemory<byte> payload)
-    {
-        return Lz4Decompress(payload, DefaultMaxDecompressedPayloadSize);
-    }
-
-    public static ReadOnlyMemory<byte> Lz4Decompress(
-        ReadOnlyMemory<byte> payload,
-        int maxDecompressedPayloadSize)
-    {
-        var decompressedSize = LZ4Pickler.UnpickledSize(payload.Span);
-        if (decompressedSize > maxDecompressedPayloadSize)
-            throw new InvalidOperationException("LZ4 decoded stream payload exceeds maximum stream payload size.");
-
-        return LZ4Pickler.Unpickle(payload.Span);
-    }
-
     public static IZlinkStreamCompressionCodec CreateLz4CompressionCodec()
     {
-        return new Lz4CompressionCodec();
+        return new ZLinkLz4StreamCompressionCodec();
     }
 
     public static ReadOnlyMemory<byte> Compress(
@@ -82,16 +60,4 @@ internal static class ZLinkStreamProtocolDefaults
         }
     }
 
-    private sealed class Lz4CompressionCodec : IZlinkStreamCompressionCodec
-    {
-        public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
-        {
-            return Lz4Compress(payload);
-        }
-
-        public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
-        {
-            return Lz4Decompress(payload, maxDecompressedPayloadSize);
-        }
-    }
 }

@@ -58,6 +58,8 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         var (result, replyParts) = await tcs.Task.ConfigureAwait(false);
         if (result.Result == RequestResult.NotConnected)
+        {
+            ZLinkMessageParts.DisposeAll(replyParts);
             // Not connected locally — the remote fallback below is traced by the
             // route client; no reply_received here.
             return await JoinRemoteAsync(
@@ -70,6 +72,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                     request,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
 
         if (flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
             flow.Trace(new ZLinkMessageFlowEvent(
@@ -113,7 +116,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         return new ZLinkActorJoinResult(
             accepted,
-            accepted ? ToActorRef(result.Actor) : null,
+            accepted ? result.Actor.ToNative() : null,
             reply);
     }
 
@@ -127,7 +130,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         ZLinkMessage joinRequest,
         CancellationToken cancellationToken)
     {
-        if (TryFindSpotNode(state, spotNodeRid, out var targetNode))
+        if (state.TryGetSpotNodeByRoutingId(spotNodeRid, out var targetNode))
             return await JoinLocalEntrySpotAsync(
                     targetNode,
                     actor,
@@ -187,7 +190,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         return new ZLinkActorJoinResult(
             true,
-            ToActorRef(targetRef),
+            targetRef.ToNative(),
             replyMessage);
     }
 
@@ -248,24 +251,8 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         return new ZLinkActorJoinResult(
             true,
-            ToActorRef(targetRef),
+            targetRef.ToNative(),
             reply);
-    }
-
-    private static bool TryFindSpotNode(
-        ZLinkFrameworkRuntimeState state,
-        RoutingId nodeRid,
-        out ZLinkSpotNodeRuntime nodeRuntime)
-    {
-        foreach (var candidate in state.SpotNodes.Values)
-            if (candidate.Node.RoutingId == nodeRid)
-            {
-                nodeRuntime = candidate;
-                return true;
-            }
-
-        nodeRuntime = null!;
-        return false;
     }
 
     private async ValueTask NotifyManagedEntrySpotJoinLifecycleAsync(
@@ -280,7 +267,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        await spots.NotifyEntrySpotActorJoinedAsync(
+        await spots.EntrySpotActors.NotifyJoinedAsync(
                 getState(),
                 actor,
                 targetNodeRid,
@@ -299,11 +286,6 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 actor,
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
-    {
-        return actorRef.ToNative();
     }
 
     private static ZLinkMessage CopyReply(ZLinkMessage? reply)

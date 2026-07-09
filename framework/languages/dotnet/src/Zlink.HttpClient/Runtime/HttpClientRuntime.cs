@@ -12,18 +12,18 @@ namespace Zlink.HttpClient.Runtime;
 internal sealed class HttpClientRuntime : IDisposable
 {
     private readonly CookieJar _cookieJar = new();
-    private readonly SocketsHttpHandler _handler;
     private readonly SystemHttpClient _httpClient;
     private readonly RequestPerformer _performer;
     private readonly RetryPolicy _retryPolicy;
+    private readonly HttpTransport _transport;
 
     public HttpClientRuntime(HttpClientOptions options)
     {
         Options = options;
-        _handler = HttpTransportFactory.CreateHandler(options);
+        _transport = HttpTransportFactory.Create(options);
         // disposeHandler: false keeps explicit handler ownership here, so Dispose() releases the
-        // handler exactly once (the HttpClient does not also dispose it).
-        _httpClient = new SystemHttpClient(_handler, false)
+        // transport exactly once (the HttpClient does not also dispose it).
+        _httpClient = new SystemHttpClient(_transport.Handler, false)
         {
             // Per-attempt timeout is enforced with a CancellationToken in RetryPolicy, not here.
             Timeout = Timeout.InfiniteTimeSpan
@@ -37,7 +37,7 @@ internal sealed class HttpClientRuntime : IDisposable
     public void Dispose()
     {
         _httpClient.Dispose();
-        _handler.Dispose();
+        _transport.Dispose();
     }
 
     /// <summary>

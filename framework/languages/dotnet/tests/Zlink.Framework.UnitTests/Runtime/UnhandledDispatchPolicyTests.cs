@@ -37,7 +37,8 @@ public sealed class UnhandledDispatchPolicyTests
                 null,
                 null),
             new { Value = "join" },
-            typeof(object));
+            typeof(object),
+            null);
         var request = new ZLinkBackendActorJoinRequest(
             new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
             new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
@@ -106,7 +107,8 @@ public sealed class UnhandledDispatchPolicyTests
                 null,
                 null),
             new { Value = "join" },
-            typeof(object));
+            typeof(object),
+            null);
         var request = new ZLinkBackendActorJoinRequest(
             new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
             new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
@@ -180,7 +182,8 @@ public sealed class UnhandledDispatchPolicyTests
                 null,
                 null),
             new { Broken = "payload" },
-            typeof(object));
+            typeof(object),
+            null);
         requestParts[1].Dispose();
         requestParts = [requestParts[0], Message.From("{")];
 

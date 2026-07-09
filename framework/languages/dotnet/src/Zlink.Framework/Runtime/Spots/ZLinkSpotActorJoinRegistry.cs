@@ -4,8 +4,6 @@ internal sealed class ZLinkSpotActorJoinRegistry
 {
     private ZLinkSpotActorJoinDescriptor? _descriptor;
 
-    public bool HasHandlers => _descriptor is not null;
-
     public void Bind(object spot)
     {
         foreach (var descriptor in ZLinkSpotDescriptorFactory.CreateSpotActorJoinDescriptors(spot.GetType()))

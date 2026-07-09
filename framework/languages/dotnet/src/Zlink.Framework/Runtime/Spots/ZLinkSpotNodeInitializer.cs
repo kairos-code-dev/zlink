@@ -94,7 +94,7 @@ internal sealed class ZLinkSpotNodeInitializer(
         if (services.GetService(typeof(ZLinkLocationLifecycle)) is not ZLinkLocationLifecycle lifecycle)
             return;
 
-        var status = await lifecycle.ClaimSpotAsync(
+        var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName,
                 node.RoutingId,
                 spotType: null,

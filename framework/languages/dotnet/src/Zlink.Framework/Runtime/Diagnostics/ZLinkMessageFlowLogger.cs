@@ -12,28 +12,22 @@ internal static class ZLinkMessageFlowLogger
     public static void HandlerMissing(
         ILogger logger,
         LogLevel level,
-        string surface,
-        string kind,
-        string packetName,
+        ZLinkMessageFlowEvent flow,
         string action,
         string reason,
-        string? channelName = null,
-        string? actorId = null,
-        string? actorType = null,
-        string? spotRid = null)
+        string surfaceName,
+        string kindName,
+        string? actorType = null)
     {
-        ZLinkTelemetry.RecordHandlerMissing(surface, kind, action, reason);
+        ZLinkTelemetry.RecordHandlerMissing(surfaceName, kindName, action, reason);
         ZLinkTelemetry.TraceFlowEvent(
             "handler-missing",
-            surface,
-            kind,
-            packetName,
+            flow,
             action,
             reason,
-            channelName,
-            actorId,
-            actorType,
-            spotRid);
+            surfaceName,
+            kindName,
+            actorType);
 
         if (!logger.IsEnabled(level)) return;
 
@@ -42,43 +36,37 @@ internal static class ZLinkMessageFlowLogger
             HandlerMissingEvent,
             "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
             "handler-missing",
-            surface,
-            kind,
-            packetName,
+            surfaceName,
+            kindName,
+            flow.PacketName,
             action,
             reason,
-            channelName,
-            actorId,
+            flow.ChannelName,
+            flow.ActorId,
             actorType,
-            spotRid);
+            flow.SpotRid);
     }
 
     public static void PayloadDecodeFailed(
         ILogger logger,
-        string surface,
-        string kind,
-        string packetName,
+        ZLinkMessageFlowEvent flow,
         string action,
         string reason,
         Exception exception,
-        string? channelName = null,
-        string? actorId = null,
-        string? actorType = null,
-        string? spotRid = null)
+        string surfaceName,
+        string kindName,
+        string? actorType = null)
     {
         if (string.Equals(action, "reply-error", StringComparison.Ordinal))
-            ZLinkTelemetry.RecordReplyError(surface, kind, reason);
+            ZLinkTelemetry.RecordReplyError(surfaceName, kindName, reason);
         ZLinkTelemetry.TraceFlowEvent(
             "failed",
-            surface,
-            kind,
-            packetName,
+            flow,
             action,
             reason,
-            channelName,
-            actorId,
-            actorType,
-            spotRid);
+            surfaceName,
+            kindName,
+            actorType);
 
         if (!logger.IsEnabled(LogLevel.Warning)) return;
 
@@ -87,41 +75,35 @@ internal static class ZLinkMessageFlowLogger
             exception,
             "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
             "failed",
-            surface,
-            kind,
-            packetName,
+            surfaceName,
+            kindName,
+            flow.PacketName,
             action,
             reason,
-            channelName,
-            actorId,
+            flow.ChannelName,
+            flow.ActorId,
             actorType,
-            spotRid);
+            flow.SpotRid);
     }
 
     public static void Dropped(
         ILogger logger,
         LogLevel level,
-        string surface,
-        string kind,
-        string packetName,
+        ZLinkMessageFlowEvent flow,
         string reason,
-        string? channelName = null,
-        string? actorId = null,
-        string? actorType = null,
-        string? spotRid = null)
+        string surfaceName,
+        string kindName,
+        string? actorType = null)
     {
-        ZLinkTelemetry.RecordDropped(surface, kind, reason);
+        ZLinkTelemetry.RecordDropped(surfaceName, kindName, reason);
         ZLinkTelemetry.TraceFlowEvent(
             "dropped",
-            surface,
-            kind,
-            packetName,
+            flow,
             "drop",
             reason,
-            channelName,
-            actorId,
-            actorType,
-            spotRid);
+            surfaceName,
+            kindName,
+            actorType);
 
         if (!logger.IsEnabled(level)) return;
 
@@ -130,43 +112,37 @@ internal static class ZLinkMessageFlowLogger
             MessageDroppedEvent,
             "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
             "dropped",
-            surface,
-            kind,
-            packetName,
+            surfaceName,
+            kindName,
+            flow.PacketName,
             "drop",
             reason,
-            channelName,
-            actorId,
+            flow.ChannelName,
+            flow.ActorId,
             actorType,
-            spotRid);
+            flow.SpotRid);
     }
 
     public static void Rejected(
         ILogger logger,
         LogLevel level,
-        string surface,
-        string kind,
-        string packetName,
+        ZLinkMessageFlowEvent flow,
         string reason,
+        string surfaceName,
+        string kindName,
         Exception? exception = null,
-        string? channelName = null,
-        string? actorId = null,
-        string? actorType = null,
-        string? spotRid = null)
+        string? actorType = null)
     {
         if (string.Equals(reason, "no-join-handler", StringComparison.Ordinal))
-            ZLinkTelemetry.RecordHandlerMissing(surface, kind, "rejected", reason);
+            ZLinkTelemetry.RecordHandlerMissing(surfaceName, kindName, "rejected", reason);
         ZLinkTelemetry.TraceFlowEvent(
             "rejected",
-            surface,
-            kind,
-            packetName,
+            flow,
             "rejected",
             reason,
-            channelName,
-            actorId,
-            actorType,
-            spotRid);
+            surfaceName,
+            kindName,
+            actorType);
 
         if (!logger.IsEnabled(level)) return;
 
@@ -176,14 +152,14 @@ internal static class ZLinkMessageFlowLogger
             exception,
             "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
             "rejected",
-            surface,
-            kind,
-            packetName,
+            surfaceName,
+            kindName,
+            flow.PacketName,
             "rejected",
             reason,
-            channelName,
-            actorId,
+            flow.ChannelName,
+            flow.ActorId,
             actorType,
-            spotRid);
+            flow.SpotRid);
     }
 }

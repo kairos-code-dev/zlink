@@ -34,18 +34,6 @@ internal sealed class ZLinkSpotPeerConnector(
         return ValueTask.FromResult(true);
     }
 
-    public void DisconnectRouter(string endpoint)
-    {
-        node.DisconnectPeer(endpoint);
-        connections.RemoveRouterManual(endpoint);
-    }
-
-    public void DisconnectPubSub(string endpoint)
-    {
-        node.DisconnectPeer(endpoint);
-        connections.RemovePubSub(endpoint);
-    }
-
     private void ConnectPeer(string endpoint)
     {
         try

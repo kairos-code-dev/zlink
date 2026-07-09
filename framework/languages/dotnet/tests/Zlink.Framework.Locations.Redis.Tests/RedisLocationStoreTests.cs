@@ -203,9 +203,8 @@ public sealed class RedisLocationStoreTests
 
         // Owner A stops heartbeating; the Redis PX TTL expires the lease and
         // A's rows become claimable without any row write.
-        await Task.Delay(TimeSpan.FromMilliseconds(700));
-
-        var reclaimed = await store.UpdateActorAsync(TestRows.Actor(OwnerB, 0), ZLinkLocationWriteIntent.NewClaim);
+        var reclaimed = await WaitForStoredWriteAsync(
+            () => store.UpdateActorAsync(TestRows.Actor(OwnerB, 0), ZLinkLocationWriteIntent.NewClaim));
         Assert.Equal(ZLinkLocationWriteStatus.Stored, reclaimed.Status);
         Assert.Equal(2, reclaimed.Generation);
     }
@@ -509,9 +508,7 @@ public sealed class RedisLocationStoreTests
         await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), LeaseTtl);
         await store.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), TimeSpan.FromMilliseconds(300));
 
-        await Task.Delay(TimeSpan.FromMilliseconds(700));
-
-        var snapshot = await store.ListOwnerLeasesAsync();
+        var snapshot = await WaitForOwnerLeaseToExpireAsync(store, OwnerB);
 
         var lease = Assert.Single(snapshot.Leases);
         Assert.Equal(OwnerA, lease.OwnerId);
@@ -546,5 +543,44 @@ public sealed class RedisLocationStoreTests
                 Assert.True(result.LeaseExpiresAt > result.StoreNow);
             }
         }
+    }
+
+    private static async Task<ZLinkLocationWriteResult> WaitForStoredWriteAsync(
+        Func<ValueTask<ZLinkLocationWriteResult>> write)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        ZLinkLocationWriteResult result;
+        do
+        {
+            result = await write();
+            if (result.Status == ZLinkLocationWriteStatus.Stored)
+            {
+                return result;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        return result;
+    }
+
+    private static async Task<ZLinkOwnerLeaseSnapshot> WaitForOwnerLeaseToExpireAsync(
+        IZLinkOwnerLeaseStore store,
+        string expiredOwnerId)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        ZLinkOwnerLeaseSnapshot snapshot;
+        do
+        {
+            snapshot = await store.ListOwnerLeasesAsync();
+            if (snapshot.Leases.All(lease => lease.OwnerId != expiredOwnerId))
+            {
+                return snapshot;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        return snapshot;
     }
 }

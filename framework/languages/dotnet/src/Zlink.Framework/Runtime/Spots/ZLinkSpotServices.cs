@@ -2,11 +2,11 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : IZLinkSpotManager
 {
-    public async ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
+    public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
-        return await runtime.CreateSpotAsync<TSpot>(ZLinkMessage.Empty, cancellationToken);
+        return runtime.CreateSpotAsync<TSpot>(ZLinkMessage.Empty, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
@@ -26,12 +26,12 @@ internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : I
         return runtime.GetOrCreateSpotAsync<TSpot>(spotRid, request, cancellationToken);
     }
 
-    public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
+    public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
-        return await runtime.GetOrCreateSpotAsync<TSpot>(spotRid, ZLinkMessage.Empty, cancellationToken);
+        return runtime.GetOrCreateSpotAsync<TSpot>(spotRid, ZLinkMessage.Empty, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,

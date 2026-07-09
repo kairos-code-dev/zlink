@@ -33,11 +33,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public bool IsDestroying { get; private set; }
 
-    public ulong CurrentActorGeneration
-        => NativeActorRef is { Generation: not 0 } actorRef
-            ? actorRef.Generation
-            : _actorGeneration;
-
     public ZLinkSpotActivation? LiveActivation
         => Activation is { IsDisposed: false } activation ? activation : null;
 

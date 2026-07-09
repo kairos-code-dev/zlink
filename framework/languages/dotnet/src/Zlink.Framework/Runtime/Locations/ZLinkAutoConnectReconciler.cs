@@ -223,6 +223,20 @@ internal sealed class ZLinkAutoConnectReconciler
                 ZLinkLocationWriteIntent.Renew,
                 cancellationToken).ConfigureAwait(false);
             _localPublished = renewed.Status == ZLinkLocationWriteStatus.Stored;
+            return;
+        }
+
+        if (claim.Status == ZLinkLocationWriteStatus.RejectedConflict)
+        {
+            var takeover = await _runtime.WritePeerAsync(
+                _localRow,
+                ZLinkLocationWriteIntent.Takeover,
+                cancellationToken).ConfigureAwait(false);
+            if (takeover.Status == ZLinkLocationWriteStatus.Stored)
+            {
+                _localGeneration = takeover.Generation;
+                _localPublished = true;
+            }
         }
     }
 

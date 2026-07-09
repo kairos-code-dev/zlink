@@ -8,20 +8,13 @@ internal readonly record struct ZlinkStreamFrame(
 
 internal static class ZlinkStreamFrameCodec
 {
+    // Keep byte-compatible with Zlink.Framework stream framing; StreamWireInteropTests is the drift gate.
     public static void ValidateSendFrame(int headerLength, int payloadLength)
     {
         if (headerLength > ushort.MaxValue)
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameTooLarge, "Header exceeds u16 header_size.");
 
         _ = checked(2 + 4 + headerLength + payloadLength);
-    }
-
-    public static ReadOnlyMemory<byte> EncodePrefix(int headerLength, int payloadLength)
-    {
-        ValidateSendFrame(headerLength, payloadLength);
-        var prefix = new byte[6];
-        WritePrefix(prefix, headerLength, payloadLength);
-        return prefix;
     }
 
     public static void WritePrefix(
@@ -35,20 +28,6 @@ internal static class ZlinkStreamFrameCodec
         ValidateSendFrame(headerLength, payloadLength);
         BinaryPrimitives.WriteUInt16BigEndian(destination[..2], (ushort)headerLength);
         BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(2, 4), (uint)payloadLength);
-    }
-
-    public static ReadOnlyMemory<byte> Encode(
-        ReadOnlyMemory<byte> header,
-        ReadOnlyMemory<byte> payload,
-        int maxPayloadSize)
-    {
-        ValidateSendPayload(payload.Length, maxPayloadSize);
-        ValidateSendFrame(header.Length, payload.Length);
-
-        var totalSize = checked(2 + 4 + header.Length + payload.Length);
-        var frame = new byte[totalSize];
-        WriteFrame(frame, header, payload);
-        return frame;
     }
 
     public static int GetFrameSize(int headerLength, int payloadLength)

@@ -17,30 +17,24 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
+        var scope = new ZLinkDispatchFlowScope(
+            ZLinkDispatchErrorSurface.Channel,
+            "Channel",
+            ZLinkDispatchMessageKind.Publish,
+            "Publish",
+            header.MessageName,
+            channelName,
+            header.ContentType,
+            header.CorrelationId,
+            topicMessage.Topic,
+            header.Source);
         var endpoints = handlerRegistry.GetPublishes(
             channelName,
             resolveMappedGroups(channelName),
             header.MessageName);
         if (endpoints.Count == 0)
         {
-            ZLinkMessageFlowLogger.Dropped(
-                logger,
-                unhandledLogLevel,
-                "Channel",
-                "Publish",
-                header.MessageName,
-                "no-handler",
-                channelName);
-            dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.Channel,
-                ZLinkDispatchMessageKind.Publish,
-                ZLinkDispatchErrorReason.HandlerMissing,
-                ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                channelName,
-                topicMessage.Topic,
-                SourceRid: header.Source,
-                CorrelationId: header.CorrelationId));
+            scope.Dropped(logger, dispatchErrors, unhandledLogLevel);
             return;
         }
 
@@ -50,42 +44,24 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
             decodedMessages ??= new Dictionary<Type, object?>();
             if (!decodedMessages.TryGetValue(endpoint.MessageType, out var message))
             {
-                try
-                {
-                    message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts, endpoint.MessageType, codecs);
-                }
-                catch (Exception ex)
-                {
-                    ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                if (!scope.TryDecode(
+                        topicMessage.Parts,
+                        endpoint.MessageType,
+                        scope.ContentType!,
+                        codecs,
                         logger,
-                        "Channel",
-                        "Publish",
-                        header.MessageName,
-                        "drop",
-                        "payload-decode-failed",
-                        ex,
-                        channelName);
-                    dispatchErrors.Report(new ZLinkDispatchFailure(
-                        ZLinkDispatchErrorSurface.Channel,
-                        ZLinkDispatchMessageKind.Publish,
-                        ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                        dispatchErrors,
                         ZLinkDispatchErrorAction.Drop,
-                        header.MessageName,
-                        channelName,
-                        topicMessage.Topic,
-                        SourceRid: header.Source,
-                        CorrelationId: header.CorrelationId,
-                        Exception: ex));
+                        out message))
                     return;
-                }
 
                 decodedMessages.Add(endpoint.MessageType, message);
             }
 
             var context = new ZLinkPublishContext(
-                channelName,
-                header.MessageName,
-                header.ContentType,
+                scope.ChannelName,
+                scope.PacketName,
+                scope.ContentType,
                 topicMessage.Topic,
                 header.Source,
                 cancellationToken);
@@ -94,39 +70,16 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                 await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                    dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowOutcome.Dispatched,
-                        ZLinkDispatchErrorSurface.Channel,
-                        ZLinkDispatchMessageKind.Publish,
-                        header.MessageName,
-                        channelName,
-                        topicMessage.Topic,
-                        SourceRid: header.Source,
-                        CorrelationId: header.CorrelationId));
+                scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);
             }
             catch (Exception ex)
             {
-                ZLinkMessageFlowLogger.Rejected(
+                scope.HandlerException(
                     logger,
+                    dispatchErrors,
                     LogLevel.Error,
-                    "Channel",
-                    "Publish",
-                    header.MessageName,
-                    "handler-exception",
-                    ex,
-                    channelName);
-                dispatchErrors.Report(new ZLinkDispatchFailure(
-                    ZLinkDispatchErrorSurface.Channel,
-                    ZLinkDispatchMessageKind.Publish,
-                    ZLinkDispatchErrorReason.HandlerException,
                     ZLinkDispatchErrorAction.Drop,
-                    header.MessageName,
-                    channelName,
-                    topicMessage.Topic,
-                    SourceRid: header.Source,
-                    CorrelationId: header.CorrelationId,
-                    Exception: ex));
+                    ex);
             }
         }
     }

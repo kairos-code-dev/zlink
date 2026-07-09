@@ -7,7 +7,15 @@ internal sealed class ZLinkRouteConnectionSet(IZLinkBackendRouterSocket router)
 
     public void Connect(string endpoint)
     {
-        if (_manualConnections.Add(endpoint)) router.Connect(endpoint);
+        if (!_manualConnections.Add(endpoint))
+        {
+            return;
+        }
+
+        lock (_connectGate)
+        {
+            router.Connect(endpoint);
+        }
     }
 
     /// <summary>

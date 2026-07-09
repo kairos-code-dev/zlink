@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorDispatchSubmitter(
     ZLinkSpotSerialExecutor serial,
-    ZLinkSpotActivationDispatcher dispatcher)
+    ZLinkSpotActorPacketDispatcher dispatcher)
 {
     public async ValueTask Async(
         IZLinkActor actor,
@@ -19,7 +19,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
                 async static (_, state, ct) =>
                 {
                     using var currentPayload = state.Payload;
-                    await state.Dispatcher.DispatchActorPacketAsync(
+                    await state.Dispatcher.DispatchAsync(
                             state.Actor,
                             state.RuntimeState,
                             state.Header,
@@ -53,7 +53,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
                 async static (_, state, ct) =>
                 {
                     using var currentPayload = state.Payload;
-                    state.Reply = await state.Dispatcher.DispatchActorPacketForReplyAsync(
+                    state.Reply = await state.Dispatcher.DispatchForReplyAsync(
                             state.Actor,
                             state.RuntimeState,
                             state.Header,
@@ -76,13 +76,13 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
     }
 
     private sealed class ActorDispatchState(
-        ZLinkSpotActivationDispatcher dispatcher,
+        ZLinkSpotActorPacketDispatcher dispatcher,
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message payload)
     {
-        public ZLinkSpotActivationDispatcher Dispatcher { get; } = dispatcher;
+        public ZLinkSpotActorPacketDispatcher Dispatcher { get; } = dispatcher;
 
         public IZLinkActor Actor { get; } = actor;
 
@@ -94,13 +94,13 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
     }
 
     private sealed class ActorReplyDispatchState(
-        ZLinkSpotActivationDispatcher dispatcher,
+        ZLinkSpotActorPacketDispatcher dispatcher,
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message payload)
     {
-        public ZLinkSpotActivationDispatcher Dispatcher { get; } = dispatcher;
+        public ZLinkSpotActorPacketDispatcher Dispatcher { get; } = dispatcher;
 
         public IZLinkActor Actor { get; } = actor;
 

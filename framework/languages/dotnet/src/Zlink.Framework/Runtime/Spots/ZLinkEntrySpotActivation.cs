@@ -6,7 +6,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
     IZLinkEntrySpotContext,
     IZLinkCurrentSpotActivation,
     IZLinkSpotHandlerRegistrySink,
-    IZLinkSpotOutboundSink,
     IAsyncDisposable
 {
     private static readonly AsyncLocal<ZLinkEntrySpotActivation?> Current = new();
@@ -84,12 +83,10 @@ internal sealed partial class ZLinkEntrySpotActivation :
             _stopSource.Token);
         _outboundEndpoint = new ZLinkSpotOutboundEndpoint(
             this,
-            _scope.ServiceProvider,
             _outbound,
-            _runtime,
-            "IZLinkEntrySpotContext spot routing requires AddSpotRouteRefResolver<TResolver>().");
+            _runtime);
         Handlers = new ZLinkSpotHandlerRegistrySurface(this);
-        Outbound = new ZLinkSpotOutboundSurface(this);
+        Outbound = _outboundEndpoint;
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,
             nativeSpot,
@@ -126,6 +123,12 @@ internal sealed partial class ZLinkEntrySpotActivation :
     public TimeSpan DefaultRequestTimeout { get; }
 
     public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
+
+    public IZLinkSpotHandlerRegistry Handlers { get; }
+
+    public IZLinkSpotOutbound Outbound { get; }
+
+    ZLinkSpotOutboundEndpoint IZLinkCurrentSpotActivation.OutboundEndpoint => _outboundEndpoint;
 
     public RoutingId SpotRid => _nativeSpot.RoutingId;
 

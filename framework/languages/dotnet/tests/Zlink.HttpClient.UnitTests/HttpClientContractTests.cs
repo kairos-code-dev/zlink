@@ -7,9 +7,11 @@ using System.Text.Json;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using MessagePack;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Xunit;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
+using Zlink.Framework.Contracts.Codecs;
 using Zlink.Framework.Contracts.Errors;
 
 namespace Zlink.HttpClient.UnitTests;
@@ -547,6 +549,15 @@ public sealed class HttpClientContractTests
     }
 
     [Fact]
+    public void Codec_extension_rejects_stream_codec_without_http_serializer()
+    {
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            ZLinkHttpClient.Create("http://h").Codecs(codecs => codecs.Use(StreamOnlyCodecExtension.Instance)));
+
+        Assert.Contains("must be paired with an HTTP payload serializer", exception.Message);
+    }
+
+    [Fact]
     public async Task Validation_rejects_bad_request_configuration()
     {
         using var client = ZLinkHttpClient.Create("http://127.0.0.1:1").Build();
@@ -761,6 +772,16 @@ public sealed class HttpClientContractTests
     private sealed record CreateGameReq(string Name);
 
     private sealed record CreateGameRes(string Id, bool Ranked);
+
+    private sealed class StreamOnlyCodecExtension : IZLinkCodecExtension
+    {
+        public static StreamOnlyCodecExtension Instance { get; } = new();
+
+        public void Register(IZLinkCodecRegistrar codecs)
+        {
+            codecs.AddStreamCodec("application/x-stream-only", ZlinkStreamCodec.Protobuf);
+        }
+    }
 
     [MessagePackObject]
     public sealed class PackedPlayer

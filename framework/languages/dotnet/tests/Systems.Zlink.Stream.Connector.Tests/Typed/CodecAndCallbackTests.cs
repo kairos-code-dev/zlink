@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 using Xunit;
 using Zlink.Framework.Codecs.MessagePack;
 
@@ -21,7 +22,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task TypedConnectorUsesMessagePackExtensionWhenConfigured()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -50,8 +51,8 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task TypedCallbackDecompressesServerPacket()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
-        var compressionCodec = ZlinkStreamDefaultCodecFactory.Lz4Compression();
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var compressionCodec = new ZlinkStreamLz4CompressionCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -95,10 +96,13 @@ public sealed partial class StreamConnectorTests
     public void Lz4CodecRejectsDecodedPayloadAboveReceiveLimit()
     {
         var source = Encoding.UTF8.GetBytes(new string('A', 1024));
-        var compressed = ZlinkStreamDefaultCodecFactory.Lz4Compression().Compress(source);
-        var codec = ZlinkStreamDefaultCodecFactory.Lz4Compression();
+        var compressed = new ZlinkStreamLz4CompressionCodec().Compress(source);
+        var codec = new ZlinkStreamLz4CompressionCodec();
 
-        var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decompress(compressed, 64));
+        var exception = Assert.Throws<ZlinkStreamException>(() =>
+        {
+            _ = codec.Decompress(compressed, 64);
+        });
 
         Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
     }
@@ -106,7 +110,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task ConnectorUsesCustomCompressionCodecForOutboundFrame()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var compressionCodec = new PrefixCompressionCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -141,9 +145,39 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task SendSubmitCompressesOutboundFrameOnce()
+    {
+        var compressionCodec = new PrefixCompressionCodec();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            await ReadPacketAsync(stream);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            CompressionCodec = compressionCodec
+        });
+        await connector.Connect.Async();
+
+        connector.Send(new Ping("single-compress"))
+            .PacketName("single-compress")
+            .Compress().Submit();
+
+        await server;
+        Assert.Equal(1, compressionCodec.CompressCount);
+    }
+
+    [Fact]
     public async Task ConnectorUsesCustomCompressionCodecForInboundFrame()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var compressionCodec = new PrefixCompressionCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -188,8 +222,8 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task ConnectorRejectsCompressedInboundFrameWhenCompressionDisabled()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
-        var compressionCodec = ZlinkStreamDefaultCodecFactory.Lz4Compression();
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var compressionCodec = new ZlinkStreamLz4CompressionCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -251,7 +285,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task ConnectorAppliesRuntimeReceiveLimitAfterCustomDecompression()
     {
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var compressionCodec = new OversizedCompressionCodec();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -297,8 +331,11 @@ public sealed partial class StreamConnectorTests
     {
         public const byte Marker = 0x7A;
 
+        public int CompressCount { get; private set; }
+
         public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
         {
+            CompressCount++;
             var compressed = new byte[payload.Length + 1];
             compressed[0] = Marker;
             payload.CopyTo(compressed.AsMemory(1));

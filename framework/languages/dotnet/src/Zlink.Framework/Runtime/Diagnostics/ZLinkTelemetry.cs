@@ -64,45 +64,43 @@ internal static class ZLinkTelemetry
 
     public static void TraceFlowEvent(
         string eventName,
-        string surface,
-        string kind,
-        string packetName,
+        ZLinkMessageFlowEvent flow,
         string action,
         string reason,
-        string? channelName = null,
-        string? actorId = null,
-        string? actorType = null,
-        string? spotRid = null)
+        string? surfaceName = null,
+        string? kindName = null,
+        string? actorType = null)
     {
         if (!ActivitySource.HasListeners()) return;
 
+        surfaceName ??= flow.Surface.ToString();
+        kindName ??= flow.MessageKind.ToString();
         using var activity = ActivitySource.StartActivity(
-            ResolveSpanName(surface),
+            ResolveSpanName(flow.Surface),
             ActivityKind.Consumer);
         if (activity is null) return;
 
-        activity.SetTag("zlink.surface", surface);
-        activity.SetTag("zlink.kind", kind);
-        activity.SetTag("zlink.packet.name", packetName);
+        activity.SetTag("zlink.surface", surfaceName);
+        activity.SetTag("zlink.kind", kindName);
+        activity.SetTag("zlink.packet.name", flow.PacketName);
         activity.SetTag("zlink.action", action);
         activity.SetTag("zlink.reason", reason);
-        if (!string.IsNullOrEmpty(channelName)) activity.SetTag("zlink.channel.name", channelName);
-        if (!string.IsNullOrEmpty(actorId)) activity.SetTag("zlink.actor.id", actorId);
+        if (!string.IsNullOrEmpty(flow.ChannelName)) activity.SetTag("zlink.channel.name", flow.ChannelName);
+        if (!string.IsNullOrEmpty(flow.ActorId)) activity.SetTag("zlink.actor.id", flow.ActorId);
         if (!string.IsNullOrEmpty(actorType)) activity.SetTag("zlink.actor.type", actorType);
-        if (!string.IsNullOrEmpty(spotRid)) activity.SetTag("zlink.spot.rid", spotRid);
+        if (!string.IsNullOrEmpty(flow.SpotRid)) activity.SetTag("zlink.spot.rid", flow.SpotRid);
         activity.AddEvent(new ActivityEvent(eventName));
     }
 
-    private static string ResolveSpanName(string surface)
+    private static string ResolveSpanName(ZLinkDispatchErrorSurface surface)
     {
         return surface switch
         {
-            "Session" => "zlink.session.dispatch",
-            "Channel" => "zlink.channel.dispatch",
-            "RouteMeshChannel" => "zlink.route.dispatch",
-            "Spot" => "zlink.spot.dispatch",
-            "Actor" => "zlink.actor.dispatch",
-            "EntrySpot" => "zlink.actor.dispatch",
+            ZLinkDispatchErrorSurface.StreamSession => "zlink.session.dispatch",
+            ZLinkDispatchErrorSurface.Channel => "zlink.channel.dispatch",
+            ZLinkDispatchErrorSurface.RouteMeshChannel => "zlink.route.dispatch",
+            ZLinkDispatchErrorSurface.SpotRoute or ZLinkDispatchErrorSurface.SpotSubscription => "zlink.spot.dispatch",
+            ZLinkDispatchErrorSurface.SpotActor => "zlink.actor.dispatch",
             _ => "zlink.message.dispatch"
         };
     }

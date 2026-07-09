@@ -33,15 +33,11 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
         var request = ZLinkActorEntrySpotRoutePackets.DecodeJoinRequest(received.Parts);
 
         // Hosting handoff from the source node (see JoinRoutedActorAsync).
-        CreateActorResult created;
-        using (ZLinkLocationLifecycle.EnterActorTakeoverScope())
-        {
-            created = await runtime.CreateLocalActorAsync(
-                    request.ActorId,
-                    request.ActorType,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
+        var created = await runtime.CreateLocalActorForHandoffAsync(
+                request.ActorId,
+                request.ActorType,
+                cancellationToken)
+            .ConfigureAwait(false);
         var actor = created.Actor;
         var state = runtime.GetOrCreateActorState(actor.ActorId);
         var nativeRef = state.NativeActorRef
@@ -84,9 +80,8 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
         ZLinkFrameworkRuntimeState state,
         RoutingId nodeRid)
     {
-        foreach (var candidate in state.SpotNodes.Values)
-            if (candidate.Node.RoutingId == nodeRid)
-                return candidate;
+        if (state.TryGetSpotNodeByRoutingId(nodeRid, out var nodeRuntime))
+            return nodeRuntime;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorRouteNotFound,

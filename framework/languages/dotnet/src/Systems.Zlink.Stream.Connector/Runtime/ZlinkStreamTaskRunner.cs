@@ -8,7 +8,7 @@ internal sealed class ZlinkStreamTaskRunner(CancellationToken shutdownToken)
     {
         return Task.Factory.StartNew(
             static state => RunCoreAsync((TaskState)state!),
-            new TaskState(name, callback, shutdownToken),
+            new TaskState(callback, shutdownToken),
             CancellationToken.None,
             TaskCreationOptions.DenyChildAttach,
             TaskScheduler.Default).Unwrap();
@@ -32,12 +32,10 @@ internal sealed class ZlinkStreamTaskRunner(CancellationToken shutdownToken)
         }
         catch
         {
-            _ = state.Name;
         }
     }
 
     private sealed record TaskState(
-        string Name,
         Func<CancellationToken, ValueTask> Callback,
         CancellationToken ShutdownToken);
 }

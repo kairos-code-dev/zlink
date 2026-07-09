@@ -14,7 +14,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -46,7 +46,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var receivedAll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = Task.Run(async () =>
         {
@@ -141,7 +141,7 @@ public sealed partial class StreamConnectorTests
         var port = GetFreeTcpPort();
         listener.Prefixes.Add($"http://127.0.0.1:{port}/ws/");
         listener.Start();
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var server = Task.Run(async () =>
         {
             var context = await listener.GetContextAsync();
@@ -213,7 +213,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var headerCodec = new ZlinkStreamHeaderCodec();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -237,6 +237,41 @@ public sealed partial class StreamConnectorTests
         connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
             .PacketName("th").Submit();
 
+        await server;
+    }
+
+    [Fact]
+    public async Task TlsConnectTimeoutDisposesAcceptedSocket()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var observedClientClose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var buffer = new byte[1024];
+            while (await stream.ReadAsync(buffer).AsTask().WaitAsync(TimeSpan.FromSeconds(5)) > 0)
+            {
+            }
+
+            observedClientClose.SetResult();
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tls://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            ConnectTimeout = TimeSpan.FromMilliseconds(100),
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
+            SkipServerCertificateValidation = true
+        });
+
+        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () => await connector.Connect.Async());
+
+        Assert.Equal(ZlinkStreamErrorCode.ConnectTimeout, exception.Error.Code);
+        await observedClientClose.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await server;
     }
 

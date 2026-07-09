@@ -19,7 +19,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
         return await _bindings.BindAsync(
             context,
-            ToPublicActorRef(actorRef),
+            actorRef.ToNative(),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -181,11 +181,6 @@ internal sealed class ZLinkSessionActorCoordinator(
             $"Actor '{actorId}' is not created on the local actor runtime.");
     }
 
-    private static ActorRef ToPublicActorRef(ZLinkBackendActorRef actorRef)
-    {
-        return actorRef.ToNative();
-    }
-
     private static bool ActorRefsEqual(ActorRef left, ActorRef right)
     {
         return left.ActorId == right.ActorId
@@ -206,9 +201,8 @@ internal sealed class ZLinkSessionActorCoordinator(
         ZLinkBackendActorRef actorRef,
         CancellationToken cancellationToken)
     {
-        if (stream is not ZLinkManagedStream managedStream) return;
-
-        await managedStream.BindActorAsync(
+        await ZLinkNativeActorStreamBinding.BindAsync(
+                stream,
                 actorRef,
                 runtime.Registration.DefaultRequestTimeout,
                 cancellationToken)
@@ -219,9 +213,8 @@ internal sealed class ZLinkSessionActorCoordinator(
         string actorId,
         CancellationToken cancellationToken)
     {
-        if (stream is not ZLinkManagedStream managedStream) return;
-
-        await managedStream.UnbindActorAsync(
+        await ZLinkNativeActorStreamBinding.UnbindAsync(
+                stream,
                 actorId,
                 runtime.Registration.DefaultRequestTimeout,
                 cancellationToken)

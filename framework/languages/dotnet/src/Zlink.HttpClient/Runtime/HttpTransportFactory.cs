@@ -15,7 +15,7 @@ namespace Zlink.HttpClient.Runtime;
 /// </summary>
 internal static class HttpTransportFactory
 {
-    public static SocketsHttpHandler CreateHandler(HttpClientOptions options)
+    public static HttpTransport Create(HttpClientOptions options)
     {
         var handler = new SocketsHttpHandler
         {
@@ -34,21 +34,23 @@ internal static class HttpTransportFactory
             handler.UseProxy = false;
         }
 
-        ConfigureTls(handler, options);
-        return handler;
+        var ownedCertificates = ConfigureTls(handler, options);
+        return new HttpTransport(handler, ownedCertificates);
     }
 
-    private static void ConfigureTls(SocketsHttpHandler handler, HttpClientOptions options)
+    private static IReadOnlyList<X509Certificate2> ConfigureTls(SocketsHttpHandler handler, HttpClientOptions options)
     {
-        if (options.TrustCertificateFile is null && options.ClientCertificate is null) return;
+        if (options.TrustCertificateFile is null && options.ClientCertificate is null) return [];
 
         var sslOptions = new SslClientAuthenticationOptions();
+        var ownedCertificates = new List<X509Certificate2>();
 
         if (options.ClientCertificate is { } clientCertificate)
         {
             var certificate = X509Certificate2.CreateFromPemFile(
                 clientCertificate.CertificatePath, clientCertificate.KeyPath);
             sslOptions.ClientCertificates = new X509CertificateCollection { certificate };
+            ownedCertificates.Add(certificate);
         }
 
         if (options.TrustCertificateFile is { } trustPath)
@@ -56,6 +58,7 @@ internal static class HttpTransportFactory
             // The trust certificate is a certificate only (no private key); CreateFromPemFile
             // would try to extract a matching key and fail.
             var trusted = X509Certificate2.CreateFromPem(File.ReadAllText(trustPath));
+            ownedCertificates.Add(trusted);
             sslOptions.RemoteCertificateValidationCallback = (_, presented, suppliedChain, errors) =>
             {
                 if (errors == SslPolicyErrors.None) return true;
@@ -91,5 +94,6 @@ internal static class HttpTransportFactory
         }
 
         handler.SslOptions = sslOptions;
+        return ownedCertificates;
     }
 }

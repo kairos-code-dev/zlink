@@ -32,15 +32,11 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
 
-    public IZLinkBackendSpotRouteBridge? SpotRouteBridge { get; set; }
-
     public async ValueTask DisposeAsync()
     {
         if (Submitter is not null) await Submitter.DisposeAsync();
 
         if (CompletionPump is not null) await CompletionPump.DisposeAsync();
-
-        if (SpotRouteBridge is not null) await SpotRouteBridge.DisposeAsync();
 
         await Socket.DisposeAsync();
         ReceiveGate.Dispose();
@@ -54,14 +50,6 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
         }
     }
 
-    public void RemoveManualConnection(string endpoint)
-    {
-        lock (_manualConnections)
-        {
-            _manualConnections.Remove(endpoint);
-        }
-    }
-
     public bool ContainsManualConnection(string endpoint)
     {
         lock (_manualConnections)
@@ -70,11 +58,4 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
         }
     }
 
-    public IReadOnlyList<string> ListManualConnections()
-    {
-        lock (_manualConnections)
-        {
-            return _manualConnections.Snapshot();
-        }
-    }
 }

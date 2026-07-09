@@ -5,6 +5,7 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkStreamHeaderCodec
 {
+    // Keep byte-compatible with Systems.Zlink.Stream.Connector headers; StreamWireInteropTests is the drift gate.
     private const ZlinkStreamHeaderFlags KnownFlags =
         ZlinkStreamHeaderFlags.HasRequestSeq |
         ZlinkStreamHeaderFlags.HasMetadata |

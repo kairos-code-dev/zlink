@@ -50,6 +50,7 @@ internal sealed class ZLinkRouteChannelInitializer(
             // weight 는 bind 前에 적용해 default-weight 노출 창을 없앤다.
             router.SetPeerWeight(routedRegistration.SocketConfig.Weight);
             router.SetMandatory(true);
+            router.SetHandover(true);
             if (!string.IsNullOrWhiteSpace(routedRegistration.BindEndpoint))
                 router.Bind(routedRegistration.BindEndpoint);
             var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
@@ -89,7 +90,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         var bridge = spotRuntime.Node.CreateRouteBridge();
         try
         {
-            runtime.AttachSpotRouteBridge(bridge, spotRuntime);
+            runtime.AttachSpotRouteBridge(bridge);
             state.SpotRouteBridges.Add(bridge);
             state.SpotRouteBridgeOwners.Add(routedRegistration.RouterChannelId, spotRuntime);
         }

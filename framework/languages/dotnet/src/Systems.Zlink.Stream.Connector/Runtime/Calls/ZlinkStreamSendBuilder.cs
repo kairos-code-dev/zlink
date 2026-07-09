@@ -42,24 +42,22 @@ internal sealed class ZlinkStreamSendBuilder : IZlinkStreamSendCall
     {
         _state.EnsureNotExecuted();
         var name = _state.ResolveMessageName();
-        _connector.ValidateSendEncoded(
+        var frame = _connector.BuildSendFrame(
             ZlinkStreamMessageKind.Send,
             name,
             _body,
             _state.Metadata,
             _state.Compress);
 
-        _ = SubmitAsync(cancellationToken).AsTask();
+        _ = SubmitAsync(frame, cancellationToken).AsTask();
     }
 
-    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
+    private async ValueTask SubmitAsync(
+        ZlinkStreamOutboundFrame frame,
+        CancellationToken cancellationToken)
     {
-        await _connector.SendEncodedAsync(
-            ZlinkStreamMessageKind.Send,
-            _state.ResolveMessageName(),
-            _body,
-            _state.Metadata,
-            _state.Compress,
+        await _connector.SendFrameAsync(
+            frame,
             cancellationToken).ConfigureAwait(false);
     }
 }

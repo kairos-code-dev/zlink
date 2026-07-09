@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Actors;
@@ -159,17 +158,10 @@ internal sealed class ZLinkActorClient(
         if (reply.Count == 1)
         {
             var frame = reply[0].AsReadOnlySpan();
-            if (frame.Length >= 6)
+            if (ZLinkStreamFrameCodec.TryDecode(frame, out var headerBytes, out var payload))
             {
-                var headerSize = BinaryPrimitives.ReadUInt16BigEndian(frame[..2]);
-                var payloadSize = BinaryPrimitives.ReadUInt32BigEndian(frame.Slice(2, 4));
-                if (frame.Length == 6 + headerSize + payloadSize)
-                {
-                    var header = ZLinkStreamProtocolDefaults.DecodeHeader(
-                        frame.Slice(6, headerSize).ToArray());
-                    var payload = frame.Slice(6 + headerSize, checked((int)payloadSize));
-                    return DecodeReplyPayload<TReply>(header, payload);
-                }
+                var header = ZLinkStreamProtocolDefaults.DecodeHeader(headerBytes.ToArray());
+                return DecodeReplyPayload<TReply>(header, payload);
             }
         }
 

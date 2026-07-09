@@ -80,7 +80,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
     {
-        await _actors.DestroyActorAsync(entrySpotNodeRid, actor, cancellationToken)
+        await _actorSessionManager.DestroyActorAsync(entrySpotNodeRid, actor, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -95,16 +95,12 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         // Hosting handoff: the source node still owns the location row, so
         // the local claim may fence it out with Takeover (draft section 9).
-        CreateActorResult creation;
-        using (ZLinkLocationLifecycle.EnterActorTakeoverScope())
-        {
-            creation = await CreateLocalActorAsync(
-                    ZLinkRemoteActorJoinPackets.GetJoinRequestActorId(request),
-                    ZLinkRemoteActorJoinPackets.GetJoinRequestActorType(request),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        var actorId = ZLinkRemoteActorJoinPackets.GetJoinRequestActorId(request);
+        var creation = await CreateLocalActorForHandoffAsync(
+                request.ActorId,
+                request.ActorType,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var actorId = request.ActorId;
         var actorState = GetOrCreateActorState(actorId);
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
@@ -160,7 +156,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
     {
-        await _actors.JoinActorToSpotAsync(activation, actor, cancellationToken);
+        await _actorSessionManager.JoinActorToSpotAsync(activation, actor, cancellationToken);
     }
 
     internal async ValueTask AttachActorAsync(
@@ -168,7 +164,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
     {
-        await _actors.AttachActorAsync(actor, stream, cancellationToken);
+        await _actorSessionManager.AttachActorAsync(actor, stream, cancellationToken);
     }
 
     internal async ValueTask DisconnectActorAsync(
@@ -176,7 +172,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
     {
-        await _actors.DisconnectActorAsync(actor, stream, cancellationToken);
+        await _actorSessionManager.DisconnectActorAsync(actor, stream, cancellationToken);
     }
 
     internal async ValueTask SubmitActorAsync(
@@ -185,7 +181,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         Message payload,
         CancellationToken cancellationToken = default)
     {
-        await _actors.SubmitActorAsync(actor, header, payload, cancellationToken);
+        await _actorSessionManager.SubmitActorAsync(actor, header, payload, cancellationToken);
     }
 
     internal async ValueTask<CreateActorResult> CreateLocalActorAsync(
@@ -207,10 +203,41 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkMessage createRequest,
         CancellationToken cancellationToken = default)
     {
-        var result = await _actors.CreateLocalActorAsync(
+        return await CreateLocalActorAsync(
                 actorId,
                 actorType,
                 createRequest,
+                ZLinkActorClaimMode.NewOwner,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<CreateActorResult> CreateLocalActorForHandoffAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default)
+    {
+        return await CreateLocalActorAsync(
+                actorId,
+                actorType,
+                ZLinkMessage.Empty,
+                ZLinkActorClaimMode.TakeoverExistingOwner,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<CreateActorResult> CreateLocalActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        ZLinkActorClaimMode claimMode,
+        CancellationToken cancellationToken)
+    {
+        var result = await _actorSessionManager.CreateAndBindActorAsync(
+                actorId,
+                actorType,
+                createRequest,
+                claimMode,
                 cancellationToken)
             .ConfigureAwait(false);
         if (result.Created)
@@ -245,14 +272,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkMessage createRequest,
         CancellationToken cancellationToken = default)
     {
-        return await _actors.CreateActorAsync(actorId, actorType, createRequest, cancellationToken);
+        return await _actorSessionManager.CreateActorAsync(actorId, actorType, createRequest, cancellationToken);
     }
 
     internal async ValueTask<IZLinkActor?> FindActorAsync(
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        return await _actors.FindActorAsync(actorId, cancellationToken);
+        return await _actorSessionManager.FindActorAsync(actorId, cancellationToken);
     }
 
     internal bool TryGetCreatedActor(
@@ -260,14 +287,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorType,
         out IZLinkActor actor)
     {
-        return _actors.TryGetCreatedActor(actorId, actorType, out actor);
+        return _actorSessionManager.TryGetCreatedActor(actorId, actorType, out actor);
     }
 
     internal bool TryGetCreatedActorState(
         string actorId,
         out ZLinkActorRuntimeState state)
     {
-        return _actors.TryGetCreatedActorState(actorId, out state);
+        return _actorSessionManager.TryGetCreatedActorState(actorId, out state);
     }
 
     internal bool TryGetCreatedActorState(
@@ -275,7 +302,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorType,
         out ZLinkActorRuntimeState state)
     {
-        return _actors.TryGetCreatedActorState(actorId, actorType, out state);
+        return _actorSessionManager.TryGetCreatedActorState(actorId, actorType, out state);
     }
 
     internal async ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
@@ -284,7 +311,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         Message payload,
         CancellationToken cancellationToken = default)
     {
-        return await _actors.SubmitActorForReplyCoreAsync(actorId, header, payload, cancellationToken);
+        return await _actorSessionManager.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken);
     }
 
     internal async ValueTask SubmitActorByIdAsync(
@@ -293,14 +320,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         Message payload,
         CancellationToken cancellationToken = default)
     {
-        await _actors.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
+        await _actorSessionManager.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
     }
 
     internal async ValueTask NotifyActorDisconnectedByIdAsync(
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        await _actors.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
+        await _actorSessionManager.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
     }
 
     internal async ValueTask NotifyActorDisconnectedAsync(
@@ -335,14 +362,14 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
     {
-        return _actors.GetOrCreateActorState(actorId);
+        return _actorSessionManager.GetOrCreateState(actorId);
     }
 
     internal ValueTask DeactivateActorOnOwnershipLossAsync(
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        return _actors.DeactivateActorOnOwnershipLossAsync(actorId, cancellationToken);
+        return _actorSessionManager.DeactivateActorOnOwnershipLossAsync(actorId, cancellationToken);
     }
 
     internal ZLinkLocationLifecycle? LocationLifecycle =>
@@ -388,7 +415,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         GetOrCreateActorState(actorId).BindSession(sessionNodeRid, sessionRid, bindingToken);
         ActorBoundSessions.Register(this, actorId, sessionRid, bindingToken);
-        LocationLifecycle?.OnActorSessionBound(
+        LocationLifecycle?.ActorSessionRoutes.OnActorSessionBound(
             sessionRid,
             actorId,
             GetActorSpotNode()?.RoutingId ?? default);
@@ -421,7 +448,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         if (GetOrCreateActorState(actorId).TryGetBoundSession(out var session)
             && string.Equals(session.BindingToken, bindingToken, StringComparison.Ordinal))
-            lifecycle.OnActorSessionUnbound(session.SessionRid);
+            lifecycle.ActorSessionRoutes.OnActorSessionUnbound(session.SessionRid);
     }
 
     internal void CleanupActorSessionsForSession(RoutingId sessionRid)
@@ -495,7 +522,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             flags);
     }
 
-    private async ValueTask NotifyRemoteActorDisconnectedAsync(
+    private ValueTask NotifyRemoteActorDisconnectedAsync(
         ZLinkActorRuntimeState state,
         ZLinkBackendActorRef actorRef,
         IZLinkBackendSpotNode node,
@@ -505,12 +532,11 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (!state.TryGetBoundSession(out var session)
             || session.SessionNodeRid is not { } sourceNodeRid)
         {
-            await node.CloseActorBoundSessionAsync(
-                    actorRef,
-                    Registration.DefaultRequestTimeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return;
+            node.CloseActorBoundSession(
+                actorRef,
+                Registration.DefaultRequestTimeout,
+                cancellationToken);
+            return ValueTask.CompletedTask;
         }
 
         var header = new ZlinkStreamHeader(
@@ -541,9 +567,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                 false,
                 SendFlags.DontWait))
             throw new InvalidOperationException("Actor session disconnect body forward failed.");
+
+        return ValueTask.CompletedTask;
     }
 
-    internal async ValueTask CloseActorBoundSessionAsync(
+    internal ValueTask CloseActorBoundSessionAsync(
         string actorId,
         CancellationToken cancellationToken)
     {
@@ -559,11 +587,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                            $"Actor '{actorId}' does not have a native Actor ref.",
                            false);
 
-        await node.CloseActorBoundSessionAsync(
-                actorRef,
-                Registration.DefaultRequestTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
+        node.CloseActorBoundSession(
+            actorRef,
+            Registration.DefaultRequestTimeout,
+            cancellationToken);
+        return ValueTask.CompletedTask;
     }
 }
 

@@ -10,7 +10,7 @@ internal sealed class ZLinkMonitoringPollingRunner(
         IZLinkLocationRuntimeQuery? locationQuery,
         CancellationToken cancellationToken)
     {
-        var tasks = new ZLinkMonitoringPollingTasks(
+        var tasks = new List<Task>(
             registration.SpotSources.Count + registration.LocationRuntimeSources.Count);
 
         if (frameworkRuntime is not null)
@@ -21,7 +21,7 @@ internal sealed class ZLinkMonitoringPollingRunner(
             foreach (var source in registration.LocationRuntimeSources.Values)
                 tasks.Add(RunLocationRuntimeLoopAsync(source, locationQuery, cancellationToken));
 
-        await tasks.WaitAsync();
+        if (tasks.Count > 0) await Task.WhenAll(tasks);
     }
 
     private async Task RunSpotLoopAsync(

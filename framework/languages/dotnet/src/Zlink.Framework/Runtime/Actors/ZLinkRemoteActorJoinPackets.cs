@@ -27,7 +27,8 @@ internal static class ZLinkRemoteActorJoinPackets
         return ZLinkEnvelopeCodec.EncodeParts(
             header,
             payload,
-            typeof(ZLinkRemoteActorJoinRequest));
+            typeof(ZLinkRemoteActorJoinRequest),
+            null);
     }
 
     public static ZLinkRemoteActorJoinRequest DecodeJoinRequest(IReadOnlyList<Message> parts)
@@ -36,16 +37,6 @@ internal static class ZLinkRemoteActorJoinPackets
                    parts,
                    typeof(ZLinkRemoteActorJoinRequest))
                ?? throw new InvalidOperationException("Remote actor join request was empty.");
-    }
-
-    public static string GetJoinRequestActorId(ZLinkRemoteActorJoinRequest request)
-    {
-        return request.ActorId;
-    }
-
-    public static string GetJoinRequestActorType(ZLinkRemoteActorJoinRequest request)
-    {
-        return request.ActorType;
     }
 
     public static ZLinkRemoteActorBoundSessionRoute DecodeBoundSessionRoute(ZLinkRemoteActorJoinRequest request)
@@ -126,7 +117,8 @@ internal static class ZLinkRemoteActorJoinPackets
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorJoinReply>(
             parts,
             "Remote actor join reply was empty.",
-            $"Remote actor join failed for '{actorId}' to SPOT '{targetSpotRid}'.");
+            $"Remote actor join failed for '{actorId}' to SPOT '{targetSpotRid}'.",
+            null);
     }
 
     public static ZLinkMessage DecodeJoinReplyPayload(

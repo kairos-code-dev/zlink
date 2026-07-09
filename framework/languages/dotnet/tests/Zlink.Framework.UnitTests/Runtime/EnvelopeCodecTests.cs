@@ -19,7 +19,7 @@ public sealed class EnvelopeCodecTests
     public void EncodeBody_Copies_Message_When_BodyType_Is_Message()
     {
         using var body = Message.From("raw-join-reply");
-        using var encoded = ZLinkEnvelopeCodec.EncodeBody(body, typeof(Message));
+        using var encoded = ZLinkEnvelopeCodec.EncodeBody(body, typeof(Message), null);
 
         Assert.NotSame(body, encoded);
         Assert.Equal(body.ToArray(), encoded.ToArray());
@@ -34,7 +34,8 @@ public sealed class EnvelopeCodecTests
             3);
         using var body = ZLinkEnvelopeCodec.EncodeBody(
             new ActorSnapshotReply(snapshot),
-            typeof(ActorSnapshotReply));
+            typeof(ActorSnapshotReply),
+            null);
 
         var decoded = (ActorSnapshotReply)ZLinkEnvelopeCodec.DecodeBody(
             body,
@@ -61,6 +62,36 @@ public sealed class EnvelopeCodecTests
                 ZlinkStreamMetadata.Empty));
 
         Assert.False(encoded.IsEmpty);
+    }
+
+    [Theory]
+    [InlineData(nameof(OperationCanceledException), typeof(OperationCanceledException))]
+    [InlineData(nameof(TaskCanceledException), typeof(TaskCanceledException))]
+    public void DecodeEnvelopeReply_Restores_Cancellation_Error(
+        string errorCode,
+        Type expectedExceptionType)
+    {
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Error,
+            "yield.route",
+            "YieldReq",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "cancelled",
+            null,
+            null,
+            errorCode,
+            "A task was canceled.");
+        var parts = ZLinkEnvelopeCodec.EncodeParts(header, null, null, null);
+
+        var exception = Assert.ThrowsAny<OperationCanceledException>(
+            () => ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(
+                parts,
+                "empty",
+                "failed",
+                null));
+
+        Assert.IsType(expectedExceptionType, exception);
+        Assert.Equal("A task was canceled.", exception.Message);
     }
 
     private sealed record ActorSnapshotReply(ActorRefSnapshot Actor);

@@ -281,14 +281,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
             sourceSessionRid);
     }
 
-    public ValueTask CloseActorBoundSessionAsync(
+    public void CloseActorBoundSession(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         nativeSpotNode.CloseActorBoundSession(actor.ToNative(), timeout);
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask DisposeAsync()

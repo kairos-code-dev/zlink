@@ -51,7 +51,7 @@ internal sealed class ResponseBodyReader(HttpClientOptions options)
         byte[] bytes,
         IReadOnlyDictionary<string, string> headers)
     {
-        var encoding = FindHeader(headers, "content-encoding");
+        var encoding = HttpHeaderLookup.Find(headers, "content-encoding");
         // An empty body (HEAD / 204 / 304) carries no payload to decode even with Content-Encoding.
         if (encoding is null || bytes.Length == 0) return (bytes, headers);
 
@@ -77,15 +77,6 @@ internal sealed class ResponseBodyReader(HttpClientOptions options)
         return headers;
     }
 
-    private static string? FindHeader(IReadOnlyDictionary<string, string> headers, string name)
-    {
-        foreach (var (key, value) in headers)
-            if (key.Equals(name, StringComparison.OrdinalIgnoreCase))
-                return value;
-
-        return null;
-    }
-
     private static IEnumerable<(string Name, IEnumerable<string> Values)> EnumerateHeaders(HttpHeaders headers)
     {
         foreach (var header in headers) yield return (header.Key, header.Value);
@@ -95,13 +86,7 @@ internal sealed class ResponseBodyReader(HttpClientOptions options)
     // compressed body, not the decoded one).
     private static IReadOnlyDictionary<string, string> StripEncodingHeaders(IReadOnlyDictionary<string, string> headers)
     {
-        var copy = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (key, value) in headers)
-            if (!key.Equals("content-encoding", StringComparison.OrdinalIgnoreCase)
-                && !key.Equals("content-length", StringComparison.OrdinalIgnoreCase))
-                copy[key] = value;
-
-        return copy;
+        return HttpHeaderLookup.Without(headers, "content-encoding", "content-length");
     }
 
     private static ZLinkFrameworkException RequestError(string message)

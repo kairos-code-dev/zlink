@@ -131,10 +131,8 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
 
     private async ValueTask RunReconcileAsync(CancellationToken cancellationToken)
     {
-        var before = _reconciler.StoreFailed;
         await _reconciler.TickAsync(cancellationToken).ConfigureAwait(false);
         _lastTickFailed = _reconciler.StoreFailed;
-        _ = before;
     }
 
     private async Task LoopAsync(CancellationToken cancellationToken)

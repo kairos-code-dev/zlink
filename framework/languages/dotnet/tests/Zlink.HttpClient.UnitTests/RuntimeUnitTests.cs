@@ -140,6 +140,24 @@ public sealed class RuntimeUnitTests
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
     }
 
+    [Fact]
+    public void HttpHeaderLookup_finds_and_removes_headers_case_insensitively()
+    {
+        IReadOnlyDictionary<string, string> headers = new Dictionary<string, string>
+        {
+            ["Content-Type"] = "application/json",
+            ["CONTENT-LENGTH"] = "42",
+            ["x-marker"] = "keep"
+        };
+
+        Assert.Equal("application/json", HttpHeaderLookup.Find(headers, "content-type"));
+        Assert.Null(HttpHeaderLookup.Find(headers, "missing"));
+
+        var stripped = HttpHeaderLookup.Without(headers, "content-length", "content-encoding");
+        Assert.False(stripped.ContainsKey("CONTENT-LENGTH"));
+        Assert.Equal("keep", stripped["x-marker"]);
+    }
+
     private static byte[] GzipBytes(byte[] input)
     {
         using var output = new MemoryStream();

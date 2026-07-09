@@ -5,7 +5,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateChannel(
         ZLinkChannelRegistration channel,
         bool autoConnectConfigured,
-        bool acceptedBySpotRouteChannel,
         IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
         IReadOnlyList<ZLinkHandlerEndpointDescriptor> scannedEndpoints)
     {
@@ -37,19 +36,18 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 autoConnectConfigured,
                 channel.Subscriber.ManualConnections);
 
-        ValidateChannelHandlerExposure(channel, acceptedBySpotRouteChannel, handlerGroups, scannedEndpoints);
+        ValidateChannelHandlerExposure(channel, handlerGroups, scannedEndpoints);
     }
 
     private static void ValidateChannelHandlerExposure(
         ZLinkChannelRegistration channel,
-        bool acceptedBySpotRouteChannel,
         IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
         IReadOnlyList<ZLinkHandlerEndpointDescriptor> scannedEndpoints)
     {
         switch (channel.AutoConnectType)
         {
             case ZLinkAutoConnectType.ClientServer:
-                ValidateClientServerHandlerExposure(channel, acceptedBySpotRouteChannel, handlerGroups);
+                ValidateClientServerHandlerExposure(channel, handlerGroups);
                 break;
             case ZLinkAutoConnectType.Fanout:
                 ValidateFanoutHandlerExposure(channel, handlerGroups);
@@ -76,7 +74,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
     private static void ValidateClientServerHandlerExposure(
         ZLinkChannelRegistration channel,
-        bool acceptedBySpotRouteChannel,
         IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups)
     {
         ValidateMappedGroups(
@@ -101,8 +98,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"client/server channel '{channel.ChannelName}' exposes handlers but does not enable server capability.");
 
         if (channel.Server is not null
-            && !hasHandlerExposure
-            && !acceptedBySpotRouteChannel)
+            && !hasHandlerExposure)
             throw new ZLinkConfigurationException(
                 $"client/server channel '{channel.ChannelName}' server must map a handler group, register a typed handler, or be accepted by a SPOT route channel.");
 

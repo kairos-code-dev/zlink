@@ -257,10 +257,8 @@ public sealed class UnhandledDispatchPolicyTests
                 new ServiceCollection().BuildServiceProvider()),
             logger);
         var actor = new TestActor("actor-1");
-        var runtimeState = new ZLinkActorRuntimeState(actor.ActorId)
-        {
-            Actor = actor
-        };
+        var runtimeState = new ZLinkActorRuntimeState(actor.ActorId);
+        runtimeState.BindActorInstance(actor);
         using var body = Message.From("payload");
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,

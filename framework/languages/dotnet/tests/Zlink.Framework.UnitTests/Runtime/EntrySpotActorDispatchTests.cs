@@ -430,8 +430,8 @@ public sealed class EntrySpotActorDispatchTests
     {
         var actor = new ProbeActor(actorRef.ActorId);
         var state = runtime.GetOrCreateActorState(actor.ActorId);
-        state.Actor = actor;
-        state.NativeActorRef = actorRef;
+        state.BindActorInstance(actor);
+        state.BindNativeActorRef(actorRef);
         return actor;
     }
 

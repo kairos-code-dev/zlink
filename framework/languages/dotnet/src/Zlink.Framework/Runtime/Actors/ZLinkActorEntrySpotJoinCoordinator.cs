@@ -93,7 +93,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         if (accepted)
         {
-            actorState.NativeActorRef = result.Actor;
+            actorState.BindNativeActorRef(result.Actor);
             await NotifyManagedEntrySpotJoinLifecycleAsync(
                     actor,
                     previousActivation,
@@ -173,7 +173,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 replyMessage);
 
         var targetRef = ZLinkActorEntrySpotRoutePackets.ToActorRef(reply);
-        actorState.NativeActorRef = targetRef;
+        actorState.BindNativeActorRef(targetRef);
         await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
                 actor,
                 previousActivation,
@@ -230,7 +230,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 null,
                 reply);
 
-        actorState.NativeActorRef = targetRef;
+        actorState.BindNativeActorRef(targetRef);
         await NotifyManagedEntrySpotJoinLifecycleAsync(
                 actor,
                 previousActivation,

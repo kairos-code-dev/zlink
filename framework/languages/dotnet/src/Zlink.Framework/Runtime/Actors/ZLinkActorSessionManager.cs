@@ -217,40 +217,22 @@ internal sealed partial class ZLinkActorSessionManager(
         IZLinkActor actor,
         ZLinkActorRuntimeState state)
     {
-        if (!string.Equals(state.ActorId, actor.ActorId, StringComparison.Ordinal))
-            throw new InvalidOperationException(
-                $"Actor state id '{state.ActorId}' does not match actor id '{actor.ActorId}'.");
-
-        if (state.Actor is not null
-            && !ReferenceEquals(state.Actor, actor)
-            && (state.SessionId is not null || state.Activation is not null))
-            throw new InvalidOperationException(
-                $"Actor id '{actor.ActorId}' is already bound to another actor instance.");
-
-        var assignedActor = false;
-        if (!ReferenceEquals(state.Actor, actor))
-        {
-            state.Actor = actor;
-            state.IsConfigured = false;
-            assignedActor = true;
-        }
+        var assignedActor = state.BindActorInstance(actor);
 
         var context = EnsureActorContext(state);
         if (!ReferenceEquals(actor.Context, context))
             throw new InvalidOperationException(
                 $"Actor '{actor.ActorId}' must expose the context provided by its factory.");
 
-        if (!state.IsConfigured)
+        if (state.TryBeginActorConfiguration())
         {
-            state.IsConfigured = true;
             try
             {
                 actor.Configure();
             }
             catch
             {
-                state.IsConfigured = false;
-                if (assignedActor) state.Actor = null;
+                state.RollBackActorConfiguration(assignedActor);
 
                 throw;
             }
@@ -261,13 +243,7 @@ internal sealed partial class ZLinkActorSessionManager(
 
     private ZLinkActorContext EnsureActorContext(ZLinkActorRuntimeState state)
     {
-        if (state.Context is not { } context)
-        {
-            context = new ZLinkActorContext(runtime, state);
-            state.Context = context;
-        }
-
-        return context;
+        return state.GetOrCreateContext(() => new ZLinkActorContext(runtime, state));
     }
 
     public ZLinkActorRuntimeState GetOrCreateState(string actorId)

@@ -102,7 +102,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 await ApplyRemoteActorMigrationAsync(actorState, resultActorRef, cancellationToken)
                     .ConfigureAwait(false);
             else
-                actorState.NativeActorRef = resultActorRef;
+                actorState.BindNativeActorRef(resultActorRef);
         }
 
         return new ZLinkActorJoinResult(
@@ -130,7 +130,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         ZLinkBackendActorRef targetActorRef,
         CancellationToken cancellationToken)
     {
-        actorState.NativeActorRef = targetActorRef;
+        actorState.BindNativeActorRef(targetActorRef);
         await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
             .ConfigureAwait(false);
         actorState.InvalidateContext();
@@ -231,7 +231,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         if (accepted)
         {
-            actorState.NativeActorRef = joinResult.Actor;
+            actorState.BindNativeActorRef(joinResult.Actor);
             if (joinResult.Actor.NodeRid != actorRef.NodeRid) actorState.InvalidateContext();
         }
 

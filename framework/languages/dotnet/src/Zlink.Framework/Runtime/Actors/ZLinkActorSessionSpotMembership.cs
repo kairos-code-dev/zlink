@@ -23,7 +23,7 @@ internal sealed partial class ZLinkActorSessionManager
                 .ConfigureAwait(false);
 
         await state.ExecuteLockedAsync(
-            () => { state.Activation = activation; },
+            () => state.JoinSpot(activation),
             cancellationToken).ConfigureAwait(false);
     }
 }

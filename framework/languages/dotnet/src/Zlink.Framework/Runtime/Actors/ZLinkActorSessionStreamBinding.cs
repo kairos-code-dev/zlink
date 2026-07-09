@@ -37,11 +37,7 @@ internal sealed partial class ZLinkActorSessionManager
         CancellationToken cancellationToken)
     {
         await state.ExecuteLockedAsync(
-            () =>
-            {
-                state.SessionId = stream.SessionId;
-                state.Stream = stream;
-            },
+            () => state.AttachStream(stream),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -51,14 +47,7 @@ internal sealed partial class ZLinkActorSessionManager
         CancellationToken cancellationToken)
     {
         return await state.ExecuteLockedAsync(
-            () =>
-            {
-                if (!string.Equals(state.SessionId, stream.SessionId, StringComparison.Ordinal)) return false;
-
-                state.SessionId = null;
-                state.Stream = null;
-                return true;
-            },
+            () => state.DetachStreamIfCurrent(stream),
             cancellationToken).ConfigureAwait(false);
     }
 

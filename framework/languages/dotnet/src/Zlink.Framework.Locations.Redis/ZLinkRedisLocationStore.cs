@@ -1,4 +1,5 @@
 using StackExchange.Redis;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.Locations.Redis;
 
@@ -78,7 +79,7 @@ public sealed class ZLinkRedisLocationStore :
         var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
         var members = await database.SetMembersAsync(_keys.KindIndexKey(ZLinkRedisLocationKinds.Peer.Tag)).ConfigureAwait(false);
         var rows = await ZLinkRedisLocationRows.LoadAsync(database, _keys, ZLinkRedisLocationKinds.Peer, members).ConfigureAwait(false);
-        return rows.Where(row => Matches(row, filter)).ToArray();
+        return rows.Where(row => ZLinkLocationFilterMatcher.Matches(row, filter)).ToArray();
     }
 
     // ----- spot store ------------------------------------------------------
@@ -108,7 +109,11 @@ public sealed class ZLinkRedisLocationStore :
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default) =>
-        ListPageAsync(ZLinkRedisLocationKinds.Spot, row => Matches(row, filter), page, cancellationToken);
+        ListPageAsync(
+            ZLinkRedisLocationKinds.Spot,
+            row => ZLinkLocationFilterMatcher.Matches(row, filter),
+            page,
+            cancellationToken);
 
     // ----- actor store -----------------------------------------------------
 
@@ -137,7 +142,11 @@ public sealed class ZLinkRedisLocationStore :
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default) =>
-        ListPageAsync(ZLinkRedisLocationKinds.Actor, row => Matches(row, filter), page, cancellationToken);
+        ListPageAsync(
+            ZLinkRedisLocationKinds.Actor,
+            row => ZLinkLocationFilterMatcher.Matches(row, filter),
+            page,
+            cancellationToken);
 
     // ----- route store -----------------------------------------------------
 
@@ -166,7 +175,11 @@ public sealed class ZLinkRedisLocationStore :
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default) =>
-        ListPageAsync(ZLinkRedisLocationKinds.Route, row => Matches(row, filter), page, cancellationToken);
+        ListPageAsync(
+            ZLinkRedisLocationKinds.Route,
+            row => ZLinkLocationFilterMatcher.Matches(row, filter),
+            page,
+            cancellationToken);
 
     // ----- owner lease store -----------------------------------------------
 
@@ -317,31 +330,5 @@ public sealed class ZLinkRedisLocationStore :
             _connectGate.Release();
         }
     }
-
-    // ----- filters (same semantics as the in-memory store) ------------------
-
-    private static bool Matches(ZLinkPeerLocation row, ZLinkPeerLocationFilter filter) =>
-        (filter.AutoConnectType is null || row.AutoConnectType == filter.AutoConnectType)
-        && (filter.MeshName is null || row.MeshName == filter.MeshName)
-        && (filter.Role is null || row.Role == filter.Role)
-        && (filter.NodeRid is null || Equals(row.NodeRid, filter.NodeRid))
-        && (filter.Endpoint is null || row.Endpoint == filter.Endpoint);
-
-    private static bool Matches(ZLinkSpotLocation row, ZLinkSpotLocationFilter filter) =>
-        (filter.MeshName is null || row.MeshName == filter.MeshName)
-        && (filter.SpotType is null || row.SpotType == filter.SpotType)
-        && (filter.NodeRid is null || row.NodeRid.Equals(filter.NodeRid.Value))
-        && (filter.SpotKind is null || row.SpotKind == filter.SpotKind);
-
-    private static bool Matches(ZLinkActorLocation row, ZLinkActorLocationFilter filter) =>
-        (filter.ActorType is null || row.ActorType == filter.ActorType)
-        && (filter.NodeRid is null || row.NodeRid.Equals(filter.NodeRid.Value))
-        && (filter.SpotRid is null || Equals(row.SpotRid, filter.SpotRid))
-        && (filter.LocationKind is null || row.LocationKind == filter.LocationKind);
-
-    private static bool Matches(ZLinkRouteLocation row, ZLinkRouteLocationFilter filter) =>
-        (filter.RouteKind is null || row.RouteKind == filter.RouteKind)
-        && (filter.OwnerNodeRid is null || row.OwnerNodeRid.Equals(filter.OwnerNodeRid.Value))
-        && (filter.OwnerId is null || row.OwnerId == filter.OwnerId);
 
 }

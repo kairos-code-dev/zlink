@@ -131,12 +131,12 @@ internal sealed class ZLinkActorCreationCoordinator(
             var existingRef = node.ActorLookup(actor.ActorId);
             if (existingRef is not null)
             {
-                state.NativeActorRef = existingRef;
+                state.BindNativeActorRef(existingRef.Value);
             }
             else
             {
                 using var nativeCreateRequest = createRequest.ToRawMessage(runtime.Registration.Codecs);
-                state.NativeActorRef = node.CreateActor(actor.ActorId, nativeCreateRequest);
+                state.BindNativeActorRef(node.CreateActor(actor.ActorId, nativeCreateRequest));
             }
         }
 

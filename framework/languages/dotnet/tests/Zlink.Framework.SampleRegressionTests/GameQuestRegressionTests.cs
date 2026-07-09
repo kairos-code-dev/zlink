@@ -1,0 +1,152 @@
+using Xunit;
+
+namespace Zlink.Framework.SampleRegressionTests;
+
+public sealed partial class RegressionTests
+{
+    [Fact]
+    public void GameQuest_Runner_Uses_Isolated_Docker_Redis_And_Stream_Actions()
+    {
+        var sampleRoot = ResolveSampleRoot("GameQuest");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Messages.cs"));
+        var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "GameQuestClientScenario.cs"));
+        var sessionHandlers = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Session",
+            "GameQuestSessionHandlers.cs"));
+        var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleConfiguration.cs"));
+        var gameApiStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Infrastructure", "Store",
+            "GameQuestStores.cs"));
+        var questStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure", "Store",
+            "QuestStores.cs"));
+        var questProcessor = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Application",
+            "QuestEventProcessor.cs"));
+        var redisJsonStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "RedisJsonStore.cs"));
+        var gameApiProgram = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Program.cs"));
+        var missionProgram = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Program.cs"));
+        var playerQuestProvisioner = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission",
+            "Infrastructure", "ZLink", "PlayerQuestSpotProvisioner.cs"));
+        var gameplayIngress = missionProgram;
+        var playerQuestSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure",
+            "ZLink", "Spots", "PlayerQuestSpot", "PlayerQuestSpot.cs"));
+        var questDomain = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Domain",
+            "QuestDomain.cs"));
+        var actionService = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Application",
+            "GameplayActionService.cs"));
+        var eventDispatcher = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Infrastructure",
+            "ZLink", "GameplayEventOwnerDispatcher.cs"));
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
+
+        Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export GAMEQUEST_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export GAMEQUEST_REDIS_KEY_PREFIX=\"gamequest:dotnet:${RUN_ID}:\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("REDIS_CONTAINER=\"zlink-gamequest-dotnet-redis-${RUN_ID}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_BASE_PORT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${GAMEQUEST_REDIS_KEY_PREFIX:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STORE_DIR", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -Rq \"message flow\" \"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$ports = New-SamplePorts -Count 16 -BasePort 0", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$env:GAMEQUEST_REDIS_KEY_PREFIX = \"gamequest:dotnet:${RunId}:\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$RedisContainer = \"zlink-gamequest-dotnet-redis-$RunId\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STORE_DIR", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"message flow\"",
+            powershellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("record JoinSessionReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record JoinSessionRes", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("SubscribeQuestReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("SubscribeQuestRes", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyGameplayEventReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyGameplayEventRes", messages, StringComparison.Ordinal);
+        Assert.Contains("record ApplyGameplayEventReq", topology, StringComparison.Ordinal);
+        Assert.Contains("record ApplyGameplayEventRes", topology, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new JoinSessionReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new KillMonsterReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new UnlockFeatureReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new CompleteMissionReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new EnterAreaReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiBStream.Request(new CollectItemReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("/self-check/owner/player-alice/close", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("Post(\"/combat/kill\")", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("Post(\"/inventory/collect\")", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("class JoinSessionHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("JoinQuestSessionUseCase", sessionHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("SubscribeQuestHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class KillMonsterHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class CollectItemHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class CompleteMissionHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class EnterAreaHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class UnlockFeatureHandler", sessionHandlers, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("MapPost(\"/combat/kill\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/inventory/collect\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/mission/complete\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/world/enter\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/feature/unlock\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddFanoutChannel", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddFanoutChannel", missionProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddRouteMeshChannel", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddRouteMeshChannel", missionProgram, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("StoreDirectory", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STORE_DIR", topology, StringComparison.Ordinal);
+        Assert.Contains("new RedisJsonStore(topology.RedisEndpoint)", gameApiStore, StringComparison.Ordinal);
+        Assert.Contains("new RedisJsonStore(topology.RedisEndpoint)", questStore, StringComparison.Ordinal);
+        Assert.Contains("topology.RedisKeyPrefix", gameApiStore, StringComparison.Ordinal);
+        Assert.Contains("topology.RedisKeyPrefix", questStore, StringComparison.Ordinal);
+        Assert.Contains("_database.LockTakeAsync", redisJsonStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("_database.LockTakeAsync", gameApiStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("_database.LockTakeAsync", questStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.ReadAllText", gameApiStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.WriteAllText", gameApiStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.ReadAllText", questStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.WriteAllText", questStore, StringComparison.Ordinal);
+        Assert.Contains("MapPost(\"/internal/apply\"", missionProgram, StringComparison.Ordinal);
+        Assert.Contains("playerQuestOwners.ApplyGameplayEventAsync", gameplayIngress, StringComparison.Ordinal);
+        Assert.Contains("ownerRouter.IsLocalOwner", gameplayIngress, StringComparison.Ordinal);
+        Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
+        Assert.Contains("Post(\"/internal/apply\")", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("topology.OwnerRouteRid(gameplayEvent.PlayerId)", eventDispatcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("interface IPlayerQuestOwnerProvisioner", questProcessor, StringComparison.Ordinal);
+        Assert.DoesNotContain("IPlayerQuestOwnerProvisioner", gameplayIngress, StringComparison.Ordinal);
+        Assert.DoesNotContain("ValueTask EnsureAsync", questProcessor, StringComparison.Ordinal);
+        Assert.DoesNotContain("public async ValueTask EnsureAsync", playerQuestProvisioner,
+            StringComparison.Ordinal);
+        Assert.Contains("RequestToSpot(SampleNames.QuestSpotDiscovery", playerQuestProvisioner,
+            StringComparison.Ordinal);
+        Assert.Contains("IZLinkSpotRequestHandler<PlayerQuestSpot, ApplyGameplayEventReq, ApplyGameplayEventRes>",
+            playerQuestSpot, StringComparison.Ordinal);
+        Assert.Contains("processor.ProcessAsync(request.Event, cancellationToken)", playerQuestSpot,
+            StringComparison.Ordinal);
+        Assert.Contains("ReadQuestStreamAsync(gameplayEvent.PlayerId, definition.QuestId", questProcessor,
+            StringComparison.Ordinal);
+        Assert.Contains("Replay(QuestDefinition definition, IReadOnlyList<StoredQuestEvent> stream)", questDomain,
+            StringComparison.Ordinal);
+        Assert.Contains("RecordOwnerRehydratedAsync", playerQuestSpot, StringComparison.Ordinal);
+        Assert.Contains("spots.CloseAsync(spotRid, cancellationToken)", missionProgram, StringComparison.Ordinal);
+        Assert.Contains("ReadOwnerRehydrateEvidenceAsync", gameApiProgram, StringComparison.Ordinal);
+        Assert.Contains("rehydrates.GetValueOrDefault(\"player-alice\") >= 2", gameApiProgram, StringComparison.Ordinal);
+        Assert.Contains("rehydrated:{pair.Key}:{pair.Value}", gameApiProgram, StringComparison.Ordinal);
+
+        Assert.Contains("외부 Redis endpoint", readme, StringComparison.Ordinal);
+        Assert.Contains("재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("같은 stream으로", readme, StringComparison.Ordinal);
+    }
+}

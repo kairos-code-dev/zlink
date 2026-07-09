@@ -24,7 +24,11 @@
     </ItemGroup>
 
     <ItemGroup>
+        <Compile Include="DeliveryDispatchRegressionTests.cs"/>
+        <Compile Include="GameQuestRegressionTests.cs"/>
         <Compile Include="Regression.cs"/>
+        <Compile Include="ShoppingMallRegressionTests.cs"/>
+        <Compile Include="SupportChatRegressionTests.cs"/>
         <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs"/>
     </ItemGroup>
 </Project>

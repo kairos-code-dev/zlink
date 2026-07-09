@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,7 +6,6 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActivationDispatcher
 {
-    private const uint ActorRecvInfoNoBind = 1u;
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher;
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher;
     private readonly ZLinkDispatchErrorReporter _dispatchErrors;
@@ -118,7 +116,8 @@ internal sealed class ZLinkSpotActivationDispatcher
             {
                 using (frame.Body)
                 {
-                    ReplyNoBindActorMissingIfRequest(
+                    ZLinkActorBoundSessionRelay.TryReplyMissingNoBindActor(
+                        runtime,
                         frame.Actor,
                         frame.SourceNodeRid,
                         frame.SourceSessionRid,
@@ -272,28 +271,22 @@ internal sealed class ZLinkSpotActivationDispatcher
         Message body,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(
-                streamHeader.Name,
-                ZLinkRemoteActorJoinPackets.SessionDisconnectedPacketName,
-                StringComparison.Ordinal))
+        if (ZLinkActorBoundSessionRelay.IsSessionDisconnectedPacket(streamHeader))
         {
-            runtime.RemoveActorSessionBinding(actorId, BuildNativeBoundSessionToken(sourceSessionRid));
+            ZLinkActorBoundSessionRelay.RemoveNativeBinding(runtime, actorId, sourceSessionRid);
             await runtime.NotifyActorDisconnectedByIdAsync(actorId, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
 
         var runtimeState = runtime.GetOrCreateActorState(actorId);
-        var isNoBind = IsNoBindRequest(requestId, flags);
-        var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
-        if (!isNoBind)
-        {
-            runtime.BindActorSession(
-                actorId,
-                sourceNodeRid,
-                sourceSessionRid,
-                BuildNativeBoundSessionToken(sourceSessionRid));
-        }
+        var boundSession = ZLinkActorBoundSessionRelay.EnterDispatch(
+            runtime,
+            actorId,
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags);
 
         try
         {
@@ -308,25 +301,21 @@ internal sealed class ZLinkSpotActivationDispatcher
                     .ConfigureAwait(false);
                 if (reply is null) return;
 
-                if (isNoBind)
-                {
-                    ReplyNoBind(
+                await ZLinkActorBoundSessionRelay.SendReplyAsync(
+                        runtime,
+                        actorId,
                         actorRef,
                         sourceNodeRid,
                         sourceSessionRid,
                         requestId,
                         flags,
+                        boundSession.IsNoBind,
                         streamHeader,
-                        reply);
-                }
-                else
-                {
-                    var frame = reply.ToFrame(streamHeader);
-                    await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                        reply,
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
-                await boundSessionScope.DrainAsync(cancellationToken)
+                await boundSession.DrainAsync(cancellationToken)
                     .ConfigureAwait(false);
                 return;
             }
@@ -341,99 +330,8 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
         finally
         {
-            await boundSessionScope.DisposeAsync().ConfigureAwait(false);
+            await boundSession.DisposeAsync().ConfigureAwait(false);
         }
-    }
-
-    private void ReplyNoBindActorMissingIfRequest(
-        ZLinkBackendActorRef actorRef,
-        RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid,
-        ulong requestId,
-        uint flags,
-        ZlinkStreamHeader requestHeader)
-    {
-        if (requestHeader.Kind != ZlinkStreamMessageKind.Request
-            || requestHeader.RequestSeq is null
-            || !IsNoBindRequest(requestId, flags))
-            return;
-
-        ReplyNoBind(
-            actorRef,
-            sourceNodeRid,
-            sourceSessionRid,
-            requestId,
-            flags,
-            requestHeader,
-            ZLinkActorReply.FromError(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorRef.ActorId}' is not available.")));
-    }
-
-    private void ReplyNoBind(
-        ZLinkBackendActorRef actorRef,
-        RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid,
-        ulong requestId,
-        uint flags,
-        ZlinkStreamHeader requestHeader,
-        ZLinkActorReply reply)
-    {
-        var frame = reply.ToFrame(requestHeader);
-        using var replyMessage = Message.From(frame);
-        runtime.ReplyActorNoBind(
-            actorRef,
-            sourceNodeRid,
-            sourceSessionRid,
-            requestId,
-            flags,
-            [replyMessage]);
-    }
-
-    private static bool IsNoBindRequest(ulong requestId, uint flags)
-    {
-        return requestId != 0 && (flags & ActorRecvInfoNoBind) != 0;
-    }
-
-    private static async ValueTask SendFrameWithRetryAsync(
-        ZLinkFrameworkRuntime runtime,
-        string actorId,
-        byte[] frame,
-        CancellationToken cancellationToken)
-    {
-        var timeout = runtime.Registration.DefaultRequestTimeout;
-        var retryDelay = TimeSpan.FromMilliseconds(25);
-        var elapsed = Stopwatch.StartNew();
-        Exception? lastError = null;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using var frameMessage = Message.From(frame);
-            try
-            {
-                if (runtime.SendActorBoundSession(
-                        actorId,
-                        new[] { frameMessage },
-                        SendFlags.None))
-                    return;
-            }
-            catch (ZlinkSubmitException error) when (error.Result == ZlinkSubmitException.ErrorCode.NotConnected)
-            {
-                lastError = error;
-            }
-
-            if (elapsed.Elapsed >= timeout)
-                throw new InvalidOperationException("Actor request reply relay failed.", lastError);
-
-            var remaining = timeout - elapsed.Elapsed;
-            await Task.Delay(remaining < retryDelay ? remaining : retryDelay, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private static string BuildNativeBoundSessionToken(RoutingId sourceSessionRid)
-    {
-        return $"native:{sourceSessionRid.ToHex()}";
     }
 
     private async ValueTask InvokeSubscriptionAsync(

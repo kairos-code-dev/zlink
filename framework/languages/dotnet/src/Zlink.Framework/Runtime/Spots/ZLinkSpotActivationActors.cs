@@ -206,7 +206,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         _actors.RemoveIfCurrent(actor);
         var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
-        if (ReferenceEquals(actorState.Activation, this)) actorState.Activation = null;
+        actorState.LeaveSpotIfCurrent(this);
 
         if (_runtime.LocationLifecycle is { } locations)
             await locations.ActorOwnership.NotifyActorLeftSpotAsync(

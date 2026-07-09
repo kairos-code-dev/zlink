@@ -1,6 +1,3 @@
-using System.Collections.Concurrent;
-using System.Linq.Expressions;
-using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Handlers;
@@ -9,30 +6,9 @@ internal sealed class ZLinkHandlerDispatcher(
     IServiceScopeFactory scopeFactory,
     ZLinkFrameworkRegistration registration)
 {
-    private static readonly ConcurrentDictionary<Type, Func<object>?> ParameterlessFactories = new();
+    private readonly ZLinkHandlerActivator _activator = new();
 
-    public ValueTask<object?> DispatchAsync(
-        ZLinkHandlerEndpointDescriptor endpoint,
-        object? message,
-        ZLinkHandlerContext context,
-        CancellationToken cancellationToken)
-    {
-        if (registration.Filters.Count == 0
-            && TryCreateParameterlessHandler(endpoint.DeclaringType, out var handler))
-        {
-            return ZLinkHandlerInvocationEngine.InvokeAsync(
-                handler,
-                endpoint.Invoker,
-                endpoint.ArgumentPlan,
-                message,
-                context,
-                cancellationToken);
-        }
-
-        return DispatchWithPipelineAsync(endpoint, message, context, cancellationToken);
-    }
-
-    private async ValueTask<object?> DispatchWithPipelineAsync(
+    public async ValueTask<object?> DispatchAsync(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
         ZLinkHandlerContext context,
@@ -46,33 +22,6 @@ internal sealed class ZLinkHandlerDispatcher(
         return await pipeline(cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool TryCreateParameterlessHandler(Type handlerType, out object handler)
-    {
-        var factory = ParameterlessFactories.GetOrAdd(
-            handlerType,
-            static type =>
-            {
-                var constructor = type.GetConstructor(
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                    binder: null,
-                    Type.EmptyTypes,
-                    modifiers: null);
-                if (constructor is null) return null;
-
-                var create = Expression.New(constructor);
-                var convert = Expression.Convert(create, typeof(object));
-                return Expression.Lambda<Func<object>>(convert).Compile();
-            });
-        if (factory is null)
-        {
-            handler = null!;
-            return false;
-        }
-
-        handler = factory();
-        return true;
-    }
-
     private ZLinkHandlerDelegate BuildPipeline(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
@@ -80,7 +29,7 @@ internal sealed class ZLinkHandlerDispatcher(
         ZLinkHandlerInvocation invocation,
         IServiceProvider services)
     {
-        ZLinkHandlerDelegate pipeline = ct => InvokeHandlerAsync(endpoint, message, context, services, ct);
+        ZLinkHandlerDelegate pipeline = ct => InvokeHandlerAsync(endpoint, message, context, _activator, services, ct);
 
         for (var index = registration.Filters.Count - 1; index >= 0; index--)
         {
@@ -100,10 +49,11 @@ internal sealed class ZLinkHandlerDispatcher(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
         ZLinkHandlerContext context,
+        ZLinkHandlerActivator activator,
         IServiceProvider services,
         CancellationToken cancellationToken)
     {
-        var handler = services.GetRequiredService(endpoint.DeclaringType);
+        var handler = activator.Create(services, endpoint.DeclaringType);
         return await ZLinkHandlerInvocationEngine.InvokeAsync(
                 handler,
                 endpoint.Invoker,

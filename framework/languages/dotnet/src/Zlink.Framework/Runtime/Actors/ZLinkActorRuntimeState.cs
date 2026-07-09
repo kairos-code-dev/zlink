@@ -13,21 +13,21 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public string? ActorType { get; private set; }
 
-    public string? SessionId { get; set; }
+    public string? SessionId { get; private set; }
 
-    public IZLinkStream? Stream { get; set; }
+    public IZLinkStream? Stream { get; private set; }
 
-    public ZLinkBackendActorRef? NativeActorRef { get; set; }
+    public ZLinkBackendActorRef? NativeActorRef { get; private set; }
 
-    public ZLinkSpotActivation? Activation { get; set; }
+    public ZLinkSpotActivation? Activation { get; private set; }
 
     public ZLinkActorDispatchState? CurrentDispatch { get; private set; }
 
-    public ZLinkActorContext? Context { get; set; }
+    public ZLinkActorContext? Context { get; private set; }
 
-    public IZLinkActor? Actor { get; set; }
+    public IZLinkActor? Actor { get; private set; }
 
-    public bool IsConfigured { get; set; }
+    public bool IsConfigured { get; private set; }
 
     public bool ContextInvalidated { get; private set; }
 
@@ -39,6 +39,75 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public RoutingId? SpotRid => LiveActivation?.SpotRid;
 
     public bool IsJoined => LiveActivation is not null;
+
+    public void AttachStream(IZLinkStream stream)
+    {
+        SessionId = stream.SessionId;
+        Stream = stream;
+    }
+
+    public bool DetachStreamIfCurrent(IZLinkStream stream)
+    {
+        if (!string.Equals(SessionId, stream.SessionId, StringComparison.Ordinal)) return false;
+
+        SessionId = null;
+        Stream = null;
+        return true;
+    }
+
+    public void JoinSpot(ZLinkSpotActivation activation)
+    {
+        Activation = activation;
+    }
+
+    public void LeaveSpotIfCurrent(ZLinkSpotActivation activation)
+    {
+        if (ReferenceEquals(Activation, activation)) Activation = null;
+    }
+
+    public void BindNativeActorRef(ZLinkBackendActorRef actorRef)
+    {
+        NativeActorRef = actorRef;
+        EnsureActorGeneration(actorRef.Generation);
+    }
+
+    public bool BindActorInstance(IZLinkActor actor)
+    {
+        if (!string.Equals(ActorId, actor.ActorId, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Actor state id '{ActorId}' does not match actor id '{actor.ActorId}'.");
+
+        if (Actor is not null
+            && !ReferenceEquals(Actor, actor)
+            && (SessionId is not null || Activation is not null))
+            throw new InvalidOperationException(
+                $"Actor id '{actor.ActorId}' is already bound to another actor instance.");
+
+        if (ReferenceEquals(Actor, actor)) return false;
+
+        Actor = actor;
+        IsConfigured = false;
+        return true;
+    }
+
+    public ZLinkActorContext GetOrCreateContext(Func<ZLinkActorContext> createContext)
+    {
+        return Context ??= createContext();
+    }
+
+    public bool TryBeginActorConfiguration()
+    {
+        if (IsConfigured) return false;
+
+        IsConfigured = true;
+        return true;
+    }
+
+    public void RollBackActorConfiguration(bool clearAssignedActor)
+    {
+        IsConfigured = false;
+        if (clearAssignedActor) Actor = null;
+    }
 
     public void BindSession(
         RoutingId? sessionNodeRid,

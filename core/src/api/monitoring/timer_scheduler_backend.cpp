@@ -3,6 +3,9 @@
 #include "utils/precompiled.hpp"
 
 #include <chrono>
+#ifdef __linux__
+#include <pthread.h>
+#endif
 
 #include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
@@ -164,6 +167,9 @@ void scheduler_fire_timer (timer_handle_t *timer_)
 
 void run_scheduler_loop (std::shared_ptr<scheduler_state_t> scheduler_)
 {
+#ifdef __linux__
+    pthread_setname_np (pthread_self (), "zlink-timer");
+#endif
     for (;;) {
         timer_handle_t *timer = NULL;
         {

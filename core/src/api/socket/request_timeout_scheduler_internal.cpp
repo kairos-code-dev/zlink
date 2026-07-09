@@ -6,6 +6,9 @@
 #include <condition_variable>
 #include <map>
 #include <memory>
+#ifdef __linux__
+#include <pthread.h>
+#endif
 #include <thread>
 
 #include "api/socket/request_timeout_scheduler_internal.hpp"
@@ -76,6 +79,9 @@ scheduler_state_t &scheduler_state ()
 
 void run_timeout_loop ()
 {
+#ifdef __linux__
+    pthread_setname_np (pthread_self (), "zlink-req-time");
+#endif
     scheduler_state_t &state = scheduler_state ();
     for (;;) {
         std::shared_ptr<task_t> task;
@@ -186,6 +192,7 @@ void cancel (const std::shared_ptr<task_t> &task_)
     if (!task_)
         return;
 
+    bool notify_scheduler = false;
     {
         scheduler_state_t &state = scheduler_state ();
         std::lock_guard<std::mutex> schedule_lock (state.mutex);
@@ -194,8 +201,11 @@ void cancel (const std::shared_ptr<task_t> &task_)
                 state.schedule.erase (task_->schedule_it);
             task_->registered = false;
             task_->schedule_it = schedule_map_t::iterator ();
+            notify_scheduler = true;
         }
     }
+    if (notify_scheduler)
+        scheduler_state ().cv.notify_all ();
 
     std::unique_lock<std::mutex> lock (task_->mutex);
     task_->canceled = true;

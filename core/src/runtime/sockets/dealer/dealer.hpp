@@ -7,6 +7,7 @@
 #include "core/session_base.hpp"
 #include "sockets/internal/fq.hpp"
 #include "sockets/internal/lb.hpp"
+#include <map>
 #include <vector>
 
 namespace zlink
@@ -59,6 +60,7 @@ class dealer_t : public socket_base_t
     // if true, send an empty message to every connected router peer
     bool _probe_router;
     std::vector<zlink_msg_t> _dispatch_parts;
+    std::map<zlink::pipe_t *, std::vector<zlink_msg_t>> _dispatch_parts_by_pipe;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (dealer_t)
 };

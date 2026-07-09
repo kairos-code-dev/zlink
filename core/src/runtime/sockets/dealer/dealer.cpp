@@ -24,6 +24,10 @@ zlink::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 zlink::dealer_t::~dealer_t ()
 {
     close_socket_msg_parts (&_dispatch_parts);
+    for (std::map<pipe_t *, std::vector<zlink_msg_t>>::iterator it =
+           _dispatch_parts_by_pipe.begin ();
+         it != _dispatch_parts_by_pipe.end (); ++it)
+        close_socket_msg_parts (&it->second);
 }
 
 int zlink::dealer_t::sendpipe_to (pipe_t *pipe_, msg_t *msg_, int flags_)
@@ -167,6 +171,12 @@ void zlink::dealer_t::xwrite_activated (pipe_t *pipe_)
 
 void zlink::dealer_t::xpipe_terminated (pipe_t *pipe_)
 {
+    std::map<pipe_t *, std::vector<zlink_msg_t>>::iterator parts_it =
+      _dispatch_parts_by_pipe.find (pipe_);
+    if (parts_it != _dispatch_parts_by_pipe.end ()) {
+        close_socket_msg_parts (&parts_it->second);
+        _dispatch_parts_by_pipe.erase (parts_it);
+    }
     _fq.pipe_terminated (pipe_);
     _lb.pipe_terminated (pipe_);
 }
@@ -186,21 +196,28 @@ int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     if (!socket_msg_dispatch_active ())
         return 0;
 
-    store_socket_msg_part (&_dispatch_parts, msg_);
-    if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags () & msg_t::more) != 0) {
+    std::vector<zlink_msg_t> *dispatch_parts = pipe_ ? &_dispatch_parts_by_pipe[pipe_]
+                                                      : &_dispatch_parts;
+    store_socket_msg_part (dispatch_parts, msg_);
+    if ((reinterpret_cast<msg_t *> (&dispatch_parts->back ())->flags () & msg_t::more) != 0) {
         return 1;
     }
 
     zlink_socket_msg_handler_fn handler = socket_msg_handler ();
     if (!handler) {
-        close_socket_msg_parts (&_dispatch_parts);
+        close_socket_msg_parts (dispatch_parts);
+        if (pipe_)
+            _dispatch_parts_by_pipe.erase (pipe_);
         return 1;
     }
 
     zlink_routing_id_t source_rid;
     resolve_socket_msg_source_rid (pipe_, &source_rid);
-    invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0], _dispatch_parts.size ());
-    _dispatch_parts.clear ();
+    invoke_socket_msg_handler (handler, &source_rid, &(*dispatch_parts)[0],
+                               dispatch_parts->size ());
+    dispatch_parts->clear ();
+    if (pipe_)
+        _dispatch_parts_by_pipe.erase (pipe_);
     return 1;
 }
 

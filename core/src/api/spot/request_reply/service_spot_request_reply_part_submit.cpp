@@ -207,13 +207,16 @@ zlink_submit_result_t zlink_spot_send_channel_part (void *spot_,
 {
     if (!channel_name_ || channel_name_[0] == '\0') {
         errno = EINVAL;
-        zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
     if (zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
+    }
+
+    if (part_flag_ == ZLINK_PART_FINAL
+        && !zlink::part_helper_internal::send_sequence_active (spot_)) {
+        return spot_send_channel_impl (spot_, channel_name_, part_, 1u, flags_);
     }
 
     send_sequence_spec_t spec =

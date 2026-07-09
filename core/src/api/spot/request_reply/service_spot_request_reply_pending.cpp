@@ -112,6 +112,7 @@ int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (void *spo
         state->requests.pending_replies.clear ();
         state->requests.pending_sequences.clear ();
     }
+    notify_spot_timeout_reaper_state_changed ();
 
     for (size_t i = 0; i < pending.size (); ++i) {
         zlink::request_timeout::cancel (pending[i].timeout_task);

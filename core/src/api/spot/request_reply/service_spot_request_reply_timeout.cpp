@@ -7,6 +7,9 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#ifdef __linux__
+#include <pthread.h>
+#endif
 #include <thread>
 #include <vector>
 
@@ -87,6 +90,9 @@ void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
 
 void run_spot_timeout_reaper ()
 {
+#ifdef __linux__
+    pthread_setname_np (pthread_self (), "zlink-spot-time");
+#endif
     std::unique_lock<std::mutex> lock (g_spot_timeout_reaper_mutex);
     while (!g_spot_timeout_reaper_stopping) {
         if (g_spot_timeout_reaper_next_deadline_ns == 0) {
@@ -276,4 +282,15 @@ void zlink::spot_reqrep_internal::erase_spot_pending_request (
         return;
     zlink::request_timeout::cancel (it->second.timeout_task);
     state_->requests.pending_replies.erase (it);
+    notify_spot_timeout_reaper_state_changed ();
+}
+
+void zlink::spot_reqrep_internal::notify_spot_timeout_reaper_state_changed ()
+{
+    std::lock_guard<std::mutex> lock (g_spot_timeout_reaper_mutex);
+    if (!g_spot_timeout_reaper_started)
+        return;
+    g_spot_timeout_reaper_next_deadline_ns = 0;
+    g_spot_timeout_reaper_next_deadline_hint_ns.store (0, std::memory_order_release);
+    g_spot_timeout_reaper_cv.notify_all ();
 }

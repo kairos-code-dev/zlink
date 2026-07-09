@@ -134,7 +134,6 @@ zlink_submit_result_t zlink_spot_publish_part (void *spot_,
 {
     if (zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || zlink::part_helper_internal::validate_send_flags (flags_) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
 
@@ -151,7 +150,6 @@ zlink_submit_result_t zlink_spot_publish_part (void *spot_,
     bool first_part = false;
     if (zlink::part_helper_internal::prepare_staged_send_step (spot_, spec, &state, &first_part)
         != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
 

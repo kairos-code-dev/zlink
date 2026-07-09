@@ -37,7 +37,7 @@ binding 라이브러리의 public API 내부 구현을 개선한다.
 |------|-----------|------|------|
 | 1 | `VERSION`과 public header가 `7.2.0`인지 확인한다. | `완료` | `VERSION`, `core/include/zlink.h`, `core/include/zlink/common.h` 모두 `7.2.0` 확인. |
 | 2 | `cmake --build core/build`로 실제 `core/build` runtime을 최신 source 기준으로 다시 만든다. | `완료` | `core/build/lib/libzlink.so.7.2.0`이 source보다 최신이다. |
-| 3 | `bindings/update_zlink_libs.sh` 또는 release sync 결과로 각 binding native library가 `7.2.0`인지 확인한다. | `완료` | `bindings/update_zlink_libs.sh core/v7.2.0 --expect-version 7.2.0` 완료. python/node/dotnet/java/cpp/go/rust는 `7.2.0`, `libzlink_c` asset은 release에 없어 경고로 건너뜀. |
+| 3 | `scripts/local-package/native/update-zlink-libs.sh` 또는 release sync 결과로 각 binding native library가 `7.2.0`인지 확인한다. | `완료` | `scripts/local-package/native/update-zlink-libs.sh core/v7.2.0 --expect-version 7.2.0` 완료. python/node/dotnet/java/cpp/go/rust는 `7.2.0`, `libzlink_c` asset은 release에 없어 경고로 건너뜀. |
 | 4 | C single full baseline을 7.2.0 기준으로 확보한다. | `완료` | `perf_c_single_linux_20260621_133119_prerelease_7_2_0_fresh_c_single.txt`, `status=complete`, 결과 라인 `1020/1020`. |
 | 5 | C multi full baseline을 7.2.0 기준으로 확보한다. | `보강 완료` | full run은 STREAM tls/ws 6개 실패로 `partial`, 실패 조합 재실행은 `complete`. |
 | 6 | 각 언어 full run 전에 같은 runner 조건의 fail-fast smoke report를 남긴다. | `완료` | C++/.NET/Java/Node/Go/Rust/Python Single/Multi smoke를 7.2.0 기준으로 완료했다. full run은 별도 항목에서 계속 추적한다. |

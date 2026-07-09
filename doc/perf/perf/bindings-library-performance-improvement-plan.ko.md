@@ -172,10 +172,10 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
 - 버그 수정 전에는 해당 동작을 재현하는 회귀테스트를 먼저 작성한다.
 - binding 버그이면 해당 언어 binding 라이브러리에서 수정한다.
 - core 버그이면 core에서 수정한 뒤
-  `/home/hep7/project/kairos/zlink/bindings/dev_sync_local_core_libs.sh`로 bindings에 local
+  `/home/hep7/project/kairos/zlink/scripts/local-package/native/sync-local-core-libs.sh`로 bindings에 local
   core library를 다시 배포한다.
 - core public API를 새로 추가하거나 수정하는 항목은 core 구현과 core 테스트를 먼저
-  완료한다. 그 다음 `/home/hep7/project/kairos/zlink/bindings/dev_sync_local_core_libs.sh`를
+  완료한다. 그 다음 `/home/hep7/project/kairos/zlink/scripts/local-package/native/sync-local-core-libs.sh`를
   실행해 bindings local core library와 vendored C header를 갱신하고, 그 뒤에 각 binding
   코드를 수정한다.
 - public API의 실제 계약은 각 binding의 public contract source를 기준으로 판단한다.

@@ -13,7 +13,6 @@ import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.Sample
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.sessions.CustomerSession
-import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.sessions.handlers.SubscribeDeliverySessionHandler
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spots.CustomerEntrySpot
 
 @EnableZLinkFramework
@@ -44,7 +43,6 @@ class CustomerGatewayApplication {
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.CustomerStreamEndpoint)
                 .registerSession(CustomerSession::class.java)
-                .addSessionPacketHandler(SubscribeDeliverySessionHandler::class.java)
         }
 
     @Bean

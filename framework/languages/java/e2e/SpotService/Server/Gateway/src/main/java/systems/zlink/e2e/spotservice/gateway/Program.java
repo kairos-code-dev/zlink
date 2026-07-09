@@ -48,7 +48,7 @@ public final class Program {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             String gatewayRid = Env.get("ZLINK_JAVA_E2E_GATEWAY_RID", "client-route-mesh");
-            options.addSpotRemoteAddressResolver(SpotRouteResolver.class);
+            options.addSpotRemoteRefResolver(SpotRouteResolver.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/gateway-flow.log")

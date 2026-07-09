@@ -67,6 +67,26 @@ public final class JsonHttp implements AutoCloseable {
         }
     }
 
+    public static <T> T getJson(String endpoint, Class<T> replyType) {
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder(URI.create(endpoint))
+                .GET()
+                .build();
+            java.net.http.HttpResponse<byte[]> response =
+                client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() / 100 != 2) {
+                throw new IllegalStateException("HTTP " + response.statusCode() + " from " + endpoint);
+            }
+            return JSON.readValue(response.body(), replyType);
+        } catch (IOException ex) {
+            throw new IllegalStateException("HTTP call failed " + endpoint, ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("HTTP call interrupted " + endpoint, ex);
+        }
+    }
+
     private static void sendJson(HttpExchange exchange, Object body) throws IOException {
         byte[] bytes = JSON.writeValueAsBytes(body);
         exchange.getResponseHeaders().set("content-type", "application/json");

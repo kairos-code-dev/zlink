@@ -13,7 +13,6 @@ import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.samples.bingo.server.configuration.SampleLocationStore;
 import systems.zlink.samples.bingo.server.session.sessions.BingoSession;
-import systems.zlink.samples.bingo.server.session.sessions.handlers.AuthenticateSessionHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 
@@ -43,6 +42,7 @@ public final class SessionServerApplication {
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-session.log")
                 .traceLabel("session");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+            options.configureLocations();
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
@@ -54,8 +54,7 @@ public final class SessionServerApplication {
             node.enablePubSub(SampleTopology.selectedSessionSpotEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
-                .registerSession(BingoSession.class)
-                .addSessionPacketHandler(AuthenticateSessionHandler.class);
+                .registerSession(BingoSession.class);
         };
     }
 

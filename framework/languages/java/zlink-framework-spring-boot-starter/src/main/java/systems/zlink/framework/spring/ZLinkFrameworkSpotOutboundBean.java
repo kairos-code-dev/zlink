@@ -2,10 +2,10 @@ package systems.zlink.framework.spring;
 
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 
 final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
@@ -16,15 +16,15 @@ final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkSendCall sendToSpot(RoutingId spotRid, Object message) {
-        return lifecycle.spotOutbound().sendToSpot(spotRid, message);
+    public ZLinkSendCall sendToSpot(SpotRef spotRef, Object message) {
+        return lifecycle.spotOutbound().sendToSpot(spotRef, message);
     }
 
     @Override
     public ZLinkYieldRequestCall requestToSpot(
-        RoutingId spotRid,
+        SpotRef spotRef,
         Object request) {
-        return lifecycle.spotOutbound().requestToSpot(spotRid, request);
+        return lifecycle.spotOutbound().requestToSpot(spotRef, request);
     }
 
     @Override

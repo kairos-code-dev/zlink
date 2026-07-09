@@ -55,8 +55,17 @@ public final class Program {
     }
 
     @Bean
-    EvidenceHttpServer evidenceHttpServer(EvidenceState state, ObjectMapper json) {
-        return new EvidenceHttpServer(state, json, Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"));
+    EvidenceHttpServer evidenceHttpServer(
+        EvidenceState state,
+        ObjectMapper json,
+        systems.zlink.framework.channels.ZLinkChannelRuntimeOptions runtimeOptions,
+        org.springframework.context.ConfigurableApplicationContext applicationContext) {
+        return new EvidenceHttpServer(
+            state,
+            json,
+            runtimeOptions,
+            applicationContext,
+            Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"));
     }
 
     @Bean
@@ -101,7 +110,10 @@ public final class Program {
     @Bean
     ZLinkMonitoringOptionsCustomizer monitoringOptions() {
         return options -> {
-            options.addSocketEvents(Contracts.CHANNEL, ZLinkSocketEventKind.CONNECTION_READY);
+            options.addSocketEvents(
+                Contracts.CHANNEL,
+                ZLinkSocketEventKind.CONNECTION_READY,
+                ZLinkSocketEventKind.PEER_ADMISSION_CHANGED);
             options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ofMillis(100));
             if (enabled("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", true)) {
                 options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
@@ -113,8 +125,8 @@ public final class Program {
     }
 
     @Bean
-    WorkReqHandler workRequestHandler() {
-        return new WorkReqHandler();
+    WorkReqHandler workRequestHandler(EvidenceState state) {
+        return new WorkReqHandler(state);
     }
 
     @Bean

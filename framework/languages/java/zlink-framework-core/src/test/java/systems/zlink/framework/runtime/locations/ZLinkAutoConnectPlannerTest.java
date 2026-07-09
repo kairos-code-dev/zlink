@@ -53,7 +53,7 @@ final class ZLinkAutoConnectPlannerTest {
     }
 
     @Test
-    void spotMeshUsesSameUnidirectionalInitiatorOrdering() {
+    void spotMeshDialsAllSpotPeersSoPubSubSubscriptionsPropagate() {
         var lower = local(
             ZLinkLocationAutoConnectType.SPOT_MESH,
             ZLinkLocationRole.SPOT,
@@ -76,7 +76,7 @@ final class ZLinkAutoConnectPlannerTest {
             "inproc://spot-a");
 
         assertTrue(hasTarget(lower, higher));
-        assertFalse(hasTarget(reverse, lowerPeer));
+        assertTrue(hasTarget(reverse, lowerPeer));
     }
 
     private static boolean hasTarget(

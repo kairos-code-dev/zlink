@@ -11,7 +11,6 @@ New-Item -ItemType Directory -Force -Path $LogDir, $FlowLogDir | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $FlowLogDir "*.log")
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
-$RolePattern = "systems\.zlink\.samples\.kotlin\.tictactoe\.server\.ProgramKt|systems\.zlink\.samples\.kotlin\.tictactoe\.client\.ProgramKt"
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 $RedisContainer = $null
 
@@ -24,18 +23,6 @@ function Print-Logs {
     }
 }
 
-function Stop-RoleProcesses {
-    if ($IsWindows) {
-        Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match $RolePattern } | ForEach-Object {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-        }
-    } else {
-        & pgrep -f $RolePattern 2>$null | ForEach-Object {
-            & kill -9 $_ 2>$null
-        }
-    }
-}
-
 function Cleanup {
     param([int]$Status)
     Print-Logs $Status
@@ -45,7 +32,6 @@ function Cleanup {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         }
     }
-    Stop-RoleProcesses
     if ($RedisContainer) {
         & docker rm -f $RedisContainer *> $null
     }
@@ -123,7 +109,7 @@ function Wait-LogContains {
 
 function Invoke-Gradle {
     param([string[]]$Arguments)
-    & $Gradle @Arguments
+    & $Gradle "--no-parallel" "--max-workers=1" @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Gradle failed: $($Arguments -join ' ')"
     }
@@ -221,7 +207,7 @@ try {
         -replace 'sample\.peerSpotPubSubEndpoint=.*', "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PlayAPubPort" |
         Set-Content -Path $playBConfig -Encoding UTF8
 
-    Invoke-Gradle @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:installDist", ":Client:installDist", "--quiet")
+    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:installDist", ":Client:installDist", "--quiet")
 
     Start-SampleRole "play" $playBConfig "play-b.log"
     Wait-LogContains (Join-Path $LogDir "play-b.log") "Started Program"

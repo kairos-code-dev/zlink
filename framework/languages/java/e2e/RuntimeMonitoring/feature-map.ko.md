@@ -8,9 +8,9 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 
 마지막 검증:
 
-- 명령: `timeout 420s ./run_e2e.sh`
+- 명령: `nice -n 10 timeout 420s ./run_e2e.sh all`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/RuntimeMonitoring/logs/20260704-034044-55326/`
+- 로그: `framework/languages/java/e2e/RuntimeMonitoring/logs/20260707-221130-3621759/`
 
 ## 구현됨
 
@@ -21,6 +21,9 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 - `MON-A3`: service host의 `monitoring.spot.mesh` source에서 `STATUS_CHANGED`,
   `PEERS_CHANGED`, `SUBJECTS_CHANGED`를 관찰하고, failing timer가 `TIMER_HANDLER_FAILED`를
   발행해도 channel messaging이 멈추지 않는지 확인한다.
+- `MON-A4`: service의 public runtime channel option으로 drain/restore를 수행하고, trigger host의
+  `monitoring.api` client socket source에서 `PEER_ADMISSION_CHANGED`를 관찰한다. service host는
+  admin drain marker와 location runtime `TOPOLOGY_CHANGED`를 함께 기록한다.
 - `MON-A5`: handshake 전용 public channel에 잘못된 TCP 연결을 보내 socket 전이를 관찰하고,
   location runtime/spot `STATUS_CHANGED`와 stop-on-unhandled timer의
   `TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION`을 함께 확인한다. 현재 Java native backend는 raw malformed
@@ -31,10 +34,11 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
   socket/spot source는 host 시작 시점에 명확한 오류로 실패하는지 확인한다.
 - `MON-C1`: monitoring event handler가 예외를 던져도 dispatcher가 예외를 격리하고, 그 뒤 channel
   messaging이 계속 성공하는지 확인한다.
+- `MON-D1`: `svc-b`를 HTTP admin endpoint로 종료한 뒤 runner가 사용하는 `FilteredService` binary로
+  재기동한다. 재기동된 service가 request를 처리하고, 살아 있는 observer service의 location runtime이
+  down/up을 포함한 `TOPOLOGY_CHANGED` 전이를 계속 기록하는지 확인한다.
 
 ## public API/harness 대기
 
-- `MON-A4`: failover/drain 전이를 socket/location runtime monitoring event로 묶어 보는 runner가 아직 없다.
-- `MON-D1`: 장애/복구 반복 중 monitoring event 연속성을 보는 장시간 harness가 아직 없다.
-- `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
-  `Server/Trigger`의 HTTP endpoint를 호출하고, gap scenario는 선택되면 명시적으로 실패한다.
+현재 Java `RuntimeMonitoring` feature map에는 남은 `gap` 또는 `partial` 항목이 없다. 이후 공통
+RuntimeMonitoring 문서나 release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.

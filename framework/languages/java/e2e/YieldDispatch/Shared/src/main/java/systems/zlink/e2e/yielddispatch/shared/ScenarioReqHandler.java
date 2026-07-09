@@ -3,7 +3,7 @@ package systems.zlink.e2e.yielddispatch.shared;
 import java.time.Duration;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -51,7 +51,7 @@ public final class ScenarioReqHandler
             .getOrDefault(Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT));
         var scenarioFuture = routes.requestToSpot(
                 Contracts.ROUTE_CHANNEL,
-                new ZLinkSpotAddress(Contracts.SPOT_MESH, targetNodeRid, targetSpotRid),
+                new SpotRef(Contracts.SPOT_MESH, targetNodeRid, targetSpotRid),
                 spotRequest)
             .metadata(Contracts.SPOT_RID_METADATA, targetSpotRid.toString())
             .timeout(ROUTE_REQUEST_TIMEOUT)
@@ -62,7 +62,7 @@ public final class ScenarioReqHandler
             sleep(100);
             routes.requestToSpot(
                     Contracts.ROUTE_CHANNEL,
-                    new ZLinkSpotAddress(
+                    new SpotRef(
                         Contracts.SPOT_MESH,
                         RoutingId.from(Contracts.PLAY_NODE),
                         RoutingId.from(Contracts.TARGET_SPOT)),
@@ -73,7 +73,7 @@ public final class ScenarioReqHandler
             sleep(150);
             routes.requestToSpot(
                     Contracts.ROUTE_CHANNEL,
-                    new ZLinkSpotAddress(Contracts.SPOT_MESH, targetNodeRid, targetSpotRid),
+                    new SpotRef(Contracts.SPOT_MESH, targetNodeRid, targetSpotRid),
                     new Contracts.ProbeReq(request.requestId()))
                 .timeout(ROUTE_REQUEST_TIMEOUT)
                 .await(Contracts.ProbeRes.class);

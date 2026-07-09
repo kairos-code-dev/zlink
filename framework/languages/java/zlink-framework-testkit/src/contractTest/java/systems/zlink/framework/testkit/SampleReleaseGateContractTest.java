@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +31,6 @@ final class SampleReleaseGateContractTest {
         "host",
         "messaging",
         "monitoring",
-        "registry",
         "spots",
         "streams");
 
@@ -61,6 +61,16 @@ final class SampleReleaseGateContractTest {
         FORBIDDEN_SAMPLE_ASYNC_HELPER,
         "session relay JSON",
         "in-memory route channel replacement");
+
+    private static final Pattern FORBIDDEN_KOTLIN_HANDLER_REGISTRATION =
+        Pattern.compile("(?s)handlers\\(\\)\\s*\\.\\s*"
+            + "((addPacket|addActorPacket|addActorSend|addActorRequest|addSubscribe)\\s*(<|\\()"
+            + "|addHandler\\s*\\([^)]*::class\\.java)");
+    private static final Pattern JAVA_MANUAL_SPOT_HANDLER_REGISTRATION =
+        Pattern.compile("(?s)handlers\\(\\)\\s*\\.\\s*"
+            + "(addHandler|addPacket|addActorPacket|addActorSend|addActorRequest|addSubscribe)\\s*\\(");
+    private static final Pattern KOTLIN_MANUAL_SPOT_HANDLER_REGISTRATION =
+        Pattern.compile("(?s)handlers\\(\\)\\s*\\.\\s*addHandler\\s*<");
 
     @Test
     void requiredSamplesExposeExecutableEntryPoints() throws IOException {
@@ -193,6 +203,67 @@ final class SampleReleaseGateContractTest {
             assertTrue(offenders.isEmpty(), "sample forbidden pattern offenders: " + offenders);
         }
     }
+
+    @Test
+    void kotlinSamplesAndE2eUseAddHandlerReifiedRegistrationOnly() throws IOException {
+        Map<Path, List<String>> offenders = new java.util.LinkedHashMap<>();
+        for (Path root : List.of(samplesRoot().resolve("kotlin"), frameworkJavaRoot().resolve("e2e-kotlin"))) {
+            try (Stream<Path> files = Files.walk(root)) {
+                files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".kt"))
+                    .filter(SampleReleaseGateContractTest::isSampleSource)
+                    .map(path -> Map.entry(path, forbiddenKotlinHandlerRegistrations(path)))
+                    .filter(entry -> !entry.getValue().isEmpty())
+                    .forEach(entry -> offenders.put(entry.getKey(), entry.getValue()));
+            }
+        }
+
+        assertTrue(offenders.isEmpty(),
+            "Kotlin sample/e2e spot handler registration must use only "
+                + "context.handlers().addHandler<MyHandler>(): " + offenders);
+    }
+
+    @Test
+    void javaSamplesUseManualSpotHandlerRegistrationOnlyInTicTacToe() throws IOException {
+        Map<Path, List<String>> offenders = new java.util.LinkedHashMap<>();
+        try (Stream<Path> files = Files.walk(samplesRoot().resolve("java"))) {
+            files
+                .filter(Files::isRegularFile)
+                .filter(path -> path.toString().endsWith(".java"))
+                .filter(SampleReleaseGateContractTest::isSampleSource)
+                .filter(path -> !path.toString().replace('\\', '/').contains("/java/TicTacToe/"))
+                .map(path -> Map.entry(path, javaManualSpotHandlerRegistrations(path)))
+                .filter(entry -> !entry.getValue().isEmpty())
+                .forEach(entry -> offenders.put(entry.getKey(), entry.getValue()));
+        }
+
+        assertTrue(offenders.isEmpty(),
+            "Only Java TicTacToe may show manual Spot handler registration; "
+                + "other Java samples must use addHandlersFromPackageOf automatic registration: "
+                + offenders);
+    }
+
+    @Test
+    void kotlinSamplesUseManualSpotHandlerRegistrationOnlyInTicTacToe() throws IOException {
+        Map<Path, List<String>> offenders = new java.util.LinkedHashMap<>();
+        try (Stream<Path> files = Files.walk(samplesRoot().resolve("kotlin"))) {
+            files
+                .filter(Files::isRegularFile)
+                .filter(path -> path.toString().endsWith(".kt"))
+                .filter(SampleReleaseGateContractTest::isSampleSource)
+                .filter(path -> !path.toString().replace('\\', '/').contains("/kotlin/TicTacToe/"))
+                .map(path -> Map.entry(path, kotlinManualSpotHandlerRegistrations(path)))
+                .filter(entry -> !entry.getValue().isEmpty())
+                .forEach(entry -> offenders.put(entry.getKey(), entry.getValue()));
+        }
+
+        assertTrue(offenders.isEmpty(),
+            "Only Kotlin TicTacToe may show manual Spot handler registration; "
+                + "other Kotlin samples must use addHandlersFromPackageOf automatic registration: "
+                + offenders);
+    }
+
 
     @Test
     void officialDocsKeepActorDestroyEntryOwned() throws IOException {
@@ -800,6 +871,10 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/kotlin",
             paths.playSpot("tictactoegamespot", "TicTacToeGame"));
+        String gameMatchSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/domain/tictactoe/TicTacToeMatch.kt");
         String playSessionSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -942,7 +1017,7 @@ final class SampleReleaseGateContractTest {
                 && playSource.contains("settings.routeEndpoint")
                 && playSource.contains("settings.spotEndpoint")
                 && playSource.contains("settings.playEndpoint")
-                && playSource.contains("addHandlerGroup(SampleNames.PlayChannel)"),
+                && playSource.contains("addHandlerGroup(SampleNames.PlayHandlerGroup)"),
             "Kotlin TicTacToe Play role must expose annotation-discovered play channel handlers");
         String playCreateGameHandlerSource = sampleKotlinSource(
             "TicTacToe",
@@ -951,7 +1026,7 @@ final class SampleReleaseGateContractTest {
         assertTrue(playCreateGameHandlerSource.contains("suspend fun create(request: CreateGameReq): CreateGameRes")
                 && playCreateGameHandlerSource.contains("ZLinkSpotManager")
                 && playCreateGameHandlerSource.contains("settings: SampleSettings")
-                && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayChannel)")
+                && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayHandlerGroup)")
                 && playCreateGameHandlerSource.contains("request: CreateGameReq")
                 && playCreateGameHandlerSource.contains("gameCreator.nextRoom(request.gameName)")
                 && playCreateGameHandlerSource.contains("RoutingId.from(room.roomId)")
@@ -1011,8 +1086,8 @@ final class SampleReleaseGateContractTest {
                 && gameSpotSource.contains("TicTacToeGameTimerHandler::class.java")
                 && gameSpotSource.contains("override suspend fun onClosingSuspending()")
                 && gameSpotSource.contains("gameTick?.cancelAsync()")
-                && gameSpotSource.contains("TurnTimedOut")
-                && gameSpotSource.contains("resetTurnDeadline()")
+                && gameMatchSource.contains("TurnTimedOut")
+                && gameMatchSource.contains("resetTurnDeadline")
                 && gameSpotSource.contains("suspend fun tick()")
                 && gameSpotSource.contains("override suspend fun onCreateSuspending(request: ZLinkMessage)")
                 && gameSpotSource.contains("fun markCreated(request: ZLinkMessage)")
@@ -1077,7 +1152,7 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomGame.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomModels.java",
             paths.playSpot("bingoroomspot", "BingoRoomSpot"),
-            paths.playSpotHandler("bingoroomspot", "BingoRoomSpotCreatedHandler"),
+            paths.playSpotHandler("bingoroomspot", "BingoRoomSettingsInitializer"),
             paths.playSpotHandler("bingoroomspot", "BingoRoomTimerHandler"),
             paths.playSpotHandler("bingoroomspot", "SubmitBingoCardHandler"),
             paths.playSpot("entryspot", "BingoEntrySpot"),
@@ -1099,13 +1174,29 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/client/configuration/SampleTopology.java",
             "systems/zlink/samples/bingo/client/configuration/SampleTimings.java"));
         assertSampleFilesExist("java", "Bingo", "Shared/src/main/java", List.of(
-            "systems/zlink/samples/bingo/shared/contracts/Messages.java"));
+            "systems/zlink/samples/bingo/shared/contracts/BingoMessages.java"));
+        assertSampleFilesExist("java", "Bingo", "Shared/src/main/proto", List.of(
+            "bingo_messages.proto"));
 
         String rootBuildSource = sampleFile(
             "java",
             "Bingo",
             "",
             "build.gradle.kts");
+        String sharedBuildSource = sampleFile(
+            "java",
+            "Bingo",
+            "Shared",
+            "build.gradle.kts");
+        String sharedContractsSource = sampleJavaSource(
+            "Bingo",
+            "Shared/src/main/java",
+            "systems/zlink/samples/bingo/shared/contracts/BingoMessages.java");
+        String sharedProtoSource = sampleFile(
+            "java",
+            "Bingo",
+            "Shared/src/main/proto",
+            "bingo_messages.proto");
         String clientProgramSource = sampleJavaSource(
             "Bingo",
             "Client/src/main/java",
@@ -1158,6 +1249,23 @@ final class SampleReleaseGateContractTest {
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application"),
             "Bingo root project must not expose an aggregate in-process runner");
+        assertTrue(sharedBuildSource.contains("id(\"com.google.protobuf\")")
+                && sharedBuildSource.contains("protobuf-java:4.30.2")
+                && sharedBuildSource.contains("protoc:4.30.2"),
+            "Java Bingo Shared project must generate protobuf message classes from a checked-in schema");
+        assertTrue(sharedProtoSource.contains("option java_outer_classname = \"Messages\";")
+                && sharedProtoSource.contains("message AuthenticateReq")
+                && sharedProtoSource.contains("message MatchBingoReq")
+                && sharedProtoSource.contains("message SubmitBingoCardReq")
+                && sharedProtoSource.contains("message BingoWinnerMsg")
+                && sharedProtoSource.contains("message BingoRoomState")
+                && sharedProtoSource.contains("message BingoPlayerState"),
+            "Java Bingo protobuf schema must declare the common Bingo payload messages");
+        assertTrue(sharedContractsSource.contains("Messages.MatchBingoReq.newBuilder()")
+                && sharedContractsSource.contains("Messages.BingoRoomState.newBuilder()")
+                && !sharedContractsSource.contains("record MatchBingoReq")
+                && !sharedContractsSource.contains("@ZLinkPacket"),
+            "Java Bingo contract helper must expose generated protobuf messages, not hand-written packet DTOs");
         assertTrue(clientProgramSource.contains("ZLinkStreamConnector client1 = createClient(")
                 && clientProgramSource.contains("ZLinkStreamConnector client2 = createClient(")
                 && clientProgramSource.contains("ZLinkStreamConnector observer = createClient(")
@@ -1175,16 +1283,16 @@ final class SampleReleaseGateContractTest {
             "Bingo sample must use configured auto-dispatch connectors like the .NET immediate-dispatch sample");
         assertTrue(clientAppSource.contains("ZLinkStreamConnector client1")
                 && clientAppSource.contains("ZLinkStreamConnector client2")
-                && clientAppSource.contains("SubmitBingoCardReq")
-                && clientAppSource.contains("MatchBingoReq(\"two-player\")")
+                && clientAppSource.contains("BingoMessages.submitBingoCardReq")
+                && clientAppSource.contains("BingoMessages.matchBingoReq(\"two-player\")")
                 && clientAppSource.contains("client1.waitFor(SampleNames.PlayerJoinedPacket)")
-                && clientAppSource.contains("request(new Messages.AuthenticateReq")
+                && clientAppSource.contains("request(BingoMessages.authenticateReq")
                 && clientAppSource.contains(".await(Messages.AuthenticateRes.class)")
                 && clientAppSource.contains(".submit(Messages.PlayerJoinedNotify.class)")
                 && clientAppSource.contains("client1.await(client1SawClient2Join)")
                 && !clientAppSource.contains("ZLinkProtobufCodec.")
                 && clientAppSource.contains("List.of(1, 2, 3, 4, 0, 6, 7, 8, 9)")
-                && clientAppSource.contains("client1Result.winners().equals(List.of(client1Auth.actorId()))")
+                && clientAppSource.contains("client1Result.getWinnersList().equals(List.of(client1Auth.getActorId()))")
                 && roomSource.contains("submitCard")
                 && roomSource.contains("game.drawNext()"),
             "Bingo sample must use connector member APIs, submit .NET baseline cards, and let the server timer draw numbers");
@@ -1231,8 +1339,8 @@ final class SampleReleaseGateContractTest {
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains("implements ZLinkRequestHandler<")
                 && apiHandlerSource.contains("Messages.AuthenticatePlayerReq")
-                && playHandlerSource.contains("@ZLinkHandlerGroup(\"play-route\")")
-                && playHandlerSource.contains("implements ZLinkRouteRequestHandler<")
+                && playHandlerSource.contains("implements ZLinkSpotRequestHandler<")
+                && playHandlerSource.contains("BingoEntrySpot")
                 && playHandlerSource.contains("Messages.EnsurePlayerActorReq"),
             "Bingo Api/Play handlers must use interface-based request mapping");
         assertTrue(sampleFileContains("java", "Bingo", "Server/Api/src/main/java",
@@ -1268,7 +1376,7 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoCard.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoRoomModels.kt",
             paths.playSpot("bingoroomspot", "BingoRoomSpot"),
-            paths.playSpotHandler("bingoroomspot", "BingoRoomSpotCreatedHandler"),
+            paths.playSpotHandler("bingoroomspot", "BingoRoomSettingsInitializer"),
             paths.playSpotHandler("bingoroomspot", "BingoRoomTimerHandler"),
             paths.playSpotHandler("bingoroomspot", "SubmitBingoCardHandler"),
             paths.playSpot("entryspot", "BingoEntrySpot"),
@@ -1291,12 +1399,28 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/client/configuration/SampleTimings.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Shared/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/shared/contracts/Messages.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Shared/src/main/proto", List.of(
+            "bingo_messages.proto"));
 
         String rootBuildSource = sampleFile(
             "kotlin",
             "Bingo",
             "",
             "build.gradle.kts");
+        String sharedBuildSource = sampleFile(
+            "kotlin",
+            "Bingo",
+            "Shared",
+            "build.gradle.kts");
+        String sharedContractsSource = sampleKotlinSource(
+            "Bingo",
+            "Shared/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/shared/contracts/Messages.kt");
+        String sharedProtoSource = sampleFile(
+            "kotlin",
+            "Bingo",
+            "Shared/src/main/proto",
+            "bingo_messages.proto");
         String clientProgramSource = sampleKotlinSource(
             "Bingo",
             "Client/src/main/kotlin",
@@ -1349,6 +1473,24 @@ final class SampleReleaseGateContractTest {
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application"),
             "Kotlin Bingo root project must not expose an aggregate in-process runner");
+        assertTrue(sharedBuildSource.contains("id(\"com.google.protobuf\")")
+                && sharedBuildSource.contains("protobuf-java:4.30.2")
+                && sharedBuildSource.contains("protoc:4.30.2"),
+            "Kotlin Bingo Shared project must generate protobuf message classes from a checked-in schema");
+        assertTrue(sharedProtoSource.contains("option java_outer_classname = \"Messages\";")
+                && sharedProtoSource.contains("message AuthenticateReq")
+                && sharedProtoSource.contains("message MatchBingoReq")
+                && sharedProtoSource.contains("message SubmitBingoCardReq")
+                && sharedProtoSource.contains("message BingoWinnerMsg")
+                && sharedProtoSource.contains("message BingoRoomState")
+                && sharedProtoSource.contains("message BingoPlayerState"),
+            "Kotlin Bingo protobuf schema must declare the common Bingo payload messages");
+        assertTrue(sharedContractsSource.contains("typealias MatchBingoReq = Messages.MatchBingoReq")
+                && sharedContractsSource.contains("fun MatchBingoReq(mode: String): MatchBingoReq")
+                && sharedContractsSource.contains("typealias BingoRoomState = Messages.BingoRoomState")
+                && !sharedContractsSource.contains("data class MatchBingoReq")
+                && !sharedContractsSource.contains("@ZLinkPacket"),
+            "Kotlin Bingo contract source must expose generated protobuf messages, not hand-written packet DTOs");
         assertTrue(clientProgramSource.contains("val client1 = createClient(")
                 && clientProgramSource.contains("val client2 = createClient(")
                 && clientProgramSource.contains("val observer = createClient(")
@@ -1416,16 +1558,13 @@ final class SampleReleaseGateContractTest {
                 && apiHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
                 && playHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
                 && sessionHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
-                && playHostSource.contains("configureLocations()")
-                && sessionHostSource.contains("configureLocations()")
                 && !apiHostSource.contains("ZLinkEmbeddedRegistryOptions")
                 && !playHostSource.contains("ZLinkEmbeddedRegistryOptions")
                 && !sessionHostSource.contains("ZLinkEmbeddedRegistryOptions"),
             "Kotlin Bingo roles must use the Redis location store extension instead of a Registry role");
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains(": ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")
-                && playHandlerSource.contains("@ZLinkHandlerGroup(\"play-route\")")
-                && playHandlerSource.contains(": ZLinkSuspendingRouteRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>"),
+                && playHandlerSource.contains(": ZLinkSuspendingSpotRequestHandler<BingoEntrySpot, EnsurePlayerActorReq, EnsurePlayerActorRes>"),
             "Kotlin Bingo Api/Play handlers must use interface-based request mapping");
         assertTrue(sampleFileContains("kotlin", "Bingo", "Server/Api/src/main/kotlin",
                 "systems/zlink/samples/kotlin/bingo/server/api/Program.kt", "ApiServerApplication.run"),
@@ -1800,6 +1939,45 @@ final class SampleReleaseGateContractTest {
             String content = Files.readString(path);
             return FORBIDDEN_SAMPLE_PATTERNS.stream()
                 .filter(content::contains)
+                .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to read " + path, ex);
+        }
+    }
+
+    private static List<String> forbiddenKotlinHandlerRegistrations(Path path) {
+        try {
+            String content = Files.readString(path);
+            return FORBIDDEN_KOTLIN_HANDLER_REGISTRATION
+                .matcher(content)
+                .results()
+                .map(match -> match.group().replaceAll("\\s+", " "))
+                .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to read " + path, ex);
+        }
+    }
+
+    private static List<String> javaManualSpotHandlerRegistrations(Path path) {
+        try {
+            String content = Files.readString(path);
+            return JAVA_MANUAL_SPOT_HANDLER_REGISTRATION
+                .matcher(content)
+                .results()
+                .map(match -> match.group().replaceAll("\\s+", " "))
+                .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("failed to read " + path, ex);
+        }
+    }
+
+    private static List<String> kotlinManualSpotHandlerRegistrations(Path path) {
+        try {
+            String content = Files.readString(path);
+            return KOTLIN_MANUAL_SPOT_HANDLER_REGISTRATION
+                .matcher(content)
+                .results()
+                .map(match -> match.group().replaceAll("\\s+", " "))
                 .toList();
         } catch (IOException ex) {
             throw new IllegalStateException("failed to read " + path, ex);

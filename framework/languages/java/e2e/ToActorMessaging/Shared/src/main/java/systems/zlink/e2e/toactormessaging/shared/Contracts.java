@@ -26,6 +26,12 @@ public final class Contracts {
     public record ActorCallRequest(String scenario, String actorId, String value) {
     }
 
+    public record ActorRefWire(String nodeRidHex, String actorId, long generation) {
+    }
+
+    public record ActorRefCallRequest(String scenario, ActorRefWire actorRef, String value) {
+    }
+
     public record ActorCallResponse(
         String scenario,
         String actorId,

@@ -5,6 +5,8 @@ public final class SampleTopology {
         property("trackingChannelEndpoint", "tcp://127.0.0.1:48103");
     public static final String TrackingSpotEndpoint =
         property("trackingSpotEndpoint", "tcp://127.0.0.1:48118");
+    public static final String TrackingSpotPubEndpoint =
+        property("trackingSpotPubEndpoint", "tcp://127.0.0.1:48120");
     public static final String CustomerStreamEndpoint =
         property("customerStreamEndpoint", "tcp://127.0.0.1:48104");
     public static final String CourierStreamEndpoint =

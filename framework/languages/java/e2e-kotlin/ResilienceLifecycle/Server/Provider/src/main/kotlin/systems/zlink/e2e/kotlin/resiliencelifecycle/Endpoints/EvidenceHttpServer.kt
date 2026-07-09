@@ -45,6 +45,17 @@ class EvidenceHttpServer(
             }
             httpServer.createContext("/admin/fault-on") { exchange -> setGrayFailure(exchange, true) }
             httpServer.createContext("/admin/fault-off") { exchange -> setGrayFailure(exchange, false) }
+            httpServer.createContext("/admin/fault/observer-throws") { exchange ->
+                state.observerThrows(true)
+                state.record("ObserverFaultMode", "observer-throws")
+                write(exchange, 200, "{\"observerThrows\":true}\n")
+            }
+            httpServer.createContext("/admin/fault/none") { exchange ->
+                state.grayFailure(false)
+                state.observerThrows(false)
+                state.record("ObserverFaultMode", "none")
+                write(exchange, 200, "{\"observerThrows\":false,\"grayFailure\":false}\n")
+            }
             httpServer.createContext("/admin/shutdown") { exchange ->
                 state.record("AdminShutdown", state.providerRid())
                 write(exchange, 200, "{\"status\":\"shutting-down\"}\n")

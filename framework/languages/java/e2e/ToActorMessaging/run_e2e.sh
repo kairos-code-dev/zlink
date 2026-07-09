@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -73,17 +74,10 @@ elif [[ -n "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
 elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   redis_endpoint="${ZLINK_REDIS_E2E_ENDPOINT}"
 else
-  read -r redis_port < <(python3 - <<'PY'
-import socket
-sock = socket.socket()
-sock.bind(("127.0.0.1", 0))
-print(sock.getsockname()[1])
-sock.close()
-PY
-)
-  redis_container="zlink-e2e-toactor-java-$$"
-  docker run -d --rm --name "${redis_container}" -p "127.0.0.1:${redis_port}:6379" redis:7-alpine >/dev/null
-  redis_endpoint="127.0.0.1:${redis_port}"
+  redis_container="$(
+    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+  )"
+  redis_endpoint="$(zlink_redis_endpoint "${redis_container}")"
 fi
 export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
 redis_host="${redis_endpoint%:*}"
@@ -96,7 +90,7 @@ export ZLINK_JAVA_E2E_CALLER_HTTP="http://127.0.0.1:${caller_http}"
 export ZLINK_JAVA_E2E_ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
 export ZLINK_JAVA_E2E_CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
 export ZLINK_JAVA_E2E_ACTOR_RID="actor-a"
-export ZLINK_JAVA_E2E_CALLER_RID="${ZLINK_JAVA_E2E_CALLER_RID:-caller}"
+export ZLINK_JAVA_E2E_CALLER_RID="${ZLINK_JAVA_E2E_CALLER_RID:-aaa-caller}"
 
 print_logs() {
   local status="$1"
@@ -116,6 +110,20 @@ cleanup() {
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     kill "${pids[$i]}" >/dev/null 2>&1 || true
+  done
+  for _ in $(seq 1 50); do
+    local alive=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        alive=1
+        break
+      fi
+    done
+    [[ "${alive}" == "0" ]] && break
+    sleep 0.1
+  done
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
   if [[ -n "${redis_container}" ]]; then
     docker rm -f "${redis_container}" >/dev/null 2>&1 || true
@@ -210,7 +218,7 @@ wait_role_ready() {
   esac
 }
 
-../../gradlew --no-daemon --gradle-user-home "${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/toactor-gradle}" -p . installDist
+../../gradlew --no-daemon --no-parallel --max-workers=1 --gradle-user-home "${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/toactor-gradle}" -p . installDist
 
 SERVER_ROLES=(actor caller)
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")

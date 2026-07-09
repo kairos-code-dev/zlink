@@ -1,6 +1,7 @@
 package systems.zlink.e2e.resiliencelifecycle.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -45,6 +46,8 @@ public final class Program {
     ZLinkFrameworkConfigurer consumerFramework() {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(2));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/consumer-flow.log")

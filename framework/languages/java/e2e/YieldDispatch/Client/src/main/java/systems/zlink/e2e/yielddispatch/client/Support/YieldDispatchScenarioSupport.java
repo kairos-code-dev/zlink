@@ -500,6 +500,7 @@ public final class YieldDispatchScenarioSupport {
         Map<String, String> metadata = Map.of(
             Contracts.SPOT_RID_METADATA, spotRid,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B);
+        waitRouteBridgeSendReady(connector, playBEvidence, requestId + "-ready", metadata);
         CompletionStage<Void> yield = connector
             .send(new Contracts.YieldMsg(requestId, ISOLATION_DELAY_MILLIS, "route-bridge"))
             .metadata(metadata)
@@ -532,6 +533,32 @@ public final class YieldDispatchScenarioSupport {
         assertAllValuesContain(playBEvidence, requestId, List.of(
             "probe-started",
             "probe-completed"), spotRid);
+    }
+
+    private static void waitRouteBridgeSendReady(
+        ZLinkStreamConnector connector,
+        String evidenceUrl,
+        String requestId,
+        Map<String, String> metadata) throws Exception {
+        long deadline = System.nanoTime() + REQUEST_TIMEOUT.toNanos();
+        int attempt = 0;
+        while (System.nanoTime() < deadline) {
+            String probeId = requestId + "-" + attempt++;
+            connector.await(connector
+                .send(new Contracts.ProbeMsg(probeId, "route-bridge-ready"))
+                .metadata(metadata)
+                .submit());
+            long probeDeadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            while (System.nanoTime() < probeDeadline) {
+                if (containsInOrder(
+                    observedMarkers(evidenceUrl, probeId),
+                    List.of("probe-started", "probe-completed"))) {
+                    return;
+                }
+                Thread.sleep(100);
+            }
+        }
+        throw new IllegalStateException("route bridge send path was not ready for " + requestId);
     }
 
     public static void runSessionRelayActorYield(ZLinkStreamConnector connector) throws Exception {

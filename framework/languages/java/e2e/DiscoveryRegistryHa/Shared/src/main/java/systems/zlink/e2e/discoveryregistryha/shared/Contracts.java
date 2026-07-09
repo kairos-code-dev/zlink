@@ -32,4 +32,8 @@ public final class Contracts {
         String endpoint,
         int timeoutMilliseconds) {
     }
+
+    public record StoreDelayReq(
+        int delayMilliseconds) {
+    }
 }

@@ -10,14 +10,11 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotManager;
-import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers.EnsurePlayerActorHandler;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers.MatchBingoActorHandler;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers.ObserveBingoEventsHandler;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
@@ -40,20 +37,13 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     }
 
     @Override
-    public void configure() {
-        context.handlers().addHandler(EnsurePlayerActorHandler.class);
-        context.handlers().addHandler(MatchBingoActorHandler.class);
-        context.handlers().addHandler(ObserveBingoEventsHandler.class);
-    }
-
-    @Override
     public void onCreateActor(
         PlayerActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken) {
         Messages.EnsurePlayerActorReq request =
             createRequest.decode(Messages.EnsurePlayerActorReq.class);
-        actor.setDisplayName(request.displayName());
+        actor.setDisplayName(request.getDisplayName());
     }
 
     @Override
@@ -89,24 +79,24 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     public Messages.ObserveBingoEventsRes observeEvents(
         PlayerActor actor,
         Messages.ObserveBingoEventsReq request) {
-        String observerRid = "observe:" + request.roomId() + ":" + context.nodeRid();
+        String observerRid = "observe:" + request.getRoomId() + ":" + context.nodeRid();
         BingoRoomModels.BingoRoomSettings settings =
             BingoRoomModels.BingoRoomSettings.createObserver(
-                request.roomId(),
+                request.getRoomId(),
                 context.nodeRid().toString(),
                 SampleTimings.DrawPeriod.toMillis());
         await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), ZLinkMessage.of(settings)));
         var joined = actor.context()
             .joinSpot(
                 RoutingId.from(observerRid),
-                new Messages.BingoRoomJoinReq(
-                    request.roomId(),
+                BingoMessages.bingoRoomJoinReq(
+                    request.getRoomId(),
                     actor.actorId(),
                     actor.displayName(),
                     true))
             .await(Messages.BingoRoomJoinRes.class);
-        return new Messages.ObserveBingoEventsRes(
-            joined.reply().state().status().equals("Running"),
+        return BingoMessages.observeBingoEventsRes(
+            joined.reply().getState().getStatus().equals("Running"),
             joined.actor().nodeRid().toString());
     }
 

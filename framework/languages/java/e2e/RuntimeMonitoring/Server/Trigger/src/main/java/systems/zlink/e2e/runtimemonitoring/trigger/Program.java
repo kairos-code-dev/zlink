@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -26,8 +27,12 @@ import systems.zlink.e2e.runtimemonitoring.trigger.validation.MissingSocketSourc
 import systems.zlink.e2e.runtimemonitoring.trigger.validation.MissingSpotSourceConfig;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
+import systems.zlink.framework.monitoring.ZLinkSocketEvent;
+import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer;
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -57,14 +62,35 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/trigger-flow.log")
                 .traceLabel("java-mon-trigger");
-            options.addClientServerChannel(Contracts.CHANNEL)
+            var channel = options.addClientServerChannel(Contracts.CHANNEL)
                 .enableClient(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"));
+            String serviceBEndpoint = Env.get("ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT");
+            if (!serviceBEndpoint.isBlank()) {
+                channel.enableClient(serviceBEndpoint);
+            }
         };
     }
 
     @Bean
-    TriggerScenario triggerScenario(ZLinkClient client, ObjectMapper json) {
-        return new TriggerScenario(client, json);
+    ZLinkMonitoringOptionsCustomizer triggerMonitoring() {
+        return options -> options.addSocketEvents(
+            Contracts.CHANNEL,
+            ZLinkSocketEventKind.PEER_ADMISSION_CHANGED);
+    }
+
+    @Bean
+    TriggerEvidence triggerEvidence() {
+        return new TriggerEvidence();
+    }
+
+    @Bean
+    TriggerSocketRecorder triggerSocketRecorder(TriggerEvidence evidence) {
+        return new TriggerSocketRecorder(evidence);
+    }
+
+    @Bean
+    TriggerScenario triggerScenario(ZLinkClient client, ObjectMapper json, TriggerEvidence evidence) {
+        return new TriggerScenario(client, json, evidence);
     }
 
     @Bean
@@ -140,11 +166,13 @@ public final class Program {
     public static final class TriggerScenario {
         private final ZLinkClient client;
         private final ObjectMapper json;
+        private final TriggerEvidence evidence;
         private final HttpClient http = HttpClient.newHttpClient();
 
-        public TriggerScenario(ZLinkClient client, ObjectMapper json) {
+        public TriggerScenario(ZLinkClient client, ObjectMapper json, TriggerEvidence evidence) {
             this.client = client;
             this.json = json;
+            this.evidence = evidence;
         }
 
         public String run(String name) {
@@ -156,8 +184,8 @@ public final class Program {
                 case "mon-b1" -> monB1();
                 case "mon-b2" -> monB2();
                 case "mon-c1" -> monC1();
-                case "mon-a4" -> unsupported("MON-A4", "failover/drain transition runner is not implemented");
-                case "mon-d1" -> unsupported("MON-D1", "failure/recovery continuity runner is not implemented");
+                case "mon-a4" -> monA4();
+                case "mon-d1" -> monD1();
                 default -> throw new IllegalArgumentException("unknown RuntimeMonitoring scenario: " + name);
             };
         }
@@ -229,8 +257,50 @@ public final class Program {
             return "scenario MON-C1 passed\n";
         }
 
-        private String unsupported(String scenario, String reason) {
-            throw new IllegalStateException(scenario + " is a documented Java gap: " + reason);
+        private String monA4() {
+            String serviceA = Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP");
+            String serviceB = Env.get("ZLINK_JAVA_E2E_SERVICE_B_HTTP");
+            if (!serviceB.isBlank()) {
+                post(serviceB + "/admin/drain");
+            }
+            post(serviceA + "/admin/restore");
+            Contracts.WorkRes before = requestFromProvider("mon-a4-before-drain", "svc-a");
+            ensure(before.providerRid().equals("svc-a"), "MON-A4 direct trigger did not hit svc-a");
+
+            post(serviceA + "/admin/drain");
+            waitForTriggerEvent("socket", Set.of("PEER_ADMISSION_CHANGED"));
+            waitForEvent(serviceA, "admin", Set.of("drain"));
+            waitForEvent(serviceA, "location", Set.of("TOPOLOGY_CHANGED"));
+            post(serviceA + "/admin/restore");
+            if (!serviceB.isBlank()) {
+                post(serviceB + "/admin/restore");
+            }
+            return "scenario MON-A4 passed\n";
+        }
+
+        private String monD1() {
+            String serviceA = Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP");
+            String serviceB = Env.get("ZLINK_JAVA_E2E_SERVICE_B_HTTP");
+            ensure(!serviceB.isBlank(), "MON-D1 requires ZLINK_JAVA_E2E_SERVICE_B_HTTP");
+            post(serviceB + "/shutdown");
+            waitForPort(serviceB, false, "MON-D1 expected service-b to stop");
+
+            Process restarted = startServiceB();
+            try {
+                waitForPort(serviceB, true, "MON-D1 expected service-b to restart");
+                post(serviceA + "/admin/drain");
+                Contracts.WorkRes reply = requestFromProvider("mon-d1-request", "svc-b");
+                ensure(reply.providerRid().equals("svc-b")
+                        && reply.value().equals("work:mon-d1-request"),
+                    "MON-D1 restarted service did not handle request");
+                waitForEvent(serviceB, "work", Set.of("WorkReq"));
+                waitForLocationEventCount(serviceA, 3);
+                return "scenario MON-D1 passed\n";
+            } finally {
+                postBestEffort(serviceA + "/admin/restore");
+                postBestEffort(serviceB + "/shutdown");
+                waitForExit(restarted);
+            }
         }
 
         private Contracts.WorkRes request(String value) {
@@ -241,6 +311,61 @@ public final class Program {
                 .await(Contracts.WorkRes.class);
             ensure(reply.value().equals("work:" + value), "reply mismatch for " + value);
             return reply;
+        }
+
+        private Contracts.WorkRes requestFromProvider(String value, String providerRid) {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+            Contracts.WorkRes last = null;
+            while (System.nanoTime() < deadline) {
+                last = request(value);
+                if (providerRid.equals(last.providerRid())) {
+                    return last;
+                }
+                sleep(200);
+            }
+            throw new IllegalStateException(
+                "request did not reach " + providerRid + "; last=" + last);
+        }
+
+        private Process startServiceB() {
+            ProcessBuilder builder = new ProcessBuilder(Env.get("ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN"));
+            builder.redirectOutput(new java.io.File(
+                Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs") + "/filtered-service-restart.stdout.log"));
+            builder.redirectError(new java.io.File(
+                Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs") + "/filtered-service-restart.stderr.log"));
+            builder.environment().put("ZLINK_JAVA_E2E_RID", "svc-b");
+            builder.environment().put(
+                "ZLINK_JAVA_E2E_API_ENDPOINT",
+                Env.get("ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT"));
+            builder.environment().put(
+                "ZLINK_JAVA_E2E_HTTP_ENDPOINT",
+                Env.get("ZLINK_JAVA_E2E_SERVICE_B_HTTP"));
+            builder.environment().put(
+                "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT",
+                Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"));
+            builder.environment().put(
+                "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX",
+                Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"));
+            builder.environment().put("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", "false");
+            builder.environment().put("ZLINK_JAVA_E2E_ENABLE_SPOT", "false");
+            builder.environment().put("ZLINK_JAVA_E2E_LOG_DIR", Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
+            try {
+                return builder.start();
+            } catch (IOException error) {
+                throw new IllegalStateException("failed to restart service-b", error);
+            }
+        }
+
+        private void waitForExit(Process process) {
+            try {
+                if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                    process.waitFor();
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while waiting for restarted service-b", error);
+            }
         }
 
         private void triggerHandshakeFailure() {
@@ -297,6 +422,34 @@ public final class Program {
                     + "; observed=" + observed + "; evidence=" + get(baseUrl + "/evidence"));
         }
 
+        private void waitForTriggerEvent(String surface, Set<String> expected) {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+            while (System.nanoTime() < deadline) {
+                Set<String> observed = evidence.events(surface);
+                if (observed.containsAll(expected)) {
+                    return;
+                }
+                sleep(200);
+            }
+            throw new IllegalStateException(
+                "missing trigger " + surface + " events " + expected
+                    + "; observed=" + evidence.events(surface));
+        }
+
+        private void waitForLocationEventCount(String baseUrl, int expectedCount) {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (System.nanoTime() < deadline) {
+                int count = eventCount(baseUrl, "location", "TOPOLOGY_CHANGED");
+                if (count >= expectedCount) {
+                    return;
+                }
+                sleep(250);
+            }
+            throw new IllegalStateException(
+                "missing location topology continuity at " + baseUrl
+                    + "; evidence=" + get(baseUrl + "/evidence"));
+        }
+
         private Set<String> events(String baseUrl, String surface) {
             return events(baseUrl, surface, "");
         }
@@ -318,6 +471,22 @@ public final class Program {
             }
         }
 
+        private int eventCount(String baseUrl, String surface, String eventName) {
+            try {
+                JsonNode root = json.readTree(get(baseUrl + "/evidence")).path("entries");
+                int count = 0;
+                for (JsonNode entry : root) {
+                    if (surface.equals(entry.path("surface").asText())
+                        && eventName.equals(entry.path("event").asText())) {
+                        count++;
+                    }
+                }
+                return count;
+            } catch (Exception error) {
+                return 0;
+            }
+        }
+
         private String get(String url) {
             try {
                 HttpResponse<String> response = http.send(
@@ -334,6 +503,52 @@ public final class Program {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("GET interrupted: " + url, error);
+            }
+        }
+
+        private void post(String url) {
+            try {
+                HttpResponse<String> response = http.send(
+                    HttpRequest.newBuilder(URI.create(url))
+                        .timeout(Duration.ofSeconds(3))
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                    HttpResponse.BodyHandlers.ofString());
+                ensure(response.statusCode() >= 200 && response.statusCode() < 300,
+                    "POST " + url + " returned " + response.statusCode() + ": " + response.body());
+            } catch (IOException error) {
+                throw new IllegalStateException("POST failed: " + url, error);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("POST interrupted: " + url, error);
+            }
+        }
+
+        private void postBestEffort(String url) {
+            try {
+                post(url);
+            } catch (RuntimeException ignored) {
+            }
+        }
+
+        private void waitForPort(String baseUrl, boolean open, String failureMessage) {
+            URI uri = URI.create(baseUrl);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+            while (System.nanoTime() < deadline) {
+                if (canConnect(uri.getHost(), uri.getPort()) == open) {
+                    return;
+                }
+                sleep(100);
+            }
+            throw new IllegalStateException(failureMessage);
+        }
+
+        private static boolean canConnect(String host, int port) {
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(host, port), 200);
+                return true;
+            } catch (IOException error) {
+                return false;
             }
         }
 
@@ -377,6 +592,45 @@ public final class Program {
             current = current.getCause();
         }
         return false;
+    }
+
+    public static final class TriggerEvidence {
+        private final java.util.List<Contracts.EvidenceEntry> entries = new java.util.ArrayList<>();
+
+        public synchronized void record(
+            String surface,
+            String sourceName,
+            String event,
+            String detail) {
+            entries.add(new Contracts.EvidenceEntry(surface, sourceName, event, detail));
+        }
+
+        public synchronized Set<String> events(String surface) {
+            Set<String> events = new HashSet<>();
+            for (Contracts.EvidenceEntry entry : entries) {
+                if (surface.equals(entry.surface())) {
+                    events.add(entry.event());
+                }
+            }
+            return events;
+        }
+    }
+
+    public static final class TriggerSocketRecorder implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
+        private final TriggerEvidence evidence;
+
+        public TriggerSocketRecorder(TriggerEvidence evidence) {
+            this.evidence = evidence;
+        }
+
+        @Override
+        public void handle(ZLinkSocketEvent event) {
+            evidence.record(
+                "socket",
+                event.sourceName(),
+                event.event().name(),
+                event.localAddr() + "|" + event.remoteAddr());
+        }
     }
 
 }

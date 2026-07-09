@@ -62,6 +62,7 @@ public final class Program {
     ZLinkFrameworkConfigurer framework() {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            options.addHandlersFromPackageOf(ScenarioReqHandler.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/session-flow.log")
@@ -83,20 +84,7 @@ public final class Program {
             spot.addActorFactory(Contracts.ACTOR_TYPE, YieldActorFactory.class);
             options.addStreamNode("session")
                 .bind(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))
-                .registerSession(YieldSession.class)
-                .addSessionPacketHandler(ScenarioReqHandler.class)
-                .addSessionPacketHandler(ShutdownYieldSessionHandlers.Wait.class)
-                .addSessionPacketHandler(ShutdownYieldSessionHandlers.Recovery.class)
-                .addSessionPacketHandler(SpotCommandHandler.Yield.class)
-                .addSessionPacketHandler(SpotCommandHandler.YieldTimeout.class)
-                .addSessionPacketHandler(SpotCommandHandler.YieldCancel.class)
-                .addSessionPacketHandler(SpotCommandHandler.WorkerYield.class)
-                .addSessionPacketHandler(SpotCommandHandler.Probe.class)
-                .addSessionPacketHandler(SpotCommandHandler.TimerStart.class)
-                .addSessionPacketHandler(SpotCommandHandler.TimerStop.class)
-                .addSessionPacketHandler(EnsureSpotHandler.class)
-                .addSessionPacketHandler(RemoteSpotYieldSessionHandler.class)
-                .addSessionPacketHandler(BindActorsHandler.class);
+                .registerSession(YieldSession.class);
         };
     }
 

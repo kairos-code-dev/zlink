@@ -171,16 +171,16 @@ fallback으로 성공시키면 안 된다.
 샘플 애플리케이션은 Docker를 직접 호출하지 않는다. Docker container 준비는 runner의
 책임이다.
 
-- `run_sample`은 Redis endpoint 설정이 이미 있으면 그 Redis를 사용한다.
-- Redis endpoint 설정이 없으면 runner가 pinned Redis image로 container를 띄우고 ready
-  상태를 확인한 뒤 Play 프로세스에 전달한다.
+- `run_sample`은 실행마다 pinned Redis image로 전용 container를 띄우고 ready 상태를 확인한 뒤
+  Play 프로세스에 전달한다. 이미 떠 있는 Redis나 host Redis endpoint를 재사용하지 않는다.
 - runner가 만든 Redis container는 실행마다 고유한 이름을 사용하고, Docker가 배정한
   loopback port를 Play 프로세스에 전달한다. 다른 테스트가 쓰는 Redis container나 호스트
   Redis와 섞이지 않게 하기 위해서다.
-- runner는 Play 서버에 실행마다 고유한 Redis key prefix도 전달한다. 외부 Redis endpoint를
-  지정해 여러 샘플을 병렬로 실행해도 match queue key가 서로 충돌하지 않게 하기 위해서다.
+- runner는 Play 서버에 실행마다 고유한 Redis key prefix도 전달한다. prefix는 같은 전용
+  container 안에서 sample 내부 key를 구분하기 위한 값이지, 여러 실행이 Redis를 공유하기 위한
+  장치가 아니다.
 - runner는 정상 종료와 실패 종료 모두에서 Redis container를 정리한다.
-- Docker를 사용할 수 없고 Redis endpoint도 없으면 runner는 명확한 오류를 출력하고 중단한다.
+- Docker를 사용할 수 없으면 runner는 명확한 오류를 출력하고 중단한다.
 - C++, .NET, Java, Kotlin, Node 샘플은 모두 같은 Redis endpoint 계약을 사용한다.
 
 ## 4. 프로세스와 책임
@@ -335,15 +335,15 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   시간을 둔 뒤 client self-check를 시작한다. 별도 readiness 프로젝트나 게임 시나리오
   안의 pub/sub 확인 message를 사용하지 않는다.
 - 샘플 실행에는 match queue Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로
-  받고, Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 외부 Redis endpoint가
-  주어지지 않으면 Docker로 Redis container를 준비하고, 샘플 종료 시 정리한다.
+  받고, Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 실행마다 Docker로
+  전용 Redis container를 준비하고, 샘플 종료 시 자신이 만든 container만 정리한다.
 - Redis client dependency는 match queue adapter 안에만 둔다. handler, actor, Spot, Domain
   코드가 Redis client 타입을 직접 참조하면 안 된다.
 - match queue Redis는 waiting room matching state 공유에만 사용한다. Spot owner lookup,
   actor route, session route, Spot pub/sub peer discovery를 match queue Redis로 우회하면
   Bingo 샘플의 location store 자동 연결 목적이 흐려진다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 location
-  store 기반 public spot remote address resolver 계약을 사용해야 한다. 샘플을 통과시키기
+  store 기반 `SpotRef` resolver 계약을 사용해야 한다. 샘플을 통과시키기
   위해 framework의 internal runtime 객체나 sample-local route helper로 remote join 경로를
   우회하면 안 된다.
 - Spot pub/sub 흐름은 각 언어 framework의 public Spot pub/sub API를 사용해야 한다.
@@ -565,7 +565,7 @@ EnsurePlayerActorReq {
   PreferredActorNodeRid: string
 }
 
-// protobuf 경계 전용 wire 메시지 — framework의 ZLinkActorRefSnapshot과의 변환은
+// protobuf 경계 전용 wire 메시지 — framework의 ActorRefSnapshot과의 변환은
 // generated message 경계 한 곳에서만 수행한다.
 ActorRefWire {
   NodeRid: bytes

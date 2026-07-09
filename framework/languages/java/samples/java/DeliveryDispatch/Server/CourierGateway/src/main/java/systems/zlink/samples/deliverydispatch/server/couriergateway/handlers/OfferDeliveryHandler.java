@@ -5,7 +5,7 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
 import systems.zlink.samples.deliverydispatch.server.couriergateway.CourierBinding;
@@ -34,7 +34,7 @@ public final class OfferDeliveryHandler
         return routes
             .requestToSpot(
                 SampleNames.CourierSpotDiscovery,
-                new ZLinkSpotAddress(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid),
+                new SpotRef(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid),
                 request)
             .timeout(SampleTimings.OfferRequestTimeout)
             .await(Messages.OfferDeliveryResult.class);

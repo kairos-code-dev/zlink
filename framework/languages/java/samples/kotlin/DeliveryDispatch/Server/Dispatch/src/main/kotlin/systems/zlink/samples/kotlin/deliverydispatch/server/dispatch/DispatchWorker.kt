@@ -4,7 +4,7 @@ import java.time.Instant
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
@@ -95,9 +95,9 @@ class DispatchWorker(
             .await(OfferDeliveryRes::class.java)
     }
 
-    private fun courierAddress(courierId: String): ZLinkSpotAddress {
+    private fun courierAddress(courierId: String): SpotRef {
         val nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId))
-        return ZLinkSpotAddress(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
+        return SpotRef(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
     }
 
     private fun publishStatus(

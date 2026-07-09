@@ -2,8 +2,8 @@ package systems.zlink.samples.kotlin.deliverydispatch.shared.contracts
 
 import java.time.Instant
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.actors.ZLinkActorRef
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot
+import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ActorRefSnapshot
 
 data class CreateDeliveryReq(
     val deliveryId: String,
@@ -55,11 +55,11 @@ data class ActorRefWire(
     val actorId: String,
     val generation: Long,
 ) {
-    fun toActorRef(): ZLinkActorRef =
-        ZLinkActorRef(RoutingId.from(nodeRid), actorId, generation)
+    fun toActorRef(): ActorRef =
+        ActorRef(RoutingId.from(nodeRid), actorId, generation)
 
     companion object {
-        fun from(actor: ZLinkActorRef): ActorRefWire =
+        fun from(actor: ActorRef): ActorRefWire =
             ActorRefWire(
                 nodeRid = actor.nodeRid().toString(),
                 actorId = actor.actorId(),
@@ -161,7 +161,7 @@ data class EnsureCustomerActorReq(
 
 data class EnsureCustomerActorRes(
     val customerId: String,
-    val actor: ZLinkActorRefSnapshot,
+    val actor: ActorRefSnapshot,
 )
 
 enum class DeliveryStatus {

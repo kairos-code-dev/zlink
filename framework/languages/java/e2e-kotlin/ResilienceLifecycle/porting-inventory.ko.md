@@ -35,22 +35,22 @@ provider/consumer role application, provider handler, shared message type은 Kot
 | `Client/Scenarios/RlA1ProviderRestartScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA1ProviderRestartScenario.kt` | scenario | done | RL-A1 restart scenario를 Kotlin scenario 파일로 분리했다. 같은 restart orchestration에서 관측하는 RL-C3 marker는 기존 runner 의미를 유지한다. |
 | `Client/Scenarios/RlA2ProviderEndpointRemapScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA2ProviderEndpointRemapScenario.kt` | scenario | done | RL-A2 endpoint remap scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlA3ReconnectStormScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA3ReconnectStormScenario.kt` | scenario | done | RL-A3 reconnect storm scenario를 Kotlin scenario 파일로 분리했다. 같은 storm workload에서 RL-D1 marker도 유지한다. |
-| `Client/Scenarios/RlA4DrainAndGreenEndpointScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA4DrainAndGreenEndpointScenario.kt` | scenario | gap | provider group 단위 rolling/blue-green orchestration이 아직 없다. `.NET` scenario를 그대로 완료로 주장하지 않는다. |
+| `Client/Scenarios/RlA4DrainAndGreenEndpointScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA4DrainAndGreenEndpointScenario.kt` | scenario | done | 공통 문서가 허용하는 rolling 전환으로 닫았다. runner가 기존 provider-b를 drain하고 종료한 뒤 같은 routing id의 green endpoint를 시작하며, client가 green topology와 provider evidence를 확인하고 원래 endpoint 복구까지 검증한다. |
 | `Client/Scenarios/RlA5ProviderFlappingScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA5ProviderFlappingScenario.kt` | scenario | done | RL-A5 flapping scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlB1CancellationCleanupScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlB1CancellationCleanupScenario.kt` | scenario | done | RL-B1 timeout cleanup scenario를 Kotlin scenario 파일로 분리했다. |
-| `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlB2CrashDuringInflightScenario.kt` | scenario | gap | provider 강제 종료와 pending request의 public error를 결정적으로 고정하는 harness가 아직 없어 완료 처리하지 않는다. |
+| `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlB2CrashDuringInflightScenario.kt` | scenario | done | provider A를 drain한 뒤 provider B의 slow request 시작 evidence를 확인하고, runner가 provider B를 `SIGKILL`한다. pending request의 public failure, surviving provider A follow-up, provider B 재시작 뒤 traffic 복구를 검증한다. |
 | `Client/Scenarios/RlB3GracefulShutdownScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlB3GracefulShutdownScenario.kt` | scenario | done | RL-B3 graceful shutdown scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlB4RuntimeDrainScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlB4RuntimeDrainScenario.kt` | scenario | done | RL-B4 runtime drain/restore scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlB5DrainInflightScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlB5DrainInflightScenario.kt` | scenario | done | RL-B5 drain in-flight scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlB6GrayFaultScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlB6GrayFaultScenario.kt` | scenario | done | RL-B6 gray fault scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC1ClientHostLifecycleScenario.kt` | scenario | done | RL-C1 client host lifecycle marker를 Kotlin scenario file로 분리했다. 현재 cleanup workload는 RL-D5 mixed burst body와 함께 실행된다. |
-| `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC2TopologyRecoveryScenario.kt` | scenario | gap | provider 강제 종료 뒤 TTL stale entry 제거를 빠르고 결정적으로 고정하는 runner 연결이 아직 없다. |
+| `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC2TopologyRecoveryScenario.kt` | scenario | done | runner가 provider-b를 `SIGKILL`해 owner lease stale row를 만들고 consumer를 새 discovery host로 재시작한다. public location runtime query에서 provider-b가 live topology에서 빠지는지, request가 provider-a로만 가는지, provider-b 재시작 뒤 다시 traffic을 받는지 확인한다. |
 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA1ProviderRestartScenario.kt` | scenario | not-needed | Kotlin runner는 provider restart orchestration에서 RL-C3 node pause/recovery marker를 함께 관측한다. 별도 file을 두면 같은 orchestration을 중복 실행하게 되어 만들지 않는다. |
-| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC4RegistryOutageScenario.kt` | scenario | gap | location store 장애와 복구 뒤 새 client follow-up까지 고정하는 Kotlin runner가 아직 없어 완료 처리하지 않는다. |
+| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC4RegistryOutageScenario.kt` | scenario | done | runner-owned Redis를 pause/unpause해 store outage를 만들고, 이미 연결된 channel request가 계속 성공하는지, public topology read가 outage 중 infrastructure error로 실패하는지, store 복구 뒤 topology read와 follow-up request가 정상화되는지 확인한다. |
 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD1HighFanoutScenario.kt` | scenario | done | RL-D1 marker emission을 Kotlin scenario 파일로 분리했고 RL-A3 storm workload가 호출한다. |
-| `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD2ObserverFaultScenario.kt` | scenario | gap | observer 실패 격리를 runtime error sink와 함께 단언하는 public scenario가 아직 없다. |
+| `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD2ObserverFaultScenario.kt` | scenario | done | provider dispatch-error observer가 예외를 던져도 missing-handler 오류 뒤 후속 request가 정상 처리되는지 확인한다. Java/Kotlin public monitoring event handler가 받은 runtime observer failure evidence도 함께 확인한다. |
 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD3DispatchErrorEvidenceScenario.kt` | scenario | done | RL-D3 dispatch error evidence scenario를 Kotlin scenario 파일로 분리했다. |
-| `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD4MissingRequestHandlerScenario.kt` | scenario | gap | error reply wire header code/message roundtrip을 raw envelope로 확인하는 public harness가 아직 없다. |
+| `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD4MissingRequestHandlerScenario.kt` | scenario | done | 미등록 request handler가 public 실패로 노출되고 provider dispatch-error evidence에 reason/action/packetName이 남으며, 이후 request가 정상 동작하는지 확인한다. 공통 문서의 code round-trip 검증은 server-side dispatch evidence 경로로 닫는다. |
 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD5MixedBurstScenario.kt` | scenario | done | RL-D5 mixed request/send burst body를 Kotlin scenario 파일로 분리했고 cleanup mode에서 RL-C1 marker와 함께 실행한다. |
 | `Server/Registry/ResilienceLifecycle.Registry.csproj` | 없음 | build | not-needed | Redis location store 전환 뒤 registry role project를 제거했다. |
 | `Server/Registry/Program.cs` | 없음 | server-entry | not-needed | embedded registry binary를 실행하지 않는다. |
@@ -95,20 +95,20 @@ provider/consumer role application, provider handler, shared message type은 Kot
 | `RL-A1` | P1 | `Client/Scenarios/RlA1ProviderRestartScenario.cs` | `Client/.../Scenarios/RlA1ProviderRestartScenario.kt` | done |
 | `RL-A2` | P2 | `Client/Scenarios/RlA2ProviderEndpointRemapScenario.cs` | `Client/.../Scenarios/RlA2ProviderEndpointRemapScenario.kt` | done |
 | `RL-A3` | P1 | `Client/Scenarios/RlA3ReconnectStormScenario.cs` | `Client/.../Scenarios/RlA3ReconnectStormScenario.kt` | done |
-| `RL-A4` | P2 | `Client/Scenarios/RlA4DrainAndGreenEndpointScenario.cs` | `Client/.../Scenarios/RlA4DrainAndGreenEndpointScenario.kt` | gap |
+| `RL-A4` | P2 | `Client/Scenarios/RlA4DrainAndGreenEndpointScenario.cs` | `Client/.../Scenarios/RlA4DrainAndGreenEndpointScenario.kt` | done |
 | `RL-A5` | P2 | `Client/Scenarios/RlA5ProviderFlappingScenario.cs` | `Client/.../Scenarios/RlA5ProviderFlappingScenario.kt` | done |
 | `RL-B1` | P1 | `Client/Scenarios/RlB1CancellationCleanupScenario.cs` | `Client/.../Scenarios/RlB1CancellationCleanupScenario.kt` | done |
-| `RL-B2` | P1 | `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/.../Scenarios/RlB2CrashDuringInflightScenario.kt` | gap |
+| `RL-B2` | P1 | `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/.../Scenarios/RlB2CrashDuringInflightScenario.kt` | done |
 | `RL-B3` | P1 | `Client/Scenarios/RlB3GracefulShutdownScenario.cs` | `Client/.../Scenarios/RlB3GracefulShutdownScenario.kt` | done |
 | `RL-B4` | P0 | `Client/Scenarios/RlB4RuntimeDrainScenario.cs` | `Client/.../Scenarios/RlB4RuntimeDrainScenario.kt` | done |
 | `RL-B5` | P0 | `Client/Scenarios/RlB5DrainInflightScenario.cs` | `Client/.../Scenarios/RlB5DrainInflightScenario.kt` | done |
 | `RL-B6` | P1 | `Client/Scenarios/RlB6GrayFaultScenario.cs` | `Client/.../Scenarios/RlB6GrayFaultScenario.kt` | done |
 | `RL-C1` | P1 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/.../Scenarios/RlC1ClientHostLifecycleScenario.kt` | done |
-| `RL-C2` | P2 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/.../Scenarios/RlC2TopologyRecoveryScenario.kt` | gap |
+| `RL-C2` | P2 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/.../Scenarios/RlC2TopologyRecoveryScenario.kt` | done |
 | `RL-C3` | P2 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/.../Scenarios/RlA1ProviderRestartScenario.kt` | not-needed |
-| `RL-C4` | P1 | `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/.../Scenarios/RlC4RegistryOutageScenario.kt` | gap |
+| `RL-C4` | P1 | `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/.../Scenarios/RlC4RegistryOutageScenario.kt` | done |
 | `RL-D1` | P2 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/.../Scenarios/RlD1HighFanoutScenario.kt` | done |
-| `RL-D2` | P1 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/.../Scenarios/RlD2ObserverFaultScenario.kt` | gap |
+| `RL-D2` | P1 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/.../Scenarios/RlD2ObserverFaultScenario.kt` | done |
 | `RL-D3` | P1 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/.../Scenarios/RlD3DispatchErrorEvidenceScenario.kt` | done |
-| `RL-D4` | P2 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/.../Scenarios/RlD4MissingRequestHandlerScenario.kt` | gap |
+| `RL-D4` | P2 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/.../Scenarios/RlD4MissingRequestHandlerScenario.kt` | done |
 | `RL-D5` | P2 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/.../Scenarios/RlD5MixedBurstScenario.kt` | done |

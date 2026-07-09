@@ -15,6 +15,7 @@ import systems.zlink.e2e.kotlin.spotservice.SpotRouteResolver
 import systems.zlink.e2e.kotlin.spotservice.session.endpoints.SessionEvidenceHttpServer
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.ActorAuthHandler
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.MultiBindHandler
+import systems.zlink.e2e.kotlin.spotservice.session.handlers.RemoteActorAuthHandler
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.ScenarioSession
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.SlowSessionHandler
 import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioActorFactory
@@ -24,6 +25,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -56,7 +58,7 @@ class SessionApplication {
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.addSpotRemoteAddressResolver(SpotRouteResolver::class.java)
+            options.addSpotRemoteRefResolver(SpotRouteResolver::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -75,6 +77,10 @@ class SessionApplication {
                     )
                     CompletableFuture.completedFuture(null)
                 }
+            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
+                .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT", ""))
+                .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT", ""))
+                .setRoutingId(RoutingId.from(nodeRid))
             options.addSpotMesh(Contracts.SPOT_MESH)
                 .enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid))
@@ -85,6 +91,7 @@ class SessionApplication {
                 .bind(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT"))
                 .registerSession(ScenarioSession::class.java)
                 .addSessionPacketHandler(ActorAuthHandler::class.java)
+                .addSessionPacketHandler(RemoteActorAuthHandler::class.java)
                 .addSessionPacketHandler(MultiBindHandler::class.java)
                 .addSessionPacketHandler(SlowSessionHandler::class.java)
         }
@@ -104,7 +111,7 @@ class SessionApplication {
     ): ApplicationRunner =
         ApplicationRunner {
             val spotRid = if (state.nodeRid() == "session-a") "actor-room-a" else "actor-room-b"
-            spots.getOrCreate(UserSpot::class.java, RoutingId.from(spotRid), "bootstrap")
+            spots.getOrCreate(UserSpot::class.java, RoutingId.from(spotRid), ZLinkMessage.of("bootstrap"))
                 .toCompletableFuture()
                 .join()
         }

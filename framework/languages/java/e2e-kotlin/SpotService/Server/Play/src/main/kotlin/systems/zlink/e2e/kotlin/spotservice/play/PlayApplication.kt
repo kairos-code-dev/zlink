@@ -22,6 +22,7 @@ import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -58,7 +59,7 @@ class PlayApplication {
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.addSpotRemoteAddressResolver(SpotRouteResolver::class.java)
+            options.addSpotRemoteRefResolver(SpotRouteResolver::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -77,17 +78,23 @@ class PlayApplication {
                     )
                     CompletableFuture.completedFuture(null)
                 }
-            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
+            val route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid))
-                .addRequestHandler(
-                    RoutePingHandler::class.java,
-                    Contracts.RoutePingReq::class.java,
-                    Contracts.RoutePingRes::class.java,
-                    Contracts.ROUTE_PACKET
-                )
+            route.addRequestHandler(
+                RoutePingHandler::class.java,
+                Contracts.RoutePingReq::class.java,
+                Contracts.RoutePingRes::class.java,
+                Contracts.ROUTE_PACKET
+            )
+            route.addRequestHandler(
+                EnsureActorHandler::class.java,
+                Contracts.EnsureActorReq::class.java,
+                Contracts.EnsureActorRes::class.java,
+                "EnsureActorReq"
+            )
             val peerIngress = if (nodeRid == "play-a") {
                 Env.get("ZLINK_KOTLIN_E2E_INGRESS_B_ENDPOINT")
             } else {
@@ -113,10 +120,20 @@ class PlayApplication {
             node.addSpotFactory(TimerScenarioSpot::class.java)
             node.addActorFactory("scenario", ScenarioActorFactory::class.java)
             val streamEndpoint = Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT")
-            if (streamEndpoint.isNotBlank()) {
-                options.addStreamNode("gateway")
-                    .bind(streamEndpoint)
-                    .registerSession(ScenarioSession::class.java)
+            val tlsStreamEndpoint = Env.get("ZLINK_KOTLIN_E2E_TLS_STREAM_ENDPOINT", "")
+            if (streamEndpoint.isNotBlank() || tlsStreamEndpoint.isNotBlank()) {
+                val stream = options.addStreamNode("gateway")
+                if (streamEndpoint.isNotBlank()) {
+                    stream.bind(streamEndpoint)
+                }
+                if (tlsStreamEndpoint.isNotBlank()) {
+                    stream.bind(tlsStreamEndpoint)
+                        .setTlsServer(
+                            Env.get("ZLINK_KOTLIN_E2E_TLS_CERTIFICATE_PATH"),
+                            Env.get("ZLINK_KOTLIN_E2E_TLS_KEY_PATH")
+                        )
+                }
+                stream.registerSession(ScenarioSession::class.java)
                     .addSessionPacketHandler(ActorAuthHandler::class.java)
             }
         }
@@ -136,7 +153,7 @@ class PlayApplication {
     ): ApplicationRunner =
         ApplicationRunner {
             val spotRid = if (state.nodeRid() == "play-a") "room-a" else "room-b"
-            spots.getOrCreate(UserSpot::class.java, RoutingId.from(spotRid), "bootstrap")
+            spots.getOrCreate(UserSpot::class.java, RoutingId.from(spotRid), ZLinkMessage.of("bootstrap"))
                 .toCompletableFuture()
                 .join()
         }

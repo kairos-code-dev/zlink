@@ -13,6 +13,7 @@ public final class ScenarioState {
     private final String providerRid;
     private int weight = 100;
     private boolean grayFailure;
+    private boolean observerThrows;
 
     public ScenarioState(String providerRid) {
         this.providerRid = providerRid;
@@ -36,6 +37,14 @@ public final class ScenarioState {
 
     public synchronized boolean grayFailure() {
         return grayFailure;
+    }
+
+    public synchronized void observerThrows(boolean value) {
+        observerThrows = value;
+    }
+
+    public synchronized boolean observerThrows() {
+        return observerThrows;
     }
 
     public void releaseSlow() {

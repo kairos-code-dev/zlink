@@ -16,7 +16,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -829,7 +829,7 @@ final class StreamSessionTest {
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             context.actors()
-                .bind(new ZLinkActorRef(
+                .bind(new ActorRef(
                     actorNodeRid,
                     "player-1",
                     1))

@@ -16,6 +16,7 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.spring.ZLinkMonitoringLifecycle
@@ -112,7 +113,7 @@ class ServiceApplication {
             spots.getOrCreate(
                 MonitoringSpot::class.java,
                 RoutingId.from("monitoring-room"),
-                "bootstrap",
+                ZLinkMessage.empty(),
             ).toCompletableFuture().join()
         }
     }

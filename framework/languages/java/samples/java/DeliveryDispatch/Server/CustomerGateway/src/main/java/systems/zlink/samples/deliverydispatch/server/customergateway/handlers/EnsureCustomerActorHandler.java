@@ -2,9 +2,9 @@ package systems.zlink.samples.deliverydispatch.server.customergateway.handlers;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ActorRefSnapshot;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -24,12 +24,12 @@ public final class EnsureCustomerActorHandler
     public Messages.CustomerActorEnsured handle(
         Messages.EnsureCustomerActor request,
         ZLinkRequestContext context) {
-        ZLinkActorRef actor = await(actors.getOrCreate(
+        ActorRef actor = await(actors.getOrCreate(
             request.customerId(),
             SampleNames.CustomerActorType,
             request));
         return new Messages.CustomerActorEnsured(
             request.customerId(),
-            ZLinkActorRefSnapshot.from(actor));
+            ActorRefSnapshot.from(actor));
     }
 }

@@ -41,12 +41,21 @@ public final class ConsumerApplication {
     }
 
     @Bean
-    ZLinkLocationStore locationStore(ConsumerOptions options) {
+    LocationStoreDelayState locationStoreDelayState() {
+        return new LocationStoreDelayState();
+    }
+
+    @Bean
+    ZLinkLocationStore locationStore(ConsumerOptions options, LocationStoreDelayState delayState) {
         ZLinkRedisLocationStore redisStore = new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
             .setConnectionString(options.redisLocationEndpoint())
             .setKeyPrefix(options.locationKeyPrefix())
             .setCommandTimeout(Duration.ofMillis(options.redisCommandTimeoutMillis())));
-        return "polling".equals(options.storeMode()) ? new PollingOnlyLocationStore(redisStore) : redisStore;
+        return switch (options.storeMode()) {
+            case "polling" -> new PollingOnlyLocationStore(redisStore);
+            case "delay" -> new DelayableLocationStore(redisStore, delayState);
+            default -> redisStore;
+        };
     }
 
     @Bean
@@ -54,7 +63,8 @@ public final class ConsumerApplication {
         ConsumerOptions options,
         systems.zlink.framework.channels.ZLinkClient client,
         systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle lifecycle,
+        LocationStoreDelayState delayState,
         ObjectMapper json) {
-        return new ConsumerEndpoints(options, client, lifecycle, json);
+        return new ConsumerEndpoints(options, client, lifecycle, delayState, json);
     }
 }

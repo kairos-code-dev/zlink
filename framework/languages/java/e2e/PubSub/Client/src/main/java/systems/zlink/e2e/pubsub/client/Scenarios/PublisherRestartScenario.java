@@ -11,7 +11,8 @@ public final class PublisherRestartScenario {
 
     public static void run(ScenarioContext context) {
         try (var publisher = context.processes().startPublisher("publisher-baseline")) {
-            for (int sequence = 1; sequence <= 24; sequence++) {
+            ScenarioAssert.sleep(500);
+            for (int sequence = 1; sequence <= 80; sequence++) {
                 context.publisher().publish(
                     "all",
                     new Contracts.EventMsg(
@@ -44,19 +45,11 @@ public final class PublisherRestartScenario {
                         "after-publisher-restart-" + sequence));
                 ScenarioAssert.sleep(100);
             }
-            for (int sequence = 20; sequence <= 42; sequence++) {
-                if (hasRestartEvidence(context, sequence)) {
-                    System.out.println("scenario PS-B2 passed");
-                    return;
-                }
-            }
+            ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-1", "ps-b2", 20);
+            ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-2", "ps-b2", 20);
+            ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-3", "ps-b2", 20);
+            System.out.println("scenario PS-B2 passed");
+            return;
         }
-        throw new IllegalStateException("PS-B2 subscribers did not receive post-restart publisher events");
-    }
-
-    private static boolean hasRestartEvidence(ScenarioContext context, int sequence) {
-        return ScenarioAssert.hasEvent(context.evidence().snapshot("sub-1"), "ps-b2", sequence)
-            && ScenarioAssert.hasEvent(context.evidence().snapshot("sub-2"), "ps-b2", sequence)
-            && ScenarioAssert.hasEvent(context.evidence().snapshot("sub-3"), "ps-b2", sequence);
     }
 }

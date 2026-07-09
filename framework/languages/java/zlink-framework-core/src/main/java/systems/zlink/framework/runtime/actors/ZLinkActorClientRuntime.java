@@ -12,9 +12,12 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import systems.zlink.contracts.errors.ZlinkRequestException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorRequestCall;
 import systems.zlink.framework.actors.ZLinkActorSendCall;
@@ -61,13 +64,13 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     }
 
     @Override
-    public ZLinkActorSendCall sendToActor(String actorId, Object message) {
-        return new SendCall(actorId, message);
+    public ZLinkActorSendCall sendToActor(ActorRef actorRef, Object message) {
+        return new SendCall(actorRef, message);
     }
 
     @Override
-    public ZLinkActorRequestCall requestToActor(String actorId, Object request) {
-        return new RequestCall(actorId, request);
+    public ZLinkActorRequestCall requestToActor(ActorRef actorRef, Object request) {
+        return new RequestCall(actorRef, request);
     }
 
     private CompletionStage<Void> sendAsync(String actorId, String packetName, Object message) {
@@ -86,6 +89,11 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                     }
                     return failed(unwrap(error));
                 }));
+    }
+
+    private CompletionStage<Void> sendAsync(ActorRef actorRef, String packetName, Object message) {
+        return submitSendWithRouteRetry(toBackendActorRef(actorRef), packetName, message)
+            .exceptionallyCompose(error -> failed(unwrap(error)));
     }
 
     private <TReply> CompletionStage<TReply> requestAsync(
@@ -114,6 +122,21 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                     }
                     return failed(unwrap(error));
                 }));
+    }
+
+    private <TReply> CompletionStage<TReply> requestAsync(
+        ActorRef actorRef,
+        String packetName,
+        Object request,
+        Duration timeout,
+        Class<TReply> replyType) {
+        return submitRequestWithRouteRetry(
+                toBackendActorRef(actorRef),
+                packetName,
+                request,
+                timeout,
+                replyType)
+            .exceptionallyCompose(error -> failed(unwrap(error)));
     }
 
     private CompletionStage<Void> submitSendWithRouteRetry(
@@ -331,6 +354,39 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
 
     private RuntimeException mapBackendException(Throwable error, String operationName) {
         Throwable unwrapped = unwrap(error);
+        if (unwrapped instanceof ZlinkRequestException request) {
+            return switch (request.getResult()) {
+                case NOT_CONNECTED -> new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                    operationName + " failed because the target route is not connected.",
+                    true,
+                    request);
+                case NOT_FOUND -> new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    operationName + " failed because the actor route was not found.",
+                    request);
+                case CONFLICT -> new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
+                    operationName + " failed because the actor location is stale.",
+                    true,
+                    request);
+                default -> request;
+            };
+        }
+        if (unwrapped instanceof ZlinkSubmitException submit) {
+            return switch (submit.getResult()) {
+                case NOT_CONNECTED -> new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                    operationName + " failed because the target route is not connected.",
+                    true,
+                    submit);
+                case NOT_FOUND -> new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    operationName + " failed because the actor route was not found.",
+                    submit);
+                default -> submit;
+            };
+        }
         String text = unwrapped.getMessage() == null ? "" : unwrapped.getMessage();
         if (text.contains("NOT_CONNECTED")) {
             return new ZLinkFrameworkException(
@@ -366,6 +422,14 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             row.actorRef().nodeRid(),
             row.actorRef().actorId(),
             row.actorRef().generation());
+    }
+
+    private static ZLinkBackendActorRef toBackendActorRef(ActorRef actorRef) {
+        java.util.Objects.requireNonNull(actorRef, "actorRef");
+        return new ZLinkBackendActorRef(
+            actorRef.nodeRid(),
+            actorRef.actorId(),
+            actorRef.generation());
     }
 
     private static boolean isStaleActorError(Throwable error) {
@@ -429,12 +493,12 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     }
 
     private final class SendCall implements ZLinkActorSendCall {
-        private final String actorId;
+        private final ActorRef actorRef;
         private final Object message;
         private String packetName;
 
-        SendCall(String actorId, Object message) {
-            this.actorId = actorId;
+        SendCall(ActorRef actorRef, Object message) {
+            this.actorRef = java.util.Objects.requireNonNull(actorRef, "actorRef");
             this.message = message;
             this.packetName = ZLinkPacketNames.resolve(message);
         }
@@ -447,18 +511,18 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
 
         @Override
         public CompletionStage<Void> submit() {
-            return sendAsync(actorId, packetName, message);
+            return sendAsync(actorRef, packetName, message);
         }
     }
 
     private final class RequestCall implements ZLinkActorRequestCall {
-        private final String actorId;
+        private final ActorRef actorRef;
         private final Object request;
         private String packetName;
         private Duration timeout;
 
-        RequestCall(String actorId, Object request) {
-            this.actorId = actorId;
+        RequestCall(ActorRef actorRef, Object request) {
+            this.actorRef = java.util.Objects.requireNonNull(actorRef, "actorRef");
             this.request = request;
             this.packetName = ZLinkPacketNames.resolve(request);
         }
@@ -477,7 +541,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
 
         @Override
         public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-            return requestAsync(actorId, packetName, request, timeout, replyType);
+            return requestAsync(actorRef, packetName, request, timeout, replyType);
         }
     }
 }

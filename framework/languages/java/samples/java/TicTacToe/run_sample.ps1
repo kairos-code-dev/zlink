@@ -9,8 +9,8 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
-$RolePattern = "systems\.zlink\.samples\.tictactoe\.server\.Program|systems\.zlink\.samples\.tictactoe\.client\.Program"
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+$RedisContainer = $null
 
 function Print-Logs {
     param([int]$Status)
@@ -18,18 +18,6 @@ function Print-Logs {
     Get-ChildItem -Path $LogDir -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Error "===== $($_.FullName) ====="
         Get-Content -Path $_.FullName -Tail 200 -ErrorAction SilentlyContinue | ForEach-Object { Write-Error $_ }
-    }
-}
-
-function Stop-RoleProcesses {
-    if ($IsWindows) {
-        Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match $RolePattern } | ForEach-Object {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-        }
-    } else {
-        & pgrep -f $RolePattern 2>$null | ForEach-Object {
-            & kill -9 $_ 2>$null
-        }
     }
 }
 
@@ -42,7 +30,9 @@ function Cleanup {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         }
     }
-    Stop-RoleProcesses
+    if ($RedisContainer) {
+        & docker rm -f $RedisContainer *> $null
+    }
 }
 
 function Reserve-Ports {
@@ -96,7 +86,14 @@ function Start-GradleRole {
     param([string[]]$Arguments, [string]$LogName)
     $logPath = Join-Path $LogDir $LogName
     $errorLogPath = Join-Path $LogDir ($LogName + ".err.log")
-    $process = Start-Process -FilePath $Gradle -ArgumentList $Arguments -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
+    $quotedArguments = $Arguments | ForEach-Object {
+        if ($_ -match '\s') {
+            '"' + ($_ -replace '"', '\"') + '"'
+        } else {
+            $_
+        }
+    }
+    $process = Start-Process -FilePath $Gradle -ArgumentList $quotedArguments -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
     $Processes.Add($process)
 }
 
@@ -108,6 +105,20 @@ try {
     $PlayStreamPort = $ports[2]
     $PlayChannelPort = $ports[3]
     $SpotPort = $ports[4]
+    $RedisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
+    if (-not $RedisEndpoint) {
+        $RedisContainer = "zlink-tictactoe-java-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7-alpine *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set."
+        }
+        $RedisEndpoint = (& docker port $RedisContainer 6379/tcp) -replace '.*:([0-9]+)$', '127.0.0.1:$1'
+    }
+    $RedisKeyPrefix = if ($env:TICTACTOE_REDIS_KEY_PREFIX) {
+        $env:TICTACTOE_REDIS_KEY_PREFIX
+    } else {
+        "zlink:tictactoe:${PID}:$([Guid]::NewGuid().ToString('N')):room:"
+    }
 
     $ConfigFile = Join-Path $SampleDir "build/sample-application.properties"
     @(
@@ -117,18 +128,20 @@ try {
         "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayChannelPort",
         "sample.playEndpoint=tcp://127.0.0.1:$PlayStreamPort",
         "sample.spotEndpoint=tcp://127.0.0.1:$SpotPort",
+        "sample.redisEndpoint=$RedisEndpoint",
+        "sample.redisKeyPrefix=$RedisKeyPrefix",
         "sample.logDirectory=$LogDir"
     ) | Set-Content -Path $ConfigFile -Encoding UTF8
 
-    Start-GradleRole -Arguments @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=play --config $ConfigFile") -LogName "play.log"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=play --config $ConfigFile") -LogName "play.log"
     Wait-Port $PlayStreamPort
     Wait-Port $PlayChannelPort
 
-    Start-GradleRole -Arguments @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=api --config $ConfigFile") -LogName "api.log"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=api --config $ConfigFile") -LogName "api.log"
     Wait-Port $ApiPort
     Wait-Port $ApiChannelPort
 
-    Invoke-Gradle @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Client:run", "--quiet", "--args=--api-url http://127.0.0.1:$ApiPort")
+    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", ":Client:run", "--quiet", "--args=--api-url http://127.0.0.1:$ApiPort")
     $Status = 0
 } finally {
     Cleanup $Status

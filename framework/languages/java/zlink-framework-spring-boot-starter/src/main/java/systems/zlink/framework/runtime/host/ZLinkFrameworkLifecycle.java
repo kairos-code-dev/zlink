@@ -23,7 +23,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
@@ -155,11 +155,11 @@ public final class ZLinkFrameworkLifecycle
     @Override
     public ZLinkSendCall sendToSpot(
         String channelName,
-        ZLinkSpotAddress address,
+        SpotRef spotRef,
         Object message) {
         return requireRuntime().route().sendToSpot(
             channelName,
-            address,
+            spotRef,
             message);
     }
 
@@ -174,11 +174,11 @@ public final class ZLinkFrameworkLifecycle
     @Override
     public ZLinkRequestCall requestToSpot(
         String channelName,
-        ZLinkSpotAddress address,
+        SpotRef spotRef,
         Object message) {
         return requireRuntime().route().requestToSpot(
             channelName,
-            address,
+            spotRef,
             message);
     }
 

@@ -7,8 +7,6 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActor;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActorDirectory;
-import systems.zlink.samples.deliverydispatch.server.customergateway.spots.handlers.DeliveryStatusUpdatedHandler;
-import systems.zlink.samples.deliverydispatch.server.customergateway.spots.handlers.SubscribeDeliveryActorHandler;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
@@ -25,12 +23,6 @@ public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
     @Override
     public ZLinkEntrySpotContext context() {
         return context;
-    }
-
-    @Override
-    public void configure() {
-        context.handlers().addHandler(DeliveryStatusUpdatedHandler.class);
-        context.handlers().addHandler(SubscribeDeliveryActorHandler.class);
     }
 
     @Override

@@ -21,6 +21,6 @@
 runner는 Gradle `installDist`를 먼저 실행한 뒤 Client suite를 띄운다. provider와 consumer
 role binary의 시작, 종료, 재시작은 Client support가 담당한다. 실행 로그는 `logs/<run-id>/` 아래에 남는다.
 
-현재 Java 구현은 `feature-map.ko.md`에 적은 scenario만 완료로 본다. public API나 harness 제어가 더
-필요한 항목은 gap으로 남긴다. `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은
-있으며, 완료되지 않은 scenario 파일은 선택되면 gap 사유와 함께 실패한다.
+현재 Java 구현의 완료 상태는 `feature-map.ko.md`를 기준으로 본다. `.NET Client/Scenarios/*.cs`에
+대응하는 Java Client scenario 파일은 있으며, 구현된 scenario는 `Server/Consumer`의 HTTP endpoint를
+호출한다.

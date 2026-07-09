@@ -7,6 +7,6 @@ public final class RlA4DrainAndGreenEndpointScenario {
     }
 
     public static void run(ConsumerScenarioClient consumer) {
-        ConsumerScenarioClient.unsupported("RL-A4", "rolling/blue-green orchestration is not implemented");
+        consumer.runMode("rolling-green");
     }
 }

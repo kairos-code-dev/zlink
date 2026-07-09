@@ -17,7 +17,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
@@ -278,7 +278,7 @@ final class ZLinkRedisLocationRowJson {
         return value == null ? 0 : value.value();
     }
 
-    private static void putActorRef(ObjectNode node, String field, ZLinkActorRef value) {
+    private static void putActorRef(ObjectNode node, String field, ActorRef value) {
         if (value == null) {
             node.putNull(field);
             return;
@@ -290,15 +290,15 @@ final class ZLinkRedisLocationRowJson {
         node.set(field, actorRef);
     }
 
-    private static ZLinkActorRef actorRef(JsonNode node) {
+    private static ActorRef actorRef(JsonNode node) {
         if (node == null || node.isNull()) {
             return null;
         }
         if (node.isTextual()) {
             String legacy = node.asText();
-            return legacy.isBlank() ? null : new ZLinkActorRef(null, legacy, 0);
+            return legacy.isBlank() ? null : new ActorRef(null, legacy, 0);
         }
-        return new ZLinkActorRef(
+        return new ActorRef(
             rid(node, "nodeRid"),
             text(node, "actorId"),
             node.path("generation").asLong());

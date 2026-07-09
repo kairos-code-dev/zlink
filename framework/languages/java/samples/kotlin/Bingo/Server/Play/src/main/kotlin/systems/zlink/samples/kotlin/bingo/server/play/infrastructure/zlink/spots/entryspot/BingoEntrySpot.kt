@@ -14,9 +14,6 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.handlers.EnsurePlayerActorHandler
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers.MatchBingoActorHandler
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers.ObserveBingoEventsHandler
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
@@ -29,12 +26,6 @@ class BingoEntrySpot(
     private val json: ObjectMapper,
 ) : ZLinkEntrySpot<PlayerActor> {
     override fun context(): ZLinkEntrySpotContext = context
-
-    override fun configure() {
-        context.handlers().addHandler(EnsurePlayerActorHandler::class.java)
-        context.handlers().addHandler(MatchBingoActorHandler::class.java)
-        context.handlers().addHandler(ObserveBingoEventsHandler::class.java)
-    }
 
     override fun onCreateActor(
         actor: PlayerActor,

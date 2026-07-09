@@ -11,6 +11,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ZlinkRequestException;
@@ -43,7 +45,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             thread.setDaemon(true);
             return thread;
         });
-    private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
+    static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
         "zlink.framework.actor.bound_session.bind";
 
     static {
@@ -58,6 +60,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private final ZLinkActorRuntime actorRuntime;
     private final ZLinkActor actor;
     private final ZLinkStreamCodec defaultCodec;
+    private final Predicate<RoutingId> routeReady;
     private long bindingToken;
     private Runnable unbindListener = () -> {};
 
@@ -69,7 +72,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actorRuntime,
         ZLinkActor actor,
-        ZLinkStreamCodec defaultCodec) {
+        ZLinkStreamCodec defaultCodec,
+        Predicate<RoutingId> routeReady) {
         this.stream = stream;
         this.spotNode = spotNode;
         this.sessionRid = sessionRid;
@@ -78,6 +82,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         this.actorRuntime = actorRuntime;
         this.actor = actor;
         this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
+        this.routeReady = routeReady == null ? ignored -> true : routeReady;
     }
 
     void setBindingToken(long bindingToken) {
@@ -103,21 +108,86 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             REMOTE_BOUND_SESSION_BIND_PACKET_NAME,
             Map.of());
         return ignoreMissingBinding(stream.unbindActor(sessionRid, actorId).submit(timeout))
-            .thenCompose(unbound -> bindActorWithRetry(stream, sessionRid, targetActor, timeout)
-            .thenCompose(ignored -> {
+            .thenCompose(unbound -> awaitRouteReady(targetActor, timeout))
+            .thenCompose(ignored -> bindActorWithRetry(stream, sessionRid, targetActor, timeout))
+            .thenCompose(ignored -> relayBoundSessionBindWithRetry(header, timeout));
+    }
+
+    private CompletionStage<Void> awaitRouteReady(
+        ZLinkBackendActorRef targetActor,
+        java.time.Duration timeout) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                if (routeReady.test(targetActor.nodeRid())) {
+                    result.complete(null);
+                    return;
+                }
+                if (System.nanoTime() >= deadline) {
+                    result.completeExceptionally(new TimeoutException(
+                        "remote bound session route was not ready before timeout: "
+                            + actorId));
+                    return;
+                }
+                RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
+            }
+        }
+        new Attempt().run();
+        return result;
+    }
+
+    private CompletionStage<Void> relayBoundSessionBindWithRetry(
+        ZLinkStreamHeader header,
+        java.time.Duration timeout) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
                 try (Message body = Message.from(new byte[0])) {
                     if (stream.relayBoundActor(
                         sessionRid,
                         actorId,
                         header,
                         List.of(body),
-                        SendFlags.NONE)) {
-                        return systems.zlink.framework.ZLinkSubmitStage.completed();
+                        SendFlags.DONT_WAIT)) {
+                        result.complete(null);
+                        return;
                     }
-                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                        "remote bound session bind relay failed: " + actorId));
+                    if (System.nanoTime() >= deadline) {
+                        result.completeExceptionally(new TimeoutException(
+                            "remote bound session bind relay was not ready before timeout: "
+                                + actorId));
+                        return;
+                    }
+                    RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
+                } catch (ZlinkSubmitException ex) {
+                    if (!isRetryableSubmitResult(ex.getResult())) {
+                        result.completeExceptionally(ex);
+                        return;
+                    }
+                    if (System.nanoTime() >= deadline) {
+                        result.completeExceptionally(new TimeoutException(
+                            "remote bound session bind relay was not ready before timeout: "
+                                + actorId));
+                        return;
+                    }
+                    RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
                 }
-            }));
+            }
+        }
+        new Attempt().run();
+        return result;
     }
 
     private static CompletionStage<Void> bindActorWithRetry(

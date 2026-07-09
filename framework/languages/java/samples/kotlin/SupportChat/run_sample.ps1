@@ -1,0 +1,187 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $SampleDir
+
+$RunDir = Join-Path ([System.IO.Path]::GetTempPath()) "supportchat-kotlin-$PID-$([Guid]::NewGuid().ToString('N'))"
+$LogDir = Join-Path $RunDir "logs"
+$SampleLogDir = Join-Path $RunDir "sample-logs"
+$BuildLog = Join-Path $LogDir "build.log"
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
+$env:SUPPORTCHAT_LOG_DIR = $SampleLogDir
+$env:SUPPORTCHAT_REDIS_KEY_PREFIX = "supportchat:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):"
+
+$Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
+$Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+$RedisContainer = $null
+$Status = 1
+
+function Cleanup {
+    param([int]$ExitStatus)
+    if ($ExitStatus -ne 0) {
+        Get-ChildItem -Path $LogDir -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.FullName) ====="
+            Get-Content -Path $_.FullName -Tail 200 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+        }
+    }
+    for ($i = $Processes.Count - 1; $i -ge 0; $i--) {
+        $process = $Processes[$i]
+        if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($process in $Processes) {
+        try {
+            $process.WaitForExit(2000) | Out-Null
+        } catch {
+        }
+        if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if ($RedisContainer) {
+        & docker rm -f $RedisContainer *> $null
+    }
+    if ($env:SUPPORTCHAT_KEEP_RUN_DIR -eq "1") {
+        Write-Host "runDir=$RunDir"
+    } else {
+        Remove-Item -Recurse -Force $RunDir -ErrorAction SilentlyContinue
+    }
+}
+
+function Reserve-Ports {
+    param([int]$Count)
+    $listeners = New-Object System.Collections.Generic.List[System.Net.Sockets.TcpListener]
+    $ports = New-Object System.Collections.Generic.List[int]
+    try {
+        while ($ports.Count -lt $Count) {
+            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse("127.0.0.1"), 0)
+            $listener.Start()
+            $listeners.Add($listener)
+            $ports.Add($listener.LocalEndpoint.Port)
+        }
+        return $ports.ToArray()
+    } finally {
+        foreach ($listener in $listeners) {
+            $listener.Stop()
+        }
+    }
+}
+
+function Wait-Port {
+    param([string]$Name, [string]$Endpoint, [int]$TimeoutSeconds = 60)
+    $address = $Endpoint -replace '^tcp://', ''
+    $parts = $address.Split(':')
+    $hostName = $parts[0]
+    $port = [int]$parts[1]
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $connect = $client.BeginConnect($hostName, $port, $null, $null)
+            if ($connect.AsyncWaitHandle.WaitOne(200)) {
+                $client.EndConnect($connect)
+                return
+            }
+        } catch {
+        } finally {
+            $client.Close()
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for $Name at $Endpoint"
+}
+
+function Wait-Log {
+    param([string]$Pattern, [string]$Path, [int]$Attempts = 60)
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        if ((Test-Path $Path) -and (Select-String -Path $Path -Pattern $Pattern -Quiet)) {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    throw "Timed out waiting for '$Pattern' in $Path"
+}
+
+function Start-Role {
+    param([string]$Name, [string]$Binary)
+    $logPath = Join-Path $LogDir "$Name.log"
+    $errPath = Join-Path $LogDir "$Name.err.log"
+    $process = Start-Process -FilePath $Binary -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errPath -PassThru
+    $Processes.Add($process)
+}
+
+try {
+    $ports = Reserve-Ports 8
+    $env:SUPPORTCHAT_API_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[0])"
+    $env:SUPPORTCHAT_API_HTTP_ENDPOINT = "http://127.0.0.1:$($ports[1])"
+    $env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
+    $env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
+    $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[4])"
+    $env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[5])"
+    $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
+    $env:SUPPORTCHAT_STREAM_ENDPOINT = "tcp://127.0.0.1:$($ports[7])"
+
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker is required to run the SupportChat sample."
+    }
+    $RedisContainer = "zlink-supportchat-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+    & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to start Redis container."
+    }
+    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+    $env:SUPPORTCHAT_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    Wait-Port "redis" "tcp://$env:SUPPORTCHAT_REDIS_ENDPOINT"
+
+    & $Gradle --settings-file standalone.settings.gradle.kts --no-daemon --no-parallel --max-workers=1 `
+        :Server:Api:installDist `
+        :Server:Session:installDist `
+        :Server:Support:installDist `
+        :Client:installDist *> $BuildLog
+    if ($LASTEXITCODE -ne 0) {
+        throw "Gradle installDist failed."
+    }
+
+    Start-Role "support" (Join-Path $SampleDir "Server/Support/build/install/Support/bin/Support")
+    Wait-Port "support-channel" $env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
+    Wait-Port "support-entry-router" $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
+    Wait-Port "support-entry-pub" $env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
+
+    Start-Role "api" (Join-Path $SampleDir "Server/Api/build/install/Api/bin/Api")
+    Wait-Port "api-channel" $env:SUPPORTCHAT_API_CHANNEL_ENDPOINT
+
+    Start-Role "session" (Join-Path $SampleDir "Server/Session/build/install/Session/bin/Session")
+    Wait-Port "session-spot" $env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT
+    Wait-Port "session-router" $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
+    Wait-Port "session-stream" $env:SUPPORTCHAT_STREAM_ENDPOINT
+
+    $clientLog = Join-Path $LogDir "client.log"
+    & (Join-Path $SampleDir "Client/build/install/Client/bin/Client") `
+        --stream-endpoint $env:SUPPORTCHAT_STREAM_ENDPOINT *> $clientLog
+    if ($LASTEXITCODE -ne 0) {
+        throw "SupportChat client failed."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "supportchat=completed" -Quiet)) {
+        throw "SupportChat client did not complete."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "supportchat-closed-typing-ignore=verified" -Quiet)) {
+        throw "SupportChat client did not verify closed typing ignore."
+    }
+
+    Wait-Log "support conversation: created" (Join-Path $LogDir "support.log")
+    Wait-Log "support conversation: actor joined" (Join-Path $LogDir "support.log")
+    Wait-Log "status=WaitingForAgent" (Join-Path $LogDir "support.log")
+    Wait-Log "status=Active" (Join-Path $LogDir "support.log")
+    Wait-Log "status=WaitingForClose" (Join-Path $LogDir "support.log")
+    Wait-Log "status=Closed" (Join-Path $LogDir "support.log")
+    if (-not (Select-String -Path (Join-Path $SampleLogDir "*.log") -Pattern "message flow" -Quiet)) {
+        throw "SupportChat message-flow evidence was not found."
+    }
+    Write-Host "supportchat-server-evidence=completed"
+    $Status = 0
+} finally {
+    Cleanup $Status
+}

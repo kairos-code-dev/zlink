@@ -22,15 +22,15 @@ import systems.zlink.framework.actors.ZLinkActorJoinCall
 import systems.zlink.framework.actors.ZLinkActorJoinResult
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall
 import systems.zlink.framework.actors.ZLinkActorPlacement
-import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.actors.ZLinkActorRequestCall
 import systems.zlink.framework.actors.ZLinkActorSendCall
+import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind
 import systems.zlink.framework.errors.ZLinkFrameworkException
-import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
@@ -82,7 +82,7 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     @Test
-    fun `route spot address extensions delegate to Java spot address surface`() = runBlocking {
+    fun `route spot ref extensions delegate to Java spot ref surface`() = runBlocking {
         val route = RecordingRouteClient("reply")
         val message = Message.from("request")
 
@@ -99,16 +99,16 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     @Test
-    fun `actor client suspend extensions delegate to Java actor client calls`() = runBlocking {
+    fun `actor client suspend extensions delegate to Java actor ref client calls`() = runBlocking {
         val actorClient = RecordingActorClient(ActorReply("reply"))
 
-        actorClient.sendToActorAwait("actor-a", ActorMessage("send"))
-        val reply = actorClient.requestToActorAwait<ActorReply>("actor-a", ActorMessage("request"))
+        actorClient.sendToActorAwait(ACTOR_REF, ActorMessage("send"))
+        val reply = actorClient.requestToActorAwait<ActorReply>(ACTOR_REF, ActorMessage("request"))
 
         assertEquals(ActorReply("reply"), reply)
-        assertEquals("actor-a", actorClient.sentActorId)
+        assertEquals(ACTOR_REF, actorClient.sentActorRef)
         assertEquals(ActorMessage("send"), actorClient.sentMessage)
-        assertEquals("actor-a", actorClient.requestedActorId)
+        assertEquals(ACTOR_REF, actorClient.requestedActorRef)
         assertEquals(ActorMessage("request"), actorClient.requestedMessage)
     }
 
@@ -167,19 +167,19 @@ class KotlinFrameworkExtensionsContractTest {
     private data class ActorReply(val value: String)
 
     private class RecordingActorDirectory(
-        private val actorRef: ZLinkActorRef,
+        private val actorRef: ActorRef,
     ) : ZLinkActorDirectory {
         var actorId: String? = null
         var request: ZLinkMessage? = null
 
-        override fun find(actorId: String): CompletionStage<Optional<ZLinkActorRef>> =
+        override fun find(actorId: String): CompletionStage<Optional<ActorRef>> =
             CompletableFuture.completedFuture(Optional.empty())
 
         override fun ensure(
             actorId: String,
             createRequest: ZLinkMessage,
             placement: ZLinkActorPlacement,
-        ): CompletionStage<ZLinkActorRef> {
+        ): CompletionStage<ActorRef> {
             this.actorId = actorId
             this.request = createRequest
             return CompletableFuture.completedFuture(actorRef)
@@ -240,16 +240,16 @@ class KotlinFrameworkExtensionsContractTest {
         private val reply: TReply,
     ) : ZLinkRouteClient {
         var sendChannel: String? = null
-        var sendAddress: ZLinkSpotAddress? = null
+        var sendAddress: SpotRef? = null
         var sendMessage: Any? = null
         var requestChannel: String? = null
-        var requestAddress: ZLinkSpotAddress? = null
+        var requestAddress: SpotRef? = null
         var requestMessage: Any? = null
 
         override fun sendToNode(channelName: String, target: RoutingId, message: Any): ZLinkSendCall =
             RecordingSendCall()
 
-        override fun sendToSpot(channelName: String, address: ZLinkSpotAddress, message: Any): ZLinkSendCall {
+        override fun sendToSpot(channelName: String, address: SpotRef, message: Any): ZLinkSendCall {
             sendChannel = channelName
             sendAddress = address
             sendMessage = message
@@ -259,7 +259,7 @@ class KotlinFrameworkExtensionsContractTest {
         override fun requestToNode(channelName: String, target: RoutingId, message: Any): ZLinkRequestCall =
             RecordingRequestCall(reply)
 
-        override fun requestToSpot(channelName: String, address: ZLinkSpotAddress, message: Any): ZLinkRequestCall {
+        override fun requestToSpot(channelName: String, address: SpotRef, message: Any): ZLinkRequestCall {
             requestChannel = channelName
             requestAddress = address
             requestMessage = message
@@ -291,19 +291,19 @@ class KotlinFrameworkExtensionsContractTest {
     private class RecordingActorClient<TReply>(
         private val reply: TReply,
     ) : ZLinkActorClient {
-        var sentActorId: String? = null
+        var sentActorRef: ActorRef? = null
         var sentMessage: Any? = null
-        var requestedActorId: String? = null
+        var requestedActorRef: ActorRef? = null
         var requestedMessage: Any? = null
 
-        override fun sendToActor(actorId: String, message: Any): ZLinkActorSendCall {
-            sentActorId = actorId
+        override fun sendToActor(actorRef: ActorRef, message: Any): ZLinkActorSendCall {
+            sentActorRef = actorRef
             sentMessage = message
             return RecordingActorSendCall()
         }
 
-        override fun requestToActor(actorId: String, request: Any): ZLinkActorRequestCall {
-            requestedActorId = actorId
+        override fun requestToActor(actorRef: ActorRef, request: Any): ZLinkActorRequestCall {
+            requestedActorRef = actorRef
             requestedMessage = request
             return RecordingActorRequestCall(reply)
         }
@@ -414,7 +414,7 @@ class KotlinFrameworkExtensionsContractTest {
     companion object {
         private val NODE_RID: RoutingId = RoutingId.from(byteArrayOf(0x01))
         private val SPOT_RID: RoutingId = RoutingId.from(byteArrayOf(0x02))
-        private val ACTOR_REF = ZLinkActorRef(NODE_RID, "actor-a", 7)
-        private val SPOT_ADDRESS = ZLinkSpotAddress("mesh", NODE_RID, SPOT_RID)
+        private val ACTOR_REF = ActorRef(NODE_RID, "actor-a", 7)
+        private val SPOT_ADDRESS = SpotRef("mesh", NODE_RID, SPOT_RID)
     }
 }

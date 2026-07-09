@@ -34,7 +34,7 @@ public final class EnsureSpotReqHandler
                 Contracts.SPOT_MESH,
                 SpotMsgRouteHandler.targetNode(dispatch),
                 request)
-            .timeout(Duration.ofSeconds(5))
+            .timeout(Duration.ofSeconds(30))
             .await(Contracts.EnsureSpotRes.class);
         context.client().reply(reply).await();
     }

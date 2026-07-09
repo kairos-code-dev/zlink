@@ -5,6 +5,7 @@ import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
 import java.time.Duration
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -22,14 +23,17 @@ class UserSpot(
     override fun context(): ZLinkSpotContext = context
 
     override fun configure() {
-        context.handlers().addPacket(StateRequestHandler::class.java)
-        context.handlers().addPacket(StateCommandHandler::class.java)
-        context.handlers().addPacket(SlowRequestHandler::class.java)
-        context.handlers().addPacket(OutboundRequestHandler::class.java)
-        context.handlers().addPacket(SpotToSpotCommandHandler::class.java)
-        context.handlers().addPacket(OutboundCommandHandler::class.java)
-        context.handlers().addSubscribe("spot.events", SpotEventHandler::class.java)
-        context.handlers().addActorRequest(UserActorEchoHandler::class.java)
+        context.handlers().addHandler<StateRequestHandler>()
+        context.handlers().addHandler<StateCommandHandler>()
+        context.handlers().addHandler<StageProbeHandler>()
+        context.handlers().addHandler<StageTimerStartHandler>()
+        context.handlers().addHandler<SlowRequestHandler>()
+        context.handlers().addHandler<OutboundRequestHandler>()
+        context.handlers().addHandler<SpotToSpotCommandHandler>()
+        context.handlers().addHandler<OutboundCommandHandler>()
+        context.handlers().addHandler<SpotEventHandler>()
+        context.handlers().addHandler<UserActorEchoHandler>()
+        context.handlers().addHandler<UserActorLeaveHandler>()
     }
 
     override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {

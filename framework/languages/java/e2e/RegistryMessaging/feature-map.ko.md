@@ -7,7 +7,8 @@ public HTTP client만 사용한다.
 ## 실행 구조 상태
 
 - `implemented`: provider, workflow, consumer, client는 별도 Gradle application과 별도 process로
-  실행한다. 모든 scenario는 Redis location store extension과 실행별 key prefix를 공유한다.
+  실행한다. runner는 실행별 전용 Redis container와 key prefix를 준비하고 모든 scenario가 같은
+  Redis location store extension을 공유한다.
 - `implemented`: client scenario는 Java framework를 직접 호출하지 않고, 역할 server의 HTTP
   endpoint를 호출한다.
 - `implemented`: provider, workflow, consumer role은 HTTP health endpoint를 제공한다. provider와
@@ -55,9 +56,9 @@ public HTTP client만 사용한다.
 - `timeout 420s ./run_e2e.sh`
   - 결과: common, weighted, scale-out, scale-in, failover 단계가 모두
     `registry-messaging e2e result=passed` 출력
-  - 로그: `logs/20260704-040035-91818/`
-  - registry fallback runner 경로와 registry HTTP client 제거 뒤 재검증했다. `RM-C9` recovery
-    evidence는 location store 연결이 선택할 수 있는 양쪽 provider를 합산해 확인한다.
+  - 로그: `logs/20260707-220606-3599616/`
+  - runner가 전용 Redis location store를 준비하는 경로로 재검증했다. `RM-C9` recovery evidence는
+    location store 연결이 선택할 수 있는 양쪽 provider를 합산해 확인한다.
 - 단일 scenario 검증:
   - `RM-A1`: `logs/20260703-200744-25342/`
   - `RM-A2`: `logs/20260703-201929-65452/`
@@ -72,4 +73,4 @@ public HTTP client만 사용한다.
   - `RM-C5`: `logs/20260703-201906-63144/`
   - `RM-C7`: `logs/20260703-202238-83024/`
   - `RM-C8`: `logs/20260703-202115-75588/`
-  - `RM-C9`: `logs/20260703-202137-77586/`
+  - `RM-C9`: `logs/20260707-220422-3590936/`

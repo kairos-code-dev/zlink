@@ -12,6 +12,7 @@ import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
@@ -134,7 +135,7 @@ final class PollingOnlyLocationStore implements ZLinkLocationStore {
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> renewOwnerLeaseAsync(
+    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
         String ownerId,
         RoutingId nodeRid,
         Duration leaseTtl) {
@@ -142,7 +143,7 @@ final class PollingOnlyLocationStore implements ZLinkLocationStore {
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeOwnerLeaseAsync(String ownerId) {
+    public CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
         return inner.removeOwnerLeaseAsync(ownerId);
     }
 

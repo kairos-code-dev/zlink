@@ -11,6 +11,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -79,10 +80,10 @@ public final class PlayApplication {
             if (!"play-a".equals(Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "play-a"))) {
                 return;
             }
-            spots.getOrCreate(ProbeSpot.class, RoutingId.from("room-a"), "bootstrap")
+            spots.getOrCreate(ProbeSpot.class, RoutingId.from("room-a"), ZLinkMessage.of("bootstrap"))
                 .toCompletableFuture()
                 .join();
-            spots.getOrCreate(ProbeSpot.class, RoutingId.from("room-b"), "bootstrap")
+            spots.getOrCreate(ProbeSpot.class, RoutingId.from("room-b"), ZLinkMessage.of("bootstrap"))
                 .toCompletableFuture()
                 .join();
         };

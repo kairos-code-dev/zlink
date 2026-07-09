@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
@@ -95,7 +95,7 @@ class ZLinkRedisLocationRowJsonTest {
         ZLinkActorLocation row = ZLinkRedisLocationRowJson.deserializeActor(json, 5, UPDATED_AT.plusSeconds(2));
 
         assertEquals("game", row.actorType());
-        assertEquals(new ZLinkActorRef(RoutingId.fromHex("01"), "actor-1", 7), row.actorRef());
+        assertEquals(new ActorRef(RoutingId.fromHex("01"), "actor-1", 7), row.actorRef());
         assertEquals(ZLinkSpotKind.USER, row.locationKind());
         assertEquals("game", row.spotMeshName());
         assertEquals(5, row.generation());
@@ -165,7 +165,7 @@ class ZLinkRedisLocationRowJsonTest {
         return new ZLinkActorLocation(
             "actor-1",
             "player",
-            new ZLinkActorRef(RoutingId.from("node-1"), "actor-1", 1),
+            new ActorRef(RoutingId.from("node-1"), "actor-1", 1),
             RoutingId.from("node-1"),
             ZLinkSpotKind.ENTRY,
             "play",

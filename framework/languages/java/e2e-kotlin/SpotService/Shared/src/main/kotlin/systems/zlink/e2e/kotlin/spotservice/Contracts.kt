@@ -28,6 +28,39 @@ class Contracts private constructor() {
     data class StateMsg(val value: String)
 
     @JvmRecord
+    data class StageProbeReq(
+        val marker: String,
+        val op: String
+    )
+
+    @JvmRecord
+    data class StageTimerStartMsg(
+        val name: String,
+        val periodMilliseconds: Int
+    )
+
+    @JvmRecord
+    data class SpotStageProbeReq(
+        val spotRid: String,
+        val marker: String,
+        val op: String
+    )
+
+    @JvmRecord
+    data class SpotStageTimerReq(
+        val spotRid: String,
+        val name: String,
+        val periodMilliseconds: Int
+    )
+
+    @JvmRecord
+    data class SpotStageTimerRes(
+        val spotRid: String,
+        val name: String,
+        val started: Boolean
+    )
+
+    @JvmRecord
     data class SlowReq(val value: String)
 
     @JvmRecord
@@ -84,6 +117,17 @@ class Contracts private constructor() {
         val spotRid: String,
         val value: String,
         val packetName: String = "StateMsg"
+    )
+
+    @JvmRecord
+    data class CreateSpotReq(
+        val spotRid: String
+    )
+
+    @JvmRecord
+    data class CreateSpotRes(
+        val spotRid: String,
+        val nodeRid: String
     )
 
     @JvmRecord
@@ -150,6 +194,33 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
+    data class SpotOnlyMeshReq(
+        val sourceSpotRid: String,
+        val targetSpotRid: String,
+        val marker: String
+    )
+
+    @JvmRecord
+    data class SpotOnlyMeshRes(
+        val sourceSpotRid: String,
+        val targetSpotRid: String,
+        val targetValue: Int
+    )
+
+    @JvmRecord
+    data class SpotOnlyJoinReq(
+        val targetSpotRid: String,
+        val actorId: String,
+        val marker: String
+    )
+
+    @JvmRecord
+    data class SpotOnlyJoinRes(
+        val accepted: Boolean,
+        val actorId: String
+    )
+
+    @JvmRecord
     data class MultiNodeStateRes(
         val spotRid: String,
         val nodeRid: String,
@@ -176,6 +247,13 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
+    data class ActorRemoteAuthReq(
+        val actorId: String,
+        val profile: ActorProfile,
+        val nodeRid: String
+    )
+
+    @JvmRecord
     data class ActorAuthRes(
         val actorId: String,
         val nodeRid: String,
@@ -183,6 +261,19 @@ class Contracts private constructor() {
         val displayName: String,
         val level: Int,
         val tags: List<String>
+    )
+
+    @JvmRecord
+    data class EnsureActorReq(
+        val actorId: String,
+        val profile: ActorProfile
+    )
+
+    @JvmRecord
+    data class EnsureActorRes(
+        val actorId: String,
+        val nodeRid: String,
+        val generation: Long
     )
 
     @JvmRecord

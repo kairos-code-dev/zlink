@@ -12,12 +12,14 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
@@ -38,7 +40,7 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 
 final class ZLinkActorClientRuntimeTest {
     @Test
-    void sendAndRequestResolveActorIdAndUseBackendNoBindOperations() {
+    void sendAndRequestUseActorRefAndUseBackendNoBindOperations() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         store.renewOwnerLeaseAsync("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
             .toCompletableFuture()
@@ -47,7 +49,7 @@ final class ZLinkActorClientRuntimeTest {
                 new ZLinkActorLocation(
                     "actor-1",
                     "test",
-                    new ZLinkActorRef(RoutingId.from("actor-node"), "actor-1", 7),
+                    new ActorRef(RoutingId.from("actor-node"), "actor-1", 7),
                     RoutingId.from("actor-node"),
                     ZLinkSpotKind.ENTRY,
                     "mesh",
@@ -67,12 +69,13 @@ final class ZLinkActorClientRuntimeTest {
             new ZLinkJsonMessageSerializer(),
             Duration.ofSeconds(5));
 
-        client.sendToActor("actor-1", new Ping("hello"))
+        ActorRef actorRef = new ActorRef(RoutingId.from("actor-node"), "actor-1", 7);
+        client.sendToActor(actorRef, new Ping("hello"))
             .packetName("Ping")
             .submit()
             .toCompletableFuture()
             .join();
-        Pong pong = client.requestToActor("actor-1", new Ping("hello"))
+        Pong pong = client.requestToActor(actorRef, new Ping("hello"))
             .packetName("Ping")
             .submit(Pong.class)
             .toCompletableFuture()
@@ -85,25 +88,33 @@ final class ZLinkActorClientRuntimeTest {
     }
 
     @Test
-    void missingActorFailsAsActorRouteNotFound() {
-        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+    void actorRefSendAndRequestUseProvidedRefWithoutLocationResolve() {
+        RecordingSpotNode node = new RecordingSpotNode(reply("pong"));
         ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
-            RecordingSpotNode::new,
+            () -> node,
             new ZLinkStoreLocationResolvers(
-                ZLinkRegisteredLocationStores.fromUnified(store),
+                ZLinkRegisteredLocationStores.fromUnified(new ZLinkInMemoryLocationStore()),
                 new systems.zlink.framework.locations.ZLinkLocationOptions()),
             new ZLinkJsonMessageSerializer(),
             Duration.ofSeconds(5));
+        ActorRef actorRef = new ActorRef(RoutingId.from("direct-node"), "actor-direct", 17);
 
-        CompletionException error = assertThrows(
-            CompletionException.class,
-            () -> client.sendToActor("missing", new Ping("hello"))
-                .submit()
-                .toCompletableFuture()
-                .join());
+        client.sendToActor(actorRef, new Ping("hello"))
+            .packetName("Ping")
+            .submit()
+            .toCompletableFuture()
+            .join();
+        Pong pong = client.requestToActor(actorRef, new Ping("hello"))
+            .packetName("Ping")
+            .submit(Pong.class)
+            .toCompletableFuture()
+            .join();
 
-        ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
-        assertEquals(ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND, frameworkError.kind());
+        assertEquals("actor-direct", node.sentActor.actorId());
+        assertEquals(RoutingId.from("direct-node"), node.sentActor.nodeRid());
+        assertEquals(17, node.sentActor.generation());
+        assertEquals("actor-direct", node.requestedActor.actorId());
+        assertEquals("pong", pong.value());
     }
 
     @Test
@@ -132,7 +143,7 @@ final class ZLinkActorClientRuntimeTest {
             new ZLinkJsonMessageSerializer(),
             Duration.ofMillis(250));
 
-        client.sendToActor("actor-1", new Ping("hello"))
+        client.sendToActor(new ActorRef(RoutingId.from("actor-node"), "actor-1", 7), new Ping("hello"))
             .packetName("Ping")
             .submit()
             .toCompletableFuture()
@@ -140,6 +151,28 @@ final class ZLinkActorClientRuntimeTest {
 
         assertEquals(2, node.sendAttempts);
         assertEquals("actor-1", node.sentActor.actorId());
+    }
+
+    @Test
+    void nativeRequestConflictMapsToActorLocationStaleAfterReresolve() {
+        ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
+            () -> new RequestFailingSpotNode(RequestResult.CONFLICT),
+            new ZLinkStoreLocationResolvers(
+                ZLinkRegisteredLocationStores.fromUnified(storeWithActor("actor-1")),
+                new systems.zlink.framework.locations.ZLinkLocationOptions()),
+            new ZLinkJsonMessageSerializer(),
+            Duration.ofSeconds(5));
+
+        CompletionException error = assertThrows(
+            CompletionException.class,
+            () -> client.requestToActor(new ActorRef(RoutingId.from("actor-node"), "actor-1", 7), new Ping("hello"))
+                .packetName("Ping")
+                .submit(Pong.class)
+                .toCompletableFuture()
+                .join());
+
+        ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
+        assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, frameworkError.kind());
     }
 
     private static ZLinkInMemoryLocationStore storeWithActor(String actorId) {
@@ -151,7 +184,7 @@ final class ZLinkActorClientRuntimeTest {
                 new ZLinkActorLocation(
                     actorId,
                     "test",
-                    new ZLinkActorRef(RoutingId.from("actor-node"), actorId, 7),
+                    new ActorRef(RoutingId.from("actor-node"), actorId, 7),
                     RoutingId.from("actor-node"),
                     ZLinkSpotKind.ENTRY,
                     "mesh",
@@ -286,5 +319,22 @@ final class ZLinkActorClientRuntimeTest {
         @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
         @Override public String name() { return "recording"; }
         @Override public void close() { }
+    }
+
+    private static final class RequestFailingSpotNode extends RecordingSpotNode {
+        private final RequestResult result;
+
+        RequestFailingSpotNode(RequestResult result) {
+            this.result = result;
+        }
+
+        @Override
+        public CompletionStage<List<Message>> requestToActor(
+            ZLinkBackendActorRef actor,
+            List<Message> parts,
+            SendFlags flags,
+            Duration timeout) {
+            return java.util.concurrent.CompletableFuture.failedFuture(new ZlinkRequestException(result));
+        }
     }
 }

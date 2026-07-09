@@ -13,6 +13,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, ZLinkCodecRegistrar {
+    private static final String DEFAULT_JSON_CONTENT_TYPE = "application/json";
     private final Map<String, RegisteredSerializer> serializers = new LinkedHashMap<>();
     private final Map<String, ZLinkStreamCodec> streamCodecsByContentType = new LinkedHashMap<>();
     private final Map<ZLinkStreamCodec, String> contentTypesByStreamCodec = new LinkedHashMap<>();
@@ -128,6 +129,24 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
             return fallback;
         }
         return new CompositeSerializer(serializers, fallback);
+    }
+
+    public String contentTypeFor(Class<?> type) {
+        if (type == null) {
+            return DEFAULT_JSON_CONTENT_TYPE;
+        }
+        var matches = serializers.entrySet().stream()
+            .filter(entry -> entry.getValue().canSerialize().test(type))
+            .toList();
+        if (matches.isEmpty()) {
+            return DEFAULT_JSON_CONTENT_TYPE;
+        }
+        if (matches.size() > 1) {
+            throw new ZLinkConfigurationException(
+                "payload serializer is ambiguous for type " + type.getName() + ": "
+                    + matches.stream().map(Map.Entry::getKey).toList());
+        }
+        return matches.get(0).getKey();
     }
 
     private record RegisteredSerializer(

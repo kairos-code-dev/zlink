@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set +m
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+source "../../runner-common.sh"
+ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+
 pids=()
 redis_container_id=""
-role_pattern='systems\.zlink\.samples\.bingo\.(server\.(api|play|session)\.Program|client\.Program)'
 log_dir="build/sample-logs"
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$(pwd)/logs}"
 export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
@@ -25,89 +28,7 @@ print_logs() {
   done
 }
 
-descendants() {
-  local pid="$1"
-  local child
-  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
-    descendants "${child}"
-    echo "${child}"
-  done
-}
-
-kill_role_processes() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
-kill_role_processes_forcibly() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
-cleanup() {
-  local status="$?"
-  set +e
-  print_logs "${status}"
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill "${child}" >/dev/null 2>&1 || true
-    done
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-  kill_role_processes
-  for _ in $(seq 1 20); do
-    local any_alive=0
-    for pid in "${pids[@]}"; do
-      if kill -0 "${pid}" >/dev/null 2>&1; then
-        any_alive=1
-        break
-      fi
-      for child in $(descendants "${pid}"); do
-        if kill -0 "${child}" >/dev/null 2>&1; then
-          any_alive=1
-          break
-        fi
-      done
-    done
-    if [[ "${any_alive}" == "0" ]]; then
-      break
-    fi
-    sleep 0.1
-  done
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill -9 "${child}" >/dev/null 2>&1 || true
-    done
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
-  kill_role_processes_forcibly
-  for pid in "${pids[@]}"; do
-    wait "${pid}" 2>/dev/null || true
-  done
-  if [[ -n "${redis_container_id}" ]]; then
-    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
-  fi
-  return "${status}"
-}
 trap cleanup EXIT
-
-wait_port() {
-  local host="$1"
-  local port="$2"
-  local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
-    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "Timed out waiting for ${host}:${port}" >&2
-  return 1
-}
 
 reserve_ports() {
   local base=$((20000 + ((RANDOM + $$) % 1000) * 15 % 9000))
@@ -116,16 +37,6 @@ reserve_ports() {
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
-}
-
-gradle_run() {
-  ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
-}
-
-app_bin() {
-  local project="$1"
-  local script="$2"
-  echo "${project}/build/install/${script}/bin/${script}"
 }
 
 build_framework_jars() {
@@ -176,8 +87,8 @@ if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
     echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  redis_container_id="$(docker run -d --rm --name "bingo-java-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
-  BINGO_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-java-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
+  BINGO_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
 fi
 redis_host="${BINGO_REDIS_ENDPOINT%:*}"
 redis_port="${BINGO_REDIS_ENDPOINT##*:}"
@@ -185,6 +96,11 @@ wait_port "${redis_host}" "${redis_port}"
 common_java_options="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port} -Dzlink.samples.bingo.apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port} -Dzlink.samples.bingo.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port} -Dzlink.samples.bingo.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port} -Dzlink.samples.bingo.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port} -Dzlink.samples.bingo.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port} -Dzlink.samples.bingo.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port} -Dzlink.samples.bingo.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port} -Dzlink.samples.bingo.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port} -Dzlink.samples.bingo.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port} -Dzlink.samples.bingo.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port} -Dzlink.samples.bingo.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port} -Dzlink.samples.bingo.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port} -Dzlink.samples.bingo.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port} -Dzlink.samples.bingo.redisEndpoint=${BINGO_REDIS_ENDPOINT} -Dzlink.samples.bingo.redisKeyPrefix=${bingo_redis_key_prefix}"
 
 build_framework_jars
+rm -rf \
+  Server/Session/build/install \
+  Server/Api/build/install \
+  Server/Play/build/install \
+  Client/build/install
 gradle_run \
   :Server:Session:installDist \
   :Server:Api:installDist \

@@ -7,6 +7,6 @@ public final class SmD10Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-D10", "stream backpressure public contract is not fixed");
+        gateway.runMode("stream-backpressure");
     }
 }

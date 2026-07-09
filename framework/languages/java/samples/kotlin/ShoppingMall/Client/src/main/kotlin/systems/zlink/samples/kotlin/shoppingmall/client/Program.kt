@@ -1,5 +1,15 @@
 package systems.zlink.samples.kotlin.shoppingmall.client
 
 suspend fun main(args: Array<String>) {
-    ClientApplication.run(args)
+    try {
+        ClientApplication.run(args)
+        println("shoppingmall=completed")
+        System.out.flush()
+        System.err.flush()
+        Runtime.getRuntime().halt(0)
+    } catch (error: Throwable) {
+        error.printStackTrace()
+        System.err.flush()
+        Runtime.getRuntime().halt(1)
+    }
 }

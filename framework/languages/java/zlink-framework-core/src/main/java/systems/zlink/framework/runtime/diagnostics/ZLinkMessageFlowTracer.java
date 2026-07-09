@@ -2,7 +2,9 @@ package systems.zlink.framework.runtime.diagnostics;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -11,6 +13,9 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
+import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent;
+import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 
@@ -27,6 +32,7 @@ public final class ZLinkMessageFlowTracer {
     private final ZLinkDispatchOptionsRegistration options;
     private final ZLinkHandlerFactory handlerFactory;
     private final Executor executor;
+    private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private final AtomicLong tracedCount = new AtomicLong();
     private final AtomicLong observerFailureCount = new AtomicLong();
     private final AtomicLong sampleCounter = new AtomicLong();
@@ -35,9 +41,18 @@ public final class ZLinkMessageFlowTracer {
         ZLinkDispatchOptionsRegistration options,
         ZLinkHandlerFactory handlerFactory,
         Executor executor) {
+        this(options, handlerFactory, executor, null);
+    }
+
+    public ZLinkMessageFlowTracer(
+        ZLinkDispatchOptionsRegistration options,
+        ZLinkHandlerFactory handlerFactory,
+        Executor executor,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
         this.options = options;
         this.handlerFactory = handlerFactory;
         this.executor = executor;
+        this.eventDispatcher = eventDispatcher;
     }
 
     // Cheap mode gate (volatile read of the live mode). Build the event only after
@@ -73,13 +88,13 @@ public final class ZLinkMessageFlowTracer {
                 }
                 CompletionStage<Void> result = observer.onMessageFlow(flow);
                 if (result != null) {
-                    result.exceptionally(ignored -> {
-                        observerFailureCount.incrementAndGet();
+                    result.exceptionally(error -> {
+                        reportObserverFailure(error);
                         return null;
                     });
                 }
             } catch (Throwable ex) {
-                observerFailureCount.incrementAndGet();
+                reportObserverFailure(ex);
             }
         }, executor);
     }
@@ -119,6 +134,28 @@ public final class ZLinkMessageFlowTracer {
             return null;
         }
         return (ZLinkMessageFlowObserver) handlerFactory.create(options.messageFlowObserverType());
+    }
+
+    private void reportObserverFailure(Throwable error) {
+        observerFailureCount.incrementAndGet();
+        if (eventDispatcher == null) {
+            return;
+        }
+        Throwable actual = unwrap(error);
+        eventDispatcher.publish(new ZLinkRuntimeErrorEvent(
+            "message-flow",
+            Instant.now(),
+            ZLinkRuntimeErrorEventKind.MESSAGE_FLOW_OBSERVER_FAILED,
+            "message-flow-observer",
+            actual.getClass().getName(),
+            java.util.Optional.ofNullable(actual.getMessage())));
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        if (error instanceof CompletionException && error.getCause() != null) {
+            return error.getCause();
+        }
+        return error;
     }
 
     private void logDefault(ZLinkMessageFlowEvent flow) {

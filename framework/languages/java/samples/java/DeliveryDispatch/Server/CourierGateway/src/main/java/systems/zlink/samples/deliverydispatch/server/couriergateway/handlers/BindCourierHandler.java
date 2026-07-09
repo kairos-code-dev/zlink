@@ -5,7 +5,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
 import systems.zlink.samples.deliverydispatch.server.couriergateway.CourierBinding;
@@ -30,7 +30,7 @@ public final class BindCourierHandler
         Messages.BindCourier request,
         ZLinkRequestContext context) {
         String placement = directory.choosePlacement(request.courierId());
-        ZLinkSpotAddress address = address(placement);
+        SpotRef address = address(placement);
         Messages.CourierActorFound found = routes
             .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.FindCourierActor(request.courierId()))
             .timeout(SampleTimings.RequestTimeout)
@@ -48,8 +48,8 @@ public final class BindCourierHandler
         return new Messages.CourierBound(request.courierId(), binding.actor(), binding.sessionRoute());
     }
 
-    private static ZLinkSpotAddress address(String placement) {
+    private static SpotRef address(String placement) {
         RoutingId nodeRid = RoutingId.from(placement);
-        return new ZLinkSpotAddress(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
+        return new SpotRef(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
     }
 }

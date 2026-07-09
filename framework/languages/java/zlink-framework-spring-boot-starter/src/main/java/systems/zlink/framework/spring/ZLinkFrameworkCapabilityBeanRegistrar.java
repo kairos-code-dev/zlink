@@ -1,5 +1,7 @@
 package systems.zlink.framework.spring;
 
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SESSION_PACKET_HANDLER;
+
 import java.beans.Introspector;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -71,7 +73,7 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorManager.class)) {
             registerDelegate(registry, ACTOR_MANAGER_BEAN_NAME, ZLinkFrameworkActorManagerBean.class);
         }
-        if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorDirectory.class)) {
+        if (hasSpotNode && (hasActorFactory || hasLocationStore) && !hasBean(beanFactory, ZLinkActorDirectory.class)) {
             registerDelegate(registry, ACTOR_DIRECTORY_BEAN_NAME, ZLinkFrameworkActorDirectoryBean.class);
         }
         if (hasSpotNode && hasLocationStore && !hasBean(beanFactory, ZLinkActorClient.class)) {
@@ -115,16 +117,26 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
                 continue;
             }
             for (Class<?> contextType : findSessionPacketDispatcherContexts(sessionType)) {
-                for (Class<? extends ZLinkSessionPacketHandler<?>> handlerType :
-                     findSessionPacketHandlers(sessionType.getPackageName(), contextType)) {
-                    streamNode.addSessionPacketHandler(handlerType);
-                }
-                for (Class<? extends ZLinkSessionPacketHandler<?>> handlerType :
-                     findSessionPacketHandlers(contextType.getPackageName(), contextType)) {
-                    streamNode.addSessionPacketHandler(handlerType);
+                for (String packageName : sessionPacketHandlerSearchPackages(options, sessionType, contextType)) {
+                    for (Class<?> handlerType : findSessionPacketHandlers(packageName, contextType)) {
+                        streamNode.addSessionPacketHandler(handlerType);
+                    }
                 }
             }
         }
+    }
+
+    private static Set<String> sessionPacketHandlerSearchPackages(
+        DefaultZLinkFrameworkOptions options,
+        Class<?> sessionType,
+        Class<?> contextType) {
+        Set<String> packageNames = new LinkedHashSet<>();
+        packageNames.add(sessionType.getPackageName());
+        packageNames.add(contextType.getPackageName());
+        for (Class<?> markerType : options.registration().handlerPackageMarkers()) {
+            packageNames.add(markerType.getPackageName());
+        }
+        return packageNames;
     }
 
     private static Set<Class<?>> findSessionPacketDispatcherContexts(Class<?> sessionType) {
@@ -149,13 +161,11 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         return argument instanceof Class<?> contextType ? contextType : null;
     }
 
-    @SuppressWarnings("unchecked")
-    private static Set<Class<? extends ZLinkSessionPacketHandler<?>>>
-    findSessionPacketHandlers(String packageName, Class<?> contextType) {
-        Set<Class<? extends ZLinkSessionPacketHandler<?>>> handlers = new LinkedHashSet<>();
-        for (Class<?> type : findAssignableTypes(packageName, ZLinkSessionPacketHandler.class)) {
+    private static Set<Class<?>> findSessionPacketHandlers(String packageName, Class<?> contextType) {
+        Set<Class<?>> handlers = new LinkedHashSet<>();
+        for (Class<?> type : findCandidateTypes(packageName, ZLinkSessionPacketHandler.class)) {
             if (sessionPacketHandlerContextType(type) == contextType) {
-                handlers.add((Class<? extends ZLinkSessionPacketHandler<?>>) type);
+                handlers.add(type);
             }
         }
         return handlers;
@@ -174,7 +184,9 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
 
     private static Class<?> sessionPacketHandlerContextType(Type type) {
         if (!(type instanceof ParameterizedType parameterized)
-            || parameterized.getRawType() != ZLinkSessionPacketHandler.class) {
+            || !(parameterized.getRawType() instanceof Class<?> rawType)
+            || (!ZLinkSessionPacketHandler.class.isAssignableFrom(rawType)
+                && !KOTLIN_SESSION_PACKET_HANDLER.equals(rawType.getName()))) {
             return null;
         }
         Type argument = parameterized.getActualTypeArguments()[0];
@@ -209,6 +221,25 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
                 if (type != serviceType && serviceType.isAssignableFrom(type)) {
                     types.add(type);
                 }
+            } catch (ClassNotFoundException ignored) {
+                // Optional package contents should not make framework registration unusable.
+            }
+        }
+        return types;
+    }
+
+    private static Set<Class<?>> findCandidateTypes(String packageName, Class<?> fallbackType) {
+        ClassPathScanningCandidateComponentProvider scanner =
+            new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter((metadataReader, metadataReaderFactory) -> true);
+        Set<Class<?>> types = new LinkedHashSet<>();
+        for (BeanDefinition candidate : scanner.findCandidateComponents(packageName)) {
+            String className = candidate.getBeanClassName();
+            if (className == null) {
+                continue;
+            }
+            try {
+                types.add(Class.forName(className, false, contextClassLoader(fallbackType)));
             } catch (ClassNotFoundException ignored) {
                 // Optional package contents should not make framework registration unusable.
             }

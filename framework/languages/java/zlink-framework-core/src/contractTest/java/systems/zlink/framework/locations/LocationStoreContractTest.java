@@ -140,7 +140,7 @@ final class LocationStoreContractTest {
         assertEquals(List.of(), rows.listLivePeersAsync(ZLinkPeerLocationFilter.all())
             .toCompletableFuture()
             .get());
-        assertNull(addresses.resolveSpotAddressAsync("play", SPOT_RID)
+        assertNull(addresses.resolveSpotRefAsync("play", SPOT_RID)
             .toCompletableFuture()
             .get());
 
@@ -161,8 +161,8 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get()
             .size());
-        assertEquals(new ZLinkSpotAddress("play", NODE_A, SPOT_RID),
-            addresses.resolveSpotAddressAsync("play", SPOT_RID)
+        assertEquals(new SpotRef("play", NODE_A, SPOT_RID),
+            addresses.resolveSpotRefAsync("play", SPOT_RID)
                 .toCompletableFuture()
                 .get());
     }

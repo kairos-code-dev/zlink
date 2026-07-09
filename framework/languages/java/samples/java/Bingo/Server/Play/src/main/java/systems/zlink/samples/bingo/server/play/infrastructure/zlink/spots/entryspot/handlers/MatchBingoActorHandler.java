@@ -10,6 +10,7 @@ import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entrys
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class MatchBingoActorHandler
@@ -27,10 +28,10 @@ public final class MatchBingoActorHandler
         CancellationToken cancellationToken) {
         Messages.MatchBingoApiRes matched = entrySpot.context().outbound().requestToChannel(
                 SampleNames.ApiChannel,
-                new Messages.MatchBingoApiReq(
+                BingoMessages.matchBingoApiReq(
                     actor.actorId(),
                     actor.displayName(),
-                    request.mode(),
+                    request.getMode(),
                     SampleTopology.selectedPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.MatchBingoApiRes.class);
@@ -40,9 +41,9 @@ public final class MatchBingoActorHandler
         }
         ZLinkActorJoinResult<Messages.BingoRoomJoinRes> joined = actor.context()
             .joinSpot(
-                RoutingId.from(matched.roomId()),
-                new Messages.BingoRoomJoinReq(
-                    matched.roomId(),
+                RoutingId.from(matched.getRoomId()),
+                BingoMessages.bingoRoomJoinReq(
+                    matched.getRoomId(),
                     actor.actorId(),
                     actor.displayName(),
                     false))
@@ -51,9 +52,9 @@ public final class MatchBingoActorHandler
         if (cancellationToken.isCancellationRequested()) {
             throw new IllegalStateException("MatchBingoReq was cancelled");
         }
-        return new Messages.MatchBingoRes(
-            matched.roomId(),
-            joined.reply().state(),
-            matched.roomOwnerNodeRid());
+        return BingoMessages.matchBingoRes(
+            matched.getRoomId(),
+            joined.reply().getState(),
+            matched.getRoomOwnerNodeRid());
     }
 }

@@ -21,6 +21,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ActorRefSnapshot;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
@@ -28,8 +30,6 @@ import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorPlacement;
 import systems.zlink.framework.actors.ZLinkActorRequestCall;
-import systems.zlink.framework.actors.ZLinkActorRef;
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.actors.ZLinkActorSendCall;
 import systems.zlink.framework.actors.ZLinkActorYieldJoinCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
@@ -37,10 +37,12 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.locations.ActorSpotRefResolver;
+import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.locations.SpotRefResolver;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkActorAddressResolver;
 import systems.zlink.framework.locations.ZLinkActorLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
@@ -74,11 +76,9 @@ import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkRouteLocationFilter;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
 import systems.zlink.framework.locations.ZLinkRouteLocationStore;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotAddressResolver;
 import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
@@ -161,7 +161,7 @@ final class LocationContractTest {
             "ownerId",
             "generation",
             "updatedAt");
-        assertEquals(ZLinkActorRef.class, componentType(ZLinkActorLocation.class, "actorRef"));
+        assertEquals(ActorRef.class, componentType(ZLinkActorLocation.class, "actorRef"));
         // dotnet 정본(Rows.cs)과 동일: actor row의 locationKind는 actor가 사는 spot 종류(ZLinkSpotKind)다.
         // ZLinkLocationKind(row 종류)와 혼동 금지.
         assertEquals(ZLinkSpotKind.class, componentType(ZLinkActorLocation.class, "locationKind"));
@@ -178,10 +178,10 @@ final class LocationContractTest {
     }
 
     @Test
-    void spotAddressUsesSpotAddressMessagingContractFields() {
-        assertRecordComponents(ZLinkSpotAddress.class, "meshName", "nodeRid", "spotRid");
-        assertEquals(RoutingId.class, componentType(ZLinkSpotAddress.class, "nodeRid"));
-        assertEquals(RoutingId.class, componentType(ZLinkSpotAddress.class, "spotRid"));
+    void spotRefUsesSpotAddressMessagingContractFields() {
+        assertRecordComponents(SpotRef.class, "meshName", "nodeRid", "spotRid");
+        assertEquals(RoutingId.class, componentType(SpotRef.class, "nodeRid"));
+        assertEquals(RoutingId.class, componentType(SpotRef.class, "spotRid"));
     }
 
     @Test
@@ -207,8 +207,8 @@ final class LocationContractTest {
         Method removeAllByOwner = ZLinkLocationStore.class.getMethod(
             "removeAllByOwnerAsync",
             String.class);
-        Method resolveSpotAddress = ZLinkSpotAddressResolver.class.getMethod(
-            "resolveSpotAddressAsync",
+        Method resolveSpotRef = SpotRefResolver.class.getMethod(
+            "resolveSpotRefAsync",
             String.class,
             RoutingId.class);
 
@@ -218,9 +218,9 @@ final class LocationContractTest {
         assertEquals(CompletionStage.class, renewOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, removeOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, removeAllByOwner.getReturnType());
-        assertEquals(CompletionStage.class, resolveSpotAddress.getReturnType());
-        assertEquals(CompletionStage.class, ZLinkActorAddressResolver.class
-            .getMethod("resolveActorSpotAddressAsync", String.class)
+        assertEquals(CompletionStage.class, resolveSpotRef.getReturnType());
+        assertEquals(CompletionStage.class, ActorSpotRefResolver.class
+            .getMethod("resolveActorSpotRefAsync", String.class)
             .getReturnType());
         assertEquals(ZLinkOwnerLeaseRenewal.class, ZLinkOwnerLeaseRenewal.class);
     }
@@ -301,15 +301,15 @@ final class LocationContractTest {
                 ZLinkActorPlacement.class)
             .getReturnType());
         assertRecordComponents(ZLinkActorPlacement.class, "preferredNodeRid", "routeMesh");
-        assertRecordComponents(ZLinkActorRefSnapshot.class, "nodeRid", "actorId", "generation");
-        assertEquals(ZLinkActorRef.class, ZLinkActorRefSnapshot.class
+        assertRecordComponents(ActorRefSnapshot.class, "nodeRid", "actorId", "generation");
+        assertEquals(ActorRef.class, ActorRefSnapshot.class
             .getMethod("toActorRef")
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkLocationReadiness.class
             .getMethod("isPeerReadyAsync", String.class, ZLinkLocationRole.class, RoutingId.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkSessionActors.class
-            .getMethod("bindOrGet", ZLinkActorRef.class)
+            .getMethod("bindOrGet", ActorRef.class)
             .getReturnType());
         assertMissing("systems.zlink.framework.channels.ZLinkRoute" + "RequestCall");
     }
@@ -317,10 +317,10 @@ final class LocationContractTest {
     @Test
     void actorClientPinsL13CompletionStageSurface() throws Exception {
         assertEquals(ZLinkActorSendCall.class, ZLinkActorClient.class
-            .getMethod("sendToActor", String.class, Object.class)
+            .getMethod("sendToActor", ActorRef.class, Object.class)
             .getReturnType());
         assertEquals(ZLinkActorRequestCall.class, ZLinkActorClient.class
-            .getMethod("requestToActor", String.class, Object.class)
+            .getMethod("requestToActor", ActorRef.class, Object.class)
             .getReturnType());
         assertEquals(ZLinkActorSendCall.class, ZLinkActorSendCall.class
             .getMethod("packetName", String.class)
@@ -487,10 +487,12 @@ final class LocationContractTest {
             .getMethod("yield")
             .getReturnType());
         assertRecordComponents(ZLinkActorJoinResult.class, "resultCode", "actor", "reply");
-        assertEquals(ZLinkActorRef.class, componentType(ZLinkActorJoinResult.class, "actor"));
+        assertEquals(ActorRef.class, componentType(ZLinkActorJoinResult.class, "actor"));
         assertEquals(java.util.Optional.class, ZLinkActorJoinResult.class
             .getMethod("actorRef")
             .getReturnType());
+        assertTrue(new ZLinkActorJoinResult<Void>(0, null, null).accepted());
+        assertFalse(new ZLinkActorJoinResult<Void>(1, null, null).accepted());
 
         assertEquals(CompletionStage.class, ZLinkActorManager.class
             .getMethod("create", String.class, String.class)
@@ -550,10 +552,10 @@ final class LocationContractTest {
             .getMethod("requestToNode", String.class, RoutingId.class, Object.class)
             .getReturnType());
         assertEquals(ZLinkSendCall.class, ZLinkRouteClient.class
-            .getMethod("sendToSpot", String.class, ZLinkSpotAddress.class, Object.class)
+            .getMethod("sendToSpot", String.class, SpotRef.class, Object.class)
             .getReturnType());
         assertEquals(ZLinkRequestCall.class, ZLinkRouteClient.class
-            .getMethod("requestToSpot", String.class, ZLinkSpotAddress.class, Object.class)
+            .getMethod("requestToSpot", String.class, SpotRef.class, Object.class)
             .getReturnType());
         assertNoPublicMethod(ZLinkRouteClient.class, "send", String.class, RoutingId.class, Object.class);
         assertNoPublicMethod(ZLinkRouteClient.class, "request", String.class, RoutingId.class, Object.class);

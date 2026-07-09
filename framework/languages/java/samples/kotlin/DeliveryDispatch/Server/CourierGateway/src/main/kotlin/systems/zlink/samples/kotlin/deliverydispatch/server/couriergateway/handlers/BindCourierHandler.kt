@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.CourierDirectory
@@ -41,8 +41,8 @@ class BindCourierHandler(
         return BindCourierRes(request.courierId, binding.actor, binding.sessionRoute)
     }
 
-    private fun address(placement: String): ZLinkSpotAddress {
+    private fun address(placement: String): SpotRef {
         val nodeRid = RoutingId.from(placement)
-        return ZLinkSpotAddress(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
+        return SpotRef(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
     }
 }

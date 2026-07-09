@@ -49,6 +49,15 @@ public final class Contracts {
     public record YieldReq(String scenarioId, String requestId, String correlationId) {
     }
 
+    public record ShutdownYieldReq(String requestId, long delayMillis) {
+    }
+
+    public record YieldShutdownRecoveryReq(String requestId, String spotRid) {
+    }
+
+    public record YieldShutdownRecoveryRes(String operation, String spotRid, List<String> evidence) {
+    }
+
     public record YieldMsg(String requestId, long delayMillis, String correlationId) {
     }
 
@@ -65,6 +74,18 @@ public final class Contracts {
     }
 
     public record YieldTimeoutMsg(String requestId, long delayMillis, long timeoutMillis) {
+    }
+
+    public record YieldTimeoutReq(String requestId, long delayMillis, long timeoutMillis) {
+    }
+
+    public record YieldTimeoutRes(
+        String scenarioId,
+        String requestId,
+        String spotRid,
+        String nodeRid,
+        boolean timedOut,
+        String errorType) {
     }
 
     public record YieldCancelMsg(String requestId, long delayMillis, long cancelAfterMillis) {
@@ -111,6 +132,15 @@ public final class Contracts {
     }
 
     public record ActorFastReq(String requestId, String marker) {
+    }
+
+    public record ActorJoinYieldReq(String requestId, String targetSpotRid) {
+    }
+
+    public record ActorPushYieldReq(String requestId, long delayMillis, String value) {
+    }
+
+    public record ActorPushNotify(String actorId, String requestId, String value, String nodeRid) {
     }
 
     public record ActorRes(String scenarioId, String requestId, String actorId, String marker) {

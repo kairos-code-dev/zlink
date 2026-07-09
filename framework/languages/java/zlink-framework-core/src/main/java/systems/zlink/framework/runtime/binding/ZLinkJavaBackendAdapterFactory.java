@@ -139,10 +139,25 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return new JavaContext(Zlink.createContext());
         }
 
-        @Override public ZLinkBackendDealerSocket createDealerSocket(ZLinkBackendContext context) { return new JavaDealerSocket(nativeContext(context).createDealerSocket()); }
-        @Override public ZLinkBackendRouterSocket createRouterSocket(ZLinkBackendContext context) { return new JavaRouterSocket(nativeContext(context).createRouterSocket()); }
-        @Override public ZLinkBackendPublisherSocket createPublisherSocket(ZLinkBackendContext context) { return new JavaPublisherSocket(nativeContext(context).createPubSocket()); }
-        @Override public ZLinkBackendSubscriberSocket createSubscriberSocket(ZLinkBackendContext context) { return new JavaSubscriberSocket(nativeContext(context).createSubSocket()); }
+        @Override
+        public ZLinkBackendDealerSocket createDealerSocket(ZLinkBackendContext context) {
+            return new JavaDealerSocket(configureFrameworkSocket(nativeContext(context).createDealerSocket()));
+        }
+
+        @Override
+        public ZLinkBackendRouterSocket createRouterSocket(ZLinkBackendContext context) {
+            return new JavaRouterSocket(configureFrameworkSocket(nativeContext(context).createRouterSocket()));
+        }
+
+        @Override
+        public ZLinkBackendPublisherSocket createPublisherSocket(ZLinkBackendContext context) {
+            return new JavaPublisherSocket(configureFrameworkSocket(nativeContext(context).createPubSocket()));
+        }
+
+        @Override
+        public ZLinkBackendSubscriberSocket createSubscriberSocket(ZLinkBackendContext context) {
+            return new JavaSubscriberSocket(configureFrameworkSocket(nativeContext(context).createSubSocket()));
+        }
     }
 
     private static final class JavaSpotBackendAdapter implements ZLinkSpotBackendAdapter {
@@ -153,11 +168,19 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static final class JavaStreamBackendAdapter implements ZLinkStreamBackendAdapter {
-        @Override public ZLinkBackendStreamSocket createStreamSocket(ZLinkBackendContext context) { return new JavaStreamSocket(nativeContext(context).createStreamSocket()); }
+        @Override
+        public ZLinkBackendStreamSocket createStreamSocket(ZLinkBackendContext context) {
+            return new JavaStreamSocket(configureFrameworkSocket(nativeContext(context).createStreamSocket()));
+        }
     }
 
     private interface JavaSocketBacked {
         Socket nativeSocket();
+    }
+
+    private static <T extends Socket> T configureFrameworkSocket(T socket) {
+        socket.options().linger(Duration.ZERO);
+        return socket;
     }
 
     private record JavaContext(Context nativeContext) implements ZLinkBackendContext {
@@ -188,18 +211,33 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void connect(String endpoint) { socket.connect(endpoint); }
         @Override public void disconnect(String endpoint) { socket.disconnect(endpoint); }
         @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
-        @Override public boolean send(List<Message> parts, SendFlags flags) { return submit(socket.send(), parts, flags); }
-        @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            return submitRequest(socket.request(), parts, callback, flags, timeout);
-        }
-        @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
-            try (Received result = new Received()) {
-                return recvOrNoData(() -> socket.recv(result, map(mode)))
-                    ? fromReceived(result)
-                    : null;
+        @Override public boolean send(List<Message> parts, SendFlags flags) {
+            synchronized (socket) {
+                return submit(socket.send(), parts, flags);
             }
         }
-        @Override public void close() { socket.close(); }
+
+        @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            synchronized (socket) {
+                return submitRequest(socket.request(), parts, callback, flags, timeout);
+            }
+        }
+
+        @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
+            synchronized (socket) {
+                try (Received result = new Received()) {
+                    return recvOrNoData(() -> socket.recv(result, map(mode)))
+                        ? fromReceived(result)
+                        : null;
+                }
+            }
+        }
+
+        @Override public void close() {
+            synchronized (socket) {
+                socket.close();
+            }
+        }
     }
 
     private record JavaRouterSocket(RouterSocket socket) implements ZLinkBackendRouterSocket, JavaSocketBacked {

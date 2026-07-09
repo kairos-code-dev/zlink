@@ -51,6 +51,16 @@ data class RebuildProjectionApiReq(val orderId: String)
 
 data class RebuildProjectionApiRes(val state: OrderState)
 
+@ZLinkPacket("PrepareInventoryReservedApiReq")
+data class PrepareInventoryReservedApiReq(val request: StartOrderReq)
+
+data class PrepareInventoryReservedApiRes(val state: OrderState)
+
+@ZLinkPacket("PrepareInventoryReservedReq")
+data class PrepareInventoryReservedReq(val command: StartOrderWorkflowReq)
+
+data class PrepareInventoryReservedRes(val state: OrderState)
+
 @ZLinkPacket("CreatePendingMappingReq")
 data class CreatePendingMappingReq(
     val idempotencyKey: String,
@@ -64,6 +74,8 @@ data class CreatePendingMappingRes(val created: Boolean)
 data class ServerAssertionReq(
     val successfulOrderId: String,
     val pendingRecoveredOrderId: String,
+    val concurrentOrderId: String,
+    val resumedOrderId: String,
     val inventoryFailureOrderId: String,
     val paymentFailureOrderId: String,
     val scaleOutOrderId: String,

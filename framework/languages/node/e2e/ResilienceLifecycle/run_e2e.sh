@@ -115,9 +115,8 @@ API_B="tcp://127.0.0.1:$API_B_PORT"
 API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
 API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
-start_redis_container "resilience-lifecycle-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
-REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="resilience-lifecycle:node:$RUN_ID"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 

@@ -15,7 +15,6 @@ import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.BingoSession
-import systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers.AuthenticateSessionHandler
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 
@@ -38,6 +37,7 @@ class SessionServerApplication {
                 traceLabel("session")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
+            options.configureLocations()
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
             val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
@@ -52,7 +52,6 @@ class SessionServerApplication {
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession::class.java)
-                .addSessionPacketHandler(AuthenticateSessionHandler::class.java)
         }
 
     @Bean

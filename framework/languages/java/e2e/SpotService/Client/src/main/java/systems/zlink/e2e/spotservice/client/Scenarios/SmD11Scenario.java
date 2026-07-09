@@ -7,6 +7,6 @@ public final class SmD11Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-D11", "mixed stream/channel request scenario is not implemented");
+        gateway.runMode("mixed-stream-channel");
     }
 }

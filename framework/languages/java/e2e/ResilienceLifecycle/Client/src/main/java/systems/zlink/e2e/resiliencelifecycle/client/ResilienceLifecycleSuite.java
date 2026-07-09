@@ -8,14 +8,20 @@ import java.util.concurrent.CompletableFuture;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA1ProviderRestartScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA2ProviderEndpointRemapScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA3ReconnectStormScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA4DrainAndGreenEndpointScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA5ProviderFlappingScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB1CancellationCleanupScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB2CrashDuringInflightScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB3GracefulShutdownScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB4RuntimeDrainScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB5DrainInflightScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB6GrayFaultScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlC1ClientHostLifecycleScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlC2TopologyRecoveryScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlC4RegistryOutageScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlD2ObserverFaultScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlD3DispatchErrorEvidenceScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlD4MissingRequestHandlerScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlD5MixedBurstScenario;
 import systems.zlink.e2e.resiliencelifecycle.client.Support.ClientOptions;
 import systems.zlink.e2e.resiliencelifecycle.client.Support.ConsumerScenarioClient;
@@ -48,17 +54,26 @@ public final class ResilienceLifecycleSuite {
             case "all" -> {
                 runRestart();
                 runReschedule();
+                runRollingGreen();
                 runFlapping();
                 runDefault("all");
                 restartProviderB();
+                runCrashDuringInflight();
+                runTopologyRecovery();
+                runStoreOutage();
                 runStorm();
                 runCleanup("all");
             }
             case "RL-A1", "RL-C3" -> runRestart();
             case "RL-A2" -> runReschedule();
             case "RL-A3", "RL-D1" -> runStorm();
+            case "RL-A4" -> runRollingGreen();
             case "RL-A5" -> runFlapping();
-            case "RL-B1", "RL-B3", "RL-B4", "RL-B5", "RL-B6", "RL-D3" -> runDefault(scenario);
+            case "RL-B2" -> runCrashDuringInflight();
+            case "RL-C2" -> runTopologyRecovery();
+            case "RL-C4" -> runStoreOutage();
+            case "RL-B1", "RL-B3", "RL-B4", "RL-B5", "RL-B6", "RL-D2", "RL-D3", "RL-D4" ->
+                runDefault(scenario);
             case "RL-C1", "RL-D5" -> runCleanup(scenario);
             default -> throw new IllegalArgumentException("unknown ResilienceLifecycle scenario: " + scenario);
         }
@@ -125,6 +140,34 @@ public final class ResilienceLifecycleSuite {
         }
     }
 
+    private void runRollingGreen() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-rolling-green", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            CompletableFuture<Void> scenario = CompletableFuture.runAsync(
+                () -> RlA4DrainAndGreenEndpointScenario.run(consumer));
+            processes.waitSignal("a4-drained");
+            providerB.close();
+            processes.waitEndpointDown("api-b", options.httpBEndpoint());
+            processes.touchSignal("a4-original-down");
+
+            var greenProviderB = processes.startProvider(
+                "api-b-green", "api-b", options.apiBGreenEndpoint(), options.httpBGreenEndpoint());
+            processes.sleep(2_000);
+            processes.touchSignal("a4-green-up");
+            processes.waitSignal("a4-green-observed");
+            processes.waitSignal("a4-restore-ready");
+
+            greenProviderB.close();
+            processes.waitEndpointDown("api-b-green", options.httpBGreenEndpoint());
+            providerB = processes.startProvider("api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
+            processes.sleep(2_000);
+            processes.touchSignal("a4-restored");
+            scenario.join();
+        }
+    }
+
     private void runDefault(String scenario) {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
@@ -139,8 +182,14 @@ public final class ResilienceLifecycleSuite {
             if ("all".equals(scenario) || "RL-B5".equals(scenario)) {
                 RlB5DrainInflightScenario.run(consumer);
             }
+            if ("all".equals(scenario) || "RL-D2".equals(scenario)) {
+                RlD2ObserverFaultScenario.run(consumer);
+            }
             if ("all".equals(scenario) || "RL-D3".equals(scenario)) {
                 RlD3DispatchErrorEvidenceScenario.run(consumer);
+            }
+            if ("all".equals(scenario) || "RL-D4".equals(scenario)) {
+                RlD4MissingRequestHandlerScenario.run(consumer);
             }
             if ("all".equals(scenario) || "RL-B6".equals(scenario)) {
                 RlB6GrayFaultScenario.run(consumer);
@@ -152,6 +201,61 @@ public final class ResilienceLifecycleSuite {
         if ("all".equals(scenario)) {
             providerB.close();
             processes.waitEndpointDown("api-b", options.httpBEndpoint());
+        }
+    }
+
+    private void runCrashDuringInflight() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-crash-inflight", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            CompletableFuture<Void> scenario = CompletableFuture.runAsync(
+                () -> RlB2CrashDuringInflightScenario.run(consumer));
+            processes.waitSignal("b2-in-flight");
+            providerB.killForcibly();
+            processes.waitEndpointDown("api-b", options.httpBEndpoint());
+            processes.touchSignal("b2-crashed");
+            processes.waitSignal("b2-survivor-observed");
+            providerB = processes.startProvider("api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
+            processes.sleep(2_000);
+            processes.touchSignal("b2-restored");
+            scenario.join();
+        }
+    }
+
+    private void runTopologyRecovery() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-topology-recovery", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            CompletableFuture<Void> scenario = CompletableFuture.runAsync(
+                () -> RlC2TopologyRecoveryScenario.run(consumer));
+            processes.waitSignal("c2-ready");
+            providerB.killForcibly();
+            processes.waitEndpointDown("api-b", options.httpBEndpoint());
+            processes.touchSignal("c2-crashed");
+            processes.waitSignal("c2-survivor-observed");
+            providerB = processes.startProvider("api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
+            processes.sleep(2_000);
+            processes.touchSignal("c2-restored");
+            scenario.join();
+        }
+    }
+
+    private void runStoreOutage() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-store-outage", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            CompletableFuture<Void> scenario = CompletableFuture.runAsync(
+                () -> RlC4RegistryOutageScenario.run(consumer));
+            processes.waitSignal("c4-pause-ready");
+            processes.pauseStore();
+            processes.touchSignal("c4-store-paused");
+            processes.waitSignal("c4-during-observed");
+            processes.unpauseStore();
+            processes.touchSignal("c4-store-resumed");
+            scenario.join();
         }
     }
 

@@ -15,10 +15,12 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.future.future
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.locations.ActorSpotRefResolver
+import systems.zlink.framework.locations.SpotRef
+import systems.zlink.framework.locations.SpotRefResolver
 import systems.zlink.framework.locations.ZLinkActorLocation
 import systems.zlink.framework.locations.ZLinkActorLocationFilter
 import systems.zlink.framework.locations.ZLinkActorLocationKey
-import systems.zlink.framework.locations.ZLinkActorAddressResolver
 import systems.zlink.framework.locations.ZLinkActorLocationStore
 import systems.zlink.framework.locations.ZLinkLocationChanged
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken
@@ -46,11 +48,9 @@ import systems.zlink.framework.locations.ZLinkRouteLocation
 import systems.zlink.framework.locations.ZLinkRouteLocationFilter
 import systems.zlink.framework.locations.ZLinkRouteLocationKey
 import systems.zlink.framework.locations.ZLinkRouteLocationStore
-import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.framework.locations.ZLinkSpotLocation
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter
 import systems.zlink.framework.locations.ZLinkSpotLocationKey
-import systems.zlink.framework.locations.ZLinkSpotAddressResolver
 import systems.zlink.framework.locations.ZLinkSpotLocationStore
 
 suspend fun ZLinkPeerLocationStore.updatePeer(
@@ -150,16 +150,16 @@ suspend fun ZLinkLocationStore.listOwnerLeases(): ZLinkOwnerLeaseSnapshot =
 suspend fun ZLinkPeerLocationResolver.listLivePeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
     awaitFrameworkStage(listLivePeersAsync(filter))
 
-suspend fun ZLinkSpotAddressResolver.resolveSpotAddress(
+suspend fun SpotRefResolver.resolveSpotRef(
     meshName: String,
     spotRid: RoutingId,
-): ZLinkSpotAddress? =
-    awaitFrameworkStage(resolveSpotAddressAsync(meshName, spotRid))
+): SpotRef? =
+    awaitFrameworkStage(resolveSpotRefAsync(meshName, spotRid))
 
-suspend fun ZLinkActorAddressResolver.resolveActorSpotAddress(
+suspend fun ActorSpotRefResolver.resolveActorSpotRef(
     actorId: String,
-): ZLinkSpotAddress? =
-    awaitFrameworkStage(resolveActorSpotAddressAsync(actorId))
+): SpotRef? =
+    awaitFrameworkStage(resolveActorSpotRefAsync(actorId))
 
 suspend fun ZLinkLocationRuntimeQuery.status(): ZLinkLocationRuntimeStatus =
     awaitFrameworkStage(getStatusAsync())

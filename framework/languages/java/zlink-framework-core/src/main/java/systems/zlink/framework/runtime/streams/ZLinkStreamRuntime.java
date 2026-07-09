@@ -26,6 +26,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -112,6 +113,30 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkHandlerFactory handlerFactory,
         Predicate<RoutingId> sessionRelayRouteReady,
         ZLinkSpotRuntime spots) {
+        this(
+            backendFactory,
+            adapterOptions,
+            registration,
+            spotNodes,
+            serializer,
+            actors,
+            handlerFactory,
+            sessionRelayRouteReady,
+            spots,
+            null);
+    }
+
+    public ZLinkStreamRuntime(
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        Map<String, ZLinkBackendSpotNode> spotNodes,
+        ZLinkMessageSerializer serializer,
+        ZLinkActorRuntime actors,
+        ZLinkHandlerFactory handlerFactory,
+        Predicate<RoutingId> sessionRelayRouteReady,
+        ZLinkSpotRuntime spots,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
         if (registration.streamNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one stream node is required");
         }
@@ -122,7 +147,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             registration.handlerExecutor(),
             "handlerExecutor");
         this.flow = new systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer(
-            registration.dispatchOptions(), handlerFactory, this.handlerExecutor);
+            registration.dispatchOptions(), handlerFactory, this.handlerExecutor, eventDispatcher);
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.defaultCodec = defaultCodec(registration);
         this.compressionCodec = registration.streamCompressionCodec();
@@ -543,11 +568,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             CompletionStage<Void> stage;
             try {
                 stage = ZLinkHandlerStages.fromRunnable(() -> {
-                    ZLinkSessionActorsRuntime.enterRelayDispatch(header);
+                    ZLinkSessionActorsRuntime.enterRelayDispatch(dispatch, header);
                     try {
                         session.onDispatch(dispatch, payload);
                     } finally {
-                        ZLinkSessionActorsRuntime.exitRelayDispatch();
+                        ZLinkSessionActorsRuntime.exitRelayDispatch(dispatch);
                     }
                 });
             } catch (RuntimeException ex) {

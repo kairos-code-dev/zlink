@@ -9,6 +9,7 @@ class ScenarioState(private val providerRid: String) {
     private val slowRelease = CountDownLatch(1)
     private var weight = 100
     private var grayFailure = false
+    private var observerThrows = false
 
     fun providerRid(): String = providerRid
 
@@ -27,6 +28,14 @@ class ScenarioState(private val providerRid: String) {
 
     @Synchronized
     fun grayFailure(): Boolean = grayFailure
+
+    @Synchronized
+    fun observerThrows(value: Boolean) {
+        observerThrows = value
+    }
+
+    @Synchronized
+    fun observerThrows(): Boolean = observerThrows
 
     fun releaseSlow() {
         slowRelease.countDown()

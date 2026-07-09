@@ -32,8 +32,14 @@ public final class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
 
     @Override
     public void configure() {
-        context.handlers().addActorRequest(EntryActorEchoHandler.class);
-        context.handlers().addActorRequest(EntryActorJoinHandler.class);
+        context.handlers().addHandler(EntryActorPingHandler.class);
+        context.handlers().addHandler(EntryActorEchoHandler.class);
+        context.handlers().addHandler(EntryActorPushHandler.class);
+        context.handlers().addHandler(EntryActorSnapshotHandler.class);
+        context.handlers().addHandler(EntryActorJoinHandler.class);
+        context.handlers().addHandler(EntryActorJoinAdmissionHandler.class);
+        context.handlers().addHandler(EntrySpotOnlyJoinHandler.class);
+        context.handlers().addHandler(EntryActorDestroyHandler.class);
     }
 
     @Override

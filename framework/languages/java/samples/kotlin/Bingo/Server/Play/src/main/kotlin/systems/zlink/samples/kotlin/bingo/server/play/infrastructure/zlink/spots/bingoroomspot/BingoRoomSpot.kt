@@ -15,9 +15,6 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomTimerHandler
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerMsgHandler
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.StopObservingBingoEventsHandler
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.SubmitBingoCardHandler
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoGame
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEvent
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEventKind
@@ -37,6 +34,8 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEve
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardRes
+import systems.zlink.samples.kotlin.bingo.shared.contracts.card
+import systems.zlink.samples.kotlin.bingo.shared.contracts.winners
 
 class BingoRoomSpot(
     private val context: ZLinkSpotContext,
@@ -58,15 +57,6 @@ class BingoRoomSpot(
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         settingsInitializer.handle(this, request)
         return ZLinkSpotCreateResponse.accept()
-    }
-
-    override fun configure() {
-        context.handlers().addHandler(SubmitBingoCardHandler::class.java)
-        context.handlers().addHandler(StopObservingBingoEventsHandler::class.java)
-        context.handlers().addSubscribe(
-            SampleNames.WinnerTopic,
-            BingoWinnerMsgHandler::class.java,
-        )
     }
 
     override suspend fun onActorJoinSuspending(

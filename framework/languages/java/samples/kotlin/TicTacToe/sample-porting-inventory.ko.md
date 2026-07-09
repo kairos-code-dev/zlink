@@ -62,11 +62,20 @@
 | common: inbound observer는 connect 전에 등록 | `TicTacToeClientScenario.kt` | validation | done | stream connector 생성 직후 inbound observation을 등록한다. |
 | common: inbound observer 로그 확인 | `run_sample.sh`, `run_sample.ps1` | runner | done | observer connection, subscription, milestone marker와 flow log를 확인한다. |
 | common: sample-local polling으로 push 대기를 숨기지 않음 | `TicTacToeClientScenario.kt` | validation | done | push 대기는 scenario 코드에 직접 드러난다. |
-| common: Domain에는 board, turn, win/draw 판정만 둠 | `TicTacToeGame.kt` | design | partial | 현재 Kotlin은 작은 샘플 구조라 game Spot 내부 state로 표현한다. 별도 domain package 분리는 없다. |
+| common: Domain에는 board, turn, win/draw 판정만 둠 | `Server/src/main/kotlin/.../play/domain/tictactoe/TicTacToeMatch.kt` | design | done | board, turn, win/draw, timeout state 전환은 domain 객체가 맡고 Spot은 framework lifecycle, actor 목록, push를 맡는다. |
 | common: Application은 room 생성 use case를 조율 | `TicTacToeGameCreator.kt`, `CreateGameHandler.kt` | design | done | room 응답 조립과 Spot 생성 요청을 조율한다. |
 | common: Infrastructure는 HTTP, channel, stream session, actor, Spot, timer, codec 연결을 맡음 | `Server/src/main/kotlin/.../api`, `.../play/infrastructure` | design | done | framework 연결 책임을 infrastructure package가 맡는다. |
 
 ## 남은 gap
 
-1. Kotlin `TicTacToe`는 `.NET`처럼 별도 domain package를 두지 않고 `TicTacToeGame.kt`의 game Spot state 안에 board, turn, win/draw 판정을 둔다.
-2. 현재 공통 runner와 client 검증은 통과하지만, domain package 분리까지 요구하려면 샘플 구조를 바꾸는 별도 설계 작업으로 다루는 편이 낫다.
+- 없음. Board, turn, win/draw 판정은 `play/domain/tictactoe/TicTacToeMatch.kt`로 분리했고,
+  `TicTacToeGame` Spot은 framework lifecycle과 actor/session push 연결만 맡는다.
+
+## 검증 기록
+
+- 2026-07-07 현재 checkout에서 `nice -n 10 timeout 600s ./run_sample.sh` 통과.
+- runner 출력에서 `PASS TicTacToe.Kotlin`을 확인했다.
+- runner는 Gradle 호출에 `--no-parallel --max-workers=1`을 사용한다.
+- 증거 파일은 `logs/flow-api-50479.log`, `logs/flow-play-node-1.log`, `logs/flow-play-node-2.log`이다.
+- flow log에서 `PlayerWinMilestoneMsg` pub/sub fan-out과 양쪽 stream의 `LeaveGameMsg` dispatch를 확인했다.
+- `rg -n "HANDLER_MISSING|ERROR" framework/languages/java/samples/kotlin/TicTacToe/logs -g '*.log'`는 no-hit이다.

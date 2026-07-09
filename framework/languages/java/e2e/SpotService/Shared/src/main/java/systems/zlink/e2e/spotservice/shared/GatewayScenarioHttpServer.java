@@ -31,13 +31,18 @@ public final class GatewayScenarioHttpServer implements SmartLifecycle {
             server.createContext("/health", exchange -> write(exchange, 200, "ok\n"));
             server.createContext("/scenario/", exchange -> {
                 String mode = exchange.getRequestURI().getPath().substring("/scenario/".length());
-                ClientDriverSpot.configure(mode);
-                spots.create(ClientDriverSpot.class, RoutingId.from(
-                        "gateway-driver-" + mode + "-" + UUID.randomUUID().toString().replace("-", "")))
-                    .toCompletableFuture()
-                    .join();
-                ClientDriverSpot.awaitResult();
-                write(exchange, 200, "spot-service e2e mode=" + mode + " result=passed\n");
+                try {
+                    ClientDriverSpot.configure(mode);
+                    spots.create(ClientDriverSpot.class, RoutingId.from(
+                            "gateway-driver-" + mode + "-" + UUID.randomUUID().toString().replace("-", "")))
+                        .toCompletableFuture()
+                        .join();
+                    ClientDriverSpot.awaitResult();
+                    write(exchange, 200, "spot-service e2e mode=" + mode + " result=passed\n");
+                } catch (Throwable error) {
+                    error.printStackTrace(System.err);
+                    write(exchange, 500, "spot-service e2e mode=" + mode + " result=failed: " + error + "\n");
+                }
             });
             server.start();
             running = true;

@@ -32,6 +32,10 @@ public final class ScenarioActor implements ZLinkActor {
         return sequence;
     }
 
+    public int currentSequence() {
+        return sequence;
+    }
+
     public void applyProfile(Contracts.ActorProfile next) {
         profile = next;
     }

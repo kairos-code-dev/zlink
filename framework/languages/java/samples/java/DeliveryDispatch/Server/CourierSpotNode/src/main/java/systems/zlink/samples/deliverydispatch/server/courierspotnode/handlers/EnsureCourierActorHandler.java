@@ -2,8 +2,8 @@ package systems.zlink.samples.deliverydispatch.server.courierspotnode.handlers;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot;
@@ -21,7 +21,7 @@ public final class EnsureCourierActorHandler
     public Messages.CourierActorEnsured handle(
         CourierEntrySpot spot,
         Messages.EnsureCourierActor request) {
-        ZLinkActorRef actor = await(actors.getOrCreate(
+        ActorRef actor = await(actors.getOrCreate(
             request.courierId(),
             SampleNames.CourierActorType,
             request));

@@ -73,7 +73,7 @@ public record SampleSettings(
             readListOption(args, "--play-channel-endpoints", defaults.playChannelEndpoints()),
             readOption(args, "--play-endpoint", defaults.playEndpoint()),
             readListOption(args, "--play-endpoints", defaults.playEndpoints()),
-            readOption(args, "--spot-endpoint", defaults.spotEndpoint()),
+            readOption(args, "--spot-endpoint", readOption(args, "--route-endpoint", defaults.spotEndpoint())),
             readListOption(args, "--spot-endpoints", defaults.spotEndpoints()),
             readOption(args, "--spot-pubsub-endpoint", defaults.spotPubSubEndpoint()),
             readListOption(args, "--spot-pubsub-endpoints", defaults.spotPubSubEndpoints()),
@@ -124,6 +124,10 @@ public record SampleSettings(
     public int playIndex() {
         int index = playChannelEndpoints.indexOf(playChannelEndpoint);
         return index >= 0 ? index : 0;
+    }
+
+    public String routeEndpoint() {
+        return spotEndpoint;
     }
 
     private static String readOption(String[] args, String name, String defaultValue) {

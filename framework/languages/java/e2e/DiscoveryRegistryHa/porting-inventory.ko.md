@@ -14,9 +14,9 @@
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 로그와 Gradle 산출물 제외. |
 | `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | Config 6 Java Redis location store scenario 완료와 검증 로그를 기록한다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | 기본 실행, polling fallback, fail-static outage, grace exceeded, provider crash, graceful shutdown, short outage recovery, long outage recovery, status transition과 `all` 실행은 Redis location store 기반이다. |
-| `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/discoveryregistryha/shared/Contracts.java` | shared | partial | baseline request/reply DTO를 재사용한다. store failure 전용 DTO가 필요하면 후속으로 추가한다. |
-| `Client/Program.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/Program.java` | client-entry | done | `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3` dispatch만 남기고 오래된 DR-* dispatch를 제거했다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 실행별 Redis location store를 기본으로 준비한다. 기본 실행, polling fallback, fail-static outage, grace exceeded, provider crash, graceful shutdown, short outage recovery, long outage recovery, status transition, store response delay와 `all` 실행은 Redis location store 기반이다. |
+| `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/discoveryregistryha/shared/Contracts.java` | shared | done | baseline request/reply와 evidence wait DTO를 제공하고, status와 peer row는 consumer public endpoint의 응답으로 검증한다. |
+| `Client/Program.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/Program.java` | client-entry | done | `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3`/`SF-E1` dispatch만 남기고 오래된 DR-* dispatch를 제거했다. |
 | `Client/Scenarios/SfA1BaselineScenario.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/scenarios/SfA1BaselineScenario.java` | scenario | done | provider peer row, runtime status, request success를 public HTTP endpoint로 검증한다. |
 | `Client/Scenarios/SfA2PollingFallbackScenario.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/scenarios/SfA2PollingFallbackScenario.java` | scenario | done | polling-only consumer가 watch 없이 provider 추가/제거를 peer query와 request path로 반영하는지 검증한다. |
 | `Client/Scenarios/SfB1FailStaticScenario.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/scenarios/SfB1FailStaticScenario.java` | scenario | done | Redis pause 중 기존 request 성공, unhealthy status, owner lease failure, recovery status를 public endpoint로 검증한다. |
@@ -26,14 +26,17 @@
 | `Client/Scenarios/SfD1ShortOutageRecoveryScenario.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/scenarios/SfD1ShortOutageRecoveryScenario.java` | scenario | done | TTL보다 짧은 Redis pause/unpause 동안 request가 계속 성공하고 복구 후 status/peer row가 정상인지 검증한다. |
 | `Client/Scenarios/SfD2LongOutageRecoveryScenario.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/scenarios/SfD2LongOutageRecoveryScenario.java` | scenario | done | 긴 Redis outage 중 `api-b`를 죽인 뒤, survivor `api-a` 재등록과 `api-b` 제외 및 request 지속 성공을 검증한다. |
 | `Client/Scenarios/SfD3StatusTransitionScenario.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/scenarios/SfD3StatusTransitionScenario.java` | scenario | done | public runtime status가 healthy, outage, recovered 순서로 바뀌고 복구 뒤 last refresh 시간이 전진하는지 검증한다. |
+| `Client/Scenarios/SfE1StoreDelayNonBlockingScenario.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/scenarios/SfE1StoreDelayNonBlockingScenario.java` | scenario | done | store response delay 중 일반 request p99가 baseline 기반 budget 안에 있고, 지연 해제 뒤 request가 성공하는지 검증한다. |
 | `Server/Provider/StoreFailure.Provider.csproj` | `Server/Provider/build.gradle.kts` | build | done | Redis location store extension을 참조한다. |
-| `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderApplication.java` | server-role | partial | `useDiscovery()` 없이 Redis location store와 짧은 location timing option을 등록한다. |
-| `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderEndpoints.java` | endpoints | partial | health/evidence/shutdown endpoint를 제공한다. provider runtime query endpoint는 후속 scenario에서 필요하면 추가한다. |
+| `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderApplication.java` | server-role | done | `useDiscovery()` 없이 Redis location store와 짧은 location timing option을 등록하고 provider channel server를 public framework 설정으로 연다. |
+| `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderEndpoints.java` | endpoints | done | health/evidence/evidence wait/shutdown endpoint를 제공한다. provider runtime query는 현재 Config 6 검증에서 필요하지 않고 consumer public query가 observer 역할을 맡는다. |
 | `Server/Consumer/StoreFailure.Consumer.csproj` | `Server/Consumer/build.gradle.kts` | build | done | Redis location store extension을 참조한다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/ConsumerApplication.java` | server-role | partial | Redis location store와 짧은 location timing option을 등록한다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/ConsumerApplication.java` | server-role | done | Redis location store와 짧은 location timing option을 등록하고, polling-only mode와 delay mode에서는 같은 store를 감싼 공개 검증용 store를 사용한다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/Program.java` | server-entry | done | consumer process entrypoint다. |
 | `Server/Consumer/PollingOnlyLocationStore.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/PollingOnlyLocationStore.java` | store | done | Redis store에 모든 I/O를 위임하되 optional change-stamp interface를 구현하지 않아 pure polling 경로를 만든다. |
-| `Server/Consumer/ConsumerEndpoints.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/ConsumerEndpoints.java` | endpoints | done | request endpoint와 public location runtime query status/peer endpoint를 제공한다. |
+| `Server/Consumer/DelayableLocationStore.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/DelayableLocationStore.java` | store | done | Redis store에 모든 I/O를 위임하기 전에 설정된 delay를 비동기로 적용해 store 응답 지연을 주입한다. |
+| `Server/Consumer/LocationStoreDelayState.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/LocationStoreDelayState.java` | store | done | consumer admin endpoint가 설정한 delay 값을 store wrapper가 같은 state에서 읽는다. |
+| `Server/Consumer/ConsumerEndpoints.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/ConsumerEndpoints.java` | endpoints | done | request endpoint, public location runtime query status/peer endpoint, store delay admin endpoint를 제공한다. |
 | `Server/Registry/*` | 없음 | server-role | not-needed | Config 6은 Redis location store 장애·복구를 검증하므로 embedded registry role을 사용하지 않는다. |
 | `Server/Embedded/*` | 없음 | server-role | not-needed | 제거된 registry 계약에 의존하던 old DR role이라 소스에서 제거했다. |
 | `Server/Probe/*` | 없음 | server-role | not-needed | registry topology probe 대신 public location runtime query를 사용한다. |
@@ -89,8 +92,18 @@
     - 결과: `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3` 통과,
       `discovery-registry-ha e2e result=passed`
     - 로그: `logs/20260704-033113-35152/`
+- `nice -n 10 ./gradlew --project-cache-dir /tmp/zlink-discoveryregistryha-gradle-cache --no-daemon --no-parallel --max-workers=1 -p e2e/DiscoveryRegistryHa :Shared:compileJava :Server:Consumer:compileJava :Client:compileJava --console=plain`
+  - 결과: `BUILD SUCCESSFUL`
+- `nice -n 10 timeout 420s ./run_e2e.sh SF-E1`
+  - 결과: `scenario SF-E1 passed`, `scenario SF-E1 passed providers=[api-a]`,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260707-215129-3537304/`
+- `nice -n 10 timeout 900s ./run_e2e.sh all`
+  - 결과: `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3`/`SF-E1` 통과,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260707-222314-3666363/`
 
 ## 남은 작업
 
-`SF-A1`, `SF-A2`, `SF-B1`, `SF-B2`, `SF-C1`, `SF-C2`, `SF-D1`, `SF-D2`, `SF-D3`과 `all` runner는
-닫힌 상태다.
+없음: `SF-A1`, `SF-A2`, `SF-B1`, `SF-B2`, `SF-C1`, `SF-C2`, `SF-D1`, `SF-D2`, `SF-D3`, `SF-E1`과 `all`
+runner는 닫힌 상태이며, 이 inventory에는 남은 `gap`/`partial` 행이 없다.

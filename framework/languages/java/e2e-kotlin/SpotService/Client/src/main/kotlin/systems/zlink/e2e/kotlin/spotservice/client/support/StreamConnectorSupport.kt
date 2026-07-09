@@ -30,6 +30,14 @@ internal fun createStreamConnector(
     dispatchMode: ZLinkStreamDispatchMode,
     maxReceivedMessages: Int,
 ): ZLinkStreamConnector =
+    createStreamConnector(endpoint, dispatchMode, maxReceivedMessages, true)
+
+internal fun createStreamConnector(
+    endpoint: String,
+    dispatchMode: ZLinkStreamDispatchMode,
+    maxReceivedMessages: Int,
+    skipServerCertificateValidation: Boolean,
+): ZLinkStreamConnector =
     ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
             URI.create(endpoint),
@@ -47,7 +55,7 @@ internal fun createStreamConnector(
             Duration.ofMillis(250),
             Duration.ofSeconds(5),
             2.0,
-            false,
+            skipServerCertificateValidation,
             ZLinkStreamCompression.LZ4,
             null,
             null,

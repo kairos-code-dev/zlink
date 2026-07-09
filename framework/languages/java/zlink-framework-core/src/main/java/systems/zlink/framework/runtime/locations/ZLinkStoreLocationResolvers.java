@@ -7,19 +7,19 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
+import systems.zlink.framework.locations.ActorSpotRefResolver;
+import systems.zlink.framework.locations.SpotRef;
+import systems.zlink.framework.locations.SpotRefResolver;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkActorAddressResolver;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotAddressResolver;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public final class ZLinkStoreLocationResolvers
@@ -96,8 +96,8 @@ public final class ZLinkStoreLocationResolvers
     }
 
     public static final class AddressResolvers
-        implements ZLinkSpotAddressResolver,
-                   ZLinkActorAddressResolver {
+        implements SpotRefResolver,
+                   ActorSpotRefResolver {
         private final List<String> meshNames;
         private final Map<String, String> spotRouterChannels;
         private final ZLinkStoreLocationResolvers rows;
@@ -118,17 +118,17 @@ public final class ZLinkStoreLocationResolvers
         }
 
         @Override
-        public CompletionStage<ZLinkSpotAddress> resolveSpotAddressAsync(
+        public CompletionStage<SpotRef> resolveSpotRefAsync(
             String meshName,
             systems.zlink.contracts.core.RoutingId spotRid) {
             return rows.resolveSpotRowAsync(new ZLinkSpotLocationKey(meshName, spotRid))
                 .thenApply(row -> row == null
                     ? null
-                    : new ZLinkSpotAddress(row.meshName(), row.nodeRid(), row.spotRid()));
+                    : new SpotRef(row.meshName(), row.nodeRid(), row.spotRid()));
         }
 
         @Override
-        public CompletionStage<ZLinkSpotAddress> resolveActorSpotAddressAsync(
+        public CompletionStage<SpotRef> resolveActorSpotRefAsync(
             String actorId) {
             return rows.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
                 .thenApply(row -> {
@@ -139,7 +139,7 @@ public final class ZLinkStoreLocationResolvers
                         row.locationKind() == ZLinkSpotKind.ENTRY || row.spotRid() == null
                             ? row.nodeRid()
                             : row.spotRid();
-                    return new ZLinkSpotAddress(row.spotMeshName(), row.nodeRid(), spotRid);
+                    return new SpotRef(row.spotMeshName(), row.nodeRid(), spotRid);
                 });
         }
 

@@ -21,6 +21,11 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEve
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardRes
+import systems.zlink.samples.kotlin.bingo.shared.contracts.card
+import systems.zlink.samples.kotlin.bingo.shared.contracts.drawnNumbers
+import systems.zlink.samples.kotlin.bingo.shared.contracts.marks
+import systems.zlink.samples.kotlin.bingo.shared.contracts.players
+import systems.zlink.samples.kotlin.bingo.shared.contracts.winners
 
 class BingoClientScenario {
     suspend fun run(
@@ -123,9 +128,9 @@ class BingoClientScenario {
         ensure(client2Result.status == "Finished")
         ensure(client2Result.drawnNumbers == client1Result.drawnNumbers)
         ensure(client2Result.winners == client1Result.winners)
-        ensure(client2Result.players.map(BingoPlayerState::actorId) ==
-            client1Result.players.map(BingoPlayerState::actorId))
-        ensure(client1Result.drawnNumbers == drawnNumbers.map(BingoNumberDrawnNotify::number))
+        ensure(client2Result.players.map { player -> player.actorId } ==
+            client1Result.players.map { player -> player.actorId })
+        ensure(client1Result.drawnNumbers == drawnNumbers.map { notify -> notify.number })
         ensure(client1Result.winners == listOf(client1Auth.actorId))
         ensure(client1Result.players.all { player -> player.card.size == 9 })
         ensure(client1Result.players.all { player -> player.marks[4] })

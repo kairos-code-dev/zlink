@@ -7,6 +7,6 @@ public final class SmG2Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-G2", "owner remap harness is not implemented");
+        gateway.runMode("owner-remap");
     }
 }

@@ -3,7 +3,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.couriersession.sess
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
@@ -82,9 +82,9 @@ class CourierSession(
 
     private fun findOrEnsureActor(courierId: String): ActorRefWire {
         val nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId))
-        val address = ZLinkSpotAddress(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
+        val spotRef = SpotRef(SampleNames.CourierSpotMesh, nodeRid, nodeRid)
         val found = routes
-            .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(courierId))
+            .requestToSpot(SampleNames.CourierSpotMesh, spotRef, FindCourierActorReq(courierId))
             .timeout(SampleTimings.RequestTimeout)
             .await(FindCourierActorRes::class.java)
         val foundActor = found.actor
@@ -92,7 +92,7 @@ class CourierSession(
             return foundActor
         }
         return routes
-            .requestToSpot(SampleNames.CourierSpotMesh, address, EnsureCourierActorReq(courierId))
+            .requestToSpot(SampleNames.CourierSpotMesh, spotRef, EnsureCourierActorReq(courierId))
             .timeout(SampleTimings.RequestTimeout)
             .await(EnsureCourierActorRes::class.java)
             .actor

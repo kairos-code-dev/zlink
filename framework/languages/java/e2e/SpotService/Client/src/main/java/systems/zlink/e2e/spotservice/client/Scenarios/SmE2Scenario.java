@@ -7,6 +7,6 @@ public final class SmE2Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-E2", "runner creates timer spots before evidence verification");
+        gateway.runMode("state1");
     }
 }

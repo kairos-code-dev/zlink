@@ -7,6 +7,7 @@ import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderState
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderReq
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderRes
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderWorkflowReq
@@ -33,6 +34,31 @@ class StartOrderUseCase(
             return forwardToOwner(existing.ownerInstanceId, request)
         }
 
+        val command = buildCommand(request, existing)
+        val state = workflows.startWorkflow(command)
+        return StartOrderRes(state.orderId, state.status)
+    }
+
+    suspend fun prepareInventoryReserved(request: StartOrderReq) =
+        prepareInventoryReservedState(request)
+
+    private suspend fun prepareInventoryReservedState(request: StartOrderReq): OrderState {
+        val existing = store.findIdempotency(request.idempotencyKey)
+        if (existing != null && existing.started) {
+            return store.findReadModel(existing.orderId) ?: store.placeholder(existing.orderId)
+        }
+        if (existing != null && existing.ownerInstanceId != options.instanceId) {
+            throw IllegalStateException("Inventory-reserved checkpoint must run on owning CommerceApi.")
+        }
+
+        val command = buildCommand(request, existing)
+        return workflows.prepareInventoryReserved(command)
+    }
+
+    private fun buildCommand(
+        request: StartOrderReq,
+        existing: CommerceStore.IdempotencyMapping?,
+    ): StartOrderWorkflowReq {
         val cart = store.findCart(request.cartId)
             ?: throw IllegalArgumentException("Unknown cart '${request.cartId}'.")
         if (!store.shippingAddressExists(request.shippingAddressId)) {
@@ -46,7 +72,7 @@ class StartOrderUseCase(
             ?: store.reserveIdempotency(request.idempotencyKey, options.instanceId)
         store.saveOrderPaymentMethod(mapping.orderId, request.paymentMethodId)
 
-        val command = StartOrderWorkflowReq(
+        return StartOrderWorkflowReq(
             mapping.orderId,
             request.cartId,
             request.shippingAddressId,
@@ -56,8 +82,6 @@ class StartOrderUseCase(
             cart.amount,
             cart.currency,
         )
-        val state = workflows.startWorkflow(command)
-        return StartOrderRes(state.orderId, state.status)
     }
 
     private suspend fun forwardToOwner(ownerInstanceId: String, request: StartOrderReq): StartOrderRes {

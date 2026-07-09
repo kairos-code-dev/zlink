@@ -22,11 +22,11 @@ import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkRouteKind;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.SpotRemoteRef;
 
 class ZLinkStoreLocationResolversTest {
     private static final Instant NOW = Instant.parse("2026-07-03T00:00:00Z");
@@ -69,10 +69,10 @@ class ZLinkStoreLocationResolversTest {
             .toCompletableFuture()
             .get();
 
-        ZLinkSpotAddress entry = addresses.resolveActorSpotAddressAsync("entry-actor")
+        SpotRef entry = addresses.resolveActorSpotRefAsync("entry-actor")
             .toCompletableFuture()
             .get();
-        ZLinkSpotAddress user = addresses.resolveActorSpotAddressAsync("user-actor")
+        SpotRef user = addresses.resolveActorSpotRefAsync("user-actor")
             .toCompletableFuture()
             .get();
 
@@ -96,8 +96,8 @@ class ZLinkStoreLocationResolversTest {
             .toCompletableFuture()
             .get();
 
-        ZLinkSpotRemoteAddress address = new ZLinkLocationSpotRemoteAddressResolver(addresses)
-            .resolveSpotRemoteAddressAsync(SPOT)
+        SpotRemoteRef address = new ZLinkLocationSpotRemoteRefResolver(addresses)
+            .resolveSpotRemoteRefAsync(SPOT)
             .toCompletableFuture()
             .get();
 

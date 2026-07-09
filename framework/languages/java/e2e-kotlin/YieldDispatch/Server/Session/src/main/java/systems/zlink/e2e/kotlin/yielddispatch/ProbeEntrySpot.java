@@ -20,7 +20,7 @@ public final class ProbeEntrySpot implements ZLinkEntrySpot<ProbeActor> {
 
     @Override
     public void configure() {
-        context.handlers().addActorRequest(EntryActorJoinHandler.class);
+        context.handlers().addHandler(EntryActorJoinHandler.class);
     }
 
     @Override

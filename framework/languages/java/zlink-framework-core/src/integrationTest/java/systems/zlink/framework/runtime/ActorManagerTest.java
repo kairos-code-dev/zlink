@@ -15,7 +15,7 @@ import systems.zlink.contracts.core.Zlink;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -30,15 +30,15 @@ final class ActorManagerTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
-            ZLinkActorRef created = runtime.actorManager()
+            ActorRef created = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
-            ZLinkActorRef reused = runtime.actorManager()
+            ActorRef reused = runtime.actorManager()
                 .getOrCreate("player-1", "player")
                 .toCompletableFuture()
                 .join();
-            Optional<ZLinkActorRef> found = runtime.actorManager()
+            Optional<ActorRef> found = runtime.actorManager()
                 .find("player-1")
                 .toCompletableFuture()
                 .join();

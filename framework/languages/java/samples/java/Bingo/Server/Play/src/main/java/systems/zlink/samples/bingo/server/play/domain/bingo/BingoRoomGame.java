@@ -4,6 +4,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomGame {
@@ -102,7 +103,7 @@ public final class BingoRoomGame {
     public Messages.BingoRoomState snapshot() {
         String hostActorId = players.isEmpty() ? "" : players.getFirst().actorId();
         Integer lastDrawn = drawnNumbers.isEmpty() ? null : drawnNumbers.getLast();
-        return new Messages.BingoRoomState(
+        return BingoMessages.bingoRoomState(
             roomId,
             status,
             hostActorId,

@@ -7,6 +7,6 @@ public final class SmD12Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-D12", "session reconnect migration is not implemented");
+        gateway.runMode("stream-rebind-transfer");
     }
 }

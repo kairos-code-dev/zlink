@@ -43,7 +43,11 @@ public final class ScenarioState {
         if (containsAll(current, fragments)) {
             return current;
         }
-        throw new IllegalStateException("timed out waiting for evidence fragments: " + fragments);
+        throw new IllegalStateException(
+            "timed out waiting for evidence fragments: "
+                + fragments
+                + " current="
+                + evidenceLines(current));
     }
 
     private static boolean containsAll(
@@ -57,5 +61,17 @@ public final class ScenarioState {
             .toList();
         return fragments.stream().allMatch(fragment ->
             lines.stream().anyMatch(line -> line.contains(fragment)));
+    }
+
+    private static List<String> evidenceLines(Contracts.EvidenceSnapshot snapshot) {
+        return snapshot.entries().stream()
+            .map(entry -> entry.marker()
+                + "|"
+                + entry.nodeRid()
+                + "|"
+                + entry.spotRid()
+                + "|"
+                + entry.value())
+            .toList();
     }
 }

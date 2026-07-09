@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.pubsub.subscriber.Configuration.SubscriberOptions;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
@@ -46,6 +49,49 @@ public final class OperationalEndpoints implements SmartLifecycle {
                 exchange.getResponseBody().write(body);
                 exchange.close();
             });
+            server.createContext("/evidence/wait", exchange -> {
+                try {
+                    Map<String, String> query = query(exchange.getRequestURI());
+                    long timeoutMillis = longQuery(query, "timeoutMillis", 15_000L);
+                    var snapshot = switch (query.getOrDefault("kind", "event")) {
+                        case "any-event" -> evidence.waitFor(
+                            entry -> "EventMsg".equals(entry.marker())
+                                && query.getOrDefault("scenario", "").equals(entry.scenario()),
+                            timeoutMillis);
+                        case "event" -> evidence.waitFor(
+                            entry -> "EventMsg".equals(entry.marker())
+                                && query.getOrDefault("scenario", "").equals(entry.scenario())
+                                && entry.sequence() == intQuery(query, "sequence", Integer.MIN_VALUE),
+                            timeoutMillis);
+                        case "sequence-at-least" -> evidence.waitFor(
+                            entry -> "EventMsg".equals(entry.marker())
+                                && query.getOrDefault("scenario", "").equals(entry.scenario())
+                                && entry.sequence() >= intQuery(query, "minSequence", Integer.MAX_VALUE),
+                            timeoutMillis);
+                        case "dispatch-error" -> evidence.waitFor(
+                            entry -> "DispatchError".equals(entry.marker())
+                                && entry.value().contains("HANDLER_MISSING")
+                                && entry.value().contains("DROP")
+                                && entry.value().contains(query.getOrDefault("packetName", "")),
+                            timeoutMillis);
+                        case "contiguous-run" -> evidence.waitForContiguousRun(
+                            query.getOrDefault("scenario", ""),
+                            intQuery(query, "minLength", 1),
+                            timeoutMillis);
+                        default -> throw new IllegalArgumentException("unknown evidence wait kind");
+                    };
+                    byte[] body = json.writeValueAsBytes(snapshot);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                } catch (Exception error) {
+                    byte[] body = (error.getMessage() + "\n").getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(408, body.length);
+                    exchange.getResponseBody().write(body);
+                } finally {
+                    exchange.close();
+                }
+            });
             server.start();
             running = true;
         } catch (Exception error) {
@@ -65,5 +111,37 @@ public final class OperationalEndpoints implements SmartLifecycle {
     @Override
     public boolean isRunning() {
         return running;
+    }
+
+    private static Map<String, String> query(URI uri) {
+        Map<String, String> result = new HashMap<>();
+        String raw = uri.getRawQuery();
+        if (raw == null || raw.isBlank()) {
+            return result;
+        }
+        for (String pair : raw.split("&")) {
+            int separator = pair.indexOf('=');
+            if (separator <= 0) {
+                continue;
+            }
+            String key = decode(pair.substring(0, separator));
+            String value = decode(pair.substring(separator + 1));
+            result.put(key, value);
+        }
+        return result;
+    }
+
+    private static String decode(String value) {
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
+    }
+
+    private static int intQuery(Map<String, String> query, String name, int fallback) {
+        String value = query.get(name);
+        return value == null || value.isBlank() ? fallback : Integer.parseInt(value);
+    }
+
+    private static long longQuery(Map<String, String> query, String name, long fallback) {
+        String value = query.get(name);
+        return value == null || value.isBlank() ? fallback : Long.parseLong(value);
     }
 }

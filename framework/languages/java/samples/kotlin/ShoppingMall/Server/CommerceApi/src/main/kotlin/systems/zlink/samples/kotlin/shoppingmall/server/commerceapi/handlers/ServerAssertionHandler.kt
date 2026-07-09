@@ -23,6 +23,8 @@ class ServerAssertionHandler(
         val orderIds = listOf(
             request.successfulOrderId,
             request.pendingRecoveredOrderId,
+            request.concurrentOrderId,
+            request.resumedOrderId,
             request.inventoryFailureOrderId,
             request.paymentFailureOrderId,
             request.scaleOutOrderId,
@@ -38,6 +40,14 @@ class ServerAssertionHandler(
         passed = startsWith(lines, evidence, request.pendingRecoveredOrderId, listOf(
             "OrderStartedEvent",
         )) && passed
+        passed = check(lines, evidence, request.concurrentOrderId, listOf(
+            "OrderStartedEvent", "InventoryReservedEvent",
+            "PaymentAuthorizedEvent", "OrderConfirmedEvent",
+        )) && passed
+        passed = check(lines, evidence, request.resumedOrderId, listOf(
+            "OrderStartedEvent", "InventoryReservedEvent",
+            "PaymentAuthorizedEvent", "OrderConfirmedEvent",
+        )) && passed
         passed = check(lines, evidence, request.inventoryFailureOrderId, listOf(
             "OrderStartedEvent", "InventoryReservationFailedEvent", "OrderFailedEvent",
         )) && passed
@@ -51,7 +61,7 @@ class ServerAssertionHandler(
         )) && passed
 
         val compensation = evidence.releasedReservationCount >= 1 && evidence.paymentFailureCount >= 1
-        val startedCount = evidence.startedIdempotencyCount == 5
+        val startedCount = evidence.startedIdempotencyCount == 7
         lines.add("releasedReservationCount=${evidence.releasedReservationCount}")
         lines.add("paymentFailureCount=${evidence.paymentFailureCount}")
         lines.add("startedIdempotencyCount=${evidence.startedIdempotencyCount}")

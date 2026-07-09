@@ -16,10 +16,11 @@ WinMilestoneNotify 전송은 PlayEntrySpot 내부 handler/private registry 책�
 
 필수 시나리오:
 1. 2 API + 2 Play 프로세스를 실행한다.
-2. Redis room route store를 사용한다. run_sample은 외부 Redis endpoint가 없으면 Docker
-   Redis container를 임시 localhost port로 띄우고 종료 시 정리한다.
-3. 외부 Redis를 쓰는 경우에도 실행별 key prefix를 사용해 다른 테스트와 route key가 섞이지
-   않게 한다.
+2. Redis room route store를 사용한다. run_sample은 실행마다 전용 Docker Redis container를
+   임시 localhost port로 띄우고 종료 시 자신이 만든 container만 정리한다.
+3. 이미 떠 있는 Redis나 host Redis endpoint를 재사용하지 않는다. 실행별 key prefix는 같은 전용
+   container 안에서 sample 내부 key를 구분하기 위한 값이지, 여러 실행이 Redis를 공유하기 위한
+   장치가 아니다.
 4. API는 CreateGameHttpReq에 room id, owner Play endpoint, Play endpoint 목록,
    Play endpoint별 SpotNode rid, required level을 반환한다.
 5. host는 owner Play에 연결하고 guest와 observer는 owner가 아닌 Play에 연결한다.

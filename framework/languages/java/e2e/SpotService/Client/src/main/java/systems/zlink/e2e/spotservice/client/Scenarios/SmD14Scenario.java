@@ -7,6 +7,6 @@ public final class SmD14Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-D14", "TLS stream endpoint and certificate scenario is not implemented");
+        gateway.runMode("stream-tls");
     }
 }

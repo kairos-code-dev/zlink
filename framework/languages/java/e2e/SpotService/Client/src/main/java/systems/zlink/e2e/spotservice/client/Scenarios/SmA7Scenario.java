@@ -7,6 +7,6 @@ public final class SmA7Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-A7", "runner calls the server type-mismatch admin endpoint");
+        gateway.runMode("owner");
     }
 }

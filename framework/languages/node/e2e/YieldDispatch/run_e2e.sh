@@ -156,8 +156,8 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run YieldDispatch because it provisions a dedicated Redis location store." >&2
   exit 1
 fi
-start_redis_container "yield-dispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="yield-dispatch:node:${RUN_ID}:location"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 

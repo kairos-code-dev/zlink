@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.
 
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.ZLinkAwait.await as awaitStage
+import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
@@ -25,10 +26,7 @@ class PlayEntrySpot(
     override fun context(): ZLinkEntrySpotContext = context
 
     override fun configure() {
-        context.handlers().addSubscribe(
-            SampleNames.PlayerMilestoneTopic,
-            PlayerWinMilestoneMsgHandler::class.java,
-        )
+        context.handlers().addHandler<PlayerWinMilestoneMsgHandler>()
     }
 
     override fun onCreateActor(

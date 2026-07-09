@@ -13,8 +13,11 @@
 | Client scenario | 완료 | dotnet 순서의 join, progress push, duplicate, reconnect, delete/rebuild, sync, server assertion 검증 |
 | Runner | 완료 | 기존 Java runner 방식의 log 보존, topology 대기, marker 검증 |
 
-## 남은 외부 제약
+## 남은 확인 사항
 
-현재 샌드박스는 Gradle daemon과 테스트 runner의 local socket 생성을 막는다. 이 때문에 이 환경에서는
-`./gradlew build`와 `run_sample.sh`를 끝까지 실행하지 못했고, 대신 현재 framework classpath를 앞에
-둔 `javac` 대조 컴파일로 GameQuest Java 소스 전체를 확인했다.
+현재 Java `GameQuest` 샘플 inventory에는 남은 `gap` 또는 `partial` 항목이 없다. 이후 공통 샘플
+문서나 release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.
+
+## 검증
+
+- `nice -n 15 timeout 600s ./run_sample.sh` 통과: `gamequest full client/server self-check completed`

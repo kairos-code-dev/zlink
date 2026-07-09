@@ -33,20 +33,20 @@ public final class YieldProbeSpot implements ZLinkSpot<YieldActor> {
 
     @Override
     public void configure() {
-        context.handlers().addPacket(YieldProbeHandlers.HoldHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.YieldHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.WorkerYieldHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.ProbeHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.WorkerYieldMsgHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.ProbeMsgHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.YieldMsgHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.YieldTimeoutMsgHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.YieldCancelMsgHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.RemoteSpotYieldHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.TimerStartMsgHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.TimerStopMsgHandler.class);
-        context.handlers().addActorRequest(YieldProbeHandlers.SpotActorYieldHandler.class);
-        context.handlers().addActorRequest(YieldProbeHandlers.SpotActorFastHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.HoldHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.YieldHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.WorkerYieldHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.ProbeHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.WorkerYieldMsgHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.ProbeMsgHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.YieldMsgHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.YieldTimeoutMsgHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.YieldCancelMsgHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.RemoteSpotYieldHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.TimerStartMsgHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.TimerStopMsgHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.SpotActorYieldHandler.class);
+        context.handlers().addHandler(YieldProbeHandlers.SpotActorFastHandler.class);
     }
 
     public synchronized void startTimer(Contracts.TimerStartMsg command) {

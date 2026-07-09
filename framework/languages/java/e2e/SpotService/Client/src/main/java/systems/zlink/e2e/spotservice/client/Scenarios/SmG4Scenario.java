@@ -7,6 +7,6 @@ public final class SmG4Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-G4", "bound session push load harness is not implemented");
+        gateway.runMode("bound-push-load");
     }
 }

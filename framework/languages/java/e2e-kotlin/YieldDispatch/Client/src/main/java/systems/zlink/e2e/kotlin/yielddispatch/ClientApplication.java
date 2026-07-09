@@ -11,6 +11,8 @@ public final class ClientApplication {
         }
         if ("d2".equals(scenario) || "YD-D2".equals(scenario) || "YD-D3".equals(scenario)) {
             ClientScenario.runD2(scenario);
+        } else if ("YD-E3".equals(scenario)) {
+            ClientScenario.runE3();
         } else {
             ClientScenario.run(scenario);
         }

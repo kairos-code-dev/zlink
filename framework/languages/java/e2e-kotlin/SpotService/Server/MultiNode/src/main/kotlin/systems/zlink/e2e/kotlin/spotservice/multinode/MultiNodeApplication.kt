@@ -21,13 +21,17 @@ import org.springframework.context.SmartLifecycle
 import org.springframework.context.annotation.Bean
 import org.springframework.core.env.Environment
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ZLinkActorClient
+import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -56,10 +60,12 @@ class MultiNodeApplication {
         json: ObjectMapper,
         spots: ZLinkSpotManager,
         routes: ZLinkRouteClient,
+        actors: ZLinkActorManager,
+        actorClient: ZLinkActorClient,
         evidence: MultiNodeEvidenceStore,
         context: ConfigurableApplicationContext
     ): MultiNodeHttpServer =
-        MultiNodeHttpServer(options, json, spots, routes, evidence, context)
+        MultiNodeHttpServer(options, json, spots, routes, actors, actorClient, evidence, context)
 
     @Bean
     fun multiNodeFramework(options: MultiNodeOptions): ZLinkFrameworkConfigurer =
@@ -70,14 +76,18 @@ class MultiNodeApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
-            framework.addRouteMeshChannel(node.routeChannel)
-                .enableServer(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
-                .enableClient(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
-                .setRoutingId(RoutingId.from(node.rid))
-            framework.addSpotMesh(node.spotMesh)
+            if (!options.spotOnly) {
+                framework.addRouteMeshChannel(node.routeChannel)
+                    .enableServer(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
+                    .enableClient(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
+                    .setRoutingId(RoutingId.from(node.rid))
+            }
+            framework.addSpotMesh(node.spotMesh(options))
                 .enableRouter(requireOption(node.spotRouterEndpoint(options), node.spotRouterEndpointOption))
                 .setRoutingId(RoutingId.from(node.rid))
+                .addEntrySpot(MultiNodeEntrySpot::class.java)
                 .addSpotFactory(node.spotClass)
+                .addActorFactory("multi-node", MultiNodeActorFactory::class.java)
         }
 
     @Bean
@@ -112,6 +122,8 @@ class MultiNodeHttpServer(
     private val json: ObjectMapper,
     private val spots: ZLinkSpotManager,
     private val routes: ZLinkRouteClient,
+    private val actors: ZLinkActorManager,
+    private val actorClient: ZLinkActorClient,
     private val evidence: MultiNodeEvidenceStore,
     private val context: ConfigurableApplicationContext
 ) : SmartLifecycle {
@@ -148,6 +160,16 @@ class MultiNodeHttpServer(
             val request = readJson(exchange, Contracts.MultiNodeStateRouteReq::class.java)
             writeJson(exchange, 200, requestState(request))
         }
+        nextServer.createContext("/spot/spot-only/request-send") { exchange ->
+            requireMethod(exchange, "POST")
+            val request = readJson(exchange, Contracts.SpotOnlyMeshReq::class.java)
+            writeJson(exchange, 200, requestSendSpotOnly(request))
+        }
+        nextServer.createContext("/actor/spot-only-join") { exchange ->
+            requireMethod(exchange, "POST")
+            val request = readJson(exchange, Contracts.SpotOnlyJoinReq::class.java)
+            writeJson(exchange, 200, joinSpotOnly(request))
+        }
         nextServer.createContext("/shutdown") { exchange ->
             writeJson(exchange, 200, mapOf("status" to "stopping"))
             Thread { context.close() }.start()
@@ -182,13 +204,17 @@ class MultiNodeHttpServer(
         }
             .toCompletableFuture()
             .join()
-        val state = requestState(Contracts.MultiNodeStateRouteReq(request.spotRid, request.delta))
+        val value = if (options.spotOnly) {
+            0
+        } else {
+            requestState(Contracts.MultiNodeStateRouteReq(request.spotRid, request.delta)).value
+        }
         evidence.add("multi-create-spot|node=${node.rid}|spot=${request.spotRid}|state=active")
         return Contracts.MultiNodeCreateSpotRes(
             request.spotRid,
             node.rid,
             "active",
-            state.value
+            value
         )
     }
 
@@ -196,12 +222,44 @@ class MultiNodeHttpServer(
         val node = MultiNodeKind.fromRid(options.rid)
         return routes.requestToSpot(
             node.routeChannel,
-            ZLinkSpotAddress(Contracts.SPOT_MESH, RoutingId.from(node.rid), RoutingId.from(request.spotRid)),
+            SpotRef(Contracts.SPOT_MESH, RoutingId.from(node.rid), RoutingId.from(request.spotRid)),
             Contracts.MultiNodeStateReq("add", request.delta)
         )
             .packetName("StateReq")
             .timeout(Duration.ofSeconds(2))
             .await(Contracts.MultiNodeStateRes::class.java)
+    }
+
+    private fun requestSendSpotOnly(request: Contracts.SpotOnlyMeshReq): Contracts.SpotOnlyMeshRes {
+        val created = spots.getOrCreate(
+            MultiNodeKind.fromRid(options.rid).spotClass,
+            RoutingId.from(request.sourceSpotRid),
+            ZLinkMessage.of(request)
+        )
+            .toCompletableFuture()
+            .join()
+        evidence.waitUntil(
+            listOf("spot-only-request|node=${options.rid}|source=${request.sourceSpotRid}|target=${request.targetSpotRid}"),
+            Duration.ofSeconds(10)
+        )
+        return Contracts.SpotOnlyMeshRes(
+            request.sourceSpotRid,
+            request.targetSpotRid,
+            created.reply().decode(Contracts.SpotOnlyMeshRes::class.java).targetValue
+        )
+    }
+
+    private fun joinSpotOnly(request: Contracts.SpotOnlyJoinReq): Contracts.SpotOnlyJoinRes {
+        val actor = actors.create(request.actorId, "multi-node")
+            .toCompletableFuture()
+            .join()
+        return actorClient.requestToActor(
+            actor,
+            request
+        )
+            .packetName("SpotOnlyJoinReq")
+            .timeout(Duration.ofSeconds(5))
+            .await(Contracts.SpotOnlyJoinRes::class.java)
     }
 
     private fun <T> readJson(exchange: HttpExchange, type: Class<T>): T =
@@ -277,7 +335,8 @@ data class MultiNodeOptions(
     val multiRouteAEndpoint: String,
     val multiRouteBEndpoint: String,
     val multiSpotRouterAEndpoint: String,
-    val multiSpotRouterBEndpoint: String
+    val multiSpotRouterBEndpoint: String,
+    val spotOnly: Boolean
 ) {
     fun toProperties(): Map<String, Any> =
         mapOf(
@@ -288,7 +347,8 @@ data class MultiNodeOptions(
             "zlink.e2e.multinode.multi-route-a-endpoint" to multiRouteAEndpoint,
             "zlink.e2e.multinode.multi-route-b-endpoint" to multiRouteBEndpoint,
             "zlink.e2e.multinode.multi-spot-router-a-endpoint" to multiSpotRouterAEndpoint,
-            "zlink.e2e.multinode.multi-spot-router-b-endpoint" to multiSpotRouterBEndpoint
+            "zlink.e2e.multinode.multi-spot-router-b-endpoint" to multiSpotRouterBEndpoint,
+            "zlink.e2e.multinode.spot-only" to spotOnly
         )
 
     companion object {
@@ -313,7 +373,8 @@ data class MultiNodeOptions(
                 multiRouteAEndpoint = values["multi-route-a-endpoint"].orEmpty(),
                 multiRouteBEndpoint = values["multi-route-b-endpoint"].orEmpty(),
                 multiSpotRouterAEndpoint = values["multi-spot-router-a-endpoint"].orEmpty(),
-                multiSpotRouterBEndpoint = values["multi-spot-router-b-endpoint"].orEmpty()
+                multiSpotRouterBEndpoint = values["multi-spot-router-b-endpoint"].orEmpty(),
+                spotOnly = values["spot-only"]?.toBooleanStrictOrNull() ?: false
             )
         }
 
@@ -326,7 +387,8 @@ data class MultiNodeOptions(
                 multiRouteAEndpoint = environment.getProperty("zlink.e2e.multinode.multi-route-a-endpoint", ""),
                 multiRouteBEndpoint = environment.getProperty("zlink.e2e.multinode.multi-route-b-endpoint", ""),
                 multiSpotRouterAEndpoint = environment.getProperty("zlink.e2e.multinode.multi-spot-router-a-endpoint", ""),
-                multiSpotRouterBEndpoint = environment.getProperty("zlink.e2e.multinode.multi-spot-router-b-endpoint", "")
+                multiSpotRouterBEndpoint = environment.getProperty("zlink.e2e.multinode.multi-spot-router-b-endpoint", ""),
+                spotOnly = environment.getProperty("zlink.e2e.multinode.spot-only", "false").toBoolean()
             )
 
         private fun required(values: Map<String, String>, name: String): String {
@@ -367,6 +429,9 @@ enum class MultiNodeKind(
 
     fun spotRouterEndpoint(options: MultiNodeOptions): String =
         if (this == NODE_A) options.multiSpotRouterAEndpoint else options.multiSpotRouterBEndpoint
+
+    fun spotMesh(options: MultiNodeOptions): String =
+        if (options.spotOnly) Contracts.SPOT_MESH else spotMesh
 
     companion object {
         fun fromRid(rid: String): MultiNodeKind =

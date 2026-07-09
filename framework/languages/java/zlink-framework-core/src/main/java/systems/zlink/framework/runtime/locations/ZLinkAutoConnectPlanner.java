@@ -130,8 +130,7 @@ final class ZLinkAutoConnectPlanner {
             case FANOUT -> local.role() == ZLinkLocationRole.SUB
                 && peer.role() == ZLinkLocationRole.PUB;
             case SPOT_MESH -> local.role() == ZLinkLocationRole.SPOT
-                && peer.role() == ZLinkLocationRole.SPOT
-                && localIsInitiator(local, peer);
+                && peer.role() == ZLinkLocationRole.SPOT;
             default -> false;
         };
     }

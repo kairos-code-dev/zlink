@@ -1,7 +1,7 @@
 # Java RegistryMessaging .NET 포팅 inventory
 
 기준:
-- `.NET`: `framework/languages/dotnet/e2e/RegistryMessaging`
+- `.NET`: `framework/languages/dotnet/e2e/LocationMessaging`
 - 공통 문서: `framework/doc/framework/common/e2e/config-1-location-messaging.ko.md`
 
 상태 의미:
@@ -15,7 +15,7 @@
 | `.gitignore` | `.gitignore` | config | done | 로그와 build 출력 제외. |
 | `README.ko.md` | `README.ko.md` | config-doc | done | Java 실행 구조와 실행 방법을 기록한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | 구현 scenario와 검증 로그를 기록한다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | Redis location store와 필요한 role만 설치·실행한다. `all` runner도 registry role 없이 통과한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 실행별 전용 Redis location store와 필요한 role만 설치·실행한다. `all` runner도 registry role 없이 통과한다. readiness는 bounded health check로 확인한다. |
 | `Shared/RegistryMessaging.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Java shared DTO project. |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/registrymessaging/shared/Contracts.java` | shared | done | request, reply, route, evidence DTO 대응. |
 | `Client/RegistryMessaging.Client.csproj` | `Client/build.gradle.kts` | build | done | Java client application. |
@@ -39,7 +39,7 @@
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmC5MissingPacketScenario.java` | scenario | done | missing request/send 뒤 정상 request 복구 검증. `RM-C5` runner 통과. |
 | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmC7WeightedProviderScenario.java` | scenario | done | weighted provider 분산 검증. `RM-C7` runner 통과. |
 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmC8PayloadRoundTripScenario.java` | scenario | done | 1 byte, 4 KiB, 256 KiB, 1 MiB payload 왕복 검증. payload evidence는 location store 연결으로 선택될 수 있는 양쪽 provider를 합산한다. `RM-C8` runner 통과. |
-| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmC9BackpressureScenario.java` | scenario | done | one-way send pressure 제출과 recovery를 검증한다. public send는 bounded-failure oracle을 노출하지 않는다. recovery evidence는 양쪽 provider를 합산한다. `RM-C9` runner 통과. |
+| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmC9BackpressureScenario.java` | scenario | done | one-way send pressure 제출과 recovery를 검증한다. public send는 bounded-failure oracle을 노출하지 않는다. recovery evidence는 양쪽 provider를 합산한다. follow-up HTTP timeout은 consumer endpoint의 framework request timeout보다 길게 잡아 client가 먼저 끊지 않게 했다. `RM-C9` runner 통과. |
 | `Server/Registry/RegistryMessaging.Registry.csproj` | 없음 | build | not-needed | Config 1은 Redis location store 기반으로 실행하므로 Java registry role을 제거했다. |
 | `Server/Registry/Program.cs` | 없음 | server-role | not-needed | Registry process entry는 새 location store runner에서 쓰지 않는다. |
 | `Server/Registry/RegistryHostFactory.cs` | 없음 | server-role | not-needed | Registry host 구성은 제거된 public registry 계약에 속한다. |
@@ -85,10 +85,10 @@
   - `RM-B2`: `logs/20260703-203720-36761/client-rm-b2.stdout.log`
   - `RM-C3`: `logs/20260703-201954-68646/client-RM-C3.stdout.log`
   - `RM-C8`: `logs/20260703-202115-75588/client-RM-C8.stdout.log`
-  - `RM-C9`: `logs/20260703-202137-77586/client-RM-C9.stdout.log`
+  - `RM-C9`: `logs/20260707-220422-3590936/client-RM-C9.stdout.log`
   - `RM-C2`: `logs/20260703-202210-80467/client-RM-C2.stdout.log`
   - `RM-C7`: `logs/20260703-202238-83024/client-RM-C7.stdout.log`
-- 전체 runner: `timeout 420s ./run_e2e.sh` 통과
-  (`logs/20260704-040035-91818/`). common, weighted, scale-out, scale-in, failover 단계가 모두
+- 전체 runner: `nice -n 10 timeout 600s ./run_e2e.sh all` 통과
+  (`logs/20260707-220606-3599616/`). common, weighted, scale-out, scale-in, failover 단계가 모두
   `registry-messaging e2e result=passed`를 출력했다. 이 실행은 registry fallback runner 경로와
-  registry HTTP client 제거 뒤의 재검증이다.
+  registry HTTP client 제거 뒤, runner가 전용 Redis location store를 준비하는 경로의 재검증이다.

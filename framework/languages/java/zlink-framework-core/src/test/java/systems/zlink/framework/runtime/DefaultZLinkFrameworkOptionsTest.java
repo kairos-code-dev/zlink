@@ -51,8 +51,8 @@ import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRef;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -90,7 +90,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         options.useFilter(TestFilter.class);
         { var dispatch = options.configureDispatch(); dispatch.setSpotDispatchMode(ZLinkDispatchMode.DYNAMIC);
             dispatch.traceSampleRate(0.25d); };
-        options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
+        options.addSpotRemoteRefResolver(TestSpotRemoteRefResolver.class);
 
         assertTrue(options.registration().codecs().serializers().containsKey("application/x-test"));
         assertTrue(options.registration().handlerPackageMarkers()
@@ -102,8 +102,8 @@ final class DefaultZLinkFrameworkOptionsTest {
             options.registration().dispatchOptions().spotDispatchMode());
         assertEquals(0.25d,
             options.registration().dispatchOptions().diagnostics().sampleRate());
-        assertEquals(TestSpotRemoteAddressResolver.class,
-            options.registration().spotRemoteAddressResolverType());
+        assertEquals(TestSpotRemoteRefResolver.class,
+            options.registration().spotRemoteRefResolverType());
     }
 
     @Test
@@ -834,12 +834,12 @@ final class DefaultZLinkFrameworkOptionsTest {
         ZLinkLocationStore {
     }
 
-    public static final class TestSpotRemoteAddressResolver
-        implements ZLinkSpotRemoteAddressResolver {
+    public static final class TestSpotRemoteRefResolver
+        implements SpotRemoteRefResolver {
         @Override
-        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(RoutingId spotRid) {
+        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(RoutingId spotRid) {
             return CompletableFuture.completedFuture(
-                new ZLinkSpotRemoteAddress(
+                new SpotRemoteRef(
                     "play",
                     RoutingId.from("node"),
                     spotRid,

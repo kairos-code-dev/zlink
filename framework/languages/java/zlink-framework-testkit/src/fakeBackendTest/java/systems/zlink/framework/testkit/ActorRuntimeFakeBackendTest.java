@@ -45,8 +45,8 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRef;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -418,7 +418,7 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorJoinSpotUsesRemoteAddressResolverWhenSpotIsNotLocal() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotRemoteAddressResolver(RemoteRoomResolver.class);
+        options.addSpotRemoteRefResolver(RemoteRoomResolver.class);
         { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
@@ -453,7 +453,7 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void remoteRoutedActorJoinRejectDoesNotDeserializeEmptyReply() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotRemoteAddressResolver(RemoteRoomResolver.class);
+        options.addSpotRemoteRefResolver(RemoteRoomResolver.class);
         { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
@@ -481,7 +481,7 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void boundManagedActorRoutesPacketsToRemoteJoinedSpotInsteadOfNativeGateway() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotRemoteAddressResolver(RemoteRoomResolver.class);
+        options.addSpotRemoteRefResolver(RemoteRoomResolver.class);
         { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
@@ -524,7 +524,10 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void nativeRemoteActorJoinRebindsExistingBoundSession() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(GameSpot.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://native-local-router")
+                    .connectRouter(RoutingId.from("native-remote-node"), "inproc://native-remote-router");
+                node.addSpotFactory(GameSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
             stream.registerSession(DestroySession.class); };
@@ -705,12 +708,12 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class RemoteRoomResolver implements ZLinkSpotRemoteAddressResolver {
+    public static final class RemoteRoomResolver implements SpotRemoteRefResolver {
         @Override
-        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
+        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(
             RoutingId spotRid) {
             return java.util.concurrent.CompletableFuture.completedFuture(
-                new ZLinkSpotRemoteAddress(
+                new SpotRemoteRef(
                     "rooms",
                     RoutingId.from("remote-node"),
                     spotRid,

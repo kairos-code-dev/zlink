@@ -14,6 +14,7 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
 import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.tictactoe.server.play.domain.tictactoe.TicTacToeMatch
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameTimerHandler
@@ -33,17 +34,10 @@ class TicTacToeGame(
     private val gameTickPeriod: Duration = Duration.ofSeconds(1)
     private val turnTimeout: Duration = Duration.ofSeconds(15)
     val roomId: String = context.spotRid().toString()
-    private val board = ".........".toCharArray()
+    private val match = TicTacToeMatch(roomId, turnTimeout)
     private val players = mutableListOf<PlayerSlot>()
-    private var status = "WaitingForPlayers"
-    private var nextTurn = "X"
-    private var winnerValue: String? = null
-    private var lastMoveActorId: String? = null
-    private var lastMoveCell: Int? = null
-    private var turnDeadline: Instant? = null
     private var gameTick: ZLinkTimer? = null
     private var created = false
-    private var cleanupStarted = false
 
     override fun context(): ZLinkSpotContext = context
 
@@ -108,23 +102,17 @@ class TicTacToeGame(
         check(roomId == this.roomId) { "join request room id does not match game room" }
         check(player.level >= SampleNames.RequiredLevel) { "player level does not satisfy room requirement" }
         actor.applyPlayer(player)
+        val change = match.joinPlayer(actor.actorId, Instant.now())
         var slot = players.firstOrNull { it.actor.actorId == actor.actorId }
-        val isNewPlayer = slot == null
         if (slot == null) {
-            check(players.size < 2) { "tic-tac-toe game already has two players" }
-            val mark = if (players.size == 0) "X" else "O"
-            slot = PlayerSlot(actor, mark)
+            slot = PlayerSlot(actor, change.mark)
             players += slot
         } else {
             slot.actor = actor
         }
-        if (players.size == 2 && status == "WaitingForPlayers") {
-            status = "InProgress"
-            resetTurnDeadline()
-        }
         actor.joinGame(roomId)
-        val state = snapshot()
-        if (isNewPlayer) {
+        val state = change.state
+        if (change.isNewPlayer) {
             notifyPlayerJoined(actor, slot, state)
         }
         broadcast(state, actor.actorId)
@@ -135,18 +123,11 @@ class TicTacToeGame(
         ensureCreated()
         val slot = players.firstOrNull { it.actor.actorId == actor.actorId }
             ?: throw IllegalStateException("player has not joined")
-        check(status == "InProgress") { "game is not in progress" }
-        check(slot.mark == nextTurn) { "unexpected turn" }
-        require(cell in board.indices && board[cell] == '.') { "invalid cell" }
 
-        val before = snapshot()
-        board[cell] = slot.mark[0]
-        lastMoveActorId = actor.actorId
-        lastMoveCell = cell
-        advance(slot)
-        val state = snapshot()
+        val change = match.placeMark(actor.actorId, cell, Instant.now())
+        val state = change.after
         broadcast(state, actor.actorId)
-        publishWinMilestone(actor, before, state)
+        publishWinMilestone(actor, change.before, state)
         return PlaceMarkRes(state)
     }
 
@@ -155,90 +136,22 @@ class TicTacToeGame(
 
     private fun snapshot(): GameState {
         ensureCreated()
-        return GameState(
-            roomId = roomId,
-            board = String(board),
-            status = status,
-            winner = winnerValue,
-            nextTurn = nextTurn,
-            xActorId = players.firstOrNull { it.mark == "X" }?.actor?.actorId,
-            oActorId = players.firstOrNull { it.mark == "O" }?.actor?.actorId,
-            lastMoveActorId = lastMoveActorId,
-            lastMoveCell = lastMoveCell,
-        )
-    }
-
-    private fun advance(slot: PlayerSlot) {
-        if (hasWon(slot.mark[0])) {
-            status = "Won"
-            winnerValue = slot.actor.actorId
-            nextTurn = ""
-            turnDeadline = null
-        } else if ('.' !in board) {
-            status = "Draw"
-            winnerValue = null
-            nextTurn = ""
-            turnDeadline = null
-        } else {
-            nextTurn = if (slot.mark == "X") "O" else "X"
-            resetTurnDeadline()
-        }
+        return match.snapshot()
     }
 
     suspend fun tick() {
         ensureCreated()
-        val deadline = turnDeadline
-        if (status != "InProgress" || deadline == null || Instant.now().isBefore(deadline)) {
-            leaveFinishedActors(snapshot())
+        val change = match.tick(Instant.now())
+        if (!change.changed) {
             return
         }
 
-        val timedOut = players.firstOrNull { it.mark == nextTurn }
-        val winner = players.firstOrNull { it.mark != nextTurn }
-
-        status = "TurnTimedOut"
-        winnerValue = winner?.actor?.actorId
-        nextTurn = ""
-        lastMoveActorId = timedOut?.actor?.actorId
-        lastMoveCell = null
-        turnDeadline = null
-
-        val state = snapshot()
+        val state = change.state
         broadcast(state, null)
-        leaveFinishedActors(state)
-    }
-
-    private suspend fun leaveFinishedActors(state: GameState) {
-        if (cleanupStarted || !isTerminal(state)) {
-            return
-        }
-        cleanupStarted = true
-        for (slot in players.toList()) {
-            slot.actor.markForDestroyAfterRoomLeave()
-            context.leaveActor(slot.actor).await()
-        }
-    }
-
-    private fun resetTurnDeadline() {
-        turnDeadline = Instant.now().plus(turnTimeout)
     }
 
     private fun ensureCreated() {
         check(created) { "tic-tac-toe game has not completed creation" }
-    }
-
-    private fun hasWon(mark: Char): Boolean {
-        val lines = arrayOf(
-            intArrayOf(0, 1, 2),
-            intArrayOf(3, 4, 5),
-            intArrayOf(6, 7, 8),
-            intArrayOf(0, 3, 6),
-            intArrayOf(1, 4, 7),
-            intArrayOf(2, 5, 8),
-            intArrayOf(0, 4, 8),
-            intArrayOf(2, 4, 6),
-        )
-        return lines.any { (a, b, c) -> board[a] == mark && board[b] == mark && board[c] == mark }
     }
 
     private suspend fun broadcast(state: GameState, excludedActorId: String?) {
@@ -279,11 +192,6 @@ class TicTacToeGame(
     }
 
     private data class PlayerSlot(var actor: PlayActor, val mark: String)
-
-    private fun isTerminal(state: GameState): Boolean =
-        state.status == "Won" ||
-            state.status == "Draw" ||
-            state.status == "TurnTimedOut"
 
     fun leaveGame(actor: PlayActor, roomId: String) {
         check(this.roomId == roomId) { "leave request room id does not match game room" }

@@ -61,6 +61,7 @@ import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
@@ -68,8 +69,8 @@ import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRef;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 
 final class ChannelMessagingTest {
     private static final AtomicInteger NEXT_PORT =
@@ -959,7 +960,7 @@ final class ChannelMessagingTest {
         OutboundChannelSpot.CONTEXT.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addSpotRemoteAddressResolver(SpotEgressAddressResolver.class);
+        sourceOptions.addSpotRemoteRefResolver(SpotEgressAddressResolver.class);
         { var channel = sourceOptions.addClientServerChannel("egress");
             channel.enableClient(ingressEndpoint);};
         { var channel = sourceOptions.addRouteMeshChannel("route");
@@ -1000,7 +1001,9 @@ final class ChannelMessagingTest {
 
             ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
             SpotEgressReply reply = context.outbound()
-                .requestToSpot(targetSpotRid, new SpotEgressRequest("ping"))
+                .requestToSpot(
+                    new SpotRef("route", SPOT_EGRESS_TARGET_ROUTE_RID, targetSpotRid),
+                    new SpotEgressRequest("ping"))
                 .timeout(Duration.ofSeconds(3))
                 .submit(SpotEgressReply.class)
                 .toCompletableFuture()
@@ -1688,7 +1691,7 @@ final class ChannelMessagingTest {
 
         @Override
         public void configure() {
-            context.handlers().addPacket(RemoteStateHandler.class);
+            context.handlers().addHandler(RemoteStateHandler.class);
         }
     }
 
@@ -1714,11 +1717,11 @@ final class ChannelMessagingTest {
     }
 
     public static final class SpotEgressAddressResolver
-        implements ZLinkSpotRemoteAddressResolver {
+        implements SpotRemoteRefResolver {
         @Override
-        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(RoutingId spotRid) {
+        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(RoutingId spotRid) {
             return CompletableFuture.completedFuture(
-                new ZLinkSpotRemoteAddress(
+                new SpotRemoteRef(
                     "route",
                     SPOT_EGRESS_TARGET_ROUTE_RID,
                     spotRid,

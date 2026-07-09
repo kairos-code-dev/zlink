@@ -22,6 +22,7 @@ pids=()
 pid_names=()
 declare -A pid_by_name=()
 REDIS_CONTAINER_ID=""
+BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
 role_shutdown_url() {
   case "$1" in
@@ -124,10 +125,62 @@ PY
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
 
+if [[ "$SCENARIO" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
+  output="$(mktemp)"
+  scenario_passed=0
+  for attempt in 1 2 3; do
+    : >"${output}"
+    set +e
+    timeout 420s env ZLINK_SPOT_SERVICE_RETRY_CHILD=1 "$0" "$SCENARIO" 2>&1 | tee "${output}"
+    status="${PIPESTATUS[0]}"
+    set -e
+    if [[ "${status}" == "0" ]]; then
+      scenario_passed=1
+      break
+    fi
+    if ! grep -Eq "${BIND_RETRY_PATTERN}" "${output}"; then
+      break
+    fi
+    if [[ "${attempt}" == "3" ]]; then
+      break
+    fi
+    echo "spot-service transient bind failure; retrying scenario=${SCENARIO} (${attempt}/3)" >&2
+    sleep 1
+  done
+  rm -f "${output}"
+  if [[ "${scenario_passed}" == "1" ]]; then
+    exit 0
+  fi
+  echo "scenario=${SCENARIO} failed" >&2
+  exit 1
+fi
+
 if [[ "$SCENARIO" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   for child_group in default-batch SM-F6 SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
     echo "child scenario=$child_group"
-    if ! timeout 420s env ZLINK_SPOT_SERVICE_ALL_CHILD=1 "$0" "$child_group"; then
+    output="$(mktemp)"
+    child_passed=0
+    for attempt in 1 2 3; do
+      : >"${output}"
+      set +e
+      timeout 420s env ZLINK_SPOT_SERVICE_ALL_CHILD=1 "$0" "$child_group" 2>&1 | tee "${output}"
+      status="${PIPESTATUS[0]}"
+      set -e
+      if [[ "${status}" == "0" ]]; then
+        child_passed=1
+        break
+      fi
+      if ! grep -Eq "${BIND_RETRY_PATTERN}" "${output}"; then
+        break
+      fi
+      if [[ "${attempt}" == "3" ]]; then
+        break
+      fi
+      echo "spot-service transient bind failure; retrying child scenario=${child_group} (${attempt}/3)" >&2
+      sleep 1
+    done
+    rm -f "${output}"
+    if [[ "${child_passed}" != "1" ]]; then
       echo "child scenario=$child_group failed" >&2
       exit 1
     fi
@@ -142,9 +195,8 @@ if [[ -z "$REDIS_ENDPOINT" ]]; then
     echo "Docker is required for SpotService location-store scenarios unless ZLINK_REDIS_E2E_ENDPOINT is set." >&2
     exit 1
   fi
-  start_redis_container "spot-service-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-  REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
-  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 fi
 REDIS_KEY_PREFIX="spot-service:node:${RUN_ID}:location"
 wait_port redis "tcp://$REDIS_ENDPOINT"

@@ -59,7 +59,7 @@
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoRoomEventMapper.cs` | `Server/Play/src/main/java/systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.java` | notification | done | domain state를 notify payload로 변환한다. |
 | `.NET: Shared/Bingo.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared project. |
 | `.NET: Shared/Contracts/SampleConstants.cs` | `Server/Configuration/.../SampleNames.java`, `Client/.../SampleNames.java` | shared-config | done | Java는 client/server 설정 class로 나누어 사용한다. |
-| `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/src/main/java/systems/zlink/samples/bingo/shared/contracts/Messages.java` | shared-contract | gap | 현재 Java는 hand-written record 계약이다. 공통 문서는 Protobuf schema와 생성 message 사용을 요구하므로 별도 protobuf 생성 전환이 필요하다. |
+| `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/src/main/proto/bingo_messages.proto`, generated `Messages`, `BingoMessages.java` | shared-contract | done | Java도 checked-in Protobuf schema에서 `Messages` payload를 생성하고, `BingoMessages` helper는 생성 builder 호출만 감싼다. |
 
 ## 공통 요구 대응
 
@@ -75,8 +75,8 @@
 | common: Redis-backed location store | `SampleLocationStore.java`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework가 public Spring configurer 경로로 사용한다. |
 | common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker container를 만들지 않고 해당 endpoint를 사용한다. |
 | common: Docker Redis는 runner 책임 | `run_sample.sh`, `run_sample.ps1` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
-| common: Protobuf schema와 생성 message 사용 | `Shared/.../Messages.java` | shared-contract | gap | 현재 Java sample release gate도 `Messages.java`를 기대한다. 공통 문서와 gate를 함께 조정한 뒤 전환해야 한다. |
-| common: stream/channel/actor/room Spot payload는 Protobuf codec 사용 | `Program.java`, role application classes | codec | partial | `ZLinkProtobufCodec.defaultCodec()`을 등록하지만 payload type이 생성 protobuf message가 아니다. |
+| common: Protobuf schema와 생성 message 사용 | `Shared/src/main/proto/bingo_messages.proto`, generated `Messages` | shared-contract | done | `Shared` project가 Protobuf plugin과 checked-in schema로 message class를 생성한다. |
+| common: stream/channel/actor/room Spot payload는 Protobuf codec 사용 | `Program.java`, role application classes, generated `Messages` payloads | codec | done | Client와 server role은 `ZLinkProtobufCodec.defaultCodec()`을 등록하고 generated Protobuf message type을 stream/channel/Spot payload로 사용한다. |
 | common: connector wait API로 push 대기 | `BingoClientScenario.java` | validation | done | `waitFor(...).where(...).submit(...)`과 `await(...)`를 사용한다. |
 | common: inbound observer는 connect 전에 등록 | `Client/Program.java` | validation | done | connector 생성 직후 `observeInbound`를 등록하고 이후 scenario에서 connect한다. |
 | common: inbound observer 로그 확인 | `run_sample.sh`, `run_sample.ps1` | runner | done | `stream-inbound sample=Bingo`와 Notify 수신 marker를 확인한다. |
@@ -84,7 +84,10 @@
 | common: Domain은 framework 타입을 모름 | `Server/Play/.../domain/bingo` | design | done | domain package는 sample model과 Java collection 중심이다. |
 | common: Redis client dependency는 adapter 안에 둠 | `RedisBingoMatchQueue.java` | design | done | handler, actor, Spot, Domain에 Redis client 타입을 노출하지 않는다. |
 
-## 남은 gap
+## 남은 확인 사항
 
-1. Java `Bingo`의 Shared 계약은 공통 문서가 요구하는 `bingo_messages.proto` 생성 message가 아니라 hand-written `Messages.java` record다.
-2. 이 gap은 단순 파일 이동으로 끝나지 않는다. Java/Kotlin sample release gate가 현재 `Messages.java`/`Messages.kt`를 기대하므로, protobuf generation build, public codec 사용, Java/Kotlin gate 기대값을 같은 단위로 갱신해야 한다.
+현재 Java `Bingo` 샘플 inventory에는 남은 `gap` 또는 `partial` 항목이 없다. 이후 공통 샘플 문서나 release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.
+
+## 검증
+
+- `nice -n 15 timeout 720s ./run_sample.sh` 통과: `bingo full client/server self-check completed`

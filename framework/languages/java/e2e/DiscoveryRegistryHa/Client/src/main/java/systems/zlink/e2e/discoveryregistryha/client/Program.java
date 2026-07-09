@@ -9,6 +9,7 @@ import systems.zlink.e2e.discoveryregistryha.client.scenarios.SfC2GracefulRemova
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.SfD1ShortOutageRecoveryScenario;
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.SfD2LongOutageRecoveryScenario;
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.SfD3StatusTransitionScenario;
+import systems.zlink.e2e.discoveryregistryha.client.scenarios.SfE1StoreDelayNonBlockingScenario;
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.SfRecoveredScenario;
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.SfRecoveredWithPeersScenario;
 import systems.zlink.e2e.discoveryregistryha.client.support.ClientContext;
@@ -46,6 +47,7 @@ public final class Program {
                 SfD3StatusTransitionScenario.Stage.OUTAGE);
             case "SF-D3-RECOVERED" -> new SfD3StatusTransitionScenario(
                 SfD3StatusTransitionScenario.Stage.RECOVERED);
+            case "SF-E1" -> new SfE1StoreDelayNonBlockingScenario();
             default -> throw new IllegalArgumentException("unknown scenario " + name);
         };
     }

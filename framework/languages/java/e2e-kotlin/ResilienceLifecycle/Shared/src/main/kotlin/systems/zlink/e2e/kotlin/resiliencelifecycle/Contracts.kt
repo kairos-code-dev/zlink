@@ -67,4 +67,10 @@ object Contracts {
     data class TopologyWaitRes @JsonCreator constructor(
         @JsonProperty("matchedRouters") val matchedRouters: Int,
     )
+
+    data class TopologyReadRes @JsonCreator constructor(
+        @JsonProperty("status") val status: String,
+        @JsonProperty("matchedRouters") val matchedRouters: Int,
+        @JsonProperty("error") val error: String?,
+    )
 }

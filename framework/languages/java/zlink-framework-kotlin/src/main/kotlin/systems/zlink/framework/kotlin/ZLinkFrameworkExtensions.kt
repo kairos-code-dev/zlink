@@ -11,8 +11,8 @@ import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall
 import systems.zlink.framework.actors.ZLinkActorJoinResult
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall
 import systems.zlink.framework.actors.ZLinkActorPlacement
-import systems.zlink.framework.actors.ZLinkActorRef
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot
+import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ActorRefSnapshot
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.channels.ZLinkRequestCall
@@ -22,7 +22,7 @@ import systems.zlink.framework.configuration.ZLinkFrameworkOptions
 import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder
 import systems.zlink.framework.locations.ZLinkLocationReadiness
 import systems.zlink.framework.locations.ZLinkLocationRole
-import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotCreateResult
@@ -49,45 +49,45 @@ inline suspend fun <reified TReply> ZLinkActorRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
 
 suspend fun ZLinkActorClient.sendToActorAwait(
-    actorId: String,
+    actorRef: ActorRef,
     message: Any,
 ) {
-    sendToActor(actorId, message).awaitSend()
+    sendToActor(actorRef, message).awaitSend()
 }
 
 suspend fun <TReply> ZLinkActorClient.requestToActorAwait(
-    actorId: String,
+    actorRef: ActorRef,
     request: Any,
     replyType: Class<TReply>,
 ): TReply =
-    requestToActor(actorId, request).awaitReply(replyType)
+    requestToActor(actorRef, request).awaitReply(replyType)
 
 inline suspend fun <reified TReply> ZLinkActorClient.requestToActorAwait(
-    actorId: String,
+    actorRef: ActorRef,
     request: Any,
 ): TReply =
-    requestToActorAwait(actorId, request, TReply::class.java)
+    requestToActorAwait(actorRef, request, TReply::class.java)
 
-suspend fun ZLinkActorDirectory.findActor(actorId: String): ZLinkActorRef? =
+suspend fun ZLinkActorDirectory.findActor(actorId: String): ActorRef? =
     awaitFrameworkStage(find(actorId)).orElse(null)
 
 suspend fun ZLinkActorDirectory.ensureActor(
     actorId: String,
     createRequest: ZLinkMessage,
     placement: ZLinkActorPlacement = ZLinkActorPlacement.any(),
-): ZLinkActorRef =
+): ActorRef =
     awaitFrameworkStage(ensure(actorId, createRequest, placement))
 
 suspend fun ZLinkActorDirectory.ensureActor(
     actorId: String,
     createRequest: Any,
-): ZLinkActorRef =
+): ActorRef =
     awaitFrameworkStage(ensure(actorId, createRequest))
 
-fun ZLinkActorRef.snapshot(): ZLinkActorRefSnapshot =
-    ZLinkActorRefSnapshot.from(this)
+fun ActorRef.snapshot(): ActorRefSnapshot =
+    ActorRefSnapshot.from(this)
 
-fun ZLinkActorRefSnapshot.actorRef(): ZLinkActorRef =
+fun ActorRefSnapshot.actorRef(): ActorRef =
     toActorRef()
 
 suspend fun ZLinkLocationReadiness.isPeerReady(
@@ -97,7 +97,7 @@ suspend fun ZLinkLocationReadiness.isPeerReady(
 ): Boolean =
     awaitFrameworkStage(isPeerReadyAsync(meshName, role, nodeRid))
 
-suspend fun ZLinkSessionActors.bindOrGetActor(actor: ZLinkActorRef): ZLinkSessionActor =
+suspend fun ZLinkSessionActors.bindOrGetActor(actor: ActorRef): ZLinkSessionActor =
     awaitFrameworkStage(bindOrGet(actor))
 
 @JvmName("awaitJoinCallVoid")
@@ -196,18 +196,18 @@ suspend inline fun <reified TReply> ZLinkRouteClient.request(
 
 fun ZLinkRouteClient.send(
     channelName: String,
-    address: ZLinkSpotAddress,
+    spotRef: SpotRef,
     message: Message,
 ) {
-    sendToSpot(channelName, address, message).submit()
+    sendToSpot(channelName, spotRef, message).submit()
 }
 
 suspend inline fun <reified TReply> ZLinkRouteClient.request(
     channelName: String,
-    address: ZLinkSpotAddress,
+    spotRef: SpotRef,
     message: Message,
 ): TReply =
-    requestToSpot(channelName, address, message).awaitReply()
+    requestToSpot(channelName, spotRef, message).awaitReply()
 
 suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(): ZLinkSpotCreateResult =
     awaitFrameworkStage(create(TSpot::class.java))

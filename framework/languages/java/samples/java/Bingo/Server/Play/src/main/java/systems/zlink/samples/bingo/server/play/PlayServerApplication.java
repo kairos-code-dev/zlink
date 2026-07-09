@@ -51,6 +51,7 @@ public final class PlayServerApplication {
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-play.log")
                 .traceLabel("play");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+            options.configureLocations();
             options.addHandlersFromPackageOf(PlayServerApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();

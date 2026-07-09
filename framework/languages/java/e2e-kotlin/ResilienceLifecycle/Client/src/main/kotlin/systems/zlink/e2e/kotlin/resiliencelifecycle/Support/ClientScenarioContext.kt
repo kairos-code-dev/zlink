@@ -59,6 +59,21 @@ class ClientScenarioContext(
         )
     }
 
+    fun waitForTopologyMissing(routingId: String) {
+        postJson(
+            "${options.consumerHttpEndpoint}/topology/wait",
+            Contracts.TopologyWaitReq(0, routingId, null),
+            Contracts.TopologyWaitRes::class.java,
+            Duration.ofSeconds(20),
+        )
+    }
+
+    fun readTopology(): Contracts.TopologyReadRes =
+        json.readValue(
+            get("${options.consumerHttpEndpoint}/topology/read"),
+            Contracts.TopologyReadRes::class.java,
+        )
+
     fun waitForWeight(baseUrl: String, expected: Int) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (System.nanoTime() < deadline) {
@@ -114,6 +129,52 @@ class ClientScenarioContext(
         throw IllegalStateException("marker $marker was not observed at any provider")
     }
 
+    fun waitForEvidenceValueAny(marker: String, value: String, vararg baseUrls: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (System.nanoTime() < deadline) {
+            for (baseUrl in baseUrls) {
+                try {
+                    val entries = json.readTree(get("$baseUrl/evidence")).path("entries")
+                    if (entries.isArray) {
+                        for (entry in entries) {
+                            if (
+                                entry.path("marker").asText() == marker &&
+                                entry.path("value").asText() == value
+                            ) {
+                                return
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            sleep(100)
+        }
+        throw IllegalStateException("marker $marker value $value was not observed at any provider")
+    }
+
+    fun waitForEvidenceValue(baseUrl: String, marker: String, value: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (System.nanoTime() < deadline) {
+            try {
+                val entries = json.readTree(get("$baseUrl/evidence")).path("entries")
+                if (entries.isArray) {
+                    for (entry in entries) {
+                        if (
+                            entry.path("marker").asText() == marker &&
+                            entry.path("value").asText() == value
+                        ) {
+                            return
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            sleep(100)
+        }
+        throw IllegalStateException("marker $marker value $value was not observed at $baseUrl")
+    }
+
     fun waitForDispatchErrorAny(packetName: String, vararg baseUrls: String) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         while (System.nanoTime() < deadline) {
@@ -140,6 +201,34 @@ class ClientScenarioContext(
             sleep(100)
         }
         throw IllegalStateException("dispatch error marker for $packetName was not observed")
+    }
+
+    fun waitForRuntimeObserverFailureAny(vararg baseUrls: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (System.nanoTime() < deadline) {
+            for (baseUrl in baseUrls) {
+                try {
+                    val entries: JsonNode = json.readTree(get("$baseUrl/evidence")).path("entries")
+                    if (entries.isArray) {
+                        for (entry in entries) {
+                            val marker = entry.path("marker").asText()
+                            val value = entry.path("value").asText()
+                            if (
+                                marker == "RuntimeError" &&
+                                value.contains("MESSAGE_FLOW_OBSERVER_FAILED") &&
+                                value.contains("message-flow-observer") &&
+                                value.contains("dispatch observer failure")
+                            ) {
+                                return
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            sleep(100)
+        }
+        throw IllegalStateException("runtime observer failure event was not observed")
     }
 
     fun expectSingleProviderDownFailure(scenario: String, value: String) {
@@ -180,6 +269,13 @@ class ClientScenarioContext(
             Duration.ofSeconds(5),
         )
     }
+
+    fun requestUnhandledRaw(value: String): HttpJsonResult =
+        postJsonRaw(
+            "${options.consumerHttpEndpoint}/profile/unhandled",
+            Contracts.UnhandledReq(value),
+            Duration.ofSeconds(5),
+        )
 
     fun adminA(): String =
         options.httpAEndpoint ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT is required")
@@ -280,7 +376,34 @@ class ClientScenarioContext(
             throw IllegalStateException("POST interrupted: $url", error)
         }
     }
+
+    private fun postJsonRaw(
+        url: String,
+        body: Any,
+        timeout: Duration,
+    ): HttpJsonResult {
+        try {
+            val uri = URI.create(url)
+            val request = HttpRequest.newBuilder(uri)
+                .timeout(timeout)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(body)))
+                .build()
+            val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+            return HttpJsonResult(response.statusCode(), response.body())
+        } catch (error: IOException) {
+            throw IllegalStateException("POST failed: $url", error)
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("POST interrupted: $url", error)
+        }
+    }
 }
+
+data class HttpJsonResult(
+    val status: Int,
+    val body: String,
+)
 
 fun sleep(millis: Long) {
     try {

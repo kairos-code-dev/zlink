@@ -4,26 +4,60 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SAMPLES_DIR="$ROOT_DIR/samples"
 CORE_LIB="$ROOT_DIR/../../../core/build/lib/libzlink.so"
+MANIFEST="$SAMPLES_DIR/sample-manifest.env"
 
 if [[ -f "$CORE_LIB" ]]; then
   export ZLINK_LIBRARY_PATH="$CORE_LIB"
 fi
 
 cd "$ROOT_DIR"
+source "$MANIFEST"
+source "$SAMPLES_DIR/runner-common.sh"
 
 SAMPLE_FILTER="${ZLINK_SAMPLE_FILTER:-}"
+SAMPLE_LANGUAGES="${ZLINK_SAMPLE_LANGUAGES:-java kotlin}"
+shared_redis_endpoint="${ZLINK_JAVA_SAMPLE_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
+BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
+
+should_run_language() {
+  local language="$1"
+  [[ " ${SAMPLE_LANGUAGES} " == *" ${language} "* ]]
+}
+
+for language in ${SAMPLE_LANGUAGES}; do
+  zlink_redis_cleanup_scope "zlink-redis-${language}-sample"
+done
+
+if [[ -n "$shared_redis_endpoint" ]]; then
+  for redis_env_var in $SAMPLE_REDIS_ENV_VARS; do
+    if [[ -z "${!redis_env_var:-}" ]]; then
+      export "${redis_env_var}=${shared_redis_endpoint}"
+    fi
+  done
+fi
 
 should_run_sample() {
   local language="$1"
   local sample="$2"
-  [[ -z "$SAMPLE_FILTER" || "$SAMPLE_FILTER" == "$sample" || "$SAMPLE_FILTER" == "$language/$sample" ]]
+  shift 2
+  if [[ "$#" -eq 0 && -z "$SAMPLE_FILTER" ]]; then
+    return 0
+  fi
+  if [[ -n "$SAMPLE_FILTER" && ( "$SAMPLE_FILTER" == "$sample" || "$SAMPLE_FILTER" == "$language/$sample" ) ]]; then
+    return 0
+  fi
+  local selector
+  for selector in "$@"; do
+    [[ "$selector" == "$sample" || "$selector" == "$language/$sample" ]] && return 0
+  done
+  return 1
 }
 
-./gradlew -Pzlink.useLocalBindings=true --no-daemon \
+./gradlew --no-daemon \
   :zlink-framework-testkit:contractTest \
   --tests '*SampleReleaseGateContractTest*'
 
-./gradlew -Pzlink.useLocalBindings=true --no-daemon --no-parallel \
+./gradlew --no-daemon --no-parallel \
   :zlink-framework-testkit:fakeBackendTest \
   --tests 'systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback'
 echo "java actor lifecycle sample gate completed"
@@ -39,7 +73,7 @@ run_sample_with_retry() {
       rm -f "$output"
       return 0
     fi
-    if ! rg -q "ZlinkBindException|Timed out waiting" "$output"; then
+    if ! rg -q "${BIND_RETRY_PATTERN}" "$output"; then
       cat "$output" >&2
       rm -f "$output"
       return 1
@@ -53,31 +87,23 @@ run_sample_with_retry() {
   done
 }
 
-for sample in TicTacToe Bingo DeliveryDispatch; do
-  if should_run_sample java "$sample"; then
+if should_run_language java; then
+for sample in $JAVA_SAMPLES; do
+  if should_run_sample java "$sample" "$@"; then
     run_sample_with_retry "$SAMPLES_DIR/java/$sample/run_sample.sh"
   fi
 done
+fi
 
-for sample in TicTacToe Bingo GameQuest ShoppingMall; do
-  if should_run_sample kotlin "$sample"; then
+if should_run_language kotlin; then
+for sample in $KOTLIN_SAMPLES; do
+  if should_run_sample kotlin "$sample" "$@"; then
     run_sample_with_retry "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
   fi
 done
-
-if should_run_sample kotlin DeliveryDispatch; then
-  run_sample_with_retry "$SAMPLES_DIR/kotlin/DeliveryDispatch/run_sample.sh"
 fi
 
-forbidden_sample_pattern="systems\\.zlink\\.(runtime|internal)"
-forbidden_sample_pattern+="|systems\\.zlink\\.contracts\\.core\\.RoutingId\\."
-forbidden_sample_pattern+="|Metadata""Store"
-forbidden_sample_pattern+="|Thread\\.sleep|sleep\\(|CountDownLatch|toCompletable""Future\\(\\)"
-forbidden_sample_pattern+="|ZLinkFrameworkRuntime\\.start"
-forbidden_sample_pattern+="|Fake[A-Za-z0-9_]*|Recording[A-Za-z0-9_]*|Catalog"
-forbidden_sample_pattern+="|UnsupportedOperationException\\(\"not needed by sample\"\\)"
-
-if rg -n "$forbidden_sample_pattern" "$SAMPLES_DIR" -g '*.java' -g '*.kt'; then
+if rg -n "$FORBIDDEN_SAMPLE_PATTERN" "$SAMPLES_DIR" -g '*.java' -g '*.kt'; then
   echo "sample gate failed: forbidden sample pattern found" >&2
   exit 1
 fi

@@ -1,17 +1,17 @@
 package systems.zlink.framework.spots;
 
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkYieldRequestCall;
+import systems.zlink.framework.locations.SpotRef;
 
 public interface ZLinkSpotOutbound {
     ZLinkSendCall sendToSpot(
-        RoutingId spotRid,
+        SpotRef spotRef,
         Object message);
 
     ZLinkYieldRequestCall requestToSpot(
-        RoutingId spotRid,
+        SpotRef spotRef,
         Object request);
 
     ZLinkPublishCall publish(

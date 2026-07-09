@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.yielddispatch\.(client|delay|play|session)\.Program'
+REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,7 +18,20 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/YieldDispatch}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/YieldDispatch-gradle-cache}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+if [[ -z "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-}" && -z "${ZLINK_REDIS_LOCATION_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required when no Redis location endpoint is provided." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="$(
+    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  )"
+  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
+    zlink_redis_endpoint "${REDIS_CONTAINER}"
+  )"
+else
+  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT}}"
+fi
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:yielddispatch:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -56,9 +70,27 @@ cleanup() {
     done
     kill "${pid}" >/dev/null 2>&1 || true
   done
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
+  for _ in $(seq 1 50); do
+    local alive=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        alive=1
+        break
+      fi
+    done
+    [[ "${alive}" == "0" ]] && break
+    sleep 0.1
+  done
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    local pid="${pids[$i]}"
+    for child in $(descendants "${pid}"); do
+      kill -9 "${child}" >/dev/null 2>&1 || true
+    done
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }

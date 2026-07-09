@@ -4,30 +4,27 @@
 
 마지막 검증:
 
-- 명령: `timeout 420s ./run_e2e.sh`
+- 명령: `nice -n 10 timeout 600s ./run_e2e.sh all`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/PubSub/logs/20260703-215913-3495/`
+- 로그: `framework/languages/java/e2e/PubSub/logs/20260707-221458-3633382/`
 
-현재 runner는 discovery registry를 실행하지 않는다. publisher와 subscriber가 같은 Redis location
-store endpoint와 실행별 key prefix를 등록하고, fanout 연결은 framework location auto-connect가
-peer row를 보고 만든다.
+현재 runner는 실행별 Redis location store 컨테이너를 준비하고 discovery registry는 실행하지 않는다.
+publisher와 subscriber가 같은 Redis location store endpoint와 실행별 key prefix를 등록하고, fanout
+연결은 framework location auto-connect가 peer row를 보고 만든다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| PS-A1 | 구현 | Redis location store 자동 연결 위에서 public `ZLinkFanoutClient`로 fanout publish를 수행하고, client가 세 subscriber의 evidence에서 공통 연속 sequence를 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-A2 | 구현 | subscriber handler가 `ZLinkPublishContext.topic()`으로 관심 topic만 evidence에 기록하는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-A3 | 구현 | `sub-3`를 pre-late publish 뒤에 시작하고, 구독 전 이벤트가 replay되지 않으며 이후 publish만 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-A4 | 구현 | Client support가 `sub-1` 프로세스를 시작, 종료, 재시작한다. 종료 중 publish된 이벤트는 재시작 후 evidence에 없고, 재시작 뒤 publish된 이벤트는 다시 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-B1 | 구현 | `sub-1` handler 지연 중에도 `sub-2`와 `sub-3`가 최신 이벤트를 계속 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-B2 | 구현 | Client support가 publisher 프로세스를 시작, 종료, 재시작한다. 중단 중 publish 실패와 새 publisher process가 보낸 이벤트를 기존 subscriber들이 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-C1 | 구현 | 미등록 packet name publish가 subscriber observer evidence에 `HANDLER_MISSING`/`DROP`으로 남고 이후 정상 publish가 유지되는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
+| PS-A1 | 구현 | Redis location store 자동 연결 위에서 public `ZLinkFanoutClient`로 fanout publish를 수행하고, client가 subscriber `/evidence/wait`로 공통 연속 sequence를 확인한다. |
+| PS-A2 | 구현 | subscriber handler가 `ZLinkPublishContext.topic()`으로 관심 topic만 evidence에 기록하는지 `/evidence/wait`와 snapshot 대조로 확인한다. |
+| PS-A3 | 구현 | `sub-3`를 pre-late publish 뒤에 시작하고, 구독 전 이벤트가 replay되지 않으며 이후 publish만 받는지 `/evidence/wait`로 확인한다. |
+| PS-A4 | 구현 | Client support가 `sub-1` 프로세스를 시작, 종료, 재시작한다. 종료 중 publish된 이벤트는 재시작 후 evidence에 없고, 재시작 뒤 publish된 이벤트는 다시 받는지 `/evidence/wait`로 확인한다. |
+| PS-B1 | 구현 | `sub-1` handler 지연 중에도 `sub-2`와 `sub-3`가 최신 이벤트를 계속 받는지 `/evidence/wait`로 확인한다. |
+| PS-B2 | 구현 | Client support가 publisher 프로세스를 시작, 종료, 재시작한다. 중단 중 publish 실패와 새 publisher process가 보낸 이벤트를 기존 subscriber들이 받는지 `/evidence/wait`로 확인한다. |
+| PS-C1 | 구현 | 미등록 packet name publish가 subscriber observer evidence에 `HANDLER_MISSING`/`DROP`으로 남고 이후 정상 publish가 유지되는지 `/evidence/wait`로 확인한다. |
 
-## Push 검증 gap
+## Evidence wait 검증
 
-공통 E2E README는 fanout 결과처럼 push로 확인할 수 있는 변화는 HTTP evidence를 반복 조회하지 말고
-client stream connector로 연결해 push 메시지로 검증하도록 요구한다. 현재 Java PubSub E2E는 `.NET`
-PubSub와 마찬가지로 subscriber 역할의 `/evidence` endpoint를 HTTP로 조회해 marker를 확인한다.
-
-이 gap은 PubSub 동작 자체의 누락이 아니라 검증 경로의 누락이다. PubSub E2E가 사용할 공통 stream
-push 계약과 Java stream connector 문서가 정리되기 전까지 새 public API나 테스트 전용 adapter를
-추가하지 않고 후속 public contract parity 작업의 입력으로 남긴다.
+공통 E2E README는 Pub/Sub처럼 검증 대상이 client stream session이 아니라 subscriber 역할 server의
+fanout delivery인 경우, subscriber handler가 남긴 bounded `/evidence/wait` marker를 성공 기준으로
+쓸 수 있다고 정한다. Java PubSub client는 같은 snapshot GET을 반복하지 않고 `/evidence/wait`로
+각 subscriber의 실제 dispatch marker를 기다린 뒤 필요한 snapshot만 대조한다.

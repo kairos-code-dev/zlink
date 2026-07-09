@@ -15,6 +15,11 @@ public final class RcB2ProtobufCodecScenario {
             .protobufValue();
         ScenarioAssert.ensure("echo:protobuf-request".equals(protobufValue),
             "RC-B2 request mismatch");
+        ScenarioAssert.waitForEvidence(
+            context.evidence(),
+            "ContentType",
+            "ProtobufEcho",
+            "application/x-protobuf");
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "ProtobufEcho", "protobuf-send");
         System.out.println("scenario RC-B2 passed");
     }

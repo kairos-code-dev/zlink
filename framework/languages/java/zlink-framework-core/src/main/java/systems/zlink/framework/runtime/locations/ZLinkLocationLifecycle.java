@@ -9,7 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationKind;
@@ -126,7 +126,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
             });
     }
 
-    public CompletionStage<Void> setActorRefAsync(String actorType, String actorId, ZLinkActorRef actorRef) {
+    public CompletionStage<Void> setActorRefAsync(String actorType, String actorId, ActorRef actorRef) {
         return renewActorAsync(actorType, actorId, row -> new ZLinkActorLocation(
             row.actorId(), row.actorType(), actorRef, row.nodeRid(), row.locationKind(),
             row.spotMeshName(), row.spotRid(), row.ownerId(), row.generation(), row.updatedAt()));

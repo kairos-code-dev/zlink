@@ -7,6 +7,6 @@ public final class SmA5Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-A5", "Java has no app-level Stage wrapper public layer");
+        gateway.runMode("stage-wrapper");
     }
 }

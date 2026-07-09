@@ -74,9 +74,9 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 | Bingo | .NET, Java, Kotlin, Node.js, C++ | 없음 |
 | TicTacToe | .NET, Java, Kotlin, Node.js, C++ | 없음 |
 | SupportChat | .NET, Java, Kotlin, Node.js, C++ | 없음 |
-| DeliveryDispatch | .NET, Java, Kotlin, C++ | Node.js |
-| ShoppingMall | .NET | Java, Kotlin, Node.js, C++ |
-| GameQuest | .NET, Java, Kotlin | Node.js, C++ |
+| DeliveryDispatch | .NET, Java, Kotlin, Node.js, C++ | 없음 |
+| ShoppingMall | .NET, Java, Node.js | Kotlin, C++ |
+| GameQuest | .NET, Java, Kotlin, Node.js | C++ |
 
 full 구조 구현은 공통 시나리오의 Spot owner, actor/session, fanout, location store 기반 자동
 연결과 위치 조회 경계를 샘플 코드에 그대로 둔 구현이다. compact 구현은 같은 업무 흐름과 client self-check를 제공하지만,

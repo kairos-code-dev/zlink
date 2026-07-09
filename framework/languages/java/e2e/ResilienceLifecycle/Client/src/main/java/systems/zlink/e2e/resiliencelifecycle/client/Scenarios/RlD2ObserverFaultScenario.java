@@ -7,6 +7,6 @@ public final class RlD2ObserverFaultScenario {
     }
 
     public static void run(ConsumerScenarioClient consumer) {
-        ConsumerScenarioClient.unsupported("RL-D2", "observer failure runtime error sink assertion is not implemented");
+        consumer.runMode("rl-d2");
     }
 }

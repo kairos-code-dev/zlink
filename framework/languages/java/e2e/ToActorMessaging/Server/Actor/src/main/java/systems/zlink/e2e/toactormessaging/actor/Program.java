@@ -67,6 +67,12 @@ public final class Program {
                 .join();
             return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "ensured");
         });
+        http.post("/ensure-ref", Contracts.ActorCallRequest.class, request -> {
+            var actor = actors.getOrCreate(request.actorId(), Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
+                .toCompletableFuture()
+                .join();
+            return new Contracts.ActorRefWire(actor.nodeRid().toHex(), actor.actorId(), actor.generation());
+        });
         boot("http start");
         http.start();
         boot("http start done");
@@ -158,8 +164,8 @@ public final class Program {
 
         @Override
         public void configure() {
-            context.handlers().addActorSend(NotifyHandler.class);
-            context.handlers().addActorRequest(AskHandler.class);
+            context.handlers().addHandler(NotifyHandler.class);
+            context.handlers().addHandler(AskHandler.class);
         }
 
         @Override

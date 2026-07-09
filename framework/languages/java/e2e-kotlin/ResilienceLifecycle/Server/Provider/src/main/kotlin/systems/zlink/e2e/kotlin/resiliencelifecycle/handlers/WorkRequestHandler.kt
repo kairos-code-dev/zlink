@@ -19,7 +19,7 @@ class WorkRequestHandler(
                 state.record("GrayFailureInjected", request.value())
                 throw IllegalStateException("gray failure")
             }
-            request.value() == "slow" -> {
+            request.value() == "slow" || request.value().startsWith("b2-slow-") -> {
                 state.record("SlowStarted", request.value())
                 state.awaitSlowRelease()
                 state.record("SlowCompleted", request.value())

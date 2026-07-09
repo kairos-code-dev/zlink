@@ -121,12 +121,12 @@ graph LR
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | actor runtime | 인증된 actor를 user 정보로 설정하고 room에 join한다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | SpotNode router | 다른 Play 서버의 SpotNode와 수동 route 연결을 맺는다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | SpotNode pub/sub | 다른 Play 서버의 SpotNode와 milestone event fan-out 연결을 맺는다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | Redis room route store | room id에서 owner SpotNode 위치를 찾는 자료를 저장하고 읽는다. |
+| `TicTacToe.PlayA` / `TicTacToe.PlayB` | Redis location store | room Spot 위치와 actor 위치를 저장하고 읽는다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | spot/room | 입장 level 조건, board, turn, 승패 판정을 소유한다. |
 
 Play 서버 안에서 stream session과 actor, room이 함께 움직인다. 두 Play 서버는 같은 역할을
 수행하지만, room Spot은 한 owner SpotNode에만 존재한다. 다른 Play 서버에 붙은 actor가 같은
-room에 join할 때는 Redis-backed spot remote address resolver가 owner SpotNode를 찾아 준다.
+room에 join할 때는 Redis-backed location store에서 얻은 `SpotRef`가 owner SpotNode를 가리킨다.
 
 ## 4. 디렉토리와 파일 구성
 
@@ -156,11 +156,11 @@ TicTacToe/
   Server/
     server build/module files
     Program
-    Configuration/
+      Configuration/
       SampleNames
       SampleSettings
       RedisRoomRouteStore
-      RedisSpotRemoteAddressResolver
+      RedisLocationStore
     Api/
       ApiServer
       Handlers/
@@ -257,7 +257,7 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
 - Redis client dependency는 room route store adapter 안에만 둔다. handler, actor, Spot,
   Domain 코드가 Redis client 타입을 직접 참조하면 안 된다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 public spot
-  remote address resolver 계약을 사용해야 한다. 샘플을 통과시키기 위해 framework의
+  remote ref resolver 계약을 사용해야 한다. 샘플을 통과시키기 위해 framework의
   internal runtime 객체나 sample-local route helper로 remote join 경로를 우회하면 안 된다.
 - Spot pub/sub 흐름은 각 언어 framework의 public Spot pub/sub API를 사용해야 한다. Spot은
   public subscribe 등록 API로 milestone topic을 구독하고, room Spot은 public publish API로
@@ -346,17 +346,13 @@ tictactoe:rooms:{RoomId} {
 ```
 
 `SpotRid`는 `RoomId`에서 만든 room Spot routing id다. `OwnerNodeRid`는 그 room Spot을
-소유한 Play SpotNode의 routing id다. `RouteChannelId`는 해당 Play 서버가 remote Spot에
-request를 보낼 때 사용할 SpotNode router channel 이름이다. 이 샘플에서는 별도
-RouteMeshChannel을 만들지 않는다. 언어별 public resolver 타입의 필드명이
-`RouterChannelId` 또는 `TargetNodeRid`처럼 다를 수 있어도, 샘플 adapter는 이 공통 의미로
-매핑해야 한다.
+소유한 Play SpotNode의 routing id다. location store는 이 값을 `SpotRef`로 조회할 수 있게
+저장한다. 이 샘플에서는 별도 RouteMeshChannel을 만들지 않는다.
 
-언어별 구현은 이 저장소 위에 framework의 public spot remote address resolver 계약을
-구현한다. resolver는 Redis에서 `RoomId` 또는 `SpotRid`에 해당하는 route를 읽어 route
-channel id, owner node rid, spot rid, user Spot kind를 반환한다. 모든 언어 샘플은 같은
-resolver 의미를 사용해야 하며, 한 언어만 internal runtime 객체나 별도 route helper로 이
-경로를 우회하면 안 된다.
+언어별 구현은 framework의 public location store 계약을 사용한다. resolver는 Redis location
+store에서 `RoomId` 또는 `SpotRid`에 해당하는 `SpotRef`를 읽고, 전송 API는 그 ref를 받는다.
+모든 언어 샘플은 같은 resolver 의미를 사용해야 하며, 한 언어만 internal runtime 객체나 별도
+route helper로 이 경로를 우회하면 안 된다.
 
 Redis에 없는 room id는 재시도 가능한 route-not-found 오류로 처리한다. 없는 room을 샘플
 전용 fallback으로 새로 만들면 scale-out routing 오류가 숨겨지므로 금지한다.
@@ -975,9 +971,9 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
   수동으로 연결한다.
 - Play 서버끼리는 milestone event fan-out을 보낼 수 있도록 SpotNode pub/sub endpoint를
   수동으로 연결한다.
-- Redis room route store에 `RoomId`에서 owner SpotNode 위치를 찾는 자료를 저장한다.
-- framework의 spot remote address resolver 계약은 Redis room route store를 사용한다.
-- 모든 언어 샘플은 actor room join에 public actor/Spot API와 public spot remote address
+- Redis location store에 `RoomId`에서 owner SpotNode 위치를 찾는 자료를 저장한다.
+- framework의 `SpotRef` resolver 계약은 Redis location store를 사용한다.
+- 모든 언어 샘플은 actor room join에 public actor/Spot API와 public `SpotRef`
   resolver 계약을 사용한다. internal runtime 객체나 샘플 전용 route helper로 remote join을
   우회하지 않는다.
 - 모든 언어 샘플은 milestone 알림에 public Spot pub/sub API를 사용한다. internal socket,

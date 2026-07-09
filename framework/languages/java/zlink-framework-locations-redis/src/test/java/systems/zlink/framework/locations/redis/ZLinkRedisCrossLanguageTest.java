@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
@@ -86,7 +86,7 @@ final class ZLinkRedisCrossLanguageTest {
                 .get();
 
             assertNotNull(actor);
-            assertEquals(new ZLinkActorRef(RoutingId.from("dotnet-node"), "dotnet-actor", 0), actor.actorRef());
+            assertEquals(new ActorRef(RoutingId.from("dotnet-node"), "dotnet-actor", 0), actor.actorRef());
             assertEquals(RoutingId.from("dotnet-node"), actor.nodeRid());
             assertEquals("dotnet-owner", actor.ownerId());
 
@@ -150,7 +150,7 @@ final class ZLinkRedisCrossLanguageTest {
         return new ZLinkActorLocation(
             "java-actor",
             "player",
-            new ZLinkActorRef(RoutingId.from("java-node"), "java-actor", 0),
+            new ActorRef(RoutingId.from("java-node"), "java-actor", 0),
             RoutingId.from("java-node"),
             ZLinkSpotKind.USER,
             "cross",

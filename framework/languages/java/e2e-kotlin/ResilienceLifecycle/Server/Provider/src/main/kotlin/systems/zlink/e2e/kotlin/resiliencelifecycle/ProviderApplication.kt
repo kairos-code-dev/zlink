@@ -1,6 +1,7 @@
 package systems.zlink.e2e.kotlin.resiliencelifecycle
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import java.time.Duration
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -53,6 +54,9 @@ open class ProviderApplication {
                 .traceLogFile("$logDir/${state.providerRid()}-flow.log")
                 .traceLabel("kotlin-rl-${state.providerRid()}")
                 .setMessageFlowObserver(EvidenceDispatchErrorObserver(state))
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3))
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500))
+            options.configureLocations().setPollingInterval(Duration.ofMillis(200))
             options.addHandlersFromPackageOf(WorkRequestHandler::class.java)
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"))
@@ -75,6 +79,10 @@ open class ProviderApplication {
     @Bean
     open fun workCommandHandler(state: ScenarioState): WorkCommandHandler =
         WorkCommandHandler(state)
+
+    @Bean
+    open fun runtimeErrorEvidenceHandler(state: ScenarioState): RuntimeErrorEvidenceHandler =
+        RuntimeErrorEvidenceHandler(state)
 
     companion object {
         @JvmStatic

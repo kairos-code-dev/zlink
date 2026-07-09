@@ -9,11 +9,11 @@ public final class SlowSubscriberScenario {
     }
 
     public static void run(ScenarioContext context) {
-        for (int sequence = 0; sequence < 8; sequence++) {
+        for (int sequence = 1; sequence <= 32; sequence++) {
             context.publisher().publish("all", new Contracts.EventMsg("ps-b1", sequence, "slow-isolation-" + sequence));
         }
-        ScenarioAssert.waitForEvent(context.evidence(), "sub-2", "ps-b1", 7);
-        ScenarioAssert.waitForEvent(context.evidence(), "sub-3", "ps-b1", 7);
+        ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-2", "ps-b1", 32);
+        ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-3", "ps-b1", 32);
         System.out.println("scenario PS-B1 passed");
     }
 }

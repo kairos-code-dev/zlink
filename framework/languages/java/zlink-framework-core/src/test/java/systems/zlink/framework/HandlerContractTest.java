@@ -98,11 +98,11 @@ final class HandlerContractTest {
     @Test
     void spotHandlerRegistryMatchesDotnetRegistrationSurface() throws NoSuchMethodException {
         ZLinkSpotHandlerRegistry.class.getMethod("addHandler", Class.class);
-        ZLinkSpotHandlerRegistry.class.getMethod("addPacket", Class.class);
-        ZLinkSpotHandlerRegistry.class.getMethod("addSubscribe", String.class, Class.class);
-        ZLinkSpotHandlerRegistry.class.getMethod("addActorPacket", Class.class);
-        ZLinkSpotHandlerRegistry.class.getMethod("addActorSend", Class.class);
-        ZLinkSpotHandlerRegistry.class.getMethod("addActorRequest", Class.class);
+        assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addPacket"));
+        assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addSubscribe"));
+        assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActorPacket"));
+        assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActorSend"));
+        assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActorRequest"));
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActor" + "Join"));
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addPostActor" + "Joined"));
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActor" + "Left"));

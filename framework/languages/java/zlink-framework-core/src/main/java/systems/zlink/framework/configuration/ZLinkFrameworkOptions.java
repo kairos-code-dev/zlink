@@ -6,7 +6,7 @@ import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 
 public interface ZLinkFrameworkOptions {
     Duration defaultRequestTimeout();
@@ -29,8 +29,8 @@ public interface ZLinkFrameworkOptions {
 
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
 
-    void addSpotRemoteAddressResolver(
-        Class<? extends ZLinkSpotRemoteAddressResolver> resolverType);
+    void addSpotRemoteRefResolver(
+        Class<? extends SpotRemoteRefResolver> resolverType);
 
     void useInMemoryLocationStores();
 

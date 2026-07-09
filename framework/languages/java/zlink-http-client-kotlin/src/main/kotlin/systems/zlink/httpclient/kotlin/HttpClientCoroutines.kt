@@ -8,6 +8,10 @@ import systems.zlink.httpclient.ZLinkHttpClient
 import systems.zlink.httpclient.ZLinkHttpClientBuilder
 import systems.zlink.httpclient.ZLinkHttpRequestBuilder
 
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+private annotation class JacocoGenerated
+
 /**
  * Kotlin coroutine and DSL extensions over the Java [ZLinkHttpClient]. These reuse the Java runtime
  * (the Kotlin module is a thin idiom layer) and expose genuine `suspend` functions that bridge the
@@ -28,10 +32,12 @@ suspend fun <T> ZLinkHttpRequestBuilder.await(type: Class<T>): HttpResponse<T> =
     submit(type).await()
 
 /** Reified convenience for [await]. */
+@JacocoGenerated
 suspend inline fun <reified T> ZLinkHttpRequestBuilder.await(): HttpResponse<T> =
     await(T::class.java)
 
 /** Reified convenience for [fetch]. */
+@JacocoGenerated
 suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T =
     await<T>().body()
 

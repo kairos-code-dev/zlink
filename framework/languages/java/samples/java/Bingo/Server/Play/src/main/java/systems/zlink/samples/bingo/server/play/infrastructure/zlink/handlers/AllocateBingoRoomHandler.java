@@ -14,6 +14,7 @@ import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingor
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocation;
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocator;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("play-route")
@@ -39,11 +40,11 @@ public final class AllocateBingoRoomHandler
         Messages.AllocateBingoRoomReq request,
         ZLinkRequestContext context) {
         BingoRoomAllocation allocation = rooms.allocate(
-            request.actorId(),
-            request.mode(),
-            request.preferredOwnerNodeRid());
+            request.getActorId(),
+            request.getMode(),
+            request.getPreferredOwnerNodeRid());
         ensureLocalRoom(allocation);
-        return new Messages.AllocateBingoRoomRes(
+        return BingoMessages.allocateBingoRoomRes(
             allocation.roomId(),
             allocation.ownerPlayNodeRid());
     }

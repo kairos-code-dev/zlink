@@ -7,7 +7,6 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
-import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayerWinMilestoneMsgHandler;
@@ -35,9 +34,7 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
 
     @Override
     public void configure() {
-        context.handlers().addSubscribe(
-            SampleNames.PlayerMilestoneTopic,
-            PlayerWinMilestoneMsgHandler.class);
+        context.handlers().addHandler(PlayerWinMilestoneMsgHandler.class);
     }
 
     @Override

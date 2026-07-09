@@ -35,7 +35,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -78,6 +78,8 @@ import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamError;
+import systems.zlink.framework.spring.sessionfixtures.SubpackageDiscoveredPacketSession;
+import systems.zlink.framework.spring.sessionfixtures.SubpackageSessionPacketAnchor;
 
 final class ZLinkFrameworkAutoConfigurationTest {
     private static final AtomicInteger NEXT_PORT =
@@ -220,7 +222,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
-    void actorClientIsBeanWhenSpotNodeAndLocationStoreExist() {
+    void actorClientAndDirectoryAreBeansWhenSpotNodeAndLocationStoreExist() {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
@@ -234,6 +236,16 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertInstanceOf(
                 ZLinkFrameworkActorClientBean.class,
                 context.getBean(ZLinkActorClient.class));
+            assertInstanceOf(
+                ZLinkFrameworkActorDirectoryBean.class,
+                context.getBean(ZLinkActorDirectory.class));
+            assertTrue(context.getBean(ZLinkActorDirectory.class)
+                .find("missing-actor")
+                .toCompletableFuture()
+                .join()
+                .isEmpty());
+            assertThrows(NoSuchBeanDefinitionException.class, () ->
+                context.getBean(ZLinkActorManager.class));
         }
     }
 
@@ -277,7 +289,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 .create(InjectedGameSpot.class)
                 .toCompletableFuture()
                 .join();
-            ZLinkActorRef actor = context.getBean(ZLinkActorManager.class)
+            ActorRef actor = context.getBean(ZLinkActorManager.class)
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
@@ -368,6 +380,27 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.refresh();
 
             backendFactory.dispatchStreamPacket("auto.session.packet", "payload");
+
+            context.getBean("sessionPacketHandled", CompletableFuture.class)
+                .get(2, TimeUnit.SECONDS);
+            assertEquals(1, context.getBean(AtomicInteger.class).get());
+        }
+    }
+
+    @Test
+    void springLifecycleAutoDiscoversSessionPacketHandlersFromApplicationSubpackages()
+        throws Exception {
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.register(
+                AutoDiscoveredSessionPacketSubpackageConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            backendFactory.dispatchStreamPacket("subpackage.session.packet", "payload");
 
             context.getBean("sessionPacketHandled", CompletableFuture.class)
                 .get(2, TimeUnit.SECONDS);
@@ -742,6 +775,30 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer autoDiscoveredSessionPacketConfigurer() {
             return options -> { var stream = options.addStreamNode("client.stream"); stream.bind("inproc://auto-discovered-session");
                 stream.registerSession(AutoDiscoveredPacketSession.class); };
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
+    static class AutoDiscoveredSessionPacketSubpackageConfig {
+        @Bean
+        AtomicInteger sessionPacketCount() {
+            return new AtomicInteger();
+        }
+
+        @Bean
+        CompletableFuture<Void> sessionPacketHandled() {
+            return new CompletableFuture<>();
+        }
+
+        @Bean
+        ZLinkFrameworkConfigurer autoDiscoveredSessionPacketConfigurer() {
+            return options -> {
+                options.addHandlersFromPackageOf(SubpackageSessionPacketAnchor.class);
+                var stream = options.addStreamNode("client.stream");
+                stream.bind("inproc://auto-discovered-session-subpackage");
+                stream.registerSession(SubpackageDiscoveredPacketSession.class);
+            };
         }
     }
 

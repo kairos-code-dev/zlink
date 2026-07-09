@@ -9,7 +9,6 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
-$RolePattern = "systems\.zlink\.samples\.bingo\.(server\.(api|play|session)\.Program|client\.Program)"
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 $RedisContainer = $null
 
@@ -22,15 +21,32 @@ function Print-Logs {
     }
 }
 
-function Stop-RoleProcesses {
+function Get-ChildProcessIds {
+    param([int]$ParentId)
     if ($IsWindows) {
-        Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match $RolePattern } | ForEach-Object {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$ParentId" | ForEach-Object {
+            [int]$_.ProcessId
+            Get-ChildProcessIds -ParentId ([int]$_.ProcessId)
         }
     } else {
-        & pgrep -f $RolePattern 2>$null | ForEach-Object {
-            & kill -9 $_ 2>$null
+        & pgrep -P $ParentId 2>$null | ForEach-Object {
+            if ($_ -match '^\d+$') {
+                [int]$_
+                Get-ChildProcessIds -ParentId ([int]$_)
+            }
         }
+    }
+}
+
+function Stop-TrackedProcessTree {
+    param([System.Diagnostics.Process]$Process)
+    $children = @(Get-ChildProcessIds -ParentId $Process.Id)
+    [array]::Reverse($children)
+    foreach ($childId in $children) {
+        Stop-Process -Id $childId -Force -ErrorAction SilentlyContinue
+    }
+    if (-not $Process.HasExited) {
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -38,12 +54,8 @@ function Cleanup {
     param([int]$Status)
     Print-Logs $Status
     for ($i = $Processes.Count - 1; $i -ge 0; $i--) {
-        $process = $Processes[$i]
-        if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        }
+        Stop-TrackedProcessTree -Process $Processes[$i]
     }
-    Stop-RoleProcesses
     if ($RedisContainer) {
         & docker rm -f $RedisContainer *> $null
     }

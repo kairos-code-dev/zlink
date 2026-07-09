@@ -34,8 +34,9 @@ object PlayServer {
                 .enableServer(settings.playChannelEndpoint)
                 .addHandlerGroup(SampleNames.PlayHandlerGroup)
             val node = options.addSpotMesh(SampleNames.SpotMesh)
+            val routeEndpoint = settings.routeEndpoint.ifBlank { settings.spotEndpoint }
 
-            node.enableRouter(settings.spotEndpoint)
+            node.enableRouter(routeEndpoint)
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid))
             node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid), settings.peerSpotEndpoint)
             node.enablePubSub(settings.spotPubSubEndpoint)

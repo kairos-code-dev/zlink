@@ -19,20 +19,21 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRef;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -77,7 +78,7 @@ final class NodesAndServicesTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
-            ZLinkActorRef actor = runtime.actorManager()
+            ActorRef actor = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
@@ -105,7 +106,7 @@ final class NodesAndServicesTest {
         RoutingId targetNodeRid = RoutingId.from("target-node-" + suffix);
         RoutingId sourceNodeRid = RoutingId.from("source-node-" + suffix);
         RoutingId roomRid = RoutingId.from("room-" + suffix);
-        TestRemoteAddressResolver.address = new ZLinkSpotRemoteAddress(
+        TestRemoteAddressResolver.address = new SpotRemoteRef(
             "route",
             targetNodeRid,
             roomRid,
@@ -114,6 +115,7 @@ final class NodesAndServicesTest {
         PingHandler.received = new CompletableFuture<>();
         FlowObserver.events.clear();
         ClientSpot.targetRoomRid = roomRid;
+        ClientSpot.targetNodeRid = targetNodeRid;
 
         DefaultZLinkFrameworkOptions target = routeBridgeOptions(
             targetNodeRid,
@@ -129,7 +131,7 @@ final class NodesAndServicesTest {
             sourceNodeRid,
             routeB,
             routeA);
-        source.addSpotRemoteAddressResolver(TestRemoteAddressResolver.class);
+        source.addSpotRemoteRefResolver(TestRemoteAddressResolver.class);
         source.addSpotMesh("source")
             .setRoutingId(sourceNodeRid)
             .enableRouter(spotB)
@@ -259,7 +261,7 @@ final class NodesAndServicesTest {
 
         @Override
         public void configure() {
-            context.handlers().addPacket(PingHandler.class);
+            context.handlers().addHandler(PingHandler.class);
         }
     }
 
@@ -277,6 +279,7 @@ final class NodesAndServicesTest {
     public static final class ClientSpot implements ZLinkSpot<ZLinkActor> {
         static CompletableFuture<Pong> reply = new CompletableFuture<>();
         static RoutingId targetRoomRid;
+        static RoutingId targetNodeRid;
         private final ZLinkSpotContext context;
 
         public ClientSpot(ZLinkSpotContext context) {
@@ -291,7 +294,9 @@ final class NodesAndServicesTest {
         @Override
         public void onInitialize() {
             context.outbound()
-                .requestToSpot(targetRoomRid, new Ping("ping"))
+                .requestToSpot(
+                    new SpotRef("route", targetNodeRid, targetRoomRid),
+                    new Ping("ping"))
                 .timeout(Duration.ofSeconds(2))
                 .submit(Pong.class)
                 .whenComplete((value, error) -> {
@@ -305,11 +310,11 @@ final class NodesAndServicesTest {
     }
 
     public static final class TestRemoteAddressResolver
-        implements ZLinkSpotRemoteAddressResolver {
-        static ZLinkSpotRemoteAddress address;
+        implements SpotRemoteRefResolver {
+        static SpotRemoteRef address;
 
         @Override
-        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
+        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(
             RoutingId spotRid) {
             return CompletableFuture.completedFuture(address);
         }

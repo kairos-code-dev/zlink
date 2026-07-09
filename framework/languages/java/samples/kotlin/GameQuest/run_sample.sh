@@ -3,9 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+source "../../runner-common.sh"
+ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+
 pids=()
 redis_container_id=""
-role_pattern='systems\.zlink\.samples\.kotlin\.gamequest\.(server\.(gameapi|questmission)\.ProgramKt|client\.ProgramKt)'
 log_dir="build/sample-logs"
 export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-$(pwd)/logs}"
 mkdir -p "${log_dir}" "${GAMEQUEST_LOG_DIR}"
@@ -24,79 +26,10 @@ print_logs() {
   done
 }
 
-descendants() {
-  local pid="$1"
-  local child
-  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
-    descendants "${child}"
-    echo "${child}"
-  done
-}
-
-kill_role_processes() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
-cleanup() {
-  local status="$?"
-  set +e
-  print_logs "${status}"
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill "${child}" >/dev/null 2>&1 || true
-    done
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-  kill_role_processes
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill -9 "${child}" >/dev/null 2>&1 || true
-    done
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
-  for pid in "${pids[@]}"; do
-    wait "${pid}" 2>/dev/null || true
-  done
-  if [[ -n "${redis_container_id}" ]]; then
-    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
-  fi
-  exit "${status}"
-}
 trap cleanup EXIT
 
 pause_briefly() {
   read -r -t 0.1 _ < <(:) || true
-}
-
-wait_port() {
-  local host="$1"
-  local port="$2"
-  local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
-    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
-      return 0
-    fi
-    pause_briefly
-  done
-  echo "Timed out waiting for ${host}:${port}" >&2
-  return 1
-}
-
-wait_http_health() {
-  local url="$1"
-  local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
-    if curl -fsS "${url}/health" >/dev/null 2>&1; then
-      return 0
-    fi
-    pause_briefly
-  done
-  echo "Timed out waiting for health at ${url}" >&2
-  return 1
 }
 
 reserve_ports() {
@@ -126,20 +59,12 @@ finally:
 PY
 }
 
-gradle_run() {
-  ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
-}
-
-app_bin() {
-  local project="$1"
-  local script="$2"
-  echo "${project}/build/install/${script}/bin/${script}"
-}
-
 build_framework_jars() {
   (
     cd ../../..
     ./gradlew --no-daemon \
+      --no-parallel \
+      --max-workers=1 \
       :zlink-framework-core:jar \
       :zlink-framework-kotlin:jar \
       :zlink-framework-spring-boot-starter:jar \
@@ -170,8 +95,8 @@ if [[ -z "${GAMEQUEST_REDIS_ENDPOINT:-}" ]]; then
     echo "Docker is required when GAMEQUEST_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  redis_container_id="$(docker run -d --rm --name "gamequest-kotlin-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
-  GAMEQUEST_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-kotlin-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
+  GAMEQUEST_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
 fi
 wait_port "${GAMEQUEST_REDIS_ENDPOINT%:*}" "${GAMEQUEST_REDIS_ENDPOINT##*:}"
 common_java_options+=" -Dzlink.samples.gamequest.redisEndpoint=${GAMEQUEST_REDIS_ENDPOINT}"

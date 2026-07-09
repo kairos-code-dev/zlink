@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.runtimemonitoring\.(client|service|filteredservice|throwingservice|trigger)\.Program'
+REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 SCENARIO="${1:-all}"
@@ -17,11 +18,12 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring-gradle-cache}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+EXPLICIT_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${EXPLICIT_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}"
+ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:runtime-monitoring:${run_id}}"
-LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=30
+LOCAL_READINESS_ATTEMPTS=600
 
 print_logs() {
   local status="$1"
@@ -55,9 +57,17 @@ cleanup() {
     done
     kill "${pid}" >/dev/null 2>&1 || true
   done
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
+  sleep 0.5
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    local pid="${pids[$i]}"
+    for child in $(descendants "${pid}"); do
+      kill -9 "${child}" >/dev/null 2>&1 || true
+    done
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -108,6 +118,26 @@ wait_port() {
   return 1
 }
 
+start_redis_container() {
+  if [[ -n "${EXPLICIT_REDIS_LOCATION_ENDPOINT}" ]]; then
+    return
+  fi
+  if [[ "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" != "${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}" ]]; then
+    return
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="$(
+    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  )"
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
+    zlink_redis_endpoint "${REDIS_CONTAINER}"
+  )"
+  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+}
+
 gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
@@ -145,6 +175,7 @@ THROW_HTTP="$(http "${THROW_HTTP_PORT}")"
 TRIGGER_HTTP="$(http "${TRIGGER_HTTP_PORT}")"
 
 gradle_run installDist
+start_redis_container
 
 ZLINK_JAVA_E2E_RID="svc-a" \
 ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
@@ -187,9 +218,14 @@ wait_port throwing-service-api "${THROW_API_ENDPOINT}"
 wait_port throwing-service-http "${THROW_HTTP}"
 
 ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
+ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT="${FILTER_API_ENDPOINT}" \
 ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
+ZLINK_JAVA_E2E_SERVICE_B_HTTP="${FILTER_HTTP}" \
 ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN="$(filtered_service_bin)" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
 pids+=("$!")
@@ -206,10 +242,12 @@ if [[ "${SCENARIO}" == "all" ]]; then
   grep -q "scenario MON-A1 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-A2 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-A4 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-A5 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-B1 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-B2 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-C1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-D1 passed" "${log_dir}/client.stdout.log"
 else
   grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"
 fi

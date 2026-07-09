@@ -8,16 +8,17 @@
 
 마지막 검증:
 
-- 명령: `timeout 420s ./run_e2e.sh`
+- 명령: `nice -n 10 timeout 600s ./run_e2e.sh all`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/PubSub/logs/20260703-215913-3495/`
+- 로그: `framework/languages/java/e2e/PubSub/logs/20260707-221458-3633382/`
 
 ## 완료 상태 요약
 
 - 단일 `Program.java` role switch 구조를 제거하고 `:Client`, `:Shared`, `:Server:Publisher`,
   `:Server:Subscriber` Gradle subproject로 나누었다.
-- discovery registry role은 실행 그래프에서 제외했다. publisher와 subscriber는 공식 Redis location
-  store extension을 같은 endpoint와 실행별 key prefix로 등록한다.
+- discovery registry role은 실행 그래프에서 제외했다. runner는 실행별 Redis location store
+  컨테이너를 준비하고, publisher와 subscriber는 공식 Redis location store extension을 같은 endpoint와
+  실행별 key prefix로 등록한다.
 - 기존 fanout, topic filter, late subscriber, subscriber reconnect, slow subscriber,
   publisher restart, missing message name scenario 구현을 보존하고 scenario별 class로 분리했다.
 - PS-A4 subscriber reconnect와 PS-B2 publisher restart의 process lifecycle control은
@@ -25,17 +26,18 @@
   readiness, client 실행, cleanup만 맡는다.
 - publisher는 public `ZLinkFanoutClient`로 publish하고, client는 publisher HTTP endpoint를 호출해
   scenario를 구동한다.
-- `.NET` PubSub와 동일하게 push 기반 검증은 아직 gap이다. HTTP evidence polling을 쓰는 현재 검증
-  경로는 `feature-map.ko.md`에 부분 구현으로 기록했다.
+- Pub/Sub fanout 검증은 공통 E2E README의 Pub/Sub 예외에 맞춰 subscriber 역할 server의 bounded
+  `/evidence/wait` endpoint를 사용한다. client는 반복 snapshot polling으로 상태 변화를 기다리지
+  않는다.
 
 ## .NET 파일 매핑
 
 | .NET 기준 파일 | Java 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | root | done | logs와 모든 subproject build 산출물을 제외한다. |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | PS-A1~PS-C1 부분 구현과 push 검증 gap을 기록했다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | publisher/subscriber/client installDist binary를 시작하고 health, evidence, message flow marker를 검증한다. PS-A4/PS-B2 process restart 제어는 Client support가 수행한다. |
-| `README.ko.md` 없음 | `README.ko.md` | docs | done | `.NET`에는 없지만 Java 산출물로 역할, 실행법, gap을 기록했다. |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | PS-A1~PS-C1 구현 상태와 bounded evidence wait 검증 경로를 기록했다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 실행별 Redis location store 컨테이너를 준비한 뒤 publisher/subscriber/client installDist binary를 시작하고 health, evidence, message flow marker를 검증한다. PS-A4/PS-B2 process restart 제어는 Client support가 수행한다. |
+| `README.ko.md` 없음 | `README.ko.md` | docs | done | `.NET`에는 없지만 Java 산출물로 역할, 실행법, 검증 경로를 기록했다. |
 | `Shared/PubSub.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Java `Shared` library project다. |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/pubsub/shared/Contracts.java` | shared | done | channel, packet name, `EventMsg`, evidence record를 공유한다. |
 | `Client/PubSub.Client.csproj` | `Client/build.gradle.kts` | build | done | Java client application project다. |
@@ -48,7 +50,7 @@
 | `Client/Scenarios/PublisherRestartScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/PublisherRestartScenario.java` | scenario | done | PS-B2. 실제 publisher process 재시작 뒤 새 publish 도달을 검증한다. |
 | `Client/Scenarios/MissingMessageNameScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/MissingMessageNameScenario.java` | scenario | done | PS-C1. subscriber dispatch error marker와 정상 publish 회복을 검증한다. |
 | `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ClientOptions.java` | support | done | client mode, publisher/subscriber endpoint, Redis location endpoint/key prefix, build/log dir, marker file env를 해석한다. |
-| `Client/Support/Evidence.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/Evidence.java` | support | done | subscriber `/evidence` snapshot을 읽는다. push 검증 gap은 feature-map에 기록했다. |
+| `Client/Support/Evidence.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/Evidence.java` | support | done | subscriber `/evidence/wait`로 bounded marker wait를 수행하고, 부재 대조가 필요할 때만 `/evidence` snapshot을 읽는다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ScenarioAssert.java` | support | done | wait, assertion, common sequence helper를 모았다. |
 | `Client/Support/ServerProcessLauncher.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ServerProcessLauncher.java` | support | done | PS-A4/PS-B2에서 subscriber/publisher role binary를 Client scenario가 직접 시작하고 종료한다. |
 | `Server/Publisher/PubSub.Publisher.csproj` | `Server/Publisher/build.gradle.kts` | build | done | Java publisher application project다. |
@@ -86,8 +88,7 @@
 | PS-B2 | `Client/.../Scenarios/PublisherRestartScenario.java` | done | Client support가 publisher process를 시작, 종료, 재시작하고 중단 중 publish 실패와 재시작 후 도달을 검증한다. |
 | PS-C1 | `Client/.../Scenarios/MissingMessageNameScenario.java` | done | subscriber observer의 `HANDLER_MISSING`/`DROP` evidence와 정상 publish 회복을 검증한다. |
 
-## 남은 gap
+## 남은 확인 사항
 
-| 항목 | 상태 | 사유 |
-|------|------|------|
-| Push 기반 검증 | gap | 공통 README는 push로 확인 가능한 변화는 stream connector로 검증하라고 요구한다. 현재 Java PubSub는 `.NET`과 동일하게 HTTP evidence polling을 사용한다. 새 public API나 테스트 전용 adapter를 만들지 않고 후속 public contract parity 작업으로 남긴다. |
+현재 Java `PubSub` inventory에는 남은 `gap` 또는 `partial` 항목이 없다. Pub/Sub delivery 검증은
+공통 E2E README가 허용한 subscriber 역할 server의 bounded `/evidence/wait` marker를 사용한다.

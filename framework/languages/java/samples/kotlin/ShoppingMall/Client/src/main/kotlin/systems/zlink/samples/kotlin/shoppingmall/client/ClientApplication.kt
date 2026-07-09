@@ -33,11 +33,9 @@ class ClientApplication {
         suspend fun run(args: Array<String> = emptyArray()) {
             val builder = SpringApplicationBuilder(ClientApplication::class.java)
                 .web(WebApplicationType.NONE)
-            builder.run(*args).use { context ->
-                val channels = context.getBean(ZLinkClient::class.java)
-                ShoppingMallClientScenario(channels).run()
-            }
-            println("shoppingmall=completed")
+            val context = builder.run(*args)
+            val channels = context.getBean(ZLinkClient::class.java)
+            ShoppingMallClientScenario(channels).run()
         }
     }
 }

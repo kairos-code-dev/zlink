@@ -5,6 +5,7 @@ import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.UserActorEchoHandler
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.UserActorLeaveHandler
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -18,8 +19,8 @@ class UserSpot(
     override fun context(): ZLinkSpotContext = context
 
     override fun configure() {
-        context.handlers().addActorRequest(UserActorEchoHandler::class.java)
-        context.handlers().addActorRequest(UserActorLeaveHandler::class.java)
+        context.handlers().addHandler<UserActorEchoHandler>()
+        context.handlers().addHandler<UserActorLeaveHandler>()
     }
 
     override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {

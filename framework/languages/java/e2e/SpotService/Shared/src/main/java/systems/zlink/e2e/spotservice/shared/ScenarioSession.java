@@ -53,7 +53,7 @@ public final class ScenarioSession implements ZLinkSession {
         if (handled) {
             return;
         }
-        requireActor(dispatch).relay(payload).toCompletableFuture().join();
+        requireActor(dispatch).relay(dispatch, payload).toCompletableFuture().join();
     }
 
     private ZLinkSessionActor requireActor(ZLinkSessionDispatchContext dispatch) {

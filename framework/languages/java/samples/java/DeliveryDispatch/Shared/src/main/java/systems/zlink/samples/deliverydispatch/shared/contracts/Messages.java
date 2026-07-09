@@ -1,8 +1,8 @@
 package systems.zlink.samples.deliverydispatch.shared.contracts;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
-import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ActorRefSnapshot;
 import systems.zlink.framework.handlers.ZLinkPacket;
 
 public final class Messages {
@@ -67,15 +67,15 @@ public final class Messages {
     }
 
     public record ActorRefWire(String nodeRid, String actorId, long generation) {
-        public static ActorRefWire from(ZLinkActorRef actor) {
+        public static ActorRefWire from(ActorRef actor) {
             return new ActorRefWire(
                 actor.nodeRid().toString(),
                 actor.actorId(),
                 actor.generation());
         }
 
-        public ZLinkActorRef toActorRef() {
-            return new ZLinkActorRef(RoutingId.from(nodeRid), actorId, generation);
+        public ActorRef toActorRef() {
+            return new ActorRef(RoutingId.from(nodeRid), actorId, generation);
         }
     }
 
@@ -151,7 +151,7 @@ public final class Messages {
     public record EnsureCustomerActor(String customerId) {
     }
 
-    public record CustomerActorEnsured(String customerId, ZLinkActorRefSnapshot actorRef) {
+    public record CustomerActorEnsured(String customerId, ActorRefSnapshot actorRef) {
     }
 
     @ZLinkPacket("ServerAssertionRequest")

@@ -3,15 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+source "../../runner-common.sh"
+ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+
 core_lib="$(cd ../../../../../.. && pwd)/core/build/lib/libzlink.so"
-if [[ -f "${core_lib}" ]]; then
+if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${core_lib}"
 fi
 
 pids=()
 redis_container_id=""
 redis_key_prefix="${TICTACTOE_REDIS_KEY_PREFIX:-zlink:tictactoe:${RANDOM}:$$:room:}"
-role_pattern='systems\.zlink\.samples\.tictactoe\.server\.Program|systems\.zlink\.samples\.tictactoe\.client\.Program'
 run_dir="$(mktemp -d)"
 log_dir="${run_dir}/logs"
 export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$(pwd)/logs}"
@@ -30,126 +32,15 @@ print_logs() {
   done
 }
 
-descendants() {
-  local pid="$1"
-  local child
-  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
-    descendants "${child}"
-    echo "${child}"
-  done
-}
-
-kill_role_processes() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
-kill_role_processes_forcibly() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
-cleanup() {
-  local status="$?"
-  set +e
-  print_logs "${status}"
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill "${child}" >/dev/null 2>&1 || true
-    done
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-  kill_role_processes
-  for _ in $(seq 1 20); do
-    local any_alive=0
-    for pid in "${pids[@]}"; do
-      if kill -0 "${pid}" >/dev/null 2>&1; then
-        any_alive=1
-        break
-      fi
-      for child in $(descendants "${pid}"); do
-        if kill -0 "${child}" >/dev/null 2>&1; then
-          any_alive=1
-          break
-        fi
-      done
-    done
-    if [[ "${any_alive}" == "0" ]]; then
-      break
-    fi
-    sleep 0.1
-  done
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill -9 "${child}" >/dev/null 2>&1 || true
-    done
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
-  kill_role_processes_forcibly
-  for pid in "${pids[@]}"; do
-    wait "${pid}" 2>/dev/null || true
-  done
-  if [[ -n "${redis_container_id}" ]]; then
-    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
-  fi
-  if [[ "${TICTACTOE_JAVA_KEEP_RUN_DIR:-}" == "1" ]]; then
-    echo "runDir=${run_dir}"
-  else
-    rm -rf "${run_dir}"
-  fi
-  return "${status}"
-}
 trap cleanup EXIT
-
-wait_port() {
-  local port="$1"
-  local deadline=$((SECONDS + 45))
-  while (( SECONDS < deadline )); do
-    if (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "Timed out waiting for port $port" >&2
-  return 1
-}
-
-endpoint_host() {
-  local endpoint="$1"
-  endpoint="${endpoint#redis://}"
-  endpoint="${endpoint#tcp://}"
-  endpoint="${endpoint#http://}"
-  echo "${endpoint%:*}"
-}
-
-endpoint_port() {
-  local endpoint="$1"
-  endpoint="${endpoint#redis://}"
-  endpoint="${endpoint#tcp://}"
-  endpoint="${endpoint#http://}"
-  echo "${endpoint##*:}"
-}
 
 wait_endpoint() {
   local name="$1"
   local endpoint="$2"
-  local host
-  local port
-  host="$(endpoint_host "${endpoint}")"
-  port="$(endpoint_port "${endpoint}")"
-  local deadline=$((SECONDS + 45))
-  while (( SECONDS < deadline )); do
-    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "Timed out waiting for ${name} at ${endpoint}" >&2
-  return 1
+  wait_port "${endpoint}" || {
+    echo "Timed out waiting for ${name} at ${endpoint}" >&2
+    return 1
+  }
 }
 
 wait_log_contains() {
@@ -175,16 +66,6 @@ reserve_ports() {
   echo "${ports[*]}"
 }
 
-gradle_run() {
-  ../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
-}
-
-app_bin() {
-  local project_path="$1"
-  local app_name="$2"
-  printf '%s/build/install/%s/bin/%s' "${project_path}" "${app_name}" "${app_name}"
-}
-
 read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_pub_port play_b_pub_port unused_port1 unused_port2 unused_port3 < <(reserve_ports)
 
 if [[ -n "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
@@ -194,12 +75,10 @@ else
     echo "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  redis_container_id="$(docker run -d --rm \
-    --name "zlink-tictactoe-java-redis-${RANDOM}-$$" \
-    --label "systems.zlink.sample=tictactoe-java" \
-    -p "127.0.0.1::6379" \
-    redis:7-alpine)"
-  redis_endpoint="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  redis_container_id="$(
+    zlink_redis_start_scoped "zlink-redis-java-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  )"
+  redis_endpoint="$(zlink_redis_endpoint "${redis_container_id}")"
 fi
 
 wait_endpoint redis "${redis_endpoint}"

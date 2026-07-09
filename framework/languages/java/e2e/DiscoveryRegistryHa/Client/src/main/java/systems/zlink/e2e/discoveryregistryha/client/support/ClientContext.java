@@ -4,15 +4,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import systems.zlink.e2e.discoveryregistryha.shared.Contracts;
 import systems.zlink.e2e.discoveryregistryha.shared.HttpSupport;
 import systems.zlink.e2e.discoveryregistryha.shared.Wait;
 
 public final class ClientContext {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final int STORE_DELAY_MILLISECONDS = 1200;
 
     private final ClientOptions options;
 
@@ -136,6 +140,33 @@ public final class ClientContext {
         return requestUntilAnyProvider();
     }
 
+    public DiscoveryApiResult runStoreFailureStoreDelayNonBlocking() {
+        waitForLivePeerRows();
+        List<Long> baseline = measureRequests("sf-e1-baseline", 10);
+        long baselineP99 = percentileMillis(baseline, 0.99);
+        setStoreDelay(STORE_DELAY_MILLISECONDS);
+        try {
+            CompletableFuture<Long> delayedStoreRead = CompletableFuture.supplyAsync(this::measureStoreRead);
+            Wait.sleep(Duration.ofMillis(150));
+            List<Long> concurrent = measureRequests("sf-e1-concurrent", 12);
+            long delayedStoreReadMs = delayedStoreRead.join();
+            long concurrentP99 = percentileMillis(concurrent, 0.99);
+            long budget = Math.max(baselineP99 * 8, 750);
+
+            ScenarioAssert.that(delayedStoreReadMs >= STORE_DELAY_MILLISECONDS * 0.75,
+                "SF-E1 delayed store read finished too quickly: " + delayedStoreReadMs + " ms");
+            ScenarioAssert.that(concurrentP99 <= budget,
+                "SF-E1 unrelated request p99 grew too much during store delay. baseline="
+                    + baselineP99 + " ms concurrent=" + concurrentP99 + " ms budget=" + budget + " ms");
+
+            DiscoveryApiResult recovery = requestUntilAnyProvider("SF-E1", "sf-e1-recovery", 1);
+            System.out.println("scenario SF-E1 passed");
+            return recovery;
+        } finally {
+            setStoreDelay(0);
+        }
+    }
+
     private DiscoveryApiResult requestUntilExpectedProviders() {
         String consumerEndpoint = options.consumerHttpEndpoint();
         if (consumerEndpoint == null || consumerEndpoint.isBlank()) {
@@ -161,27 +192,82 @@ public final class ClientContext {
     }
 
     private DiscoveryApiResult requestUntilAnyProvider() {
+        return requestUntilAnyProvider("SF-A1", "sf-a1", 60);
+    }
+
+    private DiscoveryApiResult requestUntilAnyProvider(String scenarioName, String markerPrefix, int attempts) {
         String consumerEndpoint = options.consumerHttpEndpoint();
         if (consumerEndpoint == null || consumerEndpoint.isBlank()) {
             throw new IllegalStateException("consumer HTTP endpoint is required");
         }
-        for (int index = 0; index < 60; index++) {
+        for (int index = 0; index < attempts; index++) {
             Contracts.ProfileReq request =
-                new Contracts.ProfileReq("sf-a1-msg-" + index, "sf-a1-marker-" + index);
+                new Contracts.ProfileReq(markerPrefix + "-msg-" + index, markerPrefix + "-marker-" + index);
             try {
                 String body = HttpSupport.postJson(consumerEndpoint, "/profile/request/wait", request, JSON);
                 Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
-                ScenarioAssert.that(reply.value().equals("profile:sf-a1-msg-" + index), "reply payload mismatch");
+                ScenarioAssert.that(reply.value().equals("profile:" + markerPrefix + "-msg-" + index),
+                    scenarioName + " reply payload mismatch");
                 ScenarioAssert.that(options.expectedRids().contains(reply.providerRid()),
-                    "unexpected provider " + reply.providerRid());
+                    scenarioName + " unexpected provider " + reply.providerRid());
                 return new DiscoveryApiResult(Set.of(reply.providerRid()));
             } catch (Exception error) {
-                if (index == 59) {
-                    throw new IllegalStateException("consumer request failed", error);
+                if (index == attempts - 1) {
+                    throw new IllegalStateException(scenarioName + " consumer request failed", error);
                 }
             }
         }
-        throw new IllegalStateException("consumer request did not complete");
+        throw new IllegalStateException(scenarioName + " consumer request did not complete");
+    }
+
+    private long measureStoreRead() {
+        Instant started = Instant.now();
+        waitForLivePeerRows();
+        return Duration.between(started, Instant.now()).toMillis();
+    }
+
+    private List<Long> measureRequests(String markerPrefix, int count) {
+        String consumerEndpoint = options.consumerHttpEndpoint();
+        if (consumerEndpoint == null || consumerEndpoint.isBlank()) {
+            throw new IllegalStateException("consumer HTTP endpoint is required");
+        }
+        List<Long> timings = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            Contracts.ProfileReq request =
+                new Contracts.ProfileReq(markerPrefix + "-msg-" + index, markerPrefix + "-marker-" + index);
+            Instant started = Instant.now();
+            try {
+                String body = HttpSupport.postJson(consumerEndpoint, "/profile/request", request, JSON);
+                Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
+                ScenarioAssert.that(reply.value().equals("profile:" + markerPrefix + "-msg-" + index),
+                    "SF-E1 reply payload mismatch");
+                ScenarioAssert.that(options.expectedRids().contains(reply.providerRid()),
+                    "SF-E1 unexpected provider " + reply.providerRid());
+            } catch (Exception error) {
+                throw new IllegalStateException("SF-E1 request failed", error);
+            }
+            timings.add(Duration.between(started, Instant.now()).toMillis());
+        }
+        return timings;
+    }
+
+    private void setStoreDelay(int delayMilliseconds) {
+        try {
+            HttpSupport.postJson(
+                options.consumerHttpEndpoint(),
+                "/admin/store-delay",
+                new Contracts.StoreDelayReq(delayMilliseconds),
+                JSON);
+        } catch (Exception error) {
+            throw new IllegalStateException("failed to set store delay", error);
+        }
+    }
+
+    private static long percentileMillis(List<Long> values, double percentile) {
+        List<Long> sorted = new ArrayList<>(values);
+        Collections.sort(sorted);
+        int index = (int) Math.ceil(percentile * sorted.size()) - 1;
+        return sorted.get(Math.max(0, Math.min(index, sorted.size() - 1)));
     }
 
     private DiscoveryApiResult requestSurvivorOnly() {

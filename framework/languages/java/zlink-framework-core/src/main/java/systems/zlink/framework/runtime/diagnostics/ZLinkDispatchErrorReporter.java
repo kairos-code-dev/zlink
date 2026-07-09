@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 
@@ -19,7 +20,15 @@ public final class ZLinkDispatchErrorReporter {
         ZLinkDispatchOptionsRegistration options,
         ZLinkHandlerFactory handlerFactory,
         Executor executor) {
-        this.flow = new ZLinkMessageFlowTracer(options, handlerFactory, executor);
+        this(options, handlerFactory, executor, null);
+    }
+
+    public ZLinkDispatchErrorReporter(
+        ZLinkDispatchOptionsRegistration options,
+        ZLinkHandlerFactory handlerFactory,
+        Executor executor,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
+        this.flow = new ZLinkMessageFlowTracer(options, handlerFactory, executor, eventDispatcher);
     }
 
     public ZLinkMessageFlowTracer flow() {

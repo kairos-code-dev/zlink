@@ -4,7 +4,7 @@ import java.time.Instant;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
@@ -64,7 +64,7 @@ public final class DispatchWorker {
     }
 
     private Messages.OfferDeliveryResult offer(Messages.AssignDelivery request, String courierId) {
-        ZLinkSpotAddress address = courierAddress(courierId);
+        SpotRef address = courierAddress(courierId);
         Messages.CourierActorFound found = routes
             .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.FindCourierActor(courierId))
             .timeout(SampleTimings.RequestTimeout)
@@ -89,9 +89,9 @@ public final class DispatchWorker {
             .await(Messages.OfferDeliveryResult.class);
     }
 
-    private ZLinkSpotAddress courierAddress(String courierId) {
+    private SpotRef courierAddress(String courierId) {
         RoutingId nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId));
-        return new ZLinkSpotAddress(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
+        return new SpotRef(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
     }
 
     private void publishStatus(

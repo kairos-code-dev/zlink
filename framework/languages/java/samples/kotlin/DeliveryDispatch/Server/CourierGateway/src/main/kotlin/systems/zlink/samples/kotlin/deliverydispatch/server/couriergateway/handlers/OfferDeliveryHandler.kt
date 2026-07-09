@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.CourierDirectory
@@ -27,7 +27,7 @@ class OfferDeliveryHandler(
             routes
                 .requestToSpot(
                     SampleNames.CourierSpotMesh,
-                    ZLinkSpotAddress(
+                    SpotRef(
                         SampleNames.CourierSpotMesh,
                         RoutingId.from(binding.actor.nodeRid),
                         RoutingId.from(binding.actor.nodeRid),

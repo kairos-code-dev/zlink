@@ -9,8 +9,11 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.toactormessaging.shared.Contracts;
 import systems.zlink.e2e.toactormessaging.shared.Env;
 import systems.zlink.e2e.toactormessaging.shared.JsonHttp;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorClient;
+import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -35,7 +38,7 @@ public final class Program {
     }
 
     @Bean(destroyMethod = "close")
-    JsonHttp http(ZLinkActorClient actors) {
+    JsonHttp http(ZLinkActorClient actors, ZLinkActorDirectory actorRefs) {
         boot("http create");
         JsonHttp http = new JsonHttp(Env.get("ZLINK_JAVA_E2E_CALLER_HTTP"));
         boot("http route health");
@@ -44,7 +47,7 @@ public final class Program {
         http.post("/send", Contracts.ActorCallRequest.class, request -> {
             try {
                 actors.sendToActor(
-                        request.actorId(),
+                        actorRef(actorRefs, request.actorId()),
                         new Contracts.ActorNotify(request.scenario(), request.actorId(), request.value()))
                     .packetName("ActorNotify")
                     .submit()
@@ -59,7 +62,7 @@ public final class Program {
         http.post("/request", Contracts.ActorCallRequest.class, request -> {
             try {
                 Contracts.ActorReply reply = actors.requestToActor(
-                        request.actorId(),
+                        actorRef(actorRefs, request.actorId()),
                         new Contracts.ActorAsk(request.scenario(), request.actorId(), request.value()))
                     .packetName("ActorAsk")
                     .timeout(Duration.ofSeconds(5))
@@ -67,6 +70,39 @@ public final class Program {
                     .toCompletableFuture()
                     .join();
                 return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), reply.value());
+            } catch (RuntimeException ex) {
+                return failed(request, ex);
+            }
+        });
+        boot("http route send-ref");
+        http.post("/send-ref", Contracts.ActorRefCallRequest.class, request -> {
+            try {
+                ActorRef actorRef = toActorRef(request.actorRef());
+                actors.sendToActor(
+                        actorRef,
+                        new Contracts.ActorNotify(request.scenario(), actorRef.actorId(), request.value()))
+                    .packetName("ActorNotify")
+                    .submit()
+                    .toCompletableFuture()
+                    .join();
+                return Contracts.ActorCallResponse.ok(request.scenario(), actorRef.actorId(), "sent");
+            } catch (RuntimeException ex) {
+                return failed(request, ex);
+            }
+        });
+        boot("http route request-ref");
+        http.post("/request-ref", Contracts.ActorRefCallRequest.class, request -> {
+            try {
+                ActorRef actorRef = toActorRef(request.actorRef());
+                Contracts.ActorReply reply = actors.requestToActor(
+                        actorRef,
+                        new Contracts.ActorAsk(request.scenario(), actorRef.actorId(), request.value()))
+                    .packetName("ActorAsk")
+                    .timeout(Duration.ofSeconds(5))
+                    .submit(Contracts.ActorReply.class)
+                    .toCompletableFuture()
+                    .join();
+                return Contracts.ActorCallResponse.ok(request.scenario(), actorRef.actorId(), reply.value());
             } catch (RuntimeException ex) {
                 return failed(request, ex);
             }
@@ -111,22 +147,49 @@ public final class Program {
     private static Contracts.ActorCallResponse failed(
         Contracts.ActorCallRequest request,
         RuntimeException ex) {
+        return failed(request.scenario(), request.actorId(), ex);
+    }
+
+    private static Contracts.ActorCallResponse failed(
+        Contracts.ActorRefCallRequest request,
+        RuntimeException ex) {
+        return failed(request.scenario(), request.actorRef().actorId(), ex);
+    }
+
+    private static Contracts.ActorCallResponse failed(
+        String scenario,
+        String actorId,
+        RuntimeException ex) {
         Throwable current = ex;
         while (current.getCause() != null) {
             if (current instanceof ZLinkFrameworkException frameworkError) {
                 return Contracts.ActorCallResponse.failed(
-                    request.scenario(),
-                    request.actorId(),
+                    scenario,
+                    actorId,
                     frameworkError.kind().name());
             }
             current = current.getCause();
         }
         if (current instanceof ZLinkFrameworkException frameworkError) {
             return Contracts.ActorCallResponse.failed(
-                request.scenario(),
-                request.actorId(),
+                scenario,
+                actorId,
                 frameworkError.kind().name());
         }
-        return Contracts.ActorCallResponse.failed(request.scenario(), request.actorId(), current.getClass().getSimpleName());
+        return Contracts.ActorCallResponse.failed(scenario, actorId, current.getClass().getSimpleName());
+    }
+
+    private static ActorRef actorRef(ZLinkActorDirectory actors, String actorId) {
+        return actors.find(actorId)
+            .thenApply(found -> found
+                .orElseThrow(() -> new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    "actor ref not found: " + actorId)))
+            .toCompletableFuture()
+            .join();
+    }
+
+    private static ActorRef toActorRef(Contracts.ActorRefWire ref) {
+        return new ActorRef(RoutingId.fromHex(ref.nodeRidHex()), ref.actorId(), ref.generation());
     }
 }

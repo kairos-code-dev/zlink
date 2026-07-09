@@ -6,6 +6,7 @@ import systems.zlink.e2e.kotlin.spotservice.session.handlers.EntryActorDestroyHa
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.EntryActorEchoHandler
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.EntryActorJoinHandler
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
@@ -24,9 +25,9 @@ class ScenarioEntrySpot(
     }
 
     override fun configure() {
-        context.handlers().addActorRequest(EntryActorEchoHandler::class.java)
-        context.handlers().addActorRequest(EntryActorJoinHandler::class.java)
-        context.handlers().addActorRequest(EntryActorDestroyHandler::class.java)
+        context.handlers().addHandler<EntryActorEchoHandler>()
+        context.handlers().addHandler<EntryActorJoinHandler>()
+        context.handlers().addHandler<EntryActorDestroyHandler>()
     }
 
     override fun onCreateActor(

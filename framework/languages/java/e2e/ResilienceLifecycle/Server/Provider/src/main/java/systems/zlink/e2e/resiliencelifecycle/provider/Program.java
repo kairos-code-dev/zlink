@@ -1,6 +1,7 @@
 package systems.zlink.e2e.resiliencelifecycle.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -65,6 +66,8 @@ public final class Program {
     ZLinkFrameworkConfigurer providerFramework(ScenarioState state) {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(2));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.providerRid() + "-flow.log")
@@ -76,6 +79,10 @@ public final class Program {
                     state.record(
                         "DispatchError",
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
+                    if (state.observerThrows()) {
+                        state.record("ObserverFaultThrown", error.packetName());
+                        throw new IllegalStateException("dispatch observer failure");
+                    }
                     return CompletableFuture.completedFuture(null);
                 });
             options.addHandlersFromPackageOf(WorkReqHandler.class);

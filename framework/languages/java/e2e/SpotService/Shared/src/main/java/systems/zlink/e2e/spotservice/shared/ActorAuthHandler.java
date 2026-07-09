@@ -32,9 +32,12 @@ public final class ActorAuthHandler
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         Contracts.ActorAuthReq request) {
-        var actor = actors.getOrCreate(request.actorId(), "scenario", request)
+        var existing = actors.find(request.actorId())
             .toCompletableFuture()
             .join();
+        var actor = existing.orElseGet(() -> actors.create(request.actorId(), "scenario", request)
+            .toCompletableFuture()
+            .join());
         var bound = context.actors().bind(actor)
             .toCompletableFuture()
             .join();

@@ -69,6 +69,28 @@ class HttpClientCoroutineTest {
     }
 
     @Test
+    fun `suspend reified await decodes response`() = runBlocking {
+        TestServer { exchange -> respond(exchange, 200, """{"id":8,"name":"Nia"}""") }.use { server ->
+            zlinkHttpClient(server.baseUrl).use { client ->
+                val response = client.get("/players/8").await<Player>()
+                assertEquals(8, response.body().id)
+                assertEquals("Nia", response.body().name)
+            }
+        }
+    }
+
+    @Test
+    fun `suspend fetch returns decoded body`() = runBlocking {
+        TestServer { exchange -> respond(exchange, 200, """{"id":"game-8","ranked":false}""") }.use { server ->
+            zlinkHttpClient(server.baseUrl).use { client ->
+                val body = client.get("/games/game-8").fetch<CreateGameRes>()
+                assertEquals("game-8", body.id)
+                assertEquals(false, body.ranked)
+            }
+        }
+    }
+
+    @Test
     fun `suspend await with explicit type`() = runBlocking {
         TestServer { exchange -> respond(exchange, 200, """{"id":7,"name":"Aria"}""") }.use { server ->
             zlinkHttpClient(server.baseUrl).use { client ->

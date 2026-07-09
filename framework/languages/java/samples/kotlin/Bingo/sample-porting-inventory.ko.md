@@ -59,7 +59,7 @@
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoRoomEventMapper.cs` | `Server/Play/src/main/kotlin/.../spots/bingoroomspot/BingoRoomSpot.kt` | notification | done | domain state를 notify payload로 변환한다. |
 | `.NET: Shared/Bingo.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared project. |
 | `.NET: Shared/Contracts/SampleConstants.cs` | `Server/Configuration/.../SampleNames.kt`, `Client/.../SampleNames.kt` | shared-config | done | Kotlin은 client/server 설정 object로 나누어 사용한다. |
-| `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/src/main/kotlin/.../shared/contracts/Messages.kt` | shared-contract | gap | 현재 Kotlin은 hand-written data class 계약이다. 공통 문서는 Protobuf schema와 생성 message 사용을 요구하므로 별도 protobuf 생성 전환이 필요하다. |
+| `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/src/main/proto/bingo_messages.proto`, `Shared/src/main/kotlin/.../shared/contracts/Messages.kt` | shared-contract | done | Kotlin은 checked-in Protobuf schema에서 `Messages` generated class를 만들고, `Messages.kt`는 생성 message typealias와 builder wrapper만 제공한다. |
 
 ## 공통 요구 대응
 
@@ -76,16 +76,15 @@
 | common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker container를 만들지 않고 해당 endpoint를 사용한다. |
 | common: Redis endpoint가 없으면 runner가 Docker Redis 준비 | `run_sample.sh`, `run_sample.ps1` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
 | common: 실행별 Redis key prefix 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_KEY_PREFIX`가 없으면 실행별 prefix를 만든다. |
-| common: Protobuf schema와 생성 message 사용 | `Shared/.../Messages.kt` | shared-contract | gap | Java/Kotlin sample release gate가 현재 `Messages.kt`를 기대한다. 생성 protobuf 전환은 별도 계약/gate 갱신과 함께 해야 한다. |
-| common: stream/channel/actor/room Spot payload는 Protobuf codec 사용 | `Program.kt`, role application classes | codec | partial | Protobuf codec을 등록하지만 payload type은 생성 protobuf message가 아니다. |
+| common: Protobuf schema와 생성 message 사용 | `Shared/src/main/proto/bingo_messages.proto`, `Shared/.../Messages.kt` | shared-contract | done | `com.google.protobuf` Gradle plugin으로 schema를 generate하고 Kotlin public sample code는 generated `Messages.*` payload를 typealias로 사용한다. |
+| common: stream/channel/actor/room Spot payload는 Protobuf codec 사용 | `Program.kt`, role application classes, `Shared/src/main/proto/bingo_messages.proto` | codec | done | Protobuf codec을 등록한 stream/channel/actor/Spot 경로에서 generated message payload를 사용한다. |
 | common: connector wait API로 push 대기 | `BingoClientScenario.kt` | validation | done | `waitFor(...).submit(...)`과 `await(...)`를 사용한다. |
 | common: inbound observer는 connect 전에 등록 | `Client/Program.kt` | validation | done | connector 생성 직후 inbound observer를 등록하고 이후 scenario에서 connect한다. |
 | common: inbound observer 로그 확인 | `run_sample.sh`, `run_sample.ps1` | runner | done | `stream-inbound sample=Bingo`와 Notify 수신 marker를 확인한다. |
 | common: sample-local polling으로 push 대기를 숨기지 않음 | `BingoClientScenario.kt` | validation | done | push 대기는 scenario 코드에 직접 드러난다. |
-| common: Domain은 framework 타입을 모름 | `Server/Play/.../domain/bingo` | design | done | domain package는 sample model과 Kotlin collection 중심이다. |
+| common: Domain은 framework 타입을 모름 | `Server/Play/.../domain/bingo` | design | done | domain package는 framework runtime 타입을 모르며, 외부로 내보내는 room snapshot만 shared protobuf contract message로 만든다. |
 | common: Redis client dependency는 adapter 안에 둠 | `RedisBingoMatchQueue.kt` | design | done | handler, actor, Spot, Domain에 Redis client 타입을 노출하지 않는다. |
 
 ## 남은 gap
 
-1. Kotlin `Bingo`의 Shared 계약은 공통 문서가 요구하는 `bingo_messages.proto` 생성 message가 아니라 hand-written `Messages.kt` data class다.
-2. 이 gap은 단순 파일 이동으로 끝나지 않는다. Java/Kotlin sample release gate가 현재 hand-written 계약 파일을 기대하므로, protobuf generation build, public codec 사용, Java/Kotlin gate 기대값을 같은 단위로 갱신해야 한다.
+현재 Kotlin `Bingo` 샘플에는 남은 gap이 없다. Shared 계약은 checked-in `bingo_messages.proto`에서 생성한 protobuf message를 사용하고, release gate는 schema와 generated-message wrapper가 함께 유지되는지 확인한다.

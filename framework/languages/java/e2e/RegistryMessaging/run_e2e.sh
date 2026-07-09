@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.registrymessaging\.(client|provider|workflow|consumer)\.Program'
+REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,11 +18,13 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging-gradle-cache}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+EXPLICIT_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${EXPLICIT_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}"
+ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
 export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:registry-messaging:${run_id}}"
-LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_TIMEOUT_SECONDS=20
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=30
+LOCAL_READINESS_ATTEMPTS=200
 
 print_logs() {
   local status="$1"
@@ -44,12 +47,6 @@ descendants() {
   done
 }
 
-kill_role_processes() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
 cleanup() {
   local status="$?"
   set +e
@@ -61,7 +58,6 @@ cleanup() {
     done
     kill "${pid}" >/dev/null 2>&1 || true
   done
-  kill_role_processes
   sleep 0.5
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -70,6 +66,9 @@ cleanup() {
     done
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -136,6 +135,26 @@ PY
   done
   echo "Timed out waiting for ${name} health at ${endpoint}" >&2
   return 1
+}
+
+start_redis_container() {
+  if [[ -n "${EXPLICIT_REDIS_LOCATION_ENDPOINT}" ]]; then
+    return
+  fi
+  if [[ "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" != "${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}" ]]; then
+    return
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="$(
+    zlink_redis_start_scoped "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  )"
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
+    zlink_redis_endpoint "${REDIS_CONTAINER}"
+  )"
+  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
 }
 
 gradle_run() {
@@ -286,6 +305,7 @@ needs_workflow_role() {
 
 read -r API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER <<<"$(reserve_ports)"
 
+start_redis_container
 install_dist
 
 if is_common_scenario "${SCENARIO}"; then

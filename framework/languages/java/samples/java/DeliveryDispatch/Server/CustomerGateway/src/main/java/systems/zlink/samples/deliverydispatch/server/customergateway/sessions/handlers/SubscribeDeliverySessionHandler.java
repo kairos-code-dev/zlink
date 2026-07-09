@@ -2,8 +2,8 @@ package systems.zlink.samples.deliverydispatch.server.customergateway.sessions.h
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -40,7 +40,7 @@ public final class SubscribeDeliverySessionHandler
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         Messages.SubscribeDelivery request) {
-        ZLinkActorRef actor = await(actors.getOrCreate(
+        ActorRef actor = await(actors.getOrCreate(
             CustomerId,
             SampleNames.CustomerActorType,
             new Messages.EnsureCustomerActor(CustomerId)));

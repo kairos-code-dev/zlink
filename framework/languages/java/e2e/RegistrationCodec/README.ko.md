@@ -23,6 +23,7 @@ timeout 420s ./run_e2e.sh
 뜨지 않고 `ZLinkHttpClient`로 server role을 구동한다. 실패하면 `logs/<run-id>/` 아래 stdout, stderr,
 message flow log를 출력한다.
 
-현재 남은 gap은 codec별 exact content-type 검증이다. Java public API로 reply content-type을 직접
-볼 수 없고 handler context에도 이 E2E 경로에서 codec별 content-type이 안정적으로 노출되지 않아,
-raw frame이나 private runtime 접근 없이 후속 public contract parity 작업으로 남긴다.
+codec별 content-type은 public handler context인 `ZLinkHandlerContext.contentType()`으로 확인한다.
+server handler가 request/send context의 content-type을 evidence로 남기고, client scenario가 JSON,
+Protobuf, MessagePack 기대값을 검증한다. 이 검증은 raw frame이나 private runtime 접근을 사용하지
+않는다.

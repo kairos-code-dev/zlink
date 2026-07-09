@@ -7,6 +7,6 @@ public final class SmD6Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-D6", "bound session push target isolation is not implemented");
+        gateway.runMode("bound-push-isolation");
     }
 }

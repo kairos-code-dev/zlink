@@ -12,12 +12,14 @@ import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.e2e.spotservice.shared.EvidenceHttpServer;
 import systems.zlink.e2e.spotservice.shared.IngressMsgHandler;
 import systems.zlink.e2e.spotservice.shared.MismatchedSpot;
+import systems.zlink.e2e.spotservice.shared.MultiBindHandler;
 import systems.zlink.e2e.spotservice.shared.NoopIngressHandler;
 import systems.zlink.e2e.spotservice.shared.RouteReqHandler;
 import systems.zlink.e2e.spotservice.shared.ScenarioActorFactory;
 import systems.zlink.e2e.spotservice.shared.ScenarioEntrySpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioSession;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
+import systems.zlink.e2e.spotservice.shared.SlowSessionHandler;
 import systems.zlink.e2e.spotservice.shared.SpotRouteResolver;
 import systems.zlink.e2e.spotservice.shared.TimerScenarioSpot;
 import systems.zlink.e2e.spotservice.shared.UserSpot;
@@ -61,12 +63,14 @@ public final class Program {
     EvidenceHttpServer evidenceHttpServer(
         ScenarioState state,
         com.fasterxml.jackson.databind.ObjectMapper json,
-        ZLinkSpotManager spots) {
+        ZLinkSpotManager spots,
+        systems.zlink.framework.channels.ZLinkRouteClient routes) {
         return new EvidenceHttpServer(
             state,
             json,
             Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
-            spots);
+            spots,
+            routes);
     }
 
     @Bean
@@ -74,7 +78,8 @@ public final class Program {
         return options -> {
             String nodeRid = state.nodeRid();
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
-            options.addSpotRemoteAddressResolver(SpotRouteResolver.class);
+            options.addHandlersFromPackageOf(ActorAuthHandler.class);
+            options.addSpotRemoteRefResolver(SpotRouteResolver.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
@@ -121,11 +126,19 @@ public final class Program {
             node.addSpotFactory(TimerScenarioSpot.class);
             node.addActorFactory("scenario", ScenarioActorFactory.class);
             String streamEndpoint = Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT");
-            if (!streamEndpoint.isBlank()) {
-                options.addStreamNode("gateway")
-                    .bind(streamEndpoint)
-                    .registerSession(ScenarioSession.class)
-                    .addSessionPacketHandler(ActorAuthHandler.class);
+            String tlsStreamEndpoint = Env.get("ZLINK_JAVA_E2E_TLS_STREAM_ENDPOINT", "");
+            if (!streamEndpoint.isBlank() || !tlsStreamEndpoint.isBlank()) {
+                var stream = options.addStreamNode("gateway");
+                if (!streamEndpoint.isBlank()) {
+                    stream.bind(streamEndpoint);
+                }
+                if (!tlsStreamEndpoint.isBlank()) {
+                    stream.bind(tlsStreamEndpoint)
+                        .setTlsServer(
+                            Env.get("ZLINK_JAVA_E2E_TLS_CERTIFICATE_PATH"),
+                            Env.get("ZLINK_JAVA_E2E_TLS_KEY_PATH"));
+                }
+                stream.registerSession(ScenarioSession.class);
             }
         };
     }

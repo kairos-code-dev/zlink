@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
 REDIS_CONTAINER=""
-role_pattern='systems\.zlink\.e2e\.kotlin\.discoveryregistryha\..*ProgramKt'
+REDIS_CONTAINER_OWNED=0
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -60,12 +61,11 @@ cleanup() {
     done
     kill "${pid}" >/dev/null 2>&1 || true
   done
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    if [[ "${REDIS_CONTAINER_OWNED}" == "1" ]]; then
+      docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    fi
   fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
@@ -110,10 +110,17 @@ start_redis_container() {
     echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
     exit 1
   fi
-  REDIS_CONTAINER="zlink-kotlin-storefailure-redis-$$"
-  docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+  if [[ -n "${ZLINK_KOTLIN_E2E_REDIS_CONTAINER:-}" ]]; then
+    REDIS_CONTAINER="${ZLINK_KOTLIN_E2E_REDIS_CONTAINER}"
+    REDIS_CONTAINER_OWNED=0
+    return
+  fi
+  REDIS_CONTAINER_OWNED=1
+  REDIS_CONTAINER="$(
+    zlink_redis_start_scoped "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  )"
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="$(
-    docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/'
+    zlink_redis_endpoint "${REDIS_CONTAINER}"
   )"
   export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT
 }
@@ -129,8 +136,11 @@ unpause_redis_container() {
 stop_redis_container() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
-    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    if [[ "${REDIS_CONTAINER_OWNED}" == "1" ]]; then
+      docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    fi
     REDIS_CONTAINER=""
+    REDIS_CONTAINER_OWNED=0
   fi
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
   export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT

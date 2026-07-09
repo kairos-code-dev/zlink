@@ -25,6 +25,125 @@ public final class Contracts {
     public record StateMsg(String value) {
     }
 
+    public record CreateSpotReq(String spotRid) {
+    }
+
+    public record CreateSpotRes(
+        String spotRid,
+        String nodeRid,
+        String state) {
+    }
+
+    public record SpotStateRouteReq(
+        String spotRid,
+        String op,
+        int delta) {
+    }
+
+    public record SpotMissingHandlerReq(String spotRid) {
+    }
+
+    public record SpotMissingHandlerRes(
+        String spotRid,
+        boolean failed,
+        EvidenceSnapshot evidence) {
+    }
+
+    public record SpotMissingCommandReq(
+        String spotRid,
+        String marker) {
+    }
+
+    public record SpotMissingCommandRes(
+        String spotRid,
+        String marker,
+        boolean sent,
+        EvidenceSnapshot evidence) {
+    }
+
+    public record StageProbeReq(
+        String marker,
+        int delta) {
+    }
+
+    public record SpotStageProbeRouteReq(
+        String spotRid,
+        String marker,
+        int delta) {
+    }
+
+    public record StageTimerStartReq(
+        String name,
+        int periodMilliseconds) {
+    }
+
+    public record SpotStageTimerRouteReq(
+        String spotRid,
+        String name,
+        int periodMilliseconds) {
+    }
+
+    public record StageTimerStartRes(
+        String spotRid,
+        String name,
+        boolean started) {
+    }
+
+    public record MultiNodeCreateSpotReq(
+        String spotRid,
+        int delta) {
+    }
+
+    public record MultiNodeCreateSpotRes(
+        String spotRid,
+        String nodeRid,
+        String state,
+        int value) {
+    }
+
+    public record MultiNodeStateRouteReq(
+        String spotRid,
+        int delta) {
+    }
+
+    public record MultiNodeStateReq(int delta) {
+    }
+
+    public record MultiNodeStateMsg(String marker) {
+    }
+
+    public record MultiNodeStateRes(
+        String spotRid,
+        String nodeRid,
+        int value) {
+    }
+
+    public record SpotOnlyMeshReq(
+        String sourceSpotRid,
+        String targetSpotRid,
+        String marker) {
+    }
+
+    public record SpotOnlyMeshRes(
+        String sourceSpotRid,
+        String targetSpotRid,
+        int targetValue,
+        String marker) {
+    }
+
+    public record SpotOnlyJoinReq(
+        String targetSpotRid,
+        String actorId,
+        String marker) {
+    }
+
+    public record SpotOnlyJoinRes(
+        String targetSpotRid,
+        String actorId,
+        boolean accepted,
+        String marker) {
+    }
+
     public record SlowReq(String value) {
     }
 
@@ -80,10 +199,27 @@ public final class Contracts {
         List<String> tags) {
     }
 
+    public record MultiBindReq(
+        String firstActorId,
+        String secondActorId,
+        ActorProfile profile) {
+    }
+
+    public record MultiBindRes(int boundCount) {
+    }
+
     public record ActorJoinReq(
         String spotRid,
         ActorProfile profile,
         List<String> tags) {
+    }
+
+    public record JoinAdmittedUserSpotActorReq(
+        String spotRid,
+        ActorProfile profile,
+        List<String> tags,
+        boolean admit,
+        String reason) {
     }
 
     public record ActorJoinRes(
@@ -95,6 +231,14 @@ public final class Contracts {
         List<String> tags) {
     }
 
+    public record JoinAdmittedUserSpotActorRes(
+        String actorId,
+        String spotRid,
+        String nodeRid,
+        boolean accepted,
+        String errorKind) {
+    }
+
     public record LeaveActorReq(String actorId) {
     }
 
@@ -103,10 +247,48 @@ public final class Contracts {
         boolean accepted) {
     }
 
+    public record ActorDestroyReq(String actorId) {
+    }
+
+    public record ActorDestroyRes(
+        String actorId,
+        boolean destroyed) {
+    }
+
     public record ActorEchoReq(
         String value,
         int seq,
         ActorProfile profile) {
+    }
+
+    public record ActorPingReq(String value) {
+    }
+
+    public record ActorPingRes(
+        String actorId,
+        String nodeRid,
+        String spotRid,
+        String value,
+        int seen) {
+    }
+
+    public record ActorPushReq(String value) {
+    }
+
+    public record SnapshotReq(String actorId) {
+    }
+
+    public record SnapshotRes(
+        String actorId,
+        int seen) {
+    }
+
+    public record SlowSessionReq(
+        String value,
+        int delayMilliseconds) {
+    }
+
+    public record SlowSessionRes(String value) {
     }
 
     public record ActorEchoRes(
@@ -145,4 +327,5 @@ public final class Contracts {
         String nodeRid,
         List<EvidenceEntry> entries) {
     }
+
 }

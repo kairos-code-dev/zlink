@@ -19,7 +19,10 @@ public final class TimerTickHandler implements ZLinkSpotTimerHandler<ProbeSpot> 
         if (scenario == null) {
             return;
         }
-        String value = "timer=" + tick.name() + ";tick=" + tick.deliveryIndex();
+        String value = "spot=" + spot.context().spotRid()
+            + ";timer=" + tick.name()
+            + ";mailbox=timer:" + tick.name()
+            + ";tick=" + tick.deliveryIndex();
         if (tick.deliveryIndex() == 1
             && ("yield-on-first".equals(scenario.mode()) || "yield-then-next".equals(scenario.mode()))) {
             evidence.record(scenario.requestId(), "timer-yield-started", value);

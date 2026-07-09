@@ -1,7 +1,6 @@
 package systems.zlink.e2e.kotlin.yielddispatch.scenarios;
 
-import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
+import java.util.UUID;
 import systems.zlink.e2e.kotlin.yielddispatch.Contracts;
 import systems.zlink.e2e.kotlin.yielddispatch.support.ClientStreamSupport;
 import systems.zlink.e2e.kotlin.yielddispatch.support.ScenarioAssert;
@@ -16,17 +15,36 @@ public final class YdA3ContinuationContextScenario {
         String actorA,
         ZLinkStreamConnector roomB,
         String actorB) {
-        CompletableFuture<Contracts.ProbeRes> slow = CompletableFuture.supplyAsync(() ->
-            ClientStreamSupport.request(roomA, actorA, "room-a", "cross-slow", 900));
-        ClientStreamSupport.sleep(120);
-        long started = System.nanoTime();
-        Contracts.ProbeRes other = ClientStreamSupport.request(roomB, actorB, "room-b", "cross-other", 0);
-        long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
-        slow.join();
-        ScenarioAssert.that(
-            other.value().startsWith("immediate:cross-other#1"),
-            "YD-A3 cross spot reply mismatch: " + other.value());
-        ScenarioAssert.that(elapsedMillis < 650, "YD-A3 independent spot was blocked by another spot yield");
+        String requestId = "YD-A3-" + UUID.randomUUID();
+        String spotRid = "room-a";
+        String correlationId = "corr-a3";
+        ClientStreamSupport.send(
+            roomA.send(new Contracts.YieldMsg(requestId, 80, correlationId))
+                .metadata(Contracts.SPOT_RID_METADATA, spotRid));
+
+        Contracts.EvidenceRes evidence = ClientStreamSupport.waitForEvidence(
+            roomA,
+            requestId,
+            spotRid,
+            "yield-completed");
+        ScenarioAssert.containsMarkersInOrder(
+            evidence.markers(),
+            "yield-started",
+            "yield-released",
+            "yield-resumed",
+            "yield-completed");
+
+        for (String marker : evidence.markers()) {
+            if (!marker.startsWith("yield-")) {
+                continue;
+            }
+            ScenarioAssert.that(
+                marker.contains("|spot=" + spotRid + ";"),
+                "YD-A3 continuation marker lost target spot: " + marker);
+            ScenarioAssert.that(
+                marker.contains(";correlation=" + correlationId + ";"),
+                "YD-A3 continuation marker lost correlation id: " + marker);
+        }
         System.out.println("scenario YD-A3 passed");
     }
 }

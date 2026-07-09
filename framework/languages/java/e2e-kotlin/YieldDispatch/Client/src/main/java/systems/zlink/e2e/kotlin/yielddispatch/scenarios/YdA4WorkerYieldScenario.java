@@ -15,7 +15,7 @@ public final class YdA4WorkerYieldScenario {
         ScenarioAssert.that(actorId != null && !actorId.isBlank(), "YD-A4 actor setup mismatch");
         String requestId = "YD-A4-" + UUID.randomUUID();
         ClientStreamSupport.send(
-            connector.send(new Contracts.WorkerYieldMsg(requestId, 1200))
+            connector.send(new Contracts.WorkerYieldMsg(requestId, 4000))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         ClientStreamSupport.waitForEvidence(connector, requestId, "room-a", "worker-yield-released");

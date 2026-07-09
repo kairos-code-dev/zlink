@@ -11,9 +11,12 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
+import systems.zlink.contracts.errors.ConfigResult;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
@@ -77,6 +80,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private final List<FakeStreamSocket> streams = new ArrayList<>();
     private final List<FakeSpot> spots = new ArrayList<>();
     private final List<FakeRouterSocket> routers = new ArrayList<>();
+    private final Map<String, ZLinkBackendActorRef> actors = new ConcurrentHashMap<>();
     private Message nextActorJoinReply;
     private List<Message> nextSpotRequestReplyParts;
     private volatile Consumer<String> spotReplyObserver = ignored -> { };
@@ -717,11 +721,17 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 createRequest.close();
             }
             record("createActor." + actorId);
-            return new ZLinkBackendActorRef(routingId(), actorId, 0);
+            ZLinkBackendActorRef actor = new ZLinkBackendActorRef(routingId(), actorId, 0);
+            owner.actors.put(actorId, actor);
+            return actor;
         }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) {
             record("actorLookup." + actorId);
-            return new ZLinkBackendActorRef(routingId(), actorId, 0);
+            ZLinkBackendActorRef actor = owner.actors.get(actorId);
+            if (actor == null) {
+                throw new ZlinkConfigException(ConfigResult.NOT_FOUND);
+            }
+            return actor;
         }
         @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(
             ZLinkBackendActorRef actor,
@@ -767,6 +777,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
             record("destroyActor." + actor.actorId());
+            owner.actors.remove(actor.actorId());
             return CompletableFuture.completedFuture(null);
         }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) {
@@ -957,9 +968,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             List<Message> parts = packetName == null
                 ? List.of(Message.from(payload.getBytes(StandardCharsets.UTF_8)))
                 : List.of(jsonStringMessage(payload));
+            ZLinkBackendActorRef targetActor =
+                new ZLinkBackendActorRef(RoutingId.from("spot-node"), actorId, 1);
+            owner.actors.put(actorId, targetActor);
             actorJoins.add(new ZLinkBackendActorJoinRequest(
                 new ZLinkBackendActorRef(RoutingId.from("source-node"), actorId, 1),
-                new ZLinkBackendActorRef(RoutingId.from("spot-node"), actorId, 1),
+                targetActor,
                 parts,
                 null));
         }

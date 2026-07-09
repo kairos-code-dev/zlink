@@ -13,16 +13,20 @@ import systems.zlink.stream.connector.ZLinkStreamRequestCall;
 import systems.zlink.stream.connector.ZLinkStreamSendCall;
 
 public final class ClientStreamSupport {
-    public static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
+    public static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private ClientStreamSupport() {
     }
 
     public static ZLinkStreamConnector createConnector() {
+        return createConnector(REQUEST_TIMEOUT);
+    }
+
+    public static ZLinkStreamConnector createConnector(Duration requestTimeout) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT")),
             ZLinkStreamDispatchMode.AUTO,
-            REQUEST_TIMEOUT,
+            requestTimeout,
             2,
             Duration.ofSeconds(5),
             64 * 1024,

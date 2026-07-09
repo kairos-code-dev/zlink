@@ -71,3 +71,7 @@
 Java `DeliveryDispatch`는 `.NET` 기준의 Shared, Client, Server role 책임과 공통 DeliveryDispatch
 문서의 검증 흐름을 같은 의미로 대응한다. public framework API만 사용했고, framework runtime
 package나 private bridge, 테스트 전용 adapter로 우회하지 않았다.
+
+## 검증
+
+- `nice -n 15 timeout 600s ./run_sample.sh` 통과: `deliverydispatch full client/server self-check completed`

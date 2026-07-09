@@ -5,8 +5,11 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
@@ -15,6 +18,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final ObjectMapper json;
     private final String endpoint;
     private final ZLinkSpotManager spots;
+    private final ZLinkRouteClient routes;
     private HttpServer server;
     private boolean running;
 
@@ -22,11 +26,13 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ScenarioState state,
         ObjectMapper json,
         String endpoint,
-        ZLinkSpotManager spots) {
+        ZLinkSpotManager spots,
+        ZLinkRouteClient routes) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
         this.spots = spots;
+        this.routes = routes;
     }
 
     @Override
@@ -51,17 +57,104 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 exchange.close();
             });
             server.createContext("/evidence/wait", exchange -> {
-                Contracts.EvidenceWaitReq request = json.readValue(
+                try {
+                    Contracts.EvidenceWaitReq request = json.readValue(
+                        exchange.getRequestBody(),
+                        Contracts.EvidenceWaitReq.class);
+                    int timeout = request.timeoutMilliseconds() <= 0
+                        ? 10_000
+                        : request.timeoutMilliseconds();
+                    byte[] body = json.writeValueAsBytes(state.waitFor(request.containsAll(), timeout));
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                    exchange.close();
+                } catch (RuntimeException error) {
+                    write(exchange, 500, error.getMessage() + "\n");
+                }
+            });
+            server.createContext("/spot/create", exchange -> {
+                Contracts.CreateSpotReq request = json.readValue(
                     exchange.getRequestBody(),
-                    Contracts.EvidenceWaitReq.class);
-                int timeout = request.timeoutMilliseconds() <= 0
-                    ? 10_000
-                    : request.timeoutMilliseconds();
-                byte[] body = json.writeValueAsBytes(state.waitFor(request.containsAll(), timeout));
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-                exchange.close();
+                    Contracts.CreateSpotReq.class);
+                var result = getOrCreateUserSpot(request.spotRid());
+                write(exchange, 200, json.writeValueAsString(new Contracts.CreateSpotRes(
+                    result.spotRid().toString(),
+                    state.nodeRid(),
+                    result.state().name())));
+            });
+            server.createContext("/spot/state/request", exchange -> {
+                Contracts.SpotStateRouteReq request = json.readValue(
+                    exchange.getRequestBody(),
+                    Contracts.SpotStateRouteReq.class);
+                Contracts.StateRes result = requestStateWithRetry(request);
+                write(exchange, 200, json.writeValueAsString(result));
+            });
+            server.createContext("/spot/missing-handler/request", exchange -> {
+                Contracts.SpotMissingHandlerReq request = json.readValue(
+                    exchange.getRequestBody(),
+                    Contracts.SpotMissingHandlerReq.class);
+                boolean failed = fails(() -> routes.requestToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        new SpotRef(
+                            Contracts.SPOT_MESH,
+                            RoutingId.from(state.nodeRid()),
+                            RoutingId.from(request.spotRid())),
+                        new Contracts.StateReq("noop"))
+                    .packetName("MissingSpotReq")
+                    .timeout(java.time.Duration.ofSeconds(2))
+                    .await(Contracts.StateRes.class));
+                Contracts.EvidenceSnapshot evidence = state.waitFor(
+                    List.of("DispatchError|" + state.nodeRid()
+                        + "|" + request.spotRid()
+                        + "|HANDLER_MISSING/REPLY_ERROR/MissingSpotReq"),
+                    10_000);
+                write(exchange, 200, json.writeValueAsString(new Contracts.SpotMissingHandlerRes(
+                    request.spotRid(),
+                    failed,
+                    evidence)));
+            });
+            server.createContext("/spot/missing-handler/command", exchange -> {
+                Contracts.SpotMissingCommandReq request = json.readValue(
+                    exchange.getRequestBody(),
+                    Contracts.SpotMissingCommandReq.class);
+                try {
+                    routes.sendToSpot(
+                            Contracts.ROUTE_CHANNEL,
+                            new SpotRef(
+                                Contracts.SPOT_MESH,
+                                RoutingId.from(state.nodeRid()),
+                                RoutingId.from(request.spotRid())),
+                            new Contracts.StateMsg(request.marker()))
+                        .packetName("MissingSpotMsg")
+                        .await();
+                } catch (RuntimeException ignored) {
+                    // The assertion below is the contract: a missing send handler is recorded as a drop.
+                }
+                Contracts.EvidenceSnapshot evidence = state.waitFor(
+                    List.of("DispatchError|" + state.nodeRid()
+                        + "|" + request.spotRid()
+                        + "|HANDLER_MISSING/DROP/MissingSpotMsg"),
+                    10_000);
+                write(exchange, 200, json.writeValueAsString(new Contracts.SpotMissingCommandRes(
+                    request.spotRid(),
+                    request.marker(),
+                    true,
+                    evidence)));
+            });
+            server.createContext("/spot/stage/request", exchange -> {
+                Contracts.SpotStageProbeRouteReq request = json.readValue(
+                    exchange.getRequestBody(),
+                    Contracts.SpotStageProbeRouteReq.class);
+                Contracts.StateRes result = requestStageWithRetry(request);
+                write(exchange, 200, json.writeValueAsString(result));
+            });
+            server.createContext("/spot/stage/timer", exchange -> {
+                Contracts.SpotStageTimerRouteReq request = json.readValue(
+                    exchange.getRequestBody(),
+                    Contracts.SpotStageTimerRouteReq.class);
+                Contracts.StageTimerStartRes result = requestStageTimerWithRetry(request);
+                write(exchange, 200, json.writeValueAsString(result));
             });
             server.createContext("/admin/close", exchange -> {
                 String rid = queryValue(exchange.getRequestURI(), "rid");
@@ -142,6 +235,113 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             running = true;
         } catch (Exception error) {
             throw new IllegalStateException("failed to start evidence endpoint " + endpoint, error);
+        }
+    }
+
+    private systems.zlink.framework.spots.ZLinkSpotCreateResult getOrCreateUserSpot(String spotRid) {
+        try {
+            return spots.getOrCreate(UserSpot.class, RoutingId.from(spotRid), ZLinkMessage.of("e2e"))
+                .toCompletableFuture()
+                .get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("spot create interrupted", error);
+        } catch (java.util.concurrent.ExecutionException
+                 | java.util.concurrent.TimeoutException error) {
+            throw new IllegalStateException("spot create failed", error);
+        }
+    }
+
+    private Contracts.StateRes requestStateWithRetry(Contracts.SpotStateRouteReq request) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                String op = request.op() + "-" + request.delta();
+                return routes.requestToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        new SpotRef(
+                            Contracts.SPOT_MESH,
+                            RoutingId.from(state.nodeRid()),
+                            RoutingId.from(request.spotRid())),
+                        new Contracts.StateReq(op))
+                    .packetName("StateReq")
+                    .timeout(java.time.Duration.ofSeconds(2))
+                    .await(Contracts.StateRes.class);
+            } catch (RuntimeException error) {
+                lastFailure = error;
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("interrupted while waiting for spot state route", interrupted);
+                }
+            }
+        }
+        throw new IllegalStateException(
+            "timed out waiting for spot state route " + request.spotRid(),
+            lastFailure);
+    }
+
+    private Contracts.StateRes requestStageWithRetry(Contracts.SpotStageProbeRouteReq request) {
+        return requestToSpotWithRetry(
+            request.spotRid(),
+            new Contracts.StageProbeReq(request.marker(), request.delta()),
+            "StageProbeReq",
+            Contracts.StateRes.class,
+            "spot stage route");
+    }
+
+    private Contracts.StageTimerStartRes requestStageTimerWithRetry(Contracts.SpotStageTimerRouteReq request) {
+        return requestToSpotWithRetry(
+            request.spotRid(),
+            new Contracts.StageTimerStartReq(request.name(), request.periodMilliseconds()),
+            "StageTimerStartReq",
+            Contracts.StageTimerStartRes.class,
+            "spot stage timer route");
+    }
+
+    private <T> T requestToSpotWithRetry(
+        String spotRid,
+        Object packet,
+        String packetName,
+        Class<T> responseType,
+        String operation) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return routes.requestToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        new SpotRef(
+                            Contracts.SPOT_MESH,
+                            RoutingId.from(state.nodeRid()),
+                            RoutingId.from(spotRid)),
+                        packet)
+                    .packetName(packetName)
+                    .timeout(java.time.Duration.ofSeconds(2))
+                    .await(responseType);
+            } catch (RuntimeException error) {
+                lastFailure = error;
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("interrupted while waiting for " + operation, interrupted);
+                }
+            }
+        }
+        throw new IllegalStateException(
+            "timed out waiting for " + operation + " " + spotRid,
+            lastFailure);
+    }
+
+    private static boolean fails(Runnable action) {
+        try {
+            action.run();
+            return false;
+        } catch (RuntimeException error) {
+            return true;
         }
     }
 

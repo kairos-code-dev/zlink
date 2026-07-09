@@ -7,6 +7,6 @@ public final class SmB2Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-B2", "remote actor join E2E is not implemented");
+        gateway.runMode("remote-actor-session");
     }
 }

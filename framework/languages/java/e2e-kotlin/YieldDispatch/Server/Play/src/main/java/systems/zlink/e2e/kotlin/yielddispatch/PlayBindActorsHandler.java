@@ -2,8 +2,8 @@ package systems.zlink.e2e.kotlin.yielddispatch;
 
 import java.util.List;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -34,8 +34,8 @@ public final class PlayBindActorsHandler
                 ZLinkMessage.of("bind"))
             .toCompletableFuture()
             .join();
-        ZLinkActorRef actorA = bind(request.spotRid(), request.actorA());
-        ZLinkActorRef actorB = bind(request.spotRid(), request.actorB());
+        ActorRef actorA = bind(request.spotRid(), request.actorA());
+        ActorRef actorB = bind(request.spotRid(), request.actorB());
         return new Contracts.BindActorsRes(
             request.spotRid(),
             request.actorA(),
@@ -43,8 +43,8 @@ public final class PlayBindActorsHandler
             List.of(binding(actorA), binding(actorB)));
     }
 
-    private ZLinkActorRef bind(String spotRid, String actorId) {
-        ZLinkActorRef actor = actors.getOrCreate(actorId, "probe")
+    private ActorRef bind(String spotRid, String actorId) {
+        ActorRef actor = actors.getOrCreate(actorId, "probe")
             .toCompletableFuture()
             .join();
         evidence.record("bind-actors", "bind-actor", "spot=" + spotRid
@@ -53,7 +53,7 @@ public final class PlayBindActorsHandler
         return actor;
     }
 
-    private static Contracts.ActorBinding binding(ZLinkActorRef actor) {
+    private static Contracts.ActorBinding binding(ActorRef actor) {
         return new Contracts.ActorBinding(
             actor.actorId(),
             actor.nodeRid().toString(),

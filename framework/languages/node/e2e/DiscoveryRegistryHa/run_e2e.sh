@@ -89,9 +89,9 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-start_redis_container "store-failure-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
-REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
+REDIS_PORT="${REDIS_ENDPOINT##*:}"
 REDIS_KEY_PREFIX="store-failure:node:$RUN_ID"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 
@@ -201,7 +201,7 @@ run_sf_a2() {
 run_sf_b1() {
   start_topology
   run_warmup
-  docker stop "$REDIS_CONTAINER_ID" >/dev/null
+  docker rm -f "$REDIS_CONTAINER_ID" >/dev/null
   REDIS_CONTAINER_ID=""
   run_client SF-B1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
@@ -209,7 +209,7 @@ run_sf_b1() {
 run_sf_b2() {
   start_topology
   run_warmup
-  docker stop "$REDIS_CONTAINER_ID" >/dev/null
+  docker rm -f "$REDIS_CONTAINER_ID" >/dev/null
   REDIS_CONTAINER_ID=""
   run_client SF-B2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
@@ -266,10 +266,10 @@ run_sf_d3() {
   client_pid="$!"
   wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D3 stop-redis" \
     "SF-D3 client did not request Redis stop" "$client_pid"
-  docker stop "$REDIS_CONTAINER_ID" >/dev/null
+  docker rm -f "$REDIS_CONTAINER_ID" >/dev/null
   REDIS_CONTAINER_ID=""
   wait_location_unhealthy "$CONSUMER_URL" consumer
-  start_redis_container "store-failure-node-redis-recover-${RANDOM}-$$" -p "127.0.0.1:$REDIS_PORT:6379" redis:7.2-alpine
+  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1:$REDIS_PORT:6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
   wait_tcp redis "tcp://$REDIS_ENDPOINT"
   wait "$client_pid"
 }

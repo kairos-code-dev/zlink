@@ -3,9 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+source "../../runner-common.sh"
+ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+
 pids=()
 redis_container_id=""
-role_pattern='systems\.zlink\.samples\.kotlin\.bingo\.(server\.(api|play|session)\.ProgramKt|client\.ProgramKt)'
 log_dir="build/sample-logs"
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$(pwd)/logs}"
 export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
@@ -25,89 +27,7 @@ print_logs() {
   done
 }
 
-descendants() {
-  local pid="$1"
-  local child
-  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
-    descendants "${child}"
-    echo "${child}"
-  done
-}
-
-kill_role_processes() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
-kill_role_processes_forcibly() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
-}
-
-cleanup() {
-  local status="$?"
-  set +e
-  print_logs "${status}"
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill "${child}" >/dev/null 2>&1 || true
-    done
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
-  kill_role_processes
-  for _ in $(seq 1 20); do
-    local any_alive=0
-    for pid in "${pids[@]}"; do
-      if kill -0 "${pid}" >/dev/null 2>&1; then
-        any_alive=1
-        break
-      fi
-      for child in $(descendants "${pid}"); do
-        if kill -0 "${child}" >/dev/null 2>&1; then
-          any_alive=1
-          break
-        fi
-      done
-    done
-    if [[ "${any_alive}" == "0" ]]; then
-      break
-    fi
-    sleep 0.1
-  done
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill -9 "${child}" >/dev/null 2>&1 || true
-    done
-    kill -9 "${pid}" >/dev/null 2>&1 || true
-  done
-  kill_role_processes_forcibly
-  for pid in "${pids[@]}"; do
-    wait "${pid}" 2>/dev/null || true
-  done
-  if [[ -n "${redis_container_id}" ]]; then
-    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
-  fi
-  return "${status}"
-}
 trap cleanup EXIT
-
-wait_port() {
-  local host="$1"
-  local port="$2"
-  local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
-    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  echo "Timed out waiting for ${host}:${port}" >&2
-  return 1
-}
 
 reserve_ports() {
   local base=$((48000 + ((RANDOM + $$) % 1000) * 15 % 12000))
@@ -116,16 +36,6 @@ reserve_ports() {
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
-}
-
-gradle_run() {
-  ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
-}
-
-app_bin() {
-  local project="$1"
-  local script="$2"
-  echo "${project}/build/install/${script}/bin/${script}"
 }
 
 build_framework_jars() {
@@ -177,8 +87,8 @@ if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
     echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  redis_container_id="$(docker run -d --rm --name "bingo-kotlin-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
-  BINGO_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  redis_container_id="$(zlink_redis_start_scoped "zlink-redis-kotlin-sample" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}")"
+  BINGO_REDIS_ENDPOINT="$(zlink_redis_endpoint "${redis_container_id}")"
 fi
 redis_host="${BINGO_REDIS_ENDPOINT%:*}"
 redis_port="${BINGO_REDIS_ENDPOINT##*:}"

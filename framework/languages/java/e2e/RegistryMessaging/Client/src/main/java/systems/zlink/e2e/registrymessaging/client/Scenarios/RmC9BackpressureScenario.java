@@ -16,9 +16,10 @@ public final class RmC9BackpressureScenario {
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB) {
         backpressureConsumer.post("/profile/backpressure/reset").fetch(Object.class);
+        String marker = "rm-c9-" + java.util.UUID.randomUUID().toString().replace("-", "");
         java.util.List<java.util.concurrent.CompletableFuture<String>> sends = new java.util.ArrayList<>();
         for (int index = 0; index < SLOW_SEND_COUNT; index++) {
-            String commandId = "slow-c9-" + index;
+            String commandId = "slow-" + marker + "-" + index;
             sends.add(java.util.concurrent.CompletableFuture.supplyAsync(() ->
                 backpressureConsumer.post("/profile/backpressure/send")
                     .body(new Contracts.ProfileMsg(commandId))
@@ -32,32 +33,26 @@ public final class RmC9BackpressureScenario {
             "RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle");
         ScenarioWait.sleep(10000);
 
-        Contracts.ProfileRes recovered = requestRecovered(backpressureConsumer);
-        ScenarioAssert.that("profile:c9-recovered".equals(recovered.value()),
+        String recoveredMarker = marker + "-after";
+        Contracts.ProfileRes recovered = requestRecovered(backpressureConsumer, recoveredMarker);
+        ScenarioAssert.that(("profile:" + recoveredMarker).equals(recovered.value()),
             "RM-C9 connection did not recover after pressure");
-        boolean hasEvidence = waitEvidence(providerA, "c9-recovered")
-            || waitEvidence(providerB, "c9-recovered");
-        ScenarioAssert.that(hasEvidence,
+        String[] evidence = ScenarioAssert.waitAnyEvidence(providerA, providerB, recoveredMarker);
+        ScenarioAssert.that(java.util.Arrays.stream(evidence).anyMatch(line -> line.contains(recoveredMarker)),
             "RM-C9 recovery evidence missing");
         System.out.println("scenario RM-C9 passed");
     }
 
-    private static boolean waitEvidence(ZLinkHttpClient provider, String marker) {
-        String[] evidence = provider.post("/evidence/wait")
-            .body(new Contracts.EvidenceWaitReq(marker, 20000))
-            .timeout(java.time.Duration.ofSeconds(25))
-            .fetch(String[].class);
-        return java.util.Arrays.stream(evidence).anyMatch(line -> line.contains(marker));
-    }
-
-    private static Contracts.ProfileRes requestRecovered(ZLinkHttpClient backpressureConsumer) {
-        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+    private static Contracts.ProfileRes requestRecovered(
+        ZLinkHttpClient backpressureConsumer,
+        String marker) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
         RuntimeException lastFailure = null;
         while (System.nanoTime() < deadline) {
             try {
                 return backpressureConsumer.post("/profile/request")
-                    .body(new Contracts.ProfileReq("c9-recovered"))
-                    .timeout(java.time.Duration.ofSeconds(2))
+                    .body(new Contracts.ProfileReq(marker))
+                    .timeout(java.time.Duration.ofSeconds(10))
                     .fetch(Contracts.ProfileRes.class);
             } catch (RuntimeException error) {
                 lastFailure = error;

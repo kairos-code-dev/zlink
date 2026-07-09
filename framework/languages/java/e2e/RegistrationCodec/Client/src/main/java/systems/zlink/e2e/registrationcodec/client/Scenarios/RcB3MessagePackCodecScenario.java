@@ -15,6 +15,11 @@ public final class RcB3MessagePackCodecScenario {
             .messagePackValue();
         ScenarioAssert.ensure("echo:msgpack-request".equals(packedValue),
             "RC-B3 request mismatch");
+        ScenarioAssert.waitForEvidence(
+            context.evidence(),
+            "ContentType",
+            "MsgpackEcho",
+            "application/x-msgpack");
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "MsgpackEcho", "msgpack-send");
         System.out.println("scenario RC-B3 passed");
     }

@@ -13,11 +13,21 @@ public final class DispatchWorkQueue implements AutoCloseable {
     }
 
     public void enqueue(Messages.CreateDeliveryRequest request) {
-        executor.submit(() -> worker.dispatch(new Messages.AssignDelivery(
-            request.deliveryId(),
-            request.customerId(),
-            request.pickupAddress(),
-            request.dropoffAddress())));
+        executor.submit(() -> {
+            try {
+                System.out.println("deliverydispatch-dispatch-start=" + request.deliveryId());
+                worker.dispatch(new Messages.AssignDelivery(
+                    request.deliveryId(),
+                    request.customerId(),
+                    request.pickupAddress(),
+                    request.dropoffAddress()));
+                System.out.println("deliverydispatch-dispatch-finished=" + request.deliveryId());
+            } catch (RuntimeException ex) {
+                System.err.println("deliverydispatch-dispatch-failed=" + request.deliveryId() + ": "
+                    + ex.getMessage());
+                ex.printStackTrace(System.err);
+            }
+        });
     }
 
     public Messages.ServerAssertionResponse assertServerEvidence(Messages.ServerAssertionRequest request) {

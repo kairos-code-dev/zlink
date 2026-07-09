@@ -7,6 +7,6 @@ public final class SmD7Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-D7", "stream auth and pre-auth dispatch failure is not implemented");
+        gateway.runMode("stream-auth");
     }
 }

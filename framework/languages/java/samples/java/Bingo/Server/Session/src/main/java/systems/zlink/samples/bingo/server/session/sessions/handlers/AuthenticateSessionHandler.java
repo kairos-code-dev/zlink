@@ -3,16 +3,17 @@ package systems.zlink.samples.bingo.server.session.sessions.handlers;
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class AuthenticateSessionHandler
@@ -40,43 +41,41 @@ public final class AuthenticateSessionHandler
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         Messages.AuthenticateReq request) {
-        if (request.accessToken() == null || request.accessToken().isBlank()) {
+        if (request.getAccessToken().isBlank()) {
             throw new IllegalArgumentException("access token is required");
         }
         var authenticated = channels
-            .requestToChannel(SampleNames.ApiChannel, new Messages.AuthenticatePlayerReq(request.accessToken()))
+            .requestToChannel(SampleNames.ApiChannel, BingoMessages.authenticatePlayerReq(request.getAccessToken()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.AuthenticatePlayerRes.class);
-        if (!authenticated.accepted()
-            || authenticated.actorId() == null
-            || authenticated.actorId().isBlank()
-            || authenticated.displayName() == null
-            || authenticated.displayName().isBlank()) {
+        if (!authenticated.getAccepted()
+            || authenticated.getActorId().isBlank()
+            || authenticated.getDisplayName().isBlank()) {
             throw new IllegalStateException(
-                authenticated.reason() == null
+                authenticated.getReason().isBlank()
                     ? "Player authentication failed."
-                    : authenticated.reason());
+                    : authenticated.getReason());
         }
         RoutingId preferredPlayNode = RoutingId.from(SampleTopology.preferredPlayNodeRid());
         var ensured = routes
             .requestToSpot(
                 SampleNames.RoomSpotDiscovery,
-                new ZLinkSpotAddress(SampleNames.RoomSpotDiscovery, preferredPlayNode, preferredPlayNode),
-                new Messages.EnsurePlayerActorReq(
-                    authenticated.actorId(),
-                    authenticated.displayName(),
+                new SpotRef(SampleNames.RoomSpotDiscovery, preferredPlayNode, preferredPlayNode),
+                BingoMessages.ensurePlayerActorReq(
+                    authenticated.getActorId(),
+                    authenticated.getDisplayName(),
                     SampleTopology.preferredPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.EnsurePlayerActorRes.class);
-        await(context.actors().bind(new ZLinkActorRef(
-            RoutingId.from(ensured.actor().nodeRid()),
-            ensured.actor().actorId(),
-            ensured.actor().generation())));
+        await(context.actors().bind(new ActorRef(
+            RoutingId.from(ensured.getActor().getNodeRid()),
+            ensured.getActor().getActorId(),
+            ensured.getActor().getGeneration())));
         context.client()
-            .reply(new Messages.AuthenticateRes(
-                ensured.actorId(),
-                authenticated.displayName(),
-                ensured.actor().nodeRid()))
+            .reply(BingoMessages.authenticateRes(
+                ensured.getActorId(),
+                authenticated.getDisplayName(),
+                ensured.getActor().getNodeRid()))
             .await();
     }
 }

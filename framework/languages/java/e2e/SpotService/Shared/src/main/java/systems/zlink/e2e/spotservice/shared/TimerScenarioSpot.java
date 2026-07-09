@@ -35,8 +35,8 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
 
     @Override
     public void configure() {
-        context.handlers().addPacket(TimerActivityReqHandler.class);
-        context.handlers().addPacket(TimerActivityResHandler.class);
+        context.handlers().addHandler(TimerActivityReqHandler.class);
+        context.handlers().addHandler(TimerActivityResHandler.class);
     }
 
     @Override

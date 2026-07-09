@@ -6,6 +6,7 @@ import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("api")
@@ -25,12 +26,12 @@ public final class MatchBingoHandler
         ZLinkRequestContext context) {
         Messages.AllocateBingoRoomRes allocated = channels.requestToChannel(
                 SampleNames.PlayChannel,
-                new Messages.AllocateBingoRoomReq(
-                    request.actorId(),
-                    request.mode(),
-                    request.actorNodeRid()))
+                BingoMessages.allocateBingoRoomReq(
+                    request.getMode(),
+                    request.getActorId(),
+                    request.getActorNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.AllocateBingoRoomRes.class);
-        return new Messages.MatchBingoApiRes(allocated.roomId(), allocated.roomOwnerNodeRid());
+        return BingoMessages.matchBingoApiRes(allocated.getRoomId(), allocated.getRoomOwnerNodeRid());
     }
 }

@@ -39,10 +39,12 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
@@ -53,8 +55,8 @@ import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRef;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
@@ -466,7 +468,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Greeting"))
+                .sendToSpot(targetSpotRef(), message("hello", "Greeting"))
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
@@ -474,7 +476,7 @@ final class SpotRuntimeFakeBackendTest {
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), message("ping", "Ping"))
+                    .requestToSpot(targetSpotRef(), message("ping", "Ping"))
                     .packetName("Ping")
                     .submit(String.class)
                     .toCompletableFuture()
@@ -515,14 +517,14 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), new SpotGreeting("hello"))
+                .sendToSpot(targetSpotRef(), new SpotGreeting("hello"))
                 .submit()
                 .toCompletableFuture()
                 .join();
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
+                    .requestToSpot(targetSpotRef(), new SpotQuestion("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -568,7 +570,7 @@ final class SpotRuntimeFakeBackendTest {
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
+                    .requestToSpot(targetSpotRef(), new SpotQuestion("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -595,7 +597,7 @@ final class SpotRuntimeFakeBackendTest {
             CompletionException error = assertThrows(
                 CompletionException.class,
                 () -> OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
+                    .requestToSpot(targetSpotRef(), new SpotQuestion("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -622,7 +624,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Greeting"))
+                .sendToSpot(targetSpotRef(), message("hello", "Greeting"))
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
@@ -638,7 +640,6 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void spotOutboundUsesConfiguredRouteMeshEgressChannel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotRemoteAddressResolver(RouteEgressResolver.class);
         { var route = options.addRouteMeshChannel("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");};
         { var route = options.addRouteMeshChannel("ingress"); route.setRoutingId(RoutingId.from("ingress-route"));
@@ -658,7 +659,7 @@ final class SpotRuntimeFakeBackendTest {
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), message("ping", "Ping"))
+                    .requestToSpot(routeTargetSpotRef("egress"), message("ping", "Ping"))
                     .packetName("Ping")
                     .submit(String.class)
                     .toCompletableFuture()
@@ -672,57 +673,65 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
-    void routeMeshSpotEgressRequiresTargetRoutePeerRoutingId() {
+    void routeMeshSpotEgressUsesSpotRefTargetRoutePeerRoutingId() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var route = options.addRouteMeshChannel("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");};
         { var route = options.addRouteMeshChannel("ingress"); route.enableServer("inproc://ingress-route");
             route.enableClient("inproc://ingress-peer"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
-            CompletionException error = assertThrows(
-                CompletionException.class,
-                () -> OutboundSpot.context.outbound()
-                    .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
-                    .packetName("Ping")
-                    .submit()
-                    .toCompletableFuture()
-                    .join());
-            assertInstanceOf(ZLinkConfigurationException.class, error.getCause());
+            OutboundSpot.context.outbound()
+                .sendToSpot(routeTargetSpotRef("egress"), message("hello", "Ping"))
+                .packetName("Ping")
+                .submit()
+                .toCompletableFuture()
+                .join();
         }
+
+        assertTrue(
+            backendFactory.calls().contains(
+                "spotRouteBridge.bridge.send.egress.ingress-route.target-spot.Ping"),
+            backendFactory.calls().toString());
     }
 
     @Test
-    void spotOutboundRejectsAmbiguousEgressChannels() {
+    void spotOutboundUsesSpotRefMeshToSelectRouteMeshEgressChannel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var route = options.addRouteMeshChannel("egress-a"); route.enableServer("inproc://egress-a"); };
         { var route = options.addRouteMeshChannel("egress-b"); route.enableServer("inproc://egress-b"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
-            CompletionException error = assertThrows(
-                CompletionException.class,
-                () -> OutboundSpot.context.outbound()
-                    .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
-                    .packetName("Ping")
-                    .submit()
-                    .toCompletableFuture()
-                    .join());
-            assertInstanceOf(ZLinkConfigurationException.class, error.getCause());
+            OutboundSpot.context.outbound()
+                .sendToSpot(routeTargetSpotRef("egress-b"), message("hello", "Ping"))
+                .packetName("Ping")
+                .submit()
+                .toCompletableFuture()
+                .join();
         }
+
+        assertTrue(
+            backendFactory.calls().contains(
+                "spotRouteBridge.bridge.send.egress-b.ingress-route.target-spot.Ping"),
+            backendFactory.calls().toString());
     }
 
     @Test
@@ -1502,9 +1511,9 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public void configure() {
-            context.handlers().addPacket(SpotCommandHandler.class);
-            context.handlers().addPacket(SpotQueryHandler.class);
-            context.handlers().addSubscribe("stage.events", SpotEventHandler.class);
+            context.handlers().addHandler(SpotCommandHandler.class);
+            context.handlers().addHandler(SpotQueryHandler.class);
+            context.handlers().addHandler(SpotEventHandler.class);
         }
     }
 
@@ -1524,6 +1533,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
+    @ZLinkSpotSubscription(topic = "stage.events")
     public static final class SpotEventHandler
         implements ZLinkSpotSubscriptionHandler<HandlerSpot, String> {
         @Override
@@ -1546,7 +1556,7 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public void configure() {
-            context.handlers().addPacket(SerialSpotHandler.class);
+            context.handlers().addHandler(SerialSpotHandler.class);
         }
 
         @Override
@@ -1796,7 +1806,7 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public void configure() {
-            context.handlers().addActorRequest(SharedEntryActorRequestHandler.class);
+            context.handlers().addHandler(SharedEntryActorRequestHandler.class);
         }
     }
 
@@ -1814,7 +1824,7 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public void configure() {
-            context.handlers().addActorRequest(SharedUserActorRequestHandler.class);
+            context.handlers().addHandler(SharedUserActorRequestHandler.class);
         }
     }
 
@@ -1863,7 +1873,7 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public void configure() {
-            context.handlers().addActorRequest(LeaveDuringRequestHandler.class);
+            context.handlers().addHandler(LeaveDuringRequestHandler.class);
         }
 
         @Override
@@ -2008,11 +2018,11 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     public static final class RouteEgressResolver
-        implements ZLinkSpotRemoteAddressResolver {
+        implements SpotRemoteRefResolver {
         @Override
-        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(RoutingId spotRid) {
+        public CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(RoutingId spotRid) {
             return CompletableFuture.completedFuture(
-                new ZLinkSpotRemoteAddress(
+                new SpotRemoteRef(
                     "egress",
                     RoutingId.from("ingress-route"),
                     spotRid,
@@ -2029,6 +2039,14 @@ final class SpotRuntimeFakeBackendTest {
 
     private static String message(String value, String packetName) {
         return value;
+    }
+
+    private static SpotRef targetSpotRef() {
+        return new SpotRef("game", RoutingId.from("spot-node"), RoutingId.from("target-spot"));
+    }
+
+    private static SpotRef routeTargetSpotRef(String routeChannelName) {
+        return new SpotRef(routeChannelName, RoutingId.from("ingress-route"), RoutingId.from("target-spot"));
     }
 
     private static ZLinkActor managedActor(

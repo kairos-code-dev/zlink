@@ -17,8 +17,7 @@ public final class ScenarioAssert {
     }
 
     public static void waitForAnyEvent(Evidence evidence, String subscriberRid, String scenario) {
-        waitUntil(() -> evidence.snapshot(subscriberRid).entries().stream()
-            .anyMatch(entry -> scenario.equals(entry.scenario())));
+        evidence.waitForAnyEvent(subscriberRid, scenario);
     }
 
     public static void waitForEvent(
@@ -26,46 +25,44 @@ public final class ScenarioAssert {
         String subscriberRid,
         String scenario,
         int sequence) {
-        waitUntil(() -> hasEvent(evidence.snapshot(subscriberRid), scenario, sequence));
+        evidence.waitForEvent(subscriberRid, scenario, sequence);
     }
 
     public static void waitForDispatchError(
         Evidence evidence,
         String subscriberRid,
         String packetName) {
-        waitUntil(() -> evidence.snapshot(subscriberRid).entries().stream()
-            .anyMatch(entry -> "DispatchError".equals(entry.marker())
-                && entry.value().contains("HANDLER_MISSING")
-                && entry.value().contains("DROP")
-                && entry.value().contains(packetName)));
+        evidence.waitForDispatchError(subscriberRid, packetName);
     }
 
     public static List<Integer> commonSequences(
         Evidence evidence,
         String scenario,
         Set<String> subscriberRids) {
-        long deadline = System.nanoTime() + EVIDENCE_TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            List<Integer> common = null;
-            for (String rid : subscriberRids) {
-                List<Integer> sequences = evidence.snapshot(rid).entries().stream()
-                    .filter(entry -> scenario.equals(entry.scenario()))
-                    .map(Contracts.EvidenceEntry::sequence)
-                    .distinct()
-                    .sorted()
-                    .toList();
-                if (common == null) {
-                    common = new ArrayList<>(sequences);
-                } else {
-                    common.retainAll(sequences);
-                }
+        List<Integer> common = null;
+        for (String rid : subscriberRids) {
+            Contracts.EvidenceSnapshot snapshot = evidence.waitForContiguousRun(rid, scenario, 4);
+            List<Integer> sequences = snapshot.entries().stream()
+                .filter(entry -> scenario.equals(entry.scenario()))
+                .map(Contracts.EvidenceEntry::sequence)
+                .distinct()
+                .sorted()
+                .toList();
+            if (common == null) {
+                common = new ArrayList<>(sequences);
+            } else {
+                common.retainAll(sequences);
             }
-            if (common != null && hasContiguousRun(common, 4)) {
-                return common;
-            }
-            sleep(100);
         }
-        return List.of();
+        return common == null ? List.of() : common;
+    }
+
+    public static void waitForSequenceAtLeast(
+        Evidence evidence,
+        String subscriberRid,
+        String scenario,
+        int minSequence) {
+        evidence.waitForSequenceAtLeast(subscriberRid, scenario, minSequence);
     }
 
     public static boolean hasEvent(

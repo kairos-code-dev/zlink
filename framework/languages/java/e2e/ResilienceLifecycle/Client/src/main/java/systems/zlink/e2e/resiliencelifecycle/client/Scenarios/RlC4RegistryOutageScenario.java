@@ -7,6 +7,6 @@ public final class RlC4RegistryOutageScenario {
     }
 
     public static void run(ConsumerScenarioClient consumer) {
-        ConsumerScenarioClient.unsupported("RL-C4", "registry restart follow-up remains NOT_ADMITTED in Java");
+        consumer.runMode("rl-c4");
     }
 }

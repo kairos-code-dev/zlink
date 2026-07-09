@@ -17,7 +17,7 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
@@ -38,7 +38,7 @@ final class RemoteSessionRelayTest {
             ZLinkSessionActor actor = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bind(new ZLinkActorRef(
+                .bind(new ActorRef(
                     RoutingId.from("play-node"),
                     "player-1",
                     1))

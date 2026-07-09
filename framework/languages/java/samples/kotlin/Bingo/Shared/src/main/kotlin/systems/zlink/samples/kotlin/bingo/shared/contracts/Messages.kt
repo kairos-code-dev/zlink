@@ -1,151 +1,402 @@
 package systems.zlink.samples.kotlin.bingo.shared.contracts
 
-import systems.zlink.framework.handlers.ZLinkPacket
+typealias AuthenticateReq = Messages.AuthenticateReq
+typealias AuthenticateRes = Messages.AuthenticateRes
+typealias AuthenticatePlayerReq = Messages.AuthenticatePlayerReq
+typealias AuthenticatePlayerRes = Messages.AuthenticatePlayerRes
+typealias EnsurePlayerActorReq = Messages.EnsurePlayerActorReq
+typealias ActorRefWire = Messages.ActorRefWire
+typealias EnsurePlayerActorRes = Messages.EnsurePlayerActorRes
+typealias MatchBingoReq = Messages.MatchBingoReq
+typealias MatchBingoRes = Messages.MatchBingoRes
+typealias MatchBingoApiReq = Messages.MatchBingoApiReq
+typealias MatchBingoApiRes = Messages.MatchBingoApiRes
+typealias AllocateBingoRoomReq = Messages.AllocateBingoRoomReq
+typealias AllocateBingoRoomRes = Messages.AllocateBingoRoomRes
+typealias BingoRoomSettingsPayload = Messages.BingoRoomSettingsPayload
+typealias BingoRoomJoinReq = Messages.BingoRoomJoinReq
+typealias BingoRoomJoinRes = Messages.BingoRoomJoinRes
+typealias SubmitBingoCardReq = Messages.SubmitBingoCardReq
+typealias SubmitBingoCardRes = Messages.SubmitBingoCardRes
+typealias ObserveBingoEventsReq = Messages.ObserveBingoEventsReq
+typealias ObserveBingoEventsRes = Messages.ObserveBingoEventsRes
+typealias StopObservingBingoEventsReq = Messages.StopObservingBingoEventsReq
+typealias StopObservingBingoEventsRes = Messages.StopObservingBingoEventsRes
+typealias PlayerJoinedNotify = Messages.PlayerJoinedNotify
+typealias BingoGameStartedNotify = Messages.BingoGameStartedNotify
+typealias BingoNumberDrawnNotify = Messages.BingoNumberDrawnNotify
+typealias BingoStateNotify = Messages.BingoStateNotify
+typealias BingoGameEndedNotify = Messages.BingoGameEndedNotify
+typealias BingoRewardAnnouncedNotify = Messages.BingoRewardAnnouncedNotify
+typealias BingoWinnerMsg = Messages.BingoWinnerMsg
+typealias BingoRewardAcquiredEvent = Messages.BingoRewardAcquiredEvent
+typealias BingoRoomState = Messages.BingoRoomState
+typealias BingoPlayerState = Messages.BingoPlayerState
 
-@ZLinkPacket("AuthenticateReq")
-data class AuthenticateReq(val accessToken: String)
+val SubmitBingoCardReq.card: List<Int>
+    get() = cardList
 
-data class AuthenticateRes(val actorId: String, val displayName: String, val actorNodeRid: String)
+val BingoRoomState.drawnNumbers: List<Int>
+    get() = drawnNumbersList
 
-@ZLinkPacket("AuthenticatePlayer")
-data class AuthenticatePlayerReq(val accessToken: String)
+val BingoRoomState.players: List<BingoPlayerState>
+    get() = playersList
 
-data class AuthenticatePlayerRes(
-    val accepted: Boolean,
-    val actorId: String,
-    val displayName: String,
-    val reason: String?,
-)
+val BingoRoomState.winners: List<String>
+    get() = winnersList
 
-@ZLinkPacket("EnsurePlayerActor")
-data class EnsurePlayerActorReq(
-    val actorId: String,
-    val displayName: String,
-    val preferredActorNodeRid: String,
-)
+val BingoPlayerState.card: List<Int>
+    get() = cardList
 
-data class ActorRefWire(
-    val nodeRid: String,
-    val actorId: String,
-    val generation: Long,
-)
+val BingoPlayerState.marks: List<Boolean>
+    get() = marksList
 
-data class EnsurePlayerActorRes(
-    val actorId: String,
-    val actorType: String,
-    val actor: ActorRefWire,
-)
+fun AuthenticateReq(accessToken: String): AuthenticateReq =
+    Messages.AuthenticateReq.newBuilder()
+        .setAccessToken(accessToken)
+        .build()
 
-@ZLinkPacket("MatchBingoReq")
-data class MatchBingoReq(val mode: String)
+fun AuthenticateRes(
+    actorId: String,
+    displayName: String,
+    actorNodeRid: String,
+): AuthenticateRes =
+    Messages.AuthenticateRes.newBuilder()
+        .setActorId(actorId)
+        .setDisplayName(displayName)
+        .setActorNodeRid(actorNodeRid)
+        .build()
 
-data class MatchBingoRes(val roomId: String, val state: BingoRoomState, val roomOwnerNodeRid: String)
+fun AuthenticatePlayerReq(accessToken: String): AuthenticatePlayerReq =
+    Messages.AuthenticatePlayerReq.newBuilder()
+        .setAccessToken(accessToken)
+        .build()
 
-@ZLinkPacket("MatchBingoApiReq")
-data class MatchBingoApiReq(
-    val actorId: String,
-    val displayName: String,
-    val mode: String,
-    val actorNodeRid: String,
-)
+fun AuthenticatePlayerRes(
+    accepted: Boolean,
+    actorId: String,
+    displayName: String,
+    reason: String?,
+): AuthenticatePlayerRes =
+    Messages.AuthenticatePlayerRes.newBuilder()
+        .setAccepted(accepted)
+        .setActorId(actorId)
+        .setDisplayName(displayName)
+        .apply {
+            if (reason != null) {
+                setReason(reason)
+            }
+        }
+        .build()
 
-data class MatchBingoApiRes(val roomId: String, val roomOwnerNodeRid: String)
+fun EnsurePlayerActorReq(
+    actorId: String,
+    displayName: String,
+    preferredActorNodeRid: String,
+): EnsurePlayerActorReq =
+    Messages.EnsurePlayerActorReq.newBuilder()
+        .setActorId(actorId)
+        .setDisplayName(displayName)
+        .setPreferredActorNodeRid(preferredActorNodeRid)
+        .build()
 
-@ZLinkPacket("AllocateBingoRoomReq")
-data class AllocateBingoRoomReq(
-    val actorId: String,
-    val mode: String,
-    val preferredOwnerNodeRid: String,
-)
+fun ActorRefWire(
+    nodeRid: String,
+    actorId: String,
+    generation: Long,
+): ActorRefWire =
+    Messages.ActorRefWire.newBuilder()
+        .setNodeRid(nodeRid)
+        .setActorId(actorId)
+        .setGeneration(generation)
+        .build()
 
-data class AllocateBingoRoomRes(val roomId: String, val roomOwnerNodeRid: String)
+fun EnsurePlayerActorRes(
+    actorId: String,
+    actorType: String,
+    actor: ActorRefWire,
+): EnsurePlayerActorRes =
+    Messages.EnsurePlayerActorRes.newBuilder()
+        .setActorId(actorId)
+        .setActorType(actorType)
+        .setActor(actor)
+        .build()
 
-@ZLinkPacket("BingoRoomJoinReq")
-data class BingoRoomJoinReq(
-    val roomId: String,
-    val actorId: String,
-    val displayName: String,
-    val observeOnly: Boolean,
-)
+fun MatchBingoReq(mode: String): MatchBingoReq =
+    Messages.MatchBingoReq.newBuilder()
+        .setMode(mode)
+        .build()
 
-data class BingoRoomJoinRes(val state: BingoRoomState)
+fun MatchBingoRes(
+    roomId: String,
+    state: BingoRoomState,
+    roomOwnerNodeRid: String,
+): MatchBingoRes =
+    Messages.MatchBingoRes.newBuilder()
+        .setRoomId(roomId)
+        .setState(state)
+        .setRoomOwnerNodeRid(roomOwnerNodeRid)
+        .build()
 
-@ZLinkPacket("SubmitBingoCardReq")
-data class SubmitBingoCardReq(val roomId: String, val card: List<Int>)
+fun MatchBingoApiReq(
+    actorId: String,
+    displayName: String,
+    mode: String,
+    actorNodeRid: String,
+): MatchBingoApiReq =
+    Messages.MatchBingoApiReq.newBuilder()
+        .setActorId(actorId)
+        .setDisplayName(displayName)
+        .setMode(mode)
+        .setActorNodeRid(actorNodeRid)
+        .build()
 
-data class SubmitBingoCardRes(val state: BingoRoomState)
+fun MatchBingoApiRes(
+    roomId: String,
+    roomOwnerNodeRid: String,
+): MatchBingoApiRes =
+    Messages.MatchBingoApiRes.newBuilder()
+        .setRoomId(roomId)
+        .setRoomOwnerNodeRid(roomOwnerNodeRid)
+        .build()
 
-data class PlayerJoinedNotify(
-    val roomId: String,
-    val actorId: String,
-    val displayName: String,
-    val seat: Int,
-    val isHost: Boolean,
-    val state: BingoRoomState,
-)
+fun AllocateBingoRoomReq(
+    actorId: String,
+    mode: String,
+    preferredOwnerNodeRid: String,
+): AllocateBingoRoomReq =
+    Messages.AllocateBingoRoomReq.newBuilder()
+        .setActorId(actorId)
+        .setMode(mode)
+        .setPreferredOwnerNodeRid(preferredOwnerNodeRid)
+        .build()
 
-data class BingoGameStartedNotify(val state: BingoRoomState)
+fun AllocateBingoRoomRes(
+    roomId: String,
+    roomOwnerNodeRid: String,
+): AllocateBingoRoomRes =
+    Messages.AllocateBingoRoomRes.newBuilder()
+        .setRoomId(roomId)
+        .setRoomOwnerNodeRid(roomOwnerNodeRid)
+        .build()
 
-data class BingoNumberDrawnNotify(
-    val roomId: String,
-    val drawSeq: Int,
-    val number: Int,
-    val state: BingoRoomState,
-)
+fun BingoRoomSettingsPayload(
+    mode: String,
+    roomName: String,
+    requiredPlayers: Int,
+    maxDrawNumber: Int,
+    drawPeriodMillis: Long,
+    observedRoomId: String,
+): BingoRoomSettingsPayload =
+    Messages.BingoRoomSettingsPayload.newBuilder()
+        .setMode(mode)
+        .setRoomName(roomName)
+        .setRequiredPlayers(requiredPlayers)
+        .setMaxDrawNumber(maxDrawNumber)
+        .setDrawPeriodMillis(drawPeriodMillis)
+        .setObservedRoomId(observedRoomId)
+        .build()
 
-data class BingoStateNotify(val state: BingoRoomState)
+fun BingoRoomJoinReq(
+    roomId: String,
+    actorId: String,
+    displayName: String,
+    observeOnly: Boolean,
+): BingoRoomJoinReq =
+    Messages.BingoRoomJoinReq.newBuilder()
+        .setRoomId(roomId)
+        .setActorId(actorId)
+        .setDisplayName(displayName)
+        .setObserveOnly(observeOnly)
+        .build()
 
-data class BingoGameEndedNotify(val state: BingoRoomState)
+fun BingoRoomJoinRes(state: BingoRoomState): BingoRoomJoinRes =
+    Messages.BingoRoomJoinRes.newBuilder()
+        .setState(state)
+        .build()
 
-@ZLinkPacket("ObserveBingoEventsReq")
-data class ObserveBingoEventsReq(val roomId: String)
+fun SubmitBingoCardReq(
+    roomId: String,
+    card: List<Int>,
+): SubmitBingoCardReq =
+    Messages.SubmitBingoCardReq.newBuilder()
+        .setRoomId(roomId)
+        .addAllCard(card)
+        .build()
 
-data class ObserveBingoEventsRes(val subscribed: Boolean, val observerNodeRid: String)
+fun SubmitBingoCardRes(state: BingoRoomState): SubmitBingoCardRes =
+    Messages.SubmitBingoCardRes.newBuilder()
+        .setState(state)
+        .build()
 
-@ZLinkPacket("StopObservingBingoEventsReq")
-data class StopObservingBingoEventsReq(val roomId: String)
+fun ObserveBingoEventsReq(roomId: String): ObserveBingoEventsReq =
+    Messages.ObserveBingoEventsReq.newBuilder()
+        .setRoomId(roomId)
+        .build()
 
-data class StopObservingBingoEventsRes(val stopped: Boolean, val observerNodeRid: String)
+fun ObserveBingoEventsRes(
+    subscribed: Boolean,
+    observerNodeRid: String,
+): ObserveBingoEventsRes =
+    Messages.ObserveBingoEventsRes.newBuilder()
+        .setSubscribed(subscribed)
+        .setObserverNodeRid(observerNodeRid)
+        .build()
 
-data class BingoWinnerMsg(
-    val roomId: String,
-    val actorId: String,
-    val drawSeq: Int,
-    val itemId: String,
-    val itemName: String,
-    val rarity: String,
-)
+fun StopObservingBingoEventsReq(roomId: String): StopObservingBingoEventsReq =
+    Messages.StopObservingBingoEventsReq.newBuilder()
+        .setRoomId(roomId)
+        .build()
 
-data class BingoRewardAnnouncedNotify(
-    val roomId: String,
-    val actorId: String,
-    val drawSeq: Int,
-    val itemId: String,
-    val itemName: String,
-    val rarity: String,
-    val receivingSpotNodeRid: String,
-)
+fun StopObservingBingoEventsRes(
+    stopped: Boolean,
+    observerNodeRid: String,
+): StopObservingBingoEventsRes =
+    Messages.StopObservingBingoEventsRes.newBuilder()
+        .setStopped(stopped)
+        .setObserverNodeRid(observerNodeRid)
+        .build()
 
-data class BingoWinner(val actorId: String)
+fun PlayerJoinedNotify(
+    roomId: String,
+    actorId: String,
+    displayName: String,
+    seat: Int,
+    isHost: Boolean,
+    state: BingoRoomState,
+): PlayerJoinedNotify =
+    Messages.PlayerJoinedNotify.newBuilder()
+        .setRoomId(roomId)
+        .setActorId(actorId)
+        .setDisplayName(displayName)
+        .setSeat(seat)
+        .setIsHost(isHost)
+        .setState(state)
+        .build()
 
-data class BingoRoomState(
-    val roomId: String,
-    val status: String,
-    val hostActorId: String,
-    val canStart: Boolean,
-    val drawSeq: Int,
-    val lastDrawnNumber: Int?,
-    val drawnNumbers: List<Int>,
-    val players: List<BingoPlayerState>,
-    val winners: List<String>,
-)
+fun BingoGameStartedNotify(state: BingoRoomState): BingoGameStartedNotify =
+    Messages.BingoGameStartedNotify.newBuilder()
+        .setState(state)
+        .build()
 
-data class BingoPlayerState(
-    val actorId: String,
-    val displayName: String,
-    val seat: Int,
-    val isHost: Boolean,
-    val card: List<Int>,
-    val marks: List<Boolean>,
-    val completedLines: Int,
-)
+fun BingoNumberDrawnNotify(
+    roomId: String,
+    drawSeq: Int,
+    number: Int,
+    state: BingoRoomState,
+): BingoNumberDrawnNotify =
+    Messages.BingoNumberDrawnNotify.newBuilder()
+        .setRoomId(roomId)
+        .setDrawSeq(drawSeq)
+        .setNumber(number)
+        .setState(state)
+        .build()
+
+fun BingoStateNotify(state: BingoRoomState): BingoStateNotify =
+    Messages.BingoStateNotify.newBuilder()
+        .setState(state)
+        .build()
+
+fun BingoGameEndedNotify(state: BingoRoomState): BingoGameEndedNotify =
+    Messages.BingoGameEndedNotify.newBuilder()
+        .setState(state)
+        .build()
+
+fun BingoRewardAnnouncedNotify(
+    roomId: String,
+    actorId: String,
+    drawSeq: Int,
+    itemId: String,
+    itemName: String,
+    rarity: String,
+    receivingSpotNodeRid: String,
+): BingoRewardAnnouncedNotify =
+    Messages.BingoRewardAnnouncedNotify.newBuilder()
+        .setRoomId(roomId)
+        .setActorId(actorId)
+        .setDrawSeq(drawSeq)
+        .setItemId(itemId)
+        .setItemName(itemName)
+        .setRarity(rarity)
+        .setReceivingSpotNodeRid(receivingSpotNodeRid)
+        .build()
+
+fun BingoWinnerMsg(
+    roomId: String,
+    actorId: String,
+    drawSeq: Int,
+    itemId: String,
+    itemName: String,
+    rarity: String,
+): BingoWinnerMsg =
+    Messages.BingoWinnerMsg.newBuilder()
+        .setRoomId(roomId)
+        .setActorId(actorId)
+        .setDrawSeq(drawSeq)
+        .setItemId(itemId)
+        .setItemName(itemName)
+        .setRarity(rarity)
+        .build()
+
+fun BingoRewardAcquiredEvent(
+    roomId: String,
+    actorId: String,
+    drawSeq: Int,
+    itemId: String,
+    itemName: String,
+    rarity: String,
+): BingoRewardAcquiredEvent =
+    Messages.BingoRewardAcquiredEvent.newBuilder()
+        .setRoomId(roomId)
+        .setActorId(actorId)
+        .setDrawSeq(drawSeq)
+        .setItemId(itemId)
+        .setItemName(itemName)
+        .setRarity(rarity)
+        .build()
+
+fun BingoRoomState(
+    roomId: String,
+    status: String,
+    hostActorId: String,
+    canStart: Boolean,
+    drawSeq: Int,
+    lastDrawnNumber: Int?,
+    drawnNumbers: List<Int>,
+    players: List<BingoPlayerState>,
+    winners: List<String>,
+): BingoRoomState =
+    Messages.BingoRoomState.newBuilder()
+        .setRoomId(roomId)
+        .setStatus(status)
+        .setHostActorId(hostActorId)
+        .setCanStart(canStart)
+        .setDrawSeq(drawSeq)
+        .apply {
+            if (lastDrawnNumber != null) {
+                setLastDrawnNumber(lastDrawnNumber)
+            }
+        }
+        .addAllDrawnNumbers(drawnNumbers)
+        .addAllPlayers(players)
+        .addAllWinners(winners)
+        .build()
+
+fun BingoPlayerState(
+    actorId: String,
+    displayName: String,
+    seat: Int,
+    isHost: Boolean,
+    card: List<Int>,
+    marks: List<Boolean>,
+    completedLines: Int,
+): BingoPlayerState =
+    Messages.BingoPlayerState.newBuilder()
+        .setActorId(actorId)
+        .setDisplayName(displayName)
+        .setSeat(seat)
+        .setIsHost(isHost)
+        .addAllCard(card)
+        .addAllMarks(marks)
+        .setCompletedLines(completedLines)
+        .build()

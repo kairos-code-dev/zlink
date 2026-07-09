@@ -48,6 +48,7 @@ class PlayServerApplication {
                 traceLabel("play")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
+            options.configureLocations()
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
             options.addClientServerChannel(SampleNames.PlayChannel)

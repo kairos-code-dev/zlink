@@ -14,7 +14,6 @@ import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocatio
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.server.customergateway.sessions.CustomerSession;
-import systems.zlink.samples.deliverydispatch.server.customergateway.sessions.handlers.SubscribeDeliverySessionHandler;
 import systems.zlink.samples.deliverydispatch.server.customergateway.spots.CustomerEntrySpot;
 
 @EnableZLinkFramework
@@ -51,8 +50,7 @@ public final class CustomerGatewayApplication {
             node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory.class);
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.CustomerStreamEndpoint)
-                .registerSession(CustomerSession.class)
-                .addSessionPacketHandler(SubscribeDeliverySessionHandler.class);
+                .registerSession(CustomerSession.class);
         };
     }
 

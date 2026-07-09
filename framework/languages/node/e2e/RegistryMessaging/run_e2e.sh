@@ -42,9 +42,8 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-start_redis_container "location-messaging-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
-REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="location-messaging:node:$RUN_ID"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 

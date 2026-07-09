@@ -4,7 +4,7 @@ import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -87,7 +87,7 @@ public final class CourierSession implements ZLinkSession {
     private Messages.ActorRefWire findOrEnsureActor(String courierId) {
         String placement = SampleTopology.courierPlacement(courierId);
         RoutingId nodeRid = RoutingId.from(placement);
-        ZLinkSpotAddress address = new ZLinkSpotAddress(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
+        SpotRef address = new SpotRef(SampleNames.CourierSpotDiscovery, nodeRid, nodeRid);
         Messages.CourierActorFound found = routes
             .requestToSpot(SampleNames.CourierSpotDiscovery, address, new Messages.FindCourierActor(courierId))
             .timeout(SampleTimings.RequestTimeout)

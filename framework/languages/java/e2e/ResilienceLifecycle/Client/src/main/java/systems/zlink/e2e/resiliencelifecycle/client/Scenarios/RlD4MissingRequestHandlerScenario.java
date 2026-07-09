@@ -7,6 +7,6 @@ public final class RlD4MissingRequestHandlerScenario {
     }
 
     public static void run(ConsumerScenarioClient consumer) {
-        ConsumerScenarioClient.unsupported("RL-D4", "error reply wire header round-trip harness is not implemented");
+        consumer.runMode("rl-d4");
     }
 }

@@ -2,7 +2,7 @@ package systems.zlink.e2e.kotlin.yielddispatch;
 
 import java.time.Duration;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
@@ -39,7 +39,7 @@ public final class BindActorsReqHandler
             .timeout(Duration.ofSeconds(30))
             .await(Contracts.BindActorsRes.class);
         for (Contracts.ActorBinding actor : reply.actors()) {
-            context.actors().bind(new ZLinkActorRef(
+            context.actors().bind(new ActorRef(
                     RoutingId.from(actor.nodeRid()),
                     actor.actorId(),
                     actor.generation()))

@@ -4,9 +4,16 @@
 
 마지막 검증:
 
-- 명령: `timeout 420s ./run_e2e.sh`
+- 명령: `nice -n 10 timeout 600s ./run_e2e.sh all`
+- 결과: `RC-A1`~`RC-A6`, `RC-B1`~`RC-B5` 통과, `registration-codec e2e result=passed`
+- 로그: `framework/languages/java/e2e/RegistrationCodec/logs/20260707-215508-3550080/`
+- 명령: `for scenario in RC-B1 RC-B2 RC-B3 RC-B4; do ./run_e2e.sh "${scenario}"; done`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/RegistrationCodec/logs/20260702-063913-2326/`
+- 로그:
+  - `framework/languages/java/e2e/RegistrationCodec/logs/20260707-153318-2447031/`
+  - `framework/languages/java/e2e/RegistrationCodec/logs/20260707-153347-2448777/`
+  - `framework/languages/java/e2e/RegistrationCodec/logs/20260707-153405-2449796/`
+  - `framework/languages/java/e2e/RegistrationCodec/logs/20260707-153422-2451535/`
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
@@ -16,18 +23,15 @@
 | RC-A4 | 구현 | Client HTTP driver가 server endpoint를 호출하고 request마다 새 DI 객체를 만들며 singleton id 유지와 dispose count를 evidence로 확인한다. |
 | RC-A5 | 구현 | Client HTTP driver가 server endpoint를 호출하고 `useFilter`로 등록한 두 handler filter의 before/after 순서를 evidence로 확인한다. |
 | RC-A6 | 구현 | Client scenario가 duplicate packet registration server role을 시작하고 startup failure를 확인한다. |
-| RC-B1 | 부분 구현 | JSON DTO request/send 왕복과 evidence를 확인한다. Java public handler context에서 명시 content-type이 노출되지 않아 exact content-type 검증은 gap이다. |
-| RC-B2 | 부분 구현 | `StringValue` DTO가 Protobuf codec으로 왕복한다. Java public handler context에서 명시 content-type이 노출되지 않아 exact content-type 검증은 gap이다. |
-| RC-B3 | 부분 구현 | typed MessagePack codec factory로 지정한 DTO가 왕복한다. Java public handler context에서 명시 content-type이 노출되지 않아 exact content-type 검증은 gap이다. |
-| RC-B4 | 부분 구현 | JSON fallback, Protobuf predicate codec, typed MessagePack codec을 한 host에 같이 등록해 섞어 보낸다. exact content-type 검증은 gap이다. |
+| RC-B1 | 구현 | JSON DTO request/send 왕복과 handler context의 `application/json` content-type evidence를 확인한다. |
+| RC-B2 | 구현 | `StringValue` DTO가 Protobuf codec으로 왕복하고 handler context의 `application/x-protobuf` content-type evidence를 확인한다. |
+| RC-B3 | 구현 | typed MessagePack codec factory로 지정한 DTO가 왕복하고 handler context의 `application/x-msgpack` content-type evidence를 확인한다. |
+| RC-B4 | 구현 | JSON fallback, Protobuf predicate codec, typed MessagePack codec을 한 host에 같이 등록하고 세 content-type evidence가 함께 남는지 확인한다. |
 | RC-B5 | 구현 | Client HTTP driver가 codec requester endpoint를 호출해 json-only peer에 Protobuf request를 보내고 public error와 정상 JSON recovery를 검증한다. |
 
-## Content-type 검증 gap
+## Content-type 검증
 
-공통 Config 4는 codec별 content-type 확인을 요구한다. Java framework의 현재 public client request API는
-reply content-type을 반환하지 않고, server handler의 public context도 이 E2E 경로에서 codec별
-content-type을 안정적으로 노출하지 않는다. 따라서 Java E2E는 codec별 DTO 왕복, handler evidence,
-message flow marker까지 검증하지만 exact content-type oracle은 public contract gap으로 남긴다.
-
-이 gap은 raw frame 해석이나 private runtime 접근으로 메우지 않는다. public API로 content-type을
-확인할 수 있는 계약이 정리되면 RC-B1~RC-B4의 부분 구현 상태를 갱신한다.
+공통 Config 4의 codec별 content-type 확인은 Java framework의 public handler context인
+`ZLinkHandlerContext.contentType()`으로 검증한다. E2E handler는 raw frame이나 private runtime에
+접근하지 않고, request/send handler context에 들어온 content-type을 evidence로 남긴다. Client
+scenario는 RC-B1~RC-B4에서 JSON, Protobuf, MessagePack content-type이 기대값과 일치하는지 확인한다.

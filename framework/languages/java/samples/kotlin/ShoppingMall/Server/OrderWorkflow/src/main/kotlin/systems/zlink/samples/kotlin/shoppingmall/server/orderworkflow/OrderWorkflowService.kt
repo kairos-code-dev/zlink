@@ -49,6 +49,32 @@ class OrderWorkflowService(private val store: CommerceStore) {
         return requireProjection(command.orderId)
     }
 
+    fun prepareInventoryReserved(command: StartOrderWorkflowReq): OrderState {
+        val started = store.readEvents(command.orderId)
+        val aggregate = OrderAggregate.rehydrate(command.orderId, started.toDomainEvents())
+        val startEvents = aggregate.start(toDomainCommand(command), newEventId("started", command.orderId), now())
+        if (startEvents.isNotEmpty()) {
+            appendAndProject(command.orderId, started.size.toLong(), startEvents)
+            store.markIdempotencyStarted(command.idempotencyKey)
+        }
+
+        val afterStart = store.readEvents(command.orderId)
+        val current = OrderAggregate.rehydrate(command.orderId, afterStart.toDomainEvents())
+        if (current.status() == OrderStatus.Created) {
+            val reserve = store.reserveInventory(command.orderId, current.lines().toContractLines())
+            val reserveEvents = current.applyInventoryResult(
+                InventoryReservationResult(reserve.accepted, reserve.reservationId, reserve.reason),
+                newEventId("reserved", command.orderId),
+                newEventId("inv-fail", command.orderId),
+                now(),
+            )
+            if (reserveEvents.isNotEmpty()) {
+                appendAndProject(command.orderId, afterStart.size.toLong(), reserveEvents)
+            }
+        }
+        return requireProjection(command.orderId)
+    }
+
     fun continueWorkflow(orderId: String): OrderState {
         // Each iteration advances one event-stream transition; a started order
         // reaches a terminal state within a handful of steps.

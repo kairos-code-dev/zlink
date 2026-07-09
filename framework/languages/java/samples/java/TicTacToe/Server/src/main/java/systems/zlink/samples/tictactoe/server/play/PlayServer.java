@@ -31,9 +31,12 @@ public final class PlayServer {
                 .enableClient(settings.apiChannelEndpoint());
             options.addClientServerChannel(SampleNames.playChannel(settings.playIndex()))
                 .enableServer(settings.playChannelEndpoint())
-                .addHandlerGroup(SampleNames.PlayHandlerGroup);
+                .addHandlerGroup(SampleNames.PlayChannel);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh);
-            node.enableRouter(settings.spotEndpoint())
+            String routeEndpoint = settings.routeEndpoint().isBlank()
+                ? settings.spotEndpoint()
+                : settings.routeEndpoint();
+            node.enableRouter(routeEndpoint)
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
             node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());
             node.enablePubSub(settings.spotPubSubEndpoint());

@@ -15,7 +15,8 @@
 - `implemented`: config-6 전체 중 `SF-A1` baseline, `SF-A2` polling fallback,
   `SF-B1` store outage fail-static, `SF-B2` grace exceeded, `SF-C1` provider crash lease
   expiry, `SF-C2` graceful shutdown removal, `SF-D1` short outage recovery, `SF-D2` long outage
-  recovery, `SF-D3` status transition이 Java location store 경로로 검증됐다.
+  recovery, `SF-D3` status transition, `SF-E1` store response delay nonblocking이 Java
+  location store 경로로 검증됐다.
 
 ## 구현됨
 
@@ -41,10 +42,13 @@
 - `SF-D3`: 전용 Redis 컨테이너를 pause/unpause하면서 public runtime status가 healthy 상태에서
   last refresh와 owner lease 갱신 시간을 노출하고, outage 중에는 store/owner lease unhealthy와
   last error를 보이며, 복구 뒤 last refresh 시간이 전진하는지 확인한다.
+- `SF-E1`: consumer의 Redis location store wrapper가 public peer query에 응답 지연을 주입한다.
+  지연된 peer query가 실제로 지연되는 동안 같은 consumer의 일반 request p99가 baseline 기반
+  budget 안에 머무르고, 지연 해제 뒤 follow-up request가 성공하는지 확인한다.
 
 ## 남은 항목
 
-- 없음: Config 6의 Java Redis location store scenario는 `all` runner로 검증됐다.
+- 없음: Config 6의 Java Redis location store scenario는 `all` runner로 검증한다.
 
 ## 검증
 
@@ -97,3 +101,13 @@
     - 결과: `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3` 통과,
       `discovery-registry-ha e2e result=passed`
     - 로그: `logs/20260704-033113-35152/`
+- `nice -n 10 ./gradlew --project-cache-dir /tmp/zlink-discoveryregistryha-gradle-cache --no-daemon --no-parallel --max-workers=1 -p e2e/DiscoveryRegistryHa :Shared:compileJava :Server:Consumer:compileJava :Client:compileJava --console=plain`
+  - 결과: `BUILD SUCCESSFUL`
+- `nice -n 10 timeout 420s ./run_e2e.sh SF-E1`
+  - 결과: `scenario SF-E1 passed`, `scenario SF-E1 passed providers=[api-a]`,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260707-215129-3537304/`
+- `nice -n 10 timeout 900s ./run_e2e.sh all`
+  - 결과: `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3`/`SF-E1` 통과,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260707-222314-3666363/`

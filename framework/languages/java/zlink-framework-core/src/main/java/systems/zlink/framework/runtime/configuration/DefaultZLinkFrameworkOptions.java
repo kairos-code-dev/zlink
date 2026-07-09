@@ -28,7 +28,7 @@ import systems.zlink.framework.runtime.spots.SpotBuilders;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamBuilders;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
@@ -110,9 +110,9 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void addSpotRemoteAddressResolver(
-        Class<? extends ZLinkSpotRemoteAddressResolver> resolverType) {
-        registration.setSpotRemoteAddressResolverType(
+    public void addSpotRemoteRefResolver(
+        Class<? extends SpotRemoteRefResolver> resolverType) {
+        registration.setSpotRemoteRefResolverType(
             Objects.requireNonNull(resolverType, "resolverType"));
     }
 

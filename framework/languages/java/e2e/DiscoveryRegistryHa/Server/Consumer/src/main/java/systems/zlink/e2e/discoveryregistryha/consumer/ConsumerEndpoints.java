@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.discoveryregistryha.shared.Contracts;
 import systems.zlink.e2e.discoveryregistryha.shared.HttpSupport;
@@ -18,18 +20,22 @@ public final class ConsumerEndpoints implements SmartLifecycle {
     private final ConsumerOptions options;
     private final ZLinkClient client;
     private final ZLinkFrameworkLifecycle lifecycle;
+    private final LocationStoreDelayState delayState;
     private final ObjectMapper json;
     private HttpServer server;
+    private ExecutorService executor;
     private boolean running;
 
     public ConsumerEndpoints(
         ConsumerOptions options,
         ZLinkClient client,
         ZLinkFrameworkLifecycle lifecycle,
+        LocationStoreDelayState delayState,
         ObjectMapper json) {
         this.options = options;
         this.client = client;
         this.lifecycle = lifecycle;
+        this.delayState = delayState;
         this.json = json;
     }
 
@@ -37,6 +43,8 @@ public final class ConsumerEndpoints implements SmartLifecycle {
     public void start() {
         try {
             server = HttpSupport.createServer(options.httpEndpoint());
+            executor = Executors.newFixedThreadPool(8);
+            server.setExecutor(executor);
             server.createContext("/health", exchange -> HttpSupport.writeJson(
                 exchange,
                 json,
@@ -69,6 +77,15 @@ public final class ConsumerEndpoints implements SmartLifecycle {
                 exchange,
                 json,
                 peers()));
+            server.createContext("/admin/store-delay", exchange -> {
+                Contracts.StoreDelayReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.StoreDelayReq.class);
+                delayState.setDelay(Duration.ofMillis(request.delayMilliseconds()));
+                HttpSupport.writeJson(
+                    exchange,
+                    json,
+                    java.util.Map.of("delayMilliseconds", delayState.delayMilliseconds()));
+            });
             server.createContext("/shutdown", exchange -> {
                 HttpSupport.writeJson(exchange, json, java.util.Map.of("status", "stopping"));
                 HttpSupport.shutdownAsync();
@@ -123,6 +140,10 @@ public final class ConsumerEndpoints implements SmartLifecycle {
         if (server != null) {
             server.stop(0);
             server = null;
+        }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
         }
         running = false;
     }

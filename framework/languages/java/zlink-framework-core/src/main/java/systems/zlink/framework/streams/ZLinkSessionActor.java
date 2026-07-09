@@ -1,13 +1,13 @@
 package systems.zlink.framework.streams;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSessionActor {
     String actorId();
 
-    ZLinkActorRef ref();
+    ActorRef ref();
 
     CompletionStage<Void> relay(ZLinkMessage payload);
 

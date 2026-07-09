@@ -232,10 +232,10 @@ route handler로 보내고, route handler는 해당 node의 entry spot 아래 ac
 `CourierEntrySpot`은 SpotNode마다 하나인 actor 진입점이다.
 
 stream client가 다시 연결될 때는 courier와 customer 모두 같은 규칙을 따른다. 먼저 actor
-위치를 resolve로 찾고(`ResolveActorSpotAddressAsync` — 모든 resolve는 location store에
+위치를 resolve로 찾고(`ResolveActorSpotRefAsync` — 모든 resolve는 location store에
 도달한다), 기존 actor가 있으면 새 session만 다시 bind한다. 기존 actor가 없을 때만 entry
 spot을 통해 actor를 만든다(claim-then-activate). 이렇게 해야 재연결해도 사용자가 보던
-actor 상태가 유지되고, session route만 최신 연결로 바뀐다. resolve 결과 주소는 보관하되
+actor 상태가 유지되고, session route만 최신 연결로 바뀐다. resolve 결과 `SpotRef`는 보관하되
 전송이 실패하면 재resolve한다 — 실패 분류와 재시도 의미는
 [spot 주소 메시징 스펙](../../spec/spot-address-messaging.ko.md)을 따른다.
 

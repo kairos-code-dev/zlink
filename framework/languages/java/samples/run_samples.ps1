@@ -2,12 +2,53 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$CoreLib = Join-Path $RootDir "../../../core/build/lib/libzlink.so"
+$JavaRoot = Split-Path -Parent $RootDir
+$CoreLib = Join-Path $JavaRoot "../../../core/build/lib/libzlink.so"
+$ManifestPath = Join-Path $RootDir "sample-manifest.env"
 if (Test-Path $CoreLib) {
     $env:ZLINK_LIBRARY_PATH = $CoreLib
 }
 
 Set-Location $RootDir
+
+function Read-SampleManifest {
+    param([string]$Path)
+    $manifest = @{}
+    Get-Content -Path $Path | ForEach-Object {
+        $line = $_.Trim()
+        if (-not $line -or $line.StartsWith("#")) {
+            return
+        }
+        $parts = $line.Split("=", 2)
+        if ($parts.Count -ne 2) {
+            throw "Invalid sample manifest line: $line"
+        }
+        $value = $parts[1].Trim().Trim('"')
+        $key = $parts[0].Trim()
+        if ($key -eq "FORBIDDEN_SAMPLE_PATTERN") {
+            $manifest[$key] = $value.Trim("'")
+        } else {
+            $manifest[$key] = @($value.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries))
+        }
+    }
+    return $manifest
+}
+
+$Manifest = Read-SampleManifest $ManifestPath
+$SampleFilter = if ($env:ZLINK_SAMPLE_FILTER) { $env:ZLINK_SAMPLE_FILTER } else { "" }
+$SharedRedisEndpoint = if ($env:ZLINK_JAVA_SAMPLE_REDIS_LOCATION_ENDPOINT) {
+    $env:ZLINK_JAVA_SAMPLE_REDIS_LOCATION_ENDPOINT
+} else {
+    $env:ZLINK_REDIS_LOCATION_ENDPOINT
+}
+
+if ($SharedRedisEndpoint) {
+    foreach ($redisEnvVar in $Manifest["SAMPLE_REDIS_ENV_VARS"]) {
+        if (-not [Environment]::GetEnvironmentVariable($redisEnvVar)) {
+            [Environment]::SetEnvironmentVariable($redisEnvVar, $SharedRedisEndpoint, "Process")
+        }
+    }
+}
 
 function Invoke-Checked {
     param([string]$FilePath, [string[]]$Arguments)
@@ -22,7 +63,11 @@ function Invoke-SampleWithRetry {
     $output = New-TemporaryFile
     try {
         for ($attempt = 1; $attempt -le 3; $attempt++) {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath *> $output
+            if ($ScriptPath.EndsWith(".sh")) {
+                & bash $ScriptPath *> $output
+            } else {
+                & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath *> $output
+            }
             if ($LASTEXITCODE -eq 0) {
                 Get-Content $output
                 return
@@ -43,43 +88,49 @@ function Invoke-SampleWithRetry {
     }
 }
 
-$Gradle = if ($IsWindows) { Join-Path $RootDir "gradlew.bat" } else { Join-Path $RootDir "gradlew" }
-Invoke-Checked $Gradle @(
-    "-Pzlink.useLocalBindings=true",
-    "--no-daemon",
-    ":zlink-framework-testkit:contractTest",
-    "--tests",
-    "*SampleReleaseGateContractTest*"
-)
-Invoke-Checked $Gradle @(
-    "-Pzlink.useLocalBindings=true",
-    "--no-daemon",
-    "--no-parallel",
-    ":zlink-framework-testkit:fakeBackendTest",
-    "--tests",
-    "systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback"
-)
+function Invoke-ManifestSamples {
+    param([string]$Language, [string[]]$Samples)
+    foreach ($sample in $Samples) {
+        if ($SampleFilter -and $SampleFilter -ne $sample -and $SampleFilter -ne "$Language/$sample") {
+            continue
+        }
+        $scriptName = if ($IsWindows) { "run_sample.ps1" } else { "run_sample.sh" }
+        $script = Join-Path $RootDir "$Language/$sample/$scriptName"
+        if (Test-Path $script) {
+            Invoke-SampleWithRetry $script
+        } else {
+            Write-Output "sample runner missing; skipped $Language/$sample"
+        }
+    }
+}
+
+$Gradle = if ($IsWindows) { Join-Path $JavaRoot "gradlew.bat" } else { Join-Path $JavaRoot "gradlew" }
+Push-Location $JavaRoot
+try {
+    Invoke-Checked $Gradle @(
+        "--no-daemon",
+        ":zlink-framework-testkit:contractTest",
+        "--tests",
+        "*SampleReleaseGateContractTest*"
+    )
+    Invoke-Checked $Gradle @(
+        "--no-daemon",
+        "--no-parallel",
+        ":zlink-framework-testkit:fakeBackendTest",
+        "--tests",
+        "systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback"
+    )
+} finally {
+    Pop-Location
+}
 Write-Output "java actor lifecycle sample gate completed"
 
-foreach ($sample in @("TicTacToe", "Bingo")) {
-    Invoke-SampleWithRetry (Join-Path $RootDir "java/$sample/run_sample.ps1")
-}
-
-foreach ($sample in @("TicTacToe", "Bingo")) {
-    Invoke-SampleWithRetry (Join-Path $RootDir "kotlin/$sample/run_sample.ps1")
-}
-
-$forbiddenSamplePattern = "systems\.zlink\.(runtime|internal)"
-$forbiddenSamplePattern += "|systems\.zlink\.contracts\.core\.RoutingId\."
-$forbiddenSamplePattern += "|RouteStore|MetadataStore|RemoteAddressResolver"
-$forbiddenSamplePattern += "|Thread\.sleep|sleep\(|CountDownLatch|toCompletableFuture\(\)"
-$forbiddenSamplePattern += "|ZLinkFrameworkRuntime\.start"
-$forbiddenSamplePattern += "|Fake[A-Za-z0-9_]*|Recording[A-Za-z0-9_]*|Catalog"
-$forbiddenSamplePattern += "|UnsupportedOperationException\(""not needed by sample""\)"
+Invoke-ManifestSamples "java" $Manifest["JAVA_SAMPLES"]
+Invoke-ManifestSamples "kotlin" $Manifest["KOTLIN_SAMPLES"]
 
 $sources = Get-ChildItem -Path $RootDir -Recurse -Include *.java,*.kt -File |
     Where-Object { $_.FullName -notmatch "[/\\](build|bin)[/\\]" }
-$offenders = $sources | Select-String -Pattern $forbiddenSamplePattern
+$offenders = $sources | Select-String -Pattern $Manifest["FORBIDDEN_SAMPLE_PATTERN"]
 if ($offenders) {
     $offenders | ForEach-Object { Write-Error $_.ToString() }
     throw "sample gate failed: forbidden sample pattern found"

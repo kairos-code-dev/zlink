@@ -387,11 +387,11 @@ EnsureSupportUserActorReq {
 }
 
 EnsureSupportUserActorRes {
-  Actor: ZLinkActorRefSnapshot
+  Actor: ActorRefSnapshot
 }
 
-// framework 제공 wire 모델(ZLinkActorRefSnapshot) — 샘플이 정의하지 않는다.
-ZLinkActorRefSnapshot {
+// framework 제공 wire 모델(ActorRefSnapshot) — 샘플이 정의하지 않는다.
+ActorRefSnapshot {
   NodeRid: bytes
   ActorId: string
   Generation: uint64
@@ -407,7 +407,7 @@ EnsureAgentConversationReq {
 }
 
 EnsureAgentConversationRes {
-  Actor: ZLinkActorRefSnapshot
+  Actor: ActorRefSnapshot
   State: ConversationState
 }
 ```

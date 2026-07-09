@@ -5,9 +5,11 @@ import systems.zlink.framework.runtime.backend.*;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
@@ -23,13 +25,14 @@ import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -40,6 +43,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private static final boolean STREAM_TRACE =
         "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
     private static final ThreadLocal<ZLinkStreamHeader> CURRENT_RELAY_HEADER = new ThreadLocal<>();
+    private static final Map<ZLinkSessionDispatchContext, ZLinkStreamHeader> RELAY_HEADERS =
+        Collections.synchronizedMap(new WeakHashMap<>());
     private static final ScheduledExecutorService RELAY_RETRY_EXECUTOR =
         Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "zlink-java-session-actor-relay");
@@ -70,12 +75,35 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         CURRENT_RELAY_HEADER.set(header);
     }
 
+    public static void enterRelayDispatch(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkStreamHeader header) {
+        if (dispatch != null && header != null) {
+            RELAY_HEADERS.put(dispatch, header);
+        }
+        enterRelayDispatch(header);
+    }
+
     public static void exitRelayDispatch() {
         CURRENT_RELAY_HEADER.remove();
     }
 
+    public static void exitRelayDispatch(ZLinkSessionDispatchContext dispatch) {
+        if (dispatch != null) {
+            RELAY_HEADERS.remove(dispatch);
+        }
+        exitRelayDispatch();
+    }
+
     private static Optional<ZLinkStreamHeader> currentRelayHeader() {
         return Optional.ofNullable(CURRENT_RELAY_HEADER.get());
+    }
+
+    private static Optional<ZLinkStreamHeader> relayHeader(ZLinkSessionDispatchContext dispatch) {
+        if (dispatch == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(RELAY_HEADERS.get(dispatch));
     }
 
     public ZLinkSessionActorsRuntime(
@@ -156,7 +184,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     @Override
-    public CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor) {
+    public CompletionStage<ZLinkSessionActor> bind(ActorRef actor) {
         ZLinkBackendActorRef ref = new ZLinkBackendActorRef(
             actor.nodeRid(),
             actor.actorId(),
@@ -165,7 +193,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     @Override
-    public CompletionStage<ZLinkSessionActor> bindOrGet(ZLinkActorRef actor) {
+    public CompletionStage<ZLinkSessionActor> bindOrGet(ActorRef actor) {
         ZLinkBackendActorRef ref = new ZLinkBackendActorRef(
             actor.nodeRid(),
             actor.actorId(),
@@ -228,7 +256,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     + " actorNode=" + ref.nodeRid()
                     + " actorId=" + ref.actorId()
                     + " generation=" + ref.generation());
-                ZLinkSessionActor actor = new BoundActor(
+                BoundActor actor = new BoundActor(
                     stream,
                     sessionRid,
                     ref,
@@ -243,6 +271,13 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 bound.add(actor);
                 return actor;
             })
+            .thenCompose(actor -> actor.notifyRemoteBoundSession()
+                .thenApply(ignored -> (ZLinkSessionActor) actor))
+            .whenComplete((actor, error) -> {
+                if (error != null && actor instanceof BoundActor boundActor) {
+                    bound.remove(boundActor);
+                }
+            })
             .whenComplete((ignored, error) -> {
                 if (error != null) {
                     trace("session-actor bind-native-error sessionRid=" + sessionRid
@@ -254,7 +289,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             });
     }
 
-    private static boolean sameRef(ZLinkActorRef left, ZLinkActorRef right) {
+    private static boolean sameRef(ActorRef left, ActorRef right) {
         return left != null
             && right != null
             && left.actorId().equals(right.actorId())
@@ -284,9 +319,10 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         serializer,
                         actors,
                         actor,
-                        defaultCodec);
+                        defaultCodec,
+                        routeReady);
                 RoutingId sourceNodeRid =
-                    nativeSessionRelayAttached ? sessionRid : null;
+                    nativeSessionRelayAttached && spotNode != null ? spotNode.routingId() : null;
                 RoutingId sourceSessionRid =
                     nativeSessionRelayAttached ? sessionRid : null;
                 long bindingToken = actors.bindSession(
@@ -404,17 +440,29 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         }
 
         @Override
-        public ZLinkActorRef ref() {
-            return new ZLinkActorRef(ref.nodeRid(), ref.actorId(), ref.generation());
+        public ActorRef ref() {
+            return new ActorRef(ref.nodeRid(), ref.actorId(), ref.generation());
         }
 
         @Override
         public CompletionStage<Void> relay(ZLinkMessage payload) {
+            return relay(currentRelayHeader(), payload);
+        }
+
+        @Override
+        public CompletionStage<Void> relay(
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
+            return relay(relayHeader(dispatch).or(ZLinkSessionActorsRuntime::currentRelayHeader), payload);
+        }
+
+        private CompletionStage<Void> relay(
+            Optional<ZLinkStreamHeader> currentHeader,
+            ZLinkMessage payload) {
             if (payload == null) {
                 return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "payload is required"));
             }
-            Optional<ZLinkStreamHeader> currentHeader = currentRelayHeader();
             if (currentHeader.isEmpty()) {
                 return CompletableFuture.failedFuture(new IllegalStateException(
                     "Session actor relay requires an active stream dispatch."));
@@ -426,8 +474,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             if (managedActor.isPresent() && localActorDispatcher != null) {
                 return relayLocal(header, payloadBytes);
             }
-            return awaitRouteReady()
-                .thenCompose(ignored -> ensureNativeBinding())
+            return ensureNativeBinding()
                 .thenCompose(ignored -> relayWithRetry(header, payloadBytes));
         }
 
@@ -646,8 +693,22 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 Optional.empty(),
                 ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME,
                 Map.of());
-            return awaitRouteReady()
-                .thenCompose(ignored -> ensureNativeBinding())
+            return ensureNativeBinding()
+                .thenCompose(ignored -> relayWithRetry(header, new byte[0]));
+        }
+
+        private CompletionStage<Void> notifyRemoteBoundSession() {
+            if (!nativeSessionRelayAttached || managedActor.isPresent()) {
+                return CompletableFuture.completedFuture(null);
+            }
+            ZLinkStreamHeader header = new ZLinkStreamHeader(
+                ZLinkStreamMessageKind.SEND,
+                ZLinkStreamCodec.RAW,
+                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                Optional.empty(),
+                ZLinkBoundSessionRuntime.REMOTE_BOUND_SESSION_BIND_PACKET_NAME,
+                Map.of());
+            return ensureNativeBinding()
                 .thenCompose(ignored -> relayWithRetry(header, new byte[0]));
         }
     }

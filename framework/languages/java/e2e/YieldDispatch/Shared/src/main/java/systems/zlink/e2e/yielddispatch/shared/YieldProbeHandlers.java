@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
@@ -271,7 +272,10 @@ public final class YieldProbeHandlers {
             evidence.record("remote-yield-released", request.requestId(), value);
             Contracts.ScenarioRes targetReply = spot.context().outbound()
                 .requestToSpot(
-                    RoutingId.from(request.targetSpotRid()),
+                    new SpotRef(
+                        Contracts.SPOT_MESH,
+                        RoutingId.from(Contracts.PLAY_NODE_B),
+                        RoutingId.from(request.targetSpotRid())),
                     new Contracts.YieldReq("YD-D2", request.requestId(), "remote-spot"))
                 .timeout(Duration.ofSeconds(5))
                 .yield(Contracts.ScenarioRes.class);

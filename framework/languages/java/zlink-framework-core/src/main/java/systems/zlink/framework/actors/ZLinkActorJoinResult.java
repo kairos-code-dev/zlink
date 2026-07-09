@@ -2,13 +2,13 @@ package systems.zlink.framework.actors;
 
 public record ZLinkActorJoinResult<TReply>(
     int resultCode,
-    ZLinkActorRef actor,
+    ActorRef actor,
     TReply reply) {
     public boolean accepted() {
-        return resultCode == 1;
+        return resultCode == 0;
     }
 
-    public java.util.Optional<ZLinkActorRef> actorRef() {
+    public java.util.Optional<ActorRef> actorRef() {
         return java.util.Optional.ofNullable(actor);
     }
 }

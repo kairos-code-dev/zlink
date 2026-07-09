@@ -27,7 +27,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
@@ -146,7 +146,7 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
-            ZLinkActorRef actorRef = actor.context()
+            ActorRef actorRef = actor.context()
                 .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
                 .submit()

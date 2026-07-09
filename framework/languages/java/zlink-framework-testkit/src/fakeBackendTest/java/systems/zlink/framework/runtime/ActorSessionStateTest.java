@@ -83,7 +83,7 @@ final class ActorSessionStateTest {
             ZLinkSessionActor remoteBinding = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bind(new systems.zlink.framework.actors.ZLinkActorRef(
+                .bind(new systems.zlink.framework.actors.ActorRef(
                     RoutingId.from("play-node"),
                     "player-remote",
                     1))

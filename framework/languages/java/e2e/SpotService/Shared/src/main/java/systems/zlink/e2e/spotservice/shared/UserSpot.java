@@ -32,14 +32,16 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public void configure() {
-        context.handlers().addPacket(StateReqHandler.class);
-        context.handlers().addPacket(StateMsgHandler.class);
-        context.handlers().addPacket(SlowReqHandler.class);
-        context.handlers().addPacket(OutboundReqHandler.class);
-        context.handlers().addPacket(OutboundMsgHandler.class);
-        context.handlers().addSubscribe("spot.events", SpotEventHandler.class);
-        context.handlers().addActorRequest(UserActorEchoHandler.class);
-        context.handlers().addActorRequest(UserActorLeaveHandler.class);
+        context.handlers().addHandler(StateReqHandler.class);
+        context.handlers().addHandler(StateMsgHandler.class);
+        context.handlers().addHandler(StageProbeReqHandler.class);
+        context.handlers().addHandler(StageTimerStartReqHandler.class);
+        context.handlers().addHandler(SlowReqHandler.class);
+        context.handlers().addHandler(OutboundReqHandler.class);
+        context.handlers().addHandler(OutboundMsgHandler.class);
+        context.handlers().addHandler(SpotEventHandler.class);
+        context.handlers().addHandler(UserActorEchoHandler.class);
+        context.handlers().addHandler(UserActorLeaveHandler.class);
     }
 
     @Override
@@ -65,6 +67,29 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         ScenarioActor actor,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
+        Contracts.JoinAdmittedUserSpotActorReq admission = decodeAdmission(request);
+        if (admission != null) {
+            actor.applyProfile(admission.profile());
+            if (!admission.admit()) {
+                evidence.record("ActorUserJoinRejected", context.spotRid().toString(),
+                    actor.actorId() + "/" + admission.reason());
+                return ZLinkSpotActorJoinResponse.reject(new Contracts.JoinAdmittedUserSpotActorRes(
+                    actor.actorId(),
+                    context.spotRid().toString(),
+                    evidence.nodeRid(),
+                    false,
+                    "ActorJoinRejected"));
+            }
+            evidence.record("ActorUserJoinAdmitted", context.spotRid().toString(),
+                actor.actorId() + "/" + admission.reason());
+            return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
+                actor.actorId(),
+                context.spotRid().toString(),
+                evidence.nodeRid(),
+                admission.profile().displayName(),
+                admission.profile().level(),
+                admission.tags()));
+        }
         Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
         actor.applyProfile(join.profile());
         evidence.record("ActorUserJoinRequested", context.spotRid().toString(),
@@ -76,6 +101,19 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
             join.profile().displayName(),
             join.profile().level(),
             join.tags()));
+    }
+
+    private static Contracts.JoinAdmittedUserSpotActorReq decodeAdmission(ZLinkMessage request) {
+        try {
+            Contracts.JoinAdmittedUserSpotActorReq admission =
+                request.decode(Contracts.JoinAdmittedUserSpotActorReq.class);
+            if (!admission.admit() && admission.reason() == null) {
+                return null;
+            }
+            return admission;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     @Override
@@ -144,6 +182,10 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
 
     public void record(String marker, String value) {
         evidence.record(marker, context.spotRid().toString(), value);
+    }
+
+    public ScenarioStage stage() {
+        return new ScenarioStage(this);
     }
 
     String spotRid() {

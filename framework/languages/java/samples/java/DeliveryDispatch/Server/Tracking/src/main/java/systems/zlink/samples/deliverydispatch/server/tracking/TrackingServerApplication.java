@@ -6,6 +6,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -38,9 +39,12 @@ public final class TrackingServerApplication {
                     + "/flow-tracking.log")
                 .traceLabel("tracking");
             options.addHandlersFromPackageOf(TrackingServerApplication.class);
-            options.addSpotMesh(SampleNames.CustomerSpotDiscovery)
-                .enableRouter(SampleTopology.TrackingSpotEndpoint)
-                .setRoutingId(RoutingId.from("tracking"));
+            ZLinkSpotNodeBuilder trackingSpot = options.addSpotMesh(SampleNames.CustomerSpotDiscovery);
+            trackingSpot.enableRouter(SampleTopology.TrackingSpotEndpoint)
+                .setRoutingId(RoutingId.from(SampleNames.TrackingSpotNode));
+            trackingSpot.configureEntrySpot()
+                .setRoutingId(RoutingId.from(SampleNames.TrackingSpotNode));
+            trackingSpot.enablePubSub(SampleTopology.TrackingSpotPubEndpoint);
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)
                 .setRoutingId(RoutingId.from("delivery-tracking-server"))

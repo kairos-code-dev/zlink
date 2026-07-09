@@ -13,25 +13,35 @@ public final class SubscriberReconnectScenario {
             "sub-1",
             "alpha",
             context.options().sub1Http())) {
-            context.publisher().publish("all", new Contracts.EventMsg("ps-a4-before", 0, "before-disconnect"));
-            ScenarioAssert.waitForEvent(context.evidence(), "sub-1", "ps-a4-before", 0);
+            context.publisher().publish("all", new Contracts.EventMsg("ps-a4-before", 1, "before-disconnect"));
+            ScenarioAssert.waitForEvent(context.evidence(), "sub-1", "ps-a4-before", 1);
         }
 
         context.processes().waitStopped("sub-1", context.options().sub1Http());
-        context.publisher().publish("all", new Contracts.EventMsg("ps-a4-down", 1, "while-sub-1-down"));
-        ScenarioAssert.waitForEvent(context.evidence(), "sub-2", "ps-a4-down", 1);
+        for (int sequence = 2; sequence <= 4; sequence++) {
+            context.publisher().publish(
+                "all",
+                new Contracts.EventMsg("ps-a4-gap", sequence, "while-sub-1-down-" + sequence));
+        }
+        ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-2", "ps-a4-gap", 4);
 
         try (var restarted = context.processes().startSubscriber(
             "sub-1",
             "alpha",
             context.options().sub1Http())) {
-            context.publisher().publish("all", new Contracts.EventMsg("ps-a4-after", 2, "after-sub-1-restart"));
-            ScenarioAssert.waitForEvent(context.evidence(), "sub-1", "ps-a4-after", 2);
-            ScenarioAssert.waitForEvent(context.evidence(), "sub-2", "ps-a4-after", 2);
+            for (int sequence = 5; sequence <= 8; sequence++) {
+                context.publisher().publish(
+                    "all",
+                    new Contracts.EventMsg("ps-a4-after", sequence, "after-sub-1-restart-" + sequence));
+            }
+            ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-1", "ps-a4-after", 8);
+            ScenarioAssert.waitForSequenceAtLeast(context.evidence(), "sub-2", "ps-a4-after", 8);
             Contracts.EvidenceSnapshot restartedEvidence = context.evidence().snapshot("sub-1");
-            ScenarioAssert.ensure(
-                !ScenarioAssert.hasEvent(restartedEvidence, "ps-a4-down", 1),
-                "PS-A4 restarted subscriber received event from disconnected interval");
+            for (int sequence = 2; sequence <= 4; sequence++) {
+                ScenarioAssert.ensure(
+                    !ScenarioAssert.hasEvent(restartedEvidence, "ps-a4-gap", sequence),
+                    "PS-A4 restarted subscriber received event from disconnected interval");
+            }
         }
         System.out.println("scenario PS-A4 passed");
     }

@@ -2,11 +2,11 @@ package systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.actors.ZLinkActorRef
+import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
+import systems.zlink.framework.locations.SpotRef
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -53,7 +53,7 @@ class AuthenticateSessionHandler(
         val ensured = routes
             .requestToSpot(
                 SampleNames.RoomSpotDiscovery,
-                ZLinkSpotAddress(SampleNames.RoomSpotDiscovery, preferredPlayNode, preferredPlayNode),
+                SpotRef(SampleNames.RoomSpotDiscovery, preferredPlayNode, preferredPlayNode),
                 EnsurePlayerActorReq(
                     authenticated.actorId,
                     authenticated.displayName,
@@ -65,7 +65,7 @@ class AuthenticateSessionHandler(
             .await()
         context.actors()
             .bind(
-                ZLinkActorRef(
+                ActorRef(
                     RoutingId.from(ensured.actor.nodeRid),
                     ensured.actor.actorId,
                     ensured.actor.generation,

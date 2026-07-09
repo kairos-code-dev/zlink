@@ -47,16 +47,18 @@ public final class ResilienceProcessManager implements AutoCloseable {
         String currentHttpA,
         long stormExitDelayMillis,
         String logDir) {
-        Map<String, String> env = Map.of(
-            "ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT", httpEndpoint,
-            "ZLINK_JAVA_E2E_CONTROL_DIR", controlDir().toString(),
-            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
-            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
-            "ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT", options.apiAReplacementEndpoint(),
-            "ZLINK_JAVA_E2E_HTTP_A_ENDPOINT", currentHttpA,
-            "ZLINK_JAVA_E2E_HTTP_B_ENDPOINT", options.httpBEndpoint(),
-            "ZLINK_JAVA_E2E_STORM_EXIT_DELAY_MS", Long.toString(stormExitDelayMillis),
-            "ZLINK_JAVA_E2E_LOG_DIR", logDir);
+        Map<String, String> env = Map.ofEntries(
+            Map.entry("ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT", httpEndpoint),
+            Map.entry("ZLINK_JAVA_E2E_CONTROL_DIR", controlDir().toString()),
+            Map.entry("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint()),
+            Map.entry("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix()),
+            Map.entry("ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT", options.apiAReplacementEndpoint()),
+            Map.entry("ZLINK_JAVA_E2E_API_B_GREEN_ENDPOINT", options.apiBGreenEndpoint()),
+            Map.entry("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT", currentHttpA),
+            Map.entry("ZLINK_JAVA_E2E_HTTP_B_ENDPOINT", options.httpBEndpoint()),
+            Map.entry("ZLINK_JAVA_E2E_HTTP_B_GREEN_ENDPOINT", options.httpBGreenEndpoint()),
+            Map.entry("ZLINK_JAVA_E2E_STORM_EXIT_DELAY_MS", Long.toString(stormExitDelayMillis)),
+            Map.entry("ZLINK_JAVA_E2E_LOG_DIR", logDir));
         ManagedProcess process = start(name, consumerBin(), env);
         waitTcp(name + "-http", httpEndpoint, true);
         return process;
@@ -112,6 +114,14 @@ public final class ResilienceProcessManager implements AutoCloseable {
         sleepMillis(millis);
     }
 
+    public void pauseStore() {
+        runStoreCommand("pause", options.storePauseCommand());
+    }
+
+    public void unpauseStore() {
+        runStoreCommand("resume", options.storeResumeCommand());
+    }
+
     @Override
     public void close() {
         for (int i = processes.size() - 1; i >= 0; i--) {
@@ -131,6 +141,28 @@ public final class ResilienceProcessManager implements AutoCloseable {
             return process;
         } catch (IOException error) {
             throw new IllegalStateException("failed to start " + name + " at " + bin, error);
+        }
+    }
+
+    private void runStoreCommand(String action, String commandPath) {
+        if (commandPath == null || commandPath.isBlank()) {
+            throw new IllegalStateException("RL-C4 requires a store " + action + " command from the runner.");
+        }
+        runCommand("store " + action, commandPath);
+    }
+
+    private void runCommand(String description, String... command) {
+        try {
+            Process process = new ProcessBuilder(command).start();
+            boolean exited = process.waitFor(15, TimeUnit.SECONDS);
+            if (!exited || process.exitValue() != 0) {
+                throw new IllegalStateException(description + " failed");
+            }
+        } catch (IOException error) {
+            throw new IllegalStateException("failed to run " + description, error);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while running " + description, error);
         }
     }
 
@@ -196,6 +228,20 @@ public final class ResilienceProcessManager implements AutoCloseable {
         private ManagedProcess(String name, Process process) {
             this.name = name;
             this.process = process;
+        }
+
+        public void killForcibly() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            process.destroyForcibly();
+            try {
+                process.waitFor(5, TimeUnit.SECONDS);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while killing " + name, error);
+            }
         }
 
         @Override

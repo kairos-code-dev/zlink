@@ -7,6 +7,6 @@ public final class SmD13Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-D13", "stream heartbeat disconnect detection is not implemented");
+        gateway.runMode("stream-heartbeat");
     }
 }

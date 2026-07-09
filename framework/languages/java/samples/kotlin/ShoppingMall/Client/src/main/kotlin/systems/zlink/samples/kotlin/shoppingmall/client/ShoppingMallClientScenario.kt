@@ -1,10 +1,14 @@
 package systems.zlink.samples.kotlin.shoppingmall.client
 
 import java.util.concurrent.locks.LockSupport
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.samples.kotlin.shoppingmall.client.configuration.SampleNames
 import systems.zlink.samples.kotlin.shoppingmall.client.configuration.SampleTimings
+import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.ContinueOrderWorkflowReq
+import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.ContinueOrderWorkflowRes
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.CreatePendingMappingReq
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.CreatePendingMappingRes
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.DeleteProjectionReq
@@ -13,6 +17,8 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.GetOrderStateR
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.GetOrderStateRes
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderState
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderStatuses
+import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.PrepareInventoryReservedApiReq
+import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.PrepareInventoryReservedApiRes
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.RebuildProjectionApiReq
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.RebuildProjectionApiRes
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.ServerAssertionReq
@@ -34,13 +40,23 @@ class ShoppingMallClientScenario(
     suspend fun run() {
         val success = runSuccessfulOrder()
         runDuplicateIdempotency(success)
+        val concurrentOrderId = runConcurrentIdempotency()
         val pendingOrderId = runPendingRecovery()
+        val resumedOrderId = runExplicitResume()
         val inventoryOrderId = runInventoryFailure()
         val paymentOrderId = runPaymentFailure()
         runProjectionRebuild(success.orderId)
         runQueryConsistency(paymentOrderId)
         val scaleOrderId = runScaleOut()
-        assertServerEvidence(success.orderId, pendingOrderId, inventoryOrderId, paymentOrderId, scaleOrderId)
+        assertServerEvidence(
+            success.orderId,
+            pendingOrderId,
+            concurrentOrderId,
+            resumedOrderId,
+            inventoryOrderId,
+            paymentOrderId,
+            scaleOrderId,
+        )
     }
 
     private suspend fun runSuccessfulOrder(): StartOrderRes {
@@ -67,6 +83,19 @@ class ShoppingMallClientScenario(
         println("shoppingmall-idempotency=completed")
     }
 
+    private suspend fun runConcurrentIdempotency(): String = coroutineScope {
+        val request = StartOrderReq("cart-success", "addr-office", "pm-ok", "order-concurrent-001")
+        val startedA = async { start(apiA, request) }
+        val startedB = async { start(apiB, request) }
+        val resultA = startedA.await()
+        val resultB = startedB.await()
+        ensure(resultA.orderId == resultB.orderId)
+        val confirmed = waitForStatus(apiA, resultA.orderId, OrderStatuses.Confirmed)
+        ensure(confirmed.status == OrderStatuses.Confirmed)
+        println("shoppingmall-concurrent=completed")
+        resultA.orderId
+    }
+
     private suspend fun runPendingRecovery(): String {
         val pending = channels
             .requestToChannel(
@@ -87,6 +116,34 @@ class ShoppingMallClientScenario(
         ensure(created.shippingAddressId == "addr-office")
         println("shoppingmall-pending=completed")
         return started.orderId
+    }
+
+    private suspend fun runExplicitResume(): String {
+        val prepared = channels
+            .requestToChannel(
+                SampleNames.commerceApiChannel(apiA),
+                PrepareInventoryReservedApiReq(
+                    StartOrderReq("cart-success", "addr-home", "pm-ok", "order-resume-001"),
+                ),
+            )
+            .timeout(SampleTimings.WorkflowTimeout)
+            .submit(PrepareInventoryReservedApiRes::class.java)
+            .await()
+        ensure(prepared.state.status == OrderStatuses.InventoryReserved)
+
+        val resumed = channels
+            .requestToChannel(
+                SampleNames.commerceApiChannel(apiB),
+                ContinueOrderWorkflowReq(prepared.state.orderId),
+            )
+            .timeout(SampleTimings.WorkflowTimeout)
+            .submit(ContinueOrderWorkflowRes::class.java)
+            .await()
+        ensure(resumed.state.status == OrderStatuses.Confirmed)
+        ensure(resumed.state.reservationId == "reservation-${prepared.state.orderId}")
+        ensure(resumed.state.paymentId == "payment-${prepared.state.orderId}")
+        println("shoppingmall-resume=completed")
+        return prepared.state.orderId
     }
 
     private suspend fun runInventoryFailure(): String {
@@ -147,6 +204,8 @@ class ShoppingMallClientScenario(
     private suspend fun assertServerEvidence(
         successOrderId: String,
         pendingOrderId: String,
+        concurrentOrderId: String,
+        resumedOrderId: String,
         inventoryOrderId: String,
         paymentOrderId: String,
         scaleOrderId: String,
@@ -154,7 +213,15 @@ class ShoppingMallClientScenario(
         val assertion = channels
             .requestToChannel(
                 SampleNames.commerceApiChannel(apiA),
-                ServerAssertionReq(successOrderId, pendingOrderId, inventoryOrderId, paymentOrderId, scaleOrderId),
+                ServerAssertionReq(
+                    successOrderId,
+                    pendingOrderId,
+                    concurrentOrderId,
+                    resumedOrderId,
+                    inventoryOrderId,
+                    paymentOrderId,
+                    scaleOrderId,
+                ),
             )
             .timeout(SampleTimings.RequestTimeout)
             .submit(ServerAssertionRes::class.java)

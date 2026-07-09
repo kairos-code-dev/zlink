@@ -30,7 +30,7 @@ import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.ZLinkSpotAddress;
+import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.runtime.backend.*;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -107,7 +107,7 @@ final class ZLinkChannelRuntimeTest {
 
             TestReply reply = runtime.requestToSpot(
                     "play.route",
-                    new ZLinkSpotAddress(
+                    new SpotRef(
                         "play",
                         RoutingId.from("play-node"),
                         RoutingId.from("room-spot")),
@@ -138,7 +138,7 @@ final class ZLinkChannelRuntimeTest {
 
             runtime.sendToSpot(
                     "play.route",
-                    new ZLinkSpotAddress(
+                    new SpotRef(
                         "play",
                         RoutingId.from("play-node"),
                         RoutingId.from("room-spot")),
@@ -245,7 +245,7 @@ final class ZLinkChannelRuntimeTest {
                 CompletionException.class,
                 () -> runtime.requestToSpot(
                         "bingo.rooms",
-                        new ZLinkSpotAddress(
+                        new SpotRef(
                             "bingo.rooms",
                             RoutingId.from("play-node"),
                             RoutingId.from("room-spot")),
@@ -276,7 +276,7 @@ final class ZLinkChannelRuntimeTest {
                 CompletionException.class,
                 () -> runtime.requestToSpot(
                         "bingo.rooms",
-                        new ZLinkSpotAddress(
+                        new SpotRef(
                             "bingo.rooms",
                             RoutingId.from("play-node"),
                             RoutingId.from("room-spot")),

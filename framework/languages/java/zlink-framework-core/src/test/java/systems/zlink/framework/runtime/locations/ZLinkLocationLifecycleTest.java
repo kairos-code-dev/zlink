@@ -14,7 +14,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
@@ -76,7 +76,7 @@ class ZLinkLocationLifecycleTest {
                 .get();
             CompletionException error = assertThrows(
                 CompletionException.class,
-                () -> lifecycleA.setActorRefAsync("chat", "actor-1", new ZLinkActorRef(NODE_A, "actor-1", 1))
+                () -> lifecycleA.setActorRefAsync("chat", "actor-1", new ActorRef(NODE_A, "actor-1", 1))
                     .toCompletableFuture()
                     .join());
             ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();

@@ -18,7 +18,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -199,7 +199,7 @@ final class EntrySpotActorDispatchTest {
 
         @Override
         public EnsureActorReply handle(EntryActorDispatchSpot spot, EnsureActorRequest request) {
-            ZLinkActorRef actor = actors
+            ActorRef actor = actors
                 .getOrCreate(request.actorId(), "player")
                 .toCompletableFuture()
                 .join();

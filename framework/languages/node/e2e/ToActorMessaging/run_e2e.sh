@@ -175,9 +175,8 @@ else
     echo "Docker is required unless ZLINK_REDIS_E2E_ENDPOINT is set." >&2
     exit 1
   fi
-  start_redis_container "to-actor-messaging-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-  REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
-  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 fi
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 REDIS_KEY_PREFIX="to-actor-messaging:node:$RUN_ID"

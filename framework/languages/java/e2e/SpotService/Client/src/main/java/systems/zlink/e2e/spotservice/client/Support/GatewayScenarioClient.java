@@ -34,8 +34,4 @@ public final class GatewayScenarioClient {
             throw new IllegalStateException("interrupted while calling gateway scenario " + mode, error);
         }
     }
-
-    public static void unsupported(String scenario, String reason) {
-        throw new IllegalStateException(scenario + " is a documented Java gap: " + reason);
-    }
 }

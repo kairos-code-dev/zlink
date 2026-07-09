@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT_DIR}"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.pubsub\.(client|publisher|subscriber)\.ProgramKt'
+REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="${ROOT_DIR}/logs/${run_id}"
 SCENARIO="${1:-all}"
@@ -18,13 +19,14 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/PubSub}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/PubSub-gradle-cache}"
-export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+EXPLICIT_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-}}"
+ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${EXPLICIT_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}"
+ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
 export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin:pubsub:${run_id}}"
-LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=30
+LOCAL_READINESS_ATTEMPTS=200
 HTTP_PROBE_TIMEOUT_SECONDS=3
-SCENARIO_MARKER_ATTEMPTS=30
+SCENARIO_MARKER_ATTEMPTS=200
 SCENARIO_MARKER_INTERVAL=0.1
 ROUTE_SETTLE_SECONDS=5
 
@@ -47,13 +49,13 @@ cleanup() {
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     kill "${pids[$i]}" >/dev/null 2>&1 || true
   done
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill "${pid}" >/dev/null 2>&1 || true
-  done
   sleep 0.5
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -111,6 +113,26 @@ wait_marker() {
   done
   echo "Timed out waiting for marker ${file}" >&2
   return 1
+}
+
+start_redis_container() {
+  if [[ -n "${EXPLICIT_REDIS_LOCATION_ENDPOINT}" ]]; then
+    return
+  fi
+  if [[ "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" != "${ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT}" ]]; then
+    return
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="$(
+    zlink_redis_start_scoped "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  )"
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="$(
+    zlink_redis_endpoint "${REDIS_CONTAINER}"
+  )"
+  export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT
 }
 
 gradle_run() {
@@ -198,6 +220,7 @@ SUB3_HTTP="http://127.0.0.1:$(pick_port)"
 RECONNECT_HTTP="http://127.0.0.1:$(pick_port)"
 
 gradle_run installDist
+start_redis_container
 
 PUBLISHER_READY="${log_dir}/publisher-ready"
 PRELATE_CONTINUE="${log_dir}/prelate-continue"

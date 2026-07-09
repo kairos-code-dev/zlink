@@ -1,0 +1,155 @@
+package systems.zlink.samples.shoppingmall.server.commerceapi;
+
+import java.util.ArrayList;
+import java.util.List;
+import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.samples.shoppingmall.server.configuration.SampleNames;
+import systems.zlink.samples.shoppingmall.server.configuration.SampleTimings;
+import systems.zlink.samples.shoppingmall.server.configuration.SampleTopology;
+import systems.zlink.samples.shoppingmall.server.shared.domain.OrderDomain;
+import systems.zlink.samples.shoppingmall.server.shared.store.RedisCommerceStore;
+import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
+
+public final class CommerceApiService {
+    private final RedisCommerceStore store;
+    private final ZLinkClient channels;
+
+    public CommerceApiService(
+        RedisCommerceStore store,
+        ZLinkClient channels) {
+        this.store = store;
+        this.channels = channels;
+    }
+
+    public Messages.StartOrderRes startOrder(Messages.StartOrderReq request) {
+        validate(request);
+        Messages.CartSeed cart = store.getCart(request.cartId());
+        store.validateShippingAddress(request.shippingAddressId());
+        store.getPaymentMethod(request.paymentMethodId());
+        OrderDomain.IdempotencyMapping mapping = store.reserveIdempotency(
+            request.idempotencyKey(),
+            SampleTopology.apiName());
+        store.saveOrderPaymentMethod(mapping.orderId(), request.paymentMethodId());
+        Messages.OrderState existing = store.findProjection(mapping.orderId());
+        if (existing != null) {
+            return new Messages.StartOrderRes(mapping.orderId(), existing.status());
+        }
+
+        Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
+        Messages.StartOrderWorkflowRes started = channels.requestToChannel(
+                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(mapping.orderId())),
+                workflowRequest)
+            .timeout(SampleTimings.WorkflowTimeout)
+            .await(Messages.StartOrderWorkflowRes.class);
+        store.markIdempotencyStarted(request.idempotencyKey());
+        return new Messages.StartOrderRes(mapping.orderId(), started.state().status());
+    }
+
+    public Messages.GetOrderStateRes getOrder(String orderId) {
+        Messages.OrderState state = store.findProjection(orderId);
+        if (state == null) {
+            state = rebuildProjection(orderId).state();
+        }
+        return new Messages.GetOrderStateRes(state);
+    }
+
+    public void deleteProjection(String orderId) {
+        store.deleteProjection(orderId);
+    }
+
+    public Messages.RebuildOrderProjectionRes rebuildProjection(String orderId) {
+        return channels.requestToChannel(
+                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(orderId)),
+                new Messages.RebuildOrderProjectionReq(orderId))
+            .timeout(SampleTimings.WorkflowTimeout)
+            .await(Messages.RebuildOrderProjectionRes.class);
+    }
+
+    public Messages.StartOrderRes createPendingThenStart(Messages.StartOrderReq request) {
+        OrderDomain.IdempotencyMapping mapping = store.reserveIdempotency(
+            request.idempotencyKey(),
+            SampleTopology.apiName());
+        return startOrder(request);
+    }
+
+    public Messages.ContinueOrderWorkflowRes prepareInventoryReserved(Messages.StartOrderReq request) {
+        validate(request);
+        OrderDomain.IdempotencyMapping mapping = store.reserveIdempotency(
+            request.idempotencyKey(),
+            SampleTopology.apiName());
+        Messages.CartSeed cart = store.getCart(request.cartId());
+        store.saveOrderPaymentMethod(mapping.orderId(), request.paymentMethodId());
+        Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
+        return channels.requestToChannel(
+                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(mapping.orderId())),
+                new Messages.PrepareInventoryReservedCheckpointReq(workflowRequest))
+            .timeout(SampleTimings.WorkflowTimeout)
+            .await(Messages.ContinueOrderWorkflowRes.class);
+    }
+
+    public Messages.ContinueOrderWorkflowRes continueOrder(String orderId) {
+        return channels.requestToChannel(
+                SampleNames.orderWorkflowChannelFor(SampleTopology.ownerWorkflowName(orderId)),
+                new Messages.ContinueOrderWorkflowReq(orderId))
+            .timeout(SampleTimings.WorkflowTimeout)
+            .await(Messages.ContinueOrderWorkflowRes.class);
+    }
+
+    public Messages.ServerAssertionRes assertEvidence(Messages.ServerAssertionReq request) {
+        List<String> orderIds = List.of(
+            request.successfulOrderId(),
+            request.pendingRecoveredOrderId(),
+            request.concurrentOrderId(),
+            request.resumedOrderId(),
+            request.inventoryFailureOrderId(),
+            request.paymentFailureOrderId(),
+            request.scaleOutOrderId());
+        OrderDomain.StoreEvidence evidence = store.evidence(orderIds);
+        List<String> lines = new ArrayList<>();
+        boolean passed = true;
+        for (String orderId : orderIds) {
+            Messages.OrderState state = store.findProjection(orderId);
+            String status = state == null ? "missing" : state.status();
+            lines.add(orderId + "=" + status + " events=" + evidence.eventsByOrder().get(orderId));
+            if (state == null) {
+                passed = false;
+            }
+        }
+        passed &= store.findProjection(request.successfulOrderId()) != null
+            && Messages.OrderStatuses.Confirmed.equals(store.findProjection(request.successfulOrderId()).status());
+        passed &= evidence.paymentFailureCount() >= 1;
+        passed &= evidence.releasedReservationCount() >= 1;
+        lines.add("paymentFailures=" + evidence.paymentFailureCount());
+        lines.add("releasedReservations=" + evidence.releasedReservationCount());
+        lines.add("startedIdempotency=" + evidence.startedIdempotencyCount());
+        return new Messages.ServerAssertionRes(passed, lines);
+    }
+
+    private static Messages.StartOrderWorkflowReq workflowRequest(
+        Messages.StartOrderReq request,
+        String orderId,
+        Messages.CartSeed cart) {
+        return new Messages.StartOrderWorkflowReq(
+            orderId,
+            request.cartId(),
+            request.shippingAddressId(),
+            request.paymentMethodId(),
+            request.idempotencyKey(),
+            cart.lines(),
+            cart.amount(),
+            cart.currency());
+    }
+
+    private static void validate(Messages.StartOrderReq request) {
+        requireText(request.cartId(), "cartId");
+        requireText(request.shippingAddressId(), "shippingAddressId");
+        requireText(request.paymentMethodId(), "paymentMethodId");
+        requireText(request.idempotencyKey(), "idempotencyKey");
+    }
+
+    private static void requireText(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " is required.");
+        }
+    }
+}

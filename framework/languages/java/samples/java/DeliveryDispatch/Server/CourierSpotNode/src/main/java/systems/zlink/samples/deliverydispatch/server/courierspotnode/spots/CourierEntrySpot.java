@@ -7,11 +7,6 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.ActorDirectory;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.CourierActor;
-import systems.zlink.samples.deliverydispatch.server.courierspotnode.handlers.EnsureCourierActorHandler;
-import systems.zlink.samples.deliverydispatch.server.courierspotnode.handlers.FindCourierActorHandler;
-import systems.zlink.samples.deliverydispatch.server.courierspotnode.handlers.OfferDeliveryHandler;
-import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.handlers.BindCourierSessionActorHandler;
-import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.handlers.CourierDecisionActorHandler;
 
 public final class CourierEntrySpot implements ZLinkEntrySpot<CourierActor> {
     private final ZLinkEntrySpotContext context;
@@ -27,15 +22,6 @@ public final class CourierEntrySpot implements ZLinkEntrySpot<CourierActor> {
     @Override
     public ZLinkEntrySpotContext context() {
         return context;
-    }
-
-    @Override
-    public void configure() {
-        context.handlers().addHandler(FindCourierActorHandler.class);
-        context.handlers().addHandler(EnsureCourierActorHandler.class);
-        context.handlers().addHandler(OfferDeliveryHandler.class);
-        context.handlers().addHandler(BindCourierSessionActorHandler.class);
-        context.handlers().addHandler(CourierDecisionActorHandler.class);
     }
 
     @Override

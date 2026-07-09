@@ -19,7 +19,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
@@ -42,7 +42,7 @@ public final class ZLinkFrameworkRegistration {
     private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean closeHandlerExecutor = true;
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
-    private Class<? extends ZLinkSpotRemoteAddressResolver> spotRemoteAddressResolverType;
+    private Class<? extends SpotRemoteRefResolver> spotRemoteRefResolverType;
 
     public Duration defaultRequestTimeout() {
         return defaultRequestTimeout;
@@ -112,15 +112,15 @@ public final class ZLinkFrameworkRegistration {
         return closeHandlerExecutor;
     }
 
-    public Class<? extends ZLinkSpotRemoteAddressResolver> spotRemoteAddressResolverType() {
-        return spotRemoteAddressResolverType;
+    public Class<? extends SpotRemoteRefResolver> spotRemoteRefResolverType() {
+        return spotRemoteRefResolverType;
     }
 
     public Set<Class<?>> applicationTypes() {
         Set<Class<?>> types = new LinkedHashSet<>();
         types.addAll(filters);
-        if (spotRemoteAddressResolverType != null) {
-            types.add(spotRemoteAddressResolverType);
+        if (spotRemoteRefResolverType != null) {
+            types.add(spotRemoteRefResolverType);
         }
         for (ChannelRegistration channel : channels) {
             types.addAll(channel.handlerTypes());
@@ -139,9 +139,9 @@ public final class ZLinkFrameworkRegistration {
         return Set.copyOf(types);
     }
 
-    void setSpotRemoteAddressResolverType(
-        Class<? extends ZLinkSpotRemoteAddressResolver> resolverType) {
-        spotRemoteAddressResolverType = resolverType;
+    void setSpotRemoteRefResolverType(
+        Class<? extends SpotRemoteRefResolver> resolverType) {
+        spotRemoteRefResolverType = resolverType;
     }
 
     void useInMemoryLocationStores() {

@@ -1,6 +1,7 @@
 package systems.zlink.e2e.kotlin.resiliencelifecycle
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import java.time.Duration
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -27,6 +28,9 @@ open class ConsumerApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/consumer-flow.log")
                 .traceLabel("kotlin-rl-consumer")
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3))
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500))
+            options.configureLocations().setPollingInterval(Duration.ofMillis(200))
             options.addClientServerChannel(Contracts.CHANNEL).enableClient()
         }
 

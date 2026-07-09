@@ -23,8 +23,8 @@ framework channel traffic은 `Server/Trigger` role이 수행한다. `.NET`에 �
 | .NET 기준 파일 | Java 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | multi-project build, `.gradle`, logs 산출물 제외 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | role별 installDist binary를 실행한다. MON-A1/A2/A3/A5/B1/B2/C1 marker를 확인한다. |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | Java 완료/gap scenario 구분 |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 실행별 전용 Redis location store와 role별 installDist binary를 실행한다. MON-A1/A2/A3/A4/A5/B1/B2/C1/D1 marker를 확인한다. cleanup은 runner가 기록한 PID와 전용 Redis container만 정리한다. |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | Java 완료 scenario와 runner evidence를 기록한다. |
 | `Shared/RuntimeMonitoring.Shared.csproj` | `Shared/build.gradle.kts` | build | done | shared Java library project |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/runtimemonitoring/shared/Contracts.java` | shared | done | request, reply, evidence record |
 | `Client/RuntimeMonitoring.Client.csproj` | `Client/build.gradle.kts` | build | done | client application project |
@@ -34,42 +34,49 @@ framework channel traffic은 `Server/Trigger` role이 수행한다. `.NET`에 �
 | `Client/Scenarios/MonA1SocketEventsScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonA1SocketEventsScenario.java` | scenario | done | Client HTTP driver scenario file. socket `CONNECTED` 또는 `CONNECTION_READY` evidence |
 | `Client/Scenarios/MonA2RegistryEventsScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonA2LocationEventsScenario.java` | scenario | done | Client HTTP driver scenario file. location runtime status/topology/summary event evidence |
 | `Client/Scenarios/MonA3SpotEventsScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonA3SpotEventsScenario.java` | scenario | done | Client HTTP driver scenario file. spot status/peers/subjects/timer failure evidence |
-| `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonA4AvailabilityTransitionScenario.java` | scenario | gap | File exists and fails explicitly if selected. failover/drain 전이를 socket/location runtime monitoring event로 묶는 runner가 아직 없다 |
+| `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonA4AvailabilityTransitionScenario.java` | scenario | done | Trigger가 drain/restore를 실행하고 trigger socket `PEER_ADMISSION_CHANGED`, service admin marker, service location runtime `TOPOLOGY_CHANGED`를 확인한다. |
 | `Client/Scenarios/MonA5FixedKindsScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonA5FixedKindsScenario.java` | scenario | done | Client HTTP driver scenario file. malformed connection, status, timer-stopped evidence |
 | `Client/Scenarios/MonB1KindFilterScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonB1KindFilterScenario.java`, `Server/FilteredService` | scenario | done | Client HTTP driver scenario file. socket source를 `CONNECTION_READY`로 제한 |
 | `Client/Scenarios/MonB2RegistrationValidationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonB2RegistrationValidationScenario.java`, `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/Program.java` | scenario | done | Client HTTP driver scenario file. bad interval, missing socket, missing spot validation |
 | `Client/Scenarios/MonC1DispatchFailureScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonC1DispatchFailureScenario.java`, `Server/ThrowingService` | scenario | done | Client HTTP driver scenario file. monitoring handler failure 후 follow-up messaging 성공 |
-| `Client/Scenarios/MonD1FailureRecoveryScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonD1FailureRecoveryScenario.java` | scenario | gap | File exists and fails explicitly if selected. 장애/복구 반복 중 monitoring event 연속성을 보는 장시간 harness 없음 |
+| `Client/Scenarios/MonD1FailureRecoveryScenario.cs` | `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Scenarios/MonD1FailureRecoveryScenario.java` | scenario | done | `svc-b` shutdown/restart 뒤 request가 재시작 service에서 처리되고 observer location runtime topology continuity를 확인한다. |
 | `Server/Registry/*` | 없음 | server-role | not-needed | Config 7 Java는 service host의 public location runtime monitoring source를 사용하므로 제거된 registry role이 필요 없다. |
 | `Server/Service/RuntimeMonitoring.Service.csproj` | `Server/Service/build.gradle.kts` | build | done | service application project |
 | `Server/Service/Program.cs` | `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/Program.java` | server-role | done | channel, spot, Redis location store, monitoring source 설정 |
 | `Server/Service/ServiceHostFactory.cs` | `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/Program.java` | server-role | done | Spring entrypoint가 host factory 역할 |
 | `Server/Service/Support/ServiceOptions.cs` | `Shared/src/main/java/systems/zlink/e2e/runtimemonitoring/shared/Env.java` | support | done | service endpoint 환경 변수 |
-| `Server/Service/Support/ServiceEvidenceStore.cs` | `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/support/EvidenceState.java` | support | done | service evidence store |
+| `Server/Service/Support/ServiceEvidenceStore.cs` | `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/support/EvidenceState.java`, `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/support/EvidenceHttpServer.java` | support | done | service evidence store와 admin drain/restore/shutdown endpoint |
 | `Server/Service/Handlers/ServiceEventRecorders.cs` | `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/handlers/MonitoringEventHandlers.java` | server-role | done | socket/spot/location runtime/failing monitoring recorder |
 | `Server/Service/Handlers/ServiceHandlers.cs` | `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/handlers/WorkReqHandler.java`, `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/handlers/MonitoringSpot.java` | server-role | done | request handler와 monitoring spot |
 | `Server/FilteredService/*` | `Server/FilteredService/build.gradle.kts`, `Server/FilteredService/src/main/java/systems/zlink/e2e/runtimemonitoring/filteredservice/Program.java` | server-role | done | 별도 filtered service process. shared service configuration을 socket filter role로 실행한다 |
 | `Server/ThrowingService/*` | `Server/ThrowingService/build.gradle.kts`, `Server/ThrowingService/src/main/java/systems/zlink/e2e/runtimemonitoring/throwingservice/Program.java` | server-role | done | 별도 throwing service process. shared service configuration을 throwing monitor role로 실행한다 |
 | `Server/Trigger/RuntimeMonitoring.Trigger.csproj` | `Server/Trigger/build.gradle.kts` | build | done | trigger/validation application project |
 | `Server/Trigger/Program.cs` | `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/Program.java` | server-role | done | framework client와 HTTP scenario endpoint entrypoint |
-| `Server/Trigger/Support/*` | `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/Program.java`, `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/validation/*.java`, `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Support/TriggerScenarioClient.java`, `run_e2e.sh` | support | partial | Java trigger support는 validation config와 HTTP client helper에 통합되어 있다 |
+| `Server/Trigger/Support/*` | `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/Program.java`, `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/validation/*.java`, `Client/src/main/java/systems/zlink/e2e/runtimemonitoring/client/Support/TriggerScenarioClient.java`, `run_e2e.sh` | support | done | Java Trigger는 validation config, HTTP client helper, trigger-side socket monitoring, `svc-b` restart control을 통합한다. |
 | `Server/Trigger/TriggerEndpoints.cs` | `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/Program.java` | server-role | done | Java Trigger가 `/health`, `/scenario/<id>` HTTP endpoint를 제공한다 |
 | `Server/Trigger/TriggerHandlers.cs` | `Server/Service/src/main/java/systems/zlink/e2e/runtimemonitoring/service/handlers/WorkReqHandler.java` | server-role | done | request trigger handler |
 | `Server/Trigger/TriggerHostFactory.cs` | `Server/Trigger/src/main/java/systems/zlink/e2e/runtimemonitoring/trigger/Program.java` | server-role | done | Spring validation entrypoint |
 
 ## 남은 gap
 
-- `MON-A4`: failover/drain 전이를 socket/location runtime monitoring event로 함께 보는 runner가 없다.
-- `MON-D1`: 장애/복구 반복 중 monitoring event 연속성을 보는 장시간 harness가 없다.
+현재 Java `RuntimeMonitoring` inventory에는 남은 `gap` 또는 `partial` 항목이 없다. 이후 공통
+RuntimeMonitoring 문서나 release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.
 
 ## 검증
 
-- `../../gradlew --project-cache-dir /tmp/zlink-rm-monitor-gradle-cache --no-daemon :Client:compileJava :Server:Service:compileJava :Server:FilteredService:compileJava :Server:ThrowingService:compileJava :Server:Trigger:compileJava --console=plain`
+- `../../gradlew --project-cache-dir /tmp/zlink-rm-monitor-gradle-cache --no-daemon :Server:Service:compileJava :Server:FilteredService:compileJava :Server:Trigger:compileJava :Client:compileJava --console=plain`
   - 결과: `BUILD SUCCESSFUL`
-- `timeout 300s ./run_e2e.sh MON-A2`
-  - 결과: `scenario MON-A2 passed`, `monitoring e2e result=passed`
-  - 로그: `logs/20260704-034026-54281/`
-- `timeout 600s ./run_e2e.sh`
-  - 결과: `MON-A1`/`MON-A2`/`MON-A3`/`MON-A5`/`MON-B1`/`MON-B2`/`MON-C1` 통과,
+- `ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=127.0.0.1:57800 ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX=zlink:e2e:runtime-monitoring:mon-a4-rerun4 timeout 420s ./run_e2e.sh MON-A4`
+  - 결과: `scenario MON-A4 passed`, `monitoring e2e result=passed`
+  - 로그: `logs/20260707-133634-1965923/`
+- `ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=127.0.0.1:57800 ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX=zlink:e2e:runtime-monitoring:mon-d1-rerun1 timeout 420s ./run_e2e.sh MON-D1`
+  - 결과: `scenario MON-D1 passed`, `monitoring e2e result=passed`
+  - 로그: `logs/20260707-133713-1970260/`
+- `ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=127.0.0.1:57800 ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX=zlink:e2e:runtime-monitoring:full-rerun1 timeout 600s ./run_e2e.sh`
+  - 결과: `MON-A1`/`MON-A2`/`MON-A3`/`MON-A4`/`MON-A5`/`MON-B1`/`MON-B2`/`MON-C1`/`MON-D1` 통과,
     `monitoring e2e result=passed`
-  - 로그: `logs/20260704-034044-55326/`
+  - 로그: `logs/20260707-133745-1973862/`
+- `nice -n 10 timeout 420s ./run_e2e.sh all`
+  - 결과: `MON-A1`/`MON-A2`/`MON-A3`/`MON-A4`/`MON-A5`/`MON-B1`/`MON-B2`/`MON-C1`/`MON-D1` 통과,
+    `monitoring e2e result=passed`
+  - 로그: `logs/20260707-221130-3621759/`

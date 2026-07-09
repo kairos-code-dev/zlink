@@ -7,6 +7,6 @@ public final class RlC2TopologyRecoveryScenario {
     }
 
     public static void run(ConsumerScenarioClient consumer) {
-        ConsumerScenarioClient.unsupported("RL-C2", "deterministic TTL stale-entry cleanup harness is not implemented");
+        consumer.runMode("rl-c2");
     }
 }

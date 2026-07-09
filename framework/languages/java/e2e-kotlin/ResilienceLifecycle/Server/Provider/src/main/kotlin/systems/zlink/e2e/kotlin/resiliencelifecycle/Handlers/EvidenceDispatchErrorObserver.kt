@@ -17,6 +17,9 @@ class EvidenceDispatchErrorObserver(
             "DispatchError",
             "${flow.errorReason()}/${flow.errorAction()}/${flow.packetName()}",
         )
+        if (state.observerThrows()) {
+            throw IllegalStateException("dispatch observer failure")
+        }
         return CompletableFuture.completedFuture(null)
     }
 }

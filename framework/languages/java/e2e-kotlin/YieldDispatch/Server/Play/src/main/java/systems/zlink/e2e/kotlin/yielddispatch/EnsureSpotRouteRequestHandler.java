@@ -3,6 +3,7 @@ package systems.zlink.e2e.kotlin.yielddispatch;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class EnsureSpotRouteRequestHandler
@@ -21,7 +22,7 @@ public final class EnsureSpotRouteRequestHandler
     public Contracts.EnsureSpotRes handle(
         Contracts.EnsureSpotReq request,
         ZLinkRouteRequestContext context) {
-        spots.getOrCreate(ProbeSpot.class, RoutingId.from(request.spotRid()), "ensure")
+        spots.getOrCreate(ProbeSpot.class, RoutingId.from(request.spotRid()), ZLinkMessage.of("ensure"))
             .toCompletableFuture()
             .join();
         String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "play-a");

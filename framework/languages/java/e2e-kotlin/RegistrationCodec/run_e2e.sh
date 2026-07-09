@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.registrationcodec\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 SCENARIO="${1:-all}"
@@ -53,9 +53,6 @@ cleanup() {
       kill "${child}" >/dev/null 2>&1 || true
     done
     kill "${pid}" >/dev/null 2>&1 || true
-  done
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill -9 "${pid}" >/dev/null 2>&1 || true
   done
   wait >/dev/null 2>&1 || true
   exit "${status}"

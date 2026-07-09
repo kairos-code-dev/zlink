@@ -31,22 +31,25 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
 
     @Override
     public void configure() {
-        context.handlers().addPacket(ProbeReqHandler.class);
-        context.handlers().addPacket(HoldMsgHandler.class);
-        context.handlers().addPacket(YieldReqHandler.class);
-        context.handlers().addPacket(YieldMsgHandler.class);
-        context.handlers().addPacket(WorkerYieldMsgHandler.class);
-        context.handlers().addPacket(ProbeMsgHandler.class);
-        context.handlers().addPacket(RemoteSpotYieldReqHandler.class);
-        context.handlers().addPacket(TimerStartMsgHandler.class);
-        context.handlers().addPacket(TimerStopMsgHandler.class);
-        context.handlers().addPacket(YieldTimeoutMsgHandler.class);
-        context.handlers().addPacket(YieldCancelMsgHandler.class);
-        context.handlers().addPacket(SpotProbeMsgHandler.class);
-        context.handlers().addActorRequest(ProbeActorRequestHandler.class);
-        context.handlers().addActorRequest(ProbeActorJoinHandler.class);
-        context.handlers().addActorRequest(ProbeActorYieldHandler.class);
-        context.handlers().addActorRequest(ProbeActorFastHandler.class);
+        context.handlers().addHandler(ProbeReqHandler.class);
+        context.handlers().addHandler(HoldMsgHandler.class);
+        context.handlers().addHandler(YieldReqHandler.class);
+        context.handlers().addHandler(ShutdownYieldReqHandler.class);
+        context.handlers().addHandler(YieldMsgHandler.class);
+        context.handlers().addHandler(WorkerYieldMsgHandler.class);
+        context.handlers().addHandler(ProbeMsgHandler.class);
+        context.handlers().addHandler(RemoteSpotYieldReqHandler.class);
+        context.handlers().addHandler(TimerStartMsgHandler.class);
+        context.handlers().addHandler(TimerStopMsgHandler.class);
+        context.handlers().addHandler(YieldTimeoutMsgHandler.class);
+        context.handlers().addHandler(YieldTimeoutReqHandler.class);
+        context.handlers().addHandler(YieldCancelMsgHandler.class);
+        context.handlers().addHandler(SpotProbeMsgHandler.class);
+        context.handlers().addHandler(ProbeActorRequestHandler.class);
+        context.handlers().addHandler(ProbeActorJoinHandler.class);
+        context.handlers().addHandler(ProbeActorYieldHandler.class);
+        context.handlers().addHandler(ProbeActorFastHandler.class);
+        context.handlers().addHandler(ProbeActorPushYieldHandler.class);
     }
 
     @Override
@@ -59,6 +62,16 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
         ProbeActor actor,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
+        if (actor.actorId().startsWith("YD-B3-")) {
+            Contracts.DelayReq delay = request.decode(Contracts.DelayReq.class);
+            try {
+                Thread.sleep(delay.millis());
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("actor join interrupted", error);
+            }
+            return ZLinkSpotActorJoinResponse.accept();
+        }
         Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
         return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
             actor.actorId(),

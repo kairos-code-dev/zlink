@@ -4,6 +4,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA1Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA2Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA3Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA4Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA5Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA6Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA7Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA8Scenario
@@ -20,6 +21,8 @@ import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmC4Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD1Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD10Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD11Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD12Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD14Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD3Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD4Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmD5Scenario
@@ -36,7 +39,14 @@ import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF1Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF2Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF3Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF4Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF5Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF6Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmG1Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmG2Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmG3Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmG4Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmQ9Scenario
+import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmRemoteActorSessionScenario
 import systems.zlink.e2e.kotlin.spotservice.client.support.ActorSessionScenarioSupport
 import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
@@ -55,6 +65,7 @@ internal class ClientScenario(
                 SmA3Scenario.run(spots)
                 SmA4Scenario.run(spots)
             }
+            "stage-wrapper" -> SmA5Scenario.run(spots)
             "lifecycle-close" -> SmA6Scenario.run()
             "type-mismatch" -> SmA7Scenario.run()
             "route-mesh" -> {
@@ -63,6 +74,10 @@ internal class ClientScenario(
                 SmF1Scenario.run(spots)
                 SmF4Scenario.run(spots)
             }
+            "route-lifecycle" -> {
+                SmF5Scenario.run(spots)
+            }
+            "spot-only-mesh" -> SmF6Scenario.run()
             "actor-session" -> ActorSessionScenarioSupport.run { context ->
                 SmB1Scenario.run(context)
                 SmB3Scenario.run(context)
@@ -82,6 +97,13 @@ internal class ClientScenario(
                 SmD13Scenario.run()
                 SmD11Scenario.run(spots)
             }
+            "stream-tls" -> SmD14Scenario.run()
+            "session-transfer" -> SmD12Scenario.run()
+            "remote-actor-session" -> SmRemoteActorSessionScenario.run()
+            "play-crash-recovery" -> SmG1Scenario.run(spots)
+            "owner-remap" -> SmG2Scenario.run()
+            "join-leave-race" -> SmG3Scenario.run()
+            "bound-push-load" -> SmG4Scenario.run()
             "worker" -> SmA8Scenario.run(spots)
             "spot-outbound" -> SmC2Scenario.run(spots)
             "spot-to-spot" -> SmC3Scenario.run(spots)

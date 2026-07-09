@@ -22,6 +22,7 @@ publisher와 subscriber는 같은 Redis location store endpoint와 실행별 key
 PS-A4 subscriber reconnect와 PS-B2 publisher restart의 lifecycle 제어는 Client support가 맡는다.
 실패하면 `logs/<run-id>/` 아래 role별 stdout, stderr, message flow log를 출력한다.
 
-현재 남은 gap은 push 기반 검증 경로다. scenario 동작은 모두 통과하지만, `.NET` PubSub와 마찬가지로
-subscriber `/evidence` HTTP endpoint를 반복 조회해 marker를 확인한다. client stream connector를
-사용하는 공통 push 검증 계약이 정리되면 이 gap을 별도 작업으로 닫는다.
+subscriber가 받은 fanout delivery는 subscriber 역할 server의 bounded `/evidence/wait` endpoint로
+확인한다. client는 publisher endpoint로 publish를 트리거한 뒤 반복 snapshot polling 대신 각
+subscriber의 실제 handler/observer marker가 나올 때까지 bounded wait를 호출한다. topic filter처럼
+부재를 확인해야 하는 조건만 wait 이후 snapshot을 한 번 대조한다.

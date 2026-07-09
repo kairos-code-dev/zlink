@@ -34,12 +34,16 @@ class ConsumerHttpServer(
         }
         httpServer.createContext("/health") { exchange -> write(exchange, 200, "ok\n") }
         httpServer.createContext("/profile/request") { exchange ->
-            val request = exchange.readJson(Contracts.WorkReq::class.java)
-            val timeoutMillis = exchange.query("timeoutMillis")?.toLongOrNull() ?: 3000L
-            val reply = client.requestToChannel(Contracts.CHANNEL, request)
-                .timeout(Duration.ofMillis(timeoutMillis))
-                .await(Contracts.WorkRes::class.java)
-            exchange.writeJson(reply)
+            try {
+                val request = exchange.readJson(Contracts.WorkReq::class.java)
+                val timeoutMillis = exchange.query("timeoutMillis")?.toLongOrNull() ?: 3000L
+                val reply = client.requestToChannel(Contracts.CHANNEL, request)
+                    .timeout(Duration.ofMillis(timeoutMillis))
+                    .await(Contracts.WorkRes::class.java)
+                exchange.writeJson(reply)
+            } catch (error: Exception) {
+                exchange.writeError(error)
+            }
         }
         httpServer.createContext("/profile/send") { exchange ->
             val request = exchange.readJson(Contracts.WorkMsg::class.java)
@@ -47,16 +51,23 @@ class ConsumerHttpServer(
             exchange.writeJson(mapOf("status" to "sent"))
         }
         httpServer.createContext("/profile/unhandled") { exchange ->
-            val request = exchange.readJson(Contracts.UnhandledReq::class.java)
-            val reply = client.requestToChannel(Contracts.CHANNEL, request)
-                .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes::class.java)
-            exchange.writeJson(reply)
+            try {
+                val request = exchange.readJson(Contracts.UnhandledReq::class.java)
+                val reply = client.requestToChannel(Contracts.CHANNEL, request)
+                    .timeout(Duration.ofSeconds(3))
+                    .await(Contracts.WorkRes::class.java)
+                exchange.writeJson(reply)
+            } catch (error: Exception) {
+                exchange.writeError(error)
+            }
         }
         httpServer.createContext("/topology/wait") { exchange ->
             val request = exchange.readJson(Contracts.TopologyWaitReq::class.java)
             val matched = waitForTopology(request)
             exchange.writeJson(Contracts.TopologyWaitRes(matched))
+        }
+        httpServer.createContext("/topology/read") { exchange ->
+            exchange.writeJson(readTopology())
         }
         httpServer.executor = requestExecutor
         httpServer.start()
@@ -88,12 +99,36 @@ class ConsumerHttpServer(
             } catch (_: Exception) {
                 0
             }
-            if (matches >= request.expectedRouters) {
+            if (
+                (request.expectedRouters == 0 && matches == 0) ||
+                (request.expectedRouters > 0 && matches >= request.expectedRouters)
+            ) {
                 return matches
             }
             Thread.sleep(200)
         }
         throw IllegalStateException("location peer topology did not match $request")
+    }
+
+    private fun readTopology(): Contracts.TopologyReadRes {
+        return try {
+            val matches = lifecycle.monitoringLocationRuntimeQuery()
+                .listPeerLocationsAsync(
+                    ZLinkPeerLocationFilter(
+                        ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                        Contracts.CHANNEL,
+                        ZLinkLocationRole.ROUTER,
+                        null,
+                        null,
+                    ),
+                )
+                .toCompletableFuture()
+                .get(3, TimeUnit.SECONDS)
+                .count()
+            Contracts.TopologyReadRes("ok", matches, null)
+        } catch (error: Exception) {
+            Contracts.TopologyReadRes("error", 0, error.javaClass.simpleName)
+        }
     }
 
     override fun stop() {
@@ -113,6 +148,13 @@ class ConsumerHttpServer(
         val body = json.writeValueAsBytes(value)
         responseHeaders.add("Content-Type", "application/json")
         sendResponseHeaders(200, body.size.toLong())
+        responseBody.use { it.write(body) }
+    }
+
+    private fun HttpExchange.writeError(error: Exception) {
+        val body = json.writeValueAsBytes(mapOf("error" to (error.message ?: error.javaClass.name)))
+        responseHeaders.add("Content-Type", "application/json")
+        sendResponseHeaders(500, body.size.toLong())
         responseBody.use { it.write(body) }
     }
 

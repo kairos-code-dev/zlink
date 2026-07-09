@@ -22,7 +22,7 @@ public final class WorkerYieldMsgHandler
                 Thread.sleep(command.delayMillis());
                 return command.requestId();
             })
-            .timeout(Duration.ofSeconds(5));
+            .timeout(Duration.ofSeconds(10));
         evidence.record(command.requestId(), "worker-yield-released", value);
         String result = call.yield();
         evidence.record(result, "worker-yield-resumed", value);

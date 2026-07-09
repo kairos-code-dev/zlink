@@ -28,15 +28,23 @@ class ClientScenario(
                 context.runRuntimeDrainScenario()
                 context.runDrainInflightScenario()
                 context.runDispatchErrorEvidenceScenario()
+                context.runObserverFaultScenario()
+                context.runMissingRequestHandlerScenario()
                 context.runGrayFaultScenario()
                 context.runGracefulShutdownScenario()
             }
             "RL-B1" -> context.runClientTimeoutCleanupScenario()
+            "RL-A4" -> context.runDrainAndGreenEndpointScenario()
+            "RL-B2" -> context.runCrashDuringInflightScenario()
             "RL-B4" -> context.runRuntimeDrainScenario()
             "RL-B5" -> context.runDrainInflightScenario()
             "RL-D3" -> context.runDispatchErrorEvidenceScenario()
+            "RL-D2" -> context.runObserverFaultScenario()
+            "RL-D4" -> context.runMissingRequestHandlerScenario()
             "RL-B6" -> context.runGrayFaultScenario()
             "RL-B3" -> context.runGracefulShutdownScenario()
+            "RL-C2" -> context.runTopologyRecoveryScenario()
+            "RL-C4" -> context.runLocationStoreOutageScenario()
             else -> throw IllegalArgumentException("unknown ResilienceLifecycle scenario ${context.options.scenario}")
         }
     }

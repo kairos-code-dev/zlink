@@ -7,6 +7,6 @@ public final class SmB4Scenario {
     }
 
     public static void run(GatewayScenarioClient gateway) {
-        GatewayScenarioClient.unsupported("SM-B4", "remote actor request/reply E2E is not implemented");
+        gateway.runMode("remote-actor-session");
     }
 }

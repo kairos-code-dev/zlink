@@ -6,6 +6,7 @@ import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
 import java.time.Duration
 import java.time.Instant
 import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
@@ -28,8 +29,8 @@ class TimerScenarioSpot(
     override fun context(): ZLinkSpotContext = context
 
     override fun configure() {
-        context.handlers().addPacket(TimerActivityHandler::class.java)
-        context.handlers().addPacket(TimerStatusHandler::class.java)
+        context.handlers().addHandler<TimerActivityHandler>()
+        context.handlers().addHandler<TimerStatusHandler>()
     }
 
     override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {

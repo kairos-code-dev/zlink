@@ -54,6 +54,9 @@ public final class SessionApplication {
                 .addSessionPacketHandler(BindActorsReqHandler.class)
                 .addSessionPacketHandler(EnsureSpotReqHandler.class)
                 .addSessionPacketHandler(RemoteSpotYieldReqRouteHandler.class)
+                .addSessionPacketHandler(ShutdownYieldReqRouteHandler.class)
+                .addSessionPacketHandler(ShutdownRecoveryReqRouteHandler.class)
+                .addSessionPacketHandler(ProbeReqRouteHandler.class)
                 .addSessionPacketHandler(HoldMsgRouteHandler.class)
                 .addSessionPacketHandler(YieldMsgRouteHandler.class)
                 .addSessionPacketHandler(WorkerYieldMsgRouteHandler.class)
@@ -61,6 +64,7 @@ public final class SessionApplication {
                 .addSessionPacketHandler(TimerStartMsgRouteHandler.class)
                 .addSessionPacketHandler(TimerStopMsgRouteHandler.class)
                 .addSessionPacketHandler(YieldTimeoutMsgRouteHandler.class)
+                .addSessionPacketHandler(YieldTimeoutReqRouteHandler.class)
                 .addSessionPacketHandler(YieldCancelMsgRouteHandler.class)
                 .addSessionPacketHandler(SpotProbeMsgRouteHandler.class)
                 .addSessionPacketHandler(EvidenceReqRouteHandler.class);

@@ -1,6 +1,7 @@
 package systems.zlink.samples.bingo.server.play.domain.bingo;
 
 import java.util.List;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomModels {
@@ -32,7 +33,7 @@ public final class BingoRoomModels {
         int seat,
         BingoCard card) {
         public Messages.BingoPlayerState toState(String hostActorId) {
-            return new Messages.BingoPlayerState(
+            return BingoMessages.bingoPlayerState(
                 actorId,
                 displayName,
                 seat,

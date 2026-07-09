@@ -27,6 +27,8 @@ public final class ZLinkHandlerInterfaceNames {
         "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler";
     public static final String KOTLIN_SPOT_ACTOR_REQUEST_HANDLER =
         "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler";
+    public static final String KOTLIN_SESSION_PACKET_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler";
 
     private ZLinkHandlerInterfaceNames() {
     }

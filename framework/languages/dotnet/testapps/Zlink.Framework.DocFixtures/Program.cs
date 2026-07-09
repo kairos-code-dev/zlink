@@ -264,13 +264,13 @@ internal sealed class FixtureActorSpot(IZLinkSpotContext context) : IZLinkSpot<F
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        FixtureActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var decoded = request.Decode<FixtureActorJoinRequest>();
-        actor.AttachSpot(this);
-        await actor.OnAttachedAsync(cancellationToken);
+        _ = admission;
+        await ValueTask.CompletedTask;
         return ZLinkSpotActorJoinResult.Accept(new FixtureActorJoinReply(decoded.RoomId));
     }
 }

@@ -630,6 +630,19 @@ public sealed class BuilderContracts
         {
             return this;
         }
+
+        public IZLinkSpotNodeBuilder AddStatelessActorTransfer<TActor>(string actorType)
+            where TActor : IZLinkActor
+        {
+            return this;
+        }
+
+        public IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
+            where TActor : IZLinkActor
+            where TAdapter : class, IZLinkActorTransferAdapter<TActor>
+        {
+            return this;
+        }
     }
 
     private sealed class SpotMeshBuilder : SpotNodeBuilder, IZLinkSpotMeshBuilder

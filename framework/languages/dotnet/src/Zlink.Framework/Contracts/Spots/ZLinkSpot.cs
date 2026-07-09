@@ -27,6 +27,27 @@ public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, ZLinkMessa
     }
 }
 
+public sealed record ZLinkActorJoinAdmission(
+    string ActorId,
+    Type ActorType,
+    RoutingId SourceSpotRid,
+    RoutingId TargetSpotRid,
+    RoutingId SourceNodeRid,
+    RoutingId TargetNodeRid);
+
+public interface IZLinkActorTransferAdapter<TActor>
+    where TActor : IZLinkActor
+{
+    ValueTask<ZLinkMessage> TransferOutAsync(
+        TActor actor,
+        CancellationToken cancellationToken);
+
+    ValueTask<TActor> TransferInAsync(
+        string actorId,
+        ZLinkMessage state,
+        CancellationToken cancellationToken);
+}
+
 public sealed class ZLinkSpotActorReplyOptions
 {
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
@@ -122,7 +143,7 @@ public interface IZLinkSpotActorLifecycle<TActor>
     where TActor : IZLinkActor
 {
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        TActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {

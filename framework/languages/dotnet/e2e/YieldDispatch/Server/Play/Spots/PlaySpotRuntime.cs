@@ -15,7 +15,7 @@ internal sealed class YieldProbeSpot(
     public IZLinkSpotContext Context { get; } = context;
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        YieldActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -26,7 +26,7 @@ internal sealed class YieldProbeSpot(
             if (delay.DelayMs > 0) await Task.Delay(TimeSpan.FromMilliseconds(delay.DelayMs), cancellationToken);
         }
 
-        evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={admission.ActorId}");
         return ZLinkSpotActorJoinResult.Accept(request);
     }
 

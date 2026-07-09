@@ -61,7 +61,13 @@ public sealed class SpotHandlerInvokerTests
 
         var reply = await invoker.InvokeActorJoinAsync(
             descriptor,
-            actor,
+            new ZLinkActorJoinAdmission(
+                actor.ActorId,
+                typeof(MemberLifecycleActor),
+                RoutingId.From("room-1"),
+                RoutingId.From("room-1"),
+                RoutingId.From("node-1"),
+                RoutingId.From("node-1")),
             request,
             CancellationToken.None);
 

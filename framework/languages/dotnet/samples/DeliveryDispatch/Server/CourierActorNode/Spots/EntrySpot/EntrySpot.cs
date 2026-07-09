@@ -31,7 +31,7 @@ internal sealed class CourierEntrySpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        CourierActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {

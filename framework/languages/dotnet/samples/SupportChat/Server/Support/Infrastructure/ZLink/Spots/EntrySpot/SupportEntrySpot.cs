@@ -36,7 +36,7 @@ internal sealed class SupportEntrySpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        SupportUserActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {

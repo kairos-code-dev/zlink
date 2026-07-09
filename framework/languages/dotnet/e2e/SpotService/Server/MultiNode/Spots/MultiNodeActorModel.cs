@@ -51,11 +51,11 @@ internal sealed class ScenarioEntrySpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ScenarioActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = actor;
+        _ = admission;
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
@@ -111,12 +111,12 @@ internal sealed class ScenarioUserSpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ScenarioActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={admission.ActorId}");
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
@@ -174,13 +174,13 @@ internal sealed class SpotOnlyUserSpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ScenarioActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         _ = request;
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={admission.ActorId}");
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
     }
 

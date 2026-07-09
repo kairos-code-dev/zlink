@@ -213,13 +213,14 @@ internal sealed partial class ZLinkEntrySpotActivation :
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var call = new ActorJoinCallState(descriptor, actor, request);
+        var admission = CreateActorJoinAdmission(actor, descriptor.ActorType);
+        var call = new ActorJoinCallState(descriptor, admission, request);
         await ExecuteAsync(
             static async (activation, state, ct) =>
             {
                 state.Result = await activation._invoker.InvokeActorJoinAsync(
                         state.Descriptor,
-                        state.Actor,
+                        state.Admission,
                         state.Request,
                         ct)
                     .ConfigureAwait(false);
@@ -228,6 +229,21 @@ internal sealed partial class ZLinkEntrySpotActivation :
             cancellationToken).ConfigureAwait(false);
 
         return call.Result;
+    }
+
+    private ZLinkActorJoinAdmission CreateActorJoinAdmission(
+        IZLinkActor actor,
+        Type actorType)
+    {
+        var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+        var source = actorState.LiveActivation;
+        return new ZLinkActorJoinAdmission(
+            actor.ActorId,
+            actorType,
+            source?.SpotRid ?? SpotRid,
+            SpotRid,
+            source?.NodeRid ?? NodeRid,
+            NodeRid);
     }
 
     public async ValueTask InvokePacketAsync(
@@ -366,12 +382,12 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     private sealed class ActorJoinCallState(
         ZLinkSpotActorJoinDescriptor descriptor,
-        IZLinkActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request)
     {
         public ZLinkSpotActorJoinDescriptor Descriptor { get; } = descriptor;
 
-        public IZLinkActor Actor { get; } = actor;
+        public ZLinkActorJoinAdmission Admission { get; } = admission;
 
         public ZLinkMessage Request { get; } = request;
 

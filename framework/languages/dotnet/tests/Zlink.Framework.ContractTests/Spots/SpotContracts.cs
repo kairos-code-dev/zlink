@@ -11,6 +11,7 @@ public sealed class SpotContracts
         typeof(IZLinkSpot),
         typeof(IZLinkSpot<>),
         typeof(IZLinkSpotActorLifecycle<>),
+        typeof(IZLinkActorTransferAdapter<>),
         typeof(IZLinkEntrySpot),
         typeof(IZLinkEntrySpot<>),
         typeof(IZLinkActorHandlerRegistry),
@@ -148,7 +149,7 @@ public sealed class SpotContracts
         await new RoomEventHandler().HandleAsync(room, new RoomEvent("opened"), CancellationToken.None);
         await new RoomTimerHandler().HandleAsync(room, TimerTick(), CancellationToken.None);
         var joinReply =
-            await room.OnActorJoinAsync(actor, ZLinkMessage.From(new JoinRoom("room-1")), CancellationToken.None);
+            await room.OnActorJoinAsync(Admission(actor), ZLinkMessage.From(new JoinRoom("room-1")), CancellationToken.None);
         await new PlayerActorSendHandler().HandleAsync(room, actor, null!, new RoomEvent("opened"),
             CancellationToken.None);
         var actorReply =
@@ -223,7 +224,7 @@ public sealed class SpotContracts
         var actor = new PlayerActor("player-1");
         var request = ZLinkMessage.From(new JoinRoom("room-1"));
 
-        var accepted = await room.OnActorJoinAsync(actor, request, CancellationToken.None);
+        var accepted = await room.OnActorJoinAsync(Admission(actor), request, CancellationToken.None);
         var rejected = ZLinkSpotActorJoinResult.Reject();
 
         Assert.True(accepted.Accepted);
@@ -295,6 +296,19 @@ public sealed class SpotContracts
             0);
     }
 
+    private static ZLinkActorJoinAdmission Admission(PlayerActor actor)
+    {
+        var spotRid = RoutingId.From("room-1");
+        var nodeRid = RoutingId.From("node-1");
+        return new ZLinkActorJoinAdmission(
+            actor.ActorId,
+            typeof(PlayerActor),
+            spotRid,
+            spotRid,
+            nodeRid,
+            nodeRid);
+    }
+
     private sealed record JoinRoom(string RoomId);
 
     private sealed record JoinedRoom(string RoomId);
@@ -306,11 +320,11 @@ public sealed class SpotContracts
         public IZLinkSpotContext Context { get; } = context;
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            PlayerActor actor,
+            ZLinkActorJoinAdmission admission,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
-            _ = actor;
+            _ = admission;
             _ = cancellationToken;
             var join = request.Decode<JoinRoom>();
             return ValueTask.FromResult(
@@ -350,11 +364,11 @@ public sealed class SpotContracts
         public IZLinkEntrySpotContext Context { get; } = context;
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            PlayerActor actor,
+            ZLinkActorJoinAdmission admission,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
-            _ = actor;
+            _ = admission;
             _ = cancellationToken;
             return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
         }

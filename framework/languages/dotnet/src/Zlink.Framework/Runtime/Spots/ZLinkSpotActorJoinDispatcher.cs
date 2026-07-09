@@ -51,8 +51,16 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         ZLinkSpotActorJoinResult result;
         try
         {
+            var sourceActivation = runtime.GetOrCreateActorState(actor.ActorId).LiveActivation;
+            var admission = new ZLinkActorJoinAdmission(
+                actor.ActorId,
+                descriptor.ActorType,
+                sourceActivation?.SpotRid ?? joinRequest.TargetSpotRid,
+                joinRequest.TargetSpotRid,
+                sourceActivation?.NodeRid ?? joinRequest.SourceNodeRid,
+                joinRequest.TargetActor.NodeRid);
             result = await handlerInvoker()
-                .InvokeActorJoinAsync(descriptor, actor, payload.Request, cancellationToken)
+                .InvokeActorJoinAsync(descriptor, admission, payload.Request, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

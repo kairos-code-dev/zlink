@@ -74,6 +74,12 @@ internal sealed class ZLinkFrameworkRegistration
             foreach (var spotType in spotNode.SpotFactories) assemblies.Add(spotType.Assembly);
 
             foreach (var actorFactoryType in spotNode.ActorFactories.Values) assemblies.Add(actorFactoryType.Assembly);
+
+            foreach (var transfer in spotNode.ActorTransfers.Values)
+            {
+                assemblies.Add(transfer.ActorType.Assembly);
+                if (transfer.AdapterType is not null) assemblies.Add(transfer.AdapterType.Assembly);
+            }
         }
 
         foreach (var channel in Channels.Values)
@@ -237,12 +243,19 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkActorTransferRegistration> ActorTransfers { get; } = new(StringComparer.Ordinal);
+
     public RoutingId RoutingId { get; set; }
 
     public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
 
     public Type? EntrySpotType { get; set; }
 }
+
+internal sealed record ZLinkActorTransferRegistration(
+    Type ActorType,
+    Type? AdapterType,
+    bool Stateless);
 
 internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
 {

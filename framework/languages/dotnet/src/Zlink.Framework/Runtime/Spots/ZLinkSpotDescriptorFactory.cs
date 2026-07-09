@@ -150,7 +150,10 @@ internal static class ZLinkSpotDescriptorFactory
             method,
             3,
             "SPOT actor join hook");
-        var actorType = parameters[0].ParameterType;
+        if (parameters[0].ParameterType != typeof(ZLinkActorJoinAdmission))
+            throw new InvalidOperationException(
+                $"SPOT actor join hook '{spotType}' method '{method.Name}' must use {nameof(ZLinkActorJoinAdmission)} as the first parameter.");
+
         if (parameters[1].ParameterType != typeof(ZLinkMessage))
             throw new InvalidOperationException(
                 $"SPOT actor join hook '{spotType}' method '{method.Name}' must use ZLinkMessage as the second parameter.");
@@ -161,7 +164,6 @@ internal static class ZLinkSpotDescriptorFactory
             parameters[2],
             "SPOT actor join hook",
             "third");
-        ValidateActorType(spotType, expectedActorType, actorType);
         if (method.ReturnType != typeof(ValueTask<ZLinkSpotActorJoinResult>))
             throw new InvalidOperationException(
                 $"SPOT actor join hook '{spotType}' method '{method.Name}' must return ValueTask<ZLinkSpotActorJoinResult>.");
@@ -170,7 +172,7 @@ internal static class ZLinkSpotDescriptorFactory
         {
             HandlerType = spotType,
             SpotType = spotType,
-            ActorType = actorType,
+            ActorType = expectedActorType,
             Invoker = ZLinkHandlerMethodInvokerFactory.Create(method),
             PassSpotArgument = false
         };

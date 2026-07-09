@@ -89,8 +89,8 @@ namespace ToActorMessaging.Actor
         }
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            TestActor actor,
-            ZLinkMessage request,
+        ZLinkActorJoinAdmission admission,
+        ZLinkMessage request,
             CancellationToken cancellationToken)
         {
             evidence.Append(new ActorEvidence("join", actor.ActorId, "join", "joined"));

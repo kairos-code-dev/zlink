@@ -50,11 +50,11 @@ internal sealed class ScenarioEntrySpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ScenarioActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = actor;
+        _ = admission;
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
@@ -110,28 +110,28 @@ internal sealed class ScenarioUserSpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ScenarioActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!request.IsEmpty)
         {
-            var admission = request.Decode<JoinAdmittedUserSpotActorReq>();
-            if (!admission.Allow)
+            var joinAdmission = request.Decode<JoinAdmittedUserSpotActorReq>();
+            if (!joinAdmission.Allow)
             {
                 evidence.Add(
                     $"spot-actor-join-rejected|rid={evidence.Rid}|spot={Context.SpotRid}"
-                    + $"|actor={actor.ActorId}|reason={admission.Reason}");
-                return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject(admission));
+                    + $"|actor={admission.ActorId}|reason={joinAdmission.Reason}");
+                return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject(joinAdmission));
             }
 
             evidence.Add(
                 $"spot-actor-join-admitted|rid={evidence.Rid}|spot={Context.SpotRid}"
-                + $"|actor={actor.ActorId}|reason={admission.Reason}");
+                + $"|actor={admission.ActorId}|reason={joinAdmission.Reason}");
         }
 
-        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={admission.ActorId}");
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 

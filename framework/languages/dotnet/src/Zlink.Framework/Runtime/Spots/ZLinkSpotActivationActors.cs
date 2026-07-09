@@ -241,8 +241,24 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        return await HandlerInvoker.InvokeActorJoinAsync(descriptor, actor, request, cancellationToken)
+        var admission = CreateActorJoinAdmission(actor, descriptor.ActorType);
+        return await HandlerInvoker.InvokeActorJoinAsync(descriptor, admission, request, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private ZLinkActorJoinAdmission CreateActorJoinAdmission(
+        IZLinkActor actor,
+        Type actorType)
+    {
+        var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+        var source = actorState.LiveActivation;
+        return new ZLinkActorJoinAdmission(
+            actor.ActorId,
+            actorType,
+            source?.SpotRid ?? SpotRid,
+            SpotRid,
+            source?.NodeRid ?? NodeRid,
+            NodeRid);
     }
 
     private sealed class ActorJoinCallState(

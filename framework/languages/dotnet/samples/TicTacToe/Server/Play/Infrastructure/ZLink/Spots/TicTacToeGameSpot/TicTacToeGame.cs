@@ -19,6 +19,7 @@ internal sealed class TicTacToeGame(
     private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(15);
 
     private readonly Dictionary<string, PlayActor> _actors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string RoomId, PlayerInfo Player)> _pendingJoins = new(StringComparer.Ordinal);
     private readonly TicTacToeMatch _match = new(DecodeRoomId(context.SpotRid), TurnTimeout);
     private readonly string _roomId = DecodeRoomId(context.SpotRid);
     private IZLinkTimer? _gameTick;
@@ -35,6 +36,13 @@ internal sealed class TicTacToeGame(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
+        if (_pendingJoins.Remove(actor.ActorId, out var join))
+        {
+            actor.JoinRoom(join.RoomId);
+            actor.ApplyPlayer(join.Player);
+            _actors[actor.ActorId] = actor;
+        }
+
         logger.LogInformation(
             "game spot: actor joined. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
@@ -67,17 +75,17 @@ internal sealed class TicTacToeGame(
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        PlayActor player,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var joinRequest = request.Decode<TicTacToeGameJoinReq>();
-        var reply = await JoinPlayerAsync(player, joinRequest.RoomId, joinRequest.Player, cancellationToken);
+        var reply = await JoinPlayerAsync(admission.ActorId, joinRequest.RoomId, joinRequest.Player, cancellationToken);
         logger.LogInformation(
             "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",
-            player.ActorId,
+            admission.ActorId,
             joinRequest.RoomId,
-            reply.State.XActorId == player.ActorId ? TicTacToeMarks.X : TicTacToeMarks.O);
+            reply.State.XActorId == admission.ActorId ? TicTacToeMarks.X : TicTacToeMarks.O);
 
         return ZLinkSpotActorJoinResult.Accept(reply);
     }
@@ -107,7 +115,7 @@ internal sealed class TicTacToeGame(
     }
 
     public async ValueTask<TicTacToeGameJoinRes> JoinPlayerAsync(
-        PlayActor actor,
+        string actorId,
         string roomId,
         PlayerInfo player,
         CancellationToken cancellationToken)
@@ -115,22 +123,19 @@ internal sealed class TicTacToeGame(
         if (!string.Equals(roomId, _roomId, StringComparison.Ordinal))
             throw new InvalidOperationException($"Actor requested join for a different room. roomId={roomId}");
 
-        if (!string.Equals(player.ActorId, actor.ActorId, StringComparison.Ordinal))
+        if (!string.Equals(player.ActorId, actorId, StringComparison.Ordinal))
             throw new InvalidOperationException(
-                $"Join player '{player.ActorId}' does not match actor '{actor.ActorId}'.");
+                $"Join player '{player.ActorId}' does not match actor '{actorId}'.");
 
         if (player.Level < SampleDefaults.RequiredLevel)
             throw new InvalidOperationException(
                 $"Player level {player.Level} is below required level {SampleDefaults.RequiredLevel}.");
 
-        actor.JoinRoom(roomId);
-        actor.ApplyPlayer(player);
-        _actors[actor.ActorId] = actor;
+        _pendingJoins[actorId] = (roomId, player);
 
-        var change = _match.JoinPlayer(actor.ActorId, DateTimeOffset.UtcNow);
-        if (change.IsNewPlayer) await NotifyPlayerJoinedAsync(actor, change.Mark, change.State, cancellationToken);
+        var change = _match.JoinPlayer(actorId, DateTimeOffset.UtcNow);
 
-        await BroadcastAsync(change.State, actor.ActorId, cancellationToken);
+        await BroadcastAsync(change.State, actorId, cancellationToken);
         return new TicTacToeGameJoinRes(change.State);
     }
 

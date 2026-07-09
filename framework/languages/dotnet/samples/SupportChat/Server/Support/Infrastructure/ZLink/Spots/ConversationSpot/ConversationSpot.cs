@@ -68,8 +68,19 @@ internal sealed class ConversationSpot(
     // this spot when it is joining this conversation. The customer's own actor is the
     // participant; each agent joins through its own per-conversation actor.
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        SupportUserActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        var conversation = RequireConversation();
+        _ = admission;
+        _ = request;
+        await ValueTask.CompletedTask;
+        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(conversation.Snapshot())));
+    }
+
+    public async ValueTask OnJoinedActorAsync(
+        SupportUserActor actor,
         CancellationToken cancellationToken)
     {
         var conversation = RequireConversation();
@@ -78,7 +89,7 @@ internal sealed class ConversationSpot(
         {
             var change = JoinAgent(actor);
             await PublishChangeAsync(change, cancellationToken);
-            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(change.State)));
+            return;
         }
 
         actor.JoinConversation(conversation.ConversationId);
@@ -92,7 +103,6 @@ internal sealed class ConversationSpot(
             conversation.ConversationId,
             actor.ParticipantId,
             actor.Role);
-        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(conversation.Snapshot())));
     }
 
     // Reserves a capacity-available agent for this conversation and notifies its roster

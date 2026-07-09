@@ -46,26 +46,20 @@ internal sealed class ZLinkSpotHandlerInvoker(
 
     public async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
         ZLinkSpotActorJoinDescriptor descriptor,
-        IZLinkActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        EnsureActorType(
-            descriptor.HandlerType,
-            descriptor.ActorType,
-            actor,
-            "SPOT actor join callback");
-
         if (descriptor.PassSpotArgument)
         {
-            var result = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, request,
+            var result = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, admission, request,
                     cancellationToken)
                 .ConfigureAwait(false);
             return (ZLinkSpotActorJoinResult)result!;
         }
 
         var hookResult =
-            await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, request, cancellationToken)
+            await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, admission, request, cancellationToken)
                 .ConfigureAwait(false);
         return (ZLinkSpotActorJoinResult)hookResult!;
     }

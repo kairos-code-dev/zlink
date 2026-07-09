@@ -18,6 +18,7 @@ internal sealed class BingoRoom(
     private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create(BingoSampleModes.TwoPlayer, 0);
 
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BingoRoomJoinReq> _pendingJoins = new(StringComparer.Ordinal);
     private bool _cleanupStarted;
     private BingoRoomGame? _game = new(context.SpotRid.ToString(), DefaultSettings);
     private PlayerActor? _observerActor;
@@ -36,6 +37,14 @@ internal sealed class BingoRoom(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
+        if (_pendingJoins.Remove(actor.ActorId, out var join))
+        {
+            actor.SetDisplayName(join.DisplayName);
+            actor.JoinRoom(join.RoomId);
+            if (join.ObserveOnly) _observerActor = actor;
+            else _actors[actor.ActorId] = actor;
+        }
+
         logger.LogInformation(
             "bingo room: actor joined. room={RoomId}, actor={ActorId}",
             Context.SpotRid.ToString(),
@@ -78,11 +87,11 @@ internal sealed class BingoRoom(
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        PlayerActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var reply = await JoinAsync(actor, request.Decode<BingoRoomJoinReq>(), cancellationToken);
+        var reply = await JoinAsync(admission.ActorId, request.Decode<BingoRoomJoinReq>(), cancellationToken);
         return ZLinkSpotActorJoinResult.Accept(reply);
     }
 
@@ -104,14 +113,15 @@ internal sealed class BingoRoom(
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
-    public async ValueTask<BingoRoomJoinRes> JoinAsync(
-        PlayerActor actor,
+    public ValueTask<BingoRoomJoinRes> JoinAsync(
+        string actorId,
         BingoRoomJoinReq request,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         return request.ObserveOnly
-            ? JoinObserver(actor, request)
-            : await JoinPlayerAsync(actor, request, cancellationToken);
+            ? ValueTask.FromResult(JoinObserver(actorId, request))
+            : ValueTask.FromResult(JoinPlayer(actorId, request));
     }
 
     internal BingoGameChange SubmitCard(string actorId, BingoCard card)
@@ -249,7 +259,7 @@ internal sealed class BingoRoom(
     }
 
     private BingoRoomJoinRes JoinObserver(
-        PlayerActor actor,
+        string actorId,
         BingoRoomJoinReq request)
     {
         if (!_settings.IsObserver)
@@ -257,14 +267,11 @@ internal sealed class BingoRoom(
 
         if (!string.Equals(request.RoomId, _settings.ObservedRoomId, StringComparison.Ordinal))
             throw new InvalidOperationException($"Observer room is not watching room '{request.RoomId}'.");
-
-        actor.SetDisplayName(request.DisplayName);
-        actor.JoinRoom(request.RoomId);
-        _observerActor = actor;
+        _pendingJoins[actorId] = request;
         logger.LogInformation(
             "bingo observer room: actor joined. observedRoom={ObservedRoomId}, observer={ActorId}, nodeRid={NodeRid}",
             _settings.ObservedRoomId,
-            actor.ActorId,
+            actorId,
             Context.NodeRid.ToString());
         return new BingoRoomJoinRes
         {
@@ -276,28 +283,24 @@ internal sealed class BingoRoom(
         };
     }
 
-    private async ValueTask<BingoRoomJoinRes> JoinPlayerAsync(
-        PlayerActor actor,
-        BingoRoomJoinReq request,
-        CancellationToken cancellationToken)
+    private BingoRoomJoinRes JoinPlayer(
+        string actorId,
+        BingoRoomJoinReq request)
     {
         var game = RequireGame();
-        actor.SetDisplayName(request.DisplayName);
-        actor.JoinRoom(request.RoomId);
-        _actors[actor.ActorId] = actor;
 
-        var change = game.JoinPlayer(actor.ActorId, actor.DisplayName);
+        _pendingJoins[actorId] = request;
+        var change = game.JoinPlayer(actorId, request.DisplayName);
         logger.LogInformation(
             "bingo room: actor accepted. room={RoomId}, actor={ActorId}, status={Status}, events={EventCount}",
             request.RoomId,
-            actor.ActorId,
+            actorId,
             change.State.Status,
             change.Events.Count);
-        await PublishAsync(change, cancellationToken);
         logger.LogInformation(
             "bingo room: actor join reply ready. room={RoomId}, actor={ActorId}, status={Status}",
             request.RoomId,
-            actor.ActorId,
+            actorId,
             change.State.Status);
         return new BingoRoomJoinRes { State = change.State };
     }

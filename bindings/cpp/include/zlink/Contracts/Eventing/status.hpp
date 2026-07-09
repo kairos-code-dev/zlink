@@ -21,7 +21,6 @@ enum class monitor_state : uint32_t
 {
     ready = 1,
     bound_ready = 2,
-    send_ready = 1,
     closed = 8
 };
 

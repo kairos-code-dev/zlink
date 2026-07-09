@@ -9,6 +9,7 @@
 #include <Runtime/Native/message_access.hpp>
 #include <Runtime/Native/native_message_parts.hpp>
 #include <Runtime/Service/detail.hpp>
+#include <Runtime/Service/pimpl_move.hpp>
 #include <Runtime/Service/request_submitter.hpp>
 #include <Runtime/Service/spot_access.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
@@ -102,28 +103,15 @@ spot_route_bridge_t::~spot_route_bridge_t ()
 }
 
 spot_route_bridge_t::spot_route_bridge_t (spot_route_bridge_t &&other_) noexcept :
-    _impl (std::move (other_._impl)), _last_error (other_._last_error)
+    _impl (), _last_error (0)
 {
-    if (!other_._impl)
-        other_._impl = std::make_unique<impl> ();
-    other_._last_error = 0;
+    detail::move_construct_pimpl (_impl, _last_error, other_._impl, other_._last_error);
 }
 
 spot_route_bridge_t &spot_route_bridge_t::operator= (spot_route_bridge_t &&other_) noexcept
 {
-    if (this == &other_)
-        return *this;
-    try {
-        close ();
-    }
-    catch (...) {
-    }
-    _impl = std::move (other_._impl);
-    _last_error = other_._last_error;
-    if (!other_._impl)
-        other_._impl = std::make_unique<impl> ();
-    other_._last_error = 0;
-    return *this;
+    return detail::move_assign_pimpl_and_close (*this, other_, _impl, _last_error, other_._impl,
+                                                other_._last_error);
 }
 
 bool spot_route_bridge_t::valid () const noexcept
@@ -155,12 +143,15 @@ bool spot_route_bridge_t::send (const std::string &channel_name_,
                                 send_flags_t flags_)
 {
     validate_channel_name (channel_name_);
+    const zlink_routing_id_t target_node_rid =
+      zlink::detail::routing_id_native_value (target_node_rid_);
+    const zlink_routing_id_t target_spot_rid =
+      zlink::detail::routing_id_native_value (target_spot_rid_);
     const int rc = zlink::detail::submit_message_array (
       parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
           return zlink_spot_route_bridge_send (
-            _impl->handle, channel_name_.c_str (),
-            zlink::detail::routing_id_native (target_node_rid_),
-            zlink::detail::routing_id_native (target_spot_rid_), native_parts_, part_count_,
+            _impl->handle, channel_name_.c_str (), &target_node_rid, &target_spot_rid,
+            native_parts_, part_count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     if (rc == 0)
@@ -181,6 +172,10 @@ spot_route_bridge_t::request (const std::string &channel_name_,
                               std::chrono::milliseconds timeout_)
 {
     validate_channel_name (channel_name_);
+    const zlink_routing_id_t target_node_rid =
+      zlink::detail::routing_id_native_value (target_node_rid_);
+    const zlink_routing_id_t target_spot_rid =
+      zlink::detail::routing_id_native_value (target_spot_rid_);
     const uint32_t timeout_ms =
       zlink::detail::native_request_timeout_ms (timeout_, std::chrono::milliseconds (0));
     std::unique_ptr<detail::request_state_t> state (detail::make_future_request_state ());
@@ -189,9 +184,8 @@ spot_route_bridge_t::request (const std::string &channel_name_,
     const int raw_rc = zlink::detail::submit_message_array (
       parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
           return zlink_spot_route_bridge_request (
-            _impl->handle, channel_name_.c_str (),
-            zlink::detail::routing_id_native (target_node_rid_),
-            zlink::detail::routing_id_native (target_spot_rid_), native_parts_, part_count_,
+            _impl->handle, channel_name_.c_str (), &target_node_rid, &target_spot_rid,
+            native_parts_, part_count_,
             &detail::request_callback_trampoline, state.get (), ZLINK_SEND_FLAGS_NONE, timeout_ms);
       });
     if (raw_rc == -1)
@@ -215,6 +209,10 @@ bool spot_route_bridge_t::request (const std::string &channel_name_,
                                    std::chrono::milliseconds timeout_)
 {
     validate_channel_name (channel_name_);
+    const zlink_routing_id_t target_node_rid =
+      zlink::detail::routing_id_native_value (target_node_rid_);
+    const zlink_routing_id_t target_spot_rid =
+      zlink::detail::routing_id_native_value (target_spot_rid_);
     const uint32_t timeout_ms =
       zlink::detail::native_request_timeout_ms (timeout_, std::chrono::milliseconds (0));
     std::unique_ptr<detail::request_state_t> state (
@@ -223,9 +221,8 @@ bool spot_route_bridge_t::request (const std::string &channel_name_,
     const int raw_rc = zlink::detail::submit_message_array (
       parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
           return zlink_spot_route_bridge_request (
-            _impl->handle, channel_name_.c_str (),
-            zlink::detail::routing_id_native (target_node_rid_),
-            zlink::detail::routing_id_native (target_spot_rid_), native_parts_, part_count_,
+            _impl->handle, channel_name_.c_str (), &target_node_rid, &target_spot_rid,
+            native_parts_, part_count_,
             &detail::request_callback_trampoline, state.get (),
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), timeout_ms);
       });
@@ -309,28 +306,15 @@ spot_node_publisher_t::~spot_node_publisher_t ()
 }
 
 spot_node_publisher_t::spot_node_publisher_t (spot_node_publisher_t &&other_) noexcept :
-    _impl (std::move (other_._impl)), _last_error (other_._last_error)
+    _impl (), _last_error (0)
 {
-    if (!other_._impl)
-        other_._impl = std::make_unique<impl> ();
-    other_._last_error = 0;
+    detail::move_construct_pimpl (_impl, _last_error, other_._impl, other_._last_error);
 }
 
 spot_node_publisher_t &spot_node_publisher_t::operator= (spot_node_publisher_t &&other_) noexcept
 {
-    if (this == &other_)
-        return *this;
-    try {
-        close ();
-    }
-    catch (...) {
-    }
-    _impl = std::move (other_._impl);
-    _last_error = other_._last_error;
-    if (!other_._impl)
-        other_._impl = std::make_unique<impl> ();
-    other_._last_error = 0;
-    return *this;
+    return detail::move_assign_pimpl_and_close (*this, other_, _impl, _last_error, other_._impl,
+                                                other_._last_error);
 }
 
 bool spot_node_publisher_t::valid () const noexcept

@@ -26,6 +26,4 @@ struct subscription_filter_t
     bool is_pattern = false;
 };
 
-using subscription_entry_t = subscription_filter_t;
-
 } // namespace zlink

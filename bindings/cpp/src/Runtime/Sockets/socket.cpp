@@ -63,28 +63,28 @@ void socket_t::bind (const std::string &endpoint_)
 {
     const int rc = zlink_bind (detail::native_handle (*this), endpoint_.c_str ());
     if (rc != 0)
-        throw bind_error_t (detail::bind_result_from_errno (zlink_errno ()), zlink_errno ());
+        throw bind_error_t (static_cast<bind_result_t> (rc), zlink_errno ());
 }
 
 void socket_t::connect (const std::string &endpoint_)
 {
     const int rc = zlink_connect (detail::native_handle (*this), endpoint_.c_str ());
     if (rc != 0)
-        throw connect_error_t (detail::connect_result_from_errno (zlink_errno ()), zlink_errno ());
+        throw connect_error_t (static_cast<connect_result_t> (rc), zlink_errno ());
 }
 
 void socket_t::unbind (const std::string &endpoint_)
 {
     const int rc = zlink_unbind (detail::native_handle (*this), endpoint_.c_str ());
     if (rc != 0)
-        throw connect_error_t (detail::connect_result_from_errno (zlink_errno ()), zlink_errno ());
+        throw connect_error_t (static_cast<connect_result_t> (rc), zlink_errno ());
 }
 
 void socket_t::disconnect (const std::string &endpoint_)
 {
     const int rc = zlink_disconnect (detail::native_handle (*this), endpoint_.c_str ());
     if (rc != 0)
-        throw connect_error_t (detail::connect_result_from_errno (zlink_errno ()), zlink_errno ());
+        throw connect_error_t (static_cast<connect_result_t> (rc), zlink_errno ());
 }
 
 void socket_t::disconnect_rid (const routing_id_t &peer_rid_)
@@ -154,11 +154,12 @@ int socket_t::send (std::vector<message_t> &parts_, send_flags_t flags_)
 
 int socket_t::send (const routing_id_t &target_rid_, message_t &part_, send_flags_t flags_)
 {
+    const zlink_routing_id_t target_rid = zlink::detail::routing_id_native_value (target_rid_);
     return detail::submit_one_message_part (
       part_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
           return zlink_send_part_rid (
-            detail::native_handle (*this), zlink::detail::routing_id_native (target_rid_),
-            part_out_, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_);
+            detail::native_handle (*this), &target_rid, part_out_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_);
       });
 }
 
@@ -166,53 +167,12 @@ int socket_t::send (const routing_id_t &target_rid_,
                     std::vector<message_t> &parts_,
                     send_flags_t flags_)
 {
+    const zlink_routing_id_t target_rid = zlink::detail::routing_id_native_value (target_rid_);
     return detail::submit_message_parts (
       parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
           return zlink_send_part_rid (
-            detail::native_handle (*this), zlink::detail::routing_id_native (target_rid_),
-            part_out_, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_);
-      });
-}
-
-int socket_t::try_send_result (send_result_t &result_, message_t &part_)
-{
-    return detail::send_single_no_wait_result (
-      result_, part_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-          return zlink_send_part (detail::native_handle (*this), part_out_, ZLINK_DONTWAIT,
-                                  part_flag_);
-      });
-}
-
-int socket_t::try_send_result (send_result_t &result_, std::vector<message_t> &parts_)
-{
-    return detail::submit_message_parts_no_wait (
-      result_, parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-          return zlink_send_part (detail::native_handle (*this), part_out_, ZLINK_DONTWAIT,
-                                  part_flag_);
-      });
-}
-
-int socket_t::try_send_result (send_result_t &result_,
-                               const routing_id_t &target_rid_,
-                               message_t &part_)
-{
-    return detail::send_single_no_wait_result (
-      result_, part_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-          return zlink_send_part_rid (detail::native_handle (*this),
-                                      zlink::detail::routing_id_native (target_rid_), part_out_,
-                                      ZLINK_DONTWAIT, part_flag_);
-      });
-}
-
-int socket_t::try_send_result (send_result_t &result_,
-                               const routing_id_t &target_rid_,
-                               std::vector<message_t> &parts_)
-{
-    return detail::submit_message_parts_no_wait (
-      result_, parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-          return zlink_send_part_rid (detail::native_handle (*this),
-                                      zlink::detail::routing_id_native (target_rid_), part_out_,
-                                      ZLINK_DONTWAIT, part_flag_);
+            detail::native_handle (*this), &target_rid, part_out_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_);
       });
 }
 
@@ -281,29 +241,6 @@ int socket_t::publish (const std::string &topic_id_,
       });
 }
 
-int socket_t::try_publish_result (send_result_t &result_,
-                                  const std::string &topic_id_,
-                                  message_t &part_)
-{
-    detail::validate_no_embedded_null (topic_id_, "topic");
-    return detail::send_single_no_wait_result (
-      result_, part_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-          return zlink_publish_part (detail::native_handle (*this), topic_id_.c_str (), part_out_,
-                                     ZLINK_DONTWAIT, part_flag_);
-      });
-}
-
-int socket_t::try_publish_result (send_result_t &result_,
-                                  const std::string &topic_id_,
-                                  std::vector<message_t> &parts_)
-{
-    return detail::send_parts_no_wait_result (
-      result_, parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-          return zlink_publish_part (detail::native_handle (*this), topic_id_.c_str (), part_out_,
-                                     ZLINK_DONTWAIT, part_flag_);
-      });
-}
-
 int socket_t::subscribe (topic_message_t &message_, recv_flags_t flags_)
 {
     return detail::read_subscription_message (
@@ -343,10 +280,7 @@ int socket_t::subscribe_part (std::optional<routing_id_t> &source_rid_out_,
     return 0;
 }
 
-int socket_t::subscription_event (routing_id_t &source_rid_out_,
-                                  bool &subscribed_out_,
-                                  std::string &topic_id_out_,
-                                  recv_flags_t flags_)
+int socket_t::subscription_event (subscription_event_t &event_, recv_flags_t flags_)
 {
     detail::scoped_native_message_t part;
     if (!part.init ())
@@ -360,8 +294,6 @@ int socket_t::subscription_event (routing_id_t &source_rid_out_,
     if (rc != 0)
         return rc;
 
-    source_rid_out_ = detail::routing_id_or_empty (source_rid);
-
     const unsigned char *data = static_cast<const unsigned char *> (zlink_msg_data (part.get ()));
     const size_t size = zlink_msg_size (part.get ());
     if (has_more) {
@@ -369,9 +301,14 @@ int socket_t::subscription_event (routing_id_t &source_rid_out_,
         return -1;
     }
 
-    subscribed_out_ = size > 0 && data[0] != 0;
-    topic_id_out_.assign (size > 1 ? reinterpret_cast<const char *> (data + 1) : "",
-                          size > 0 ? size - 1 : 0);
+    event_.routing_id = std::nullopt;
+    event_.topic.clear ();
+    event_.subscribed = size > 0 && data[0] != 0;
+    const routing_id_t source = detail::routing_id_or_empty (source_rid);
+    if (!zlink::detail::routing_id_empty (source))
+        event_.routing_id = source;
+    event_.topic.assign (size > 1 ? reinterpret_cast<const char *> (data + 1) : "",
+                         size > 0 ? size - 1 : 0);
     return 0;
 }
 
@@ -400,20 +337,6 @@ int socket_t::subscription_at (size_t index_, std::string &filter_, bool *is_pat
         return rc;
     if (is_pattern_)
         *is_pattern_ = pattern != 0;
-    return 0;
-}
-
-int socket_t::subscription_event (subscription_event_t &event_, recv_flags_t flags_)
-{
-    event_.routing_id = std::nullopt;
-    event_.topic.clear ();
-    event_.subscribed = false;
-    routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();
-    const int rc = subscription_event (source_rid, event_.subscribed, event_.topic, flags_);
-    if (rc != 0)
-        return rc;
-    if (!zlink::detail::routing_id_empty (source_rid))
-        event_.routing_id = source_rid;
     return 0;
 }
 

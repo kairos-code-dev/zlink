@@ -49,275 +49,275 @@ sub_socket_options_t::sub_socket_options_t (socket_t &socket_) noexcept :
 
 std::chrono::milliseconds common_socket_options_t::linger () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::linger));
 }
 
 void common_socket_options_t::linger (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::linger,
                                           detail::native_option_ms (value));
 }
 
 message_count_t common_socket_options_t::send_hwm () const
 {
-    return message_count_t::value (detail::get_common_option_value<int> (
+    return message_count_t::value (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::sndhwm));
 }
 
 void common_socket_options_t::send_hwm (message_count_t value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::sndhwm, value.value ());
 }
 
 message_count_t common_socket_options_t::recv_hwm () const
 {
-    return message_count_t::value (detail::get_common_option_value<int> (
+    return message_count_t::value (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::rcvhwm));
 }
 
 void common_socket_options_t::recv_hwm (message_count_t value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::rcvhwm, value.value ());
 }
 
 std::chrono::milliseconds common_socket_options_t::send_timeout () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::sndtimeo));
 }
 
 void common_socket_options_t::send_timeout (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::sndtimeo,
                                           detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::recv_timeout () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::rcvtimeo));
 }
 
 void common_socket_options_t::recv_timeout (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::rcvtimeo,
                                           detail::native_option_ms (value));
 }
 
 bool common_socket_options_t::immediate () const
 {
-    return detail::get_common_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                                  detail::socket_option_id::immediate)
            != 0;
 }
 
 void common_socket_options_t::immediate (bool value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::immediate, value ? 1 : 0);
 }
 
 std::chrono::milliseconds common_socket_options_t::connect_timeout () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::connect_timeout));
 }
 
 void common_socket_options_t::connect_timeout (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::connect_timeout,
                                           detail::native_option_ms (value));
 }
 
 bool common_socket_options_t::ipv6 () const
 {
-    return detail::get_common_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                                  detail::socket_option_id::ipv6)
            != 0;
 }
 
 void common_socket_options_t::ipv6 (bool value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::ipv6, value ? 1 : 0);
 }
 
 bool common_socket_options_t::tcp_no_delay () const
 {
-    return detail::get_common_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                                  detail::socket_option_id::tcp_nodelay)
            != 0;
 }
 
 void common_socket_options_t::tcp_no_delay (bool value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::tcp_nodelay, value ? 1 : 0);
 }
 
 tcp_keepalive_mode_t common_socket_options_t::tcp_keepalive () const
 {
-    return static_cast<tcp_keepalive_mode_t> (detail::get_common_option_value<int> (
+    return static_cast<tcp_keepalive_mode_t> (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::tcp_keepalive));
 }
 
 void common_socket_options_t::tcp_keepalive (tcp_keepalive_mode_t value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::tcp_keepalive,
                                           static_cast<int> (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::heartbeat_interval () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::heartbeat_ivl));
 }
 
 void common_socket_options_t::heartbeat_interval (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::heartbeat_ivl,
                                           detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::heartbeat_ttl () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::heartbeat_ttl));
 }
 
 void common_socket_options_t::heartbeat_ttl (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::heartbeat_ttl,
                                           detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::heartbeat_timeout () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::heartbeat_timeout));
 }
 
 void common_socket_options_t::heartbeat_timeout (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::heartbeat_timeout,
                                           detail::native_option_ms (value));
 }
 
 rid_duplicate_policy_t common_socket_options_t::rid_duplicate_policy () const
 {
-    return static_cast<rid_duplicate_policy_t> (detail::get_common_option_value<int> (
+    return static_cast<rid_duplicate_policy_t> (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::rid_duplicate_policy));
 }
 
 void common_socket_options_t::rid_duplicate_policy (rid_duplicate_policy_t value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::rid_duplicate_policy,
                                           static_cast<int> (value));
 }
 
 byte_size_t common_socket_options_t::max_message_size () const
 {
-    return byte_size_t::bytes (detail::get_common_option_value<int64_t> (
+    return byte_size_t::bytes (detail::get_typed_option_value<int64_t> (
       detail::native_option_handle (_socket), detail::socket_option_id::maxmsgsize));
 }
 
 void common_socket_options_t::max_message_size (byte_size_t value)
 {
-    detail::set_common_option_value<int64_t> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int64_t> (detail::native_option_handle (_socket),
                                               detail::socket_option_id::maxmsgsize, value.bytes ());
 }
 
 socket_backlog_t common_socket_options_t::backlog () const
 {
-    return socket_backlog_t::value (detail::get_common_option_value<int> (
+    return socket_backlog_t::value (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::backlog));
 }
 
 void common_socket_options_t::backlog (socket_backlog_t value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::backlog, value.value ());
 }
 
 std::chrono::milliseconds common_socket_options_t::reconnect_interval () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::reconnect_ivl));
 }
 
 void common_socket_options_t::reconnect_interval (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::reconnect_ivl,
                                           detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::reconnect_interval_max () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::reconnect_ivl_max));
 }
 
 void common_socket_options_t::reconnect_interval_max (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::reconnect_ivl_max,
                                           detail::native_option_ms (value));
 }
 
 submit_retry_mode_t common_socket_options_t::submit_retry_mode () const
 {
-    return static_cast<submit_retry_mode_t> (detail::get_common_option_value<int> (
+    return static_cast<submit_retry_mode_t> (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::submit_retry_mode));
 }
 
 void common_socket_options_t::submit_retry_mode (submit_retry_mode_t value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::submit_retry_mode,
                                           static_cast<int> (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::submit_retry_timeout () const
 {
-    return std::chrono::milliseconds (detail::get_common_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::submit_retry_timeout));
 }
 
 void common_socket_options_t::submit_retry_timeout (std::chrono::milliseconds value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::submit_retry_timeout,
                                           detail::native_option_ms (value));
 }
 
 int common_socket_options_t::submit_retry_attempts () const
 {
-    return detail::get_common_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                                  detail::socket_option_id::submit_retry_attempts);
 }
 
 void common_socket_options_t::submit_retry_attempts (int value)
 {
-    detail::set_common_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::socket_option_id::submit_retry_attempts, value);
 }
 
 std::string common_socket_options_t::last_endpoint () const
 {
-    return detail::get_common_option_string (detail::native_option_handle (_socket),
+    return detail::get_typed_option_string (detail::native_option_handle (_socket),
                                              detail::socket_option_id::last_endpoint);
 }
 

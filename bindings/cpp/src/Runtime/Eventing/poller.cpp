@@ -36,6 +36,13 @@ poll_source_kind_t to_source_kind (zlink_poller_source_kind_t source_kind_) noex
     }
 }
 
+[[noreturn]] void throw_poll_wait_failure (zlink_config_result_t error_, int err_)
+{
+    if (error_ != ZLINK_CONFIG_OK)
+        throw recv_error_t (static_cast<recv_result_t> (static_cast<int> (error_)), err_);
+    throw recv_error_t (recv_result_t::invalid_handle, err_);
+}
+
 } // namespace
 
 struct poller_t::impl
@@ -330,7 +337,7 @@ struct poller_t::impl
                 errno = err;
                 return 0;
             }
-            throw recv_error_t (recv_result_t::invalid_handle, err);
+            throw_poll_wait_failure (error, err);
         }
 
         for (int i = 0; i < rc; ++i)
@@ -375,7 +382,7 @@ struct poller_t::impl
                 errno = err;
                 return 0;
             }
-            throw recv_error_t (recv_result_t::invalid_handle, err);
+            throw_poll_wait_failure (error, err);
         }
 
         size_t out = 0;

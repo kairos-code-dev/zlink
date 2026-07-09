@@ -119,16 +119,6 @@ inline void request_callback_trampoline (zlink_request_result_t result_,
                             part_count_);
 }
 
-inline void actor_join_callback_trampoline (const zlink_actor_join_result_t *result_,
-                                            zlink_msg_t *parts_,
-                                            size_t part_count_,
-                                            void *userdata_)
-{
-    const zlink_request_result_t result = result_ ? result_->result : ZLINK_REQUEST_INTERNAL_ERROR;
-    complete_request_state (static_cast<request_state_t *> (userdata_), result, parts_,
-                            part_count_);
-}
-
 } // namespace detail
 
 

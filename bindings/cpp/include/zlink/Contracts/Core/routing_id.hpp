@@ -75,8 +75,7 @@ enum class thread_scheduling_policy_t : int
 enum class rid_duplicate_policy_t : int
 {
     reject = 0,   ///< Reject the new peer and keep the existing route.
-    handover = 1, ///< Hand the routing id to the new peer, dropping the previous holder.
-    replace = 1   ///< Alias for handover.
+    handover = 1  ///< Hand the routing id to the new peer, dropping the previous holder.
 };
 
 class routing_id_t;

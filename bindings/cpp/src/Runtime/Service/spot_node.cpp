@@ -5,6 +5,8 @@
 #include <Runtime/Native/message_access.hpp>
 #include <Runtime/Native/native_message_parts.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
+#include <Runtime/Service/native_array_fetch.hpp>
+#include <Runtime/Service/pimpl_move.hpp>
 #include <Runtime/Service/service_model_access.hpp>
 #include <Runtime/Service/spot_access.hpp>
 #include <Runtime/Options/option_ids.hpp>
@@ -117,29 +119,15 @@ spot_node_t::~spot_node_t ()
     }
 }
 
-spot_node_t::spot_node_t (spot_node_t &&other_) noexcept :
-    _impl (std::move (other_._impl)), _last_error (other_._last_error)
+spot_node_t::spot_node_t (spot_node_t &&other_) noexcept : _impl (), _last_error (0)
 {
-    if (!other_._impl)
-        other_._impl = std::make_unique<impl> ();
-    other_._last_error = 0;
+    detail::move_construct_pimpl (_impl, _last_error, other_._impl, other_._last_error);
 }
 
 spot_node_t &spot_node_t::operator= (spot_node_t &&other_) noexcept
 {
-    if (this == &other_)
-        return *this;
-    try {
-        close ();
-    }
-    catch (...) {
-    }
-    _impl = std::move (other_._impl);
-    _last_error = other_._last_error;
-    if (!other_._impl)
-        other_._impl = std::make_unique<impl> ();
-    other_._last_error = 0;
-    return *this;
+    return detail::move_assign_pimpl_and_close (*this, other_, _impl, _last_error, other_._impl,
+                                                other_._last_error);
 }
 
 bool spot_node_t::valid () const noexcept
@@ -364,25 +352,13 @@ spot_node_status_t spot_node_t::status () const
 
 std::vector<spot_node_peer_entry_t> spot_node_t::peers () const
 {
-    size_t count = 0;
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_peers (_impl->handle, nullptr, nullptr, &count)));
-    std::vector<zlink_spot_node_peer_entry_t> native (count);
-    if (count > 0) {
-        while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_spot_node_peers (_impl->handle, nullptr, native.data (), &count));
-            if (result == config_result_t::ok) {
-                native.resize (count);
-                break;
-            }
-            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
-                native.resize (count);
-                continue;
-            }
-            detail::throw_if_failed<config_error_t> (result);
-        }
-    }
+    auto native = detail::fetch_growable_native_array<zlink_spot_node_peer_entry_t> (
+      [&] (size_t *count_) {
+          return zlink_spot_node_peers (_impl->handle, nullptr, nullptr, count_);
+      },
+      [&] (zlink_spot_node_peer_entry_t *entries_, size_t *count_) {
+          return zlink_spot_node_peers (_impl->handle, nullptr, entries_, count_);
+      });
     std::vector<spot_node_peer_entry_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)
@@ -403,25 +379,13 @@ spot_node_t::peers_query (const spot_node_peer_filter_t &filter_) const
     if (filter_.state ())
         native_filter.state = static_cast<zlink_spot_peer_state_t> (*filter_.state ());
 
-    size_t count = 0;
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_peers (_impl->handle, &native_filter, nullptr, &count)));
-    std::vector<zlink_spot_node_peer_entry_t> native (count);
-    if (count > 0) {
-        while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_spot_node_peers (_impl->handle, &native_filter, native.data (), &count));
-            if (result == config_result_t::ok) {
-                native.resize (count);
-                break;
-            }
-            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
-                native.resize (count);
-                continue;
-            }
-            detail::throw_if_failed<config_error_t> (result);
-        }
-    }
+    auto native = detail::fetch_growable_native_array<zlink_spot_node_peer_entry_t> (
+      [&] (size_t *count_) {
+          return zlink_spot_node_peers (_impl->handle, &native_filter, nullptr, count_);
+      },
+      [&] (zlink_spot_node_peer_entry_t *entries_, size_t *count_) {
+          return zlink_spot_node_peers (_impl->handle, &native_filter, entries_, count_);
+      });
     std::vector<spot_node_peer_entry_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)
@@ -446,25 +410,13 @@ spot_node_t::subjects (const spot_node_subject_filter_t *filter_) const
         filter_ptr = &native_filter;
     }
 
-    size_t count = 0;
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_subjects (_impl->handle, filter_ptr, nullptr, &count)));
-    std::vector<zlink_spot_node_subject_entry_t> native (count);
-    if (count > 0) {
-        while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_spot_node_subjects (_impl->handle, filter_ptr, native.data (), &count));
-            if (result == config_result_t::ok) {
-                native.resize (count);
-                break;
-            }
-            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
-                native.resize (count);
-                continue;
-            }
-            detail::throw_if_failed<config_error_t> (result);
-        }
-    }
+    auto native = detail::fetch_growable_native_array<zlink_spot_node_subject_entry_t> (
+      [&] (size_t *count_) {
+          return zlink_spot_node_subjects (_impl->handle, filter_ptr, nullptr, count_);
+      },
+      [&] (zlink_spot_node_subject_entry_t *entries_, size_t *count_) {
+          return zlink_spot_node_subjects (_impl->handle, filter_ptr, entries_, count_);
+      });
     std::vector<spot_node_subject_entry_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)
@@ -489,25 +441,13 @@ spot_node_t::internal_sockets (const spot_node_socket_filter_t *filter_) const
         filter_ptr = &native_filter;
     }
 
-    size_t count = 0;
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_internal_sockets (_impl->handle, filter_ptr, nullptr, &count)));
-    std::vector<zlink_spot_node_socket_entry_t> native (count);
-    if (count > 0) {
-        while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_spot_node_internal_sockets (_impl->handle, filter_ptr, native.data (), &count));
-            if (result == config_result_t::ok) {
-                native.resize (count);
-                break;
-            }
-            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
-                native.resize (count);
-                continue;
-            }
-            detail::throw_if_failed<config_error_t> (result);
-        }
-    }
+    auto native = detail::fetch_growable_native_array<zlink_spot_node_socket_entry_t> (
+      [&] (size_t *count_) {
+          return zlink_spot_node_internal_sockets (_impl->handle, filter_ptr, nullptr, count_);
+      },
+      [&] (zlink_spot_node_socket_entry_t *entries_, size_t *count_) {
+          return zlink_spot_node_internal_sockets (_impl->handle, filter_ptr, entries_, count_);
+      });
     std::vector<spot_node_socket_entry_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)
@@ -536,27 +476,28 @@ actor_ref_t spot_node_t::remote_actor_ref (const routing_id_t &target_node_rid_,
     return zlink::detail::actor_model_access_t::from_native (native);
 }
 
+actor_ref_t spot_node_t::remote_actor_ref (const routing_id_t &target_node_rid_,
+                                           const std::string &actor_id_,
+                                           uint64_t generation_)
+{
+    zlink::detail::validate_bounded_c_string (actor_id_, 256 - 1u, "actor_id");
+    zlink_actor_ref_t native;
+    std::memset (&native, 0, sizeof (native));
+    native.node_rid = *zlink::detail::routing_id_native (target_node_rid_);
+    std::snprintf (native.actor_id, sizeof (native.actor_id), "%s", actor_id_.c_str ());
+    native.generation = generation_;
+    return zlink::detail::actor_model_access_t::from_native (native);
+}
+
 std::vector<spot_node_spot_entry_t> spot_node_t::spots () const
 {
-    size_t count = 0;
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_spot_node_spots (_impl->handle, nullptr, &count)));
-    std::vector<zlink_spot_node_spot_entry_t> native (count);
-    if (count > 0) {
-        while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_spot_node_spots (_impl->handle, native.data (), &count));
-            if (result == config_result_t::ok) {
-                native.resize (count);
-                break;
-            }
-            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
-                native.resize (count);
-                continue;
-            }
-            detail::throw_if_failed<config_error_t> (result);
-        }
-    }
+    auto native = detail::fetch_growable_native_array<zlink_spot_node_spot_entry_t> (
+      [&] (size_t *count_) {
+          return zlink_spot_node_spots (_impl->handle, nullptr, count_);
+      },
+      [&] (zlink_spot_node_spot_entry_t *entries_, size_t *count_) {
+          return zlink_spot_node_spots (_impl->handle, entries_, count_);
+      });
     std::vector<spot_node_spot_entry_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)
@@ -566,25 +507,13 @@ std::vector<spot_node_spot_entry_t> spot_node_t::spots () const
 
 std::vector<spot_node_actor_entry_t> spot_node_t::actors () const
 {
-    size_t count = 0;
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_spot_node_actors (_impl->handle, nullptr, &count)));
-    std::vector<zlink_spot_node_actor_entry_t> native (count);
-    if (count > 0) {
-        while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_spot_node_actors (_impl->handle, native.data (), &count));
-            if (result == config_result_t::ok) {
-                native.resize (count);
-                break;
-            }
-            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
-                native.resize (count);
-                continue;
-            }
-            detail::throw_if_failed<config_error_t> (result);
-        }
-    }
+    auto native = detail::fetch_growable_native_array<zlink_spot_node_actor_entry_t> (
+      [&] (size_t *count_) {
+          return zlink_spot_node_actors (_impl->handle, nullptr, count_);
+      },
+      [&] (zlink_spot_node_actor_entry_t *entries_, size_t *count_) {
+          return zlink_spot_node_actors (_impl->handle, entries_, count_);
+      });
     std::vector<spot_node_actor_entry_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)

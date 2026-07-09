@@ -6,41 +6,41 @@ namespace zlink
 
 bool router_socket_options_t::mandatory () const
 {
-    return detail::get_router_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                                  detail::router_option_id::mandatory)
            != 0;
 }
 
 void router_socket_options_t::mandatory (bool value)
 {
-    detail::set_router_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::router_option_id::mandatory, value ? 1 : 0);
 }
 
 bool router_socket_options_t::handover () const
 {
-    return detail::get_common_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                                  detail::socket_option_id::rid_duplicate_policy)
            == ZLINK_RID_DUPLICATE_HANDOVER;
 }
 
 void router_socket_options_t::handover (bool value)
 {
-    detail::set_common_option_value<int> (
+    detail::set_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::rid_duplicate_policy,
       value ? ZLINK_RID_DUPLICATE_HANDOVER : ZLINK_RID_DUPLICATE_REJECT);
 }
 
 bool router_socket_options_t::probe () const
 {
-    return detail::get_router_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                                  detail::router_option_id::probe)
            != 0;
 }
 
 void router_socket_options_t::probe (bool value)
 {
-    detail::set_router_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::router_option_id::probe, value ? 1 : 0);
 }
 
@@ -71,26 +71,26 @@ void router_socket_options_t::connect_routing_id (const routing_id_t &value)
 
 std::chrono::milliseconds router_socket_options_t::request_timeout () const
 {
-    return std::chrono::milliseconds (detail::get_router_option_value<int> (
+    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
       detail::native_option_handle (_socket), detail::router_option_id::request_timeout_ms));
 }
 
 void router_socket_options_t::request_timeout (std::chrono::milliseconds value)
 {
-    detail::set_router_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                           detail::router_option_id::request_timeout_ms,
                                           detail::native_option_ms (value));
 }
 
 peer_weight_t router_socket_options_t::peer_weight () const
 {
-    return peer_weight_t::value (detail::get_router_option_value<uint32_t> (
+    return peer_weight_t::value (detail::get_typed_option_value<uint32_t> (
       detail::native_option_handle (_socket), detail::router_option_id::weight));
 }
 
 void router_socket_options_t::peer_weight (peer_weight_t value)
 {
-    detail::set_router_option_value<uint32_t> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<uint32_t> (detail::native_option_handle (_socket),
                                                detail::router_option_id::weight, value.value ());
 }
 

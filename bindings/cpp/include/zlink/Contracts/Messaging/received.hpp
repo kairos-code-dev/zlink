@@ -3,6 +3,7 @@
 
 #include "../Core/routing_id.hpp"
 #include "../Sockets/results.hpp"
+#include "lazy_message_parts.hpp"
 #include "message.hpp"
 
 #include <cstdint>
@@ -39,7 +40,7 @@ class received_t
 
     bool is_single_part () const noexcept
     {
-        return _single_part.has_value () || _parts.size () == 1u;
+        return _parts.is_single_part ();
     }
     message_t &first_part ();
     message_t single_part_or_throw ();
@@ -79,13 +80,10 @@ class received_t
                 std::optional<uint64_t> request_seq_,
                 message_t part_);
 
-    void materialize_parts () const;
-
     std::optional<routing_id_t> _routing_id;
     std::optional<routing_id_t> _spot_rid;
     std::optional<uint64_t> _request_seq;
-    mutable std::optional<message_t> _single_part;
-    mutable std::vector<message_t> _parts;
+    detail::lazy_message_parts_t _parts;
     // Send/reply context, reconstructed lazily at submit time from the stored
     // routing ids and request sequence. Avoids per-receive std::function
     // closures and their heap allocations on the server hot path.

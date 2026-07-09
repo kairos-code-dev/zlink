@@ -24,11 +24,13 @@ bool is_raw_request_kind (detail::spot_operation_kind_t kind_) noexcept
 
 void ensure_raw_request_state (const detail::spot_operation_state_t &state_)
 {
-    if (!state_.raw_socket)
+    if (!state_.raw.socket)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    if (state_.kind != detail::spot_operation_kind_t::raw_request && !state_.first_rid)
+    if (state_.kind != detail::spot_operation_kind_t::raw_request
+        && !state_.raw.target.first_rid)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    if (state_.kind == detail::spot_operation_kind_t::raw_router_request_spot && !state_.second_rid)
+    if (state_.kind == detail::spot_operation_kind_t::raw_router_request_spot
+        && !state_.raw.target.second_rid)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 }
 
@@ -42,20 +44,26 @@ zlink_submit_result_t submit_raw_request_part (detail::spot_operation_state_t &s
     const uint32_t timeout = is_final_ ? zlink::detail::native_timeout_ms (state_.timeout) : 0u;
     auto callback = is_final_ ? &detail::request_callback_trampoline : nullptr;
     void *userdata = is_final_ ? request_state_ : nullptr;
+    const zlink_routing_id_t first_rid =
+      state_.raw.target.first_rid
+        ? zlink::detail::routing_id_native_value (*state_.raw.target.first_rid)
+        : zlink_routing_id_t {};
+    const zlink_routing_id_t second_rid =
+      state_.raw.target.second_rid
+        ? zlink::detail::routing_id_native_value (*state_.raw.target.second_rid)
+        : zlink_routing_id_t {};
 
     switch (state_.kind) {
         case detail::spot_operation_kind_t::raw_request:
-            return zlink_dealer_request_part (state_.raw_socket, part_out_, flags_, part_flag_,
+            return zlink_dealer_request_part (state_.raw.socket, part_out_, flags_, part_flag_,
                                               timeout, callback, userdata);
         case detail::spot_operation_kind_t::raw_routed_request:
-            return zlink_router_request_part (
-              state_.raw_socket, zlink::detail::routing_id_native (*state_.first_rid), part_out_,
-              flags_, part_flag_, timeout, callback, userdata);
+            return zlink_router_request_part (state_.raw.socket, &first_rid, part_out_, flags_,
+                                              part_flag_, timeout, callback, userdata);
         case detail::spot_operation_kind_t::raw_router_request_spot:
-            return zlink_router_request_spot_part (
-              state_.raw_socket, zlink::detail::routing_id_native (*state_.first_rid),
-              zlink::detail::routing_id_native (*state_.second_rid), part_out_, callback, userdata,
-              flags_, part_flag_, timeout);
+            return zlink_router_request_spot_part (state_.raw.socket, &first_rid, &second_rid,
+                                                   part_out_, callback, userdata, flags_,
+                                                   part_flag_, timeout);
         default:
             return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
@@ -67,7 +75,7 @@ submit_raw_request_awaitable (detail::spot_operation_state_t &state_)
     ensure_raw_request_state (state_);
 
     return detail::submit_request_parts_awaitable (
-      state_.parts, zlink::detail::make_socket_request_progress (state_.raw_socket),
+      state_.message.parts, zlink::detail::make_socket_request_progress (state_.raw.socket),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback_,
            void *request_state_) {
           const bool is_final_ = callback_ != nullptr;
@@ -83,7 +91,7 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
     ensure_raw_request_state (state_);
 
     return detail::submit_request_parts_callback (
-      state_.parts, std::move (callback_), state_.flags,
+      state_.message.parts, std::move (callback_), state_.flags,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
            void *request_state) {
           const bool is_final_ = callback != nullptr;
@@ -97,15 +105,15 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
 async_result_t<std::vector<message_t>>
 submit_actor_request_awaitable (detail::spot_operation_state_t &state_)
 {
-    if (!state_.node || !state_.actor)
+    if (!state_.actor.node || !state_.actor.actor)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     std::unique_ptr<detail::request_state_t> request_state (detail::make_future_request_state ());
     std::future<std::vector<message_t>> future = request_state->promise->get_future ();
-    const int rc = detail::submit_message_array (state_.parts, [&] (zlink_msg_t *native_,
-                                                                    size_t part_count_) {
+    const int rc = detail::submit_message_array (state_.message.parts, [&] (zlink_msg_t *native_,
+                                                                            size_t part_count_) {
         return zlink_spot_node_request_to_actor (
-          zlink::detail::native_handle (*state_.node),
-          zlink::detail::actor_ref_native (*state_.actor), native_, part_count_,
+          zlink::detail::native_handle (*state_.actor.node),
+          zlink::detail::actor_ref_native (*state_.actor.actor), native_, part_count_,
           &detail::request_callback_trampoline, request_state.get (),
           static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
           zlink::detail::native_timeout_ms (state_.timeout));
@@ -119,15 +127,15 @@ submit_actor_request_awaitable (detail::spot_operation_state_t &state_)
 bool submit_actor_request_callback (detail::spot_operation_state_t &state_,
                                     request_callback_t callback_)
 {
-    if (!state_.node || !state_.actor)
+    if (!state_.actor.node || !state_.actor.actor)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_callback_request_state (std::move (callback_)));
-    const int rc = detail::submit_message_array (state_.parts, [&] (zlink_msg_t *native_,
-                                                                    size_t part_count_) {
+    const int rc = detail::submit_message_array (state_.message.parts, [&] (zlink_msg_t *native_,
+                                                                            size_t part_count_) {
         return zlink_spot_node_request_to_actor (
-          zlink::detail::native_handle (*state_.node),
-          zlink::detail::actor_ref_native (*state_.actor), native_, part_count_,
+          zlink::detail::native_handle (*state_.actor.node),
+          zlink::detail::actor_ref_native (*state_.actor.actor), native_, part_count_,
           &detail::request_callback_trampoline, request_state.get (),
           static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
           zlink::detail::native_timeout_ms (state_.timeout));
@@ -140,39 +148,15 @@ bool submit_actor_request_callback (detail::spot_operation_state_t &state_,
 
 } // namespace
 
-request_submit_operation_t::~request_submit_operation_t ()
-{
-    detail::release_state (std::move (_state));
-}
+request_submit_operation_t::~request_submit_operation_t () = default;
 request_submit_operation_t::request_submit_operation_t (request_submit_operation_t &&) noexcept =
   default;
 request_submit_operation_t &
 request_submit_operation_t::operator= (request_submit_operation_t &&) noexcept = default;
 
-request_submit_operation_t::request_submit_operation_t (detail::spot_operation_state_t &&state_) :
-    _state (std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
-{
-}
-
-request_submit_operation_t::request_submit_operation_t (
-  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
-    _state (std::move (state_ptr_))
-{
-}
-
-detail::spot_operation_state_t &request_submit_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::spot_operation_state_t &request_submit_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 request_submit_operation_t &&request_submit_operation_t::message (message_t &part_) &&
 {
-    state ().parts.push_back (std::move (part_));
+    state ().message.parts.push_back (std::move (part_));
     return std::move (*this);
 }
 
@@ -183,75 +167,26 @@ request_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-request_operation_t::~request_operation_t ()
-{
-    detail::release_state (std::move (_state));
-}
+request_operation_t::~request_operation_t () = default;
 request_operation_t::request_operation_t (request_operation_t &&) noexcept = default;
 request_operation_t &request_operation_t::operator= (request_operation_t &&) noexcept = default;
 
-request_operation_t::request_operation_t (detail::spot_operation_state_t &&state_) :
-    _state (std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
-{
-}
-
-request_operation_t::request_operation_t (
-  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
-    _state (std::move (state_ptr_))
-{
-}
-
-detail::spot_operation_state_t &request_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::spot_operation_state_t &request_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 request_submit_operation_t request_operation_t::message (message_t &part_) &&
 {
-    state ().parts.push_back (std::move (part_));
-    return request_submit_operation_t (std::move (_state));
+    state ().message.parts.push_back (std::move (part_));
+    return request_submit_operation_t (release_state_ptr ());
 }
 
-request_callback_submit_operation_t::~request_callback_submit_operation_t ()
-{
-    detail::release_state (std::move (_state));
-}
+request_callback_submit_operation_t::~request_callback_submit_operation_t () = default;
 request_callback_submit_operation_t::request_callback_submit_operation_t (
   request_callback_submit_operation_t &&) noexcept = default;
 request_callback_submit_operation_t &request_callback_submit_operation_t::operator= (
   request_callback_submit_operation_t &&) noexcept = default;
 
-request_callback_submit_operation_t::request_callback_submit_operation_t (
-  detail::spot_operation_state_t &&state_) :
-    _state (std::make_unique<detail::spot_operation_state_t> (std::move (state_)))
-{
-}
-
-request_callback_submit_operation_t::request_callback_submit_operation_t (
-  std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept :
-    _state (std::move (state_ptr_))
-{
-}
-
-detail::spot_operation_state_t &request_callback_submit_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::spot_operation_state_t &request_callback_submit_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 request_callback_submit_operation_t &&
 request_callback_submit_operation_t::message (message_t &part_) &&
 {
-    state ().parts.push_back (std::move (part_));
+    state ().message.parts.push_back (std::move (part_));
     return std::move (*this);
 }
 
@@ -271,13 +206,13 @@ request_callback_submit_operation_t &&request_callback_submit_operation_t::flags
 request_callback_submit_operation_t request_submit_operation_t::flags (int flags_) &&
 {
     state ().flags = send_flags_t (flags_);
-    return request_callback_submit_operation_t (std::move (_state));
+    return request_callback_submit_operation_t (release_state_ptr ());
 }
 
 async_result_t<std::vector<message_t>> request_submit_operation_t::async () &&
 {
     auto &state = this->state ();
-    if (state.parts.empty ())
+    if (state.message.parts.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     if (is_raw_request_kind (state.kind))
@@ -286,21 +221,24 @@ async_result_t<std::vector<message_t>> request_submit_operation_t::async () &&
     if (state.kind == detail::spot_operation_kind_t::request_to_actor)
         return submit_actor_request_awaitable (state);
 
-    if (!state.spot)
+    if (!state.spot.spot)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     switch (state.kind) {
         case detail::spot_operation_kind_t::request_channel:
-            return state.spot->request_channel (state.channel_name, state.parts, state.timeout);
+            return state.spot.spot->request_channel (state.spot.channel_name, state.message.parts,
+                                                     state.timeout);
         case detail::spot_operation_kind_t::request_to_spot:
-            if (!state.first_rid || !state.second_rid)
+            if (!state.spot.target.first_rid || !state.spot.target.second_rid)
                 throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            return state.spot->request_to_spot (*state.first_rid, *state.second_rid, state.parts,
-                                                state.timeout);
+            return state.spot.spot->request_to_spot (*state.spot.target.first_rid,
+                                                     *state.spot.target.second_rid,
+                                                     state.message.parts, state.timeout);
         case detail::spot_operation_kind_t::request_to_router:
-            if (!state.first_rid)
+            if (!state.spot.target.first_rid)
                 throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            return state.spot->request_to_router (*state.first_rid, state.parts, state.timeout);
+            return state.spot.spot->request_to_router (*state.spot.target.first_rid,
+                                                       state.message.parts, state.timeout);
         default:
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }
@@ -308,14 +246,14 @@ async_result_t<std::vector<message_t>> request_submit_operation_t::async () &&
 
 bool request_submit_operation_t::submit (request_callback_t callback_) &&
 {
-    request_callback_submit_operation_t ready (std::move (_state));
+    request_callback_submit_operation_t ready (release_state_ptr ());
     return std::move (ready).submit (std::move (callback_));
 }
 
 bool request_callback_submit_operation_t::submit (request_callback_t callback_) &&
 {
     auto &state = this->state ();
-    if (state.parts.empty ())
+    if (state.message.parts.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     if (is_raw_request_kind (state.kind))
@@ -324,23 +262,26 @@ bool request_callback_submit_operation_t::submit (request_callback_t callback_) 
     if (state.kind == detail::spot_operation_kind_t::request_to_actor)
         return submit_actor_request_callback (state, std::move (callback_));
 
-    if (!state.spot)
+    if (!state.spot.spot)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     switch (state.kind) {
         case detail::spot_operation_kind_t::request_channel:
-            return state.spot->request_channel (state.channel_name, state.parts,
-                                                std::move (callback_), state.flags, state.timeout);
+            return state.spot.spot->request_channel (state.spot.channel_name, state.message.parts,
+                                                     std::move (callback_), state.flags,
+                                                     state.timeout);
         case detail::spot_operation_kind_t::request_to_spot:
-            if (!state.first_rid || !state.second_rid)
+            if (!state.spot.target.first_rid || !state.spot.target.second_rid)
                 throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            return state.spot->request_to_spot (*state.first_rid, *state.second_rid, state.parts,
-                                                std::move (callback_), state.flags, state.timeout);
+            return state.spot.spot->request_to_spot (
+              *state.spot.target.first_rid, *state.spot.target.second_rid, state.message.parts,
+              std::move (callback_), state.flags, state.timeout);
         case detail::spot_operation_kind_t::request_to_router:
-            if (!state.first_rid)
+            if (!state.spot.target.first_rid)
                 throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            return state.spot->request_to_router (
-              *state.first_rid, state.parts, std::move (callback_), state.flags, state.timeout);
+            return state.spot.spot->request_to_router (*state.spot.target.first_rid,
+                                                       state.message.parts, std::move (callback_),
+                                                       state.flags, state.timeout);
         default:
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }

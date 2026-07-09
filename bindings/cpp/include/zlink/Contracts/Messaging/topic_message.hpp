@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Core/routing_id.hpp"
+#include "lazy_message_parts.hpp"
 #include "message.hpp"
 
 #include <optional>
@@ -40,7 +41,7 @@ class topic_message_t
 
     bool is_single_part () const noexcept
     {
-        return _single_part.has_value () || _parts.size () == 1u;
+        return _parts.is_single_part ();
     }
     message_t &first_part ();
     message_t single_part_or_throw ();
@@ -50,17 +51,13 @@ class topic_message_t
     topic_message_t (std::optional<routing_id_t> routing_id_, std::string topic_, message_t part_) :
         _routing_id (std::move (routing_id_)),
         _topic (std::move (topic_)),
-        _single_part (std::move (part_)),
-        _parts ()
+        _parts (std::move (part_))
     {
     }
 
-    void materialize_parts () const;
-
     std::optional<routing_id_t> _routing_id;
     std::string _topic;
-    mutable std::optional<message_t> _single_part;
-    mutable std::vector<message_t> _parts;
+    detail::lazy_message_parts_t _parts;
     friend struct detail::topic_message_access_t;
 };
 

@@ -1,16 +1,20 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#define CPP_BINDING_SERVICES_SPOT_NODE_NO_SPOT_INCLUDE
-#include "spot_node.hpp"
-#undef CPP_BINDING_SERVICES_SPOT_NODE_NO_SPOT_INCLUDE
+#include "../Messaging/message.hpp"
 #include "../Messaging/operation_contracts.hpp"
+#include "actor_models.hpp"
+#include "operation_builder_base.hpp"
 #include <memory>
 
 namespace zlink
 {
 namespace service
 {
+
+class actor_t;
+class spot_node_t;
+class spot_t;
 
 namespace detail
 {
@@ -31,8 +35,13 @@ actor_bind_operation_t detail_make_actor_bind_operation (detail::actor_bind_stat
 actor_unbind_operation_t detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
 
 /// @brief Builds an actor join: add parts, then submit and await the result.
-class actor_join_operation_t
+class actor_join_operation_t : private detail::operation_builder_base_t<
+                                 detail::actor_join_state_t,
+                                 detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_join_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_join_operation_t ();
     actor_join_operation_t (actor_join_operation_t &&) noexcept;
@@ -41,19 +50,21 @@ class actor_join_operation_t
     actor_join_submit_operation_t message (message_t &part_) &&;
 
   private:
-    explicit actor_join_operation_t (detail::actor_join_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_join_state_t &state () noexcept;
-    const detail::actor_join_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_join_state_t> _state;
     friend class spot_node_t;
     friend class actor_t;
 };
 
 /// @brief Accepts further parts, timeout, flags, and the terminal submit of an actor join.
-class actor_join_submit_operation_t
+class actor_join_submit_operation_t : private detail::operation_builder_base_t<
+                                        detail::actor_join_state_t,
+                                        detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_join_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_join_submit_operation_t ();
     actor_join_submit_operation_t (actor_join_submit_operation_t &&) noexcept;
@@ -66,19 +77,21 @@ class actor_join_submit_operation_t
     bool submit (actor_join_callback_t callback_) &&;
 
   private:
-    explicit actor_join_submit_operation_t (detail::actor_join_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_join_state_t &state () noexcept;
-    const detail::actor_join_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_join_state_t> _state;
     friend class actor_join_operation_t;
     friend class actor_join_callback_submit_operation_t;
 };
 
 /// @brief Callback-submission stage of an actor join builder.
-class actor_join_callback_submit_operation_t
+class actor_join_callback_submit_operation_t : private detail::operation_builder_base_t<
+                                                 detail::actor_join_state_t,
+                                                 detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_join_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_join_callback_submit_operation_t ();
     actor_join_callback_submit_operation_t (actor_join_callback_submit_operation_t &&) noexcept;
@@ -91,18 +104,20 @@ class actor_join_callback_submit_operation_t
     bool submit (actor_join_callback_t callback_) &&;
 
   private:
-    explicit actor_join_callback_submit_operation_t (detail::actor_join_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_join_state_t &state () noexcept;
-    const detail::actor_join_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_join_state_t> _state;
     friend class actor_join_submit_operation_t;
 };
 
 /// @brief Builds an actor join to an entry spot.
-class actor_join_entry_spot_operation_t
+class actor_join_entry_spot_operation_t : private detail::operation_builder_base_t<
+                                            detail::actor_join_state_t,
+                                            detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_join_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_join_entry_spot_operation_t ();
     actor_join_entry_spot_operation_t (actor_join_entry_spot_operation_t &&) noexcept;
@@ -115,18 +130,20 @@ class actor_join_entry_spot_operation_t
     bool submit (actor_join_entry_spot_callback_t callback_) &&;
 
   private:
-    explicit actor_join_entry_spot_operation_t (detail::actor_join_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_join_state_t &state () noexcept;
-    const detail::actor_join_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_join_state_t> _state;
     friend class spot_node_t;
 };
 
 /// @brief Builds a reply to an actor-join request.
-class actor_join_reply_operation_t
+class actor_join_reply_operation_t : private detail::operation_builder_base_t<
+                                       detail::actor_join_reply_state_t,
+                                       detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_join_reply_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_join_reply_operation_t ();
     actor_join_reply_operation_t (actor_join_reply_operation_t &&) noexcept;
@@ -136,18 +153,20 @@ class actor_join_reply_operation_t
     void submit () &&;
 
   private:
-    explicit actor_join_reply_operation_t (detail::actor_join_reply_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_join_reply_state_t &state () noexcept;
-    const detail::actor_join_reply_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_join_reply_state_t> _state;
     friend class spot_t;
 };
 
 /// @brief Builds an actor leave operation.
-class actor_leave_operation_t
+class actor_leave_operation_t : private detail::operation_builder_base_t<
+                                  detail::actor_payloadless_state_t,
+                                  detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_payloadless_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_leave_operation_t ();
     actor_leave_operation_t (actor_leave_operation_t &&) noexcept;
@@ -158,19 +177,21 @@ class actor_leave_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit actor_leave_operation_t (detail::actor_payloadless_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_payloadless_state_t &state () noexcept;
-    const detail::actor_payloadless_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_payloadless_state_t> _state;
     friend class spot_node_t;
     friend class actor_t;
 };
 
 /// @brief Builds an actor destroy operation.
-class actor_destroy_operation_t
+class actor_destroy_operation_t : private detail::operation_builder_base_t<
+                                    detail::actor_payloadless_state_t,
+                                    detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_payloadless_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_destroy_operation_t ();
     actor_destroy_operation_t (actor_destroy_operation_t &&) noexcept;
@@ -181,18 +202,20 @@ class actor_destroy_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit actor_destroy_operation_t (detail::actor_payloadless_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_payloadless_state_t &state () noexcept;
-    const detail::actor_payloadless_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_payloadless_state_t> _state;
     friend class spot_node_t;
 };
 
 /// @brief Builds a remote actor lookup operation.
-class actor_lookup_operation_t
+class actor_lookup_operation_t : private detail::operation_builder_base_t<
+                                   detail::actor_payloadless_state_t,
+                                   detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_payloadless_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_lookup_operation_t ();
     actor_lookup_operation_t (actor_lookup_operation_t &&) noexcept;
@@ -203,18 +226,20 @@ class actor_lookup_operation_t
     bool submit (actor_lookup_callback_t callback_) &&;
 
   private:
-    explicit actor_lookup_operation_t (detail::actor_payloadless_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_payloadless_state_t &state () noexcept;
-    const detail::actor_payloadless_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_payloadless_state_t> _state;
     friend class spot_node_t;
 };
 
 /// @brief Builds an actor-to-session bind operation.
-class actor_bind_operation_t
+class actor_bind_operation_t : private detail::operation_builder_base_t<
+                                 detail::actor_bind_state_t,
+                                 detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_bind_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_bind_operation_t ();
     actor_bind_operation_t (actor_bind_operation_t &&) noexcept;
@@ -225,19 +250,21 @@ class actor_bind_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit actor_bind_operation_t (detail::actor_bind_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_bind_state_t &state () noexcept;
-    const detail::actor_bind_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_bind_state_t> _state;
     friend actor_bind_operation_t
     detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
 };
 
 /// @brief Builds an actor-from-session unbind operation.
-class actor_unbind_operation_t
+class actor_unbind_operation_t : private detail::operation_builder_base_t<
+                                   detail::actor_bind_state_t,
+                                   detail::unique_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::actor_bind_state_t,
+                                                    detail::unique_operation_state_policy_t>;
+
   public:
     ~actor_unbind_operation_t ();
     actor_unbind_operation_t (actor_unbind_operation_t &&) noexcept;
@@ -248,12 +275,9 @@ class actor_unbind_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit actor_unbind_operation_t (detail::actor_bind_state_t &&state_);
+    using base_t::base_t;
+    using base_t::state;
 
-    detail::actor_bind_state_t &state () noexcept;
-    const detail::actor_bind_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::actor_bind_state_t> _state;
     friend actor_unbind_operation_t
     detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
 };

@@ -14,7 +14,7 @@ namespace detail
 struct service_model_access_t;
 } // namespace detail
 
-enum class spot_socket_role : int
+enum class spot_role_t : int
 {
     pub = 1,
     sub = 2
@@ -33,7 +33,7 @@ enum class spot_node_socket_type_t : int
 };
 
 /// @brief The overall readiness state of a spot node.
-enum class spot_node_state : int
+enum class spot_node_state_t : int
 {
     idle = 1, ///< Not yet connecting to any peer.
     connecting = 2,
@@ -43,7 +43,7 @@ enum class spot_node_state : int
 };
 
 /// @brief Which messaging patterns a spot node enables.
-enum class spot_node_mode : int
+enum class spot_node_mode_t : int
 {
     pubsub = 1, ///< Publish/subscribe only.
     routed = 2, ///< Routed request/reply only.
@@ -51,7 +51,7 @@ enum class spot_node_mode : int
 };
 
 /// @brief Which component owns a spot node socket.
-enum class spot_node_socket_owner : int
+enum class spot_node_socket_owner_t : int
 {
     any = 0,  ///< Any owner (no filter).
     node = 1, ///< Owned by the node itself.
@@ -59,7 +59,7 @@ enum class spot_node_socket_owner : int
 };
 
 /// @brief How a spot peer became known to the node.
-enum class spot_peer_source : int
+enum class spot_peer_source_t : int
 {
     manual = 1,    ///< Added manually by the application.
     discovery = 2, ///< Learned from a discovery service.
@@ -67,14 +67,14 @@ enum class spot_peer_source : int
 };
 
 /// @brief The connection style of a spot peer.
-enum class spot_peer_kind : int
+enum class spot_peer_kind_t : int
 {
     spot_mesh = 1,     ///< A peer in the spot mesh.
     router_channel = 2 ///< A peer reached over a router channel.
 };
 
 /// @brief The connection state of a spot peer.
-enum class spot_peer_state : int
+enum class spot_peer_state_t : int
 {
     configured = 1, ///< Configured but not yet connecting.
     connecting = 2,
@@ -84,21 +84,12 @@ enum class spot_peer_state : int
 template <size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
 
 /// @brief How a subscription subject is matched.
-enum class subject_kind : uint32_t
+enum class subject_kind_t : uint32_t
 {
     none = 0,   ///< No subject.
     topic = 1,  ///< An exact topic match.
     pattern = 2 ///< A pattern match.
 };
-
-using spot_role_t = spot_socket_role;
-using spot_node_state_t = spot_node_state;
-using spot_node_mode_t = spot_node_mode;
-using spot_node_socket_owner_t = spot_node_socket_owner;
-using spot_peer_source_t = spot_peer_source;
-using spot_peer_kind_t = spot_peer_kind;
-using spot_peer_state_t = spot_peer_state;
-using subject_kind_t = subject_kind;
 
 /// @brief A snapshot of a spot node's status and peer/subject counts.
 class spot_node_status_t
@@ -108,7 +99,7 @@ class spot_node_status_t
         channel_name_ (),
         local_endpoint_ (),
         node_routing_id_ (std::nullopt),
-        state_ (spot_node_state::idle),
+        state_ (spot_node_state_t::idle),
         configured_peer_count_ (0),
         active_peer_count_ (0),
         connected_peer_count_ (0),
@@ -163,7 +154,7 @@ class spot_node_status_t
     std::string channel_name_;
     std::string local_endpoint_;
     std::optional<routing_id_t> node_routing_id_;
-    spot_node_state state_;
+    spot_node_state_t state_;
     uint32_t configured_peer_count_;
     uint32_t active_peer_count_;
     uint32_t connected_peer_count_;
@@ -184,9 +175,9 @@ class spot_node_peer_entry_t
         channel_name_ (),
         local_endpoint_ (),
         peer_endpoint_ (),
-        source_ (spot_peer_source::manual),
-        kind_ (spot_peer_kind::spot_mesh),
-        state_ (spot_peer_state::configured),
+        source_ (spot_peer_source_t::manual),
+        kind_ (spot_peer_kind_t::spot_mesh),
+        state_ (spot_peer_state_t::configured),
         weight_ (0),
         connected_since_ms_ (0),
         last_changed_ms_ (0)
@@ -221,9 +212,9 @@ class spot_node_peer_entry_t
     std::string channel_name_;
     std::string local_endpoint_;
     std::string peer_endpoint_;
-    spot_peer_source source_;
-    spot_peer_kind kind_;
-    spot_peer_state state_;
+    spot_peer_source_t source_;
+    spot_peer_kind_t kind_;
+    spot_peer_state_t state_;
     uint32_t weight_;
     uint64_t connected_since_ms_;
     uint64_t last_changed_ms_;
@@ -271,9 +262,9 @@ class spot_node_subject_entry_t
 {
   public:
     spot_node_subject_entry_t () :
-        role_ (spot_socket_role::pub),
+        role_ (spot_role_t::pub),
         subject_ (),
-        subject_kind_ (zlink::subject_kind::none),
+        subject_kind_ (subject_kind_t::none),
         ready_peer_count_ (0),
         active_peer_count_ (0),
         last_changed_ms_ (0)
@@ -296,9 +287,9 @@ class spot_node_subject_entry_t
     }
 
   private:
-    spot_socket_role role_;
+    spot_role_t role_;
     std::string subject_;
-    zlink::subject_kind subject_kind_;
+    subject_kind_t subject_kind_;
     uint32_t ready_peer_count_;
     uint32_t active_peer_count_;
     uint64_t last_changed_ms_;
@@ -385,7 +376,7 @@ class spot_node_socket_entry_t
 {
   public:
     spot_node_socket_entry_t () :
-        owner_ (spot_node_socket_owner::any),
+        owner_ (spot_node_socket_owner_t::any),
         owner_id_ (0),
         owner_name_ (),
         socket_name_ (),
@@ -410,7 +401,7 @@ class spot_node_socket_entry_t
     const monitor_status_t &monitor_status () const noexcept { return monitor_status_; }
 
   private:
-    spot_node_socket_owner owner_;
+    spot_node_socket_owner_t owner_;
     uint64_t owner_id_;
     std::string owner_name_;
     std::string socket_name_;
@@ -505,14 +496,4 @@ class spot_node_actor_entry_t
     friend struct detail::service_model_access_t;
 };
 
-struct spot_service_attachment_stats_t
-{
-    std::string channel_name;
-    uint32_t router_count = 0;
-    uint32_t pub_count = 0;
-    uint32_t sub_count = 0;
-    uint32_t auto_router_count = 0;
-    uint32_t auto_pub_count = 0;
-    uint32_t auto_sub_count = 0;
-};
 } // namespace zlink

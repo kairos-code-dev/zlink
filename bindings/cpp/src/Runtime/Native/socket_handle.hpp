@@ -98,17 +98,6 @@ inline const void *native_handle (const socket_handle_t &socket_) noexcept
     return socket_._socket;
 }
 
-template <typename T>
-inline auto native_handle (T &handle_owner_) noexcept -> decltype (handle_owner_.handle ())
-{
-    return handle_owner_.handle ();
-}
-
-template <typename T>
-inline auto native_handle (const T &handle_owner_) noexcept -> decltype (handle_owner_.handle ())
-{
-    return handle_owner_.handle ();
-}
 } // namespace detail
 
 } // namespace zlink

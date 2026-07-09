@@ -55,104 +55,188 @@ enum class spot_operation_kind_t
 
 struct spot_operation_state_t
 {
-    spot_t *spot = nullptr;
     spot_operation_kind_t kind = spot_operation_kind_t::publish;
-    std::string topic;
-    std::string channel_name;
-    std::optional<routing_id_t> first_rid;
-    std::optional<routing_id_t> second_rid;
-    zlink_routing_id_t first_rid_native_cache{};
-    zlink_routing_id_t second_rid_native_cache{};
-    bool has_first_rid_native_cache = false;
-    bool has_second_rid_native_cache = false;
-    uint64_t request_seq = 0;
-    std::optional<message_t> single_part;
-    message_t *single_part_source = nullptr;
-    bool discard_single_part_on_backpressure = false;
-    std::vector<message_t> parts;
+
+    struct routing_target_t
+    {
+        std::optional<routing_id_t> first_rid;
+        std::optional<routing_id_t> second_rid;
+        zlink_routing_id_t first_rid_native_cache{};
+        zlink_routing_id_t second_rid_native_cache{};
+        bool has_first_rid_native_cache = false;
+        bool has_second_rid_native_cache = false;
+
+        void reset () noexcept
+        {
+            first_rid.reset ();
+            second_rid.reset ();
+            first_rid_native_cache = zlink_routing_id_t{};
+            second_rid_native_cache = zlink_routing_id_t{};
+            has_first_rid_native_cache = false;
+            has_second_rid_native_cache = false;
+        }
+    };
+
+    struct message_parts_t
+    {
+        std::optional<message_t> single_part;
+        message_t *single_part_source = nullptr;
+        bool discard_single_part_on_backpressure = false;
+        std::vector<message_t> parts;
+
+        void reset () noexcept
+        {
+            single_part.reset ();
+            single_part_source = nullptr;
+            discard_single_part_on_backpressure = false;
+            parts.clear ();
+        }
+    };
+
+    struct raw_command_t
+    {
+        void *socket = nullptr;
+        std::string topic;
+        routing_target_t target;
+
+        void reset () noexcept
+        {
+            socket = nullptr;
+            topic.clear ();
+            target.reset ();
+        }
+    };
+
+    struct spot_command_t
+    {
+        spot_t *spot = nullptr;
+        std::string topic;
+        std::string channel_name;
+        routing_target_t target;
+        uint64_t request_seq = 0;
+
+        void reset () noexcept
+        {
+            spot = nullptr;
+            topic.clear ();
+            channel_name.clear ();
+            target.reset ();
+            request_seq = 0;
+        }
+    };
+
+    struct received_command_t
+    {
+        received_t *received = nullptr;
+
+        void reset () noexcept { received = nullptr; }
+    };
+
+    struct actor_command_t
+    {
+        spot_node_t *node = nullptr;
+        std::optional<actor_ref_t> actor;
+
+        void reset () noexcept
+        {
+            node = nullptr;
+            actor.reset ();
+        }
+    };
+
+    struct stream_actor_command_t
+    {
+        void *stream = nullptr;
+        routing_target_t target;
+        std::string actor_id;
+
+        void reset () noexcept
+        {
+            stream = nullptr;
+            target.reset ();
+            actor_id.clear ();
+        }
+    };
+
+    message_parts_t message;
+    raw_command_t raw;
+    spot_command_t spot;
+    received_command_t received;
+    actor_command_t actor;
+    stream_actor_command_t stream_actor;
     send_flags_t flags = send_flags_t::none;
     std::chrono::milliseconds timeout{};
-    // Borrowed raw socket handle for raw socket send/publish builders.
-    void *raw_socket = nullptr;
-    // Borrowed reference to the originating received_t for received_send /
-    // received_reply operations. Lifetime is managed by the caller.
-    received_t *received = nullptr;
-    // Borrowed spot_node_t for actor-based operations (bound_session_send).
-    spot_node_t *node = nullptr;
-    // Borrowed stream handle for stream-bound actor sends.
-    void *stream = nullptr;
-    // Actor reference for actor-based operations (bound_session_send).
-    std::optional<actor_ref_t> actor;
-    // Actor id for stream-bound actor sends.
-    std::string actor_id;
 };
 
-inline void cache_first_rid_native (spot_operation_state_t &state_,
+inline void cache_first_rid_native (spot_operation_state_t::routing_target_t &target_,
                                     const routing_id_t &rid_) noexcept
 {
-    state_.first_rid_native_cache = *zlink::detail::routing_id_native (rid_);
-    state_.has_first_rid_native_cache = true;
-    state_.first_rid.reset ();
+    target_.first_rid_native_cache = *zlink::detail::routing_id_native (rid_);
+    target_.has_first_rid_native_cache = true;
+    target_.first_rid.reset ();
 }
 
-inline void cache_second_rid_native (spot_operation_state_t &state_,
+inline void cache_second_rid_native (spot_operation_state_t::routing_target_t &target_,
                                      const routing_id_t &rid_) noexcept
 {
-    state_.second_rid_native_cache = *zlink::detail::routing_id_native (rid_);
-    state_.has_second_rid_native_cache = true;
-    state_.second_rid.reset ();
+    target_.second_rid_native_cache = *zlink::detail::routing_id_native (rid_);
+    target_.has_second_rid_native_cache = true;
+    target_.second_rid.reset ();
 }
 
-inline const zlink_routing_id_t *
-state_first_rid_native (const spot_operation_state_t &state_) noexcept
+inline const zlink_routing_id_t *target_first_rid_native (
+  const spot_operation_state_t::routing_target_t &target_) noexcept
 {
-    if (state_.has_first_rid_native_cache)
-        return &state_.first_rid_native_cache;
-    if (state_.first_rid.has_value ())
-        return zlink::detail::routing_id_native (*state_.first_rid);
+    if (target_.has_first_rid_native_cache)
+        return &target_.first_rid_native_cache;
+    if (target_.first_rid.has_value ())
+        return zlink::detail::routing_id_native (*target_.first_rid);
     return nullptr;
 }
 
-inline const zlink_routing_id_t *
-state_second_rid_native (const spot_operation_state_t &state_) noexcept
+inline const zlink_routing_id_t *target_second_rid_native (
+  const spot_operation_state_t::routing_target_t &target_) noexcept
 {
-    if (state_.has_second_rid_native_cache)
-        return &state_.second_rid_native_cache;
-    if (state_.second_rid.has_value ())
-        return zlink::detail::routing_id_native (*state_.second_rid);
+    if (target_.has_second_rid_native_cache)
+        return &target_.second_rid_native_cache;
+    if (target_.second_rid.has_value ())
+        return zlink::detail::routing_id_native (*target_.second_rid);
     return nullptr;
 }
 
 inline bool has_send_parts (const spot_operation_state_t &state_) noexcept
 {
-    return state_.single_part.has_value () || state_.single_part_source || !state_.parts.empty ();
+    return state_.message.single_part.has_value () || state_.message.single_part_source
+           || !state_.message.parts.empty ();
 }
 
 inline size_t send_part_count (const spot_operation_state_t &state_) noexcept
 {
-    return state_.single_part.has_value () || state_.single_part_source ? 1u : state_.parts.size ();
+    return state_.message.single_part.has_value () || state_.message.single_part_source
+             ? 1u
+             : state_.message.parts.size ();
 }
 
 inline message_t &send_single_part (spot_operation_state_t &state_) noexcept
 {
-    if (state_.single_part.has_value ())
-        return *state_.single_part;
-    if (state_.single_part_source)
-        return *state_.single_part_source;
-    return state_.parts.front ();
+    if (state_.message.single_part.has_value ())
+        return *state_.message.single_part;
+    if (state_.message.single_part_source)
+        return *state_.message.single_part_source;
+    return state_.message.parts.front ();
 }
 
 inline void append_send_part (spot_operation_state_t &state_, message_t &part_)
 {
-    if (state_.single_part.has_value ()) {
-        state_.parts.push_back (std::move (*state_.single_part));
-        state_.single_part.reset ();
-        state_.single_part_source = nullptr;
-    } else if (state_.single_part_source) {
-        state_.parts.push_back (std::move (*state_.single_part_source));
-        state_.single_part_source = nullptr;
+    if (state_.message.single_part.has_value ()) {
+        state_.message.parts.push_back (std::move (*state_.message.single_part));
+        state_.message.single_part.reset ();
+        state_.message.single_part_source = nullptr;
+    } else if (state_.message.single_part_source) {
+        state_.message.parts.push_back (std::move (*state_.message.single_part_source));
+        state_.message.single_part_source = nullptr;
     }
-    state_.parts.push_back (std::move (part_));
+    state_.message.parts.push_back (std::move (part_));
 }
 
 inline bool can_borrow_single_send_part (spot_operation_kind_t kind_) noexcept
@@ -171,34 +255,34 @@ inline bool can_borrow_single_send_part (spot_operation_kind_t kind_) noexcept
 
 inline void restore_single_send_part_to_source (spot_operation_state_t &state_) noexcept
 {
-    if (!state_.single_part_source || !state_.single_part.has_value ()
-        || !state_.single_part->valid ())
+    if (!state_.message.single_part_source || !state_.message.single_part.has_value ()
+        || !state_.message.single_part->valid ())
         return;
-    *state_.single_part_source = std::move (*state_.single_part);
-    state_.single_part_source = nullptr;
+    *state_.message.single_part_source = std::move (*state_.message.single_part);
+    state_.message.single_part_source = nullptr;
 }
 
 inline void restore_single_send_part_to_source (spot_operation_state_t &state_,
                                                 std::vector<message_t> &parts_) noexcept
 {
-    if (!state_.single_part_source || parts_.size () != 1u || !parts_[0].valid ())
+    if (!state_.message.single_part_source || parts_.size () != 1u || !parts_[0].valid ())
         return;
-    *state_.single_part_source = std::move (parts_[0]);
-    state_.single_part_source = nullptr;
+    *state_.message.single_part_source = std::move (parts_[0]);
+    state_.message.single_part_source = nullptr;
 }
 
 inline void restore_send_parts_to_state (spot_operation_state_t &state_,
                                          std::vector<message_t> &parts_) noexcept
 {
-    const bool had_single_part_source = state_.single_part_source != nullptr;
+    const bool had_single_part_source = state_.message.single_part_source != nullptr;
     restore_single_send_part_to_source (state_, parts_);
     if (had_single_part_source || parts_.empty ())
         return;
-    if (parts_.size () == 1u && state_.single_part.has_value ()) {
-        state_.single_part = std::move (parts_[0]);
+    if (parts_.size () == 1u && state_.message.single_part.has_value ()) {
+        state_.message.single_part = std::move (parts_[0]);
         return;
     }
-    state_.parts = std::move (parts_);
+    state_.message.parts = std::move (parts_);
 }
 
 // Thread-local pool of spot_operation_state_t to avoid per-send heap alloc.
@@ -209,29 +293,15 @@ inline void restore_send_parts_to_state (spot_operation_state_t &state_,
 // pointers and clears containers in place (no realloc when SSO holds).
 inline void reset_for_reuse (spot_operation_state_t &state_) noexcept
 {
-    state_.spot = nullptr;
     state_.kind = spot_operation_kind_t::publish;
-    state_.topic.clear ();
-    state_.channel_name.clear ();
-    state_.first_rid.reset ();
-    state_.second_rid.reset ();
-    state_.first_rid_native_cache = zlink_routing_id_t{};
-    state_.second_rid_native_cache = zlink_routing_id_t{};
-    state_.has_first_rid_native_cache = false;
-    state_.has_second_rid_native_cache = false;
-    state_.request_seq = 0;
-    state_.single_part.reset ();
-    state_.single_part_source = nullptr;
-    state_.discard_single_part_on_backpressure = false;
-    state_.parts.clear ();
+    state_.message.reset ();
+    state_.raw.reset ();
+    state_.spot.reset ();
+    state_.received.reset ();
+    state_.actor.reset ();
+    state_.stream_actor.reset ();
     state_.flags = send_flags_t::none;
     state_.timeout = std::chrono::milliseconds{};
-    state_.raw_socket = nullptr;
-    state_.received = nullptr;
-    state_.node = nullptr;
-    state_.stream = nullptr;
-    state_.actor.reset ();
-    state_.actor_id.clear ();
 }
 
 inline std::vector<std::unique_ptr<spot_operation_state_t>> &state_pool () noexcept
@@ -261,6 +331,12 @@ inline void release_state (std::unique_ptr<spot_operation_state_t> state_ptr_) n
         return;
     reset_for_reuse (*state_ptr_);
     pool.push_back (std::move (state_ptr_));
+}
+
+inline void pooled_operation_state_policy_t::destroy (
+  std::unique_ptr<spot_operation_state_t> state_ptr_) noexcept
+{
+    release_state (std::move (state_ptr_));
 }
 
 } // namespace detail

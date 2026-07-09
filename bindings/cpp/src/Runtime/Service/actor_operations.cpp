@@ -145,21 +145,6 @@ actor_join_operation_t::actor_join_operation_t (actor_join_operation_t &&) noexc
 actor_join_operation_t &
 actor_join_operation_t::operator= (actor_join_operation_t &&) noexcept = default;
 
-actor_join_operation_t::actor_join_operation_t (detail::actor_join_state_t &&state_) :
-    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_join_state_t &actor_join_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_join_state_t &actor_join_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 actor_join_submit_operation_t actor_join_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
@@ -171,21 +156,6 @@ actor_join_submit_operation_t::actor_join_submit_operation_t (
   actor_join_submit_operation_t &&) noexcept = default;
 actor_join_submit_operation_t &
 actor_join_submit_operation_t::operator= (actor_join_submit_operation_t &&) noexcept = default;
-
-actor_join_submit_operation_t::actor_join_submit_operation_t (detail::actor_join_state_t &&state_) :
-    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_join_state_t &actor_join_submit_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_join_state_t &actor_join_submit_operation_t::state () const noexcept
-{
-    return (*_state);
-}
 
 actor_join_submit_operation_t &&actor_join_submit_operation_t::message (message_t &part_) &&
 {
@@ -223,22 +193,6 @@ actor_join_callback_submit_operation_t::actor_join_callback_submit_operation_t (
 actor_join_callback_submit_operation_t &actor_join_callback_submit_operation_t::operator= (
   actor_join_callback_submit_operation_t &&) noexcept = default;
 
-actor_join_callback_submit_operation_t::actor_join_callback_submit_operation_t (
-  detail::actor_join_state_t &&state_) :
-    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_join_state_t &actor_join_callback_submit_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_join_state_t &actor_join_callback_submit_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 actor_join_callback_submit_operation_t &&
 actor_join_callback_submit_operation_t::message (message_t &part_) &&
 {
@@ -270,22 +224,6 @@ actor_join_entry_spot_operation_t::actor_join_entry_spot_operation_t (
   actor_join_entry_spot_operation_t &&) noexcept = default;
 actor_join_entry_spot_operation_t &actor_join_entry_spot_operation_t::operator= (
   actor_join_entry_spot_operation_t &&) noexcept = default;
-
-actor_join_entry_spot_operation_t::actor_join_entry_spot_operation_t (
-  detail::actor_join_state_t &&state_) :
-    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_join_state_t &actor_join_entry_spot_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_join_state_t &actor_join_entry_spot_operation_t::state () const noexcept
-{
-    return (*_state);
-}
 
 actor_join_entry_spot_operation_t &&actor_join_entry_spot_operation_t::message (message_t &part_) &&
 {
@@ -321,22 +259,6 @@ actor_join_reply_operation_t::actor_join_reply_operation_t (
   actor_join_reply_operation_t &&) noexcept = default;
 actor_join_reply_operation_t &
 actor_join_reply_operation_t::operator= (actor_join_reply_operation_t &&) noexcept = default;
-
-actor_join_reply_operation_t::actor_join_reply_operation_t (
-  detail::actor_join_reply_state_t &&state_) :
-    _state (std::make_unique<detail::actor_join_reply_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_join_reply_state_t &actor_join_reply_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_join_reply_state_t &actor_join_reply_operation_t::state () const noexcept
-{
-    return (*_state);
-}
 
 actor_join_reply_operation_t &&actor_join_reply_operation_t::message (message_t &part_) &&
 {
@@ -376,21 +298,6 @@ actor_leave_operation_t::actor_leave_operation_t (actor_leave_operation_t &&) no
 actor_leave_operation_t &
 actor_leave_operation_t::operator= (actor_leave_operation_t &&) noexcept = default;
 
-actor_leave_operation_t::actor_leave_operation_t (detail::actor_payloadless_state_t &&state_) :
-    _state (std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_payloadless_state_t &actor_leave_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_payloadless_state_t &actor_leave_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 actor_leave_operation_t &&actor_leave_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
@@ -425,21 +332,6 @@ actor_destroy_operation_t::actor_destroy_operation_t (actor_destroy_operation_t 
 actor_destroy_operation_t &
 actor_destroy_operation_t::operator= (actor_destroy_operation_t &&) noexcept = default;
 
-actor_destroy_operation_t::actor_destroy_operation_t (detail::actor_payloadless_state_t &&state_) :
-    _state (std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_payloadless_state_t &actor_destroy_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_payloadless_state_t &actor_destroy_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 actor_destroy_operation_t &&
 actor_destroy_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
@@ -473,21 +365,6 @@ actor_lookup_operation_t::actor_lookup_operation_t (actor_lookup_operation_t &&)
 actor_lookup_operation_t &
 actor_lookup_operation_t::operator= (actor_lookup_operation_t &&) noexcept = default;
 
-actor_lookup_operation_t::actor_lookup_operation_t (detail::actor_payloadless_state_t &&state_) :
-    _state (std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_payloadless_state_t &actor_lookup_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_payloadless_state_t &actor_lookup_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 actor_lookup_operation_t &&actor_lookup_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
@@ -520,21 +397,6 @@ actor_bind_operation_t::actor_bind_operation_t (actor_bind_operation_t &&) noexc
 actor_bind_operation_t &
 actor_bind_operation_t::operator= (actor_bind_operation_t &&) noexcept = default;
 
-actor_bind_operation_t::actor_bind_operation_t (detail::actor_bind_state_t &&state_) :
-    _state (std::make_unique<detail::actor_bind_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_bind_state_t &actor_bind_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_bind_state_t &actor_bind_operation_t::state () const noexcept
-{
-    return (*_state);
-}
-
 actor_bind_operation_t &&actor_bind_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
@@ -566,21 +428,6 @@ actor_unbind_operation_t::~actor_unbind_operation_t () = default;
 actor_unbind_operation_t::actor_unbind_operation_t (actor_unbind_operation_t &&) noexcept = default;
 actor_unbind_operation_t &
 actor_unbind_operation_t::operator= (actor_unbind_operation_t &&) noexcept = default;
-
-actor_unbind_operation_t::actor_unbind_operation_t (detail::actor_bind_state_t &&state_) :
-    _state (std::make_unique<detail::actor_bind_state_t> (std::move (state_)))
-{
-}
-
-detail::actor_bind_state_t &actor_unbind_operation_t::state () noexcept
-{
-    return (*_state);
-}
-
-const detail::actor_bind_state_t &actor_unbind_operation_t::state () const noexcept
-{
-    return (*_state);
-}
 
 actor_unbind_operation_t &&actor_unbind_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
@@ -677,8 +524,8 @@ send_operation_t spot_node_t::send_bound_session_msg (const actor_ref_t &actor_)
 {
     auto state_ptr = detail::acquire_state ();
     state_ptr->kind = detail::spot_operation_kind_t::bound_session_send;
-    state_ptr->node = this;
-    state_ptr->actor = actor_;
+    state_ptr->actor.node = this;
+    state_ptr->actor.actor = actor_;
     return send_operation_t (std::move (state_ptr));
 }
 
@@ -686,8 +533,8 @@ send_operation_t spot_node_t::send_to_actor (const actor_ref_t &actor_)
 {
     auto state_ptr = detail::acquire_state ();
     state_ptr->kind = detail::spot_operation_kind_t::actor_send;
-    state_ptr->node = this;
-    state_ptr->actor = actor_;
+    state_ptr->actor.node = this;
+    state_ptr->actor.actor = actor_;
     return send_operation_t (std::move (state_ptr));
 }
 
@@ -695,9 +542,21 @@ request_operation_t spot_node_t::request_to_actor (const actor_ref_t &actor_)
 {
     auto state_ptr = detail::acquire_state ();
     state_ptr->kind = detail::spot_operation_kind_t::request_to_actor;
-    state_ptr->node = this;
-    state_ptr->actor = actor_;
+    state_ptr->actor.node = this;
+    state_ptr->actor.actor = actor_;
     return request_operation_t (std::move (state_ptr));
+}
+
+void spot_node_t::bind_remote_actor_bound_session (const actor_ref_t &actor_,
+                                                   const routing_id_t &source_node_rid_,
+                                                   const routing_id_t &source_session_rid_)
+{
+    const auto source_node = zlink::detail::routing_id_native_value (source_node_rid_);
+    const auto source_session = zlink::detail::routing_id_native_value (source_session_rid_);
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_spot_node_actor_bind_remote_session (
+        zlink::detail::native_handle (*this), zlink::detail::actor_ref_native (actor_),
+        &source_node, &source_session)));
 }
 
 } // namespace service

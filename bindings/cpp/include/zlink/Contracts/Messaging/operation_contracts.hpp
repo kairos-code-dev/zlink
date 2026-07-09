@@ -4,6 +4,7 @@
 #include "message.hpp"
 #include "request_result.hpp"
 #include "../Sockets/results.hpp"
+#include "../Service/operation_builder_base.hpp"
 
 #include <chrono>
 #include <functional>
@@ -148,8 +149,13 @@ struct spot_operation_state_t;
 
 /// @brief Accepts further parts, flags, and the terminal submit of a send builder.
 /// @note Parts are consumed on a successful submit (see @ref send_operation_t).
-class send_submit_operation_t
+class send_submit_operation_t : private detail::operation_builder_base_t<
+                                  detail::spot_operation_state_t,
+                                  detail::pooled_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+                                                    detail::pooled_operation_state_policy_t>;
+
   public:
     ~send_submit_operation_t ();
     send_submit_operation_t (send_submit_operation_t &&) noexcept;
@@ -161,14 +167,10 @@ class send_submit_operation_t
     bool submit () &&;
 
   private:
-    explicit send_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit send_submit_operation_t (
-      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    using base_t::base_t;
+    using base_t::release_state_ptr;
+    using base_t::state;
 
-    detail::spot_operation_state_t &state () noexcept;
-    const detail::spot_operation_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class send_operation_t;
 };
 
@@ -177,8 +179,13 @@ class send_submit_operation_t
  * @note Submitting consumes the added message_t parts; on success each part is
  *       moved into the transport and left invalid; on failure ownership returns to the caller.
  */
-class send_operation_t
+class send_operation_t : private detail::operation_builder_base_t<
+                           detail::spot_operation_state_t,
+                           detail::pooled_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+                                                    detail::pooled_operation_state_policy_t>;
+
   public:
     ~send_operation_t ();
     send_operation_t (send_operation_t &&) noexcept;
@@ -188,13 +195,10 @@ class send_operation_t
     send_submit_operation_t message (message_t &&part_) &&;
 
   private:
-    explicit send_operation_t (detail::spot_operation_state_t &&state_);
-    explicit send_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    using base_t::base_t;
+    using base_t::release_state_ptr;
+    using base_t::state;
 
-    detail::spot_operation_state_t &state () noexcept;
-    const detail::spot_operation_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class zlink::pair_socket_t;
     friend class zlink::dealer_socket_t;
     friend class zlink::router_socket_t;
@@ -210,8 +214,13 @@ class request_callback_submit_operation_t;
 
 /// @brief Accepts further parts, timeout, flags, and the terminal submit of a request.
 /// @note Parts are consumed on a successful submit (see @ref send_operation_t for the ownership model).
-class request_submit_operation_t
+class request_submit_operation_t : private detail::operation_builder_base_t<
+                                     detail::spot_operation_state_t,
+                                     detail::pooled_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+                                                    detail::pooled_operation_state_policy_t>;
+
   public:
     ~request_submit_operation_t ();
     request_submit_operation_t (request_submit_operation_t &&) noexcept;
@@ -224,21 +233,22 @@ class request_submit_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit request_submit_operation_t (
-      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    using base_t::base_t;
+    using base_t::release_state_ptr;
+    using base_t::state;
 
-    detail::spot_operation_state_t &state () noexcept;
-    const detail::spot_operation_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class request_operation_t;
     friend class request_callback_submit_operation_t;
 };
 
 /// @brief Builds a request: add the request parts, then submit and await a reply.
-class request_operation_t
+class request_operation_t : private detail::operation_builder_base_t<
+                              detail::spot_operation_state_t,
+                              detail::pooled_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+                                                    detail::pooled_operation_state_policy_t>;
+
   public:
     ~request_operation_t ();
     request_operation_t (request_operation_t &&) noexcept;
@@ -247,14 +257,10 @@ class request_operation_t
     request_submit_operation_t message (message_t &part_) &&;
 
   private:
-    explicit request_operation_t (detail::spot_operation_state_t &&state_);
-    explicit request_operation_t (
-      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    using base_t::base_t;
+    using base_t::release_state_ptr;
+    using base_t::state;
 
-    detail::spot_operation_state_t &state () noexcept;
-    const detail::spot_operation_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class spot_t;
     friend class spot_node_t;
     friend class zlink::dealer_socket_t;
@@ -262,8 +268,13 @@ class request_operation_t
 };
 
 /// @brief Callback-submission stage of a request builder (reached after flags()).
-class request_callback_submit_operation_t
+class request_callback_submit_operation_t : private detail::operation_builder_base_t<
+                                              detail::spot_operation_state_t,
+                                              detail::pooled_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+                                                    detail::pooled_operation_state_policy_t>;
+
   public:
     ~request_callback_submit_operation_t ();
     request_callback_submit_operation_t (request_callback_submit_operation_t &&) noexcept;
@@ -276,21 +287,22 @@ class request_callback_submit_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_callback_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit request_callback_submit_operation_t (
-      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    using base_t::base_t;
+    using base_t::release_state_ptr;
+    using base_t::state;
 
-    detail::spot_operation_state_t &state () noexcept;
-    const detail::spot_operation_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class request_submit_operation_t;
 };
 
 /// @brief Accepts further parts, flags, and the terminal submit of a reply builder.
 /// @note Parts are consumed on a successful submit (see @ref send_operation_t for the ownership model).
-class reply_submit_operation_t
+class reply_submit_operation_t : private detail::operation_builder_base_t<
+                                   detail::spot_operation_state_t,
+                                   detail::pooled_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+                                                    detail::pooled_operation_state_policy_t>;
+
   public:
     ~reply_submit_operation_t ();
     reply_submit_operation_t (reply_submit_operation_t &&) noexcept;
@@ -301,20 +313,21 @@ class reply_submit_operation_t
     void submit () &&;
 
   private:
-    explicit reply_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit reply_submit_operation_t (
-      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    using base_t::base_t;
+    using base_t::release_state_ptr;
+    using base_t::state;
 
-    detail::spot_operation_state_t &state () noexcept;
-    const detail::spot_operation_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class reply_operation_t;
 };
 
 /// @brief Builds a reply to a received request: add the reply parts, then submit().
-class reply_operation_t
+class reply_operation_t : private detail::operation_builder_base_t<
+                            detail::spot_operation_state_t,
+                            detail::pooled_operation_state_policy_t>
 {
+    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+                                                    detail::pooled_operation_state_policy_t>;
+
   public:
     ~reply_operation_t ();
     reply_operation_t (reply_operation_t &&) noexcept;
@@ -323,14 +336,10 @@ class reply_operation_t
     reply_submit_operation_t message (message_t &part_) &&;
 
   private:
-    explicit reply_operation_t (detail::spot_operation_state_t &&state_);
-    explicit reply_operation_t (
-      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    using base_t::base_t;
+    using base_t::release_state_ptr;
+    using base_t::state;
 
-    detail::spot_operation_state_t &state () noexcept;
-    const detail::spot_operation_state_t &state () const noexcept;
-
-    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class spot_t;
     friend class spot_node_t;
     friend class zlink::received_t;

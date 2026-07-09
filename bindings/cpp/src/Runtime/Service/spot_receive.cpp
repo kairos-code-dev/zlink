@@ -114,10 +114,8 @@ void spot_t::validate_channel_name (const std::string &channel_name_)
 [[nodiscard]] int
 spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_flags_t flags_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     if (parts_.empty ()) {
         errno = EINVAL;
@@ -135,10 +133,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
 
 [[nodiscard]] int spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     if (!part_.valid ()) {
         errno = EINVAL;
@@ -156,10 +152,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
                                              std::vector<message_t> &parts_,
                                              send_flags_t flags_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     if (parts_.empty ()) {
         errno = EINVAL;
@@ -179,10 +173,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
                                                             const char *channel_name_,
                                                             message_t &part_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     if (!part_.valid ()) {
         errno = EINVAL;
@@ -198,10 +190,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
 
 [[nodiscard]] int spot_t::subscribe_impl (topic_message_t &message_out_, recv_flags_t flags_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     return zlink::detail::read_subscription_message (
       message_out_,
@@ -238,10 +228,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
     has_more_out_ = false;
     part_out_.close ();
 
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     char topic_buffer[256];
     size_t topic_length = sizeof (topic_buffer);
@@ -269,10 +257,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
                                                    std::string &topic_,
                                                    recv_flags_t flags_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     char topic_buffer[256];
     size_t topic_length = 0;
@@ -297,10 +283,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
                                                    const char *topic_,
                                                    std::vector<message_t> &parts_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     if (parts_.empty ()) {
         errno = EINVAL;
@@ -317,10 +301,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
 [[nodiscard]] int
 spot_t::try_publish_result_impl (send_result_t &result_out_, const char *topic_, message_t &part_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
+    if (!_impl->require_handle ())
         return -1;
-    }
 
     if (!part_.valid ()) {
         errno = EINVAL;

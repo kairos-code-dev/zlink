@@ -233,18 +233,6 @@ inline int submit_actor_join (detail::actor_join_state_t &state_,
     return rc == -1 ? ZLINK_SUBMIT_INVALID_HANDLE : rc;
 }
 
-template <typename SubmitFn>
-inline int submit_payloadless_request (detail::actor_payloadless_state_t &state_,
-                                       detail::request_state_t *request_state_,
-                                       SubmitFn submit_)
-{
-    if (!state_.node)
-        return ZLINK_SUBMIT_INVALID_HANDLE;
-    const zlink_submit_result_t rc =
-      submit_ (state_, &detail::request_callback_trampoline, request_state_);
-    return rc;
-}
-
 } // namespace detail
 } // namespace service
 } // namespace zlink

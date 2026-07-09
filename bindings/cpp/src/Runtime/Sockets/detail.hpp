@@ -5,11 +5,13 @@
 #include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
 #include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
 #include <zlink/Contracts/Errors/errors.hpp>
+#include <zlink.h>
 #include "../Core/operation_detail.hpp"
 #include "../Messaging/received_access.hpp"
 #include "../Native/native_receive.hpp"
 #include "../Service/spot_access.hpp"
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -129,6 +131,21 @@ inline int recv_single_part_routed_message (void *handle_,
     assign_routing_id_native (source_rid_out_, *source_node_rid);
     part_guard.commit ();
     return 0;
+}
+
+inline void set_routing_id_or_throw (void *handle_, const routing_id_t &routing_id_)
+{
+    if (zlink_set_routing_id (handle_, routing_id_.data (), routing_id_.size ()) != 0)
+        throw config_error_t (config_result_from_errno (zlink_errno ()), zlink_errno ());
+}
+
+inline void get_routing_id_or_throw (void *handle_, routing_id_t &routing_id_)
+{
+    zlink_routing_id_t native;
+    std::memset (&native, 0, sizeof (native));
+    if (zlink_get_routing_id (handle_, &native) != 0)
+        throw config_error_t (config_result_from_errno (zlink_errno ()), zlink_errno ());
+    assign_routing_id_native (routing_id_, native);
 }
 
 } // namespace detail

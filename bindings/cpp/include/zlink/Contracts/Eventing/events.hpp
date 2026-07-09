@@ -22,7 +22,6 @@ enum class monitor_event : uint32_t
     monitor_stopped = 1024,
     handshake_failed_no_detail = 2048,
     connection_ready = 4096,
-    connection_ready_changed = 4096,
     peer_weight_changed = 32768,
     handshake_failed_protocol = 8192,
     handshake_failed_auth = 16384,

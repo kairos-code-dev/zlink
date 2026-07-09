@@ -4,6 +4,25 @@
 namespace zlink::detail
 {
 
+enum class context_option_id : int
+{
+    io_threads = 1,
+    max_sockets = 2,
+    socket_limit = 3,
+    thread_priority = 3,
+    thread_sched_policy = 4,
+    max_msgsz = 5,
+    msg_t_size = 6,
+    thread_affinity_cpu_add = 7,
+    thread_affinity_cpu_remove = 8,
+    thread_name_prefix = 9,
+    blocky = 10,
+    auto_hwm_enable = 12,
+    auto_hwm_recalc_debounce_ms = 14,
+    auto_hwm_profile = 17,
+    auto_hwm_msg_unit_bytes = 18
+};
+
 enum class socket_option_id : int
 {
     linger = 12298,

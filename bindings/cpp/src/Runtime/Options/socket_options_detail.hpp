@@ -72,86 +72,164 @@ get_option_string_value (void *handle_, NativeOption option_, size_t initial_cap
     throw config_error_t (result, zlink_errno ());
 }
 
-template <typename T> T get_common_option_value (void *handle_, socket_option_id option_)
+template <typename OptionId> struct option_traits;
+
+template <> struct option_traits<socket_option_id>
 {
-    return get_option_value<T> (handle_, static_cast<zlink_option_t> (option_), zlink_get_option);
+    using native_option_t = zlink_option_t;
+
+    static native_option_t native (socket_option_id option_)
+    {
+        return static_cast<native_option_t> (option_);
+    }
+
+    static zlink_config_result_t get (void *handle_, native_option_t option_, void *value_,
+                                      size_t *size_)
+    {
+        return zlink_get_option (handle_, option_, value_, size_);
+    }
+
+    static zlink_config_result_t set (void *handle_, native_option_t option_, const void *value_,
+                                      size_t size_)
+    {
+        return zlink_set_option (handle_, option_, value_, size_);
+    }
+
+    static size_t string_cap (socket_option_id option_)
+    {
+        return option_ == socket_option_id::last_endpoint ? 1024u : 256u;
+    }
+};
+
+template <> struct option_traits<router_option_id>
+{
+    using native_option_t = zlink_router_option_t;
+
+    static native_option_t native (router_option_id option_)
+    {
+        return static_cast<native_option_t> (option_);
+    }
+
+    static zlink_config_result_t get (void *handle_, native_option_t option_, void *value_,
+                                      size_t *size_)
+    {
+        return zlink_get_router_option (handle_, option_, value_, size_);
+    }
+
+    static zlink_config_result_t set (void *handle_, native_option_t option_, const void *value_,
+                                      size_t size_)
+    {
+        return zlink_set_router_option (handle_, option_, value_, size_);
+    }
+};
+
+template <> struct option_traits<dealer_option_id>
+{
+    using native_option_t = zlink_dealer_option_t;
+
+    static native_option_t native (dealer_option_id option_)
+    {
+        return static_cast<native_option_t> (option_);
+    }
+
+    static zlink_config_result_t get (void *handle_, native_option_t option_, void *value_,
+                                      size_t *size_)
+    {
+        return zlink_get_dealer_option (handle_, option_, value_, size_);
+    }
+
+    static zlink_config_result_t set (void *handle_, native_option_t option_, const void *value_,
+                                      size_t size_)
+    {
+        return zlink_set_dealer_option (handle_, option_, value_, size_);
+    }
+};
+
+template <> struct option_traits<pub_option_id>
+{
+    using native_option_t = zlink_pub_option_t;
+
+    static native_option_t native (pub_option_id option_)
+    {
+        return static_cast<native_option_t> (option_);
+    }
+
+    static zlink_config_result_t get (void *handle_, native_option_t option_, void *value_,
+                                      size_t *size_)
+    {
+        return zlink_get_pub_option (handle_, option_, value_, size_);
+    }
+
+    static zlink_config_result_t set (void *handle_, native_option_t option_, const void *value_,
+                                      size_t size_)
+    {
+        return zlink_set_pub_option (handle_, option_, value_, size_);
+    }
+
+    static size_t string_cap (pub_option_id)
+    {
+        return 256u;
+    }
+};
+
+template <> struct option_traits<sub_option_id>
+{
+    using native_option_t = zlink_sub_option_t;
+
+    static native_option_t native (sub_option_id option_)
+    {
+        return static_cast<native_option_t> (option_);
+    }
+
+    static zlink_config_result_t get (void *handle_, native_option_t option_, void *value_,
+                                      size_t *size_)
+    {
+        return zlink_get_sub_option (handle_, option_, value_, size_);
+    }
+};
+
+template <> struct option_traits<stream_option_id>
+{
+    using native_option_t = zlink_stream_option_t;
+
+    static native_option_t native (stream_option_id option_)
+    {
+        return static_cast<native_option_t> (option_);
+    }
+
+    static zlink_config_result_t get (void *handle_, native_option_t option_, void *value_,
+                                      size_t *size_)
+    {
+        return zlink_get_stream_option (handle_, option_, value_, size_);
+    }
+
+    static zlink_config_result_t set (void *handle_, native_option_t option_, const void *value_,
+                                      size_t size_)
+    {
+        return zlink_set_stream_option (handle_, option_, value_, size_);
+    }
+};
+
+template <typename T, typename OptionId>
+T get_typed_option_value (void *handle_, OptionId option_)
+{
+    using traits = option_traits<OptionId>;
+    return get_option_value<T> (handle_, traits::native (option_), traits::get);
 }
 
-template <typename T>
-inline void set_common_option_value (void *handle_, socket_option_id option_, const T &value_)
+template <typename T, typename OptionId>
+void set_typed_option_value (void *handle_, OptionId option_, const T &value_)
 {
-    set_option_value<T> (handle_, static_cast<zlink_option_t> (option_), value_, zlink_set_option);
+    using traits = option_traits<OptionId>;
+    set_option_value<T> (handle_, traits::native (option_), value_, traits::set);
 }
 
-inline std::string get_common_option_string (void *handle_, socket_option_id option_)
+template <typename OptionId>
+std::string get_typed_option_string (void *handle_, OptionId option_)
 {
-    const size_t cap = option_ == detail::socket_option_id::last_endpoint ? 1024u : 256u;
-    return get_option_string_value (handle_, static_cast<zlink_option_t> (option_), cap,
-                                    zlink_get_option);
-}
-
-template <typename T> T get_router_option_value (void *handle_, router_option_id option_)
-{
-    return get_option_value<T> (handle_, static_cast<zlink_router_option_t> (option_),
-                                zlink_get_router_option);
-}
-
-template <typename T>
-inline void set_router_option_value (void *handle_, router_option_id option_, const T &value_)
-{
-    set_option_value<T> (handle_, static_cast<zlink_router_option_t> (option_), value_,
-                         zlink_set_router_option);
-}
-
-template <typename T> T get_dealer_option_value (void *handle_, dealer_option_id option_)
-{
-    return get_option_value<T> (handle_, static_cast<zlink_dealer_option_t> (option_),
-                                zlink_get_dealer_option);
-}
-
-template <typename T>
-inline void set_dealer_option_value (void *handle_, dealer_option_id option_, const T &value_)
-{
-    set_option_value<T> (handle_, static_cast<zlink_dealer_option_t> (option_), value_,
-                         zlink_set_dealer_option);
-}
-
-template <typename T> T get_pub_option_value (void *handle_, pub_option_id option_)
-{
-    return get_option_value<T> (handle_, static_cast<zlink_pub_option_t> (option_),
-                                zlink_get_pub_option);
-}
-
-template <typename T>
-inline void set_pub_option_value (void *handle_, pub_option_id option_, const T &value_)
-{
-    set_option_value<T> (handle_, static_cast<zlink_pub_option_t> (option_), value_,
-                         zlink_set_pub_option);
-}
-
-inline std::string get_pub_option_string (void *handle_, pub_option_id option_)
-{
-    return get_option_string_value (handle_, static_cast<zlink_pub_option_t> (option_), 256u,
-                                    zlink_get_pub_option);
-}
-
-template <typename T> T get_sub_option_value (void *handle_, sub_option_id option_)
-{
-    return get_option_value<T> (handle_, static_cast<zlink_sub_option_t> (option_),
-                                zlink_get_sub_option);
-}
-
-template <typename T> T get_stream_option_value (void *handle_, stream_option_id option_)
-{
-    return get_option_value<T> (handle_, static_cast<zlink_stream_option_t> (option_),
-                                zlink_get_stream_option);
-}
-
-template <typename T>
-inline void set_stream_option_value (void *handle_, stream_option_id option_, const T &value_)
-{
-    set_option_value<T> (handle_, static_cast<zlink_stream_option_t> (option_), value_,
-                         zlink_set_stream_option);
+    using traits = option_traits<OptionId>;
+    return get_option_string_value (handle_, traits::native (option_), traits::string_cap (option_),
+                                    traits::get);
 }
 
 } // namespace detail

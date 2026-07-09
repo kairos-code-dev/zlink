@@ -4,6 +4,7 @@
 
 #include <zlink/Contracts/Service/spot.hpp>
 
+#include <cerrno>
 #include <condition_variable>
 #include <mutex>
 
@@ -24,6 +25,21 @@ struct spot_dispatch_handler_state_t
 
 struct spot_t::impl
 {
+    bool require_handle () const noexcept
+    {
+        if (handle)
+            return true;
+        errno = last_error != 0 ? last_error : EFAULT;
+        return false;
+    }
+
+    void throw_invalid_handle () const
+    {
+        if (require_handle ())
+            return;
+        throw submit_error_t (submit_result_t::invalid_argument, errno);
+    }
+
     void *handle = nullptr;
     int last_error = 0;
     std::chrono::milliseconds default_request_timeout;

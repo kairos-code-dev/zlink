@@ -86,18 +86,6 @@ class socket_t
                             std::vector<message_t> &parts_,
                             send_flags_t flags_ = send_flags_t::none);
 
-  protected:
-    [[nodiscard]] int try_send_result (send_result_t &result_, message_t &part_);
-
-    [[nodiscard]] int try_send_result (send_result_t &result_, std::vector<message_t> &parts_);
-
-    [[nodiscard]] int
-    try_send_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_);
-
-    [[nodiscard]] int try_send_result (send_result_t &result_,
-                                           const routing_id_t &target_rid_,
-                                           std::vector<message_t> &parts_);
-
     [[nodiscard]] int receive (received_t &received_, recv_flags_t flags_ = recv_flags_t::none);
 
     [[nodiscard]] int
@@ -110,13 +98,6 @@ class socket_t
     [[nodiscard]] int publish (const std::string &topic_id_,
                                std::vector<message_t> &parts_,
                                send_flags_t flags_ = send_flags_t::none);
-
-    [[nodiscard]] int
-    try_publish_result (send_result_t &result_, const std::string &topic_id_, message_t &part_);
-
-    [[nodiscard]] int try_publish_result (send_result_t &result_,
-                                              const std::string &topic_id_,
-                                              std::vector<message_t> &parts_);
 
   public:
     [[nodiscard]] int set_subscription (const std::string &filter_);
@@ -133,31 +114,7 @@ class socket_t
                                       bool &has_more_out_,
                                       recv_flags_t flags_ = recv_flags_t::none);
 
-    [[nodiscard]] int subscribe (routing_id_t &source_rid_out_,
-                                 std::string &topic_id_out_,
-                                 std::vector<message_t> &parts_out_,
-                                 recv_flags_t flags_ = recv_flags_t::none)
-    {
-        topic_message_t message;
-        const int rc = subscribe (message, flags_);
-        if (rc != 0)
-            return rc;
-
-        if (message.routing_id ())
-            source_rid_out_ = *message.routing_id ();
-        else
-            source_rid_out_ = zlink::detail::unchecked_empty_routing_id ();
-        topic_id_out_ = message.topic ();
-        parts_out_ = std::move (message.parts ());
-        return 0;
-    }
-
     [[nodiscard]] int subscription_event (subscription_event_t &event_,
-                                          recv_flags_t flags_ = recv_flags_t::none);
-
-    [[nodiscard]] int subscription_event (routing_id_t &source_rid_out_,
-                                          bool &subscribed_out_,
-                                          std::string &topic_id_out_,
                                           recv_flags_t flags_ = recv_flags_t::none);
 
     void set_send_ready_handler (std::function<void ()> handler_);

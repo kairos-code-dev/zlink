@@ -5,6 +5,7 @@
 #include <Runtime/Service/actor_model_access.hpp>
 #include <Runtime/Service/actor_detail.hpp>
 #include <Runtime/Messaging/received_access.hpp>
+#include <Runtime/Service/native_array_fetch.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
 #include <Runtime/Service/spot_access.hpp>
 
@@ -19,7 +20,7 @@ service::send_operation_t received_t::send ()
 {
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::received_send;
-    state_ptr->received = this;
+    state_ptr->received.received = this;
     return service::send_operation_t (std::move (state_ptr));
 }
 
@@ -27,7 +28,7 @@ service::reply_operation_t received_t::reply ()
 {
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::received_reply;
-    state_ptr->received = this;
+    state_ptr->received.received = this;
     return service::reply_operation_t (std::move (state_ptr));
 }
 
@@ -159,19 +160,16 @@ void submit_reply_messages (std::vector<message_t> &parts_, SubmitPart submit_pa
     if (parts_.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
-    for (size_t i = 0; i < parts_.size (); ++i) {
-        if (!parts_[i].valid ())
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    const int raw_rc = detail::submit_message_parts_close_on_failure (
+      parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+          return submit_part_ (part_out_, part_flag_);
+      });
+    if (raw_rc == -1)
+        throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
 
-        zlink_msg_t native;
-        detail::move_to_native_or_reject (parts_[i], &native);
-        const zlink_part_flag_t part_flag =
-          i + 1 < parts_.size () ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        const submit_result_t rc = static_cast<submit_result_t> (submit_part_ (&native, part_flag));
-        if (rc != submit_result_t::ok) {
-            (void) zlink_msg_close (&native);
-            throw submit_error_t (rc, zlink_errno ());
-        }
+    const submit_result_t rc = static_cast<submit_result_t> (raw_rc);
+    if (rc != submit_result_t::ok) {
+        throw submit_error_t (rc, zlink_errno ());
     }
 }
 
@@ -238,9 +236,9 @@ send_operation_t spot_t::publish (const std::string &topic_)
 {
     zlink::detail::validate_no_embedded_null (topic_, "topic");
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::publish;
-    state_ptr->topic = topic_;
+    state_ptr->spot.topic = topic_;
     return send_operation_t (std::move (state_ptr));
 }
 
@@ -248,9 +246,9 @@ send_operation_t spot_t::send_channel (const std::string &channel_name_)
 {
     validate_channel_name (channel_name_);
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::send_channel;
-    state_ptr->channel_name = channel_name_;
+    state_ptr->spot.channel_name = channel_name_;
     return send_operation_t (std::move (state_ptr));
 }
 
@@ -258,9 +256,9 @@ request_operation_t spot_t::request_channel (const std::string &channel_name_)
 {
     validate_channel_name (channel_name_);
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::request_channel;
-    state_ptr->channel_name = channel_name_;
+    state_ptr->spot.channel_name = channel_name_;
     return request_operation_t (std::move (state_ptr));
 }
 
@@ -304,10 +302,12 @@ void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
                             send_flags_t flags_)
 {
     zlink::detail::throw_if_reply_flags_unsupported (flags_);
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     submit_single_reply_message (message_, [&] (zlink_msg_t *part_out_) {
-        return zlink_spot_reply_spot_part (_impl->handle,
-                                           zlink::detail::routing_id_native (dest_node_rid_),
-                                           zlink::detail::routing_id_native (dest_spot_rid_),
+        return zlink_spot_reply_spot_part (_impl->handle, &dest_node_rid, &dest_spot_rid,
                                            request_seq_, part_out_, ZLINK_PART_FINAL);
     });
 }
@@ -319,10 +319,13 @@ void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
                             send_flags_t flags_)
 {
     zlink::detail::throw_if_reply_flags_unsupported (flags_);
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     submit_reply_messages (parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
         return zlink_spot_reply_spot_part (
-          _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-          zlink::detail::routing_id_native (dest_spot_rid_), request_seq_, part_out_, part_flag_);
+          _impl->handle, &dest_node_rid, &dest_spot_rid, request_seq_, part_out_, part_flag_);
     });
 }
 
@@ -331,11 +334,11 @@ reply_operation_t spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
                                          uint64_t request_seq_)
 {
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::reply_to_spot;
-    state_ptr->first_rid = dest_node_rid_;
-    state_ptr->second_rid = dest_spot_rid_;
-    state_ptr->request_seq = request_seq_;
+    state_ptr->spot.target.first_rid = dest_node_rid_;
+    state_ptr->spot.target.second_rid = dest_spot_rid_;
+    state_ptr->spot.request_seq = request_seq_;
     return reply_operation_t (std::move (state_ptr));
 }
 
@@ -368,10 +371,10 @@ void spot_t::reply_to_router (const routing_id_t &peer_rid_,
 reply_operation_t spot_t::reply_to_router (const routing_id_t &peer_rid_, uint64_t request_seq_)
 {
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::reply_to_router;
-    state_ptr->first_rid = peer_rid_;
-    state_ptr->request_seq = request_seq_;
+    state_ptr->spot.target.first_rid = peer_rid_;
+    state_ptr->spot.request_seq = request_seq_;
     return reply_operation_t (std::move (state_ptr));
 }
 
@@ -559,25 +562,13 @@ actor_join_reply_operation_t spot_t::reply_actor_join (const actor_join_request_
 
 std::vector<actor_ref_t> spot_t::actors () const
 {
-    size_t count = 0;
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_spot_actors (_impl->handle, nullptr, &count)));
-    std::vector<zlink_actor_ref_t> native (count);
-    if (count > 0) {
-        while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_spot_actors (_impl->handle, native.data (), &count));
-            if (result == config_result_t::ok) {
-                native.resize (count);
-                break;
-            }
-            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
-                native.resize (count);
-                continue;
-            }
-            detail::throw_if_failed<config_error_t> (result);
-        }
-    }
+    auto native = detail::fetch_growable_native_array<zlink_actor_ref_t> (
+      [&] (size_t *count_) {
+          return zlink_spot_actors (_impl->handle, nullptr, count_);
+      },
+      [&] (zlink_actor_ref_t *entries_, size_t *count_) {
+          return zlink_spot_actors (_impl->handle, entries_, count_);
+      });
     std::vector<actor_ref_t> entries;
     entries.reserve (native.size ());
     for (size_t i = 0; i < native.size (); ++i)

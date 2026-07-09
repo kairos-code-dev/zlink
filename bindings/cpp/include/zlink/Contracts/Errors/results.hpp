@@ -3,8 +3,6 @@
 
 #include "../Core/routing_id.hpp"
 
-#include <cerrno>
-
 namespace zlink
 {
 
@@ -64,21 +62,6 @@ enum class config_result_t : int
     internal_error = 704,
     invalid_state = 705,
     not_found = 706
-};
-
-/// @brief Native zlink-specific errno values above the POSIX range.
-enum class error_code : int
-{
-    efsm = 156384763,
-    enocompatproto = 156384764,
-    eterm = 156384765,
-    emthread = 156384766
-};
-
-/// @brief Native protocol error codes.
-enum class protocol_error : int
-{
-    zmp_malformed_command_hello = 0x10000013
 };
 
 } // namespace zlink

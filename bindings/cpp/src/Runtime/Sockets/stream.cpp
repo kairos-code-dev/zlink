@@ -23,8 +23,8 @@ service::send_operation_t stream_socket_t::send (const routing_id_t &target_rid_
 {
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::raw_routed_send;
-    state_ptr->raw_socket = detail::native_handle (*this);
-    state_ptr->first_rid = target_rid_;
+    state_ptr->raw.socket = detail::native_handle (*this);
+    state_ptr->raw.target.first_rid = target_rid_;
     return service::send_operation_t (std::move (state_ptr));
 }
 
@@ -60,16 +60,13 @@ void stream_socket_t::set_packet_handler (
 
 void stream_socket_t::set_routing_id (const routing_id_t &routing_id_)
 {
-    if (socket_t::set_routing_id_raw (
-          std::as_bytes (std::span<const uint8_t> (routing_id_.data (), routing_id_.size ())))
-        != 0)
-        throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
+    detail::set_routing_id_or_throw (detail::native_handle (*this), routing_id_);
 }
 
 void stream_socket_t::get_routing_id (routing_id_t &routing_id_) const
 {
-    if (socket_t::get_routing_id_raw (routing_id_) != 0)
-        throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
+    detail::get_routing_id_or_throw (const_cast<void *> (detail::native_handle (*this)),
+                                     routing_id_);
 }
 
 service::actor_bind_operation_t stream_socket_t::bind_actor (const routing_id_t &session_rid_,
@@ -99,9 +96,9 @@ service::send_operation_t stream_socket_t::send_bound_actor (const routing_id_t 
     detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u, "actor_id");
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::stream_bound_actor_send;
-    state_ptr->stream = detail::native_handle (*this);
-    state_ptr->first_rid = session_rid_;
-    state_ptr->actor_id = actor_id_;
+    state_ptr->stream_actor.stream = detail::native_handle (*this);
+    state_ptr->stream_actor.target.first_rid = session_rid_;
+    state_ptr->stream_actor.actor_id = actor_id_;
     return service::send_operation_t (std::move (state_ptr));
 }
 

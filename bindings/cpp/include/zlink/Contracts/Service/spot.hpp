@@ -1,9 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#define CPP_BINDING_SERVICES_SPOT_NODE_NO_SPOT_INCLUDE
 #include "spot_node.hpp"
-#undef CPP_BINDING_SERVICES_SPOT_NODE_NO_SPOT_INCLUDE
 #include "../Sockets/message_socket_contracts.hpp"
 #include "../Sockets/pubsub_socket_contracts.hpp"
 #include "../Sockets/routed_socket_contracts.hpp"

@@ -22,7 +22,7 @@ struct service_model_access_t
           status_.node_routing_id.size > 0
             ? std::optional<routing_id_t> (native_routing_id (status_.node_routing_id))
             : std::nullopt;
-        out.state_ = static_cast<spot_node_state> (status_.state);
+        out.state_ = static_cast<spot_node_state_t> (status_.state);
         out.configured_peer_count_ = status_.configured_peer_count;
         out.active_peer_count_ = status_.active_peer_count;
         out.connected_peer_count_ = status_.connected_peer_count;
@@ -41,9 +41,9 @@ struct service_model_access_t
         out.channel_name_ = fixed_string_to_string (entry_.channel_name);
         out.local_endpoint_ = fixed_string_to_string (entry_.local_endpoint);
         out.peer_endpoint_ = fixed_string_to_string (entry_.peer_endpoint);
-        out.source_ = static_cast<spot_peer_source> (entry_.source);
-        out.kind_ = static_cast<spot_peer_kind> (entry_.kind);
-        out.state_ = static_cast<spot_peer_state> (entry_.state);
+        out.source_ = static_cast<spot_peer_source_t> (entry_.source);
+        out.kind_ = static_cast<spot_peer_kind_t> (entry_.kind);
+        out.state_ = static_cast<spot_peer_state_t> (entry_.state);
         out.weight_ = entry_.weight;
         out.connected_since_ms_ = entry_.connected_since_ms;
         out.last_changed_ms_ = entry_.last_changed_ms;
@@ -53,9 +53,9 @@ struct service_model_access_t
     static spot_node_subject_entry_t from_native (const zlink_spot_node_subject_entry_t &entry_)
     {
         spot_node_subject_entry_t out;
-        out.role_ = static_cast<spot_socket_role> (entry_.role);
+        out.role_ = static_cast<spot_role_t> (entry_.role);
         out.subject_ = fixed_string_to_string (entry_.subject);
-        out.subject_kind_ = static_cast<zlink::subject_kind> (entry_.subject_kind);
+        out.subject_kind_ = static_cast<subject_kind_t> (entry_.subject_kind);
         out.ready_peer_count_ = entry_.ready_peer_count;
         out.active_peer_count_ = entry_.active_peer_count;
         out.last_changed_ms_ = entry_.last_changed_ms;
@@ -65,7 +65,7 @@ struct service_model_access_t
     static spot_node_socket_entry_t from_native (const zlink_spot_node_socket_entry_t &entry_)
     {
         spot_node_socket_entry_t out;
-        out.owner_ = static_cast<spot_node_socket_owner> (entry_.owner);
+        out.owner_ = static_cast<spot_node_socket_owner_t> (entry_.owner);
         out.owner_id_ = entry_.owner_id;
         out.owner_name_ = fixed_string_to_string (entry_.owner_name);
         out.socket_name_ = fixed_string_to_string (entry_.socket_name);

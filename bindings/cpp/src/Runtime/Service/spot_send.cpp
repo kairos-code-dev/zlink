@@ -76,10 +76,7 @@ bool spot_t::publish (const std::string &topic_, message_t &part_, send_flags_t 
 
 bool spot_t::publish_discard_on_backpressure (const std::string &topic_, message_t &part_)
 {
-    if (!_impl->handle) {
-        errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
-        throw submit_error_t (submit_result_t::invalid_argument, errno);
-    }
+    _impl->throw_invalid_handle ();
     if (!part_.valid ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
@@ -149,11 +146,14 @@ bool spot_t::send_to_spot (const routing_id_t &dest_node_rid_,
                            message_t message_,
                            send_flags_t flags_)
 {
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     return submit_single_send_message (
       message_, flags_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
           return zlink_spot_send_spot_part (
-            _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
+            _impl->handle, &dest_node_rid, &dest_spot_rid, part_out_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_);
       });
 }
@@ -163,11 +163,14 @@ bool spot_t::send_to_spot (const routing_id_t &dest_node_rid_,
                            std::vector<message_t> &parts_,
                            send_flags_t flags_)
 {
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     const int raw_rc = detail::submit_message_parts_close_on_failure (
       parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
           return zlink_spot_send_spot_part (
-            _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
+            _impl->handle, &dest_node_rid, &dest_spot_rid, part_out_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_);
       });
     if (raw_rc == -1)
@@ -185,10 +188,10 @@ send_operation_t spot_t::send_to_spot (const routing_id_t &dest_node_rid_,
                                        const routing_id_t &dest_spot_rid_)
 {
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::send_to_spot;
-    state_ptr->first_rid = dest_node_rid_;
-    state_ptr->second_rid = dest_spot_rid_;
+    state_ptr->spot.target.first_rid = dest_node_rid_;
+    state_ptr->spot.target.second_rid = dest_spot_rid_;
     return send_operation_t (std::move (state_ptr));
 }
 
@@ -196,10 +199,10 @@ request_operation_t spot_t::request_to_spot (const routing_id_t &dest_node_rid_,
                                              const routing_id_t &dest_spot_rid_)
 {
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::request_to_spot;
-    state_ptr->first_rid = dest_node_rid_;
-    state_ptr->second_rid = dest_spot_rid_;
+    state_ptr->spot.target.first_rid = dest_node_rid_;
+    state_ptr->spot.target.second_rid = dest_spot_rid_;
     return request_operation_t (std::move (state_ptr));
 }
 
@@ -210,13 +213,16 @@ async_result_t<std::vector<message_t>> spot_t::request_to_spot (const routing_id
 {
     const uint32_t timeout_ms =
       zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     return detail::submit_request_part_awaitable (
       message_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback_,
            void *state_) {
           return zlink_spot_request_spot_part (
-            _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), part_out_, callback_, state_,
+            _impl->handle, &dest_node_rid, &dest_spot_rid, part_out_, callback_, state_,
             ZLINK_SEND_FLAGS_NONE, part_flag_, callback_ ? timeout_ms : 0u);
       });
 }
@@ -228,13 +234,16 @@ async_result_t<std::vector<message_t>> spot_t::request_to_spot (const routing_id
 {
     const uint32_t timeout_ms =
       zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     return detail::submit_request_parts_awaitable (
       parts_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback_,
            void *state_) {
           return zlink_spot_request_spot_part (
-            _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), part_out_, callback_, state_,
+            _impl->handle, &dest_node_rid, &dest_spot_rid, part_out_, callback_, state_,
             ZLINK_SEND_FLAGS_NONE, part_flag_, callback_ ? timeout_ms : 0u);
       });
 }
@@ -249,13 +258,16 @@ bool spot_t::request_to_spot (
 {
     const uint32_t timeout_ms =
       zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     return detail::submit_request_part_callback (
       message_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
            void *state) {
           return zlink_spot_request_spot_part (
-            _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), part_out_, callback, state,
+            _impl->handle, &dest_node_rid, &dest_spot_rid, part_out_, callback, state,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_,
             callback ? timeout_ms : 0u);
       });
@@ -271,13 +283,16 @@ bool spot_t::request_to_spot (
 {
     const uint32_t timeout_ms =
       zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (dest_node_rid_);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (dest_spot_rid_);
     return detail::submit_request_parts_callback (
       parts_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
            void *state) {
           return zlink_spot_request_spot_part (
-            _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), part_out_, callback, state,
+            _impl->handle, &dest_node_rid, &dest_spot_rid, part_out_, callback, state,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), part_flag_,
             callback ? timeout_ms : 0u);
       });
@@ -286,9 +301,9 @@ bool spot_t::request_to_spot (
 request_operation_t spot_t::request_to_router (const routing_id_t &peer_rid_)
 {
     auto state_ptr = detail::acquire_state ();
-    state_ptr->spot = this;
+    state_ptr->spot.spot = this;
     state_ptr->kind = detail::spot_operation_kind_t::request_to_router;
-    state_ptr->first_rid = peer_rid_;
+    state_ptr->spot.target.first_rid = peer_rid_;
     return request_operation_t (std::move (state_ptr));
 }
 

@@ -73,26 +73,31 @@ struct received_access_t
         void *handle = reinterpret_cast<void *> (received_._send_context_handle);
         const zlink_send_flags_t native_flags =
           static_cast<zlink_send_flags_t> (static_cast<int> (flags_));
+        const zlink_routing_id_t routing_id =
+          zlink::detail::routing_id_native_value (*received_._routing_id);
         zlink_submit_result_t rc = ZLINK_SUBMIT_INVALID_ARGUMENT;
         switch (received_._send_context_kind) {
             case received_t::send_context_kind_t::socket_rid:
-                rc = zlink_send_part_rid (
-                  handle, zlink::detail::routing_id_native (*received_._routing_id),
-                  zlink::detail::native_handle (part_), native_flags, ZLINK_PART_FINAL);
+                rc = zlink_send_part_rid (handle, &routing_id, zlink::detail::native_handle (part_),
+                                          native_flags, ZLINK_PART_FINAL);
                 break;
             case received_t::send_context_kind_t::router_spot:
-                if (received_._spot_rid.has_value ())
-                    rc = zlink_router_send_spot_part (
-                      handle, zlink::detail::routing_id_native (*received_._routing_id),
-                      zlink::detail::routing_id_native (*received_._spot_rid),
-                      zlink::detail::native_handle (part_), native_flags, ZLINK_PART_FINAL);
+                if (received_._spot_rid.has_value ()) {
+                    const zlink_routing_id_t spot_rid =
+                      zlink::detail::routing_id_native_value (*received_._spot_rid);
+                    rc = zlink_router_send_spot_part (handle, &routing_id, &spot_rid,
+                                                      zlink::detail::native_handle (part_),
+                                                      native_flags, ZLINK_PART_FINAL);
+                }
                 break;
             case received_t::send_context_kind_t::spot_spot:
-                if (received_._spot_rid.has_value ())
-                    rc = zlink_spot_send_spot_part (
-                      handle, zlink::detail::routing_id_native (*received_._routing_id),
-                      zlink::detail::routing_id_native (*received_._spot_rid),
-                      zlink::detail::native_handle (part_), native_flags, ZLINK_PART_FINAL);
+                if (received_._spot_rid.has_value ()) {
+                    const zlink_routing_id_t spot_rid =
+                      zlink::detail::routing_id_native_value (*received_._spot_rid);
+                    rc = zlink_spot_send_spot_part (handle, &routing_id, &spot_rid,
+                                                    zlink::detail::native_handle (part_),
+                                                    native_flags, ZLINK_PART_FINAL);
+                }
                 break;
             default:
                 break;
@@ -112,31 +117,32 @@ struct received_access_t
         void *handle = reinterpret_cast<void *> (received_._send_context_handle);
         const zlink_send_flags_t native_flags =
           static_cast<zlink_send_flags_t> (static_cast<int> (flags_));
+        const zlink_routing_id_t routing_id =
+          zlink::detail::routing_id_native_value (*received_._routing_id);
         if (received_._send_context_kind == received_t::send_context_kind_t::router_spot
             && received_._spot_rid.has_value ()) {
+            const zlink_routing_id_t spot_rid =
+              zlink::detail::routing_id_native_value (*received_._spot_rid);
             return zlink::detail::submit_received_send_parts (
               parts_, flags_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-                  return zlink_router_send_spot_part (
-                    handle, zlink::detail::routing_id_native (*received_._routing_id),
-                    zlink::detail::routing_id_native (*received_._spot_rid), part_out_,
-                    native_flags, part_flag_);
+                  return zlink_router_send_spot_part (handle, &routing_id, &spot_rid, part_out_,
+                                                      native_flags, part_flag_);
               });
         }
         if (received_._send_context_kind == received_t::send_context_kind_t::spot_spot
             && received_._spot_rid.has_value ()) {
+            const zlink_routing_id_t spot_rid =
+              zlink::detail::routing_id_native_value (*received_._spot_rid);
             return zlink::detail::submit_received_send_parts (
               parts_, flags_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-                  return zlink_spot_send_spot_part (
-                    handle, zlink::detail::routing_id_native (*received_._routing_id),
-                    zlink::detail::routing_id_native (*received_._spot_rid), part_out_,
-                    native_flags, part_flag_);
+                  return zlink_spot_send_spot_part (handle, &routing_id, &spot_rid, part_out_,
+                                                    native_flags, part_flag_);
               });
         }
         return zlink::detail::submit_received_send_parts (
           parts_, flags_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-              return zlink_send_part_rid (handle,
-                                          zlink::detail::routing_id_native (*received_._routing_id),
-                                          part_out_, native_flags, part_flag_);
+              return zlink_send_part_rid (handle, &routing_id, part_out_, native_flags,
+                                          part_flag_);
           });
     }
 
@@ -147,33 +153,34 @@ struct received_access_t
     {
         void *handle = reinterpret_cast<void *> (received_._send_context_handle);
         const uint64_t request_seq = *received_._request_seq;
+        const zlink_routing_id_t routing_id =
+          zlink::detail::routing_id_native_value (*received_._routing_id);
         if (received_._send_context_kind == received_t::send_context_kind_t::router_spot
             && received_._spot_rid.has_value ()) {
+            const zlink_routing_id_t spot_rid =
+              zlink::detail::routing_id_native_value (*received_._spot_rid);
             zlink::detail::submit_received_reply_parts (
               parts_, flags_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-                  return zlink_router_reply_spot_part (
-                    handle, zlink::detail::routing_id_native (*received_._routing_id),
-                    zlink::detail::routing_id_native (*received_._spot_rid), request_seq, part_out_,
-                    part_flag_);
+                  return zlink_router_reply_spot_part (handle, &routing_id, &spot_rid, request_seq,
+                                                       part_out_, part_flag_);
               });
             return;
         }
         if (received_._send_context_kind == received_t::send_context_kind_t::spot_spot
             && received_._spot_rid.has_value ()) {
+            const zlink_routing_id_t spot_rid =
+              zlink::detail::routing_id_native_value (*received_._spot_rid);
             zlink::detail::submit_received_reply_parts (
               parts_, flags_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-                  return zlink_spot_reply_spot_part (
-                    handle, zlink::detail::routing_id_native (*received_._routing_id),
-                    zlink::detail::routing_id_native (*received_._spot_rid), request_seq, part_out_,
-                    part_flag_);
+                  return zlink_spot_reply_spot_part (handle, &routing_id, &spot_rid, request_seq,
+                                                     part_out_, part_flag_);
               });
             return;
         }
         zlink::detail::submit_received_reply_parts (
           parts_, flags_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-              return zlink_router_reply_part (
-                handle, zlink::detail::routing_id_native (*received_._routing_id), request_seq,
-                part_out_, part_flag_);
+              return zlink_router_reply_part (handle, &routing_id, request_seq, part_out_,
+                                              part_flag_);
           });
     }
 

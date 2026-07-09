@@ -229,35 +229,6 @@ inline bool is_invalid_handle_errno (int err_)
     return err_ == EFAULT || err_ == ENOTSOCK || err_ == EBADF || err_ == ESHUTDOWN;
 }
 
-inline bind_result_t bind_result_from_errno (int err_)
-{
-    if (err_ == EADDRINUSE)
-        return bind_result_t::addr_in_use;
-    if (err_ == ENOTSUP)
-        return bind_result_t::not_supported;
-#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
-    if (err_ == EOPNOTSUPP)
-        return bind_result_t::not_supported;
-#endif
-
-    if (is_invalid_handle_errno (err_))
-        return bind_result_t::invalid_handle;
-    return bind_result_t::invalid_argument;
-}
-
-inline connect_result_t connect_result_from_errno (int err_)
-{
-    if (err_ == ENOTSUP)
-        return connect_result_t::not_supported;
-#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
-    if (err_ == EOPNOTSUPP)
-        return connect_result_t::not_supported;
-#endif
-    if (is_invalid_handle_errno (err_))
-        return connect_result_t::invalid_handle;
-    return connect_result_t::invalid_argument;
-}
-
 inline config_result_t config_result_from_errno (int err_)
 {
     if (err_ == ENOTSUP)

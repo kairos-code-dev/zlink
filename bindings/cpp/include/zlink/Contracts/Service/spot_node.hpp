@@ -174,6 +174,10 @@ class spot_node_t
     static actor_ref_t remote_actor_ref (const routing_id_t &target_node_rid_,
                                          const std::string &actor_id_);
 
+    static actor_ref_t remote_actor_ref (const routing_id_t &target_node_rid_,
+                                         const std::string &actor_id_,
+                                         uint64_t generation_);
+
     actor_destroy_operation_t destroy_actor (const actor_ref_t &actor_);
 
     actor_join_operation_t join_actor (const actor_ref_t &actor_,
@@ -195,6 +199,10 @@ class spot_node_t
     send_operation_t send_to_actor (const actor_ref_t &actor_);
 
     request_operation_t request_to_actor (const actor_ref_t &actor_);
+
+    void bind_remote_actor_bound_session (const actor_ref_t &actor_,
+                                          const routing_id_t &source_node_rid_,
+                                          const routing_id_t &source_session_rid_);
 
     void reply_actor_no_bind (const actor_recv_info_t &info_,
                               std::vector<message_t> &parts_,
@@ -324,7 +332,5 @@ class spot_node_publisher_t
 } // namespace service
 } // namespace zlink
 
-#ifndef CPP_BINDING_SERVICES_SPOT_NODE_NO_SPOT_INCLUDE
 #include "operation_contracts.hpp"
 #include "spot.hpp"
-#endif

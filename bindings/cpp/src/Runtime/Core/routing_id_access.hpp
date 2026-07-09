@@ -55,9 +55,13 @@ inline zlink_routing_id_t routing_id_native_value (const routing_id_t &routing_i
 
 inline const zlink_routing_id_t *routing_id_native (const routing_id_t &routing_id_) noexcept
 {
-    thread_local zlink_routing_id_t native[8];
+    // Returned pointers share a small thread-local ring and are only for immediate
+    // single-call native handoff. Use routing_id_native_value() when a call needs
+    // more than one native routing id pointer at the same time.
+    constexpr size_t native_ring_capacity = 8u;
+    thread_local zlink_routing_id_t native[native_ring_capacity];
     thread_local size_t index = 0;
-    zlink_routing_id_t &slot = native[index++ % 8u];
+    zlink_routing_id_t &slot = native[index++ % native_ring_capacity];
     slot = routing_id_access_t::to_native (routing_id_);
     return &slot;
 }

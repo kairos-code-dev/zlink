@@ -18,7 +18,7 @@ service::send_operation_t pair_socket_t::send ()
 {
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::raw_send;
-    state_ptr->raw_socket = detail::native_handle (*this);
+    state_ptr->raw.socket = detail::native_handle (*this);
     return service::send_operation_t (std::move (state_ptr));
 }
 
@@ -31,11 +31,6 @@ int pair_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
 {
     return detail::recv_single_part_message (detail::native_handle (*this), nullptr, part_out_,
                                              flags_);
-}
-
-void pair_socket_t::set_send_ready_handler (std::function<void ()> handler_)
-{
-    socket_t::set_send_ready_handler (std::move (handler_));
 }
 
 } // namespace zlink

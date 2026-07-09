@@ -26,8 +26,6 @@ class actor_ref_t
 
     std::string actor_id () const { return _actor_id; }
 
-    std::string actor_id_string () const { return actor_id (); }
-
     uint64_t generation () const noexcept { return _generation; }
 
     bool unchecked () const noexcept { return _generation == 0u; }

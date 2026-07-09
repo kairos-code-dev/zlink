@@ -6,72 +6,72 @@ namespace zlink
 
 bool pub_socket_options_t::verbose () const
 {
-    return detail::get_pub_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                               detail::pub_option_id::verbose)
            != 0;
 }
 
 void pub_socket_options_t::verbose (bool value)
 {
-    detail::set_pub_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                        detail::pub_option_id::verbose, value ? 1 : 0);
 }
 
 bool pub_socket_options_t::verboser () const
 {
-    return detail::get_pub_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                               detail::pub_option_id::verboser)
            != 0;
 }
 
 void pub_socket_options_t::verboser (bool value)
 {
-    detail::set_pub_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                        detail::pub_option_id::verboser, value ? 1 : 0);
 }
 
 bool pub_socket_options_t::no_drop () const
 {
-    return detail::get_pub_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                               detail::pub_option_id::nodrop)
            != 0;
 }
 
 void pub_socket_options_t::no_drop (bool value)
 {
-    detail::set_pub_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                        detail::pub_option_id::nodrop, value ? 1 : 0);
 }
 
 bool pub_socket_options_t::manual () const
 {
-    return detail::get_pub_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                               detail::pub_option_id::manual)
            != 0;
 }
 
 void pub_socket_options_t::manual (bool value)
 {
-    detail::set_pub_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                        detail::pub_option_id::manual, value ? 1 : 0);
 }
 
 bool pub_socket_options_t::manual_last_value () const
 {
-    return detail::get_pub_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                               detail::pub_option_id::manual_last_value)
            != 0;
 }
 
 void pub_socket_options_t::manual_last_value (bool value)
 {
-    detail::set_pub_option_value<int> (detail::native_option_handle (_socket),
+    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
                                        detail::pub_option_id::manual_last_value, value ? 1 : 0);
 }
 
 message_t pub_socket_options_t::welcome_message () const
 {
-    const std::string value = detail::get_pub_option_string (detail::native_option_handle (_socket),
+    const std::string value = detail::get_typed_option_string (detail::native_option_handle (_socket),
                                                              detail::pub_option_id::welcome_msg);
     return message_t::from (std::as_bytes (std::span<const char> (value.data (), value.size ())));
 }
@@ -102,13 +102,13 @@ void pub_socket_options_t::reject_subscribe (const routing_id_t &routing_id)
 
 int pub_socket_options_t::topics_count () const
 {
-    return detail::get_pub_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                               detail::pub_option_id::topics_count);
 }
 
 int sub_socket_options_t::topics_count () const
 {
-    return detail::get_sub_option_value<int> (detail::native_option_handle (_socket),
+    return detail::get_typed_option_value<int> (detail::native_option_handle (_socket),
                                               detail::sub_option_id::topics_count);
 }
 

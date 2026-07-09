@@ -21,7 +21,7 @@ service::send_operation_t dealer_socket_t::send ()
 {
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::raw_send;
-    state_ptr->raw_socket = detail::native_handle (*this);
+    state_ptr->raw.socket = detail::native_handle (*this);
     return service::send_operation_t (std::move (state_ptr));
 }
 
@@ -29,7 +29,7 @@ service::request_operation_t dealer_socket_t::request ()
 {
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::raw_request;
-    state_ptr->raw_socket = detail::native_handle (*this);
+    state_ptr->raw.socket = detail::native_handle (*this);
     return service::request_operation_t (std::move (state_ptr));
 }
 
@@ -46,16 +46,13 @@ int dealer_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
 
 void dealer_socket_t::set_routing_id (const routing_id_t &routing_id_)
 {
-    if (socket_t::set_routing_id_raw (
-          std::as_bytes (std::span<const uint8_t> (routing_id_.data (), routing_id_.size ())))
-        != 0)
-        throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
+    detail::set_routing_id_or_throw (detail::native_handle (*this), routing_id_);
 }
 
 void dealer_socket_t::get_routing_id (routing_id_t &routing_id_) const
 {
-    if (socket_t::get_routing_id_raw (routing_id_) != 0)
-        throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
+    detail::get_routing_id_or_throw (const_cast<void *> (detail::native_handle (*this)),
+                                     routing_id_);
 }
 
 void dealer_socket_t::channel_name (const std::string &value_)

@@ -657,7 +657,6 @@ internal static class PerfMultiSpotReqRep
                 {
                     received.Reply()
                         .Message(reply)
-                        .Flags(SendFlags.DontWait)
                         .Submit();
                     DebugLogLimited(ref s_debugServerReplyLogs,
                         "spot_reqrep_server: reply ok");

@@ -35,7 +35,6 @@ internal static class RmC9BackpressureScenario
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("rm-c9-after", StringComparison.Ordinal)),
             "RM-C9 recovery evidence missing.");
-        Console.WriteLine("scenario RM-C9 passed");
     }
 
     private static async Task<string> SendBackpressureCommandAsync(ZLinkHttpClient backpressureConsumer,

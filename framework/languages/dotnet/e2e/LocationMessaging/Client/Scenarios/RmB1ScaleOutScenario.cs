@@ -81,8 +81,6 @@ internal static class RmB1ScaleOutScenario
         var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", markerAfter);
         ScenarioAssert.That(a == apiAValues.Length && b == apiBValues.Length && a + b == values.Length,
             "RM-B1 expected evidence to match scale-out replies.");
-
-        Console.WriteLine("scenario RM-B1 passed");
     }
 
     private static async Task WaitForPeerRowAsync(ZLinkHttpClient http, string rid, bool expected)

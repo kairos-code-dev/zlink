@@ -21,6 +21,42 @@ CONFIGS=(
   YieldDispatch
 )
 
+cleanup_done=0
+
+cleanup_e2e_processes() {
+  local pattern config_regex
+  config_regex="$(IFS='|'; echo "${CONFIGS[*]}")"
+  pattern="${SCRIPT_DIR}/(${config_regex})/"
+
+  pkill -TERM -f "$pattern" >/dev/null 2>&1 || true
+  sleep 0.5
+  pkill -KILL -f "$pattern" >/dev/null 2>&1 || true
+}
+
+cleanup_resources() {
+  if [[ "$cleanup_done" == "1" ]]; then
+    return
+  fi
+  cleanup_done=1
+
+  cleanup_e2e_processes
+  zlink_redis_cleanup_scope "$REDIS_SCOPE"
+}
+
+on_exit() {
+  local code=$?
+  cleanup_resources
+  exit "$code"
+}
+
+on_interrupt() {
+  echo "[dotnet-e2e] interrupted; cleaning up dotnet processes and Redis..." >&2
+  exit 130
+}
+
+trap on_exit EXIT
+trap on_interrupt INT TERM
+
 SELECTED_CONFIGS=()
 SELECTED_SCENARIOS=()
 
@@ -80,11 +116,11 @@ run_config_with_retry() {
 
     if [[ "$status" == "0" ]]; then
       rm -f "$output"
-      echo "family=${config} scenario=${scenario} result=PASS elapsed_seconds=$((ended_at - started_at))"
+      echo "[dotnet-e2e] ${config} PASS ($((ended_at - started_at))s)"
       return 0
     fi
 
-    echo "family=${config} scenario=${scenario} result=FAIL attempt=${attempt} elapsed_seconds=$((ended_at - started_at))" >&2
+    echo "[dotnet-e2e] ${config} FAIL ($((ended_at - started_at))s, attempt ${attempt})" >&2
     if ! grep -Eq "$BIND_RETRY_PATTERN" "$output"; then
       rm -f "$output"
       return "$status"
@@ -95,19 +131,19 @@ run_config_with_retry() {
       return "$status"
     fi
 
-    echo "e2e transient bind failure; retrying ${config}:${scenario} (${attempt}/${MAX_ATTEMPTS})" >&2
+    echo "[dotnet-e2e] ${config} retry after transient bind failure (${attempt}/${MAX_ATTEMPTS})" >&2
     sleep 1
   done
 }
 
 all_started_at="$(date +%s)"
-echo "dotnet e2e sequential started_at=$(date -Is)"
+echo "[dotnet-e2e] start configs=${#SELECTED_CONFIGS[@]} at=$(date -Is)"
 for i in "${!SELECTED_CONFIGS[@]}"; do
   config="${SELECTED_CONFIGS[$i]}"
   scenario="${SELECTED_SCENARIOS[$i]}"
-  echo "family=${config} scenario=${scenario} started_at=$(date -Is)"
+  echo "[dotnet-e2e] ${config} start scenario=${scenario}"
   run_config_with_retry "$config" "$scenario"
 done
 all_ended_at="$(date +%s)"
 
-echo "dotnet e2e sequential result=PASS total_elapsed_seconds=$((all_ended_at - all_started_at))"
+echo "[dotnet-e2e] total PASS ($((all_ended_at - all_started_at))s)"

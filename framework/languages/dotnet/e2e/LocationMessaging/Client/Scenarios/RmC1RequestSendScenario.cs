@@ -28,7 +28,6 @@ internal static class RmC1RequestSendScenario
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("profile-command|", StringComparison.Ordinal)),
             "RM-C1 send evidence missing.");
-        Console.WriteLine("scenario RM-C1 passed");
     }
 
     private static async Task<string[]> WaitForProviderEvidenceAsync(

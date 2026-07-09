@@ -283,6 +283,7 @@ wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-con
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
+set +e
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
@@ -297,6 +298,8 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --consumer-project "$CONSUMER_PROJECT" \
   --log-dir "$LOG_DIR" \
   --scenario "$SCENARIO" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
-
-cat "$LOG_DIR/client.stdout.log"
+  > >(tee "$LOG_DIR/client.stdout.log") \
+  2> >(tee "$LOG_DIR/client.stderr.log" >&2)
+client_status=$?
+set -e
+exit "$client_status"

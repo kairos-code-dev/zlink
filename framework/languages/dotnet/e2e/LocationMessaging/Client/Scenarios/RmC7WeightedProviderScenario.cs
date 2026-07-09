@@ -68,8 +68,6 @@ internal static class RmC7WeightedProviderScenario
             && counts["apiA"] + counts["apiB"] == values.Length
             && counts["apiA"] > counts["apiB"] * 2,
             "RM-C7 weighted provider counts did not favor api-a.");
-
-        Console.WriteLine("scenario RM-C7 passed");
     }
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)

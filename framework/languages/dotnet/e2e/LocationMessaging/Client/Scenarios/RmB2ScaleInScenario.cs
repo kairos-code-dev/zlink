@@ -126,8 +126,6 @@ internal static class RmB2ScaleInScenario
         var a = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", markerAfter);
         var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", markerAfter);
         ScenarioAssert.That(a == valuesAfter.Length && b == 0, "RM-B2 expected only api-a after scale-in.");
-
-        Console.WriteLine("scenario RM-B2 passed");
     }
 
     private static async Task WaitForPeerRowGoneAsync(ZLinkHttpClient http, string rid)

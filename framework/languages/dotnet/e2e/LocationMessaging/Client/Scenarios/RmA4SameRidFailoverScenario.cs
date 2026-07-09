@@ -64,8 +64,6 @@ internal static class RmA4SameRidFailoverScenario
             "profile-request|rid=api-a",
             marker);
         ScenarioAssert.That(v1Count == 0 && v2Count == 20, "RM-A4 replacement provider evidence did not match.");
-
-        Console.WriteLine("scenario RM-A4 passed");
     }
 
     private static async Task WaitForSingleLiveRowAsync(ZLinkHttpClient client, string expectedEndpoint)

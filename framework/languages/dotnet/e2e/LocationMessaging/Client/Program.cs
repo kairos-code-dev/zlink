@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using LocationMessaging.Client.Scenarios;
 using LocationMessaging.Client.Support;
 using Zlink.HttpClient;
@@ -44,16 +45,28 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RM-C9", () => RmC9BackpressureScenario.RunAsync(backpressureConsumer, providerA))
 };
 
+var total = Stopwatch.StartNew();
 foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Select(scenario => scenario.Name)))
 {
     var selected = scenarios.FirstOrDefault(scenario =>
         string.Equals(scenario.Name, name, StringComparison.OrdinalIgnoreCase));
     if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{name}'.");
 
-    await selected.Run();
+    Console.WriteLine($"[LocationMessaging] {selected.Name} start");
+    var elapsed = Stopwatch.StartNew();
+    try
+    {
+        await selected.Run();
+        Console.WriteLine($"[LocationMessaging] {selected.Name} PASS ({FormatElapsed(elapsed.Elapsed)})");
+    }
+    catch
+    {
+        Console.Error.WriteLine($"[LocationMessaging] {selected.Name} FAIL ({FormatElapsed(elapsed.Elapsed)})");
+        throw;
+    }
 }
 
-Console.WriteLine("location-messaging e2e result=passed");
+Console.WriteLine($"[LocationMessaging] scenarios PASS ({FormatElapsed(total.Elapsed)})");
 
 static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<string> allNames)
 {
@@ -62,4 +75,9 @@ static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<st
 
     return selector
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+
+static string FormatElapsed(TimeSpan elapsed)
+{
+    return $"{Math.Max(0, (int)Math.Round(elapsed.TotalSeconds))}s";
 }

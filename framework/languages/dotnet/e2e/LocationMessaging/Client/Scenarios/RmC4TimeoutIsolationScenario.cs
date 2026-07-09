@@ -56,6 +56,5 @@ internal static class RmC4TimeoutIsolationScenario
             evidence.Any(line => line.Contains("rm-c4-after-timeout", StringComparison.Ordinal))
             && evidence.Any(line => line.Contains("rm-c4-later", StringComparison.Ordinal)),
             "RM-C4 follow-up evidence missing.");
-        Console.WriteLine("scenario RM-C4 passed");
     }
 }

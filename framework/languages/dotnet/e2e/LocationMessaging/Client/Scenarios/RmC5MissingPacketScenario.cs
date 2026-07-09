@@ -44,7 +44,6 @@ internal static class RmC5MissingPacketScenario
             .Body(new ProfileReq("rm-c5-after"))
             .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:rm-c5-after", "RM-C5 normal request after negative path failed.");
-        Console.WriteLine("scenario RM-C5 passed");
     }
 
     private static async Task<string[]> WaitForDispatchErrorEvidenceAsync(

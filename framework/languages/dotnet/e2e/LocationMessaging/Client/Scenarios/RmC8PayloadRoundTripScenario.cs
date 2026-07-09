@@ -50,7 +50,6 @@ internal static class RmC8PayloadRoundTripScenario
                 ScenarioAssert.CountNewEvidence(afterA, beforeA, "payload-request|rid=api-a", marker)
                 + ScenarioAssert.CountNewEvidence(afterB, beforeB, "payload-request|rid=api-b", marker) == 1),
             "RM-C8 payload evidence missing.");
-        Console.WriteLine("scenario RM-C8 passed");
     }
 
     private static string BuildPayload(int size)

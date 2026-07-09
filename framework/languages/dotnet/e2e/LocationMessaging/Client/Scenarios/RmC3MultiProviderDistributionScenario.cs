@@ -37,6 +37,5 @@ internal static class RmC3MultiProviderDistributionScenario
         ScenarioAssert.That(
             a > 0 && b > 0 && a + b == requests.Length,
             "RM-C3 expected both providers to handle the direct multi-endpoint request set.");
-        Console.WriteLine("scenario RM-C3 passed");
     }
 }

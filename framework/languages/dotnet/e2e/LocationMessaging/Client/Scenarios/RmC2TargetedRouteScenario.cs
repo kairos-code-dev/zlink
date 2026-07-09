@@ -35,6 +35,5 @@ internal static class RmC2TargetedRouteScenario
             .Body(new ScenarioRoutePing("missing"))
             .SubmitAsync<RouteMissingRes>()).Body;
         ScenarioAssert.That(missing.Failed, "RM-C2 missing rid request should fail.");
-        Console.WriteLine("scenario RM-C2 passed");
     }
 }

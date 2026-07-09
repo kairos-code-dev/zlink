@@ -73,6 +73,5 @@ internal static class RmA6MultipleChannelsScenario
             !providerEvidence.Any(line => line.Contains("workflow-request|", StringComparison.Ordinal)
                                           && line.Contains(workflowMarker, StringComparison.Ordinal)),
             "RM-A6 workflow request was recorded on profile providers.");
-        Console.WriteLine("scenario RM-A6 passed");
     }
 }

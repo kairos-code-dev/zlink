@@ -21,6 +21,5 @@ internal static class RmA2ManualEndpointScenario
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("value=rm-a2", StringComparison.Ordinal)),
             "RM-A2 api-a evidence missing.");
-        Console.WriteLine("scenario RM-A2 passed");
     }
 }

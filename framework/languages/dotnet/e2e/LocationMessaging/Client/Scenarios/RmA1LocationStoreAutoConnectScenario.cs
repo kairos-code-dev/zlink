@@ -43,6 +43,5 @@ internal static class RmA1LocationStoreAutoConnectScenario
         ScenarioAssert.That(
             providerEvidence.Any(line => line.Contains("value=rm-a1", StringComparison.Ordinal)),
             "RM-A1 provider evidence missing.");
-        Console.WriteLine("scenario RM-A1 passed");
     }
 }

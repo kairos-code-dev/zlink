@@ -39,7 +39,7 @@ internal sealed class OpenConversationActorHandler(
 
         var joined = await actor.Context.JoinSpot(
                 RoutingId.From(opened.ConversationId),
-                new JoinConversationReq())
+                new JoinConversationReq(actor.ParticipantId, actor.Role, actor.DisplayName))
             .Async(cancellationToken);
         var state = joined.Reply.Decode<JoinConversationRes>().State;
 

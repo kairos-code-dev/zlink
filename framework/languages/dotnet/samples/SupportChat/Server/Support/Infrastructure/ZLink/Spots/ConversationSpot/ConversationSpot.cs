@@ -23,6 +23,7 @@ internal sealed class ConversationSpot(
     // actor, while agent events go to the roster actor that represents the human agent
     // across all rooms. ConversationId on each notification disambiguates the room.
     private readonly Dictionary<string, SupportUserActor> _actors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ConversationChange> _pendingJoinChanges = new(StringComparer.Ordinal);
     private Conversation? _conversation;
 
     public IZLinkSpotContext Context { get; } = context;
@@ -73,9 +74,17 @@ internal sealed class ConversationSpot(
         CancellationToken cancellationToken)
     {
         var conversation = RequireConversation();
-        _ = admission;
-        _ = request;
-        await ValueTask.CompletedTask;
+        var join = request.Decode<JoinConversationReq>();
+        if (string.Equals(join.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
+        {
+            var participantId = string.IsNullOrWhiteSpace(join.ParticipantId) ? admission.ActorId : join.ParticipantId;
+            var displayName = string.IsNullOrWhiteSpace(join.DisplayName) ? participantId : join.DisplayName;
+            var change = conversation.JoinAgent(participantId, displayName, NowUnixMs());
+            _pendingJoinChanges[admission.ActorId] = change;
+            await ValueTask.CompletedTask;
+            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(change.State)));
+        }
+
         return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(conversation.Snapshot())));
     }
 
@@ -87,8 +96,10 @@ internal sealed class ConversationSpot(
 
         if (string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
         {
-            var change = JoinAgent(actor);
-            await PublishChangeAsync(change, cancellationToken);
+            actor.JoinConversation(conversation.ConversationId);
+            _actors[actor.ParticipantId] = directory.Get(actor.ParticipantId).Actor;
+            if (_pendingJoinChanges.Remove(actor.ActorId, out var change))
+                await PublishChangeAsync(change, cancellationToken);
             return;
         }
 
@@ -169,15 +180,6 @@ internal sealed class ConversationSpot(
         var change = RequireConversation().Close(actor.ParticipantId, request.Reason);
         await PublishChangeAsync(change, cancellationToken);
         return new CloseConversationRes(ConversationContracts.ToState(change.State));
-    }
-
-    private ConversationChange JoinAgent(SupportUserActor agent)
-    {
-        var conversation = RequireConversation();
-        var change = conversation.JoinAgent(agent.ParticipantId, agent.DisplayName, NowUnixMs());
-        agent.JoinConversation(conversation.ConversationId);
-        _actors[agent.ParticipantId] = directory.Get(agent.ParticipantId).Actor;
-        return change;
     }
 
     // Publishes conversation events and, when the conversation closes, frees the

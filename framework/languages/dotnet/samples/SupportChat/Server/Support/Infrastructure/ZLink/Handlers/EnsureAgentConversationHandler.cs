@@ -40,7 +40,10 @@ internal sealed class EnsureAgentConversationHandler(
         var conversationActor = directory.Get(conversationActorId);
         var joined = await conversationActor.Actor.Context.JoinSpot(
                 RoutingId.From(request.ConversationId),
-                new JoinConversationReq())
+                new JoinConversationReq(
+                    conversationActor.Actor.ParticipantId,
+                    conversationActor.Actor.Role,
+                    conversationActor.Actor.DisplayName))
             .Async(cancellationToken);
         var state = joined.Reply.Decode<JoinConversationRes>().State;
 

@@ -18,6 +18,7 @@ internal sealed class BingoRoom(
     private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create(BingoSampleModes.TwoPlayer, 0);
 
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BingoGameChange> _pendingJoinChanges = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BingoRoomJoinReq> _pendingJoins = new(StringComparer.Ordinal);
     private bool _cleanupStarted;
     private BingoRoomGame? _game = new(context.SpotRid.ToString(), DefaultSettings);
@@ -33,7 +34,7 @@ internal sealed class BingoRoom(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnJoinedActorAsync(
+    public async ValueTask OnJoinedActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -44,6 +45,9 @@ internal sealed class BingoRoom(
             if (join.ObserveOnly) _observerActor = actor;
             else _actors[actor.ActorId] = actor;
         }
+
+        if (_pendingJoinChanges.Remove(actor.ActorId, out var change))
+            await PublishAsync(change, cancellationToken);
 
         logger.LogInformation(
             "bingo room: actor joined. room={RoomId}, actor={ActorId}",
@@ -56,7 +60,6 @@ internal sealed class BingoRoom(
             actor.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
                 .Submit(cancellationToken);
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnLeaveActorAsync(
@@ -291,6 +294,7 @@ internal sealed class BingoRoom(
 
         _pendingJoins[actorId] = request;
         var change = game.JoinPlayer(actorId, request.DisplayName);
+        _pendingJoinChanges[actorId] = change;
         logger.LogInformation(
             "bingo room: actor accepted. room={RoomId}, actor={ActorId}, status={Status}, events={EventCount}",
             request.RoomId,

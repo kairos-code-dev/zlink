@@ -99,7 +99,7 @@ final class SocketCore {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.bind(socket.handle(), addr);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_bind");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.BIND);
         }
     }
 
@@ -108,7 +108,7 @@ final class SocketCore {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.connect(socket.handle(), addr);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_connect");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
         }
     }
 
@@ -117,7 +117,7 @@ final class SocketCore {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.unbind(socket.handle(), addr);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_unbind");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
         }
     }
 
@@ -126,7 +126,7 @@ final class SocketCore {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.disconnect(socket.handle(), addr);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_disconnect");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
         }
     }
 
@@ -143,7 +143,7 @@ final class SocketCore {
             }
             int rc = Native.disconnectRid(socket.handle(), nativeRid);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_disconnect_rid");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
         }
     }
 
@@ -258,7 +258,7 @@ final class SocketCore {
     SocketMonitor monitorOpen(int events) {
         MemorySegment sock = Native.monitorOpen(socket.handle(), events);
         if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_socket_monitor_open");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         return InternalAccess.monitorSocket(sock, true);
     }
 
@@ -369,7 +369,7 @@ final class SocketCore {
         ensureOpen();
         int rc = Native.streamDetach(socket.handle());
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_stream_detach");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CLOSE);
         streamPacketHandler = null;
         streamUInt32RawNativeHandler = null;
         streamFramedPacketHandler = null;

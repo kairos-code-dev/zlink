@@ -76,7 +76,7 @@ final class NativeStreamActorSupport {
               ActorInterop.nativeRoutingId(arena, sessionRid),
               ActorInterop.actorRefToNative(arena, actor),
               ActorRequestCallbacks.REPLY_CALLBACK,
-              MemorySegment.ofAddress(token.id()), DurationConversions.timeoutMillis(timeout));
+              MemorySegment.ofAddress(token.id()), DurationConversions.timeoutMillisOrZero(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(token.id());
                 throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
@@ -105,7 +105,7 @@ final class NativeStreamActorSupport {
               ActorInterop.nativeRoutingId(arena, sessionRid),
               NativeHelpers.toCString(arena, actorId),
               ActorRequestCallbacks.REPLY_CALLBACK,
-              MemorySegment.ofAddress(token.id()), DurationConversions.timeoutMillis(timeout));
+              MemorySegment.ofAddress(token.id()), DurationConversions.timeoutMillisOrZero(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(token.id());
                 throw new ZlinkSubmitException(SubmitResult.fromValue(rc));

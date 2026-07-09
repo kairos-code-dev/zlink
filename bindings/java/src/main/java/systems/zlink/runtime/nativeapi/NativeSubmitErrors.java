@@ -5,29 +5,24 @@ package systems.zlink.runtime.nativeapi;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 public final class NativeSubmitErrors {
-    public static final int EAGAIN = 11;
-    public static final int EWOULDBLOCK_WIN = 10035;
-    public static final int ENOTCONN = 107;
-    public static final int ENOTCONN_WIN = 10057;
-    public static final int EHOSTUNREACH = 113;
-    public static final int EHOSTUNREACH_WIN = 10065;
-    public static final int ECONNREFUSED = 111;
-    public static final int ECONNREFUSED_WIN = 10061;
-
     private NativeSubmitErrors() {
     }
 
     public static boolean isBackpressured(int errno) {
-        return errno == EAGAIN || errno == EWOULDBLOCK_WIN;
+        return errno == NativeErrno.EAGAIN
+            || errno == NativeErrno.EWOULDBLOCK_WIN;
     }
 
     public static boolean isNotConnected(int errno) {
-        return errno == ENOTCONN || errno == ENOTCONN_WIN
-            || errno == EHOSTUNREACH || errno == EHOSTUNREACH_WIN;
+        return errno == NativeErrno.ENOTCONN
+            || errno == NativeErrno.ENOTCONN_WIN
+            || errno == NativeErrno.EHOSTUNREACH
+            || errno == NativeErrno.EHOSTUNREACH_WIN;
     }
 
     public static boolean isNotAdmitted(int errno) {
-        return errno == ECONNREFUSED || errno == ECONNREFUSED_WIN;
+        return errno == NativeErrno.ECONNREFUSED
+            || errno == NativeErrno.ECONNREFUSED_WIN;
     }
 
     public static ZlinkSubmitException submitExceptionOrNull(int errno) {

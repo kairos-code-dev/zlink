@@ -6,6 +6,7 @@ import systems.zlink.contracts.sockets.*;
 import systems.zlink.runtime.nativeapi.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.runtime.messaging.MessageOperations;
 
@@ -16,13 +17,22 @@ final class NativePubSocket extends NativeSocketBase implements PubSocket {
         super(ctx, SocketType.PUB);
     }
 
+    public void bind(String endpoint) { runtime().bind(endpoint); }
+    public void connect(String endpoint) { runtime().connect(endpoint); }
+    public void unbind(String endpoint) { runtime().unbind(endpoint); }
+    public void disconnect(String endpoint) { runtime().disconnect(endpoint); }
+    public void disconnectRid(RoutingId routingId) {
+        runtime().disconnectRid(routingId);
+    }
+    public void setRoutingId(RoutingId rid) { runtime().setRoutingId(rid); }
+
     public SendOperation publish(String topicId) {
         return MessageOperations.send(
-            (part, flags) -> super.publish(topicId, part,
+            (part, flags) -> runtime().publish(topicId, part,
                 SendFlag.fromValue(flags.value())),
             (parts, flags) ->
-            super.publish(topicId, parts, SendFlag.fromValue(flags.value())));
+            runtime().publish(topicId, parts, SendFlag.fromValue(flags.value())));
     }
-    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { runtime().setSendReadyHandler(handler); }
     @Override public PubSocketOptions options() { return options; }
 }

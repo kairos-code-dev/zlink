@@ -71,7 +71,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     NativeSocketRuntime(Context ctx, SocketType type) {
         this.handle = Native.socket(InternalAccess.contextHandle(ctx), type.getValue());
         if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_socket");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         this.own = true;
         this.socketTypeHint = type;
         this.socketCore = new SocketCore(this);
@@ -122,7 +122,7 @@ final class NativeSocketRuntime implements AutoCloseable {
               NativeHelpers.toCString(arena, channelName));
             if (rc != 0) {
                 throw ZlinkException.fromLastError(
-                  "zlink_socket_set_channel_name");
+                  systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -136,7 +136,7 @@ final class NativeSocketRuntime implements AutoCloseable {
               lengthOut);
             if (rc != 0) {
                 throw ZlinkException.fromLastError(
-                  "zlink_socket_get_channel_name");
+                  systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             int len = (int) lengthOut.get(ValueLayout.JAVA_LONG, 0);
             if (len <= 0) {
@@ -612,7 +612,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             if (own) {
                 int rc = Native.close(handle);
                 if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_close");
+                    throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CLOSE);
             }
             socketCore.closeCommonState();
             handle = MemorySegment.NULL;
@@ -917,7 +917,7 @@ final class NativeSocketRuntime implements AutoCloseable {
                     capacity = toIntLength(lenInOut.get(ValueLayout.JAVA_LONG, 0));
                     continue;
                 }
-                throw ZlinkException.fromLastError("zlink_subscription_at");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }

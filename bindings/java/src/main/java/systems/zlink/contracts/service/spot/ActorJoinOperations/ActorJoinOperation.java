@@ -9,6 +9,7 @@ import systems.zlink.contracts.core.RoutingId;
  * {@link SpotNode#joinActor(ActorRef, systems.zlink.contracts.core.RoutingId,
  * systems.zlink.contracts.core.RoutingId)} and {@link Actor#join(Spot)}.
  */
-public interface ActorJoinOperation {
+public interface ActorJoinOperation
+  extends MessageBuilderStage<ActorJoinSubmitOperation> {
     ActorJoinSubmitOperation message(Message part);
 }

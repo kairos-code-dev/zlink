@@ -61,8 +61,8 @@ public final class RoutedRequestSupport {
         return future;
     }
 
-    public static void removePending(long requestId) {
-        PENDING.remove(requestId);
+    public static CompletableFuture<Received> removePending(long requestId) {
+        return PENDING.remove(requestId);
     }
 
     public static CompletableFuture<Void> registerDirectPending(
@@ -88,6 +88,23 @@ public final class RoutedRequestSupport {
         }
     }
 
+    public static void completePendingExceptionally(long requestId,
+                                                    Throwable error) {
+        CompletableFuture<Received> future = PENDING.remove(requestId);
+        if (future != null) {
+            future.completeExceptionally(error);
+        }
+    }
+
+    public static void completeDirectPending(long requestId,
+                                             RequestResult result) {
+        DirectReplyState state = DIRECT_PENDING.remove(requestId);
+        if (state != null) {
+            state.cancelTimeout();
+            state.complete(result, List.of());
+        }
+    }
+
     public static MemorySegment movePayloadToNative(Arena arena,
                                                     List<Message> payload) {
         long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
@@ -110,10 +127,6 @@ public final class RoutedRequestSupport {
             }
             throw ex;
         }
-    }
-
-    public static int toTimeoutInt(long timeoutMs) {
-        return RequestReplySupport.toTimeoutInt(timeoutMs);
     }
 
     private static MethodHandle callbackHandle() {

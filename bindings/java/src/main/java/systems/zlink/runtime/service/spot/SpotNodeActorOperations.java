@@ -7,7 +7,6 @@ import java.lang.foreign.MemorySegment;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
@@ -284,19 +283,16 @@ final class SpotNodeActorOperations {
                 NativeSpotNode.timeoutMillis(timeout));
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_node_actor_close_bound_session");
+                    systems.zlink.contracts.errors.ErrorCategory.CLOSE);
             }
         }
     }
 
-    private final class ForwardBoundSessionBuilder
+    private final class ForwardBoundSessionBuilder extends SingleSubmitOperation
         implements SendOperation, SendSubmitOperation {
         private final ActorRef actor;
         private final RoutingId sourceNodeRid;
         private final RoutingId sourceSessionRid;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
 
         ForwardBoundSessionBuilder(
             ActorRef actor,
@@ -309,24 +305,22 @@ final class SpotNodeActorOperations {
 
         @Override
         public SendSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
+            addPart(part);
             return this;
         }
 
         @Override
         public SendSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
+            setFlags(value);
             return this;
         }
 
         @Override
         public boolean submit() {
             ensureNotSubmitted();
-            if (parts.isEmpty())
+            if (parts().isEmpty())
                 throw new IllegalArgumentException("at least one message required");
-            submitted = true;
+            markSubmitted();
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment refSegment =
                     ActorInterop.actorRefToNative(arena, actor);
@@ -334,8 +328,8 @@ final class SpotNodeActorOperations {
                     ActorInterop.nativeRoutingId(arena, sourceNodeRid);
                 MemorySegment sourceSessionRidSegment =
                     ActorInterop.nativeRoutingId(arena, sourceSessionRid);
-                for (int i = 0; i < parts.size(); i++) {
-                    Message part = parts.get(i);
+                for (int i = 0; i < parts().size(); i++) {
+                    Message part = parts().get(i);
                     MemorySegment nativeMsg = arena.allocate(
                         NativeLayouts.MESSAGE_LAYOUT);
                     InternalAccess.messageCopyTo(part, nativeMsg);
@@ -345,11 +339,11 @@ final class SpotNodeActorOperations {
                         sourceNodeRidSegment,
                         sourceSessionRidSegment,
                         nativeMsg,
-                        flags.value(),
-                        i + 1 < parts.size() ? 1 : 0);
+                        flags().value(),
+                        i + 1 < parts().size() ? 1 : 0);
                     if (rc != 0) {
                         NativeMessage.messageClose(nativeMsg);
-                        if (flags == SendFlags.DONT_WAIT
+                        if (flags() == SendFlags.DONT_WAIT
                             && SubmitResult.fromValue(rc)
                                 == SubmitResult.BACKPRESSURED) {
                             return false;
@@ -360,18 +354,12 @@ final class SpotNodeActorOperations {
             }
             return true;
         }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
     }
 
-    private final class ActorLookupBuilder implements ActorLookupOperation {
+    private final class ActorLookupBuilder extends SingleSubmitOperation implements ActorLookupOperation {
         private final RoutingId targetNodeRid;
         private final String actorId;
         private Duration timeout = Duration.ofMillis(5_000L);
-        private boolean submitted;
 
         ActorLookupBuilder(RoutingId targetNodeRid, String actorId) {
             this.targetNodeRid = targetNodeRid;
@@ -386,18 +374,8 @@ final class SpotNodeActorOperations {
         }
 
         @Override
-        public CompletableFuture<ActorLookupResult> submit() {
-            CompletableFuture<ActorLookupResult> future =
-                new CompletableFuture<>();
-            submit(result -> {
-                if (result.result() == RequestResult.OK) {
-                    future.complete(result);
-                } else {
-                    future.completeExceptionally(
-                        new ZlinkRequestException(result.result()));
-                }
-            });
-            return future;
+        public CompletionStage<ActorLookupResult> submit() {
+            return ActorRequestFutureAdapters.lookup(this::submit);
         }
 
         @Override
@@ -420,22 +398,11 @@ final class SpotNodeActorOperations {
             }
             return true;
         }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
     }
 
-    private final class ActorDestroyBuilder implements ActorDestroyOperation {
+    private final class ActorDestroyBuilder extends SingleSubmitOperation implements ActorDestroyOperation {
         private final ActorRef actor;
         private Duration timeout = Duration.ofMillis(5_000L);
-        private boolean submitted;
 
         ActorDestroyBuilder(ActorRef actor) {
             this.actor = actor;
@@ -449,16 +416,8 @@ final class SpotNodeActorOperations {
         }
 
         @Override
-        public CompletableFuture<List<Message>> submit() {
-            CompletableFuture<List<Message>> future = new CompletableFuture<>();
-            submit((result, parts) -> {
-                if (result == RequestResult.OK) {
-                    future.complete(parts);
-                } else {
-                    future.completeExceptionally(new ZlinkRequestException(result));
-                }
-            });
-            return future;
+        public CompletionStage<List<Message>> submit() {
+            return ActorRequestFutureAdapters.reply(this::submit);
         }
 
         @Override
@@ -480,24 +439,11 @@ final class SpotNodeActorOperations {
             }
             return true;
         }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
     }
 
-    private final class SendBoundSessionBuilder
+    private final class SendBoundSessionBuilder extends SingleSubmitOperation
         implements SendOperation, SendSubmitOperation {
         private final ActorRef actor;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
 
         SendBoundSessionBuilder(ActorRef actor) {
             this.actor = actor;
@@ -505,39 +451,37 @@ final class SpotNodeActorOperations {
 
         @Override
         public SendSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
+            addPart(part);
             return this;
         }
 
         @Override
         public SendSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
+            setFlags(value);
             return this;
         }
 
         @Override
         public boolean submit() {
             ensureNotSubmitted();
-            if (parts.isEmpty())
+            if (parts().isEmpty())
                 throw new IllegalArgumentException("at least one message required");
-            if (parts.size() != 1)
+            if (parts().size() != 1)
                 throw new IllegalArgumentException(
                     "actor bound-session send requires exactly one message");
-            submitted = true;
+            markSubmitted();
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment refSegment =
                     ActorInterop.actorRefToNative(arena, actor);
-                Message part = parts.get(0);
+                Message part = parts().get(0);
                 MemorySegment nativeMsg = arena.allocate(
                     NativeLayouts.MESSAGE_LAYOUT);
                 InternalAccess.messageCopyTo(part, nativeMsg);
                 int rc = Native.spotNodeActorSendBoundSessionMessage(
-                    node.handle(), refSegment, nativeMsg, flags.value());
+                    node.handle(), refSegment, nativeMsg, flags().value());
                 if (rc != 0) {
                     NativeMessage.messageClose(nativeMsg);
-                    if (flags == SendFlags.DONT_WAIT
+                    if (flags() == SendFlags.DONT_WAIT
                         && SubmitResult.fromValue(rc)
                             == SubmitResult.BACKPRESSURED) {
                         return false;
@@ -547,19 +491,11 @@ final class SpotNodeActorOperations {
             }
             return true;
         }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
     }
 
-    private final class SendToActorBuilder
+    private final class SendToActorBuilder extends SingleSubmitOperation
         implements SendOperation, SendSubmitOperation {
         private final ActorRef actor;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
 
         SendToActorBuilder(ActorRef actor) {
             this.actor = actor;
@@ -567,41 +503,39 @@ final class SpotNodeActorOperations {
 
         @Override
         public SendSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
+            addPart(part);
             return this;
         }
 
         @Override
         public SendSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
+            setFlags(value);
             return this;
         }
 
         @Override
         public boolean submit() {
             ensureNotSubmitted();
-            if (parts.isEmpty())
+            if (parts().isEmpty())
                 throw new IllegalArgumentException("at least one message required");
-            submitted = true;
+            markSubmitted();
             ActorRequestCallbacks.PendingToken token =
                 ActorRequestCallbacks.register((result, replyParts) -> {});
             try (Arena arena = Arena.ofConfined()) {
-                MemorySegment nativeParts = parts.copyToNativeArray(arena);
+                MemorySegment nativeParts = parts().copyToNativeArray(arena);
                 int rc = Native.spotNodeSendToActor(
                     node.handle(),
                     ActorInterop.actorRefToNative(arena, actor),
                     nativeParts,
-                    parts.size(),
+                    parts().size(),
                     ActorRequestCallbacks.REPLY_CALLBACK,
                     MemorySegment.ofAddress(token.id()),
-                    flags.value(),
+                    flags().value(),
                     0);
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
-                    if (flags == SendFlags.DONT_WAIT
+                    MessagePartsBuffer.closeNativeArray(nativeParts, parts().size());
+                    if (flags() == SendFlags.DONT_WAIT
                         && SubmitResult.fromValue(rc)
                             == SubmitResult.BACKPRESSURED) {
                         return false;
@@ -611,20 +545,12 @@ final class SpotNodeActorOperations {
             }
             return true;
         }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
     }
 
-    private final class RequestToActorBuilder
+    private final class RequestToActorBuilder extends SingleSubmitOperation
         implements RequestOperation, RequestSubmitOperation {
         private final ActorRef actor;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private SendFlags flags = SendFlags.NONE;
         private Duration timeout = Duration.ZERO;
-        private boolean submitted;
 
         RequestToActorBuilder(ActorRef actor) {
             this.actor = actor;
@@ -645,47 +571,38 @@ final class SpotNodeActorOperations {
 
         @Override
         public RequestCallbackSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
+            setFlags(value);
             return new RequestToActorCallbackBuilder(this);
         }
 
         @Override
         public CompletionStage<List<Message>> submit() {
-            CompletableFuture<List<Message>> future = new CompletableFuture<>();
-            submit((result, replyParts) -> {
-                if (result == RequestResult.OK) {
-                    future.complete(replyParts);
-                } else {
-                    future.completeExceptionally(new ZlinkRequestException(result));
-                }
-            });
-            return future;
+            return ActorRequestFutureAdapters.request(this::submit);
         }
 
         @Override
         public boolean submit(RequestCallback callback) {
             Objects.requireNonNull(callback, "callback");
             ensureNotSubmitted();
-            if (parts.isEmpty())
+            if (parts().isEmpty())
                 throw new IllegalArgumentException("at least one message required");
-            submitted = true;
+            markSubmitted();
             ActorRequestCallbacks.PendingToken token =
                 ActorRequestCallbacks.register(callback::onComplete);
             try (Arena arena = Arena.ofConfined()) {
-                MemorySegment nativeParts = parts.copyToNativeArray(arena);
+                MemorySegment nativeParts = parts().copyToNativeArray(arena);
                 int rc = Native.spotNodeRequestToActor(
                     node.handle(),
                     ActorInterop.actorRefToNative(arena, actor),
                     nativeParts,
-                    parts.size(),
+                    parts().size(),
                     ActorRequestCallbacks.REPLY_CALLBACK,
                     MemorySegment.ofAddress(token.id()),
-                    flags.value(),
+                    flags().value(),
                     NativeSpotNode.timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
+                    MessagePartsBuffer.closeNativeArray(nativeParts, parts().size());
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
@@ -693,13 +610,7 @@ final class SpotNodeActorOperations {
         }
 
         void add(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
-        }
-
-        void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
+            addPart(part);
         }
     }
 
@@ -727,7 +638,7 @@ final class SpotNodeActorOperations {
         @Override
         public RequestCallbackSubmitOperation flags(SendFlags value) {
             owner.ensureNotSubmitted();
-            owner.flags = Objects.requireNonNull(value, "flags");
+            owner.setFlags(value);
             return this;
         }
 

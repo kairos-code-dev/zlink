@@ -4,19 +4,17 @@ package systems.zlink.contracts.errors;
 
 
 /** Thrown when connecting a socket to an endpoint fails. */
-public final class ZlinkConnectException extends ZlinkException {
-    private final ConnectResult result;
-
+public final class ZlinkConnectException
+  extends TypedZlinkException {
     public ZlinkConnectException(ConnectResult result) {
         this(result, 0);
     }
 
     public ZlinkConnectException(ConnectResult result, int nativeErrno) {
-        super(result.value(), nativeErrno);
-        this.result = result;
+        super(result, result.value(), nativeErrno);
     }
 
     public ConnectResult getResult() {
-        return result;
+        return (ConnectResult) result();
     }
 }

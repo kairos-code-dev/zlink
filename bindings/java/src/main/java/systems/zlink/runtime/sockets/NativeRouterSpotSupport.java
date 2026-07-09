@@ -15,6 +15,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import systems.zlink.runtime.nativeapi.RoutedRequestSupport;
@@ -60,25 +61,16 @@ final class NativeRouterSpotSupport {
             RoutingId destSpotRid,
             List<Message> parts,
             Duration timeout,
-            SendFlags flags) {
+        SendFlags flags) {
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        long requestId = RoutedRequestSupport.nextRequestId();
-        CompletableFuture<Received> future = RoutedRequestSupport.registerPending(
-          requestId, timeoutMs);
-        try {
-            submitRouterRequestSpot(socket, destNodeRid, destSpotRid, parts,
-                RoutedRequestSupport.replyCallback(),
-                RoutedRequestSupport.userData(requestId),
-                Objects.requireNonNull(flags, "flags").value(),
-                RoutedRequestSupport.toTimeoutInt(timeoutMs));
-            RequestReplySupport.startSocketRequestProgress(future,
+        Objects.requireNonNull(flags, "flags");
+        CompletableFuture<Received> future =
+            RequestSubmitLoop.submitFuture(timeoutMs,
                 InternalAccess.socketHandle(socket),
-                "zlink-router-spot-request-progress");
-        } catch (RuntimeException ex) {
-            RoutedRequestSupport.removePending(requestId);
-            future.cancel(false);
-            throw ex;
-        }
+                "zlink-router-spot-request-progress",
+                (handler, userData) -> submitRouterRequestSpot(socket,
+                    destNodeRid, destSpotRid, parts, handler, userData,
+                    flags.value(), RequestReplySupport.toTimeoutInt(timeoutMs)));
         return future.thenApply(RequestReplySupport::takeReceivedParts);
     }
 
@@ -92,40 +84,23 @@ final class NativeRouterSpotSupport {
             Duration timeout) {
         Objects.requireNonNull(callback, "callback");
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        long requestId = RoutedRequestSupport.nextRequestId();
-        CompletableFuture<Void> progress = RoutedRequestSupport.registerDirectPending(
-            requestId, timeoutMs, callback::accept);
-        try {
-            submitRouterRequestSpot(socket, destNodeRid, destSpotRid, parts,
-                RoutedRequestSupport.replyCallback(),
-                RoutedRequestSupport.userData(requestId),
-                Objects.requireNonNull(flags, "flags").value(),
-                RoutedRequestSupport.toTimeoutInt(timeoutMs));
-            RequestReplySupport.startSocketRequestProgress(progress,
-                InternalAccess.socketHandle(socket),
-                "zlink-router-spot-request-progress");
-        } catch (RuntimeException ex) {
-            RoutedRequestSupport.removeDirectPending(requestId);
-            if (ex instanceof ZlinkSubmitException submitException
-                && flags == SendFlags.DONT_WAIT
-                && submitException.getResult() == SubmitResult.BACKPRESSURED) {
-                return false;
-            }
-            throw ex;
-        }
-        return true;
+        Objects.requireNonNull(flags, "flags");
+        return RequestSubmitLoop.submitCallback(timeoutMs,
+            InternalAccess.socketHandle(socket),
+            "zlink-router-spot-request-progress", flags, callback::accept,
+            (handler, userData) -> submitRouterRequestSpot(socket, destNodeRid,
+                destSpotRid, parts, handler, userData, flags.value(),
+                RequestReplySupport.toTimeoutInt(timeoutMs)));
     }
 
     public static void replyToSpot(RouterSocket socket,
                                    RoutingId destNodeRid,
                                    RoutingId destSpotRid,
                                    long requestSeq,
-                                   List<Message> parts,
-                                   SendFlags flags) {
+                                   List<Message> parts) {
         Objects.requireNonNull(socket, "socket");
         Objects.requireNonNull(destNodeRid, "destNodeRid");
         Objects.requireNonNull(destSpotRid, "destSpotRid");
-        RequestReplySupport.requireReplyFlagsSupported(flags);
         submitRouterReplySpot(socket, destNodeRid, destSpotRid, requestSeq, parts);
     }
 
@@ -134,20 +109,10 @@ final class NativeRouterSpotSupport {
                                              RoutingId destSpotRid,
                                              List<Message> payload,
                                              int flags) {
-        for (int i = 0; i < payload.size(); i++) {
-            int partFlag = i + 1 < payload.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = routerSendSpotPartOnce(socket, destNodeRid, destSpotRid,
-                    payload.get(i), flags, partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                throw submitFailure("zlink_router_send_spot_part");
-            }
-        }
+        RequestSubmitLoop.submitErrnoParts(payload,
+            (part, partFlag) -> routerSendSpotPartOnce(socket, destNodeRid,
+                destSpotRid, part, flags, partFlag),
+            () -> submitFailure("zlink_router_send_spot_part"));
     }
 
     private static void submitRouterRequestSpot(RouterSocket socket,
@@ -158,21 +123,11 @@ final class NativeRouterSpotSupport {
                                                 MemorySegment userData,
                                                 int flags,
                                                 int timeoutMs) {
-        for (int i = 0; i < payload.size(); i++) {
-            int partFlag = i + 1 < payload.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = routerRequestSpotPartOnce(socket, destNodeRid,
-                    destSpotRid, payload.get(i), handler, userData,
-                    flags, partFlag, timeoutMs);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                throw submitFailure("zlink_router_request_spot_part");
-            }
-        }
+        RequestSubmitLoop.submitErrnoParts(payload,
+            (part, partFlag) -> routerRequestSpotPartOnce(socket, destNodeRid,
+                destSpotRid, part, handler, userData, flags, partFlag,
+                timeoutMs),
+            () -> submitFailure("zlink_router_request_spot_part"));
     }
 
     private static void submitRouterReplySpot(RouterSocket socket,
@@ -180,20 +135,10 @@ final class NativeRouterSpotSupport {
                                               RoutingId destSpotRid,
                                               long requestSeq,
                                               List<Message> payload) {
-        for (int i = 0; i < payload.size(); i++) {
-            int partFlag = i + 1 < payload.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = routerReplySpotPartOnce(socket, destNodeRid,
-                    destSpotRid, requestSeq, payload.get(i), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                throw submitFailure("zlink_router_reply_spot_part");
-            }
-        }
+        RequestSubmitLoop.submitErrnoParts(payload,
+            (part, partFlag) -> routerReplySpotPartOnce(socket, destNodeRid,
+                destSpotRid, requestSeq, part, partFlag),
+            () -> submitFailure("zlink_router_reply_spot_part"));
     }
 
     private static int routerSendSpotPartOnce(RouterSocket socket,
@@ -253,19 +198,12 @@ final class NativeRouterSpotSupport {
         ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null)
             return submit;
-        throw ZlinkException.fromLastError(apiName);
+        throw ZlinkException.fromLastError(
+            systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
     }
 
     private static MemorySegment nativeRoutingId(Arena arena,
                                                  RoutingId routingId) {
-        byte[] value = InternalAccess.routingIdTrustedBytes(routingId);
-        MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-          (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
-              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
-        return nativeRid;
+        return NativeRoutingIds.allocate(arena, routingId);
     }
 }

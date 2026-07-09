@@ -22,10 +22,6 @@ public final class Native {
         MULTIPART_RECEIVE_SCRATCH =
             ThreadLocal.withInitial(NativeMultipartScratch::new);
 
-    private static MemorySegment requireSymbol(String name) {
-        return NativeSymbols.require(name);
-    }
-
     private static MethodHandle downcall(String name, FunctionDescriptor fd) {
         return NativeSymbols.downcall(name, fd);
     }
@@ -488,21 +484,7 @@ public final class Native {
         if (target == null || target.address() == 0) {
             return;
         }
-        target.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-            (byte) 0);
-        if (routingIdPtr == null || routingIdPtr.address() == 0) {
-            return;
-        }
-        MemorySegment routingId = routingIdPtr.reinterpret(
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int routingIdSize = routingId.get(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        target.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-            (byte) routingIdSize);
-        if (routingIdSize > 0) {
-            MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-                target, NativeLayouts.ROUTING_ID_DATA_OFFSET, routingIdSize);
-        }
+        NativeRoutingIds.copyTo(target, routingIdPtr);
     }
 
     public static int[] version() {
@@ -1165,62 +1147,71 @@ public final class Native {
         try {
             NativeMultipartScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
             scratch.reset();
+            return NativeErrno.retryWhileInterrupted(
+                () -> subscribeOnce(subject, sourceRidOut, partsOut,
+                    partCountOut, topicIdOut, topicIdLenOut, flags, scratch),
+                result -> result != 0);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_subscribe_part failed", t);
+        }
+    }
+
+    private static int subscribeOnce(MemorySegment subject,
+                                     MemorySegment sourceRidOut,
+                                     MemorySegment partsOut,
+                                     MemorySegment partCountOut,
+                                     MemorySegment topicIdOut,
+                                     MemorySegment topicIdLenOut,
+                                     int flags,
+                                     NativeMultipartScratch scratch) {
+        List<Message> receivedParts = new ArrayList<>();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment routingIdPtrOut = arena.allocate(
+                ValueLayout.ADDRESS);
+            MemorySegment hasMoreOut = arena.allocate(
+                ValueLayout.JAVA_INT);
+            long topicCapacity = topicIdLenOut == null
+                || topicIdLenOut.address() == 0
+                ? 0L
+                : Math.max(0L,
+                    topicIdLenOut.get(ValueLayout.JAVA_LONG, 0));
             while (true) {
-                List<Message> receivedParts = new ArrayList<>();
-                try (Arena arena = Arena.ofConfined()) {
-                    MemorySegment routingIdPtrOut = arena.allocate(
-                        ValueLayout.ADDRESS);
-                    MemorySegment hasMoreOut = arena.allocate(
-                        ValueLayout.JAVA_INT);
-                    long topicCapacity = topicIdLenOut == null
-                        || topicIdLenOut.address() == 0
-                        ? 0L
-                        : Math.max(0L,
-                            topicIdLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    while (true) {
-                        Message part = new Message();
-                        boolean success = false;
+                Message part = new Message();
+                boolean success = false;
+                try {
+                    int rc = subscribePart(subject, routingIdPtrOut,
+                        topicIdOut, topicCapacity, topicIdLenOut,
+                        InternalAccess.messageNativeHandle(part),
+                        hasMoreOut, flags);
+                    if (rc != 0) {
+                        Message.closeAll(receivedParts);
+                        return rc;
+                    }
+                    success = true;
+                    if (receivedParts.isEmpty()) {
+                        copyRoutingIdOut(sourceRidOut,
+                            routingIdPtrOut.get(ValueLayout.ADDRESS, 0));
+                    }
+                    InternalAccess.messageFinishReceive(part,
+                        hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                    receivedParts.add(part);
+                    if (!InternalAccess.messageMore(part)) {
+                        MemorySegment parts =
+                            scratch.materializeParts(receivedParts);
+                        partsOut.set(ValueLayout.ADDRESS, 0, parts);
+                        partCountOut.set(ValueLayout.JAVA_LONG, 0,
+                            scratch.partCount());
+                        return 0;
+                    }
+                } finally {
+                    if (!success) {
                         try {
-                            int rc = subscribePart(subject, routingIdPtrOut,
-                                topicIdOut, topicCapacity, topicIdLenOut,
-                                InternalAccess.messageNativeHandle(part),
-                                hasMoreOut, flags);
-                            if (rc != 0) {
-                                Message.closeAll(receivedParts);
-                                if (errno() == NativeErrno.EINTR) {
-                                    break;
-                                }
-                                return rc;
-                            }
-                            success = true;
-                            if (receivedParts.isEmpty()) {
-                                copyRoutingIdOut(sourceRidOut,
-                                    routingIdPtrOut.get(ValueLayout.ADDRESS, 0));
-                            }
-                            InternalAccess.messageFinishReceive(part,
-                                hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                            receivedParts.add(part);
-                            if (!InternalAccess.messageMore(part)) {
-                                MemorySegment parts =
-                                    scratch.materializeParts(receivedParts);
-                                partsOut.set(ValueLayout.ADDRESS, 0, parts);
-                                partCountOut.set(ValueLayout.JAVA_LONG, 0,
-                                    scratch.partCount());
-                                return 0;
-                            }
-                        } finally {
-                            if (!success) {
-                                try {
-                                    part.close();
-                                } catch (RuntimeException ignored) {
-                                }
-                            }
+                            part.close();
+                        } catch (RuntimeException ignored) {
                         }
                     }
                 }
             }
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_subscribe_part failed", t);
         }
     }
 
@@ -1305,7 +1296,7 @@ public final class Native {
             MemorySegment evt = arena.allocate(NativeLayouts.MONITOR_EVENT_LAYOUT);
             int rc = (int) MH_MONITOR_RECV.invokeExact(socket, evt, flags);
             if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_socket_monitor_recv");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.RECV);
             long event = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_EVENT_OFFSET);
             long value = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_VALUE_OFFSET);
             int routingSize = evt.get(ValueLayout.JAVA_BYTE,
@@ -1731,12 +1722,7 @@ public final class Native {
                                         long requestSeq,
                                         MemorySegment part,
                                         int partFlag) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_REPLY_SPOT_PART.invokeExact(spot,
-                destNodeRid, destSpotRid, requestSeq, part, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_reply_spot_part failed", t);
-        }
+        return NativeSpotSymbols.spotReplySpotPart(spot, destNodeRid, destSpotRid, requestSeq, part, partFlag);
     }
 
     public static int spotSendSpotPart(MemorySegment spot,
@@ -1745,12 +1731,7 @@ public final class Native {
                                        MemorySegment part,
                                        int flags,
                                        int partFlag) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_SEND_SPOT_PART.invokeExact(spot, destNodeRid,
-                destSpotRid, part, flags, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_send_spot_part failed", t);
-        }
+        return NativeSpotSymbols.spotSendSpotPart(spot, destNodeRid, destSpotRid, part, flags, partFlag);
     }
 
     public static int spotReplyRouterPart(MemorySegment spot,
@@ -1758,25 +1739,13 @@ public final class Native {
                                           long requestSeq,
                                           MemorySegment part,
                                           int partFlag) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_REPLY_ROUTER_PART.invokeExact(spot, peerRid,
-                requestSeq, part, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_reply_router_part failed",
-                t);
-        }
+        return NativeSpotSymbols.spotReplyRouterPart(spot, peerRid, requestSeq, part, partFlag);
     }
 
     public static int spotDispatchEventHandler(MemorySegment spot,
                                                MemorySegment handler,
                                                MemorySegment userdata) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_DISPATCH_EVENT_HANDLER.invokeExact(spot,
-                handler, userdata);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-                "zlink_spot_dispatch_event_handler failed", t);
-        }
+        return NativeSpotSymbols.spotDispatchEventHandler(spot, handler, userdata);
     }
 
     public static int spotRecvPart(MemorySegment spot,
@@ -1786,12 +1755,7 @@ public final class Native {
                                    MemorySegment partOut,
                                    MemorySegment hasMoreOut,
                                    int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_RECV_PART.invokeExact(spot, sourceRidOut,
-                spotRidOut, requestSeqOut, partOut, hasMoreOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_recv_part failed", t);
-        }
+        return NativeSpotSymbols.spotRecvPart(spot, sourceRidOut, spotRidOut, requestSeqOut, partOut, hasMoreOut, flags);
     }
 
     public static int pollRaw(MemorySegment items, int count, int timeoutMs) {
@@ -1924,155 +1888,82 @@ public final class Native {
 
     public static MemorySegment spotNodeNew(MemorySegment ctx,
                                             MemorySegment options) {
-        try {
-            return (MemorySegment) NativeSpotSymbols.MH_SPOT_NODE_NEW.invokeExact(ctx,
-                options);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_new failed", t);
-        }
+        return NativeSpotSymbols.spotNodeNew(ctx, options);
     }
 
     public static MemorySegment spotNew(MemorySegment node) {
-        try {
-            return (MemorySegment) NativeSpotSymbols.MH_SPOT_NEW.invokeExact(node);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_new failed", t);
-        }
+        return NativeSpotSymbols.spotNew(node);
     }
 
     public static int spotDestroy(MemorySegment spotPtr) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
-            holder.set(ValueLayout.ADDRESS, 0, spotPtr);
-            return (int) NativeSpotSymbols.MH_SPOT_DESTROY.invokeExact(holder);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_destroy failed", t);
-        }
+        return NativeSpotSymbols.spotDestroy(spotPtr);
     }
 
     public static int spotNodeDestroy(MemorySegment nodePtr) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
-            p.set(ValueLayout.ADDRESS, 0, nodePtr);
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_DESTROY.invokeExact(p);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_destroy failed", t);
-        }
+        return NativeSpotSymbols.spotNodeDestroy(nodePtr);
     }
 
     public static int spotNodeEntrySpot(MemorySegment node,
                                         MemorySegment spotOut) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ENTRY_SPOT.invokeExact(node, spotOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_entry_spot failed", t);
-        }
+        return NativeSpotSymbols.spotNodeEntrySpot(node, spotOut);
     }
 
     public static int spotNodeSpotLookup(MemorySegment node,
                                          MemorySegment spotRid,
                                          MemorySegment spotOut) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SPOT_LOOKUP.invokeExact(node, spotRid,
-              spotOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_spot_lookup failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSpotLookup(node, spotRid, spotOut);
     }
 
     public static int spotNodeSpotGetOrNew(MemorySegment node,
                                            MemorySegment spotRid,
                                            MemorySegment spotOut,
                                            MemorySegment createdOut) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SPOT_GET_OR_NEW.invokeExact(node, spotRid,
-              spotOut, createdOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_spot_get_or_new failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSpotGetOrNew(node, spotRid, spotOut, createdOut);
     }
 
     public static int spotNodeSetPubBind(MemorySegment node, MemorySegment ep) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SET_PUB_BIND.invokeExact(node, ep);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_pub_bind failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSetPubBind(node, ep);
     }
 
     public static int spotNodeSetRouterBind(MemorySegment node, MemorySegment ep) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SET_ROUTER_BIND.invokeExact(node, ep);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_router_bind failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSetRouterBind(node, ep);
     }
 
     public static int spotNodeSetPubRoutingId(MemorySegment node,
                                               MemorySegment value,
                                               long len) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SET_PUB_ROUTING_ID.invokeExact(
-                node, value, len);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_pub_routing_id failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSetPubRoutingId(node, value, len);
     }
 
     public static int spotNodeSetSubRoutingId(MemorySegment node,
                                               MemorySegment value,
                                               long len) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SET_SUB_ROUTING_ID.invokeExact(
-                node, value, len);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_sub_routing_id failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSetSubRoutingId(node, value, len);
     }
 
     public static int spotNodeConnectPeer(MemorySegment node, MemorySegment ep) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_CONN_PEER.invokeExact(node, ep);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_connect_peer failed", t);
-        }
+        return NativeSpotSymbols.spotNodeConnectPeer(node, ep);
     }
 
     public static int spotNodeConnectPeerRid(MemorySegment node,
                                              MemorySegment rid,
                                              MemorySegment ep) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_CONN_PEER_RID.invokeExact(node, rid, ep);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_connect_peer_rid failed", t);
-        }
+        return NativeSpotSymbols.spotNodeConnectPeerRid(node, rid, ep);
     }
 
     public static int spotNodeDisconnectPeer(MemorySegment node, MemorySegment ep) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_DISC_PEER.invokeExact(node, ep);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_disconnect_peer failed", t);
-        }
+        return NativeSpotSymbols.spotNodeDisconnectPeer(node, ep);
     }
 
     public static int spotNodeDisconnectPeerRid(MemorySegment node,
                                                 MemorySegment rid) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_DISC_PEER_RID.invokeExact(node, rid);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_disconnect_peer_rid failed", t);
-        }
+        return NativeSpotSymbols.spotNodeDisconnectPeerRid(node, rid);
     }
 
     public static int spotNodeActorNew(MemorySegment node,
                                        MemorySegment actorId,
                                        MemorySegment out) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_NEW.invokeExact(node, actorId, out);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_actor_new failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorNew(node, actorId, out);
     }
 
     public static int spotNodeActorNewWithRequest(MemorySegment node,
@@ -2080,13 +1971,7 @@ public final class Native {
                                                   MemorySegment parts,
                                                   long partCount,
                                                   MemorySegment out) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_NEW_WITH_REQUEST.invokeExact(
-              node, actorId, parts, partCount, out);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_new_with_request failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorNewWithRequest(node, actorId, parts, partCount, out);
     }
 
     public static int spotNodeActorDestroy(MemorySegment node,
@@ -2094,24 +1979,13 @@ public final class Native {
                                            MemorySegment handler,
                                            MemorySegment userdata,
                                            int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_DESTROY.invokeExact(node, actor,
-              handler, userdata, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_destroy failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorDestroy(node, actor, handler, userdata, timeoutMs);
     }
 
     public static int spotNodeActorLookup(MemorySegment node,
                                           MemorySegment actorId,
                                           MemorySegment out) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_LOOKUP.invokeExact(node, actorId,
-              out);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_actor_lookup failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorLookup(node, actorId, out);
     }
 
     public static int remoteActorGetRef(MemorySegment node,
@@ -2120,12 +1994,7 @@ public final class Native {
                                         MemorySegment handler,
                                         MemorySegment userdata,
                                         int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_REMOTE_ACTOR_GET_REF.invokeExact(node,
-              targetNodeRid, actorId, handler, userdata, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_remote_actor_get_ref failed", t);
-        }
+        return NativeSpotSymbols.remoteActorGetRef(node, targetNodeRid, actorId, handler, userdata, timeoutMs);
     }
 
     public static int streamBoundActors(MemorySegment stream,
@@ -2150,14 +2019,7 @@ public final class Native {
                                             MemorySegment userdata,
                                             int flags,
                                             int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_JOIN_SPOT.invokeExact(node, actor,
-              destNodeRid, destSpotRid, parts, partCount, handler, userdata, flags,
-              timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_join_spot failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorJoinSpot(node, actor, destNodeRid, destSpotRid, parts, partCount, handler, userdata, flags, timeoutMs);
     }
 
     public static int spotNodeActorJoinEntrySpot(MemorySegment node,
@@ -2169,14 +2031,7 @@ public final class Native {
                                                  MemorySegment userdata,
                                                  int flags,
                                                  int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_JOIN_ENTRY_SPOT.invokeExact(node,
-              actor, destNodeRid, parts, partCount, handler, userdata, flags,
-              timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_join_entry_spot failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorJoinEntrySpot(node, actor, destNodeRid, parts, partCount, handler, userdata, flags, timeoutMs);
     }
 
     public static int spotNodeActorLeaveSpot(MemorySegment node,
@@ -2185,13 +2040,7 @@ public final class Native {
                                              MemorySegment handler,
                                              MemorySegment userdata,
                                              int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_LEAVE_SPOT.invokeExact(node, actor,
-              destSpotRid, handler, userdata, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_leave_spot failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorLeaveSpot(node, actor, destSpotRid, handler, userdata, timeoutMs);
     }
 
     public static int spotNodeActorRecvPart(MemorySegment node,
@@ -2200,26 +2049,14 @@ public final class Native {
                                             MemorySegment messageOut,
                                             MemorySegment hasMoreOut,
                                             int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_RECV_PART.invokeExact(node, actor,
-              infoOut, messageOut, hasMoreOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_recv_part failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorRecvPart(node, actor, infoOut, messageOut, hasMoreOut, flags);
     }
 
     public static int spotNodeActorSendBoundSessionMessage(MemorySegment node,
                                                        MemorySegment actor,
                                                        MemorySegment message,
                                                        int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_SEND_BOUND_SESSION_MSG.invokeExact(
-              node, actor, message, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_send_bound_session_msg failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorSendBoundSessionMessage(node, actor, message, flags);
     }
 
     public static int spotNodeSendToActor(MemorySegment node,
@@ -2230,12 +2067,7 @@ public final class Native {
                                           MemorySegment userdata,
                                           int flags,
                                           int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SEND_TO_ACTOR.invokeExact(
-              node, actor, parts, partCount, callback, userdata, flags, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_send_to_actor failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSendToActor(node, actor, parts, partCount, callback, userdata, flags, timeoutMs);
     }
 
     public static int spotNodeRequestToActor(MemorySegment node,
@@ -2246,12 +2078,7 @@ public final class Native {
                                              MemorySegment userdata,
                                              int flags,
                                              int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_REQUEST_TO_ACTOR.invokeExact(
-              node, actor, parts, partCount, callback, userdata, flags, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_request_to_actor failed", t);
-        }
+        return NativeSpotSymbols.spotNodeRequestToActor(node, actor, parts, partCount, callback, userdata, flags, timeoutMs);
     }
 
     public static int spotNodeActorReplyNoBind(MemorySegment node,
@@ -2259,13 +2086,7 @@ public final class Native {
                                                MemorySegment parts,
                                                long partCount,
                                                int result) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_REPLY_NO_BIND.invokeExact(
-              node, info, parts, partCount, result);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_reply_no_bind failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorReplyNoBind(node, info, parts, partCount, result);
     }
 
     public static int spotNodeActorForwardBoundSessionPart(
@@ -2276,13 +2097,7 @@ public final class Native {
                                                        MemorySegment message,
                                                        int flags,
                                                        int partFlag) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_FORWARD_BOUND_SESSION_PART.invokeExact(
-              node, actor, sourceNodeRid, sourceSessionRid, message, flags, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_forward_bound_session_part failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorForwardBoundSessionPart(node, actor, sourceNodeRid, sourceSessionRid, message, flags, partFlag);
     }
 
     public static int spotNodeActorBindRemoteSession(
@@ -2290,43 +2105,23 @@ public final class Native {
                                                        MemorySegment actor,
                                                        MemorySegment sourceNodeRid,
                                                        MemorySegment sourceSessionRid) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_BIND_REMOTE_SESSION.invokeExact(
-              node, actor, sourceNodeRid, sourceSessionRid);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_bind_remote_session failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorBindRemoteSession(node, actor, sourceNodeRid, sourceSessionRid);
     }
 
     public static int spotNodeActorCloseBoundSession(MemorySegment node,
                                                      MemorySegment actor,
                                                      int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_CLOSE_BOUND_SESSION.invokeExact(
-              node, actor, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actor_close_bound_session failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActorCloseBoundSession(node, actor, timeoutMs);
     }
 
     public static int spotNodeRegister(MemorySegment node, MemorySegment service,
                                        MemorySegment ep) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_REG.invokeExact(node, service, ep);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_register failed", t);
-        }
+        return NativeSpotSymbols.spotNodeRegister(node, service, ep);
     }
 
     public static int spotNodeUnregister(MemorySegment node,
                                          MemorySegment service) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_UNREG.invokeExact(node, service);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_unregister failed", t);
-        }
+        return NativeSpotSymbols.spotNodeUnregister(node, service);
     }
 
     public static int spotNodeSetTlsServer(MemorySegment node,
@@ -2356,25 +2151,14 @@ public final class Native {
     public static MemorySegment spotRouteBridgeNew(MemorySegment ctx,
                                                    MemorySegment node,
                                                    MemorySegment options) {
-        try {
-            return (MemorySegment) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_NEW.invokeExact(ctx, node,
-              options);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_route_bridge_new failed", t);
-        }
+        return NativeSpotSymbols.spotRouteBridgeNew(ctx, node, options);
     }
 
     public static int spotRouteBridgeAttachRouterChannel(MemorySegment bridge,
                                                          MemorySegment channelName,
                                                          MemorySegment router,
                                                          MemorySegment options) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_ATTACH_ROUTER_CHANNEL.invokeExact(
-              bridge, channelName, router, options);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_route_bridge_attach_router_channel failed", t);
-        }
+        return NativeSpotSymbols.spotRouteBridgeAttachRouterChannel(bridge, channelName, router, options);
     }
 
     public static int spotRouteBridgeSend(MemorySegment bridge,
@@ -2384,12 +2168,7 @@ public final class Native {
                                           MemorySegment parts,
                                           long partCount,
                                           int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_SEND.invokeExact(bridge,
-              channelName, targetNodeRid, targetSpotRid, parts, partCount, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_route_bridge_send failed", t);
-        }
+        return NativeSpotSymbols.spotRouteBridgeSend(bridge, channelName, targetNodeRid, targetSpotRid, parts, partCount, flags);
     }
 
     public static int spotRouteBridgeRequest(MemorySegment bridge,
@@ -2402,14 +2181,7 @@ public final class Native {
                                              MemorySegment userData,
                                              int flags,
                                              int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_REQUEST.invokeExact(bridge,
-              channelName, targetNodeRid, targetSpotRid, parts, partCount, callback,
-              userData, flags, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_route_bridge_request failed",
-              t);
-        }
+        return NativeSpotSymbols.spotRouteBridgeRequest(bridge, channelName, targetNodeRid, targetSpotRid, parts, partCount, callback, userData, flags, timeoutMs);
     }
 
     public static int spotRouteBridgeHandleRouterReceived(
@@ -2420,38 +2192,19 @@ public final class Native {
         MemorySegment parts,
         long partCount,
         MemorySegment handledOut) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED.invokeExact(
-              bridge, channelName, sourceNodeRid, requestSeq, parts, partCount,
-              handledOut);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_route_bridge_handle_router_received failed", t);
-        }
+        return NativeSpotSymbols.spotRouteBridgeHandleRouterReceived(bridge, channelName, sourceNodeRid, requestSeq, parts, partCount, handledOut);
     }
 
     public static int spotRouteBridgeDrain(MemorySegment bridge) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_DRAIN.invokeExact(bridge);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_route_bridge_drain failed", t);
-        }
+        return NativeSpotSymbols.spotRouteBridgeDrain(bridge);
     }
 
     public static int spotRouteBridgeClose(MemorySegment bridge) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_CLOSE.invokeExact(bridge);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_route_bridge_close failed", t);
-        }
+        return NativeSpotSymbols.spotRouteBridgeClose(bridge);
     }
 
     public static MemorySegment spotNodePublisherNew(MemorySegment node) {
-        try {
-            return (MemorySegment) NativeSpotSymbols.MH_SPOT_NODE_PUBLISHER_NEW.invokeExact(node);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_publisher_new failed", t);
-        }
+        return NativeSpotSymbols.spotNodePublisherNew(node);
     }
 
     public static int spotNodePublisherPublish(MemorySegment publisher,
@@ -2459,106 +2212,55 @@ public final class Native {
                                                MemorySegment parts,
                                                long partCount,
                                                int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_PUBLISHER_PUBLISH.invokeExact(publisher,
-              topic, parts, partCount, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_publisher_publish failed",
-              t);
-        }
+        return NativeSpotSymbols.spotNodePublisherPublish(publisher, topic, parts, partCount, flags);
     }
 
     public static int spotNodePublisherClose(MemorySegment publisher) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_PUBLISHER_CLOSE.invokeExact(publisher);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_publisher_close failed",
-              t);
-        }
+        return NativeSpotSymbols.spotNodePublisherClose(publisher);
     }
 
     public static int spotNodeStatus(MemorySegment node,
                                              MemorySegment out) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_STATUS_SNAPSHOT.invokeExact(node, out);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_status failed",
-              t);
-        }
+        return NativeSpotSymbols.spotNodeStatus(node, out);
     }
 
     public static int spotNodePeers(MemorySegment node,
                                             MemorySegment entries,
                                             MemorySegment count) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_PEERS.invokeExact(node,
-              MemorySegment.NULL, entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_peers failed",
-              t);
-        }
+        return NativeSpotSymbols.spotNodePeers(node, entries, count);
     }
 
     public static int spotNodePeersQuery(MemorySegment node,
                                          MemorySegment filter,
                                          MemorySegment entries,
                                          MemorySegment count) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_PEERS.invokeExact(node, filter,
-              entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_peers failed", t);
-        }
+        return NativeSpotSymbols.spotNodePeersQuery(node, filter, entries, count);
     }
 
     public static int spotNodeSubjects(MemorySegment node,
                                                MemorySegment filter,
                                                MemorySegment entries,
                                                MemorySegment count) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SUBJECTS_SNAPSHOT.invokeExact(node, filter,
-              entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_subjects failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSubjects(node, filter, entries, count);
     }
 
     public static int spotNodeInternalSockets(MemorySegment node,
                                                       MemorySegment filter,
                                                       MemorySegment entries,
                                                       MemorySegment count) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_INTERNAL_SOCKETS_SNAPSHOT.invokeExact(
-              node, filter, entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_internal_sockets failed", t);
-        }
+        return NativeSpotSymbols.spotNodeInternalSockets(node, filter, entries, count);
     }
 
     public static int spotNodeSpots(MemorySegment node,
                                             MemorySegment entries,
                                             MemorySegment count) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SPOTS_SNAPSHOT.invokeExact(node, entries,
-              count);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_spots failed", t);
-        }
+        return NativeSpotSymbols.spotNodeSpots(node, entries, count);
     }
 
     public static int spotNodeActors(MemorySegment node,
                                              MemorySegment entries,
                                              MemorySegment count) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTORS_SNAPSHOT.invokeExact(node,
-              entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_actors failed", t);
-        }
+        return NativeSpotSymbols.spotNodeActors(node, entries, count);
     }
 
     public static int spotSendChannelPart(MemorySegment spot,
@@ -2566,12 +2268,7 @@ public final class Native {
                                           MemorySegment part,
                                           int flags,
                                           int partFlag) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_SEND_CHANNEL_PART.invokeExact(spot,
-              channelName, part, flags, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_send_channel_part failed", t);
-        }
+        return NativeSpotSymbols.spotSendChannelPart(spot, channelName, part, flags, partFlag);
     }
 
     public static int spotPublishPart(MemorySegment spot,
@@ -2579,12 +2276,7 @@ public final class Native {
                                       MemorySegment part,
                                       int flags,
                                       int partFlag) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_PUBLISH_PART.invokeExact(spot, topicId, part,
-              flags, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_publish_part failed", t);
-        }
+        return NativeSpotSymbols.spotPublishPart(spot, topicId, part, flags, partFlag);
     }
 
     public static int spotSubscribePart(MemorySegment spot,
@@ -2595,13 +2287,7 @@ public final class Native {
                                         MemorySegment partOut,
                                         MemorySegment hasMoreOut,
                                         int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_SUBSCRIBE_PART.invokeExact(spot,
-              sourceRidOut, topicIdOut, topicIdCapacity, topicIdLenOut, partOut,
-              hasMoreOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_subscribe_part failed", t);
-        }
+        return NativeSpotSymbols.spotSubscribePart(spot, sourceRidOut, topicIdOut, topicIdCapacity, topicIdLenOut, partOut, hasMoreOut, flags);
     }
 
     // DONT_WAIT-only critical variant. Caller MUST guarantee DONT_WAIT set.
@@ -2613,14 +2299,7 @@ public final class Native {
                                         MemorySegment partOut,
                                         MemorySegment hasMoreOut,
                                         int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_SUBSCRIBE_PART_CRITICAL.invokeExact(spot,
-              sourceRidOut, topicIdOut, topicIdCapacity, topicIdLenOut, partOut,
-              hasMoreOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_subscribe_part (critical) failed", t);
-        }
+        return NativeSpotSymbols.spotSubscribePartNoWaitCritical(spot, sourceRidOut, topicIdOut, topicIdCapacity, topicIdLenOut, partOut, hasMoreOut, flags);
     }
 
     public static int spotRequestChannelPart(MemorySegment spot,
@@ -2631,14 +2310,7 @@ public final class Native {
                                              int flags,
                                              int partFlag,
                                              int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_REQUEST_CHANNEL_PART.invokeExact(spot,
-              channelName, part, handler, userdata, flags, partFlag,
-              timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_request_channel_part failed",
-              t);
-        }
+        return NativeSpotSymbols.spotRequestChannelPart(spot, channelName, part, handler, userdata, flags, partFlag, timeoutMs);
     }
 
     public static int spotRequestSpotPart(MemorySegment spot,
@@ -2650,14 +2322,7 @@ public final class Native {
                                           int flags,
                                           int partFlag,
                                           int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_REQUEST_SPOT_PART.invokeExact(spot,
-              destNodeRid, destSpotRid, part, handler, userdata, flags,
-              partFlag, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_request_spot_part failed",
-              t);
-        }
+        return NativeSpotSymbols.spotRequestSpotPart(spot, destNodeRid, destSpotRid, part, handler, userdata, flags, partFlag, timeoutMs);
     }
 
     public static int spotRequestRouterPart(MemorySegment spot,
@@ -2668,13 +2333,7 @@ public final class Native {
                                             int flags,
                                             int partFlag,
                                             int timeoutMs) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_REQUEST_ROUTER_PART.invokeExact(spot,
-              peerRid, part, handler, userdata, flags, partFlag, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_request_router_part failed",
-              t);
-        }
+        return NativeSpotSymbols.spotRequestRouterPart(spot, peerRid, part, handler, userdata, flags, partFlag, timeoutMs);
     }
 
     public static int spotActorJoinRecv(MemorySegment spot,
@@ -2682,24 +2341,13 @@ public final class Native {
                                         MemorySegment partsOut,
                                         MemorySegment partCountOut,
                                         int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ACTOR_JOIN_RECV.invokeExact(spot, infoOut,
-              partsOut, partCountOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_actor_join_recv failed", t);
-        }
+        return NativeSpotSymbols.spotActorJoinRecv(spot, infoOut, partsOut, partCountOut, flags);
     }
 
     public static int spotRecvActorLifecycle(MemorySegment spot,
                                              MemorySegment eventOut,
                                              int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_RECV_ACTOR_LIFECYCLE.invokeExact(spot,
-              eventOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_recv_actor_lifecycle failed", t);
-        }
+        return NativeSpotSymbols.spotRecvActorLifecycle(spot, eventOut, flags);
     }
 
     public static int spotRecvActorLifecycleWithRequest(MemorySegment spot,
@@ -2707,13 +2355,7 @@ public final class Native {
                                                         MemorySegment partsOut,
                                                         MemorySegment countOut,
                                                         int flags) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_RECV_ACTOR_LIFECYCLE_WITH_REQUEST.invokeExact(
-              spot, eventOut, partsOut, countOut, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_recv_actor_lifecycle_with_request failed", t);
-        }
+        return NativeSpotSymbols.spotRecvActorLifecycleWithRequest(spot, eventOut, partsOut, countOut, flags);
     }
 
     public static int spotActorJoinReply(MemorySegment spot,
@@ -2721,23 +2363,13 @@ public final class Native {
                                          int joinResultCode,
                                          MemorySegment parts,
                                          long partCount) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ACTOR_JOIN_REPLY.invokeExact(spot, info,
-              joinResultCode, parts, partCount);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_actor_join_reply failed", t);
-        }
+        return NativeSpotSymbols.spotActorJoinReply(spot, info, joinResultCode, parts, partCount);
     }
 
     public static int spotActors(MemorySegment spot,
                                          MemorySegment entries,
                                          MemorySegment count) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ACTORS_SNAPSHOT.invokeExact(spot, entries,
-              count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_actors failed", t);
-        }
+        return NativeSpotSymbols.spotActors(spot, entries, count);
     }
 
 }

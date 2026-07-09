@@ -5,7 +5,8 @@ package systems.zlink.contracts.service.spot;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 /** Accepts further parts, flags, and the terminal submit of a send builder. */
-public interface SendSubmitOperation {
+public interface SendSubmitOperation
+  extends MessageBuilderStage<SendSubmitOperation> {
     /**
      * Adds another message part; consumed on a successful submit (see
      * {@link SendOperation} for the ownership contract).

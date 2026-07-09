@@ -22,10 +22,10 @@ import java.lang.invoke.MethodType;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -58,17 +58,17 @@ public final class ActorRequestCallbacks {
     public static final MemorySegment ACTOR_LOOKUP_CALLBACK;
     public static final MemorySegment ACTOR_LIFECYCLE_JOIN_CALLBACK;
     public static final MemorySegment ACTOR_LIFECYCLE_LEAVE_CALLBACK;
-    private static final AtomicLong NEXT_ID = new AtomicLong(1L);
-    private static final ConcurrentMap<Long, Pending> PENDING =
-      new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Long, JoinPending> JOIN_PENDING =
-      new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Long, JoinEntrySpotPending>
-      JOIN_ENTRY_SPOT_PENDING = new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Long, LookupPending> LOOKUP_PENDING =
-      new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Long, LifecyclePending> LIFECYCLE_REGS =
-      new ConcurrentHashMap<>();
+    private static final ActorPendingIds PENDING_IDS = new ActorPendingIds();
+    private static final ActorPendingRegistry<Pending> PENDING =
+      new ActorPendingRegistry<>(PENDING_IDS);
+    private static final ActorPendingRegistry<JoinPending> JOIN_PENDING =
+      new ActorPendingRegistry<>(PENDING_IDS);
+    private static final ActorPendingRegistry<JoinEntrySpotPending>
+      JOIN_ENTRY_SPOT_PENDING = new ActorPendingRegistry<>(PENDING_IDS);
+    private static final ActorPendingRegistry<LookupPending> LOOKUP_PENDING =
+      new ActorPendingRegistry<>(PENDING_IDS);
+    private static final ActorPendingRegistry<LifecyclePending> LIFECYCLE_REGS =
+      new ActorPendingRegistry<>(PENDING_IDS);
 
     static {
         try {
@@ -115,40 +115,39 @@ public final class ActorRequestCallbacks {
     }
 
     public static PendingToken register(BiConsumer<RequestResult, List<Message>> callback) {
-        long id = NEXT_ID.getAndIncrement();
         CompletableFuture<Void> future = new CompletableFuture<>();
-        PENDING.put(id, new Pending(callback, future));
-        return new PendingToken(id, future);
+        PendingRegistration<Pending> registration =
+          PENDING.register(new Pending(callback, future));
+        return new PendingToken(registration.id(), future);
     }
 
     public static JoinPendingToken registerJoin(ActorJoinHandler handler) {
-        long id = NEXT_ID.getAndIncrement();
         CompletableFuture<Void> future = new CompletableFuture<>();
-        JOIN_PENDING.put(id, new JoinPending(handler, future));
-        return new JoinPendingToken(id, future);
+        PendingRegistration<JoinPending> registration =
+          JOIN_PENDING.register(new JoinPending(handler, future));
+        return new JoinPendingToken(registration.id(), future);
     }
 
     public static JoinEntrySpotPendingToken registerJoinEntrySpot(
       ActorJoinEntrySpotHandler handler) {
-        long id = NEXT_ID.getAndIncrement();
         CompletableFuture<Void> future = new CompletableFuture<>();
-        JOIN_ENTRY_SPOT_PENDING.put(id,
-          new JoinEntrySpotPending(handler, future));
-        return new JoinEntrySpotPendingToken(id, future);
+        PendingRegistration<JoinEntrySpotPending> registration =
+          JOIN_ENTRY_SPOT_PENDING.register(new JoinEntrySpotPending(handler,
+            future));
+        return new JoinEntrySpotPendingToken(registration.id(), future);
     }
 
     public static LookupPendingToken registerLookup(ActorLookupHandler handler) {
-        long id = NEXT_ID.getAndIncrement();
         CompletableFuture<Void> future = new CompletableFuture<>();
-        LOOKUP_PENDING.put(id, new LookupPending(handler, future));
-        return new LookupPendingToken(id, future);
+        PendingRegistration<LookupPending> registration =
+          LOOKUP_PENDING.register(new LookupPending(handler, future));
+        return new LookupPendingToken(registration.id(), future);
     }
 
     public static long registerLifecycle(LifecycleDispatcher onJoin,
                                          LifecycleDispatcher onLeave) {
-        long id = NEXT_ID.getAndIncrement();
-        LIFECYCLE_REGS.put(id, new LifecyclePending(onJoin, onLeave));
-        return id;
+        return LIFECYCLE_REGS.register(new LifecyclePending(onJoin, onLeave))
+          .id();
     }
 
     public static void unregisterLifecycle(long id) {
@@ -364,6 +363,40 @@ public final class ActorRequestCallbacks {
 
     private record LifecyclePending(LifecycleDispatcher onJoin,
                                     LifecycleDispatcher onLeave) {
+    }
+
+    private static final class ActorPendingIds {
+        private final AtomicLong next = new AtomicLong(1L);
+
+        private long nextId() {
+            return next.getAndIncrement();
+        }
+    }
+
+    private static final class ActorPendingRegistry<T> {
+        private final ActorPendingIds ids;
+        private final ConcurrentMap<Long, T> pending = new ConcurrentHashMap<>();
+
+        private ActorPendingRegistry(ActorPendingIds ids) {
+            this.ids = ids;
+        }
+
+        private PendingRegistration<T> register(T state) {
+            long id = ids.nextId();
+            pending.put(id, state);
+            return new PendingRegistration<>(id, state);
+        }
+
+        private T remove(long id) {
+            return pending.remove(id);
+        }
+
+        private T get(long id) {
+            return pending.get(id);
+        }
+    }
+
+    private record PendingRegistration<T>(long id, T state) {
     }
 
     @FunctionalInterface

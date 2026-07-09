@@ -6,6 +6,7 @@ import systems.zlink.contracts.sockets.*;
 import systems.zlink.runtime.nativeapi.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.spot.RequestOperation;
@@ -28,13 +29,24 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
         super(ctx, SocketType.DEALER);
     }
 
+    public void bind(String endpoint) { runtime().bind(endpoint); }
+    public void connect(String endpoint) { runtime().connect(endpoint); }
+    public void unbind(String endpoint) { runtime().unbind(endpoint); }
+    public void disconnect(String endpoint) { runtime().disconnect(endpoint); }
+    public void disconnectRid(RoutingId routingId) {
+        runtime().disconnectRid(routingId);
+    }
+    public String getChannelName() { return runtime().getChannelName(); }
+    public void setRoutingId(RoutingId rid) { runtime().setRoutingId(rid); }
+    public RoutingId getRoutingId() { return runtime().getRoutingId(); }
+
     public SendOperation send() {
         return MessageOperations.send(
-            (part, flags) -> super.send(part, SendFlag.fromValue(flags.value())),
-            (parts, flags) -> super.send(parts, SendFlag.fromValue(flags.value())));
+            (part, flags) -> runtime().send(part, SendFlag.fromValue(flags.value())),
+            (parts, flags) -> runtime().send(parts, SendFlag.fromValue(flags.value())));
     }
-    SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
-    SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
+    SendResult sendNoWaitResult(Message part) { return runtime().sendNoWaitResult(part); }
+    SendResult sendNoWaitResult(List<Message> parts) { return runtime().sendNoWaitResult(parts); }
     /**
      * Receives into caller-provided {@link Received} storage.
      *
@@ -48,9 +60,9 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
     public boolean recv(Received result, RecvFlags flags) {
         java.util.Objects.requireNonNull(result, "result");
         java.util.Objects.requireNonNull(flags, "flags");
-        return super.recvInto(result, ReceiveFlag.fromValue(flags.value()));
+        return runtime().recvInto(result, ReceiveFlag.fromValue(flags.value()));
     }
-    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { runtime().setSendReadyHandler(handler); }
     public RequestOperation request() {
         return MessageOperations.request(this::requestStage, this::requestCallback);
     }
@@ -72,7 +84,7 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
     public void close() {
         debug("dealer close begin");
         try {
-            super.close();
+            runtime().close();
         } finally {
             debug("dealer close end");
         }

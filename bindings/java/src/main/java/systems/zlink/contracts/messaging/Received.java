@@ -619,7 +619,6 @@ public final class Received implements AutoCloseable {
 
     private final class ReplyBuilder implements ReplyOperation, ReplySubmitOperation {
         private final BuilderParts parts = new BuilderParts();
-        private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
         @Override
@@ -630,19 +629,12 @@ public final class Received implements AutoCloseable {
         }
 
         @Override
-        public ReplySubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
-            return this;
-        }
-
-        @Override
         public void submit() {
             ensureNotSubmitted();
             if (parts.isEmpty())
                 throw new IllegalArgumentException("at least one message required");
             submitted = true;
-            submitReply(parts.asList(), flags);
+            submitReply(parts.asList(), SendFlags.NONE);
         }
 
         private void ensureNotSubmitted() {

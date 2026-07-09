@@ -4,19 +4,17 @@ package systems.zlink.contracts.errors;
 
 
 /** Thrown when closing a socket or resource fails. */
-public final class ZlinkCloseException extends ZlinkException {
-    private final CloseResult result;
-
+public final class ZlinkCloseException
+  extends TypedZlinkException {
     public ZlinkCloseException(CloseResult result) {
         this(result, 0);
     }
 
     public ZlinkCloseException(CloseResult result, int nativeErrno) {
-        super(result.value(), nativeErrno);
-        this.result = result;
+        super(result, result.value(), nativeErrno);
     }
 
     public CloseResult getResult() {
-        return result;
+        return (CloseResult) result();
     }
 }

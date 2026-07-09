@@ -8,7 +8,8 @@ import systems.zlink.contracts.messaging.Message;
  * Parts are consumed on a successful submit (see {@link SendOperation} for the
  * ownership contract).
  */
-public interface ReplyOperation {
+public interface ReplyOperation
+  extends MessageBuilderStage<ReplySubmitOperation> {
     /**
      * Adds the first reply part.
      *

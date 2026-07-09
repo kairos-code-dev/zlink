@@ -21,7 +21,8 @@ public final class NativeListSnapshots {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = reader.read(arena, MemorySegment.NULL, count);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(operation);
+                throw InternalAccess.zlinkExceptionFromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0),
                 Integer.MAX_VALUE);
@@ -33,7 +34,8 @@ public final class NativeListSnapshots {
             count.set(ValueLayout.JAVA_LONG, 0, available);
             rc = reader.read(arena, entries, count);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(operation);
+                throw InternalAccess.zlinkExceptionFromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             int actual = boundedCount(count.get(ValueLayout.JAVA_LONG, 0),
                 available);

@@ -51,16 +51,13 @@ final class SpotSendPlane {
         Objects.requireNonNull(part, "part");
         rejectBlockingCallback(nonBlocking,
             "blocking publish is not supported from callback context; use SendFlags.DONT_WAIT");
-        while (true) {
-            int rc = publishPartOnce(topicId, part,
-                nonBlocking ? SEND_DONTWAIT : 0, Native.PART_FINAL);
-            if (rc == 0)
-                return true;
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR)
-                continue;
-            throw submitFailure("zlink_spot_publish_part");
-        }
+        int rc = NativeErrno.retryWhileInterrupted(
+            () -> publishPartOnce(topicId, part,
+                nonBlocking ? SEND_DONTWAIT : 0, Native.PART_FINAL),
+            result -> result != 0);
+        if (rc == 0)
+            return true;
+        throw submitFailure("zlink_spot_publish_part");
     }
 
     boolean publish(String topicId, List<Message> parts, boolean nonBlocking) {
@@ -72,17 +69,14 @@ final class SpotSendPlane {
             for (int i = 0; i < parts.size(); i++) {
                 int partFlag = i + 1 < parts.size()
                     ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = publishPartOnce(topic,
-                        Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
-                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == NativeErrno.EINTR)
-                        continue;
+                Message part = Objects.requireNonNull(parts.get(i),
+                    "parts[" + i + "]");
+                int rc = NativeErrno.retryWhileInterrupted(
+                    () -> publishPartOnce(topic, part,
+                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena),
+                    result -> result != 0);
+                if (rc != 0)
                     throw submitFailure("zlink_spot_publish_part");
-                }
             }
         }
         return true;
@@ -99,17 +93,14 @@ final class SpotSendPlane {
             for (int i = 0; i < parts.size(); i++) {
                 int partFlag = i + 1 < parts.size()
                     ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = sendChannelPartOnce(service,
-                        Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
-                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == NativeErrno.EINTR)
-                        continue;
+                Message part = Objects.requireNonNull(parts.get(i),
+                    "parts[" + i + "]");
+                int rc = NativeErrno.retryWhileInterrupted(
+                    () -> sendChannelPartOnce(service, part,
+                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena),
+                    result -> result != 0);
+                if (rc != 0)
                     throw submitFailure("zlink_spot_send_channel_part");
-                }
             }
         }
         return true;
@@ -225,6 +216,7 @@ final class SpotSendPlane {
             NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null)
             return submit;
-        throw InternalAccess.zlinkExceptionFromLastError(apiName);
+        throw InternalAccess.zlinkExceptionFromLastError(
+            systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
     }
 }

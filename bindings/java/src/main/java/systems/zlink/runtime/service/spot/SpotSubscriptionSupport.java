@@ -42,14 +42,14 @@ final class SpotSubscriptionSupport implements AutoCloseable {
         MemorySegment filter = spot.topicCString(topicId);
         int rc = Native.setSubscription(spot.handle(), filter);
         if (rc != 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_set_subscription");
+            throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
     }
 
     void unsetSubscription(String topicIdOrPattern) {
         MemorySegment filter = spot.topicCString(topicIdOrPattern);
         int rc = Native.unsetSubscription(spot.handle(), filter);
         if (rc != 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_unset_subscription");
+            throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
     }
 
     Optional<SubscriptionEntry> subscriptionAt(int index) {
@@ -86,7 +86,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                       lenInOut.get(ValueLayout.JAVA_LONG, 0));
                     continue;
                 }
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_subscription_at");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -176,7 +176,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                 || errno == NativeErrno.EWOULDBLOCK_WIN) {
                 return false;
             }
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
+            throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.RECV);
         }
     }
 
@@ -190,20 +190,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
     }
 
     private static RoutingId decodeSpotRoutingId(MemorySegment nativeRidPtr) {
-        if (nativeRidPtr == null || nativeRidPtr.address() == 0) {
-            return null;
-        }
-        MemorySegment routingId = nativeRidPtr.reinterpret(
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int size = routingId.get(ValueLayout.JAVA_BYTE,
-          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0) {
-            return null;
-        }
-        byte[] value = new byte[size];
-        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-          MemorySegment.ofArray(value), 0, size);
-        return InternalAccess.routingIdFromTrusted(value);
+        return NativeRoutingIds.read(nativeRidPtr);
     }
 
     private Optional<TopicMessage> assembleRemainder(SpotRecvScratch scratch,
@@ -250,7 +237,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                 continue;
             }
             Message.closeAll(parts.toArray(Message[]::new));
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
+            throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.RECV);
         }
     }
 
@@ -314,7 +301,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                     if (errno == NativeErrno.EINTR)
                         break;
                     throw InternalAccess.zlinkExceptionFromLastError(
-                      "zlink_spot_subscribe_part");
+                      systems.zlink.contracts.errors.ErrorCategory.RECV);
                 }
                 for (int i = 0; i < partCount; i++) {
                     try {
@@ -335,42 +322,39 @@ final class SpotSubscriptionSupport implements AutoCloseable {
       boolean nonBlocking) {
         spot.ensureOpen();
         SpotRecvScratch scratch = recvScratch.get();
-        while (true) {
-            resetSubscriptionScratch(scratch);
-            int rc = Native.subscriptionEvent(spot.handle(),
+        resetSubscriptionScratch(scratch);
+        int rc = NativeErrno.retryWhileInterrupted(() ->
+            Native.subscriptionEvent(spot.handle(),
               scratch.subscriptionRid, scratch.subscribedOut,
               scratch.topicOut, scratch.topicLenOut,
-              nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
-            if (rc == 0) {
-                int topicLength = normalizeTopicLength(scratch.topicOut,
-                  TOPIC_CAPACITY, scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                String topicId = decodeSpotTopic(scratch, topicLength);
-                return Optional.of(ContractAccess.subscriptionEvent(
-                  Optional.ofNullable(NativeRoutingIds.read(
-                    scratch.subscriptionRid)),
-                  topicId, scratch.subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
-            }
-            RecvResult result;
-            try {
-                result = RecvResult.fromValue(rc);
-            } catch (IllegalArgumentException ex) {
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_xpub_recv_part");
-            }
-            if (result == RecvResult.NO_DATA && nonBlocking) {
-                return Optional.empty();
-            }
-            if (result == RecvResult.NO_DATA) {
-                throw new ZlinkRecvException(result, Native.errno());
-            }
-            if (result == RecvResult.BUSY && nonBlocking) {
-                return Optional.empty();
-            }
+              nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING),
+            SpotSubscriptionSupport::isUnknownRecvResult);
+        if (rc == 0) {
+            int topicLength = normalizeTopicLength(scratch.topicOut,
+              TOPIC_CAPACITY, scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+            String topicId = decodeSpotTopic(scratch, topicLength);
+            return Optional.of(ContractAccess.subscriptionEvent(
+              Optional.ofNullable(NativeRoutingIds.read(
+                scratch.subscriptionRid)),
+              topicId, scratch.subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
+        }
+        RecvResult result;
+        try {
+            result = RecvResult.fromValue(rc);
+        } catch (IllegalArgumentException ex) {
+            throw InternalAccess.zlinkExceptionFromLastError(
+              systems.zlink.contracts.errors.ErrorCategory.RECV);
+        }
+        if (result == RecvResult.NO_DATA && nonBlocking) {
+            return Optional.empty();
+        }
+        if (result == RecvResult.NO_DATA) {
             throw new ZlinkRecvException(result, Native.errno());
         }
+        if (result == RecvResult.BUSY && nonBlocking) {
+            return Optional.empty();
+        }
+        throw new ZlinkRecvException(result, Native.errno());
     }
 
     private static int normalizeTopicLength(MemorySegment topic, int capacity,
@@ -399,6 +383,15 @@ final class SpotSubscriptionSupport implements AutoCloseable {
           NativeLayouts.ROUTING_ID_SIZE_OFFSET, (byte) 0);
         scratch.subscribedOut.set(ValueLayout.JAVA_INT, 0, 0);
         scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+    }
+
+    private static boolean isUnknownRecvResult(int result) {
+        try {
+            RecvResult.fromValue(result);
+            return false;
+        } catch (IllegalArgumentException ex) {
+            return true;
+        }
     }
 
     private static final class SpotRecvScratch {

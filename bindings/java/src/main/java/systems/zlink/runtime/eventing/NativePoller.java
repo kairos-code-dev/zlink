@@ -46,7 +46,7 @@ public final class NativePoller implements Poller {
     NativePoller() {
         handle = Native.pollerNew();
         if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_poller_new");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
     }
 
     public void add(Socket socket, long slot, PollEventFlags... events) {
@@ -63,7 +63,7 @@ public final class NativePoller implements Poller {
         PollItem item = PollItem.fd(fd, combine(events), slot);
         int rc = Native.pollerAddFd(handle, fd, item.userData(), item.events);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_add_fd");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         items.add(item);
     }
 
@@ -74,7 +74,7 @@ public final class NativePoller implements Poller {
         PollItem item = PollItem.timer(InternalAccess.timerHandle(timer), slot);
         int rc = Native.pollerAddZlinkTimer(handle, InternalAccess.timerHandle(timer), item.userData());
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_add_timer");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         items.add(item);
     }
 
@@ -87,7 +87,7 @@ public final class NativePoller implements Poller {
         int mask = combine(events);
         int rc = Native.pollerModify(handle, InternalAccess.socketHandle(socket), mask);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_modify");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         items.get(index).events = mask;
     }
 
@@ -121,7 +121,7 @@ public final class NativePoller implements Poller {
             item.spotPub = nextSpotPub;
         }
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_modify");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         unregisterExternalProgress(item);
         item.events = mask;
         registerExternalProgress(item);
@@ -135,7 +135,7 @@ public final class NativePoller implements Poller {
         int mask = combine(events);
         int rc = Native.pollerModifyFd(handle, fd, mask);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_modify_fd");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         items.get(index).events = mask;
     }
 
@@ -147,7 +147,7 @@ public final class NativePoller implements Poller {
             return false;
         int rc = Native.pollerRemove(handle, InternalAccess.socketHandle(socket));
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_remove");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         PollItem removed = items.remove(index);
         unregisterExternalProgress(removed);
         socketIndexes.remove(removed.handle.address());
@@ -166,7 +166,7 @@ public final class NativePoller implements Poller {
             ? Native.pollerRemoveSpotPub(handle, InternalAccess.spotHandle(spot))
             : Native.pollerRemoveSpotSub(handle, InternalAccess.spotHandle(spot));
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_remove");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         PollItem removed = items.remove(index);
         unregisterExternalProgress(removed);
         spotIndexes.remove(removed.handle.address());
@@ -181,7 +181,7 @@ public final class NativePoller implements Poller {
             return false;
         int rc = Native.pollerRemoveFd(handle, fd);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_remove_fd");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         unregisterExternalProgress(items.remove(index));
         return true;
     }
@@ -194,7 +194,7 @@ public final class NativePoller implements Poller {
             return false;
         int rc = Native.pollerRemoveZlinkTimer(handle, InternalAccess.timerHandle(timer));
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_remove_timer");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         unregisterExternalProgress(items.remove(index));
         return true;
     }
@@ -203,10 +203,10 @@ public final class NativePoller implements Poller {
         ensureOpen();
         int rc = Native.pollerDestroy(handle);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_destroy");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         handle = Native.pollerNew();
         if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_poller_new");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         unregisterAllExternalProgress();
         items.clear();
         socketIndexes.clear();
@@ -217,7 +217,7 @@ public final class NativePoller implements Poller {
         ensureOpen();
         int rc = Native.pollerSize(handle);
         if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_poller_size");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         return rc;
     }
 
@@ -232,7 +232,7 @@ public final class NativePoller implements Poller {
         int readyCount = Native.pollerWait(handle, nativeEvents, events.capacity(),
             DurationConversions.toIntMillis(timeout, "timeout"), waitErrorOut);
         if (readyCount < 0)
-            throw ZlinkException.fromLastError("zlink_poller_wait");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         for (int i = 0; i < readyCount; i++) {
             ContractAccess.pollEventsMarkEvent(events, i,
                 NativePollEvents.sourceKindValue(nativeEvents, i),
@@ -291,7 +291,7 @@ public final class NativePoller implements Poller {
         int rc = Native.pollerAdd(handle, InternalAccess.socketHandle(socket), item.userData(),
             events);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_add");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         socketIndexes.putIfAbsent(InternalAccess.socketHandle(socket).address(), items.size());
         items.add(item);
     }
@@ -309,7 +309,7 @@ public final class NativePoller implements Poller {
             : Native.pollerAddSpotSub(handle, InternalAccess.spotHandle(spot),
                 item.userData(), events);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_add");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         registerExternalProgress(item);
         spotIndexes.putIfAbsent(InternalAccess.spotHandle(spot).address(), items.size());
         items.add(item);

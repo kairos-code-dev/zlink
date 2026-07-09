@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 /** Builds an actor-to-session bind operation. */
-public interface ActorBindOperation {
+public interface ActorBindOperation
+  extends TimeoutSubmitOperation<List<Message>, ReplyHandler> {
     /** Sets the operation timeout, replacing any previous value. */
     ActorBindOperation timeout(Duration timeout);
     /** Submits the operation and asynchronously returns the reply parts. */

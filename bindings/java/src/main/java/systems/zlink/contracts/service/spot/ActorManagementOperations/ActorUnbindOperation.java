@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 /** Builds an actor-from-session unbind operation. */
-public interface ActorUnbindOperation {
+public interface ActorUnbindOperation
+  extends TimeoutSubmitOperation<List<Message>, ReplyHandler> {
     ActorUnbindOperation timeout(Duration timeout);
     CompletionStage<List<Message>> submit();
     boolean submit(ReplyHandler callback);

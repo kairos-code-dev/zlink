@@ -2,8 +2,6 @@
 
 package systems.zlink.runtime.service.spot;
 
-import systems.zlink.contracts.errors.ZlinkConfigException;
-import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.errors.ZlinkRecvException;
@@ -16,10 +14,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SendReadyHandler;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.contracts.service.spot.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotDispatchEventHandler;
-import systems.zlink.contracts.service.spot.SpotDispatchInfo;
-import systems.zlink.contracts.service.spot.SpotDispatchSubjectKind;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
@@ -34,6 +29,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeListSnapshots;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -97,28 +93,25 @@ public final class NativeSpot implements Spot {
 
     /** Creates a unified spot facade bound to the supplied node. */
     NativeSpot(SpotNode node) {
-        Objects.requireNonNull(node, "node");
-        MemorySegment nativeHandle = Native.spotNew(InternalAccess.spotNodeHandle(node));
-        if (nativeHandle == null || nativeHandle.address() == 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_new");
-        this.ownerNode = node;
-        this.handle = nativeHandle;
-        this.sendPlane = new SpotSendPlane(this);
-        this.requestPlane = new SpotRequestPlane(this);
-        this.routedSupport = new SpotRoutedSupport(this);
-        this.subscriptionSupport = new SpotSubscriptionSupport(this);
-        this.actorJoinSupport = new SpotActorJoinSupport(this);
-        this.sendReadySupport = new SpotSendReadySupport();
-        this.options = new SpotOptions(this);
+        this(Objects.requireNonNull(node, "node"), createSpotHandle(node),
+            false);
     }
 
     NativeSpot(SpotNode node, MemorySegment handle) {
-        Objects.requireNonNull(node, "node");
-        Objects.requireNonNull(handle, "handle");
-        if (handle.address() == 0)
-            throw new IllegalArgumentException("spot handle must not be null");
+        this(Objects.requireNonNull(node, "node"), handle, false);
+    }
+
+    NativeSpot(MemorySegment handle) {
+        this(null, handle, true);
+    }
+
+    private NativeSpot(SpotNode node, MemorySegment handle,
+                       boolean allowNullNode) {
+        if (!allowNullNode) {
+            Objects.requireNonNull(node, "node");
+        }
         this.ownerNode = node;
-        this.handle = handle;
+        this.handle = requireHandle(handle);
         this.sendPlane = new SpotSendPlane(this);
         this.requestPlane = new SpotRequestPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
@@ -128,19 +121,19 @@ public final class NativeSpot implements Spot {
         this.options = new SpotOptions(this);
     }
 
-    NativeSpot(MemorySegment handle) {
+    private static MemorySegment requireHandle(MemorySegment handle) {
         Objects.requireNonNull(handle, "handle");
         if (handle.address() == 0)
             throw new IllegalArgumentException("spot handle must not be null");
-        this.ownerNode = null;
-        this.handle = handle;
-        this.sendPlane = new SpotSendPlane(this);
-        this.requestPlane = new SpotRequestPlane(this);
-        this.routedSupport = new SpotRoutedSupport(this);
-        this.subscriptionSupport = new SpotSubscriptionSupport(this);
-        this.actorJoinSupport = new SpotActorJoinSupport(this);
-        this.sendReadySupport = new SpotSendReadySupport();
-        this.options = new SpotOptions(this);
+        return handle;
+    }
+
+    private static MemorySegment createSpotHandle(SpotNode node) {
+        MemorySegment nativeHandle = Native.spotNew(
+            InternalAccess.spotNodeHandle(node));
+        if (nativeHandle == null || nativeHandle.address() == 0)
+            throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
+        return nativeHandle;
     }
 
     MemorySegment handle() {
@@ -170,7 +163,7 @@ public final class NativeSpot implements Spot {
             }
             int rc = Native.setRoutingId(handle, nativeValue, value.length);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -182,7 +175,7 @@ public final class NativeSpot implements Spot {
             MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
             int rc = Native.getRoutingId(handle, outRid);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_get_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             return readRoutingId(outRid);
         }
@@ -255,13 +248,13 @@ public final class NativeSpot implements Spot {
 
     public ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                                long requestSeq) {
-        return MessageOperations.reply((parts, flags) ->
-            replyToSpot(destNodeRid, destSpotRid, requestSeq, parts, flags));
+        return MessageOperations.reply(parts ->
+            replyToSpot(destNodeRid, destSpotRid, requestSeq, parts));
     }
 
     public ReplyOperation replyToRouter(RoutingId peerRid, long requestSeq) {
-        return MessageOperations.reply((parts, flags) ->
-            replyToRouter(peerRid, requestSeq, parts, flags));
+        return MessageOperations.reply(parts ->
+            replyToRouter(peerRid, requestSeq, parts));
     }
 
     /** Publishes one payload part through the owning Spot topic plane. */
@@ -492,30 +485,6 @@ public final class NativeSpot implements Spot {
         return sendPlane.topicCString(topic);
     }
 
-    private void drainChannelReplyFrom(MemorySegment dealerSubject) {
-        Objects.requireNonNull(dealerSubject, "dealerSubject");
-        ensureOpen();
-    }
-
-    void drainChannelReply(SpotDispatchInfo info) {
-        Objects.requireNonNull(info, "info");
-        if (info.event() != SpotDispatchEvent.CHANNEL_REPLY_READABLE
-            || info.subjectKind() != SpotDispatchSubjectKind.CHANNEL_DEALER) {
-            throw new ZlinkConfigException(ConfigResult.INVALID_ARGUMENT);
-        }
-        MemorySegment subject = spotDispatchSubject(info);
-        if (subject == null || subject.address() == 0) {
-            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
-        }
-        drainChannelReplyFrom(subject);
-    }
-
-    private static MemorySegment spotDispatchSubject(SpotDispatchInfo info) {
-        Object state = ContractAccess.spotDispatchSubjectState(info);
-        return state instanceof MemorySegment segment ? segment
-          : MemorySegment.NULL;
-    }
-
     /** Subscribes to one topic or pattern string. */
     public void setSubscription(String topicId) {
         subscriptionSupport.setSubscription(topicId);
@@ -557,45 +526,21 @@ public final class NativeSpot implements Spot {
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                             long requestSeq, Message message) {
-        replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
-          SendFlags.NONE);
-    }
-
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                            long requestSeq, Message message, SendFlags flags) {
-        replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
-          flags);
+        replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message));
     }
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                             long requestSeq, List<Message> parts) {
-        replyToSpot(destNodeRid, destSpotRid, requestSeq, parts, SendFlags.NONE);
-    }
-
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                            long requestSeq, List<Message> parts,
-                            SendFlags flags) {
-        routedSupport.replyToSpot(destNodeRid, destSpotRid, requestSeq, parts,
-          flags);
+        routedSupport.replyToSpot(destNodeRid, destSpotRid, requestSeq, parts);
     }
 
     void replyToRouter(RoutingId peerRid, long requestSeq, Message message) {
-        replyToRouter(peerRid, requestSeq, List.of(message), SendFlags.NONE);
-    }
-
-    void replyToRouter(RoutingId peerRid, long requestSeq, Message message,
-                              SendFlags flags) {
-        replyToRouter(peerRid, requestSeq, List.of(message), flags);
+        replyToRouter(peerRid, requestSeq, List.of(message));
     }
 
     void replyToRouter(RoutingId peerRid, long requestSeq,
                               List<Message> parts) {
-        replyToRouter(peerRid, requestSeq, parts, SendFlags.NONE);
-    }
-
-    void replyToRouter(RoutingId peerRid, long requestSeq,
-                              List<Message> parts, SendFlags flags) {
-        routedSupport.replyToRouter(peerRid, requestSeq, parts, flags);
+        routedSupport.replyToRouter(peerRid, requestSeq, parts);
     }
 
     public boolean recvRouted(Received result, RecvFlags flags) {
@@ -692,7 +637,7 @@ public final class NativeSpot implements Spot {
         RequestProgressPump.stopSpotProgress(currentHandle);
         int rc = Native.spotDestroy(currentHandle);
         if (rc != 0) {
-            throw ZlinkException.fromLastError("zlink_spot_destroy");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CLOSE);
         }
         handle = MemorySegment.NULL;
         if (ownerNode != null) {
@@ -711,18 +656,7 @@ public final class NativeSpot implements Spot {
     }
 
     private static RoutingId readRoutingId(MemorySegment sourceRid) {
-        if (sourceRid == null || sourceRid.address() == 0)
-            return null;
-        MemorySegment routingId = sourceRid.reinterpret(
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int size = routingId.get(ValueLayout.JAVA_BYTE,
-          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0)
-            return null;
-        byte[] value = new byte[size];
-        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-          MemorySegment.ofArray(value), 0, size);
-        return InternalAccess.routingIdFromTrusted(value);
+        return NativeRoutingIds.read(sourceRid);
     }
 
     static String requireChannelName(String channelName) {

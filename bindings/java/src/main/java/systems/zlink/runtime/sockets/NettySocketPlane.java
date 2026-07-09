@@ -32,7 +32,7 @@ final class NettySocketPlane {
         }
 
         int readerIndex = buf.readerIndex();
-        MemorySegment directSeg = readableSegment(buf, readerIndex, len);
+        MemorySegment directSeg = segmentAt(buf, readerIndex, len);
         if (directSeg.address() != 0) {
             int rc = runtime.send(directSeg, 0, len, sendFlags);
             if (rc > 0) {
@@ -54,7 +54,7 @@ final class NettySocketPlane {
         }
 
         int readerIndex = buf.readerIndex();
-        MemorySegment directSeg = readableSegment(buf, readerIndex, len);
+        MemorySegment directSeg = segmentAt(buf, readerIndex, len);
         if (directSeg.address() != 0) {
             boolean sent = runtime.sendNoWaitResult(directSeg, 0, len,
                 sendFlags);
@@ -73,7 +73,7 @@ final class NettySocketPlane {
         }
 
         int writerIndex = buf.writerIndex();
-        MemorySegment directSeg = writableSegment(buf, writerIndex, writable);
+        MemorySegment directSeg = segmentAt(buf, writerIndex, writable);
         if (directSeg.address() != 0) {
             int rc = runtime.recv(directSeg, 0, writable, flags);
             if (rc > 0) {
@@ -91,7 +91,7 @@ final class NettySocketPlane {
         }
 
         int writerIndex = buf.writerIndex();
-        MemorySegment directSeg = writableSegment(buf, writerIndex, writable);
+        MemorySegment directSeg = segmentAt(buf, writerIndex, writable);
         if (directSeg.address() != 0) {
             int rc = runtime.recvNoWait(directSeg, 0, writable, flags);
             if (rc > 0) {
@@ -102,17 +102,8 @@ final class NettySocketPlane {
         return recvFallbackNoWait(buf, writerIndex, writable, flags);
     }
 
-    private static MemorySegment readableSegment(ByteBuf buf, int index,
-                                                 int length) {
-        if (length <= 0 || !buf.hasMemoryAddress()) {
-            return MemorySegment.NULL;
-        }
-        return MemorySegment.ofAddress(buf.memoryAddress() + index)
-            .reinterpret(length);
-    }
-
-    private static MemorySegment writableSegment(ByteBuf buf, int index,
-                                                 int length) {
+    private static MemorySegment segmentAt(ByteBuf buf, int index,
+                                           int length) {
         if (length <= 0 || !buf.hasMemoryAddress()) {
             return MemorySegment.NULL;
         }

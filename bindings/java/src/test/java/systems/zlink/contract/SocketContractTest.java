@@ -26,6 +26,7 @@ import systems.zlink.contracts.sockets.PubSocketOptions;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.service.spot.ReplyOperation;
+import systems.zlink.contracts.service.spot.ReplySubmitOperation;
 import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.sockets.RequestResult;
@@ -645,58 +646,11 @@ public class SocketContractTest {
     }
 
     @Test
-    public void routerReplyWithFlagsFailsExplicitlyWhenCoreLacksSupport()
+    public void replySubmitOperationDoesNotExposeFlagsWhenCoreLacksSupport()
       throws Exception {
-        TestSupport.assumeNative();
-
-        Context ctx = Zlink.createContext();
-        RouterSocket routerSocket = ctx.createRouterSocket();
-        DealerSocket dealerSocket = ctx.createDealerSocket();
-        try {
-            String endpoint = TestSupport.inprocEndpoint("request-reply-flags");
-            routerSocket.bind(endpoint);
-            dealerSocket.connect(endpoint);
-
-            CompletableFuture<List<Message>> future;
-            try (Message request = Message.from("ping")) {
-                future = dealerSocket.request()
-                    .message(request)
-                    .timeout(Duration.ofMillis(50))
-                    .submit()
-                    .toCompletableFuture();
-            }
-
-            try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
-
-
-                routerSocket.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                ZlinkSubmitException submitException = assertThrows(
-                    ZlinkSubmitException.class,
-                    () -> received.reply()
-                        .message(Message.from("pong"))
-                        .flags(SendFlags.DONT_WAIT)
-                        .submit());
-                assertEquals(SubmitResult.NOT_SUPPORTED,
-                    submitException.getResult());
-            }
-
-            ExecutionException completion = assertThrows(ExecutionException.class,
-                () -> future.get(1, TimeUnit.SECONDS));
-            assertTrue(completion.getCause() instanceof systems.zlink.contracts.errors.ZlinkRequestException);
-        } finally {
-            try {
-                dealerSocket.close();
-            } catch (RuntimeException ignored) {
-            }
-            try {
-                routerSocket.close();
-            } catch (RuntimeException ignored) {
-            }
-            try {
-                ctx.shutdown();
-            } catch (RuntimeException ignored) {
-            }
-        }
+        assertThrows(NoSuchMethodException.class,
+            () -> ReplySubmitOperation.class.getMethod("flags",
+                SendFlags.class));
     }
 
     @Test

@@ -9,7 +9,8 @@ import systems.zlink.contracts.messaging.Message;
  * Parts are consumed on a successful submit (see {@link SendOperation} for the
  * ownership contract). The caller owns any reply parts delivered on completion.
  */
-public interface RequestOperation {
+public interface RequestOperation
+  extends MessageBuilderStage<RequestSubmitOperation> {
     /**
      * Adds the first request part.
      *

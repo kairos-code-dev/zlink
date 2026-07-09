@@ -6,10 +6,12 @@ import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.ContractAccess;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import java.util.Locale;
 
 /** Base class for all exceptions thrown by the zlink bindings. */
-public abstract class ZlinkException extends RuntimeException {
+public abstract sealed class ZlinkException extends RuntimeException
+  permits TypedZlinkException {
     private final int code;
     private final int nativeErrno;
 
@@ -35,52 +37,65 @@ public abstract class ZlinkException extends RuntimeException {
         return nativeErrno;
     }
 
-    int errno() {
-        return nativeErrno;
-    }
-
-    ErrorCode errorCode() {
-        for (ErrorCode code : ErrorCode.values()) {
-            if (code.getValue() == nativeErrno) {
-                return code;
-            }
-        }
-        return null;
-    }
-
     public static ZlinkException fromLastError(String operation) {
-        int errno = safeErrno();
-        return fromErrno(operation, errno);
+        return fromLastError(categoryFromOperation(operation));
+    }
+
+    public static ZlinkException fromLastError(ErrorCategory category) {
+        return fromErrno(category, safeErrno());
     }
 
     public static ZlinkException fromErrno(String operation, int errno) {
+        return fromErrno(categoryFromOperation(operation), errno);
+    }
+
+    public static ZlinkException fromErrno(ErrorCategory category, int errno) {
+        return switch (category) {
+            case HANDLER -> new ZlinkHandlerException(mapHandlerResult(errno),
+                errno);
+            case RECV -> new ZlinkRecvException(mapRecvResult(errno), errno);
+            case REQUEST -> new ZlinkRequestException(mapRequestResult(errno),
+                errno);
+            case BIND -> new ZlinkBindException(mapBindResult(errno), errno);
+            case CONNECT -> new ZlinkConnectException(mapConnectResult(errno),
+                errno);
+            case CLOSE -> new ZlinkCloseException(mapCloseResult(errno),
+                errno);
+            case SUBMIT -> new ZlinkSubmitException(mapSubmitResult(errno),
+                errno);
+            case CONFIG -> new ZlinkConfigException(mapConfigResult(errno),
+                errno);
+        };
+    }
+
+    private static ErrorCategory categoryFromOperation(String operation) {
         String op = operation == null ? "" : operation.toLowerCase(Locale.ROOT);
         if (containsAny(op, "handler")) {
-            return new ZlinkHandlerException(mapHandlerResult(errno), errno);
+            return ErrorCategory.HANDLER;
         }
         if (containsAny(op, "recv", "receive", "subscription_event",
                 "socket_monitor_recv", "monitor_recv")
             || (op.contains("subscribe")
                 && !containsAny(op, "set_subscription", "unset_subscription",
                     "subscribe_handler"))) {
-            return new ZlinkRecvException(mapRecvResult(errno), errno);
+            return ErrorCategory.RECV;
         }
         if (containsAny(op, "request")) {
-            return new ZlinkRequestException(mapRequestResult(errno), errno);
+            return ErrorCategory.REQUEST;
         }
         if (containsAny(op, "bind")) {
-            return new ZlinkBindException(mapBindResult(errno), errno);
+            return ErrorCategory.BIND;
         }
         if (containsAny(op, "connect", "disconnect", "unbind")) {
-            return new ZlinkConnectException(mapConnectResult(errno), errno);
+            return ErrorCategory.CONNECT;
         }
         if (containsAny(op, "close", "destroy")) {
-            return new ZlinkCloseException(mapCloseResult(errno), errno);
+            return ErrorCategory.CLOSE;
         }
-        if (containsAny(op, "send", "publish", "reply", "request", "proxy")) {
-            return new ZlinkSubmitException(mapSubmitResult(errno), errno);
+        if (containsAny(op, "send", "publish", "reply", "proxy")) {
+            return ErrorCategory.SUBMIT;
         }
-        return new ZlinkConfigException(mapConfigResult(errno), errno);
+        return ErrorCategory.CONFIG;
     }
 
     private static int safeErrno() {
@@ -88,18 +103,6 @@ public abstract class ZlinkException extends RuntimeException {
             return ContractAccess.nativeErrno();
         } catch (RuntimeException ignored) {
             return -1;
-        }
-    }
-
-    private static String safeStrerror(int errno) {
-        if (errno < 0) {
-            return "";
-        }
-        try {
-            String message = ContractAccess.nativeStrerror(errno);
-            return message == null ? "" : message;
-        } catch (RuntimeException ignored) {
-            return "";
         }
     }
 
@@ -114,91 +117,102 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static SubmitResult mapSubmitResult(int errno) {
         return switch (errno) {
-            case 14 -> SubmitResult.INVALID_HANDLE;
-            case 11, 10035 -> SubmitResult.BACKPRESSURED;
-            case 107, 10057 -> SubmitResult.NOT_CONNECTED;
-            case 113, 10065 -> SubmitResult.NOT_FOUND;
-            case 111, 10061 -> SubmitResult.NOT_ADMITTED;
-            case 22 -> SubmitResult.INVALID_ARGUMENT;
-            case 9 -> SubmitResult.INVALID_HANDLE;
-            case 95 -> SubmitResult.NOT_SUPPORTED;
-            case 12 -> SubmitResult.OUT_OF_MEMORY;
+            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+                SubmitResult.INVALID_HANDLE;
+            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+                SubmitResult.BACKPRESSURED;
+            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN ->
+                SubmitResult.NOT_CONNECTED;
+            case NativeErrno.EHOSTUNREACH, NativeErrno.EHOSTUNREACH_WIN ->
+                SubmitResult.NOT_FOUND;
+            case NativeErrno.ECONNREFUSED, NativeErrno.ECONNREFUSED_WIN ->
+                SubmitResult.NOT_ADMITTED;
+            case NativeErrno.EINVAL -> SubmitResult.INVALID_ARGUMENT;
+            case NativeErrno.ENOTSUP -> SubmitResult.NOT_SUPPORTED;
+            case NativeErrno.ENOMEM -> SubmitResult.OUT_OF_MEMORY;
             default -> SubmitResult.INTERNAL_ERROR;
         };
     }
 
     private static RecvResult mapRecvResult(int errno) {
         return switch (errno) {
-            case 14 -> RecvResult.INVALID_HANDLE;
-            case 11, 10035 -> RecvResult.NO_DATA;
-            case 4 -> RecvResult.BUSY;
-            case 107, 10057 -> RecvResult.TERMINATED;
-            case 9 -> RecvResult.INVALID_HANDLE;
-            case 95 -> RecvResult.NOT_SUPPORTED;
+            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+                RecvResult.INVALID_HANDLE;
+            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+                RecvResult.NO_DATA;
+            case NativeErrno.EINTR -> RecvResult.BUSY;
+            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN ->
+                RecvResult.TERMINATED;
+            case NativeErrno.ENOTSUP -> RecvResult.NOT_SUPPORTED;
             default -> RecvResult.INTERNAL_ERROR;
         };
     }
 
     private static BindResult mapBindResult(int errno) {
         return switch (errno) {
-            case 14 -> BindResult.INVALID_HANDLE;
-            case 22 -> BindResult.INVALID_ARGUMENT;
-            case 98 -> BindResult.ADDR_IN_USE;
-            case 95 -> BindResult.NOT_SUPPORTED;
-            case 9 -> BindResult.INVALID_HANDLE;
+            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+                BindResult.INVALID_HANDLE;
+            case NativeErrno.EINVAL -> BindResult.INVALID_ARGUMENT;
+            case NativeErrno.EADDRINUSE -> BindResult.ADDR_IN_USE;
+            case NativeErrno.ENOTSUP -> BindResult.NOT_SUPPORTED;
             default -> BindResult.INVALID_ARGUMENT;
         };
     }
 
     private static ConnectResult mapConnectResult(int errno) {
         return switch (errno) {
-            case 14 -> ConnectResult.INVALID_HANDLE;
-            case 22 -> ConnectResult.INVALID_ARGUMENT;
-            case 95 -> ConnectResult.NOT_SUPPORTED;
-            case 9 -> ConnectResult.INVALID_HANDLE;
-            case 16 -> ConnectResult.BUSY;
+            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+                ConnectResult.INVALID_HANDLE;
+            case NativeErrno.EINVAL -> ConnectResult.INVALID_ARGUMENT;
+            case NativeErrno.ENOTSUP -> ConnectResult.NOT_SUPPORTED;
+            case NativeErrno.EBUSY -> ConnectResult.BUSY;
             default -> ConnectResult.INVALID_ARGUMENT;
         };
     }
 
     private static CloseResult mapCloseResult(int errno) {
         return switch (errno) {
-            case 14 -> CloseResult.INVALID_HANDLE;
-            case 11, 10035 -> CloseResult.BUSY;
-            case 107, 10057 -> CloseResult.SHUTDOWN;
-            case 9 -> CloseResult.INVALID_HANDLE;
+            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+                CloseResult.INVALID_HANDLE;
+            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+                CloseResult.BUSY;
+            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN ->
+                CloseResult.SHUTDOWN;
             default -> CloseResult.BUSY;
         };
     }
 
     private static HandlerResult mapHandlerResult(int errno) {
         return switch (errno) {
-            case 14 -> HandlerResult.INVALID_HANDLE;
-            case 22 -> HandlerResult.INVALID_ARGUMENT;
-            case 11, 10035 -> HandlerResult.BUSY;
-            case 95 -> HandlerResult.NOT_SUPPORTED;
-            case 16 -> HandlerResult.DEADLOCK;
-            case 9 -> HandlerResult.INVALID_HANDLE;
+            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+                HandlerResult.INVALID_HANDLE;
+            case NativeErrno.EINVAL -> HandlerResult.INVALID_ARGUMENT;
+            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+                HandlerResult.BUSY;
+            case NativeErrno.ENOTSUP -> HandlerResult.NOT_SUPPORTED;
+            case NativeErrno.EBUSY -> HandlerResult.DEADLOCK;
             default -> HandlerResult.BUSY;
         };
     }
 
     private static ConfigResult mapConfigResult(int errno) {
         return switch (errno) {
-            case 14 -> ConfigResult.INVALID_HANDLE;
-            case 22 -> ConfigResult.INVALID_ARGUMENT;
-            case 95 -> ConfigResult.NOT_SUPPORTED;
-            case 9 -> ConfigResult.INVALID_HANDLE;
+            case NativeErrno.EFAULT, NativeErrno.EBADF ->
+                ConfigResult.INVALID_HANDLE;
+            case NativeErrno.EINVAL -> ConfigResult.INVALID_ARGUMENT;
+            case NativeErrno.ENOTSUP -> ConfigResult.NOT_SUPPORTED;
             default -> ConfigResult.INTERNAL_ERROR;
         };
     }
 
     private static RequestResult mapRequestResult(int errno) {
         return switch (errno) {
-            case 11, 10035 -> RequestResult.TIMED_OUT;
-            case 107, 10057 -> RequestResult.NOT_FOUND;
-            case 113, 10065 -> RequestResult.NOT_FOUND;
-            case 4 -> RequestResult.PROTOCOL_ERROR;
+            case NativeErrno.EAGAIN, NativeErrno.EWOULDBLOCK_WIN ->
+                RequestResult.TIMED_OUT;
+            case NativeErrno.ENOTCONN, NativeErrno.ENOTCONN_WIN,
+                 NativeErrno.EHOSTUNREACH, NativeErrno.EHOSTUNREACH_WIN ->
+                RequestResult.NOT_FOUND;
+            case NativeErrno.EINTR -> RequestResult.PROTOCOL_ERROR;
             default -> RequestResult.PROTOCOL_ERROR;
         };
     }

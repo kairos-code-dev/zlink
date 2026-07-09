@@ -41,7 +41,8 @@ final class SocketCallbackSupport implements AutoCloseable {
         try {
             int rc = registration.register(stub);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(nativeOperation);
+                throw ZlinkException.fromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.HANDLER);
             }
             success = true;
             return arena;

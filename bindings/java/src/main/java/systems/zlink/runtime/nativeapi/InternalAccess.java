@@ -6,6 +6,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.ContextOption;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkException;
+import systems.zlink.contracts.errors.ErrorCategory;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.Message;
@@ -100,8 +101,7 @@ public final class InternalAccess {
             RouterSocket socket, RoutingId routingId, List<Message> parts,
             RequestCallback callback, SendFlags flags, Duration timeout);
         void routerReply(RouterSocket socket, RoutingId routingId,
-                         long requestSequence, List<Message> parts,
-                         SendFlags flags);
+                         long requestSequence, List<Message> parts);
         boolean routerSendToSpot(RouterSocket socket, RoutingId destNodeRid,
                                  RoutingId destSpotRid, List<Message> parts,
                                  SendFlags flags);
@@ -114,7 +114,7 @@ public final class InternalAccess {
             SendFlags flags, Duration timeout);
         void routerReplyToSpot(RouterSocket socket, RoutingId destNodeRid,
                                RoutingId destSpotRid, long requestSeq,
-                               List<Message> parts, SendFlags flags);
+                               List<Message> parts);
         List<ActorRef> streamBoundActors(StreamSocket socket,
                                          RoutingId sessionRid);
         boolean streamSubmitBind(StreamSocket socket, RoutingId sessionRid,
@@ -574,10 +574,9 @@ public final class InternalAccess {
     }
 
     public static void routerReply(RouterSocket socket, RoutingId routingId,
-                                   long requestSequence, List<Message> parts,
-                                   SendFlags flags) {
+                                   long requestSequence, List<Message> parts) {
         runtimeSocketAccess().routerReply(socket, routingId, requestSequence,
-            parts, flags);
+            parts);
     }
 
     public static boolean routerSendToSpot(
@@ -605,9 +604,9 @@ public final class InternalAccess {
 
     public static void routerReplyToSpot(
             RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
-            long requestSeq, List<Message> parts, SendFlags flags) {
+            long requestSeq, List<Message> parts) {
         runtimeSocketAccess().routerReplyToSpot(socket, destNodeRid, destSpotRid,
-            requestSeq, parts, flags);
+            requestSeq, parts);
     }
 
     public static List<ActorRef> streamBoundActors(StreamSocket socket,
@@ -650,13 +649,14 @@ public final class InternalAccess {
         return ContractAccess.routingIdTrustedBytes(routingId);
     }
 
-    public static ZlinkException zlinkExceptionFromLastError(String operation) {
-        return ZlinkException.fromErrno(operation, Native.errno());
+    public static ZlinkException zlinkExceptionFromLastError(
+            ErrorCategory category) {
+        return ZlinkException.fromErrno(category, Native.errno());
     }
 
-    public static ZlinkException zlinkExceptionFromErrno(String operation,
+    public static ZlinkException zlinkExceptionFromErrno(ErrorCategory category,
                                                          int errno) {
-        return ZlinkException.fromErrno(operation, errno);
+        return ZlinkException.fromErrno(category, errno);
     }
 
     private static ContextAccess contextAccess() {

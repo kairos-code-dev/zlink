@@ -10,7 +10,9 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 /** Accepts further parts, timeout, flags, and the terminal submit of a request. */
-public interface RequestSubmitOperation {
+public interface RequestSubmitOperation
+  extends MessageBuilderStage<RequestSubmitOperation>,
+          TimeoutSubmitOperation<List<Message>, RequestCallback> {
     /**
      * Adds another request part; consumed on a successful submit (see
      * {@link RequestOperation} for the ownership contract).

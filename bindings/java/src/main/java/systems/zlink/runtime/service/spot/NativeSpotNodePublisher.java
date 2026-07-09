@@ -26,7 +26,7 @@ final class NativeSpotNodePublisher implements SpotNodePublisher {
         handle = Native.spotNodePublisherNew(InternalAccess.spotNodeHandle(node));
         if (handle == null || handle.address() == 0) {
             throw InternalAccess.zlinkExceptionFromLastError(
-                "zlink_spot_node_publisher_new");
+                systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         }
     }
 
@@ -47,7 +47,7 @@ final class NativeSpotNodePublisher implements SpotNodePublisher {
         int rc = Native.spotNodePublisherClose(current);
         if (rc != 0) {
             throw InternalAccess.zlinkExceptionFromLastError(
-                "zlink_spot_node_publisher_close");
+                systems.zlink.contracts.errors.ErrorCategory.CLOSE);
         }
     }
 
@@ -63,7 +63,7 @@ final class NativeSpotNodePublisher implements SpotNodePublisher {
             if (rc != 0) {
                 NativeMessage.multipartClose(nativeParts, parts.size());
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_node_publisher_publish");
+                    systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
             }
             return true;
         }

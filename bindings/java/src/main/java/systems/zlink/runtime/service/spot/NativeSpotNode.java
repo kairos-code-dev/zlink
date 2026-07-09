@@ -45,6 +45,7 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMonitorStatuses;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -123,7 +124,7 @@ public final class NativeSpotNode implements SpotNode {
               InternalAccess.contextHandle(ctx), nativeOptions);
         }
         if (handle == null || handle.address() == 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_node_new");
+            throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
     }
 
     MemorySegment handle() {
@@ -136,7 +137,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeSetPubBind(handle, NativeHelpers.toCString(arena,
               endpoint));
             if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_node_set_pub_bind");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.BIND);
         }
     }
 
@@ -146,8 +147,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeSetRouterBind(
               handle, NativeHelpers.toCString(arena, endpoint));
             if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_set_router_bind");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.BIND);
         }
     }
 
@@ -157,8 +157,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeConnectPeer(handle,
               NativeHelpers.toCString(arena, peerEndpoint));
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_connect_peer");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
             }
         }
     }
@@ -171,8 +170,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeConnectPeerRid(handle, nativeRid,
               NativeHelpers.toCString(arena, peerEndpoint));
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_connect_peer_rid");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
             }
         }
     }
@@ -183,8 +181,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeDisconnectPeer(handle,
               NativeHelpers.toCString(arena, peerEndpoint));
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_disconnect_peer");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
             }
         }
     }
@@ -196,8 +193,7 @@ public final class NativeSpotNode implements SpotNode {
             MemorySegment nativeRid = nativeRoutingId(arena, targetNodeRid);
             int rc = Native.spotNodeDisconnectPeerRid(handle, nativeRid);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_disconnect_peer_rid");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONNECT);
             }
         }
     }
@@ -220,8 +216,7 @@ public final class NativeSpotNode implements SpotNode {
               NativeHelpers.toCString(arena, certPem),
               NativeHelpers.toCString(arena, keyPem));
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_set_tls_server");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -235,8 +230,7 @@ public final class NativeSpotNode implements SpotNode {
               NativeHelpers.toCString(arena, hostname),
               trustSystem ? 1 : 0);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_set_tls_client");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -245,16 +239,13 @@ public final class NativeSpotNode implements SpotNode {
     public void setRoutingId(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
         ensureOpen();
-        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(value.length);
-            if (value.length > 0) {
-                MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeValue,
-                  0, value.length);
-            }
+            byte[] value = InternalAccess.routingIdTrustedBytes(rid);
+            MemorySegment nativeValue = NativeRoutingIds.allocateRawBytes(arena,
+                value);
             int rc = Native.setRoutingId(handle, nativeValue, value.length);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -272,20 +263,16 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     private void setRoleRoutingId(RoutingId rid, boolean publisher) {
-        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(value.length);
-            if (value.length > 0) {
-                MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeValue,
-                  0, value.length);
-            }
+            byte[] value = InternalAccess.routingIdTrustedBytes(rid);
+            MemorySegment nativeValue = NativeRoutingIds.allocateRawBytes(arena,
+                value);
             int rc = publisher
                 ? Native.spotNodeSetPubRoutingId(handle, nativeValue, value.length)
                 : Native.spotNodeSetSubRoutingId(handle, nativeValue, value.length);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(publisher
-                    ? "zlink_spot_node_set_pub_routing_id"
-                    : "zlink_spot_node_set_sub_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -297,29 +284,14 @@ public final class NativeSpotNode implements SpotNode {
             MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
             int rc = Native.getRoutingId(handle, outRid);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_get_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
-            int size = outRid.get(ValueLayout.JAVA_BYTE,
-              NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-            byte[] value = new byte[size];
-            if (size > 0) {
-                MemorySegment.copy(outRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-                  MemorySegment.ofArray(value), 0, size);
-            }
-            return RoutingId.from(value);
+            return NativeRoutingIds.readAllowEmptyValue(outRid);
         }
     }
 
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId rid) {
-        byte[] value = rid.toBytes();
-        MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-          (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
-              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
-        return nativeRid;
+        return NativeRoutingIds.allocate(arena, rid);
     }
 
     /** Creates one spot handle owned by this node. */
@@ -561,7 +533,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeStatus(handle, out);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_status");
+                  systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             return SpotNodeSnapshots.statusFromNative(out);
         }
@@ -665,7 +637,7 @@ public final class NativeSpotNode implements SpotNode {
         }
         int rc = Native.spotNodeDestroy(nodeHandle);
         if (rc != 0) {
-            throw ZlinkException.fromLastError("zlink_spot_node_destroy");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CLOSE);
         }
         synchronized (lifecycleLock) {
             if (handle != null && handle.address() == nodeHandle.address()) {
@@ -734,16 +706,8 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
-    private static String requireChannelName(String channelName) {
-        Objects.requireNonNull(channelName, "channelName");
-        if (channelName.isEmpty()) {
-            throw new IllegalArgumentException("channelName must not be empty");
-        }
-        return channelName;
-    }
-
     static int timeoutMillis(Duration timeout) {
-        return DurationConversions.timeoutMillis(timeout);
+        return DurationConversions.timeoutMillisOrZero(timeout);
     }
 
 }

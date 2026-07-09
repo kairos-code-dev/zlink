@@ -2,12 +2,11 @@
 
 package systems.zlink.runtime.service.spot;
 
-import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeIntOptions;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -93,28 +92,14 @@ final class SpotNodeOptionsSupport {
 
     private int getNodeIntOption(int option) {
         node.ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getSpotNodeOption(node.handle(), option,
-                nativeValue, len);
-            if (rc != 0)
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            return nativeValue.get(ValueLayout.JAVA_INT, 0);
-        }
+        return NativeIntOptions.get(node.handle(), option,
+            Native::getSpotNodeOption);
     }
 
     private void setNodeIntOption(int option, int value) {
         node.ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSpotNodeOption(node.handle(), option,
-                nativeValue, ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0)
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-        }
+        NativeIntOptions.set(node.handle(), option, value,
+            Native::setSpotNodeOption);
     }
 
     private void setPubSubIntOption(int optionId, int value,
@@ -129,9 +114,8 @@ final class SpotNodeOptionsSupport {
                 : Native.setSubOption(node.handle(), optionId, nativeValue,
                     Integer.BYTES);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(publishOption
-                    ? "zlink_set_pub_option"
-                    : "zlink_set_sub_option");
+                throw InternalAccess.zlinkExceptionFromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }

@@ -7,11 +7,10 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeIntOptions;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 
 final class SocketOptionSupport {
@@ -64,7 +63,7 @@ final class SocketOptionSupport {
                 route.nativeCommonOptionId(), value, len);
         };
         if (rc != 0) {
-            throw ZlinkException.fromLastError("zlink_setsockopt");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         }
     }
 
@@ -117,20 +116,9 @@ final class SocketOptionSupport {
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, maxLen);
             var route = optionRoute(optionId);
-            int rc = switch (route.family()) {
-                case ROUTER -> Native.getRouterOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case PUB -> Native.getPubOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case SUB -> Native.getSubOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case STREAM -> Native.getStreamOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case COMMON -> Native.getSockOpt(socket.handle(),
-                    route.nativeCommonOptionId(), buf, len);
-            };
+            int rc = dispatchGet(route, buf, len);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_getsockopt");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             long actualLong = len.get(ValueLayout.JAVA_LONG, 0);
             if (actualLong < 0) {
@@ -158,20 +146,9 @@ final class SocketOptionSupport {
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
             var route = optionRoute(optionId);
-            int rc = switch (route.family()) {
-                case ROUTER -> Native.getRouterOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case PUB -> Native.getPubOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case SUB -> Native.getSubOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case STREAM -> Native.getStreamOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case COMMON -> Native.getSockOpt(socket.handle(),
-                    route.nativeCommonOptionId(), buf, len);
-            };
+            int rc = dispatchGet(route, buf, len);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_getsockopt");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             return buf.get(ValueLayout.JAVA_INT, 0);
         }
@@ -179,30 +156,13 @@ final class SocketOptionSupport {
 
     private int getNativeIntOption(int option, NativeIntOptionGetter getter) {
         socket.ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = getter.get(socket.handle(), option, nativeValue, len);
-            if (rc != 0) {
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            }
-            return nativeValue.get(ValueLayout.JAVA_INT, 0);
-        }
+        return NativeIntOptions.get(socket.handle(), option, getter::get);
     }
 
     private void setNativeIntOption(int option, int value,
                                     NativeIntOptionSetter setter) {
         socket.ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = setter.set(socket.handle(), option, nativeValue,
-                ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0) {
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            }
-        }
+        NativeIntOptions.set(socket.handle(), option, value, setter::set);
     }
 
     @SuppressWarnings("unchecked")
@@ -231,7 +191,7 @@ final class SocketOptionSupport {
         }
         int rc = Native.setRoutingId(socket.handle(), buf, length);
         if (rc != 0) {
-            throw ZlinkException.fromLastError("zlink_set_routing_id");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         }
     }
 
@@ -241,7 +201,7 @@ final class SocketOptionSupport {
                 NativeLayouts.ROUTING_ID_LAYOUT);
             int rc = Native.getRoutingId(socket.handle(), outRid);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_get_routing_id");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             int size = outRid.get(ValueLayout.JAVA_BYTE,
                 NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
@@ -267,8 +227,8 @@ final class SocketOptionSupport {
             int rc = subscribe ? Native.setSubscription(socket.handle(), filter)
                 : Native.unsetSubscription(socket.handle(), filter);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(subscribe
-                    ? "zlink_set_subscription" : "zlink_unset_subscription");
+                throw ZlinkException.fromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
     }
@@ -279,20 +239,9 @@ final class SocketOptionSupport {
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
             var route = optionRoute(optionId);
-            int rc = switch (route.family()) {
-                case ROUTER -> Native.getRouterOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case PUB -> Native.getPubOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case SUB -> Native.getSubOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case STREAM -> Native.getStreamOption(socket.handle(),
-                    route.optionId(), buf, len);
-                case COMMON -> Native.getSockOpt(socket.handle(),
-                    route.nativeCommonOptionId(), buf, len);
-            };
+            int rc = dispatchGet(route, buf, len);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_getsockopt");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
             return buf.get(ValueLayout.JAVA_LONG, 0);
         }
@@ -300,6 +249,22 @@ final class SocketOptionSupport {
 
     private SocketOptionRouter.Route optionRoute(int optionId) {
         return SocketOptionRouter.route(optionId, socket.resolveSocketType());
+    }
+
+    private int dispatchGet(SocketOptionRouter.Route route, MemorySegment value,
+                            MemorySegment len) {
+        return switch (route.family()) {
+            case ROUTER -> Native.getRouterOption(socket.handle(),
+                route.optionId(), value, len);
+            case PUB -> Native.getPubOption(socket.handle(), route.optionId(),
+                value, len);
+            case SUB -> Native.getSubOption(socket.handle(), route.optionId(),
+                value, len);
+            case STREAM -> Native.getStreamOption(socket.handle(),
+                route.optionId(), value, len);
+            case COMMON -> Native.getSockOpt(socket.handle(),
+                route.nativeCommonOptionId(), value, len);
+        };
     }
 
     private static String decodeCString(byte[] raw) {

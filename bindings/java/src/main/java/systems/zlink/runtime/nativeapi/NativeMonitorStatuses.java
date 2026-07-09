@@ -3,6 +3,8 @@
 package systems.zlink.runtime.nativeapi;
 
 import systems.zlink.contracts.eventing.MonitorStatus;
+import systems.zlink.contracts.eventing.MonitorStateFlags;
+import systems.zlink.contracts.eventing.MonitorStatusDetailFlags;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
@@ -14,10 +16,10 @@ public final class NativeMonitorStatuses {
         return new MonitorStatus(
           EnumCodecs.monitorSourceKindFromValue(segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_SOURCE_KIND_OFFSET)),
-          segment.get(ValueLayout.JAVA_INT,
-            NativeLayouts.MONITOR_SNAPSHOT_STATE_FLAGS_OFFSET),
-          segment.get(ValueLayout.JAVA_INT,
-            NativeLayouts.MONITOR_SNAPSHOT_DETAIL_FLAGS_OFFSET),
+          MonitorStateFlags.fromMask(segment.get(ValueLayout.JAVA_INT,
+            NativeLayouts.MONITOR_SNAPSHOT_STATE_FLAGS_OFFSET)),
+          MonitorStatusDetailFlags.fromMask(segment.get(ValueLayout.JAVA_INT,
+            NativeLayouts.MONITOR_SNAPSHOT_DETAIL_FLAGS_OFFSET)),
           segment.get(ValueLayout.JAVA_LONG_UNALIGNED,
             NativeLayouts.MONITOR_SNAPSHOT_SND_PENDING_MSGS_OFFSET),
           segment.get(ValueLayout.JAVA_LONG_UNALIGNED,

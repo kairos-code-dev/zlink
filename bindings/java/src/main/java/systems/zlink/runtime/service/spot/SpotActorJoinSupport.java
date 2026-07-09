@@ -23,6 +23,7 @@ import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 
 final class SpotActorJoinSupport {
     private final NativeSpot spot;
@@ -77,11 +78,9 @@ final class SpotActorJoinSupport {
         return new ActorJoinReplyBuilder(request, joinResultCode);
     }
 
-    private final class ActorJoinReplyBuilder implements ActorJoinReplyOperation {
+    private final class ActorJoinReplyBuilder extends SingleSubmitOperation implements ActorJoinReplyOperation {
         private final ActorJoinRequest request;
         private final int joinResultCode;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private boolean submitted;
 
         ActorJoinReplyBuilder(ActorJoinRequest request, int joinResultCode) {
             this.request = request;
@@ -90,33 +89,26 @@ final class SpotActorJoinSupport {
 
         @Override
         public ActorJoinReplyOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
+            addPart(part);
             return this;
         }
 
         @Override
         public void submit() {
-            ensureNotSubmitted();
-            submitted = true;
+            markSubmitted();
             spot.ensureOpen();
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment nativeInfo = arena.allocate(
                     NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
                 writeActorJoinInfo(nativeInfo, request.info());
-                MemorySegment partsArr = parts.copyToNativeArray(arena);
+                MemorySegment partsArr = parts().copyToNativeArray(arena);
                 int rc = Native.spotActorJoinReply(spot.handle(), nativeInfo,
-                    joinResultCode, partsArr, parts.size());
+                    joinResultCode, partsArr, parts().size());
                 if (rc != 0) {
-                    MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
+                    MessagePartsBuffer.closeNativeArray(partsArr, parts().size());
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
         }
     }
 
@@ -186,12 +178,7 @@ final class SpotActorJoinSupport {
     private static void writeRoutingId(MemorySegment out, RoutingId rid) {
         byte[] value = rid == null ? new byte[0]
             : InternalAccess.routingIdTrustedBytes(rid);
-        out.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-            (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, out,
-                NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
+        NativeRoutingIds.writeBytes(out, value);
     }
 
     private static MemorySegment actorJoinRequestState(ActorJoinInfo info) {

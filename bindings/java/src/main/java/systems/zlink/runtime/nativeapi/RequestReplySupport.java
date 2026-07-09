@@ -7,9 +7,8 @@ import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.errors.ZlinkRequestException;
-import systems.zlink.contracts.sockets.RequestResult;
-import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import java.lang.foreign.MemorySegment;
@@ -41,7 +40,8 @@ public final class RequestReplySupport {
     }
 
     public static long timeoutMillis(Duration timeout) {
-        return timeout == null ? DEFAULT_TIMEOUT_MS : Math.max(1L, timeout.toMillis());
+        return DurationConversions.timeoutMillisOrDefault(timeout,
+            DEFAULT_TIMEOUT_MS);
     }
 
     public static int toTimeoutInt(long timeoutMs) {
@@ -127,13 +127,6 @@ public final class RequestReplySupport {
                 zlinkException.getNativeErrno());
         }
         return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR);
-    }
-
-    public static void requireReplyFlagsSupported(SendFlags flags) {
-        Objects.requireNonNull(flags, "flags");
-        if (flags != SendFlags.NONE) {
-            throw new ZlinkSubmitException(SubmitResult.NOT_SUPPORTED);
-        }
     }
 
     public static boolean isClosedSignal(IllegalStateException ex) {

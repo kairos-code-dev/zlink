@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 /** Builds an actor destroy operation. */
-public interface ActorDestroyOperation {
+public interface ActorDestroyOperation
+  extends TimeoutSubmitOperation<List<Message>, ReplyHandler> {
     /** Sets the operation timeout, replacing any previous value. */
     ActorDestroyOperation timeout(Duration timeout);
     /** Submits the operation and asynchronously returns the reply parts. */

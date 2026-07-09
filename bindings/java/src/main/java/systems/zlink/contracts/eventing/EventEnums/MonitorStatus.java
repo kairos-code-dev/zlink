@@ -4,6 +4,7 @@ package systems.zlink.contracts.eventing;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
+import java.util.EnumSet;
 
 /**
  * A snapshot of a monitored socket's state and auto-high-water-mark telemetry.
@@ -35,8 +36,9 @@ import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
  * @param autoHwmDeferredSndHwm the deferred send high-water mark
  * @param autoHwmDeferredRcvHwm the deferred receive high-water mark
  */
-public record MonitorStatus(MonitorSourceKind sourceKind, int stateFlags,
-                              int detailFlags,
+public record MonitorStatus(MonitorSourceKind sourceKind,
+                              EnumSet<MonitorStateFlags> stateFlags,
+                              EnumSet<MonitorStatusDetailFlags> detailFlags,
                               long sndPendingMsgs, long rcvPendingMsgs,
                               boolean autoHwmEnabled,
                               AutoHwmProfile autoHwmProfile,
@@ -59,9 +61,7 @@ public record MonitorStatus(MonitorSourceKind sourceKind, int stateFlags,
                               int autoHwmSendBlockedRatioPpm,
                               int autoHwmDeferredSndHwm,
                               int autoHwmDeferredRcvHwm) {
-    private static final int MONITOR_STATE_READY = 1 << 0;
-
     public boolean isReady() {
-        return (stateFlags & MONITOR_STATE_READY) != 0;
+        return stateFlags.contains(MonitorStateFlags.READY);
     }
 }

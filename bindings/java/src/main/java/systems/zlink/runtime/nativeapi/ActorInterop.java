@@ -24,29 +24,11 @@ public final class ActorInterop {
     }
 
     public static MemorySegment nativeRoutingId(Arena arena, RoutingId rid) {
-        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
-        MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-        nativeRid.set(ValueLayout.JAVA_BYTE,
-          NativeLayouts.ROUTING_ID_SIZE_OFFSET, (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
-              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
-        return nativeRid;
+        return NativeRoutingIds.allocate(arena, rid);
     }
 
     public static RoutingId readRoutingId(MemorySegment nativeRid) {
-        if (nativeRid == null || nativeRid.address() == 0) {
-            return null;
-        }
-        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
-          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        byte[] value = new byte[size];
-        if (size > 0) {
-            MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-              MemorySegment.ofArray(value), 0, size);
-        }
-        return InternalAccess.routingIdFromTrusted(value);
+        return NativeRoutingIds.readAllowEmpty(nativeRid);
     }
 
     public static MemorySegment actorRefToNative(Arena arena, ActorRef ref) {
@@ -255,13 +237,7 @@ public final class ActorInterop {
     }
 
     private static void writeRoutingId(MemorySegment out, RoutingId rid) {
-        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
-        out.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-          (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, out,
-              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
+        NativeRoutingIds.write(out, rid);
     }
 
     private static void writeCString(MemorySegment out, String value, int maxLen) {

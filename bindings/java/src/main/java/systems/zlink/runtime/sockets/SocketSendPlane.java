@@ -17,6 +17,7 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.SendScratch;
 
@@ -34,31 +35,20 @@ final class SocketSendPlane {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
         ensureBlockingSendAllowed(flag);
-        while (true) {
-            int rc = sendPartOnce(message, routingId, flag.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return;
-            int errno = Native.errno();
-            if (isTransientBlockingSendErrno(errno))
-                continue;
-            throwPartSubmitFailure("zlink_send_part_rid");
-        }
+        submitBlockingPart(
+            (part, partFlag) -> sendPartOnce(part, routingId, flag.getValue(),
+                partFlag),
+            message, Native.PART_FINAL, "zlink_send_part_rid",
+            true);
     }
 
     SendResult sendMessageFrameNoWaitResult(RoutingId routingId, Message message) {
         Objects.requireNonNull(routingId, "routingId");
         Objects.requireNonNull(message, "message");
-        while (true) {
-            int rc = sendPartOnce(message, routingId,
-                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
-            if (rc == 0)
-                return SendResult.SENT;
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR)
-                continue;
-            return classifyNonBlockingSendErrno("zlink_send_part_rid");
-        }
+        return submitNoWaitPart(
+            (part, partFlag) -> sendPartOnce(part, routingId,
+                SendFlag.DONTWAIT.getValue(), partFlag),
+            message, Native.PART_FINAL, "zlink_send_part_rid");
     }
 
     boolean send(byte[] routingIdBytes, Message part, SendFlag flags) {
@@ -66,21 +56,10 @@ final class SocketSendPlane {
         Objects.requireNonNull(part, "part");
         Objects.requireNonNull(flags, "flags");
         ensureBlockingSendAllowed(flags);
-        while (true) {
-            int rc = sendPartOnce(part, routingIdBytes, flags.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return true;
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR)
-                continue;
-            if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0
-                && (errno == NativeErrno.EAGAIN
-                    || errno == NativeErrno.EWOULDBLOCK_WIN)) {
-                return false;
-            }
-            throwPartSubmitFailure("zlink_send_part_rid");
-        }
+        return submitBooleanPart(
+            (message, partFlag) -> sendPartOnce(message, routingIdBytes,
+                flags.getValue(), partFlag),
+            part, Native.PART_FINAL, flags, "zlink_send_part_rid");
     }
 
     void send(int rid, Message part, SendFlag flags) {
@@ -90,7 +69,7 @@ final class SocketSendPlane {
         int rc = Native.sendMultipartU32(socket.handle(), rid,
             InternalAccess.messageNativeHandle(part), 1, flags.getValue());
         if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_java_send_u32");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
         InternalAccess.messageMarkTransferred(part);
     }
 
@@ -108,7 +87,7 @@ final class SocketSendPlane {
         MemorySegment nativeMsg = scratch.nativeMsg;
         int rc = NativeMessage.messageInitSize(nativeMsg, length);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_msg_init_size");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         if (length > 0) {
             MemorySegment dst = NativeMessage.messageData(nativeMsg)
                 .reinterpret(length);
@@ -119,7 +98,7 @@ final class SocketSendPlane {
             rc = Native.sendMultipartU32(socket.handle(), rid, nativeMsg, 1,
                 flag.getValue());
             if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_java_send_u32");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
             success = true;
         } finally {
             if (!success) {
@@ -137,80 +116,46 @@ final class SocketSendPlane {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flags, "flags");
         ensureBlockingSendAllowed(flags);
-        while (true) {
-            int rc = publishPartOnce(topicId, message, flags.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return;
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR)
-                continue;
-            throwPartSubmitFailure("zlink_publish_part");
-        }
+        submitBlockingPart(
+            (part, partFlag) -> publishPartOnce(topicId, part,
+                flags.getValue(), partFlag),
+            message, Native.PART_FINAL, "zlink_publish_part", false);
     }
 
     SendResult publishMessageFrameNoWaitResult(String topicId, Message message) {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(message, "message");
-        while (true) {
-            int rc = publishPartOnce(topicId, message,
-                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
-            if (rc == 0)
-                return SendResult.SENT;
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR)
-                continue;
-            return classifyNonBlockingSendErrno("zlink_publish_part");
-        }
+        return submitNoWaitPart(
+            (part, partFlag) -> publishPartOnce(topicId, part,
+                SendFlag.DONTWAIT.getValue(), partFlag),
+            message, Native.PART_FINAL, "zlink_publish_part");
     }
 
     void sendMessageFrame(Message message, SendFlag flag) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
         ensureBlockingSendAllowed(flag);
-        while (true) {
-            int rc = sendPartOnce(message, (RoutingId) null, flag.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return;
-            int errno = Native.errno();
-            if (isTransientBlockingSendErrno(errno))
-                continue;
-            throwPartSubmitFailure("zlink_send_part");
-        }
+        submitBlockingPart(
+            (part, partFlag) -> sendPartOnce(part, (RoutingId) null,
+                flag.getValue(), partFlag),
+            message, Native.PART_FINAL, "zlink_send_part", true);
     }
 
     boolean sendMessageFrameNoWaitResult(Message message, SendFlag flag) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
-        while (true) {
-            int rc = sendPartOnce(message, (RoutingId) null, flag.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return true;
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR)
-                continue;
-            if (errno == NativeErrno.EAGAIN
-                || errno == NativeErrno.EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_send_part");
-        }
+        return submitBooleanPart(
+            (part, partFlag) -> sendPartOnce(part, (RoutingId) null,
+                flag.getValue(), partFlag),
+            message, Native.PART_FINAL, flag, "zlink_send_part");
     }
 
     SendResult sendMessageFrameNoWaitResult(Message message) {
         Objects.requireNonNull(message, "message");
-        while (true) {
-            int rc = sendPartOnce(message, (RoutingId) null,
-                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
-            if (rc == 0)
-                return SendResult.SENT;
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR)
-                continue;
-            return classifyNonBlockingSendErrno("zlink_send_part");
-        }
+        return submitNoWaitPart(
+            (part, partFlag) -> sendPartOnce(part, (RoutingId) null,
+                SendFlag.DONTWAIT.getValue(), partFlag),
+            message, Native.PART_FINAL, "zlink_send_part");
     }
 
     void sendParts(RoutingId routingId, List<Message> parts,
@@ -220,50 +165,21 @@ final class SocketSendPlane {
         ensureBlockingSendAllowed(flags);
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = sendPartOnce(parts.get(i), routingId, flags.getValue(),
-                    partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                if ((nonBlocking || explicitNonBlocking)
-                    && (errno == NativeErrno.EAGAIN
-                        || errno == NativeErrno.EWOULDBLOCK_WIN)) {
-                    throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
-                        errno);
-                }
-                throwPartSubmitFailure(
-                    routingId == null ? "zlink_send_part"
-                        : "zlink_send_part_rid");
-            }
-        }
+        submitBlockingParts(
+            (part, partFlag) -> sendPartOnce(part, routingId, flags.getValue(),
+                partFlag),
+            parts, nonBlocking || explicitNonBlocking,
+            routingId == null ? "zlink_send_part" : "zlink_send_part_rid");
     }
 
     SendResult sendNoWaitPartsResult(RoutingId routingId, List<Message> parts) {
         socket.ensureOpen();
         validateParts(parts);
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = sendPartOnce(parts.get(i), routingId,
-                    SendFlag.DONTWAIT.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                return classifyNonBlockingSendErrno(
-                    routingId == null ? "zlink_send_part"
-                        : "zlink_send_part_rid");
-            }
-        }
-        return SendResult.SENT;
+        return submitNoWaitParts(
+            (part, partFlag) -> sendPartOnce(part, routingId,
+                SendFlag.DONTWAIT.getValue(), partFlag),
+            parts, routingId == null ? "zlink_send_part"
+                : "zlink_send_part_rid");
     }
 
     void publishParts(String topicId, List<Message> parts,
@@ -274,47 +190,20 @@ final class SocketSendPlane {
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
         MemorySegment nativeTopic = nativeTopic(sendScratch.get(), topicId);
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = publishPartOnce(nativeTopic, parts.get(i),
-                    flags.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                if ((nonBlocking || explicitNonBlocking)
-                    && (errno == NativeErrno.EAGAIN
-                        || errno == NativeErrno.EWOULDBLOCK_WIN)) {
-                    throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
-                        errno);
-                }
-                throwPartSubmitFailure("zlink_publish_part");
-            }
-        }
+        submitBlockingParts(
+            (part, partFlag) -> publishPartOnce(nativeTopic, part,
+                flags.getValue(), partFlag),
+            parts, nonBlocking || explicitNonBlocking, "zlink_publish_part");
     }
 
     SendResult publishNoWaitPartsResult(String topicId, List<Message> parts) {
         socket.ensureOpen();
         validateParts(parts);
         MemorySegment nativeTopic = nativeTopic(sendScratch.get(), topicId);
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = publishPartOnce(nativeTopic, parts.get(i),
-                    SendFlag.DONTWAIT.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR)
-                    continue;
-                return classifyNonBlockingSendErrno("zlink_publish_part");
-            }
-        }
-        return SendResult.SENT;
+        return submitNoWaitParts(
+            (part, partFlag) -> publishPartOnce(nativeTopic, part,
+                SendFlag.DONTWAIT.getValue(), partFlag),
+            parts, "zlink_publish_part");
     }
 
     private int sendDirectSegment(int rid, MemorySegment payload, int length,
@@ -409,6 +298,111 @@ final class SocketSendPlane {
         return scratch.arena.allocateFrom(topicId, StandardCharsets.UTF_8);
     }
 
+    private void submitBlockingPart(PartSubmitter submitter, Message part,
+                                    int partFlag, String apiName,
+                                    boolean retryTransient) {
+        while (true) {
+            int rc = submitter.submit(part, partFlag);
+            if (rc == 0) {
+                return;
+            }
+            int errno = Native.errno();
+            if (retryTransient
+                ? isTransientBlockingSendErrno(errno)
+                : errno == NativeErrno.EINTR) {
+                continue;
+            }
+            throwPartSubmitFailure(apiName);
+        }
+    }
+
+    private boolean submitBooleanPart(PartSubmitter submitter, Message part,
+                                      int partFlag, SendFlag flags,
+                                      String apiName) {
+        boolean explicitNonBlocking =
+            (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
+        while (true) {
+            int rc = submitter.submit(part, partFlag);
+            if (rc == 0) {
+                return true;
+            }
+            int errno = Native.errno();
+            if (errno == NativeErrno.EINTR
+                || (!explicitNonBlocking
+                    && isTransientBlockingSendErrno(errno))) {
+                continue;
+            }
+            if (explicitNonBlocking
+                && (errno == NativeErrno.EAGAIN
+                    || errno == NativeErrno.EWOULDBLOCK_WIN)) {
+                return false;
+            }
+            throwPartSubmitFailure(apiName);
+        }
+    }
+
+    private SendResult submitNoWaitPart(PartSubmitter submitter, Message part,
+                                        int partFlag, String apiName) {
+        while (true) {
+            int rc = submitter.submit(part, partFlag);
+            if (rc == 0) {
+                return SendResult.SENT;
+            }
+            int errno = Native.errno();
+            if (errno == NativeErrno.EINTR) {
+                continue;
+            }
+            return classifyNonBlockingSendErrno(apiName);
+        }
+    }
+
+    private void submitBlockingParts(PartSubmitter submitter,
+                                     List<Message> parts,
+                                     boolean backpressureAsSubmitResult,
+                                     String apiName) {
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = submitter.submit(parts.get(i), partFlag);
+                if (rc == 0) {
+                    break;
+                }
+                int errno = Native.errno();
+                if (errno == NativeErrno.EINTR) {
+                    continue;
+                }
+                if (backpressureAsSubmitResult
+                    && NativeSubmitErrors.isBackpressured(errno)) {
+                    throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
+                        errno);
+                }
+                throwPartSubmitFailure(apiName);
+            }
+        }
+    }
+
+    private SendResult submitNoWaitParts(PartSubmitter submitter,
+                                         List<Message> parts,
+                                         String apiName) {
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = submitter.submit(parts.get(i), partFlag);
+                if (rc == 0) {
+                    break;
+                }
+                int errno = Native.errno();
+                if (errno == NativeErrno.EINTR) {
+                    continue;
+                }
+                return classifyNonBlockingSendErrno(apiName);
+            }
+        }
+        return SendResult.SENT;
+    }
+
     private SendResult classifyNonBlockingSendErrno(String apiName) {
         int errno = Native.errno();
         if (NativeSubmitErrors.isBackpressured(errno))
@@ -418,7 +412,8 @@ final class SocketSendPlane {
         if (NativeSubmitErrors.isNotAdmitted(errno)) {
             throw new ZlinkSubmitException(SubmitResult.NOT_ADMITTED, errno);
         }
-        throw ZlinkException.fromLastError(apiName);
+        throw ZlinkException.fromLastError(
+            systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
     }
 
     private void throwPartSubmitFailure(String apiName) {
@@ -426,7 +421,8 @@ final class SocketSendPlane {
         ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null)
             throw submit;
-        throw ZlinkException.fromLastError(apiName);
+        throw ZlinkException.fromLastError(
+            systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
     }
 
     private static void validateParts(List<Message> parts) {
@@ -449,27 +445,16 @@ final class SocketSendPlane {
 
     private static MemorySegment nativeRoutingId(SendScratch scratch,
                                                  RoutingId routingId) {
-        byte[] value = InternalAccess.routingIdTrustedBytes(routingId);
         MemorySegment nativeRid = scratch.nativeRoutingId;
-        writeNativeRoutingId(nativeRid, value);
+        NativeRoutingIds.write(nativeRid, routingId);
         return nativeRid;
     }
 
     private static MemorySegment nativeRoutingId(SendScratch scratch,
                                                  byte[] value) {
         MemorySegment nativeRid = scratch.nativeRoutingId;
-        writeNativeRoutingId(nativeRid, value);
+        NativeRoutingIds.writeBytes(nativeRid, value);
         return nativeRid;
-    }
-
-    private static void writeNativeRoutingId(MemorySegment nativeRid,
-                                             byte[] value) {
-        nativeRid.set(java.lang.foreign.ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_SIZE_OFFSET, (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
-                NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
     }
 
     private static boolean isTransientBlockingSendErrno(int errno) {
@@ -480,5 +465,10 @@ final class SocketSendPlane {
             || errno == NativeErrno.ENOTCONN_WIN
             || errno == NativeErrno.EHOSTUNREACH
             || errno == NativeErrno.EHOSTUNREACH_WIN;
+    }
+
+    @FunctionalInterface
+    private interface PartSubmitter {
+        int submit(Message part, int partFlag);
     }
 }

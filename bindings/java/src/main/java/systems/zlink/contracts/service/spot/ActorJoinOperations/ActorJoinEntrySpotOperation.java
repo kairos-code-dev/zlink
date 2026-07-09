@@ -8,7 +8,10 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 
 /** Builds an actor join to an entry spot. */
-public interface ActorJoinEntrySpotOperation {
+public interface ActorJoinEntrySpotOperation
+  extends MessageBuilderStage<ActorJoinEntrySpotOperation>,
+          TimeoutSubmitOperation<ActorJoinEntrySpotCompletion,
+              ActorJoinEntrySpotHandler> {
     ActorJoinEntrySpotOperation message(Message part);
     ActorJoinEntrySpotOperation timeout(Duration timeout);
     ActorJoinEntrySpotOperation flags(SendFlags flags);

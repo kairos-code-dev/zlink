@@ -3,9 +3,9 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.sockets.SendFlags;
-/** Accepts further parts, flags, and the terminal submit of a reply builder. */
-public interface ReplySubmitOperation {
+/** Accepts further parts and the terminal submit of a reply builder. */
+public interface ReplySubmitOperation
+  extends MessageBuilderStage<ReplySubmitOperation> {
     /**
      * Adds another reply part; consumed on a successful submit (see
      * {@link SendOperation} for the ownership contract).
@@ -14,14 +14,6 @@ public interface ReplySubmitOperation {
      * @return this operation for chaining
      */
     ReplySubmitOperation message(Message part);
-
-    /**
-     * Sets the send flags, replacing any previously set flags.
-     *
-     * @param flags the flags to apply at submit time
-     * @return this operation for chaining
-     */
-    ReplySubmitOperation flags(SendFlags flags);
 
     /**
      * Submits the reply. Failures throw

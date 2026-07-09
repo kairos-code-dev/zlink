@@ -106,50 +106,45 @@ final class TopicPlane {
         socket.ensureOpen();
         socket.prepareRecvLikeOperation();
         RecvScratch scratch = socket.recvScratch();
-        while (true) {
+        int rc = NativeErrno.retryWhileInterrupted(() -> {
             resetSubscriptionScratch(scratch);
-            int rc = Native.subscriptionEvent(socket.handle(),
+            return Native.subscriptionEvent(socket.handle(),
                 scratch.routingIdOut, scratch.subscribedOut,
                 scratch.topicOut, scratch.topicLenOut, flags.getValue());
-            if (rc != 0) {
-                int errno = Native.errno();
-                if (errno == NativeErrno.EINTR) {
-                    continue;
-                }
-                if (flags == ReceiveFlag.DONTWAIT
-                    && (errno == NativeErrno.EAGAIN
-                        || errno == NativeErrno.EWOULDBLOCK_WIN)) {
-                    throw new ZlinkRecvException(RecvResult.NO_DATA, errno);
-                }
-                throw ZlinkException.fromErrno("zlink_xpub_recv_part", errno);
+        }, result -> result != 0);
+        if (rc != 0) {
+            int errno = Native.errno();
+            if (flags == ReceiveFlag.DONTWAIT
+                && (errno == NativeErrno.EAGAIN
+                    || errno == NativeErrno.EWOULDBLOCK_WIN)) {
+                throw new ZlinkRecvException(RecvResult.NO_DATA, errno);
             }
-            return subscriptionEventFromNative(scratch);
+            throw ZlinkException.fromErrno(
+                systems.zlink.contracts.errors.ErrorCategory.RECV, errno);
         }
+        return subscriptionEventFromNative(scratch);
     }
 
     Optional<SubscriptionEvent> trySubscriptionEvent() {
         socket.ensureOpen();
         socket.prepareRecvLikeOperation();
         RecvScratch scratch = socket.recvScratch();
-        while (true) {
+        int rc = NativeErrno.retryWhileInterrupted(() -> {
             resetSubscriptionScratch(scratch);
-            int rc = Native.subscriptionEvent(socket.handle(),
+            return Native.subscriptionEvent(socket.handle(),
                 scratch.routingIdOut, scratch.subscribedOut, scratch.topicOut,
                 scratch.topicLenOut, ReceiveFlag.DONTWAIT.getValue());
-            if (rc == 0) {
-                return Optional.of(subscriptionEventFromNative(scratch));
-            }
-
-            int errno = Native.errno();
-            if (errno == NativeErrno.EINTR) {
-                continue;
-            }
-            if (errno == NativeErrno.EAGAIN
-                || errno == NativeErrno.EWOULDBLOCK_WIN) {
-                return Optional.empty();
-            }
-            throw ZlinkException.fromLastError("zlink_xpub_recv_part");
+        }, result -> result != 0);
+        if (rc == 0) {
+            return Optional.of(subscriptionEventFromNative(scratch));
         }
+        int errno = Native.errno();
+        if (errno == NativeErrno.EAGAIN
+            || errno == NativeErrno.EWOULDBLOCK_WIN) {
+            return Optional.empty();
+        }
+        throw ZlinkException.fromLastError(
+            systems.zlink.contracts.errors.ErrorCategory.RECV);
     }
 
     private TopicMessage subscribeInternal(ReceiveFlag flags,
@@ -193,7 +188,14 @@ final class TopicPlane {
                             return ContractAccess.topicMessage(routingId,
                                 topicId, parts.toArray(Message[]::new));
                         }
-                        continue;
+                        SubscribeRemainderResult remainder =
+                            subscribeMultipartRemainder(
+                            scratch, parts, routingId, topicId,
+                            flags.getValue(), true, allowNoData);
+                        if (remainder.isRestart()) {
+                            break;
+                        }
+                        return remainder.message();
                     }
                 } finally {
                     if (!success) {
@@ -214,7 +216,8 @@ final class TopicPlane {
                         || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                     return null;
                 }
-                throw ZlinkException.fromLastError("zlink_subscribe_part");
+                throw ZlinkException.fromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.RECV);
             }
         }
     }
@@ -277,7 +280,7 @@ final class TopicPlane {
                 || errno == NativeErrno.EWOULDBLOCK_WIN) {
                 return false;
             }
-            throw ZlinkException.fromLastError("zlink_subscribe_part");
+            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.RECV);
         }
     }
 
@@ -301,6 +304,18 @@ final class TopicPlane {
             topicLength);
         ArrayList<Message> parts = new ArrayList<>();
         parts.add(firstPart);
+        return subscribeMultipartRemainder(scratch, parts, routingId, topicId,
+            ReceiveFlag.NONE.getValue(), false, false).message();
+    }
+
+    private SubscribeRemainderResult subscribeMultipartRemainder(
+        RecvScratch scratch,
+        ArrayList<Message> parts,
+        RoutingId routingId,
+        String topicId,
+        int flags,
+        boolean restartOnEintr,
+        boolean allowNoData) {
         while (true) {
             Message next = new Message();
             boolean ok = false;
@@ -309,7 +324,7 @@ final class TopicPlane {
                     scratch.sourceRidOut, scratch.topicOut,
                     RecvScratch.TOPIC_CAPACITY, scratch.topicLenOut,
                     InternalAccess.messageNativeHandle(next),
-                    scratch.hasMoreOut, ReceiveFlag.NONE.getValue());
+                    scratch.hasMoreOut, flags);
                 if (rc == 0) {
                     ok = true;
                     boolean more =
@@ -317,8 +332,9 @@ final class TopicPlane {
                     InternalAccess.messageFinishReceive(next, more);
                     parts.add(next);
                     if (!more) {
-                        return ContractAccess.topicMessage(routingId, topicId,
-                            parts.toArray(Message[]::new));
+                        return SubscribeRemainderResult.message(
+                            ContractAccess.topicMessage(routingId, topicId,
+                                parts.toArray(Message[]::new)));
                     }
                     continue;
                 }
@@ -332,10 +348,51 @@ final class TopicPlane {
             }
             int errno = Native.errno();
             if (errno == NativeErrno.EINTR) {
-                continue;
+                if (!restartOnEintr) {
+                    continue;
+                }
+                Message.closeAll(parts);
+                return SubscribeRemainderResult.restart();
+            }
+            if (allowNoData
+                && (errno == NativeErrno.EAGAIN
+                    || errno == NativeErrno.EWOULDBLOCK_WIN)) {
+                Message.closeAll(parts);
+                return SubscribeRemainderResult.message(null);
             }
             Message.closeAll(parts);
-            throw ZlinkException.fromLastError("zlink_subscribe_part");
+            throw ZlinkException.fromLastError(
+                systems.zlink.contracts.errors.ErrorCategory.RECV);
+        }
+    }
+
+    private static final class SubscribeRemainderResult {
+        private static final SubscribeRemainderResult RESTART =
+            new SubscribeRemainderResult(null, true);
+
+        private final TopicMessage message;
+        private final boolean restart;
+
+        private SubscribeRemainderResult(TopicMessage message,
+                                         boolean restart) {
+            this.message = message;
+            this.restart = restart;
+        }
+
+        static SubscribeRemainderResult message(TopicMessage message) {
+            return new SubscribeRemainderResult(message, false);
+        }
+
+        static SubscribeRemainderResult restart() {
+            return RESTART;
+        }
+
+        TopicMessage message() {
+            return message;
+        }
+
+        boolean isRestart() {
+            return restart;
         }
     }
 

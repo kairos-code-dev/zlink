@@ -34,79 +34,85 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
         super(ctx, SocketType.STREAM);
     }
 
+    public void bind(String endpoint) { runtime().bind(endpoint); }
+    public void unbind(String endpoint) { runtime().unbind(endpoint); }
+    public void setRoutingId(RoutingId rid) { runtime().setRoutingId(rid); }
+    public RoutingId getRoutingId() { return runtime().getRoutingId(); }
+
     boolean send(int rid, Message part) {
-        return super.send(RoutingId.from(Integer.toUnsignedLong(rid)), part,
+        return runtime().send(RoutingId.from(Integer.toUnsignedLong(rid)), part,
             SendFlag.NONE);
     }
     boolean send(int rid, Message part, SendFlags flags) {
-        return super.send(RoutingId.from(Integer.toUnsignedLong(rid)), part,
+        return runtime().send(RoutingId.from(Integer.toUnsignedLong(rid)), part,
             SendFlag.fromValue(flags.value()));
     }
     SendResult sendNoWaitResult(int rid, Message part) {
-        return super.sendNoWaitResult(RoutingId.from(Integer.toUnsignedLong(rid)),
+        return runtime().sendNoWaitResult(RoutingId.from(Integer.toUnsignedLong(rid)),
             part);
     }
     SendResult sendNoWaitResult(RoutingId rid, Message part) {
-        return super.sendNoWaitResult(rid, part);
+        return runtime().sendNoWaitResult(rid, part);
     }
     int send(int rid, MemorySegment payload, int length, SendFlags flags) {
-        return super.send(rid, payload, length, flags.value());
+        return runtime().send(rid, payload, length, flags.value());
     }
     int sendCopied(int rid, MemorySegment payload, int length,
                    SendFlags flags) {
-        return super.sendCopied(rid, payload, length, flags.value());
+        return runtime().sendCopied(rid, payload, length, flags.value());
     }
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
-        return super.sendNoWaitResult(rid, parts);
+        return runtime().sendNoWaitResult(rid, parts);
     }
     public SendOperation send(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
         return MessageOperations.send((parts, flags) ->
-            NativeStreamSocket.super.send(rid, parts,
+            runtime().send(rid, parts,
                 SendFlag.fromValue(flags.value())));
     }
     /** Receives into caller-provided storage. */
     public boolean recv(Received result, RecvFlags flags) {
         Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");
-        Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
+        Received fresh = runtime().recv(ReceiveFlag.fromValue(flags.value()));
         if (fresh == null) return false;
         ContractAccess.receivedAdoptFrom(result, fresh);
         result.getRoutingId().ifPresent(rid ->
-            InternalAccess.receivedSetSendSender(result, (parts, sendFlags) -> super.send(rid, parts,
+            InternalAccess.receivedSetSendSender(result, (parts, sendFlags) -> runtime().send(rid, parts,
                 SendFlag.fromValue(sendFlags.value()))));
         return true;
     }
-    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { runtime().setSendReadyHandler(handler); }
     public void onPacket(StreamPacketHandler handler) {
         Objects.requireNonNull(handler, "handler");
-        super.attachStreamPacket((StreamFramedPacketHandler)
+        runtime().attachStreamPacket((StreamFramedPacketHandler)
             (routingId, header, body) -> handler.onPacket(routingId, header,
                 body));
     }
     void onPacketNative(StreamUInt32RawNativeHandler handler) {
-        super.attachStreamRaw(handler);
+        runtime().attachStreamRaw(handler);
     }
     void onFramedPacket(StreamFramedPacketHandler handler) {
-        super.attachStreamPacket(handler);
+        runtime().attachStreamPacket(handler);
     }
     void onFramedPacket(StreamUInt32FramedPacketHandler handler) {
-        super.attachStreamPacket(handler);
+        runtime().attachStreamPacket(handler);
     }
     void onFramedPacketNative(StreamUInt32FramedNativeHandler handler) {
-        super.attachStreamPacket(handler);
+        runtime().attachStreamPacket(handler);
     }
-    void detachStream() { super.detachStream(); }
+    void detachStream() { runtime().detachStream(); }
     @Override
     public void close() {
-        if (handle() == null || handle().address() == 0) {
-            super.close();
+        MemorySegment handle = runtime().handle();
+        if (handle == null || handle.address() == 0) {
+            runtime().close();
             return;
         }
         try {
             detachStream();
         } finally {
-            super.close();
+            runtime().close();
         }
     }
     public ActorBindOperation bindActor(RoutingId sessionRid, ActorRef actor) {

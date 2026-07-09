@@ -266,7 +266,7 @@ final class NativeMessageRuntime {
                 int rc = move((MemorySegment) ContractAccess.messageNativeHandle(msg),
                     src);
                 if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_msg_move");
+                    throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
                 ContractAccess.messageFinishVectorMove(msg, i + 1 < count);
                 built++;
             }

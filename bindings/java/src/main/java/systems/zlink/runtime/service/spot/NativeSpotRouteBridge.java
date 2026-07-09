@@ -48,7 +48,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
             InternalAccess.spotNodeHandle(node), MemorySegment.NULL);
         if (handle == null || handle.address() == 0) {
             throw InternalAccess.zlinkExceptionFromLastError(
-                "zlink_spot_route_bridge_new");
+                systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         }
     }
 
@@ -71,7 +71,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
                 nativeEndpointOptions(arena, options));
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_attach_router_channel");
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             }
         }
         endpointHandles.put(normalized, routerHandle);
@@ -124,7 +124,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
             if (rc != 0) {
                 MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_handle_router_received");
+                    systems.zlink.contracts.errors.ErrorCategory.RECV);
             }
             boolean handled = handledOut.get(ValueLayout.JAVA_BYTE, 0) != 0;
             if (!handled) {
@@ -139,7 +139,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         int rc = Native.spotRouteBridgeDrain(handle());
         if (rc < 0) {
             throw InternalAccess.zlinkExceptionFromLastError(
-                "zlink_spot_route_bridge_drain");
+                systems.zlink.contracts.errors.ErrorCategory.RECV);
         }
         return rc;
     }
@@ -156,7 +156,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         int rc = Native.spotRouteBridgeClose(current);
         if (rc != 0) {
             throw InternalAccess.zlinkExceptionFromLastError(
-                "zlink_spot_route_bridge_close");
+                systems.zlink.contracts.errors.ErrorCategory.CLOSE);
         }
     }
 
@@ -178,7 +178,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
             if (rc != 0) {
                 NativeMessage.multipartClose(nativeParts, parts.size());
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_send");
+                    systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
             }
             return true;
         }
@@ -263,7 +263,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
             if (rc != 0) {
                 NativeMessage.multipartClose(nativeParts, parts.size());
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_request");
+                    systems.zlink.contracts.errors.ErrorCategory.SUBMIT);
             }
         }
     }

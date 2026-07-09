@@ -69,7 +69,7 @@ public final class NativeMonitorSocket implements SocketMonitor {
         try {
             int rc = Native.monitorHandler(handle, stub, MemorySegment.NULL);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_socket_monitor_handler");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.HANDLER);
             }
             success = true;
             RuntimeResources.closeArena(callbackArena);
@@ -114,7 +114,7 @@ public final class NativeMonitorSocket implements SocketMonitor {
               NativeLayouts.MONITOR_SNAPSHOT_LAYOUT);
             int rc = Native.monitorStatus(handle, out);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_monitor_status");
+                throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
             return NativeMonitorStatuses.fromNative(out);
         }
     }

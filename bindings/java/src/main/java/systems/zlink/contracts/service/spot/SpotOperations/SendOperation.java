@@ -11,7 +11,8 @@ import systems.zlink.contracts.messaging.Message;
  * submit each part is moved into the transport; on failure, ownership of
  * every part is restored to the caller for retry or disposal.
  */
-public interface SendOperation {
+public interface SendOperation
+  extends MessageBuilderStage<SendSubmitOperation> {
     /**
      * Adds the first message part.
      *

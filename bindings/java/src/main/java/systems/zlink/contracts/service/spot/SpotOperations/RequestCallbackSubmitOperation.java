@@ -11,7 +11,8 @@ import java.time.Duration;
  * Callback-submission stage of a request builder (reached after
  * {@link RequestSubmitOperation#flags}).
  */
-public interface RequestCallbackSubmitOperation {
+public interface RequestCallbackSubmitOperation
+  extends MessageBuilderStage<RequestCallbackSubmitOperation> {
     /**
      * Adds another request part; consumed on a successful submit (see
      * {@link RequestOperation} for the ownership contract).

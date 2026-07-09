@@ -69,7 +69,7 @@ public final class MessageOperations {
 
     @FunctionalInterface
     public interface ReplyInvoker {
-        void submit(List<Message> parts, SendFlags flags);
+        void submit(List<Message> parts);
     }
 
     private static final class SendBuilder
@@ -247,7 +247,6 @@ public final class MessageOperations {
       implements ReplyOperation, ReplySubmitOperation {
         private final ReplyInvoker invoker;
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
         private ReplyBuilder(ReplyInvoker invoker) {
@@ -262,19 +261,12 @@ public final class MessageOperations {
         }
 
         @Override
-        public ReplySubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
-            return this;
-        }
-
-        @Override
         public void submit() {
             ensureNotSubmitted();
             if (parts.isEmpty())
                 throw new IllegalArgumentException("at least one message required");
             submitted = true;
-            invoker.submit(parts.asList(), flags);
+            invoker.submit(parts.asList());
         }
 
         private void ensureNotSubmitted() {

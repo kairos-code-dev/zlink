@@ -8,7 +8,9 @@ import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 
 /** Accepts further parts, timeout, flags, and the terminal submit of an actor join. */
-public interface ActorJoinSubmitOperation {
+public interface ActorJoinSubmitOperation
+  extends MessageBuilderStage<ActorJoinSubmitOperation>,
+          TimeoutSubmitOperation<ActorJoinCompletion, ActorJoinHandler> {
     ActorJoinSubmitOperation message(Message part);
     ActorJoinSubmitOperation timeout(Duration timeout);
     ActorJoinCallbackSubmitOperation flags(SendFlags flags);

@@ -46,7 +46,7 @@ final class SpotSendReadySupport implements AutoCloseable {
                 MemorySegment.NULL);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_send_ready_handler");
+                    systems.zlink.contracts.errors.ErrorCategory.HANDLER);
             }
             success = true;
             RuntimeResources.closeArena(callbackArena);

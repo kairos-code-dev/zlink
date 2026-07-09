@@ -23,11 +23,4 @@ final class NativeErrorRuntime {
     private NativeErrorRuntime() {
     }
 
-    static int errno() {
-        return Native.errno();
-    }
-
-    static String strerror(int errno) {
-        return Native.strerror(errno);
-    }
 }

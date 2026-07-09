@@ -32,6 +32,16 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
         super(ctx, SocketType.ROUTER);
     }
 
+    public void bind(String endpoint) { runtime().bind(endpoint); }
+    public void connect(String endpoint) { runtime().connect(endpoint); }
+    public void unbind(String endpoint) { runtime().unbind(endpoint); }
+    public void disconnect(String endpoint) { runtime().disconnect(endpoint); }
+    public void disconnectRid(RoutingId routingId) {
+        runtime().disconnectRid(routingId);
+    }
+    public void setRoutingId(RoutingId rid) { runtime().setRoutingId(rid); }
+    public RoutingId getRoutingId() { return runtime().getRoutingId(); }
+
     public SendOperation send(RoutingId rid) {
         return MessageOperations.send(
             (part, flags) -> sendInternal(rid, part, flags),
@@ -39,10 +49,10 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     }
 
     private boolean sendInternal(RoutingId rid, Message part, SendFlags flags) {
-        return super.send(rid, part, SendFlag.fromValue(flags.value()));
+        return runtime().send(rid, part, SendFlag.fromValue(flags.value()));
     }
     private boolean sendInternal(RoutingId rid, List<Message> parts, SendFlags flags) {
-        return super.send(rid, parts, SendFlag.fromValue(flags.value()));
+        return runtime().send(rid, parts, SendFlag.fromValue(flags.value()));
     }
     /** Receives into caller-provided storage. */
     public boolean recv(Received result, RecvFlags flags) {
@@ -76,7 +86,7 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
                 ? sendInternal(nodeRid, parts, flags)
                 : sendToSpotInternal(nodeRid, spotRid, parts, flags));
     }
-    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { runtime().setSendReadyHandler(handler); }
 
     public RequestOperation request(RoutingId rid) {
         return MessageOperations.request(
@@ -103,9 +113,8 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     }
 
     public ReplyOperation reply(RoutingId rid, long requestSequence) {
-        return MessageOperations.reply((parts, flags) ->
-            InternalAccess.routerReply(this, rid, requestSequence, parts,
-                flags));
+        return MessageOperations.reply(parts ->
+            InternalAccess.routerReply(this, rid, requestSequence, parts));
     }
 
     public SendOperation sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
@@ -152,22 +161,22 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
 
     public ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                                long requestSeq) {
-        return MessageOperations.reply((parts, flags) ->
+        return MessageOperations.reply(parts ->
             InternalAccess.routerReplyToSpot(this, destNodeRid, destSpotRid,
-              requestSeq, parts, flags));
+              requestSeq, parts));
     }
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts, SendFlags flags) {
+                     long requestSeq, List<Message> parts) {
         InternalAccess.routerReplyToSpot(this, destNodeRid, destSpotRid,
-          requestSeq, parts, flags);
+          requestSeq, parts);
     }
     @Override
     public void close() {
         debug("router close begin");
         InternalAccess.routerReceiveBeginClose(routedRequests);
         try {
-            super.close();
+            runtime().close();
         } finally {
             InternalAccess.routerReceiveFinishClose(routedRequests);
         }

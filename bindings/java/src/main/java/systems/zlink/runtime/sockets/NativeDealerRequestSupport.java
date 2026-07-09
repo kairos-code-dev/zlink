@@ -104,10 +104,9 @@ final class NativeDealerRequestSupport {
 
             @Override
             public void routerReply(RouterSocket socket, RoutingId routingId,
-                                    long requestSequence, List<Message> parts,
-                                    SendFlags flags) {
+                                    long requestSequence, List<Message> parts) {
                 NativeRouterRequestSupport.reply(socket, routingId,
-                    requestSequence, parts, flags);
+                    requestSequence, parts);
             }
 
             @Override
@@ -142,9 +141,9 @@ final class NativeDealerRequestSupport {
             public void routerReplyToSpot(
                     RouterSocket socket, RoutingId destNodeRid,
                     RoutingId destSpotRid, long requestSeq,
-                    List<Message> parts, SendFlags flags) {
+                    List<Message> parts) {
                 NativeRouterSpotSupport.replyToSpot(socket, destNodeRid,
-                    destSpotRid, requestSeq, parts, flags);
+                    destSpotRid, requestSeq, parts);
             }
 
             @Override
@@ -200,28 +199,11 @@ final class NativeDealerRequestSupport {
         Objects.requireNonNull(socket, "socket");
         Objects.requireNonNull(parts, "parts");
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        long requestId = RoutedRequestSupport.nextRequestId();
-        CompletableFuture<Void> progress = RoutedRequestSupport.registerDirectPending(
-            requestId, timeoutMs, callback::onComplete);
-        try {
-            submitRequest(socket, parts, timeoutMs, flags,
-                RoutedRequestSupport.replyCallback(),
-                RoutedRequestSupport.userData(requestId));
-            RequestReplySupport.startSocketRequestProgress(progress,
-                InternalAccess.socketHandle(socket),
-                "zlink-dealer-request-progress");
-            return true;
-        } catch (ZlinkSubmitException ex) {
-            RoutedRequestSupport.removeDirectPending(requestId);
-            if (flags == SendFlags.DONT_WAIT
-                && ex.getResult() == SubmitResult.BACKPRESSURED) {
-                return false;
-            }
-            throw ex;
-        } catch (RuntimeException ex) {
-            RoutedRequestSupport.removeDirectPending(requestId);
-            throw ex;
-        }
+        return RequestSubmitLoop.submitCallback(timeoutMs,
+            InternalAccess.socketHandle(socket),
+            "zlink-dealer-request-progress", flags, callback::onComplete,
+            (handler, userData) -> submitRequest(socket, parts, timeoutMs,
+                flags, handler, userData));
     }
 
     private static CompletableFuture<Received> request(DealerSocket socket,
@@ -231,22 +213,11 @@ final class NativeDealerRequestSupport {
         Objects.requireNonNull(socket, "socket");
         Objects.requireNonNull(parts, "parts");
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        long requestId = RoutedRequestSupport.nextRequestId();
-        CompletableFuture<Received> future =
-            RoutedRequestSupport.registerPending(requestId, timeoutMs);
-        try {
-            submitRequest(socket, parts, timeoutMs, flags,
-                RoutedRequestSupport.replyCallback(),
-                RoutedRequestSupport.userData(requestId));
-            RequestReplySupport.startSocketRequestProgress(future,
-                InternalAccess.socketHandle(socket),
-                "zlink-dealer-request-progress");
-        } catch (RuntimeException ex) {
-            RoutedRequestSupport.removePending(requestId);
-            future.cancel(false);
-            throw ex;
-        }
-        return future;
+        return RequestSubmitLoop.submitFuture(timeoutMs,
+            InternalAccess.socketHandle(socket),
+            "zlink-dealer-request-progress",
+            (handler, userData) -> submitRequest(socket, parts, timeoutMs,
+                flags, handler, userData));
     }
 
     private static void submitRequest(DealerSocket socket,
@@ -256,23 +227,25 @@ final class NativeDealerRequestSupport {
                                       MemorySegment handler,
                                       MemorySegment userData) {
         int nativeFlags = flags == null ? 0 : flags.value();
-        int timeout = RoutedRequestSupport.toTimeoutInt(timeoutMs);
-        for (int i = 0; i < payload.size(); i++) {
-            int partFlag = i + 1 < payload.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
-                InternalAccess.messageCopyTo(payload.get(i), nativeMsg);
-                int rc = Native.dealerRequestPart(
-                    InternalAccess.socketHandle(socket), nativeMsg,
-                    nativeFlags, partFlag,
-                    timeout,
-                    handler,
-                    userData);
-                if (rc != SubmitResult.OK.value()) {
-                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                }
-            }
+        int timeout = RequestReplySupport.toTimeoutInt(timeoutMs);
+        RequestSubmitLoop.submitResultParts(payload,
+            (part, partFlag) -> dealerRequestPartOnce(socket, part,
+                nativeFlags, partFlag, timeout, handler, userData));
+    }
+
+    private static int dealerRequestPartOnce(DealerSocket socket,
+                                             Message part,
+                                             int flags,
+                                             int partFlag,
+                                             int timeoutMs,
+                                             MemorySegment handler,
+                                             MemorySegment userData) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
+            InternalAccess.messageCopyTo(part, nativeMsg);
+            return Native.dealerRequestPart(
+                InternalAccess.socketHandle(socket), nativeMsg, flags,
+                partFlag, timeoutMs, handler, userData);
         }
     }
 }

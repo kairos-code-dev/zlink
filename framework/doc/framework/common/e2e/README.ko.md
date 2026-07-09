@@ -172,6 +172,44 @@ bounded evidence wait처럼 서버가 시나리오 event를 기다리는 요청�
 snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기다리는 bounded wait는 별도 이름의
 시나리오 대기값으로 분리한다.
 
+### 2.1.1 표준 runner 출력과 중단 정리
+
+언어별 `run_e2e_all.sh`는 실행자가 지금 어디까지 진행됐는지 바로 알 수 있게 같은 형태의 요약
+라인을 출력한다. 각 config의 상세 로그는 기존처럼 그대로 흘려보내되, 집계 runner가 시작, config
+완료, 전체 완료를 짧게 요약한다.
+
+기본 출력 형태는 아래와 같다.
+
+```text
+[<language>-e2e] start configs=<count> at=<iso-time>
+[<language>-e2e] <Config> start scenario=<selector>
+[<Config>] <Scenario> start
+[<Config>] <Scenario> PASS (<seconds>s)
+[<language>-e2e] <Config> PASS (<seconds>s)
+[<language>-e2e] total PASS (<seconds>s)
+```
+
+`<language>`는 `dotnet`, `java`, `node`, `cpp`처럼 언어 runner를 구분하는 짧은 이름을 쓴다.
+`<selector>`는 `all`, 단일 시나리오 ID, 또는 언어별 runner가 허용하는 쉼표 구분 시나리오 목록이다.
+C++처럼 같은 config를 여러 start order로 반복하는 runner는 config 시작·완료 라인에
+`start_order=<variant>`를 함께 붙인다.
+
+실패하면 같은 위치에 `FAIL (<seconds>s, attempt <n>)`를 출력한다. bind 충돌처럼 재시도 대상인
+실패는 재시도 안내를 한 줄 출력한 뒤 같은 config를 다시 실행한다. Redis 시작 로그, log directory,
+개별 server stdout/stderr 같은 진단 출력은 이 요약 라인 사이에 나올 수 있다.
+
+개별 config runner는 client 시나리오 진행 상황을 콘솔에 실시간으로 흘려보내야 한다. 로그 파일에만
+쓰고 마지막에 한꺼번에 보여 주면 멈춘 것처럼 보이므로 표준으로 보지 않는다. 파일 로그가 필요하면
+`tee`처럼 콘솔 출력과 파일 저장을 함께 만족하는 방식으로 처리한다.
+
+`Ctrl-C`, `TERM`, 정상 종료 모두 같은 정리 경로를 사용한다. 집계 runner는 종료 시 현재 언어의 e2e
+하위 프로세스를 정리하고, 언어별 Redis scope에 속한 container도 제거한다. 정리 함수는 여러 번
+호출돼도 안전해야 한다. 중단 시에는 예를 들어 아래처럼 한 줄로 정리 중임을 알린 뒤 종료한다.
+
+```text
+[<language>-e2e] interrupted; cleaning up processes and Redis...
+```
+
 ### 2.2 언어별 포팅 단위
 
 다른 언어에 e2e를 추가할 때는 config 하나를 작은 테스트 파일 묶음으로 보지 말고, `.NET`과 같은

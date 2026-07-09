@@ -109,7 +109,7 @@ Actor/session binding은 Registry row로 저장하지 않는다. session은 acto
 core SessionRelay가 제공하는 logical handle을 사용하고, Registry는 Spot owner 조회와
 운영 topology 확인에 집중한다.
 
-Spot remote address 기본값은 Registry-backed resolver로 제공할 수 있다. 이 resolver는
+Spot remote ref 기본값은 Registry-backed resolver로 제공할 수 있다. 이 resolver는
 `spotRid`에서 user Spot route 정보를 찾는 용도이며, client session에서 actor route
 snapshot을 직접 들고 있게 만드는 용도가 아니다.
 

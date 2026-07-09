@@ -16,6 +16,11 @@
 
 다른 문서에서 interface 를 참조할 때는 항상 이 문서를 기준으로 삼는다.
 
+Spot Actor Join / Transfer 관련 interface 는
+[공통 스펙](../../common/spec/spot-actor.ko.md)을 만족하기 위한 목표 공개 계약이다.
+현재 `.NET` 구현이 이 표면과 다르면 구현 완료가 아니라 public contract parity gap으로
+기록하고, 구현 작업에서 이 문서에 맞춘다.
+
 사용 예시나 프로그래밍 모델 설명은 여기 넣지 않는다. 실제 사용법은 아래
 문서들을 참고한다.
 
@@ -64,7 +69,8 @@
 | value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 metadata snapshot | 4.4.2 |
 | policy | `IZLinkMessageMetadataPolicy` | metadata forwarding 허용 여부 | 4.4.2 |
 | factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
-| lifecycle | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user Spot에 actor가 join할 때 호출되는 admission callback | 4.4.1 |
+| lifecycle | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user Spot에 actor가 join할 때 호출되는 admission callback. actor instance가 아니라 `ZLinkActorJoinAdmission`을 받는다 | 4.4.1 |
+| lifecycle | `IZLinkActorTransferAdapter<TActor>` | remote actor transfer에서 actor state를 선택적으로 `ZLinkMessage`로 전달하고 target actor를 materialize하는 actor type별 adapter | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkBoundSession` | 현재 actor -> 현재 client session 호출 | 5.6 |
 | resolver | `IZLinkSpotRefResolver` | spot rid에서 user Spot route 조회 | 5.7 |
@@ -319,7 +325,7 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
     where TActor : IZLinkActor
 {
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        TActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -339,6 +345,27 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
     {
         return ValueTask.CompletedTask;
     }
+}
+
+public sealed record ZLinkActorJoinAdmission(
+    string ActorId,
+    Type ActorType,
+    RoutingId SourceSpotRid,
+    RoutingId TargetSpotRid,
+    RoutingId SourceNodeRid,
+    RoutingId TargetNodeRid);
+
+public interface IZLinkActorTransferAdapter<TActor>
+    where TActor : IZLinkActor
+{
+    ValueTask<ZLinkMessage> TransferOutAsync(
+        TActor actor,
+        CancellationToken cancellationToken);
+
+    ValueTask<TActor> TransferInAsync(
+        string actorId,
+        ZLinkMessage state,
+        CancellationToken cancellationToken);
 }
 
 public interface IZLinkActorHandlerRegistry
@@ -573,6 +600,11 @@ public readonly record struct ZLinkSpotActorJoinResult(
     public static ZLinkSpotActorJoinResult Reject(ZLinkMessage? reply = null);
 }
 ```
+
+`IZLinkActorTransferAdapter<TActor>` 등록은 remote transfer 지원 여부를 나타낸다. 등록이 없으면
+framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
+stateless transfer adapter 등록 API를 사용한다. 이 기본 adapter는 source에서 빈 `ZLinkMessage`를 보내고,
+target에서 기존 actor factory 또는 public actor 생성 경로로 `TActor` instance를 만든다.
 
 actor join admission callback 의 request는 `ZLinkMessage`다. application은
 필요한 DTO를 `Decode<T>()`로 얻는다. reply는 DTO 또는
@@ -1480,10 +1512,11 @@ actor packet 실행 계약은 다음과 같이 둔다.
   는 join admission 요청 처리이고, `OnJoinedActorAsync(...)` /
   `OnLeaveActorAsync(...)` 는 commit 이후의 lifecycle callback 이라는 점에
   주의한다.
-- `JoinSpot(...)` 이나 `OnActorJoinAsync(...)` 가 actor 의 현재 `Spot` 을
-  바꾸는 경우가 있다. 이때 framework 는 actor session state 갱신과 이후
-  dispatch 선택이 서로 경합하지 않도록 보장해야 한다. join 이후에 도착한
-  packet 은 새 `Spot` 의 실행 문맥으로 흘러 들어가야 한다.
+- `JoinSpot(...)` 이 actor 의 현재 `Spot` 을 바꾸는 경우가 있다. 이때
+  framework 는 actor session state 갱신과 이후 dispatch 선택이 서로
+  경합하지 않도록 보장해야 한다. `OnActorJoinAsync(...)` 는 admission 만
+  처리하며, join 이후에 도착한 packet 은 commit 된 새 `Spot` 의 실행
+  문맥으로 흘러 들어가야 한다.
 - 이 계약은 두 가지 표면을 분리하는 효과를 가진다. actor 가 사용하는
   stream I/O 표면과, `Spot` 상태 변경 표면이다. session 은 packet ingress
   역할만 담당한다. join 된 actor 의 game/domain 처리는 `Spot` 의 실행
@@ -1690,8 +1723,9 @@ public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotO
 ```
 
 actor join admission 은 user Spot 멤버 method 로 선언한다. framework 는
-`IZLinkSpot<TActor>` 의 actor 타입만 계약으로 사용한다. request 와 reply 는 codec-neutral
-`Message` 로 고정한다.
+`IZLinkSpot<TActor>` 의 actor 타입만 계약으로 사용한다. admission callback 은 actor instance 를
+받지 않고 `ZLinkActorJoinAdmission` 을 받는다. request 와 reply 는 codec-neutral `ZLinkMessage` 로
+고정한다.
 
 ```csharp
 public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>
@@ -1699,7 +1733,7 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
     public IZLinkSpotContext Context { get; } = context;
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        PlayerActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -2519,30 +2553,33 @@ public interface IZLinkStreamNodeBuilder
         where TSession : class, IZLinkSession;
 }
 
-public interface IZLinkSessionPacketHandler<TSessionContext>
+public interface IZLinkSessionHandlerRegistry
 {
-    string PacketName { get; }
+    void AddHandler<THandler>()
+        where THandler : class;
 
-    ValueTask HandleAsync(
-        TSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
-        ZLinkMessage payload,
-        CancellationToken cancellationToken);
-}
+    void AddHandler<THandler>(string packetName)
+        where THandler : class;
 
-public interface IZLinkSessionPacketDispatcher<TSessionContext>
-{
     ValueTask<bool> TryHandleAsync(
-        TSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 }
 
-session packet dispatcher 는 등록된 packet handler 호출만 담당한다. 미등록 packet 을
-actor 로 relay 할지, 무시할지, 오류로 처리할지는 session 구현체의 정책이다.
-handler 로 전달되는 payload 는 `OnDispatchAsync(...)` 의 payload 와 같은 framework
-`ZLinkMessage` 이다.
+public interface IZLinkSessionPacketHandler<TSessionContext, TMessage>
+{
+    ValueTask HandleAsync(
+        TSessionContext context,
+        ZLinkSessionDispatchContext dispatch,
+        TMessage message,
+        CancellationToken cancellationToken);
+}
+
+session handler registry 는 session 의 `Configure()` 실행 중에만 handler class 등록을
+허용한다. 미등록 packet 을 actor 로 relay 할지, 무시할지, 오류로 처리할지는 session 구현체의
+정책이다. handler 로 전달되는 `message` 는 framework 가 packet payload 를 `TMessage` 로
+decode 한 값이다.
 
 public interface IZLinkClientServerChannelBuilder
 {
@@ -2638,6 +2675,13 @@ public interface IZLinkFrameworkOptions
 
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
+
+    void AddStatelessActorTransfer<TActor>(string actorType)
+        where TActor : IZLinkActor;
+
+    void AddActorTransferAdapter<TActor, TAdapter>(string actorType)
+        where TActor : IZLinkActor
+        where TAdapter : class, IZLinkActorTransferAdapter<TActor>;
 
     void AddLocationStore(IZLinkLocationStore store);
 

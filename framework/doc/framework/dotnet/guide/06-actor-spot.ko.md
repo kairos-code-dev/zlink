@@ -171,7 +171,7 @@ sequenceDiagram
   A->>FW: JoinSpot(roomRid, req)
   FW->>R: OnActorJoinAsync — admission
   R-->>FW: Accept(reply)
-  Note over FW: 같은 인스턴스 유지<br/>entry route 제거 → room route 기록
+  Note over FW: 같은 인스턴스 유지<br/>room route 기록
   FW->>E: OnLeaveActorAsync
   FW->>R: OnJoinedActorAsync
   FW-->>A: joined(Accepted, reply)
@@ -185,19 +185,22 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant CA as core @노드 A
-  participant E as Entry Spot @A
-  participant CB as core @노드 B
+  participant CA as framework @노드 A
+  participant CB as framework @노드 B
+  participant EB as Entry Spot @B
   participant R as BingoRoom @B
   Note over CA: JoinSpot(roomRid@B) — 대상이 원격
   CA->>CB: remote join 요청 (actor gateway route)
-  Note over CB: actor 인스턴스 신규 생성 (B)
+  Note over CB: actor 위치 소유권 Takeover<br/>actor 인스턴스 신규 생성 (B)
+  CB->>EB: OnCreateActorAsync
   CB->>R: OnActorJoinAsync — admission
   R-->>CB: Accept(reply)
+  CB->>EB: OnLeaveActorAsync
   CB->>R: OnJoinedActorAsync
+  Note over CB: actor 위치를 room route 로 갱신
   CB-->>CA: join OK (reply)
-  CA->>E: OnLeaveActorAsync
-  Note over CA: A 인스턴스 retire<br/>bound session A→B transfer<br/>route→B · generation+1
+  Note over CA: actor ref 를 B 로 갱신<br/>bound session 을 A 에서 B 로 이동<br/>A 의 actor context 무효화
+  Note over CA: A 의 이전 actor 위치 기록 release
 ```
 
 > **B 의 인스턴스는 factory 로 새로 생성**되므로 A 의 in-memory 상태는 자동으로 넘어가지 않는다. room

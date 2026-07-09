@@ -68,6 +68,13 @@ completion을 그 scope에서 실행한다. 외부 `CoroutineScope`를 넘기면
 application에 남고, framework는 해당 scope를 닫지 않는다. 두 경우 모두 Java core는
 Kotlin handler의 결과를 Java sync handler 호출의 반환값 또는 예외로 관찰한다.
 
+### 0.2 Spot Actor Join / Transfer 목표 계약
+
+Spot Actor Join / Transfer 관련 interface 는
+[공통 스펙](../../common/spec/spot-actor.ko.md)을 만족하기 위한 목표 공개 계약이다.
+현재 Java/Kotlin 구현이 이 표면과 다르면 구현 완료가 아니라 public contract parity gap으로
+기록하고, 구현 작업에서 이 문서에 맞춘다.
+
 ## 1. 인터페이스 전체 목록
 
 | 분류 | 인터페이스 또는 타입 | 역할 |
@@ -104,6 +111,7 @@ Kotlin handler의 결과를 Java sync handler 호출의 반환값 또는 예외�
 | client | `ZLinkFanoutClient` | pub/sub fanout publisher |
 | client | `ZLinkRouteClient` | route mesh channel target 호출 |
 | client | `ZLinkSpotPublisherClient` | 외부 노드용 `SPOT` publish client |
+| handler | `ZLinkActorTransferAdapter<TActor>` | remote actor transfer에서 actor state를 선택적으로 `ZLinkMessage`로 전달하고 target actor를 materialize |
 | host | Spring host lifetime | Spring Boot `SmartLifecycle` 안에서 framework runtime을 시작하고 종료한다 |
 | management | `ZLinkSpotManager` | Spot type 기준 생성, `spotRid` 기준 조회/삭제 |
 | timer | `ZLinkTimer` | `SPOT` lifecycle timer handle |
@@ -267,7 +275,7 @@ public interface ZLinkSpotActorRequestHandler<
 
 public interface ZLinkSpot<TActor extends ZLinkActor> {
     ZLinkSpotActorJoinResponse onActorJoin(
-        TActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken);
 
@@ -286,7 +294,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
 
 public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
     ZLinkSpotActorJoinResponse onActorJoin(
-        TActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken);
 
@@ -302,7 +310,32 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
         TActor actor,
         CancellationToken cancellationToken);
 }
+
+public record ZLinkActorJoinAdmission(
+    String actorId,
+    Class<? extends ZLinkActor> actorType,
+    RoutingId sourceSpotRid,
+    RoutingId targetSpotRid,
+    RoutingId sourceNodeRid,
+    RoutingId targetNodeRid) {
+}
+
+public interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
+    ZLinkMessage transferOut(
+        TActor actor,
+        CancellationToken cancellationToken);
+
+    TActor transferIn(
+        String actorId,
+        ZLinkMessage state,
+        CancellationToken cancellationToken);
+}
 ```
+
+`ZLinkActorTransferAdapter<TActor>` 등록은 remote transfer 지원 여부를 나타낸다. 등록이 없으면
+framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
+stateless transfer adapter 등록 API를 사용한다. 이 기본 adapter는 source에서 빈 `ZLinkMessage`를 보내고,
+target에서 기존 actor factory 또는 public actor 생성 경로로 `TActor` instance를 만든다.
 
 `ZLinkSpotActorSendHandler`, `ZLinkEntrySpotActorSendHandler`도 같은 패턴을 따른다.
 Entry Spot actor request/send는 Entry Spot 전용 interface를 사용하고, user Spot actor
@@ -372,7 +405,9 @@ public interface ZLinkSessionActors {
 
     CompletionStage<ZLinkSessionActor> bind(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor);
+    CompletionStage<ZLinkSessionActor> bind(ActorRef actor);
+
+    CompletionStage<ZLinkSessionActor> bindOrGet(ActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }
@@ -408,7 +443,7 @@ public interface ZLinkSessionReplyCall {
 
 public interface ZLinkSessionActor {
     String actorId();
-    ZLinkActorRef ref();
+    ActorRef ref();
     CompletionStage<Void> relay(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload);
     CompletionStage<Void> notifyDisconnected();
 }
@@ -427,14 +462,14 @@ public interface ZLinkActorFactory {
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ZLinkActorRef> create(String actorId, String actorType);
-    CompletionStage<ZLinkActorRef> create(
+    CompletionStage<ActorRef> create(String actorId, String actorType);
+    CompletionStage<ActorRef> create(
         String actorId,
         String actorType,
         ZLinkMessage createRequest);
-    CompletionStage<Optional<ZLinkActorRef>> find(String actorId);
-    CompletionStage<ZLinkActorRef> getOrCreate(String actorId, String actorType);
-    CompletionStage<ZLinkActorRef> getOrCreate(
+    CompletionStage<Optional<ActorRef>> find(String actorId);
+    CompletionStage<ActorRef> getOrCreate(String actorId, String actorType);
+    CompletionStage<ActorRef> getOrCreate(
         String actorId,
         String actorType,
         ZLinkMessage createRequest);
@@ -476,7 +511,7 @@ public interface ZLinkActorJoinSpotCall {
 
 public record ZLinkActorJoinResult<TReply>(
     int resultCode,
-    ZLinkActorRef actor,
+    ActorRef actor,
     TReply reply) {
 }
 
@@ -604,9 +639,15 @@ public interface ZLinkFrameworkOptions {
     void addActorFactory(
         String actorType,
         Class<? extends ZLinkActorFactory> factoryType);
-    void addSpotRemoteAddressResolver(
-        Class<? extends ZLinkSpotRemoteAddressResolver> resolverType);
-    ZLinkRegistrySpotRemoteAddressesOptions useRegistrySpotRemoteAddresses(String namespaceName);
+    void addStatelessActorTransfer(
+        String actorType,
+        Class<? extends ZLinkActor> actorClass);
+    void addActorTransferAdapter(
+        String actorType,
+        Class<? extends ZLinkActorTransferAdapter<?>> adapterType);
+    void addSpotRemoteRefResolver(
+        Class<? extends SpotRemoteRefResolver> resolverType);
+    ZLinkRegistrySpotRemoteRefsOptions useRegistrySpotRemoteRefs(String namespaceName);
     void useFilter(Class<? extends ZLinkHandlerFilter> filterType);
     ZLinkDispatchOptions configureDispatch();
     ZLinkWorkerOptions configureWorkers();
@@ -633,16 +674,16 @@ public interface ZLinkMetadataPolicyBuilder {
     void addForwardedMetadataKey(String key);
 }
 
-public interface ZLinkRegistrySpotRemoteAddressesOptions {
+public interface ZLinkRegistrySpotRemoteRefsOptions {
     void setRouterChannelId(String routerChannelId);
 }
 
-public interface ZLinkSpotRemoteAddressResolver {
-    CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
+public interface SpotRemoteRefResolver {
+    CompletionStage<SpotRemoteRef> resolveSpotRemoteRefAsync(
         RoutingId spotRid);
 }
 
-public record ZLinkSpotRemoteAddress(
+public record SpotRemoteRef(
     String routerChannelId,
     RoutingId targetNodeRid,
     RoutingId spotRid,
@@ -727,11 +768,11 @@ public interface ZLinkRequestCall {
 
 public interface ZLinkSpotOutbound {
     <TMessage> ZLinkSendCall sendToSpot(
-        RoutingId spotRid,
+        SpotRef spotRef,
         TMessage message);
 
     <TMessage> ZLinkRequestCall requestToSpot(
-        RoutingId spotRid,
+        SpotRef spotRef,
         TMessage request);
 
     <TEvent> ZLinkPublishCall publish(
@@ -752,12 +793,7 @@ public interface ZLinkSpotOutbound {
 // (`ZLinkSpotActorRequestHandler<TSpot, TActor, ...>` 등)에서 가져오므로 별도 actorType
 // 인자를 받지 않는다.
 public interface ZLinkSpotHandlerRegistry {
-    void addPacket(Class<?> handlerType);
-    void addSubscribe(String topic, Class<?> handlerType);
     void addHandler(Class<?> handlerType);
-    void addActorPacket(Class<?> handlerType);
-    void addActorSend(Class<?> handlerType);
-    void addActorRequest(Class<?> handlerType);
 }
 
 public interface ZLinkSpotContext {
@@ -889,7 +925,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
     }
 
     default ZLinkSpotActorJoinResponse onActorJoin(
-        TActor actor,
+        ZLinkActorJoinAdmission admission,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.reject();

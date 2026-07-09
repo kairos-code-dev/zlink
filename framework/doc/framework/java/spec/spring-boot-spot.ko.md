@@ -87,7 +87,7 @@ cross-channel client를 먼저 설명하는 편이 맞다. 다만 실제 운영 
 spot-to-spot routed 호출은 남긴다. 다만 일반 channel messaging과 섞지 않고,
 advanced surface로 설명한다. 현재 SPOT 문맥의 `context.outbound()`(`ZLinkSpotOutbound`)
 가 target SPOT `RoutingId` 하나만 받아 routed request 를 보낸다. target node 와 route
-channel 해소는 `ZLinkSpotRemoteAddressResolver` 가 맡는다.
+channel 해소는 `SpotRemoteRefResolver` 가 맡는다.
 
 ```java
 context.outbound()

@@ -146,7 +146,7 @@ handler 를 맡는다.
 - TicTacToe 는 Api + Play 직접 연결 단일 구조를 따른다.
 - Play 서버는 Domain / Application / Infrastructure 구조를 유지한다.
 - Entry Spot 과 game room Spot 의 actor packet handler 는
-  `Context.Handlers.AddActorRequest<THandler, TActor>(...)` 로 등록하고, game room Spot 의
+  `Context.Handlers.AddHandler<THandler>()` 로 등록하고, game room Spot 의
   join admission 은 `OnActorJoinAsync(...)` 로 선언한다.
 
 ## 5. 회귀 테스트

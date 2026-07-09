@@ -260,8 +260,7 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
 - session disconnect는 bound actor 전체에 자동 전파되지 않는다. 필요한 actor에게만
   `ZLinkSessionActor.notifyDisconnected()`를 호출한다(위 `onDisconnectedSuspending` 예).
 - actor 위치 조회용 public resolver는 없다. actor<->session binding은 framework
-  내부 상태다. Spot owner 조회만 `useRegistrySpotRemoteAddresses(...)` 또는 custom
-  `addSpotRemoteAddressResolver(...)`로 public이다.
+  내부 상태다. Spot owner 조회만 registry 기반 resolver나 사용자가 등록한 resolver를 통해 public이다.
 
 ## 7. 더 보기
 

@@ -97,8 +97,8 @@ public final class PlayerEntrySpot implements ZLinkEntrySpot<PlayerActor> {
 
     @Override
     public void configure() {
-        context.handlers().addActorPacket(AuthenticateHandler.class);
-        context.handlers().addActorPacket(JoinMatchHandler.class);
+        context.handlers().addHandler(AuthenticateHandler.class);
+        context.handlers().addHandler(JoinMatchHandler.class);
     }
 }
 ```
@@ -252,8 +252,8 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
 - session disconnect는 bound actor 전체에 자동 전파되지 않는다. 필요한 actor에게만
   `ZLinkSessionActor.notifyDisconnected()`를 호출한다.
 - actor 위치 조회용 public resolver는 없다. actor<->session binding은 framework
-  내부 상태다. Spot owner 조회만 `useRegistrySpotRemoteAddresses(...)` 또는 custom
-  `addSpotRemoteAddressResolver(...)`로 public이다.
+  내부 상태다. Spot owner 조회만 `useRegistrySpotRemoteRefs(...)` 또는 custom
+  `addSpotRemoteRefResolver(...)`로 public이다.
 
 ## 7. 더 보기
 

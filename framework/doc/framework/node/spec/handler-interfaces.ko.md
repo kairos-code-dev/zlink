@@ -16,6 +16,10 @@ builder 정의** 를 한곳에 모아 두는 카탈로그다.
 를 TypeScript / NestJS 표면으로 옮긴 결과다. 번역 규칙은
 [.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
 이 소유한다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
+다만 Spot Actor Join / Transfer 관련 interface 는
+[공통 스펙](../../common/spec/spot-actor.ko.md)을 만족하기 위한 목표 공개 계약이다.
+현재 Node.js 구현이 이 표면과 다르면 구현 완료가 아니라 public contract parity gap으로
+기록하고, 구현 작업에서 이 문서에 맞춘다.
 
 이 문서대로 구현하면 .NET 버전과 **동일한 계약 표면**(contract surface)을 가진 Node.js
 framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, 표면만 NestJS / TypeScript
@@ -132,6 +136,7 @@ export interface ActorRef {
 | handler | `ZLinkSessionPacketHandler<TSessionContext>` | session packet handler | 4.4 |
 | dispatcher | `ZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler dispatch | 4.4 |
 | handler | `ZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
+| handler | `ZLinkActorTransferAdapter<TActor>` | remote actor transfer에서 actor state를 선택적으로 `ZLinkMessage`로 전달하고 target actor를 materialize하는 actor type별 adapter | 4.4.1 |
 | context | `ZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
 | call | `ZLinkActorJoinSpotCall` | actor → user Spot join 빌더 | 4.4.1 |
 | call | `ZLinkActorJoinEntrySpotCall` | actor → Entry Spot join 빌더 | 4.4.1 |
@@ -418,7 +423,27 @@ export interface ZLinkEntrySpot {
 
   onLeaveActor?(actor: ZLinkActor): Promise<void>;
 }
+
+export interface ZLinkActorJoinAdmission {
+  readonly actorId: string;
+  readonly actorType: Type<ZLinkActor>;
+  readonly sourceSpotRid: RoutingId;
+  readonly targetSpotRid: RoutingId;
+  readonly sourceNodeRid: RoutingId;
+  readonly targetNodeRid: RoutingId;
+}
+
+export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
+  transferOut(actor: TActor, signal?: AbortSignal): Promise<ZLinkMessage>;
+
+  transferIn(actorId: string, state: ZLinkMessage, signal?: AbortSignal): Promise<TActor>;
+}
 ```
+
+`ZLinkActorTransferAdapter<TActor>` 등록은 remote transfer 지원 여부를 나타낸다. 등록이 없으면
+framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
+stateless transfer adapter 등록 API를 사용한다. 이 기본 adapter는 source에서 빈 `ZLinkMessage`를 보내고,
+target에서 기존 actor factory 또는 public actor 생성 경로로 `TActor` instance를 만든다.
 
 > 코드 기준(중요): dotnet `IZLinkSpotContext` 는 handler 등록 표면과 outbound 표면을
 > **interface 상속**으로 합치지 않는다. 대신 `Handlers` / `Outbound` 두 sub-property 로
@@ -646,15 +671,18 @@ user Spot handler 는 spot 객체와 actor 객체를 함께 받는다. room/game
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후 후속 처리는
 Spot 멤버 `onJoinedActor(actor)` 와 `onLeaveActor(actor)` 로 선언한다.
-user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(actor, request)` 가
+user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(admission, request)` 가
 맡는다. Entry Spot 도 명시적 `joinEntrySpot(nodeRid, request)` 재진입에 대해 같은
-`onActorJoin(actor, request)` admission 을 선택적으로 선언할 수 있다. Entry Spot 이
+`onActorJoin(admission, request)` admission 을 선택적으로 선언할 수 있다. Entry Spot 이
 `onActorJoin` 을 선언하지 않으면 재진입은 그대로 accept 된다. actor 최초 생성 직후 첫 Entry
 Spot 배치는 admission 이 아니라 `onCreateActor(actor, createRequest)` 로만 처리한다.
 
 ```ts
 export class MatchSpot implements ZLinkSpot {
-  async onActorJoin(actor: PlayerActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(
+    admission: ZLinkActorJoinAdmission,
+    request: ZLinkMessage,
+  ): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 
@@ -951,14 +979,14 @@ join call object에서만 사용할 수 있으며, join completion을 기다리�
 
 ```ts
 export interface ZLinkSpot {
-  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal):
+  onActorJoin?(admission: ZLinkActorJoinAdmission, request: ZLinkMessage, signal?: AbortSignal):
     Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 ```
 
-Entry Spot 도 `onActorJoin?(actor, request)` 을 선택적으로 선언해 명시적 재진입
+Entry Spot 도 `onActorJoin?(admission, request)` 을 선택적으로 선언해 명시적 재진입
 (`joinEntrySpot(nodeRid, request)`) admission 을 처리할 수 있다. 선언하지 않은 Entry Spot
 재진입은 그대로 accept 된다. user Spot 과 Entry Spot 모두 `onActorJoin` 이
 `accepted: true` 를 반환할 때만 actor 위치를 commit 하고 `onJoinedActor` 를 호출한다.
@@ -1405,6 +1433,13 @@ export interface ZLinkFrameworkOptions {
   addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this;
   addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this;
   addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this;
+  addStatelessActorTransfer<TActor extends ZLinkActor>(
+    actorType: Type<TActor>,
+  ): this;
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: Type<TActor>,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>,
+  ): this;
   addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this;
   addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this;
   configureLocations(): ZLinkLocationOptions;

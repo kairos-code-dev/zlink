@@ -203,7 +203,7 @@ handler는 constructor injection을 사용한다. context에 Spring `Application
 | `UseFilter` | `useFilter` |
 | `ConfigureDispatch` | `configureDispatch` |
 | `spot.AddActorFactory` | `addSpotMesh(...).addActorFactory` |
-| `AddSpotRemoteAddressResolver` | `addSpotRemoteAddressResolver` |
+| `AddSpotRemoteRefResolver` | `addSpotRemoteRefResolver` |
 | removed registry-backed spot resolver | removed registry-backed spot resolver |
 
 ## 5. packet key와 handler 노출

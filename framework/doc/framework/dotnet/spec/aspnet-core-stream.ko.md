@@ -252,16 +252,17 @@ session 응답은 `Context.Client.Send(...)`, `Context.Client.Reply(...)` 같은
 사용하므로 raw `Message` 수명을 직접 다룰 일이 적다.
 
 session 이 일부 packet 만 직접 처리하고 나머지 정책을 스스로 정하고 싶을 때는
-`IZLinkSessionPacketHandler<TSessionContext>` 와
-`IZLinkSessionPacketDispatcher<TSessionContext>` 를 사용할 수 있다. dispatcher 는
-등록된 handler 의 `PacketName` 과 일치하는 packet 만 처리하고, 처리한 경우
-`true` 를 반환한다. 일치하는 handler 가 없으면 `false` 를 반환하며, 이 뒤에
-actor 로 relay 할지, 오류로 거절할지, 로그만 남길지는 session 구현체가 정한다.
-framework 는 이 단계에서 자동 relay 나 자동 무시 정책을 적용하지 않는다.
+session 의 `Configure()` 에서 `Context.Handlers.AddHandler<THandler>()` 로 handler class 를
+등록한다. handler 는 `IZLinkSessionPacketHandler<TSessionContext, TMessage>` 를 구현하고,
+framework 는 `TMessage` 타입 이름 또는 `ZLinkPacket` 이름으로 packet name 을 정한다.
+등록된 handler 가 packet 을 처리하면 `true` 를 반환한다. 일치하는 handler 가 없으면
+`false` 를 반환하며, 이 뒤에 actor 로 relay 할지, 오류로 거절할지, 로그만 남길지는
+session 구현체가 정한다. framework 는 이 단계에서 자동 relay 나 자동 무시 정책을
+적용하지 않는다.
 
-handler 가 받는 `payload` 도 `OnDispatchAsync(...)` 와 같은 framework `ZLinkMessage` 다.
-handler 구현은 DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
-context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
+handler 구현은 DI 를 사용할 수 있으며, runtime 은 등록된 handler class 를 service provider 로
+생성한다. packet 이름이 message type 과 다를 때만 `AddHandler<THandler>("packet-name")` 으로
+명시 이름을 넘긴다.
 
 여기서 기대하는 동작은 다음과 같다.
 

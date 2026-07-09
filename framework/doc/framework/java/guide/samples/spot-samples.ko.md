@@ -108,9 +108,9 @@ public final class StageHandlers {
 }
 ```
 
-`SPOT` 안에서 다른 channel을 호출할 때도 기본은 `channel name` 기준이다. spot 으로 보내는
-outbound 는 `sendToSpot/requestToSpot(RoutingId spotRid, ...)` 로 `spotRid` 를 받고, target node
-해석은 resolver 가 처리한다.
+`SPOT` 안에서 다른 channel을 호출할 때도 기본은 `channel name` 기준이다. 다른 spot으로 보내는
+outbound 는 `sendToSpot/requestToSpot(SpotRef spotRef, ...)` 로 전송 대상을 받는다. `spotRid`만으로
+전송하지 않고, 조회 단계에서 얻은 `SpotRef`를 전송 입력으로 넘긴다.
 
 ## 5. 외부 노드에서 `SPOT` publish
 

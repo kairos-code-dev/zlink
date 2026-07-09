@@ -104,21 +104,23 @@ builder.Services.AddZLinkFramework(options =>
 session 콜백은 인증을 먼저 처리하고, 인증된 actor handle 을 session 에 묶은 다음, 이후 들어오는
 packet 을 그 actor 로 넘긴다(어떤 API 가 무엇을 하는지는 아래 코드 주석 참고). 이때 `payload` 는
 framework `ZLinkMessage` 이며, relay API 에 그대로 넘기면 된다. 인증처럼 session 에서 직접 처리할
-packet 이 여러 개라면 `IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
-handler 로 보낼 수 있다. dispatcher 가 `false` 를 반환한 뒤 actor 로 relay 할지, 인증 오류를 낼지,
-로그만 남길지는 session 이 정한다.
+packet 이 여러 개라면 session 의 `Configure()` 에서 handler class 를 등록한다. registry 가
+`false` 를 반환한 뒤 actor 로 relay 할지, 인증 오류를 낼지, 로그만 남길지는 session 이 정한다.
 
 ```csharp
-public sealed class TicTacToeSession(
-    IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers) : IZLinkSession
+public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddHandler<AuthenticateSessionPacketHandler>(); // 인증 packet handler 등록
+    }
 
     public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
-        if (await handlers.TryHandleAsync(context, dispatch, payload, ct))
+        if (await Context.Handlers.TryHandleAsync(dispatch, payload, ct)) // 등록된 handler 만 처리한다
         {
             return;
         }
@@ -148,18 +150,15 @@ public sealed class TicTacToeSession(
 }
 
 public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
-    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthReq>
 {
-    public string PacketName => "auth";
-
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        ZLinkMessage payload,
+        AuthReq request,
         CancellationToken ct)
     {
         _ = dispatch;
-        var request = payload.Decode<AuthReq>();
         ActorRef actor = await actors.GetOrCreateAsync(
             request.ActorId,
             "player",

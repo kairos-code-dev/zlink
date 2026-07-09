@@ -598,20 +598,20 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 session 은 이 값을 decode 하거나 `IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다.
 
 session 전용 packet handler 를 나누고 싶을 때는
-`IZLinkSessionPacketDispatcher<TSessionContext>` 를 session 생성자에 주입한다.
-dispatcher 는 `IZLinkSessionPacketHandler<TSessionContext>` 구현 중 packet name 이
-맞는 handler 만 호출하고, 미등록 packet 은 `false` 로 돌려준다. 미등록 packet 을
-actor 로 relay 할지, 거절할지, 로그만 남길지는 application session 이 결정한다.
+session 의 `Configure()` 에서 `Context.Handlers.AddHandler<THandler>()` 로 handler class 를
+등록한다. handler 는 `IZLinkSessionPacketHandler<TSessionContext, TMessage>` 를 구현하고,
+framework 는 `TMessage` 를 decode 해서 넘긴다. 미등록 packet 을 actor 로 relay 할지,
+거절할지, 로그만 남길지는 application session 이 결정한다.
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkSession` | stream session. `Context` + `OnConnectedAsync`/`OnDisconnectedAsync`/`OnErrorAsync` + 기본 구현 `OnDispatchAsync` |
-| `IZLinkSessionContext` | session 식별값과 `Client`, `Actors`, `CloseAsync` 를 가진 root context |
+| `IZLinkSessionContext` | session 식별값과 `Client`, `Actors`, `Handlers`, `CloseAsync` 를 가진 root context |
 | `IZLinkSessionClient` | client 로의 push(`Send(msg)`) / 요청 응답(`Reply(msg)`) |
 | `IZLinkSessionActors` | actor binding/lookup(`Bound`, `BindAsync`, `BindAsync(ActorRef, ...)`, `Find`) |
 | `IZLinkSessionActor` | session-bound actor handle. `RelayAsync`, `NotifyDisconnectedAsync` 로 대상 actor 에게 명시 동작을 보냄 |
-| `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 framework `ZLinkMessage` |
-| `IZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler 만 호출하고 미등록 packet 은 `false` 반환 |
+| `IZLinkSessionHandlerRegistry` | session `Configure()` 에서 handler class 를 등록하고, dispatch 때 등록된 handler 만 호출 |
+| `IZLinkSessionPacketHandler<TSessionContext, TMessage>` | session 이 직접 처리할 typed packet handler |
 | `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Submit()`) |
 | `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Submit()`) |
 | `IZLinkSessionActor` | session relay 용 actor handle(`ActorId`, `Ref`, `RelayAsync`, `NotifyDisconnectedAsync`) |

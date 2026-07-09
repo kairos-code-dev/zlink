@@ -63,7 +63,7 @@ monitoring configurer가 있을 때만 붙는다.
 ## 4. Startup validation
 
 - actor factory만 있고 SpotNode가 없으면 startup validation 오류다.
-- Registry-backed Spot remote address resolver를 쓰는데 discovery가 없으면 startup
+- Registry-backed Spot remote ref resolver를 쓰는데 discovery가 없으면 startup
   validation 오류다.
 - route mesh channel 없이 Registry-backed resolver를 쓰면 startup validation 오류다.
 - monitoring source 이름이 실제 source와 맞지 않으면 startup validation 오류다.
@@ -84,7 +84,7 @@ DI 노출 회귀는 Java Spring Boot starter 테스트(`ZLinkFrameworkAutoConfig
 | `addZLinkFramework_doesNotRegisterSpotPublisher_withoutPublisherCapability` | SpotNode가 있어도 publisher 역할이 없으면 Spot publisher service가 없다 |
 | `addZLinkFramework_registersSpotPublisher_whenPublisherCapabilityExists` | attached Spot publisher 역할이 있으면 Spot publisher service가 등록된다 |
 | `addZLinkFramework_registersBoundSessionFactory` | bound session factory는 framework runtime과 함께 항상 등록된다 |
-| `addZLinkFramework_allowsSpotRemoteAddressResolver_withoutSpotNode` | remote address 정보만 제공하는 서버는 SpotNode 없이 resolver를 등록할 수 있다 |
+| `addZLinkFramework_allowsSpotRemoteRefResolver_withoutSpotNode` | remote ref 정보만 제공하는 서버는 SpotNode 없이 resolver를 등록할 수 있다 |
 | `addZLinkFramework_doesNotRegisterSpotOutbound_withResolverOnly` | resolver만 있고 SpotNode가 없으면 `ZLinkSpotOutbound`는 없다 |
 | `routeClient_throwsConfigurationException_whenRouteChannelMissing` | route channel 누락 오류가 configuration error로 나온다 |
 | `channelClient_throwsConfigurationException_whenClientCapabilityMissing` | channel client 역할 누락 오류가 configuration error로 나온다 |

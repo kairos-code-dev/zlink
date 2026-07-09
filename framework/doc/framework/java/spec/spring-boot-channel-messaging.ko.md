@@ -169,7 +169,7 @@ endpoint를 연다. 다른 node로만 request/send를 보내는 runtime은 bind 
 `enableClient()`를 선언하고 Discovery로 peer를 찾거나, `enableClient(endpoint)`로
 수동 peer에 연결한다.
 
-Location store 기반 Spot remote address 기본 구현을 쓰려면 route mesh channel이 필요하다.
+Location store 기반 Spot remote ref 기본 구현을 쓰려면 route mesh channel이 필요하다.
 spot mesh 이름과 route mesh channel 이름이 다르면 `configureLocations()`에서
 spot router channel 매핑을 명시해야 한다.
 

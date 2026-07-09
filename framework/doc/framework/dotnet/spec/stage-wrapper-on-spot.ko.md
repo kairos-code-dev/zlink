@@ -181,7 +181,7 @@ actor 가 `Spot` 에 붙었다는 것은 단순히 membership table 에 등록�
    envelope로 정규화한다.
 5. 정규화된 dispatch를 해당 actor가 attach된 `Spot` runtime의 inbox에 넣는다.
 6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
-7. 그 실행기 안에서만 `Context.Handlers.AddActorRequest(...)` 같은 registry 메서드로
+7. 그 실행기 안에서만 `Context.Handlers.AddHandler<THandler>()` 같은 registry 메서드로
    등록한 actor handler가 호출된다.
 8. actor가 room 상태를 바꾸거나 `Spot` 메서드를 호출해도, 이미 같은 `Spot`의 실행
    문맥 안이므로 추가적인 lock이 필요 없다.

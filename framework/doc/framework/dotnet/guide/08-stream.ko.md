@@ -61,10 +61,10 @@ session 은 `IZLinkSession` 을 구현한다. framework 가 frame 을 디코드�
 않고, 일반적인 응답과 push 는 framework helper 를 쓴다(어떤 helper 가 그런지는 아래 코드
 주석 참고).
 여러 session 전용 packet 을 나누어 처리해야 하면
-`IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
-handler 로 보낼 수 있다. dispatcher 는 미등록 packet 을 자동 처리하지 않고
-`false` 를 반환한다. 그 뒤에 무시, 오류, actor relay 중 무엇을 할지는 session 이
-정한다.
+session 의 `Configure()` 에서 `Context.Handlers.AddHandler<THandler>()` 로 handler class 를
+등록한다. handler 는 `IZLinkSessionPacketHandler<TSessionContext, TMessage>` 를 구현하며,
+framework 는 `TMessage` 를 decode 해서 넘긴다. 미등록 packet 은 자동 처리하지 않고
+`false` 를 반환한다. 그 뒤에 무시, 오류, actor relay 중 무엇을 할지는 session 이 정한다.
 
 ```csharp
 public sealed class ClientHeaderSession(

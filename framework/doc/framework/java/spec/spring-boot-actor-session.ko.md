@@ -48,7 +48,7 @@ public class ActorConfig implements ZLinkFrameworkConfigurer {
 
 local managed actor instance를 `bind(ZLinkActor)`로 bind하는 경우 stream node는
 `.NET` direct stream과 같이 session relay 없이 actor packet을 framework 내부
-dispatch 경로로 전달한다. remote `ZLinkActorRef`를 bind하거나 별도 session gateway
+dispatch 경로로 전달한다. remote `ActorRef`를 bind하거나 별도 session gateway
 stream node가 해당 SpotNode의 SessionRelay에 연결되어야 한다. Java framework는 이
 의미를 route mesh channel packet으로 대신 구현하지 않는다.
 
@@ -69,14 +69,14 @@ public interface ZLinkActorFactory {
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ZLinkActorRef> create(String actorId, String actorType);
-    CompletionStage<ZLinkActorRef> create(
+    CompletionStage<ActorRef> create(String actorId, String actorType);
+    CompletionStage<ActorRef> create(
         String actorId,
         String actorType,
         ZLinkMessage createRequest);
-    CompletionStage<Optional<ZLinkActorRef>> find(String actorId);
-    CompletionStage<ZLinkActorRef> getOrCreate(String actorId, String actorType);
-    CompletionStage<ZLinkActorRef> getOrCreate(
+    CompletionStage<Optional<ActorRef>> find(String actorId);
+    CompletionStage<ActorRef> getOrCreate(String actorId, String actorType);
+    CompletionStage<ActorRef> getOrCreate(
         String actorId,
         String actorType,
         ZLinkMessage createRequest);
@@ -85,7 +85,7 @@ public interface ZLinkActorManager {
 
 `actorType`은 application이 정하는 짧은 문자열 키다. 같은 actor id를 다른
 actorType으로 다시 쓰면 설정 또는 런타임 오류로 실패해야 한다.
-manager 는 actor 객체를 직접 반환하지 않고 `ZLinkActorRef`를 반환한다. Spot 밖
+manager 는 actor 객체를 직접 반환하지 않고 `ActorRef`를 반환한다. Spot 밖
 public handler는 이 ref로 actor join/admission을 직접 수행하지 않는다. actor 초기
 상태는 create request와 Entry Spot의 create callback에서 설정한다.
 
@@ -97,14 +97,16 @@ public interface ZLinkSessionActors {
 
     CompletionStage<ZLinkSessionActor> bind(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor);
+    CompletionStage<ZLinkSessionActor> bind(ActorRef actor);
+
+    CompletionStage<ZLinkSessionActor> bindOrGet(ActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }
 
 public interface ZLinkSessionActor {
     String actorId();
-    ZLinkActorRef ref();
+    ActorRef ref();
 
     CompletionStage<Void> relay(
         ZLinkSessionDispatchContext dispatch,
@@ -114,11 +116,10 @@ public interface ZLinkSessionActor {
 }
 ```
 
-session은 local actor instance 또는 framework actor locator인 `ZLinkActorRef`에
+session은 local actor instance 또는 framework actor locator인 `ActorRef`에
 bind할 수 있다. local actor instance binding은 같은 framework runtime 안에서 handler
-annotation catalog를 사용해 dispatch한다. remote binding은 binding 내부의 `ActorRef`나
-actor route snapshot을 session public 입력으로 받지 않고, core SessionRelay와 logical
-actor handle을 사용한다.
+annotation catalog를 사용해 dispatch한다. remote binding은 actor 위치를 담은 `ActorRef`를
+session public 입력으로 받고, core SessionRelay와 logical actor handle을 사용한다.
 
 ## 5. Bound Session
 
@@ -167,7 +168,7 @@ public interface ZLinkActorJoinSpotCall {
 
 public record ZLinkActorJoinResult<TReply>(
     int resultCode,
-    ZLinkActorRef actor,
+    ActorRef actor,
     TReply reply) {
 }
 

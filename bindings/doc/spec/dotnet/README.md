@@ -53,8 +53,9 @@ Use these paths consistently when changing the .NET binding.
 
 - Public contract: `bindings/dotnet/src/Zlink/Contracts/`.
 - Runtime implementation: `bindings/dotnet/src/Zlink/Runtime/`.
-- Native bridge/artifacts: `bindings/dotnet/src/Zlink/Runtime/Native/`,
-  `bindings/dotnet/runtimes/`, and `bindings/dotnet/native/`.
+- Native bridge/artifacts: `bindings/dotnet/src/Zlink/Runtime/Native/` and
+  `bindings/dotnet/native/`. NuGet packages place these files under
+  `runtimes/<rid>/native/`.
 - Codec packages: not provided. .NET bindings keep only raw `Message` and byte
   payload APIs.
 - Tests: `bindings/dotnet/tests/Zlink.Tests/`.
@@ -203,7 +204,8 @@ The .NET binding uses a contract/runtime split.
   `Contracts/` interfaces or value types.
 - DTO, value, result, option, enum, and exception types stay concrete. Use
   `record`, `sealed class`, `readonly struct`, or `enum` according to normal
-  .NET usage.
+  .NET usage. Envelopes that own message parts and must be disposed use
+  `sealed class`, not `record`.
 - Operation builders are interfaces because they hide staged native request
   state and multipart accumulation.
 - Public static facades, extension methods, and builder convenience helpers are
@@ -286,6 +288,9 @@ defined only by the immutable byte value.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
+- Reply builders do not have a send-flags step. Core reply functions do not
+  accept send flags, so the .NET binding must not expose a no-op public
+  `Flags(...)` contract for replies.
 - Do not add single-payload shortcut overloads with the same name as an
   operation start method. `Send(Message)`, `Send(RoutingId, Message)`,
   `Publish(string, Message)`, `SendToChannel(string, Message)`, and
@@ -334,14 +339,19 @@ snapshots, and actor snapshots belong with SPOT node models.
 
 SPOT remains a single handle contract through `ISpot`. Do not split it into
 role interfaces unless callers actually need to accept those roles separately.
+`ISpotNode` may compose separate role interfaces for node configuration, peer
+connections, Spot creation, Actor operations, and topology queries. The
+default factory return type and user-facing handle remain `ISpotNode`, and
+role interfaces must not expose runtime implementation types.
 Use named callback delegates for SPOT callback registration so public
 signatures describe the callback meaning without adding wrapper context
 objects. Registration methods use `Set...Handler` names because the current
 handler is stored or replaced; `On...` names are reserved for methods that are
 called when an event happens. Declare those delegates next to `ISpot` because
-they are only used by the SPOT handle contract. Lifecycle data records stay
-with actor models. Actor operation contracts are split by join, management,
-and session binding.
+they are only used by the SPOT handle contract. Lifecycle data types stay
+with actor models. Lifecycle event envelopes that own message parts use
+sealed classes rather than copyable records. Actor operation contracts are
+split by join, management, and session binding.
 
 If a user or framework adapter needs a public API, it should be discoverable
 from this folder without reading P/Invoke or runtime bridge code.
@@ -478,6 +488,10 @@ SPOT is a service-layer API, not a raw socket leak.
   .NET argument/config exceptions before truncation can occur.
 - Submit, request, recv, handler, close, bind, connect, and config errors map
   to typed zlink exceptions.
+- Public constructors on typed zlink exceptions must reject the success value
+  `Ok`. The `Ok` enum member stays as the native result mirror, but public
+  constructors accept only failure codes. Constructors that also accept native
+  errno are for runtime-internal conversion and are not public surface.
 - No-data and temporary backpressure are not reported as generic exceptions.
 - Public APIs must not require callers to inspect native errno directly.
 

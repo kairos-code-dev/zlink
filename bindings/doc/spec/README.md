@@ -1205,9 +1205,9 @@ streamSocket.bindActor(sessionRid, actorRef)
   네 가지이며 기본값은 balanced 이다. context message unit 기본값 `0`은 소켓
   타입별 기본 메시지 단위를 쓰겠다는 뜻이다.
 - `MonitorStatus` 은 core `zlink_monitor_status_t` 의 auto-HWM v2 진단 필드를
-  빠뜨리지 않고 노출해야 한다. enabled, profile, role, policy class,
+  빠뜨리지 않고 노출해야 한다. enabled, profile enum, role, policy class,
   unit budget, size cap, socket message slots, effective message bytes,
-  applied HWM, recent recalculation, deferred shrink, blocked ratio 는
+  applied HWM, recent recalculation reason enum, deferred shrink, blocked ratio 는
   public snapshot 계약에 포함된다.
 - SPOT node option 이름은 core 공개 enum을 그대로 따른다. 방향별 HWM option이나
   delivery queue hard-limit option은 노출하지 않는다. 노출 대상은
@@ -1328,6 +1328,9 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   함께 message를 caller에게 돌려줘야 한다. join completion은 전용 `actor join`
   result 타입으로 최종 Actor ref(remote join이면 target node의 ref)와 joined
   Spot rid를 application에 전달해야 한다.
+- Request-reply surfaces expose only the payload parts supported by core reply
+  functions. Core reply functions do not accept send flags, so bindings must
+  not add a no-op flag-setting step to reply builders.
 - remote Actor 생성과 admission handler는 공개 표면에서 제거되었다. 원격 노드에서
   시작해야 하는 Actor는 application이 해당 SpotNode에서 직접 `actor_new`로
   생성한다. 원격 Actor의 checked ref가 필요하면 async `remote_actor_get_ref`
@@ -2087,11 +2090,11 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 | 구성 | 타입 | 의미 |
 |------|------|------|
 | `source_kind` | enum | 모니터 대상 종류 |
-| `state_flags` | `uint32` | 상태 비트마스크 |
-| `detail_flags` | `uint32` | 세부 비트마스크 |
+| `state_flags` | enum flags | 상태 비트마스크 |
+| `detail_flags` | enum flags | 세부 비트마스크 |
 | `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
 | `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
-| `auto_hwm_*` diagnostic fields | number / bigint | C `zlink_monitor_status_t`의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. enabled, profile, role, policy class, unit budget, size cap, socket message slots, effective message bytes, applied HWM, applied buffer, 최근 재계산 정보, deferred shrink, blocked ratio를 포함한다 |
+| `auto_hwm_*` diagnostic fields | enum / number / bigint | C `zlink_monitor_status_t`의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. enabled, profile(enum), role, policy class, unit budget, size cap, socket message slots, effective message bytes, applied HWM, applied buffer, 최근 재계산 이유(enum), deferred shrink, blocked ratio를 포함한다 |
 | `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
 
 #### 서비스 계층 엔트리 객체
@@ -2452,12 +2455,12 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 | `ActorRef` | `node_rid`, `actor_id`, `generation` |
 | `ActorRoute` | route 대상 Actor, current Spot routing id, current Spot kind |
 | `ActorRecvInfo` | 수신 Actor, source node/session routing id, flags |
-| `ActorReceived` | `ActorRecvInfo`, payload parts. 이름은 언어 관례에 따라 바꿀 수 있지만 part 단위 loop와 `has_more`는 public field로 노출하지 않는다 |
-| `ActorJoinInfo` + join message | join 요청 판단과 응답에 필요한 `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, join message. 언어 관례에 따라 `ActorJoinRequest` wrapper나 tuple/pair로 묶을 수 있다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
+| `ActorReceived` | `ActorRecvInfo`, payload parts. 이름은 언어 관례에 따라 바꿀 수 있지만 part 단위 loop와 `has_more`는 public field로 노출하지 않는다. payload parts를 소유하는 언어에서는 복제 가능한 record/value가 아니라 dispose 가능한 envelope로 노출한다 |
+| `ActorJoinInfo` + join message | join 요청 판단과 응답에 필요한 `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, join message. 언어 관례에 따라 `ActorJoinRequest` wrapper나 tuple/pair로 묶을 수 있다. join message를 소유하는 wrapper는 dispose 가능해야 한다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
 | `ActorJoinResult` | join completion에 전달. `result`, 최종 `actor` ref(remote join이면 target node ref), `joined_spot_rid`, `join_epoch`, `flags` |
 | `ActorJoinEntrySpotResult` | Entry Spot join completion에 전달. `result`, 최종 `actor` ref, `target_node_rid`, `join_epoch`, `flags`. join message나 reply payload는 없다 |
 | `ActorLookupResult` | remote Actor lookup completion에 전달. `result`, checked `actor` ref, `flags` |
-| `SpotActorLifecycleEvent` | Spot lifecycle readable event를 drain한 결과. `kind`, `info` |
+| `SpotActorLifecycleEvent` | Spot lifecycle readable event를 drain한 결과. `kind`, `info`. request parts를 함께 소유하는 언어에서는 복제 가능한 record/value가 아니라 dispose 가능한 envelope로 노출한다 |
 | `SpotActorLifecycleInfo` | Spot lifecycle event에 포함된다. `previous_actor`, `current_actor`, `previous_spot_rid`, `current_spot_rid`, `join_epoch`, `flags` |
 | `SpotNodeSpotEntry` | Spot routing id, Entry/User Spot kind, dispatch handler 여부, joined/pending Actor 수, route sync 상태, 변경 시각 |
 | `SpotNodeActorEntry` | Actor ref, current Spot routing id, current Spot kind, route sync 상태, pending message 수, 변경 시각 |
@@ -2485,6 +2488,9 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 - Spot join request는 message를 포함한다. join reply도 accept/reject 결과와
   함께 message를 caller에게 돌려줘야 한다. join completion은 `ActorJoinResult`
   값으로 caller에게 최종 Actor ref와 joined Spot rid를 전달한다.
+- Request-reply surfaces expose only the payload parts supported by core reply
+  functions. Core reply functions do not accept send flags, so bindings must
+  not add a no-op flag-setting step to reply builders.
 - `ActorJoinInfo`가 native `zlink_actor_join_info_t`의 모든 필드를 public
   field로 노출해야 한다는 뜻은 아니다. 언어별 binding은 reply에 필요한 native
   request context를 opaque 내부 상태로 보관한다. public 값 객체에는 사용자가
@@ -2635,7 +2641,9 @@ current APIs.
 - Advanced / Diagnostic domain object:
   - `SpotNodePeerEntry`: peer 정보
   - `SpotNodeSubjectEntry`: subject 정보
-  - `SpotNodeSocketEntry`: 내부 socket 진단 정보
+  - `SpotNodeSocketEntry`: internal socket diagnostic information. Socket
+    kind uses the shared `SocketType` enum; bindings must not add a separate
+    SpotNode-only socket type enum with the same values.
   - `SpotNodeSpotEntry`: node 소유 Spot 정보
   - `SpotNodeActorEntry`: node 소유 Actor route 정보
 - 필터 객체:
@@ -2643,6 +2651,8 @@ current APIs.
   - `SpotNodeSubjectFilter`: subject 조회 필터
   - `SpotNodeSocketFilter`: 내부 socket 진단 필터
 - enum/value object:
+  - `SocketType`: socket kind shared by ordinary sockets and SpotNode internal
+    socket diagnostics
   - `SpotRole`: `PUB`, `SUB`
   - `SubjectKind`: `NONE`, `TOPIC`, `PATTERN`
   - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, `ERROR`

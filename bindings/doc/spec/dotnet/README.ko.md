@@ -51,7 +51,8 @@ contract/runtime 소유, 공개 계약 카테고리, 파일 분할 기준, 검�
 - 공개 계약: `bindings/dotnet/src/Zlink/Contracts/`.
 - 런타임 구현: `bindings/dotnet/src/Zlink/Runtime/`.
 - 네이티브 브리지/아티팩트: `bindings/dotnet/src/Zlink/Runtime/Native/`,
-  `bindings/dotnet/runtimes/`, `bindings/dotnet/native/`.
+  `bindings/dotnet/native/`. NuGet package 안에서는 이 파일들이
+  `runtimes/<rid>/native/` 구조로 배치된다.
 - 코덱 package: 제공하지 않는다. .NET 바인딩은 raw `Message`와 byte payload API만
   유지한다.
 - 테스트: `bindings/dotnet/tests/Zlink.Tests/`.
@@ -191,7 +192,8 @@ socket 인터페이스, `ISpotNode`, `IPoller`, `IZlinkTimer` 같은 공개 계�
   반드시 `Contracts/` 인터페이스나 값 타입으로 포괄된다.
 - DTO, value, result, option, enum, exception 타입은 구체 타입으로 유지한다.
   통상의 .NET 관례대로 `record`, `sealed class`, `readonly struct`, `enum`을
-  사용한다.
+  사용한다. 메시지 part를 소유해 dispose해야 하는 envelope는 `record`가 아니라
+  `sealed class`로 둔다.
 - operation builder는 단계별 네이티브 request 상태와 multipart 누적을 숨기기
   위해 인터페이스로 둔다.
 - 공개 static facade, 확장 메서드, builder convenience 헬퍼는 호출자가 직접
@@ -274,6 +276,9 @@ receive-path 값을 캐시할 수 있지만, equality와 공개 동작은 오직
 - builder의 시작 메서드는 target identity, topic, channel, routing id,
   request 시퀀스만 받는다. payload, flag, timeout, callback, 비동기 submit
   선택은 builder 단계에서 처리한다.
+- reply builder는 send flag 단계를 갖지 않는다. core reply 함수는 send flag
+  인자를 받지 않으므로, .NET binding은 no-op `Flags(...)`를 public 계약으로
+  노출하지 않는다.
 - operation 시작 메서드와 같은 이름을 가진 single-payload 단축 오버로드를
   추가하지 않는다. `Send(Message)`, `Send(RoutingId, Message)`,
   `Publish(string, Message)`, `SendToChannel(string, Message)`,
@@ -319,12 +324,16 @@ snapshot, Spot snapshot, actor snapshot은 SPOT node 모델에 속한다.
 
 SPOT은 `ISpot`이라는 단일 핸들 계약으로 유지한다. 호출자가 실제로 그 역할들을
 개별로 받아야 하는 경우가 아니라면 역할별 인터페이스로 쪼개지 않는다.
+`ISpotNode`는 node 설정, peer 연결, Spot 생성, Actor 작업, topology 조회 역할을
+별도 인터페이스로 나누어 조합할 수 있다. 그래도 기본 생성 경로와 사용자-facing
+반환 타입은 `ISpotNode`이며, 역할 인터페이스가 런타임 구현 타입을 노출하면 안 된다.
 SPOT 콜백 등록에는 명명된 콜백 delegate를 사용해 공개 시그니처가 래퍼 context
 객체를 추가하지 않고도 콜백의 의미를 기술하도록 한다. 등록 메서드는 현재
 핸들러가 저장되거나 교체되기 때문에 `Set...Handler` 이름을 쓴다. `On...`
 이름은 이벤트가 발생할 때 호출되는 메서드 전용이다. 이 delegate들은 SPOT
-핸들 계약에서만 사용되므로 `ISpot` 옆에 선언한다. Lifecycle data record는
-actor 모델과 함께 둔다. Actor operation 계약은 join, management, session
+핸들 계약에서만 사용되므로 `ISpot` 옆에 선언한다. Lifecycle data type은
+actor 모델과 함께 둔다. 메시지 part를 소유하는 lifecycle event envelope는
+복제 가능한 record가 아니라 sealed class로 둔다. Actor operation 계약은 join, management, session
 binding으로 나눈다.
 
 사용자 또는 프레임워크 어댑터가 공개 API를 필요로 한다면, 그 API는
@@ -458,6 +467,10 @@ SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
   발생하기 전에 .NET argument/config 예외를 발생시킨다.
 - submit, request, recv, handler, close, bind, connect, config 에러는
   타입화된 zlink 예외로 사상된다.
+- 타입화된 zlink 예외의 공개 생성자는 성공 값인 `Ok`를 받으면 안 된다. `Ok`
+  enum 멤버는 native result mirror로 남기되, public constructor는 실패 코드만
+  받는다. native errno를 함께 받는 생성자는 runtime 내부 변환용이며 public
+  surface가 아니다.
 - 데이터 없음과 일시적 backpressure는 일반 예외로 보고하지 않는다.
 - 공개 API는 호출자가 네이티브 errno를 직접 검사하도록 요구하지 않는다.
 

@@ -11,6 +11,7 @@ internal sealed record ClientOptions(
     string ThrowServiceUrl,
     string ThrowChannelEndpoint,
     string FilteredServiceProject,
+    string Scenario,
     string LogDir)
 {
     public static ClientOptions Parse(string[] args)
@@ -45,6 +46,9 @@ internal sealed record ClientOptions(
             Get("--throw-service-url"),
             Get("--throw-channel-endpoint"),
             Get("--filtered-service-project"),
+            values.TryGetValue("--scenario", out var scenario) && !string.IsNullOrWhiteSpace(scenario)
+                ? scenario
+                : "all",
             Get("--log-dir"));
     }
 }

@@ -12,5 +12,6 @@
 | TA-B2 | 구현 | caller 서버는 framework `ActorLocationStale` kind를 그대로 JSON으로 반환한다. supervisor는 stale row 조작 뒤 같은 endpoint로 검증한다. |
 | TA-B3 | 구현 | caller 서버는 framework `RouteNotConnected` kind를 그대로 JSON으로 반환한다. supervisor는 actor row는 남기고 route plane을 끊은 뒤 같은 endpoint로 검증한다. |
 
-`run_e2e.sh`는 Redis, actor owner 서버, caller 서버, client runner를 모두 띄운다. 실행 환경에서 Docker를
-쓸 수 없으면 `ZLINK_REDIS_E2E_ENDPOINT=host:port`로 외부 Redis를 지정한다.
+`run_e2e.sh`는 실행마다 전용 Docker Redis container, actor owner 서버, caller 서버, client runner를
+모두 띄운다. 이미 떠 있는 Redis나 host Redis endpoint를 재사용하지 않는다. Docker를 사용할 수 없으면
+명확한 오류를 출력하고 중단한다.

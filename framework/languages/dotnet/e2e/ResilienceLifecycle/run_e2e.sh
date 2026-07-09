@@ -2,12 +2,19 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$ROOT_DIR/../redis-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
-SCENARIO="${1:-all}"
+if [[ "$#" -eq 0 ]]; then
+  SCENARIO="all"
+else
+  SCENARIO="$*"
+  SCENARIO="${SCENARIO// /,}"
+fi
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
+REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -153,9 +160,13 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the ResilienceLifecycle E2E (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER="resilience-e2e-redis-$$"
-docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+zlink_redis_start_scoped_assign \
+  REDIS_CONTAINER \
+  REDIS_ENDPOINT \
+  "zlink-redis-dotnet-e2e-resilience-lifecycle" \
+  "redis:7.2-alpine" \
+  "$LOG_DIR"
+zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="resilience-e2e:$$:"
 
 start_server api-a "$PROVIDER_PROJECT" \

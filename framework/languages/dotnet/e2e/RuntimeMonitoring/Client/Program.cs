@@ -3,14 +3,35 @@ using RuntimeMonitoring.Client.Support;
 
 var options = ClientOptions.Parse(args);
 
-await MonA1SocketEventsScenario.RunAsync(options);
-await MonA2RegistryEventsScenario.RunAsync(options);
-await MonA3SpotEventsScenario.RunAsync(options);
-await MonA4AvailabilityTransitionScenario.RunAsync(options);
-await MonA5FixedKindsScenario.RunAsync(options);
-await MonB1KindFilterScenario.RunAsync(options);
-await MonB2RegistrationValidationScenario.RunAsync(options);
-await MonC1DispatchFailureScenario.RunAsync(options);
-await MonD1FailureRecoveryScenario.RunAsync(options);
+var scenarios = new (string Name, Func<Task> Run)[]
+{
+    ("MON-A1", () => MonA1SocketEventsScenario.RunAsync(options)),
+    ("MON-A2", () => MonA2RegistryEventsScenario.RunAsync(options)),
+    ("MON-A3", () => MonA3SpotEventsScenario.RunAsync(options)),
+    ("MON-A4", () => MonA4AvailabilityTransitionScenario.RunAsync(options)),
+    ("MON-A5", () => MonA5FixedKindsScenario.RunAsync(options)),
+    ("MON-B1", () => MonB1KindFilterScenario.RunAsync(options)),
+    ("MON-B2", () => MonB2RegistrationValidationScenario.RunAsync(options)),
+    ("MON-C1", () => MonC1DispatchFailureScenario.RunAsync(options)),
+    ("MON-D1", () => MonD1FailureRecoveryScenario.RunAsync(options))
+};
+
+foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Select(scenario => scenario.Name)))
+{
+    var selected = scenarios.FirstOrDefault(scenario =>
+        string.Equals(scenario.Name, name, StringComparison.OrdinalIgnoreCase));
+    if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{name}'.");
+
+    await selected.Run();
+}
 
 Console.WriteLine("runtime-monitoring client result=passed");
+
+static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<string> allNames)
+{
+    if (string.Equals(selector, "all", StringComparison.OrdinalIgnoreCase))
+        return allNames;
+
+    return selector
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}

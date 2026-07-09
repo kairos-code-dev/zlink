@@ -291,12 +291,24 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 
 ### 2.5 `run_e2e.*` 실행 계약
 
-모든 언어의 실행 스크립트는 같은 사용 의미를 가져야 한다.
+모든 언어의 실행 스크립트는 같은 사용 의미와 같은 Redis 구동 방식을 가져야 한다.
+
+기준 템플릿은 이 디렉토리의 `runner-templates/` 아래에 둔다.
+
+- `runner-templates/redis-common.template.sh`: Redis helper 기준
+- `runner-templates/run_e2e.template.sh`: 개별 config e2e runner 기준
+- `runner-templates/run_e2e_all.template.sh`: 통합 e2e runner 기준
 
 - 기본 실행은 해당 config의 구현된 시나리오를 순차 실행한다.
-- 단일 시나리오 실행을 지원한다. 예: `./run_e2e.sh RC-B2`, `./run_e2e.sh RL-A4`.
+- 개별 config runner는 단일 시나리오와 시나리오 리스트 실행을 지원한다. 예:
+  `./run_e2e.sh RC-B2`, `./run_e2e.sh RL-A4`, `./run_e2e.sh RL-A4,RL-C2`,
+  `./run_e2e.sh RL-A4 RL-C2`. 쉼표와 공백 인자는 같은 의미이며, runner는 이를
+  client가 이해하는 하나의 scenario selector로 정규화해서 전달한다.
 - 스크립트는 build → 로그 디렉토리 생성 → 서버 시작 → readiness 확인 → client 실행 → 서버 종료
   순서를 책임진다.
+- 각 언어는 e2e runner들이 공유하는 Redis helper를 둔다. helper는 "prefix로 남은 container
+  정리"와 "scoped Redis container 시작"을 공통 함수로 제공하고, 개별 config script가 Docker
+  명령을 직접 조합하지 않게 한다.
 - readiness는 고정 sleep만으로 보지 않는다. 각 role server의 `/health`, 포트 open, 또는 명시 marker로
   확인한다.
 - 실패 시 `log_dir=...`를 출력하고, 각 role server와 client의 stdout/stderr/framework log를 남긴다.
@@ -304,6 +316,47 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 - scale-out, restart, crash, store outage처럼 프로세스 제어가 필요한 경우는 스크립트나 client
   support process manager가 담당한다. framework request/send/publish 자체는 실제 역할 server endpoint
   내부에서만 수행한다.
+- Redis location store가 필요한 config의 개별 `run_e2e.*`는 실행마다 전용 Docker Redis
+  container를 새로 띄운다. 이미 떠 있는 Redis container나 host Redis endpoint를 재사용하면
+  안 된다. Redis key prefix가 달라도 장애 주입, pause/stop/restart, flush, cleanup, latency
+  injection이 다른 실행에 영향을 줄 수 있기 때문이다. 실행 종료 시에는 자신이 만든 container
+  id만 정리한다. 개별 script가 같은 prefix의 다른 Redis container를 지우면 안 된다.
+- Redis container 시작은 모든 언어에서 같은 순서를 쓴다.
+  `docker create --name <scoped-name> -p 127.0.0.1::6379 <pinned-redis-image>`로 container를
+  만들고, `docker start <container-id>`로 시작한 뒤, `docker inspect`로 실행 상태와 배정된
+  host port를 읽는다. `docker run -d` 출력에 의존해 container id와 port를 동시에 처리하는
+  방식은 쓰지 않는다.
+- Redis container 이름에는 언어와 e2e 실행 범위를 드러내는 prefix를 붙인다. 예를 들어 Java e2e는
+  `zlink-redis-java-e2e...`, Kotlin e2e는 `zlink-redis-kotlin-e2e...`처럼 잡는다. 다른 언어도
+  같은 규칙으로 `<language>-e2e` 범위를 이름에서 확인할 수 있어야 한다.
+- 통합 e2e runner는 시작 시 해당 언어의 e2e prefix로 남아 있는 Redis container를 반드시 정리한 뒤,
+  config별 개별 `run_e2e.*`를 순차 호출한다. 전체 runner와 개별 runner 모두 config를 병렬 실행하지
+  않는다.
+- 통합 e2e runner도 실행 대상을 좁힐 수 있어야 한다. 인자가 없으면 모든 config의 `all`을 실행하고,
+  인자가 있으면 지정한 config만 실행한다. config 안의 일부 시나리오만 실행할 때는
+  `Config:ScenarioA,ScenarioB` 형식을 사용한다. 예: `./run_e2e_all.sh RegistrationCodec:RC-B2,RC-B4`
+  또는 `./run_e2e_all.sh ResilienceLifecycle:RL-A4,RL-C2 PubSub:PS-A1`. 통합 runner는 이 선택
+  정보를 해석만 하고, 실제 readiness, Redis endpoint 생성, server 시작, client scenario 실행은
+  해당 config의 개별 `run_e2e.*`에 위임한다.
+- 통합 e2e runner는 config별 내부 동작을 다시 구현하지 않는다. prefix cleanup을 한 뒤 개별
+  `run_e2e.*`를 호출하고, retry 여부와 최종 결과만 관리한다. Redis endpoint 생성, readiness,
+  로그 위치, scenario 실행 세부 절차는 개별 config script와 공통 helper가 맡는다.
+- Redis host port는 고정하지 않는다. Docker가 비어 있는 loopback port를 배정하게 하고, runner가
+  inspect 결과로 endpoint를 얻어 각 role server와 client에 전달한다. Redis key prefix, routing id,
+  log directory도 실행마다 고유해야 한다.
+- 같은 host에서 다른 sample/e2e가 Redis를 사용 중이어도 그 endpoint를 빌려 쓰지 않는다. 새
+  Docker Redis container를 만들고 Docker가 할당한 다른 loopback port를 사용해야 테스트 간섭을
+  막을 수 있다.
+- Docker 명령 자체는 짧은 timeout으로 감싸고, Redis readiness는 port/readiness 대기 함수로 따로
+  확인한다. Redis 시작이 늦은 경우와 Docker CLI가 응답하지 않는 경우를 같은 sleep으로 처리하지 않는다.
+- Redis helper가 실패하면 개별 runner도 즉시 실패해야 한다. shell runner에서는
+  `read ... < <(redis_start_function)`처럼 process substitution 결과를 읽는 방식으로 container id를
+  받지 않는다. 이 방식은 helper가 실패해도 `read` 자체는 성공할 수 있어 Redis 없이 서버를 띄우는
+  잘못된 실행으로 이어진다. helper는 `zlink_redis_start_scoped_assign`처럼 호출부 변수에 값을
+  대입하는 함수로 제공하고, 함수 실패가 그대로 runner 실패가 되게 한다.
+- 통합 e2e runner는 transient bind 실패(`Address already in use`, `EADDRINUSE`,
+  `errno=98`)만 제한적으로 retry할 수 있다. scenario assertion 실패, runtime semantic
+  failure, native abort, store recovery 조건 미충족은 retry 대상이 아니며 원인 로그를 남기고 실패한다.
 
 ### 2.6 feature-map 작성 규칙
 
@@ -421,10 +474,13 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
 
 - 테스트는 독립된 임시 작업 디렉토리와 로그 디렉토리를 쓴다.
 - 서버 프로세스는 config가 선언한 역할대로 띄운다. 공유 location store가 필요한 config는
-  실행 전에 store(Redis 등)를 준비하거나 별도 프로세스로 띄우고, 실행 후 key를 정리한다.
+  실행 전에 store(Redis 등)를 준비하거나 별도 프로세스로 띄우고, 실행 후 자신이 만든 store
+  process 또는 container를 정리한다.
   multi-process config의 공유 저장소는 공식 Redis extension을 기본으로 하고, 단일 process
   smoke는 in-memory store(`UseInMemoryLocationStores()`)를 쓸 수 있다.
-- port, routing id, Redis key prefix, 저장소 경로는 실행마다 격리한다.
+- port, routing id, Redis key prefix, 저장소 경로는 실행마다 격리한다. Docker Redis를 쓰는
+  runner는 언어·e2e 범위 prefix로 container를 만들고, 전체 runner만 같은 prefix의 오래된
+  container를 시작 전에 정리한다.
 - 서버 준비 여부는 sleep만으로 판단하지 않고, 포트 readiness 또는 readiness marker로 확인한다.
 - 성공 기준은 client 반환값, client stream connector가 받은 push, server evidence endpoint, 로그
   marker를 조합한다. location store를 쓰는 config는 `IZLinkLocationRuntimeQuery`로 조회한

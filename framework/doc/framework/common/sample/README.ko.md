@@ -154,6 +154,73 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
 보여 주는 데 집중해야 하며, 실패를 정상 업무 응답으로 바꾸는 코드는 해당 메시지
 계약이 명시적으로 그런 실패 상태를 정의할 때만 둔다.
 
+## 샘플 실행 스크립트와 Redis 격리 기준
+
+모든 언어의 sample runner는 같은 사용 의미와 같은 Redis 구동 방식을 가져야 한다.
+언어별 구현은 shell, PowerShell, npm, Gradle, dotnet, CMake처럼 도구가 달라도 아래 실행
+계약을 맞춘다.
+
+기준 템플릿은 이 디렉토리의 `runner-templates/` 아래에 둔다.
+
+- `runner-templates/redis-common.template.sh`: Redis helper 기준
+- `runner-templates/run_sample.template.sh`: 개별 sample runner 기준
+- `runner-templates/run_samples.template.sh`: 통합 sample runner 기준
+
+- 개별 `run_sample.*`는 build → 로그 디렉토리 생성 → 필요한 Redis 준비 → 서버 시작
+  → readiness 확인 → client self-check 실행 → 서버와 Redis 정리 순서를 책임진다.
+- 각 언어는 sample runner들이 공유하는 Redis helper를 둔다. helper는 "prefix로 남은
+  container 정리"와 "scoped Redis container 시작"을 공통 함수로 제공하고, 개별 sample
+  script가 Docker 명령을 직접 조합하지 않게 한다.
+- Redis가 필요한 sample은 runner가 실행마다 전용 Docker Redis container를 직접 띄운다.
+  이미 떠 있는 Redis container나 host Redis endpoint를 재사용하면 안 된다. Redis key prefix가
+  달라도 cleanup, 장애 주입, latency injection, sample 간 데이터 정리 시점이 섞이면 테스트
+  간섭이 발생할 수 있기 때문이다. 샘플 애플리케이션 코드가 Docker를 호출하거나 Redis container
+  생명주기를 소유하면 안 된다.
+- Redis container 시작은 모든 언어에서 같은 순서를 쓴다.
+  `docker create --name <scoped-name> -p 127.0.0.1::6379 <pinned-redis-image>`로 container를
+  만들고, `docker start <container-id>`로 시작한 뒤, `docker inspect`로 실행 상태와 배정된
+  host port를 읽는다. `docker run -d` 출력에 의존해 container id와 port를 동시에 처리하는
+  방식은 쓰지 않는다.
+- 개별 `run_sample.*`가 Redis를 띄울 때는 container 이름에 언어와 sample 실행 범위를
+  드러내는 prefix를 붙인다. 예를 들어 Java sample은 `zlink-redis-java-sample...`,
+  Kotlin sample은 `zlink-redis-kotlin-sample...`처럼 같은 언어·sample 범위를 한눈에
+  알 수 있어야 한다.
+- 개별 `run_sample.*`는 시작 시 같은 prefix의 다른 container를 지우지 않는다. 같은
+  prefix cleanup은 통합 sample runner가 실행 시작 전에 반드시 한 번 수행한다. 이렇게 해야
+  병렬 실행을 허용하지 않는 현재 gate에서도, 사람이 단일 sample을 따로 돌리는 중인 container를
+  다른 단일 sample 실행이 지우는 일이 없다.
+- 개별 `run_sample.*`는 정상 종료와 실패 종료 모두에서 자신이 만든 Redis container id만
+  정리한다. prefix로 넓게 지우는 cleanup을 개별 script의 exit trap에 넣지 않는다.
+- 통합 sample runner는 시작 시 언어별 sample prefix로 남은 Redis container를 정리한 뒤
+  각 개별 `run_sample.*`를 순차 호출한다. 이 runner도 sample을 병렬 실행하지 않는다.
+- 통합 sample runner는 특정 sample 리스트만 실행할 수 있어야 한다. 인자가 없으면 모든 sample을
+  실행하고, 인자가 있으면 지정한 sample runner만 순차 실행한다. 예:
+  `./run_samples.sh Bingo SupportChat` 또는 언어별 경로를 구분해야 하는 runner에서는
+  `./run_samples.sh java/Bingo kotlin/SupportChat`처럼 쓴다. 통합 runner는 sample 내부 절차를
+  재구현하지 않고 선택한 개별 `run_sample.*`만 호출한다.
+- 통합 sample runner는 sample별 내부 동작을 다시 구현하지 않는다. prefix cleanup을 한 뒤
+  개별 `run_sample.*`를 호출하고, retry 여부와 최종 결과만 관리한다. Redis endpoint 생성,
+  readiness, 로그 위치, self-check 세부 절차는 개별 script와 공통 helper가 맡는다.
+- Redis host port는 고정값을 쓰지 않고 Docker가 비어 있는 loopback port를 배정하게 한다.
+  runner는 배정된 port를 inspect로 읽어 애플리케이션 설정에 전달한다. Redis key prefix도
+  실행마다 고유하게 만든다.
+- 같은 host에서 다른 sample/e2e가 Redis를 사용 중이어도 그 endpoint를 빌려 쓰지 않는다. 새
+  Docker Redis container를 만들고 Docker가 할당한 다른 loopback port를 사용해야 테스트 간섭을
+  막을 수 있다.
+- Redis container 생성은 오래 걸릴 수 있으므로 Docker 명령 자체에는 짧은 timeout을 두고,
+  실제 Redis readiness는 별도의 port/readiness 대기 함수로 확인한다. Docker 명령이
+  응답하지 않는 문제와 Redis가 아직 준비되지 않은 문제를 같은 sleep으로 숨기지 않는다.
+- Redis helper가 실패하면 개별 runner도 즉시 실패해야 한다. shell runner에서는
+  `read ... < <(redis_start_function)`처럼 process substitution 결과를 읽는 방식으로 container id를
+  받지 않는다. 이 방식은 helper가 실패해도 `read` 자체는 성공할 수 있어 Redis 없이 서버를 띄우는
+  잘못된 실행으로 이어진다. helper는 `zlink_redis_start_scoped_assign`처럼 호출부 변수에 값을
+  대입하는 함수로 제공하고, 함수 실패가 그대로 runner 실패가 되게 한다.
+- 통합 sample runner는 transient bind 실패(`Address already in use`, `EADDRINUSE`,
+  `errno=98`)만 제한적으로 retry할 수 있다. readiness timeout, sample self-check assertion 실패나
+  framework semantic failure는 retry로 가리지 않고 바로 실패로 남긴다.
+- 실패 시 runner는 `log_dir=...` 또는 sample별 로그 위치를 출력하고, 각 프로세스의
+  stdout/stderr와 framework log를 `logs/*.log`에 남긴다.
+
 ## 공통 작성 원칙
 
 - 샘플은 framework가 어떤 일을 대신해 주는지 보여 주어야 한다.

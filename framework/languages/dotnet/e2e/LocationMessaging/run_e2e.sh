@@ -2,16 +2,22 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$ROOT_DIR/../redis-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
-SCENARIO="${1:-all}"
+if [[ "$#" -eq 0 ]]; then
+  SCENARIO="all"
+else
+  SCENARIO="$*"
+  SCENARIO="${SCENARIO// /,}"
+fi
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-REDIS_READINESS_TIMEOUT_SECONDS=30
+REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -103,26 +109,18 @@ trap cleanup EXIT
 # Honor an externally provided instance; otherwise start a disposable
 # container. Every run is isolated by a run-unique key prefix.
 REDIS_KEY_PREFIX="zlink:e2e:cfg1:$(date +%s)-$$"
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  echo "redis endpoint=$REDIS_ENDPOINT (external)"
-else
-  REDIS_PORT="$(pick_port)"
-  REDIS_CONTAINER="zlink-e2e-locmsg-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "$REDIS_PORT:6379" redis:7-alpine >/dev/null
-  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
-  echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
-fi
+zlink_redis_start_scoped_assign \
+  REDIS_CONTAINER \
+  REDIS_ENDPOINT \
+  "zlink-redis-dotnet-e2e-location-messaging" \
+  "redis:7.2-alpine" \
+  "$LOG_DIR"
+echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 REDIS_HOST="${REDIS_ENDPOINT%:*}"
 REDIS_TCP_PORT="${REDIS_ENDPOINT##*:}"
 wait_tcp "$REDIS_HOST" "$REDIS_TCP_PORT" redis
 if [[ -n "$REDIS_CONTAINER" ]]; then
-  for _ in $(seq 1 "$((REDIS_READINESS_TIMEOUT_SECONDS * 5))"); do
-    if [[ "$(docker exec "$REDIS_CONTAINER" redis-cli ping 2>/dev/null || true)" == "PONG" ]]; then
-      break
-    fi
-    sleep 0.2
-  done
+  zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS"
 fi
 echo "redis key prefix=$REDIS_KEY_PREFIX"
 

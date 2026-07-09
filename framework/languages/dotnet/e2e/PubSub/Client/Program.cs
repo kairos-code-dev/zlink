@@ -39,13 +39,13 @@ try
         ["PS-C1"] = () => MissingMessageNameScenario.RunAsync(publisher, subscribers)
     };
 
-    if (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase))
-        foreach (var scenario in scenarios.Values)
-            await scenario();
-    else if (scenarios.TryGetValue(options.Scenario, out var selected))
-        await selected();
-    else
-        throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
+    foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Keys))
+    {
+        if (scenarios.TryGetValue(name, out var selected))
+            await selected();
+        else
+            throw new ArgumentException($"Unknown scenario '{name}'.");
+    }
 }
 finally
 {
@@ -59,3 +59,12 @@ finally
 }
 
 Console.WriteLine("pubsub e2e result=passed");
+
+static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<string> allNames)
+{
+    if (string.Equals(selector, "all", StringComparison.OrdinalIgnoreCase))
+        return allNames;
+
+    return selector
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}

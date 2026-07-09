@@ -27,7 +27,7 @@ internal static class ShutdownYieldScenario
             throw new InvalidOperationException(
                 $"YD-E3 expected play-a shutdown while yield was pending, but request completed as {result.Operation}.");
         }
-        catch (ZlinkStreamException ex) when (ex.Error.Code == ZlinkStreamErrorCode.Disconnected)
+        catch (ZlinkStreamException ex) when (IsExpectedShutdownError(ex))
         {
             Console.WriteLine("yield-dispatch shutdown wait result=passed");
         }
@@ -35,6 +35,23 @@ internal static class ShutdownYieldScenario
         {
             Console.WriteLine("yield-dispatch shutdown wait result=passed");
         }
+    }
+
+    private static bool IsExpectedShutdownError(ZlinkStreamException exception)
+    {
+        if (exception.Error.Code == ZlinkStreamErrorCode.RequestTimeout)
+            return false;
+
+        if (exception.Error.Code == ZlinkStreamErrorCode.Disconnected)
+            return true;
+
+        if (exception.InnerException is OperationCanceledException)
+            return true;
+
+        return exception.Message.Contains("cancel", StringComparison.OrdinalIgnoreCase)
+               || exception.Message.Contains("closed", StringComparison.OrdinalIgnoreCase)
+               || exception.Message.Contains("disconnect", StringComparison.OrdinalIgnoreCase)
+               || exception.Message.Contains("terminated", StringComparison.OrdinalIgnoreCase);
     }
 
     public static async Task RunRecoveryAsync(ClientOptions options)

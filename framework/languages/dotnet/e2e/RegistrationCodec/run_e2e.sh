@@ -2,6 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$#" -eq 0 ]]; then
+  SCENARIO="all"
+else
+  SCENARIO="$*"
+  SCENARIO="${SCENARIO// /,}"
+fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
@@ -164,6 +170,7 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --server-url "$SERVER_URL" \
   --codec-requester-url "$CODEC_REQUESTER_URL" \
   --invalid-server-project "$INVALID_SERVER_PROJECT" \
+  --scenario "$SCENARIO" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

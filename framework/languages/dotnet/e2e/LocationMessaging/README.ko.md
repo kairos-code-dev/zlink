@@ -30,7 +30,7 @@ P1/P2 시나리오는 공통 문서의 지원 조건과 미배선 사유를 그�
 ./run_e2e.sh
 ```
 
-Redis는 `ZLINK_REDIS_E2E_ENDPOINT`가 설정되어 있으면 그 instance를 쓰고, 없으면
-disposable `redis:7-alpine` container를 띄운다. 실행마다 run-unique key prefix
-(`zlink:e2e:cfg1:<epoch>-<pid>`)로 격리하고, 종료 시 container 또는 해당 prefix의
+Redis는 실행마다 전용 disposable `redis:7-alpine` container를 새로 띄운다. 이미 떠 있는
+Redis나 host Redis endpoint는 재사용하지 않는다. 실행마다 run-unique key prefix
+(`zlink:e2e:cfg1:<epoch>-<pid>`)로 격리하고, 종료 시 자신이 만든 container와 해당 prefix의
 key를 정리한다.

@@ -2,11 +2,19 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$ROOT_DIR/../redis-common.sh"
+if [[ "$#" -eq 0 ]]; then
+  SCENARIO="all"
+else
+  SCENARIO="$*"
+  SCENARIO="${SCENARIO// /,}"
+fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
+REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -143,9 +151,13 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the RuntimeMonitoring E2E (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER="monitoring-e2e-redis-$$"
-docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+zlink_redis_start_scoped_assign \
+  REDIS_CONTAINER \
+  REDIS_ENDPOINT \
+  "zlink-redis-dotnet-e2e-runtime-monitoring" \
+  "redis:7.2-alpine" \
+  "$LOG_DIR"
+zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="monitoring-e2e:$$:"
 
 setsid env ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJECT" -- \
@@ -212,6 +224,7 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --throw-service-url "$THROW_URL" \
   --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --filtered-service-project "$FILTERED_SERVICE_PROJECT" \
+  --scenario "$SCENARIO" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

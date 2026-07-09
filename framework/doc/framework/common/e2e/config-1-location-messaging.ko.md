@@ -107,7 +107,7 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 - 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미. auto reconcile은 manual endpoint를 끊지 않는다(manual 연결 우선).
 - 세부 동작: 수동 연결이 자동 연결과 동일 의미임을 고정.
 
-> custom resolver는 client-server channel public API에 없다(SPOT용 `AddSpotRemoteAddressResolver<T>`만 존재). 해당 검증은 Config 2(spot route resolver)에서 다룬다.
+> custom resolver는 client-server channel public API에 없다. SPOT 전송 대상 조회는 location store 기반 `SpotRef` resolver에서 다룬다.
 
 #### RM-A4 같은 rid, 다른 endpoint failover
 

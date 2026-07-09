@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 DELAY_PROJECT="$SCRIPT_DIR/Server/Delay/YieldDispatch.Delay.csproj"
 PLAY_PROJECT="$SCRIPT_DIR/Server/Play/YieldDispatch.Play.csproj"
 SESSION_PROJECT="$SCRIPT_DIR/Server/Session/YieldDispatch.Session.csproj"
@@ -12,9 +13,16 @@ SESSION_DLL="$SCRIPT_DIR/Server/Session/bin/Debug/net8.0/YieldDispatch.Session.d
 CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/YieldDispatch.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
+if [[ "$#" -eq 0 ]]; then
+  SCENARIO="all"
+else
+  SCENARIO="$*"
+  SCENARIO="${SCENARIO// /,}"
+fi
 mkdir -p "$LOG_DIR"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
+REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -72,6 +80,27 @@ poll = float(sys.argv[2])
 print(max(1, math.ceil(timeout / poll)))
 PY
 )"
+
+scenario_selected() {
+  local expected="$1"
+  local item
+  if [[ "$SCENARIO" == "all" || "$SCENARIO" == "$expected" ]]; then
+    return 0
+  fi
+  if [[ "$expected" == "shutdown" ]]; then
+    [[ "$SCENARIO" == "shutdown-wait" || "$SCENARIO" == "shutdown-recovery" ]] && return 0
+  fi
+  IFS=',' read -ra items <<<"$SCENARIO"
+  for item in "${items[@]}"; do
+    if [[ "$item" == "$expected" ]]; then
+      return 0
+    fi
+    if [[ "$expected" == "shutdown" && ( "$item" == "shutdown-wait" || "$item" == "shutdown-recovery" ) ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 build_projects() {
   dotnet build "$DELAY_PROJECT" --maxcpucount:1 >/dev/null
@@ -309,19 +338,7 @@ start_server() {
   local name="$1"
   local dll="$2"
   shift 2
-  setsid bash -c '
-    set +e
-    name="$1"
-    dll="$2"
-    log_dir="$3"
-    shift 3
-    dotnet "$dll" "$@" >"$log_dir/${name}.stdout.log" 2>"$log_dir/${name}.stderr.log"
-    rc=$?
-    if [[ "$rc" -ge 128 ]]; then
-      exit 0
-    fi
-    exit "$rc"
-  ' bash "$name" "$dll" "$LOG_DIR" "$@" &
+  setsid dotnet "$dll" "$@" >"$LOG_DIR/${name}.stdout.log" 2>"$LOG_DIR/${name}.stderr.log" &
   PIDS+=("$!")
 }
 
@@ -343,6 +360,30 @@ terminate_gracefully() {
   done
   echo "${name} did not stop within ${YIELD_SHUTDOWN_TIMEOUT_SECONDS}s after SIGTERM while yield was pending" >&2
   return 1
+}
+
+request_shutdown() {
+  local pid="$1"
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  fi
+}
+
+reap_or_kill_after_shutdown() {
+  local name="$1"
+  local pid="$2"
+  for _ in $(seq 1 "$PROCESS_CLEANUP_ATTEMPTS"); do
+    local state
+    state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+    if [[ -z "$state" || "$state" == Z* ]]; then
+      wait "$pid" 2>/dev/null || true
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "${name} did not stop after the client observed shutdown; sending SIGKILL" >&2
+  kill -KILL "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
 }
 
 wait_file_contains() {
@@ -401,9 +442,13 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the YieldDispatch E2E (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER="yielddispatch-e2e-redis-$$"
-docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+zlink_redis_start_scoped_assign \
+  REDIS_CONTAINER \
+  REDIS_ENDPOINT \
+  "zlink-redis-dotnet-e2e-yield-dispatch" \
+  "redis:7.2-alpine" \
+  "$LOG_DIR"
+zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="yielddispatch-e2e:$$:"
 
 read -r DELAY_A_HTTP_PORT DELAY_A_ENDPOINT_PORT <<<"$(allocate_ports 2)"
@@ -515,63 +560,68 @@ wait_port session-b-stream "$SESSION_B_STREAM"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-dotnet "$CLIENT_DLL" \
-  --scenario full \
-  --session-a-stream-endpoint "$SESSION_A_STREAM" \
-  --session-b-stream-endpoint "$SESSION_B_STREAM" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
-cat "$LOG_DIR/client.stdout.log"
+if scenario_selected full; then
+  dotnet "$CLIENT_DLL" \
+    --scenario full \
+    --session-a-stream-endpoint "$SESSION_A_STREAM" \
+    --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+  cat "$LOG_DIR/client.stdout.log"
+fi
 
-SHUTDOWN_ID="YD-E3-$(date +%s)-$$"
-SHUTDOWN_SPOT="yield-shutdown-${STAMP//[^a-zA-Z0-9]/}"
-dotnet "$CLIENT_DLL" \
-  --scenario shutdown-wait \
-  --session-a-stream-endpoint "$SESSION_A_STREAM" \
-  --session-b-stream-endpoint "$SESSION_B_STREAM" \
-  --request-id "$SHUTDOWN_ID" \
-  --spot-rid "$SHUTDOWN_SPOT" \
-  >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
-SHUTDOWN_CLIENT_PID=$!
-wait_file_contains \
-  "$LOG_DIR/play-a.evidence.log" \
-  "yield-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
-  "YD-E3 pending yield marker was not observed before shutdown." \
-  "$SHUTDOWN_CLIENT_PID"
-terminate_gracefully play-a "$PLAY_A_PID"
-wait_file_contains \
-  "$LOG_DIR/client-shutdown-wait.stdout.log" \
-  "yield-dispatch shutdown wait result=passed" \
-  "YD-E3 shutdown client did not observe the public closed/cancelled error." \
-  "$SHUTDOWN_CLIENT_PID" \
-  "$SHUTDOWN_CLIENT_MARKER_ATTEMPTS"
-wait "$SHUTDOWN_CLIENT_PID"
-cat "$LOG_DIR/client-shutdown-wait.stdout.log"
+if scenario_selected shutdown; then
+  SHUTDOWN_ID="YD-E3-$(date +%s)-$$"
+  SHUTDOWN_SPOT="yield-shutdown-${STAMP//[^a-zA-Z0-9]/}"
+  dotnet "$CLIENT_DLL" \
+    --scenario shutdown-wait \
+    --session-a-stream-endpoint "$SESSION_A_STREAM" \
+    --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --request-id "$SHUTDOWN_ID" \
+    --spot-rid "$SHUTDOWN_SPOT" \
+    >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
+  SHUTDOWN_CLIENT_PID=$!
+  wait_file_contains \
+    "$LOG_DIR/play-a.evidence.log" \
+    "yield-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
+    "YD-E3 pending yield marker was not observed before shutdown." \
+    "$SHUTDOWN_CLIENT_PID"
+  request_shutdown "$PLAY_A_PID"
+  wait_file_contains \
+    "$LOG_DIR/client-shutdown-wait.stdout.log" \
+    "yield-dispatch shutdown wait result=passed" \
+    "YD-E3 shutdown client did not observe the public closed/cancelled error." \
+    "$SHUTDOWN_CLIENT_PID" \
+    "$SHUTDOWN_CLIENT_MARKER_ATTEMPTS"
+  wait "$SHUTDOWN_CLIENT_PID"
+  cat "$LOG_DIR/client-shutdown-wait.stdout.log"
+  reap_or_kill_after_shutdown play-a "$PLAY_A_PID"
 
-start_server play-a "$PLAY_DLL" \
-  --rid play-a \
-  --http-url "$PLAY_A_HTTP" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --control-endpoint "$PLAY_A_CONTROL" \
-  --delay-endpoint "$DELAY_A_ENDPOINT" \
-  --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
-  --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-  --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
-  --log-dir "$LOG_DIR"
-PLAY_A_PID="${PIDS[-1]}"
-wait_health play-a "$PLAY_A_HTTP"
-wait_port play-a-control "$PLAY_A_CONTROL"
-wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
-wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
-sleep "$ROUTE_SETTLE_SECONDS"
+  start_server play-a "$PLAY_DLL" \
+    --rid play-a \
+    --http-url "$PLAY_A_HTTP" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --control-endpoint "$PLAY_A_CONTROL" \
+    --delay-endpoint "$DELAY_A_ENDPOINT" \
+    --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
+    --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
+    --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
+    --log-dir "$LOG_DIR"
+  PLAY_A_PID="${PIDS[-1]}"
+  wait_health play-a "$PLAY_A_HTTP"
+  wait_port play-a-control "$PLAY_A_CONTROL"
+  wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
+  wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
+  sleep "$ROUTE_SETTLE_SECONDS"
 
-dotnet "$CLIENT_DLL" \
-  --scenario shutdown-recovery \
-  --session-a-stream-endpoint "$SESSION_A_STREAM" \
-  --session-b-stream-endpoint "$SESSION_B_STREAM" \
-  --request-id "${SHUTDOWN_ID}-recovery" \
-  --spot-rid "$SHUTDOWN_SPOT" \
-  >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
-cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
+  dotnet "$CLIENT_DLL" \
+    --scenario shutdown-recovery \
+    --session-a-stream-endpoint "$SESSION_A_STREAM" \
+    --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --request-id "${SHUTDOWN_ID}-recovery" \
+    --spot-rid "$SHUTDOWN_SPOT" \
+    >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
+  cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
+fi
 
 echo "yield-dispatch e2e result=passed"

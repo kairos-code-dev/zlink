@@ -5,6 +5,7 @@ internal sealed record ClientOptions(
     string ServerUrl,
     string CodecRequesterUrl,
     string InvalidServerProject,
+    string Scenario,
     string LogDir)
 {
     public static ClientOptions Parse(string[] args)
@@ -40,6 +41,7 @@ internal sealed record ClientOptions(
             Get("--server-url"),
             Get("--codec-requester-url"),
             Get("--invalid-server-project"),
+            values.TryGetValue("--scenario", out var scenario) ? scenario[^1] : "all",
             Get("--log-dir"));
     }
 }

@@ -2,6 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$ROOT_DIR/../redis-common.sh"
+if [[ "$#" -eq 0 ]]; then
+  SCENARIO="all"
+else
+  SCENARIO="$*"
+  SCENARIO="${SCENARIO// /,}"
+fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
@@ -10,6 +17,22 @@ ACTOR_PROJECT="$ROOT_DIR/Server/Actor/ToActorMessaging.Actor.csproj"
 CALLER_PROJECT="$ROOT_DIR/Server/Caller/ToActorMessaging.Caller.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/ToActorMessaging.Client.csproj"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 pick_port() {
   python3 - <<'PY'
@@ -45,13 +68,15 @@ trap cleanup EXIT
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 120); do
-    if curl -fsS "$url/health" >/dev/null 2>&1; then
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+    if curl --max-time "$HTTP_PROBE_TIMEOUT_SECONDS" \
+      --connect-timeout "$HTTP_PROBE_TIMEOUT_SECONDS" \
+      -fsS "$url/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.25
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $url" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $url" >&2
   return 1
 }
 
@@ -113,14 +138,13 @@ start_role() {
   esac
 }
 
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-else
-  REDIS_PORT="$(pick_port)"
-  REDIS_CONTAINER="zlink-e2e-to-actor-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "$REDIS_PORT:6379" redis:7-alpine >/dev/null
-  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
-fi
+zlink_redis_start_scoped_assign \
+  REDIS_CONTAINER \
+  REDIS_ENDPOINT \
+  "zlink-redis-dotnet-e2e-to-actor-messaging" \
+  "redis:7.2-alpine" \
+  "$LOG_DIR"
+zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="zlink:e2e:to-actor:$(date +%s)-$$"
 ACTOR_RID="${TO_ACTOR_ACTOR_RID:-to-actor-owner}"
 CALLER_RID="${TO_ACTOR_CALLER_RID:-to-actor-caller}"
@@ -153,6 +177,7 @@ sleep 5
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --actor-url "$ACTOR_URL" \
   --caller-url "$CALLER_URL" \
+  --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

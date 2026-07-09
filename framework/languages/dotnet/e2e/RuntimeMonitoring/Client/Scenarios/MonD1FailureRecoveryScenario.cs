@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
+using Zlink.Framework.Contracts.Errors;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -47,9 +48,7 @@ internal static class MonD1FailureRecoveryScenario
             using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
                 .Timeout(TimeSpan.FromSeconds(35))
                 .Build();
-            var reply = (await trigger.Post("/profile/request/service-b")
-                .Body(new ProfileReq("restart", "mon-d1-request"))
-                .SubmitAsync<ProfileRes>()).Body;
+            var reply = await RequestRestartedServiceAsync(trigger);
             ScenarioAssert.That(
                 reply.ProviderRid == "svc-b"
                 && reply.Marker == "mon-d1-request"
@@ -105,6 +104,28 @@ internal static class MonD1FailureRecoveryScenario
         }
 
         Console.WriteLine("scenario MON-D1 passed");
+    }
+
+    private static async Task<ProfileRes> RequestRestartedServiceAsync(ZLinkHttpClient trigger)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(60);
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                return (await trigger.Post("/profile/request/service-b")
+                    .Body(new ProfileReq("restart", "mon-d1-request"))
+                    .SubmitAsync<ProfileRes>()).Body;
+            }
+            catch (Exception ex) when (ex is ZLinkFrameworkException or HttpRequestException or TaskCanceledException)
+            {
+                last = ex;
+                await Task.Delay(500);
+            }
+        }
+
+        throw new TimeoutException("MON-D1 restarted service did not accept a routed request.", last);
     }
 
     private static Process StartServiceB(ClientOptions options)

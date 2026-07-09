@@ -51,13 +51,22 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("SF-E1", () => SfE1StoreDelayNonBlockingScenario.RunAsync(options, consumer))
 };
 
-foreach (var (name, run) in scenarios)
+foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Select(scenario => scenario.Name)))
 {
-    if (options.Scenario != "all"
-        && !string.Equals(options.Scenario, name, StringComparison.OrdinalIgnoreCase))
-        continue;
+    var selected = scenarios.FirstOrDefault(scenario =>
+        string.Equals(scenario.Name, name, StringComparison.OrdinalIgnoreCase));
+    if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{name}'.");
 
-    await run();
+    await selected.Run();
 }
 
 Console.WriteLine("store-failure client result=passed");
+
+static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<string> allNames)
+{
+    if (string.Equals(selector, "all", StringComparison.OrdinalIgnoreCase))
+        return allNames;
+
+    return selector
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}

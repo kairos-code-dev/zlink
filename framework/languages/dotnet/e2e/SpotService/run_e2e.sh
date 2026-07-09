@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 PLAY_PROJECT="$SCRIPT_DIR/Server/Play/SpotService.Play.csproj"
 SESSION_PROJECT="$SCRIPT_DIR/Server/Session/SpotService.Session.csproj"
 MULTI_NODE_PROJECT="$SCRIPT_DIR/Server/MultiNode/SpotService.MultiNode.csproj"
@@ -14,13 +15,38 @@ GATEWAY_DLL="$SCRIPT_DIR/Server/Gateway/bin/Debug/net8.0/SpotService.Gateway.dll
 CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
-SCENARIO_SET="${SCENARIO_SET:-all}"
+if [[ "$#" -gt 0 ]]; then
+  SCENARIO_SET="$*"
+  SCENARIO_SET="${SCENARIO_SET// /,}"
+else
+  SCENARIO_SET="${SCENARIO_SET:-all}"
+fi
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 NEED_SESSION_NODES=1
 NEED_SESSION_B=0
 NEED_PLAY_B=1
 NEED_TLS_STREAM=0
+
+scenario_selector_contains() {
+  local expected="$1"
+  local item
+  if [[ "$SCENARIO_SET" == "$expected" ]]; then
+    return 0
+  fi
+  IFS=',' read -ra items <<<"$SCENARIO_SET"
+  for item in "${items[@]}"; do
+    if [[ "$item" == "$expected" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 case "$SCENARIO_SET" in
+  all)
+    NEED_SESSION_B=1
+    NEED_TLS_STREAM=1
+    ;;
   sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4|sm-a5)
     NEED_SESSION_NODES=0
     NEED_PLAY_B=0
@@ -49,17 +75,31 @@ case "$SCENARIO_SET" in
     NEED_SESSION_B=1
     NEED_TLS_STREAM=1
     ;;
+  track-g)
+    NEED_SESSION_B=1
+    ;;
 esac
+if scenario_selector_contains sm-d1-d6 \
+  || scenario_selector_contains sm-d10 \
+  || scenario_selector_contains sm-d12 \
+  || scenario_selector_contains sm-g1; then
+  NEED_SESSION_B=1
+fi
+if scenario_selector_contains sm-d14; then
+  NEED_TLS_STREAM=1
+fi
 mkdir -p "$LOG_DIR"
 LOCAL_READINESS_TIMEOUT_SECONDS=30
 LOCAL_READINESS_POLL_SECONDS=0.1
+REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-PROCESS_SHUTDOWN_TIMEOUT_SECONDS=5
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=15
 CHILD_PROCESS_TIMEOUT_SECONDS=420
-CHILD_COOLDOWN_SECONDS=8
+CHILD_RETRY_COOLDOWN_SECONDS=1
 CLIENT_PROCESS_TIMEOUT_SECONDS=120
+BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE"
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -98,25 +138,33 @@ build_projects() {
 if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   echo "log_dir=$LOG_DIR"
   build_projects
-  for child_group in default-batch sm-g2 sm-g3 sm-g4 sm-g1 sm-q9 sm-f6; do
+  for child_group in default-batch sm-f6 sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
     echo "child operation_group=${child_group}"
     child_ok=0
+    child_output="$(mktemp)"
     for child_attempt in 1 2; do
-      if timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
-        env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0"; then
+      : >"$child_output"
+      set +e
+      timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
+        env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0" \
+        2>&1 | tee "$child_output"
+      child_status="${PIPESTATUS[0]}"
+      set -e
+      if [[ "$child_status" == "0" ]]; then
         child_ok=1
         break
       fi
-      # A fresh child batch can race the previous batch's dying listeners
-      # (EADDRINUSE on a TIME_WAIT port); one cooled-down retry absorbs it.
-      echo "child operation_group=${child_group} attempt ${child_attempt} failed" >&2
-      sleep "$CHILD_COOLDOWN_SECONDS"
+      if ! grep -Eq "$BIND_RETRY_PATTERN" "$child_output"; then
+        break
+      fi
+      echo "spot-service transient bind failure; retrying child operation_group=${child_group} (${child_attempt}/2)" >&2
+      sleep "$CHILD_RETRY_COOLDOWN_SECONDS"
     done
+    rm -f "$child_output"
     if [[ "$child_ok" != "1" ]]; then
       echo "child operation_group=${child_group} failed" >&2
       exit 1
     fi
-    sleep "$CHILD_COOLDOWN_SECONDS"
   done
   echo "spot-service e2e result=passed"
   exit 0
@@ -218,6 +266,19 @@ MULTI_B_HTTP="http://127.0.0.1:${PORTS[35]}"
 GATEWAY_HTTP="http://127.0.0.1:${PORTS[36]}"
 GATEWAY_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[37]}"
 WAIT_SOURCE_PORT_INDEX=38
+WAIT_ROLE_PID=""
+
+pid_for_role() {
+  local expected_role="$1"
+  local index
+  for index in "${!ORDERED_SERVER_ROLES[@]}"; do
+    if [[ "${ORDERED_SERVER_ROLES[$index]}" == "$expected_role" ]]; then
+      printf '%s\n' "${PIDS[$index]}"
+      return 0
+    fi
+  done
+  return 1
+}
 
 endpoint_port() {
   local endpoint="$1"
@@ -238,7 +299,7 @@ endpoint_host() {
 wait_port() {
   local name="$1"
   local endpoint="$2"
-  local pid="${PIDS[-1]:-}"
+  local pid="${WAIT_ROLE_PID:-}"
   local host
   local port
   host="$(endpoint_host "$endpoint")"
@@ -274,7 +335,7 @@ PY
 wait_health() {
   local name="$1"
   local url="$2"
-  local pid="${PIDS[-1]:-}"
+  local pid="${WAIT_ROLE_PID:-}"
   local deadline_ns
   deadline_ns="$(
     python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
@@ -382,12 +443,61 @@ start_server() {
     shift 3
     dotnet "$dll" "$@" >"$log_dir/${name}.stdout.log" 2>"$log_dir/${name}.stderr.log"
     rc=$?
-    if [[ "$rc" -ge 128 ]]; then
-      exit 0
-    fi
+    echo "server_exit name=${name} exit_code=${rc}" >"$log_dir/${name}.exit.log"
     exit "$rc"
   ' bash "$name" "$dll" "$LOG_DIR" "$@" &
   PIDS+=("$!")
+}
+
+assert_servers_alive() {
+  local phase="$1"
+  local index pid role
+  for index in "${!PIDS[@]}"; do
+    pid="${PIDS[$index]}"
+    role="${ORDERED_SERVER_ROLES[$index]:-unknown}"
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "server exited before ${phase}: role=${role} pid=${pid}" >&2
+      if [[ -f "$LOG_DIR/${role}.exit.log" ]]; then
+        cat "$LOG_DIR/${role}.exit.log" >&2
+      fi
+      if [[ -f "$LOG_DIR/${role}.stderr.log" ]]; then
+        tail -120 "$LOG_DIR/${role}.stderr.log" >&2
+      fi
+      return 1
+    fi
+  done
+}
+
+assert_expected_server_exit() {
+  local role="$1"
+  local expected_exit_code="$2"
+  local phase="$3"
+  local index pid exit_file
+  pid=""
+  for index in "${!ORDERED_SERVER_ROLES[@]}"; do
+    if [[ "${ORDERED_SERVER_ROLES[$index]}" == "$role" ]]; then
+      pid="${PIDS[$index]}"
+      break
+    fi
+  done
+  if [[ -z "$pid" ]]; then
+    echo "expected server role ${role} was not started for ${phase}" >&2
+    return 1
+  fi
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "expected server role ${role} to exit during ${phase}, but it is still alive: pid=${pid}" >&2
+    return 1
+  fi
+  exit_file="$LOG_DIR/${role}.exit.log"
+  if [[ ! -f "$exit_file" ]]; then
+    echo "expected server exit log is missing for ${role} during ${phase}: ${exit_file}" >&2
+    return 1
+  fi
+  if ! grep -qx "server_exit name=${role} exit_code=${expected_exit_code}" "$exit_file"; then
+    echo "unexpected server exit for ${role} during ${phase}" >&2
+    cat "$exit_file" >&2
+    return 1
+  fi
 }
 
 start_named_server() {
@@ -500,6 +610,7 @@ start_named_server() {
 }
 
 wait_named_server() {
+  WAIT_ROLE_PID="$(pid_for_role "$1")"
   case "$1" in
     session-a)
       wait_health session-a "$SESSION_A_HTTP"
@@ -571,20 +682,14 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the SpotService E2E (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER="spotservice-e2e-redis-$$"
-docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+zlink_redis_start_scoped_assign \
+  REDIS_CONTAINER \
+  REDIS_ENDPOINT \
+  "zlink-redis-dotnet-e2e-spot-service" \
+  "redis:7.2-alpine" \
+  "$LOG_DIR"
 REDIS_KEY_PREFIX="spotservice-e2e:$$:"
-for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
-  if docker exec "$REDIS_CONTAINER" redis-cli ping 2>/dev/null | grep -qx PONG; then
-    break
-  fi
-  sleep "$LOCAL_READINESS_POLL_SECONDS"
-done
-if ! docker exec "$REDIS_CONTAINER" redis-cli ping 2>/dev/null | grep -qx PONG; then
-  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for Redis container readiness" >&2
-  exit 1
-fi
+zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 
 SERVER_ROLES=()
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
@@ -601,7 +706,7 @@ if [[ "$SCENARIO_SET" != "sm-q9" && "$SCENARIO_SET" != "sm-f6" ]]; then
   fi
 fi
 
-if [[ "$SCENARIO_SET" == "sm-q9" || "$SCENARIO_SET" == "sm-f6" ]]; then
+if scenario_selector_contains sm-q9 || scenario_selector_contains sm-f6; then
   SERVER_ROLES+=(multi-node-a multi-node-b)
 fi
 
@@ -623,6 +728,7 @@ if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
     wait_control_route "$SESSION_A_HTTP" play-b session-a-play-b
   fi
   if [[ "$NEED_SESSION_B" == "1" ]]; then
+    wait_control_route "$SESSION_B_HTTP" play-a session-b-play-a
     wait_control_route "$SESSION_B_HTTP" play-b session-b-play-b
   fi
 fi
@@ -631,6 +737,7 @@ sleep "$ROUTE_SETTLE_SECONDS"
 
 run_client() {
   local operation_group="$1"
+  assert_servers_alive "client ${operation_group}"
   echo "client operation_group=${operation_group}" >>"$LOG_DIR/client.stdout.log"
   timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" \
     --gateway-url "$GATEWAY_HTTP" \
@@ -644,6 +751,19 @@ run_client() {
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --operation-group "$operation_group" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
+  if [[ "$operation_group" == "sm-g1" ]]; then
+    assert_expected_server_exit play-a 137 "client ${operation_group} completion"
+  else
+    assert_servers_alive "client ${operation_group} completion"
+  fi
+}
+
+run_client_list() {
+  local item
+  IFS=',' read -ra items <<<"$SCENARIO_SET"
+  for item in "${items[@]}"; do
+    run_client "$item"
+  done
 }
 
 if [[ "$SCENARIO_SET" == "track-g" ]]; then
@@ -677,8 +797,16 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-a3-a6-b4-b7
   run_client sm-a5
   run_client sm-a1-a2-a4-f1-f2
+  if [[ "$SCENARIO_SET" == "all" ]]; then
+    run_client sm-f6
+    run_client sm-q9
+    run_client sm-g2
+    run_client sm-g3
+    run_client sm-g4
+    run_client sm-g1
+  fi
 else
-  run_client "$SCENARIO_SET"
+  run_client_list
 fi
 
 cat "$LOG_DIR/client.stdout.log"

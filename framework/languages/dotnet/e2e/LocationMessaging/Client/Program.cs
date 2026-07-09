@@ -44,17 +44,22 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RM-C9", () => RmC9BackpressureScenario.RunAsync(backpressureConsumer, providerA))
 };
 
-if (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase))
-{
-    foreach (var scenario in scenarios) await scenario.Run();
-}
-else
+foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Select(scenario => scenario.Name)))
 {
     var selected = scenarios.FirstOrDefault(scenario =>
-        string.Equals(scenario.Name, options.Scenario, StringComparison.OrdinalIgnoreCase));
-    if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
+        string.Equals(scenario.Name, name, StringComparison.OrdinalIgnoreCase));
+    if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{name}'.");
 
     await selected.Run();
 }
 
 Console.WriteLine("location-messaging e2e result=passed");
+
+static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<string> allNames)
+{
+    if (string.Equals(selector, "all", StringComparison.OrdinalIgnoreCase))
+        return allNames;
+
+    return selector
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}

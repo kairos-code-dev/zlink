@@ -37,9 +37,9 @@ class assign_delivery_handler_t
     {
         std::cerr << "deliverydispatch dispatch: assign delivery=" << request.delivery_id
                   << " customer=" << request.customer_id << "\n";
-        co_await publish_status (request.delivery_id, request.customer_id,
-                                 delivery_status_t::assigned, "courier-a");
         auto first = co_await offer (request, "courier-a");
+        co_await publish_status (request.delivery_id, request.customer_id,
+                                 delivery_status_t::assigned, first.courier_id);
         if (first.accepted) {
             co_await continue_delivery (request.delivery_id, request.customer_id,
                                         first.courier_id);

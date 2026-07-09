@@ -51,7 +51,7 @@ class bingo_client_scenario_t
 
             trace ("authenticate client1");
             const auto client1_auth_request = authenticate_req_t{bingo_sample_players_t::player1};
-            auto client1_auth = co_await authenticate_with_retry (client1, client1_auth_request);
+            auto client1_auth = co_await authenticate (client1, client1_auth_request);
             ensure (client1_auth.actor_id == bingo_sample_players_t::player1);
             ensure (!client1_auth.actor_node_rid.empty ());
 
@@ -73,7 +73,7 @@ class bingo_client_scenario_t
 
             trace ("authenticate observer");
             const auto observer_auth_request = authenticate_req_t{bingo_sample_players_t::observer};
-            auto observer_auth = co_await authenticate_with_retry (observer, observer_auth_request);
+            auto observer_auth = co_await authenticate (observer, observer_auth_request);
             ensure (observer_auth.actor_id == bingo_sample_players_t::observer);
             ensure (observer_auth.actor_node_rid != client1_match.room_owner_node_rid);
 
@@ -87,7 +87,7 @@ class bingo_client_scenario_t
 
             trace ("authenticate client2");
             const auto client2_auth_request = authenticate_req_t{bingo_sample_players_t::player2};
-            auto client2_auth = co_await authenticate_with_retry (client2, client2_auth_request);
+            auto client2_auth = co_await authenticate (client2, client2_auth_request);
             ensure (client2_auth.actor_id == bingo_sample_players_t::player2);
             ensure (client2_auth.actor_id != client1_auth.actor_id);
             ensure (client2_auth.actor_node_rid != client1_auth.actor_node_rid);
@@ -255,23 +255,10 @@ class bingo_client_scenario_t
     }
 
     static stream_e2e_client::task_t<authenticate_res_t>
-    authenticate_with_retry (stream_e2e_client::coroutine_connector_t &client,
-                             const authenticate_req_t &request)
+    authenticate (stream_e2e_client::coroutine_connector_t &client,
+                  const authenticate_req_t &request)
     {
-        std::exception_ptr last_error;
-        for (int attempt = 0; attempt < 5; ++attempt) {
-            try {
-                co_return co_await client.request (request).async<authenticate_res_t> ();
-            }
-            catch (...) {
-                last_error = std::current_exception ();
-                std::this_thread::sleep_for (std::chrono::milliseconds (300));
-            }
-        }
-        if (last_error) {
-            std::rethrow_exception (last_error);
-        }
-        throw std::runtime_error ("authenticate retry failed");
+        co_return co_await client.request (request).async<authenticate_res_t> ();
     }
 
     static void ensure (bool condition) { ensure (condition, "condition"); }

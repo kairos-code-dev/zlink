@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -46,16 +47,6 @@ LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
 
-pick_port() {
-  python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-}
-
 wait_tcp() {
   local host="$1"
   local port="$2"
@@ -88,10 +79,10 @@ if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
   echo "redis endpoint=$REDIS_ENDPOINT (external)"
 else
-  REDIS_PORT="$(pick_port)"
-  REDIS_CONTAINER="zlink-e2e-locmsg-cpp-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:$REDIS_PORT:6379" redis:7-alpine >/dev/null
-  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-e2e-registrymessaging" "redis:7-alpine"
+  )
+  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
 REDIS_HOST="${REDIS_ENDPOINT%:*}"
@@ -114,27 +105,58 @@ SCENARIO="${1:-all}"
 PIDS=()
 LAST_PID=""
 
+wait_pid_status() {
+  local pid="$1"
+  local label="$2"
+  local status
+  set +e
+  wait "$pid"
+  status=$?
+  set -e
+  if [[ "$status" -eq 127 ]]; then
+    return 0
+  fi
+  if [[ "$status" -eq 0 || "$status" -eq 130 || "$status" -eq 143 ]]; then
+    return 0
+  fi
+  echo "$label exited unexpectedly with status $status" >&2
+  return 1
+}
+
 terminate_pid() {
   local pid="$1"
-  if ! kill -0 "$pid" >/dev/null 2>&1; then
+  local label="${2:-process $pid}"
+  local state
+  if [[ -z "$pid" ]]; then
     return 0
+  fi
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    wait_pid_status "$pid" "$label"
+    return $?
   fi
   kill "$pid" >/dev/null 2>&1 || true
   for _ in $(seq 1 50); do
-    if ! kill -0 "$pid" >/dev/null 2>&1; then
-      wait "$pid" >/dev/null 2>&1 || true
-      return 0
+    state="$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print $1}')"
+    if [[ -z "$state" || "$state" == Z* ]]; then
+      wait_pid_status "$pid" "$label"
+      return $?
     fi
     sleep 0.1
   done
   kill -9 "$pid" >/dev/null 2>&1 || true
-  wait "$pid" >/dev/null 2>&1 || true
+  wait_pid_status "$pid" "$label"
 }
 
 cleanup() {
   local code=$?
+  local cleanup_failed=0
   for pid in "${PIDS[@]:-}"; do
-    terminate_pid "$pid"
+    if [[ -z "$pid" ]]; then
+      continue
+    fi
+    if ! terminate_pid "$pid" "cleanup process $pid"; then
+      cleanup_failed=1
+    fi
   done
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
@@ -144,6 +166,9 @@ cleanup() {
   fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+  elif [[ $cleanup_failed -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    code=1
   fi
   exit "$code"
 }
@@ -221,6 +246,8 @@ start_consumer() {
   local http="$2"
   local endpoints="$3"
   local redis_endpoint="$4"
+  shift 4
+  env "$@" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_PROVIDER_ENDPOINTS="$endpoints" \
   ZLINK_CPP_E2E_REDIS_ENDPOINT="$redis_endpoint" \
@@ -235,9 +262,12 @@ start_consumer() {
 
 stop_pid() {
   local pid="$1"
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
   if kill -0 "$pid" >/dev/null 2>&1; then
     kill "$pid" >/dev/null 2>&1 || true
-    wait "$pid" >/dev/null 2>&1 || true
+    wait_pid_status "$pid" "stopped process $pid"
   fi
 }
 
@@ -250,6 +280,30 @@ wait_marker() {
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for marker $file" >&2
+  return 1
+}
+
+wait_consumer_profile_ready() {
+  local name="$1"
+  local consumer_url="$2"
+  local marker="$3"
+  local output="$LOG_DIR/${name}.ready.log"
+  local body
+  body="{\"value\":\"$marker\"}"
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+    if curl -fsS \
+      -H 'Content-Type: application/json' \
+      --max-time 2 \
+      -d "$body" \
+      "$consumer_url/profile/request" >"$output" 2>&1; then
+      if grep -Fq "profile:$marker" "$output"; then
+        return 0
+      fi
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name channel readiness through $consumer_url" >&2
+  cat "$output" >&2 || true
   return 1
 }
 
@@ -281,7 +335,9 @@ if [[ "$SCENARIO" == "all" ]]; then
   for scenario in RM-A1 RM-A2 RM-A4 RM-A6 RM-B1 RM-B2 RM-C1 RM-C2 RM-C3 RM-C4 RM-C5 RM-C7 RM-C8 RM-C9; do
     echo "running $scenario"
     child_output="$LOG_DIR/child-$scenario.output.log"
-    ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" "$0" "$scenario" | tee "$child_output"
+    ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" \
+      ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" \
+      "$0" "$scenario" | tee "$child_output"
     child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
     if [[ -z "$child_log_dir" || ! -d "$child_log_dir" ]]; then
       echo "missing child log directory for $scenario" >&2
@@ -460,6 +516,8 @@ if [[ "$SCENARIO" == "RM-C7" || "$SCENARIO" == "rm-c7" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B" api-b ZLINK_CPP_E2E_SERVER_WEIGHT=25
   API_B_PID="$LAST_PID"
+  start_consumer weighted-consumer "$HTTP_SINGLE_CONSUMER" "" "$REDIS_ENDPOINT"
+  WEIGHTED_CONSUMER_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c7 rm-c7 env
   cat "$LOG_DIR/client-rm-c7.stdout.log"
@@ -480,12 +538,13 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   stop_pid "$API_A_PID"
   stop_pid "$API_B_PID"
 
-  start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_MAX_MESSAGE_SIZE=2048
+  start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a ZLINK_CPP_E2E_MAX_MESSAGE_SIZE=2097152
   API_A_PID="$LAST_PID"
-  start_consumer single-consumer-max "$HTTP_SINGLE_CONSUMER" "$API_A" ""
+  start_consumer single-consumer-max "$HTTP_STORE_CONSUMER" "$API_A2" "" \
+    ZLINK_CPP_E2E_CLIENT_MAX_MESSAGE_SIZE=2097152
   SINGLE_CONSUMER_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c8-max rm-c8-max env
+  wait_consumer_profile_ready single-consumer-max "$HTTP_STORE_CONSUMER" "rm-c8-max-ready"
+  run_client rm-c8-max rm-c8-max env ZLINK_CPP_E2E_SINGLE_CONSUMER_URL="$HTTP_STORE_CONSUMER"
   cat "$LOG_DIR/client-rm-c8-max.stdout.log"
   exit 0
 fi

@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
+source "$ROOT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -25,18 +26,17 @@ mkdir -p "$LOG_DIR"
 
 echo "log_dir=$LOG_DIR"
 
-read -r CHANNEL CHANNEL_FILTERED CHANNEL_THROW SPOT_ROUTER_SERVICE SPOT_ROUTER_FILTERED SPOT_ROUTER_THROW SPOT_PUB_SERVICE SPOT_PUB_FILTERED SPOT_PUB_THROW HTTP_SERVICE HTTP_FILTERED HTTP_THROW HTTP_TRIGGER REDIS_PORT <<<"$(python3 - <<'PY'
+read -r CHANNEL CHANNEL_FILTERED CHANNEL_THROW SPOT_ROUTER_SERVICE SPOT_ROUTER_FILTERED SPOT_ROUTER_THROW SPOT_PUB_SERVICE SPOT_PUB_FILTERED SPOT_PUB_THROW HTTP_SERVICE HTTP_FILTERED HTTP_THROW HTTP_TRIGGER <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 ports = []
-for _ in range(14):
+for _ in range(13):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
 print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:9]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[9:13]), end=" ")
-print(ports[13])
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[9:13]))
 for s in sockets:
     s.close()
 PY
@@ -55,8 +55,10 @@ FILTERED_SERVICE="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_filtered_service"
 THROWING_SERVICE="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_throwing_service"
 TRIGGER="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_trigger"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_client"
-REDIS_CONTAINER="zlink-cpp-runtime-monitoring-${RUN_ID}"
-REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+read -r REDIS_CONTAINER redis_port < <(
+  zlink_redis_start_scoped "zlink-redis-cpp-e2e-runtimemonitoring" "redis:7-alpine"
+)
+REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 REDIS_KEY_PREFIX="zlink:cpp:runtime-monitoring:${RUN_ID}"
 PIDS=()
 
@@ -75,11 +77,6 @@ cleanup() {
   exit "$code"
 }
 trap cleanup EXIT
-
-docker run --rm -d \
-  --name "$REDIS_CONTAINER" \
-  -p "127.0.0.1:${REDIS_PORT}:6379" \
-  redis:7-alpine >/dev/null
 
 for _ in $(seq 1 80); do
   if docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then

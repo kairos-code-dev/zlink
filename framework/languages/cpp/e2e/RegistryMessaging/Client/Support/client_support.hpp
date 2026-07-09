@@ -46,12 +46,15 @@ inline void wait_for_file (const std::string &path)
     if (path.empty ()) {
         return;
     }
-    for (int attempt = 0; attempt < 200; ++attempt) {
+    const auto timeout_ms =
+      std::chrono::milliseconds (std::stoi (env_or ("ZLINK_CPP_E2E_CONTROL_WAIT_MS", "60000")));
+    const auto deadline = std::chrono::steady_clock::now () + timeout_ms;
+    do {
         if (std::filesystem::exists (path)) {
             return;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    }
+    } while (std::chrono::steady_clock::now () < deadline);
     throw std::runtime_error ("timed out waiting for " + path);
 }
 

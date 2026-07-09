@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../../Shared/spot_service_contracts.hpp"
+#include "../Shared/Endpoints/evidence_endpoint.hpp"
 #include "../Shared/scenario_state.hpp"
 #include "../Shared/Support/location_store.hpp"
 
@@ -22,6 +23,20 @@ std::string env_or (const char *name, std::string fallback = {})
         return value;
     }
     return fallback;
+}
+
+std::string gateway_error_kind_name (zlink::framework::framework_error_kind_t kind)
+{
+    switch (kind) {
+        case zlink::framework::framework_error_kind_t::actor_route_not_found:
+            return "actor_route_not_found";
+        case zlink::framework::framework_error_kind_t::actor_location_stale:
+            return "actor_location_stale";
+        case zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found:
+            return "actor_dispatch_handler_not_found";
+        default:
+            return "request_failed";
+    }
 }
 
 class gateway_evidence_handler_t
@@ -82,6 +97,92 @@ class gateway_publish_handler_t
     zlink::framework::spot_publisher_client_t &_publisher;
 };
 
+class gateway_actor_push_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t,
+                                          zlink::framework::actor_client_t,
+                                          zlink::framework::actor_directory_t>;
+
+    gateway_actor_push_handler_t (scenario_state_t &state,
+                                  zlink::framework::actor_client_t &actors,
+                                  zlink::framework::actor_directory_t &actor_directory) :
+        _state (state), _actors (actors), _actor_directory (actor_directory)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request =
+          nlohmann::json::parse (http.body).get<e2e::actor_push_by_actor_req_t> ();
+        _state.record ("ActorPushRequest", request.actor_id, {}, request.value);
+        zlink::framework::http_response_t response;
+        try {
+            auto actor_ref = _actor_directory.find (request.actor_id).result ();
+            if (!actor_ref || !actor_ref.value ()) {
+                const auto error_kind = gateway_error_kind_name (
+                  actor_ref ? zlink::framework::framework_error_kind_t::actor_route_not_found
+                            : actor_ref.error_kind ());
+                _state.record ("ActorPushFailed", request.actor_id, {}, error_kind);
+                response.body =
+                  nlohmann::json (e2e::actor_push_by_actor_res_t{
+                    .actor_id = request.actor_id,
+                    .value = request.value,
+                    .delivered = false,
+                    .error_kind = error_kind})
+                    .dump ();
+                return response;
+            }
+            auto reply =
+              _actors.request_to_actor (*actor_ref.value (), e2e::actor_push_req_t{request.value})
+                .packet_name ("PushReq")
+                .timeout (std::chrono::milliseconds (10000))
+                .async<e2e::actor_push_res_t> ()
+                .result ();
+            if (!reply) {
+                const auto error_kind = gateway_error_kind_name (reply.error_kind ());
+                _state.record ("ActorPushFailed", request.actor_id, {}, error_kind);
+                response.body =
+                  nlohmann::json (e2e::actor_push_by_actor_res_t{
+                    .actor_id = request.actor_id,
+                    .value = request.value,
+                    .delivered = false,
+                    .error_kind = error_kind})
+                    .dump ();
+                return response;
+            }
+            _state.record ("ActorPushDelivered", reply.value ().actor_id, {},
+                           "value=" + request.value + "|node=play-a");
+            response.body =
+              nlohmann::json (e2e::actor_push_by_actor_res_t{
+                .actor_id = reply.value ().actor_id,
+                .value = request.value,
+                .delivered = true,
+                .error_kind = ""})
+                .dump ();
+            return response;
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            const auto error_kind = gateway_error_kind_name (error.kind ());
+            _state.record ("ActorPushFailed", request.actor_id, {}, error_kind);
+            response.body =
+              nlohmann::json (e2e::actor_push_by_actor_res_t{
+                .actor_id = request.actor_id,
+                .value = request.value,
+                .delivered = false,
+                .error_kind = error_kind})
+                .dump ();
+            return response;
+        }
+    }
+
+  private:
+    scenario_state_t &_state;
+    zlink::framework::actor_client_t &_actors;
+    zlink::framework::actor_directory_t &_actor_directory;
+};
+
 void configure_gateway_codecs (zlink::framework::codec_options_builder_t codecs)
 {
 }
@@ -94,8 +195,6 @@ inline int run_gateway_server (int argc, char **argv)
     const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
     const auto node_rid = env_or ("ZLINK_CPP_E2E_NODE_RID", "gateway");
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
-    const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
@@ -114,20 +213,18 @@ inline int run_gateway_server (int argc, char **argv)
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
           .add_transient<gateway_evidence_handler_t, scenario_state_t> ()
+          .add_transient<evidence_wait_handler_t, scenario_state_t> ()
           .add_transient<gateway_publish_handler_t, scenario_state_t,
-                         zlink::framework::spot_publisher_client_t> ();
+                         zlink::framework::spot_publisher_client_t> ()
+          .add_transient<gateway_actor_push_handler_t, scenario_state_t,
+                         zlink::framework::actor_client_t,
+                         zlink::framework::actor_directory_t> ();
         configure_gateway_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
-        auto route = options.add_route_mesh_channel (e2e::route_channel)
-                       .enable_server (route_endpoint)
-                       .set_routing_id (zlink::routing_id_t::from (node_rid))
-                       .enable_client ();
-        if (!route_a_endpoint.empty ()) {
-            route.enable_client (route_a_endpoint);
-        }
-        if (!route_b_endpoint.empty ()) {
-            route.enable_client (route_b_endpoint);
-        }
+        options.add_route_mesh_channel (e2e::route_channel)
+          .enable_server (route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (node_rid))
+          .enable_client ();
         options.add_spot_mesh (e2e::spot_mesh)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)
@@ -136,7 +233,9 @@ inline int run_gateway_server (int argc, char **argv)
           .listen (http_endpoint)
           .map_health ("/health")
           .map_get<gateway_evidence_handler_t> ("/evidence")
-          .map_post<gateway_publish_handler_t> ("/spot/publish");
+          .map_post<evidence_wait_handler_t> ("/evidence/wait")
+          .map_post<gateway_publish_handler_t> ("/spot/publish")
+          .map_post<gateway_actor_push_handler_t> ("/actor/push");
     });
     return app.run (argc, argv);
 }

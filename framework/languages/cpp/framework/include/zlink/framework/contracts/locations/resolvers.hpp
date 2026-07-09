@@ -19,15 +19,15 @@ class spot_location_resolver_t
 {
   public:
     virtual ~spot_location_resolver_t () = default;
-    virtual task_t<std::optional<spot_address_t>>
-    resolve_spot_address (std::string mesh_name, zlink::routing_id_t spot_rid) = 0;
+    virtual task_t<std::optional<spot_ref_t>>
+    resolve_spot_ref (std::string mesh_name, zlink::routing_id_t spot_rid) = 0;
 };
 
 class actor_location_resolver_t
 {
   public:
     virtual ~actor_location_resolver_t () = default;
-    virtual task_t<std::optional<spot_address_t>> resolve_actor_spot_address (
+    virtual task_t<std::optional<spot_ref_t>> resolve_actor_spot_ref (
       std::string actor_id) = 0;
 };
 

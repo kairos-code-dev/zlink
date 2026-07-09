@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -36,6 +37,7 @@ struct topology_entry_result_t
     std::string routing_id;
     std::string endpoint;
     std::string state;
+    std::uint32_t weight = 100;
 };
 
 inline void to_json (nlohmann::json &json, const topology_entry_result_t &value)
@@ -45,16 +47,18 @@ inline void to_json (nlohmann::json &json, const topology_entry_result_t &value)
                           {"role", value.role},
                           {"routing_id", value.routing_id},
                           {"endpoint", value.endpoint},
-                          {"state", value.state}};
+                          {"state", value.state},
+                          {"weight", value.weight}};
 }
 
 inline std::vector<topology_entry_result_t> peer_topology (
   zlink::framework::location_runtime_query_t &locations,
-  const std::optional<zlink::routing_id_t> &routing_id = std::nullopt)
+  const std::optional<zlink::routing_id_t> &routing_id = std::nullopt,
+  zlink::framework::location_role_t role = zlink::framework::location_role_t::router)
 {
     zlink::framework::peer_location_filter_t filter;
     filter.mesh_name = api_channel;
-    filter.role = zlink::framework::location_role_t::router;
+    filter.role = role;
     if (routing_id) {
         filter.node_rid = routing_id;
     }
@@ -67,14 +71,28 @@ inline std::vector<topology_entry_result_t> peer_topology (
     for (const auto &peer : result.value ()) {
         entries.push_back (topology_entry_result_t{.name = peer.mesh_name,
                                                    .kind = "channel",
-                                                   .role = "server",
+                                                   .role = role == zlink::framework::location_role_t::dealer
+                                                             ? "dealer"
+                                                             : "router",
                                                    .routing_id = peer.node_rid
                                                                    ? peer.node_rid->to_string ()
                                                                    : std::string{},
                                                    .endpoint = peer.endpoint,
-                                                   .state = "Ready"});
+                                                   .state = "Ready",
+                                                   .weight = peer.weight});
     }
     return entries;
+}
+
+inline zlink::framework::location_role_t parse_topology_role (const std::string &role)
+{
+    if (role == "dealer") {
+        return zlink::framework::location_role_t::dealer;
+    }
+    if (role == "router" || role.empty ()) {
+        return zlink::framework::location_role_t::router;
+    }
+    throw std::runtime_error ("unsupported topology role: " + role);
 }
 
 class topology_handler_t
@@ -88,10 +106,12 @@ class topology_handler_t
     {
     }
 
-    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &request)
     {
+        const auto body = nlohmann::json::parse (request.body.empty () ? "{}" : request.body);
+        const auto role = parse_topology_role (body.value ("role", std::string{"router"}));
         zlink::framework::http_response_t response;
-        response.body = nlohmann::json (peer_topology (_locations)).dump ();
+        response.body = nlohmann::json (peer_topology (_locations, std::nullopt, role)).dump ();
         return response;
     }
 
@@ -121,6 +141,7 @@ class topology_wait_handler_t
         }
         const auto expected_count =
           body.value ("expectedCount", body.value ("expected_count", 1));
+        const auto role = parse_topology_role (body.value ("role", std::string{"router"}));
         const auto timeout_ms =
           std::clamp (body.value ("timeoutMilliseconds",
                                   body.value ("timeout_milliseconds", 30000)),
@@ -132,7 +153,7 @@ class topology_wait_handler_t
         const auto deadline =
           std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
         while (std::chrono::steady_clock::now () < deadline) {
-            auto entries = peer_topology (_locations, rid);
+            auto entries = peer_topology (_locations, rid, role);
             const auto count =
               std::count_if (entries.begin (), entries.end (), [&] (const auto &entry) {
                   return (routing_id.empty () || entry.routing_id == routing_id)
@@ -175,24 +196,6 @@ inline profile_res_t request_profile_once (zlink::framework::channel_client_t &c
     }
     throw std::runtime_error (reply.error () ? reply.error ()->what ()
                                              : "profile request failed");
-}
-
-inline profile_res_t request_profile_with_retry (zlink::framework::channel_client_t &channels,
-                                                 const profile_req_t &request)
-{
-    std::optional<std::string> last_error;
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
-    while (std::chrono::steady_clock::now () < deadline) {
-        try {
-            return request_profile_once (channels, request, std::chrono::milliseconds (3000));
-        }
-        catch (const std::exception &error) {
-            last_error = error.what ();
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
-    }
-    throw std::runtime_error (last_error ? "profile request retry timed out: " + *last_error
-                                         : "profile request retry timed out");
 }
 
 class profile_request_handler_t
@@ -408,7 +411,8 @@ class transient_profile_request_service_t final : public zlink::framework::hoste
     {
         try {
             auto &channels = services.get_required<zlink::framework::channel_client_t> ();
-            _result->reply = request_profile_with_retry (channels, _request);
+            _result->reply =
+              request_profile_once (channels, _request, std::chrono::milliseconds (30000));
         }
         catch (const std::exception &error) {
             _result->error = error.what ();

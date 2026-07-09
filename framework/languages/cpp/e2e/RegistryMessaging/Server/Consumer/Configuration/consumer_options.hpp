@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdlib>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -38,7 +39,17 @@ struct consumer_options_t
     std::vector<std::string> provider_endpoints;
     std::string log_dir;
     std::string trace_label;
+    std::optional<int> client_max_message_size;
 };
+
+inline std::optional<int> parse_int_env (const char *name)
+{
+    const char *value = std::getenv (name);
+    if (value == nullptr || *value == '\0') {
+        return std::nullopt;
+    }
+    return std::stoi (value);
+}
 
 inline consumer_options_t read_consumer_options ()
 {
@@ -47,7 +58,9 @@ inline consumer_options_t read_consumer_options ()
             .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
             .provider_endpoints = split_csv (env_or ("ZLINK_CPP_E2E_PROVIDER_ENDPOINTS")),
             .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-            .trace_label = env_or ("ZLINK_CPP_E2E_TRACE_LABEL", "consumer")};
+            .trace_label = env_or ("ZLINK_CPP_E2E_TRACE_LABEL", "consumer"),
+            .client_max_message_size =
+              parse_int_env ("ZLINK_CPP_E2E_CLIENT_MAX_MESSAGE_SIZE")};
 }
 
 } // namespace zlink::framework::e2e::registry_messaging::consumer

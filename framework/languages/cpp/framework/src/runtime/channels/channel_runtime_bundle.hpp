@@ -27,6 +27,7 @@ class channel_runtime_bundle_t
     std::optional<std::string> next_manual_connection ();
     std::vector<std::string> manual_connections_from_next ();
     std::vector<std::string> connections_from_next ();
+    std::uint64_t connection_version () const;
 
     bool try_enter_receive () noexcept;
     void leave_receive () noexcept;
@@ -38,6 +39,7 @@ class channel_runtime_bundle_t
     std::map<std::string, std::uint32_t> _auto_connections;
     std::size_t _next_manual_connection = 0;
     std::size_t _next_connection = 0;
+    std::uint64_t _connection_version = 0;
     std::atomic_bool _receive_active = false;
 };
 

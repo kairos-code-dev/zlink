@@ -2,17 +2,36 @@
 
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
-#include "runtime/dispatch/coroutine_executor.hpp"
+#include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/dispatch/offload_executor.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
+#include <thread>
 #include <utility>
 #include <vector>
 
-namespace zlink::framework::detail
+namespace zlink::framework
+{
+
+namespace
+{
+
+runtime::offload_executor_t &handler_invocation_executor ()
+{
+    static runtime::offload_executor_t executor (
+      0, std::max<std::size_t> (1, std::thread::hardware_concurrency ()), 4096,
+      std::chrono::seconds (30));
+    return executor;
+}
+
+} // namespace
+
+namespace detail
 {
 
 struct handler_entry_t
@@ -68,10 +87,7 @@ class handler_registry_state_t
     handler_registry_t::failure_observer_t failure_observer;
 };
 
-} // namespace zlink::framework::detail
-
-namespace zlink::framework
-{
+} // namespace detail
 
 handler_registry_t::handler_registry_t () :
     _state (std::make_unique<detail::handler_registry_state_t> ())
@@ -204,47 +220,66 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
     auto owned_message = std::make_shared<zlink::message_t> (message);
     auto owned_content_type = std::string (content_type);
     auto filters = _state->filters;
-    return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
-      [this, entry, filters = std::move (filters), &services, &serializers,
-       owned_message = std::move (owned_message),
-       owned_content_type =
-         std::move (owned_content_type)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
-          result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (
-            framework_error_kind_t::request_failed, "handler failed");
-          try {
-              handler_invocation_context_t context{
-                entry->descriptor, make_handler_context<handler_context_t> (entry->descriptor),
-                owned_message};
-              context.context.content_type = owned_content_type;
-              using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
-              auto chain = std::make_shared<chain_t> ();
-              *chain = [&services, &serializers, &context, &filters, entry, owned_message,
-                        &owned_content_type,
-                        chain] (std::size_t index) -> task_t<zlink::message_t> {
-                  if (index >= filters.size ()) {
-                      return entry->invoker (services, serializers, *owned_message,
-                                             owned_content_type);
-                  }
-                  return filters[index](
-                    services, serializers, context,
-                    [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
-              };
-              auto handler_task = (*chain) (0);
-              result = co_await runtime::await_task_result (std::move (handler_task));
-          }
-          catch (const framework_exception_t &error) {
-              result = result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                            error.is_retriable ());
-          }
-          catch (...) {
-              result = result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
-                                                            "handler threw an exception");
-          }
-          if (!result && result.error () != nullptr) {
-              emit_failure (entry->descriptor, *result.error ());
-          }
-          co_return result;
-      });
+    auto invoke_body = [this, entry, filters = std::move (filters), &services, &serializers,
+                        owned_message = std::move (owned_message),
+                        owned_content_type = std::move (owned_content_type)] () mutable {
+        result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_failed, "handler failed");
+        try {
+            handler_invocation_context_t context{
+              entry->descriptor, make_handler_context<handler_context_t> (entry->descriptor),
+              owned_message};
+            context.context.content_type = owned_content_type;
+            using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
+            auto chain = std::make_shared<chain_t> ();
+            *chain = [&services, &serializers, &context, &filters, entry, owned_message,
+                      &owned_content_type, chain] (std::size_t index) -> task_t<zlink::message_t> {
+                if (index >= filters.size ()) {
+                    return entry->invoker (services, serializers, *owned_message,
+                                           owned_content_type);
+                }
+                return filters[index](
+                  services, serializers, context,
+                  [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
+            };
+            auto handler_task = (*chain) (0);
+            result = handler_task.result ();
+        }
+        catch (const framework_exception_t &error) {
+            result = result_t<zlink::message_t>::failure (error.kind (), error.what (),
+                                                          error.is_retriable ());
+        }
+        catch (...) {
+            result = result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                                          "handler threw an exception");
+        }
+        if (!result && result.error () != nullptr) {
+            emit_failure (entry->descriptor, *result.error ());
+        }
+        return result;
+    };
+
+    if (detail::current_stream_relay_dispatch ()) {
+        return task_t<zlink::message_t> (invoke_body ());
+    }
+
+    detail::task_completion_source_t<zlink::message_t> completion;
+    auto task = completion.task ();
+    try {
+        handler_invocation_executor ().submit (
+          [completion = std::move (completion), invoke_body = std::move (invoke_body)] () mutable {
+              completion.complete (invoke_body ());
+          });
+    }
+    catch (const std::exception &error) {
+        completion.complete (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_failed, error.what ()));
+    }
+    catch (...) {
+        completion.complete (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_failed, "handler executor rejected invocation"));
+    }
+    return task;
 }
 
 handler_registry_t &handler_registry_t::add_handler (handler_descriptor_t descriptor,

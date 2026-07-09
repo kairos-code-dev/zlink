@@ -94,6 +94,17 @@ class dispatch_error_reporter_t
             if (event.actor_id) {
                 add ("actor", *event.actor_id);
             }
+            if (event.exception) {
+                try {
+                    std::rethrow_exception (event.exception);
+                }
+                catch (const std::exception &error) {
+                    add ("error", error.what ());
+                }
+                catch (...) {
+                    add ("error", "unknown exception");
+                }
+            }
             // Structured fields through the framework logger (collector-friendly);
             // flat clog line when no logger is wired (tests, no-app usage).
             diagnostic_event_sink_t::log_or_clog (

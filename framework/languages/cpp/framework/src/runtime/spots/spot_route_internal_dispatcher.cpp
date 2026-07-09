@@ -5,8 +5,12 @@
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
+#include "runtime/streams/stream_runtime.hpp"
 
 #include <zlink.hpp>
+
+#include <memory>
+#include <vector>
 
 namespace zlink::framework::detail
 {
@@ -16,6 +20,8 @@ namespace
 
 constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKind";
 constexpr std::string_view actor_relay_kind_send = "send";
+constexpr std::string_view actor_bind_session_route_metadata_key =
+  "__zlink.actorBindSessionRoute";
 
 stream_message_kind_t actor_relay_kind_from_metadata (spot_actor_message_metadata_t &metadata)
 {
@@ -28,6 +34,63 @@ stream_message_kind_t actor_relay_kind_from_metadata (spot_actor_message_metadat
         metadata.values.erase (found);
     }
     return kind;
+}
+
+bool should_bind_actor_session_route (spot_actor_message_metadata_t &metadata)
+{
+    const auto found =
+      metadata.values.find (std::string (actor_bind_session_route_metadata_key));
+    if (found == metadata.values.end ()) {
+        return true;
+    }
+    const auto bind = found->second != "false";
+    metadata.values.erase (found);
+    return bind;
+}
+
+result_t<zlink::message_t> encode_bound_session_frame (stream_codec_t codec,
+                                                       std::string packet_name,
+                                                       const zlink::message_t &payload)
+{
+    stream_runtime_t stream_runtime (std::make_shared<stream_runtime_state_t> ());
+    const stream_header_t header (stream_message_kind_t::send, codec,
+                                  stream_header_flags_t::none, std::nullopt,
+                                  std::move (packet_name));
+    auto encoded_header = stream_runtime.encode_header (header);
+    if (!encoded_header) {
+        return result_t<zlink::message_t>::failure (
+          encoded_header.error_kind (),
+          encoded_header.error () ? encoded_header.error ()->what ()
+                                  : "STREAM header encode failed");
+    }
+    const auto payload_bytes = payload.to_bytes ();
+    const auto header_size = encoded_header.value ().size ();
+    std::vector<std::uint8_t> frame;
+    frame.reserve (6 + header_size + payload_bytes.size ());
+    frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
+    frame.insert (frame.end (), encoded_header.value ().begin (), encoded_header.value ().end ());
+    frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
+    return result_t<zlink::message_t>::success (zlink::message_t::from (std::move (frame)));
+}
+
+framework_error_kind_t submit_result_error_kind (zlink::submit_result_t result)
+{
+    switch (result) {
+        case zlink::submit_result_t::not_connected:
+            return framework_error_kind_t::disconnected;
+        case zlink::submit_result_t::backpressured:
+            return framework_error_kind_t::request_failed;
+        case zlink::submit_result_t::invalid_argument:
+        case zlink::submit_result_t::invalid_handle:
+            return framework_error_kind_t::request_protocol_error;
+        default:
+            return framework_error_kind_t::request_failed;
+    }
 }
 
 } // namespace
@@ -51,7 +114,8 @@ bool spot_route_internal_dispatcher_t::can_handle_send (std::string_view packet_
 
 bool spot_route_internal_dispatcher_t::can_handle_request (std::string_view packet_name) const
 {
-    return packet_name == spot_actor_join_route_request_t::packet_name
+    return packet_name == actor_bound_session_route_request_t::packet_name
+           || packet_name == spot_actor_join_route_request_t::packet_name
            || packet_name == spot_actor_packet_route_request_t::packet_name
            || packet_name == spot_actor_disconnect_route_request_t::packet_name;
 }
@@ -98,9 +162,51 @@ actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
   const route_received_packet_t &received) const
 {
     auto actor_gateway = _actor_gateway;
-    actor_gateway.bind_session_route (actor_ref, _route_client, header.channel_name,
-                                      received.source_node_rid, stream_codec_t::message_pack);
-    if (_runtime.native_node ()) {
+    auto native = _runtime.native_node ();
+    if (native && received.source_session_rid && received.source_session_rid->size () > 0) {
+        const auto native_actor = zlink::service::spot_node_t::remote_actor_ref (
+          zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
+          std::string (actor_ref.actor_id ()), actor_ref.generation ());
+        native->bind_remote_actor_bound_session (
+          native_actor, received.source_node_rid, *received.source_session_rid);
+        actor_gateway.bind_session_sink (
+          actor_ref,
+          [native, native_actor] (std::string packet_name,
+                                  const zlink::message_t &payload) mutable {
+              auto frame =
+                encode_bound_session_frame (stream_codec_t::message_pack, std::move (packet_name),
+                                            payload);
+              if (!frame) {
+                  return task_t<void> (result_t<void>::failure (
+                    frame.error_kind (),
+                    frame.error () ? frame.error ()->what ()
+                                   : "actor bound session frame encode failed"));
+              }
+              try {
+                  auto submitted =
+                    native->send_bound_session_msg (native_actor)
+                      .message (std::move (frame.value ()))
+                      .submit ();
+                  if (!submitted) {
+                      return task_t<void> (result_t<void>::failure (
+                        framework_error_kind_t::request_failed,
+                        "actor bound session send was backpressured", true));
+                  }
+                  return task_t<void> (result_t<void>::success ());
+              }
+              catch (const zlink::submit_error_t &error) {
+                  return task_t<void> (result_t<void>::failure (
+                    submit_result_error_kind (error.result ()), error.what ()));
+              }
+              catch (const std::exception &error) {
+                  return task_t<void> (
+                    result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
+              }
+          },
+          stream_codec_t::message_pack, false);
+        return actor_gateway;
+    }
+    if (native) {
         auto *serializers = _serializers;
         actor_gateway.bind_session_sink (
           actor_ref,
@@ -160,8 +266,14 @@ actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
                     result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
               }
           },
-          stream_codec_t::message_pack);
+          stream_codec_t::message_pack, false);
+        return actor_gateway;
     }
+    const auto route_channel_name =
+      _runtime.default_route_channel_name ().value_or (header.channel_name);
+    actor_gateway.bind_session_route (actor_ref, _route_client, route_channel_name,
+                                      received.source_node_rid, stream_codec_t::message_pack,
+                                      false);
     return actor_gateway;
 }
 
@@ -179,16 +291,42 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
     }
 
     try {
+        if (header.message_name == actor_bound_session_route_request_t::packet_name) {
+            auto request = _serializers->get<actor_bound_session_route_request_t> ().deserialize (
+              detail::encoded_payload_from_raw (body.value ()));
+            auto actor_ref = actor_ref_from_bound_session_route (request);
+            auto actor_gateway = _actor_gateway;
+            auto updated = actor_gateway.update_actor_ref (actor_ref);
+            if (!updated) {
+                return result_t<zlink::message_t>::failure (
+                  updated.error_kind (),
+                  updated.error () ? updated.error ()->what () : "actor ref update failed");
+            }
+            auto dispatched = actor_gateway.dispatch_bound_session_send (
+              actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
+            if (!dispatched) {
+                return result_t<zlink::message_t>::failure (
+                  dispatched.error_kind (), dispatched.error ()
+                                             ? dispatched.error ()->what ()
+                                             : "routed actor bound session send failed");
+            }
+            return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
+              _serializers->get<actor_bound_session_route_reply_t> ().serialize (
+                actor_bound_session_route_reply_t{.accepted = true})));
+        }
         if (header.message_name == spot_actor_packet_route_request_t::packet_name) {
             auto request = _serializers->get<spot_actor_packet_route_request_t> ().deserialize (
               detail::encoded_payload_from_raw (body.value ()));
             auto runtime = _runtime;
             auto actor_ref = actor_ref_from_spot_route (request);
-            auto actor_gateway = bind_actor_route (actor_ref, header, received);
             spot_actor_message_metadata_t metadata;
             metadata.content_type = request.content_type;
             metadata.values = request.metadata;
             const auto message_kind = actor_relay_kind_from_metadata (metadata);
+            auto actor_gateway =
+              should_bind_actor_session_route (metadata)
+                ? bind_actor_route (actor_ref, header, received)
+                : _actor_gateway;
             auto relayed = runtime.manager ().relay_actor_packet (
               actor_ref, actor_gateway.actor_context (actor_ref), message_kind,
               request.packet_name_value, zlink::message_t::from (request.payload), services,

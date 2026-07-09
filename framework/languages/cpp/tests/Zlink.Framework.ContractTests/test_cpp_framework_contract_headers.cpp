@@ -216,12 +216,12 @@ static_assert (
                  zlink::framework::task_t<zlink::framework::message_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_client_t &> ()
-                             .send_to_actor (std::declval<std::string> (),
+                             .send_to_actor (std::declval<zlink::framework::actor_ref_t> (),
                                              std::declval<zlink::framework::message_t> ())),
                  zlink::framework::actor_send_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_client_t &> ()
-                             .request_to_actor (std::declval<std::string> (),
+                             .request_to_actor (std::declval<zlink::framework::actor_ref_t> (),
                                                 std::declval<zlink::framework::message_t> ())),
                  zlink::framework::actor_request_call_t>);
 static_assert (std::is_same_v<
@@ -293,14 +293,14 @@ static_assert (
                  zlink::framework::task_t<std::vector<zlink::framework::peer_location_t>>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_location_resolver_t &> ()
-                             .resolve_spot_address (
+                             .resolve_spot_ref (
                                std::declval<std::string> (),
                                std::declval<zlink::routing_id_t> ())),
-                 zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>>>);
+                 zlink::framework::task_t<std::optional<zlink::framework::spot_ref_t>>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_location_resolver_t &> ()
-                             .resolve_actor_spot_address (std::declval<std::string> ())),
-                 zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>>>);
+                             .resolve_actor_spot_ref (std::declval<std::string> ())),
+                 zlink::framework::task_t<std::optional<zlink::framework::spot_ref_t>>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
                              .get_status ()),
@@ -1132,15 +1132,13 @@ static_assert (
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ().send_to_node (
                                 "sample.route",
-                                std::declval<zlink::routing_id_t> (),
-                                std::declval<zlink::framework::spot_rid_t> (),
+                                std::declval<zlink::framework::spot_ref_t> (),
                                 std::declval<named_request_t> ())),
                               zlink::framework::route_send_call_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ()
                                           .request_to_node ("sample.route",
-                                                    std::declval<zlink::routing_id_t> (),
-                                                    std::declval<zlink::framework::spot_rid_t> (),
+                                                    std::declval<zlink::framework::spot_ref_t> (),
                                                     std::declval<named_request_t> ())),
                               zlink::framework::channel_request_call_t>);
 

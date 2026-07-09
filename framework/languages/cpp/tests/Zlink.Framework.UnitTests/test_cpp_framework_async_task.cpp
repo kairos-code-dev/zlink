@@ -145,5 +145,38 @@ int main ()
         return 9;
     }
 
+    zlink::framework::detail::task_completion_source_t<int> cancellable_completion;
+    auto cancellable = cancellable_completion.task ();
+    zlink::framework::cancellation_token_source_t cancellation;
+    auto cancelled_task =
+      zlink::framework::detail::cancelable_task (std::move (cancellable), cancellation.token ());
+    if (!cancellation.cancel ()) {
+        return 10;
+    }
+    auto cancelled_result = cancelled_task.result ();
+    if (cancelled_result
+        || cancelled_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::cancelled) {
+        return 11;
+    }
+    cancellable_completion.complete (zlink::framework::result_t<int>::success (600));
+    if (cancelled_task.result ().error_kind ()
+        != zlink::framework::framework_error_kind_t::cancelled) {
+        return 12;
+    }
+
+    zlink::framework::detail::task_completion_source_t<int> complete_first_source;
+    auto complete_first = complete_first_source.task ();
+    zlink::framework::cancellation_token_source_t late_cancellation;
+    auto complete_first_task = zlink::framework::detail::cancelable_task (
+      std::move (complete_first), late_cancellation.token ());
+    complete_first_source.complete (zlink::framework::result_t<int>::success (700));
+    if (complete_first_task.result ().value () != 700) {
+        return 13;
+    }
+    if (!late_cancellation.cancel () || complete_first_task.result ().value () != 700) {
+        return 14;
+    }
+
     return 0;
 }

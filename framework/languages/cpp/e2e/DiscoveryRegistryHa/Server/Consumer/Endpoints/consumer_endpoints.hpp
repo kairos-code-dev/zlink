@@ -2,10 +2,12 @@
 #pragma once
 
 #include "../../../Shared/store_failure_contracts.hpp"
+#include "../../Shared/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
 #include <chrono>
+#include <csignal>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <thread>
@@ -164,6 +166,45 @@ class query_peers_handler_t
 
   private:
     zlink::framework::location_runtime_query_t &_query;
+};
+
+class store_delay_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<server::location_store_delay_state_t>;
+    using request_type = store_delay_req_t;
+    using reply_type = operation_status_t;
+
+    explicit store_delay_handler_t (server::location_store_delay_state_t &state) :
+        _state (state)
+    {
+    }
+
+    operation_status_t handle (const store_delay_req_t &request)
+    {
+        _state.set_delay (std::chrono::milliseconds (request.milliseconds));
+        return {.status = "ok"};
+    }
+
+  private:
+    server::location_store_delay_state_t &_state;
+};
+
+class shutdown_handler_t
+{
+  public:
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        std::thread ([] {
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+            std::raise (SIGTERM);
+        }).detach ();
+
+        zlink::framework::http_response_t response;
+        response.body = R"({"status":"stopping"})";
+        return response;
+    }
 };
 
 } // namespace zlink::framework::e2e::store_failure::consumer

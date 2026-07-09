@@ -2,8 +2,12 @@
 
 #include "Support/client_support.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <future>
 #include <iostream>
+#include <vector>
 
 namespace sf_client = zlink::framework::e2e::store_failure::client;
 
@@ -23,6 +27,11 @@ struct options_t
     std::chrono::milliseconds polling{sf_client::env_int ("ZLINK_CPP_SF_LOCATION_POLLING_MS", 500)};
     std::chrono::milliseconds grace{sf_client::env_int ("ZLINK_CPP_SF_LOCATION_GRACE_MS", 6000)};
 };
+
+std::chrono::milliseconds stale_peer_timeout (const options_t &options)
+{
+    return options.lease_ttl * 6 + options.polling * 12 + options.heartbeat * 4;
+}
 
 void baseline (const options_t &options)
 {
@@ -123,7 +132,7 @@ void crash_lease_expiry (const options_t &options)
     sf_client::wait_peers (
       options.consumer_url,
       [] (const auto &peers) { return !sf_client::has_rid (peers, "api-b"); },
-      options.lease_ttl * 3 + options.polling * 8, "SF-C1 api-b row did not expire");
+      stale_peer_timeout (options), "SF-C1 api-b row did not expire");
     std::this_thread::sleep_for (options.polling * 4);
     for (int i = 0; i < 8; ++i) {
         auto reply = sf_client::request_profile (options.consumer_url, "sf-c1-" + std::to_string (i));
@@ -175,7 +184,7 @@ void long_recovery (const options_t &options)
     sf_client::wait_peers (
       options.consumer_url,
       [] (const auto &peers) { return !sf_client::has_rid (peers, "api-b"); },
-      options.lease_ttl * 3 + options.polling * 8, "SF-D2 dead provider did not disappear");
+      stale_peer_timeout (options), "SF-D2 dead provider did not disappear");
     for (int i = 0; i < 8; ++i) {
         auto reply =
           sf_client::request_profile (options.consumer_url, "sf-d2-after-" + std::to_string (i));
@@ -214,6 +223,89 @@ void status_transition (const options_t &options)
     std::cout << "scenario SF-D3 passed\n";
 }
 
+std::vector<double> measure_requests (const std::string &consumer_url,
+                                      const std::string &marker_prefix,
+                                      int count)
+{
+    std::vector<double> timings;
+    timings.reserve (static_cast<std::size_t> (count));
+    for (int i = 0; i < count; ++i) {
+        const auto started = std::chrono::steady_clock::now ();
+        auto reply = sf_client::request_profile (
+          consumer_url, marker_prefix + "-" + std::to_string (i), std::chrono::seconds (3));
+        const auto elapsed = std::chrono::steady_clock::now () - started;
+        sf_client::ensure (reply.value == "profile:fast",
+                           "SF-E1 request returned unexpected value");
+        timings.push_back (
+          std::chrono::duration<double, std::milli> (elapsed).count ());
+    }
+    return timings;
+}
+
+double percentile_ms (std::vector<double> values, double percentile)
+{
+    std::sort (values.begin (), values.end ());
+    const auto index = static_cast<std::size_t> (
+      std::max (0.0, std::ceil (percentile * static_cast<double> (values.size ())) - 1.0));
+    return values[std::min (index, values.size () - 1)];
+}
+
+double measure_peer_query_ms (const options_t &options)
+{
+    const auto started = std::chrono::steady_clock::now ();
+    auto peers = sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &rows) {
+          return sf_client::has_rid (rows, "api-a") && sf_client::has_rid (rows, "api-b");
+      },
+      std::chrono::seconds (10), "SF-E1 delayed peer query did not return both providers");
+    const auto elapsed = std::chrono::steady_clock::now () - started;
+    sf_client::ensure (peers.size () >= 2, "SF-E1 delayed peer query returned too few rows");
+    return std::chrono::duration<double, std::milli> (elapsed).count ();
+}
+
+void store_delay_non_blocking (const options_t &options)
+{
+    constexpr int delay_ms = 1200;
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) {
+          return sf_client::has_rid (peers, "api-a") && sf_client::has_rid (peers, "api-b");
+      },
+      options.lease_ttl + options.heartbeat * 4, "SF-E1 baseline peers were not ready");
+
+    const auto baseline = measure_requests (options.consumer_url, "SF-E1-baseline", 10);
+    const auto baseline_p99 = percentile_ms (baseline, 0.99);
+
+    sf_client::set_store_delay (options.consumer_url, delay_ms);
+    try {
+        auto delayed_store_read = std::async (std::launch::async, [&options] {
+            return measure_peer_query_ms (options);
+        });
+        std::this_thread::sleep_for (std::chrono::milliseconds (150));
+        const auto concurrent = measure_requests (options.consumer_url, "SF-E1-concurrent", 12);
+        const auto delayed_store_read_ms = delayed_store_read.get ();
+        const auto concurrent_p99 = percentile_ms (concurrent, 0.99);
+        const auto budget = std::max (baseline_p99 * 8.0, 750.0);
+
+        sf_client::ensure (delayed_store_read_ms >= static_cast<double> (delay_ms) * 0.75,
+                           "SF-E1 delayed store read finished too quickly");
+        sf_client::ensure (concurrent_p99 <= budget,
+                           "SF-E1 unrelated request p99 grew too much during store delay");
+
+        auto recovery = sf_client::request_profile (options.consumer_url, "SF-E1-recovery");
+        sf_client::ensure (recovery.value == "profile:fast",
+                           "SF-E1 request path did not recover after delayed store read");
+        sf_client::set_store_delay (options.consumer_url, 0);
+    }
+    catch (...) {
+        sf_client::set_store_delay (options.consumer_url, 0);
+        throw;
+    }
+
+    std::cout << "scenario SF-E1 passed\n";
+}
+
 } // namespace
 
 int main ()
@@ -237,6 +329,8 @@ int main ()
         long_recovery (options);
     } else if (options.scenario == "SF-D3") {
         status_transition (options);
+    } else if (options.scenario == "SF-E1") {
+        store_delay_non_blocking (options);
     } else {
         throw std::runtime_error ("Unsupported StoreFailure scenario: " + options.scenario);
     }

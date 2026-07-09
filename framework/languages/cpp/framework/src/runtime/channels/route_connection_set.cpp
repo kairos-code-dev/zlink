@@ -14,7 +14,12 @@ bool route_connection_set_t::connect (std::string endpoint)
 
 bool route_connection_set_t::connect (zlink::routing_id_t peer_rid, std::string endpoint)
 {
-    return _manual_connections.emplace (std::move (endpoint), std::move (peer_rid)).second;
+    auto [it, inserted] = _manual_connections.emplace (std::move (endpoint), std::nullopt);
+    if (inserted || !it->second || *it->second != peer_rid) {
+        it->second = std::move (peer_rid);
+        return true;
+    }
+    return false;
 }
 
 bool route_connection_set_t::disconnect (const std::string &endpoint)

@@ -17,10 +17,12 @@
 #include "Scenarios/sm_b6_scenario.hpp"
 #include "Scenarios/sm_b7_scenario.hpp"
 #include "Scenarios/sm_b8_scenario.hpp"
+#include "Scenarios/sm_b9_scenario.hpp"
 #include "Scenarios/sm_c1_scenario.hpp"
 #include "Scenarios/sm_c2_scenario.hpp"
 #include "Scenarios/sm_c3_scenario.hpp"
 #include "Scenarios/sm_c4_scenario.hpp"
+#include "Scenarios/sm_c5_scenario.hpp"
 #include "Scenarios/sm_d1_scenario.hpp"
 #include "Scenarios/sm_d2_scenario.hpp"
 #include "Scenarios/sm_d3_scenario.hpp"
@@ -35,6 +37,7 @@
 #include "Scenarios/sm_d12_scenario.hpp"
 #include "Scenarios/sm_d13_scenario.hpp"
 #include "Scenarios/sm_d14_scenario.hpp"
+#include "Scenarios/sm_d15_scenario.hpp"
 #include "Scenarios/sm_e1_scenario.hpp"
 #include "Scenarios/sm_e2_scenario.hpp"
 #include "Scenarios/sm_e3_scenario.hpp"
@@ -44,6 +47,7 @@
 #include "Scenarios/sm_f3_scenario.hpp"
 #include "Scenarios/sm_f4_scenario.hpp"
 #include "Scenarios/sm_f5_scenario.hpp"
+#include "Scenarios/sm_f6_scenario.hpp"
 #include "Scenarios/sm_g1_scenario.hpp"
 #include "Scenarios/sm_g2_scenario.hpp"
 #include "Scenarios/sm_g3_scenario.hpp"
@@ -204,6 +208,10 @@ void run_scenario (const e2e_client::client_options_t &options)
     } else if (mode == "sm-b8") {
         scenarios::run_sm_b8_scenario (options.play_http_endpoint, options.stream_endpoint);
         std::cout << "scenario SM-B8 passed\n";
+    } else if (mode == "sm-b9") {
+        scenarios::run_sm_b9_scenario (
+          options.play_http_endpoint, options.play_b_http_endpoint, options.stream_endpoint);
+        std::cout << "scenario SM-B9 passed\n";
     } else if (mode == "sm-c1") {
         scenarios::run_sm_c1_scenario (options.play_http_endpoint, options.play_b_http_endpoint);
         std::cout << "scenario SM-C1 passed\n";
@@ -216,6 +224,9 @@ void run_scenario (const e2e_client::client_options_t &options)
     } else if (mode == "sm-c4") {
         scenarios::run_sm_c4_scenario (options.play_http_endpoint, options.gateway_http_endpoint);
         std::cout << "scenario SM-C4 passed\n";
+    } else if (mode == "sm-c5") {
+        scenarios::run_sm_c5_scenario (options.play_http_endpoint, options.play_b_http_endpoint);
+        std::cout << "scenario SM-C5 passed\n";
     } else if (mode == "sm-d1") {
         scenarios::run_sm_d1_scenario (options.play_http_endpoint, options.stream_endpoint);
         std::cout << "scenario SM-D1 passed\n";
@@ -245,7 +256,9 @@ void run_scenario (const e2e_client::client_options_t &options)
         scenarios::run_sm_d9_scenario (options.stream_endpoint);
         std::cout << "scenario SM-D9 passed\n";
     } else if (mode == "sm-d10") {
-        scenarios::run_sm_d10_scenario (options.stream_endpoint, options.alternate_stream_endpoint);
+        scenarios::run_sm_d10_scenario (
+          options.stream_endpoint, options.alternate_stream_endpoint, options.play_http_endpoint,
+          options.play_b_http_endpoint);
         std::cout << "scenario SM-D10 passed\n";
     } else if (mode == "sm-d11") {
         scenarios::run_sm_d11_scenario (options.session_http_endpoint, options.stream_endpoint);
@@ -259,6 +272,10 @@ void run_scenario (const e2e_client::client_options_t &options)
     } else if (mode == "sm-d14") {
         scenarios::run_sm_d14_scenario (options.tls_stream_endpoint);
         std::cout << "scenario SM-D14 passed\n";
+    } else if (mode == "sm-d15") {
+        scenarios::run_sm_d15_scenario (
+          options.play_http_endpoint, options.gateway_http_endpoint, options.stream_endpoint);
+        std::cout << "scenario SM-D15 passed\n";
     } else if (mode == "sm-e1") {
         scenarios::run_sm_e1_scenario (options.play_http_endpoint, options.play_b_http_endpoint);
         std::cout << "scenario SM-E1 passed\n";
@@ -292,6 +309,10 @@ void run_scenario (const e2e_client::client_options_t &options)
         scenarios::run_sm_f4_scenario (options.play_http_endpoint, spot.spot_rid);
         scenarios::run_sm_f5_scenario (options.play_http_endpoint, options.play_b_http_endpoint,
                                        spot.spot_rid);
+    } else if (mode == "sm-f6") {
+        scenarios::run_sm_f6_scenario (options.multi_a_http_endpoint,
+                                       options.multi_b_http_endpoint);
+        std::cout << "scenario SM-F6 passed\n";
     } else if (mode == "sm-g1" || mode == "crash-setup") {
         scenarios::run_sm_g1_crash_observation_scenario (
           options.stream_endpoint, options.alternate_stream_endpoint, options.crash_ready_file,

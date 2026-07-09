@@ -2,12 +2,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
 mkdir -p "$DELIVERYDISPATCH_LOG_DIR"
 rm -f "$DELIVERYDISPATCH_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
+cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_deliverydispatch_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
@@ -44,11 +46,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-read -r DELIVERYDISPATCH_REDIS_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
+read -r DELIVERYDISPATCH_RESERVED_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_TRACKING_SPOT_ROUTER DELIVERYDISPATCH_TRACKING_SPOT DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 chosen = set()
-while len(sockets) < 18:
+while len(sockets) < 20:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
@@ -77,27 +79,32 @@ print(
     f"tcp://127.0.0.1:{ports[14]} "
     f"tcp://127.0.0.1:{ports[15]} "
     f"tcp://127.0.0.1:{ports[16]} "
-    f"tcp://127.0.0.1:{ports[17]}"
+    f"tcp://127.0.0.1:{ports[17]} "
+    f"tcp://127.0.0.1:{ports[18]} "
+    f"tcp://127.0.0.1:{ports[19]}"
 )
 for sock in sockets:
     sock.close()
 PY
 )"
-if [[ -z "$DELIVERYDISPATCH_REDIS_PORT" || -z "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2" ]]; then
+if [[ -z "$DELIVERYDISPATCH_RESERVED_PORT" || -z "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2" ]]; then
   echo "Failed to allocate local TCP ports for the DeliveryDispatch sample." >&2
   echo "This environment may block local socket creation." >&2
   exit 1
 fi
 if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
-  REDIS_CONTAINER_NAME="zlink-cpp-deliverydispatch-sample-redis-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER_NAME" -p "127.0.0.1:${DELIVERYDISPATCH_REDIS_PORT}:6379" redis:7-alpine >/dev/null
-  export DELIVERYDISPATCH_REDIS_ENDPOINT="tcp://127.0.0.1:${DELIVERYDISPATCH_REDIS_PORT}"
+  read -r REDIS_CONTAINER_NAME redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-sample-deliverydispatch" "redis:7-alpine"
+  )
+  export DELIVERYDISPATCH_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 fi
 export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:$$:}"
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${DELIVERYDISPATCH_API_HTTP_PORT}"
 export DELIVERYDISPATCH_CENTER_ROUTE
 export DELIVERYDISPATCH_COURIER_ROUTE
 export DELIVERYDISPATCH_TRACKING_ROUTE
+export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER
+export DELIVERYDISPATCH_TRACKING_SPOT
 export DELIVERYDISPATCH_STATUS_FANOUT
 export DELIVERYDISPATCH_CUSTOMER_STREAM
 export DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER
@@ -174,31 +181,26 @@ cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_deliverydispatch_client >/dev/null
 
 start_role tracking "$BIN_DIR/sample_cpp_framework_deliverydispatch_tracking"
-wait_port tracking "$(port_of "$DELIVERYDISPATCH_TRACKING_ROUTE")"
-
 start_role customer-gateway "$BIN_DIR/sample_cpp_framework_deliverydispatch_customer_gateway"
+start_role courier-session "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_session"
+start_role courier-actor-node-1 "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_actor_node" delivery-courier-node-1
+start_role courier-actor-node-2 "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_actor_node" delivery-courier-node-2
+start_role courier-gateway "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_gateway"
+start_role dispatch-center "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch_center"
+start_role dispatch-api "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch_api"
+
+wait_port tracking "$(port_of "$DELIVERYDISPATCH_TRACKING_ROUTE")"
+wait_port tracking-spot "$(port_of "$DELIVERYDISPATCH_TRACKING_SPOT_ROUTER")"
 wait_port customer-stream "$(port_of "$DELIVERYDISPATCH_CUSTOMER_STREAM")"
 wait_port customer-spot "$(port_of "$DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER")"
-
-start_role courier-session "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_session"
 wait_port courier-stream "$(port_of "$DELIVERYDISPATCH_COURIER_STREAM")"
 wait_port courier-session-spot "$(port_of "$DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER")"
-
-start_role courier-actor-node-1 "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_actor_node" delivery-courier-node-1
 wait_port courier-actor-node-1 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE")"
 wait_port courier-actor-node-1-spot "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER")"
-
-start_role courier-actor-node-2 "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_actor_node" delivery-courier-node-2
 wait_port courier-actor-node-2 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE")"
 wait_port courier-actor-node-2-spot "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER")"
-
-start_role courier-gateway "$BIN_DIR/sample_cpp_framework_deliverydispatch_courier_gateway"
 wait_port courier-gateway "$(port_of "$DELIVERYDISPATCH_COURIER_ROUTE")"
-
-start_role dispatch-center "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch_center"
 wait_port dispatch-center "$(port_of "$DELIVERYDISPATCH_CENTER_ROUTE")"
-
-start_role dispatch-api "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch_api"
 wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
 
 sleep 5

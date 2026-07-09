@@ -47,7 +47,9 @@ post_consumer_profile_raw (const std::string &value,
                     .build ();
     auto request = profile_req_t{.value = value, .marker = marker.empty () ? value : marker};
     auto result = client.post (path).body (request).submit_raw ().result ();
-    ensure (result.has_value (), "consumer HTTP request failed");
+    ensure (result.has_value (),
+            std::string ("consumer HTTP request failed: ")
+              + (result.error () ? result.error ()->what () : "unknown error"));
     return result.value ();
 }
 

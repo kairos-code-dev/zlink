@@ -28,10 +28,46 @@ inline void write_workflow_flow (const std::string &instance, const std::string 
     output << "message flow role=" << instance << " " << line << "\n";
 }
 
-class workflow_handlers_t
+struct order_workflow_spot_create_req_t
+{
+    static constexpr const char *packet_name = "OrderWorkflowSpotCreateReq";
+    std::string order_id;
+};
+
+inline void to_json (nlohmann::json &json, const order_workflow_spot_create_req_t &value)
+{
+    json = {{"orderId", value.order_id}};
+}
+
+inline void from_json (const nlohmann::json &json, order_workflow_spot_create_req_t &value)
+{
+    value.order_id = json_string (json, "orderId", "order_id");
+}
+
+class order_workflow_spot_t : public spot_t
 {
   public:
-    explicit workflow_handlers_t (file_state_store_t &store) : _store (store) {}
+    explicit order_workflow_spot_t (sample_topology_t topology) :
+        _store (std::move (topology))
+    {
+    }
+
+    void configure (spot_context_t &context)
+    {
+        context.handlers ()
+          .add_handler<&order_workflow_spot_t::start> (start_order_workflow_req_t::packet_name)
+          .add_handler<&order_workflow_spot_t::continue_> (
+            continue_order_workflow_req_t::packet_name)
+          .add_handler<&order_workflow_spot_t::rebuild> (
+            rebuild_order_projection_req_t::packet_name);
+    }
+
+    spot_create_response_t on_create (const zlink::framework::message_t &request)
+    {
+        auto create = request.decode<order_workflow_spot_create_req_t> ();
+        _order_id = create.order_id;
+        return spot_create_response_t::accept ();
+    }
 
     start_order_workflow_res_t start (const start_order_workflow_req_t &request)
     {
@@ -39,20 +75,8 @@ class workflow_handlers_t
             return start_workflow (json, request);
         });
         std::cerr << "shoppingmall order: started order=" << state.order_id
-                  << " status=" << state.status << "\n";
+                  << " status=" << state.status << " spot=" << _order_id << "\n";
         return {state};
-    }
-
-    start_order_workflow_res_t start_route (const start_order_workflow_req_t &request)
-    {
-        try {
-            return start (request);
-        }
-        catch (const std::exception &error) {
-            std::cerr << "shoppingmall workflow handler failed: packet=StartOrderWorkflowReq"
-                      << " order=" << request.order_id << " error=" << error.what () << "\n";
-            throw;
-        }
     }
 
     continue_order_workflow_res_t continue_ (const continue_order_workflow_req_t &request)
@@ -62,69 +86,54 @@ class workflow_handlers_t
         })};
     }
 
-    continue_order_workflow_res_t continue_route (const continue_order_workflow_req_t &request)
-    {
-        try {
-            return continue_ (request);
-        }
-        catch (const std::exception &error) {
-            std::cerr << "shoppingmall workflow handler failed: packet=ContinueOrderWorkflowReq"
-                      << " order=" << request.order_id << " error=" << error.what () << "\n";
-            throw;
-        }
-    }
-
-    start_order_workflow_res_t prepare (const start_order_workflow_req_t &request)
-    {
-        return {_store.update ([&] (nlohmann::json &json) {
-            auto state = start_workflow (json, request);
-            if (state.status == order_status_t::created) {
-                append_event (json, request.order_id, "InventoryReservedEvent");
-                state.status = order_status_t::inventory_reserved;
-                state.reservation_id = "reservation-" + request.order_id;
-                state = save_projection (json, state);
-            }
-            return state;
-        })};
-    }
-
     rebuild_order_projection_res_t rebuild (const rebuild_order_projection_req_t &request)
     {
-        return {_store.update ([&] (nlohmann::json &json) {
+        auto state = _store.update ([&] (nlohmann::json &json) {
             return rebuild_projection (json, request.order_id);
-        })};
-    }
-
-    rebuild_order_projection_res_t rebuild_route (const rebuild_order_projection_req_t &request)
-    {
-        rebuild_order_projection_res_t response;
-        try {
-            response = rebuild (request);
-        }
-        catch (const std::exception &error) {
-            std::cerr << "shoppingmall workflow handler failed: packet=RebuildOrderProjectionReq"
-                      << " order=" << request.order_id << " error=" << error.what () << "\n";
-            throw;
-        }
-        std::cerr << "shoppingmall order: projection rebuilt order=" << response.state.order_id
-                  << " status=" << response.state.status << "\n";
-        return response;
+        });
+        std::cerr << "shoppingmall order: projection rebuilt order=" << state.order_id
+                  << " status=" << state.status << "\n";
+        return {state};
     }
 
   private:
-    file_state_store_t &_store;
+    redis_state_store_t _store;
+    std::string _order_id;
 };
 
-#define SHOPPINGMALL_WORKFLOW_HANDLER(name, req, res, method) \
-class name { public: using request_type = req; using reply_type = res; \
-using dependency_types = dependency_list_t<workflow_handlers_t>; static constexpr const char *topic_name = #req; \
-explicit name (workflow_handlers_t &h): _h(h) {} reply_type handle (const request_type &r) { return _h.method(r); } \
-private: workflow_handlers_t &_h; };
+class workflow_route_handlers_t
+{
+  public:
+    using dependency_types = dependency_list_t<spot_node_manager_t>;
 
-SHOPPINGMALL_WORKFLOW_HANDLER (workflow_start_handler_t, start_order_workflow_req_t, start_order_workflow_res_t, start)
-SHOPPINGMALL_WORKFLOW_HANDLER (workflow_continue_handler_t, continue_order_workflow_req_t, continue_order_workflow_res_t, continue_)
-SHOPPINGMALL_WORKFLOW_HANDLER (workflow_prepare_handler_t, start_order_workflow_req_t, start_order_workflow_res_t, prepare)
-SHOPPINGMALL_WORKFLOW_HANDLER (workflow_rebuild_handler_t, rebuild_order_projection_req_t, rebuild_order_projection_res_t, rebuild)
+    explicit workflow_route_handlers_t (spot_node_manager_t &spots) :
+        _spots (spots)
+    {
+    }
+
+    ok_res_t ensure (const ensure_order_workflow_spot_req_t &request,
+                     const route_handler_context_t &)
+    {
+        ensure_spot (request.order_id);
+        return {};
+    }
+
+  private:
+    static spot_rid_t spot_rid_for (const std::string &order_id)
+    {
+        return spot_rid_t::from_string (order_id);
+    }
+
+    void ensure_spot (const std::string &order_id)
+    {
+        (void) _spots.get_or_create_spot (
+          sample_names_t::order_workflow_spot,
+          spot_rid_for (order_id),
+          order_workflow_spot_create_req_t{order_id});
+    }
+
+    spot_node_manager_t &_spots;
+};
 
 } // namespace zlink::samples::shoppingmall
 
@@ -138,7 +147,7 @@ int main (int argc, char **argv)
     if (instance_id.empty ())
         instance_id = env_or ("SHOPPINGMALL_WORKFLOW_INSTANCE", "workflow-a");
     auto instance = topology.for_workflow_instance (instance_id);
-    file_state_store_t store;
+    redis_state_store_t store{topology};
     store.seed_defaults ();
     write_workflow_flow (instance.instance_id,
                          "action=location-store-claim redis=" + topology.redis_endpoint
@@ -147,33 +156,37 @@ int main (int argc, char **argv)
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.services ()
-          .add_singleton<file_state_store_t> ()
-          .add_singleton<workflow_handlers_t, file_state_store_t> ();
+          .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
+          .add_singleton<workflow_instance_topology_t> (
+            std::make_unique<workflow_instance_topology_t> (instance))
+          .add_singleton<redis_state_store_t, sample_topology_t> ()
+          .add_singleton<workflow_route_handlers_t, spot_node_manager_t> ();
         add_shoppingmall_location_store (options, topology);
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (shoppingmall_log_dir () + "/flow-" + instance.instance_id + ".log")
           .trace_label (instance.instance_id);
-        options.add_client_server_channel (order_workflow_channel_for (instance.instance_id))
+        options.add_route_mesh_channel (order_workflow_channel_for (instance.instance_id))
           .enable_server (instance.route_endpoint)
           .set_routing_id (instance.route_rid)
-          .use_handler_group ("workflow");
-        options.handlers ()
-          .group ("workflow")
-          .add<workflow_start_handler_t> ()
-          .add<workflow_continue_handler_t> ()
-          .add<workflow_rebuild_handler_t> ();
+          .add_request_handler<workflow_route_handlers_t,
+                               ensure_order_workflow_spot_req_t,
+                               ok_res_t> (
+            ensure_order_workflow_spot_req_t::packet_name, &workflow_route_handlers_t::ensure);
+        options.add_route_mesh_channel (order_workflow_spot_route_channel_for (instance.instance_id))
+          .enable_server (instance.spot_route_endpoint)
+          .set_routing_id (instance.spot_rid);
         options.add_spot_mesh (sample_names_t::order_spot_discovery)
           .enable_router (instance.spot_router_endpoint)
           .set_routing_id (instance.spot_rid)
-          .enable_pub_sub (instance.spot_endpoint);
+          .enable_pub_sub (instance.spot_endpoint)
+          .accept_route_mesh (order_workflow_spot_route_channel_for (instance.instance_id))
+          .add_spot<order_workflow_spot_t> (
+            sample_names_t::order_workflow_spot,
+            [topology] { return std::make_shared<order_workflow_spot_t> (topology); });
         options.http ()
           .listen (instance.http_url)
-          .map_health ("/health")
-          .map_post<workflow_start_handler_t> ("/workflow/start")
-          .map_post<workflow_continue_handler_t> ("/workflow/continue")
-          .map_post<workflow_prepare_handler_t> ("/workflow/prepare")
-          .map_post<workflow_rebuild_handler_t> ("/workflow/rebuild");
+          .map_health ("/health");
     });
     return app.run (argc, argv);
 }

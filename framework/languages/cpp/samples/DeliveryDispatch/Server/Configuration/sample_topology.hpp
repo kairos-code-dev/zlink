@@ -33,6 +33,10 @@ struct sample_topology_t
       env_or ("DELIVERYDISPATCH_COURIER_ROUTE", "tcp://127.0.0.1:7395");
     std::string tracking_route_endpoint =
       env_or ("DELIVERYDISPATCH_TRACKING_ROUTE", "tcp://127.0.0.1:7397");
+    std::string tracking_spot_router_endpoint =
+      env_or ("DELIVERYDISPATCH_TRACKING_SPOT_ROUTER", "tcp://127.0.0.1:7413");
+    std::string tracking_spot_endpoint =
+      env_or ("DELIVERYDISPATCH_TRACKING_SPOT", "tcp://127.0.0.1:7414");
     std::string status_fanout_endpoint =
       env_or ("DELIVERYDISPATCH_STATUS_FANOUT", "tcp://127.0.0.1:7411");
     std::string customer_stream_endpoint =

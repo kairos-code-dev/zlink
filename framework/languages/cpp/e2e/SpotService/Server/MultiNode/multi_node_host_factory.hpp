@@ -24,6 +24,7 @@ inline int run_multi_node_server (int argc, char **argv)
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
     const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
+    const auto disable_route_mesh = env_or ("ZLINK_CPP_E2E_DISABLE_ROUTE_MESH") == "1";
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")
@@ -37,33 +38,48 @@ inline int run_multi_node_server (int argc, char **argv)
           .trace_label ("cpp-sm-" + node_rid);
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
+          .add_transient<multi_node_route_ping_handler_t, scenario_state_t> ()
           .add_transient<multi_node_create_local_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t,
                          zlink::framework::route_client_t> ()
           .add_transient<multi_node_state_route_handler_t, scenario_state_t,
-                         zlink::framework::route_client_t> ();
+                         zlink::framework::route_client_t> ()
+          .add_transient<multi_node_create_user_local_handler_t, scenario_state_t,
+                         zlink::framework::spot_node_manager_t> ()
+          .add_transient<multi_node_spot_only_mesh_handler_t, scenario_state_t,
+                         zlink::framework::spot_node_manager_t> ()
+          .add_transient<multi_node_spot_only_join_handler_t, scenario_state_t,
+                         zlink::framework::session_actor_manager_t> ();
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        auto route = options.add_route_mesh_channel (multi_node_route_channel_for (node_rid))
-                       .enable_server (route_endpoint)
-                       .set_routing_id (zlink::routing_id_t::from (node_rid))
-                       .enable_client ()
-                       .add_request_handler<multi_node_create_local_handler_t,
-                                            e2e::multi_node_create_spot_req_t,
-                         e2e::multi_node_create_spot_res_t> (
-                         "MultiNodeCreateSpotReq",
-                         &multi_node_create_local_handler_t::handle_route);
-        if (!route_endpoint.empty ()) {
-            route.enable_client (route_endpoint);
+        if (!disable_route_mesh) {
+            (void) peer_route_endpoint;
+            options.add_route_mesh_channel (multi_node_route_channel_for (node_rid))
+              .enable_server (route_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (node_rid))
+              .enable_client ()
+              .add_request_handler<multi_node_route_ping_handler_t,
+                                   e2e::channel_control_ping_req_t,
+                                   e2e::channel_control_ping_res_t> (
+                "MultiNodeRoutePing",
+                &multi_node_route_ping_handler_t::handle)
+              .add_request_handler<multi_node_create_local_handler_t,
+                                   e2e::multi_node_create_spot_req_t,
+                                   e2e::multi_node_create_spot_res_t> (
+                "MultiNodeCreateSpotReq",
+                &multi_node_create_local_handler_t::handle_route);
         }
-        if (!peer_route_endpoint.empty ()) {
-            route.enable_client (peer_route_endpoint);
-        }
-        auto spot = options.add_spot_mesh (e2e::spot_mesh)
+        auto spot = options.add_spot_mesh (disable_route_mesh ? e2e::spot_only_mesh
+                                                              : e2e::spot_mesh)
                       .set_routing_id (zlink::routing_id_t::from (node_rid))
                       .enable_router (spot_router_endpoint)
-                      .enable_pub_sub (pubsub_endpoint);
+                      .enable_pub_sub (pubsub_endpoint)
+                      .add_entry_spot<multi_node_entry_spot_t> (
+                        [state_ptr] {
+                            return std::make_shared<multi_node_entry_spot_t> (*state_ptr);
+                      })
+                      .add_actor_factory<multi_node_actor_factory_t> (e2e::actor_type);
         if (node_rid == multi_node_a_name) {
             spot.add_spot<multi_node_spot_a_t> (
               e2e::multi_spot_a,
@@ -79,6 +95,9 @@ inline int run_multi_node_server (int argc, char **argv)
           .map_get<evidence_handler_t> ("/evidence")
           .map_post<evidence_wait_handler_t> ("/evidence/wait")
           .map_post<multi_node_create_local_handler_t> ("/spot/create-local")
+          .map_post<multi_node_create_user_local_handler_t> ("/spot/create-user-local")
+          .map_post<multi_node_spot_only_mesh_handler_t> ("/spot/spot-only/request-send")
+          .map_post<multi_node_spot_only_join_handler_t> ("/actor/spot-only-join")
           .map_post<multi_node_state_route_handler_t> ("/spot/state/request")
           .map_post<shutdown_handler_t> ("/shutdown");
     });

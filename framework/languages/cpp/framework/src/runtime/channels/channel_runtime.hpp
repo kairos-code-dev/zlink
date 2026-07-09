@@ -34,6 +34,16 @@ class stream_runtime_state_t;
 class channel_native_client_t;
 class channel_native_publisher_t;
 
+} // namespace zlink::framework::detail
+
+namespace zlink::framework::runtime
+{
+class offload_executor_t;
+} // namespace zlink::framework::runtime
+
+namespace zlink::framework::detail
+{
+
 result_t<void> validate_channel_native_reply (const runtime::messaging::message_parts_t &parts);
 
 class capability_builder_state_t
@@ -67,13 +77,11 @@ class route_client_state_t
 {
   public:
     route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime,
-                          serializer_registry_t &serializers) :
-        runtime (std::move (runtime)), serializers (&serializers)
-    {
-    }
+                          serializer_registry_t &serializers);
 
     std::shared_ptr<channel_runtime_state_t> runtime;
     serializer_registry_t *serializers;
+    std::shared_ptr<runtime::offload_executor_t> executor;
 };
 
 class channel_runtime_state_t

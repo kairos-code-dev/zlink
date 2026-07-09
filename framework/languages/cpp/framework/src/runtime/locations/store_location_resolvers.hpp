@@ -27,35 +27,35 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         return completed (_store->list_peers (std::move (filter)).result ().value ());
     }
 
-    task_t<std::optional<spot_address_t>>
-    resolve_spot_address (std::string mesh_name, zlink::routing_id_t spot_rid) override
+    task_t<std::optional<spot_ref_t>>
+    resolve_spot_ref (std::string mesh_name, zlink::routing_id_t spot_rid) override
     {
         auto row =
           _store->resolve_spot (spot_location_key_t{std::move (mesh_name), spot_rid})
             .result ()
             .value ();
         if (!row) {
-            return completed (std::optional<spot_address_t>{});
+            return completed (std::optional<spot_ref_t>{});
         }
-        return completed (std::optional<spot_address_t>{spot_address_t{
+        return completed (std::optional<spot_ref_t>{spot_ref_t{
           row->mesh_name, row->node_rid, row->spot_rid}});
     }
 
-    task_t<std::optional<spot_address_t>>
-    resolve_actor_spot_address (std::string actor_id) override
+    task_t<std::optional<spot_ref_t>>
+    resolve_actor_spot_ref (std::string actor_id) override
     {
         auto row = _store
                      ->resolve_actor (actor_location_key_t{std::move (actor_id)})
                      .result ()
                      .value ();
         if (!row) {
-            return completed (std::optional<spot_address_t>{});
+            return completed (std::optional<spot_ref_t>{});
         }
         const auto target_spot =
           row->location_kind == zlink::spot_kind::entry || !row->spot_rid
             ? row->node_rid
             : *row->spot_rid;
-        return completed (std::optional<spot_address_t>{spot_address_t{
+        return completed (std::optional<spot_ref_t>{spot_ref_t{
           row->spot_mesh_name, row->node_rid, target_spot}});
     }
 

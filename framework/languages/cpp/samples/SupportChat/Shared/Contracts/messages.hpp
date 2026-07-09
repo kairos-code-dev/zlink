@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <vector>
@@ -102,6 +103,43 @@ struct allocate_conversation_res_t
     static constexpr const char *packet_name = "AllocateConversationRes";
     std::string conversation_id;
     std::string status;
+};
+
+struct support_actor_ref_snapshot_t
+{
+    std::string node_rid;
+    std::string actor_id;
+    std::uint64_t generation{0};
+};
+
+struct ensure_support_user_actor_req_t
+{
+    static constexpr const char *packet_name = "EnsureSupportUserActorReq";
+    std::string actor_id;
+    std::string display_name;
+    std::string role;
+    std::string participant_id;
+};
+
+struct ensure_support_user_actor_res_t
+{
+    static constexpr const char *packet_name = "EnsureSupportUserActorRes";
+    support_actor_ref_snapshot_t actor;
+};
+
+struct ensure_agent_conversation_req_t
+{
+    static constexpr const char *packet_name = "EnsureAgentConversationReq";
+    std::string roster_actor_id;
+    std::string display_name;
+    std::string conversation_id;
+};
+
+struct ensure_agent_conversation_res_t
+{
+    static constexpr const char *packet_name = "EnsureAgentConversationRes";
+    support_actor_ref_snapshot_t actor;
+    conversation_state_t state;
 };
 
 struct open_conversation_req_t
@@ -217,5 +255,411 @@ struct conversation_closed_notify_t
     std::string conversation_id;
     conversation_state_t state;
 };
+
+template <typename T>
+inline void set_optional (nlohmann::json &json, const char *name, const std::optional<T> &value)
+{
+    if (value) {
+        json[name] = *value;
+    }
+}
+
+inline std::optional<std::string>
+json_optional_string (const nlohmann::json &json, const char *name)
+{
+    if (!json.contains (name) || json.at (name).is_null ()) {
+        return std::nullopt;
+    }
+    return json.at (name).get<std::string> ();
+}
+
+inline std::optional<std::int64_t>
+json_optional_i64 (const nlohmann::json &json, const char *name)
+{
+    if (!json.contains (name) || json.at (name).is_null ()) {
+        return std::nullopt;
+    }
+    return json.at (name).get<std::int64_t> ();
+}
+
+inline void to_json (nlohmann::json &json, const chat_message_t &value)
+{
+    json = {{"conversationId", value.conversation_id},
+            {"messageSeq", value.message_seq},
+            {"senderActorId", value.sender_actor_id},
+            {"text", value.text},
+            {"sentAtUnixMs", value.sent_at_unix_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, chat_message_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.message_seq = json.value ("messageSeq", std::uint64_t{0});
+    value.sender_actor_id = json.value ("senderActorId", "");
+    value.text = json.value ("text", "");
+    value.sent_at_unix_ms = json.value ("sentAtUnixMs", std::int64_t{0});
+}
+
+inline void to_json (nlohmann::json &json, const conversation_state_t &value)
+{
+    json = {{"conversationId", value.conversation_id},
+            {"subject", value.subject},
+            {"status", value.status},
+            {"customerActorId", value.customer_actor_id},
+            {"lastMessageSeq", value.last_message_seq}};
+    set_optional (json, "agentActorId", value.agent_actor_id);
+    set_optional (json, "lastMessageAtUnixMs", value.last_message_at_unix_ms);
+    set_optional (json, "idleDeadlineUnixMs", value.idle_deadline_unix_ms);
+}
+
+inline void from_json (const nlohmann::json &json, conversation_state_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.subject = json.value ("subject", "");
+    value.status = json.value ("status", "");
+    value.customer_actor_id = json.value ("customerActorId", "");
+    value.agent_actor_id = json_optional_string (json, "agentActorId");
+    value.last_message_seq = json.value ("lastMessageSeq", std::uint64_t{0});
+    value.last_message_at_unix_ms = json_optional_i64 (json, "lastMessageAtUnixMs");
+    value.idle_deadline_unix_ms = json_optional_i64 (json, "idleDeadlineUnixMs");
+}
+
+#define SUPPORTCHAT_JSON_STRING_REQ(type, field_name, json_name) \
+inline void to_json (nlohmann::json &json, const type &value) { json = {{json_name, value.field_name}}; } \
+inline void from_json (const nlohmann::json &json, type &value) { value.field_name = json.value (json_name, ""); }
+
+SUPPORTCHAT_JSON_STRING_REQ (authenticate_req_t, access_token, "accessToken")
+SUPPORTCHAT_JSON_STRING_REQ (authenticate_user_req_t, access_token, "accessToken")
+SUPPORTCHAT_JSON_STRING_REQ (open_conversation_req_t, subject, "subject")
+SUPPORTCHAT_JSON_STRING_REQ (send_chat_message_req_t, text, "text")
+
+#undef SUPPORTCHAT_JSON_STRING_REQ
+
+inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
+{
+    json = {{"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"role", value.role}};
+}
+
+inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
+{
+    value.actor_id = json.value ("actorId", "");
+    value.display_name = json.value ("displayName", "");
+    value.role = json.value ("role", "");
+}
+
+inline void to_json (nlohmann::json &json, const authenticate_user_res_t &value)
+{
+    json = {{"accepted", value.accepted}};
+    set_optional (json, "actorId", value.actor_id);
+    set_optional (json, "displayName", value.display_name);
+    set_optional (json, "role", value.role);
+    set_optional (json, "reason", value.reason);
+}
+
+inline void from_json (const nlohmann::json &json, authenticate_user_res_t &value)
+{
+    value.accepted = json.value ("accepted", false);
+    value.actor_id = json_optional_string (json, "actorId");
+    value.display_name = json_optional_string (json, "displayName");
+    value.role = json_optional_string (json, "role");
+    value.reason = json_optional_string (json, "reason");
+}
+
+inline void to_json (nlohmann::json &json, const open_conversation_api_req_t &value)
+{
+    json = {{"customerActorId", value.customer_actor_id},
+            {"customerDisplayName", value.customer_display_name},
+            {"subject", value.subject}};
+}
+
+inline void from_json (const nlohmann::json &json, open_conversation_api_req_t &value)
+{
+    value.customer_actor_id = json.value ("customerActorId", "");
+    value.customer_display_name = json.value ("customerDisplayName", "");
+    value.subject = json.value ("subject", "");
+}
+
+inline void to_json (nlohmann::json &json, const open_conversation_api_res_t &value)
+{
+    json = {{"conversationId", value.conversation_id}, {"status", value.status}};
+}
+
+inline void from_json (const nlohmann::json &json, open_conversation_api_res_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.status = json.value ("status", "");
+}
+
+inline void to_json (nlohmann::json &json, const allocate_conversation_req_t &value)
+{
+    json = {{"customerActorId", value.customer_actor_id},
+            {"customerDisplayName", value.customer_display_name},
+            {"subject", value.subject}};
+}
+
+inline void from_json (const nlohmann::json &json, allocate_conversation_req_t &value)
+{
+    value.customer_actor_id = json.value ("customerActorId", "");
+    value.customer_display_name = json.value ("customerDisplayName", "");
+    value.subject = json.value ("subject", "");
+}
+
+inline void to_json (nlohmann::json &json, const allocate_conversation_res_t &value)
+{
+    json = {{"conversationId", value.conversation_id}, {"status", value.status}};
+}
+
+inline void from_json (const nlohmann::json &json, allocate_conversation_res_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.status = json.value ("status", "");
+}
+
+inline void to_json (nlohmann::json &json, const support_actor_ref_snapshot_t &value)
+{
+    json = {{"nodeRid", value.node_rid},
+            {"actorId", value.actor_id},
+            {"generation", value.generation}};
+}
+
+inline void from_json (const nlohmann::json &json, support_actor_ref_snapshot_t &value)
+{
+    value.node_rid = json.value ("nodeRid", "");
+    value.actor_id = json.value ("actorId", "");
+    value.generation = json.value ("generation", std::uint64_t{0});
+}
+
+inline void to_json (nlohmann::json &json, const ensure_support_user_actor_req_t &value)
+{
+    json = {{"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"role", value.role},
+            {"participantId", value.participant_id}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_support_user_actor_req_t &value)
+{
+    value.actor_id = json.value ("actorId", "");
+    value.display_name = json.value ("displayName", "");
+    value.role = json.value ("role", "");
+    value.participant_id = json.value ("participantId", "");
+}
+
+inline void to_json (nlohmann::json &json, const ensure_support_user_actor_res_t &value)
+{
+    json = {{"actor", value.actor}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_support_user_actor_res_t &value)
+{
+    value.actor = json.value ("actor", support_actor_ref_snapshot_t{});
+}
+
+inline void to_json (nlohmann::json &json, const ensure_agent_conversation_req_t &value)
+{
+    json = {{"rosterActorId", value.roster_actor_id},
+            {"displayName", value.display_name},
+            {"conversationId", value.conversation_id}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_agent_conversation_req_t &value)
+{
+    value.roster_actor_id = json.value ("rosterActorId", "");
+    value.display_name = json.value ("displayName", "");
+    value.conversation_id = json.value ("conversationId", "");
+}
+
+inline void to_json (nlohmann::json &json, const ensure_agent_conversation_res_t &value)
+{
+    json = {{"actor", value.actor}, {"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_agent_conversation_res_t &value)
+{
+    value.actor = json.value ("actor", support_actor_ref_snapshot_t{});
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const open_conversation_res_t &value)
+{
+    json = {{"conversationId", value.conversation_id}, {"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, open_conversation_res_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const set_agent_available_req_t &value)
+{
+    json = {{"isAvailable", value.is_available}};
+}
+
+inline void from_json (const nlohmann::json &json, set_agent_available_req_t &value)
+{
+    value.is_available = json.value ("isAvailable", false);
+}
+
+inline void to_json (nlohmann::json &json, const set_agent_available_res_t &value)
+{
+    json = {{"isAvailable", value.is_available}};
+}
+
+inline void from_json (const nlohmann::json &json, set_agent_available_res_t &value)
+{
+    value.is_available = json.value ("isAvailable", false);
+}
+
+inline void to_json (nlohmann::json &json, const join_conversation_req_t &)
+{
+    json = nlohmann::json::object ();
+}
+
+inline void from_json (const nlohmann::json &, join_conversation_req_t &) {}
+
+inline void to_json (nlohmann::json &json, const join_conversation_res_t &value)
+{
+    json = {{"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, join_conversation_res_t &value)
+{
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const send_chat_message_res_t &value)
+{
+    json = {{"message", value.message}, {"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, send_chat_message_res_t &value)
+{
+    value.message = json.value ("message", chat_message_t{});
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const set_typing_req_t &value)
+{
+    json = {{"isTyping", value.is_typing}};
+}
+
+inline void from_json (const nlohmann::json &json, set_typing_req_t &value)
+{
+    value.is_typing = json.value ("isTyping", false);
+}
+
+inline void to_json (nlohmann::json &json, const close_conversation_req_t &value)
+{
+    json = nlohmann::json::object ();
+    set_optional (json, "reason", value.reason);
+}
+
+inline void from_json (const nlohmann::json &json, close_conversation_req_t &value)
+{
+    value.reason = json_optional_string (json, "reason");
+}
+
+inline void to_json (nlohmann::json &json, const close_conversation_res_t &value)
+{
+    json = {{"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, close_conversation_res_t &value)
+{
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+#define SUPPORTCHAT_NOTIFY_JSON(type) \
+inline void to_json (nlohmann::json &json, const type &value) { \
+    json = nlohmann::json (value.state); \
+    json["conversationId"] = value.conversation_id; \
+} \
+inline void from_json (const nlohmann::json &json, type &value) { \
+    value.conversation_id = json.value ("conversationId", ""); \
+    value.state = json.get<conversation_state_t> (); \
+}
+
+SUPPORTCHAT_NOTIFY_JSON (conversation_assigned_notify_t)
+SUPPORTCHAT_NOTIFY_JSON (conversation_idle_notify_t)
+SUPPORTCHAT_NOTIFY_JSON (conversation_closed_notify_t)
+
+#undef SUPPORTCHAT_NOTIFY_JSON
+
+inline void to_json (nlohmann::json &json, const participant_joined_notify_t &value)
+{
+    json = {{"conversationId", value.conversation_id},
+            {"actorId", value.actor_id},
+            {"role", value.role},
+            {"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, participant_joined_notify_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.actor_id = json.value ("actorId", "");
+    value.role = json.value ("role", "");
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const chat_message_notify_t &value)
+{
+    json = {{"conversationId", value.conversation_id},
+            {"message", value.message},
+            {"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, chat_message_notify_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.message = json.value ("message", chat_message_t{});
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const typing_changed_notify_t &value)
+{
+    json = {{"conversationId", value.conversation_id},
+            {"actorId", value.actor_id},
+            {"isTyping", value.is_typing},
+            {"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, typing_changed_notify_t &value)
+{
+    value.conversation_id = json.value ("conversationId", "");
+    value.actor_id = json.value ("actorId", "");
+    value.is_typing = json.value ("isTyping", false);
+    value.state = json.value ("state", conversation_state_t{});
+}
+
+struct supportchat_server_assertion_req_t
+{
+};
+
+struct supportchat_server_assertion_res_t
+{
+    bool ok{false};
+    std::vector<std::string> evidence;
+};
+
+inline void to_json (nlohmann::json &json, const supportchat_server_assertion_req_t &)
+{
+    json = nlohmann::json::object ();
+}
+
+inline void from_json (const nlohmann::json &, supportchat_server_assertion_req_t &) {}
+
+inline void to_json (nlohmann::json &json, const supportchat_server_assertion_res_t &value)
+{
+    json = {{"ok", value.ok}, {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, supportchat_server_assertion_res_t &value)
+{
+    value.ok = json.value ("ok", false);
+    value.evidence = json.value ("evidence", std::vector<std::string>{});
+}
 
 } // namespace zlink::samples::supportchat

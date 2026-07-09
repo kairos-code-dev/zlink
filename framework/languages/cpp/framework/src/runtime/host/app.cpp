@@ -39,6 +39,40 @@
 namespace zlink::framework::detail
 {
 
+class store_actor_directory_t final : public actor_directory_t
+{
+  public:
+    explicit store_actor_directory_t (location_store_t &store) : _store (store) {}
+
+    task_t<std::optional<actor_ref_t>> find (std::string actor_id) override
+    {
+        auto row = _store.resolve_actor (actor_location_key_t{std::move (actor_id)}).result ();
+        if (!row) {
+            return task_t<std::optional<actor_ref_t>> (
+              result_t<std::optional<actor_ref_t>>::failure (
+                row.error_kind (),
+                row.error () ? row.error ()->what () : "actor location lookup failed",
+                row.error () && row.error ()->is_retriable ()));
+        }
+        if (!row.value () || !row.value ()->actor_ref) {
+            return task_t<std::optional<actor_ref_t>> (
+              result_t<std::optional<actor_ref_t>>::success (std::nullopt));
+        }
+        return task_t<std::optional<actor_ref_t>> (
+          result_t<std::optional<actor_ref_t>>::success (*row.value ()->actor_ref));
+    }
+
+    task_t<actor_ref_t> ensure (std::string, message_t, actor_placement_t) override
+    {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::request_failed,
+          "actor_directory_t::ensure is not configured for this framework host"));
+    }
+
+  private:
+    location_store_t &_store;
+};
+
 bool has_inbound_channel (const std::vector<channel_snapshot_t> &channels)
 {
     for (const auto &channel : channels) {
@@ -427,6 +461,15 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
+    if (!_state->services.contains (std::type_index (typeid (actor_directory_t)))) {
+        _state->services.add_factory<actor_directory_t> (
+          [] (service_provider_t &provider) {
+              return std::shared_ptr<actor_directory_t> (
+                std::make_shared<detail::store_actor_directory_t> (
+                  provider.get_required<location_store_t> ()));
+          },
+          service_lifetime_t::singleton);
+    }
     if (!_state->services.contains (std::type_index (typeid (location_readiness_t)))) {
         _state->services.add_factory<location_readiness_t> (
           [] (service_provider_t &provider) {
@@ -543,8 +586,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           options.stream_session_factories ()));
     }
     if (!http_snapshot.endpoints.empty ()) {
-        add_hosted_service (
-          std::make_unique<runtime::http_host_service_t> (http_snapshot, _state->health));
+        add_hosted_service (std::make_unique<runtime::http_host_service_t> (
+          http_snapshot, _state->health, options.handler_coroutine_workers ()));
     }
     runtime::configure_handler_coroutine_executor (options.handler_coroutine_workers ());
     return *this;

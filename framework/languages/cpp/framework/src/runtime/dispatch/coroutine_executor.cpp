@@ -107,20 +107,12 @@ void configure_handler_coroutine_executor (std::size_t worker_count)
 
 void shutdown_handler_coroutine_executor () noexcept
 {
-    std::unique_ptr<coroutine_executor_t> executor;
-    {
-        std::lock_guard lock (executor_mutex ());
-        auto &owners = executor_owner_count ();
-        if (owners > 0) {
-            --owners;
-        }
-        if (owners > 0) {
-            return;
-        }
-        executor_shutdown_requested () = true;
-        executor_fast_path ().store (nullptr, std::memory_order_release);
-        executor = std::move (executor_instance ());
+    std::lock_guard lock (executor_mutex ());
+    auto &owners = executor_owner_count ();
+    if (owners > 0) {
+        --owners;
     }
+    executor_shutdown_requested () = owners == 0;
 }
 
 } // namespace zlink::framework::runtime

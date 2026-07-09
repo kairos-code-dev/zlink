@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/detail/call_facade.hpp>
+#include <zlink/framework/contracts/cancellation.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 
 #include <chrono>
@@ -81,6 +82,11 @@ template <typename TReply> class request_call_t
 
     task_t<TReply> yield ()
     {
+        return yield (cancellation_token_t ());
+    }
+
+    task_t<TReply> yield (cancellation_token_t cancellation_token)
+    {
         if (_immediate) {
             return task_t<TReply> (*_immediate);
         }
@@ -100,8 +106,10 @@ template <typename TReply> class request_call_t
               result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                          "yield could not release the current Spot handler turn"));
         }
-        return detail::reschedule_task (_submit (_packet_name, _timeout, _metadata),
-                                        yield_turn->resume_scheduler ());
+        return detail::reschedule_task (
+          detail::cancelable_task (_submit (_packet_name, _timeout, _metadata),
+                                   std::move (cancellation_token)),
+          yield_turn->resume_scheduler ());
     }
 
   private:
@@ -218,6 +226,11 @@ class channel_yield_request_call_t : public channel_request_call_t
 
     template <typename TReply> task_t<TReply> yield ()
     {
+        return yield<TReply> (cancellation_token_t ());
+    }
+
+    template <typename TReply> task_t<TReply> yield (cancellation_token_t cancellation_token)
+    {
         auto yield_turn = detail::capture_current_serial_yield_turn ();
         if (!yield_turn) {
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
@@ -228,8 +241,9 @@ class channel_yield_request_call_t : public channel_request_call_t
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn");
         }
-        auto reply = co_await detail::reschedule_task (submit_raw (),
-                                                       yield_turn->resume_scheduler ());
+        auto reply = co_await detail::reschedule_task (
+          detail::cancelable_task (submit_raw (), std::move (cancellation_token)),
+          yield_turn->resume_scheduler ());
         if (serializers () == nullptr) {
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                                  "channel request has no serializer registry");
@@ -277,7 +291,7 @@ class send_call_t
         return *this;
     }
 
-    void submit () { (void) submit_now (); }
+    result_t<void> submit () { return submit_now (); }
 
   private:
     result_t<void> submit_now ()
@@ -322,7 +336,7 @@ class bound_session_send_call_t
         return *this;
     }
 
-    void submit () { _call.submit (); }
+    result_t<void> submit () { return _call.submit (); }
 
   private:
     send_call_t _call;
@@ -357,7 +371,7 @@ class stream_write_call_t
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &packet_name (std::string packet_name);
     stream_write_call_t &compress ();
-    void submit ();
+    result_t<void> submit ();
 
   private:
     using submit_fn_t =

@@ -49,7 +49,7 @@ class api_server_host_factory_t
               .map_post<create_game_http_handler_t> ("/games");
 
             options.add_client_server_channel (sample_names_t::play_channel)
-              .enable_client (topology.selected_play_endpoint ());
+              .enable_client ();
 
             options.handlers ()
               .group ("api")

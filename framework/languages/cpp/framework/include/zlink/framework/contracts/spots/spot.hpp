@@ -11,6 +11,7 @@
 #include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
+#include <zlink/framework/contracts/locations/spot_ref.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
@@ -476,6 +477,34 @@ struct spot_node_snapshot_t
 class spot_handler_registry_t;
 struct spot_create_result_t;
 
+namespace detail
+{
+inline bool is_default_spot_ref_routing_id (const zlink::routing_id_t &rid)
+{
+    const auto bytes = rid.to_bytes ();
+    return bytes.size () == sizeof (std::uint32_t)
+           && std::all_of (bytes.begin (), bytes.end (), [] (std::uint8_t byte) {
+                  return byte == 0;
+              });
+}
+
+inline node_rid_t node_rid_from_spot_ref (const zlink::routing_id_t &rid)
+{
+    if (is_default_spot_ref_routing_id (rid)) {
+        return node_rid_t {};
+    }
+    return node_rid_t::from_string (rid.to_string ());
+}
+
+inline spot_rid_t spot_rid_from_spot_ref (const zlink::routing_id_t &rid)
+{
+    if (is_default_spot_ref_routing_id (rid)) {
+        return spot_rid_t {};
+    }
+    return spot_rid_t::from_string (rid.to_string ());
+}
+} // namespace detail
+
 class spot_context_t
 {
   public:
@@ -516,7 +545,7 @@ class spot_context_t
     }
 
     template <typename TReply, typename TRequest>
-    request_call_t<TReply> request_to (node_rid_t node_rid, spot_rid_t spot_rid, TRequest request)
+    request_call_t<TReply> request_to (const spot_ref_t &target, TRequest request)
     {
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
@@ -527,7 +556,8 @@ class spot_context_t
         try {
             auto payload =
               detail::encoded_payload_to_raw (serializers->get<TRequest> ().serialize (request));
-            return request_to_erased (std::move (node_rid), std::move (spot_rid),
+            return request_to_erased (detail::node_rid_from_spot_ref (target.node_rid),
+                                      detail::spot_rid_from_spot_ref (target.spot_rid),
                                       detail::message_name<TRequest> (), std::move (payload))
               .template as<TReply> ();
         }
@@ -538,7 +568,7 @@ class spot_context_t
     }
 
     template <typename TMessage>
-    send_call_t send_to (node_rid_t node_rid, spot_rid_t spot_rid, TMessage message)
+    send_call_t send_to (const spot_ref_t &target, TMessage message)
     {
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
@@ -549,7 +579,8 @@ class spot_context_t
         try {
             auto payload =
               detail::encoded_payload_to_raw (serializers->get<TMessage> ().serialize (message));
-            return send_to_erased (std::move (node_rid), std::move (spot_rid),
+            return send_to_erased (detail::node_rid_from_spot_ref (target.node_rid),
+                                   detail::spot_rid_from_spot_ref (target.spot_rid),
                                    detail::message_name<TMessage> (), std::move (payload));
         }
         catch (const framework_exception_t &error) {

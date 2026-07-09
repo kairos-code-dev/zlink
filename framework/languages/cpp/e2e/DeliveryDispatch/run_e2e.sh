@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
 mkdir -p "$DELIVERYDISPATCH_LOG_DIR"
 rm -f "$DELIVERYDISPATCH_LOG_DIR"/*.log
@@ -76,10 +77,10 @@ dump_logs() {
   done
 }
 
-read -r ZLINK_CPP_E2E_REDIS_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
+read -r ZLINK_CPP_E2E_RESERVED_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_TRACKING_SPOT_ROUTER DELIVERYDISPATCH_TRACKING_SPOT DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
 import socket
 sockets = []
-for _ in range(18):
+for _ in range(20):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     sockets.append(sock)
@@ -102,22 +103,27 @@ print(
     f"tcp://127.0.0.1:{ports[14]} "
     f"tcp://127.0.0.1:{ports[15]} "
     f"tcp://127.0.0.1:{ports[16]} "
-    f"tcp://127.0.0.1:{ports[17]}"
+    f"tcp://127.0.0.1:{ports[17]} "
+    f"tcp://127.0.0.1:{ports[18]} "
+    f"tcp://127.0.0.1:{ports[19]}"
 )
 for sock in sockets:
     sock.close()
 PY
 )"
 if [[ -z "${ZLINK_CPP_E2E_REDIS_ENDPOINT:-}" ]]; then
-  REDIS_CONTAINER_NAME="zlink-cpp-deliverydispatch-redis-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER_NAME" -p "127.0.0.1:${ZLINK_CPP_E2E_REDIS_PORT}:6379" redis:7-alpine >/dev/null
-  export ZLINK_CPP_E2E_REDIS_ENDPOINT="tcp://127.0.0.1:${ZLINK_CPP_E2E_REDIS_PORT}"
+  read -r REDIS_CONTAINER_NAME redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-e2e-deliverydispatch" "redis:7-alpine"
+  )
+  export ZLINK_CPP_E2E_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 fi
 export ZLINK_CPP_E2E_REDIS_KEY_PREFIX="${ZLINK_CPP_E2E_REDIS_KEY_PREFIX:-deliverydispatch:$$:}"
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${DELIVERYDISPATCH_API_HTTP_PORT}"
 export DELIVERYDISPATCH_CENTER_ROUTE
 export DELIVERYDISPATCH_COURIER_ROUTE
 export DELIVERYDISPATCH_TRACKING_ROUTE
+export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER
+export DELIVERYDISPATCH_TRACKING_SPOT
 export DELIVERYDISPATCH_STATUS_FANOUT
 export DELIVERYDISPATCH_CUSTOMER_STREAM
 export DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER
@@ -154,6 +160,43 @@ wait_port() {
 
 wait_port redis "$(port_of "$ZLINK_CPP_E2E_REDIS_ENDPOINT")"
 
+wait_http_health() {
+  local label="$1"
+  local url="$2"
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+    if python3 - "$url" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY' >/dev/null 2>&1
+import sys
+import urllib.request
+
+url = sys.argv[1]
+timeout = float(sys.argv[2])
+with urllib.request.urlopen(f"{url}/health", timeout=timeout) as response:
+    if response.status != 200:
+        raise SystemExit(1)
+PY
+    then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for ${label} health" >&2
+  dump_logs
+  return 1
+}
+
+wait_framework_probe() {
+  local log="$LOG_DIR/probe.log"
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+    if "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_probe" >"$log" 2>&1; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for DeliveryDispatch framework probe" >&2
+  dump_logs
+  return 1
+}
+
 start_role() {
   local name="$1"
   shift
@@ -173,39 +216,16 @@ cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_delivery_dispatch_client >/dev/null
 
 start_role tracking "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_tracking"
-wait_port tracking "$(port_of "$DELIVERYDISPATCH_TRACKING_ROUTE")"
-
 start_role customer-gateway "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_customer_gateway"
-wait_port customer-stream "$(port_of "$DELIVERYDISPATCH_CUSTOMER_STREAM")"
-wait_port customer-spot "$(port_of "$DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER")"
-
 start_role courier-session "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_session"
-wait_port courier-stream "$(port_of "$DELIVERYDISPATCH_COURIER_STREAM")"
-wait_port courier-session-spot "$(port_of "$DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER")"
-
 start_role courier-actor-node-1 "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_actor_node" delivery-courier-node-1
-wait_port courier-actor-node-1 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE")"
-wait_port courier-actor-node-1-spot "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER")"
-
 start_role courier-actor-node-2 "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_actor_node" delivery-courier-node-2
-wait_port courier-actor-node-2 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE")"
-wait_port courier-actor-node-2-spot "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER")"
-
 start_role courier-gateway "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_gateway"
-wait_port courier-gateway "$(port_of "$DELIVERYDISPATCH_COURIER_ROUTE")"
-
 start_role dispatch-center "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_dispatch_center"
-wait_port dispatch-center "$(port_of "$DELIVERYDISPATCH_CENTER_ROUTE")"
-
 start_role dispatch-api "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_dispatch_api"
-wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
 
-sleep "$ROUTE_SETTLE_SECONDS"
-
-"$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_probe" >"$LOG_DIR/probe.log" 2>&1 || {
-  dump_logs
-  exit 1
-}
+wait_http_health dispatch-api "$DELIVERYDISPATCH_API_HTTP"
+wait_framework_probe
 
 "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_client" \
   --api-url "$DELIVERYDISPATCH_API_HTTP" \

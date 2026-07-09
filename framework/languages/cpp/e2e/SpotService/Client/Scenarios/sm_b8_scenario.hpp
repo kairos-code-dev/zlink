@@ -53,7 +53,11 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
         .timeout (std::chrono::milliseconds (3000))
         .submit<destroy_actor_res_t> ();
     if (!destroyed || !destroyed.value ().destroyed || destroyed.value ().actor_id != actor_id) {
-        throw std::runtime_error ("SM-B8 destroy reply mismatch");
+        const auto detail =
+          destroyed ? ("destroyed=" + std::string (destroyed.value ().destroyed ? "true" : "false")
+                       + " actor_id=" + destroyed.value ().actor_id)
+                    : (destroyed.error () ? destroyed.error ()->message : "destroy request failed");
+        throw std::runtime_error ("SM-B8 destroy reply mismatch: " + detail);
     }
 
     auto after_destroy =

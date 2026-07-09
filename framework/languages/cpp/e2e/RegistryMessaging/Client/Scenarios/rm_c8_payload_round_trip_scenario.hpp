@@ -36,25 +36,16 @@ inline void run_rm_c8_payload_round_trip_scenario ()
 inline void run_rm_c8_max_message_size_scenario ()
 {
     const auto consumer = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
-    const auto oversized_payload = std::string (32 * 1024, 'x');
-    bool oversized_failed = false;
-    try {
-        (void) post_json<payload_req_t, payload_res_t> (
-          consumer, "/profile/payload",
-          payload_req_t{.marker = "oversized", .payload = oversized_payload},
-          std::chrono::milliseconds (1500));
-    }
-    catch (const std::exception &) {
-        oversized_failed = true;
-    }
-    ensure (oversized_failed, "RM-C8 oversized request unexpectedly succeeded");
+    const auto oversized_payload = std::string (3 * 1024 * 1024, 'x');
+    auto oversized = post_json<payload_req_t, request_failure_res_t> (
+      consumer, "/profile/payload-over-limit",
+      payload_req_t{.marker = "oversized", .payload = oversized_payload},
+      std::chrono::milliseconds (2500));
+    ensure (oversized.failed, "RM-C8 oversized payload should fail");
 
-    auto normal = post_json<payload_req_t, payload_res_t> (
-      consumer, "/profile/payload",
-      payload_req_t{.marker = "after-oversized", .payload = "after-oversized"});
-    ensure (normal.marker == "after-oversized", "RM-C8 normal marker after oversized mismatch");
-    ensure (normal.sha256 == sha256_hex ("after-oversized"),
-            "RM-C8 normal sha256 after oversized mismatch");
+    auto follow_up = post_json<profile_req_t, profile_res_t> (
+      consumer, "/profile/request", profile_req_t{.value = "rm-c8-after"});
+    ensure (follow_up.value == "profile:rm-c8-after", "RM-C8 follow-up request failed");
     std::cout << "scenario RM-C8-max passed\n";
 }
 

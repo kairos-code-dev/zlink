@@ -32,12 +32,18 @@ struct sample_topology_t
       env_or ("SUPPORTCHAT_SUPPORT_SPOT_ROUTER", "tcp://127.0.0.1:7503");
     std::string support_spot_endpoint =
       env_or ("SUPPORTCHAT_SUPPORT_SPOT", "tcp://127.0.0.1:7504");
+    std::string support_http_url =
+      env_or ("SUPPORTCHAT_SUPPORT_HTTP_URL", "http://127.0.0.1:7508");
+    std::string support_actor_route_endpoint =
+      env_or ("SUPPORTCHAT_SUPPORT_ACTOR_ROUTE", "tcp://127.0.0.1:7510");
     std::string session_stream_endpoint =
       env_or ("SUPPORTCHAT_SESSION_STREAM", "tcp://127.0.0.1:7505");
     std::string session_spot_router_endpoint =
       env_or ("SUPPORTCHAT_SESSION_SPOT_ROUTER", "tcp://127.0.0.1:7506");
     std::string session_spot_endpoint =
       env_or ("SUPPORTCHAT_SESSION_SPOT", "tcp://127.0.0.1:7507");
+    std::string session_actor_route_endpoint =
+      env_or ("SUPPORTCHAT_SESSION_ACTOR_ROUTE", "tcp://127.0.0.1:7509");
 };
 
 } // namespace zlink::samples::supportchat

@@ -3,6 +3,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <string>
 
 namespace zlink::framework::e2e::resilience_lifecycle::client
@@ -16,6 +17,7 @@ struct topology_entry_result_t
     std::string routing_id;
     std::string endpoint;
     std::string state;
+    std::uint32_t weight = 100;
 };
 
 inline void from_json (const nlohmann::json &json, topology_entry_result_t &value)
@@ -26,6 +28,7 @@ inline void from_json (const nlohmann::json &json, topology_entry_result_t &valu
     value.routing_id = json.value ("routing_id", "");
     json.at ("endpoint").get_to (value.endpoint);
     json.at ("state").get_to (value.state);
+    value.weight = json.value ("weight", 100u);
 }
 
 } // namespace zlink::framework::e2e::resilience_lifecycle::client

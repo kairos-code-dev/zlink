@@ -70,6 +70,14 @@
 
 ## 검증
 
+- 2026-07-08: `timeout 420s nice -n 10 framework/languages/cpp/e2e/PubSub/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260708-123833-1298240`
+  - 의미: Redis location store 기반으로 PS-A1, PS-A2, PS-A3, PS-A4, PS-B1, PS-B2,
+    PS-C1 전체가 bounded subscriber evidence wait 경로로 통과했다. Subscriber role은 publisher
+    endpoint를 직접 인자로 받지 않고 location store에서 publisher peer row를 발견해 연결한다.
+    runner 출력은 `verify basic/topic/late/reconnect/slow/publisher-restart/negative passed`,
+    `snapshot publisher evidence written`, `pubsub e2e result=passed`를 포함한다.
 - 2026-07-03: `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 900s framework/languages/cpp/e2e/PubSub/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260703-200255-8623`

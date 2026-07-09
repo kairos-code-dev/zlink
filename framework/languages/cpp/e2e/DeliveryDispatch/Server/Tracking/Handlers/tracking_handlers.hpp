@@ -65,15 +65,21 @@ class delivery_status_changed_handler_t
     using reply_type = delivery_status_res_t;
     using dependency_types = zlink::framework::dependency_list_t<evidence_store_t,
                                                                 zlink::framework::actor_client_t,
+                                                                zlink::framework::actor_directory_t,
                                                                 zlink::framework::publisher_t,
                                                                 delivery_spot_directory_t>;
     static constexpr const char *topic_name = "DeliveryStatusReq";
 
     delivery_status_changed_handler_t (evidence_store_t &evidence,
                                        zlink::framework::actor_client_t &actors,
+                                       zlink::framework::actor_directory_t &actor_directory,
                                        zlink::framework::publisher_t &fanout,
                                        delivery_spot_directory_t &directory) :
-        _evidence (evidence), _actors (actors), _fanout (fanout), _directory (directory)
+        _evidence (evidence),
+        _actors (actors),
+        _actor_directory (actor_directory),
+        _fanout (fanout),
+        _directory (directory)
     {
     }
 
@@ -85,7 +91,13 @@ class delivery_status_changed_handler_t
         delivery_status_updated_msg_t updated{request.delivery_id, request.customer_id,
                                               request.status, request.courier_id,
                                               request.occurred_at};
-        co_await _actors.send_to_actor (request.customer_id, updated)
+        auto actor_ref = co_await _actor_directory.find (request.customer_id);
+        if (!actor_ref) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "customer actor route was not found");
+        }
+        co_await _actors.send_to_actor (*actor_ref, updated)
           .packet_name (delivery_status_updated_msg_t::packet_name)
           .async ();
         delivery_status_notify_t notify{
@@ -100,6 +112,7 @@ class delivery_status_changed_handler_t
   private:
     evidence_store_t &_evidence;
     zlink::framework::actor_client_t &_actors;
+    zlink::framework::actor_directory_t &_actor_directory;
     zlink::framework::publisher_t &_fanout;
     delivery_spot_directory_t &_directory;
 };

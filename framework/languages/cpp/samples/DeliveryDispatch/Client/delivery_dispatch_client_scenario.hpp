@@ -87,12 +87,6 @@ class delivery_dispatch_client_scenario_t
                                          connector_t &courier)
     {
         const std::string delivery_id = "delivery-success";
-        auto offer = wait_offer (courier, delivery_id, "courier-a");
-        auto assigned = wait_status (customer, delivery_id, delivery_status_t::assigned);
-        auto accepted = wait_status (customer, delivery_id, delivery_status_t::accepted);
-        auto picked_up = wait_status (customer, delivery_id, delivery_status_t::picked_up);
-        auto delivered = wait_status (customer, delivery_id, delivery_status_t::delivered);
-
         const auto subscribed =
           customer.request (subscribe_delivery_req_t{delivery_id})
             .async<subscribe_delivery_res_t> ()
@@ -103,6 +97,11 @@ class delivery_dispatch_client_scenario_t
         }
         ensure (subscribed && subscribed.value ().delivery_id == delivery_id,
                 "delivery-success subscription failed");
+        auto offer = wait_offer (courier, delivery_id, "courier-a");
+        auto assigned = wait_status (customer, delivery_id, delivery_status_t::assigned);
+        auto accepted = wait_status (customer, delivery_id, delivery_status_t::accepted);
+        auto picked_up = wait_status (customer, delivery_id, delivery_status_t::picked_up);
+        auto delivered = wait_status (customer, delivery_id, delivery_status_t::delivered);
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
         auto created_future = std::async (std::launch::async, [&http, delivery_id] {
@@ -127,13 +126,6 @@ class delivery_dispatch_client_scenario_t
                                          connector_t &courier_b)
     {
         const std::string delivery_id = "delivery-reassign";
-        auto first_offer = wait_offer (courier_a, delivery_id, "courier-a");
-        auto second_offer = wait_offer (courier_b, delivery_id, "courier-b");
-        auto assigned = wait_status (customer, delivery_id, delivery_status_t::assigned);
-        auto reassigned = wait_status (customer, delivery_id, delivery_status_t::reassigned);
-        auto accepted = wait_status (customer, delivery_id, delivery_status_t::accepted);
-        auto delivered = wait_status (customer, delivery_id, delivery_status_t::delivered);
-
         const auto subscribed =
           customer.request (subscribe_delivery_req_t{delivery_id})
             .async<subscribe_delivery_res_t> ()
@@ -144,6 +136,12 @@ class delivery_dispatch_client_scenario_t
         }
         ensure (subscribed && subscribed.value ().delivery_id == delivery_id,
                 "delivery-reassign subscription failed");
+        auto first_offer = wait_offer (courier_a, delivery_id, "courier-a");
+        auto second_offer = wait_offer (courier_b, delivery_id, "courier-b");
+        auto assigned = wait_status (customer, delivery_id, delivery_status_t::assigned);
+        auto reassigned = wait_status (customer, delivery_id, delivery_status_t::reassigned);
+        auto accepted = wait_status (customer, delivery_id, delivery_status_t::accepted);
+        auto delivered = wait_status (customer, delivery_id, delivery_status_t::delivered);
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
         auto created_future = std::async (std::launch::async, [&http, delivery_id] {

@@ -18,9 +18,12 @@ codec을 사용한다. 샘플 코드에서 codec 차이 때문에 업무 DTO나 
 ## 실행
 
 CMake sample smoke 는 각 role 실행 파일을 빌드하고 기본 실행 경로를 확인한다.
+각 sample-local script 는 필요한 서버 역할을 별도 process로 계속 실행한 뒤 public client 실행 파일로
+full client/server self-check 를 수행한다. 상위 `run_samples.sh`는 TicTacToe, Bingo,
+DeliveryDispatch, SupportChat, GameQuest, ShoppingMall 여섯 샘플을 순서대로 실행한다.
 TicTacToe sample-local script 는 Play 서버와 API 서버를 별도 process로 계속 실행한 뒤
 public client 실행 파일로 full client/server self-check 를 수행한다. Bingo sample-local script 는
-Registry, API, Play, Session 서버를 별도 process로 계속 실행한 뒤 public client 실행 파일로
+API, Play, Session 서버를 별도 process로 계속 실행한 뒤 public client 실행 파일로
 full client/server self-check 를 수행한다.
 
 Linux 또는 WSL:
@@ -29,6 +32,9 @@ Linux 또는 WSL:
 ./framework/languages/cpp/samples/TicTacToe/run_sample.sh
 ./framework/languages/cpp/samples/Bingo/run_sample.sh
 ./framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh
+./framework/languages/cpp/samples/SupportChat/run_sample.sh
+./framework/languages/cpp/samples/GameQuest/run_sample.sh
+./framework/languages/cpp/samples/ShoppingMall/run_sample.sh
 ./framework/languages/cpp/samples/run_samples.sh
 ```
 
@@ -40,7 +46,8 @@ Windows PowerShell:
 .\framework\languages\cpp\samples\run_samples.ps1
 ```
 
-DeliveryDispatch 샘플은 현재 Linux 또는 WSL용 `run_sample.sh` 경로로 검증한다.
+DeliveryDispatch 샘플은 현재 Linux 또는 WSL용 `run_sample.sh` 경로로 검증한다. SupportChat,
+GameQuest, ShoppingMall 샘플도 현재 Linux 또는 WSL용 `run_sample.sh` 경로로 검증한다.
 
 기본 빌드 디렉토리는 `framework/languages/cpp/build`이다. 다른 디렉토리에 빌드했다면
 `ZLINK_CPP_BUILD_DIR` 환경 변수로 실행 파일 위치를 넘긴다.

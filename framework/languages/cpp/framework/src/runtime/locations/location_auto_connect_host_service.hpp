@@ -117,16 +117,11 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                                   route.bind_endpoint (), 100},
                           nullptr, connect_route, disconnect_route);
             }
-            const bool client_enabled = route.bind_endpoint ().empty ()
-                                        || _route_mesh_client_channels.find (route_channel_id)
-                                             != _route_mesh_client_channels.end ();
-            if (client_enabled) {
+            const bool endpointless_client = route.bind_endpoint ().empty ();
+            if (endpointless_client) {
                 add_loop (local_t{location_auto_connect_type_t::route_mesh,
-                                  route.router_channel_id (),
-                                  location_role_t::dealer,
-                                  route_rid,
-                                  {},
-                                  100},
+                                  route.router_channel_id (), location_role_t::dealer, route_rid,
+                                  {}, 100},
                           nullptr, connect_route, disconnect_route);
             }
         }
@@ -266,9 +261,13 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 continue;
             }
             if (found->second.endpoint != target.endpoint
-                || found->second.owner_id != target.owner_id
-                || found->second.weight != target.weight) {
+                || found->second.owner_id != target.owner_id) {
                 disconnect (loop, found->second);
+                connect (loop, target);
+                loop.active[key] = target;
+                continue;
+            }
+            if (found->second.weight != target.weight) {
                 connect (loop, target);
                 loop.active[key] = target;
             }

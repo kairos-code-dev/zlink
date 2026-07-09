@@ -48,18 +48,25 @@
 
 ## 현재 C++ 작업물 처리 원칙
 
-현재 C++ 샘플은 6개 샘플 루트가 모두 있으며, 일부 샘플은 이미 role별 디렉터리로 분리되어 있다.
-`DeliveryDispatch`, `ShoppingMall`, `GameQuest`는 기존 compact 구현에서 full 역할 구조로 승격하는
-작업 흔적이 있으므로 삭제하지 않고 inventory로 판정한다.
+현재 C++ 샘플은 6개 샘플 루트가 모두 있으며, role별 디렉터리와 sample runner evidence를 기준으로
+판정한다. `DeliveryDispatch`, `ShoppingMall`, `GameQuest`는 compact 구현에서 full 역할 구조로
+승격된 상태이므로 이후 작업에서는 inventory와 runner 증거를 기준으로 회귀를 막는다.
 
 | 샘플 | 현재 판단 | 작업 원칙 |
 |------|-----------|-----------|
-| `Bingo` | full 구조 유지 대상 | Protobuf, Session/Api/Play/Registry, Entry Spot, room Spot, timer, bound push 흐름을 `.NET`과 공통 문서에 맞춰 inventory로 고정한다. |
-| `TicTacToe` | full 구조 유지 대상 | Api 2개, Play 2개, 수동 endpoint, Redis room route store 흐름을 유지하고 `.NET` client self-check와 로그 marker를 대조한다. |
-| `SupportChat` | full 구조 유지 대상 | Session/Api/Support/Registry와 Probe 흐름, conversation Spot, reconnect, idle timer, close 검증을 유지한다. |
-| `DeliveryDispatch` | compact에서 full 승격 진행 중 | 현재 role 분리 작업물을 보존한다. DispatchApi, DispatchCenter, Courier, Tracking, Session, Registry와 Probe가 `.NET`과 공통 문서의 책임을 모두 갖는지 inventory로 확인한다. |
-| `ShoppingMall` | compact에서 full 승격 진행 중 | CommerceApi, OrderWorkflow, Registry 역할과 event sourced workflow/projection 경계를 full 구조로 맞춘다. |
-| `GameQuest` | compact에서 full 승격 진행 중 | GameApi, QuestMission, Registry 역할과 fanout, quest aggregate, projection 경계를 full 구조로 맞춘다. |
+| `Bingo` | full 구조 완료 | Protobuf, Session/Api/Play, Redis location store, Entry Spot, room Spot, timer, bound push 흐름을 `.NET`과 공통 문서에 맞췄다. `sample-porting-inventory.ko.md`가 남은 gap 없음 상태를 기록한다. |
+| `TicTacToe` | full 구조 완료 | Api 2개, Play 2개, 수동 endpoint, Redis room route store, public resolver 흐름을 유지하고 `.NET` client self-check와 로그 marker를 대조했다. `sample-porting-inventory.ko.md`가 남은 gap 없음 상태를 기록한다. |
+| `SupportChat` | conversation Spot 승격 완료 | Session, Api, Support, Probe가 Redis location store로 자동 연결되고, conversation Spot, per-conversation agent actor, reconnect, idle timer, close 검증을 유지한다. `sample-porting-inventory.ko.md`가 `PASS SupportChat.Cpp` 통과를 기록한다. |
+| `DeliveryDispatch` | full 역할 승격 완료 | DispatchApi, DispatchCenter, CustomerGateway, CourierSession, CourierGateway, CourierActorNode, Tracking, Probe가 `.NET`과 공통 문서의 책임을 갖는다. C++는 registry role 대신 Redis location store를 사용하며, `sample-porting-inventory.ko.md`가 runner 통과를 기록한다. |
+| `ShoppingMall` | order Spot 승격 완료 | CommerceApi, OrderWorkflow, Redis location store, order별 `OrderWorkflowSpot`, event sourced workflow/projection 경계를 full 구조로 맞췄다. `sample-porting-inventory.ko.md`가 `PASS ShoppingMall.Cpp` 통과를 기록한다. |
+| `GameQuest` | player owner Spot 승격 완료 | GameApi, QuestMission, Redis location store, player quest Spot, fanout, quest aggregate, projection 경계를 full 구조로 맞췄다. 2026-07-07 `run_sample.sh`에서 `PASS GameQuest.Cpp`를 확인했다. |
+
+2026-07-07에는 `CMAKE_BUILD_PARALLEL_LEVEL=1 nice -n 10 timeout 900s
+framework/languages/cpp/samples/run_samples.sh`를 실행해 여섯 샘플을 상위 runner에서 함께 검증했다.
+출력에서 CTest sample gate 통과와 `PASS TicTacToe.Cpp`, `PASS SupportChat.Cpp`,
+`PASS GameQuest.Cpp`, `PASS ShoppingMall.Cpp`, `bingo full client/server self-check completed`,
+`deliverydispatch sample result=passed`를 확인했다. 이 검증은 상위 runner가 개별 샘플을 빠뜨리지
+않는지 확인하기 위한 증거이며, 이후 샘플 변경 때 같은 명령을 다시 실행한다.
 
 ## 표준 C++ Sample 구조
 
@@ -117,12 +124,12 @@ framework/languages/cpp/samples/<Sample>/sample-porting-inventory.ko.md
 
 | 순서 | 샘플 | 완료 조건 |
 |------|------|-----------|
-| 1 | `Bingo` | 기존 full 구조를 inventory로 고정하고 Protobuf, actor/session, Entry Spot, timer, push 검증을 재실행 |
-| 2 | `TicTacToe` | manual endpoint scale-out, Redis room route, client final state 검증을 재실행 |
-| 3 | `SupportChat` | conversation Spot, reconnect, idle timer, close, probe 검증을 재실행 |
-| 4 | `DeliveryDispatch` | compact 흔적 없이 6개 server role과 probe가 분리되고 delivery reassignment와 tracking fanout 검증 통과 |
-| 5 | `ShoppingMall` | CommerceApi/OrderWorkflow/Registry 분리와 event sourced order workflow, projection 검증 통과 |
-| 6 | `GameQuest` | GameApi/QuestMission/Registry 분리와 quest event fanout, aggregate/projection 검증 통과 |
+| 1 | `Bingo` | 기존 full 구조를 inventory로 고정하고 Protobuf, actor/session, Entry Spot, timer, push 검증 통과 |
+| 2 | `TicTacToe` | manual endpoint scale-out, Redis room route, client final state 검증 통과 |
+| 3 | `SupportChat` | conversation Spot, reconnect, idle timer, close, probe 검증 통과 |
+| 4 | `DeliveryDispatch` | compact 흔적 없이 server role과 probe가 분리되고 delivery reassignment와 tracking fanout 검증 통과 |
+| 5 | `ShoppingMall` | CommerceApi/OrderWorkflow/Redis location store 분리와 event sourced order workflow, projection 검증 통과 |
+| 6 | `GameQuest` | GameApi/QuestMission/Redis location store와 player quest Spot 분리, quest event fanout, aggregate/projection 검증 통과 |
 
 ## 샘플 단위 절차
 

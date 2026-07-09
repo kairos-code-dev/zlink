@@ -21,6 +21,7 @@ struct sample_names_t
     static constexpr const char *customer_stream_node = "delivery-customer-stream";
     static constexpr const char *courier_stream_node = "delivery-courier-stream";
     static constexpr const char *customer_spot_node = "delivery-customer-node";
+    static constexpr const char *tracking_spot_node = "delivery-tracking-spot-node";
     static constexpr const char *customer_actor_type = "delivery-customer";
     static constexpr const char *courier_actor_node_1 = "delivery-courier-node-1";
     static constexpr const char *courier_actor_node_2 = "delivery-courier-node-2";

@@ -43,6 +43,10 @@ class yield_probe_spot_t : public zlink::framework::spot_t
             yd::yield_timeout_req_t::packet_name)
           .add_handler<&yield_probe_spot_t::yield_timeout_command> (
             yd::yield_timeout_msg_t::packet_name)
+          .add_handler<&yield_probe_spot_t::yield_cancel_req> (
+            yd::yield_cancel_req_t::packet_name)
+          .add_handler<&yield_probe_spot_t::yield_cancel_command> (
+            yd::yield_cancel_msg_t::packet_name)
           .add_handler<&yield_probe_spot_t::remote_spot_yield_req> (
             yd::remote_spot_yield_req_t::packet_name)
           .add_handler<&yield_probe_spot_t::timer_start_command> (
@@ -131,6 +135,18 @@ class yield_probe_spot_t : public zlink::framework::spot_t
       const yd::yield_timeout_msg_t &request)
     {
         co_await handle_yield_timeout_command (_context, _evidence, request);
+    }
+
+    zlink::framework::task_t<yd::yield_cancel_res_t>
+    yield_cancel_req (const yd::yield_cancel_req_t &request)
+    {
+        co_return co_await handle_yield_cancel (_context, _evidence, request);
+    }
+
+    zlink::framework::task_t<void> yield_cancel_command (
+      const yd::yield_cancel_msg_t &request)
+    {
+        co_await handle_yield_cancel_command (_context, _evidence, request);
     }
 
     zlink::framework::task_t<yd::yield_dispatch_res_t>
@@ -271,13 +287,25 @@ class yield_probe_spot_t : public zlink::framework::spot_t
         _evidence.add ("actor-push-yield-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
-        actor.context.bound_session ()
-          .send (yd::actor_push_notify_t{.actor_id = actor.actor_id,
-                                         .request_id = request.request_id,
-                                         .value = request.value,
-                                         .node_rid = _evidence.node_rid})
-          .packet_name (yd::actor_push_notify_t::packet_name)
-          .submit ();
+        auto pushed =
+          actor.context.bound_session ()
+            .send (yd::actor_push_notify_t{.actor_id = actor.actor_id,
+                                           .request_id = request.request_id,
+                                           .value = request.value,
+                                           .node_rid = _evidence.node_rid})
+            .packet_name (yd::actor_push_notify_t::packet_name)
+            .submit ();
+        if (!pushed) {
+            const auto *error = pushed.error ();
+            _evidence.add ("actor-push-yield-failed|rid=" + _evidence.node_rid + "|spot="
+                           + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                           + "|request=" + request.request_id + "|reason="
+                           + (error != nullptr ? error->what () : "actor bound push failed")
+                           + "|handler=actor");
+            throw zlink::framework::framework_exception_t (
+              pushed.error_kind (), error != nullptr ? error->what ()
+                                                     : "actor bound push failed");
+        }
         _evidence.add ("actor-push-yield-completed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");

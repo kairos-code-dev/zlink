@@ -1,8 +1,227 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../Configuration/role_process.hpp"
+#include "../Configuration/location_store.hpp"
+#include "../Configuration/sample_topology.hpp"
+#include "../../Shared/Contracts/messages.hpp"
 
-int main ()
+#include <zlink/framework.hpp>
+
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <optional>
+#include <string>
+
+namespace zlink::samples::supportchat
 {
-    return zlink::samples::supportchat::run_role_process ("session");
+using namespace zlink::framework;
+
+inline constexpr const char *supportchat_session_node = "supportchat-session";
+inline constexpr const char *support_user_actor_type = "support-user";
+inline constexpr const char *conversation_id_metadata_key = "ConversationId";
+
+class supportchat_session_t final : public packet_stream_session_t
+{
+  public:
+    using dependency_types =
+      dependency_list_t<channel_client_t, session_actor_manager_t, actor_gateway_t>;
+
+    supportchat_session_t (channel_client_t &channels,
+                           session_actor_manager_t &actors,
+                           actor_gateway_t &gateway) :
+        _channels (channels), _actors (actors), _gateway (gateway)
+    {
+    }
+
+    task_t<void> on_connected (stream_t &) override { co_return; }
+
+    task_t<void> on_disconnected (stream_t &) override
+    {
+        if (!_identity_actor_id.empty ()) {
+            _gateway.unbind_session_stream (_identity_actor_id);
+            _actors.unbind_session (_identity_actor_id);
+        }
+        for (const auto &[_, actor_id] : _conversation_actor_ids) {
+            _gateway.unbind_session_stream (actor_id);
+            _actors.unbind_session (actor_id);
+        }
+        co_return;
+    }
+
+    task_t<void> on_error (stream_t &, const stream_error_t &) override { co_return; }
+
+    task_t<void> on_packet (stream_t &stream,
+                            const stream_dispatch_context_t &dispatch,
+                            const zlink::message_t &payload) override
+    {
+        if (dispatch.packet_name () == authenticate_req_t::packet_name) {
+            auto authenticated = authenticate (payload.parse_json<authenticate_req_t> ().access_token);
+            auto ensure = ensure_support_user_actor_req_t{authenticated.actor_id,
+                                                          authenticated.display_name,
+                                                          authenticated.role,
+                                                          authenticated.actor_id};
+            auto ensured = co_await _channels.request ("supportchat.support", ensure)
+                              .async<ensure_support_user_actor_res_t> ();
+            auto actor_ref = to_actor_ref (ensured.actor);
+            auto bound = co_await _actors.bind_or_get (actor_ref).async ();
+            _identity_actor_id = std::string (bound.actor_id ());
+            _identity_display_name = authenticated.display_name;
+            _identity_role = authenticated.role;
+            _gateway.bind_session_stream (_identity_actor_id, stream, stream_codec_t::json);
+            co_await bound.context ()
+              .join_entry_spot (node_rid_t::from_string ("supportchat-support"), ensure)
+              .async ();
+            stream.reply_packet (zlink::message_t::from_json (authenticated)).submit ();
+            co_return;
+        }
+        if (dispatch.packet_name () == join_conversation_req_t::packet_name
+            && _identity_role == role_t::agent) {
+            auto joined = co_await ensure_agent_conversation_actor (stream, dispatch);
+            stream.reply_packet (
+                    zlink::message_t::from_json (join_conversation_res_t{joined.state}))
+              .submit ();
+            co_return;
+        }
+        auto actor = co_await select_actor (stream, dispatch);
+        if (dispatch.can_reply ()) {
+            auto reply = co_await actor.relay_request (payload).async ();
+            stream.reply_packet (reply).submit ();
+            co_return;
+        }
+        actor.relay (payload).submit ();
+    }
+
+  private:
+    static authenticate_res_t authenticate (const std::string &token)
+    {
+        if (token == "agent") {
+            return {"agent-1", "Agent One", role_t::agent};
+        }
+        return {"customer-1", "Customer One", role_t::customer};
+    }
+
+    static zlink::framework::actor_ref_t to_actor_ref (
+      const support_actor_ref_snapshot_t &snapshot)
+    {
+        return zlink::framework::actor_ref_t (
+          node_rid_t::from_string (snapshot.node_rid), support_user_actor_type,
+          snapshot.actor_id, snapshot.generation);
+    }
+
+    task_t<session_actor_t> select_actor (stream_t &stream,
+                                          const stream_dispatch_context_t &dispatch)
+    {
+        if (auto conversation_id = dispatch.metadata ().find (conversation_id_metadata_key)) {
+            const auto found = _conversation_actor_ids.find (std::string (*conversation_id));
+            if (found != _conversation_actor_ids.end ()) {
+                co_return require_actor (found->second, std::string (dispatch.packet_name ()));
+            }
+        }
+        co_return require_actor (_identity_actor_id, std::string (dispatch.packet_name ()));
+    }
+
+    task_t<ensure_agent_conversation_res_t>
+    ensure_agent_conversation_actor (stream_t &stream,
+                                     const stream_dispatch_context_t &dispatch)
+    {
+        const auto conversation_id = require_conversation_id (dispatch);
+        const auto existing = _conversation_actor_ids.find (conversation_id);
+        if (existing != _conversation_actor_ids.end ()) {
+            auto actor = require_actor (existing->second, std::string (dispatch.packet_name ()));
+            auto refreshed =
+              co_await actor.relay_request (std::string (dispatch.packet_name ()),
+                                            zlink::message_t::from_json (join_conversation_req_t {}))
+                .async ();
+            co_return ensure_agent_conversation_res_t{
+              support_actor_ref_snapshot_t{"supportchat-support",
+                                           std::string (actor.actor_id ()),
+                                           actor.ref ().generation ()},
+              refreshed.parse_json<join_conversation_res_t> ().state};
+        }
+
+        auto ensured =
+          co_await _channels
+            .request ("supportchat.support",
+                      ensure_agent_conversation_req_t{_identity_actor_id, _identity_display_name,
+                                                      conversation_id})
+            .async<ensure_agent_conversation_res_t> ();
+        auto actor_ref = to_actor_ref (ensured.actor);
+        auto bound = co_await _actors.bind_or_get (actor_ref).async ();
+        const auto conversation_actor_id = std::string (bound.actor_id ());
+        _conversation_actor_ids[conversation_id] = conversation_actor_id;
+        _gateway.bind_session_stream (conversation_actor_id, stream, stream_codec_t::json);
+        co_return ensured;
+    }
+
+    static std::string require_conversation_id (const stream_dispatch_context_t &dispatch)
+    {
+        if (auto conversation_id = dispatch.metadata ().find (conversation_id_metadata_key)) {
+            return std::string (*conversation_id);
+        }
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "conversation packet is missing ConversationId metadata");
+    }
+
+    session_actor_t require_actor (const std::string &actor_id, const std::string &packet_name)
+    {
+        if (actor_id.empty ()) {
+            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+                                         "authenticated support actor is required for "
+                                           + packet_name);
+        }
+        auto actor = _actors.find (actor_id);
+        if (!actor) {
+            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+                                         "bound support actor route is not found");
+        }
+        return *actor;
+    }
+
+    channel_client_t &_channels;
+    session_actor_manager_t &_actors;
+    actor_gateway_t &_gateway;
+    std::string _identity_actor_id;
+    std::string _identity_display_name;
+    std::string _identity_role;
+    std::map<std::string, std::string> _conversation_actor_ids;
+};
+
+} // namespace zlink::samples::supportchat
+
+int main (int argc, char **argv)
+{
+    using namespace zlink::framework;
+    using namespace zlink::samples::supportchat;
+
+    std::filesystem::create_directories (supportchat_log_dir ());
+    const sample_topology_t topology;
+    std::ofstream flow (supportchat_log_dir () + "/flow-session.log", std::ios::app);
+    flow << "message flow role=session action=location-store-claim redis="
+         << topology.redis_endpoint << " prefix=" << topology.redis_key_prefix << "\n";
+    flow << "message flow role=session action=topology-ready sessionStream="
+         << topology.session_stream_endpoint << "\n";
+    flow.flush ();
+
+    auto app = app_t::create ();
+    app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
+        options.configure_dispatch ()
+          .message_flow (message_flow_log_mode_t::key_transitions)
+          .trace_log_file (supportchat_log_dir () + "/flow-session.log")
+          .trace_label ("supportchat-session");
+        add_supportchat_location_store (options, topology);
+        options.add_client_server_channel ("supportchat.support").enable_client ();
+        options.add_route_mesh_channel ("supportchat.session.actor.route")
+          .enable_server (topology.session_actor_route_endpoint)
+          .enable_client ()
+          .set_routing_id (zlink::routing_id_t::from (supportchat_session_node));
+        options.add_spot_mesh ("supportchat.support.spot")
+          .accept_route_mesh ("supportchat.session.actor.route")
+          .set_routing_id (zlink::routing_id_t::from (supportchat_session_node))
+          .enable_router (topology.session_spot_router_endpoint)
+          .enable_pub_sub (topology.session_spot_endpoint);
+        options.add_stream_node ("supportchat-session-stream")
+          .bind (topology.session_stream_endpoint)
+          .register_session<supportchat_session_t> ();
+    });
+    return app.run (argc, argv);
 }

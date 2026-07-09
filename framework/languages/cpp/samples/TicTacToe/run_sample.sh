@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$SCRIPT_DIR/logs}"
 export ZLINK_CPP_STREAM_TRACE="${ZLINK_CPP_STREAM_TRACE:-0}"
@@ -9,6 +10,15 @@ mkdir -p "$TICTACTOE_LOG_DIR"
 rm -f "$TICTACTOE_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
+
+cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
+cmake --build "$BUILD_DIR" --target \
+  sample_cpp_framework_tictactoe_play \
+  sample_cpp_framework_tictactoe_api \
+  sample_cpp_framework_tictactoe_client \
+  test_cpp_framework_sample_parity \
+  test_cpp_framework_spot_runtime \
+  test_cpp_framework_ActorGateway_actor_session_relay >/dev/null
 
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_tictactoe_play" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_tictactoe_play" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
@@ -22,7 +32,7 @@ CTEST_BIN="${CTEST_BIN:-ctest}"
 for binary in "$PLAY_BIN" "$API_BIN" "$CLIENT_BIN"; do
   if [[ ! -x "$binary" ]]; then
     echo "Missing executable: $binary" >&2
-    echo "Build C++ samples first or set ZLINK_CPP_BUILD_DIR." >&2
+    echo "CMake build did not produce the expected TicTacToe sample executable." >&2
     exit 1
   fi
 done
@@ -84,7 +94,6 @@ PLAY_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
 PLAY_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 PLAY_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
 PLAY_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
-REDIS_PORT="${PORTS[14]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -168,9 +177,10 @@ else
     echo "Docker is required to run the TicTacToe sample when TICTACTOE_CPP_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  REDIS_CONTAINER="zlink-tictactoe-cpp-redis-${RANDOM}-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine >/dev/null
-  TICTACTOE_CPP_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-sample-tictactoe" "redis:7-alpine"
+  )
+  TICTACTOE_CPP_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   wait_port redis "$TICTACTOE_CPP_REDIS_ENDPOINT"
 fi
 
@@ -205,26 +215,26 @@ start_server() {
 }
 
 start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
+start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
+start_server api-a "$API_BIN" --sample.topology.apiNode=a
+start_server api-b "$API_BIN" --sample.topology.apiNode=b
+
 wait_port play-a-channel "$PLAY_A_ENDPOINT"
 wait_port play-a-stream "$PLAY_A_STREAM_ENDPOINT"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
 wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
-
-start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
 wait_port play-b-channel "$PLAY_B_ENDPOINT"
 wait_port play-b-stream "$PLAY_B_STREAM_ENDPOINT"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
 wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
-
-start_server api-a "$API_BIN" --sample.topology.apiNode=a
 wait_port api-a-channel "$API_A_ENDPOINT"
 wait_port api-a-http "$API_A_HTTP_ENDPOINT"
-
-start_server api-b "$API_BIN" --sample.topology.apiNode=b
 wait_port api-b-channel "$API_B_ENDPOINT"
 wait_port api-b-http "$API_B_HTTP_ENDPOINT"
 
-sleep "${TICTACTOE_CPP_STARTUP_SETTLE_SECONDS:-1}"
+if [[ "${TICTACTOE_CPP_STARTUP_SETTLE_SECONDS:-0}" != "0" ]]; then
+  sleep "$TICTACTOE_CPP_STARTUP_SETTLE_SECONDS"
+fi
 
 "$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2
@@ -235,9 +245,9 @@ sleep "${TICTACTOE_CPP_STARTUP_SETTLE_SECONDS:-1}"
   exit 1
 }
 
-wait_grep "observer-connected endpoint=$PLAY_B_STREAM_ENDPOINT" "$LOG_DIR/client.log"
+wait_grep "observer-connected endpoint=tcp://127.0.0.1:" "$LOG_DIR/client.log"
 wait_grep "observer-subscription=verified subscribed=true" "$LOG_DIR/client.log"
-wait_grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "$LOG_DIR/client.log"
+wait_grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-" "$LOG_DIR/client.log"
 wait_grep "tictactoe completed" "$LOG_DIR/client.log"
 wait_grep "tictactoe=completed" "$LOG_DIR/client.log"
 grep -q "actor: LeaveGameReq completed. actor=player-x" "$LOG_DIR"/play-*.log

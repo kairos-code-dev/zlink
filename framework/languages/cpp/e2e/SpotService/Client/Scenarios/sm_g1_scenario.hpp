@@ -175,17 +175,27 @@ inline void run_sm_g1_crash_recovery_scenario (const std::string &stream_endpoin
         throw std::runtime_error ("SM-G1 recovered stream connect failed");
     }
 
-    auto recovered_auth =
-      recovered_stream.request (
-                        stream_ensure_auth_req_t{"play-b", "actor-sm-g1-crash",
-                                                 "recovered-on-play-b"})
-        .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (3000))
-        .async<stream_auth_res_t> ()
-        .result ();
-    if (!static_cast<bool> (recovered_auth)) {
-        throw std::runtime_error ("SM-G1 recovered auth failed: "
-                                  + sm_g1_stream_error_text (recovered_auth));
+    std::string last_recover_error = "unknown stream error";
+    bool recovered_auth_accepted = false;
+    const auto reclaim_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (15);
+    while (std::chrono::steady_clock::now () < reclaim_deadline) {
+        auto recovered_auth =
+          recovered_stream.request (
+                            stream_ensure_auth_req_t{"play-b", "actor-sm-g1-crash",
+                                                     "recovered-on-play-b"})
+            .packet_name ("StreamEnsureAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<stream_auth_res_t> ()
+            .result ();
+        if (static_cast<bool> (recovered_auth)) {
+            recovered_auth_accepted = true;
+            break;
+        }
+        last_recover_error = sm_g1_stream_error_text (recovered_auth);
+        std::this_thread::sleep_for (std::chrono::milliseconds (500));
+    }
+    if (!recovered_auth_accepted) {
+        throw std::runtime_error ("SM-G1 recovered auth failed: " + last_recover_error);
     }
 
     auto recovered_state =

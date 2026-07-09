@@ -7,12 +7,14 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
-#include "runtime/dispatch/coroutine_executor.hpp"
+#include "runtime/dispatch/offload_executor.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace zlink::framework
@@ -24,6 +26,14 @@ using detail::stream_message_kind_t;
 
 namespace detail
 {
+
+runtime::offload_executor_t &stream_dispatch_executor ()
+{
+    static runtime::offload_executor_t executor (
+      0, std::max<std::size_t> (1, std::thread::hardware_concurrency ()), 4096,
+      std::chrono::seconds (30));
+    return executor;
+}
 
 class stream_write_call_state_t
 {
@@ -110,24 +120,36 @@ class stream_session_dispatcher_t
     {
         const std::lock_guard<std::mutex> dispatch_lock (_stream.dispatch_mutex);
         record_operation (std::move (operation));
-        return runtime::handler_coroutine_executor ()
-          .submit<void> ([callback = std::move (
-                            callback)] () mutable -> boost::asio::awaitable<result_t<void>> {
+        task_completion_source_t<void> completion;
+        auto task = completion.task ();
+        try {
+            stream_dispatch_executor ().submit ([callback = std::move (callback),
+                                                 completion = std::move (completion)] () mutable {
               try {
                   auto callback_task = callback ();
-                  (co_await runtime::await_task_result (std::move (callback_task))).value ();
-                  co_return result_t<void>::success ();
+                  callback_task.result ().value ();
+                  completion.complete (result_t<void>::success ());
               }
               catch (const framework_exception_t &error) {
-                  co_return result_t<void>::failure (error.kind (), error.what (),
-                                                     error.is_retriable ());
+                  completion.complete (
+                    result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
               }
               catch (...) {
-                  co_return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                                     "stream session callback threw an exception");
+                  completion.complete (result_t<void>::failure (
+                    framework_error_kind_t::request_failed,
+                    "stream session callback threw an exception"));
               }
-          })
-          .result ();
+            });
+        }
+        catch (const std::exception &error) {
+            completion.complete (
+              result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
+        }
+        catch (...) {
+            completion.complete (result_t<void>::failure (
+              framework_error_kind_t::request_failed, "stream dispatch executor rejected work"));
+        }
+        return task.result ();
     }
 
   private:
@@ -179,9 +201,9 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-void stream_write_call_t::submit ()
+result_t<void> stream_write_call_t::submit ()
 {
-    (void) _state->submit_now ();
+    return _state->submit_now ();
 }
 
 result_t<void> stream_write_call_t::submit_now ()
@@ -899,13 +921,23 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     });
     auto dispatch_stream = stream;
     dispatch_stream._reply_header = header;
-    return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()), [&] {
-        detail::enter_stream_relay_dispatch (header);
+    auto dispatch_header = std::make_shared<stream_header_t> (header);
+    auto dispatch_context = std::shared_ptr<stream_dispatch_context_t> (
+      new stream_dispatch_context_t (header));
+    auto dispatch_payload = std::make_shared<zlink::message_t> (std::move (handler_payload));
+    return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()),
+                            [session = &session,
+                             dispatch_stream = std::move (dispatch_stream),
+                             dispatch_header = std::move (dispatch_header),
+                             dispatch_context = std::move (dispatch_context),
+                             dispatch_payload = std::move (dispatch_payload)] () mutable
+                              -> task_t<void> {
+        detail::enter_stream_relay_dispatch (*dispatch_header);
         auto task =
-          session.on_packet (dispatch_stream, stream_dispatch_context_t (header), handler_payload);
+          session->on_packet (dispatch_stream, *dispatch_context, *dispatch_payload);
         ::zlink::framework::observe_task_completion (
           task, [] (const result_t<void> &) { detail::exit_stream_relay_dispatch (); });
-        return task;
+        co_return co_await task;
     });
 }
 

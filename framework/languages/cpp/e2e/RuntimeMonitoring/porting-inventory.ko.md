@@ -63,6 +63,12 @@ store를 공유하고, location runtime monitoring source가 topology/status/ser
 
 ## 검증
 
+- 2026-07-08: `timeout 560s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260708-133413-118111`
+  - 의미: Redis location store 기반 service, filtered service, throwing service, trigger, client role이
+    같은 gate에서 MON-A1, MON-A2, MON-A3, MON-A4, MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을
+    검증한다. MON-B2 validation 출력과 MON-D1 restart 검증까지 포함한다.
 - 2026-07-03: `framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260703-214231-52862`

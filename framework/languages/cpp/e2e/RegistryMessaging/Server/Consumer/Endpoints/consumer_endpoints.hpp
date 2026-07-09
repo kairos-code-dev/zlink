@@ -191,6 +191,35 @@ class payload_request_handler_t
     zlink::framework::channel_client_t &_channels;
 };
 
+class payload_over_limit_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+    using request_type = payload_req_t;
+    using reply_type = request_failure_res_t;
+
+    explicit payload_over_limit_handler_t (zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    request_failure_res_t handle (const payload_req_t &request)
+    {
+        auto call = _channels.request (api_channel, request)
+                      .timeout (std::chrono::milliseconds (1500))
+                      .async<payload_res_t> ();
+        const auto &reply = call.result ();
+        if (reply) {
+            return {.failed = false, .error_type = ""};
+        }
+        return {.failed = true,
+                .error_type = reply.error () ? reply.error ()->what () : "request failed"};
+    }
+
+  private:
+    zlink::framework::channel_client_t &_channels;
+};
+
 class backpressure_reset_handler_t
 {
   public:

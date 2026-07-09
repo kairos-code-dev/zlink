@@ -184,6 +184,13 @@ inline profile_res_t request_profile (const std::string &consumer_url,
       consumer_url, "/profile/request", {.value = "fast", .marker = marker}, timeout);
 }
 
+inline void set_store_delay (const std::string &consumer_url, int milliseconds)
+{
+    auto status = post_json<store_delay_req_t, operation_status_t> (
+      consumer_url, "/admin/store-delay", {.milliseconds = milliseconds}, std::chrono::seconds (3));
+    ensure (status.status == "ok", "store delay endpoint returned unexpected status");
+}
+
 inline std::vector<profile_res_t> drive_requests (const std::string &consumer_url,
                                                   const std::string &marker_prefix,
                                                   std::chrono::milliseconds window,

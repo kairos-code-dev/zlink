@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Message-flow logs land in the sample's own logs/ folder (git-ignored).
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$SCRIPT_DIR/logs}"
@@ -9,6 +10,16 @@ mkdir -p "$BINGO_LOG_DIR"
 rm -f "$BINGO_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
+
+cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
+cmake --build "$BUILD_DIR" --target \
+  sample_cpp_framework_bingo_api \
+  sample_cpp_framework_bingo_play \
+  sample_cpp_framework_bingo_session \
+  sample_cpp_framework_bingo_client \
+  test_cpp_framework_sample_parity \
+  test_cpp_framework_spot_runtime \
+  test_cpp_framework_ActorGateway_actor_session_relay >/dev/null
 
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_bingo_api" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_bingo_api" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
@@ -23,7 +34,7 @@ CTEST_BIN="${CTEST_BIN:-ctest}"
 for binary in "$API_BIN" "$PLAY_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
   if [[ ! -x "$binary" ]]; then
     echo "Missing executable: $binary" >&2
-    echo "Build C++ samples first or set ZLINK_CPP_BUILD_DIR." >&2
+    echo "CMake build did not produce the expected Bingo sample executable." >&2
     exit 1
   fi
 done
@@ -91,7 +102,6 @@ SESSION_B_STREAM_ENDPOINT="${BINGO_SESSION_B_STREAM_ENDPOINT:-tcp://127.0.0.1:${
 PLAY_B_SPOT_ENDPOINT="${BINGO_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
 PLAY_B_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[14]}}"
 API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[15]}}"
-REDIS_PORT="${PORTS[16]}"
 PLAY_A_ROUTE_ENDPOINT="${BINGO_PLAY_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
 PLAY_B_ROUTE_ENDPOINT="${BINGO_PLAY_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
 
@@ -123,6 +133,20 @@ wait_port() {
     sleep 0.1
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
+}
+
+wait_log() {
+  local name="$1"
+  local file="$2"
+  local pattern="$3"
+  for _ in $(seq 1 600); do
+    if [[ -f "$file" ]] && grep -Eq "$pattern" "$file"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} evidence in ${file}" >&2
   return 1
 }
 
@@ -185,9 +209,10 @@ else
     echo "Docker is required to run the Bingo sample when BINGO_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  REDIS_CONTAINER="bingo-cpp-redis-${RANDOM}-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:${REDIS_PORT}:6379" redis:7.2-alpine >/dev/null
-  BINGO_REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-sample-bingo" "redis:7.2-alpine"
+  )
+  BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 fi
 
@@ -223,36 +248,51 @@ start_server() {
 }
 
 start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
-wait_port play-a "$PLAY_A_ROUTE_ENDPOINT"
-wait_port play-a-route "$PLAY_A_ROUTE_ENDPOINT"
-wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
-wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
 start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
-wait_port play-b "$PLAY_B_ROUTE_ENDPOINT"
-wait_port play-b-route "$PLAY_B_ROUTE_ENDPOINT"
-wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
-wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
-
 start_server api-a "$API_BIN" --sample.topology.apiNode=a
-wait_port api-a "$API_A_CHANNEL_ENDPOINT"
 start_server api-b "$API_BIN" --sample.topology.apiNode=b
-wait_port api-b "$API_B_CHANNEL_ENDPOINT"
-
 start_server session-a "$SESSION_BIN" \
   --sample.topology.sessionNode=a \
   "--sample.topology.sessionSpotEndpoint=$SESSION_A_SPOT_ENDPOINT" \
   "--sample.topology.sessionRouterEndpoint=$SESSION_A_ROUTER_ENDPOINT" \
   "--sample.topology.streamEndpoint=$SESSION_A_STREAM_ENDPOINT"
-wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
-wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
-
 start_server session-b "$SESSION_BIN" \
   --sample.topology.sessionNode=b \
   "--sample.topology.sessionSpotEndpoint=$SESSION_B_SPOT_ENDPOINT" \
   "--sample.topology.sessionRouterEndpoint=$SESSION_B_ROUTER_ENDPOINT" \
   "--sample.topology.streamEndpoint=$SESSION_B_STREAM_ENDPOINT"
+
+wait_port play-a "$PLAY_A_ROUTE_ENDPOINT"
+wait_port play-a-route "$PLAY_A_ROUTE_ENDPOINT"
+wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
+wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
+wait_port play-b "$PLAY_B_ROUTE_ENDPOINT"
+wait_port play-b-route "$PLAY_B_ROUTE_ENDPOINT"
+wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
+wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
+wait_port api-a "$API_A_CHANNEL_ENDPOINT"
+wait_port api-b "$API_B_CHANNEL_ENDPOINT"
+wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
+wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
 wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
 wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
+
+wait_log "api-a play-a route discovery" "$LOG_DIR/api-a.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
+wait_log "api-a play-b route discovery" "$LOG_DIR/api-a.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
+wait_log "api-b play-a route discovery" "$LOG_DIR/api-b.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
+wait_log "api-b play-b route discovery" "$LOG_DIR/api-b.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
+wait_log "session-a play-a route discovery" "$LOG_DIR/session-a.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
+wait_log "session-a play-b route discovery" "$LOG_DIR/session-a.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
+wait_log "session-b play-a route discovery" "$LOG_DIR/session-b.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2201 .*targetRid=2201"
+wait_log "session-b play-b route discovery" "$LOG_DIR/session-b.log" \
+  "zlink auto-connect dial type=client-server mesh=bingo\\.play\\.2202 .*targetRid=2202"
 
 sleep "${BINGO_STARTUP_SETTLE_SECONDS:-4}"
 

@@ -7,6 +7,11 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
 
 ## 최신 검증
 
+- 2026-07-07 `CMAKE_BUILD_PARALLEL_LEVEL=1 nice -n 10 cmake --build framework/languages/cpp/build-redis-vcpkg --target zlink_cpp_e2e_spot_service_client zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_gateway zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_session -- -j1` 통과.
+  - `SM-B9`, `SM-C5`, `SM-D15`, `SM-F6` 구현을 포함한 SpotService 관련 C++ target build 검증이다.
+- 2026-07-07 `E2E_START_ORDER=reverse ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg ZLINK_CPP_E2E_SKIP_BUILD=1 CMAKE_BUILD_PARALLEL_LEVEL=1 nice -n 10 timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F6` 통과.
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260707-163439-2654857`
+  - RouteMesh를 끈 MultiNode SpotMesh-only scenario에서 서버 시작 순서를 reverse로 바꿔도 client readiness와 evidence polling으로 수렴함을 검증했다.
 - 2026-07-03 Redis location store 전환 후 `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 900s framework/languages/cpp/e2e/SpotService/run_e2e.sh all` 통과.
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260703-194121-30065`
   - runner는 registry role 없이 Redis location store와 scenario별 key prefix를 사용한다.
@@ -44,6 +49,9 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   join callback, 후속 actor packet handler의 순서를 검증한다.
 - `SM-B8`: stream auth로 actor를 붙인 뒤 entry spot의 public `destroyActor`로 actor를 명시 파괴하고,
   destroy evidence와 post-destroy request 실패를 검증한다.
+- `SM-B9`: stream-bound entry actor가 public `actor_context_t::join_spot`으로 user spot admission을
+  수행하고, 허용된 actor만 user spot에 commit되며 거부된 actor는 `ActorJoinRejected` reply와
+  reject evidence로 끝나는지 검증한다.
 - `SM-C1`: HTTP client가 Play role endpoint를 호출하고, server-owned route client가 특정 target
   node와 spot id로 request/send를 보내면 해당 spot이 처리하는지 검증한다. handler-missing/timeout
   이후 정상 request가 오염되지 않는지도 함께 확인한다.
@@ -53,6 +61,9 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   SPOT mesh publish, missing handler request 실패, slow target timeout을 함께 검증한다.
 - `SM-C4`: local spot을 등록하지 않은 client node가 attached publisher client로 SPOT mesh에
   publish하고, play 노드의 구독 spot들이 이벤트를 받는지 검증한다.
+- `SM-C5`: `play-a` spot handler가 cross-node user spot으로 request/send를 수행한 뒤 같은 spot
+  handler에서 publish한 SpotMesh 이벤트가 `play-b`의 target spot subscriber evidence에 남는지
+  검증한다.
 - `SM-D1`: 실제 `session-a` stream gateway에 붙어 `play-a` actor로 local stream relay를 보내고,
   actor가 bound session으로 보낸 push를 client 수신과 play/session evidence로 검증한다.
 - `SM-D2`: `session-a` gateway에 붙은 상태에서 preferred가 아닌 `play-b` actor로 remote stream
@@ -72,9 +83,8 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   session에서 재auth/rebind한 뒤 actor messaging이 정상 재개되는지 검증한다.
 - `SM-D9`: stream inbound observer가 auth/join/state response의 kind/name/request-seq를
   관측하는지 검증한다.
-- `SM-D10`: `max_received_messages`로 stream push 수신 queue를 제한하고,
-  `received_message_dropped` callback이 보고되며 같은 session request와 다른 session push가 계속
-  정상 동작하는지 검증한다.
+- `SM-D10`: `max_received_messages`로 stream push 수신 queue를 제한하고, 느린 push callback에서도
+  같은 session request와 다른 session push가 계속 정상 동작하는지 검증한다.
 - `SM-D11`: 같은 client process에서 stream actor request와 일반 channel request를 동시에 보내도
   각각 stream dispatcher와 channel dispatcher에서 reply를 받는지 검증한다.
 - `SM-D12`: `session-a`에서 join/state/push를 수행한 actor가 연결을 끊은 뒤 `session-b`로
@@ -84,6 +94,8 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
 - `SM-D14`: public stream node TLS server 설정으로 `tls://` endpoint를 열고, stream connector가
   self-signed certificate를 strict mode에서 거부한 뒤 skip-validation mode에서 bind, relay, push를
   평문 stream과 같은 의미로 수행하는지 검증한다.
+- `SM-D15`: gateway role의 HTTP endpoint가 public `actor_client_t::request_to_actor`로 actor
+  handler를 호출하고, actor가 bound stream session으로 push한 notify를 client가 수신하는지 검증한다.
 - `SM-E1`: handler 없는 spot route request가 client-visible error로 끝나고, 이후 정상 spot route
   request가 같은 route channel에서 계속 성공하는지 검증한다.
 - `SM-E2`: user spot이 public `spot_context_t::add_timer<THandler>`로 timer를 등록하고,
@@ -108,6 +120,9 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   public typed route client로 만들 수 없어 raw-frame harness가 필요하다.
 - `SM-F5`: `Client/Scenarios/sm_f5_scenario.hpp`가 spot route negative 이후에도 같은 route channel의
   일반 route request와 정상 spot route request가 계속 성공하는지 검증한다.
+- `SM-F6`: MultiNode role을 RouteMesh 없이 SpotMesh node만 등록한 상태로 띄우고, 서버 간 구동
+  순서와 무관하게 client readiness 뒤 remote spot request/send와 actor join이 target spot evidence에
+  남는지 검증한다.
 - `SM-G1`: `session-a`/`session-b`를 각각 `play-a`/`play-b`에 bind하고, actor와 stream session이
   붙은 `play-a`를 실제 SIGKILL한다. 이후 `play-b` actor/session은 계속 동작하는지 확인하고
   살아 있는 `play-b`에 재auth/rebind해 상태를 복구한다.

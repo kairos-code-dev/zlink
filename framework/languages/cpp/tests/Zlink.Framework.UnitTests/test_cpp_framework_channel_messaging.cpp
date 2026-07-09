@@ -754,8 +754,11 @@ int main ()
         .result ();
     auto default_spot_route_request =
       default_route_client
-        .request_to_node ("missing.route", zlink::routing_id_t::from ("missing-node"),
-                  zlink::framework::spot_rid_t::from_string ("missing-spot"), request_t{3})
+        .request_to_node ("missing.route",
+                          zlink::framework::spot_ref_t{
+                            .node_rid = zlink::routing_id_t::from ("missing-node"),
+                            .spot_rid = zlink::routing_id_t::from ("missing-spot")},
+                          request_t{3})
         .packet_name ("missing.spot.request")
         .async<reply_t> ()
         .result ();
@@ -995,7 +998,9 @@ int main ()
     }
     zlink::framework::route_client_t unconfigured_route_client;
     const auto unconfigured_target = zlink::routing_id_t::from (std::string ("unconfigured-node"));
-    const auto unconfigured_spot = zlink::framework::spot_rid_t{};
+    const auto unconfigured_spot = zlink::framework::spot_ref_t{
+      .node_rid = unconfigured_target,
+      .spot_rid = zlink::routing_id_t::from (std::uint32_t{0})};
     unconfigured_route_client.send_to_node ("game.route", unconfigured_target, event_t{7})
       .packet_name ("event")
       .submit ();
@@ -1010,12 +1015,12 @@ int main ()
         return 408;
     }
     unconfigured_route_client
-      .send_to_node ("game.route", unconfigured_target, unconfigured_spot, event_t{9})
+      .send_to_node ("game.route", unconfigured_spot, event_t{9})
       .packet_name ("event")
       .submit ();
     const auto unconfigured_spot_request =
       unconfigured_route_client
-        .request_to_node ("game.route", unconfigured_target, unconfigured_spot, request_t{10})
+        .request_to_node ("game.route", unconfigured_spot, request_t{10})
         .packet_name ("request")
         .async<reply_t> ()
         .result ();
@@ -1904,6 +1909,23 @@ int main ()
         || route_connection_list[1] != "tcp://route-b:7500") {
         return 31;
     }
+    const auto route_peer = zlink::routing_id_t::from (std::string ("route-a"));
+    if (!route_connections.connect (route_peer, "tcp://route-a:7500")) {
+        return 311;
+    }
+    const auto route_connection_targets = route_connections.targets ();
+    auto upgraded_route_a =
+      std::find_if (route_connection_targets.begin (), route_connection_targets.end (),
+                    [] (const auto &target) {
+                        return target.endpoint == "tcp://route-a:7500";
+                    });
+    if (upgraded_route_a == route_connection_targets.end () || !upgraded_route_a->peer_rid
+        || *upgraded_route_a->peer_rid != route_peer) {
+        return 312;
+    }
+    if (route_connections.connect (route_peer, "tcp://route-a:7500")) {
+        return 313;
+    }
     if (!route_connections.disconnect ("tcp://route-b:7500")
         || route_connections.contains ("tcp://route-b:7500")) {
         return 32;
@@ -2247,6 +2269,31 @@ int main ()
     orchestrated_api_channel_service.start (orchestrated_provider);
     orchestrated_api_route_service.start (orchestrated_provider);
     orchestrated_play_route_service.start (orchestrated_provider);
+
+    bool orchestrated_route_ready = false;
+    const auto orchestrated_route_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (6);
+    while (std::chrono::steady_clock::now () < orchestrated_route_deadline) {
+        auto route_ready =
+          orchestrated_api_builder.route_client (serializers)
+            .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
+                              request_t{44})
+            .packet_name ("request")
+            .timeout (std::chrono::milliseconds (500))
+            .async<reply_t> ()
+            .result ();
+        if (route_ready && route_ready.value ().value == 244) {
+            orchestrated_route_ready = true;
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (25));
+    }
+    if (!orchestrated_route_ready) {
+        orchestrated_api_channel_service.stop ();
+        orchestrated_api_route_service.stop ();
+        orchestrated_play_route_service.stop ();
+        return 386;
+    }
 
     zlink::framework::zlink_builder_t orchestrated_client_builder;
     orchestrated_client_builder.channel ("bingo.api")
@@ -2908,8 +2955,11 @@ int main ()
           return zlink::framework::result_t<void>::success ();
       });
     public_route_client
-      .send_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
-             zlink::framework::spot_rid_t::from_string ("target-spot"), event_t{32})
+      .send_to_node ("public.route",
+                     zlink::framework::spot_ref_t{
+                       .node_rid = zlink::routing_id_t::from (std::string ("target-node")),
+                       .spot_rid = zlink::routing_id_t::from ("target-spot")},
+                     event_t{32})
       .packet_name ("spot.client.event")
       .metadata ("trace-id", "trace-spot-send")
       .submit ();
@@ -2964,8 +3014,11 @@ int main ()
       });
     auto public_spot_typed_reply =
       public_route_client
-        .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
-                  zlink::framework::spot_rid_t::from_string ("target-spot"), request_t{52})
+        .request_to_node ("public.route",
+                          zlink::framework::spot_ref_t{
+                            .node_rid = zlink::routing_id_t::from (std::string ("target-node")),
+                            .spot_rid = zlink::routing_id_t::from ("target-spot")},
+                          request_t{52})
         .packet_name ("spot.client.request")
         .metadata ("trace-id", "trace-spot-typed")
         .timeout (std::chrono::milliseconds (50))

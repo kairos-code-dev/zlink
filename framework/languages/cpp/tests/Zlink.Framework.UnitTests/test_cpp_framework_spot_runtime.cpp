@@ -33,6 +33,13 @@
 namespace
 {
 
+zlink::framework::spot_ref_t make_spot_ref (std::string node_rid, std::string spot_rid)
+{
+    return zlink::framework::spot_ref_t{
+      .node_rid = zlink::routing_id_t::from (node_rid),
+      .spot_rid = zlink::routing_id_t::from (spot_rid)};
+}
+
 void add_string_serializer (zlink::framework::serializer_registry_t &serializers)
 {
     serializers.add<std::string> (
@@ -55,18 +62,18 @@ class test_spot_context_t : public zlink::framework::spot_context_t
 class recording_spot_location_resolver_t final : public zlink::framework::spot_location_resolver_t
 {
   public:
-    zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>>
-    resolve_spot_address (std::string mesh_name, zlink::routing_id_t spot_rid) override
+    zlink::framework::task_t<std::optional<zlink::framework::spot_ref_t>>
+    resolve_spot_ref (std::string mesh_name, zlink::routing_id_t spot_rid) override
     {
         last_mesh_name = std::move (mesh_name);
         last_spot_rid = spot_rid.to_string ();
         ++calls;
-        return zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>> (
-          zlink::framework::result_t<std::optional<zlink::framework::spot_address_t>>::success (
+        return zlink::framework::task_t<std::optional<zlink::framework::spot_ref_t>> (
+          zlink::framework::result_t<std::optional<zlink::framework::spot_ref_t>>::success (
             address));
     }
 
-    std::optional<zlink::framework::spot_address_t> address;
+    std::optional<zlink::framework::spot_ref_t> address;
     int calls = 0;
     std::string last_mesh_name;
     std::string last_spot_rid;
@@ -1045,13 +1052,12 @@ int main ()
         return 136;
     }
     context
-      .send_to (zlink::framework::node_rid_t{}, zlink::framework::spot_rid_t{}, move_request_t{1})
+      .send_to (zlink::framework::spot_ref_t{}, move_request_t{1})
       .packet_name ("move")
       .submit ();
     const auto empty_spot_route_request =
       context
-        .request_to<move_reply_t> (zlink::framework::node_rid_t{}, zlink::framework::spot_rid_t{},
-                                   move_request_t{1})
+        .request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{1})
         .packet_name ("move")
         .async ()
         .result ();
@@ -1069,8 +1075,7 @@ int main ()
     auto no_route_context = no_route_spot.context;
     const auto no_route_request =
       no_route_context
-        .request_to<move_reply_t> (zlink::framework::node_rid_t::from_string ("remote-node"),
-                                   zlink::framework::spot_rid_t::from_string ("remote-spot"),
+        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"),
                                    move_request_t{2})
         .packet_name ("move")
         .async ()
@@ -1109,7 +1114,7 @@ int main ()
     const auto location_resolved_rid = zlink::framework::spot_rid_t::from_string ("location-stage");
     recording_spot_location_resolver_t location_resolver;
     location_resolver.address =
-      zlink::framework::spot_address_t{"manual-stage", zlink::routing_id_t::from ("location-node"),
+      zlink::framework::spot_ref_t{"manual-stage", zlink::routing_id_t::from ("location-node"),
                                        zlink::routing_id_t::from ("location-stage")};
     auto builder_runtime = zlink::framework::detail::spot_node_runtime_t::from (builder);
     builder_runtime.bind_spot_location_resolver (location_resolver);
@@ -2425,8 +2430,7 @@ int main ()
     }
     auto empty_context_request =
       empty_context
-        .request_to<move_reply_t> (zlink::framework::node_rid_t::from_string ("remote-node"),
-                                   zlink::framework::spot_rid_t::from_string ("remote-spot"),
+        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"),
                                    move_request_t{1})
         .async ()
         .result ();
@@ -2889,11 +2893,17 @@ int main ()
         return 92;
     }
 
-    context.send_to (remote_route->node_rid, remote_route->spot_rid, state_update_t{2}).submit ();
+    context
+      .send_to (make_spot_ref (std::string (remote_route->node_rid.value ()),
+                               std::string (remote_route->spot_rid.value ())),
+                state_update_t{2})
+      .submit ();
 
     auto request_result = context
-                            .request_to<move_reply_t> (remote_route->node_rid,
-                                                       remote_route->spot_rid, move_request_t{3})
+                            .request_to<move_reply_t> (
+                              make_spot_ref (std::string (remote_route->node_rid.value ()),
+                                             std::string (remote_route->spot_rid.value ())),
+                              move_request_t{3})
                             .async ()
                             .result ();
     if (request_result || request_result.error_kind () != framework_error_kind_t::timeout) {
@@ -2902,8 +2912,7 @@ int main ()
 
     auto missing_route_result =
       context
-        .request_to<move_reply_t> (zlink::framework::node_rid_t{}, zlink::framework::spot_rid_t{},
-                                   move_request_t{4})
+        .request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{4})
         .async ()
         .result ();
     if (missing_route_result

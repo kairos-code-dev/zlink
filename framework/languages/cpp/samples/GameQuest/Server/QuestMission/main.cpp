@@ -17,8 +17,10 @@
 #include <iostream>
 #include <sstream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace zlink::samples::gamequest
@@ -168,21 +170,32 @@ class quest_store_t
     std::map<std::string, quest_progress_t> _progress;
 };
 
-class apply_gameplay_event_handler_t
+class player_quest_spot_t : public spot_t
 {
   public:
-    using dependency_types = dependency_list_t<quest_store_t, sample_topology_t>;
-    using request_type = apply_gameplay_event_req_t;
-    using reply_type = apply_gameplay_event_res_t;
-    static constexpr const char *topic_name = apply_gameplay_event_req_t::packet_name;
-
-    explicit apply_gameplay_event_handler_t (quest_store_t &store,
-                                             sample_topology_t &topology) :
-        _store (store), _topology (topology)
+    player_quest_spot_t (quest_store_t &store, sample_topology_t topology) :
+        _store (store), _topology (std::move (topology))
     {
     }
 
-    apply_gameplay_event_res_t handle (const apply_gameplay_event_req_t &request)
+    void configure (spot_context_t &context)
+    {
+        context.handlers ()
+          .add_handler<&player_quest_spot_t::apply> (apply_gameplay_event_req_t::packet_name)
+          .add_handler<&player_quest_spot_t::sync> (sync_quest_progress_req_t::packet_name)
+          .add_handler<&player_quest_spot_t::get> (get_quest_progress_req_t::packet_name);
+    }
+
+    spot_create_response_t on_create (const zlink::framework::message_t &request)
+    {
+        auto create = request.decode<player_quest_spot_create_req_t> ();
+        _player_id = create.player_id;
+        std::cerr << "gamequest player quest spot ready player=" << _player_id
+                  << " spot=" << _player_id << "\n";
+        return spot_create_response_t::accept ();
+    }
+
+    apply_gameplay_event_res_t apply (const apply_gameplay_event_req_t &request)
     {
         auto result = _store.apply (request.event);
         bool delivered = false;
@@ -204,47 +217,43 @@ class apply_gameplay_event_handler_t
         return result;
     }
 
-  private:
-    quest_store_t &_store;
-    sample_topology_t &_topology;
-};
+    sync_quest_progress_res_t sync (const sync_quest_progress_req_t &request)
+    {
+        return {_store.projection (request.player_id)};
+    }
 
-class sync_quest_progress_handler_t
-{
-  public:
-    using dependency_types = dependency_list_t<quest_store_t>;
-    using request_type = sync_quest_progress_req_t;
-    using reply_type = sync_quest_progress_res_t;
-    static constexpr const char *topic_name = sync_quest_progress_req_t::packet_name;
-
-    explicit sync_quest_progress_handler_t (quest_store_t &store) : _store (store) {}
-
-    sync_quest_progress_res_t handle (const sync_quest_progress_req_t &request)
+    get_quest_progress_res_t get (const get_quest_progress_req_t &request)
     {
         return {_store.projection (request.player_id)};
     }
 
   private:
     quest_store_t &_store;
+    sample_topology_t _topology;
+    std::string _player_id;
 };
 
-class get_quest_progress_handler_t
+class ensure_player_quest_spot_handler_t
 {
   public:
-    using dependency_types = dependency_list_t<quest_store_t>;
-    using request_type = get_quest_progress_req_t;
-    using reply_type = get_quest_progress_res_t;
-    static constexpr const char *topic_name = get_quest_progress_req_t::packet_name;
+    using dependency_types = dependency_list_t<spot_node_manager_t>;
+    using request_type = ensure_player_quest_spot_req_t;
+    using reply_type = ensure_player_quest_spot_res_t;
+    static constexpr const char *topic_name = ensure_player_quest_spot_req_t::packet_name;
 
-    explicit get_quest_progress_handler_t (quest_store_t &store) : _store (store) {}
+    explicit ensure_player_quest_spot_handler_t (spot_node_manager_t &spots) : _spots (spots) {}
 
-    get_quest_progress_res_t handle (const get_quest_progress_req_t &request)
+    ensure_player_quest_spot_res_t handle (const ensure_player_quest_spot_req_t &request)
     {
-        return {_store.projection (request.player_id)};
+        (void) _spots.get_or_create_spot (
+          sample_names_t::player_quest_spot,
+          player_spot_rid (request.player_id),
+          player_quest_spot_create_req_t{request.player_id});
+        return {true};
     }
 
   private:
-    quest_store_t &_store;
+    spot_node_manager_t &_spots;
 };
 
 } // namespace zlink::samples::gamequest
@@ -255,25 +264,39 @@ int main (int argc, char **argv)
     using namespace zlink::samples::gamequest;
 
     const sample_topology_t topology;
+    auto quest_store = std::make_unique<quest_store_t> ();
+    auto *quest_store_ptr = quest_store.get ();
     auto app = app_t::create ();
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (gamequest_flow_log_path (topology.mission_name))
           .trace_label (topology.mission_name);
-        options.services ().add_singleton<quest_store_t> ();
-        options.services ().add_singleton<sample_topology_t> ();
+        options.services ().add_singleton<quest_store_t> (std::move (quest_store));
+        options.services ().add_singleton<sample_topology_t> (
+          std::make_unique<sample_topology_t> (topology));
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
         options.add_client_server_channel (quest_owner_channel_for (topology.mission_name))
           .enable_server (topology.selected_mission_route_endpoint ())
           .set_routing_id (topology.selected_mission_rid ())
           .use_handler_group ("quest-owner");
+        options.add_route_mesh_channel (quest_spot_route_channel_for (topology.mission_name))
+          .enable_server (topology.selected_mission_spot_route_endpoint ())
+          .set_routing_id (topology.selected_mission_rid ());
+        options.add_spot_mesh (sample_names_t::quest_spot_discovery)
+          .enable_router (topology.selected_mission_spot_router_endpoint ())
+          .set_routing_id (topology.selected_mission_rid ())
+          .enable_pub_sub (topology.selected_mission_spot_endpoint ())
+          .accept_route_mesh (quest_spot_route_channel_for (topology.mission_name))
+          .add_spot<player_quest_spot_t> (
+            sample_names_t::player_quest_spot,
+            [quest_store_ptr, topology] {
+                return std::make_shared<player_quest_spot_t> (*quest_store_ptr, topology);
+            });
         options.handlers ()
           .group ("quest-owner")
-          .add<apply_gameplay_event_handler_t> ()
-          .add<sync_quest_progress_handler_t> ()
-          .add<get_quest_progress_handler_t> ();
+          .add<ensure_player_quest_spot_handler_t> ();
     });
     return app.run (argc, argv);
 }

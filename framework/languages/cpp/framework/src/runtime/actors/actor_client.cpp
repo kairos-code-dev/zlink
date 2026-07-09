@@ -19,11 +19,11 @@ namespace zlink::framework
 {
 
 actor_send_call_t::actor_send_call_t (actor_client_t &client,
-                                      std::string actor_id,
+                                      actor_ref_t actor_ref,
                                       std::string packet_name,
                                       message_t message) :
     _client (&client),
-    _actor_id (std::move (actor_id)),
+    _actor_ref (std::move (actor_ref)),
     _packet_name (std::move (packet_name)),
     _message (std::move (message))
 {
@@ -37,16 +37,16 @@ actor_send_call_t &actor_send_call_t::packet_name (std::string packet_name)
 
 task_t<void> actor_send_call_t::async ()
 {
-    return _client->send_to_actor_erased (std::move (_actor_id), std::move (_packet_name),
+    return _client->send_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
                                           std::move (_message));
 }
 
 actor_request_call_t::actor_request_call_t (actor_client_t &client,
-                                            std::string actor_id,
+                                            actor_ref_t actor_ref,
                                             std::string packet_name,
                                             message_t request) :
     _client (&client),
-    _actor_id (std::move (actor_id)),
+    _actor_ref (std::move (actor_ref)),
     _packet_name (std::move (packet_name)),
     _request (std::move (request))
 {
@@ -66,7 +66,7 @@ actor_request_call_t &actor_request_call_t::timeout (std::chrono::milliseconds t
 
 task_t<message_t> actor_request_call_t::async_message ()
 {
-    return _client->request_to_actor_erased (std::move (_actor_id), std::move (_packet_name),
+    return _client->request_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
                                              std::move (_request), _timeout);
 }
 
@@ -93,10 +93,11 @@ class actor_client_impl_t final : public actor_client_t
     }
 
   protected:
-    task_t<void> send_to_actor_erased (std::string actor_id,
+    task_t<void> send_to_actor_erased (actor_ref_t actor_ref,
                                        std::string packet_name,
                                        message_t message) override
     {
+        const auto actor_id = std::string (actor_ref.actor_id ());
         auto actor = resolve_actor (actor_id, stale_policy_t::route_not_found);
         if (!actor) {
             return task_t<void> (result_t<void>::failure (
@@ -130,11 +131,12 @@ class actor_client_impl_t final : public actor_client_t
     }
 
     task_t<message_t> request_to_actor_erased (
-      std::string actor_id,
+      actor_ref_t actor_ref,
       std::string packet_name,
       message_t request,
       std::optional<std::chrono::milliseconds> timeout) override
     {
+        const auto actor_id = std::string (actor_ref.actor_id ());
         auto actor = resolve_actor (actor_id, stale_policy_t::route_not_found);
         if (!actor) {
             co_return result_t<message_t>::failure (
@@ -292,6 +294,7 @@ class actor_client_impl_t final : public actor_client_t
           runtime::messaging::message_kind_t::request, "spot",
           std::string (detail::spot_actor_packet_route_request_t::packet_name), timeout);
         spot_actor_message_metadata_t metadata;
+        metadata.values["__zlink.actorBindSessionRoute"] = "false";
         if (kind == runtime::messaging::message_kind_t::command) {
             metadata.values["__zlink.actorRelayKind"] = "send";
         }
@@ -321,9 +324,12 @@ class actor_client_impl_t final : public actor_client_t
               runtime::messaging::message_parts_t (std::move (reply)), *_serializers,
               "actor mesh reply is empty", "actor mesh reply decode failed", packet_name);
             if (!decoded) {
+                const auto message =
+                  decoded.error () ? decoded.error ()->what () : "actor mesh request failed";
+                const auto mapped = map_actor_route_reply_error (decoded.error_kind (), message);
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  decoded.error_kind (),
-                  decoded.error () ? decoded.error ()->what () : "actor mesh request failed",
+                  mapped,
+                  message,
                   decoded.error () && decoded.error ()->is_retriable ());
             }
             return result_t<std::optional<zlink::message_t>>::success (
@@ -389,13 +395,34 @@ class actor_client_impl_t final : public actor_client_t
                || kind == framework_error_kind_t::actor_location_stale;
     }
 
+    static framework_error_kind_t map_actor_route_reply_error (framework_error_kind_t kind,
+                                                               const std::string &message)
+    {
+        if (message.find ("stale") != std::string::npos
+            || message.find ("conflict") != std::string::npos) {
+            return framework_error_kind_t::actor_location_stale;
+        }
+        if (message.find ("not found") != std::string::npos
+            || message.find ("not joined") != std::string::npos) {
+            return framework_error_kind_t::actor_route_not_found;
+        }
+        if (message.find ("not connected") != std::string::npos
+            || message.find ("No such file or directory") != std::string::npos
+            || message.find ("errno=113") != std::string::npos) {
+            return framework_error_kind_t::route_not_connected;
+        }
+        return kind;
+    }
+
     template <typename TResult>
     static result_t<TResult> map_native_exception (const std::exception &error,
                                                   const char *fallback)
     {
         const std::string message = error.what () && *error.what () ? error.what () : fallback;
         if (message.find ("not connected") != std::string::npos
-            || message.find ("NotConnected") != std::string::npos) {
+            || message.find ("NotConnected") != std::string::npos
+            || message.find ("No such file or directory") != std::string::npos
+            || message.find ("errno=113") != std::string::npos) {
             return result_t<TResult>::failure (framework_error_kind_t::route_not_connected,
                                                message, true);
         }

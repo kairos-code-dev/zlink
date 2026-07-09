@@ -10,6 +10,7 @@
 #include <zlink.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <mutex>
@@ -19,6 +20,24 @@
 
 namespace zlink::framework::runtime
 {
+
+namespace
+{
+
+bool channel_trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_CHANNEL_TRACE");
+    return value != nullptr && *value != '\0';
+}
+
+void trace_channel (const std::string &message)
+{
+    if (channel_trace_enabled ()) {
+        std::cerr << "zlink channel " << message << '\n';
+    }
+}
+
+} // namespace
 
 class channel_host_service_t::server_loop_t
 {
@@ -79,14 +98,19 @@ class channel_host_service_t::server_loop_t
             if (is_drained ()) {
                 continue;
             }
+            trace_channel ("server recv channel=" + _channel_name
+                           + " parts=" + std::to_string (received.parts ().size ()));
             dispatch_async (std::move (received));
         }
+        join_workers ();
         flush_replies ();
         drain_monitor_events ();
     }
 
     void stop () noexcept
     {
+        join_workers ();
+        flush_replies ();
         if (_monitor.valid ()) {
             try {
                 _monitor.close ();
@@ -126,7 +150,8 @@ class channel_host_service_t::server_loop_t
   private:
     struct completed_reply_t
     {
-        zlink::received_t received;
+        std::optional<zlink::routing_id_t> routing_id;
+        std::uint64_t request_seq = 0;
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
 
@@ -145,21 +170,44 @@ class channel_host_service_t::server_loop_t
 
     void dispatch_async (zlink::received_t received)
     {
+        auto routing_id = received.routing_id ();
+        const auto request_seq = received.request_seq ();
         auto request_parts = copy_parts (received.parts ());
         std::lock_guard<std::mutex> lock (_workers_mutex);
-        _workers.emplace_back ([this, received = std::move (received),
+        _workers.emplace_back ([this, routing_id = std::move (routing_id), request_seq,
                                 request_parts = std::move (request_parts)] () mutable {
+            trace_channel ("server dispatch channel=" + _channel_name
+                           + " parts=" + std::to_string (request_parts.size ()));
             detail::channel_packet_dispatcher_t dispatcher (_runtime);
             auto scope = _services->create_scope (service_scope_kind_t::handler_invocation);
             auto reply = dispatcher.dispatch_server_message (
               _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
-            if (!reply || reply.value ().size () == 0 || !received.request_seq ()) {
+            if (!reply || reply.value ().size () == 0 || !routing_id || !request_seq) {
+                trace_channel ("server dispatch no-reply channel=" + _channel_name);
                 return;
             }
             std::lock_guard<std::mutex> reply_lock (_replies_mutex);
-            _replies.push_back (
-              completed_reply_t{std::move (received), std::move (reply.value ())});
+            _replies.push_back (completed_reply_t{std::move (routing_id), *request_seq,
+                                                  std::move (reply.value ())});
         });
+    }
+
+    void reply (const completed_reply_t &completed)
+    {
+        if (!completed.routing_id || completed.request_seq == 0 || completed.parts.size () == 0) {
+            return;
+        }
+        std::vector<zlink::message_t> copied;
+        copied.reserve (completed.parts.size ());
+        for (std::size_t index = 0; index < completed.parts.size (); ++index) {
+            copied.push_back (clone (completed.parts[index]));
+        }
+        auto operation =
+          _router->reply (*completed.routing_id, completed.request_seq).message (copied[0]);
+        for (std::size_t index = 1; index < copied.size (); ++index) {
+            operation = std::move (operation).message (copied[index]);
+        }
+        std::move (operation).submit ();
     }
 
     void flush_replies ()
@@ -174,24 +222,8 @@ class channel_host_service_t::server_loop_t
                 completed = std::move (_replies.front ());
                 _replies.pop_front ();
             }
-            if (completed.parts.size () == 1) {
-                zlink::message_t part = clone (completed.parts[0]);
-                try {
-                    completed.received.reply ().message (part).submit ();
-                }
-                catch (const std::exception &error) {
-                    std::cerr << "zlink framework channel late reply ignored: " << error.what ()
-                              << '\n';
-                }
-                catch (...) {
-                    std::cerr << "zlink framework channel late reply ignored\n";
-                }
-                continue;
-            }
-            zlink::message_t header = clone (completed.parts[0]);
-            zlink::message_t body = clone (completed.parts[1]);
             try {
-                completed.received.reply ().message (header).message (body).submit ();
+                reply (completed);
             }
             catch (const std::exception &error) {
                 std::cerr << "zlink framework channel late reply ignored: " << error.what ()
@@ -200,6 +232,7 @@ class channel_host_service_t::server_loop_t
             catch (...) {
                 std::cerr << "zlink framework channel late reply ignored\n";
             }
+            trace_channel ("server replied channel=" + _channel_name);
         }
     }
 
@@ -289,6 +322,9 @@ class channel_host_service_t::server_loop_t
                       event->remote_addr, static_cast<std::uint32_t> (event->event), event->value);
                 }
             }
+            trace_channel ("server monitor channel=" + _channel_name + " kind="
+                           + std::to_string (static_cast<std::uint32_t> (*kind))
+                           + " local=" + event->local_addr + " remote=" + event->remote_addr);
             _runtime.publish_socket_event (_channel_name, *kind, event->local_addr,
                                            event->remote_addr,
                                            static_cast<std::uint32_t> (event->event), event->value);
@@ -520,16 +556,16 @@ void channel_host_service_t::start (service_provider_t &services)
 void channel_host_service_t::stop () noexcept
 {
     _stop.store (true, std::memory_order_release);
+    for (auto &thread : _threads) {
+        if (thread.joinable ()) {
+            thread.join ();
+        }
+    }
     for (auto &loop : _loops) {
         loop->stop ();
     }
     for (auto &loop : _subscriber_loops) {
         loop->stop ();
-    }
-    for (auto &thread : _threads) {
-        if (thread.joinable ()) {
-            thread.join ();
-        }
     }
     _threads.clear ();
     _loops.clear ();

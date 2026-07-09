@@ -2,7 +2,10 @@
 
 #include "runtime/transport/stream_connection.hpp"
 
+#include <boost/asio/bind_executor.hpp>
 #include <boost/asio/connect.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/strand.hpp>
 #include <boost/asio/write.hpp>
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
 #include <boost/asio/ssl/host_name_verification.hpp>
@@ -148,7 +151,8 @@ class tls_stream_connection_t final : public stream_connection_t
 {
   public:
     explicit tls_stream_connection_t (ssl::stream<boost::asio::ip::tcp::socket> stream) :
-        _stream (std::move (stream))
+        _stream (std::move (stream)),
+        _strand (_stream.get_executor ())
     {
     }
 
@@ -170,14 +174,20 @@ class tls_stream_connection_t final : public stream_connection_t
       std::function<void (boost::system::error_code, std::vector<std::uint8_t>)> completion) override
     {
         auto buffer = std::make_shared<std::vector<std::uint8_t>> (max_size);
-        _stream.async_read_some (
-          boost::asio::buffer (*buffer),
-          [buffer, completion = std::move (completion)] (boost::system::error_code error,
-                                                         std::size_t bytes_read) mutable {
-              buffer->resize (bytes_read);
-              if (completion) {
-                  completion (error, std::move (*buffer));
-              }
+        boost::asio::post (
+          _strand,
+          [this, buffer, completion = std::move (completion)] () mutable {
+              _stream.async_read_some (
+                boost::asio::buffer (*buffer),
+                boost::asio::bind_executor (
+                  _strand,
+                  [buffer, completion = std::move (completion)] (
+                    boost::system::error_code error, std::size_t bytes_read) mutable {
+                      buffer->resize (bytes_read);
+                      if (completion) {
+                          completion (error, std::move (*buffer));
+                      }
+                  }));
           });
     }
 
@@ -202,20 +212,26 @@ class tls_stream_connection_t final : public stream_connection_t
                       std::function<void (boost::system::error_code)> completion) override
     {
         auto buffer = std::make_shared<std::vector<std::uint8_t>> (std::move (bytes));
-        boost::asio::async_write (
-          _stream, boost::asio::buffer (*buffer),
-          [buffer, completion = std::move (completion)] (boost::system::error_code error,
-                                                         std::size_t) mutable {
-              if (completion) {
-                  completion (error);
-              }
+        boost::asio::post (
+          _strand,
+          [this, buffer, completion = std::move (completion)] () mutable {
+              boost::asio::async_write (
+                _stream, boost::asio::buffer (*buffer),
+                boost::asio::bind_executor (
+                  _strand,
+                  [buffer, completion = std::move (completion)] (
+                    boost::system::error_code error, std::size_t) mutable {
+                      if (completion) {
+                          completion (error);
+                      }
+                  }));
           });
     }
 
     void shutdown_and_close () override
     {
         boost::system::error_code ignored;
-        _stream.shutdown (ignored);
+        _stream.next_layer ().shutdown (boost::asio::ip::tcp::socket::shutdown_both, ignored);
         _stream.next_layer ().close (ignored);
     }
 
@@ -223,6 +239,7 @@ class tls_stream_connection_t final : public stream_connection_t
 
   private:
     ssl::stream<boost::asio::ip::tcp::socket> _stream;
+    boost::asio::strand<boost::asio::any_io_executor> _strand;
 };
 #endif
 

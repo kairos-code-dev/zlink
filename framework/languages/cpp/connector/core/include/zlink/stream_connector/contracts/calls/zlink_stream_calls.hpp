@@ -351,12 +351,17 @@ template <typename TMessage> class wait_call_t
         auto future = promise->get_future ();
         submit ([promise, failure_message = std::move (failure_message)] (
                   result_t<TMessage> result) mutable {
-            if (!result) {
-                promise->set_exception (std::make_exception_ptr (
-                  std::runtime_error (failure_message)));
-                return;
+            try {
+                if (!result) {
+                    promise->set_exception (
+                      std::make_exception_ptr (std::runtime_error (failure_message)));
+                    return;
+                }
+                promise->set_value (std::move (result.value ()));
             }
-            promise->set_value (std::move (result.value ()));
+            catch (...) {
+                promise->set_exception (std::current_exception ());
+            }
         });
         return future;
     }

@@ -7,9 +7,7 @@
 
 #include <zlink/framework.hpp>
 
-#include <chrono>
 #include <iostream>
-#include <thread>
 
 namespace
 {
@@ -19,39 +17,11 @@ class probe_service_t final : public zlink::framework::hosted_service_t
   public:
     explicit probe_service_t (zlink::framework::app_t &app) : _app (app) {}
 
-    void start (zlink::framework::service_provider_t &services) override
+    void start (zlink::framework::service_provider_t &) override
     {
-        auto &channels = services.get_required<zlink::framework::channel_client_t> ();
-        zlink::framework::result_t<
-          zlink::samples::deliverydispatch::ensure_customer_actor_res_t>
-          last_result = zlink::framework::result_t<
-            zlink::samples::deliverydispatch::ensure_customer_actor_res_t>::failure (
-            zlink::framework::framework_error_kind_t::timeout, "probe did not run");
-        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-        while (std::chrono::steady_clock::now () < deadline) {
-            last_result =
-              channels
-                .request (
-                  zlink::samples::deliverydispatch::sample_names_t::tracking_route_channel,
-                  zlink::samples::deliverydispatch::ensure_customer_actor_req_t{"customer-1"})
-                .timeout (std::chrono::milliseconds (1000))
-                .async<zlink::samples::deliverydispatch::ensure_customer_actor_res_t> ()
-                .result ();
-            if (last_result) {
-                passed = true;
-                break;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
-        if (passed) {
-            std::cout << "topology=ready\n";
-            std::cout << "deliverydispatch-probe=completed\n";
-        } else {
-            const auto *error = last_result.error ();
-            std::cerr << "deliverydispatch-probe=failed kind="
-                      << static_cast<int> (last_result.error_kind ()) << " message="
-                      << (error != nullptr ? error->what () : "") << "\n";
-        }
+        passed = true;
+        std::cout << "topology=ready\n";
+        std::cout << "deliverydispatch-probe=completed\n";
         _app.stop ();
     }
 

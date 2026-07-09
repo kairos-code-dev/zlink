@@ -17,6 +17,8 @@ namespace zlink::framework::runtime
 namespace beast = boost::beast;
 namespace http = beast::http;
 
+class offload_executor_t;
+
 struct parsed_http_endpoint_t
 {
     std::string scheme;
@@ -30,6 +32,7 @@ http::response<http::string_body>
 handle_http_request (const http_options_snapshot_t &options,
                      service_provider_t &services,
                      health_builder_t &health,
+                     offload_executor_t &handler_executor,
                      const http::request<http::string_body> &request);
 
 http::response<http::string_body> make_http_status_response (http::status status,

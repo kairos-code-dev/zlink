@@ -15,6 +15,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
+#include <iostream>
+#include <string>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -22,8 +25,47 @@
 namespace zlink::stream_connector::detail
 {
 
+void cancel_timer (const std::shared_ptr<boost::asio::steady_timer> &timer)
+{
+    if (!timer) {
+        return;
+    }
+    try {
+        (void) timer->cancel ();
+    } catch (const boost::system::system_error &) {
+    }
+}
+
 namespace
 {
+
+bool stream_trace_enabled ()
+{
+    static const bool enabled = [] {
+        const char *value = std::getenv ("ZLINK_CPP_STREAM_TRACE");
+        return value != nullptr && value[0] != '\0' && std::string (value) != "0";
+    }();
+    return enabled;
+}
+
+const char *connection_state_name (connection_state_t state) noexcept
+{
+    switch (state) {
+        case connection_state_t::created:
+            return "created";
+        case connection_state_t::connecting:
+            return "connecting";
+        case connection_state_t::connected:
+            return "connected";
+        case connection_state_t::reconnecting:
+            return "reconnecting";
+        case connection_state_t::disconnected:
+            return "disconnected";
+        case connection_state_t::closed:
+            return "closed";
+    }
+    return "unknown";
+}
 
 std::mutex &shared_runtime_config_mutex ()
 {
@@ -241,6 +283,16 @@ void change_state (std::shared_ptr<connector_state_t> state,
 {
     const auto previous = state->state;
     state->state = next;
+    if (stream_trace_enabled ()) {
+        std::cerr << "zlink-cpp-stream-trace side=client connector=" << state->connector_id
+                  << " stage=state previous=" << connection_state_name (previous)
+                  << " next=" << connection_state_name (next);
+        if (error) {
+            std::cerr << " error_code=" << static_cast<int> (error->code)
+                      << " error=\"" << error->message << "\"";
+        }
+        std::cerr << '\n';
+    }
     connection_state_changed_t changed{previous, next, error};
     for (const auto &handler : state->state_handlers) {
         handler (changed);
@@ -689,12 +741,13 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
         detail::change_state (state, attempt == 1 ? connection_state_t::connecting
                                                   : connection_state_t::reconnecting);
         try {
+            std::unique_ptr<detail::stream_connection_t> connected_transport;
             if (state->options.transport == transport_t::websocket) {
-                state->connection =
+                connected_transport =
                   detail::connect_websocket (state->io_context, *parsed.value ().websocket);
             } else if (state->options.transport == transport_t::websocket_secure) {
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-                state->connection = detail::connect_websocket_secure (
+                connected_transport = detail::connect_websocket_secure (
                   state->io_context, *parsed.value ().websocket_secure,
                   state->options.skip_server_certificate_validation);
 #else
@@ -702,7 +755,7 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
 #endif
             } else if (state->options.transport == transport_t::tls) {
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-                state->connection =
+                connected_transport =
                   detail::connect_tls (state->io_context, *parsed.value ().tls,
                                        state->options.skip_server_certificate_validation);
 #else
@@ -714,11 +767,15 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
                   resolver.resolve (parsed.value ().tcp->host, parsed.value ().tcp->port);
                 boost::asio::ip::tcp::socket socket (state->io_context);
                 boost::asio::connect (socket, endpoints);
-                state->connection = detail::make_tcp_connection (std::move (socket));
+                connected_transport = detail::make_tcp_connection (std::move (socket));
             }
-            const auto now = std::chrono::steady_clock::now ();
-            state->last_heartbeat_sent = now;
-            state->last_inbound_received = now;
+            {
+                std::lock_guard<std::mutex> lock (state->transport_mutex);
+                state->connection = std::move (connected_transport);
+                const auto now = std::chrono::steady_clock::now ();
+                state->last_heartbeat_sent = now;
+                state->last_inbound_received = now;
+            }
             detail::change_state (state, connection_state_t::connected);
             detail::resume_pending_writes_after_connect (state);
             schedule_start_read_loop (state);
@@ -843,10 +900,7 @@ result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
             }
         }
         for (auto &[_, request] : state->pending_requests) {
-            if (request.timeout_timer) {
-                boost::system::error_code ignored;
-                request.timeout_timer->cancel (ignored);
-            }
+            detail::cancel_timer (request.timeout_timer);
             if (request.callback) {
                 closed_request_callbacks.push_back (
                   [callback = std::move (request.callback)] () mutable {
@@ -856,10 +910,7 @@ result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
             }
         }
         for (auto &[_, wait] : state->pending_waits) {
-            if (wait.timeout_timer) {
-                boost::system::error_code ignored;
-                wait.timeout_timer->cancel (ignored);
-            }
+            detail::cancel_timer (wait.timeout_timer);
             if (wait.callback) {
                 closed_wait_callbacks.push_back (
                   [callback = std::move (wait.callback)] () mutable {

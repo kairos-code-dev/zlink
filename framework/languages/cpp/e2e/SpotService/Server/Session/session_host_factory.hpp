@@ -19,12 +19,6 @@ inline int run_session_server (int argc, char **argv)
     const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
     const auto node_rid = env_or ("ZLINK_CPP_E2E_NODE_RID", "session-a");
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
-    const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
-    const auto route_session_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_SESSION_A_ENDPOINT");
-    const auto route_session_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_SESSION_B_ENDPOINT");
-    const auto route_stream_client_endpoint =
-      env_or ("ZLINK_CPP_E2E_ROUTE_STREAM_CLIENT_ENDPOINT");
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
@@ -48,19 +42,10 @@ inline int run_session_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        auto route = options.add_route_mesh_channel (e2e::route_channel)
-                       .enable_server (route_endpoint)
-                       .set_routing_id (zlink::routing_id_t::from (node_rid));
-        auto connect_route_peer = [&] (const std::string &endpoint) {
-            if (!endpoint.empty () && endpoint != route_endpoint) {
-                route.enable_client (endpoint);
-            }
-        };
-        connect_route_peer (route_a_endpoint);
-        connect_route_peer (route_b_endpoint);
-        connect_route_peer (route_session_a_endpoint);
-        connect_route_peer (route_session_b_endpoint);
-        connect_route_peer (route_stream_client_endpoint);
+        options.add_route_mesh_channel (e2e::route_channel)
+          .enable_server (route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (node_rid))
+          .enable_client ();
         options.add_spot_mesh (e2e::spot_mesh)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)

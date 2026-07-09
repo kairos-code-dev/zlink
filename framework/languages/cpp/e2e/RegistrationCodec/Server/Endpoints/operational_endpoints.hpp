@@ -88,6 +88,35 @@ class registration_auto_handler_t
     zlink::framework::channel_client_t &_channels;
 };
 
+class registration_attribute_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+
+    explicit registration_attribute_handler_t (zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        return json_response (run ());
+    }
+
+  private:
+    echo_attr_res_t run ()
+    {
+        auto reply = request_channel_with_retry<echo_attr_res_t> (
+          _channels, echo_attr_req_t{.value = "a2"});
+        _channels.send (api_channel, echo_attr_msg_t{.value = "send-a2"})
+          .timeout (std::chrono::seconds (5))
+          .submit ();
+        return reply;
+    }
+
+    zlink::framework::channel_client_t &_channels;
+};
+
 class registration_manual_handler_t
 {
   public:

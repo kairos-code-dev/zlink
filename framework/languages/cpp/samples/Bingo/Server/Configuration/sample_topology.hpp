@@ -78,15 +78,23 @@ struct sample_topology_t
         }
         topology.redis_key_prefix =
           section.get ("redisKeyPrefix").value_or (topology.redis_key_prefix);
+        topology.session_a_router_rid =
+          section.get ("sessionARouterRid").value_or (topology.session_a_router_rid);
+        topology.session_b_router_rid =
+          section.get ("sessionBRouterRid").value_or (topology.session_b_router_rid);
         if (auto value = section.get ("sessionRouterRid")) {
-            topology.session_router_rid = zlink::routing_id_t::from (*value);
+            topology.session_a_router_rid = *value;
         }
         topology.session_a_spot_node_rid =
           section.get ("sessionASpotNodeRid").value_or (topology.session_a_spot_node_rid);
         topology.session_b_spot_node_rid =
           section.get ("sessionBSpotNodeRid").value_or (topology.session_b_spot_node_rid);
+        topology.session_a_pub_rid =
+          section.get ("sessionAPubRid").value_or (topology.session_a_pub_rid);
+        topology.session_b_pub_rid =
+          section.get ("sessionBPubRid").value_or (topology.session_b_pub_rid);
         if (auto value = section.get ("sessionPubRid")) {
-            topology.session_pub_rid = zlink::routing_id_t::from (*value);
+            topology.session_a_pub_rid = *value;
         }
         if (auto value = section.get ("playRid")) {
             topology.play_rid = zlink::routing_id_t::from (*value);
@@ -140,8 +148,10 @@ struct sample_topology_t
     std::string session_b_route_rid = "1202";
     std::string redis_endpoint;
     std::string redis_key_prefix = "bingo:";
-    zlink::routing_id_t session_router_rid = zlink::routing_id_t::from ("1101");
-    zlink::routing_id_t session_pub_rid = zlink::routing_id_t::from ("1102");
+    std::string session_a_router_rid = "1101";
+    std::string session_b_router_rid = "1103";
+    std::string session_a_pub_rid = "1102";
+    std::string session_b_pub_rid = "1104";
     zlink::routing_id_t play_rid = zlink::routing_id_t::from ("2202");
 
     std::string selected_api_channel_endpoint () const
@@ -189,6 +199,16 @@ struct sample_topology_t
         return session_node == "b" ? session_b_route_rid : session_a_route_rid;
     }
 
+    std::string selected_session_router_rid () const
+    {
+        return session_node == "b" ? session_b_router_rid : session_a_router_rid;
+    }
+
+    std::string selected_session_pub_rid () const
+    {
+        return session_node == "b" ? session_b_pub_rid : session_a_pub_rid;
+    }
+
     std::string selected_session_spot_node_rid () const
     {
         return session_node == "b" ? session_b_spot_node_rid : session_a_spot_node_rid;
@@ -217,6 +237,11 @@ struct sample_topology_t
     std::string preferred_play_node_rid () const
     {
         return session_node == "b" ? play_b_node_rid : play_a_node_rid;
+    }
+
+    std::string preferred_play_spot_router_endpoint () const
+    {
+        return session_node == "b" ? play_b_spot_router_endpoint : play_a_spot_router_endpoint;
     }
 
     std::string selected_stream_endpoint () const

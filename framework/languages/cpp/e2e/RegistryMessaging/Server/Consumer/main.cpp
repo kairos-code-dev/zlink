@@ -24,6 +24,11 @@ int main (int argc, char **argv)
           .trace_log_file (options.log_dir + "/" + options.trace_label + "-flow.log")
           .trace_label (options.trace_label);
         auto channel = framework.add_client_server_channel (rm::api_channel);
+        if (options.client_max_message_size) {
+            channel.client_max_message_size (
+              zlink::byte_size_t::bytes (
+                static_cast<std::int64_t> (*options.client_max_message_size)));
+        }
         if (!options.redis_endpoint.empty ()) {
             rm::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
             channel.enable_client ();
@@ -36,7 +41,7 @@ int main (int argc, char **argv)
             framework.http ()
               .listen (options.http_endpoint)
               .configure_server ([] (zlink::framework::http_server_options_builder_t &server) {
-                  server.set_max_request_body_size (2 * 1024 * 1024);
+                  server.set_max_request_body_size (4 * 1024 * 1024);
               })
               .map_health ("/health")
               .map_post<rm_consumer::batch_request_handler_t> ("/profile/batch-request")
@@ -45,6 +50,8 @@ int main (int argc, char **argv)
               .map_post<rm_consumer::missing_request_handler_t> ("/profile/missing-request")
               .map_post<rm_consumer::missing_command_handler_t> ("/profile/missing-command")
               .map_post<rm_consumer::payload_request_handler_t> ("/profile/payload")
+              .map_post<rm_consumer::payload_over_limit_handler_t> (
+                "/profile/payload-over-limit")
               .map_post<rm_consumer::backpressure_reset_handler_t> (
                 "/profile/backpressure/reset")
               .map_post<rm_consumer::backpressure_send_handler_t> (

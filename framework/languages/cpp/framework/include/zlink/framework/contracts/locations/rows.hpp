@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/Contracts/Service/actor_models.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
+#include <zlink/framework/contracts/locations/spot_ref.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
 
 #include <chrono>
@@ -82,13 +83,6 @@ struct owner_lease_snapshot_t
 {
     std::vector<owner_lease_t> leases;
     std::chrono::system_clock::time_point store_now{};
-};
-
-struct spot_address_t
-{
-    std::string mesh_name;
-    zlink::routing_id_t node_rid = zlink::routing_id_t::from (std::uint32_t{0});
-    zlink::routing_id_t spot_rid = zlink::routing_id_t::from (std::uint32_t{0});
 };
 
 } // namespace zlink::framework

@@ -33,6 +33,14 @@ client role로 구성된다. 별도 registry role은 없다. client role은 `.NE
 
 ## 검증
 
+- 2026-07-08:
+  - `timeout 560s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260708-133413-118111`
+  - 의미: Redis location store 기반 RuntimeMonitoring role들이 MON-A1, MON-A2, MON-A3, MON-A4,
+    MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을 같은 gate에서 검증한다. 출력은
+    `runtime-monitoring client result=passed`, `scenario MON-D1 passed`,
+    `runtime-monitoring e2e result=passed`를 포함한다.
 - 2026-07-03:
   - `framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과

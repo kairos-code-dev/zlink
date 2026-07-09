@@ -528,15 +528,23 @@ bool is_control_packet (const packet_t &packet)
     return packet.name.rfind ("$zlink.", 0) == 0;
 }
 
+void cancel_timer (const std::shared_ptr<boost::asio::steady_timer> &timer)
+{
+    if (!timer) {
+        return;
+    }
+    try {
+        (void) timer->cancel ();
+    } catch (const boost::system::system_error &) {
+    }
+}
+
 std::optional<pending_wait_t> take_matching_wait (connector_state_t &state, const packet_t &packet)
 {
     for (auto iter = state.pending_waits.begin (); iter != state.pending_waits.end (); ++iter) {
         if (packet_matches_wait (iter->second, packet)) {
             auto wait = std::move (iter->second);
-            if (wait.timeout_timer) {
-                boost::system::error_code ignored;
-                wait.timeout_timer->cancel (ignored);
-            }
+            cancel_timer (wait.timeout_timer);
             state.pending_waits.erase (iter);
             return wait;
         }
@@ -613,10 +621,7 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
         }
         packet_name = found->second.packet.name;
         callback = std::move (found->second.callback);
-        if (found->second.timeout_timer) {
-            boost::system::error_code ignored;
-            found->second.timeout_timer->cancel (ignored);
-        }
+        cancel_timer (found->second.timeout_timer);
         state->pending_requests.erase (found);
     }
     trace_request ("pending-complete", request_seq, packet_name,
@@ -1075,7 +1080,8 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
     bool use_async_request_pump = false;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
-        use_async_request_pump = state->read_in_progress || !state->pending_waits.empty ();
+        use_async_request_pump =
+          state->connect_started || state->read_in_progress || !state->pending_waits.empty ();
     }
     if (use_async_request_pump) {
         auto promise = std::make_shared<std::promise<result_t<request_reply_t>>> ();
@@ -1223,10 +1229,7 @@ void submit_request_async (std::shared_ptr<void> state_handle,
                 !encoded) {
                 auto found = state->pending_requests.find (seq);
                 if (found != state->pending_requests.end ()) {
-                    if (found->second.timeout_timer) {
-                        boost::system::error_code ignored;
-                        found->second.timeout_timer->cancel (ignored);
-                    }
+                    cancel_timer (found->second.timeout_timer);
                     callback = std::move (found->second.callback);
                     state->pending_requests.erase (found);
                 }
@@ -1553,8 +1556,7 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
         if (found != state->pending_waits.end ()) {
             found->second.timeout_timer = timeout_timer;
         } else if (timeout_timer) {
-            boost::system::error_code ignored;
-            timeout_timer->cancel (ignored);
+            cancel_timer (timeout_timer);
         }
     }
 }

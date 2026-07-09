@@ -88,6 +88,19 @@ inline bool every_request_line_has (const std::vector<std::string> &evidence,
     return saw_request;
 }
 
+inline bool contains_request_marker (const std::vector<std::string> &evidence,
+                                     const std::string &request_id,
+                                     const std::string &marker)
+{
+    for (const auto &line : evidence) {
+        if (line.find ("request=" + request_id) != std::string::npos
+            && line.find (marker) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 inline std::string unique_id (const std::string &prefix)
 {
     return prefix + "-" + std::to_string (

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include <zlink/framework/contracts/cancellation.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 
 #include <condition_variable>
@@ -349,6 +350,26 @@ template <typename T> task_t<T> reschedule_task (task_t<T> task, task_scheduler_
               complete ();
           }
       });
+    return output;
+}
+
+template <typename T> task_t<T> cancelable_task (task_t<T> task, cancellation_token_t token)
+{
+    if (!token.can_be_cancelled ()) {
+        return task;
+    }
+
+    auto source = std::make_shared<task_completion_source_t<T>> ();
+    auto output = source->task ();
+    auto observed = std::make_shared<task_t<T>> (std::move (task));
+    detail::observe_task_completion (
+      *observed, [source, observed] (const result_t<T> &result) mutable {
+          source->complete (result);
+      });
+    token.register_callback ([source] {
+        source->complete (result_t<T>::failure (framework_error_kind_t::cancelled,
+                                                "operation was cancelled"));
+    });
     return output;
 }
 

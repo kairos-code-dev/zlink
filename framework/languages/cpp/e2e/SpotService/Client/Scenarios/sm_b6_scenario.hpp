@@ -69,7 +69,8 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
         .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!leave_auth) {
-        throw std::runtime_error ("SM-B6 leave stream auth failed");
+        throw std::runtime_error (leave_auth.error () ? leave_auth.error ()->message
+                                                      : "SM-B6 leave stream auth failed");
     }
 
     auto left = stream.request (leave_req_t{.actor_id = leave_actor_id, .reason = "explicit"})
@@ -116,7 +117,8 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
         .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!disconnect_auth) {
-        throw std::runtime_error ("SM-B6 disconnect stream auth failed");
+        throw std::runtime_error (disconnect_auth.error () ? disconnect_auth.error ()->message
+                                                           : "SM-B6 disconnect stream auth failed");
     }
     (void) disconnect_stream.close ();
     std::this_thread::sleep_for (std::chrono::milliseconds (300));

@@ -9408,7 +9408,7 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 ### 적용한 리팩토링
 
 - `framework_options.hpp` 내부에 blank 문자열 검증 helper를 추가했다.
-- client/server, fanout, dealer mesh, route mesh, SPOT, STREAM, registry spot remote address
+- client/server, fanout, dealer mesh, route mesh, SPOT, STREAM, registry spot remote ref
   fluent options에서 빈 이름과 빈 endpoint를 거부한다.
 - handler group 이름도 handler group options state에서 공통으로 검증한다.
 - module/options regression이 빈 channel 이름, server endpoint, handler group, SPOT mesh 이름,

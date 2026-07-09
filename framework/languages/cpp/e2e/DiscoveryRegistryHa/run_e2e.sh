@@ -3,12 +3,37 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build-redis-vcpkg}"
 SCENARIO="${1:-${SCENARIO_SET:-SF-A1}}"
 HEARTBEAT_MS="${ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS:-1000}"
 LEASE_TTL_MS="${ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS:-3000}"
 POLLING_MS="${ZLINK_CPP_SF_LOCATION_POLLING_MS:-500}"
 GRACE_MS="${ZLINK_CPP_SF_LOCATION_GRACE_MS:-6000}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+PROCESS_STOP_TIMEOUT_SECONDS=15
+REDIS_READINESS_TIMEOUT_SECONDS=30
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+PROCESS_STOP_ATTEMPTS="$(
+  python3 - "$PROCESS_STOP_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 normalize_scenario() {
   case "$1" in
@@ -22,38 +47,81 @@ normalize_scenario() {
     sf-d1|SF-D1|d1) echo SF-D1 ;;
     sf-d2|SF-D2|d2) echo SF-D2 ;;
     sf-d3|SF-D3|d3) echo SF-D3 ;;
+    sf-e1|SF-E1|e1) echo SF-E1 ;;
     *) echo "Unsupported C++ StoreFailure scenario: $1" >&2; exit 2 ;;
   esac
 }
 
 SCENARIO="$(normalize_scenario "$SCENARIO")"
+
 if [[ "$SCENARIO" == "all" ]]; then
-  "$0" SF-A1
-  "$0" SF-A2
-  "$0" SF-B1
-  "$0" SF-B2
-  "$0" SF-C1
-  "$0" SF-C2
-  "$0" SF-D1
-  "$0" SF-D2
-  "$0" SF-D3
+  REDIS_CONTAINER=""
+  REDIS_ENDPOINT=""
+  wait_tcp() {
+    local host="$1"
+    local port="$2"
+    local name="$3"
+    if python3 - "$host" "$port" "$REDIS_READINESS_TIMEOUT_SECONDS" <<'PY'
+import socket
+import sys
+import time
+
+host, port, timeout = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
+deadline = time.monotonic() + timeout
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            sys.exit(0)
+    except OSError:
+        time.sleep(0.2)
+sys.exit(1)
+PY
+    then
+      return 0
+    fi
+    echo "Timed out waiting ${REDIS_READINESS_TIMEOUT_SECONDS}s for $name at $host:$port" >&2
+    return 1
+  }
+
+  cleanup_all() {
+    if [[ -n "$REDIS_CONTAINER" ]]; then
+      docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    fi
+  }
+  trap cleanup_all EXIT
+
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-e2e-discoveryregistryha-all" "redis:7-alpine"
+  )
+  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
+  wait_tcp "${REDIS_ENDPOINT%:*}" "${REDIS_ENDPOINT##*:}" redis
+
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-A1
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-A2
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-B1
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-B2
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-C1
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-C2
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-D1
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-D2
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-D3
+  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-E1
   echo "store-failure c++ e2e result=passed"
   exit 0
 fi
 
-read -r API_A API_B HTTP_A HTTP_B HTTP_CONSUMER REDIS_PORT <<<"$(python3 - <<'PY'
+read -r API_A API_B HTTP_A HTTP_B HTTP_CONSUMER <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(6):
+for _ in range(5):
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     sockets.append(sock)
     ports.append(sock.getsockname()[1])
 print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:2]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[2:5]), end=" ")
-print(ports[5])
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[2:5]))
 for sock in sockets:
     sock.close()
 PY
@@ -73,22 +141,130 @@ cmake --build "$BUILD_DIR" --target \
 PROVIDER_SERVER="$BUILD_DIR/zlink_cpp_e2e_store_failure_provider"
 CONSUMER_SERVER="$BUILD_DIR/zlink_cpp_e2e_store_failure_consumer"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_store_failure_client"
-REDIS_CONTAINER="zlink-cpp-store-failure-${RUN_ID}"
-REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+REDIS_CONTAINER=""
+REDIS_OWNED=0
 REDIS_KEY_PREFIX="zlink:cpp:store-failure:${RUN_ID}"
 PIDS=()
+API_A_PID=""
+API_B_PID=""
+CONSUMER_PID=""
+
+status_allowed() {
+  local status="$1"
+  shift
+  local allowed
+  for allowed in "$@"; do
+    if [[ "$status" -eq "$allowed" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+wait_pid_status() {
+  local pid="$1"
+  local label="$2"
+  shift 2
+  local status
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  set +e
+  wait "$pid"
+  status=$?
+  set -e
+  if [[ "$status" -eq 127 ]]; then
+    return 0
+  fi
+  if status_allowed "$status" "$@"; then
+    return 0
+  fi
+  echo "$label exited unexpectedly with status $status" >&2
+  return 1
+}
+
+forget_pid() {
+  local target="$1"
+  local remaining=()
+  local pid
+  for pid in "${PIDS[@]:-}"; do
+    if [[ -n "$pid" && "$pid" != "$target" ]]; then
+      remaining+=("$pid")
+    fi
+  done
+  PIDS=("${remaining[@]}")
+}
+
+terminate_pid() {
+  local pid="$1"
+  local label="${2:-process $pid}"
+  local state
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    wait_pid_status "$pid" "$label" 0 130 143
+    return $?
+  fi
+  kill "$pid" >/dev/null 2>&1 || true
+  for _ in $(seq 1 "$PROCESS_STOP_ATTEMPTS"); do
+    state="$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print $1}')"
+    if [[ -z "$state" || "$state" == Z* ]]; then
+      wait_pid_status "$pid" "$label" 0 130 143
+      return $?
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  kill -9 "$pid" >/dev/null 2>&1 || true
+  wait_pid_status "$pid" "$label" 0 130 143
+}
+
+post_shutdown() {
+  local url="$1"
+  python3 - "$url" <<'PY' >/dev/null 2>&1 || true
+import http.client
+import sys
+import urllib.parse
+
+url = urllib.parse.urlparse(sys.argv[1])
+conn = http.client.HTTPConnection(url.hostname, url.port, timeout=1)
+conn.request("POST", url.path or "/")
+conn.getresponse().read()
+conn.close()
+PY
+}
 
 cleanup() {
   local code=$?
+  local cleanup_failed=0
+  if [[ -n "$API_A_PID" ]]; then
+    post_shutdown "$HTTP_A/shutdown"
+  fi
+  if [[ -n "$API_B_PID" ]]; then
+    post_shutdown "$HTTP_B/shutdown"
+  fi
+  if [[ -n "$CONSUMER_PID" ]]; then
+    post_shutdown "$HTTP_CONSUMER/shutdown"
+  fi
   for pid in "${PIDS[@]:-}"; do
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      kill "$pid" >/dev/null 2>&1 || true
+    if [[ -z "$pid" ]]; then
+      continue
+    fi
+    if ! terminate_pid "$pid" "cleanup process $pid"; then
+      cleanup_failed=1
     fi
   done
-  wait >/dev/null 2>&1 || true
-  docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  if [[ -n "$REDIS_CONTAINER" && "$REDIS_OWNED" == "1" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  elif [[ -n "${REDIS_ENDPOINT:-}" ]] && command -v redis-cli >/dev/null 2>&1; then
+    redis-cli -h "${REDIS_ENDPOINT%:*}" -p "${REDIS_ENDPOINT##*:}" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
+      | xargs -r redis-cli -h "${REDIS_ENDPOINT%:*}" -p "${REDIS_ENDPOINT##*:}" DEL >/dev/null 2>&1 || true
+  fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+  elif [[ $cleanup_failed -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    code=1
   fi
   exit "$code"
 }
@@ -114,17 +290,57 @@ wait_port() {
   return 1
 }
 
-docker run --rm -d \
-  --name "$REDIS_CONTAINER" \
-  -p "127.0.0.1:${REDIS_PORT}:6379" \
-  redis:7-alpine >/dev/null
+pick_port() {
+  python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
 
-for _ in $(seq 1 80); do
-  if docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then
-    break
+wait_tcp() {
+  local host="$1"
+  local port="$2"
+  local name="$3"
+  if python3 - "$host" "$port" "$REDIS_READINESS_TIMEOUT_SECONDS" <<'PY'
+import socket
+import sys
+import time
+
+host, port, timeout = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
+deadline = time.monotonic() + timeout
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            sys.exit(0)
+    except OSError:
+        time.sleep(0.2)
+sys.exit(1)
+PY
+  then
+    return 0
   fi
-  sleep 0.1
-done
+  echo "Timed out waiting ${REDIS_READINESS_TIMEOUT_SECONDS}s for $name at $host:$port" >&2
+  return 1
+}
+
+if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
+  REDIS_CONTAINER="${ZLINK_CPP_E2E_REDIS_CONTAINER:-}"
+  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+else
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-e2e-discoveryregistryha" "redis:7-alpine"
+  )
+  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
+  REDIS_OWNED=1
+  echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
+fi
+
+wait_tcp "${REDIS_ENDPOINT%:*}" "${REDIS_ENDPOINT##*:}" redis
+echo "redis key prefix=$REDIS_KEY_PREFIX"
 
 start_provider() {
   local rid="$1"
@@ -142,7 +358,8 @@ start_provider() {
   ZLINK_CPP_DRHA_LOG_DIR="$LOG_DIR" \
   ZLINK_CPP_DRHA_LOG_NAME="$rid" \
     "$PROVIDER_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
-  PIDS+=("$!")
+  LAST_PID="$!"
+  PIDS+=("$LAST_PID")
   wait_port "$rid-channel" "$channel"
   wait_port "$rid-http" "$http"
 }
@@ -160,13 +377,17 @@ start_consumer() {
   ZLINK_CPP_SF_LOCATION_GRACE_MS="$GRACE_MS" \
   ZLINK_CPP_DRHA_LOG_DIR="$LOG_DIR" \
     "$CONSUMER_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
-  PIDS+=("$!")
+  LAST_PID="$!"
+  PIDS+=("$LAST_PID")
   wait_port "$rid-http" "$http"
 }
 
 start_provider api-a "$API_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
 start_provider api-b "$API_B" "$HTTP_B"
+API_B_PID="$LAST_PID"
 start_consumer consumer "$HTTP_CONSUMER"
+CONSUMER_PID="$LAST_PID"
 
 sleep 2
 
@@ -181,5 +402,10 @@ ZLINK_CPP_SF_LOCATION_POLLING_MS="$POLLING_MS" \
 ZLINK_CPP_SF_LOCATION_GRACE_MS="$GRACE_MS" \
   "$CLIENT" >"$LOG_DIR/client-$SCENARIO.stdout.log" 2>"$LOG_DIR/client-$SCENARIO.stderr.log"
 cat "$LOG_DIR/client-$SCENARIO.stdout.log"
+
+if [[ "$SCENARIO" == "SF-C1" || "$SCENARIO" == "SF-D2" ]]; then
+  wait_pid_status "$API_B_PID" "expected crashed provider api-b" 134
+  forget_pid "$API_B_PID"
+fi
 
 echo "store-failure c++ scenario=$SCENARIO result=passed"

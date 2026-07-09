@@ -15,6 +15,7 @@
 #include "Scenarios/yd_d3_route_bridge_yield_scenario.hpp"
 #include "Scenarios/yd_d4_session_relay_actor_yield_scenario.hpp"
 #include "Scenarios/yd_e1_timeout_scenario.hpp"
+#include "Scenarios/yd_e2_cancellation_scenario.hpp"
 #include "Scenarios/shutdown_yield_scenario.hpp"
 #include "Scenarios/yield_actor_scenario_context.hpp"
 #include "Support/client_options.hpp"
@@ -138,6 +139,7 @@ int main ()
           client, client_options.session_b_stream_endpoint, actors);
 
         yd_client::run_yd_e1_timeout_scenario (client);
+        yd_client::run_yd_e2_cancellation_scenario (client);
 
         (void) observer.close ();
         (void) client.close ();

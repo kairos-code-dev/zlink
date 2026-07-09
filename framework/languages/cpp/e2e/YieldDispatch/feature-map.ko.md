@@ -3,15 +3,15 @@
 기준 문서: `framework/doc/framework/common/e2e/config-8-yield-dispatch.ko.md`
 
 이 디렉터리는 Config 8 `YieldDispatch`의 C++ 포팅 위치다. 현재 C++ 트리에는 role target과
-Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D1~YD-D4, Track E YD-E1, YD-E3, YD-E4 정적 검증, YD-E5 report 생성 코드가 있다. C++ framework에는 channel request,
+Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D1~YD-D4, Track E YD-E1~YD-E5 코드가 있다. C++ framework에는 channel request,
 actor join, timer, bound session send, worker call에 `yield()` 공개 표면이 있지만, Config 8 완료 기준은 실제
 stream connector client request가 session gateway를 거쳐 play node의 Spot/Entry Spot handler까지
 도달하는 전체 배포 경로다.
 
-최신 full runner proof는 `logs/20260703-222236-90101`이다. 이 실행은 Redis location store 기반으로
-registry role 없이 YD-A1~YD-D4, YD-E1,
-YD-E3, YD-E4 static gate, YD-E5 report 생성을 통과했고, YD-E2는 public cancellation token 계약
-gap으로 유지한다.
+최신 full runner proof는 `logs/20260707-151703-2374204`이다. 이 실행은 Redis location store 기반으로
+registry role 없이 YD-A1~YD-E5를 통과했다. YD-E2는 public `cancellation_token_source_t`와
+`cancellation_token_t`, 그리고 `yield(token)` 표면으로 delay request 대기 취소와 Spot mailbox cleanup을
+검증한다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
@@ -30,7 +30,7 @@ gap으로 유지한다.
 | `YD-D3` | done | stream connector command가 Session gateway route bridge를 거쳐 `play-b` target Spot handler로 들어가고, 해당 Spot handler가 `yield()` 중 probe command를 먼저 처리한 뒤 원래 continuation을 재개하는 marker 순서를 검증한다. C++ scenario는 `yield-released` evidence를 확인한 뒤 probe를 보내 remote route bridge scheduling 차이로 순서 검증이 흔들리지 않게 한다. 최신 로그: `logs/20260701-191329-11276`, 출력: `scenario YD-D3 passed`, `yield-dispatch e2e result=passed`. |
 | `YD-D4` | done | stream connector request가 Session gateway의 actor binding/relay를 거쳐 Play Entry Spot actor handler로 도달하고, actor handler가 `yield()` 뒤 `actor.context.bound_session().send(...)`로 push를 보낸다. session-a의 bound connector만 `ActorPushNotify`를 받고 session-b의 unbound connector는 받지 않는 범위를 검증한다. bound session typed send가 erased serializer 경로로 빠지던 문제를 typed JSON serializer 경로로 고친 뒤 통과했다. 최신 full 통과 로그: `logs/20260701-191329-11276`, 출력: `scenario YD-D4 passed`, `yield-dispatch e2e result=passed`. |
 | `YD-E1` | done | `YieldTimeoutCommand`가 Session gateway route bridge를 거쳐 Spot handler로 들어가고, delay service reply보다 짧은 timeout으로 `yield()`가 public timeout error를 관찰한 뒤 같은 Spot이 `ProbeCommand`를 처리하는 marker 순서를 검증한다. 메시지별 codec 등록 없이 typed JSON serializer 경로와 session relay 분기로 처리한다. 최신 full 통과 로그: `logs/20260701-191329-11276`, 출력: `scenario YD-E1 passed`, `yield-dispatch e2e result=passed`. |
-| `YD-E2` | gap | 공통 E2E는 client request cancellation 또는 server-side cancellation이 `yield` 대기와 continuation을 정리하고 mailbox를 풀어야 한다고 요구한다. `.NET` 기준은 `Yield<DelayReply>(CancellationToken)`으로 handler 내부 cancellation token을 넘긴다. 하지만 C++ `cpp-framework-interfaces` spec은 public cancellation token과 cancellation registration을 두지 않는다고 명시하고, 현재 C++ public `request_call_t::yield()`와 actor/Spot/worker yield 표면도 cancellation token 인자를 받지 않는다. 내부 `pending_operation_t` cancel 상태나 handler-local timeout으로 이 시나리오를 흉내 내면 public contract를 검증하지 못하므로 구현하지 않고 contract gap으로 유지한다. 공개 계약 후보는 `framework/doc/framework/common/draft/yield-cancellation.ko.md`에 분리했다. |
+| `YD-E2` | done | 공통 E2E는 client request cancellation 또는 server-side cancellation이 `yield` 대기와 continuation을 정리하고 mailbox를 풀어야 한다고 요구한다. C++는 public `cancellation_token_source_t`에서 만든 token을 `yield(token)`에 넘겨 delay reply를 기다리던 작업을 `cancelled` error로 끝내고, 같은 Spot에 보낸 probe가 뒤이어 처리되는지 검증한다. 최신 full 통과 로그: `logs/20260707-151703-2374204`, 출력: `scenario YD-E2 passed`, `yield-dispatch e2e result=passed`. |
 | `YD-E3` | done | `shutdown-wait` client scenario가 stream connector request로 long yield를 시작하고, runner가 `play-a.evidence.log`의 `yield-released` marker를 확인한 뒤 play-a에 SIGTERM을 보낸다. runner의 관측 deadline은 3초이고, session 내부 spot route request는 2초 안에 public error를 stream reply로 올려 client 자체 request timeout과 경쟁하지 않게 한다. client는 request timeout이 아니라 `remote_error` 같은 public connector error를 받아야 통과한다. 같은 spot rid로 play-a를 재시작한 뒤 `shutdown-recovery` scenario가 recovery probe를 보내 routing id 재사용과 mailbox cleanup을 검증한다. 최신 full 통과 로그: `logs/20260701-191329-11276`, 출력: `yield-dispatch shutdown wait result=passed error=remote_error`, `yield-dispatch shutdown recovery result=passed`, `yield-dispatch e2e result=passed`. |
 | `YD-E4` | done | `run_e2e.sh` static gate가 `/yield` HTTP trigger/client 사용, Play Spot/Entry Spot handler 밖 `yield()` 사용, client scenario thin helper 사용을 금지하고, full client가 실제 `connector_factory_t::create`로 stream connector를 만들며 각 `yd_*.hpp` scenario가 connector 참조를 직접 받는지 검사한다. 최신 full 통과 로그: `logs/20260701-191329-11276`, 출력: `yield-dispatch e2e result=passed`. |
 | `YD-E5` | done | runner가 `yield-dispatch-report.json`을 생성하고 YD-A1~YD-E5 scenario id와 C++ marker 이름을 검증한다. 최신 로그: `logs/20260701-191329-11276`, 출력: `scenario YD-E5 passed`, `yield-dispatch e2e result=passed`. 여러 언어 report를 모아 비교하는 aggregation은 별도 cross-language parity gate에서 수행한다. |
@@ -41,8 +41,7 @@ gap으로 유지한다.
   `run_e2e.sh`가 실제 stream connector client request로 scenario를 시작한다. registry role과
   registry discovery endpoint는 사용하지 않는다. 현재 Track A의
   YD-A1~YD-A4, Track B의 YD-B1~YD-B3, Track C의 YD-C1~YD-C3, Track D의 YD-D1~YD-D4, Track E의
-  YD-E1, YD-E3, YD-E4 static gate, YD-E5 report 생성은 runner 증거가 있다. 남은 항목은 public cancellation token 계약이 필요한 YD-E2 gap이다.
+  YD-E1~YD-E5 report 생성은 runner 증거가 있다.
 - yield 검증을 HTTP endpoint나 direct route/Spot test driver로 시작하지 않는다.
-- C++ public API로 아직 확인되지 않은 항목은 내부 helper나 raw frame 우회로 메우지 않고
-  별도 public contract gap으로 유지한다. `YD-E2`는
-  `framework/doc/framework/common/draft/yield-cancellation.ko.md`에서 공개 계약 후보를 먼저 검토한다.
+- C++ public API로 아직 확인되지 않은 항목은 내부 helper나 raw frame 우회로 메우지 않는다. 현재
+  YD-E2는 public cancellation token과 `yield(token)`으로 검증되어 별도 public contract gap을 남기지 않는다.

@@ -29,6 +29,7 @@ inline void map_spot_interaction_endpoints (zlink::framework::http_options_build
       .map_post<spot_outbound_route_handler_t> ("/spot/outbound")
       .map_post<spot_outbound_negative_route_handler_t> ("/spot/outbound-negative")
       .map_post<spot_to_spot_route_handler_t> ("/spot/to-spot/request")
+      .map_post<spot_to_spot_route_handler_t> ("/spot/to-spot/request-cross")
       .map_post<direct_spot_route_handler_t> ("/spot/direct")
       .map_post<direct_spot_command_route_handler_t> ("/spot/direct-command");
 }

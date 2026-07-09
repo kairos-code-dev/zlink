@@ -78,23 +78,59 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                   zlink::framework::framework_error_kind_t::request_protocol_error,
                   "stream auth target or actor ref is invalid");
             }
-            auto bound = co_await _actors.bind_or_get (to_actor_ref (request.actor)).async ();
+            auto ensured_result =
+              _routes
+                .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+                          e2e::ensure_actor_req_t{.actor_id = request.actor_id,
+                                                  .display_name = request.display_name,
+                                                  .bind_session_route = true})
+                .packet_name ("EnsureActor")
+                .async<e2e::ensure_actor_res_t> ()
+                .result ();
+            if (!ensured_result) {
+                throw zlink::framework::framework_exception_t (
+                  ensured_result.error_kind (),
+                  ensured_result.error () ? ensured_result.error ()->what ()
+                                         : "stream auth ensure actor failed");
+            }
+            const auto ensured = ensured_result.value ();
+            _state.record ("StreamAuthEnsured", request.actor_id, {}, request.target_node_rid);
+            auto bound_result = _actors.bind_or_get (to_actor_ref (ensured.actor)).async ().result ();
+            if (!bound_result) {
+                throw zlink::framework::framework_exception_t (
+                  bound_result.error_kind (),
+                  bound_result.error () ? bound_result.error ()->what ()
+                                       : "stream auth actor bind failed");
+            }
+            auto bound = bound_result.value ();
             const auto actor_id = std::string (bound.actor_id ());
+            _state.record ("StreamAuthActorBound", actor_id, {}, request.target_node_rid);
             _bound_actors[actor_id] = request.target_node_rid;
             _bound_session_actors[actor_id] = bound;
             if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
                 _notify_on_disconnect.insert (actor_id);
             }
             _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
+            _state.record ("StreamAuthSessionBound", actor_id, {}, request.target_node_rid);
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
-            if (dispatch.can_reply ()) {
-                stream
-                  .reply_packet (
-                    zlink::message_t::from_json (
-                      e2e::stream_auth_res_t{request.actor, _state.node_rid}))
-                  .submit ();
+            if (!dispatch.can_reply ()) {
+                _state.record ("StreamAuthReplyUnavailable", actor_id, {},
+                               request.target_node_rid);
+                co_return;
             }
+            auto replied =
+              stream
+                .reply_packet (
+                  zlink::message_t::from_json (
+                    e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
+                .submit ();
+            if (!replied) {
+                throw zlink::framework::framework_exception_t (
+                  replied.error_kind (),
+                  replied.error () ? replied.error ()->what () : "stream auth reply failed");
+            }
+            _state.record ("StreamAuthReplied", actor_id, {}, request.target_node_rid);
             co_return;
         }
         if (dispatch.packet_name () == "StreamEnsureAuthReq") {
@@ -105,13 +141,30 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                   zlink::framework::framework_error_kind_t::request_protocol_error,
                   "stream ensure auth target is invalid");
             }
-            auto ensured =
-              co_await _routes
+            auto ensured_result =
+              _routes
                 .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
-                          e2e::ensure_actor_req_t{request.actor_id, request.display_name})
+                          e2e::ensure_actor_req_t{.actor_id = request.actor_id,
+                                                  .display_name = request.display_name,
+                                                  .bind_session_route = true})
                 .packet_name ("EnsureActor")
-                .async<e2e::ensure_actor_res_t> ();
-            auto bound = co_await _actors.bind_or_get (to_actor_ref (ensured.actor)).async ();
+                .async<e2e::ensure_actor_res_t> ()
+                .result ();
+            if (!ensured_result) {
+                throw zlink::framework::framework_exception_t (
+                  ensured_result.error_kind (),
+                  ensured_result.error () ? ensured_result.error ()->what ()
+                                         : "stream ensure auth ensure actor failed");
+            }
+            const auto ensured = ensured_result.value ();
+            auto bound_result = _actors.bind_or_get (to_actor_ref (ensured.actor)).async ().result ();
+            if (!bound_result) {
+                throw zlink::framework::framework_exception_t (
+                  bound_result.error_kind (),
+                  bound_result.error () ? bound_result.error ()->what ()
+                                       : "stream ensure auth actor bind failed");
+            }
+            auto bound = bound_result.value ();
             const auto actor_id = std::string (bound.actor_id ());
             _bound_actors[actor_id] = request.target_node_rid;
             _bound_session_actors[actor_id] = bound;
@@ -121,12 +174,22 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
-            if (dispatch.can_reply ()) {
-                stream
-                  .reply_packet (
-                    zlink::message_t::from_json (
-                      e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
-                  .submit ();
+            if (!dispatch.can_reply ()) {
+                _state.record ("StreamAuthReplyUnavailable", actor_id, {},
+                               request.target_node_rid);
+                co_return;
+            }
+            auto replied =
+              stream
+                .reply_packet (
+                  zlink::message_t::from_json (
+                    e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
+                .submit ();
+            if (!replied) {
+                throw zlink::framework::framework_exception_t (
+                  replied.error_kind (),
+                  replied.error () ? replied.error ()->what ()
+                                  : "stream ensure auth reply failed");
             }
             co_return;
         }
@@ -139,7 +202,25 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
         }
         if (dispatch.can_reply ()) {
             auto reply = co_await actor.value ().relay_request (payload).async ();
-            stream.reply_packet (reply).submit ();
+            if (dispatch.packet_name () == "JoinReq") {
+                const auto joined = reply.parse_json<e2e::join_res_t> ();
+                auto rebound_result =
+                  _actors.bind_or_get (to_actor_ref (joined.actor)).async ().result ();
+                if (!rebound_result) {
+                    throw zlink::framework::framework_exception_t (
+                      rebound_result.error_kind (),
+                      rebound_result.error () ? rebound_result.error ()->what ()
+                                             : "stream join actor bind failed");
+                }
+                auto rebound = rebound_result.value ();
+                _bound_session_actors[std::string (rebound.actor_id ())] = rebound;
+            }
+            auto replied = stream.reply_packet (reply).submit ();
+            if (!replied) {
+                throw zlink::framework::framework_exception_t (
+                  replied.error_kind (),
+                  replied.error () ? replied.error ()->what () : "stream relay reply failed");
+            }
             co_return;
         }
         actor.value ().relay (payload).submit ();

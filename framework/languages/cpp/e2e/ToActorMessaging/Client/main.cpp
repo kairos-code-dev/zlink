@@ -116,7 +116,18 @@ void assert_failure (zlink::http_client::client_t &caller,
     const auto response =
       call (caller, send ? "/send" : "/request", scenario, actor_id, "missing");
     require (response.error_kind == expected_kind,
-             scenario + " expected " + expected_kind + " got " + response.error_kind);
+             scenario + " expected " + expected_kind + " got " + response.error_kind
+               + " result=" + response.result);
+}
+
+void prepare_failure (zlink::http_client::client_t &caller,
+                      const std::string &scenario,
+                      const std::string &actor_id)
+{
+    const auto response = call (caller, "/prepare-failure", scenario, actor_id, "prepare");
+    require (response.error_kind.empty (),
+             scenario + " prepare failed: " + response.error_kind + " " + response.result);
+    require (response.result == "prepared", scenario + " prepare returned " + response.result);
 }
 
 void require_evidence (const std::vector<e2e::actor_evidence_t> &evidence,
@@ -164,9 +175,14 @@ int main ()
     assert_failure (caller, "TA-B1-missing-request", "missing-actor", "actor_route_not_found",
                     false);
 
-    ensure_ready (actor, caller, "TA-B2", "ta-b2");
-    assert_call (caller, "TA-B2-live-after-reresolve", "ta-b2", "b2-request", "reply:b2-request",
-                 false);
+    ensure_ready (actor, caller, "TA-B2", "ta-b2-stale");
+    prepare_failure (caller, "TA-B2-prepare", "ta-b2-stale");
+    assert_failure (caller, "TA-B2-stale-location", "ta-b2-stale", "actor_location_stale",
+                    false);
+
+    prepare_failure (caller, "TA-B3-prepare", "ta-b3-disconnected");
+    assert_failure (caller, "TA-B3-route-not-connected", "ta-b3-disconnected",
+                    "route_not_connected", false);
     ensure_ready (actor, caller, "TA-B3", "ta-b3");
     assert_call (caller, "TA-B3-route-restored", "ta-b3", "b3-request", "reply:b3-request",
                  false);

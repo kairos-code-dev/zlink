@@ -10,6 +10,7 @@
 #include <map>
 #include <mutex>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -23,25 +24,47 @@ using namespace framework;
 class customer_session_directory_t
 {
   public:
-    void subscribe (const std::string &customer_id, const std::string &delivery_id)
+    void subscribe (const std::string &customer_id,
+                    const std::string &delivery_id,
+                    stream_t stream)
     {
         const std::lock_guard lock (_mutex);
-        _delivery_customers[delivery_id] = customer_id;
+        _subscriptions[delivery_id] = subscription_t{customer_id, std::move (stream)};
+        std::cerr << "deliverydispatch customer-session: registered subscription customer="
+                  << customer_id << " delivery=" << delivery_id << "\n";
     }
 
     std::optional<std::string> customer_for_delivery (const std::string &delivery_id) const
     {
         const std::lock_guard lock (_mutex);
-        const auto found = _delivery_customers.find (delivery_id);
-        if (found == _delivery_customers.end ()) {
+        const auto found = _subscriptions.find (delivery_id);
+        if (found == _subscriptions.end ()) {
             return std::nullopt;
         }
-        return found->second;
+        return found->second.customer_id;
+    }
+
+    void unsubscribe_customer (const std::string &customer_id)
+    {
+        const std::lock_guard lock (_mutex);
+        for (auto it = _subscriptions.begin (); it != _subscriptions.end ();) {
+            if (it->second.customer_id == customer_id) {
+                it = _subscriptions.erase (it);
+            } else {
+                ++it;
+            }
+        }
     }
 
   private:
+    struct subscription_t
+    {
+        std::string customer_id;
+        stream_t stream;
+    };
+
     mutable std::mutex _mutex;
-    std::map<std::string, std::string> _delivery_customers;
+    std::map<std::string, subscription_t> _subscriptions;
 };
 
 class customer_actor_t
@@ -83,7 +106,9 @@ class customer_entry_spot_t : public entry_spot_t
         _context = context;
         context.handlers ()
           .add_actor_request<&customer_entry_spot_t::subscribe_delivery> (
-            subscribe_delivery_req_t::packet_name);
+            subscribe_delivery_req_t::packet_name)
+          .add_actor_send<&customer_entry_spot_t::status_updated> (
+            delivery_status_updated_msg_t::packet_name);
     }
 
     void configure (spot_context_t &context)
@@ -102,8 +127,26 @@ class customer_entry_spot_t : public entry_spot_t
                         spot_actor_request_context_t &,
                         const subscribe_delivery_req_t &request)
     {
-        _sessions.subscribe (actor.actor_id, request.delivery_id);
         return {request.delivery_id};
+    }
+
+    void status_updated (customer_actor_t &actor,
+                         spot_actor_send_context_t &,
+                         const delivery_status_updated_msg_t &status)
+    {
+        auto customer_id = _sessions.customer_for_delivery (status.delivery_id);
+        if (!customer_id || *customer_id != actor.actor_id) {
+            std::cerr << "deliverydispatch customer-entry: ignored status delivery="
+                      << status.delivery_id << " actor=" << actor.actor_id << "\n";
+            return;
+        }
+        std::cerr << "deliverydispatch customer-entry: push status delivery="
+                  << status.delivery_id << " status=" << status.status << "\n";
+        actor.context.bound_session ()
+          .send (delivery_status_notify_t{status.delivery_id, status.status, status.courier_id,
+                                          status.occurred_at})
+          .packet_name (delivery_status_notify_t::packet_name)
+          .submit ();
     }
 
   private:
@@ -115,10 +158,12 @@ class customer_gateway_session_t final : public packet_stream_session_t
 {
   public:
     using dependency_types =
-      dependency_list_t<session_actor_manager_t, actor_gateway_t>;
+      dependency_list_t<customer_session_directory_t, session_actor_manager_t, actor_gateway_t>;
 
-    customer_gateway_session_t (session_actor_manager_t &actors, actor_gateway_t &gateway) :
-        _actors (actors), _gateway (gateway)
+    customer_gateway_session_t (customer_session_directory_t &sessions,
+                                session_actor_manager_t &actors,
+                                actor_gateway_t &gateway) :
+        _sessions (sessions), _actors (actors), _gateway (gateway)
     {
     }
 
@@ -129,6 +174,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
         for (const auto &[actor_id, _] : _bound_actors) {
             _gateway.unbind_session_stream (actor_id);
             _actors.unbind_session (actor_id);
+            _sessions.unsubscribe_customer (actor_id);
         }
         _bound_actors.clear ();
         co_return;
@@ -162,8 +208,6 @@ class customer_gateway_session_t final : public packet_stream_session_t
         }
         auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).async ();
         const auto actor_id = std::string (bound.actor_id ());
-        _gateway.bind_session_stream (actor_id, stream, stream_codec_t::json);
-        _bound_actors[actor_id] = sample_names_t::customer_spot_node;
         auto joined =
           co_await bound.context ()
             .join_entry_spot (node_rid_t::from_string (sample_names_t::customer_spot_node),
@@ -176,6 +220,9 @@ class customer_gateway_session_t final : public packet_stream_session_t
         }
         auto reply =
           co_await current->relay_request (zlink::message_t::from_json (request)).async ();
+        _gateway.bind_session_stream (actor_id, stream, stream_codec_t::json);
+        _bound_actors[actor_id] = sample_names_t::customer_spot_node;
+        _sessions.subscribe (actor_id, request.delivery_id, stream);
         stream.reply_packet (reply).submit ();
         std::cerr << "deliverydispatch customer-session: bound customer actor="
                   << std::string (joined.actor->actor_id ()) << "\n";
@@ -200,6 +247,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
         return *actor;
     }
 
+    customer_session_directory_t &_sessions;
     session_actor_manager_t &_actors;
     actor_gateway_t &_gateway;
     std::map<std::string, std::string> _bound_actors;
@@ -223,12 +271,18 @@ class delivery_status_fanout_handler_t
     {
         auto customer_id = _sessions.customer_for_delivery (notify.delivery_id);
         if (!customer_id) {
+            std::cerr << "deliverydispatch customer-fanout: no subscription delivery="
+                      << notify.delivery_id << "\n";
             co_return;
         }
         auto actor = _actors.find (*customer_id);
         if (!actor) {
+            std::cerr << "deliverydispatch customer-fanout: no actor customer="
+                      << *customer_id << "\n";
             co_return;
         }
+        std::cerr << "deliverydispatch customer-fanout: push status delivery="
+                  << notify.delivery_id << " status=" << notify.status << "\n";
         actor->bound_session ()
           .send (notify)
           .packet_name (delivery_status_notify_t::packet_name)
@@ -255,9 +309,9 @@ int main (int argc, char **argv)
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (deliverydispatch_log_dir () + "/flow-customer-gateway.log")
           .trace_label ("deliverydispatch-customer-gateway");
-        options.services ().add_singleton<customer_session_directory_t> ();
-        auto *sessions =
-          &options.services ().build_provider ().get_required<customer_session_directory_t> ();
+        auto sessions = std::make_unique<customer_session_directory_t> ();
+        auto *sessions_ptr = sessions.get ();
+        options.services ().add_singleton<customer_session_directory_t> (std::move (sessions));
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
@@ -271,7 +325,7 @@ int main (int argc, char **argv)
           .enable_router (topology.customer_spot_router_endpoint)
           .enable_pub_sub (topology.customer_spot_endpoint)
           .add_entry_spot<customer_entry_spot_t> (
-            [sessions] { return std::make_shared<customer_entry_spot_t> (*sessions); })
+            [sessions_ptr] { return std::make_shared<customer_entry_spot_t> (*sessions_ptr); })
           .add_actor_factory<customer_actor_factory_t> (sample_names_t::customer_actor_type);
         options.add_stream_node (sample_names_t::customer_stream_node)
           .bind (topology.customer_stream_endpoint)

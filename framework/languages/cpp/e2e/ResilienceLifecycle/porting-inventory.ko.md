@@ -83,6 +83,15 @@ C++ runner가 같은 의미로 담당한다.
 
 ## 검증
 
+- 2026-07-08: `timeout 560s framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh all`
+  - 결과: 통과, exit 0
+  - 로그: `logs/20260708-133049-101113`
+  - 의미: Redis location store 기반 Provider/Consumer/Client target으로 Consumer smoke, RL-A1,
+    RL-A2, RL-A3, RL-A4, RL-A5, RL-B1, RL-B2, RL-B3, RL-B4, RL-B5, RL-B6, RL-C1,
+    RL-C2, RL-C3, RL-C4, RL-D1, RL-D2, RL-D3, RL-D4, RL-D5가 통과했다. `RL-B2`의
+    `kill -9`와 `RL-C2`의 `/admin/crash` SIGABRT는 시나리오가 의도한 failure injection으로만
+    허용하고, cleanup 또는 일반 provider 종료에서 같은 비정상 종료가 나오면 runner가 실패하도록
+    보강했다.
 - 2026-07-03: `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 900s framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260703-205544-18048`

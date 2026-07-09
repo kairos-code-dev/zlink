@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "Scenarios/auto_registration_scenario.hpp"
+#include "Scenarios/attribute_registration_scenario.hpp"
 #include "Scenarios/codec_mismatch_scenario.hpp"
 #include "Scenarios/manual_registration_scenario.hpp"
 #include "Scenarios/rc_a4_di_lifecycle_scenario.hpp"
@@ -26,6 +27,7 @@ int main (int argc, char **argv)
             rc_client::run_codec_mismatch_scenario ();
         } else {
             rc_client::run_auto_registration_scenario ();
+            rc_client::run_attribute_registration_scenario ();
             rc_client::run_manual_registration_scenario ();
             rc_client::run_di_lifecycle_scenario ();
             rc_client::run_filter_ordering_scenario ();

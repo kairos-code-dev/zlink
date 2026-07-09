@@ -15,6 +15,15 @@ namespace e2e = zlink::framework::e2e::spot_service;
 namespace
 {
 
+inline bool evidence_entry_matches (const e2e::evidence_entry_t &entry,
+                                    const std::string &marker,
+                                    const std::string &spot_rid,
+                                    const std::string &value_part)
+{
+    return entry.marker == marker && entry.spot_rid == spot_rid
+           && (value_part.empty () || entry.value.find (value_part) != std::string::npos);
+}
+
 inline const char *multi_node_spot_name_for (const std::string &node_rid)
 {
     return node_rid == multi_node_a_name ? e2e::multi_spot_a : e2e::multi_spot_b;
@@ -31,27 +40,83 @@ inline e2e::state_res_t request_multi_node_state (zlink::framework::route_client
                                                   const std::string &spot_rid,
                                                   int delta)
 {
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-    std::string last_error = "unknown route error";
-    while (std::chrono::steady_clock::now () < deadline) {
-        auto reply =
-          routes
-            .request_to_node (multi_node_route_channel_for (node_rid), zlink::routing_id_t::from (node_rid),
-                      zlink::framework::spot_rid_t::from_string (spot_rid),
-                      e2e::state_req_t{.op = "add", .amount = delta})
-            .packet_name ("StateReq")
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::state_res_t> ()
-            .result ();
-        if (reply) {
-            return reply.value ();
-        }
-        last_error = reply.error () ? reply.error ()->what () : "unknown route error";
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    auto reply =
+      routes
+        .request_to_node (multi_node_route_channel_for (node_rid),
+                          multi_node_spot_ref (node_rid, spot_rid),
+                          e2e::state_req_t{.op = "add", .amount = delta})
+        .packet_name ("StateReq")
+        .timeout (std::chrono::milliseconds (3000))
+        .async<e2e::state_res_t> ()
+        .result ();
+    if (reply) {
+        return reply.value ();
     }
-    throw std::runtime_error ("timed out waiting for multi-node spot route '" + spot_rid
-                              + "': " + last_error);
+    throw std::runtime_error ("multi-node spot route failed for '" + spot_rid
+                              + "': "
+                              + (reply.error () ? reply.error ()->what ()
+                                                : "unknown route error"));
 }
+
+class multi_node_route_ping_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using request_type = e2e::channel_control_ping_req_t;
+    using reply_type = e2e::channel_control_ping_res_t;
+
+    explicit multi_node_route_ping_handler_t (scenario_state_t &state) : _state (state) {}
+
+    e2e::channel_control_ping_res_t handle (
+      const e2e::channel_control_ping_req_t &request,
+      const zlink::framework::route_handler_context_t &)
+    {
+        return {.node_rid = _state.node_rid, .value = request.value};
+    }
+
+  private:
+    scenario_state_t &_state;
+};
+
+class multi_node_route_ping_proxy_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t,
+                                                                zlink::framework::route_client_t>;
+
+    multi_node_route_ping_proxy_handler_t (scenario_state_t &state,
+                                           zlink::framework::route_client_t &routes) :
+        _state (state), _routes (routes)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request =
+          nlohmann::json::parse (http.body).get<e2e::channel_control_ping_req_t> ();
+        auto reply =
+          _routes
+            .request_to_node (multi_node_route_channel_for (_state.node_rid),
+                              zlink::routing_id_t::from (request.target_node_rid), request)
+            .packet_name ("MultiNodeRoutePing")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::channel_control_ping_res_t> ()
+            .result ();
+        if (!reply) {
+            throw zlink::framework::framework_exception_t (
+              reply.error_kind (),
+              reply.error () ? reply.error ()->what () : "MultiNodeRoutePing failed");
+        }
+
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json (reply.value ()).dump ();
+        return response;
+    }
+
+  private:
+    scenario_state_t &_state;
+    zlink::framework::route_client_t &_routes;
+};
 
 class multi_node_create_local_handler_t
 {
@@ -125,6 +190,162 @@ class multi_node_state_route_handler_t
   private:
     scenario_state_t &_state;
     zlink::framework::route_client_t &_routes;
+};
+
+class multi_node_create_user_local_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t,
+                                          zlink::framework::spot_node_manager_t>;
+
+    multi_node_create_user_local_handler_t (scenario_state_t &state,
+                                            zlink::framework::spot_node_manager_t &spots) :
+        _state (state), _spots (spots)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request = nlohmann::json::parse (http.body).get<e2e::create_spot_req_t> ();
+        const auto rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
+        const auto created =
+          _spots.get_or_create_spot (multi_node_spot_name_for (_state.node_rid), rid, request);
+        const auto state =
+          created.state == zlink::framework::spot_create_state_t::created ? "created"
+                                                                          : "existing";
+        _state.record ("CreateUserSpot", {}, request.spot_rid, state);
+
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json (e2e::create_spot_res_t{
+                          .spot_rid = request.spot_rid,
+                          .owner_node_rid = _state.node_rid,
+                          .created = created.state == zlink::framework::spot_create_state_t::created})
+                          .dump ();
+        return response;
+    }
+
+  private:
+    scenario_state_t &_state;
+    zlink::framework::spot_node_manager_t &_spots;
+};
+
+class multi_node_spot_only_mesh_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t,
+                                          zlink::framework::spot_node_manager_t>;
+
+    multi_node_spot_only_mesh_handler_t (scenario_state_t &state,
+                                         zlink::framework::spot_node_manager_t &spots) :
+        _state (state), _spots (spots)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request = nlohmann::json::parse (http.body).get<e2e::spot_only_mesh_req_t> ();
+        const auto rid = zlink::framework::spot_rid_t::from_string (request.source_spot_rid);
+        (void) _spots.get_or_create_spot (multi_node_spot_name_for (_state.node_rid), rid, request);
+        const auto value_marker = "marker=" + request.marker;
+        auto snapshot = _state.wait_until (
+          [&] (const e2e::evidence_snapshot_t &current) {
+              for (const auto &entry : current.entries) {
+                  if (evidence_entry_matches (entry, "SpotOnlyRequest", request.source_spot_rid,
+                                              value_marker)) {
+                      return true;
+                  }
+              }
+              return false;
+          },
+          std::chrono::seconds (10));
+        bool found = false;
+        for (const auto &entry : snapshot.entries) {
+            if (evidence_entry_matches (entry, "SpotOnlyRequest", request.source_spot_rid,
+                                        value_marker)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw std::runtime_error ("timed out waiting for spot-only request evidence");
+        }
+
+        zlink::framework::http_response_t response;
+        response.body =
+          nlohmann::json (e2e::spot_only_mesh_res_t{
+            .source_spot_rid = request.source_spot_rid,
+            .target_spot_rid = request.target_spot_rid,
+            .target_value = 7,
+            .marker = request.marker})
+            .dump ();
+        return response;
+    }
+
+  private:
+    scenario_state_t &_state;
+    zlink::framework::spot_node_manager_t &_spots;
+};
+
+class multi_node_spot_only_join_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t,
+                                          zlink::framework::session_actor_manager_t>;
+
+    multi_node_spot_only_join_handler_t (scenario_state_t &state,
+                                         zlink::framework::session_actor_manager_t &actors) :
+        _state (state), _actors (actors)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request = nlohmann::json::parse (http.body).get<e2e::spot_only_join_req_t> ();
+        auto actor = _actors.get_or_create (e2e::actor_type, request.actor_id);
+        if (!actor) {
+            throw zlink::framework::framework_exception_t (
+              actor.error_kind (),
+              actor.error () ? actor.error ()->what () : "spot-only actor create failed");
+        }
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+        if (!bound) {
+            throw zlink::framework::framework_exception_t (
+              bound.error_kind (),
+              bound.error () ? bound.error ()->what () : "spot-only actor bind failed");
+        }
+        auto joined =
+          bound.value ()
+            .context ()
+            .join_spot (zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
+                        zlink::framework::message_t {})
+            .async ()
+            .result ();
+        if (!joined) {
+            throw zlink::framework::framework_exception_t (
+              joined.error_kind (),
+              joined.error () ? joined.error ()->what () : "spot-only target join failed");
+        }
+
+        zlink::framework::http_response_t response;
+        const auto accepted = joined.value ().result_code == 0 && joined.value ().actor;
+        _state.record ("SpotOnlyActorJoin", request.actor_id, request.target_spot_rid,
+                       "accepted=" + std::string (accepted ? "true" : "false")
+                         + "|marker=" + request.marker);
+        response.body = nlohmann::json (e2e::spot_only_join_res_t{
+                          .target_spot_rid = request.target_spot_rid,
+                          .actor_id = request.actor_id,
+                          .accepted = accepted,
+                          .marker = request.marker})
+                          .dump ();
+        return response;
+    }
+
+  private:
+    scenario_state_t &_state;
+    zlink::framework::session_actor_manager_t &_actors;
 };
 
 } // namespace

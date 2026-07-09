@@ -11,19 +11,49 @@
 | `Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.hpp` | done | 공통 문서의 request, response, notify 이름과 상태 필드를 둔다. |
 | `Server/Support/Domain/SupportChat/*` | `Server/Support/Domain/SupportChat/conversation.hpp` | done | conversation 상태, 참여자, 메시지 순서, typing, idle, close 전이를 domain에 둔다. |
 | `Server/Support/Application/ConversationAssignment/*` | `Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp` | done | 상담원 availability와 capacity 기반 배정을 둔다. |
-| `Server/Configuration/*` | `Server/Configuration/sample_topology.hpp`; `Server/Configuration/role_process.hpp` | partial | runner endpoint와 flow log 경로를 해석한다. |
-| `Server/Api/Program.cs` | `Server/Api/main.cpp` | partial | role process와 flow evidence target이다. |
-| `Server/Session/Program.cs`; `SupportChatSession.cs` | `Server/Session/main.cpp` | partial | role process와 flow evidence target이다. stream relay 구현은 아직 framework session adapter로 분리되지 않았다. |
-| `Server/Support/Program.cs`; ZLink adapters | `Server/Support/main.cpp` | partial | role process와 flow evidence target이다. actor, Spot, bound session push adapter는 아직 별도 C++ framework adapter로 확장되지 않았다. |
-| `Client/SupportChatClientScenario.cs` | `Client/supportchat_client_scenario.hpp`; `Client/main.cpp` | done | 고객/상담원 self-check 흐름과 marker를 검증한다. |
-| `run_sample.sh` | `run_sample.sh` | done | build-redis-vcpkg target build, Redis 준비, role/probe/client 실행, flow trace marker를 검증한다. |
+| `Server/Configuration/*` | `Server/Configuration/sample_topology.hpp`; `Server/Configuration/location_store.hpp`; `Server/Configuration/role_process.hpp` | done | runner endpoint, Redis location store, Support/Session actor route mesh, flow log 경로를 해석한다. |
+| `Server/Api/Program.cs` | `Server/Api/main.cpp` | done | role process entrypoint와 flow evidence target이다. |
+| `Server/Session/Program.cs`; `SupportChatSession.cs` | `Server/Session/main.cpp` | done | real packet stream session을 열고, Support channel에서 받은 identity actor ref를 session에 bind한다. agent의 `JoinConversationReq`는 stream metadata의 `ConversationId`로 Support channel에 per-conversation actor 생성을 요청하고, 이후 같은 metadata가 있는 packet은 해당 actor로 relay한다. |
+| `Server/Support/Program.cs`; domain/application flow | `Server/Support/main.cpp`; `Server/Support/Domain/SupportChat/conversation.hpp`; `Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp` | done | Support role이 Support channel, Support-owned actor, Entry Spot command handler, `supportchat.conversation` Conversation Spot, public bound-session publisher를 호스팅한다. `EnsureAgentConversationReq`로 agent roster actor와 conversation마다 분리된 actor id를 연결하고 Conversation Spot에 join한다. HTTP self-check도 실제 domain/application 객체로 one-agent-many-conversations, per-room sequence, typing, reconnect state, explicit close, idle close, no-agent waiting을 검증한다. |
+| `Client/SupportChatClientScenario.cs` | `Client/supportchat_client_scenario.hpp`; `Client/main.cpp` | done | client가 Support role HTTP self-check evidence를 호출한 뒤 Session stream에 customer/agent connector를 연결한다. conversation packet에는 `ConversationId` metadata를 싣고, public wait interface로 `ConversationAssignedNotify`, `ParticipantJoinedNotify`, `ChatMessageNotify`, `TypingChangedNotify`, `ConversationIdleNotify`, `ConversationClosedNotify`를 기다린다. |
+| `run_sample.sh` | `run_sample.sh` | done | 필요한 CMake target을 빌드하고 Redis 준비, role/probe/client 실행, flow trace marker를 검증한다. |
 | `SupportChat.csproj`/role csproj | `framework/languages/cpp/CMakeLists.txt` | done | C++ role/client/probe executable과 `sample_smoke` ctest를 등록한다. |
 
-## 남은 차이
+## .NET 파일 대응 보강
 
-- 현재 C++ role process는 flow evidence와 client self-check를 제공하지만, `.NET` 정본처럼
-  Session 서버 stream packet을 actor gateway로 relay하고 Support 서버 conversation Spot에서
-  bound session push를 보내는 full runtime adapter는 아직 분리되어 있지 않다.
-- 이 차이는 완료 판정의 public contract parity 관점에서는 gap이다. 샘플 runner는 domain
-  self-check와 role/flow target 검증을 통과하지만, 실제 stream connector 왕복과 actor
-  binding 왕복을 증명하지 않는다.
+| .NET 파일 | C++ 대응 | 상태 | 비고 |
+|-----------|----------|------|------|
+| `Client/Configuration/SampleNames.cs`; `Client/SupportChat.Client.csproj`; `README.ko.md` | `Shared/Contracts/messages.hpp`; `Client/main.cpp`; `Client/supportchat_client_scenario.hpp`; `README.ko.md` | done | client packet 이름, 실행 진입점, README 실행 설명이 C++ client와 shared contract로 대응된다. |
+| `Server/Api/ApiServerHostFactory.cs`; `Server/Api/Handlers/AuthenticateUserHandler.cs`; `Server/Api/Handlers/OpenConversationHandler.cs`; `Server/Api/SupportChat.Server.Api.csproj` | `Server/Api/main.cpp` | done | API role executable이 인증, 대화 열기 HTTP/channel edge와 flow evidence를 맡는다. |
+| `Server/Configuration/SampleFlowLog.cs`; `Server/Configuration/SampleNames.cs`; `Server/Configuration/SampleTopology.cs`; `Server/Configuration/SupportChat.Server.Configuration.csproj`; `Server/Configuration/SupportServerContracts.cs` | `Server/Configuration/sample_topology.hpp`; `Server/Configuration/location_store.hpp`; `Server/Configuration/role_process.hpp`; `Shared/Contracts/messages.hpp` | done | endpoint, Redis location store, actor route mesh, role process, support server packet 이름을 C++ configuration/shared header로 모았다. |
+| `Server/Session/SessionServerHostFactory.cs`; `Server/Session/SupportChat.Server.Session.csproj` | `Server/Session/main.cpp` | done | Session role executable이 stream endpoint, identity actor binding, conversation metadata relay를 맡는다. |
+| `Server/Support/Application/ConversationAssignment/AgentAssignmentService.cs`; `AgentAvailabilityDirectory.cs`; `SupportConversationAllocator.cs` | `Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp` | done | 상담원 availability, capacity, conversation allocation 정책을 application service로 대응한다. |
+| `Server/Support/Domain/SupportChat/ConversationModels.cs` | `Server/Support/Domain/SupportChat/conversation.hpp` | done | conversation 상태, 참여자, 메시지 sequence, typing, idle, close domain model을 C++ domain type으로 대응한다. |
+| `Server/Support/Infrastructure/ZLink/Actors/SupportActorDirectory.cs`; `SupportUserActor.cs`; `SupportUserActorFactory.cs` | `Server/Support/main.cpp`; `Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp` | done | support user actor directory와 actor 생성은 Support role 안의 actor roster/assignment state로 대응한다. |
+| `Server/Support/Infrastructure/ZLink/ConversationStarter.cs`; `Handlers/AllocateConversationHandler.cs`; `EnsureAgentConversationHandler.cs`; `EnsureSupportUserActorHandler.cs` | `Server/Support/main.cpp` | done | conversation 시작, actor 보장, agent conversation 연결 handler를 Support role의 public channel/Spot handler로 대응한다. |
+| `Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/ConversationContracts.cs`; `ConversationCreateRequest.cs`; `ConversationSpot.cs`; `Handlers/CloseConversationHandler.cs`; `ConversationIdleTimerHandler.cs`; `JoinConversationHandler.cs`; `SendChatMessageHandler.cs`; `SetTypingHandler.cs`; `Notifications/ConversationNotificationPublisher.cs` | `Server/Support/main.cpp`; `Server/Support/Domain/SupportChat/conversation.hpp`; `Shared/Contracts/messages.hpp` | done | Conversation Spot packet, lifecycle, idle timer, join/message/typing/close handler, notification publisher 책임을 Support role과 domain/shared contract로 대응한다. |
+| `Server/Support/Infrastructure/ZLink/Spots/EntrySpot/Handlers/OpenConversationActorHandler.cs`; `SetAgentAvailableHandler.cs`; `SupportEntrySpot.cs`; `Server/Support/SupportServerHostFactory.cs`; `Server/Support/SupportChat.Server.Support.csproj` | `Server/Support/main.cpp` | done | Entry Spot open/availability handler와 Support role host 구성을 C++ Support executable이 맡는다. |
+| `Shared/SupportChat.Shared.csproj` | `Shared/Contracts/messages.hpp`; `framework/languages/cpp/CMakeLists.txt` | done | shared project 책임은 header contract와 CMake target include 경로로 대응한다. |
+
+## 남은 gap
+
+SupportChat C++ 샘플 범위에서 남은 gap은 없다.
+
+## 검증 기록
+
+- `timeout 300s framework/languages/cpp/samples/SupportChat/run_sample.sh`
+  - 결과: 통과
+  - 출력: `PASS SupportChat.Cpp`, `supportchat sample result=passed`
+  - 의미: client는 HTTP public surface로 Support role domain/application self-check evidence를 확인하고,
+    Session role은 stream connector request와 bound-session notification wait까지 실제 TCP stream으로
+    검증한다. runner는 `supportchat authentication=verified`,
+    `supportchat conversation-assignment=verified`, `supportchat bound-push=verified`,
+    `supportchat reconnect=verified`, `supportchat idle-close=verified`, `supportchat=completed`를
+    확인한다.
+
+C++ Support role은 Support-owned actor, Entry Spot, `supportchat.conversation` Conversation Spot을
+함께 호스팅한다. Entry Spot은 availability와 open request를 받고, Conversation Spot은 join, message,
+typing, close 상태와 participant notification을 소유한다. Session role은 Support channel로 identity
+actor와 per-conversation agent actor ref를 받은 뒤 stream packet을 metadata 기준으로 해당 actor에
+relay한다. 이전 누락이었던 stream connector 왕복, public wait interface evidence, per-conversation
+agent actor, Conversation Spot 분리는 runner가 직접 검증한다.

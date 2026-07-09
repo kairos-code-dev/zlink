@@ -6,17 +6,17 @@
 
 | Scenario | 상태 | 근거 |
 |----------|------|------|
-| `RM-A1` | 구현 | Redis location store로 `registry.messaging.api` peer row를 공유하고 endpoint 없는 client-server client가 자동 연결로 request를 보낸다. provider HTTP endpoint의 `/locations/peers`가 store peer row 두 개를 검증한다. 최신 전체 통과: `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build-redis-vcpkg timeout 560s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all` (`logs/20260703-191402-27862`). |
+| `RM-A1` | 구현 | Redis location store로 `registry.messaging.api` peer row를 공유하고 endpoint 없는 client-server client가 자동 연결로 request를 보낸다. provider HTTP endpoint의 `/locations/peers`가 store peer row 두 개를 검증한다. 최신 전체 통과: `timeout 560s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all` (`logs/20260708-131829-51832`). |
 | `RM-A2` | 구현 | `EnableClient(endpoint)` 수동 연결로 `api-a`에 직접 request를 보낸다. |
 | `RM-A4` | 구현 | 같은 rid `api-a`를 다른 endpoint의 `api-a-v2`로 교체한 뒤 연속 request를 검증한다. |
-| `RM-A6` | 구현 | 같은 Redis location store 안에서 `api` channel과 `workflow` channel의 provider가 섞이지 않는지 검증한다. 최신 전체 통과: `logs/20260703-191402-27862`. |
-| `RM-B1` | 구현 | client 실행 중 `api-b` provider를 추가하고 두 provider로 분산되는지 검증한다. 최신 전체 통과: `logs/20260703-191402-27862`. |
-| `RM-B2` | 구현 | `api-b` provider 종료 뒤 peer row 제거를 기다리고 request가 `api-a`로만 가는지 검증한다. 최신 전체 통과: `logs/20260703-191402-27862`. |
+| `RM-A6` | 구현 | 같은 Redis location store 안에서 `api` channel과 `workflow` channel의 provider가 섞이지 않는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
+| `RM-B1` | 구현 | client 실행 중 `api-b` provider를 추가하고 두 provider로 분산되는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
+| `RM-B2` | 구현 | `api-b` provider 종료 뒤 peer row 제거를 기다리고 request가 `api-a`로만 가는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
 | `RM-C1` | 구현 | request와 send happy path를 함께 검증한다. |
 | `RM-C2` | 구현 | route mesh에서 target rid `api-b`로 request하고, 없는 rid는 실패하는지 검증한다. |
 | `RM-C3` | 구현 | direct consumer HTTP role이 수동 multi-endpoint client-server channel로 request를 보내고, 두 provider가 모두 처리하는지 검증한다. C++ HTTP array body binding 차이 때문에 `.NET`의 batch endpoint 대신 같은 consumer의 단건 request endpoint를 반복 호출한다. |
-| `RM-C4` | 구현 | store consumer HTTP role이 timeout request와 정상 request를 보내고, late reply가 후속 request를 오염시키지 않는지 검증한다. 최신 전체 통과: `logs/20260703-191402-27862`. |
-| `RM-C5` | 구현 | store consumer HTTP role이 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. 최신 전체 통과: `logs/20260703-191402-27862`. |
-| `RM-C7` | 구현 | `server_peer_weight`로 build-time server weight를 다르게 준 provider 두 개를 띄우고, location-store 자동 연결 client에서 high-weight provider가 더 많이 처리되는지 검증한다. 최신 전체 통과: `logs/20260703-191402-27862` (`api-a=75`, `api-b=25`). |
+| `RM-C4` | 구현 | store consumer HTTP role이 timeout request와 정상 request를 보내고, late reply가 후속 request를 오염시키지 않는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
+| `RM-C5` | 구현 | store consumer HTTP role이 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. 최신 전체 통과: `logs/20260708-131829-51832`. |
+| `RM-C7` | 구현 | `server_peer_weight`로 build-time server weight를 다르게 준 provider 두 개를 띄우고, location-store 자동 연결 client에서 high-weight provider가 더 많이 처리되는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832` (`api-a=59`, `api-b=41`). |
 | `RM-C8` | 구현 | single consumer HTTP role이 `PayloadReq`/`PayloadRes`로 소형, 대형, near-large payload의 length와 SHA-256 왕복을 검증한다. `server_max_message_size`를 낮춘 별도 provider에서 초과 payload가 C++ public timeout error로 끝나는 것과 이후 정상 request 복구를 검증한다. |
-| `RM-C9` | 구현 | backpressure consumer HTTP role이 느린 send handler에 다량 `ProfileMsg`를 제출하고, provider evidence와 backlog 해소 뒤 후속 request 복구를 검증한다. public send submit은 bounded-failure oracle을 노출하지 않는다. 최신 전체 통과: `logs/20260703-191402-27862`. |
+| `RM-C9` | 구현 | backpressure consumer HTTP role이 느린 send handler에 다량 `ProfileMsg`를 제출하고, provider evidence와 backlog 해소 뒤 후속 request 복구를 검증한다. public send submit은 bounded-failure oracle을 노출하지 않는다. 최신 전체 통과: `logs/20260708-131829-51832`. |

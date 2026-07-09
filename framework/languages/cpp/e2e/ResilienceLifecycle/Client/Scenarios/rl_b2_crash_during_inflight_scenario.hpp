@@ -33,6 +33,35 @@ inline bool file_contains (const std::string &path, const std::string &text)
     return false;
 }
 
+inline void wait_topology_weight (zlink::http_client::client_t &topology,
+                                  const std::string &routing_id,
+                                  std::uint32_t weight)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+    while (std::chrono::steady_clock::now () < deadline) {
+        auto result = topology.post ("/topology/wait")
+                        .body (nlohmann::json{{"routingId", routing_id},
+                                              {"state", "Ready"},
+                                              {"expectedCount", 1},
+                                              {"role", "router"},
+                                              {"timeoutMilliseconds", 1000}}
+                                 .dump (),
+                               "application/json")
+                        .submit<std::vector<topology_entry_result_t>> ()
+                        .result ();
+        if (result) {
+            for (const auto &entry : result.value ().body) {
+                if (entry.routing_id == routing_id && entry.state == "Ready"
+                    && entry.weight == weight) {
+                    return;
+                }
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("topology did not publish " + routing_id + " with expected weight");
+}
+
 inline void run_inflight_crash_scenario ()
 {
     auto consumer = zlink::http_client::client_t::create ()
@@ -60,13 +89,22 @@ inline void run_inflight_crash_scenario ()
       .value ();
 
     const std::string marker = "rl-b2-slow";
-    auto pending = std::async (std::launch::async, [&consumer, marker] {
-        auto response = consumer.post ("/profile/request/manual-b")
-                          .body (profile_req_t{.value = "slow", .marker = marker})
-                          .timeout (std::chrono::milliseconds (500))
-                          .submit<profile_res_t> ()
-                          .result ();
-        return response.has_value ();
+    auto pending = std::async (std::launch::async, [marker] {
+        try {
+            auto slow_consumer = zlink::http_client::client_t::create ()
+                                   .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                                   .timeout (std::chrono::milliseconds (10000))
+                                   .build ();
+            auto response = slow_consumer.post ("/profile/request/manual-b")
+                              .body (profile_req_t{.value = "slow", .marker = marker})
+                              .timeout (std::chrono::milliseconds (500))
+                              .submit<profile_res_t> ()
+                              .result ();
+            return response.has_value ();
+        }
+        catch (const std::exception &) {
+            return false;
+        }
     });
 
     const auto start_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
@@ -97,17 +135,32 @@ inline void run_inflight_crash_scenario ()
     ensure (!pending.get (),
             "RL-B2 in-flight request unexpectedly completed after provider crash");
 
-    provider_a.post ("/admin/restore").submit_raw ().result ().value ();
-    provider_a.post ("/admin/weight/wait")
+    auto provider_a_restore = zlink::http_client::client_t::create ()
+                                .base_url (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"))
+                                .timeout (std::chrono::milliseconds (10000))
+                                .build ();
+    provider_a_restore.post ("/admin/restore").submit_raw ().result ().value ();
+    provider_a_restore.post ("/admin/weight/wait")
       .body (nlohmann::json{{"expected", 100}}.dump (), "application/json")
       .submit_raw ()
       .result ()
       .value ();
+    wait_topology_weight (topology, "api-a", 100);
 
-    const auto follow_up = consumer.post ("/profile/request/new-client")
-                             .body (profile_req_t{.value = "fast",
-                                                  .marker = "rl-b2-after-crash"})
-                             .fetch<profile_res_t> ();
+    auto follow_up_consumer = zlink::http_client::client_t::create ()
+                                .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                                .timeout (std::chrono::milliseconds (10000))
+                                .build ();
+    const auto follow_up_raw = follow_up_consumer.post ("/profile/request")
+                                 .body (profile_req_t{.value = "fast",
+                                                      .marker = "rl-b2-after-crash"})
+                                 .submit_raw ()
+                                 .result ()
+                                 .value ();
+    ensure (follow_up_raw.status < 400,
+            "RL-B2 surviving provider HTTP request failed with status "
+              + std::to_string (follow_up_raw.status) + ": " + follow_up_raw.body);
+    const auto follow_up = nlohmann::json::parse (follow_up_raw.body).get<profile_res_t> ();
     ensure (follow_up.provider_rid == "api-a", "RL-B2 surviving provider traffic failed");
 
     touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
@@ -124,8 +177,12 @@ inline void run_inflight_crash_scenario ()
       .result ()
       .value ();
 
+    auto restored_consumer = zlink::http_client::client_t::create ()
+                               .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                               .timeout (std::chrono::milliseconds (10000))
+                               .build ();
     for (int index = 0; index < 32; ++index) {
-        const auto reply = consumer.post ("/profile/request")
+        const auto reply = restored_consumer.post ("/profile/request")
                              .body (profile_req_t{.value = "fast",
                                                   .marker = "rl-b2-restored-"
                                                             + std::to_string (index)})

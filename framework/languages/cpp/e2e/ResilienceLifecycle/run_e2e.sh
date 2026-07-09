@@ -3,8 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
-LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
@@ -59,11 +60,13 @@ REDIS_KEY_PREFIX="zlink:e2e:cfg5:$RUN_ID:"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
 
-cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
-cmake --build "$BUILD_DIR" --target \
-  zlink_cpp_e2e_resilience_lifecycle_provider \
-  zlink_cpp_e2e_resilience_lifecycle_consumer \
-  zlink_cpp_e2e_resilience_lifecycle_client >/dev/null
+if [[ "${ZLINK_CPP_E2E_SKIP_BUILD:-0}" != "1" ]]; then
+  cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
+  cmake --build "$BUILD_DIR" --target \
+    zlink_cpp_e2e_resilience_lifecycle_provider \
+    zlink_cpp_e2e_resilience_lifecycle_consumer \
+    zlink_cpp_e2e_resilience_lifecycle_client >/dev/null
+fi
 
 PROVIDER="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_provider"
 CONSUMER="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_consumer"
@@ -71,14 +74,87 @@ CLIENT="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_client"
 PIDS=()
 LAST_PID=""
 
-cleanup() {
-  local code=$?
-  for pid in "${PIDS[@]:-}"; do
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      kill "$pid" >/dev/null 2>&1 || true
+status_allowed() {
+  local status="$1"
+  shift
+  local allowed
+  for allowed in "$@"; do
+    if [[ "$status" -eq "$allowed" ]]; then
+      return 0
     fi
   done
-  wait >/dev/null 2>&1 || true
+  return 1
+}
+
+wait_pid_status() {
+  local pid="$1"
+  local label="$2"
+  shift 2
+  local status
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  set +e
+  wait "$pid"
+  status=$?
+  set -e
+  if [[ "$status" -eq 127 ]]; then
+    return 0
+  fi
+  if status_allowed "$status" "$@"; then
+    return 0
+  fi
+  echo "$label exited unexpectedly with status $status" >&2
+  return 1
+}
+
+forget_pid() {
+  local target="$1"
+  local remaining=()
+  local pid
+  for pid in "${PIDS[@]:-}"; do
+    if [[ -n "$pid" && "$pid" != "$target" ]]; then
+      remaining+=("$pid")
+    fi
+  done
+  PIDS=("${remaining[@]}")
+}
+
+terminate_pid() {
+  local pid="$1"
+  local label="${2:-process $pid}"
+  local state
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    wait_pid_status "$pid" "$label" 0 130 143
+    return $?
+  fi
+  kill "$pid" >/dev/null 2>&1 || true
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+    state="$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print $1}')"
+    if [[ -z "$state" || "$state" == Z* ]]; then
+      wait_pid_status "$pid" "$label" 0 130 143
+      return $?
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  kill -9 "$pid" >/dev/null 2>&1 || true
+  wait_pid_status "$pid" "$label" 0 130 143
+}
+
+cleanup() {
+  local code=$?
+  local cleanup_failed=0
+  for pid in "${PIDS[@]:-}"; do
+    if [[ -z "$pid" ]]; then
+      continue
+    fi
+    if ! terminate_pid "$pid" "cleanup process $pid"; then
+      cleanup_failed=1
+    fi
+  done
   if [[ -n "$REDIS_CONTAINER" && "$REDIS_OWNED" == "1" ]]; then
     docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   elif [[ -n "${REDIS_ENDPOINT:-}" ]]; then
@@ -92,6 +168,9 @@ cleanup() {
   fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+  elif [[ $cleanup_failed -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    code=1
   fi
   exit "$code"
 }
@@ -131,6 +210,34 @@ wait_tcp() {
   return 1
 }
 
+wait_http_health() {
+  local name="$1"
+  local http="$2"
+  python3 - "$name" "$http/health" "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+import urllib.request
+
+name = sys.argv[1]
+url = sys.argv[2]
+deadline = time.monotonic() + float(sys.argv[3])
+poll_seconds = float(sys.argv[4])
+probe_timeout = float(sys.argv[5])
+last = None
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(url, timeout=probe_timeout) as response:
+            if response.status == 200:
+                raise SystemExit(0)
+            last = f"status {response.status}"
+    except Exception as error:
+        last = str(error)
+    time.sleep(poll_seconds)
+sys.stderr.write(f"Timed out waiting for {name} health at {url}: {last}\n")
+raise SystemExit(1)
+PY
+}
+
 wait_marker() {
   local file="$1"
   for _ in $(seq 1 "$SCENARIO_MARKER_ATTEMPTS"); do
@@ -145,28 +252,26 @@ wait_marker() {
 
 stop_pid() {
   local pid="$1"
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
   if kill -0 "$pid" >/dev/null 2>&1; then
     kill "$pid" >/dev/null 2>&1 || true
-    for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
-      if ! kill -0 "$pid" >/dev/null 2>&1; then
-        wait "$pid" >/dev/null 2>&1 || true
-        return 0
-      fi
-      sleep "$LOCAL_READINESS_POLL_SECONDS"
-    done
-    kill -9 "$pid" >/dev/null 2>&1 || true
-    wait "$pid" >/dev/null 2>&1 || true
+    wait_pid_status "$pid" "stopped process $pid" 0 130 143
+    forget_pid "$pid"
   fi
-  return 0
 }
 
 kill_pid() {
   local pid="$1"
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
   if kill -0 "$pid" >/dev/null 2>&1; then
     kill -9 "$pid" >/dev/null 2>&1 || true
-    wait "$pid" >/dev/null 2>&1 || true
+    wait_pid_status "$pid" "killed process $pid" 137
+    forget_pid "$pid"
   fi
-  return 0
 }
 
 crash_provider() {
@@ -203,8 +308,9 @@ while time.monotonic() < deadline:
 raise SystemExit(1)
 PY
   then
-    wait "$pid" >/dev/null 2>&1 || true
-    return 0
+    wait_pid_status "$pid" "crashed provider $pid" 134
+    forget_pid "$pid"
+    return $?
   fi
   echo "Timed out waiting for provider crash at $http" >&2
   return 1
@@ -251,6 +357,48 @@ PY
 post_consumer_profile() {
   local marker="$1"
   post_consumer_profile_request "/profile/request" "$marker" "" ""
+}
+
+wait_consumer_profile_ready() {
+  local name="$1"
+  local count="$2"
+  python3 - "$HTTP_CONSUMER" "$name" "$count" "$SCENARIO_MARKER_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+base = sys.argv[1]
+name = sys.argv[2]
+count = int(sys.argv[3])
+timeout_seconds = float(sys.argv[4])
+poll_seconds = float(sys.argv[5])
+deadline = time.monotonic() + timeout_seconds
+last = None
+for index in range(1, count + 1):
+    marker = f"{name}-{index}"
+    while time.monotonic() < deadline:
+        try:
+            request = urllib.request.Request(
+                f"{base}/profile/request",
+                data=json.dumps({"value": marker}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=5.0) as response:
+                body = response.read().decode("utf-8")
+                payload = json.loads(body)
+                if response.status == 200 and payload.get("value") == f"profile:{marker}":
+                    break
+                last = f"unexpected payload {payload}"
+        except Exception as error:
+            last = str(error)
+        time.sleep(poll_seconds)
+    else:
+        raise SystemExit(
+            f"Timed out waiting {timeout_seconds}s for {name} profile readiness: {last}"
+        )
+PY
 }
 
 post_consumer_profile_request() {
@@ -407,7 +555,8 @@ wait_location_topology() {
   local routing_id="$1"
   local state="${2:-Ready}"
   local expected_count="${3:-1}"
-  python3 - "$HTTP_CONSUMER" "$routing_id" "$state" "$expected_count" "$TOPOLOGY_WAIT_TIMEOUT_MILLISECONDS" "$TOPOLOGY_WAIT_HTTP_TIMEOUT_SECONDS" <<'PY'
+  local role="${4:-router}"
+  python3 - "$HTTP_CONSUMER" "$routing_id" "$state" "$expected_count" "$role" "$TOPOLOGY_WAIT_TIMEOUT_MILLISECONDS" "$TOPOLOGY_WAIT_HTTP_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import urllib.request
@@ -416,14 +565,16 @@ base = sys.argv[1]
 routing_id = sys.argv[2]
 state = sys.argv[3]
 expected_count = int(sys.argv[4])
-topology_wait_timeout_milliseconds = int(sys.argv[5])
-http_timeout_seconds = float(sys.argv[6])
+role = sys.argv[5]
+topology_wait_timeout_milliseconds = int(sys.argv[6])
+http_timeout_seconds = float(sys.argv[7])
 request = urllib.request.Request(
     f"{base}/topology/wait",
     data=json.dumps({
         "routing_id": routing_id,
         "state": state,
         "expected_count": expected_count,
+        "role": role,
         "timeout_milliseconds": topology_wait_timeout_milliseconds,
     }).encode("utf-8"),
     headers={"Content-Type": "application/json"},
@@ -435,7 +586,9 @@ with urllib.request.urlopen(request, timeout=http_timeout_seconds) as response:
         raise SystemExit(f"unexpected topology wait status {response.status}: {body}")
     entries = json.loads(body)
     count = sum(1 for entry in entries
-                if entry.get("routing_id") == routing_id and entry.get("state") == state)
+                if entry.get("routing_id") == routing_id
+                and entry.get("state") == state
+                and entry.get("role") == role)
     if count != expected_count:
         raise SystemExit(f"unexpected topology count {count}: {entries}")
 PY
@@ -481,9 +634,8 @@ start_provider() {
     "$PROVIDER" >"$LOG_DIR/$rid-$instance.stdout.log" 2>"$LOG_DIR/$rid-$instance.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
-  wait_port "$rid-api" "$api"
-  wait_port "$rid-route" "$route"
   wait_port "$rid-http" "$http"
+  wait_http_health "$rid" "$http"
 }
 
 start_consumer() {
@@ -496,6 +648,7 @@ start_consumer() {
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port consumer-http "$HTTP_CONSUMER"
+  wait_http_health consumer "$HTTP_CONSUMER"
 }
 
 run_client() {
@@ -573,7 +726,12 @@ with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
 PY
 }
 
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+  REDIS_OWNED=1
+  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
+  echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
+elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
   echo "redis endpoint=$REDIS_ENDPOINT (external)"
 else
@@ -581,18 +739,11 @@ else
     echo "Docker is required to run ResilienceLifecycle E2E without ZLINK_REDIS_E2E_ENDPOINT." >&2
     exit 1
   fi
-  REDIS_PORT="$(python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-)"
-  REDIS_CONTAINER="zlink-cpp-rl-redis-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:$REDIS_PORT:6379" redis:7-alpine >/dev/null
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-e2e-resiliencelifecycle" "redis:7-alpine"
+  )
   REDIS_OWNED=1
-  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
 REDIS_HOST="${REDIS_ENDPOINT%:*}"
@@ -606,7 +757,8 @@ start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
 start_consumer
 CONSUMER_PID="$LAST_PID"
-sleep "$ROUTE_SETTLE_SECONDS"
+wait_location_topology api-a Ready 1
+wait_location_topology api-b Ready 1
 post_consumer_profile "rl-consumer-smoke"
 grep -q "message flow" "$LOG_DIR/consumer-flow.log"
 echo "scenario RL-consumer passed"
@@ -623,11 +775,10 @@ echo "scenario RL-D3 passed"
 run_client observer-fault rl-d2 env
 grep -q "scenario RL-D2 passed" "$LOG_DIR/client-rl-d2.stdout.log"
 echo "scenario RL-D2 passed"
-stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
+wait_location_topology api-b Ready 0
+sleep "$ROUTE_SETTLE_SECONDS"
 
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v1
-API_A_PID="$LAST_PID"
 READY="$LOG_DIR/rl-a1-ready"
 CONTINUE="$LOG_DIR/rl-a1-continue"
 run_client rl-a1 rl-a1 env \
@@ -635,18 +786,22 @@ run_client rl-a1 rl-a1 env \
   ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
 A1_CLIENT_PID="$!"
 wait_marker "$READY"
-stop_pid "$API_A_PID"
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v2
-API_A_PID="$LAST_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-b-v2
+API_B_PID="$LAST_PID"
+wait_location_topology api-b Ready 1
 sleep "$ROUTE_SETTLE_SECONDS"
 touch "$CONTINUE"
 wait "$A1_CLIENT_PID"
 grep -q "scenario RL-A1 client passed" "$LOG_DIR/client-rl-a1.stdout.log"
 echo "scenario RL-A1 passed"
+stop_pid "$API_B_PID"
 stop_pid "$API_A_PID"
 
 start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v1
 API_A_PID="$LAST_PID"
+start_provider api-b "$API_B_GREEN" "$ROUTE_B_GREEN" "" "$HTTP_B_GREEN" api-b-remap
+API_B_GREEN_PID="$LAST_PID"
+wait_location_topology api-b Ready 1
 READY="$LOG_DIR/rl-a2-ready"
 CONTINUE="$LOG_DIR/rl-a2-continue"
 run_client rl-a2 rl-a2 env \
@@ -654,20 +809,18 @@ run_client rl-a2 rl-a2 env \
   ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
 A2_CLIENT_PID="$!"
 wait_marker "$READY"
-stop_pid "$API_A_PID"
-start_provider api-a "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-a-v2
-API_A_PID="$LAST_PID"
+stop_pid "$API_B_GREEN_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-b-restored
+API_B_PID="$LAST_PID"
+wait_location_topology api-b Ready 1
 sleep "$ROUTE_SETTLE_SECONDS"
 touch "$CONTINUE"
 wait "$A2_CLIENT_PID"
 grep -q "scenario RL-A2 client passed" "$LOG_DIR/client-rl-a2.stdout.log"
 echo "scenario RL-A2 passed"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
+wait_location_topology api-a Ready 1
+wait_location_topology api-b Ready 1
+wait_consumer_profile_ready rl-b3-channel-ready 2
 READY="$LOG_DIR/rl-b3-ready"
 CONTINUE="$LOG_DIR/rl-b3-continue"
 run_client rl-b3 rl-b3 env \
@@ -676,7 +829,7 @@ run_client rl-b3 rl-b3 env \
 B3_CLIENT_PID="$!"
 wait_marker "$READY"
 stop_pid "$API_B_PID"
-sleep "$ROUTE_SETTLE_SECONDS"
+wait_location_topology api-b Ready 0
 touch "$CONTINUE"
 wait "$B3_CLIENT_PID"
 grep -q "scenario RL-B3 client passed" "$LOG_DIR/client-rl-b3.stdout.log"
@@ -687,6 +840,8 @@ start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
 start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
+wait_location_topology api-a Ready 1
+wait_location_topology api-b Ready 1
 READY="$LOG_DIR/rl-b2-ready"
 CONTINUE="$LOG_DIR/rl-b2-continue"
 DRAINED="$LOG_DIR/rl-b2-after-crash"
@@ -713,7 +868,7 @@ post_consumer_new_client_burst "fast" "rl-c2-after-crash-" 8 "api-a"
 wait_provider_evidence_value_prefix "rl-c2-after-crash-" "api-a"
 start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
-sleep "$ROUTE_SETTLE_SECONDS"
+wait_location_topology "api-b" "Ready" 1
 post_consumer_profile_burst "fast" "rl-c2-restored-" 40
 wait_provider_evidence_value_prefix "rl-c2-restored-" "api-b"
 echo "scenario RL-C2 passed"
@@ -780,6 +935,8 @@ grep -q "scenario RL-C1 passed" "$LOG_DIR/client-rl-c1.stdout.log"
 echo "scenario RL-C1 passed"
 for index in 1 2 3; do
   stop_pid "$API_B_PID"
+  wait_location_topology api-b Ready 0
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rl-a5 "rl-a5-down-$index" env \
     ZLINK_CPP_E2E_FLAP_PHASE=down \
     ZLINK_CPP_E2E_FLAP_CYCLE="$index"

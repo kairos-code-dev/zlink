@@ -55,10 +55,14 @@ class location_lifecycle_t
     location_lifecycle_t &operator= (const location_lifecycle_t &) = delete;
 
     actor_claim_result_t claim_actor (actor_location_t actor,
-                                      actor_deactivate_callback_t deactivate = {})
+                                      actor_deactivate_callback_t deactivate = {},
+                                      bool takeover = false)
     {
-        const auto result =
+        auto result =
           _runtime->write_actor (actor, location_write_intent_t::new_claim);
+        if (result.status == location_write_status_t::rejected_conflict && takeover) {
+            result = _runtime->write_actor (actor, location_write_intent_t::takeover);
+        }
         if (result.status != location_write_status_t::stored) {
             return {result.status, std::move (actor), result.updated_at};
         }

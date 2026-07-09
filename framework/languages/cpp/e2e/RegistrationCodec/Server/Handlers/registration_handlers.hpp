@@ -44,6 +44,47 @@ class auto_send_handler_t
     scenario_state_t &_state;
 };
 
+class attribute_request_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using request_type = echo_attr_req_t;
+    using reply_type = echo_attr_res_t;
+    static constexpr const char *topic_name = "registration.attribute";
+
+    explicit attribute_request_handler_t (scenario_state_t &state) : _state (state) {}
+
+    echo_attr_res_t handle (const echo_attr_req_t &request,
+                            const zlink::framework::request_context_t &context)
+    {
+        _state.record ("RC-A2-request", context.packet_name + ":" + request.value);
+        return {.value = "attr:" + request.value,
+                .packet_name = context.packet_name,
+                .content_type = context.content_type};
+    }
+
+  private:
+    scenario_state_t &_state;
+};
+
+class attribute_send_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using message_type = echo_attr_msg_t;
+    static constexpr const char *topic_name = "registration.attribute";
+
+    explicit attribute_send_handler_t (scenario_state_t &state) : _state (state) {}
+
+    void handle (const echo_attr_msg_t &message, const zlink::framework::send_context_t &context)
+    {
+        _state.record ("RC-A2-send", context.packet_name + ":" + message.value);
+    }
+
+  private:
+    scenario_state_t &_state;
+};
+
 class manual_route_handler_t
 {
   public:

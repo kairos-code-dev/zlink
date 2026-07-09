@@ -26,6 +26,7 @@ struct actor_record_t
     bool bound = false;
     bool disconnected = false;
     stream_codec_t bound_session_codec = stream_codec_t::message_pack;
+    bool bound_session_stream_sink = false;
     std::optional<zlink::message_t> create_payload;
 };
 
@@ -83,11 +84,13 @@ class actor_gateway_runtime_t
                              route_client_t route_client,
                              std::string route_channel_name,
                              zlink::routing_id_t target_node_rid,
-                             stream_codec_t codec = stream_codec_t::message_pack);
+                             stream_codec_t codec = stream_codec_t::message_pack,
+                             bool replace_existing = true);
     void bind_session_sink (
       actor_ref_t actor_ref,
       std::function<task_t<void> (std::string, const zlink::message_t &)> sink,
-      stream_codec_t codec = stream_codec_t::message_pack);
+      stream_codec_t codec = stream_codec_t::message_pack,
+      bool replace_existing = true);
     void unbind_session_stream (std::string actor_id);
     result_t<void> dispatch_bound_session_send (const actor_ref_t &actor_ref,
                                                 std::string packet_name,

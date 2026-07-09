@@ -17,6 +17,7 @@
 | SF-D1 | 구현 | lease TTL보다 짧은 Redis outage 뒤 status가 healthy로 회복되고 request가 계속 성공한다. |
 | SF-D2 | 구현 | Redis outage 중 provider `api-b`가 crash된 뒤 recovery 시 survivor `api-a`는 다시 live row로 보이고 dead `api-b`는 제외된다. |
 | SF-D3 | 구현 | runtime status가 healthy → unhealthy(last error 포함) → healthy 순서로 관측된다. |
+| SF-E1 | 구현 | consumer process의 Redis location store 호출에 E2E 전용 delay wrapper로 1200ms 지연을 주입한다. 지연된 peer query가 실제로 느려지는 동안 같은 consumer process의 application request p99가 baseline budget 안에 남고, 지연 해제 뒤 request가 정상 복구되는지 검증한다. 최신 전체 통과: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all` (`logs/20260708-135342-166331`). |
 
 ## 검증
 
@@ -28,3 +29,23 @@
     `logs/20260703-212513-8240`, `logs/20260703-212523-9016`,
     `logs/20260703-212542-10036`
   - 의미: SF-A1, SF-A2, SF-B1, SF-B2, SF-C1, SF-C2, SF-D1, SF-D2, SF-D3가 모두 passed marker를 남기고 `store-failure c++ e2e result=passed`로 끝났다.
+- 2026-07-07: `CMAKE_BUILD_PARALLEL_LEVEL=1 nice -n 10 timeout 900s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh SF-E1`
+  - 결과: 통과
+  - 로그: `logs/20260707-190143-3182342`
+  - 의미: store 응답 지연 중에도 같은 consumer process의 무관 application request가 baseline budget 안에서 처리되고, 지연 해제 뒤 request path가 복구된다.
+- 2026-07-07: `CMAKE_BUILD_PARALLEL_LEVEL=1 nice -n 10 timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260707-190210-3183591`(SF-A1), `logs/20260707-190227-3185256`(SF-A2),
+    `logs/20260707-190236-3186388`(SF-B1), `logs/20260707-190302-3188778`(SF-B2),
+    `logs/20260707-190332-3191759`(SF-C1), `logs/20260707-190403-3194237`(SF-C2),
+    `logs/20260707-190417-3195710`(SF-D1), `logs/20260707-190453-3199077`(SF-D2),
+    `logs/20260707-190530-3201684`(SF-D3), `logs/20260707-190636-3206735`(SF-E1)
+  - 의미: 공통 config-6의 SF-A1, SF-A2, SF-B1, SF-B2, SF-C1, SF-C2, SF-D1, SF-D2, SF-D3, SF-E1이 모두 C++ runner에서 passed marker를 남기고 `store-failure c++ e2e result=passed`로 끝났다.
+- 2026-07-08: `timeout 1200s framework/languages/cpp/e2e/DiscoveryRegistryHa/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260708-135153-159069`(SF-A1), `logs/20260708-135202-159895`(SF-A2),
+    `logs/20260708-135206-160402`(SF-B1), `logs/20260708-135216-161152`(SF-B2),
+    `logs/20260708-135231-162310`(SF-C1), `logs/20260708-135254-163218`(SF-C2),
+    `logs/20260708-135302-163973`(SF-D1), `logs/20260708-135314-164810`(SF-D2),
+    `logs/20260708-135336-165762`(SF-D3), `logs/20260708-135342-166331`(SF-E1)
+  - 의미: runner가 Redis container를 parent run에서 한 번만 띄우고 각 scenario에 endpoint와 container 이름을 넘긴다. `SF-C1`과 `SF-D2`의 provider SIGABRT는 scenario가 `/admin/crash`로 만든 failure injection으로만 허용하고, cleanup 또는 일반 provider/consumer 종료의 비정상 status는 실패로 드러낸다. Redis outage 이후 async Redis future가 무기한 남지 않도록 C++ Redis location store operation은 제한 시간 안에 끝나지 않으면 실패를 반환한다.

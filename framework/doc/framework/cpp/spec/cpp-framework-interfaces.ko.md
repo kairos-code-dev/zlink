@@ -237,10 +237,10 @@ point가 필요하면 `contracts/*` 아래 별도 public 타입을 만든다. ba
 타입을 직접 다루지 않는다. 상태 저장소, 실패 예외, queue slot은 public header에 두지 않고
 `src/runtime/messaging`의 private state에 둔다.
 
-`src/runtime/messaging/pending_submit.*`는 `.NET`의 `PendingSubmit`에 대응한다. C++에서는
-public cancellation token을 두지 않으므로 cancellation registration은 만들지 않는다.
-대신 command submit의 accepted 완료, request submit의 별도 응답 완료, deadline 만료,
-wake callback은 같은 책임으로 유지한다.
+`src/runtime/messaging/pending_submit.*`는 `.NET`의 `PendingSubmit`에 대응한다. 이 모듈은
+command submit의 accepted 완료, request submit의 별도 응답 완료, deadline 만료, wake callback을
+내부 상태로 유지한다. public cancellation token은 `contracts/cancellation.hpp`가 담당하며,
+pending queue slot이나 wake callback 구조를 사용자가 직접 다루지 않게 한다.
 
 `src/runtime/messaging/submit_queue.*`는 `.NET`의 `ZLinkSubmitQueue`에 대응한다. 큐는
 bounded FIFO이며 capacity 초과와 disposed 상태를 내부에서 막는다. public channel call
@@ -758,7 +758,8 @@ enum class framework_error_kind_t {
     timeout,
     shutdown,
     disconnected,
-    closed
+    closed,
+    cancelled
 };
 
 class framework_exception_t : public std::exception {
@@ -779,6 +780,19 @@ public:
     bool cancel() noexcept;
 };
 
+class cancellation_token_t {
+public:
+    bool can_be_cancelled() const noexcept;
+    bool is_cancellation_requested() const noexcept;
+    void register_callback(std::function<void()> callback) const;
+};
+
+class cancellation_token_source_t {
+public:
+    cancellation_token_t token() const noexcept;
+    bool cancel() const;
+};
+
 template <typename TReply>
 class request_call_t {
 public:
@@ -786,6 +800,8 @@ public:
     request_call_t &packet_name(std::string packet_name);
     request_call_t &metadata(std::string key, std::string value);
     task_t<TReply> async();
+    task_t<TReply> yield();
+    task_t<TReply> yield(cancellation_token_t cancellation_token);
 };
 
 class send_call_t {
@@ -1479,6 +1495,12 @@ raw payload를 이미 가진 runtime/harness 경계만 `join_spot_raw(...)`와
 지점이다.
 일반 channel `request_call_t`와 `send_call_t`는 `packet_name(...)`, `metadata(...)`,
 `timeout(...)`을 submit 전에 모으고, submit 시점에 framework envelope 정책으로 넘긴다.
+Spot handler처럼 framework turn 안에서 request call object를 기다려야 하면 `yield()`를 쓴다.
+`yield()`는 현재 Spot turn을 반납한 뒤 reply가 오면 같은 실행선에서 continuation을 재개한다.
+취소가 필요한 경우 호출자는 `cancellation_token_source_t`에서 token을 만들고 `yield(token)`에 넘긴다.
+token이 취소되면 아직 reply를 기다리는 yielded task는 `framework_error_kind_t::cancelled` 실패로 끝나며,
+framework는 반납했던 Spot turn을 정리해서 같은 Spot의 다음 message가 막히지 않게 한다. 이 계약은
+cooperative cancellation이다. 이미 reply가 완료된 뒤 취소가 들어오면 완료된 reply를 취소로 바꾸지 않는다.
 
 ```cpp
 auto reply = co_await client

@@ -11,6 +11,7 @@
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -59,6 +60,8 @@ class route_channel_runtime_t
     bool disconnect (const std::string &endpoint);
     std::vector<std::string> list_connections () const;
     std::vector<route_connection_set_t::target_t> list_connection_targets () const;
+    void mark_peer_ready (const zlink::routing_id_t &peer_rid);
+    void mark_peer_disconnected (const zlink::routing_id_t &peer_rid);
     void bind_endpoint (std::string endpoint);
     const std::string &bind_endpoint () const noexcept;
     void manual_connections (std::vector<std::string> endpoints);
@@ -123,6 +126,9 @@ class route_channel_runtime_t
 
     const std::vector<route_outbound_packet_t> &outbound_packets () const noexcept;
     std::size_t pending_request_count () const noexcept;
+    result_t<void> wait_until_connected (std::chrono::milliseconds timeout) const;
+    result_t<void> wait_until_peer_ready (const zlink::routing_id_t &target_node_rid,
+                                          std::chrono::milliseconds timeout) const;
 
   private:
     route_outbound_packet_t &
@@ -135,7 +141,6 @@ class route_channel_runtime_t
                                std::optional<zlink::routing_id_t> target_spot_rid,
                                runtime::messaging::message_parts_t parts);
     result_t<void> ensure_connected () const;
-
     std::string _router_channel_id;
     mutable std::mutex _mutex;
     std::optional<zlink::routing_id_t> _routing_id;
@@ -144,6 +149,7 @@ class route_channel_runtime_t
     std::vector<std::string> _manual_connections;
     bool _running = false;
     route_connection_set_t _connections;
+    std::set<std::string> _ready_peer_rids;
     channel_pending_requests_t _pending_requests;
     std::vector<route_outbound_packet_t> _outbound_packets;
     send_backend_t _send_backend;

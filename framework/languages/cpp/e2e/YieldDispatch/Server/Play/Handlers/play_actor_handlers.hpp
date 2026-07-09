@@ -162,13 +162,25 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-push-yield-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
-        actor.context.bound_session ()
-          .send (yd::actor_push_notify_t{.actor_id = actor.actor_id,
-                                         .request_id = request.request_id,
-                                         .value = request.value,
-                                         .node_rid = _evidence.node_rid})
-          .packet_name (yd::actor_push_notify_t::packet_name)
-          .submit ();
+        auto pushed =
+          actor.context.bound_session ()
+            .send (yd::actor_push_notify_t{.actor_id = actor.actor_id,
+                                           .request_id = request.request_id,
+                                           .value = request.value,
+                                           .node_rid = _evidence.node_rid})
+            .packet_name (yd::actor_push_notify_t::packet_name)
+            .submit ();
+        if (!pushed) {
+            const auto *error = pushed.error ();
+            _evidence.add ("actor-push-yield-failed|rid=" + _evidence.node_rid + "|spot="
+                           + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                           + "|request=" + request.request_id + "|reason="
+                           + (error != nullptr ? error->what () : "actor bound push failed")
+                           + "|handler=actor");
+            throw zlink::framework::framework_exception_t (
+              pushed.error_kind (), error != nullptr ? error->what ()
+                                                     : "actor bound push failed");
+        }
         _evidence.add ("actor-push-yield-completed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");

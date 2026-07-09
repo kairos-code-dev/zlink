@@ -152,17 +152,24 @@ class gamequest_session_t final : public packet_stream_session_t
 {
   public:
     using dependency_types = dependency_list_t<channel_client_t,
+                                               route_client_t,
                                                game_api_store_t,
                                                sample_topology_t,
                                                session_actor_manager_t,
                                                actor_gateway_t>;
 
     gamequest_session_t (channel_client_t &channels,
+                         route_client_t &routes,
                          game_api_store_t &store,
                          sample_topology_t &topology,
                          session_actor_manager_t &actors,
                          actor_gateway_t &gateway) :
-        _channels (channels), _store (store), _topology (topology), _actors (actors), _gateway (gateway)
+        _channels (channels),
+        _routes (routes),
+        _store (store),
+        _topology (topology),
+        _actors (actors),
+        _gateway (gateway)
     {
     }
 
@@ -307,10 +314,16 @@ class gamequest_session_t final : public packet_stream_session_t
 
     task_t<sync_quest_progress_res_t> sync_projection (const std::string &player_id)
     {
+        co_await ensure_player_spot (player_id);
         auto synced =
-          co_await _channels
-            .request (quest_owner_channel_for (owner_mission_id (player_id)),
-                      sync_quest_progress_req_t{player_id})
+          co_await _routes
+            .request_to_node (quest_spot_route_channel_for (owner_mission_id (player_id)),
+                              spot_ref_t{
+                                .mesh_name = sample_names_t::quest_spot_discovery,
+                                .node_rid = owner_route_rid (player_id),
+                                .spot_rid =
+                                  routing_id_t::from (std::string (player_spot_rid (player_id).value ()))},
+                              sync_quest_progress_req_t{player_id})
             .packet_name (sync_quest_progress_req_t::packet_name)
             .template async<sync_quest_progress_res_t> ();
         co_return synced;
@@ -318,10 +331,16 @@ class gamequest_session_t final : public packet_stream_session_t
 
     task_t<apply_gameplay_event_res_t> apply_event (const gameplay_event_envelope_t &event)
     {
+        co_await ensure_player_spot (event.player_id);
         auto applied =
-          co_await _channels
-            .request (quest_owner_channel_for (owner_mission_id (event.player_id)),
-                      apply_gameplay_event_req_t{event})
+          co_await _routes
+            .request_to_node (quest_spot_route_channel_for (owner_mission_id (event.player_id)),
+                              spot_ref_t{
+                                .mesh_name = sample_names_t::quest_spot_discovery,
+                                .node_rid = owner_route_rid (event.player_id),
+                                .spot_rid = routing_id_t::from (
+                                  std::string (player_spot_rid (event.player_id).value ()))},
+                              apply_gameplay_event_req_t{event})
             .packet_name (apply_gameplay_event_req_t::packet_name)
             .template async<apply_gameplay_event_res_t> ();
         _store.record_event (event);
@@ -332,7 +351,23 @@ class gamequest_session_t final : public packet_stream_session_t
         co_return applied;
     }
 
+    task_t<void> ensure_player_spot (const std::string &player_id)
+    {
+        auto ensured =
+          co_await _channels
+            .request (quest_owner_channel_for (owner_mission_id (player_id)),
+                      ensure_player_quest_spot_req_t{player_id})
+            .packet_name (ensure_player_quest_spot_req_t::packet_name)
+            .template async<ensure_player_quest_spot_res_t> ();
+        if (!ensured.ok) {
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "GameQuest player quest spot ensure failed");
+        }
+        co_return;
+    }
+
     channel_client_t &_channels;
+    route_client_t &_routes;
     game_api_store_t &_store;
     sample_topology_t &_topology;
     session_actor_manager_t &_actors;
@@ -403,6 +438,20 @@ int main (int argc, char **argv)
         add_gamequest_location_store (options, topology);
         options.add_client_server_channel (quest_owner_channel_for ("mission-a")).enable_client ();
         options.add_client_server_channel (quest_owner_channel_for ("mission-b")).enable_client ();
+        options.add_route_mesh_channel (quest_spot_route_channel_for ("mission-a"))
+          .enable_client (topology.mission_spot_route_endpoint_for ("mission-a"));
+        options.add_route_mesh_channel (quest_spot_route_channel_for ("mission-b"))
+          .enable_client (topology.mission_spot_route_endpoint_for ("mission-b"));
+        options.add_spot_mesh (std::string (sample_names_t::quest_spot_discovery) + "."
+                               + topology.api_name)
+          .set_routing_id (topology.selected_api_rid ())
+          .enable_router (topology.selected_api_spot_router_endpoint ())
+          .connect_router (zlink::routing_id_t::from (sample_names_t::mission_a_rid),
+                           topology.mission_a_spot_router_endpoint)
+          .connect_router (zlink::routing_id_t::from (sample_names_t::mission_b_rid),
+                           topology.mission_b_spot_router_endpoint)
+          .accept_route_mesh (quest_spot_route_channel_for ("mission-a"))
+          .accept_route_mesh (quest_spot_route_channel_for ("mission-b"));
         options.add_stream_node (sample_names_t::stream_node)
           .bind (topology.selected_api_stream_endpoint ())
           .register_session<gamequest_session_t> ();

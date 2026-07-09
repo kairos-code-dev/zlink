@@ -7,9 +7,11 @@
 #include <zlink/http_client.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
@@ -32,9 +34,13 @@ inline void wait_provider_evidence_prefix_on (const std::string &base_url,
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (15);
     while (std::chrono::steady_clock::now () < deadline) {
-        const auto evidence = fetch_evidence (base_url);
-        if (count_evidence_prefix (evidence, "ProfileReq", prefix) > 0) {
-            return;
+        try {
+            const auto evidence = fetch_evidence (base_url);
+            if (count_evidence_prefix (evidence, "ProfileReq", prefix) > 0) {
+                return;
+            }
+        }
+        catch (const std::exception &) {
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (100));
     }
@@ -56,6 +62,38 @@ inline void wait_provider_weight_on (zlink::http_client::client_t &provider, int
                                   + std::to_string (result.value ().status) + ": "
                                   + result.value ().body);
     }
+}
+
+inline void wait_consumer_topology_weight (const std::string &routing_id, std::uint32_t expected)
+{
+    auto consumer = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (3000))
+                      .build ();
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+    int stable_observations = 0;
+    while (std::chrono::steady_clock::now () < deadline) {
+        try {
+            auto entries = consumer.get ("/topology").fetch<std::vector<topology_entry_result_t>> ();
+            bool matched = false;
+            for (const auto &entry : entries) {
+                if (entry.routing_id == routing_id && entry.weight == expected) {
+                    matched = true;
+                    break;
+                }
+            }
+            stable_observations = matched ? stable_observations + 1 : 0;
+            if (stable_observations >= 3) {
+                return;
+            }
+        }
+        catch (const std::exception &) {
+            stable_observations = 0;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("timed out waiting for topology weight " + routing_id + "="
+                              + std::to_string (expected));
 }
 
 inline void post_provider_admin_on (zlink::http_client::client_t &provider,
@@ -84,41 +122,71 @@ inline void run_rl_b4_runtime_drain_scenario ()
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
 
-    const auto before_drain = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
-    post_provider_admin_on (provider_b, "/admin/drain");
-    wait_provider_weight_on (provider_b, 0);
+    std::string phase = "initial evidence";
+    try {
+        const auto before_drain = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+        phase = "drain admin";
+        post_provider_admin_on (provider_b, "/admin/drain");
+        phase = "wait drain weight";
+        wait_provider_weight_on (provider_b, 0);
+        wait_consumer_topology_weight ("api-b", 0);
 
-    for (int index = 0; index < 20; ++index) {
-        const auto marker = "rl-b4-drained-" + std::to_string (index);
-        const auto reply = consumer.post ("/profile/request")
-                             .body (profile_req_t{.value = "fast", .marker = marker})
-                             .fetch<profile_res_t> ();
-        ensure (reply.provider_rid == "api-a", "RL-B4 drained provider received request");
+        phase = "drained traffic";
+        for (int index = 0; index < 20; ++index) {
+            const auto marker = "rl-b4-drained-" + std::to_string (index);
+            const auto reply = consumer.post ("/profile/request")
+                                 .body (profile_req_t{.value = "fast", .marker = marker})
+                                 .fetch<profile_res_t> ();
+            ensure (reply.provider_rid == "api-a", "RL-B4 drained provider received request");
+        }
+
+        phase = "after-drain evidence";
+        const auto after_drain = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+        const auto new_b =
+          count_evidence_prefix (after_drain, "ProfileReq", "rl-b4-drained-")
+          - count_evidence_prefix (before_drain, "ProfileReq", "rl-b4-drained-");
+        ensure (new_b == 0, "RL-B4 api-b evidence changed after drain");
+        phase = "surviving provider evidence";
+        wait_provider_evidence_prefix_on (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"),
+                                          "rl-b4-drained-");
+
+        phase = "restore admin";
+        post_provider_admin_on (provider_b, "/admin/restore");
+        phase = "wait restore weight";
+        wait_provider_weight_on (provider_b, 100);
+        wait_consumer_topology_weight ("api-b", 100);
+
+        phase = "restored traffic";
+        const auto restore_deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (30);
+        for (int index = 0; std::chrono::steady_clock::now () < restore_deadline; ++index) {
+            const auto marker = "rl-b4-restored-" + std::to_string (index);
+            try {
+                const auto reply = consumer.post ("/profile/request")
+                                     .body (profile_req_t{.value = "fast", .marker = marker})
+                                     .fetch<profile_res_t> ();
+                ensure (reply.value == "profile:fast",
+                        "RL-B4 restored request returned an unexpected value");
+                if (reply.provider_rid == "api-b") {
+                    std::cout << "scenario RL-B4 passed\n";
+                    return;
+                }
+                const auto evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+                if (count_evidence_prefix (evidence, "ProfileReq", "rl-b4-restored-") > 0) {
+                    std::cout << "scenario RL-B4 passed\n";
+                    return;
+                }
+            }
+            catch (const std::exception &) {
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+        throw std::runtime_error ("RL-B4 did not route restored traffic to api-b");
     }
-
-    const auto after_drain = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
-    const auto new_b =
-      count_evidence_prefix (after_drain, "ProfileReq", "rl-b4-drained-")
-      - count_evidence_prefix (before_drain, "ProfileReq", "rl-b4-drained-");
-    ensure (new_b == 0, "RL-B4 api-b evidence changed after drain");
-    wait_provider_evidence_prefix_on (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"),
-                                      "rl-b4-drained-");
-
-    post_provider_admin_on (provider_b, "/admin/restore");
-    wait_provider_weight_on (provider_b, 100);
-
-    for (int index = 0; index < 40; ++index) {
-        const auto marker = "rl-b4-restored-" + std::to_string (index);
-        const auto reply = consumer.post ("/profile/request")
-                             .body (profile_req_t{.value = "fast", .marker = marker})
-                             .fetch<profile_res_t> ();
-        ensure (reply.value == "profile:fast",
-                "RL-B4 restored request returned an unexpected value");
+    catch (const std::exception &error) {
+        throw std::runtime_error (std::string ("RL-B4 failed during ") + phase + ": "
+                                  + error.what ());
     }
-    wait_provider_evidence_prefix_on (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"),
-                                      "rl-b4-restored-");
-
-    std::cout << "scenario RL-B4 passed\n";
 }
 
 } // namespace zlink::framework::e2e::resilience_lifecycle::client

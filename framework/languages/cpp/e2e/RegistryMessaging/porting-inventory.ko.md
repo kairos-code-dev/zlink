@@ -3,8 +3,9 @@
 이 문서는 `framework/languages/dotnet/e2e/LocationMessaging`의 파일을 기준으로
 C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터리 이름은 시나리오 ID 연속성을 위해
 아직 `RegistryMessaging`을 유지하지만, 목표 구조는 location store 기반 `LocationMessaging`이다.
-상태가 `gap`인 행은 현재 C++ 파일이 동작을 담고 있어도, 목표 구조나 검증 수준이 아직 `.NET` 기준과
-같은 의미로 정렬되지 않았다는 뜻이다.
+이 문서에서 scenario 행은 현재 모두 `done` 상태로 유지한다. 이후 새 누락이 발견되면 현재 C++ 파일이
+동작을 일부 담고 있더라도, 목표 구조나 검증 수준이 `.NET` 기준과 같은 의미로 정렬되지 않은 항목만
+별도 gap으로 기록한다.
 
 ## 기준
 
@@ -83,6 +84,21 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 
 ## 검증
 
+- 2026-07-08: `timeout 180s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh RM-B2`
+  - 결과: 통과, exit 0
+  - 로그: `logs/20260708-131420-7922`
+  - 의미: `api-b` provider scale-in 경로를 focused runner로 재검증했다. runner는 의도한 종료에서
+    정상 exit, SIGINT, SIGTERM만 허용하고 SIGSEGV 같은 비정상 종료를 실패로 드러내도록 수정했다.
+- 2026-07-08: `timeout 560s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all`
+  - 결과: 통과, exit 0
+  - parent 로그: `logs/20260708-131829-51832`
+  - 주요 child 로그: `logs/20260708-131832-52236`(RM-A1), `logs/20260708-131936-58483`(RM-B2),
+    `logs/20260708-132020-63253`(RM-C4), `logs/20260708-132028-63890`(RM-C5),
+    `logs/20260708-132039-64754`(RM-C7), `logs/20260708-132114-67294`(RM-C9)
+  - 의미: parent runner가 Redis container 하나를 준비하고 child scenario가 같은 Redis endpoint를
+    공유하는 형태로 RM-A1, RM-A2, RM-A4, RM-A6, RM-B1, RM-B2, RM-C1, RM-C2, RM-C3, RM-C4,
+    RM-C5, RM-C7, RM-C8, RM-C8-max, RM-C9 sweep를 모두 통과했다. cleanup 중 provider가
+    segmentation fault 같은 비정상 종료를 내면 runner가 실패하도록 보강한 뒤의 증거다.
 - 2026-06-30: `./framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh RM-C9`
   - 결과: 통과
   - 로그: `logs/20260630-081704-3233416`

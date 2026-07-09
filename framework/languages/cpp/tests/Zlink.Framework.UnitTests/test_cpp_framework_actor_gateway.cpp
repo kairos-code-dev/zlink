@@ -14,11 +14,13 @@
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
+#include "runtime/streams/stream_runtime.hpp"
 
 #include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -432,7 +434,7 @@ int main ()
     auto no_bind_actor_client = zlink::framework::runtime::make_actor_client (
       no_bind_location_store, serializers, {no_bind_runtime});
     auto no_bind_client_reply =
-      no_bind_actor_client->request_to_actor ("actor-a", bridge_request_t{8})
+      no_bind_actor_client->request_to_actor (no_bind_join.value ().actor, bridge_request_t{8})
         .packet_name ("bridge.relay")
         .timeout (std::chrono::milliseconds (1000))
         .async<bridge_reply_t> ()
@@ -698,12 +700,14 @@ int main ()
     const auto relayed_before_dispatch = gateway.relayed_frames ().size ();
 
     bool relay_dispatch_seen = false;
+    std::uint64_t relay_dispatch_generation = 0;
     gateway.on_relay ([&] (const zlink::framework::actor_ref_t &actor,
                            zlink::framework::actor_context_t,
                            const zlink::framework::detail::stream_header_t &received_header,
                            const zlink::message_t &received_payload) {
         relay_dispatch_seen = actor.actor_id () == "bob" && received_header.packet_name () == "move"
                               && received_payload.to_string () == "payload";
+        relay_dispatch_generation = actor.generation ();
         return zlink::framework::result_t<std::optional<zlink::message_t>>::success (
           zlink::message_t::from (std::string ("relay-reply")));
     });
@@ -714,6 +718,18 @@ int main ()
     auto relay_request = relay_request_with_header (bound.value (), payload);
     if (!relay_request || relay_request.value ().to_string () != "relay-reply") {
         return 23;
+    }
+    zlink::framework::actor_ref_t moved_ref (
+      zlink::framework::node_rid_t::from_string ("remote-node"), "player", "bob", 8);
+    if (!gateway.update_actor_ref (moved_ref)) {
+        return 83;
+    }
+    relay_dispatch_seen = false;
+    auto relay_request_after_move = relay_request_with_header (bound.value (), payload);
+    if (!relay_request_after_move || relay_request_after_move.value ().to_string () != "relay-reply"
+        || !relay_dispatch_seen || relay_dispatch_generation != 8
+        || bound.value ().ref ().generation () != 8) {
+        return 84;
     }
 
     zlink::framework::session_actor_t unbound;
@@ -889,6 +905,22 @@ int main ()
         || entry_join.value ().reply.decode<std::string> (serializers) != "joined") {
         return 15;
     }
+    disconnect_dispatch_seen = false;
+    gateway.on_disconnect ([&] (const zlink::framework::actor_ref_t &actor) {
+        disconnect_dispatch_seen = actor.actor_id () == "bob" && actor.generation () == 9;
+        return zlink::framework::result_t<void>::success ();
+    });
+    rebound.value ().notify_disconnected ().submit ();
+    if (!disconnect_dispatch_seen || gateway.actor_bound ("bob")
+        || !gateway.actor_disconnected ("bob") || rebound.value ().ref ().generation () != 9) {
+        return 85;
+    }
+    auto rebound_after_disconnect =
+      manager.bind (entry_join.value ().actor.value ()).async ().result ();
+    if (!rebound_after_disconnect || !gateway.actor_bound ("bob")
+        || gateway.actor_disconnected ("bob")) {
+        return 86;
+    }
     manager.unbind_session ("bob");
     if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 12;
@@ -901,6 +933,15 @@ int main ()
     gateway.bind_session_route (entry_join.value ().actor.value (),
                                 zlink.route_client (serializers), "actor.session.route",
                                 zlink::routing_id_t::from (std::string ("session-node")));
+    bool actor_route_sink_used = false;
+    gateway.bind_session_sink (
+      entry_join.value ().actor.value (),
+      [&actor_route_sink_used] (std::string packet_name, const zlink::message_t &payload) {
+          actor_route_sink_used = packet_name == "session.route"
+                                  && payload.to_string () == "routed";
+          return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+      },
+      zlink::framework::stream_codec_t::message_pack);
     zlink::framework::detail::register_spot_route_packet_serializers (serializers);
     zlink::framework::service_collection_t actor_route_services;
     auto actor_route_provider = actor_route_services.build_provider ();
@@ -939,6 +980,9 @@ int main ()
              != zlink::framework::runtime::messaging::message_kind_t::response) {
         return 51;
     }
+    if (!actor_route_sink_used) {
+        return 54;
+    }
     auto actor_route_header_only = actor_route_envelope.encode_header (actor_route_header);
     const auto actor_route_missing_body_send = actor_route_internal.dispatch_send (
       zlink::framework::detail::route_received_packet_t{
@@ -968,6 +1012,73 @@ int main ()
     }
     rebound_after_entry.value ().bound_session ().send (framework_payload).submit ();
     relay_with_header (rebound_after_entry.value (), payload);
+
+    zlink::framework::zlink_builder_t stream_sink_builder;
+    stream_sink_builder.stream ("preserved-bound-session").bind ("inproc://preserved-bound-session");
+    auto stream_sink_runtime =
+      zlink::framework::detail::stream_runtime_t::from (stream_sink_builder);
+    auto stream_sink = stream_sink_runtime.open_session ("preserved-bound-session");
+    zlink::framework::detail::actor_gateway_runtime_t stream_sink_gateway;
+    auto stream_sink_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("entry-node"), "player", "stream-user", 3);
+    auto stream_sink_actor =
+      stream_sink_gateway.manager ().bind (stream_sink_ref).async ().result ();
+    if (!stream_sink_actor) {
+        return 76;
+    }
+    stream_sink_gateway.bind_session_stream ("stream-user", stream_sink,
+                                             zlink::framework::stream_codec_t::json);
+    stream_sink_gateway.bind_session_sink (
+      stream_sink_ref,
+      [] (std::string, const zlink::message_t &) {
+          return zlink::framework::task_t<void> (
+            zlink::framework::result_t<void>::failure (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "route sink should not replace stream sink"));
+      },
+      zlink::framework::stream_codec_t::message_pack);
+    auto preserved_stream_push = stream_sink_gateway.dispatch_bound_session_send (
+      stream_sink_ref, "PreservedStreamSinkNotify",
+      zlink::message_t::from (std::string ("preserved")));
+    const auto preserved_stream_headers = stream_sink_runtime.written_headers (stream_sink);
+    if (!preserved_stream_push || preserved_stream_headers.size () != 1
+        || preserved_stream_headers[0].packet_name () != "PreservedStreamSinkNotify"
+        || preserved_stream_headers[0].codec () != zlink::framework::stream_codec_t::json) {
+        return 77;
+    }
+    zlink::framework::detail::actor_gateway_runtime_t route_sink_gateway;
+    auto route_sink_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("entry-node"), "player", "route-user", 4);
+    auto route_sink_actor = route_sink_gateway.manager ().bind (route_sink_ref).async ().result ();
+    if (!route_sink_actor) {
+        return 78;
+    }
+    bool first_route_sink_used = false;
+    bool replacement_route_sink_used = false;
+    route_sink_gateway.bind_session_sink (
+      route_sink_ref,
+      [&first_route_sink_used] (std::string packet_name, const zlink::message_t &payload) {
+          first_route_sink_used =
+            packet_name == "ReplacedRouteSinkNotify"
+            && payload.to_string () == "route-replaced";
+          return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+      },
+      zlink::framework::stream_codec_t::message_pack);
+    route_sink_gateway.bind_session_sink (
+      route_sink_ref,
+      [&replacement_route_sink_used] (std::string packet_name, const zlink::message_t &payload) {
+          replacement_route_sink_used =
+            packet_name == "ReplacedRouteSinkNotify"
+            && payload.to_string () == "route-replaced";
+          return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
+      },
+      zlink::framework::stream_codec_t::message_pack);
+    auto replaced_route_push = route_sink_gateway.dispatch_bound_session_send (
+      route_sink_ref, "ReplacedRouteSinkNotify",
+      zlink::message_t::from (std::string ("route-replaced")));
+    if (!replaced_route_push || first_route_sink_used || !replacement_route_sink_used) {
+        return 79;
+    }
 
     zlink::framework::zlink_builder_t dispatcher_builder;
     dispatcher_builder.route_channel ("dispatcher.route");

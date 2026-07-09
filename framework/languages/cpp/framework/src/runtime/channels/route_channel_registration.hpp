@@ -25,6 +25,7 @@ class route_channel_registration_t
     route_channel_registration_t &bind (std::string endpoint);
     route_channel_registration_t &set_routing_id (zlink::routing_id_t routing_id);
     route_channel_registration_t &connect (std::string endpoint);
+    route_channel_registration_t &connect (zlink::routing_id_t peer_rid, std::string endpoint);
     route_channel_registration_t &default_request_timeout (std::chrono::milliseconds timeout);
     route_channel_registration_t &add_handler_group (std::string group_name);
     route_channel_registration_t &
@@ -60,6 +61,8 @@ class route_channel_registration_t
     const std::optional<zlink::routing_id_t> &routing_id () const noexcept;
     std::optional<std::chrono::milliseconds> default_request_timeout () const noexcept;
     const std::vector<std::string> &manual_connections () const noexcept;
+    const std::vector<route_connection_set_t::target_t> &
+    manual_connection_targets () const noexcept;
     const std::vector<std::string> &handler_groups () const noexcept;
 
     route_handler_registry_t create_handler_registry () const;
@@ -73,6 +76,7 @@ class route_channel_registration_t
     std::optional<zlink::routing_id_t> _routing_id;
     std::optional<std::chrono::milliseconds> _default_request_timeout;
     std::vector<std::string> _manual_connections;
+    std::vector<route_connection_set_t::target_t> _manual_connection_targets;
     std::vector<std::string> _handler_groups;
     std::vector<framework::route_handler_registration_t> _handlers;
     std::vector<handler_installer_t> _send_handlers;

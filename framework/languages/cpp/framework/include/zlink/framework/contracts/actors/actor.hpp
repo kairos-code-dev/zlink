@@ -85,7 +85,7 @@ class actor_send_call_t
 {
   public:
     actor_send_call_t (actor_client_t &client,
-                       std::string actor_id,
+                       actor_ref_t actor_ref,
                        std::string packet_name,
                        message_t message);
 
@@ -94,7 +94,7 @@ class actor_send_call_t
 
   private:
     actor_client_t *_client;
-    std::string _actor_id;
+    actor_ref_t _actor_ref;
     std::string _packet_name;
     message_t _message;
 };
@@ -103,7 +103,7 @@ class actor_request_call_t
 {
   public:
     actor_request_call_t (actor_client_t &client,
-                          std::string actor_id,
+                          actor_ref_t actor_ref,
                           std::string packet_name,
                           message_t request);
 
@@ -122,7 +122,7 @@ class actor_request_call_t
     serializer_registry_t &serializers () const;
 
     actor_client_t *_client;
-    std::string _actor_id;
+    actor_ref_t _actor_ref;
     std::string _packet_name;
     message_t _request;
     std::optional<std::chrono::milliseconds> _timeout;
@@ -134,29 +134,29 @@ class actor_client_t
     virtual ~actor_client_t () = default;
 
     template <typename TMessage>
-    actor_send_call_t send_to_actor (std::string actor_id, TMessage message)
+    actor_send_call_t send_to_actor (actor_ref_t actor_ref, TMessage message)
     {
         using message_type = std::remove_cvref_t<TMessage>;
-        return actor_send_call_t (*this, std::move (actor_id),
+        return actor_send_call_t (*this, std::move (actor_ref),
                                   detail::message_name<message_type> (),
                                   message_t::from (std::move (message)));
     }
 
     template <typename TRequest>
-    actor_request_call_t request_to_actor (std::string actor_id, TRequest request)
+    actor_request_call_t request_to_actor (actor_ref_t actor_ref, TRequest request)
     {
         using request_type = std::remove_cvref_t<TRequest>;
-        return actor_request_call_t (*this, std::move (actor_id),
+        return actor_request_call_t (*this, std::move (actor_ref),
                                      detail::message_name<request_type> (),
                                      message_t::from (std::move (request)));
     }
 
   protected:
-    virtual task_t<void> send_to_actor_erased (std::string actor_id,
+    virtual task_t<void> send_to_actor_erased (actor_ref_t actor_ref,
                                                std::string packet_name,
                                                message_t message) = 0;
     virtual task_t<message_t> request_to_actor_erased (
-      std::string actor_id,
+      actor_ref_t actor_ref,
       std::string packet_name,
       message_t request,
       std::optional<std::chrono::milliseconds> timeout) = 0;
@@ -676,7 +676,8 @@ class actor_gateway_t
                              route_client_t route_client,
                              std::string route_channel_name,
                              zlink::routing_id_t target_node_rid,
-                             stream_codec_t codec = stream_codec_t::message_pack);
+                             stream_codec_t codec = stream_codec_t::message_pack,
+                             bool replace_existing = true);
     void unbind_session_stream (std::string actor_id);
 
   private:

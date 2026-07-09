@@ -30,6 +30,25 @@ struct echo_auto_msg_t
     std::string value;
 };
 
+struct echo_attr_req_t
+{
+    static constexpr const char *packet_name = "EchoAttr";
+    std::string value;
+};
+
+struct echo_attr_res_t
+{
+    std::string value;
+    std::string packet_name;
+    std::string content_type;
+};
+
+struct echo_attr_msg_t
+{
+    static constexpr const char *packet_name = "EchoAttrMsg";
+    std::string value;
+};
+
 struct echo_manual_req_t
 {
     static constexpr const char *packet_name = "EchoManual";
@@ -225,6 +244,40 @@ inline void to_json (nlohmann::json &json, const echo_auto_msg_t &value)
 }
 
 inline void from_json (const nlohmann::json &json, echo_auto_msg_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const echo_attr_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, echo_attr_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const echo_attr_res_t &value)
+{
+    json = nlohmann::json{{"value", value.value},
+                          {"packet_name", value.packet_name},
+                          {"content_type", value.content_type}};
+}
+
+inline void from_json (const nlohmann::json &json, echo_attr_res_t &value)
+{
+    json.at ("value").get_to (value.value);
+    json.at ("packet_name").get_to (value.packet_name);
+    json.at ("content_type").get_to (value.content_type);
+}
+
+inline void to_json (nlohmann::json &json, const echo_attr_msg_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, echo_attr_msg_t &value)
 {
     json.at ("value").get_to (value.value);
 }

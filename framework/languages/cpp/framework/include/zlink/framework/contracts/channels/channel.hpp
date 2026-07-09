@@ -8,6 +8,7 @@
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
+#include <zlink/framework/contracts/locations/spot_ref.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 
 #include <cstddef>
@@ -24,6 +25,8 @@
 namespace zlink::framework
 {
 
+class route_channel_builder_t;
+
 namespace detail
 {
 class capability_builder_state_t;
@@ -34,6 +37,9 @@ class channel_outbound_exchange_t;
 class channel_runtime_manager_t;
 class route_client_state_t;
 class route_channel_builder_state_t;
+void connect_route_channel_peer (route_channel_builder_t &builder,
+                                 zlink::routing_id_t peer_rid,
+                                 std::string endpoint);
 } // namespace detail
 
 class spot_context_t;
@@ -375,6 +381,9 @@ class route_channel_builder_t
 
   private:
     friend class zlink_builder_t;
+    friend void detail::connect_route_channel_peer (route_channel_builder_t &,
+                                                   zlink::routing_id_t,
+                                                   std::string);
     explicit route_channel_builder_t (std::shared_ptr<detail::route_channel_builder_state_t> state);
 
     route_channel_builder_t &add_handler (route_handler_registration_t registration);
@@ -621,7 +630,7 @@ class route_send_call_t
 
     route_send_call_t &packet_name (std::string packet_name);
     route_send_call_t &metadata (std::string key, std::string value);
-    void submit ();
+    result_t<void> submit ();
 
   private:
     result_t<void> submit_now ();
@@ -668,8 +677,7 @@ class route_client_t
 
     template <typename TMessage>
     route_send_call_t send_to_node (std::string router_channel_id,
-                            zlink::routing_id_t target_node_rid,
-                            spot_rid_t target_spot_rid,
+                            const spot_ref_t &target,
                             TMessage message)
     {
         auto state = _state;
@@ -677,12 +685,12 @@ class route_client_t
         return route_send_call_t (
           detail::message_name<TMessage> (),
           [state, router_channel_id = std::move (router_channel_id),
-           target_node_rid = std::move (target_node_rid),
-           target_spot_rid = std::move (target_spot_rid),
+           target_node_rid = target.node_rid,
+           spot_target = spot_rid_t::from_string (target.spot_rid.to_string ()),
            message_value] (const std::string &packet_name,
                            const route_send_call_t::metadata_map_t &metadata) -> result_t<void> {
               return submit_spot_send_erased (
-                state, router_channel_id, target_node_rid, target_spot_rid, packet_name,
+                state, router_channel_id, target_node_rid, spot_target, packet_name,
                 std::type_index (typeid (TMessage)),
                 [message_value] (serializer_registry_t &serializers) {
                     return serializers.template get<TMessage> ().serialize (*message_value);
@@ -715,21 +723,21 @@ class route_client_t
 
     template <typename TRequest>
     channel_request_call_t request_to_node (std::string router_channel_id,
-                                  zlink::routing_id_t target_node_rid,
-                                  spot_rid_t target_spot_rid,
+                                  const spot_ref_t &target,
                                   TRequest request)
     {
         auto state = _state;
         auto request_value = std::make_shared<TRequest> (std::move (request));
         return channel_request_call_t (
           detail::message_name<TRequest> (), _serializers,
-          [state, router_channel_id, target_node_rid,
-           target_spot_rid = std::move (target_spot_rid),
+          [state, router_channel_id,
+           target_node_rid = target.node_rid,
+           spot_target = spot_rid_t::from_string (target.spot_rid.to_string ()),
            request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
                            const channel_request_call_t::metadata_map_t &metadata) mutable
           -> task_t<zlink::message_t> {
               return submit_spot_request_reply_message_erased (
-                state, router_channel_id, target_node_rid, target_spot_rid, packet_name,
+                state, router_channel_id, target_node_rid, spot_target, packet_name,
                 std::type_index (typeid (TRequest)),
                 [request_value] (serializer_registry_t &serializers) {
                     return serializers.template get<TRequest> ().serialize (*request_value);
@@ -766,7 +774,7 @@ class route_client_t
     submit_spot_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                              const std::string &router_channel_id,
                              const zlink::routing_id_t &target_node_rid,
-                             const spot_rid_t &target_spot_rid,
+                             const spot_rid_t &spot_target,
                              const std::string &packet_name,
                              std::type_index message_type,
                              payload_encoder_t encode_payload,
@@ -776,7 +784,7 @@ class route_client_t
     submit_spot_request_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                                 const std::string &router_channel_id,
                                 const zlink::routing_id_t &target_node_rid,
-                                const spot_rid_t &target_spot_rid,
+                                const spot_rid_t &spot_target,
                                 const std::string &packet_name,
                                 std::type_index request_type,
                                 payload_encoder_t encode_payload,
@@ -809,7 +817,7 @@ class route_client_t
       const std::shared_ptr<detail::route_client_state_t> &state,
       std::string router_channel_id,
       zlink::routing_id_t target_node_rid,
-      spot_rid_t target_spot_rid,
+      spot_rid_t spot_target,
       std::string packet_name,
       std::type_index request_type,
       payload_encoder_t encode_payload,

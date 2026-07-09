@@ -15,6 +15,7 @@
 #include <condition_variable>
 #include <chrono>
 #include <mutex>
+#include <thread>
 
 namespace zlink::framework::detail
 {
@@ -148,6 +149,21 @@ request_spot_mesh_parts (spot_node_runtime_t runtime,
           framework_error_kind_t::spot_route_not_found, "SPOT node is not running");
     }
     try {
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+        bool routed_peer_ready = false;
+        while (std::chrono::steady_clock::now () < deadline) {
+            const auto status = native_node->status ();
+            if (status.connected_peer_count () > 0
+                && status.disconnected_routed_target_count () == 0) {
+                routed_peer_ready = true;
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        }
+        if (!routed_peer_ready) {
+            return result_t<runtime::messaging::message_parts_t>::failure (
+              framework_error_kind_t::route_not_connected, "SPOT route peer is not ready");
+        }
         auto native_parts = parts.items ();
         if (native_parts.empty ()) {
             return result_t<runtime::messaging::message_parts_t>::failure (
@@ -225,6 +241,41 @@ result_t<actor_join_reply_t> join_actor_to_remote_spot_route_mesh (
     }
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_from_spot_route (decoded.value ()));
+}
+
+result_t<actor_join_reply_t> join_actor_to_remote_spot_route_channel (
+  route_client_t route_client,
+  const std::optional<std::string> &route_channel_name,
+  const actor_ref_t &actor_ref,
+  const node_rid_t &target_node_rid,
+  const spot_rid_t &target_delivery_spot_rid,
+  const spot_rid_t &target_join_spot_rid,
+  const zlink::message_t &payload,
+  const std::optional<zlink::message_t> &actor_snapshot)
+{
+    if (!route_channel_name || route_channel_name->empty ()) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::spot_route_not_found, "SPOT route channel is not configured");
+    }
+    auto request =
+      make_spot_actor_join_route_request (actor_ref, target_join_spot_rid, payload, actor_snapshot);
+    spot_ref_t target{*route_channel_name,
+                      zlink::routing_id_t::from (std::string (target_node_rid.value ())),
+                      zlink::routing_id_t::from (std::string (target_delivery_spot_rid.value ()))};
+    auto reply = route_client
+                   .request_to_node (*route_channel_name, target, std::move (request))
+                   .packet_name (spot_actor_join_route_request_t::packet_name)
+                   .timeout (std::chrono::seconds (30))
+                   .async<spot_actor_join_route_reply_t> ()
+                   .result ();
+    if (!reply) {
+        const auto *error = reply.error ();
+        return result_t<actor_join_reply_t>::failure (
+          reply.error_kind (), error != nullptr ? error->what () : "remote SPOT route join failed",
+          error != nullptr && error->is_retriable ());
+    }
+    return result_t<actor_join_reply_t>::success (
+      actor_join_reply_from_spot_route (reply.value ()));
 }
 
 result_t<actor_join_reply_t> join_actor_to_remote_spot_mesh (spot_node_runtime_t runtime,
@@ -383,8 +434,6 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
                                   serializer_registry_t &serializers)
 {
     (void) actor_gateway;
-    (void) route_client;
-    (void) route_channel_name;
     auto route = runtime.resolve_spot (spot_rid);
     if (!route) {
         if (rid_targets_node (spot_rid.value (), local_spot_node_rid)) {
@@ -400,9 +449,14 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     if (route->node_rid.empty () || route->node_rid.value () == local_spot_node_rid) {
         return runtime.join_actor_to_spot_erased (actor_ref, std::move (spot_rid), payload);
     }
-    auto joined = join_actor_to_remote_spot_route_mesh (
-      runtime, actor_ref, route->node_rid, route->spot_rid, route->spot_rid, payload, std::nullopt,
-      serializers);
+    auto joined =
+      route_channel_name
+        ? join_actor_to_remote_spot_route_channel (
+            std::move (route_client), route_channel_name, actor_ref, route->node_rid,
+            route->spot_rid, route->spot_rid, payload, std::nullopt)
+        : join_actor_to_remote_spot_route_mesh (
+            runtime, actor_ref, route->node_rid, route->spot_rid, route->spot_rid, payload,
+            std::nullopt, serializers);
     if (!joined) {
         return joined;
     }
@@ -426,12 +480,16 @@ result_t<actor_join_reply_t> join_actor_to_entry_spot_through_route (
         return runtime.join_actor_to_entry_spot_erased (actor_ref, std::move (target_node_rid),
                                                         payload, actor_snapshot);
     }
-    (void) route_client;
-    (void) route_channel_name;
+    if (route_channel_name) {
+        return join_actor_to_remote_spot_route_channel (
+          std::move (route_client), route_channel_name, actor_ref, target_node_rid,
+          spot_rid_t::from_string (std::string (target_node_rid.value ())), spot_rid_t{}, payload,
+          actor_snapshot);
+    }
     return join_actor_to_remote_spot_route_mesh (
       runtime, actor_ref, target_node_rid,
-      spot_rid_t::from_string (std::string (target_node_rid.value ())),
-      spot_rid_t{}, payload, actor_snapshot, serializers);
+      spot_rid_t::from_string (std::string (target_node_rid.value ())), spot_rid_t{}, payload,
+      actor_snapshot, serializers);
 }
 
 result_t<std::optional<zlink::message_t>>
@@ -482,7 +540,7 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         try {
             auto &resolver = provider.get_required<actor_location_resolver_t> ();
             auto resolved =
-              resolver.resolve_actor_spot_address (std::string (actor_ref.actor_id ())).result ();
+              resolver.resolve_actor_spot_ref (std::string (actor_ref.actor_id ())).result ();
             if (!resolved) {
                 return result_t<std::optional<zlink::message_t>>::failure (
                   resolved.error_kind (),

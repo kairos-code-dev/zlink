@@ -246,6 +246,8 @@ class spot_node_runtime_t
     void record_actor_spot (const actor_ref_t &actor_ref, spot_rid_t spot_rid);
     std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
     void record_actor_route (const actor_ref_t &actor_ref, spot_route_t route);
+    std::optional<std::string> default_route_channel_name () const;
+    void cancel_pending_work () noexcept;
     std::optional<actor_ref_t> current_actor_ref (const actor_ref_t &actor_ref) const;
     const std::vector<std::string> &ordering_log (const spot_context_t &context) const;
     void attach_native_node (std::shared_ptr<service::spot_node_t> node);

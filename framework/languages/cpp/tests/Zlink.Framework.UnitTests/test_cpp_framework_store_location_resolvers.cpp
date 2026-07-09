@@ -896,7 +896,7 @@ std::uint16_t bindable_loopback_port (std::uint16_t base_port)
 #endif
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotRefFromStore)
 {
     in_memory_location_store_t store;
     ASSERT_TRUE (store
@@ -920,7 +920,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
     store_location_resolvers_t resolvers (store);
 
     const auto address =
-      resolvers.resolve_spot_address ("mesh-a", zlink::routing_id_t::from ("spot-a"))
+      resolvers.resolve_spot_ref ("mesh-a", zlink::routing_id_t::from ("spot-a"))
         .result ()
         .value ();
 
@@ -972,7 +972,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, InMemoryLocationStoresCannotMixWithE
     EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorEntrySpotAsNodeAddress)
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorEntrySpotAsNodeRef)
 {
     in_memory_location_store_t store;
     ASSERT_TRUE (store
@@ -997,7 +997,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorEntrySpotAsNodeAddress)
     store_location_resolvers_t resolvers (store);
 
     const auto address =
-      resolvers.resolve_actor_spot_address ("actor-a").result ().value ();
+      resolvers.resolve_actor_spot_ref ("actor-a").result ().value ();
 
     ASSERT_TRUE (address.has_value ());
     EXPECT_EQ ("node-a", address->node_rid.to_string ());
@@ -1470,6 +1470,15 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
                              && target.peer_rid->to_string () == "route-z-remote-node";
                   });
     }));
+    {
+        const auto rows = store->list_peers ({}).result ().value ();
+        EXPECT_EQ (rows.end (), std::find_if (rows.begin (), rows.end (), [] (const auto &row) {
+                       return row.owner_id == "owner-route-lower-local"
+                              && row.auto_connect_type == location_auto_connect_type_t::route_mesh
+                              && row.mesh_name == "route.lower"
+                              && row.role == location_role_t::dealer;
+                   }));
+    }
     lower_service.stop ();
     lower_runtime->stop ();
 

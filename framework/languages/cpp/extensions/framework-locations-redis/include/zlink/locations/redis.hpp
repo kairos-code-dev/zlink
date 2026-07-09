@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <future>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -37,6 +38,7 @@ struct redis_location_options_t
 {
     std::string connection_string = "127.0.0.1:6379";
     std::string key_prefix = "zlink:locations";
+    std::chrono::milliseconds operation_timeout{2000};
 };
 
 namespace detail
@@ -1029,22 +1031,20 @@ class redis_location_store_t final : public location_store_t,
         return _worker.submit<owner_lease_snapshot_t> ([this] {
             owner_lease_snapshot_t snapshot;
             snapshot.store_now = redis_time ();
-            auto owners = client ()
-                            .smembers<std::vector<std::string>> (
-                              detail::redis_location_key_schema_t::leases_key (_options.key_prefix))
-                            .get ();
-            for (const auto &owner_id : owners) {
+            auto owner_values = redis_get (
+              client ().smembers<std::vector<std::string>> (
+                detail::redis_location_key_schema_t::leases_key (_options.key_prefix)));
+            for (const auto &owner_id : owner_values) {
                 const auto lease_key =
                   detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id);
-                const auto remaining_ms = client ().pttl (lease_key).get ();
+                const auto remaining_ms = redis_get (client ().pttl (lease_key));
                 if (remaining_ms < 0) {
-                    client ().srem (
+                    redis_get (client ().srem (
                       detail::redis_location_key_schema_t::leases_key (_options.key_prefix),
-                      owner_id)
-                      .get ();
+                      owner_id));
                     continue;
                 }
-                const auto value = client ().get (lease_key).get ();
+                const auto value = redis_get (client ().get (lease_key));
                 if (!value) {
                     continue;
                 }
@@ -1065,10 +1065,8 @@ class redis_location_store_t final : public location_store_t,
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
         return _worker.submit<std::int64_t> ([this, scope = std::move (scope)] {
             const auto value =
-              client ()
-                .get (detail::redis_location_key_schema_t::stamp_key (
-                  _options.key_prefix, scope.kind, optional_view (scope.mesh_name)))
-                .get ();
+              redis_get (client ().get (detail::redis_location_key_schema_t::stamp_key (
+                _options.key_prefix, scope.kind, optional_view (scope.mesh_name))));
             return value ? std::stoll (*value) : 0;
         });
 #else
@@ -1111,11 +1109,10 @@ class redis_location_store_t final : public location_store_t,
                                                               location_kind_t::actor, std::nullopt),
               detail::redis_location_key_schema_t::stamp_key (_options.key_prefix,
                                                               location_kind_t::route, std::nullopt)};
-            const auto removed = client ()
-                                   .eval<long long> (
-                                     std::string (detail::redis_location_scripts_t::remove_by_owner),
-                                     keys.begin (), keys.end (), args.begin (), args.end ())
-                                   .get ();
+            const auto removed = redis_get (
+              client ().eval<long long> (
+                std::string (detail::redis_location_scripts_t::remove_by_owner), keys.begin (),
+                keys.end (), args.begin (), args.end ()));
             return static_cast<std::int64_t> (removed);
         });
 #else
@@ -1171,11 +1168,10 @@ class redis_location_store_t final : public location_store_t,
                         : std::string{},
               mesh_name ? "1" : "0",
               mesh_name.value_or (std::string{})};
-            const auto result = client ()
-                                  .eval<std::tuple<std::string, long long, long long>> (
-                                    std::string (detail::redis_location_scripts_t::write),
-                                    keys.begin (), keys.end (), args.begin (), args.end ())
-                                  .get ();
+            const auto result = redis_get (
+              client ().eval<std::tuple<std::string, long long, long long>> (
+                std::string (detail::redis_location_scripts_t::write), keys.begin (), keys.end (),
+                args.begin (), args.end ()));
             return detail::redis_location_script_result_t::write_result (
               std::get<0> (result), static_cast<std::int64_t> (std::get<1> (result)),
               static_cast<std::int64_t> (std::get<2> (result)));
@@ -1219,11 +1215,10 @@ class redis_location_store_t final : public location_store_t,
               mesh_name ? detail::redis_location_key_schema_t::stamp_key (_options.key_prefix,
                                                                           kind, std::nullopt)
                         : std::string{}};
-            const auto result = client ()
-                                  .eval<std::tuple<std::string, long long, long long>> (
-                                    std::string (detail::redis_location_scripts_t::remove),
-                                    keys.begin (), keys.end (), args.begin (), args.end ())
-                                  .get ();
+            const auto result = redis_get (
+              client ().eval<std::tuple<std::string, long long, long long>> (
+                std::string (detail::redis_location_scripts_t::remove), keys.begin (),
+                keys.end (), args.begin (), args.end ()));
             return detail::redis_location_script_result_t::write_result (
               std::get<0> (result), static_cast<std::int64_t> (std::get<1> (result)),
               static_cast<std::int64_t> (std::get<2> (result)));
@@ -1257,11 +1252,10 @@ class redis_location_store_t final : public location_store_t,
               detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
             const auto args =
               std::vector<std::string>{owner_id, node_rid.to_hex (), std::to_string (ttl_ms)};
-            const auto now_ms = client ()
-                                  .eval<long long> (
-                                    std::string (detail::redis_location_scripts_t::renew_lease),
-                                    keys.begin (), keys.end (), args.begin (), args.end ())
-                                  .get ();
+            const auto now_ms = redis_get (
+              client ().eval<long long> (
+                std::string (detail::redis_location_scripts_t::renew_lease), keys.begin (),
+                keys.end (), args.begin (), args.end ()));
             const auto store_now = detail::redis_location_script_result_t::from_unix_ms (
               static_cast<std::int64_t> (now_ms));
             return owner_lease_renewal_t{store_now + std::chrono::milliseconds (ttl_ms),
@@ -1289,8 +1283,8 @@ class redis_location_store_t final : public location_store_t,
               detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id),
               detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
             const auto args = std::vector<std::string>{owner_id};
-            const auto removed = client ().del (keys[0]).get ();
-            client ().srem (keys[1], args[0]).get ();
+            const auto removed = redis_get (client ().del (keys[0]));
+            redis_get (client ().srem (keys[1], args[0]));
             return removed > 0;
           }
           catch (const sw::redis::Error &error) {
@@ -1328,11 +1322,9 @@ class redis_location_store_t final : public location_store_t,
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
         return _worker.submit<std::vector<TRow>> (
           [this, kind, filter = std::move (filter), decode = std::move (decode)] () mutable {
-            auto row_keys = client ()
-                              .smembers<std::vector<std::string>> (
-                                detail::redis_location_key_schema_t::keys_key (_options.key_prefix,
-                                                                               kind))
-                              .get ();
+            auto row_keys = redis_get (
+              client ().smembers<std::vector<std::string>> (
+                detail::redis_location_key_schema_t::keys_key (_options.key_prefix, kind)));
             std::vector<TRow> rows;
             for (const auto &row_key : row_keys) {
                 auto row = load_row<TRow> (kind, row_key, decode);
@@ -1361,11 +1353,9 @@ class redis_location_store_t final : public location_store_t,
           [this, kind, filter = std::move (filter), page, decode = std::move (decode)] () mutable {
             std::vector<std::string> row_keys;
             std::optional<std::string> continuation;
-            auto all_keys = client ()
-                              .smembers<std::vector<std::string>> (
-                                detail::redis_location_key_schema_t::keys_key (_options.key_prefix,
-                                                                               kind))
-                              .get ();
+            auto all_keys = redis_get (
+              client ().smembers<std::vector<std::string>> (
+                detail::redis_location_key_schema_t::keys_key (_options.key_prefix, kind)));
             const auto offset = parse_offset (page.continuation_token);
             const auto page_size =
               page.page_size > 0 ? static_cast<std::size_t> (page.page_size) : all_keys.size ();
@@ -1400,12 +1390,10 @@ class redis_location_store_t final : public location_store_t,
     template <typename TRow, typename Decode>
     std::optional<TRow> load_row (location_kind_t kind, const std::string &row_key, Decode decode)
     {
-        auto fields =
-          client ()
-            .hmget<std::vector<sw::redis::OptionalString>> (
-              detail::redis_location_key_schema_t::row_key (_options.key_prefix, kind, row_key),
-              {"json", "gen", "updatedAtMs"})
-            .get ();
+        auto fields = redis_get (
+          client ().hmget<std::vector<sw::redis::OptionalString>> (
+            detail::redis_location_key_schema_t::row_key (_options.key_prefix, kind, row_key),
+            {"json", "gen", "updatedAtMs"}));
         if (fields.size () < 3 || !fields[0]) {
             return std::nullopt;
         }
@@ -1428,16 +1416,15 @@ class redis_location_store_t final : public location_store_t,
         if (owner_id.empty ()) {
             return false;
         }
-        const auto remaining_ms =
-          client ()
-            .pttl (detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id))
-            .get ();
+        const auto remaining_ms = redis_get (
+          client ().pttl (
+            detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id)));
         return remaining_ms > 0;
     }
 
     std::chrono::system_clock::time_point redis_time ()
     {
-        const auto parts = client ().command<std::vector<std::string>> ("TIME").get ();
+        const auto parts = redis_get (client ().command<std::vector<std::string>> ("TIME"));
         if (parts.size () < 2) {
             throw sw::redis::Error ("invalid Redis TIME reply");
         }
@@ -1470,6 +1457,14 @@ class redis_location_store_t final : public location_store_t,
     }
 
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+    template <typename T> T redis_get (sw::redis::Future<T> future)
+    {
+        if (future.wait_for (_options.operation_timeout) != std::future_status::ready) {
+            throw sw::redis::TimeoutError ("redis location operation timed out");
+        }
+        return future.get ();
+    }
+
     sw::redis::AsyncRedis &client ()
     {
         std::lock_guard lock (_client_gate);

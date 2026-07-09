@@ -17,11 +17,12 @@ using framework::message_t;
 class authenticate_session_handler_t
 {
   public:
-    using dependency_types = dependency_list_t<channel_client_t, sample_topology_t>;
+    using dependency_types = dependency_list_t<channel_client_t, route_client_t, sample_topology_t>;
 
     explicit authenticate_session_handler_t (channel_client_t &client,
+                                             route_client_t &routes,
                                              sample_topology_t &topology) :
-        _client (client), _topology (topology)
+        _client (client), _routes (routes), _topology (topology)
     {
     }
 
@@ -48,17 +49,15 @@ class authenticate_session_handler_t
         auto create_request = ensure_player_actor_req_t{
             authenticated.actor_id, authenticated.display_name, _topology.preferred_play_node_rid ()
         };
-        auto ensured = co_await _client
-            .request (play_channel_for (_topology.preferred_play_node_rid ()), create_request)
+        const auto play_entry_spot = spot_ref_t{
+            sample_names_t::room_spot_mesh,
+            zlink::routing_id_t::from (_topology.preferred_play_node_rid ()),
+            zlink::routing_id_t::from (_topology.preferred_play_node_rid ())
+        };
+        auto ensured = co_await _routes
+            .request_to_node (sample_names_t::room_spot_mesh, play_entry_spot, create_request)
             .async<ensure_player_actor_res_t> ();
         auto bound = co_await actors.bind_or_get (ensured.actor.to_actor_ref (ensured.actor_type)).async ();
-        auto joined = co_await bound.context ()
-            .join_entry_spot (ensured.actor.node_rid, create_request)
-            .async ();
-        if (joined.result_code != 0) {
-            co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
-                                                          "Player entry spot join was rejected.");
-        }
         auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
 
         const auto reply_payload = authenticate_res_t{
@@ -73,6 +72,7 @@ class authenticate_session_handler_t
 
   private:
     channel_client_t &_client;
+    route_client_t &_routes;
     sample_topology_t &_topology;
 };
 

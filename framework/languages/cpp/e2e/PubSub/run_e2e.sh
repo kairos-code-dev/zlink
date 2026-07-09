@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -59,16 +60,6 @@ LAST_PID=""
 PUBLISHER_PID=""
 REDIS_CONTAINER=""
 
-pick_port() {
-  python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-}
-
 wait_tcp() {
   local host="$1"
   local port="$2"
@@ -100,10 +91,10 @@ if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
   echo "redis endpoint=$REDIS_ENDPOINT (external)"
 else
-  REDIS_PORT="$(pick_port)"
-  REDIS_CONTAINER="zlink-e2e-pubsub-cpp-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:$REDIS_PORT:6379" redis:7-alpine >/dev/null
-  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-e2e-pubsub" "redis:7-alpine"
+  )
+  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
 REDIS_HOST="${REDIS_ENDPOINT%:*}"

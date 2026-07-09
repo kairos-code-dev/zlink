@@ -1,15 +1,14 @@
 # C++ RegistrationCodec .NET 기준 포팅 inventory
 
 이 문서는 `framework/languages/dotnet/e2e/RegistrationCodec`의 파일을 기준으로 C++
-`RegistrationCodec` E2E의 대응 파일과 남은 gap을 기록한다. 현재 C++ 구현은 client scenario/support와
+`RegistrationCodec` E2E의 대응 파일을 기록한다. 현재 C++ 구현은 client scenario/support와
 server configuration/handler/endpoint/support를 분리했고, invalid role, JSON-only peer role,
 codec requester role도 별도
 executable로 분리한다.
 
-`.NET` 전용 attribute 등록은 C++ framework의 현재 public contract에 동일한 표면이 없으므로 새 public
-API나 테스트 전용 adapter를 추가하지 않고 public contract gap으로 남긴다. 공개 계약 후보는
-`framework/doc/framework/common/draft/handler-registration-annotations.ko.md`에 분리했다.
-Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 검증한다.
+`.NET` 전용 attribute syntax와 assembly scan은 C++가 그대로 제공하지 않는다. 대신 공통 spec의
+annotation 의미인 packet kind/name override를 C++ handler 타입 metadata와 DTO `packet_name`으로
+표현한다. Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 검증한다.
 
 ## 기준
 
@@ -22,7 +21,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | .NET 기준 파일 | C++ 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 실행 로그를 제외한다. |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | C++ public API로 검증한 항목과 C++ public contract gap을 분리한다. |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | C++ public API로 검증한 항목을 기록한다. |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | server/client, invalid role, JSON-only peer role, codec requester role을 각각 별도 executable로 실행한다. |
 | `Shared/Messages.cs` | `Shared/registration_codec_contracts.hpp` | shared | done | JSON/Protobuf/MessagePack/custom serializer용 DTO와 evidence DTO가 대응한다. |
 | `Shared/RegistrationCodec.Shared.csproj` | `Shared/registration_codec_contracts.hpp` | build | not-needed | C++ shared contract는 header로 포함된다. |
@@ -34,7 +33,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | `Client/Support/ProcessSupport.cs` | `run_e2e.sh` | runner-support | done | invalid startup process 실행은 shell runner가 담당한다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | C++ `ensure`와 shell failure checks가 대응한다. |
 | `Client/Scenarios/AutoRegistrationScenario.cs` | `Client/Scenarios/auto_registration_scenario.hpp` | scenario | done | `RC-A1` request/send handler group 등록을 검증한다. |
-| `Client/Scenarios/AttributeRegistrationScenario.cs` | not-implemented | scenario | gap | `RC-A2`는 annotation/decorator 기반 request/send handler 등록 scenario다. C++ public API에는 대응 annotation/decorator 계약이 없다. 공개 계약 후보는 `framework/doc/framework/common/draft/handler-registration-annotations.ko.md`에 분리했다. |
+| `Client/Scenarios/AttributeRegistrationScenario.cs` | `Client/Scenarios/attribute_registration_scenario.hpp` | scenario | done | `RC-A2`는 C++에서 handler 타입의 `request_type`/`message_type`, `topic_name`, DTO의 `packet_name` metadata로 annotation 의미를 검증한다. |
 | `Client/Scenarios/ManualRegistrationScenario.cs` | `Client/Scenarios/manual_registration_scenario.hpp` | scenario | done | `RC-A3` 수동 channel handler 등록을 HTTP endpoint 경유로 검증한다. |
 | `Client/Scenarios/RcA4DiLifecycleScenario.cs` | `Client/Scenarios/rc_a4_di_lifecycle_scenario.hpp` | scenario | done | `RC-A4` scoped/singleton lifecycle을 검증한다. |
 | `Client/Scenarios/RcA5FilterOrderingScenario.cs` | `Client/Scenarios/rc_a5_filter_ordering_scenario.hpp` | scenario | done | `RC-A5` filter before/after 순서를 검증한다. |
@@ -48,7 +47,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | `Server/Main/RegistrationCodecServerHostFactory.cs` | `Server/Support/server_host.hpp` | server-role | done | 정상 framework 구성이 대응한다. |
 | `Server/Main/ServerOptions.cs` | `Server/Configuration/server_options.hpp`; `run_e2e.sh` | configuration | done | env 기반 endpoint/log option이 대응한다. |
 | `Server/Main/DispatchFilters.cs` | `Server/Handlers/filter_order_handlers.hpp` | filter | done | first/second filter가 대응한다. |
-| `Server/Main/Handlers/RegistrationHandlers.cs` | `Server/Handlers/registration_handlers.hpp` | handler | done | auto/manual 성격의 handler가 대응한다. attribute 등록은 이 handler 파일 미완료가 아니라 `RC-A2` public contract gap으로 별도 기록한다. |
+| `Server/Main/Handlers/RegistrationHandlers.cs` | `Server/Handlers/registration_handlers.hpp` | handler | done | auto, attribute 의미, manual 성격의 handler가 대응한다. |
 | `Server/Main/Handlers/DiEchoRequestHandler.cs` | `Server/Handlers/di_lifecycle_handlers.hpp` | handler | done | scoped/singleton lifecycle handler가 대응한다. |
 | `Server/Main/Handlers/CodecHandlers.cs` | `Server/Handlers/codec_handlers.hpp` | handler | done | JSON/Protobuf/MessagePack/custom/mismatch handler가 대응한다. |
 | `Server/Main/Infrastructure/EvidenceStore.cs` | `Server/Infrastructure/scenario_state.hpp` | infrastructure | done | scenario state/evidence snapshot이 대응한다. |
@@ -88,7 +87,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | Scenario ID | C++ 대응 파일 | 상태 | 비고 |
 |-------------|---------------|------|------|
 | `RC-A1` | `Client/Scenarios/auto_registration_scenario.hpp`; `Server/Handlers/registration_handlers.hpp` | done | handler group 기반 request/send 등록을 검증한다. |
-| `RC-A2` | `feature-map.ko.md` | gap | annotation/decorator 기반 request/send handler 등록이며 C++ public API에는 대응 계약이 없다. 공개 계약 후보는 `framework/doc/framework/common/draft/handler-registration-annotations.ko.md`에 분리했다. |
+| `RC-A2` | `Client/Scenarios/attribute_registration_scenario.hpp`; `Server/Handlers/registration_handlers.hpp`; `Server/Support/server_host.hpp` | done | C++ 타입 metadata 기반 request/send handler 등록을 검증한다. |
 | `RC-A3` | `Client/Scenarios/manual_registration_scenario.hpp`; `Server/Handlers/registration_handlers.hpp`; `Server/Support/server_host.hpp` | done | 수동 channel request/send handler 등록을 검증한다. |
 | `RC-A4` | `Client/Scenarios/rc_a4_di_lifecycle_scenario.hpp`; `Server/Handlers/di_lifecycle_handlers.hpp` | done | scoped dependency 교체, singleton 유지, scoped dispose count를 검증한다. |
 | `RC-A5` | `Client/Scenarios/rc_a5_filter_ordering_scenario.hpp`; `Server/Handlers/filter_order_handlers.hpp` | done | filter ordering을 검증한다. |
@@ -101,13 +100,26 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 
 ## 검증
 
+- 2026-07-08: `timeout 420s nice -n 10 framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260708-124643-1329498`
+  - 의미: 정상 server, JSON-only peer, codec requester, invalid role, HTTP-only client runner가
+    모두 통과했다. 출력은 `scenario RC-A1 passed`부터 `scenario RC-B5 passed`, RC-A6 invalid
+    startup checks, `registration-codec e2e result=passed`를 포함한다.
 - 2026-07-03: `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 420s framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260703-200739-24698`
   - 의미: location store 포팅 이후 현재 트리에서 정상 server, JSON-only peer, codec requester,
     invalid role, HTTP-only client runner가 모두 통과했다. RC-A1, RC-A3, RC-A4, RC-A5, RC-A6,
-    RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고, RC-A2는 annotation/decorator public contract
-    gap으로 유지한다. Config-4는 수동 endpoint 연결 config라 Redis location store 등록이 필요 없다.
+    RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고, RC-A2는 그 당시 annotation/decorator 의미의
+    C++ 대응을 아직 검증하지 않았다. Config-4는 수동 endpoint 연결 config라 Redis location store
+    등록이 필요 없다.
+- 2026-07-07: `timeout 420s framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260707-134236-1993396`
+  - 의미: `RC-A2`를 C++ 타입 metadata 기반 등록 scenario로 추가한 뒤 정상 server, JSON-only peer,
+    codec requester, invalid role, HTTP-only client runner가 모두 통과했다. 출력은 `scenario RC-A2
+    passed`와 `registration-codec e2e result=passed`를 포함한다.
 - 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_registration_codec_server zlink_cpp_e2e_registration_codec_invalid_duplicate zlink_cpp_e2e_registration_codec_json_only_peer zlink_cpp_e2e_registration_codec_client`
   - 결과: 통과
 - 2026-06-30: `./framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
@@ -118,13 +130,15 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
   - 결과: 통과
   - 로그: `logs/20260630-163722-417936`
   - 의미: 최신 checkout에서 RC-A1, RC-A3, RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3,
-    RC-B4, RC-B5가 통과했다. RC-A2는 C++ public attribute discovery 계약이 없어 gap으로 유지한다.
+    RC-B4, RC-B5가 통과했다. 당시에는 RC-A2를 C++ public attribute discovery 계약 미정 항목으로
+    기록했지만, 현재 완료 근거는 위의 2026-07-07 RC-A2 검증 기록을 사용한다.
 - 2026-06-30: `timeout 420s framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260630-182337-725659`
   - 의미: 현재 트리에서 정상 server, JSON-only peer, invalid role, client runner가 모두 통과했다.
-    RC-A1, RC-A3, RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고,
-    RC-A2는 C++ public attribute discovery 계약이 없어 gap으로 유지한다.
+    RC-A1, RC-A3, RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했다.
+    당시에는 RC-A2를 C++ public attribute discovery 계약 미정 항목으로 기록했지만, 현재 완료
+    근거는 위의 2026-07-07 RC-A2 검증 기록을 사용한다.
 - 2026-07-01: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_registration_codec_client -j 4`
   - 결과: 통과
   - 의미: public send call surface가 fire-and-forget `submit()` 중심으로 정리된 현재 C++ framework에
@@ -134,7 +148,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
   - 로그: `logs/20260701-162045-82879`
   - 의미: 현재 트리에서 정상 server, JSON-only peer, invalid role, client runner가 모두 통과했다.
     RC-A1, RC-A3, RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고,
-    RC-A2는 annotation/decorator public contract gap으로 유지한다. 최종
+    RC-A2는 그 당시 annotation/decorator 의미의 C++ 대응을 아직 검증하지 않았다. 최종
     `registration-codec e2e result=passed` marker는 RC-A6 invalid startup checks 뒤에 runner가
     한 번만 출력한다.
 - 2026-07-02: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_registration_codec_server zlink_cpp_e2e_registration_codec_invalid_duplicate zlink_cpp_e2e_registration_codec_json_only_peer zlink_cpp_e2e_registration_codec_codec_requester zlink_cpp_e2e_registration_codec_client`
@@ -145,4 +159,4 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
   - 로그: `logs/20260702-070838-14667`
   - 의미: 현재 트리에서 HTTP-only client가 server/codec requester HTTP endpoint만 호출한다. RC-A1, RC-A3,
     RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고, RC-A2는
-    annotation/decorator public contract gap으로 유지한다.
+    그 당시 annotation/decorator 의미의 C++ 대응을 아직 검증하지 않았다.

@@ -61,6 +61,22 @@ route_channel_registration_t &route_channel_registration_t::connect (std::string
 }
 
 route_channel_registration_t &
+route_channel_registration_t::connect (zlink::routing_id_t peer_rid, std::string endpoint)
+{
+    if (peer_rid.size () == 0u) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "route channel manual peer routing id is required");
+    }
+    if (endpoint.empty ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "route channel manual connection endpoint is required");
+    }
+    _manual_connection_targets.push_back (
+      route_connection_set_t::target_t{std::move (endpoint), std::move (peer_rid)});
+    return *this;
+}
+
+route_channel_registration_t &
 route_channel_registration_t::default_request_timeout (std::chrono::milliseconds timeout)
 {
     if (timeout <= std::chrono::milliseconds::zero ()) {
@@ -114,6 +130,12 @@ const std::vector<std::string> &route_channel_registration_t::manual_connections
     return _manual_connections;
 }
 
+const std::vector<route_connection_set_t::target_t> &
+route_channel_registration_t::manual_connection_targets () const noexcept
+{
+    return _manual_connection_targets;
+}
+
 const std::vector<std::string> &route_channel_registration_t::handler_groups () const noexcept
 {
     return _handler_groups;
@@ -157,6 +179,11 @@ route_channel_initializer_t::initialize (const route_channel_registration_t &reg
     }
     for (const auto &endpoint : registration.manual_connections ()) {
         runtime->connect (endpoint);
+    }
+    for (const auto &target : registration.manual_connection_targets ()) {
+        if (target.peer_rid) {
+            runtime->connect (*target.peer_rid, target.endpoint);
+        }
     }
     runtime->manual_connections (registration.manual_connections ());
     runtime->start ();

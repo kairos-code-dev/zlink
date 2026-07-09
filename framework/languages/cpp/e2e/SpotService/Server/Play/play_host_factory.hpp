@@ -26,12 +26,6 @@ inline int run_play_server (int argc, char **argv)
     const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
     const auto node_rid = env_or ("ZLINK_CPP_E2E_NODE_RID", "play-a");
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
-    const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
-    const auto route_session_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_SESSION_A_ENDPOINT");
-    const auto route_session_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_SESSION_B_ENDPOINT");
-    const auto route_stream_client_endpoint =
-      env_or ("ZLINK_CPP_E2E_ROUTE_STREAM_CLIENT_ENDPOINT");
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
     const auto api_peer_endpoint = env_or ("ZLINK_CPP_E2E_API_PEER_ENDPOINT");
@@ -54,7 +48,10 @@ inline int run_play_server (int argc, char **argv)
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
           .add_transient<ensure_actor_handler_t, scenario_state_t,
-                         zlink::framework::spot_node_manager_t> ()
+                         zlink::framework::spot_node_manager_t,
+                         zlink::framework::session_actor_manager_t,
+                         zlink::framework::route_client_t,
+                         zlink::framework::actor_gateway_t> ()
           .add_transient<spot_lifecycle_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<join_spot_handler_t, scenario_state_t,
@@ -120,28 +117,19 @@ inline int run_play_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        auto play_route = options.add_route_mesh_channel (e2e::route_channel)
-                            .enable_server (route_endpoint)
-                            .set_routing_id (zlink::routing_id_t::from (node_rid))
-                            .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,
-                                                 e2e::ensure_actor_res_t> (
-                              "EnsureActor", &ensure_actor_handler_t::handle)
-                            .add_request_handler<channel_echo_handler_t, e2e::channel_echo_req_t,
-                                                 e2e::channel_echo_res_t> (
-                              "ChannelEchoReq", &channel_echo_handler_t::route_handle)
-                            .add_request_handler<spot_lifecycle_handler_t, e2e::lifecycle_req_t,
-                                                 e2e::lifecycle_res_t> (
-                              "LifecycleReq", &spot_lifecycle_handler_t::handle);
-        auto connect_route_peer = [&] (const std::string &endpoint) {
-            if (!endpoint.empty () && endpoint != route_endpoint) {
-                play_route.enable_client (endpoint);
-            }
-        };
-        connect_route_peer (route_a_endpoint);
-        connect_route_peer (route_b_endpoint);
-        connect_route_peer (route_session_a_endpoint);
-        connect_route_peer (route_session_b_endpoint);
-        connect_route_peer (route_stream_client_endpoint);
+        options.add_route_mesh_channel (e2e::route_channel)
+          .enable_server (route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (node_rid))
+          .enable_client ()
+          .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,
+                               e2e::ensure_actor_res_t> (
+            "EnsureActor", &ensure_actor_handler_t::handle)
+          .add_request_handler<channel_echo_handler_t, e2e::channel_echo_req_t,
+                               e2e::channel_echo_res_t> (
+            "ChannelEchoReq", &channel_echo_handler_t::route_handle)
+          .add_request_handler<spot_lifecycle_handler_t, e2e::lifecycle_req_t,
+                               e2e::lifecycle_res_t> (
+            "LifecycleReq", &spot_lifecycle_handler_t::handle);
         if (!api_endpoint.empty () || !api_peer_endpoint.empty ()) {
             auto api = options.add_client_server_channel (e2e::api_channel);
             if (!api_endpoint.empty ()) {

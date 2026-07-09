@@ -15,6 +15,7 @@ namespace zlink::framework::e2e::spot_service
 inline constexpr const char *route_channel = "spot.service.play";
 inline constexpr const char *api_channel = "spot.service.api";
 inline constexpr const char *spot_mesh = "spot.service.mesh";
+inline constexpr const char *spot_only_mesh = "spot-only.mesh";
 inline constexpr const char *publisher_channel = "spot.service.publisher";
 inline constexpr const char *handler_group = "spot-service";
 inline constexpr const char *actor_type = "scenario-player";
@@ -51,6 +52,7 @@ struct ensure_actor_req_t
 {
     std::string actor_id;
     std::string display_name;
+    bool bind_session_route = false;
 };
 
 struct ensure_actor_res_t
@@ -194,6 +196,23 @@ struct multi_node_state_route_req_t
 {
     std::string spot_rid;
     int delta = 0;
+};
+
+struct join_admitted_user_spot_actor_req_t
+{
+    std::string spot_rid;
+    std::string actor_id;
+    bool allow = false;
+    std::string reason;
+};
+
+struct join_admitted_user_spot_actor_res_t
+{
+    std::string spot_rid;
+    std::string actor_id;
+    bool accepted = false;
+    std::uint64_t generation = 0;
+    std::string error_kind;
 };
 
 struct remote_actor_flow_res_t
@@ -631,6 +650,20 @@ struct actor_push_req_t
     std::string value;
 };
 
+struct actor_push_by_actor_req_t
+{
+    std::string actor_id;
+    std::string value;
+};
+
+struct actor_push_by_actor_res_t
+{
+    std::string actor_id;
+    std::string value;
+    bool delivered = false;
+    std::string error_kind;
+};
+
 struct snapshot_req_t
 {
     std::string actor_id;
@@ -660,6 +693,36 @@ struct actor_push_notify_t
     std::string actor_id;
     std::string value;
     int seen = 0;
+};
+
+struct spot_only_mesh_req_t
+{
+    std::string source_spot_rid;
+    std::string target_spot_rid;
+    std::string marker;
+};
+
+struct spot_only_mesh_res_t
+{
+    std::string source_spot_rid;
+    std::string target_spot_rid;
+    int target_value = 0;
+    std::string marker;
+};
+
+struct spot_only_join_req_t
+{
+    std::string target_spot_rid;
+    std::string actor_id;
+    std::string marker;
+};
+
+struct spot_only_join_res_t
+{
+    std::string target_spot_rid;
+    std::string actor_id;
+    bool accepted = false;
+    std::string marker;
 };
 
 struct evidence_entry_t
@@ -757,13 +820,16 @@ inline void from_json (const nlohmann::json &json, actor_ref_dto_t &value)
 
 inline void to_json (nlohmann::json &json, const ensure_actor_req_t &value)
 {
-    json = nlohmann::json{{"actor_id", value.actor_id}, {"display_name", value.display_name}};
+    json = nlohmann::json{{"actor_id", value.actor_id},
+                          {"display_name", value.display_name},
+                          {"bind_session_route", value.bind_session_route}};
 }
 
 inline void from_json (const nlohmann::json &json, ensure_actor_req_t &value)
 {
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("display_name").get_to (value.display_name);
+    value.bind_session_route = json.value ("bind_session_route", false);
 }
 
 inline void to_json (nlohmann::json &json, const ensure_actor_res_t &value)
@@ -1049,6 +1115,44 @@ inline void from_json (const nlohmann::json &json, multi_node_state_route_req_t 
 {
     json.at ("spot_rid").get_to (value.spot_rid);
     json.at ("delta").get_to (value.delta);
+}
+
+inline void to_json (nlohmann::json &json, const join_admitted_user_spot_actor_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"actor_id", value.actor_id},
+                          {"allow", value.allow},
+                          {"reason", value.reason}};
+}
+
+inline void from_json (const nlohmann::json &json, join_admitted_user_spot_actor_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("allow").get_to (value.allow);
+    json.at ("reason").get_to (value.reason);
+}
+
+inline void to_json (nlohmann::json &json, const join_admitted_user_spot_actor_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"actor_id", value.actor_id},
+                          {"accepted", value.accepted},
+                          {"generation", value.generation},
+                          {"error_kind", value.error_kind}};
+}
+
+inline void from_json (const nlohmann::json &json, join_admitted_user_spot_actor_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("accepted").get_to (value.accepted);
+    if (json.contains ("generation")) {
+        json.at ("generation").get_to (value.generation);
+    }
+    if (json.contains ("error_kind")) {
+        json.at ("error_kind").get_to (value.error_kind);
+    }
 }
 
 inline void to_json (nlohmann::json &json, const remote_actor_flow_res_t &value)
@@ -1900,6 +2004,35 @@ inline void from_json (const nlohmann::json &json, actor_push_req_t &value)
     json.at ("value").get_to (value.value);
 }
 
+inline void to_json (nlohmann::json &json, const actor_push_by_actor_req_t &value)
+{
+    json = nlohmann::json{{"actor_id", value.actor_id}, {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_push_by_actor_req_t &value)
+{
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const actor_push_by_actor_res_t &value)
+{
+    json = nlohmann::json{{"actor_id", value.actor_id},
+                          {"value", value.value},
+                          {"delivered", value.delivered},
+                          {"error_kind", value.error_kind}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_push_by_actor_res_t &value)
+{
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("value").get_to (value.value);
+    json.at ("delivered").get_to (value.delivered);
+    if (json.contains ("error_kind")) {
+        json.at ("error_kind").get_to (value.error_kind);
+    }
+}
+
 inline void to_json (nlohmann::json &json, const snapshot_req_t &value)
 {
     json = nlohmann::json{{"actor_id", value.actor_id}};
@@ -1974,6 +2107,9 @@ inline void from_stream_payload (const zlink::message_t &payload, actor_push_not
     const auto json = nlohmann::json::parse (payload.to_string ());
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("value").get_to (value.value);
+    if (json.contains ("seen")) {
+        json.at ("seen").get_to (value.seen);
+    }
 }
 
 inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)
@@ -1983,6 +2119,66 @@ inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)
     if (json.contains ("seen")) {
         json.at ("seen").get_to (value.seen);
     }
+}
+
+inline void to_json (nlohmann::json &json, const spot_only_mesh_req_t &value)
+{
+    json = nlohmann::json{{"source_spot_rid", value.source_spot_rid},
+                          {"target_spot_rid", value.target_spot_rid},
+                          {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_only_mesh_req_t &value)
+{
+    json.at ("source_spot_rid").get_to (value.source_spot_rid);
+    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("marker").get_to (value.marker);
+}
+
+inline void to_json (nlohmann::json &json, const spot_only_mesh_res_t &value)
+{
+    json = nlohmann::json{{"source_spot_rid", value.source_spot_rid},
+                          {"target_spot_rid", value.target_spot_rid},
+                          {"target_value", value.target_value},
+                          {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_only_mesh_res_t &value)
+{
+    json.at ("source_spot_rid").get_to (value.source_spot_rid);
+    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("target_value").get_to (value.target_value);
+    json.at ("marker").get_to (value.marker);
+}
+
+inline void to_json (nlohmann::json &json, const spot_only_join_req_t &value)
+{
+    json = nlohmann::json{{"target_spot_rid", value.target_spot_rid},
+                          {"actor_id", value.actor_id},
+                          {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_only_join_req_t &value)
+{
+    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("marker").get_to (value.marker);
+}
+
+inline void to_json (nlohmann::json &json, const spot_only_join_res_t &value)
+{
+    json = nlohmann::json{{"target_spot_rid", value.target_spot_rid},
+                          {"actor_id", value.actor_id},
+                          {"accepted", value.accepted},
+                          {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_only_join_res_t &value)
+{
+    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("accepted").get_to (value.accepted);
+    json.at ("marker").get_to (value.marker);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

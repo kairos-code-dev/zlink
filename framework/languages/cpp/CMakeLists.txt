@@ -1,6 +1,18 @@
 cmake_minimum_required(VERSION 3.20)
 project(zlink_framework_cpp LANGUAGES C CXX)
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  add_compile_options(
+    $<$<COMPILE_LANGUAGE:CXX>:-fvisibility=hidden>
+    $<$<COMPILE_LANGUAGE:CXX>:-fvisibility-inlines-hidden>
+    $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU>>:-fno-gnu-unique>)
+  add_link_options($<$<LINK_LANGUAGE:CXX>:-Wl,--exclude-libs,ALL>)
+  if(UNIX AND NOT APPLE AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/cmake/hide-executable-symbols.map")
+    add_link_options(
+      $<$<LINK_LANGUAGE:CXX>:-Wl,--version-script=${CMAKE_CURRENT_LIST_DIR}/cmake/hide-executable-symbols.map>)
+  endif()
+endif()
+
 include(GNUInstallDirs)
 include(FetchContent)
 include(CMakePackageConfigHelpers)
@@ -129,42 +141,30 @@ target_include_directories(zlink_framework PUBLIC
 target_include_directories(zlink_framework PRIVATE
   ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 target_link_libraries(zlink_framework PUBLIC zlink::cpp)
-set(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR "" CACHE PATH
-  "System Boost include directory used to match the local zlink_cpp package")
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux"
-    AND EXISTS "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}"
-    AND (NOT ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR
-         OR ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR STREQUAL "/usr/include")
-    AND EXISTS "/usr/include/boost/asio.hpp"
-    AND EXISTS "/usr/include/boost/beast/http.hpp")
-  set(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR
-    "${CMAKE_CURRENT_BINARY_DIR}/system-boost-include" CACHE PATH
-    "System Boost include directory used to match the local zlink_cpp package" FORCE)
-endif()
-if(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR)
-  if(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR
-      STREQUAL "${CMAKE_CURRENT_BINARY_DIR}/system-boost-include")
-    file(MAKE_DIRECTORY "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}")
-    file(CREATE_LINK "/usr/include/boost"
-      "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}/boost"
-      SYMBOLIC COPY_ON_ERROR)
-  endif()
-  target_include_directories(zlink_framework SYSTEM BEFORE PRIVATE
-    "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}")
+set(ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR "" CACHE PATH
+  "Boost include directory used by the C++ framework and stream connector")
+if(NOT ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR
+    AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost/boost/asio.hpp")
+  set(ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR
+    "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost" CACHE PATH
+    "Boost include directory used by the C++ framework and stream connector" FORCE)
 endif()
 find_package(Boost QUIET)
-if(Boost_FOUND AND Boost_INCLUDE_DIRS)
-  target_include_directories(zlink_framework PRIVATE ${Boost_INCLUDE_DIRS})
-elseif(Boost_FOUND AND Boost_INCLUDE_DIR)
-  target_include_directories(zlink_framework PRIVATE ${Boost_INCLUDE_DIR})
-elseif(EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost/boost/asio.hpp")
-  target_include_directories(zlink_framework PRIVATE
-    "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost")
-else()
-  message(FATAL_ERROR
-    "Boost headers were not found. Install Boost, configure with vcpkg, "
-    "or make sure core/external/boost exists in the repository checkout.")
-endif()
+function(zlink_framework_cpp_add_boost_headers target_name)
+  if(ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR)
+    target_include_directories(${target_name} SYSTEM BEFORE PRIVATE
+      "${ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR}")
+  elseif(Boost_FOUND AND Boost_INCLUDE_DIRS)
+    target_include_directories(${target_name} PRIVATE ${Boost_INCLUDE_DIRS})
+  elseif(Boost_FOUND AND Boost_INCLUDE_DIR)
+    target_include_directories(${target_name} PRIVATE ${Boost_INCLUDE_DIR})
+  else()
+    message(FATAL_ERROR
+      "Boost headers were not found. Install Boost, configure with vcpkg, "
+      "or make sure core/external/boost exists in the repository checkout.")
+  endif()
+endfunction()
+zlink_framework_cpp_add_boost_headers(zlink_framework)
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
   FetchContent_Declare(
@@ -280,6 +280,7 @@ target_include_directories(zlink_stream_connector PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_include_directories(zlink_stream_connector PRIVATE
   ${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)
+zlink_framework_cpp_add_boost_headers(zlink_stream_connector)
 target_link_libraries(zlink_stream_connector PUBLIC zlink::cpp)
 target_link_libraries(zlink_stream_connector PRIVATE Threads::Threads)
 if(ZLINK_STREAM_CONNECTOR_WITH_TLS AND OpenSSL_FOUND)

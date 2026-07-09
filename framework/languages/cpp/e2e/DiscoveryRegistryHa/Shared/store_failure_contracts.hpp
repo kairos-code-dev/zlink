@@ -36,6 +36,11 @@ struct operation_status_t
     std::string status;
 };
 
+struct store_delay_req_t
+{
+    int milliseconds = 0;
+};
+
 struct evidence_entry_t
 {
     std::string marker;
@@ -111,6 +116,16 @@ inline void to_json (nlohmann::json &json, const operation_status_t &value)
 inline void from_json (const nlohmann::json &json, operation_status_t &value)
 {
     json.at ("status").get_to (value.status);
+}
+
+inline void to_json (nlohmann::json &json, const store_delay_req_t &value)
+{
+    json = nlohmann::json{{"milliseconds", value.milliseconds}};
+}
+
+inline void from_json (const nlohmann::json &json, store_delay_req_t &value)
+{
+    json.at ("milliseconds").get_to (value.milliseconds);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

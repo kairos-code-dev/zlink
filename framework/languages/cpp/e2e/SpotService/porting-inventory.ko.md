@@ -31,10 +31,12 @@
 | `Client/Scenarios/SmB6Scenario.cs` | `Client/Scenarios/sm_b6_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-B6 |
 | `Client/Scenarios/SmB7Scenario.cs` | `Client/Scenarios/sm_b7_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-B7 |
 | `Client/Scenarios/SmB8Scenario.cs` | `Client/Scenarios/sm_b8_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-B8 |
+| `Client/Scenarios/SmB9Scenario.cs` | `Client/Scenarios/sm_b9_scenario.hpp`, `Client/main.cpp`, `Server/Play/Spots/play_actor_model.hpp`, `run_e2e.sh` | scenario | done | user spot admission 허용/거부를 public actor join 결과와 evidence로 검증한다. |
 | `Client/Scenarios/SmC1Scenario.cs` | `Client/Scenarios/sm_c1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-C1 |
 | `Client/Scenarios/SmC2Scenario.cs` | `Client/Scenarios/sm_c2_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-C2 |
 | `Client/Scenarios/SmC3Scenario.cs` | `Client/Scenarios/sm_c3_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-C3 |
 | `Client/Scenarios/SmC4Scenario.cs` | `Client/Scenarios/sm_c4_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-C4 |
+| `Client/Scenarios/SmC5Scenario.cs` | `Client/Scenarios/sm_c5_scenario.hpp`, `Client/main.cpp`, `Server/Play/Endpoints/spot_interaction_endpoints.hpp`, `run_e2e.sh` | scenario | done | cross-node SpotMesh publish가 target spot subscriber evidence에 남는지 검증한다. |
 | `Client/Scenarios/SmD1Scenario.cs` | `Client/Scenarios/sm_d1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-D1 |
 | `Client/Scenarios/SmD2Scenario.cs` | `Client/Scenarios/sm_d2_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-D2 |
 | `Client/Scenarios/SmD3Scenario.cs` | `Client/Scenarios/sm_d3_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-D3 |
@@ -49,6 +51,7 @@
 | `Client/Scenarios/SmD12Scenario.cs` | `Client/Scenarios/sm_d12_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-D12 |
 | `Client/Scenarios/SmD13Scenario.cs` | `Client/Scenarios/sm_d13_scenario.hpp`, `run_e2e.sh`, `feature-map.ko.md` | scenario | done | `.NET`과 같은 heartbeat-enabled stream 유지 경로를 검증하고, 후속 actor request와 evidence를 focused run으로 확인했다. |
 | `Client/Scenarios/SmD14Scenario.cs` | `Client/Scenarios/sm_d14_scenario.hpp`, `Server/Session/session_host_factory.hpp`, `run_e2e.sh`, `feature-map.ko.md` | scenario | done | public stream node TLS server 설정과 stream connector strict rejection/skip-validation 성공 경로로 bind, relay, push를 검증한다. |
+| `Client/Scenarios/SmD15Scenario.cs` | `Client/Scenarios/sm_d15_scenario.hpp`, `Server/Gateway/gateway_host_factory.hpp`, `run_e2e.sh`, `feature-map.ko.md` | scenario | done | gateway HTTP request가 public actor client를 통해 actor handler에 도달하고 bound-session push notify가 client stream에 도착하는지 검증한다. |
 | `Client/Scenarios/SmE1Scenario.cs` | `Client/Scenarios/sm_e1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-E1 |
 | `Client/Scenarios/SmE2Scenario.cs` | `Client/Scenarios/sm_e2_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `run_e2e.sh` | scenario | done | SM-E2 public spot timer tick evidence |
 | `Client/Scenarios/SmE3Scenario.cs` | `Client/Scenarios/sm_e3_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp`, `run_e2e.sh` | scenario | done | SM-E3 public spot create lifecycle에서 idle timer를 등록하고 timer handler의 public close와 닫힌 spot request 실패를 검증한다. |
@@ -58,6 +61,7 @@
 | 공통 E2E `SM-F3` | `Client/Scenarios/sm_f3_scenario.hpp`, `Client/main.cpp` | scenario | done | `.NET`에는 별도 scenario 파일이 없지만 feature-map과 공통 Config 2에 있는 SM-F3를 C++ scenario header로 분리했다. 같은 route mesh channel에서 일반 route request와 target spot route request가 함께 처리되는지 검증한다. |
 | `Client/Scenarios/SmF4Scenario.cs` | `Client/Scenarios/sm_f4_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-F4 |
 | 공통 E2E `SM-F5` | `Client/Scenarios/sm_f5_scenario.hpp`, `Client/main.cpp` | scenario | done | `.NET`에는 별도 scenario 파일이 없지만 feature-map과 공통 Config 2에 있는 SM-F5를 C++ scenario header로 분리했다. spot route negative 뒤 같은 route channel의 일반 route request와 target spot route request가 계속 성공하는지 검증한다. |
+| `Client/Scenarios/SmF6Scenario.cs` | `Client/Scenarios/sm_f6_scenario.hpp`, `Server/MultiNode/`, `run_e2e.sh` | scenario | done | RouteMesh를 끈 MultiNode SpotMesh-only role에서 remote spot request/send와 actor join을 검증한다. |
 | `Client/Scenarios/SmG1Scenario.cs` | `Client/Scenarios/sm_g1_scenario.hpp`, `Client/main.cpp`, `run_e2e.sh` | scenario | done | SM-G1 crash/restart evidence |
 | `Client/Scenarios/SmG2Scenario.cs` | `Client/Scenarios/sm_g2_scenario.hpp` | scenario | done | SM-G2 |
 | `Client/Scenarios/SmG3Scenario.cs` | `Client/Scenarios/sm_g3_scenario.hpp` | scenario | done | `.NET`처럼 두 stream client를 먼저 순차 auth/bind한 뒤 ping/leave만 동시에 실행한다. 이전 C++ 구현은 auth/join까지 동시에 실행해 session `StreamBound` evidence가 중복될 수 있었다. |
@@ -106,6 +110,274 @@
 
 ## 현재 검증
 
+- 2026-07-08 현재 worktree 재검증:
+  - `nice -n 10 cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_gateway zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester zlink_cpp_e2e_spot_service_client -j2`
+    - 결과: passed
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 300s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-B9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-092246-796157`
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 E2E_START_ORDER=reverse timeout 300s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-B9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-092304-797032`
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 E2E_START_ORDER=shuffle:20260708 timeout 300s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-B9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-092327-797879`
+  - 비고: `SM-B9`는 framework-level reconnect loop나 control-ping timeout 확장 없이 기본
+    설정으로 통과했다. 서버 간 시작 순서가 forward, reverse, shuffle 이어도 같은 public
+    readiness probe와 scenario evidence가 통과했다. framework 공통 spec에는 transport
+    재접속을 framework 기능으로 다시 구현하지 않고 하부 zlink socket 책임으로 둔다는 정책을
+    `framework/doc/framework/common/spec/framework-api.ko.md`에 추가했다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 2400s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: failed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-092418-799125`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`
+    - 실패 child: `SM-D9`
+    - 비고: `play-b`가 health 응답 전 startup 중 segmentation fault로 종료되어 full sweep이
+      실패했다. 같은 시각 외부 작업이 core runtime build/link와 core ctest를 수행하고 있어
+      이 full run은 완료 proof로 쓰지 않는다. 이 실패는 framework-level retry나 reconnect로
+      가릴 대상이 아니며, 재현되면 crash backtrace를 확보해야 한다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_CPP_E2E_GDB_ROLES=play-b timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-092753-809896`
+    - 비고: gdb wrapper를 켠 focused run에서는 startup crash가 재현되지 않았다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 300s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D9`
+    - 결과: passed, 3회 반복
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-092809-810769`,
+      `framework/languages/cpp/e2e/SpotService/logs/20260708-092831-812430`,
+      `framework/languages/cpp/e2e/SpotService/logs/20260708-092903-814770`
+    - 비고: focused 기본 run에서도 startup crash는 재현되지 않았다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_REDIS_E2E_ENDPOINT=127.0.0.1:59043 timeout 2400s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: failed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-093553-835429`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`, `SM-D10`, `SM-D12`, `SM-D14`
+    - 실패 child: `SM-D15`
+    - 비고: runner 내부 Docker 지연을 피하려고 별도 Redis 컨테이너를 먼저 띄운 뒤 external
+      Redis endpoint로 full sweep을 실행했다. `SM-D15`에서 `play-b`가 health 응답 전 startup 중
+      segmentation fault로 종료되어 실패했다. 이는 framework-level retry/reconnect로 가릴 대상이
+      아니며, startup crash backtrace 확보가 필요하다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_CPP_E2E_GDB_ROLES=play-b ZLINK_REDIS_E2E_ENDPOINT=127.0.0.1:20369 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D15`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-094407-852559`
+    - 비고: gdb wrapper를 켠 focused run에서는 startup crash가 재현되지 않아 backtrace를 얻지
+      못했다. 이 run은 이미 떠 있던 Redis container를 고유 key prefix로 사용한 진단용 실행이므로,
+      full 완료 proof로 쓰지 않는다.
+  - `nice -n 10 cmake --build framework/languages/cpp/build --target zlink_framework zlink_cpp_e2e_spot_service_gateway zlink_cpp_e2e_spot_service_client -j1`
+    - 결과: passed
+    - 비고: `actor_directory_t` 기본 DI 구현 등록과 SM-D15 client error detail 보강 후 재빌드했다.
+  - `timeout 120s nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D15`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-122943-1258183`
+    - 비고: `SM-D15` gateway actor push 실패 원인은 gateway handler가 요구하는 public
+      `actor_directory_t` service가 framework 기본 DI에 등록되지 않은 것이었다. 기본 구현은 location
+      store의 actor row에서 `actor_ref_t`를 반환하며, gateway는 이 ref로
+      `request_to_actor(actor_ref_t, ...)`를 호출한다.
+  - `timeout 420s nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-123007-1259169`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`, `SM-D10`, `SM-D12`, `SM-D14`, `SM-D15`, `SM-C1`,
+      `SM-C2`, `SM-C3`, `SM-C5`, `SM-E4`, `SM-E1`, `SM-E2`, `SM-E3`, `SM-A7`,
+      `SM-A8`, `SM-C4`, `SM-A3`, `SM-A6`, `SM-B4`, `SM-B7`, `SM-A5`, `SM-A1`,
+      `SM-A2`, `SM-A4`, `SM-F1`, `SM-F2`, `SM-F6`, `SM-G2`, `SM-G3`, `SM-G4`,
+      `SM-G1`, `SM-Q9`
+    - 비고: 중간 `Killed` 출력은 scenario 종료 시 runner cleanup이 자신이 시작한 role process를
+      종료하면서 나온 메시지이며, 전체 runner exit code는 0이다. 이전 full sweep 실패 구간인
+      `SM-A5`, `SM-B5`, `SM-D15`, `SM-Q9`가 모두 통과했다.
+  - `nice -n 10 cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester zlink_cpp_e2e_spot_service_client -j2`
+    - 결과: passed
+    - 비고: `SM-Q9` route readiness 수정과 `spot_runtime` actor request dispatch의 detached
+      thread 제거 후 재빌드했다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D10`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-100606-914870`
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-100613-915436`
+    - 비고: `SM-Q9`는 고정 `sleep`이나 framework-level retry 없이 requester HTTP
+      `/route/control-ping`이 실제 multi-node route handler까지 왕복한 뒤 client scenario를
+      시작하도록 바꿨다. `control-ping multi-a passed`, `control-ping multi-b passed`,
+      `scenario SM-Q9 evidence passed`를 확인했다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 900s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: failed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-100122-908007`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`
+    - 실패 child: `SM-D10`
+    - 비고: `session-a`가 health 응답 전 startup 중 segmentation fault로 종료했다. 같은
+      scenario를 gdb wrapper와 focused 기본 run 3회로 다시 실행했을 때는 재현되지 않았다.
+      이 실패는 retry/reconnect로 가릴 대상이 아니며, startup crash backtrace 확보가 필요하다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 900s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: incomplete
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-100641-916442`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`, `SM-D10`
+    - 마지막 child: `SM-D12`
+    - 비고: parent 출력이 `SM-D12` child 시작 뒤 끊겼고 completion marker가 없으므로 full
+      완료 proof로 쓰지 않는다. 별도 `ZLINK_CPP_E2E_GDB_ROLES=play-a` focused `SM-D12`
+      run은 `framework/languages/cpp/e2e/SpotService/logs/20260708-101036-925791`에서
+      통과했지만 startup crash backtrace는 얻지 못했다.
+  - `nice -n 10 cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_gateway zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester zlink_cpp_e2e_spot_service_client -j2`
+    - 결과: passed
+    - 비고: `spot_runtime`의 actor route request dispatch와 내부 spot actor route request dispatch가
+      handler coroutine executor를 사용하도록 바꾼 뒤 재빌드했다. detached thread가 framework
+      lifecycle 밖에서 request body와 service reference를 잡고 실행하지 않도록 정리한 변경이다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D4`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-101904-941761`
+    - 비고: 이전 gdb full sweep에서 `SM-D4 second actor push failed`와 `spot_route`
+      `invalid_frame`이 관측된 경로를 focused run으로 재검증했다. `scenario SM-D4 evidence
+      passed`를 확인했고 server stderr는 비어 있었다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D10`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-102004-943409`
+    - 비고: 이전 full sweep의 `session-a` startup segmentation fault는 focused run에서 재현되지
+      않았다. `scenario SM-D10 evidence passed`를 확인했고 server stderr는 비어 있었다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-102305-948394`
+    - 비고: requester HTTP `/route/control-ping`이 multi-node route handler까지 왕복한 뒤
+      scenario가 시작되었다. `control-ping multi-a passed`, `control-ping multi-b passed`,
+      `scenario SM-Q9 evidence passed`를 확인했다. cleanup 단계에서 role process 종료 로그가
+      출력되었지만 pass marker와 evidence 검증 뒤의 정리 동작이다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 2400s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: failed
+    - 로그: parent `framework/languages/cpp/e2e/SpotService/logs/20260708-102931-955579`,
+      실패 child `framework/languages/cpp/e2e/SpotService/logs/20260708-103715-978103`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`, `SM-D10`, `SM-D12`, `SM-D14`, `SM-D15`, `SM-C1`, `SM-C2`,
+      `SM-C3`, `SM-C5`, `SM-E4`, `SM-E1`, `SM-E2`, `SM-E3`, `SM-A7`, `SM-A8`,
+      `SM-C4`, `SM-A3`, `SM-A6`, `SM-B4`, `SM-B7`, `SM-A5`, `SM-A1-A2-A4-F1-F2`,
+      `SM-F6`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1`
+    - 실패 child: `SM-Q9`
+    - 비고: `multi-a` route readiness는 통과했지만 `multi-b` requester가
+      `MultiNodeRoutePing`을 계속 전송하고 multi-b server가 수신하지 못해 `errno=113`으로
+      실패했다. 이는 완료 proof가 아니며, retry나 timeout 확장으로 가릴 대상이 아니다.
+  - `nice -n 10 cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester -j2`
+    - 결과: passed
+    - 비고: MultiNode server의 route mesh self/peer manual connect를 제거하고, 서버 간 route
+      endpoint 수렴은 Redis location runtime의 desired set이 맡도록 바꿨다. requester는 검증용
+      client bridge이므로 target server가 준비된 뒤 시작하도록 SM-Q9 runner를 조정했다. framework
+      reconnect loop나 retry는 추가하지 않았다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-110655-1032448`
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 E2E_START_ORDER=reverse timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-110722-1034483`
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 E2E_START_ORDER=shuffle:20260708 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-110936-1042463`
+    - 비고: SM-Q9는 실제 서버 역할인 `multi-a`/`multi-b`에만 start-order 변형을 적용하고,
+      requester bridge는 client/runner 대기 조건으로 서버 readiness 뒤에 시작한다. forward,
+      reverse, shuffle 모두 `control-ping multi-a passed`, `control-ping multi-b passed`,
+      `scenario SM-Q9 evidence passed`를 확인했다. full child sweep은 이 수정 뒤 아직 다시
+      실행해야 한다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 2400s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: failed
+    - 로그: parent `framework/languages/cpp/e2e/SpotService/logs/20260708-111106-1045282`,
+      실패 child `framework/languages/cpp/e2e/SpotService/logs/20260708-111123-1046154`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`
+    - 실패 child: `SM-B5`
+    - 비고: `play-b`가 HTTP health를 열기 전에 segmentation fault로 종료되어 `play-b`
+      stdout/stderr가 비어 있었다. 이는 완료 proof가 아니며 retry, sleep, timeout 확장으로
+      가릴 대상이 아니다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_CPP_E2E_GDB_ROLES=play-b timeout 240s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-B5`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-111419-1050493`
+    - 비고: 일반 full sweep에서 보인 `play-b` startup segmentation fault는 `play-b` gdb
+      focused run에서 재현되지 않았다. focused pass는 crash 원인 해소 proof가 아니므로,
+      non-gdb full sweep 재검증이 남아 있다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_CPP_E2E_GDB_ROLES=play-b timeout 2400s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: failed
+    - 로그: parent `framework/languages/cpp/e2e/SpotService/logs/20260708-111433-1051176`,
+      실패 child `framework/languages/cpp/e2e/SpotService/logs/20260708-111902-1072043`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`, `SM-D10`, `SM-D12`, `SM-D14`, `SM-D15`, `SM-C1`, `SM-C2`,
+      `SM-C3`, `SM-C5`, `SM-E4`, `SM-E1`, `SM-E2`, `SM-E3`, `SM-A7`, `SM-A8`,
+      `SM-C4`, `SM-A3`, `SM-A6`, `SM-B4`, `SM-B7`
+    - 실패 child: `SM-A5`
+    - 비고: gdb wrapper가 붙은 `play-b` 환경에서 `SM-A5` client가 `StageProbeReq` 응답을
+      기다리다 HTTP timeout으로 실패했다. `play-b.stdout.log`에는 `SIGSEGV`나 backtrace가
+      남지 않았다. 이 실행은 gdb timing 영향을 받으므로 완료 proof로 쓰지 않는다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 240s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-A5`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-111938-1073633`
+    - 비고: gdb full sweep에서 보인 `SM-A5` HTTP timeout은 일반 focused run에서 재현되지
+      않았다. 그래도 전체 완료 proof는 아니므로, CPU 부하가 낮은 시점에 non-gdb full sweep을
+      다시 실행해야 한다.
+  - `nice -n 10 cmake --build framework/languages/cpp/build --target zlink_framework zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester -j2`
+    - 결과: passed
+    - 비고: `native_route_backend_t`에 남아 있던 unused `reconnect_endpoints` 생성자/멤버를
+      제거했다. framework-level reconnect 기능을 추가한 것이 아니라, transport 재접속 책임이
+      socket에 있다는 정책과 충돌하는 내부 이름을 제거한 것이다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 E2E_START_ORDER=shuffle:20260708 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: failed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-112213-1078492`
+    - 실패 위치: `sm-q9-requester-a-route-ready`
+    - 비고: `multi-a-requester-flow.log`에는 `MultiNodeRoutePing` request가 반복 전송된 기록만
+      있고 reply가 없다. stderr는 `request_failed`, `errno=113`을 반환했다. 이는 route
+      desired set 또는 auto-connect 수렴 문제로 남기며, retry/sleep/timeout 확장으로 완료 처리하지
+      않는다. 이 실행 시점의 시스템 load가 20코어를 넘어 추가 재실행은 보류했다.
+  - `nice -n 10 cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_multinode_requester zlink_cpp_e2e_spot_service_multinode -j2`
+    - 결과: passed
+    - 비고: MultiNode requester route mesh client를 manual endpoint connect가 아니라 discovery
+      기반 `enable_client()`로 바꾼 뒤 관련 target을 다시 빌드했다. requester는 서버 readiness 뒤에
+      시작하지만 route connection 자체는 location auto-connect desired set이 peer routing id와 함께
+      관리해야 한다.
+  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 E2E_START_ORDER=shuffle:20260708 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-112628-1090689`
+    - 비고: `control-ping multi-a passed`, `control-ping multi-b passed`,
+      `operation SpotService.sm-q9 passed`, `scenario SM-Q9 evidence passed`를 확인했다.
+      pass marker 이후 cleanup 단계에서 role process `Killed` 출력이 있었지만, scenario/evidence
+      검증 뒤의 정리 출력이다. 시스템 load가 20코어를 넘어 full child sweep은 이 시점에 실행하지
+      않았다.
+- 2026-07-08 startup crash 진단 sweep:
+  - `ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_CPP_E2E_GDB_ROLES=all ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: interrupted
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-071018-484619`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`, `SM-D10`, `SM-D12`, `SM-D14`, `SM-D15`,
+      `SM-C1`, `SM-C2`, `SM-C3`, `SM-C5`, `SM-E4`, `SM-E1`
+    - 비고: 모든 server role을 gdb batch wrapper로 실행했으며, 이전 full sweep에서 보였던
+      `SM-D13`/`SM-D10`/`SM-D6` 주변 startup segfault는 재현되지 않았다. `SM-C5`는
+      full child sweep 안에서도 target spot subscriber evidence로 통과했다. 다만 `SM-E2`
+      child 시작 단계에서 Redis `docker run -d` CLI가 container 생성 후에도 반환하지 않아,
+      CPU 부하를 고려해 내가 시작한 sweep만 중단했다. 이 기록은 전체 완료 proof가 아니며,
+      Docker CLI 지연이 없는 상태에서 non-gdb full sweep 재검증이 필요하다.
+- 2026-07-08 non-gdb focused child sweep 재검증:
+  - `ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 1800s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+    - 결과: timed out
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-073201-543296`
+    - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
+      `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
+      `SM-D11`, `SM-D13`, `SM-D10`, `SM-D12`, `SM-D14`, `SM-D15`,
+      `SM-C1`, `SM-C2`, `SM-C3`, `SM-C5`, `SM-E4`, `SM-E1`, `SM-E2`, `SM-E3`,
+      `SM-A7`, `SM-A8`, `SM-C4`, `SM-A3`, `SM-A6`, `SM-B4`, `SM-B7`, `SM-A5`,
+      `SM-A1-A2-A4-F1-F2`, `SM-F6`, `SM-G2`, `SM-G3`, `SM-G4`
+    - 비고: 이전에 산발적으로 보였던 startup segfault는 재현되지 않았다. `SM-G1`과
+      `SM-Q9`에 도달하기 전에 1800초 timeout이 만료되어 전체 완료 proof로 쓰지 않는다.
+      실행 중 여러 child에서 Redis `docker run -d` CLI가 container 생성 후 늦게 반환하는
+      환경 지연이 있었다.
+  - `ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-G1`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-080544-622418`
+    - 비고: `.NET` `SmG1Scenario`와 같이 crash된 owner lease 만료 전까지 recovered auth를
+      lease window 안에서 public stream request로 재시도하도록 맞춘 뒤 통과했다.
+  - `ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-080610-623696`
+    - 비고: multi-node route-to-spot evidence가 통과했다. cleanup 단계의 shell `Killed`
+      출력은 child pass marker 이후 role process 종료에서 나온 출력이다.
 - 2026-07-03 location store 전환 proof:
   - `cmake --build framework/languages/cpp/build-redis-vcpkg --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_gateway zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester zlink_cpp_e2e_spot_service_client -j2`
     - 결과: passed
@@ -225,8 +497,16 @@
   - 비고: crash recovery client가 죽은 play-a route endpoint와 readiness probe endpoint를 재사용하지 않도록 runner를 조정한 뒤 검증했다.
 - `./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D10`
   - 결과: passed
-  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-054015-2804555`
-  - 비고: `max_received_messages` bounded queue와 `received_message_dropped` callback 이후 session 유지 및 다른 session push를 검증했다.
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260707-232826-3943806`
+  - 비고: `max_received_messages` bounded queue와 느린 push callback 조건에서 session 유지 및 다른 session push를 검증했다.
+- `./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D12`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-000758-4138303`
+  - 비고: session-a에서 session-b로 actor session transfer를 검증했다. actor route sink는 transfer bind에서 교체하고, 일반 actor-client 요청은 기존 bound-session route를 빼앗지 않도록 분리했다.
+- `./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D15`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-000805-4139060`
+  - 비고: gateway HTTP actor request가 기존 stream session route를 덮어쓰지 않고, actor handler의 bound-session push가 client stream에 도착하는지 검증했다.
 - `./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-A2`
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-044905-2692120`
@@ -473,7 +753,14 @@
   `.NET`처럼 `session-a`/`session-b`를 각각 `play-a`/`play-b`에 bind하고, `play-a` crash 뒤
   `play-b` survivor ping과 `play-b` recovery rebind evidence를 확인한다.
 - SM-D10 stream backpressure scenario는 C++ stream connector의 public bounded receive queue 정책에
-  맞춰 `Client/Scenarios/sm_d10_scenario.hpp`로 구현했고 focused runtime 검증을 통과했다.
+  맞춰 `Client/Scenarios/sm_d10_scenario.hpp`로 구현했고, 최신 focused runtime 검증에서
+  `logs/20260707-232826-3943806`로 통과했다.
+- SM-D12 stream session transfer scenario는 `Client/Scenarios/sm_d12_scenario.hpp`에서
+  session-a 연결 종료 후 session-b가 같은 actor state를 이어받는 경로를 검증하며, 최신 focused
+  runtime 검증에서 `logs/20260708-000758-4138303`로 통과했다.
+- SM-D15 gateway actor push scenario는 `Client/Scenarios/sm_d15_scenario.hpp`에서 gateway HTTP
+  actor request와 기존 stream bound-session route 보존을 함께 검증하며, 최신 focused runtime
+  검증에서 `logs/20260708-000805-4139060`로 통과했다.
 - SM-E2 spot timer tick scenario는 public `spot_context_t::add_timer<THandler>` 경로로
   `Client/Scenarios/sm_e2_scenario.hpp`와 focused runtime 검증을 통과했다.
 - SM-E3 idle timer close scenario는 public spot create lifecycle과 `spot_context_t::close()` 경로로

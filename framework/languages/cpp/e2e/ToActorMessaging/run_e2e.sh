@@ -2,16 +2,28 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-${ZLINK_CPP_BUILD_DIR:-$SCRIPT_DIR/../../build}}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
 pids=()
 REDIS_CONTAINER=""
 
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
+
+cmake -S "$SCRIPT_DIR/../.." -B "$BUILD_DIR" >/dev/null
+cmake --build "$BUILD_DIR" --target \
+  zlink_cpp_e2e_to_actor_messaging_actor \
+  zlink_cpp_e2e_to_actor_messaging_caller \
+  zlink_cpp_e2e_to_actor_messaging_client >/dev/null
 
 export ZLINK_CPP_E2E_LOCATION_KEY_PREFIX="${ZLINK_CPP_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:toactor:$RUN_ID}"
 export ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR"
@@ -48,26 +60,28 @@ wait_tcp() {
   local host="$1"
   local port="$2"
   local name="$3"
-  if python3 - "$host" "$port" <<'PY'
+  if python3 - "$host" "$port" "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import socket
 import sys
 import time
 
 host = sys.argv[1]
 port = int(sys.argv[2])
-deadline = time.monotonic() + 30
+timeout = float(sys.argv[3])
+poll = float(sys.argv[4])
+deadline = time.monotonic() + timeout
 while time.monotonic() < deadline:
     try:
         with socket.create_connection((host, port), timeout=1):
             sys.exit(0)
     except OSError:
-        time.sleep(0.2)
+        time.sleep(poll)
 sys.exit(1)
 PY
   then
     return 0
   fi
-  echo "Timed out waiting for $name at $host:$port" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $host:$port" >&2
   return 1
 }
 
@@ -78,16 +92,9 @@ elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
   echo "redis endpoint=$REDIS_ENDPOINT (external)"
 else
-  read -r redis_port < <(python3 - <<'PY'
-import socket
-sock = socket.socket()
-sock.bind(("127.0.0.1", 0))
-print(sock.getsockname()[1])
-sock.close()
-PY
-)
-  REDIS_CONTAINER="zlink-e2e-toactor-cpp-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:${redis_port}:6379" redis:7-alpine >/dev/null
+  read -r REDIS_CONTAINER redis_port < <(
+    zlink_redis_start_scoped "zlink-redis-cpp-e2e-toactormessaging" "redis:7-alpine"
+  )
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
@@ -190,6 +197,8 @@ wait_role() {
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles actor caller)
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_role "$role"
+done
+for role in actor caller; do
   wait_role "$role"
 done
 

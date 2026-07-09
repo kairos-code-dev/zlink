@@ -2,7 +2,7 @@
 
 #include "runtime/http/http_request_pipeline.hpp"
 
-#include "runtime/dispatch/coroutine_executor.hpp"
+#include "runtime/dispatch/offload_executor.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
@@ -31,7 +31,8 @@ namespace zlink::framework::runtime
 class http_route_invoker_access_t
 {
   public:
-    static task_t<http_response_t> invoke (const http_route_t &route,
+    static task_t<http_response_t> invoke (offload_executor_t &handler_executor,
+                                           const http_route_t &route,
                                            service_provider_t &services,
                                            http_context_t &context,
                                            const http_request_t &request,
@@ -39,25 +40,30 @@ class http_route_invoker_access_t
     {
         auto owned_body = body;
         auto owned_request = request;
-        return handler_coroutine_executor ().submit<http_response_t> (
-          [&route, &services, &context, owned_request = std::move (owned_request),
-           owned_body =
-             std::move (owned_body)] () -> boost::asio::awaitable<result_t<http_response_t>> {
+        detail::task_completion_source_t<http_response_t> completion;
+        auto task = completion.task ();
+        handler_executor.submit (
+          [&route, &services, &context, completion = std::move (completion),
+           owned_request = std::move (owned_request), owned_body = std::move (owned_body)] () mutable {
+              result_t<http_response_t> result =
+                result_t<http_response_t>::failure (framework_error_kind_t::request_failed,
+                                                    "HTTP route handler failed");
               try {
                   auto route_task = route.invoke (services, context, owned_request, owned_body);
-                  co_return result_t<http_response_t>::success (
-                    (co_await await_task_result (std::move (route_task))).value ());
+                  result = route_task.result ();
               }
               catch (const framework_exception_t &error) {
-                  co_return result_t<http_response_t>::failure (error.kind (), error.what (),
-                                                                error.is_retriable ());
+                  result = result_t<http_response_t>::failure (error.kind (), error.what (),
+                                                               error.is_retriable ());
               }
               catch (...) {
-                  co_return result_t<http_response_t>::failure (
+                  result = result_t<http_response_t>::failure (
                     framework_error_kind_t::request_failed,
                     "HTTP route handler threw an exception");
               }
+              completion.complete (std::move (result));
           });
+        return task;
     }
 };
 
@@ -642,6 +648,7 @@ void invoke_matched_route (http::response<http::string_body> &response,
                            const http_options_snapshot_t &options,
                            service_provider_t &services,
                            http_context_t &context,
+                           offload_executor_t &handler_executor,
                            const http::request<http::string_body> &request,
                            const matched_route_t &match)
 {
@@ -682,9 +689,11 @@ void invoke_matched_route (http::response<http::string_body> &response,
             }
             const auto http_request =
               make_http_request (context, request, match.route_values, match.query_values);
-            auto route_result = http_route_invoker_access_t::invoke (
-                                  *match.route, request_services, context, http_request, bound_body)
-                                  .result ();
+            auto route_result =
+              http_route_invoker_access_t::invoke (handler_executor, *match.route,
+                                                   request_services, context, http_request,
+                                                   bound_body)
+                .result ();
             if (!route_result) {
                 throw *route_result.error ();
             }
@@ -709,6 +718,7 @@ http::response<http::string_body>
 handle_http_request (const http_options_snapshot_t &options,
                      service_provider_t &services,
                      health_builder_t &health,
+                     offload_executor_t &handler_executor,
                      const http::request<http::string_body> &request)
 {
     const auto method = from_beast_method (request.method ());
@@ -730,7 +740,8 @@ handle_http_request (const http_options_snapshot_t &options,
     if (match.route == nullptr) {
         apply_route_miss_response (response, match, context);
     } else {
-        invoke_matched_route (response, options, services, context, request, match);
+        invoke_matched_route (response, options, services, context, handler_executor, request,
+                              match);
     }
     response.prepare_payload ();
     return response;

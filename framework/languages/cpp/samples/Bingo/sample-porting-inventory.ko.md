@@ -8,7 +8,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 
 | 기준 | C++ 대응 | 분류 | 상태 | 비고 |
 |------|----------|------|------|------|
-| `.NET: Bingo.csproj`, `Bingo.sln` | `framework/languages/cpp/CMakeLists.txt` | build-root | done | CMake target이 api/play/session/client 실행 파일을 만든다. Registry process는 공유 location store 전환으로 제거했다. |
+| `.NET: Bingo.csproj`, `Bingo.sln`, `Client/Bingo.Client.csproj`, `Server/Api/Bingo.Server.Api.csproj`, `Server/Configuration/Bingo.Server.Configuration.csproj`, `Server/Play/Bingo.Server.Play.csproj`, `Server/Session/Bingo.Server.Session.csproj`, `Shared/Bingo.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build-root | done | CMake target이 api/play/session/client 실행 파일과 shared/configuration header include 경로를 만든다. Registry process는 공유 location store 전환으로 제거했다. |
 | `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/Contracts/messages.hpp`; `Server/common_codecs.hpp` | shared-contract | done | `.NET` proto message 이름과 field 의미를 C++ typed message로 대응하고, C++ framework Protobuf codec extension serializer로 등록한다. |
 | `.NET: Shared/Contracts/SampleConstants.cs` | `Shared/Contracts/messages.hpp`, `Server/Configuration/sample_names.hpp` | shared-contract | done | packet 이름, player id, mode, reward 상수를 C++ public message/header로 대응한다. |
 | `.NET: Client/Program.cs` | `Client/main.cpp` | client-entry | done | Session stream connector 세 개를 만들고 client scenario를 실행한다. |
@@ -52,7 +52,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoNotificationPublisher.cs` | `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp` | notification | done | C++는 별도 publisher class 없이 room Spot에서 public publish API를 호출한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoRoomEvent.cs` | `Shared/Contracts/messages.hpp` | notification | done | reward event payload를 shared message 타입으로 대응한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoRoomEventMapper.cs` | `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp` | notification | done | domain event를 reward notify payload로 변환한다. |
-| `.NET: run_sample.sh`, `run_sample.ps1` | `run_sample.sh`, `run_sample.ps1` | runner | done | build 산출물, process readiness, Redis 준비, client marker, message-flow log, player actor destroy evidence를 검증한다. |
+| `.NET: run_sample.sh`, `run_sample.ps1` | `run_sample.sh`, `run_sample.ps1` | runner | done | 필요한 CMake target을 빌드하고, process readiness, Redis 준비, client marker, message-flow log, player actor destroy evidence를 검증한다. |
 | `.NET: README.md` | `README.ko.md` | sample-doc | done | C++ 역할 구조, 실행 방법, Redis 실행 책임을 설명한다. |
 
 ## 공통 요구 매핑

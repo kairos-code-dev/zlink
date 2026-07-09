@@ -40,6 +40,11 @@ inline zlink::routing_id_t owner_route_rid (const std::string &player_id)
                                    : sample_names_t::mission_a_rid);
 }
 
+inline zlink::framework::spot_rid_t player_spot_rid (const std::string &player_id)
+{
+    return zlink::framework::spot_rid_t::from_string ("player:" + player_id);
+}
+
 inline std::string owner_mission_id (const std::string &player_id)
 {
     return owner_index (player_id) == 1 ? "mission-b" : "mission-a";
@@ -61,6 +66,22 @@ struct sample_topology_t
       env_or ("GAMEQUEST_MISSION_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:7425");
     std::string mission_b_route_endpoint =
       env_or ("GAMEQUEST_MISSION_B_ROUTE_ENDPOINT", "tcp://127.0.0.1:7426");
+    std::string mission_a_spot_route_endpoint =
+      env_or ("GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT", "tcp://127.0.0.1:7429");
+    std::string mission_b_spot_route_endpoint =
+      env_or ("GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT", "tcp://127.0.0.1:7430");
+    std::string mission_a_spot_router_endpoint =
+      env_or ("GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:7431");
+    std::string mission_b_spot_router_endpoint =
+      env_or ("GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:7432");
+    std::string mission_a_spot_endpoint =
+      env_or ("GAMEQUEST_MISSION_A_SPOT_ENDPOINT", "tcp://127.0.0.1:7433");
+    std::string mission_b_spot_endpoint =
+      env_or ("GAMEQUEST_MISSION_B_SPOT_ENDPOINT", "tcp://127.0.0.1:7434");
+    std::string api_a_spot_router_endpoint =
+      env_or ("GAMEQUEST_API_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:7435");
+    std::string api_b_spot_router_endpoint =
+      env_or ("GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:7436");
     std::string api_a_route_endpoint =
       env_or ("GAMEQUEST_API_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:7427");
     std::string api_b_route_endpoint =
@@ -90,6 +111,35 @@ struct sample_topology_t
                                            : mission_a_route_endpoint;
     }
 
+    std::string selected_mission_spot_route_endpoint () const
+    {
+        return mission_name == "mission-b" ? mission_b_spot_route_endpoint
+                                           : mission_a_spot_route_endpoint;
+    }
+
+    std::string selected_mission_spot_router_endpoint () const
+    {
+        return mission_name == "mission-b" ? mission_b_spot_router_endpoint
+                                           : mission_a_spot_router_endpoint;
+    }
+
+    std::string selected_mission_spot_endpoint () const
+    {
+        return mission_name == "mission-b" ? mission_b_spot_endpoint : mission_a_spot_endpoint;
+    }
+
+    std::string mission_spot_route_endpoint_for (const std::string &mission_id) const
+    {
+        return mission_id == "mission-b" ? mission_b_spot_route_endpoint
+                                         : mission_a_spot_route_endpoint;
+    }
+
+    std::string mission_spot_router_endpoint_for (const std::string &mission_id) const
+    {
+        return mission_id == "mission-b" ? mission_b_spot_router_endpoint
+                                         : mission_a_spot_router_endpoint;
+    }
+
     zlink::routing_id_t selected_mission_rid () const
     {
         return zlink::routing_id_t::from (mission_name == "mission-b"
@@ -100,6 +150,12 @@ struct sample_topology_t
     std::string selected_api_route_endpoint () const
     {
         return api_name == "api-b" ? api_b_route_endpoint : api_a_route_endpoint;
+    }
+
+    std::string selected_api_spot_router_endpoint () const
+    {
+        return api_name == "api-b" ? api_b_spot_router_endpoint
+                                   : api_a_spot_router_endpoint;
     }
 
     zlink::routing_id_t selected_api_rid () const

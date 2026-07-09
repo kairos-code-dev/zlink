@@ -3,12 +3,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
+source "$ROOT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-PROCESS_SHUTDOWN_TIMEOUT_SECONDS=3
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=8
 PROCESS_SHUTDOWN_POLL_SECONDS=0.1
 SCENARIO_MARKER_TIMEOUT_SECONDS=30
 LOCAL_READINESS_ATTEMPTS="$(
@@ -50,7 +52,7 @@ read -r DELAY_A_HTTP DELAY_A_ENDPOINT DELAY_B_HTTP DELAY_B_ENDPOINT \
   PLAY_A_HTTP PLAY_A_CONTROL PLAY_A_SPOT_ROUTE PLAY_A_SPOT_ROUTER PLAY_A_SPOT_PUB \
   PLAY_B_HTTP PLAY_B_CONTROL PLAY_B_SPOT_ROUTE PLAY_B_SPOT_ROUTER PLAY_B_SPOT_PUB \
   SESSION_A_HTTP SESSION_A_STREAM SESSION_A_SPOT_ROUTER SESSION_A_SPOT_PUB \
-  SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB REDIS_PORT <<<"$(python3 - <<'PY'
+  SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB <<<"$(python3 - <<'PY'
 import os
 import random
 import socket
@@ -72,10 +74,10 @@ for port in random.sample(available, len(available)):
         continue
     sockets.append(sock)
     ports.append(sock.getsockname()[1])
-    if len(ports) == 23:
+    if len(ports) == 22:
         break
-if len(ports) != 23:
-    raise SystemExit(f"failed to allocate 23 local ports, allocated {len(ports)}")
+if len(ports) != 22:
+    raise SystemExit(f"failed to allocate 22 local ports, allocated {len(ports)}")
 print(f"http://{host}:{ports[0]}", end=" ")
 print(f"tcp://{host}:{ports[1]}", end=" ")
 print(f"http://{host}:{ports[2]}", end=" ")
@@ -97,8 +99,7 @@ print(f"tcp://{host}:{ports[17]}", end=" ")
 print(f"http://{host}:{ports[18]}", end=" ")
 print(f"tcp://{host}:{ports[19]}", end=" ")
 print(f"tcp://{host}:{ports[20]}", end=" ")
-print(f"tcp://{host}:{ports[21]}", end=" ")
-print(ports[22])
+print(f"tcp://{host}:{ports[21]}")
 for sock in sockets:
     sock.close()
 PY
@@ -115,10 +116,20 @@ DELAY="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_delay"
 PLAY="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_play"
 SESSION="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_session"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_client"
-REDIS_CONTAINER="zlink-cpp-yield-dispatch-${RUN_ID}"
-REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+REDIS_CONTAINER=""
+REDIS_ENDPOINT=""
 REDIS_KEY_PREFIX="zlink:cpp:yield-dispatch:${RUN_ID}"
 PIDS=()
+
+process_exited() {
+  local pid="$1"
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    return 0
+  fi
+  local state
+  state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+  [[ "$state" == Z* ]]
+}
 
 launch_process() {
   local stdout_log="$1"
@@ -151,7 +162,7 @@ cleanup() {
   for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
     local alive=0
     for pid in "${PIDS[@]:-}"; do
-      if kill -0 "$pid" >/dev/null 2>&1; then
+      if ! process_exited "$pid"; then
         alive=1
         break
       fi
@@ -248,10 +259,10 @@ static_checks() {
 
 static_checks
 
-docker run --rm -d \
-  --name "$REDIS_CONTAINER" \
-  -p "127.0.0.1:${REDIS_PORT}:6379" \
-  redis:7-alpine >/dev/null
+read -r REDIS_CONTAINER redis_port < <(
+  zlink_redis_start_scoped "zlink-redis-cpp-e2e-yielddispatch" "redis:7-alpine"
+)
+REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 
 for _ in $(seq 1 80); do
   if docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then
@@ -287,8 +298,13 @@ terminate_gracefully() {
   local pid="$2"
   kill "$pid" >/dev/null 2>&1 || true
   for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
-    if ! kill -0 "$pid" >/dev/null 2>&1; then
-      wait "$pid" >/dev/null 2>&1 || true
+    if process_exited "$pid"; then
+      local status=0
+      wait "$pid" >/dev/null 2>&1 || status=$?
+      if [[ "$status" -eq 134 || "$status" -eq 139 ]]; then
+        echo "$name exited with crash status $status after SIGTERM" >&2
+        return 1
+      fi
       return 0
     fi
     sleep "$PROCESS_SHUTDOWN_POLL_SECONDS"
@@ -498,8 +514,9 @@ report = {
         {"id": "YD-E1", "status": "passed",
          "markers": ["timeout-yield-started", "timeout-yield-released",
                      "timeout-yield-completed", "probe-started", "probe-completed"]},
-        {"id": "YD-E2", "status": "gap",
-         "gap": "C++ public yield call surface has no cancellation token argument."},
+        {"id": "YD-E2", "status": "passed",
+         "markers": ["cancel-yield-started", "cancel-yield-released",
+                     "cancel-yield-completed", "probe-started", "probe-completed"]},
         {"id": "YD-E3", "status": "passed",
          "markers": ["yield-released", "probe-completed"]},
         {"id": "YD-E4", "status": "passed",

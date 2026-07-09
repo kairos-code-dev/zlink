@@ -11,7 +11,7 @@ raw frame 조작, 샘플 전용 route helper로 공통 계약을 우회하지 �
 |------|----------|------|------|------|
 | `.NET: TicTacToe.sln`, `Server/TicTacToe.Server.csproj`, `Shared/TicTacToe.Shared.csproj`, `Client/TicTacToe.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build-root | done | CMake target이 API, Play, Client 실행 파일을 만든다. |
 | `.NET: README.md`, `Client/README.md` | `README.ko.md` | sample-doc | done | 역할 구조, 실행 방법, HTTP 시작 흐름, runner self-check 범위를 C++ 기준으로 설명한다. |
-| `.NET: run_sample.sh`, `run_sample.ps1` | `run_sample.sh`, `run_sample.ps1` | runner | done | build 산출물 확인, CTest gate, Redis 준비, 2 API/2 Play process, client marker, message-flow log를 검증한다. |
+| `.NET: run_sample.sh`, `run_sample.ps1` | `run_sample.sh`, `run_sample.ps1` | runner | done | 필요한 CMake target을 빌드하고, CTest gate, Redis 준비, 2 API/2 Play process, client marker, message-flow log를 검증한다. |
 | `.NET: Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.hpp` | shared-contract | done | HTTP, channel, stream, actor, Spot payload 이름과 field 의미가 대응한다. |
 | `.NET: Client/Program.cs` | `Client/main.cpp` | client-entry | done | API HTTP endpoint를 받고 client scenario를 실행한다. |
 | `.NET: Client/TicTacToeClientScenario.cs` | `Client/tictactoe_client_scenario.hpp` | client-scenario | done | room 생성, host/guest/observer stream 연결, join, move, milestone push, final state self-check를 수행한다. |

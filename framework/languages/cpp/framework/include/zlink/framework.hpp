@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/actors/actor.hpp>
+#include <zlink/framework/contracts/cancellation.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/channels/pending_operation.hpp>

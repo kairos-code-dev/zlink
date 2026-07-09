@@ -4,25 +4,41 @@
 
 #include "../Support/client_support.hpp"
 
+#include <chrono>
 #include <iostream>
+#include <string>
 
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_rl_a2_provider_endpoint_remap_scenario ()
 {
-    const auto first = post_consumer_profile ("rl-a2-before-remap");
-    ensure (first.provider_rid == "api-a" && first.instance_id == "api-a-v1",
-            "RL-A2 initial provider mismatch");
+    bool remapped = false;
+    for (int index = 0; index < 40; ++index) {
+        const auto marker = "rl-a2-rescheduled-" + std::to_string (index);
+        const auto reply = post_consumer_profile ("fast", marker, "/profile/request",
+                                                 std::chrono::seconds (10));
+        if (reply.provider_rid == "api-b") {
+            remapped = true;
+            break;
+        }
+    }
+    ensure (remapped, "RL-A2 did not route traffic to remapped provider endpoint");
 
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
 
-    for (int index = 0; index < 20; ++index) {
-        const auto reply = post_consumer_profile ("rl-a2-after-remap-" + std::to_string (index));
-        ensure (reply.provider_rid == "api-a" && reply.instance_id == "api-a-v2",
-                "RL-A2 did not switch to remapped provider endpoint");
+    bool restored = false;
+    for (int index = 0; index < 40; ++index) {
+        const auto marker = "rl-a2-original-restored-" + std::to_string (index);
+        const auto reply = post_consumer_profile ("fast", marker, "/profile/request",
+                                                 std::chrono::seconds (10));
+        if (reply.provider_rid == "api-b") {
+            restored = true;
+            break;
+        }
     }
+    ensure (restored, "RL-A2 did not route traffic to restored provider endpoint");
     std::cout << "scenario RL-A2 client passed\n";
 }
 

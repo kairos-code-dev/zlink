@@ -38,7 +38,8 @@ enum class framework_error_kind_t
     timeout = 23,
     shutdown = 24,
     disconnected = 25,
-    closed = 26
+    closed = 26,
+    cancelled = 27
 };
 
 class framework_exception_t : public std::exception

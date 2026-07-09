@@ -4,6 +4,10 @@
 
 현재 C++ `ResilienceLifecycle`은 Redis location store를 공유하는 Provider, Consumer, Client target으로 public recovery 흐름을 실행한다. 별도 Registry role은 제거했고, topology 검증은 Consumer HTTP의 `/topology`와 `/topology/wait`가 location store를 직접 조회하는 방식으로 수행한다. Client target은 HTTP-only dispatcher이고, framework channel client는 Consumer/Provider role 안에서 실행한다. client support는 ResilienceLifecycle 전용 option/assert/evidence/topology header로 분리했고, Consumer host wiring은 `consumer_host_factory.hpp`로 분리했다. Provider admin endpoint는 `.NET`과 같은 drain/restore/weight/wait 이름을 제공하고, Consumer endpoint는 ResilienceLifecycle contract의 marker 필드를 보존한다.
 
+최신 full runner proof는 `logs/20260708-133049-101113`이다. 이 실행은 `RL-B2`의 `kill -9`와
+`RL-C2`의 SIGABRT crash처럼 시나리오가 의도한 failure injection만 허용하고, 그 외 provider
+비정상 종료는 runner 실패로 드러내도록 보강한 뒤 통과했다.
+
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
 | `RL-A1` | 구현 | 전용 runner가 provider를 같은 endpoint와 같은 rid로 재시작하고, 실행 중인 client가 `rl_a1_provider_restart_scenario.hpp` 경로로 follow-up request를 성공시키는지 검증한다. |
@@ -16,7 +20,7 @@
 | `RL-B3` | 구현 | 전용 runner가 provider 하나를 정상 종료하고, 실행 중인 client가 `rl_b3_graceful_shutdown_scenario.hpp` 경로로 남은 provider에 request를 성공시키는지 검증한다. |
 | `RL-B4` | 구현 | `rl_b4_runtime_drain_scenario.hpp`가 provider B의 `/admin/drain`, `/admin/restore`, `/admin/weight/wait` 경로를 사용해 신규 request가 A로만 가는지, drained provider evidence가 늘지 않는지, restore 후 provider B evidence가 회복되는지 `.NET`처럼 검증한다. |
 | `RL-B5` | 구현 | `rl_b5_drain_inflight_scenario.hpp`가 Consumer HTTP slow request를 열고 실제 slow provider를 evidence file로 찾은 뒤 해당 provider를 `/admin/drain`한다. 신규 request가 healthy provider로 가는지, in-flight reply가 drained provider에서 끝나는지, drained provider evidence가 새 request를 받지 않는지, restore 뒤 evidence가 회복되는지 `.NET`처럼 검증한다. |
-| `RL-B6` | 구현 | provider B의 gray fault mode를 켠 뒤 `rl_b6_gray_fault_scenario.hpp`가 gray request 실패와 healthy provider 성공을 함께 관찰하고, fault mode 해제 뒤 follow-up request가 정상화되는지 검증한다. 최신 full 통과: `logs/20260702-072155-43811`, 출력: `scenario RL-B6 passed`. |
+| `RL-B6` | 구현 | provider B의 gray fault mode를 켠 뒤 `rl_b6_gray_fault_scenario.hpp`가 gray request 실패와 healthy provider 성공을 함께 관찰하고, fault mode 해제 뒤 follow-up request가 정상화되는지 검증한다. 최신 full 통과: `logs/20260708-133049-101113`, 출력: `scenario RL-B6 passed`. |
 | `RL-C1` | 구현 | `rl_c1_client_host_lifecycle_scenario.hpp`가 Consumer HTTP `/profile/request/new-client`로 `.NET`처럼 요청마다 새 client host를 만들고, 반복 request와 cleanup follow-up marker가 provider evidence에 남는지 검증한다. |
 | `RL-C2` | 구현 | provider B의 `/admin/crash`를 호출한 뒤 Consumer `/topology/wait`가 `api-b` Ready 0개로 수렴하는지 확인하고, Consumer HTTP `/profile/request/new-client`가 살아 있는 `api-a`로 수렴하는지 확인한다. provider B 재기동 뒤 일반 request가 `api-b` evidence까지 회복되는지도 검증한다. |
 | `RL-C3` | 구현 | `rl_c3_node_pause_recovery_scenario.hpp`가 provider B `/shutdown`, Consumer HTTP `/profile/request`의 `api-a` 수렴, provider B 재기동 뒤 Consumer `/topology/wait` Ready 1, recovered request evidence를 `.NET`처럼 검증한다. |
@@ -24,9 +28,9 @@
 | `RL-D1` | 구현 | runner가 Consumer HTTP `/profile/request`로 120개 request burst를 만들고 provider evidence에서 `rl-d1-` marker가 남는지 검증한다. |
 | `RL-D2` | 구현 | `provider_host_factory.hpp`가 설치한 전용 `evidence_dispatch_error_observer.hpp` helper가 `handler_missing:reply_error` evidence를 `evidence_store.hpp`에 기록하고, `fault_state.hpp`의 observer fault mode가 켜져 있을 때 예외를 던진다. runner는 이후 follow-up request와 provider evidence가 계속 동작하는지 검증한다. |
 | `RL-D3` | 구현 | runner가 Consumer HTTP `/profile/request/missing`으로 missing request를 실행하고 provider flow log의 `handler_missing`/`reply_error` marker를 검증한다. |
-| `RL-D4` | 구현 | `rl_d4_missing_request_handler_scenario.hpp`가 Consumer HTTP `/profile/request/missing`을 호출하고, public failure payload와 provider dispatch error evidence를 검증한다. 최신 full 통과: `logs/20260702-072155-43811`, 출력: `scenario RL-D4 passed`. |
-| `RL-D5` | 구현 | `rl_d5_mixed_burst_scenario.hpp`가 Consumer HTTP `/profile/request`와 `/profile/command`로 request/send mixed burst를 실행하고 provider evidence에서 request/send marker가 남는지 검증한다. 최신 full 통과: `logs/20260702-072155-43811`, 출력: `scenario RL-D5 passed`. |
-| Consumer role smoke | 구현 | runner가 전용 Consumer HTTP role을 띄우고 `/profile/request`, `/profile/request/manual`, `/profile/request/manual-b`, `/profile/request/new-client`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/command/missing`, `/topology`, `/topology/wait`으로 provider request, established manual request, transient client host request, timeout cleanup, missing request/send, 정상 command 흐름, location store topology 조회를 확인한다. Redis location store 전환 뒤 최신 통과: `logs/20260703-205544-18048`, 출력: `scenario RL-C4 passed`, `scenario RL-D5 passed`, `resilience-lifecycle e2e result=passed`. |
+| `RL-D4` | 구현 | `rl_d4_missing_request_handler_scenario.hpp`가 Consumer HTTP `/profile/request/missing`을 호출하고, public failure payload와 provider dispatch error evidence를 검증한다. 최신 full 통과: `logs/20260708-133049-101113`, 출력: `scenario RL-D4 passed`. |
+| `RL-D5` | 구현 | `rl_d5_mixed_burst_scenario.hpp`가 Consumer HTTP `/profile/request`와 `/profile/command`로 request/send mixed burst를 실행하고 provider evidence에서 request/send marker가 남는지 검증한다. 최신 full 통과: `logs/20260708-133049-101113`, 출력: `scenario RL-D5 passed`. |
+| Consumer role smoke | 구현 | runner가 전용 Consumer HTTP role을 띄우고 `/profile/request`, `/profile/request/manual`, `/profile/request/manual-b`, `/profile/request/new-client`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/command/missing`, `/topology`, `/topology/wait`으로 provider request, established manual request, transient client host request, timeout cleanup, missing request/send, 정상 command 흐름, location store topology 조회를 확인한다. Redis location store 전환 뒤 최신 통과: `logs/20260708-133049-101113`, 출력: `scenario RL-C4 passed`, `scenario RL-D5 passed`, `resilience-lifecycle e2e result=passed`. |
 
 ## 완료 기준
 

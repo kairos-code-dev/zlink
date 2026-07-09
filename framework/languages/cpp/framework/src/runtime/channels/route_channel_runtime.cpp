@@ -4,6 +4,8 @@
 
 #include "runtime/backend/native_route_backend.hpp"
 
+#include <algorithm>
+#include <thread>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -77,7 +79,16 @@ bool route_channel_runtime_t::connect (zlink::routing_id_t peer_rid, std::string
 bool route_channel_runtime_t::disconnect (const std::string &endpoint)
 {
     std::lock_guard lock (_mutex);
-    return _connections.disconnect (endpoint);
+    const auto targets = _connections.targets ();
+    const bool removed = _connections.disconnect (endpoint);
+    if (removed) {
+        for (const auto &target : targets) {
+            if (target.endpoint == endpoint && target.peer_rid) {
+                _ready_peer_rids.erase (target.peer_rid->to_string ());
+            }
+        }
+    }
+    return removed;
 }
 
 std::vector<std::string> route_channel_runtime_t::list_connections () const
@@ -91,6 +102,18 @@ route_channel_runtime_t::list_connection_targets () const
 {
     std::lock_guard lock (_mutex);
     return _connections.targets ();
+}
+
+void route_channel_runtime_t::mark_peer_ready (const zlink::routing_id_t &peer_rid)
+{
+    std::lock_guard lock (_mutex);
+    _ready_peer_rids.insert (peer_rid.to_string ());
+}
+
+void route_channel_runtime_t::mark_peer_disconnected (const zlink::routing_id_t &peer_rid)
+{
+    std::lock_guard lock (_mutex);
+    _ready_peer_rids.erase (peer_rid.to_string ());
 }
 
 void route_channel_runtime_t::bind_endpoint (std::string endpoint)
@@ -124,6 +147,12 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
     std::optional<zlink::routing_id_t> backend_target;
     std::optional<zlink::routing_id_t> backend_spot_target;
     runtime::messaging::message_parts_t backend_parts;
+    if (auto connected = wait_until_connected (default_request_timeout ()); !connected) {
+        return connected;
+    }
+    if (auto ready = wait_until_peer_ready (target_node_rid, default_request_timeout ()); !ready) {
+        return ready;
+    }
     {
         std::lock_guard lock (_mutex);
         if (auto connected = ensure_connected (); !connected) {
@@ -165,6 +194,16 @@ route_channel_runtime_t::request_reply_parts (const zlink::routing_id_t &target_
 {
     request_backend_t backend;
     std::uint64_t request_seq = 0;
+    if (auto connected = wait_until_connected (timeout); !connected) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          connected.error_kind (),
+          connected.error () ? connected.error ()->what () : "route channel is not connected");
+    }
+    if (auto ready = wait_until_peer_ready (target_node_rid, timeout); !ready) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          ready.error_kind (),
+          ready.error () ? ready.error ()->what () : "route channel peer is not ready");
+    }
     {
         std::lock_guard lock (_mutex);
         if (auto connected = ensure_connected (); !connected) {
@@ -199,6 +238,12 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
     std::optional<zlink::routing_id_t> backend_target;
     std::optional<zlink::routing_id_t> backend_spot_target;
     runtime::messaging::message_parts_t backend_parts;
+    if (auto connected = wait_until_connected (default_request_timeout ()); !connected) {
+        return connected;
+    }
+    if (auto ready = wait_until_peer_ready (target_node_rid, default_request_timeout ()); !ready) {
+        return ready;
+    }
     {
         std::lock_guard lock (_mutex);
         if (auto connected = ensure_connected (); !connected) {
@@ -261,6 +306,16 @@ route_channel_runtime_t::request_reply_spot_parts (const zlink::routing_id_t &ta
 {
     request_backend_t backend;
     std::uint64_t request_seq = 0;
+    if (auto connected = wait_until_connected (timeout); !connected) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          connected.error_kind (),
+          connected.error () ? connected.error ()->what () : "route channel is not connected");
+    }
+    if (auto ready = wait_until_peer_ready (target_node_rid, timeout); !ready) {
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          ready.error_kind (),
+          ready.error () ? ready.error ()->what () : "route channel peer is not ready");
+    }
     {
         std::lock_guard lock (_mutex);
         if (auto connected = ensure_connected (); !connected) {
@@ -369,6 +424,80 @@ result_t<void> route_channel_runtime_t::ensure_connected () const
                                         "route channel has no connected endpoint");
     }
     return result_t<void>::success ();
+}
+
+result_t<void> route_channel_runtime_t::wait_until_peer_ready (
+  const zlink::routing_id_t &target_node_rid,
+  std::chrono::milliseconds timeout) const
+{
+    const auto deadline =
+      timeout > std::chrono::milliseconds::zero ()
+        ? std::chrono::steady_clock::now () + timeout
+        : std::chrono::steady_clock::time_point{};
+    result_t<void> last = result_t<void>::success ();
+    for (;;) {
+        {
+            std::lock_guard lock (_mutex);
+            const auto targets = _connections.targets ();
+            const bool has_ready_peer =
+              _ready_peer_rids.contains (target_node_rid.to_string ());
+            if (has_ready_peer) {
+                return result_t<void>::success ();
+            }
+            const bool has_explicit_peer =
+              std::any_of (targets.begin (), targets.end (),
+                           [&target_node_rid] (const auto &target) {
+                               return target.peer_rid && *target.peer_rid == target_node_rid;
+                           });
+            const bool target_is_self =
+              _routing_id && *_routing_id == target_node_rid;
+            const bool has_unknown_remote_endpoint =
+              std::any_of (targets.begin (), targets.end (), [this] (const auto &target) {
+                  return !target.peer_rid && target.endpoint != _bind_endpoint;
+              });
+            if (!has_explicit_peer
+                && (_bind_endpoint.empty () || target_is_self || has_unknown_remote_endpoint)) {
+                return result_t<void>::success ();
+            }
+            last = result_t<void>::failure (
+              framework_error_kind_t::route_not_connected,
+              "route channel peer '" + target_node_rid.to_string () + "' is not ready");
+        }
+        if (timeout <= std::chrono::milliseconds::zero ()
+            || std::chrono::steady_clock::now () >= deadline) {
+            return last;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+}
+
+result_t<void>
+route_channel_runtime_t::wait_until_connected (std::chrono::milliseconds timeout) const
+{
+    const auto deadline =
+      timeout > std::chrono::milliseconds::zero ()
+        ? std::chrono::steady_clock::now () + timeout
+        : std::chrono::steady_clock::time_point{};
+    result_t<void> last =
+      result_t<void>::failure (framework_error_kind_t::route_not_connected,
+                               "route channel is not connected");
+    for (;;) {
+        {
+            std::lock_guard lock (_mutex);
+            last = ensure_connected ();
+            if (!_running) {
+                return last;
+            }
+            if (last) {
+                return last;
+            }
+        }
+        if (timeout <= std::chrono::milliseconds::zero ()
+            || std::chrono::steady_clock::now () >= deadline) {
+            return last;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
 }
 
 } // namespace zlink::framework::detail

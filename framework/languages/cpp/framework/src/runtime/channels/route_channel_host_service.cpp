@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <map>
@@ -21,6 +22,29 @@
 
 namespace zlink::framework::runtime
 {
+
+namespace
+{
+
+bool route_channel_trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_CHANNEL_TRACE");
+    return value != nullptr && *value != '\0';
+}
+
+void trace_route_channel (const std::string &message)
+{
+    if (route_channel_trace_enabled ()) {
+        std::cerr << "zlink route-channel " << message << '\n';
+    }
+}
+
+std::string route_rid_text (const std::optional<zlink::routing_id_t> &rid)
+{
+    return rid ? rid->to_string () : std::string ();
+}
+
+} // namespace
 
 class route_channel_host_service_t::route_loop_t
 {
@@ -45,8 +69,7 @@ class route_channel_host_service_t::route_loop_t
         _stop (&stop),
         _context (std::make_unique<zlink::context_t> ()),
         _router (std::make_unique<zlink::router_socket_t> (*_context)),
-        _backend (std::make_unique<detail::backend::native_route_backend_t> (
-          *_router, stop, _runtime->manual_connections ()))
+        _backend (std::make_unique<detail::backend::native_route_backend_t> (*_router, stop))
     {
         _router->options ().handover (true);
         _router->options ().mandatory (true);
@@ -57,9 +80,15 @@ class route_channel_host_service_t::route_loop_t
         if (_runtime->routing_id ()) {
             _router->set_routing_id (*_runtime->routing_id ());
         }
+        _monitor = _router->monitor_open (zlink::monitor_event::connection_ready
+                                          | zlink::monitor_event::disconnected);
         if (!_runtime->bind_endpoint ().empty ()) {
             try {
+                std::lock_guard route_lock (_backend->router_mutex ());
                 _router->bind (_runtime->bind_endpoint ());
+                trace_route_channel ("bind channel=" + _route_channel_id
+                                     + " endpoint=" + _runtime->bind_endpoint ()
+                                     + " rid=" + route_rid_text (_runtime->routing_id ()));
             }
             catch (const std::exception &error) {
                 throw framework_exception_t (framework_error_kind_t::request_failed,
@@ -70,7 +99,10 @@ class route_channel_host_service_t::route_loop_t
         }
         for (const auto &endpoint : _runtime->manual_connections ()) {
             try {
+                std::lock_guard route_lock (_backend->router_mutex ());
                 _router->connect (endpoint);
+                trace_route_channel ("manual-connect channel=" + _route_channel_id
+                                     + " endpoint=" + endpoint);
             }
             catch (...) {
             }
@@ -88,12 +120,17 @@ class route_channel_host_service_t::route_loop_t
     void run ()
     {
         while (!_stop->load (std::memory_order_acquire)) {
+            drain_monitor_events ();
             sync_runtime_connections ();
             flush_replies ();
+            const int bridge_drained = _backend->drain_spot_route_bridge ();
             zlink::received_t received;
-            const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
+            int rc = static_cast<int> (zlink::recv_result_t::no_data);
+            {
+                std::lock_guard route_lock (_backend->router_mutex ());
+                rc = _router->recv (received, zlink::recv_flags_t::dontwait);
+            }
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
-                const int bridge_drained = _backend->drain_spot_route_bridge ();
                 if (bridge_drained <= 0) {
                     std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 }
@@ -105,14 +142,25 @@ class route_channel_host_service_t::route_loop_t
             }
 
             auto copied = clone_messages (received.parts ());
+            _runtime->mark_peer_ready (*received.routing_id ());
+            trace_route_channel ("recv channel=" + _route_channel_id
+                                 + " source=" + received.routing_id ()->to_string ()
+                                 + " requestSeq="
+                                 + (received.request_seq ()
+                                      ? std::to_string (*received.request_seq ())
+                                      : std::string (""))
+                                 + " parts=" + std::to_string (copied.size ()));
             if (_backend->handle_router_received (*received.routing_id (), copied,
                                                   received.request_seq ())) {
+                trace_route_channel ("bridge-handled channel=" + _route_channel_id
+                                     + " source=" + received.routing_id ()->to_string ());
                 continue;
             }
 
             dispatch_async (std::move (received), std::move (copied));
         }
         flush_replies ();
+        drain_monitor_events ();
     }
 
     void stop () noexcept
@@ -120,16 +168,21 @@ class route_channel_host_service_t::route_loop_t
         if (_backend) {
             _backend->close ();
         }
-        if (_router) {
+        if (_monitor.valid ()) {
             try {
-                _router->close ();
+                _monitor.close ();
             }
             catch (...) {
             }
         }
-        if (_context) {
+        if (_router) {
             try {
-                _context->shutdown ();
+                if (_backend) {
+                    std::lock_guard route_lock (_backend->router_mutex ());
+                    _router->close ();
+                } else {
+                    _router->close ();
+                }
             }
             catch (...) {
             }
@@ -144,8 +197,25 @@ class route_channel_host_service_t::route_loop_t
             _backend->close ();
             _backend.reset ();
         }
+        if (_monitor.valid ()) {
+            try {
+                _monitor.close ();
+            }
+            catch (...) {
+            }
+        }
         _router.reset ();
         if (_context) {
+            try {
+                _context->options ().blocky (false);
+            }
+            catch (...) {
+            }
+            try {
+                _context->shutdown ();
+            }
+            catch (...) {
+            }
             try {
                 _context->term ();
             }
@@ -159,6 +229,7 @@ class route_channel_host_service_t::route_loop_t
     struct completed_reply_t
     {
         std::optional<zlink::routing_id_t> target_rid;
+        std::optional<zlink::routing_id_t> target_spot_rid;
         std::uint64_t request_seq = 0;
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
@@ -180,14 +251,31 @@ class route_channel_host_service_t::route_loop_t
                 continue;
             }
             try {
+                std::lock_guard route_lock (_backend->router_mutex ());
                 if (peer_rid) {
                     _router->options ().connect_routing_id (*peer_rid);
                     _router->options ().probe (true);
                 }
                 _router->connect (endpoint);
+                trace_route_channel ("connect channel=" + _route_channel_id
+                                     + " endpoint=" + endpoint
+                                     + " peerRid="
+                                     + (peer_rid ? peer_rid->to_string () : std::string ()));
                 _connected_endpoints.insert (endpoint);
             }
+            catch (const std::exception &error) {
+                trace_route_channel ("connect-failed channel=" + _route_channel_id
+                                     + " endpoint=" + endpoint
+                                     + " peerRid="
+                                     + (peer_rid ? peer_rid->to_string () : std::string ())
+                                     + " error=" + error.what ());
+            }
             catch (...) {
+                trace_route_channel ("connect-failed channel=" + _route_channel_id
+                                     + " endpoint=" + endpoint
+                                     + " peerRid="
+                                     + (peer_rid ? peer_rid->to_string () : std::string ())
+                                     + " error=unknown");
             }
         }
         for (auto it = _connected_endpoints.begin (); it != _connected_endpoints.end ();) {
@@ -196,11 +284,51 @@ class route_channel_host_service_t::route_loop_t
                 continue;
             }
             try {
+                std::lock_guard route_lock (_backend->router_mutex ());
                 _router->disconnect (*it);
+                trace_route_channel ("disconnect channel=" + _route_channel_id
+                                     + " endpoint=" + *it);
+            }
+            catch (const std::exception &error) {
+                trace_route_channel ("disconnect-failed channel=" + _route_channel_id
+                                     + " endpoint=" + *it + " error=" + error.what ());
             }
             catch (...) {
+                trace_route_channel ("disconnect-failed channel=" + _route_channel_id
+                                     + " endpoint=" + *it + " error=unknown");
             }
             it = _connected_endpoints.erase (it);
+        }
+    }
+
+    void drain_monitor_events ()
+    {
+        if (!_monitor.valid () || !_runtime) {
+            return;
+        }
+        for (;;) {
+            std::optional<zlink::monitor_event_t> event;
+            try {
+                event = _monitor.recv (zlink::recv_flags_t::dontwait);
+            }
+            catch (...) {
+                return;
+            }
+            if (!event) {
+                return;
+            }
+            if (!event->routing_id) {
+                continue;
+            }
+            if (event->event == zlink::monitor_event::connection_ready) {
+                _runtime->mark_peer_ready (*event->routing_id);
+                trace_route_channel ("peer-ready channel=" + _route_channel_id
+                                     + " peerRid=" + event->routing_id->to_string ());
+            } else if (event->event == zlink::monitor_event::disconnected) {
+                _runtime->mark_peer_disconnected (*event->routing_id);
+                trace_route_channel ("peer-disconnected channel=" + _route_channel_id
+                                     + " peerRid=" + event->routing_id->to_string ());
+            }
         }
     }
 
@@ -238,6 +366,7 @@ class route_channel_host_service_t::route_loop_t
             auto bridge = std::make_unique<zlink::service::spot_route_bridge_t> (
               native_node->create_route_bridge ());
             try {
+                std::lock_guard route_lock (_backend->router_mutex ());
                 bridge->attach_router_channel (_route_channel_id, *_router);
             }
             catch (const std::exception &error) {
@@ -280,13 +409,42 @@ class route_channel_host_service_t::route_loop_t
         if (parts.size () == 0 || completed.request_seq == 0 || !completed.target_rid) {
             return;
         }
+        if (_runtime) {
+            if (auto connected = _runtime->wait_until_connected (_runtime->default_request_timeout ());
+                !connected) {
+                trace_route_channel ("reply-skipped channel=" + _route_channel_id
+                                     + " target=" + completed.target_rid->to_string ()
+                                     + " requestSeq=" + std::to_string (completed.request_seq)
+                                     + " error="
+                                     + (connected.error () ? connected.error ()->what ()
+                                                          : "route channel is not connected"));
+                return;
+            }
+            if (auto ready = _runtime->wait_until_peer_ready (
+                  *completed.target_rid, _runtime->default_request_timeout ());
+                !ready) {
+                trace_route_channel ("reply-skipped channel=" + _route_channel_id
+                                     + " target=" + completed.target_rid->to_string ()
+                                     + " requestSeq=" + std::to_string (completed.request_seq)
+                                     + " error="
+                                     + (ready.error () ? ready.error ()->what ()
+                                                      : "route peer is not ready"));
+                return;
+            }
+        }
         std::vector<zlink::message_t> copied;
         copied.reserve (parts.size ());
         for (std::size_t index = 0; index < parts.size (); ++index) {
             copied.push_back (clone (parts[index]));
         }
+        std::lock_guard route_lock (_backend->router_mutex ());
         auto operation =
-          _router->reply (*completed.target_rid, completed.request_seq).message (copied[0]);
+          completed.target_spot_rid
+            ? _router
+                ->reply_to_spot (*completed.target_rid, *completed.target_spot_rid,
+                                 completed.request_seq)
+                .message (copied[0])
+            : _router->reply (*completed.target_rid, completed.request_seq).message (copied[0]);
         for (std::size_t index = 1; index < copied.size (); ++index) {
             operation = std::move (operation).message (copied[index]);
         }
@@ -296,22 +454,40 @@ class route_channel_host_service_t::route_loop_t
     void dispatch_async (zlink::received_t received, std::vector<zlink::message_t> copied)
     {
         auto routing_id = *received.routing_id ();
+        auto spot_rid = received.spot_rid ();
         const auto request_seq = received.request_seq ();
+        trace_route_channel ("dispatch-submit channel=" + _route_channel_id
+                             + " source=" + routing_id.to_string ()
+                             + " requestSeq="
+                             + (request_seq ? std::to_string (*request_seq) : std::string (""))
+                             + " parts=" + std::to_string (copied.size ()));
         std::lock_guard<std::mutex> lock (_workers_mutex);
-        _workers.emplace_back ([this, routing_id = std::move (routing_id), request_seq,
+        _workers.emplace_back ([this, routing_id = std::move (routing_id),
+                                spot_rid = std::move (spot_rid), request_seq,
                                 copied = std::move (copied)] () mutable {
             auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
               routing_id, request_seq,
               zlink::framework::runtime::messaging::message_parts_t (std::move (copied))});
             if (!dispatched || !dispatched.value ()) {
+                trace_route_channel ("dispatch-complete channel=" + _route_channel_id
+                                     + " source=" + routing_id.to_string ()
+                                     + " reply=none");
                 return;
             }
             if (!request_seq) {
+                trace_route_channel ("dispatch-complete channel=" + _route_channel_id
+                                     + " source=" + routing_id.to_string ()
+                                     + " reply=no-request-seq");
                 return;
             }
+            const auto reply_source = routing_id.to_string ();
             std::lock_guard<std::mutex> reply_lock (_replies_mutex);
-            _replies.push_back (completed_reply_t{std::move (routing_id), *request_seq,
+            _replies.push_back (completed_reply_t{std::move (routing_id), std::move (spot_rid),
+                                                  *request_seq,
                                                   std::move (dispatched.value ()->parts)});
+            trace_route_channel ("dispatch-complete channel=" + _route_channel_id
+                                 + " source=" + reply_source
+                                 + " reply=queued requestSeq=" + std::to_string (*request_seq));
         });
     }
 
@@ -328,6 +504,13 @@ class route_channel_host_service_t::route_loop_t
                 _replies.pop_front ();
             }
             try {
+                trace_route_channel ("reply channel=" + _route_channel_id
+                                     + " target="
+                                     + (completed.target_rid ? completed.target_rid->to_string ()
+                                                             : std::string ())
+                                     + " requestSeq="
+                                     + std::to_string (completed.request_seq)
+                                     + " parts=" + std::to_string (completed.parts.size ()));
                 reply (completed);
             }
             catch (const std::exception &error) {
@@ -365,6 +548,7 @@ class route_channel_host_service_t::route_loop_t
     std::atomic_bool *_stop;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
+    zlink::socket_monitor_t _monitor;
     std::unique_ptr<detail::backend::native_route_backend_t> _backend;
     std::set<std::string> _connected_endpoints;
     std::mutex _workers_mutex;
@@ -422,13 +606,15 @@ void route_channel_host_service_t::start (service_provider_t &services)
 void route_channel_host_service_t::stop () noexcept
 {
     _stop.store (true, std::memory_order_release);
+    for (auto &loop : _loops) {
+        loop->stop ();
+    }
     for (auto &thread : _threads) {
         if (thread.joinable ()) {
             thread.join ();
         }
     }
     for (auto &loop : _loops) {
-        loop->stop ();
         loop->term ();
     }
     _threads.clear ();

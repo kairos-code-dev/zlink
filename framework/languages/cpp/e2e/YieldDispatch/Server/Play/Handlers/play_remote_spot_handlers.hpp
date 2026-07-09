@@ -27,8 +27,10 @@ handle_remote_spot_yield (zlink::framework::spot_context_t &context,
     auto call =
       context
         .request_to<yd::yield_dispatch_res_t> (
-          zlink::framework::node_rid_t::from_string ("play-b"),
-          zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
+          zlink::framework::spot_ref_t{
+            .mesh_name = yd::spot_channel,
+            .node_rid = zlink::routing_id_t::from ("play-b"),
+            .spot_rid = zlink::routing_id_t::from (request.target_spot_rid)},
           yd::yield_req_t{.request_id = request.request_id,
                           .delay_ms = request.delay_ms,
                           .correlation_id = "remote-spot"})

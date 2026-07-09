@@ -139,6 +139,17 @@ function Wait-Endpoint([string]$Name, [string]$Endpoint, [int]$TimeoutSeconds = 
     throw "Timed out waiting for $Name at $Endpoint"
 }
 
+function Wait-Log([string]$Name, [string]$Path, [string]$Pattern, [int]$TimeoutSeconds = 60) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ((Test-Path $Path) -and (Select-String -Path $Path -Pattern $Pattern -Quiet)) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for $Name evidence in $Path"
+}
+
 function Start-Server([string]$Name, [string]$Binary, [string[]]$Arguments) {
     $logPath = Join-Path $LogDir "$Name.log"
     $errorLogPath = Join-Path $LogDir "$Name.err.log"
@@ -263,6 +274,15 @@ try {
     Wait-Endpoint "play-b-route" $playBRouteEndpoint
     Wait-Endpoint "play-b-spot-router" $playBSpotRouterEndpoint
     Wait-Endpoint "play-b-spot-pub" $playBSpotEndpoint
+
+    Wait-Log "api-a play-a route discovery" (Join-Path $LogDir "api-a.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2201 .*targetRid=2201"
+    Wait-Log "api-a play-b route discovery" (Join-Path $LogDir "api-a.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2202 .*targetRid=2202"
+    Wait-Log "api-b play-a route discovery" (Join-Path $LogDir "api-b.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2201 .*targetRid=2201"
+    Wait-Log "api-b play-b route discovery" (Join-Path $LogDir "api-b.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2202 .*targetRid=2202"
+    Wait-Log "session-a play-a route discovery" (Join-Path $LogDir "session-a.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2201 .*targetRid=2201"
+    Wait-Log "session-a play-b route discovery" (Join-Path $LogDir "session-a.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2202 .*targetRid=2202"
+    Wait-Log "session-b play-a route discovery" (Join-Path $LogDir "session-b.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2201 .*targetRid=2201"
+    Wait-Log "session-b play-b route discovery" (Join-Path $LogDir "session-b.log") "zlink auto-connect dial type=client-server mesh=bingo\.play\.2202 .*targetRid=2202"
 
     $settleSeconds = if ($env:BINGO_STARTUP_SETTLE_SECONDS) { [int]$env:BINGO_STARTUP_SETTLE_SECONDS } else { 2 }
     Start-Sleep -Seconds $settleSeconds

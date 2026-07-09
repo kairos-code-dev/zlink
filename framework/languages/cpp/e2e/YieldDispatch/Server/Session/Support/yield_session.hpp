@@ -171,6 +171,11 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
                                 payload.parse_json<yd::yield_timeout_msg_t> (), packet);
             co_return;
         }
+        if (packet == yd::yield_cancel_msg_t::packet_name) {
+            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+                                payload.parse_json<yd::yield_cancel_msg_t> (), packet);
+            co_return;
+        }
         if (packet == yd::timer_start_msg_t::packet_name) {
             co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
                                 payload.parse_json<yd::timer_start_msg_t> (), packet);
@@ -321,9 +326,12 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
                const TRequest &request,
                const std::string &packet)
     {
+        const auto target_ref = zlink::framework::spot_ref_t{
+          .mesh_name = yd::spot_channel,
+          .node_rid = target,
+          .spot_rid = zlink::routing_id_t::from (spot_rid)};
         _routes
-          .send_to_node (yd::spot_route_channel, target,
-                 zlink::framework::spot_rid_t::from_string (spot_rid), request)
+          .send_to_node (yd::spot_route_channel, target_ref, request)
           .packet_name (packet)
           .submit ();
         co_return;
@@ -337,10 +345,13 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
                   const std::string &packet,
                   std::chrono::milliseconds timeout = std::chrono::milliseconds (3000))
     {
+        const auto target_ref = zlink::framework::spot_ref_t{
+          .mesh_name = yd::spot_channel,
+          .node_rid = target,
+          .spot_rid = zlink::routing_id_t::from (spot_rid)};
         auto reply =
           co_await _routes
-            .request_to_node (yd::spot_route_channel, target,
-                      zlink::framework::spot_rid_t::from_string (spot_rid), request)
+            .request_to_node (yd::spot_route_channel, target_ref, request)
             .packet_name (packet)
             .timeout (timeout)
             .template async<TReply> ();

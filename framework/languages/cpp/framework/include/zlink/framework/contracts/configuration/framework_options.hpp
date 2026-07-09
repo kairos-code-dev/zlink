@@ -1075,6 +1075,9 @@ class spot_node_options_builder_t
         _options->spot_node_appliers[spot_node_name] = [options = _options, spot_node_name,
                                                         routing_id,
                                                         uses_implicit_spot_route_channel,
+                                                        router_endpoint,
+                                                        router_manual_connections,
+                                                        router_manual_rid_connections,
                                                         configure] {
             if (options->active_zlink == nullptr) {
                 return;
@@ -1083,6 +1086,14 @@ class spot_node_options_builder_t
                 auto route_channel = options->active_zlink->route_channel (spot_node_name);
                 route_channel.set_routing_id (
                   routing_id.value_or (zlink::routing_id_t::from (spot_node_name)));
+                route_channel.bind (router_endpoint);
+                for (const auto &endpoint : router_manual_connections) {
+                    route_channel.connect (endpoint);
+                }
+                for (const auto &connection : router_manual_rid_connections) {
+                    detail::connect_route_channel_peer (route_channel, connection.first,
+                                                        connection.second);
+                }
             }
             auto spot_node = options->active_zlink->add_spot_node (spot_node_name);
             configure (spot_node);

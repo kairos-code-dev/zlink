@@ -70,11 +70,22 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
                     .packet_name ("ActorPingReq")
                     .timeout (std::chrono::milliseconds (3000))
                     .submit<actor_ping_res_t> ();
+    auto describe_ping = [] (const actor_ping_res_t &reply) {
+        return "actor=" + reply.actor_id + "|node=" + reply.node_rid
+               + "|spot=" + reply.spot_rid + "|value=" + reply.value
+               + "|seen=" + std::to_string (reply.seen);
+    };
     if (!first || first.value ().actor_id != actor_id || first.value ().value != "observer-1") {
-        throw std::runtime_error ("SM-D9 first ping reply mismatch");
+        throw std::runtime_error (
+          std::string ("SM-D9 first ping reply mismatch: ")
+          + (first ? describe_ping (first.value ())
+                   : (first.error () ? first.error ()->message : "unknown error")));
     }
     if (!second || second.value ().actor_id != actor_id || second.value ().value != "observer-2") {
-        throw std::runtime_error ("SM-D9 second ping reply mismatch");
+        throw std::runtime_error (
+          std::string ("SM-D9 second ping reply mismatch: ")
+          + (second ? describe_ping (second.value ())
+                    : (second.error () ? second.error ()->message : "unknown error")));
     }
 
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (2);

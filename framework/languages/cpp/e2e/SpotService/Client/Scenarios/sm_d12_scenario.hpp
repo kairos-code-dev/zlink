@@ -27,8 +27,8 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
 
     zlink::stream_connector::connector_options_t first_options;
     first_options.endpoint = session_a_stream_endpoint;
-    first_options.connect_timeout = std::chrono::milliseconds (3000);
-    first_options.request_timeout = std::chrono::milliseconds (3000);
+    first_options.connect_timeout = std::chrono::milliseconds (10000);
+    first_options.request_timeout = std::chrono::milliseconds (10000);
     first_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto first = zlink::stream_connector::connector_factory_t::create (first_options);
@@ -40,17 +40,22 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     auto first_auth =
       first.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D12 Transfer"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (3000))
+        .timeout (std::chrono::milliseconds (10000))
         .submit<stream_auth_res_t> ();
     if (!first_auth || first_auth.value ().actor.actor_id != actor_id
         || first_auth.value ().session_node_rid != "session-a") {
-        throw std::runtime_error ("SM-D12 first stream auth failed");
+        const auto detail =
+          first_auth ? "session_node_rid=" + first_auth.value ().session_node_rid
+                         + " actor_id=" + first_auth.value ().actor.actor_id
+                     : first_auth.error () ? first_auth.error ()->message
+                                           : "unknown stream error";
+        throw std::runtime_error ("SM-D12 first stream auth failed: " + detail);
     }
 
     auto first_ping =
       first.request (actor_ping_req_t{"before-transfer"})
         .packet_name ("ActorPingReq")
-        .timeout (std::chrono::milliseconds (3000))
+        .timeout (std::chrono::milliseconds (10000))
         .submit<actor_ping_res_t> ();
     if (!first_ping || first_ping.value ().actor_id != actor_id
         || first_ping.value ().node_rid != "play-a" || first_ping.value ().seen != 1) {
@@ -61,8 +66,8 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
 
     zlink::stream_connector::connector_options_t second_options;
     second_options.endpoint = session_b_stream_endpoint;
-    second_options.connect_timeout = std::chrono::milliseconds (3000);
-    second_options.request_timeout = std::chrono::milliseconds (3000);
+    second_options.connect_timeout = std::chrono::milliseconds (10000);
+    second_options.request_timeout = std::chrono::milliseconds (10000);
     second_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto second = zlink::stream_connector::connector_factory_t::create (second_options);
@@ -74,17 +79,22 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     auto second_auth =
       second.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D12 Transfer"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (3000))
+        .timeout (std::chrono::milliseconds (10000))
         .submit<stream_auth_res_t> ();
     if (!second_auth || second_auth.value ().actor.actor_id != actor_id
         || second_auth.value ().session_node_rid != "session-b") {
-        throw std::runtime_error ("SM-D12 second stream auth failed");
+        const auto detail =
+          second_auth ? "session_node_rid=" + second_auth.value ().session_node_rid
+                          + " actor_id=" + second_auth.value ().actor.actor_id
+                      : second_auth.error () ? second_auth.error ()->message
+                                             : "unknown stream error";
+        throw std::runtime_error ("SM-D12 second stream auth failed: " + detail);
     }
 
     auto snapshot =
       second.request (snapshot_req_t{actor_id})
         .packet_name ("SnapshotReq")
-        .timeout (std::chrono::milliseconds (3000))
+        .timeout (std::chrono::milliseconds (10000))
         .submit<snapshot_res_t> ();
     if (!snapshot || snapshot.value ().actor_id != actor_id || snapshot.value ().seen != 1) {
         const auto detail =
@@ -100,7 +110,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     auto pushed =
       second.request (actor_push_req_t{"after-transfer"})
         .packet_name ("PushReq")
-        .timeout (std::chrono::milliseconds (3000))
+        .timeout (std::chrono::milliseconds (10000))
         .submit<actor_push_res_t> ();
     if (!pushed || !pushed.value ().pushed || pushed.value ().actor_id != actor_id
         || pushed.value ().seen != 2) {

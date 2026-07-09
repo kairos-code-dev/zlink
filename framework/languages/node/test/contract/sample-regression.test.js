@@ -1035,18 +1035,22 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
   assert.deepEqual(violations, []);
 });
 
-test('node top-level sample runner fails on first sample failure without retry masking', () => {
+test('node top-level sample runner only retries transient port binding failures', () => {
   const runSamples = fs.readFileSync(path.join(samplesRoot, 'run_samples.sh'), 'utf8');
   const violations = [
     /\bretry sample\b/,
-    /\bfor attempt\b/,
-    /\battempts\b/,
     /\brun_sample\s*\(/
   ]
     .filter((pattern) => pattern.test(runSamples))
     .map((pattern) => pattern.source);
 
   assert.deepEqual(violations, []);
+  assert.match(runSamples, /BIND_RETRY_PATTERN=.*EADDRINUSE/);
+  assert.match(runSamples, /BIND_RETRY_PATTERN=.*Address already in use/);
+  assert.match(runSamples, /BIND_RETRY_PATTERN=.*errno=98/);
+  assert.match(runSamples, /for attempt in 1 2 3/);
+  assert.match(runSamples, /if ! grep -Eq "\$\{BIND_RETRY_PATTERN\}" "\$\{output\}"; then[\s\S]*return "\$\{status\}"/);
+  assert.match(runSamples, /node sample transient bind failure; retrying/);
 });
 
 test('node RegistryMessaging e2e endpoints do not hide local routing failures with retry loops', () => {

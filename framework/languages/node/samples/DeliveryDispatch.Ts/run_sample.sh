@@ -160,8 +160,8 @@ start_role() {
   PIDS+=("$!")
 }
 
-start_redis_container "deliverydispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-export DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+start_redis_container "zlink-redis-node-sample-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+export DELIVERYDISPATCH_REDIS_ENDPOINT="$(redis_container_endpoint "${REDIS_CONTAINER_ID}")"
 wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 
 start_role tracking

@@ -135,9 +135,8 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-start_redis_container "shoppingmall-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-REDIS_PORT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed 's/.*://')"
-export SHOPPINGMALL_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+start_redis_container "zlink-redis-node-sample-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+export SHOPPINGMALL_REDIS_ENDPOINT="$(redis_container_endpoint "${REDIS_CONTAINER_ID}")"
 wait_tcp_endpoint redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
 
 start_role workflow-a

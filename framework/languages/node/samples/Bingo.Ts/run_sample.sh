@@ -123,8 +123,8 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-start_redis_container "bingo-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine
-export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+start_redis_container "zlink-redis-node-sample-${RANDOM}-$$" -p "127.0.0.1::6379" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+export BINGO_REDIS_ENDPOINT="$(redis_container_endpoint "${REDIS_CONTAINER_ID}")"
 
 python3 - \
   "${CLIENT_CONFIG}" \

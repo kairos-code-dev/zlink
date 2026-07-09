@@ -1,5 +1,33 @@
 #!/usr/bin/env bash
 
+zlink_redis_cleanup_scope() {
+  local scope="$1"
+  if [[ -z "${scope}" ]]; then
+    return 0
+  fi
+  while read -r container_id container_name; do
+    if [[ "${container_name}" == "${scope}"* ]]; then
+      docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    fi
+  done < <(docker ps -a --format '{{.ID}} {{.Names}}')
+}
+
+wait_redis_ready() {
+  local container_id="$1"
+  local timeout_seconds="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+  local deadline=$((SECONDS + timeout_seconds))
+
+  while (( SECONDS < deadline )); do
+    if timeout -k 2s 5s docker exec "${container_id}" redis-cli ping 2>/dev/null | grep -q '^PONG$'; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  printf 'Timed out waiting for Redis container %s to answer PING\n' "${container_id}" >&2
+  return 1
+}
+
 start_redis_container() {
   local name="$1"
   shift
@@ -20,10 +48,28 @@ start_redis_container() {
   set -e
   running="$(timeout -k 2s 5s docker inspect -f '{{.State.Running}}' "${candidate}" 2>/dev/null || true)"
   if [[ "${running}" == "true" ]]; then
+    if ! wait_redis_ready "${candidate}"; then
+      timeout -k 2s 10s docker rm -f "${candidate}" >/dev/null 2>&1 || true
+      REDIS_CONTAINER_ID=""
+      return 1
+    fi
     return 0
   fi
   timeout -k 2s 10s docker rm -f "${candidate}" >/dev/null 2>&1 || true
   REDIS_CONTAINER_ID=""
   printf 'Failed to start Redis container %s (docker status %s)\n%s\n' "${name}" "${start_status}" "${start_output}" >&2
   return 1
+}
+
+redis_container_endpoint() {
+  local container_id="$1"
+  local host_port
+  host_port="$(timeout -k 2s 5s docker inspect \
+    -f '{{(index (index .NetworkSettings.Ports "6379/tcp") 0).HostPort}}' \
+    "${container_id}" 2>/dev/null || true)"
+  if [[ -z "${host_port}" ]]; then
+    printf 'Failed to inspect Redis host port for container %s\n' "${container_id}" >&2
+    return 1
+  fi
+  printf '127.0.0.1:%s\n' "${host_port}"
 }

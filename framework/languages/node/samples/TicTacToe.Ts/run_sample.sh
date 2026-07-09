@@ -121,11 +121,11 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-start_redis_container "zlink-tictactoe-ts-redis-${RANDOM}-$$" \
+start_redis_container "zlink-redis-node-sample-${RANDOM}-$$" \
   --label "systems.zlink.sample=tictactoe-ts" \
   -p "127.0.0.1::6379" \
-  redis:7-alpine
-REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+REDIS_ENDPOINT="$(redis_container_endpoint "${REDIS_CONTAINER_ID}")"
 
 python3 - "${API_A_CONFIG}" "${API_B_CONFIG}" "${PLAY_A_CONFIG}" "${PLAY_B_CONFIG}" <<PY
 import json

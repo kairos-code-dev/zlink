@@ -5,8 +5,8 @@ export {
   AtomicCounter as RuntimeAtomicCounter,
   Stopwatch,
   Stopwatch as RuntimeStopwatch,
-  sleep,
 } from './counters';
+export { sleep } from '../core/runtime_info';
 export { Thread as RuntimeThread } from './thread';
 export {
   Poller,

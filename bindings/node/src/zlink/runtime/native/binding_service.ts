@@ -176,8 +176,6 @@ export interface ServiceNativeBinding {
   spotNodeNew: (ctx: NativeHandle, options: { mode: number }) => NativeHandle;
   spotNodePeers: (node: NativeHandle) => SpotNodePeerEntryRaw[];
   spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => SpotNodePeerEntryRaw[];
-  spotNodeProcessRoutedRouter: (node: NativeHandle) => void;
-  spotNodeTryProcessRoutedRouterParts: (node: NativeHandle, parts: unknown) => boolean;
   spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
   spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;
   spotNodeSetPubRoutingId: (node: NativeHandle, routingId: Buffer) => void;
@@ -214,14 +212,6 @@ export interface ServiceNativeBinding {
   spotRecvNoWait: (spot: NativeHandle) => NativeTopicMessageRaw | null;
   spotRecvRouted: (spot: NativeHandle, flags: number) => SpotRoutedRaw | null;
   spotRecvRoutedNoWait: (spot: NativeHandle) => SpotRoutedRaw | null;
-  spotRecvRoutedMetricLatency: (
-    spot: NativeHandle,
-    runId: number,
-    msgSize: number,
-    expectedSize: number,
-    activeStartNs: bigint,
-    activeStopNs: bigint
-  ) => number | false | null;
   spotReplyRouter: (
     spot: NativeHandle,
     peerRid: Buffer,

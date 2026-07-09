@@ -5,7 +5,7 @@ import {
   PublisherSocket,
 } from './socket_operations';
 import type { RuntimeContext as Context } from '../core/context';
-import { handlerCall, recvNativeError } from '../errors/native_errors';
+import { recvNativeError } from '../errors/native_errors';
 import { getNativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 import { SubscriptionEvent } from '../../contracts';
@@ -15,7 +15,6 @@ import {
   replaceSubscriptionEvent
 } from '../messaging/subscription_event_state';
 import { RecvFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
-import type { SocketSendReadyHandler } from '../../contracts/service';
 
 export class XPubSocket extends PublisherSocket {
   readonly options: PubSocketOptions;
@@ -46,10 +45,5 @@ export class XPubSocket extends PublisherSocket {
       return true;
     }
     return createSubscriptionEvent(raw.topic, raw.subscribed, wrapRoutingId(raw.routingId ?? null));
-  }
-  setSendReadyHandler(handler: SocketSendReadyHandler): void {
-    handlerCall('send-ready handler registration failed', () => {
-      requireNative().socketSendReadyHandler(getNativeHandle(this), handler);
-    });
   }
 }

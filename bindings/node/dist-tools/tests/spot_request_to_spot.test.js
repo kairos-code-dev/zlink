@@ -41,6 +41,25 @@ async function waitForSpotPeer(node) {
 function textRoutingId(text) {
     return zlink.RoutingId.from(Buffer.from(text, 'ascii'));
 }
+test('spot sendToSpot DontWait maps disconnected peer to SubmitResult.NotConnected', () => {
+    const ctx = zlink.createContext();
+    const node = zlink.createSpotNode(ctx);
+    const spot = node.createSpot();
+    try {
+        node.setRoutingId(textRoutingId('SPOT_NOWAIT_NODE'));
+        spot.setRoutingId(textRoutingId('SPOT_NOWAIT_SPOT'));
+        assert.throws(() => spot.sendToSpot(textRoutingId('SPOT_MISSING_NODE'), textRoutingId('SPOT_MISSING_SPOT'))
+            .message(Buffer.from('payload'))
+            .flags(zlink.SendFlags.DontWait)
+            .submit(), (error) => error instanceof zlink.SubmitError &&
+            error.result === zlink.SubmitResult.NotConnected);
+    }
+    finally {
+        spot.close();
+        node.close();
+        ctx.close();
+    }
+});
 test('spot route bridge request resolves through channel router reply', async () => {
     const endpoint = `inproc://spot-route-bridge-channel-${process.pid}-${Date.now()}`;
     const ctx = zlink.createContext();

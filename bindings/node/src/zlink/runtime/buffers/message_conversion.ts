@@ -25,17 +25,6 @@ export function toMessageParts(parts: readonly MessageLike[]): Array<Buffer | Me
   );
 }
 
-export function normalizeMessageLikePayload(message: MessageLike | readonly MessageLike[]): Buffer | MessageSnapshot | Array<Buffer | MessageSnapshot> {
-  if (Array.isArray(message)) {
-    if (message.length === 1) {
-      return normalizeMessageLikePayload(message[0]);
-    }
-    return toMessageParts(message);
-  }
-  const scalar = message as MessageLike;
-  return scalar instanceof Message ? messageToSnapshot(scalar) : normalizeBufferLike(scalar, 'message');
-}
-
 export function normalizeOperationPayload(parts: MessageLike | readonly MessageLike[]): Buffer | MessageSnapshot | Array<Buffer | MessageSnapshot> {
   if (!Array.isArray(parts)) {
     const scalar = parts as MessageLike;
@@ -47,6 +36,8 @@ export function normalizeOperationPayload(parts: MessageLike | readonly MessageL
   }
   return toMessageParts(parts);
 }
+
+export { normalizeOperationPayload as normalizeMessageLikePayload };
 
 export function messageFromNativeBuffer(buffer: Buffer | null | undefined): Message {
   // HOT PATH: native callbacks already transfer payload ownership to a JS

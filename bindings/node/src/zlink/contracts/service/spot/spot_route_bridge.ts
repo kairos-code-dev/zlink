@@ -6,6 +6,7 @@ import type { RouterSocket } from '../../sockets';
 import type { RequestOperation, SendOperation } from './spot_operations';
 
 export const SpotRouteBridgeEndpointCapabilities = {
+  /** @deprecated use RouteOnly. */
   SpotRoute: 0x00000001,
   RouteOnly: 0x00000001
 } as const;

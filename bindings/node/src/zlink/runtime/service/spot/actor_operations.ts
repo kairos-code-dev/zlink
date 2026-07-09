@@ -24,6 +24,7 @@ import type {
 } from '../../../contracts/service';
 import { requestErrorFromResult } from '../../messaging/request_executor';
 import { OperationPayload, type OperationPayloadValue } from '../../messaging/operation_payload';
+import { SendOperationBase } from '../../messaging/send_operation_base';
 
 type ActorJoinInvoker = (
   parts: OperationPayloadValue<MessageLike>,
@@ -32,31 +33,26 @@ type ActorJoinInvoker = (
   timeoutMs: number,
 ) => boolean;
 
-export class RuntimeActorJoinOperation implements ActorJoinOperation, ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation {
+export class RuntimeActorJoinOperation
+  extends SendOperationBase<MessageLike, MessageLike>
+  implements ActorJoinOperation, ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation {
   private readonly _invoke: ActorJoinInvoker;
-  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
-  private _flags: SendFlags = SendFlags.None;
   private _timeoutMs = 0;
   private _callbackMode = false;
 
   constructor(invoke: ActorJoinInvoker) {
+    super((message) => message);
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): this {
-    this._payload.append(message);
-    return this;
-  }
-
   timeout(timeoutMs: number): this {
-    this._payload.ensureOpen();
+    this.ensureOpen();
     this._timeoutMs = timeoutMs | 0;
     return this;
   }
 
-  flags(flags: SendFlags): ActorJoinCallbackSubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
+  flags(flags: SendFlags): this {
+    super.flags(flags);
     this._callbackMode = true;
     return this;
   }
@@ -66,9 +62,9 @@ export class RuntimeActorJoinOperation implements ActorJoinOperation, ActorJoinS
   submit(callback?: ActorJoinHandler): Promise<{ result: ActorJoinResult; parts: Message[] }> | boolean {
     if (callback !== undefined) {
       const flags = this._callbackMode ? this._flags : SendFlags.None;
-      return this._invoke(this._payload.consume(), callback, flags, this._timeoutMs);
+      return this._invoke(this.consumePayload(), callback, flags, this._timeoutMs);
     }
-    const parts = this._payload.consume();
+    const parts = this.consumePayload();
     return new Promise((resolve, reject) => {
       this._invoke(parts, (result, replyParts) => {
         if (result.result !== RequestResult.Ok) {
@@ -223,22 +219,16 @@ class ResultHandlerOperation<TResult extends { result: RequestResult }> {
   }
 }
 
-export class RuntimeActorJoinEntrySpotOperation implements ActorJoinEntrySpotOperation {
+export class RuntimeActorJoinEntrySpotOperation
+  extends SendOperationBase<MessageLike, MessageLike>
+  implements ActorJoinEntrySpotOperation {
   private readonly _invoke: ActorJoinEntrySpotInvoker;
-  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
-  private _flags: SendFlags = SendFlags.None;
   private _timeoutMs = 0;
-  private _submitted = false;
 
   constructor(invoke: ActorJoinEntrySpotInvoker, request: MessageLike) {
+    super((message) => message);
     this._invoke = invoke;
-    this._payload.append(request);
-  }
-
-  message(message: MessageLike): this {
-    this.ensureOpen();
-    this._payload.append(message);
-    return this;
+    this.message(request);
   }
 
   timeout(timeoutMs: number): this {
@@ -257,8 +247,7 @@ export class RuntimeActorJoinEntrySpotOperation implements ActorJoinEntrySpotOpe
   submit(callback: ActorJoinEntrySpotHandler): boolean;
   submit(callback?: ActorJoinEntrySpotHandler): Promise<{ result: ActorJoinEntrySpotResult; parts: Message[] }> | boolean {
     this.ensureOpen();
-    this._submitted = true;
-    const parts = this._payload.consume();
+    const parts = this.consumePayload();
     if (callback !== undefined) {
       return this._invoke(parts, callback, this._flags, this._timeoutMs);
     }
@@ -271,12 +260,6 @@ export class RuntimeActorJoinEntrySpotOperation implements ActorJoinEntrySpotOpe
         resolve({ result, parts: replyParts });
       }, SendFlags.None, this._timeoutMs);
     });
-  }
-
-  private ensureOpen(): void {
-    if (this._submitted) {
-      throw new TypeError('operation has already been submitted');
-    }
   }
 }
 

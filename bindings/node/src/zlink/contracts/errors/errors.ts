@@ -34,90 +34,68 @@ export class ZlinkError extends Error {
   }
 }
 
-/** Thrown when submitting a send or publish fails. */
-export class SubmitError extends ZlinkError {
-  readonly result: SubmitResult;
+class ResultError<TResult extends number> extends ZlinkError {
+  readonly result: TResult;
 
-  constructor(result: SubmitResult, nativeErrno = 0) {
+  protected constructor(name: string, result: TResult, nativeErrno = 0) {
     super(result, nativeErrno);
-    this.name = 'SubmitError';
+    this.name = name;
     this.result = result;
+  }
+}
+
+/** Thrown when submitting a send or publish fails. */
+export class SubmitError extends ResultError<SubmitResult> {
+  constructor(result: SubmitResult, nativeErrno = 0) {
+    super('SubmitError', result, nativeErrno);
   }
 }
 
 /** Thrown when a request fails or its reply reports an error. */
-export class RequestError extends ZlinkError {
-  readonly result: RequestResult;
-
+export class RequestError extends ResultError<RequestResult> {
   constructor(result: RequestResult, nativeErrno = 0) {
-    super(result, nativeErrno);
-    this.name = 'RequestError';
-    this.result = result;
+    super('RequestError', result, nativeErrno);
   }
 }
 
 /** Thrown when receiving a message fails. */
-export class RecvError extends ZlinkError {
-  readonly result: RecvResult;
-
+export class RecvError extends ResultError<RecvResult> {
   constructor(result: RecvResult, nativeErrno = 0) {
-    super(result, nativeErrno);
-    this.name = 'RecvError';
-    this.result = result;
+    super('RecvError', result, nativeErrno);
   }
 }
 
 /** Thrown when registering or running a callback handler fails. */
-export class HandlerError extends ZlinkError {
-  readonly result: HandlerResult;
-
+export class HandlerError extends ResultError<HandlerResult> {
   constructor(result: HandlerResult, nativeErrno = 0) {
-    super(result, nativeErrno);
-    this.name = 'HandlerError';
-    this.result = result;
+    super('HandlerError', result, nativeErrno);
   }
 }
 
 /** Thrown when closing a socket or resource fails. */
-export class CloseError extends ZlinkError {
-  readonly result: CloseResult;
-
+export class CloseError extends ResultError<CloseResult> {
   constructor(result: CloseResult, nativeErrno = 0) {
-    super(result, nativeErrno);
-    this.name = 'CloseError';
-    this.result = result;
+    super('CloseError', result, nativeErrno);
   }
 }
 
 /** Thrown when binding a socket to an endpoint fails. */
-export class BindError extends ZlinkError {
-  readonly result: BindResult;
-
+export class BindError extends ResultError<BindResult> {
   constructor(result: BindResult, nativeErrno = 0) {
-    super(result, nativeErrno);
-    this.name = 'BindError';
-    this.result = result;
+    super('BindError', result, nativeErrno);
   }
 }
 
 /** Thrown when connecting a socket to an endpoint fails. */
-export class ConnectError extends ZlinkError {
-  readonly result: ConnectResult;
-
+export class ConnectError extends ResultError<ConnectResult> {
   constructor(result: ConnectResult, nativeErrno = 0) {
-    super(result, nativeErrno);
-    this.name = 'ConnectError';
-    this.result = result;
+    super('ConnectError', result, nativeErrno);
   }
 }
 
 /** Thrown when reading or applying a configuration option fails. */
-export class ConfigError extends ZlinkError {
-  readonly result: ConfigResult;
-
+export class ConfigError extends ResultError<ConfigResult> {
   constructor(result: ConfigResult, nativeErrno = 0) {
-    super(result, nativeErrno);
-    this.name = 'ConfigError';
-    this.result = result;
+    super('ConfigError', result, nativeErrno);
   }
 }

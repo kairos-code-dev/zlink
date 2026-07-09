@@ -31,7 +31,3 @@ export class AtomicCounter {
     }
   }
 }
-
-export function sleep(seconds: number): void {
-  requireNative().sleep(seconds | 0);
-}

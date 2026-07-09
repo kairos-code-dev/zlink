@@ -15,7 +15,7 @@ import {
   recvNativeError,
   submitNativeError,
 } from '../errors/native_errors';
-import { getNativeHandle, NativeHandle } from '../handles/native_handle';
+import { getNativeHandle } from '../handles/native_handle';
 import {
   materializeReceived,
   materializeReceivedInto,
@@ -53,8 +53,6 @@ import {
   invokeStreamSendBoundActor,
   invokeStreamUnbindActor,
 } from '../service/spot/actor_invokers';
-
-type SpotNodeHandle = NativeHandle;
 
 const native = requireNative();
 
@@ -169,9 +167,7 @@ export class StreamSocket extends SocketBase {
     return wrapped;
   }
   setSendReadyHandler(handler: SocketSendReadyHandler): void {
-    handlerCall('send-ready handler registration failed', () => {
-      native.socketSendReadyHandler(getNativeHandle(this), handler);
-    });
+    this.registerSendReadyHandler(handler);
   }
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);

@@ -5,13 +5,6 @@ import { closeCall } from '../errors/native_errors';
 import { NativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 
-export interface PollEvent {
-  readonly sourceKind: number;
-  readonly slot: number;
-  readonly revents: number;
-  readonly fd: number;
-}
-
 export class PollEvents extends NativeHandle {
   private _readyCount = 0;
   readonly capacity: number;

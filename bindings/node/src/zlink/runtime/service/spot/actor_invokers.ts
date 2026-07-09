@@ -2,11 +2,11 @@
 
 import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { normalizeRoutingId } from '../../core/routing_id';
-import { submitNativeError } from '../../errors/native_errors';
+import { submitNativeError, submitOrBackpressure } from '../../errors/native_errors';
 import { messagesFromNativeBuffers } from '../../messaging/request_executor';
 import { requireNative } from '../../native/native';
 import { RoutingId, type MessageLike } from '../../../contracts';
-import { RequestResult, SubmitResult } from '../../../contracts/errors/errors';
+import { RequestResult } from '../../../contracts/errors/errors';
 import { SendFlags } from '../../../contracts/sockets/socket_constants';
 import type {
   ActorJoinEntrySpotHandler,
@@ -32,13 +32,11 @@ export function invokeActorJoin(
   actor: ActorRef,
   destNodeRid: RoutingId,
   destSpotRid: RoutingId,
-  spotHandle: unknown | null,
   parts: MessageLike | readonly MessageLike[],
   callback: ActorJoinHandler,
   flags: SendFlags,
   timeoutMs: number,
 ): boolean {
-  void spotHandle;
   try {
     requireNative().spotNodeActorJoinSpot(
       nodeHandle,
@@ -54,11 +52,7 @@ export function invokeActorJoin(
     );
     return true;
   } catch (error) {
-    const submitError = submitNativeError(error, flags, 'actor join failed');
-    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-      return false;
-    }
-    throw submitError;
+    return submitOrBackpressure(error, flags, 'actor join failed');
   }
 }
 
@@ -168,11 +162,7 @@ export function invokeActorSendBoundSession(
       flags | 0,
     );
   } catch (error) {
-    const submitError = submitNativeError(error, flags, 'actor bound session send failed');
-    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-      return false;
-    }
-    throw submitError;
+    return submitOrBackpressure(error, flags, 'actor bound session send failed');
   }
   return true;
 }
@@ -192,11 +182,7 @@ export function invokeSendToActor(
       0,
     );
   } catch (error) {
-    const submitError = submitNativeError(error, flags, 'sendToActor failed');
-    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-      return false;
-    }
-    throw submitError;
+    return submitOrBackpressure(error, flags, 'sendToActor failed');
   }
   return true;
 }
@@ -222,11 +208,7 @@ export function invokeSendToActorCallback(
     );
     return true;
   } catch (error) {
-    const submitError = submitNativeError(error, flags, 'sendToActor failed');
-    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-      return false;
-    }
-    throw submitError;
+    return submitOrBackpressure(error, flags, 'sendToActor failed');
   }
 }
 
@@ -353,11 +335,7 @@ export function invokeStreamSendBoundActor(
       flags | 0,
     );
   } catch (error) {
-    const submitError = submitNativeError(error, flags, 'sendBoundActor failed');
-    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-      return false;
-    }
-    throw submitError;
+    return submitOrBackpressure(error, flags, 'sendBoundActor failed');
   }
   return true;
 }

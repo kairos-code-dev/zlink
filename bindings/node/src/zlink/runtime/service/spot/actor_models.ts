@@ -13,7 +13,6 @@ import type {
   ActorPart,
   ActorRecvInfo,
   ActorRef,
-  ActorRoute,
   SpotActorLifecycleInfo,
   SpotKindValue,
   SpotNodeActorEntry,
@@ -52,12 +51,6 @@ export interface ActorJoinInfoRaw {
   joinEpoch?: bigint | number;
   flags: number;
   requestHandle: bigint;
-}
-
-export interface ActorRouteRaw {
-  actor: ActorRefRaw;
-  currentSpotRid: Buffer;
-  currentSpotKind: number;
 }
 
 export interface ActorJoinResultRaw {
@@ -220,14 +213,6 @@ export function actorJoinInfoToRaw(info: ActorJoinInfo): Record<string, unknown>
     joinEpoch: BigInt(info.joinEpoch ?? 0),
     flags: info.flags | 0,
     requestHandle
-  };
-}
-
-export function actorRouteFromRaw(raw: ActorRouteRaw): ActorRoute {
-  return {
-    actor: actorRefFromRaw(raw.actor),
-    currentSpotRid: RoutingId.from(raw.currentSpotRid),
-    currentSpotKind: raw.currentSpotKind as SpotKindValue
   };
 }
 

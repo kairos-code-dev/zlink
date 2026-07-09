@@ -230,7 +230,7 @@ export class SpotNode extends NativeHandle {
   joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId): ActorJoinOperation {
     const node = this._native;
     return new RuntimeActorJoinOperation((parts, callback, flags, timeoutMs) =>
-      invokeActorJoin(node, actor, destNodeRid, destSpotRid, null, parts, callback, flags, timeoutMs),
+      invokeActorJoin(node, actor, destNodeRid, destSpotRid, parts, callback, flags, timeoutMs),
     );
   }
   joinActorEntrySpot(actor: ActorRef, destNodeRid: RoutingId, request: MessageLike): ActorJoinEntrySpotOperation {

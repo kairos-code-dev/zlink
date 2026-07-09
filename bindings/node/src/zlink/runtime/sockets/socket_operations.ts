@@ -4,8 +4,8 @@ import { requireNative } from '../native/native';
 import { getNativeHandle } from '../handles/native_handle';
 import {
   configCall,
-  handlerCall,
   recvNativeError,
+  submitOrBackpressure,
   submitNativeError
 } from '../errors/native_errors';
 import {
@@ -18,7 +18,7 @@ import {
   normalizeOperationPayload,
 } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
-import { ConnectableSocket } from './socket_base';
+import { ConnectableSocket, SendReadySocket } from './socket_base';
 import {
   Message,
   Received,
@@ -37,7 +37,6 @@ import {
 
 import type {
   SubscriptionEntry,
-  SocketSendReadyHandler,
   SendOperation,
 } from '../../contracts/service';
 import {
@@ -54,7 +53,7 @@ import { submitErrorFromResult } from './socket_submit_errors';
 
 const native = requireNative();
 
-export class SendSocket extends ConnectableSocket {
+export class SendSocket extends SendReadySocket {
   send(): SendOperation {
     return new RuntimeSendOperation((parts, flags) => this.sendDirect(parts, flags));
   }
@@ -86,7 +85,7 @@ export class SendSocket extends ConnectableSocket {
   }
 }
 
-export class PublisherSocket extends ConnectableSocket {
+export class PublisherSocket extends SendReadySocket {
   publish(topic: string): SendOperation {
     return new PublishOperation(
       (normalizedTopic, payload, flags) => this.publishDirect(normalizedTopic, payload, flags),
@@ -115,11 +114,7 @@ export class PublisherSocket extends ConnectableSocket {
       native.socketPublish(getNativeHandle(this), topic, normalized, flags | 0);
       return true;
     } catch (error) {
-      const submitError = submitNativeError(error, flags, 'publish failed');
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
+      return submitOrBackpressure(error, flags, 'publish failed');
     }
   }
 }
@@ -142,11 +137,6 @@ export class MessageSocket extends SendSocket {
     if (raw == null) return false;
     materializeReceivedInto(result, raw);
     return true;
-  }
-  setSendReadyHandler(handler: SocketSendReadyHandler): void {
-    handlerCall('send-ready handler registration failed', () => {
-      native.socketSendReadyHandler(getNativeHandle(this), handler);
-    });
   }
 }
 
@@ -192,7 +182,7 @@ export class SubscriberSocket extends ConnectableSocket {
   }
 }
 
-export class RoutedMessageSocket extends ConnectableSocket {
+export class RoutedMessageSocket extends SendReadySocket {
   send(routingId: RoutingId): SendOperation {
     return new RuntimeSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
   }
@@ -272,10 +262,5 @@ export class RoutedMessageSocket extends ConnectableSocket {
       };
     materializeReceivedInto(result, raw, undefined, send);
     return true;
-  }
-  setSendReadyHandler(handler: SocketSendReadyHandler): void {
-    handlerCall('send-ready handler registration failed', () => {
-      native.socketSendReadyHandler(getNativeHandle(this), handler);
-    });
   }
 }

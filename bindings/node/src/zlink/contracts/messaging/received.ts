@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { RecvError, RecvResult, SubmitError, SubmitResult } from '../errors/errors';
-import { Message } from './message';
+import { SubmitError, SubmitResult } from '../errors/errors';
 import type { ReplyOperation, SendOperation } from './operations';
 import { RoutingId } from '../core/routing_id';
+import { MessagePartsEnvelope } from './message_parts_envelope';
 
 interface ReplyContext {
   beginReply(): ReplyOperation;
@@ -11,22 +11,6 @@ interface ReplyContext {
 
 interface SendContext {
   beginSend(): SendOperation;
-}
-
-function freezeMessageParts(parts: readonly Message[]): Message[] {
-  return Object.freeze(parts.slice()) as Message[];
-}
-
-function invalidMultipartError(partsLength: number): RecvError {
-  const error = new RecvError(RecvResult.NotSupported, 0);
-  error.message = `expected exactly 1 part but received ${partsLength}`;
-  return error;
-}
-
-function missingPartError(): RecvError {
-  const error = new RecvError(RecvResult.NotSupported, 0);
-  error.message = 'message has no parts';
-  return error;
 }
 
 function invalidReplyContextError(): SubmitError {
@@ -48,9 +32,7 @@ function invalidSendContextError(): SubmitError {
  * Owns its parts until closed. Reuse one instance across `recv` calls to avoid
  * a per-receive allocation.
  */
-export class Received {
-  /** The message parts, owned by this envelope. */
-  parts: Message[];
+export class Received extends MessagePartsEnvelope {
   /** The source routing id, or null when the receive path provides none. */
   routingId: RoutingId | null;
   /** The source spot routing id, or null when not from a spot route. */
@@ -65,40 +47,12 @@ export class Received {
     if (args.length > 0) {
       throw new TypeError('Received reusable envelopes are created without constructor arguments');
     }
-    this.parts = freezeMessageParts([]);
+    super();
     this.routingId = null;
     this.spotRid = null;
     this.requestSeq = null;
     this._replyContext = null;
     this._sendContext = null;
-  }
-
-  /** Return true when the envelope holds exactly one part. */
-  isSinglePart(): boolean {
-    return this.parts.length === 1;
-  }
-
-  /** Return the first part without transferring ownership; throws when the envelope has no parts. */
-  firstPart(): Message {
-    if (this.parts.length === 0) {
-      throw missingPartError();
-    }
-    return this.parts[0];
-  }
-
-  /** Return the only part; throws unless the envelope holds exactly one part. */
-  singlePartOrThrow(): Message {
-    if (!this.isSinglePart()) {
-      throw invalidMultipartError(this.parts.length);
-    }
-    return this.parts[0];
-  }
-
-  /** Close every part, releasing their storage. */
-  close(): void {
-    for (const part of this.parts) {
-      part.close();
-    }
   }
 
   /**

@@ -2,7 +2,8 @@
 
 import { Message, type MessageLike } from '../../contracts';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
-import { OperationPayload, type OperationPayloadValue } from '../messaging/operation_payload';
+import type { OperationPayloadValue } from '../messaging/operation_payload';
+import { SendOperationBase } from '../messaging/send_operation_base';
 import type {
   RequestCallback,
   RequestCallbackSubmitOperation,
@@ -28,83 +29,58 @@ export type RequestInvoker = (
 ) => Promise<Message[]> | boolean;
 export type ReplyInvoker = (parts: OperationPayloadValue<MessageLike>, flags: SendFlags) => void;
 
-export class RuntimeSendOperation implements SendOperation, SendSubmitOperation {
+export class RuntimeSendOperation
+  extends SendOperationBase<MessageLike, MessageLike>
+  implements SendOperation, SendSubmitOperation {
   private readonly _invoke: SendInvoker;
-  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
-  private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: SendInvoker) {
+    super((message) => message);
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): SendSubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
-  flags(flags: SendFlags): SendSubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
-    return this;
-  }
-
   submit(): boolean {
-    return this._invoke(this._payload.consume(), this._flags);
+    return this._invoke(this.consumePayload(), this._flags);
   }
 }
 
-export class PublishOperation implements SendOperation, SendSubmitOperation {
+export class PublishOperation
+  extends SendOperationBase<MessageLike, MessageLike>
+  implements SendOperation, SendSubmitOperation {
   private readonly _invoke: PublishInvoker;
   private readonly _topic: string;
-  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
-  private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: PublishInvoker, topic: string) {
+    super((message) => message);
     this._invoke = invoke;
     this._topic = topic;
   }
 
-  message(message: MessageLike): SendSubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
-  flags(flags: SendFlags): SendSubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
-    return this;
-  }
-
   submit(): boolean {
-    return this._invoke(this._topic, this._payload.consume(), this._flags);
+    return this._invoke(this._topic, this.consumePayload(), this._flags);
   }
 }
 
-export class RuntimeRequestOperation implements RequestOperation, RequestSubmitOperation, RequestCallbackSubmitOperation {
+export class RuntimeRequestOperation
+  extends SendOperationBase<MessageLike, MessageLike>
+  implements RequestOperation, RequestSubmitOperation, RequestCallbackSubmitOperation {
   private readonly _invoke: RequestInvoker;
-  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
   private _timeoutMs = 0;
-  private _flags: SendFlags = SendFlags.None;
   private _callbackMode = false;
 
   constructor(invoke: RequestInvoker) {
+    super((message) => message);
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): RequestSubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
   timeout(timeoutMs: number): RequestSubmitOperation {
-    this._payload.ensureOpen();
+    this.ensureOpen();
     this._timeoutMs = timeoutMs | 0;
     return this;
   }
 
-  flags(flags: SendFlags): RequestCallbackSubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
+  flags(flags: SendFlags): this {
+    super.flags(flags);
     this._callbackMode = true;
     return this;
   }
@@ -113,34 +89,24 @@ export class RuntimeRequestOperation implements RequestOperation, RequestSubmitO
   submit(callback: RequestCallback): boolean;
   submit(callback?: RequestCallback): Promise<Message[]> | boolean {
     if (callback === undefined) {
-      return this._invoke(this._payload.consume(), this._timeoutMs) as Promise<Message[]>;
+      return this._invoke(this.consumePayload(), this._timeoutMs) as Promise<Message[]>;
     }
     const flags = this._callbackMode ? this._flags : SendFlags.None;
-    return this._invoke(this._payload.consume(), callback, flags, this._timeoutMs) as boolean;
+    return this._invoke(this.consumePayload(), callback, flags, this._timeoutMs) as boolean;
   }
 }
 
-export class RuntimeReplyOperation implements ReplyOperation, ReplySubmitOperation {
+export class RuntimeReplyOperation
+  extends SendOperationBase<MessageLike, MessageLike>
+  implements ReplyOperation, ReplySubmitOperation {
   private readonly _invoke: ReplyInvoker;
-  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
-  private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: ReplyInvoker) {
+    super((message) => message);
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): ReplySubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
-  flags(flags: SendFlags): ReplySubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
-    return this;
-  }
-
   submit(): void {
-    this._invoke(this._payload.consume(), this._flags);
+    this._invoke(this.consumePayload(), this._flags);
   }
 }

@@ -1,19 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import type { Message, MessageLike } from '../../messaging';
+import type { Message } from '../../messaging';
 import type { SendFlags } from '../../sockets/socket_constants';
-import type { ReplyHandler } from '../../messaging/operations';
-export type {
-  ReplyHandler,
-  ReplyOperation,
-  ReplySubmitOperation,
-  RequestCallback,
-  RequestCallbackSubmitOperation,
-  RequestOperation,
-  RequestSubmitOperation,
-  SendOperation,
-  SendSubmitOperation,
-} from '../../messaging/operations';
+import type { Flaggable, PartBuilder, ReplyHandler, Timeoutable } from '../../messaging/operations';
+export type * from '../../messaging/operations';
 import type {
   ActorJoinEntrySpotResult,
   ActorJoinResult,
@@ -28,17 +18,11 @@ export type ActorJoinEntrySpotHandler = (result: ActorJoinEntrySpotResult, parts
 export type ActorLookupHandler = (result: ActorLookupResult) => void;
 
 /** An actor-join builder: add parts, then submit and await the result. Parts are consumed on a successful submit. */
-export interface ActorJoinOperation {
-  /** Add the first message part; it is consumed on a successful submit. */
-  message(message: MessageLike): ActorJoinSubmitOperation;
-}
+export interface ActorJoinOperation extends PartBuilder<ActorJoinSubmitOperation> {}
 
 /** Accepts further parts, timeout, flags, and the terminal submit of an actor join. */
-export interface ActorJoinSubmitOperation {
-  /** Add another message part; it is consumed on a successful submit. */
-  message(message: MessageLike): ActorJoinSubmitOperation;
-  /** Set how long the operation waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorJoinSubmitOperation;
+export interface ActorJoinSubmitOperation
+  extends PartBuilder<ActorJoinSubmitOperation>, Timeoutable<ActorJoinSubmitOperation> {
   /** Set the send flags and narrow the builder to callback submission. */
   flags(flags: SendFlags): ActorJoinCallbackSubmitOperation;
   /** Submit and return the result and reply parts, which the caller owns. */
@@ -48,25 +32,19 @@ export interface ActorJoinSubmitOperation {
 }
 
 /** Callback-submission stage of an actor join. */
-export interface ActorJoinCallbackSubmitOperation {
-  /** Add another message part; it is consumed on a successful submit. */
-  message(message: MessageLike): ActorJoinCallbackSubmitOperation;
-  /** Set how long the operation waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorJoinCallbackSubmitOperation;
-  /** Set the send flags applied at submit time. */
-  flags(flags: SendFlags): ActorJoinCallbackSubmitOperation;
+export interface ActorJoinCallbackSubmitOperation
+  extends PartBuilder<ActorJoinCallbackSubmitOperation>,
+    Timeoutable<ActorJoinCallbackSubmitOperation>,
+    Flaggable<ActorJoinCallbackSubmitOperation> {
   /** Submit; the result and reply parts are delivered to `callback`. */
   submit(callback: ActorJoinHandler): boolean;
 }
 
 /** A builder for joining an actor through an entry spot. */
-export interface ActorJoinEntrySpotOperation {
-  /** Add another message part; it is consumed on a successful submit. */
-  message(message: MessageLike): ActorJoinEntrySpotOperation;
-  /** Set how long the operation waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorJoinEntrySpotOperation;
-  /** Set the send flags applied at submit time. */
-  flags(flags: SendFlags): ActorJoinEntrySpotOperation;
+export interface ActorJoinEntrySpotOperation
+  extends PartBuilder<ActorJoinEntrySpotOperation>,
+    Timeoutable<ActorJoinEntrySpotOperation>,
+    Flaggable<ActorJoinEntrySpotOperation> {
   /** Submit and return the result and reply parts, which the caller owns. */
   submit(): Promise<{ result: ActorJoinEntrySpotResult; parts: Message[] }>;
   /** Submit; the result and reply parts are delivered to `callback`. */
@@ -74,17 +52,13 @@ export interface ActorJoinEntrySpotOperation {
 }
 
 /** A builder for replying to an actor-join request; a zero-part reply is allowed. */
-export interface ActorJoinReplyOperation {
-  /** Add a reply part; it is consumed on a successful submit. */
-  message(message: MessageLike): ActorJoinReplyOperation;
+export interface ActorJoinReplyOperation extends PartBuilder<ActorJoinReplyOperation> {
   /** Submit the actor-join reply. */
   submit(): void;
 }
 
 /** A builder for an actor leave. */
-export interface ActorLeaveOperation {
-  /** Set how long the operation waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorLeaveOperation;
+export interface ActorLeaveOperation extends Timeoutable<ActorLeaveOperation> {
   /** Submit and return the reply parts, which the caller owns. */
   submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */
@@ -92,9 +66,7 @@ export interface ActorLeaveOperation {
 }
 
 /** A builder for destroying an actor. */
-export interface ActorDestroyOperation {
-  /** Set how long the operation waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorDestroyOperation;
+export interface ActorDestroyOperation extends Timeoutable<ActorDestroyOperation> {
   /** Submit and return the reply parts, which the caller owns. */
   submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */
@@ -102,9 +74,7 @@ export interface ActorDestroyOperation {
 }
 
 /** A builder for looking up a remote actor's reference. */
-export interface ActorLookupOperation {
-  /** Set how long the lookup waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorLookupOperation;
+export interface ActorLookupOperation extends Timeoutable<ActorLookupOperation> {
   /** Submit and return the lookup result. */
   submit(): Promise<ActorLookupResult>;
   /** Submit; the result is delivered to `callback`. */
@@ -112,9 +82,7 @@ export interface ActorLookupOperation {
 }
 
 /** A builder for binding an actor to a session. */
-export interface ActorBindOperation {
-  /** Set how long the operation waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorBindOperation;
+export interface ActorBindOperation extends Timeoutable<ActorBindOperation> {
   /** Submit and return the reply parts, which the caller owns. */
   submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */
@@ -122,9 +90,7 @@ export interface ActorBindOperation {
 }
 
 /** A builder for removing an actor's session binding. */
-export interface ActorUnbindOperation {
-  /** Set how long the operation waits for completion before timing out. */
-  timeout(timeoutMs: number): ActorUnbindOperation;
+export interface ActorUnbindOperation extends Timeoutable<ActorUnbindOperation> {
   /** Submit and return the reply parts, which the caller owns. */
   submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */

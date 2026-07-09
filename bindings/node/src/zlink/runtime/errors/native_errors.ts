@@ -17,6 +17,10 @@ export function readErrno(): number {
   return typeof native.errno === 'function' ? native.errno() as number : 0;
 }
 
+export function isWouldBlock(errno = readErrno()): boolean {
+  return errno === 11;
+}
+
 export function nativeErrorMessage(error: unknown, fallbackMessage: string): string {
   return error instanceof Error && error.message ? error.message : fallbackMessage;
 }
@@ -63,10 +67,11 @@ export function recvNativeError(
   fallbackMessage: string
 ): RecvError {
   const message = nativeErrorMessage(error, fallbackMessage);
-  if ((flags & RecvFlags.DontWait) !== 0 && /Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
-    return withRuntimeErrorMessage(new RecvError(RecvResult.NoData, readErrno()), message);
+  const errno = readErrno();
+  if ((flags & RecvFlags.DontWait) !== 0 && isWouldBlock(errno)) {
+    return withRuntimeErrorMessage(new RecvError(RecvResult.NoData, errno), message);
   }
-  return createError('recv', readErrno(), message) as RecvError;
+  return createError('recv', errno, message) as RecvError;
 }
 
 export function submitNativeError(
@@ -75,8 +80,21 @@ export function submitNativeError(
   fallbackMessage: string
 ): SubmitError {
   const message = nativeErrorMessage(error, fallbackMessage);
-  if ((flags & SendFlags.DontWait) !== 0 && /Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
-    return withRuntimeErrorMessage(new SubmitError(SubmitResult.Backpressured, readErrno()), message);
+  const errno = readErrno();
+  if ((flags & SendFlags.DontWait) !== 0 && isWouldBlock(errno)) {
+    return withRuntimeErrorMessage(new SubmitError(SubmitResult.Backpressured, errno), message);
   }
-  return createError('submit', readErrno(), message) as SubmitError;
+  return createError('submit', errno, message) as SubmitError;
+}
+
+export function submitOrBackpressure(
+  error: unknown,
+  flags: SendFlags,
+  fallbackMessage: string
+): false {
+  const submitError = submitNativeError(error, flags, fallbackMessage);
+  if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+    return false;
+  }
+  throw submitError;
 }

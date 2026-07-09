@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
+import { NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
 import { closeCall, configCall, recvNativeError } from '../../errors/native_errors';
 import { RecvFlags } from '../../../contracts/sockets/socket_constants';
@@ -44,7 +44,6 @@ export class Actor extends NativeHandle {
         this.ref(),
         spot.ownerNodeRoutingId(),
         spot.routingId,
-        getNativeHandle(spot),
         parts,
         callback,
         flags,

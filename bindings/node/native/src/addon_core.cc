@@ -2,9 +2,11 @@
 
 #include "addon_core_api.h"
 #include "addon_core_options.h"
-#include "addon_core_perf.h"
+#include "addon_monitor_status_values.h"
 #include "addon_message_values.h"
 #include "addon_message_parts.h"
+#include "addon_spot_request_callbacks.h"
+#include "addon_submit_results.h"
 #include "addon_tsfn_slots.h"
 #include <algorithm>
 #include <errno.h>
@@ -24,26 +26,6 @@ static const size_t k_send_ready_handler_slot_count = 8;
 static const size_t k_socket_monitor_handler_slot_count = 8;
 static const int32_t k_stream_dispatch_len32be = 1;
 
-int classify_try_send_errno ()
-{
-    switch (zlink_errno ()) {
-        case EAGAIN:
-            return ZLINK_SUBMIT_BACKPRESSURED;
-#ifdef ENOTCONN
-        case ENOTCONN:
-#endif
-#ifdef EHOSTUNREACH
-        case EHOSTUNREACH:
-#endif
-#ifdef ETIMEDOUT
-        case ETIMEDOUT:
-#endif
-            return ZLINK_SUBMIT_NOT_CONNECTED;
-        default:
-            return -1;
-    }
-}
-
 struct stream_js_payload_t
 {
     stream_js_payload_t () : packet_count (0) {}
@@ -61,28 +43,6 @@ struct stream_js_payload_t
 struct socket_monitor_handler_js_payload_t
 {
     zlink_monitor_event_t event;
-};
-
-struct request_result_js_payload_t
-{
-    request_result_js_payload_t () : errnum (0), part_count (0) {}
-    ~request_result_js_payload_t ()
-    {
-        if (part_count > 0)
-            close_recv_parts (parts.data (), part_count);
-    }
-
-    int errnum;
-    std::vector<zlink_msg_t> parts;
-    size_t part_count;
-};
-
-struct request_js_state_t
-{
-    request_js_state_t () : env (NULL), tsfn (NULL) {}
-
-    napi_env env;
-    napi_threadsafe_function tsfn;
 };
 
 struct stream_js_state_t
@@ -140,28 +100,12 @@ send_ready_handler_js_state_t *find_send_ready_handler_slot_by_socket_unsafe (vo
                                       &send_ready_handler_js_state_t::socket, socket);
 }
 
-send_ready_handler_js_state_t *find_free_send_ready_handler_slot_unsafe ()
-{
-    return find_free_tsfn_slot (g_send_ready_handler_slots, k_send_ready_handler_slot_count);
-}
-
 socket_monitor_handler_js_state_t *
 find_socket_monitor_handler_slot_by_monitor_unsafe (void *monitor)
 {
     return find_tsfn_slot_by_subject (g_socket_monitor_handler_slots,
                                       k_socket_monitor_handler_slot_count,
                                       &socket_monitor_handler_js_state_t::monitor, monitor);
-}
-
-socket_monitor_handler_js_state_t *find_free_socket_monitor_handler_slot_unsafe ()
-{
-    return find_free_tsfn_slot (g_socket_monitor_handler_slots,
-                                k_socket_monitor_handler_slot_count);
-}
-
-stream_js_state_t *find_free_stream_slot_unsafe ()
-{
-    return find_free_tsfn_slot (g_stream_slots, k_stream_slot_count);
 }
 
 void reset_stream_slot_unsafe (stream_js_state_t *state)
@@ -615,24 +559,6 @@ napi_value create_subscribed_value (napi_env env,
     return obj;
 }
 
-bool parse_routing_id (napi_env env, napi_value value, zlink_routing_id_t *routing_id)
-{
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info (env, value, &data, &len) != napi_ok) {
-        napi_throw_type_error (env, NULL, "routingId must be Buffer");
-        return false;
-    }
-    if (len == 0 || len > 255) {
-        napi_throw_range_error (env, NULL, "routingId length must be 1..255 bytes");
-        return false;
-    }
-    memset (routing_id, 0, sizeof (*routing_id));
-    routing_id->size = static_cast<uint8_t> (len);
-    memcpy (routing_id->data, data, len);
-    return true;
-}
-
 void stream_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
@@ -735,72 +661,6 @@ void socket_monitor_handler_tsfn_call_js (napi_env env, napi_value js_cb, void *
     napi_value this_arg;
     napi_get_undefined (env, &this_arg);
     (void) napi_call_function (env, this_arg, js_cb, 1, argv, &recv);
-}
-
-void request_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *data)
-{
-    std::unique_ptr<request_result_js_payload_t> payload (
-      static_cast<request_result_js_payload_t *> (data));
-    (void) context;
-    if (!env || !js_cb || !payload)
-        return;
-
-    napi_value argv[2];
-    napi_create_int32 (env, payload->errnum, &argv[0]);
-    if (payload->errnum != 0) {
-        napi_get_null (env, &argv[1]);
-    } else {
-        napi_value parts_array;
-        napi_create_array_with_length (env, payload->parts.size (), &parts_array);
-        for (size_t i = 0; i < payload->parts.size (); ++i) {
-            napi_value part_buf = create_message_data_buffer (env, &payload->parts[i]);
-            if (!part_buf)
-                return;
-            napi_set_element (env, parts_array, static_cast<uint32_t> (i), part_buf);
-        }
-        argv[1] = parts_array;
-    }
-
-    napi_value recv;
-    napi_value this_arg;
-    napi_get_undefined (env, &this_arg);
-    (void) napi_call_function (env, this_arg, js_cb, 2, argv, &recv);
-}
-
-void request_reply_callback_trampoline (zlink_request_result_t errnum_,
-                                        zlink_msg_t *parts_,
-                                        size_t part_count_,
-                                        void *userdata_)
-{
-    request_js_state_t *state = static_cast<request_js_state_t *> (userdata_);
-    if (!state || !state->tsfn) {
-        close_recv_parts (parts_, part_count_);
-        return;
-    }
-
-    std::unique_ptr<request_result_js_payload_t> payload (new request_result_js_payload_t ());
-    payload->errnum = errnum_;
-    if (errnum_ == 0) {
-        payload->parts.resize (part_count_);
-        for (size_t i = 0; i < part_count_; ++i) {
-            if (zlink_msg_init (&payload->parts[i]) != 0) {
-                payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
-                break;
-            }
-            payload->part_count = i + 1;
-            if (zlink_msg_move (&payload->parts[i], &parts_[i]) != 0) {
-                payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
-                break;
-            }
-        }
-    }
-    close_recv_parts (parts_, part_count_);
-
-    if (napi_call_threadsafe_function (state->tsfn, payload.get (), napi_tsfn_nonblocking)
-        == napi_ok) {
-        payload.release ();
-    }
-    release_request_tsfn (state);
 }
 
 void remember_stream_peer_unsafe (stream_js_state_t *state, const zlink_routing_id_t *rid)
@@ -919,14 +779,6 @@ bool stream_slot_attached (void *socket)
     return find_stream_slot_by_socket_unsafe (socket) != NULL;
 }
 
-void request_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
-{
-    (void) env;
-    (void) finalize_hint;
-    request_js_state_t *state = static_cast<request_js_state_t *> (finalize_data);
-    delete state;
-}
-
 #define SEND_READY_HANDLER_SLOT_CALLBACK(N) &send_ready_handler_slot_callback<N>
 typedef void (*send_ready_handler_slot_callback_t) (void *, void *);
 template <size_t Slot> void send_ready_handler_slot_callback (void *subject_, void *userdata_)
@@ -992,39 +844,25 @@ static send_ready_handler_slot_callback_t
 
 bool attach_send_ready_handler (napi_env env, void *socket, napi_value handler)
 {
-    send_ready_handler_js_state_t *slot = NULL;
     size_t slot_index = 0;
-    {
-        std::lock_guard<std::mutex> lock (g_send_ready_handler_slots_mu);
-        if (find_send_ready_handler_slot_by_socket_unsafe (socket)) {
-            napi_throw_error (env, NULL, "sendReadyHandler already attached");
-            return false;
-        }
-        slot = find_free_send_ready_handler_slot_unsafe ();
-        if (!slot) {
-            napi_throw_error (env, NULL, "no free sendReadyHandler slot");
-            return false;
-        }
-        slot_index = static_cast<size_t> (slot - g_send_ready_handler_slots);
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8 (env, "zlink-send-ready-handler", NAPI_AUTO_LENGTH, &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function (
-      env, handler, NULL, resource_name, 0, 1, slot, send_ready_handler_tsfn_finalize, slot,
-      send_ready_handler_tsfn_call_js, &tsfn);
-    if (tsfn_status != napi_ok) {
-        napi_throw_error (env, NULL, "sendReadyHandler failed to create callback queue");
+    send_ready_handler_js_state_t *slot = reserve_tsfn_subject_slot (
+      env, g_send_ready_handler_slots_mu, g_send_ready_handler_slots,
+      k_send_ready_handler_slot_count, &send_ready_handler_js_state_t::socket, socket,
+      "sendReadyHandler already attached", "no free sendReadyHandler slot", &slot_index);
+    if (!slot)
         return false;
-    }
+
+    napi_threadsafe_function tsfn = NULL;
+    if (!create_tsfn_slot_queue (env, handler, slot, "zlink-send-ready-handler",
+                                 send_ready_handler_tsfn_finalize,
+                                 send_ready_handler_tsfn_call_js,
+                                 "sendReadyHandler failed to create callback queue", false, &tsfn))
+        return false;
 
     {
         std::lock_guard<std::mutex> lock (g_send_ready_handler_slots_mu);
-        slot->used = true;
-        slot->socket = socket;
-        slot->env = env;
-        slot->tsfn = tsfn;
+        bind_tsfn_subject_slot_unsafe (slot, &send_ready_handler_js_state_t::socket, socket, env,
+                                       tsfn);
     }
 
     int rc =
@@ -1039,39 +877,25 @@ bool attach_send_ready_handler (napi_env env, void *socket, napi_value handler)
 
 bool attach_socket_monitor_handler (napi_env env, void *monitor, napi_value handler)
 {
-    socket_monitor_handler_js_state_t *slot = NULL;
     size_t slot_index = 0;
-    {
-        std::lock_guard<std::mutex> lock (g_socket_monitor_handler_slots_mu);
-        if (find_socket_monitor_handler_slot_by_monitor_unsafe (monitor)) {
-            napi_throw_error (env, NULL, "monitorHandler already attached");
-            return false;
-        }
-        slot = find_free_socket_monitor_handler_slot_unsafe ();
-        if (!slot) {
-            napi_throw_error (env, NULL, "no free monitorHandler slot");
-            return false;
-        }
-        slot_index = static_cast<size_t> (slot - g_socket_monitor_handler_slots);
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8 (env, "zlink-monitor-handler", NAPI_AUTO_LENGTH, &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function (
-      env, handler, NULL, resource_name, 0, 1, slot, socket_monitor_handler_tsfn_finalize, slot,
-      socket_monitor_handler_tsfn_call_js, &tsfn);
-    if (tsfn_status != napi_ok) {
-        napi_throw_error (env, NULL, "monitorHandler failed to create callback queue");
+    socket_monitor_handler_js_state_t *slot = reserve_tsfn_subject_slot (
+      env, g_socket_monitor_handler_slots_mu, g_socket_monitor_handler_slots,
+      k_socket_monitor_handler_slot_count, &socket_monitor_handler_js_state_t::monitor, monitor,
+      "monitorHandler already attached", "no free monitorHandler slot", &slot_index);
+    if (!slot)
         return false;
-    }
+
+    napi_threadsafe_function tsfn = NULL;
+    if (!create_tsfn_slot_queue (env, handler, slot, "zlink-monitor-handler",
+                                 socket_monitor_handler_tsfn_finalize,
+                                 socket_monitor_handler_tsfn_call_js,
+                                 "monitorHandler failed to create callback queue", false, &tsfn))
+        return false;
 
     {
         std::lock_guard<std::mutex> lock (g_socket_monitor_handler_slots_mu);
-        slot->used = true;
-        slot->monitor = monitor;
-        slot->env = env;
-        slot->tsfn = tsfn;
+        bind_tsfn_subject_slot_unsafe (slot, &socket_monitor_handler_js_state_t::monitor, monitor,
+                                       env, tsfn);
     }
 
     int rc = zlink_socket_monitor_handler (
@@ -1152,27 +976,6 @@ const char *get_c_string_arg (
 }
 
 bool get_uint64_like (napi_env env, napi_value value, uint64_t *out);
-
-request_js_state_t *create_request_js_state (napi_env env, napi_value handler)
-{
-    request_js_state_t *state = new request_js_state_t ();
-    state->env = env;
-
-    napi_value resource_name;
-    napi_create_string_utf8 (env, "zlink-request-reply-callback", NAPI_AUTO_LENGTH, &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status status =
-      napi_create_threadsafe_function (env, handler, NULL, resource_name, 0, 1, state,
-                                       request_tsfn_finalize, state, request_tsfn_call_js, &tsfn);
-    if (status != napi_ok) {
-        delete state;
-        napi_throw_error (env, NULL, "request callback setup failed");
-        return NULL;
-    }
-    (void) napi_unref_threadsafe_function (env, tsfn);
-    state->tsfn = tsfn;
-    return state;
-}
 
 bool init_msg_from_value (napi_env env, napi_value value, zlink_msg_t *msg);
 
@@ -1644,7 +1447,7 @@ napi_value socket_disconnect_rid (napi_env env, napi_callback_info info)
     void *sock = NULL;
     napi_get_value_external (env, argv[0], &sock);
     zlink_routing_id_t peer_rid;
-    if (!parse_routing_id (env, argv[1], &peer_rid))
+    if (!parse_routing_id_value (env, argv[1], &peer_rid))
         return NULL;
     int rc = zlink_disconnect_rid (sock, &peer_rid);
     if (rc != 0)
@@ -1902,7 +1705,7 @@ napi_value socket_try_send_routing (napi_env env, napi_callback_info info)
     napi_get_value_external (env, argv[0], &sock);
 
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id (env, argv[1], &routing_id))
+    if (!parse_routing_id_value (env, argv[1], &routing_id))
         return NULL;
 
     zlink_msg_t msg;
@@ -1927,7 +1730,7 @@ napi_value socket_try_send_routing_parts (napi_env env, napi_callback_info info)
     napi_get_value_external (env, argv[0], &sock);
 
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id (env, argv[1], &routing_id))
+    if (!parse_routing_id_value (env, argv[1], &routing_id))
         return NULL;
 
     std::vector<zlink_msg_t> parts;
@@ -1955,7 +1758,7 @@ napi_value socket_send_routing (napi_env env, napi_callback_info info)
     napi_get_value_external (env, argv[0], &sock);
 
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id (env, argv[1], &routing_id))
+    if (!parse_routing_id_value (env, argv[1], &routing_id))
         return NULL;
 
     zlink_msg_t msg;
@@ -1983,7 +1786,7 @@ napi_value socket_send_routing_parts (napi_env env, napi_callback_info info)
     napi_get_value_external (env, argv[0], &sock);
 
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id (env, argv[1], &routing_id))
+    if (!parse_routing_id_value (env, argv[1], &routing_id))
         return NULL;
 
     std::vector<zlink_msg_t> parts;
@@ -2289,44 +2092,24 @@ napi_value socket_stream_attach (napi_env env, napi_callback_info info)
         return NULL;
     }
 
-    {
-        std::lock_guard<std::mutex> lock (g_stream_slots_mu);
-        if (find_stream_slot_by_socket_unsafe (sock)) {
-            napi_throw_error (env, NULL, "STREAM callback already attached");
-            return NULL;
-        }
-    }
-
-    stream_js_state_t *slot = NULL;
     size_t slot_index = 0;
-    {
-        std::lock_guard<std::mutex> lock (g_stream_slots_mu);
-        slot = find_free_stream_slot_unsafe ();
-        if (!slot) {
-            napi_throw_error (env, NULL, "no free STREAM callback slot (max 8 attached sockets)");
-            return NULL;
-        }
-        slot_index = static_cast<size_t> (slot - g_stream_slots);
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8 (env, "zlink-stream", NAPI_AUTO_LENGTH, &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status =
-      napi_create_threadsafe_function (env, argv[1], NULL, resource_name, 0, 1, slot,
-                                       stream_tsfn_finalize, slot, stream_tsfn_call_js, &tsfn);
-    if (tsfn_status != napi_ok) {
-        napi_throw_error (env, NULL, "streamAttach failed to create callback queue");
+    stream_js_state_t *slot =
+      reserve_tsfn_subject_slot (env, g_stream_slots_mu, g_stream_slots, k_stream_slot_count,
+                                 &stream_js_state_t::socket, sock, "STREAM callback already attached",
+                                 "no free STREAM callback slot (max 8 attached sockets)",
+                                 &slot_index);
+    if (!slot)
         return NULL;
-    }
-    (void) napi_unref_threadsafe_function (env, tsfn);
+
+    napi_threadsafe_function tsfn = NULL;
+    if (!create_tsfn_slot_queue (env, argv[1], slot, "zlink-stream", stream_tsfn_finalize,
+                                 stream_tsfn_call_js,
+                                 "streamAttach failed to create callback queue", true, &tsfn))
+        return NULL;
 
     {
         std::lock_guard<std::mutex> lock (g_stream_slots_mu);
-        slot->used = true;
-        slot->socket = sock;
-        slot->env = env;
-        slot->tsfn = tsfn;
+        bind_tsfn_subject_slot_unsafe (slot, &stream_js_state_t::socket, sock, env, tsfn);
         slot->stop_requested.store (0, std::memory_order_release);
         slot->peer_routing_ids.clear ();
     }
@@ -2470,7 +2253,7 @@ napi_value handle_set_routing_id (napi_env env, napi_callback_info info)
     void *handle = NULL;
     napi_get_value_external (env, argv[0], &handle);
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id (env, argv[1], &routing_id))
+    if (!parse_routing_id_value (env, argv[1], &routing_id))
         return NULL;
     int rc = zlink_set_routing_id (handle, routing_id.data, routing_id.size);
     if (rc != 0)
@@ -2521,7 +2304,7 @@ napi_value dealer_request (napi_env env, napi_callback_info info)
     napi_get_value_int32 (env, argv[3], &flags);
     int32_t timeout_ms = 0;
     napi_get_value_int32 (env, argv[4], &timeout_ms);
-    request_js_state_t *state = create_request_js_state (env, argv[2]);
+    request_js_state_t *state = create_core_request_js_state (env, argv[2]);
     if (!state) {
         close_msg_vector (parts);
         return NULL;
@@ -2530,10 +2313,7 @@ napi_value dealer_request (napi_env env, napi_callback_info info)
       dealer, parts.data (), parts.size (), request_reply_callback_trampoline, state,
       static_cast<zlink_send_flags_t> (flags), static_cast<uint32_t> (timeout_ms));
     if (rc != ZLINK_SUBMIT_OK) {
-        if (state->tsfn) {
-            (void) napi_release_threadsafe_function (state->tsfn, napi_tsfn_abort);
-            state->tsfn = NULL;
-        }
+        abort_request_js_state (state);
         return throw_last_error (env, "dealerRequest failed");
     }
     napi_value ok;
@@ -2555,7 +2335,7 @@ napi_value router_request (napi_env env, napi_callback_info info)
     void *router = NULL;
     napi_get_value_external (env, argv[0], &router);
     zlink_routing_id_t peer_rid;
-    if (!parse_routing_id (env, argv[1], &peer_rid))
+    if (!parse_routing_id_value (env, argv[1], &peer_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector_or_single (env, argv[2], &parts))
@@ -2571,7 +2351,7 @@ napi_value router_request (napi_env env, napi_callback_info info)
     napi_get_value_int32 (env, argv[4], &flags);
     int32_t timeout_ms = 0;
     napi_get_value_int32 (env, argv[5], &timeout_ms);
-    request_js_state_t *state = create_request_js_state (env, argv[3]);
+    request_js_state_t *state = create_core_request_js_state (env, argv[3]);
     if (!state) {
         close_msg_vector (parts);
         return NULL;
@@ -2580,10 +2360,7 @@ napi_value router_request (napi_env env, napi_callback_info info)
       router, &peer_rid, parts.data (), parts.size (), request_reply_callback_trampoline, state,
       static_cast<zlink_send_flags_t> (flags), static_cast<uint32_t> (timeout_ms));
     if (rc != ZLINK_SUBMIT_OK) {
-        if (state->tsfn) {
-            (void) napi_release_threadsafe_function (state->tsfn, napi_tsfn_abort);
-            state->tsfn = NULL;
-        }
+        abort_request_js_state (state);
         return throw_last_error (env, "routerRequest failed");
     }
     napi_value ok;
@@ -2604,7 +2381,7 @@ napi_value router_reply (napi_env env, napi_callback_info info)
     void *router = NULL;
     napi_get_value_external (env, argv[0], &router);
     zlink_routing_id_t peer_rid;
-    if (!parse_routing_id (env, argv[1], &peer_rid))
+    if (!parse_routing_id_value (env, argv[1], &peer_rid))
         return NULL;
     uint64_t request_seq = 0;
     if (!get_uint64_like (env, argv[2], &request_seq)) {
@@ -2690,138 +2467,6 @@ napi_value router_try_recv_message (napi_env env, napi_callback_info info)
     return out;
 }
 
-napi_value router_recv_single_payload (napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *router = NULL;
-    napi_get_value_external (env, argv[0], &router);
-    int32_t flags = 0;
-    if (argc >= 2)
-        napi_get_value_int32 (env, argv[1], &flags);
-
-    const zlink_routing_id_t *peer_rid = NULL;
-    const zlink_routing_id_t *spot_rid = NULL;
-    uint64_t request_seq = 0;
-    zlink_msg_t part;
-    if (zlink_msg_init (&part) != 0)
-        return throw_last_error (env, "routerRecvSinglePayload failed");
-    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-
-    int rc = zlink_router_recv_part (router, &peer_rid, &spot_rid, &request_seq, &part, &has_more,
-                                     static_cast<zlink_recv_flags_t> (flags));
-    (void) peer_rid;
-    (void) spot_rid;
-    (void) request_seq;
-    if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close (&part);
-        if (zlink_errno () == EAGAIN) {
-            napi_value none;
-            napi_get_null (env, &none);
-            return none;
-        }
-        return throw_last_error (env, "routerRecvSinglePayload failed");
-    }
-
-    if (has_more != ZLINK_PART_FINAL) {
-        std::vector<zlink_msg_t> rest;
-        int collect_rc = collect_recv_parts (router, &part, has_more, &rest);
-        close_msg_vector (rest);
-        if (collect_rc != ZLINK_RECV_OK)
-            return throw_last_error (env, "routerRecvSinglePayload failed");
-        napi_throw_error (env, NULL, "routerRecvSinglePayload requires single-part messages");
-        return NULL;
-    }
-
-    return create_message_data_buffer (env, &part);
-}
-
-napi_value router_recv_single_metric_latency (napi_env env, napi_callback_info info)
-{
-    napi_value argv[7];
-    size_t argc = 7;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *router = NULL;
-    napi_get_value_external (env, argv[0], &router);
-    int32_t flags = 0;
-    if (argc >= 2)
-        napi_get_value_int32 (env, argv[1], &flags);
-    uint32_t run_id = 0;
-    uint32_t msg_size = 0;
-    uint32_t expected_size = 0;
-    napi_get_value_uint32 (env, argv[2], &run_id);
-    napi_get_value_uint32 (env, argv[3], &msg_size);
-    napi_get_value_uint32 (env, argv[4], &expected_size);
-    uint64_t active_start_ns = 0;
-    uint64_t active_stop_ns = UINT64_MAX;
-    bool lossless = false;
-    napi_get_value_bigint_uint64 (env, argv[5], &active_start_ns, &lossless);
-    napi_get_value_bigint_uint64 (env, argv[6], &active_stop_ns, &lossless);
-
-    const zlink_routing_id_t *peer_rid = NULL;
-    const zlink_routing_id_t *spot_rid = NULL;
-    uint64_t request_seq = 0;
-    zlink_msg_t part;
-    if (zlink_msg_init (&part) != 0)
-        return throw_last_error (env, "routerRecvSingleMetricLatency failed");
-    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-
-    int rc = zlink_router_recv_part (router, &peer_rid, &spot_rid, &request_seq, &part, &has_more,
-                                     static_cast<zlink_recv_flags_t> (flags));
-    (void) peer_rid;
-    (void) spot_rid;
-    (void) request_seq;
-    if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close (&part);
-        if (zlink_errno () == EAGAIN) {
-            napi_value none;
-            napi_get_null (env, &none);
-            return none;
-        }
-        return throw_last_error (env, "routerRecvSingleMetricLatency failed");
-    }
-
-    if (has_more != ZLINK_PART_FINAL) {
-        std::vector<zlink_msg_t> rest;
-        int collect_rc = collect_recv_parts (router, &part, has_more, &rest);
-        close_msg_vector (rest);
-        if (collect_rc != ZLINK_RECV_OK)
-            return throw_last_error (env, "routerRecvSingleMetricLatency failed");
-        napi_throw_error (env, NULL, "routerRecvSingleMetricLatency requires single-part messages");
-        return NULL;
-    }
-
-    static const char k_stop_token[] = "__zlink_perf_stop__";
-    const size_t part_size = zlink_msg_size (&part);
-    const void *data = zlink_msg_data (&part);
-    if (part_size == (sizeof (k_stop_token) - 1) && data
-        && std::memcmp (data, k_stop_token, sizeof (k_stop_token) - 1) == 0) {
-        zlink_msg_close (&part);
-        napi_value stop;
-        napi_create_double (env, -1.0, &stop);
-        return stop;
-    }
-
-    uint64_t sent_ts_ns = 0;
-    const uint64_t received_at_ns = perf_now_ns ();
-    const bool valid = part_size == expected_size
-                       && perf_decode_payload_header (&part, 1, run_id, msg_size, &sent_ts_ns)
-                       && received_at_ns >= active_start_ns && received_at_ns <= active_stop_ns
-                       && received_at_ns >= sent_ts_ns;
-    zlink_msg_close (&part);
-
-    if (!valid) {
-        napi_value rejected;
-        napi_get_boolean (env, false, &rejected);
-        return rejected;
-    }
-
-    napi_value latency;
-    napi_create_double (env, static_cast<double> (received_at_ns - sent_ts_ns), &latency);
-    return latency;
-}
-
 napi_value monitor_open (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -2876,18 +2521,7 @@ napi_value monitor_recv (napi_env env, napi_callback_info info)
     int rc = zlink_socket_monitor_recv (mon, &evt, ZLINK_RECV_FLAGS_NONE);
     if (rc != 0)
         return throw_last_error (env, "monitor_recv failed");
-    napi_value obj;
-    napi_create_object (env, &obj);
-    napi_value event, value, local, remote;
-    napi_create_int64 (env, (int64_t) evt.event, &event);
-    napi_create_int64 (env, (int64_t) evt.value, &value);
-    napi_create_string_utf8 (env, evt.local_addr, NAPI_AUTO_LENGTH, &local);
-    napi_create_string_utf8 (env, evt.remote_addr, NAPI_AUTO_LENGTH, &remote);
-    napi_set_named_property (env, obj, "event", event);
-    napi_set_named_property (env, obj, "value", value);
-    napi_set_named_property (env, obj, "local", local);
-    napi_set_named_property (env, obj, "remote", remote);
-    return obj;
+    return create_socket_monitor_event_value (env, evt);
 }
 
 napi_value monitor_try_recv (napi_env env, napi_callback_info info)
@@ -2909,18 +2543,7 @@ napi_value monitor_try_recv (napi_env env, napi_callback_info info)
         return throw_last_error (env, "monitor_try_recv failed");
     }
 
-    napi_value obj;
-    napi_create_object (env, &obj);
-    napi_value event, value, local, remote;
-    napi_create_int64 (env, (int64_t) evt.event, &event);
-    napi_create_int64 (env, (int64_t) evt.value, &value);
-    napi_create_string_utf8 (env, evt.local_addr, NAPI_AUTO_LENGTH, &local);
-    napi_create_string_utf8 (env, evt.remote_addr, NAPI_AUTO_LENGTH, &remote);
-    napi_set_named_property (env, obj, "event", event);
-    napi_set_named_property (env, obj, "value", value);
-    napi_set_named_property (env, obj, "local", local);
-    napi_set_named_property (env, obj, "remote", remote);
-    return obj;
+    return create_socket_monitor_event_value (env, evt);
 }
 
 napi_value monitor_status (napi_env env, napi_callback_info info)
@@ -2937,99 +2560,7 @@ napi_value monitor_status (napi_env env, napi_callback_info info)
     if (rc != 0)
         return throw_last_error (env, "monitor_status failed");
 
-    napi_value obj;
-    napi_create_object (env, &obj);
-    napi_value source_kind, state_flags, detail_flags;
-    napi_value snd_pending, rcv_pending;
-    napi_value auto_hwm_enabled, auto_hwm_profile, auto_hwm_role;
-    napi_value auto_hwm_policy_class;
-    napi_value auto_hwm_unit_budget_bytes;
-    napi_value auto_hwm_size_cap;
-    napi_value auto_hwm_socket_message_slots;
-    napi_value auto_hwm_connection_bucket_enabled;
-    napi_value auto_hwm_connection_bucket_count;
-    napi_value auto_hwm_connection_bucket_index;
-    napi_value auto_hwm_connection_bucket_hwm_4k;
-    napi_value auto_hwm_connection_bucket_hysteresis_retained;
-    napi_value auto_hwm_effective_message_bytes;
-    napi_value auto_hwm_applied_sndhwm, auto_hwm_applied_rcvhwm;
-    napi_value auto_hwm_effective_sndbuf, auto_hwm_effective_rcvbuf;
-    napi_value auto_hwm_last_recalc_ms;
-    napi_value auto_hwm_last_recalc_reason;
-    napi_value auto_hwm_send_blocked_ratio_ppm;
-    napi_value auto_hwm_deferred_sndhwm, auto_hwm_deferred_rcvhwm;
-    napi_create_uint32 (env, static_cast<uint32_t> (snapshot.source_kind), &source_kind);
-    napi_create_uint32 (env, snapshot.state_flags, &state_flags);
-    napi_create_uint32 (env, snapshot.detail_flags, &detail_flags);
-    napi_create_int64 (env, static_cast<int64_t> (snapshot.snd_pending_msgs), &snd_pending);
-    napi_create_int64 (env, static_cast<int64_t> (snapshot.rcv_pending_msgs), &rcv_pending);
-    napi_get_boolean (env, snapshot.auto_hwm_enabled != 0, &auto_hwm_enabled);
-    napi_create_uint32 (env, snapshot.auto_hwm_profile, &auto_hwm_profile);
-    napi_create_uint32 (env, snapshot.auto_hwm_role, &auto_hwm_role);
-    napi_create_uint32 (env, snapshot.auto_hwm_policy_class, &auto_hwm_policy_class);
-    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_unit_budget_bytes),
-                       &auto_hwm_unit_budget_bytes);
-    napi_create_uint32 (env, snapshot.auto_hwm_size_cap, &auto_hwm_size_cap);
-    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_socket_message_slots),
-                       &auto_hwm_socket_message_slots);
-    napi_get_boolean (env, snapshot.auto_hwm_connection_bucket_enabled != 0,
-                      &auto_hwm_connection_bucket_enabled);
-    napi_create_uint32 (env, snapshot.auto_hwm_connection_bucket_count,
-                        &auto_hwm_connection_bucket_count);
-    napi_create_uint32 (env, snapshot.auto_hwm_connection_bucket_index,
-                        &auto_hwm_connection_bucket_index);
-    napi_create_uint32 (env, snapshot.auto_hwm_connection_bucket_hwm_4k,
-                        &auto_hwm_connection_bucket_hwm_4k);
-    napi_get_boolean (env, snapshot.auto_hwm_connection_bucket_hysteresis_retained != 0,
-                      &auto_hwm_connection_bucket_hysteresis_retained);
-    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_effective_message_bytes),
-                       &auto_hwm_effective_message_bytes);
-    napi_create_int32 (env, snapshot.auto_hwm_applied_sndhwm, &auto_hwm_applied_sndhwm);
-    napi_create_int32 (env, snapshot.auto_hwm_applied_rcvhwm, &auto_hwm_applied_rcvhwm);
-    napi_create_int32 (env, snapshot.auto_hwm_effective_sndbuf, &auto_hwm_effective_sndbuf);
-    napi_create_int32 (env, snapshot.auto_hwm_effective_rcvbuf, &auto_hwm_effective_rcvbuf);
-    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_last_recalc_ms),
-                       &auto_hwm_last_recalc_ms);
-    napi_create_uint32 (env, snapshot.auto_hwm_last_recalc_reason, &auto_hwm_last_recalc_reason);
-    napi_create_uint32 (env, snapshot.auto_hwm_send_blocked_ratio_ppm,
-                        &auto_hwm_send_blocked_ratio_ppm);
-    napi_create_int32 (env, snapshot.auto_hwm_deferred_sndhwm, &auto_hwm_deferred_sndhwm);
-    napi_create_int32 (env, snapshot.auto_hwm_deferred_rcvhwm, &auto_hwm_deferred_rcvhwm);
-    napi_set_named_property (env, obj, "sourceKind", source_kind);
-    napi_set_named_property (env, obj, "stateFlags", state_flags);
-    napi_set_named_property (env, obj, "detailFlags", detail_flags);
-    napi_set_named_property (env, obj, "sndPendingMsgs", snd_pending);
-    napi_set_named_property (env, obj, "rcvPendingMsgs", rcv_pending);
-    napi_set_named_property (env, obj, "autoHwmEnabled", auto_hwm_enabled);
-    napi_set_named_property (env, obj, "autoHwmProfile", auto_hwm_profile);
-    napi_set_named_property (env, obj, "autoHwmRole", auto_hwm_role);
-    napi_set_named_property (env, obj, "autoHwmPolicyClass", auto_hwm_policy_class);
-    napi_set_named_property (env, obj, "autoHwmUnitBudgetBytes", auto_hwm_unit_budget_bytes);
-    napi_set_named_property (env, obj, "autoHwmSizeCap", auto_hwm_size_cap);
-    napi_set_named_property (env, obj, "autoHwmSocketMessageSlots", auto_hwm_socket_message_slots);
-    napi_set_named_property (env, obj, "autoHwmConnectionBucketEnabled",
-                             auto_hwm_connection_bucket_enabled);
-    napi_set_named_property (env, obj, "autoHwmConnectionBucketCount",
-                             auto_hwm_connection_bucket_count);
-    napi_set_named_property (env, obj, "autoHwmConnectionBucketIndex",
-                             auto_hwm_connection_bucket_index);
-    napi_set_named_property (env, obj, "autoHwmConnectionBucketHwm4K",
-                             auto_hwm_connection_bucket_hwm_4k);
-    napi_set_named_property (env, obj, "autoHwmConnectionBucketHysteresisRetained",
-                             auto_hwm_connection_bucket_hysteresis_retained);
-    napi_set_named_property (env, obj, "autoHwmEffectiveMessageBytes",
-                             auto_hwm_effective_message_bytes);
-    napi_set_named_property (env, obj, "autoHwmAppliedSndHwm", auto_hwm_applied_sndhwm);
-    napi_set_named_property (env, obj, "autoHwmAppliedRcvHwm", auto_hwm_applied_rcvhwm);
-    napi_set_named_property (env, obj, "autoHwmEffectiveSndBuf", auto_hwm_effective_sndbuf);
-    napi_set_named_property (env, obj, "autoHwmEffectiveRcvBuf", auto_hwm_effective_rcvbuf);
-    napi_set_named_property (env, obj, "autoHwmLastRecalcMs", auto_hwm_last_recalc_ms);
-    napi_set_named_property (env, obj, "autoHwmLastRecalcReason", auto_hwm_last_recalc_reason);
-    napi_set_named_property (env, obj, "autoHwmSendBlockedRatioPpm",
-                             auto_hwm_send_blocked_ratio_ppm);
-    napi_set_named_property (env, obj, "autoHwmDeferredSndHwm", auto_hwm_deferred_sndhwm);
-    napi_set_named_property (env, obj, "autoHwmDeferredRcvHwm", auto_hwm_deferred_rcvhwm);
-    return obj;
+    return create_monitor_status_value (env, snapshot);
 }
 
 napi_value monitor_close (napi_env env, napi_callback_info info)
@@ -3149,11 +2680,6 @@ static timer_handler_js_state_t *find_timer_handler_slot_by_timer_unsafe (void *
 {
     return find_tsfn_slot_by_subject (g_timer_handler_slots, k_timer_handler_slot_count,
                                       &timer_handler_js_state_t::timer, timer);
-}
-
-static timer_handler_js_state_t *find_free_timer_handler_slot_unsafe ()
-{
-    return find_free_tsfn_slot (g_timer_handler_slots, k_timer_handler_slot_count);
 }
 
 static void reset_timer_handler_slot_unsafe (timer_handler_js_state_t *state)
@@ -3667,37 +3193,22 @@ napi_value timer_handler (napi_env env, napi_callback_info info)
     napi_get_value_external (env, argv[0], &timer);
     napi_value handler = argv[1];
 
-    timer_handler_js_state_t *slot = NULL;
-    {
-        std::lock_guard<std::mutex> lock (g_timer_handler_slots_mu);
-        if (find_timer_handler_slot_by_timer_unsafe (timer)) {
-            napi_throw_error (env, NULL, "timer handler already attached");
-            return NULL;
-        }
-        slot = find_free_timer_handler_slot_unsafe ();
-        if (!slot) {
-            napi_throw_error (env, NULL, "no free timer handler slot");
-            return NULL;
-        }
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8 (env, "zlink-timer-handler", NAPI_AUTO_LENGTH, &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function (
-      env, handler, NULL, resource_name, 0, 1, slot, timer_handler_tsfn_finalize, slot,
-      timer_handler_tsfn_call_js, &tsfn);
-    if (tsfn_status != napi_ok) {
-        napi_throw_error (env, NULL, "timer handler failed to create callback queue");
+    timer_handler_js_state_t *slot = reserve_tsfn_subject_slot (
+      env, g_timer_handler_slots_mu, g_timer_handler_slots, k_timer_handler_slot_count,
+      &timer_handler_js_state_t::timer, timer, "timer handler already attached",
+      "no free timer handler slot", NULL);
+    if (!slot)
         return NULL;
-    }
+
+    napi_threadsafe_function tsfn = NULL;
+    if (!create_tsfn_slot_queue (env, handler, slot, "zlink-timer-handler",
+                                 timer_handler_tsfn_finalize, timer_handler_tsfn_call_js,
+                                 "timer handler failed to create callback queue", false, &tsfn))
+        return NULL;
 
     {
         std::lock_guard<std::mutex> lock (g_timer_handler_slots_mu);
-        slot->used = true;
-        slot->timer = timer;
-        slot->env = env;
-        slot->tsfn = tsfn;
+        bind_tsfn_subject_slot_unsafe (slot, &timer_handler_js_state_t::timer, timer, env, tsfn);
     }
 
     zlink_handler_result_t rc = zlink_timer_handler (timer, &timer_handler_dispatch, slot);

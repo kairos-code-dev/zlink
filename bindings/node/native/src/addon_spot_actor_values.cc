@@ -3,24 +3,6 @@
 #include "addon_spot_actor_values.h"
 #include "addon_message_values.h"
 
-bool parse_routing_id_value (napi_env env, napi_value value, zlink_routing_id_t *routing_id)
-{
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info (env, value, &data, &len) != napi_ok) {
-        napi_throw_type_error (env, NULL, "routingId must be Buffer");
-        return false;
-    }
-    if (len == 0 || len > sizeof (routing_id->data)) {
-        napi_throw_range_error (env, NULL, "routingId length must be 1..255 bytes");
-        return false;
-    }
-    memset (routing_id, 0, sizeof (*routing_id));
-    routing_id->size = static_cast<uint8_t> (len);
-    memcpy (routing_id->data, data, len);
-    return true;
-}
-
 namespace
 {
 

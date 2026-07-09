@@ -245,10 +245,7 @@ test('node samples and perf stay on public binding contract', () => {
     'socketTrySubscribePayload',
     'socketSendNoWaitResult',
     'socketSendRoutingNoWaitResult',
-    'spotSendToSpotNoWaitResult',
-    'routerRecvSingleMetricLatency',
-    'routerRecvSinglePayload',
-    'spotRecvRoutedMetricLatency'
+    'spotSendToSpotNoWaitResult'
   ];
   const violations = [];
 

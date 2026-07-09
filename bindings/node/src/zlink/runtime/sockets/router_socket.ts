@@ -12,13 +12,12 @@ import {
 import { configureSocketChannelName } from './socket_base';
 import { normalizeReplyFlags } from './socket_submit_errors';
 import type { RuntimeContext as Context } from '../core/context';
-import { configCall, submitNativeError } from '../errors/native_errors';
+import { configCall, submitNativeError, submitOrBackpressure } from '../errors/native_errors';
 import { getNativeHandle } from '../handles/native_handle';
 import { executeNativeRequest } from '../messaging/request_executor';
 import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
 import { RoutingId, type Message, type MessageLike } from '../../contracts';
-import { SubmitResult } from '../../contracts/errors/errors';
 import { SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 import type {
   ReplyOperation,
@@ -97,11 +96,7 @@ export class RouterSocket extends RoutedMessageSocket {
       );
       return true;
     } catch (error) {
-      const submitError = submitNativeError(error, flags, 'sendToSpot failed');
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
+      return submitOrBackpressure(error, flags, 'sendToSpot failed');
     }
   }
   protected sendToSpotFromRoutedMessage(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly Message[], flags: SendFlags): boolean {

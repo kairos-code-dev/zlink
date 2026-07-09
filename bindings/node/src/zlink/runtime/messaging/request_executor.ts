@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { Message } from '../../contracts';
-import { RequestError, RequestResult, SubmitResult } from '../../contracts/errors/errors';
+import { RequestError, RequestResult } from '../../contracts/errors/errors';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
-import { submitNativeError } from '../errors/native_errors';
+import { submitNativeError, submitOrBackpressure } from '../errors/native_errors';
 import { withRuntimeErrorMessage } from '../errors/error_state';
 import { messageFromSnapshot } from './message_snapshot';
 
@@ -72,11 +72,7 @@ function executeCallbackRequest(options: NativeRequestOptions, callback: Request
     return true;
   } catch (error) {
     releaseProgress();
-    const submitError = submitNativeError(error, flags, options.submitErrorMessage);
-    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-      return false;
-    }
-    throw submitError;
+    return submitOrBackpressure(error, flags, options.submitErrorMessage);
   }
 }
 

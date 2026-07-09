@@ -2,9 +2,9 @@
 
 import type { BufferLike } from '../core/buffer_like';
 
-/** Minimum user-defined metadata key. */
+/** Reserved native metadata key range; metadata lookup is not implemented yet. */
 export const METADATA_KEY_USER_MIN = 0x0100;
-/** Maximum metadata value size in bytes. */
+/** Reserved native metadata value limit; metadata lookup is not implemented yet. */
 export const METADATA_VALUE_MAX = 65535;
 
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
@@ -33,8 +33,9 @@ function normalizeBufferLike(value: BufferLike, label = 'value'): Buffer {
 }
 
 /**
- * A message payload. Sending a message consumes it; `close` releases its
- * storage.
+ * A message payload. Messages created with {@link Message.from} or
+ * {@link Message.allocate} are immutable value copies. Runtime-received
+ * messages can own native storage; `close` releases that storage.
  */
 export class Message {
   private _buffer!: Buffer;
@@ -155,7 +156,11 @@ export class Message {
     return this._buffer.toString(encoding);
   }
 
-  /** Return the native message property `name`, or null when it is absent. */
+  /**
+   * Return the native message property `name`, or null when it is absent.
+   * Native message metadata is reserved in the current binding and is not
+   * populated yet, so public factory and receive paths currently return null.
+   */
   getProperty(name: string): string | null {
     if (typeof name !== 'string') {
       throw new TypeError('property name must be a string');
@@ -170,7 +175,11 @@ export class Message {
     return this._refCount;
   }
 
-  /** Release the payload storage owned by this message. */
+  /**
+   * Release native storage when this message came from the runtime. Messages
+   * created with {@link Message.from} or {@link Message.allocate} are immutable
+   * value copies and do not need explicit release.
+   */
   close(): void {
     if (Object.isFrozen(this)) {
       return;

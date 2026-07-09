@@ -2,7 +2,7 @@
 
 import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
-import { closeCall, configCall, handlerCall, recvNativeError, submitNativeError } from '../../errors/native_errors';
+import { closeCall, configCall, handlerCall, recvNativeError, submitNativeError, submitOrBackpressure } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { executeNativeRequest } from '../../messaging/request_executor';
 import { messageFromSnapshot } from '../../messaging/message_snapshot';
@@ -84,11 +84,7 @@ export class Spot extends NativeHandle {
       invoke();
       return true;
     } catch (error) {
-      const submitError = submitNativeError(error, flags, errorMessage);
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
+      return submitOrBackpressure(error, flags, errorMessage);
     }
   }
   private publishDirect(topic: string, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
@@ -347,32 +343,7 @@ export class Spot extends NativeHandle {
       throw recvNativeError(error, flags, 'recvRouted failed');
     }
     if (!raw) return false;
-    materializeReceivedInto(
-      result,
-      {
-        parts: raw.parts,
-        routingId: raw.sourceRid ?? null,
-        requestSeq: raw.requestSeq ?? null,
-        spotRid: raw.spotRid ?? null
-      },
-      (requestSeq, parts, flags) => {
-        if (!raw.sourceRid) {
-          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed reply target');
-        }
-        const sourceRid = RoutingId.from(raw.sourceRid);
-        if (raw.spotRid) {
-          this.replyToSpotInternal(sourceRid, RoutingId.from(raw.spotRid), requestSeq, parts, flags);
-          return;
-        }
-        this.replyToRouterInternal(sourceRid, requestSeq, parts, flags);
-      },
-      (parts, flags) => {
-        if (!raw.sourceRid || !raw.spotRid) {
-          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
-        }
-        return this.sendToSpotRawDirect(raw.sourceRid, raw.spotRid, parts, flags);
-      }
-    );
+    this.materializeRoutedInto(result, raw);
     return true;
   }
   setDispatchHandler(handler: SpotDispatchEventHandler): void {
@@ -412,6 +383,11 @@ export class Spot extends NativeHandle {
 
   private materializeRouted(raw: SpotRoutedRaw): Received {
     const received = new Received();
+    this.materializeRoutedInto(received, raw);
+    return received;
+  }
+
+  private materializeRoutedInto(received: Received, raw: SpotRoutedRaw): void {
     materializeReceivedInto(
       received,
       {
@@ -438,7 +414,6 @@ export class Spot extends NativeHandle {
         return this.sendToSpotRawDirect(raw.sourceRid, raw.spotRid, parts, flags);
       }
     );
-    return received;
   }
   recvActorJoin(flags: RecvFlags = RecvFlags.None): ActorJoinRequest | null {
     let raw;

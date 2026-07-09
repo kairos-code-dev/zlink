@@ -31,17 +31,7 @@ export type {
   StreamSocketOptions,
   SubSocketOptions,
 } from './socket_options';
-export type {
-  ReplyHandler,
-  ReplyOperation,
-  ReplySubmitOperation,
-  RequestCallback,
-  RequestCallbackSubmitOperation,
-  RequestOperation,
-  RequestSubmitOperation,
-  SendOperation,
-  SendSubmitOperation,
-} from './socket_operations';
+export type * from '../messaging/operations';
 export type { PairSocket } from './pair_socket';
 export type { DealerSocket } from './dealer_socket';
 export type { RouterSocket } from './router_socket';

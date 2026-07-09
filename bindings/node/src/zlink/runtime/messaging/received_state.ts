@@ -4,6 +4,11 @@ import { Received } from '../../contracts/messaging/received';
 import { Message } from '../../contracts/messaging/message';
 import type { ReplyOperation, SendOperation } from '../../contracts/messaging/operations';
 import { RoutingId } from '../../contracts/core/routing_id';
+import {
+  closeMessageParts,
+  freezeMessageParts,
+  freezeOwnedMessageParts
+} from './message_parts_state';
 
 export interface ReplyContext {
   beginReply(): ReplyOperation;
@@ -20,23 +25,6 @@ interface ReceivedState {
   requestSeq: bigint | null;
   _replyContext: ReplyContext | null;
   _sendContext: SendContext | null;
-}
-
-function freezeMessageParts(parts: readonly Message[]): Message[] {
-  return Object.freeze(parts.slice()) as Message[];
-}
-
-function freezeOwnedMessageParts(parts: Message[]): Message[] {
-  return Object.freeze(parts) as Message[];
-}
-
-function closeMessageParts(parts: readonly Message[] | undefined): void {
-  if (!parts) {
-    return;
-  }
-  for (const part of parts) {
-    part.close();
-  }
 }
 
 export function createReceived(

@@ -3,6 +3,7 @@
 #include "addon_spot_request_callbacks.h"
 #include "addon_message_parts.h"
 #include "addon_message_values.h"
+#include "addon_spot_actor_values.h"
 #include "addon_tsfn_slots.h"
 
 #include <chrono>
@@ -57,19 +58,6 @@ struct request_result_js_payload_t
     size_t part_count;
 };
 
-napi_value create_spot_actor_ref_value (napi_env env, const zlink_actor_ref_t &actor)
-{
-    napi_value obj;
-    napi_create_object (env, &obj);
-    napi_value node_rid = create_routing_id_value (env, actor.node_rid);
-    napi_set_named_property (env, obj, "nodeRid", node_rid);
-    set_string_property (env, obj, "actorId", actor.actor_id);
-    napi_value generation;
-    napi_create_bigint_uint64 (env, actor.generation, &generation);
-    napi_set_named_property (env, obj, "generation", generation);
-    return obj;
-}
-
 bool move_recv_parts_to_payload (zlink_msg_t *parts,
                                  size_t part_count,
                                  request_result_js_payload_t *payload)
@@ -114,7 +102,7 @@ void request_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *
         napi_create_int32 (env, payload->join_result_code, &join_result_code_value);
         napi_set_named_property (env, result_obj, "joinResultCode", join_result_code_value);
         napi_set_named_property (env, result_obj, "actor",
-                                 create_spot_actor_ref_value (env, payload->actor));
+                                 create_actor_ref_value (env, payload->actor));
         napi_set_named_property (env, result_obj, "targetNodeRid",
                                  create_routing_id_value (env, payload->target_node_rid));
         napi_set_named_property (env, result_obj, "joinedSpotRid",
@@ -149,7 +137,7 @@ void request_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *
         napi_create_int32 (env, payload->join_result_code, &join_result_code_value);
         napi_set_named_property (env, result_obj, "joinResultCode", join_result_code_value);
         napi_set_named_property (env, result_obj, "actor",
-                                 create_spot_actor_ref_value (env, payload->actor));
+                                 create_actor_ref_value (env, payload->actor));
         napi_set_named_property (env, result_obj, "joinedSpotRid",
                                  create_routing_id_value (env, payload->joined_spot_rid));
         napi_value join_epoch;
@@ -179,7 +167,7 @@ void request_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *
         napi_create_int32 (env, payload->errnum, &result_value);
         napi_set_named_property (env, result_obj, "result", result_value);
         napi_set_named_property (env, result_obj, "actor",
-                                 create_spot_actor_ref_value (env, payload->actor));
+                                 create_actor_ref_value (env, payload->actor));
         napi_value flags_value;
         napi_create_uint32 (env, payload->flags, &flags_value);
         napi_set_named_property (env, result_obj, "flags", flags_value);
@@ -212,26 +200,44 @@ void request_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *
     (void) napi_call_function (env, this_arg, js_cb, 2, argv, &recv);
 }
 
-} // namespace
-
-request_js_state_t *create_request_js_state (napi_env env, napi_value handler)
+request_js_state_t *create_request_js_state_impl (napi_env env,
+                                                  napi_value handler,
+                                                  const char *resource_name_text,
+                                                  const char *setup_error,
+                                                  bool unref)
 {
     request_js_state_t *state = new request_js_state_t ();
     state->env = env;
 
     napi_value resource_name;
-    napi_create_string_utf8 (env, "zlink-spot-request-callback", NAPI_AUTO_LENGTH, &resource_name);
+    napi_create_string_utf8 (env, resource_name_text, NAPI_AUTO_LENGTH, &resource_name);
     napi_threadsafe_function tsfn = NULL;
     napi_status status =
       napi_create_threadsafe_function (env, handler, NULL, resource_name, 0, 1, state,
                                        request_tsfn_finalize, state, request_tsfn_call_js, &tsfn);
     if (status != napi_ok) {
         delete state;
-        napi_throw_error (env, NULL, "spot request callback setup failed");
+        napi_throw_error (env, NULL, setup_error);
         return NULL;
     }
+    if (unref)
+        (void) napi_unref_threadsafe_function (env, tsfn);
     state->tsfn = tsfn;
     return state;
+}
+
+} // namespace
+
+request_js_state_t *create_request_js_state (napi_env env, napi_value handler)
+{
+    return create_request_js_state_impl (env, handler, "zlink-spot-request-callback",
+                                         "spot request callback setup failed", false);
+}
+
+request_js_state_t *create_core_request_js_state (napi_env env, napi_value handler)
+{
+    return create_request_js_state_impl (env, handler, "zlink-request-reply-callback",
+                                         "request callback setup failed", true);
 }
 
 void abort_request_js_state (request_js_state_t *state)

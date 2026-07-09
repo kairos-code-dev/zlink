@@ -3,28 +3,16 @@
 import { TopicMessage } from '../../contracts/messaging/topic_message';
 import { Message } from '../../contracts/messaging/message';
 import { RoutingId } from '../../contracts/core/routing_id';
+import {
+  closeMessageParts,
+  freezeMessageParts,
+  freezeOwnedMessageParts
+} from './message_parts_state';
 
 interface TopicMessageState {
   parts: Message[];
   routingId: RoutingId | null;
   topic: string;
-}
-
-function freezeMessageParts(parts: readonly Message[]): Message[] {
-  return Object.freeze(parts.slice()) as Message[];
-}
-
-function freezeOwnedMessageParts(parts: Message[]): Message[] {
-  return Object.freeze(parts) as Message[];
-}
-
-function closeMessageParts(parts: readonly Message[] | undefined): void {
-  if (!parts) {
-    return;
-  }
-  for (const part of parts) {
-    part.close();
-  }
 }
 
 export function createTopicMessage(

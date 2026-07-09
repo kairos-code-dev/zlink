@@ -6,7 +6,6 @@
         "native/src/addon.cc",
         "native/src/addon_core.cc",
         "native/src/addon_core_options.cc",
-        "native/src/addon_core_perf.cc",
         "native/src/addon_exports.cc",
         "native/src/addon_spot_actors.cc",
         "native/src/addon_spot_actor_values.cc",

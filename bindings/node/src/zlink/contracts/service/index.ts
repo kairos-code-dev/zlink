@@ -65,27 +65,4 @@ export type {
   SpotDispatchEventHandler,
   SubscriptionEntry,
 } from './spot/spot_models';
-export type {
-  ActorBindOperation,
-  ActorDestroyOperation,
-  ActorJoinCallbackSubmitOperation,
-  ActorJoinEntrySpotHandler,
-  ActorJoinEntrySpotOperation,
-  ActorJoinHandler,
-  ActorJoinOperation,
-  ActorJoinReplyOperation,
-  ActorJoinSubmitOperation,
-  ActorLeaveOperation,
-  ActorLookupHandler,
-  ActorLookupOperation,
-  ActorUnbindOperation,
-  ReplyHandler,
-  ReplyOperation,
-  ReplySubmitOperation,
-  RequestCallback,
-  RequestCallbackSubmitOperation,
-  RequestOperation,
-  RequestSubmitOperation,
-  SendOperation,
-  SendSubmitOperation,
-} from './spot/spot_operations';
+export type * from './spot/spot_operations';

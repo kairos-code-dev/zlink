@@ -9,6 +9,7 @@ import { createError } from '../errors/error_mapping';
 import {
   closeCall,
   configCall,
+  isWouldBlock,
   nativeErrorMessage,
   readErrno,
   recvNativeError,
@@ -107,8 +108,7 @@ export class Poller {
       events.markReadyCount(count | 0);
       return count | 0;
     } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : String(error);
-      if (/Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
+      if (isWouldBlock()) {
         events.markReadyCount(0);
         return 0;
       }

@@ -9,59 +9,35 @@ import type {
   SendSubmitOperation,
 } from '../../contracts/messaging/operations';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
-import { OperationPayload } from './operation_payload';
+import { SendOperationBase } from './send_operation_base';
 
-class RuntimeReceivedSendOperation implements SendOperation, SendSubmitOperation {
+class RuntimeReceivedSendOperation
+  extends SendOperationBase<Message | BufferLike, Message>
+  implements SendOperation, SendSubmitOperation {
   private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => boolean;
-  private readonly _payload = new OperationPayload<Message | BufferLike, Message>(
-    (message) => message instanceof Message ? message : Message.from(message)
-  );
-  private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: (parts: readonly Message[], flags: SendFlags) => boolean) {
+    super((message) => message instanceof Message ? message : Message.from(message));
     this._invoke = invoke;
-  }
-
-  message(message: Message | BufferLike): SendSubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
-  flags(flags: SendFlags): SendSubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
-    return this;
   }
 
   submit(): boolean {
-    return this._invoke(this._payload.consumeParts(), this._flags);
+    return this._invoke(this.consumeParts(), this._flags);
   }
 }
 
-class RuntimeReceivedReplyOperation implements ReplyOperation, ReplySubmitOperation {
+class RuntimeReceivedReplyOperation
+  extends SendOperationBase<Message | BufferLike, Message>
+  implements ReplyOperation, ReplySubmitOperation {
   private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => void;
-  private readonly _payload = new OperationPayload<Message | BufferLike, Message>(
-    (message) => message instanceof Message ? message : Message.from(message)
-  );
-  private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: (parts: readonly Message[], flags: SendFlags) => void) {
+    super((message) => message instanceof Message ? message : Message.from(message));
     this._invoke = invoke;
   }
 
-  message(message: Message | BufferLike): ReplySubmitOperation {
-    this._payload.append(message);
-    return this;
-  }
-
-  flags(flags: SendFlags): ReplySubmitOperation {
-    this._payload.ensureOpen();
-    this._flags = flags;
-    return this;
-  }
-
   submit(): void {
-    this._invoke(this._payload.consumeParts(), this._flags);
+    this._invoke(this.consumeParts(), this._flags);
   }
 }
 

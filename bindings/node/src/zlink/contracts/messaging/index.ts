@@ -15,14 +15,4 @@ export {
 export {
   SubscriptionEvent,
 } from './subscription_event';
-export type {
-  ReplyHandler,
-  ReplyOperation,
-  ReplySubmitOperation,
-  RequestCallback,
-  RequestCallbackSubmitOperation,
-  RequestOperation,
-  RequestSubmitOperation,
-  SendOperation,
-  SendSubmitOperation,
-} from './operations';
+export type * from './operations';

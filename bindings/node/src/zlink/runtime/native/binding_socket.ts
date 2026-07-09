@@ -22,16 +22,6 @@ export interface SocketNativeBinding {
   monitorOpen: (socket: NativeHandle, eventMask: number) => NativeHandle;
   routerRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
   routerRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
-  routerRecvSinglePayload: (socket: NativeHandle, flags: number) => Buffer | null;
-  routerRecvSingleMetricLatency: (
-    socket: NativeHandle,
-    flags: number,
-    runId: number,
-    msgSize: number,
-    expectedSize: number,
-    activeStartNs: bigint,
-    activeStopNs: bigint
-  ) => number | boolean | null;
   routerReply: (
     socket: NativeHandle,
     peerRid: Buffer,
@@ -163,22 +153,6 @@ export interface SocketNativeBinding {
     actor: ActorRefRaw,
     sourceNodeRid: Buffer,
     sourceSessionRid: Buffer
-  ) => void;
-  spotNodeSendToActor: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    parts: unknown,
-    flags: number,
-    timeoutMs: number,
-    callback?: NativeRequestCallback
-  ) => void;
-  spotNodeRequestToActor: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    parts: unknown,
-    callback: NativeRequestCallback,
-    flags: number,
-    timeoutMs: number
   ) => void;
   streamBindActor: (
     stream: NativeHandle,

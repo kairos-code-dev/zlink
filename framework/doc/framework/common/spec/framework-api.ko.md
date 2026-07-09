@@ -205,6 +205,16 @@ socket connect 직후 아직 submit 준비가 끝나지 않은 짧은 구간은 
 요청 timeout 안에서 끝나야 하며, payload decode 실패, handler 오류, protocol 오류, 이미 끊긴
 connection의 복구를 반복 호출로 가리면 안 된다.
 
+이미 받은 route request의 reply도 같은 원칙을 따른다. handler가 만든 reply는 새 요청으로 재시도하지
+않고, 같은 route channel의 connected/peer-ready 상태를 확인한 뒤 한 번 submit한다. 이 확인은 server
+구동 순서를 고정하는 장치가 아니라, zlink socket이 이미 연결 대상으로 가진 peer에 reply를 내보낼 수
+있는지 확인하는 readiness 대기다.
+
+route mesh server끼리는 location auto-connect가 pairwise initiator 규칙으로 한쪽 연결만 만든다.
+bind endpoint가 있는 server는 router row를 게시하고, endpoint가 없는 순수 route client만 dealer
+역할로 remote router에 연결한다. server가 router row와 endpoint 없는 dealer row를 동시에 게시해
+중복 연결을 만들면 stale peer-ready나 시작 순서 의존을 만들 수 있으므로 public contract에 맞지 않는다.
+
 drain은 새 요청의 선택 대상에서 빠지는 의미다. 이미 받은 request의 handler 실행과 reply는 drain
 이후에도 완료되어야 한다. weight 변경, endpoint handover, owner 변경을 같은 사건으로 다루면
 in-flight request가 끊길 수 있으므로, adapter는 weight-only 변경과 endpoint identity 변경을 구분해야

@@ -272,12 +272,12 @@ public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표�
 
 위치 조회는 framework의 location resolver가 맡는다
 ([location runtime §5](location-runtime.ko.md)). 기본 구현은 등록된 location store를
-읽고, 결과로 **주소**를 돌려준다.
+읽고, 결과로 메시징 대상 handle인 `SpotRef`를 돌려준다.
 
 | resolver | 책임 |
 | --- | --- |
-| actor location resolver | actor(type + id) → 그 actor가 위치한 spot의 주소(`ZLinkSpotAddress`) |
-| spot location resolver | spot rid → 그 spot의 주소 |
+| actor location resolver | actor(type + id) → 그 actor가 위치한 spot의 `SpotRef` |
+| spot location resolver | spot rid → 그 spot의 `SpotRef` |
 
 위치의 저장소는 application이 등록한 location store(예: 공식 Redis extension)다.
 framework는 특정 store 제품을 강제하지 않고, row의 등록·갱신은 actor/spot lifecycle이

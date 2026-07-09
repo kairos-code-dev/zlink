@@ -4,7 +4,7 @@
 
 [Framework 문서](../../README.ko.md)
 
-[개요](spec/overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](spec/interaction-model.ko.md) | [메시지 모델](spec/message-model.ko.md) | [channel topology](spec/channel-topology.ko.md) | [framework API](spec/framework-api.ko.md) | [비동기 실행](spec/async-execution-policy.ko.md) | [Actor 모델](spec/actor-model.ko.md) | [Session Actor Dispatch 사용성](spec/session-actor-dispatch.ko.md) | [메시지 흐름 추적](spec/message-flow-tracing.ko.md) | [location runtime](spec/location-runtime.ko.md) | [Redis store](spec/location-store-redis.ko.md) | [spot 주소 메시징](spec/spot-address-messaging.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md) | [검증](spec/usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
+[개요](spec/overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](spec/interaction-model.ko.md) | [메시지 모델](spec/message-model.ko.md) | [channel topology](spec/channel-topology.ko.md) | [framework API](spec/framework-api.ko.md) | [비동기 실행](spec/async-execution-policy.ko.md) | [Actor 모델](spec/actor-model.ko.md) | [Spot Actor Join / Transfer](spec/spot-actor.ko.md) | [Session Actor Dispatch 사용성](spec/session-actor-dispatch.ko.md) | [메시지 흐름 추적](spec/message-flow-tracing.ko.md) | [location runtime](spec/location-runtime.ko.md) | [Redis store](spec/location-store-redis.ko.md) | [spot 주소 메시징](spec/spot-address-messaging.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md) | [검증](spec/usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -47,26 +47,28 @@
 | 6 | [framework-api.ko.md](spec/framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
 | 7 | [비동기 실행과 coroutine 정책](spec/async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
 | 8 | [actor-model.ko.md](spec/actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
-| 9 | [Session Actor Dispatch](spec/session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
-| 10 | [메시지 흐름 추적과 dispatch 관측](spec/message-flow-tracing.ko.md) | success-path 메시지 흐름 추적 기능 스펙. 로그 모드, phase/event/observer 계약, off 제로코스트 성능 계약과 런타임 토글, 로거 라우팅(통합/분리), 구조화 필드, 관측 백엔드 경계(OTel 비의존), 길목, 스트림 correlation_id 와이어 포맷, 회귀 매트릭스(MFLOW)를 다룬다. |
-| 11 | [location-runtime.ko.md](spec/location-runtime.ko.md) | 분산 위치 관리 공통 스펙. peer/spot/actor/route location row 모델, owner lease와 generation fencing, store/resolver 계약, 자동 연결 규칙(fail-static, 복구 순서), watch/polling, 운영 조회 projection, location 이벤트 source를 정의한다. |
-| 12 | [location-store-redis.ko.md](spec/location-store-redis.ko.md) | 공식 Redis location store extension 스펙. key schema, Lua 기반 원자 write, lease TTL, change stamp, 오류 변환, connection lifecycle, 격리/테스트 기준을 다룬다. |
-| 13 | [spot-address-messaging.ko.md](spec/spot-address-messaging.ko.md) | spot/actor 대상 메시징 공통 스펙. `ZLinkSpotAddress` 주소 모델, 조회 1회-보관-재resolve 사용 모델, fail-fast 실패 분류(재시도 의미), 이동·재활성 경계를 다룬다. |
-| 14 | [공통 샘플 시나리오](sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
-| 15 | [Scenario E2E 테스트](e2e/README.ko.md) | 샘플에 넣기 어려운 scale-out, 실패 경로, lifecycle, 관측성 조합을 실제 multi-process 구조로 검증하는 테스트 시나리오 묶음. |
-| 16 | [Performance 테스트](perf/README.ko.md) | 모든 framework 언어가 같은 시나리오, payload 크기, phase, 메트릭 schema로 성능을 측정하기 위한 공통 규격. |
-| 17 | [.NET 문서](../dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
-| 18 | [Java 문서](../java/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
-| 19 | [Node.js 문서](../node/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
-| 20 | [C++ 문서](../cpp/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
-| 18 | [Use case 검증](spec/usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
+| 9 | [Spot Actor Join / Transfer](spec/spot-actor.ko.md) | actor가 Entry Spot과 user Spot 사이를 이동할 때의 admission, commit, lifecycle callback 순서, remote transfer 장애 처리 기준을 정의한다. |
+| 10 | [Session Actor Dispatch](spec/session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
+| 11 | [메시지 흐름 추적과 dispatch 관측](spec/message-flow-tracing.ko.md) | success-path 메시지 흐름 추적 기능 스펙. 로그 모드, phase/event/observer 계약, off 제로코스트 성능 계약과 런타임 토글, 로거 라우팅(통합/분리), 구조화 필드, 관측 백엔드 경계(OTel 비의존), 길목, 스트림 correlation_id 와이어 포맷, 회귀 매트릭스(MFLOW)를 다룬다. |
+| 12 | [location-runtime.ko.md](spec/location-runtime.ko.md) | 분산 위치 관리 공통 스펙. peer/spot/actor/route location row 모델, owner lease와 generation fencing, store/resolver 계약, 자동 연결 규칙(fail-static, 복구 순서), watch/polling, 운영 조회 projection, location 이벤트 source를 정의한다. |
+| 13 | [location-store-redis.ko.md](spec/location-store-redis.ko.md) | 공식 Redis location store extension 스펙. key schema, Lua 기반 원자 write, lease TTL, change stamp, 오류 변환, connection lifecycle, 격리/테스트 기준을 다룬다. |
+| 14 | [spot-address-messaging.ko.md](spec/spot-address-messaging.ko.md) | spot/actor 대상 메시징 공통 스펙. `ZLinkSpotAddress` 주소 모델, 조회 1회-보관-재resolve 사용 모델, fail-fast 실패 분류(재시도 의미), 이동·재활성 경계를 다룬다. |
+| 15 | [공통 샘플 시나리오](sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
+| 16 | [Scenario E2E 테스트](e2e/README.ko.md) | 샘플에 넣기 어려운 scale-out, 실패 경로, lifecycle, 관측성 조합을 실제 multi-process 구조로 검증하는 테스트 시나리오 묶음. |
+| 17 | [Performance 테스트](perf/README.ko.md) | 모든 framework 언어가 같은 시나리오, payload 크기, phase, 메트릭 schema로 성능을 측정하기 위한 공통 규격. |
+| 18 | [.NET 문서](../dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
+| 19 | [Java 문서](../java/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
+| 20 | [Node.js 문서](../node/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
+| 21 | [C++ 문서](../cpp/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
+| 22 | [Use case 검증](spec/usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
 모델(3-4)로 설계 방향을 확인하고, topology(5)로 내부 매핑을 이해하고,
-API 표면(6)과 비동기 실행 정책(7)을 본 다음, actor 모델(8)과 그 use case 정책(9)을
-잡고, 메시지 흐름 추적(10)으로 관측 기능을 확인한 뒤, 공통 샘플(11)로 대표 흐름을 확인한다.
-Scenario E2E(12)로 실제 조합 검증 기준을 보고, Performance 테스트(13)로 처리량과 지연 시간 측정
-기준을 본다. 언어별 상세(14-17)로 내려간 뒤, 마지막으로 검증(18)에서 빠진 부분을 확인하는 흐름이다.
+API 표면(6)과 비동기 실행 정책(7)을 본 다음, actor 모델(8), Spot actor join/transfer(9),
+그 use case 정책(10)을 잡고, 메시지 흐름 추적(11)으로 관측 기능을 확인한 뒤,
+공통 샘플(15)로 대표 흐름을 확인한다. Scenario E2E(16)로 실제 조합 검증 기준을 보고,
+Performance 테스트(17)로 처리량과 지연 시간 측정 기준을 본다. 언어별 상세(18-21)로 내려간 뒤,
+마지막으로 검증(22)에서 빠진 부분을 확인하는 흐름이다.
 
 언어별 상세 문서를 새로 읽을 때는 아래 순서를 기본으로 본다.
 
@@ -85,7 +87,9 @@ Scenario E2E(12)로 실제 조합 검증 기준을 보고, Performance 테스트
 | 메시지 구조, header 필드, codec | message-model | 필요하면 message-model을 링크 |
 | channel grouping, Discovery, 내부 매핑 | channel-topology | 필요하면 channel-topology를 링크 |
 | 프레임워크별 API 표면, DI, handler 등록 | framework-api, dotnet/ | 필요하면 해당 문서를 링크 |
-| actor 개념, 라이프사이클, session bind, user Spot join, session actor dispatch | actor-model, session-actor-dispatch | 필요하면 해당 문서를 링크 |
+| actor 개념, 라이프사이클, session bind | actor-model | 필요하면 actor-model을 링크 |
+| Spot actor join/transfer 완료 조건과 callback 순서 | spot-actor | 필요하면 spot-actor를 링크 |
+| session actor dispatch | session-actor-dispatch | 필요하면 session-actor-dispatch를 링크 |
 
 ## 4. 문서 작성 원칙
 

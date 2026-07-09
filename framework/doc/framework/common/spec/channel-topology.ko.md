@@ -120,7 +120,7 @@ SPOT 내부 peer topology와 channel 단위 호출은 서로 다른 경로로 �
 2. **상태 대상 요청** — 특정 상태(actor, spot, 파티션)가 목적지인 요청은
    두 가지 중 하나를 쓴다.
    - **actor/spot 표면**: entry spot이 find/ensure/bind류 요청을 받도록 하고,
-     보내는 쪽은 `RequestToSpot`과 spot address로 대상 node를 지정한다.
+     보내는 쪽은 먼저 `SpotRef` 를 얻은 뒤 `RequestToSpot`으로 대상 spot에 보낸다.
      응답에 싣는 actor ref는 actor manager가 반환한 값을 그대로 쓴다.
    - **owner 일관 channel**: 소유자를 해시 등으로 정적으로 정하는 구조면,
      인스턴스별 channel 이름(예: `<name>.<instanceId>`)을 서버마다 서빙하고

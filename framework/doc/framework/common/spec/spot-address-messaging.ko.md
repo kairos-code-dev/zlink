@@ -4,10 +4,10 @@
 
 [스펙 목차](../README.ko.md)
 
-# Spot 주소 기반 메시징
+# SpotRef 기반 메시징
 
-이 문서는 spot/actor 대상 메시징의 언어 중립 공통 스펙이다. **주소 모델
-(`ZLinkSpotAddress`), 조회-보관-재조회 사용 모델, 메시징 표면, stale 주소 실패 계약**의
+이 문서는 spot/actor 대상 메시징의 언어 중립 공통 스펙이다. **전송 대상 값
+(`SpotRef`), 조회-보관-재조회 사용 모델, 메시징 표면, stale ref 실패 계약**의
 의미를 소유한다. 위치 저장·resolver·자동 연결의 하부 계약은
 [location runtime](location-runtime.ko.md)이 소유하고 이 문서는 반복하지 않는다.
 
@@ -15,12 +15,12 @@
 > 끝나고, 호출자가 주소를 보관하며, 실패가 재resolve를 유도한다. resolver·전송 어디에도
 > 캐시가 없다 — "이름 없는 전역 캐시"가 각 보유자의 명시적 상태로 바뀐 모델이다.
 
-## 1. Spot 주소 모델
+## 1. SpotRef 모델
 
 ```csharp
 /// <summary>mesh 안의 spot 하나를 가리키는 논리 주소. resolve 1회로 얻어
 /// 호출자가 보관하고, 실패 시 재resolve한다.</summary>
-public readonly record struct ZLinkSpotAddress(
+public readonly record struct SpotRef(
     RoutingId NodeRid,
     RoutingId SpotRid);
 ```
@@ -52,11 +52,11 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 입력 | 반환 |
 |----------|------|------|
-| `IZLinkSpotAddressResolver.ResolveSpotAddressAsync(spotRid)` | spot rid (이 runtime이 참여한 spot mesh들에서 검색) | `ZLinkSpotAddress?` |
-| `IZLinkActorAddressResolver.ResolveActorSpotAddressAsync(actorId)` | 전역 actor key | actor가 위치한 spot의 `ZLinkSpotAddress?` (ENTRY_SPOT이면 entry spot 주소) |
+| `ZLinkSpotRefResolver.ResolveSpotRefAsync(spotRid)` | spot rid (이 runtime이 참여한 spot mesh들에서 검색) | `SpotRef?` |
+| `ActorSpotRefResolver.ResolveActorSpotRefAsync(actorId)` | 전역 actor key | actor가 위치한 spot의 `SpotRef?` (ENTRY_SPOT이면 entry spot 주소) |
 
 - actor 1:1 spot topology에서는 호출자가 아는 것이 transient한 spot rid가 아니라 actor
-  id이므로 `ResolveActorSpotAddressAsync`가 1차 조회 표면이다. spot rid 조회는 spot rid를
+  id이므로 `ResolveActorSpotRefAsync`가 1차 조회 표면이다. spot rid 조회는 spot rid를
   도메인 key에서 파생하는 topology(player owner spot 등)에서 쓴다.
 - 재연결·"없으면 생성"·takeover 같은 lifecycle 흐름은 주소가 아니라 generation을 포함한
   location row가 필요하므로 resolver가 아니라 store/runtime 경로를 쓴다.
@@ -66,12 +66,12 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 ```csharp
 // spot 문맥 안 (mesh = 자기 mesh)
-IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message);
-IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request);
+IZLinkSendCall SendToSpot<TMessage>(SpotRef spot, TMessage message);
+IZLinkRequestCall RequestToSpot<TRequest>(SpotRef spot, TRequest request);
 
 // 외부 connector client (mesh = 명시한 router channel)
-IZLinkSendCall SendToSpot<TMessage>(string routerChannelId, ZLinkSpotAddress address, TMessage message);
-IZLinkRouteRequestCall RequestToSpot<TRequest>(string routerChannelId, ZLinkSpotAddress address, TRequest request);
+IZLinkSendCall SendToSpot<TMessage>(string routerChannelId, SpotRef spot, TMessage message);
+IZLinkRouteRequestCall RequestToSpot<TRequest>(string routerChannelId, SpotRef spot, TRequest request);
 ```
 
 - spot rid만 받고 내부에서 resolve해 주는 overload는 **없다**. 전송 경로의 숨은 store
@@ -88,11 +88,11 @@ IZLinkRouteRequestCall RequestToSpot<TRequest>(string routerChannelId, ZLinkSpot
 
 ```csharp
 // bind/route 수립 시점에 1회 조회해서 상태에 보관한다.
-var address = await spots.ResolveSpotAddressAsync(playerQuestSpotRid, ct)
+var spot = await spots.ResolveSpotRefAsync(playerQuestSpotRid, ct)
               ?? /* 미활성이면 도메인 규칙에 따라 placement 경로로 */;
 
 // 이후 이벤트마다 보관한 주소로 전송한다. store 조회 없음.
-await outbound.SendToSpot(address, new ApplyGameplayEvent(...)).SendAsync(ct);
+await outbound.SendToSpot(spot, new ApplyGameplayEvent(...)).SendAsync(ct);
 ```
 
 framework 내부 호출자(bound session notify, actor session relay 등)도 같은 규칙을

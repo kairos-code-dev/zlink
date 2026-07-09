@@ -184,7 +184,7 @@ envelope 조립, request sequence 보존처럼 반복되면 위험한 작업만 
 | 축 | 역할 |
 |----|------|
 | actor/node/spot handlers | relayed message를 실행 문맥 안에서 typed message로 처리한다. |
-| actor/spot location resolvers | actor id 와 spot rid 를 주소(`ZLinkSpotAddress`)로 해석한다. |
+| actor/spot location resolvers | actor id 와 spot rid 를 `SpotRef` 로 해석한다. |
 | session actor helpers | session server가 선택한 actor create/dispatch를 request sequence 손실 없이 수행한다. |
 
 아래 그림은 책임 경계를 보여 준다.
@@ -395,16 +395,16 @@ metadata나 raw message를 받으면 transport 위치 조회가 작은 dispatche
 ### 9.2 제안 interface
 
 위치 resolver는 framework가 기본 구현을 제공하는 조회 interface다. 기본 구현은
-location store를 읽고 owner lease join으로 유효성을 판정하며, **주소**
-(`ZLinkSpotAddress` = mesh + node rid + spot rid)를 반환한다
+location store를 읽고 owner lease join으로 유효성을 판정하며, **SpotRef**
+(mesh + node rid + spot rid)를 반환한다
 ([location runtime](location-runtime.ko.md) §5). 캐시는 없다 — 호출자가 resolve 결과를
 보관하고 실패 시 재resolve한다. 공개 resolver 축은 두 개로 제한한다.
 
 - **actor location resolver** -- `actor type + actorId` → "이 actor가 위치한 spot의
-  full 주소".
-- **spot location resolver** -- `spotRid` → "이 spot의 full 주소". actor의
-  `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다. 사용자 교체 지점은 SPOT
-  원격 주소 resolver 등록(`AddSpotRemoteAddressResolver<T>` 류)이다.
+  `SpotRef`".
+- **spot location resolver** -- `spotRid` → "이 spot의 `SpotRef`". actor의
+  `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다. 사용자 교체 지점은 location
+  store 등록이다.
 
 actor resolver 입력은 `actorId` 하나로 유지한다. spot resolver 입력은 spot domain key
 하나로 유지한다. metadata, packet name, raw message, application payload는 resolver에

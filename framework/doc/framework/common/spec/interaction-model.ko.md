@@ -49,7 +49,7 @@
   설명한다.
 - outbound `DEALER(client)`가 받은 메시지는 기본적으로 reply 매칭 대상으로 보고,
   일반 handler dispatch 경로에 넣지 않는다.
-- `SPOT` 쪽 public request는 resolve 로 얻은 주소(`ZLinkSpotAddress`)를 받는다 —
+- `SPOT` 쪽 public request는 resolve 로 얻은 `SpotRef` 를 받는다.
   위치값을 낱개(`targetRid + spotRid`)로 받는 표면은 두지 않는다
   ([spot 주소 메시징](spot-address-messaging.ko.md)).
 

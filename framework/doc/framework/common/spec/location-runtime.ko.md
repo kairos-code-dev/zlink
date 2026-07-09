@@ -184,14 +184,14 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 | resolver | 표면 | 용도 |
 |----------|------|------|
 | `IZLinkPeerLocationResolver` | `ListLivePeersAsync(filter)` | 자동 연결의 live peer list 조회 |
-| `IZLinkSpotAddressResolver` | `ResolveSpotAddressAsync(spotRid)` → `ZLinkSpotAddress?` | 메시징 조회: spot rid → spot full 주소 |
-| `IZLinkActorAddressResolver` | `ResolveActorSpotAddressAsync(actorId)` → `ZLinkSpotAddress?` | 메시징 조회: actor → 그 actor가 위치한 spot의 full 주소 |
+| `ZLinkSpotRefResolver` | `ResolveSpotRefAsync(spotRid)` → `SpotRef?` | 메시징 조회: spot rid → 전송 대상 ref |
+| `ActorSpotRefResolver` | `ResolveActorSpotRefAsync(actorId)` → `SpotRef?` | 메시징 조회: actor → 그 actor가 위치한 spot의 전송 대상 ref |
 | route 단건 조회 | store SPI/운영 조회 | owner-bound route 단건 조회는 public resolver로 노출하지 않음 |
 
-- 메시징 resolver는 **주소**(`ZLinkSpotAddress` = `NodeRid + SpotRid`; mesh는 전송 문맥이
-  결정)를 반환한다. 호출자가 주소를 보관하고 전송 실패 시 재resolve한다. 상세는
+- 메시징 resolver는 **전송 대상 ref**(`SpotRef` = `NodeRid + SpotRid`; mesh는 전송 문맥이
+  결정)를 반환한다. 호출자가 ref를 보관하고 전송 실패 시 재resolve한다. 상세는
   [spot 주소 메시징](spot-address-messaging.ko.md)이 정본이다.
-- location store 기반 Spot remote address resolver는 spot row의 mesh 이름으로 route mesh
+- location store 기반 Spot remote ref resolver는 spot row의 mesh 이름으로 route mesh
   channel을 고른다. spot mesh 이름과 route mesh channel 이름이 다르면 location option에
   `spot mesh -> route mesh channel` 매핑을 등록해야 한다. 매핑이 없으면 같은 이름을 사용한다.
   이 매핑은 전송 channel 선택만 정하고, store row key나 spot lifecycle mesh 이름을 바꾸지 않는다.

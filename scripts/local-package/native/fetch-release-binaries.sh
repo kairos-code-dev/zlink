@@ -123,7 +123,9 @@ copy_linux_soname() {
     find "$dst_dir" -maxdepth 1 -type f -name 'libzlink.so.*' -delete
     find "$dst_dir" -maxdepth 1 -type l -name 'libzlink.so.*' -delete
     install -D -m 0755 "$soname" "$dst_dir/$soname_base"
-    ln -s "$soname_base" "$dst_dir/libzlink.so.$major"
+    if [ "$soname_base" != "libzlink.so.$major" ]; then
+      ln -s "$soname_base" "$dst_dir/libzlink.so.$major"
+    fi
     ln -s "libzlink.so.$major" "$dst_dir/libzlink.so"
   fi
 }
@@ -247,6 +249,34 @@ copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/rust/native/windo
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/rust/include/zlink.h"
 copy libzlink-linux-x64/include/zlink_enum.h "$repo_root/bindings/rust/include/zlink_enum.h"
 copy libzlink-linux-x64/include/zlink_errno.h "$repo_root/bindings/rust/include/zlink_errno.h"
+
+release_version="${tag#core/v}"
+IFS='.' read -r release_major release_minor release_patch <<< "$release_version"
+if [ -z "$release_major" ] || [ -z "$release_minor" ] || [ -z "$release_patch" ]; then
+  echo "release tag must use core/vX.Y.Z: $tag" >&2
+  exit 1
+fi
+
+align_version_macros() {
+  header="$1"
+  if [ ! -f "$header" ]; then
+    return
+  fi
+  sed -i -E \
+    -e "s/^#define ZLINK_VERSION_MAJOR [0-9]+$/#define ZLINK_VERSION_MAJOR $release_major/" \
+    -e "s/^#define ZLINK_VERSION_MINOR [0-9]+$/#define ZLINK_VERSION_MINOR $release_minor/" \
+    -e "s/^#define ZLINK_VERSION_PATCH [0-9]+$/#define ZLINK_VERSION_PATCH $release_patch/" \
+    "$header"
+}
+
+align_version_macros "$repo_root/bindings/c/include/zlink.h"
+for header in \
+  "$repo_root/bindings/c/include/zlink/common.h" \
+  "$repo_root/bindings/cpp/include/zlink/common.h" \
+  "$repo_root/bindings/go/include/zlink/common.h" \
+  "$repo_root/bindings/rust/include/zlink/common.h"; do
+  align_version_macros "$header"
+done
 
 popd >/dev/null
 

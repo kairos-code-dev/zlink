@@ -5,9 +5,9 @@
 
 /*  Version macros are kept here so existing CMake/version checks that read
     zlink.h directly do not need to parse nested public headers. */
-#define ZLINK_VERSION_MAJOR 8
-#define ZLINK_VERSION_MINOR 6
-#define ZLINK_VERSION_PATCH 3
+#define ZLINK_VERSION_MAJOR 9
+#define ZLINK_VERSION_MINOR 0
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) ((major) * 10000 + (minor) * 100 + (patch))
 #define ZLINK_VERSION                                                                              \

@@ -439,7 +439,10 @@ void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t>
         state->destroyed_actor_keys.insert (key);
         state->actor_instances.erase (key);
         state->actor_mailboxes.erase (key);
-        state->dispatched_request_replies.erase (key);
+        {
+            const std::lock_guard<std::mutex> dedup_lock (state->dispatched_request_replies_mutex);
+            state->dispatched_request_replies.erase (key);
+        }
         destroy_actor_registry = state->destroy_actor_registry;
     }
     if (destroy_actor_registry) {
@@ -1194,7 +1197,11 @@ task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor
         _state->node->destroyed_actor_keys.insert (key);
         _state->node->actor_instances.erase (key);
         _state->node->actor_mailboxes.erase (key);
-        _state->node->dispatched_request_replies.erase (key);
+        {
+            const std::lock_guard<std::mutex> dedup_lock (
+              _state->node->dispatched_request_replies_mutex);
+            _state->node->dispatched_request_replies.erase (key);
+        }
         decrement_actor_count_unlocked (*_state);
         if (_state->node->destroy_actor_registry) {
             auto cleanup = _state->node->destroy_actor_registry (actor);
@@ -3021,6 +3028,8 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
                 const auto id_it = metadata.values.find ("__zlink.actorRequestId");
                 if (id_it != metadata.values.end () && !id_it->second.empty ()) {
                     replay_request_id = id_it->second;
+                    const std::lock_guard<std::mutex> dedup_lock (
+                      _state->dispatched_request_replies_mutex);
                     if (!_state->dispatched_request_replies[key]
                            .emplace (replay_request_id, std::nullopt)
                            .second) {
@@ -3043,7 +3052,8 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
                   if (replay_request_id.empty ()) {
                       return;
                   }
-                  const std::lock_guard<std::recursive_mutex> lock (node_state->mutex);
+                  const std::lock_guard<std::mutex> lock (
+                    node_state->dispatched_request_replies_mutex);
                   auto replies = node_state->dispatched_request_replies.find (key);
                   if (replies == node_state->dispatched_request_replies.end ()) {
                       return;
@@ -3322,6 +3332,8 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         const auto id_it = metadata.values.find ("__zlink.actorRequestId");
         if (id_it != metadata.values.end () && !id_it->second.empty ()) {
             dedup_request_id = id_it->second;
+            const std::lock_guard<std::mutex> dedup_lock (
+              _state->dispatched_request_replies_mutex);
             auto &replies = _state->dispatched_request_replies[key];
             const auto existing = replies.find (dedup_request_id);
             if (existing != replies.end ()) {
@@ -3348,6 +3360,8 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         .result ();
     if (!reply) {
         if (!dedup_request_id.empty ()) {
+            const std::lock_guard<std::mutex> dedup_lock (
+              _state->dispatched_request_replies_mutex);
             _state->dispatched_request_replies[key].erase (dedup_request_id);
         }
         const auto *error = reply.error ();
@@ -3366,6 +3380,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                 dispatch_error_surface_t::spot_actor, dispatch_kind, packet_name,
                                 {}, found_location->second.value (), actor_ref.actor_id ());
     if (!dedup_request_id.empty ()) {
+        const std::lock_guard<std::mutex> dedup_lock (_state->dispatched_request_replies_mutex);
         _state->dispatched_request_replies[key][dedup_request_id] = reply.value ();
     }
     return result_t<std::optional<zlink::message_t>>::success (std::move (reply.value ()));

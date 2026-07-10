@@ -70,8 +70,11 @@ class spot_node_builder_state_t
     // id: the first arrival (commit replay or the sender's retry) dispatches and
     // caches its reply; later arrivals with the same id return the cached reply
     // instead of dispatching again. nullopt means dispatch is still in flight.
+    // Guarded by its own mutex: the sender's retry runs on the packet-drain
+    // thread while the commit replay's completion runs on the spot serial queue.
     std::map<std::string, std::map<std::string, std::optional<zlink::message_t>>>
       dispatched_request_replies;
+    std::mutex dispatched_request_replies_mutex;
     struct actor_factory_registration_t
     {
         std::type_index actor_type{typeid (void)};

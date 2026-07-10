@@ -57,6 +57,7 @@ actor 는 factory 로 만든다. factory 는 `actorType` 짧은 문자열로 등
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
+    var spot = options.AddSpotMesh("play-spots");
     spot.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate 가 이 키로 factory 를 고른다.
     spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player");
     // remote 이동 때 보존할 actor state 가 있을 때만 custom adapter 를 등록한다.
@@ -213,12 +214,74 @@ sequenceDiagram
   Note over CA: Retire source actor and release old location
 ```
 
+#### `TransferInAsync`의 `state`는 어디서 오는가
+
+`TransferInAsync`의 `state`는 target application이 별도로 조회하거나 만드는 값이 아니다. source node에서
+같은 actor type의 adapter가 `TransferOutAsync(sourceActor, ct)`로 반환한 `ZLinkMessage`를 framework가
+target node까지 전달한 값이다.
+
+흐름은 다음과 같다.
+
+1. target `OnActorJoinAsync(actorId, request, ct)`가 admission을 accept한다.
+2. source node가 `TransferOutAsync(actor, ct)`를 호출한다.
+3. adapter가 반환한 `ZLinkMessage`의 content type과 payload를 framework가 remote commit에 담아 전달한다.
+4. target node가 전달받은 message를 `TransferInAsync(actorId, newContext, state, ct)`의 `state`로 넘긴다.
+5. target adapter가 state를 decode해 target actor instance를 만들고, framework가 commit과
+   `OnJoinedActorAsync(actor, ct)`를 이어서 수행한다.
+
+join의 `request`와 actor 이동 `state`는 서로 다른 message다. `request`는 target Spot이 입장을 허용할지
+판단하는 입력이고, `state`는 source actor의 이동 가능한 domain 상태다. application은 raw byte나
+transport frame을 직접 다루지 않고 `ZLinkMessage.From(...)`과 `Decode<T>()`를 사용한다.
+
+```csharp
+public sealed class PlayerActorTransferAdapter
+    : IZLinkActorTransferAdapter<PlayerActor>
+{
+    public ValueTask<ZLinkMessage> TransferOutAsync(
+        PlayerActor actor,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        // 이 반환값이 target TransferInAsync의 state 인자가 된다.
+        return ValueTask.FromResult(ZLinkMessage.From(new PlayerTransferState(
+            actor.DisplayName,
+            actor.RoomId)));
+    }
+
+    public ValueTask<PlayerActor> TransferInAsync(
+        string actorId,
+        IZLinkActorContext context,
+        ZLinkMessage state,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        // source가 반환한 message를 같은 domain state 타입으로 복원한다.
+        var transferred = state.Decode<PlayerTransferState>();
+        var actor = new PlayerActor(actorId, context);
+        actor.SetDisplayName(transferred.DisplayName);
+        if (!string.IsNullOrEmpty(transferred.RoomId))
+            actor.JoinRoom(transferred.RoomId);
+        return ValueTask.FromResult(actor);
+    }
+
+    private sealed record PlayerTransferState(string DisplayName, string RoomId);
+}
+```
+
+source와 target의 adapter는 같은 객체 인스턴스가 아니다. 각 node의 DI container가 자기 adapter를 만들고,
+node 사이에는 `ZLinkMessage`의 content type과 payload만 전달된다. 따라서 같은 actor type을 호스팅하는
+모든 node는 동일한 adapter 등록과 호환되는 state schema를 사용해야 한다.
+
 > transfer adapter를 등록하지 않은 actor type도 remote transfer할 수 있다. 이 경우 source는 빈
 > `ZLinkMessage`를 보내고 target은 기존 actor factory 경로로 actor를 만든다. state를 옮겨야 하면
 > `AddActorTransferAdapter<TActor, TAdapter>(actorType)`를 등록하고, adapter의 `TransferOutAsync`에서
 > state message를 만들고 `TransferInAsync(actorId, context, state, ct)`에서 target actor를 만든다.
 > custom adapter가 빈 `ZLinkMessage`를 반환하는 것도 정상이다. target actor는 `OnJoinedActorAsync`에서
 > 필요하면 별도 저장소의 도메인 상태를 읽을 수 있다.
+> 같은 node 안에서 Spot만 이동할 때는 기존 actor instance를 그대로 사용하므로 `TransferOutAsync`와
+> `TransferInAsync`를 호출하지 않는다.
 >
 > **bound session(STREAM)은 A→B 로 transfer** 되어 client push 는 끊기지 않는다(이주 후 B 의 actor 가
 > `BoundSession.Send` → 같은 client).

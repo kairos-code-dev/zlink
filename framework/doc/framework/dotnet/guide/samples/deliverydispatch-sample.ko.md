@@ -106,6 +106,19 @@ public sealed record SubscribeCustomerToDelivery(
 는 server-side evidence check 에 쓰고, `DeliverySpotCreate`/`DeliverySpotJoin` 류는
 Tracking 내부 Spot 구성에 쓴다.
 
+이 샘플의 `CustomerActor`와 `CourierActor`는 transfer adapter를 등록하지 않는다. customer actor에는
+node 간 이동으로 보존할 별도 domain state가 없고, courier actor의 진행 중 request 대기 정보는 다른
+node에서 이어서 처리할 이동 state가 아니다. 따라서 factory만 등록한다.
+
+```csharp
+options.AddSpotMesh(SampleNames.CustomerActorDiscovery)
+    // adapter 미등록 actor type은 framework 기본 빈 state transfer를 사용한다.
+    .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
+```
+
+remote transfer가 필요하면 source는 빈 `ZLinkMessage`를 보내고 target은 등록된 actor factory로 actor를
+materialize한다. adapter 미등록은 오류가 아니며 별도의 stateless 등록 API도 필요하지 않다.
+
 ## 3. 서버 구성
 
 | 프로세스 | 책임 | ZLink 요소 |

@@ -216,8 +216,9 @@ await events
 ```csharp
 options.AddHandlersFromAssemblyOf<Program>();
 options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");  // 이 key 만 다운스트림으로 전달 허용(허용 목록)
+var spot = options.AddSpotMesh("play-spots");
 spot.AddActorFactory<PlayerActorFactory>("player");
-options.AddSpotMesh("play-spots");
+spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player"); // remote 이동 state가 있을 때만 등록
 options.AddLocationStore(new ZLinkRedisLocationStore(r => r
     .SetConnectionString("redis:6379").SetKeyPrefix("app")));      // 자동 연결·위치 조회의 저장소(§8)
 options.UseFilter<AuditingFilter>();
@@ -226,7 +227,8 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, location store, filter, dispatch, actor factory 를 모두 소유 |
+| `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, location store, filter와 dispatch 설정을 소유 |
+| `IZLinkSpotNodeBuilder` | SpotNode의 Entry Spot, Spot factory, actor factory와 actor transfer adapter 등록을 소유 |
 | `IZLinkMetadataPolicyBuilder` | 응용 metadata 전달 정책(`AddForwardedMetadataKey(key)`) |
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
@@ -377,7 +379,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        PlayerActor actor,
+        string actorId,
         ZLinkMessage request,
         CancellationToken ct)
     {
@@ -489,7 +491,7 @@ public sealed class RoomRequestHandler
 | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | spot 요청 handler. 반환값이 응답 |
 | `IZLinkSpotSubscriptionHandler<TSpot, TMessage>` | spot 구독 topic 수신 handler |
 | `IZLinkSpotTimerHandler<TSpot>` | spot timer tick handler(`ZLinkTimerTick`) |
-| `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user spot join 요청 callback. 기본 계약은 `(TActor, ZLinkMessage)`이며 codec decode는 framework registry를 사용한다 |
+| `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user spot join admission callback. actor instance나 route metadata 없이 actor id와 `ZLinkMessage`를 받으며 codec decode는 framework registry를 사용한다 |
 | `IZLinkEntrySpot<TActor>.OnActorJoinAsync(...)` | Entry Spot join 요청 callback. user Spot에서 Entry Spot으로 돌아오는 명시적 join을 accept/reject한다 |
 | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler. context 뒤에 payload |
 | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler. context 뒤에 request |
@@ -524,7 +526,13 @@ ActorRef actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLink
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`/`Yield`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
 | `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`/`Yield`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
+| `IZLinkActorTransferAdapter<TActor>` | remote transfer에서 선택적으로 actor state를 `ZLinkMessage`로 만들고 target actor를 materialize한다. 미등록이면 기본 빈 state transfer를 사용한다 |
 | `IZLinkActorManager` | actor ref 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
+
+`TransferInAsync(actorId, context, state, ct)`의 `state`는 source node의
+`TransferOutAsync(actor, ct)`가 반환한 `ZLinkMessage`다. framework가 content type과 payload를 target으로
+전달하며, join admission의 request와는 별도 message다. 전체 사용 흐름과 예제는
+[06-actor-spot §3](06-actor-spot.ko.md#transferinasync의-state는-어디서-오는가)을 참고한다.
 
 검증: `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`.
 

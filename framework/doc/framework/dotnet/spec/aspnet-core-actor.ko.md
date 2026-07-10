@@ -258,9 +258,17 @@ public sealed class PlayerActorFactory : IZLinkActorFactory
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
+    var spot = options.AddSpotMesh("play-spots");
     spot.AddActorFactory<PlayerActorFactory>("player");
+    spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player");
 });
 ```
+
+`AddActorTransferAdapter<TActor, TAdapter>(actorType)`는 remote transfer에서 옮길 domain state가
+있는 actor type에만 등록한다. adapter는 source actor를 `ZLinkMessage`로 변환하고 target에서
+`actorId`, 새 `IZLinkActorContext`, state message를 사용해 actor를 materialize한다. 등록하지 않은
+actor type은 오류가 아니라 framework 기본 빈 state transfer와 actor factory 경로를 사용한다. 같은
+node 안에서 Spot만 바뀌는 경우에는 adapter를 호출하지 않고 기존 actor instance를 그대로 사용한다.
 
 ### 3.3 라이프사이클 단계
 
@@ -667,16 +675,17 @@ stage 의 character, zone 의 entity 같은 경우가 여기에 해당한다.
 ### 7.1 spot 안에서 actor join admission 선언
 
 SPOT spec ([aspnet-core-spot.ko.md](aspnet-core-spot.ko.md)) 의
-`IZLinkSpot<TActor>` 에는 `OnActorJoinAsync(...)` 기본 callback 이 있다. user Spot 은
-actor 타입을 `IZLinkSpot<TActor>` 에서 지정하고, join 요청은 framework `ZLinkMessage`
-또는 typed DTO 로 받는다. join 응답도 DTO 또는 `ZLinkMessage` 로 반환하고, framework 가
-startup/options 에 등록된 codec registry 로 encode/decode 한다. JSON, Protobuf,
+`IZLinkSpot<TActor>` 구현체는 `OnActorJoinAsync(...)` admission callback을 명시해야 한다. user Spot 은
+actor 타입을 `IZLinkSpot<TActor>` 에서 지정하고, join 요청은 framework `ZLinkMessage`로 받는다.
+callback 내부에서 request를 typed DTO로 decode하고, join 응답은 DTO 또는 `ZLinkMessage`를
+`ZLinkSpotActorJoinResult`에 담는다. framework는 startup/options에 등록된 codec registry로
+encode/decode 한다. JSON, Protobuf,
 MessagePack, custom codec 등록 위치는 기존과 같으며, application code 에서 binding
 `Message`나 codec helper를 직접 호출하지 않는다. 이 callback 은 다음 두 가지를 한곳에서
 처리한다.
 
-- 합류에 성공하면 어떤 actor type 을 생성할지
 - target Spot 상태를 보고 합류를 허용할지
+- actor id와 request를 보고 join reply를 어떻게 만들지
 
 ```csharp
 public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>
@@ -690,7 +699,7 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<Pl
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        PlayerActor actor,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -698,6 +707,12 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<Pl
         return ValueTask.FromResult(
             ZLinkSpotActorJoinResult.Accept(new TicTacToeGameJoinRes(joinRequest.GameId)));
     }
+
+    public ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
+
+    public ValueTask OnLeaveActorAsync(PlayerActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 
     // 비동기 초기화가 필요하면 OnInitializeAsync를 쓴다.
     // context는 생성자 주입 또는 framework가 Configure() 단계에서 attach한 값을 쓴다.
@@ -709,6 +724,8 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<Pl
 join admission method 는 Spot 멤버로 직접 선언한다. 반환값의 `Accepted` 가 `true` 일
 때만 framework 가 join 을 commit 하고 `OnJoinedActorAsync(...)` 를 호출한다.
 `Accepted=false` 이면 actor 위치는 바뀌지 않고 post-joined callback 도 실행되지 않는다.
+admission callback은 actor instance나 source/target route metadata를 받지 않는다. actor instance가
+필요한 application 처리는 commit 뒤 `OnJoinedActorAsync(...)`에서 수행한다.
 method 시그니처 검증은 startup validation 단계에서 이루어진다. 자세한 시그니처는
 [handler-interfaces.ko.md](handler-interfaces.ko.md) §5.7 에서 다룬다.
 
@@ -1065,18 +1082,24 @@ actor-session binding 은 framework / core runtime 내부에서 관리한다. �
 
 ## 10. 등록 표면 종합
 
-이 절은 앞서 본 표면들을 `IZLinkFrameworkOptions` 한 자리에 모아 다시 본다.
+이 절은 앞서 본 actor 관련 host 등록 표면을 한곳에서 다시 본다.
 
-`IZLinkFrameworkOptions` 가 노출하는 actor 관련 등록 메서드는 다음과 같다.
+actor 생성과 transfer 등록은 `IZLinkSpotNodeBuilder`가 소유한다. location store와 route resolver는
+최상위 `IZLinkFrameworkOptions`에서 등록한다.
 
 ```csharp
-public interface IZLinkFrameworkOptions
+public interface IZLinkSpotNodeBuilder
 {
-    // ... (channel / spot / stream 등록 등 다른 메서드 생략)
-
-    void AddActorFactory<TFactory>(string actorType)
+    IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
+    IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
+        where TActor : IZLinkActor
+        where TAdapter : class, IZLinkActorTransferAdapter<TActor>;
+}
+
+public interface IZLinkFrameworkOptions
+{
     void AddLocationStore(IZLinkLocationStore store);
 
     void AddSpotRouteRefResolver<TResolver>()
@@ -1090,6 +1113,7 @@ public interface IZLinkFrameworkOptions
 | 메서드 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
+| `AddActorTransferAdapter<TActor, TAdapter>(type)` | remote transfer에서 domain actor state를 직접 옮기는 SPOT host | source state를 message로 만들고 target actor를 materialize하는 adapter를 actorType에 매핑 |
 | `AddLocationStore(store)` | 여러 프로세스가 spot/actor 위치를 공유하는 서버 | location store 를 통해 `SpotRef` 와 actor 위치를 조회 |
 | `AddSpotRouteRefResolver<>()` | location store 없이 actor `JoinSpot(spotRid, ...)` route 를 직접 제공하는 advanced 구성 | spot rid → route channel 과 target spot ref |
 | `AddSpotMesh(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |

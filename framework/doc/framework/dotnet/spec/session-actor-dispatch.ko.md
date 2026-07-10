@@ -1256,9 +1256,10 @@ session route resolver 나 저장소 계약은 두지 않는다.
 options.AddRouteMesh("backend")
     .EnableServer(playEndpoint);
 
-spot.AddActorFactory<TicTacToeActorFactory>("player");
+spot.AddActorFactory<PlayActorFactory>("player");
+spot.AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>("player");
 
-public sealed class TicTacToeActor(
+public sealed class PlayActor(
     string actorId,
     IZLinkActorContext context)
     : IZLinkActor
@@ -1308,7 +1309,7 @@ public sealed class TicTacToeGame : IZLinkSpot<PlayActor>
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        PlayActor actor,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -1316,8 +1317,18 @@ public sealed class TicTacToeGame : IZLinkSpot<PlayActor>
         return ValueTask.FromResult(
             ZLinkSpotActorJoinResult.Accept(new JoinMatchRes(join.MatchId)));
     }
+
+    public ValueTask OnJoinedActorAsync(PlayActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
+
+    public ValueTask OnLeaveActorAsync(PlayActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 }
 ```
+
+`OnActorJoinAsync(...)`는 actor id와 request만 받는 admission callback이다. remote transfer에서
+`PlayActor`의 domain state를 옮겨야 하므로 이 구성은 transfer adapter를 등록한다. state를 옮길 필요가
+없는 actor type은 adapter를 등록하지 않으며, framework가 빈 state와 actor factory를 사용한다.
 
 ## 8. 직접 dispatch 예시 (session callback)
 

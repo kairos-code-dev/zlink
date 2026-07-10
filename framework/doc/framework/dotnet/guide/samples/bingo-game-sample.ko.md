@@ -44,6 +44,21 @@ Session 서버는 현재 STREAM session 을 그 actor handle 에 bind 한다. ac
 일반 파일 metadata store 처럼 직접 구현하지 않고, room 배정과 게임 상태 같은 domain
 logic 만 샘플 코드에 남긴다.
 
+Play 서버는 player actor의 node 간 이동에 필요한 domain state가 있으므로 factory와 transfer adapter를
+같은 actor type에 등록한다.
+
+```csharp
+options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+    .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
+    // 표시 이름, 현재 room, 종료·연결 상태를 target actor로 복원한다.
+    .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType);
+```
+
+adapter는 `PlayerActor` 자체를 transport로 보내지 않는다. source에서 이동 가능한 state를
+`ZLinkMessage`로 만들고 target에서 새 actor context와 actor id를 사용해 복원한다. source
+`TransferOutAsync`가 반환한 message가 target `TransferInAsync`의 `state` 인자로 전달된다. 같은 node
+안에서 Entry Spot과 room 사이를 이동할 때는 adapter를 호출하지 않고 기존 actor instance를 사용한다.
+
 direct 샘플은 첫 범위에서 제외한다. session 과 spot 을 한 인스턴스에 둘 때는
 웹 서버나 API 서버가 lobby 역할을 맡기 쉬워 Entry Spot 의 필요성이 잘 드러나지
 않는다. 이 샘플은 Session 서버, API 서버, Play 서버를 분리해 Entry Spot 이

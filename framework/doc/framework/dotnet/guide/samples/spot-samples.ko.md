@@ -766,7 +766,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        SampleActor actor,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -774,6 +774,12 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
         return ValueTask.FromResult(
             ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId)));
     }
+
+    public ValueTask OnJoinedActorAsync(SampleActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
+
+    public ValueTask OnLeaveActorAsync(SampleActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 
     public int ActorCount { get; private set; } = 10;
 
@@ -861,9 +867,11 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
 - session 의 `BindAsync(...)`
 - `IZLinkActorContext.JoinSpot(...)`
 - target user Spot 의 `OnActorJoinAsync(...)`
+- target user Spot 의 `OnJoinedActorAsync(...)`
 
-join 승인과 membership 기록은 반드시 target `Spot` 의 실행 문맥에서 처리되어야
-하기 때문이다.
+join admission은 target `OnActorJoinAsync(...)`에서 결정한다. framework가 join을 commit한 뒤
+`OnJoinedActorAsync(...)`가 호출되면 그때 application membership을 기록한다. 두 callback 모두 target
+`Spot`의 직렬 실행 문맥에서 호출되지만, admission 단계에서 membership을 먼저 바꾸면 안 된다.
 
 actor 타입은 handler 의 generic 인자로 명시한다. 이렇게 두면 두 가지 이점이
 있다.
@@ -996,13 +1004,27 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        SampleActor actor,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var join = request.Decode<SampleJoinRoomRequest>();
         return ValueTask.FromResult(
             ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId)));
+    }
+
+    public ValueTask OnJoinedActorAsync(SampleActor actor, CancellationToken cancellationToken)
+    {
+        _actors[actor.ActorId] = actor;
+        PublishSampleState();
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnLeaveActorAsync(SampleActor actor, CancellationToken cancellationToken)
+    {
+        _actors.Remove(actor.ActorId);
+        PublishSampleState();
+        return ValueTask.CompletedTask;
     }
 
     public async ValueTask OnInitializeAsync(
@@ -1014,34 +1036,17 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
             cancellationToken: cancellationToken);
     }
 
-    internal async ValueTask<SampleJoinRoomReply> JoinActorAsync(
-        SampleActor actor,
-        SampleJoinRoomRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        _actors[actor.ActorId] = actor;
-
-        PublishSampleState();
-
-        return new SampleJoinRoomReply
-        {
-            RoomId = RoomId,
-            ActorId = actor.ActorId,
-            ConnectedSessionCount = ConnectedSessionCount
-        };
-    }
-
     internal async ValueTask leaveActor(
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        if (!_actors.Remove(actorId, out SampleActor? actor))
+        if (!_actors.TryGetValue(actorId, out SampleActor? actor))
         {
             return;
         }
 
+        // 실제 목록 제거와 상태 publish는 framework가 호출하는 OnLeaveActorAsync가 담당한다.
         await Context.leaveActor(actor, cancellationToken);
-        PublishSampleState();
     }
 
     public async ValueTask HandleDisconnectedActorSessionAsync(
@@ -1377,16 +1382,22 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
     public IZLinkSpotContext Context { get; } = context;
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        SampleActor actor,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = actor;
+        _ = actorId;
         _ = cancellationToken;
         var join = request.Decode<SampleJoinRoomRequest>();
         return ValueTask.FromResult(
             ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId)));
     }
+
+    public ValueTask OnJoinedActorAsync(SampleActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
+
+    public ValueTask OnLeaveActorAsync(SampleActor actor, CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 }
 
 public interface ISampleRoomDirectory

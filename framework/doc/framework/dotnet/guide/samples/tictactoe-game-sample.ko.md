@@ -136,6 +136,20 @@ framework 타입, stream session, actor context, logger 를 알면 안 된다.
 `Infrastructure/ZLink` 는 channel handler, stream session, actor, Spot lifecycle, Spot
 handler 를 맡는다.
 
+Play 서버가 여러 node로 구성되면 player actor의 room과 player 정보도 target node로 옮겨야 한다.
+그래서 실제 샘플은 actor factory와 함께 transfer adapter를 등록한다.
+
+```csharp
+options.AddSpotMesh(SampleNodes.PlaySpot)
+    .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
+    // room, player, 종료·연결 상태를 ZLinkMessage로 전달한다.
+    .AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>(SampleTypes.PlayerActor);
+```
+
+target Spot의 `OnActorJoinAsync(actorId, request, ct)`는 admission만 결정한다. actor state 복원은
+adapter가 담당한다. source `TransferOutAsync`가 반환한 `ZLinkMessage`가 target `TransferInAsync`의
+`state` 인자로 전달되며, room membership 확정은 target `OnJoinedActorAsync(actor, ct)`에서 처리한다.
+
 ## 4. 완료 기준
 
 - 샘플 문서와 실제 코드의 DTO 이름이 일치한다.

@@ -162,6 +162,21 @@ framework callback 을 받아 domain method 를 호출하고, domain 이 반환�
 conversation 에 들어가기 전 단계라 `SupportEntrySpot` 에서 처리한다. idle 판정은 별도
 timer handler 파일이 아니라 `ConversationSpot` 의 idle check 와 domain `MarkIdle` 로 처리한다.
 
+Support 서버는 customer/agent actor가 다른 node로 이동해도 identity와 conversation 연결을 유지하도록
+transfer adapter를 등록한다.
+
+```csharp
+options.AddSpotMesh(SampleNames.SupportSpotDiscovery)
+    .AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType)
+    // 표시 이름, 역할, participant id, conversation id를 target actor로 복원한다.
+    .AddActorTransferAdapter<SupportUserActor, SupportUserActorTransferAdapter>(SampleNames.SupportActorType);
+```
+
+adapter는 conversation aggregate를 복제하지 않는다. actor가 보유한 identity와 현재 conversation id만
+옮긴다. source `TransferOutAsync`가 반환한 `ZLinkMessage`는 target `TransferInAsync`의 `state`로
+전달되고, conversation domain state는 `ConversationSpot`이 계속 소유한다. target admission은 actor
+id와 request만 받고, 복원된 actor는 commit 뒤 `OnJoinedActorAsync`에 전달된다.
+
 ## 4. 실행 흐름
 
 - **인증·binding**: client `AuthenticateReq` → Session 이 Api 로 token 검증 →

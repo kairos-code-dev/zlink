@@ -9,7 +9,9 @@
 #include <zlink/Contracts/Service/spot_node.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -145,28 +147,40 @@ class actor_client_impl_t final : public actor_client_t
         const auto caller_node_rid =
           actor_ref.node_rid ().empty () ? std::string{}
                                          : std::string (actor_ref.node_rid ().value ());
+        // Stable across every retry and the commit replay so the target
+        // dispatches this request exactly once (§10.2-1). Scoped by the client
+        // instance so ids do not collide across nodes.
+        const auto request_id =
+          _request_id_prefix + std::to_string (_request_id_seq.fetch_add (1));
         const auto budget = timeout.value_or (_default_timeout);
         const auto deadline = std::chrono::steady_clock::now () + budget;
         auto policy = stale_policy_t::route_not_found;
+        bool first_resolve = true;
+        bool ref_was_current = false;
         result_t<message_t> last = result_t<message_t>::failure (
           framework_error_kind_t::actor_location_stale, "actor location is stale", true);
         while (true) {
             auto actor = resolve_actor (actor_id, policy);
             if (actor) {
-                // In-flight handoff (spot-actor.ko.md §10.2-6): a request carries
-                // a reply channel and is addressed by ref, not re-resolved by id
-                // (unlike a best-effort by-id send, §10.2-5). If the caller's ref
-                // names a different node than the actor's committed location, the
-                // ref is a cross-node straggler: after the forwarding window it
-                // must fail fast so the sender re-resolves, rather than silently
-                // following the actor to its new incarnation. A local move keeps
-                // the same node, so an in-flight request against a still-current
-                // ref (A3) is unaffected and keeps retrying below.
-                if (!caller_node_rid.empty ()
-                    && actor.value ().node_rid.value () != caller_node_rid) {
+                const bool node_matches =
+                  caller_node_rid.empty ()
+                  || actor.value ().node_rid.value () == caller_node_rid;
+                if (first_resolve) {
+                    // Whether the ref was current when the request was issued
+                    // decides the two in-flight cases (spot-actor.ko.md §10.2-5/6):
+                    //   - ref already stale at issue (actor is elsewhere) → this is
+                    //     a cross-node straggler; after the forwarding window it
+                    //     fails fast so the sender re-resolves (§10.2-6, ST-F4/F5).
+                    //   - ref current at issue but the actor moves mid-request →
+                    //     follow it to the committed location so the reply still
+                    //     correlates to this caller (§10.5 in-flight, ST-F6).
+                    ref_was_current = node_matches;
+                    first_resolve = false;
+                }
+                if (!ref_was_current && !node_matches) {
                     co_return result_t<message_t>::failure (
                       framework_error_kind_t::actor_location_stale,
-                      "actor ref is stale: the actor moved to node '"
+                      "actor ref is stale: the actor is on node '"
                         + std::string (actor.value ().node_rid.value ()) + "', ref names node '"
                         + caller_node_rid + "'. actor=" + actor_id,
                       false);
@@ -178,7 +192,7 @@ class actor_client_impl_t final : public actor_client_t
                 }
                 const auto remaining =
                   std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
-                last = submit_request (actor.value (), packet_name, request, remaining);
+                last = submit_request (actor.value (), packet_name, request, remaining, request_id);
                 if (last || !is_stale_actor_error (last.error_kind ())) {
                     co_return last;
                 }
@@ -276,7 +290,8 @@ class actor_client_impl_t final : public actor_client_t
     result_t<message_t> submit_request (const resolved_actor_t &actor,
                                         std::string packet_name,
                                         message_t request,
-                                        std::chrono::milliseconds timeout)
+                                        std::chrono::milliseconds timeout,
+                                        const std::string &request_id)
     {
         auto runtime = first_spot_node ();
         if (!runtime) {
@@ -285,7 +300,8 @@ class actor_client_impl_t final : public actor_client_t
                                                  true);
         }
         auto relayed = relay_actor_packet (*runtime, actor, runtime::messaging::message_kind_t::request,
-                                           std::move (packet_name), std::move (request), timeout);
+                                           std::move (packet_name), std::move (request), timeout,
+                                           request_id);
         if (!relayed) {
             return result_t<message_t>::failure (
               relayed.error_kind (),
@@ -306,7 +322,8 @@ class actor_client_impl_t final : public actor_client_t
                         runtime::messaging::message_kind_t kind,
                         std::string packet_name,
                         message_t message,
-                        std::chrono::milliseconds timeout)
+                        std::chrono::milliseconds timeout,
+                        const std::string &request_id = {})
     {
         auto native_node = runtime.native_node ();
         if (!native_node) {
@@ -322,6 +339,12 @@ class actor_client_impl_t final : public actor_client_t
         metadata.values["__zlink.actorBindSessionRoute"] = "false";
         if (kind == runtime::messaging::message_kind_t::command) {
             metadata.values["__zlink.actorRelayKind"] = "send";
+        }
+        // A stable id lets the target dispatch a preserved-then-retried request
+        // exactly once (§10.2-1): every retry and the commit replay carry the
+        // same id, so the target de-duplicates them to a single dispatch.
+        if (!request_id.empty ()) {
+            metadata.values["__zlink.actorRequestId"] = request_id;
         }
         auto request = detail::make_spot_actor_packet_route_request (
           actor.framework_ref, actor.spot_rid, packet_name,
@@ -470,6 +493,9 @@ class actor_client_impl_t final : public actor_client_t
     serializer_registry_t *_serializers;
     std::vector<detail::spot_node_runtime_t> _spot_nodes;
     std::chrono::milliseconds _default_timeout{std::chrono::seconds (30)};
+    const std::string _request_id_prefix =
+      std::to_string (reinterpret_cast<std::uintptr_t> (this)) + "-";
+    std::atomic<std::uint64_t> _request_id_seq{1};
 };
 
 std::shared_ptr<actor_client_t>

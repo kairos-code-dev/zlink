@@ -35,14 +35,17 @@ struct pending_actor_admission_t
 };
 
 // One in-flight actor packet preserved while its actor is moving (spot-actor
-// spec §10). Only one-way packets are preserved; requests fail fast so the
-// sender can re-resolve and retry.
+// spec §10). Sends are preserved and replayed transparently; a request is also
+// preserved (§10.2-1) so it still reaches the committed target's handler even
+// after the caller's reply channel has re-resolved or timed out (§10.5 late
+// reply) — the replayed request's reply is best-effort.
 struct handoff_packet_t
 {
     std::string packet_name;
     std::vector<std::uint8_t> payload;
     std::string content_type;
     std::map<std::string, std::string> metadata;
+    bool is_request = false;
 };
 
 class actor_transfer_coordinator_t

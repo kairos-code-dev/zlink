@@ -6,9 +6,9 @@
 > (§9 bound session transfer, §10 in-flight handoff),
 > 공통 검증표: [common/e2e/config-10-spot-actor-transfer.ko.md](../../framework/common/e2e/config-10-spot-actor-transfer.ko.md).
 > 상세 작업기록: [cpp-worker.ko.md](cpp-worker.ko.md), [in-flight-handoff/README.ko.md](in-flight-handoff/README.ko.md).
-> 최종 갱신 2026-07-11. **config-10 19/19 전량 통과**.
+> 최종 갱신 2026-07-11. **config-10 20/20 전량 통과**.
 
-## 1. 시나리오 진행표 (19개)
+## 1. 시나리오 진행표 (20개)
 
 | ID | 시나리오 | 상태 | 근거 / 잔여 원인 |
 |----|----------|:----:|------------------|
@@ -31,8 +31,18 @@
 | ST-F3 | bound session cross-move 순서 | ✅ | 2026-07-11 근본해결 (동상) |
 | ST-F4 | straggler forward then fail-fast | ✅ | 2026-07-11 근본해결 (cross-node stale-ref fail-fast, 아래 F6-a) |
 | ST-F5 | forwarding mapping eviction | ✅ | 2026-07-11 근본해결 (동상, chained hop) |
+| ST-F6 | in-flight request correlation·timeout | ✅ | 2026-07-11 근본해결 (아래 F6-c, exactly-once 단일 dispatch) |
 
-**요약: 19 ✅ / 0 ❌ — config-10 전량 통과 (2026-07-11)**
+**요약: 20 ✅ / 0 ❌ — config-10 전량 통과 (2026-07-11)**
+
+> **2026-07-11 ST-F6 근본해결 (§10.5 in-flight request, F6-c)**: cpp 포팅에 빠져있던 20번째 시나리오
+> 이식 + 구현. ① correlation: still-current ref로 낸 요청이 이동 중이면 committed node로 **따라가**
+> reply가 caller에 correlate(actor_client `ref_was_current` 추적). ② timeout+§10.2-1 preservation:
+> 이동 중 요청도 **backlog에 보존**(더 이상 drop 안 함)해 caller가 timeout해도 committed target
+> handler에 도달(late reply). ③ **exactly-once**: caller가 안정적 request-id를 붙이고, target이
+> `dispatched_request_replies`로 첫 dispatch만 실행·reply 캐시, 재시도/commit-replay는 캐시된 reply
+> 반환(dispatch 중이면 retriable로 재폴). correlation/late 각각 정확히 **1회** dispatch 실측 확인.
+> 검증: config-10 20/20 + 샘플 6종 100% + framework unit 38/38, 회귀 0.
 
 > **2026-07-11 C2 근본해결 (bound session cross-node relay, §9)**: 두 부분.
 > ① 테스트: pre-transfer bound push를 HTTP(by-id `request_to_actor`)가 아니라 **bound session stream
@@ -53,13 +63,13 @@
 
 ## 2. 잔여 작업표
 
-> **config-10 목표(19/19 근본수정 통과)는 완료.** 아래 #1-4는 config-10 스코프로 마감했다.
+> **config-10 목표(20/20 근본수정 통과)는 완료.** 아래 #1-4는 config-10 스코프로 마감했다.
 > #5-8은 config-10 완료 조건이 아니라 그 **바깥의 후속 트랙**(전 언어 POSD/DDD 리뷰 루프,
 > 공개 계약 결정, 샘플 코드 검토)으로, config-10 통과와 독립이다.
 
 | # | 작업 | 계층 | 우선순위 | 상태 | 의존/비고 |
 |---|------|------|:--------:|:----:|-----------|
-| 1 | **ST-F6**: config-10 커버분(F4/F5/C2) 완료. 잔여=§10.5 **window 내** request-reply forward 상관(F6-c) — config-10 미커버 | framework | P1 | 🟡 | config-10은 post-window만 검증. within-window request forward는 별도 |
+| 1 | **ST-F6**: §10.5 in-flight request correlation·timeout + §10.2-1 exactly-once | framework | P0 | ✅ | config-10 20/20 실측 |
 | 2 | §11-12 계약: commit 전 성공 노출 없음 + 실패 시 route 비오염 evidence | framework | P0 | ✅ | config-10 ST-C1/C2/C3로 마감 |
 | 3 | config-10 3-pass 전체 runner 그린 (19/19) | e2e | P0 | ✅ | `handoff_backlog` marker만 잔여(row 4) |
 | 4 | handoff marker 정합 | framework/e2e | P1 | ✅ | `backlog_enqueued`를 post-ack forward 경로에도 발화. F4/F5 marker=mapping_evicted로 정렬. 모든 marker는 타이밍 의존이라 best-effort(경고)로 — 19/19 시나리오 assertion이 authoritative gate |
@@ -76,7 +86,7 @@
 |------|------|------|---------------|
 | F6-a | ✅ cross-node stale ref request fail-fast (node 비교, `actor_client.cpp`) | §10.2-6 | F4 |
 | F6-b | ✅ chained hop도 fail-fast stale (동일 fix) | §10.4-3 | F5 |
-| F6-c | ⬜ window **내** request forward + reply 상관 (config-10 미커버) | §10.5 | — |
+| F6-c | ✅ in-flight request correlation + timeout(late reply) + exactly-once dedup·reply-cache | §10.5, §10.2-1 | ST-F6 |
 | F6-d | ✅ bound session cross-node relay (bridge homed-elsewhere guard + stream bound.request) | §9 | C2 |
 | F6-e | ✅ source 사망 후 target-local push (C2 after-source-down 통과) | §9 | C2 |
 

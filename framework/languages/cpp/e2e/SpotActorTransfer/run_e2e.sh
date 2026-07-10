@@ -173,6 +173,9 @@ restart_node_a() {
 
 if [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5"
+  # ST-F6 exercises long in-flight delays (gate hold + 1s late-reply handler);
+  # run it in a fresh client process, like the shutdown scenarios below.
+  run_client "ST-F6"
   run_client "ST-C2"
   sleep 1
   restart_node_a

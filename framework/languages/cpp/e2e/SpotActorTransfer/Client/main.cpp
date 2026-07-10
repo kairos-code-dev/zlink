@@ -341,6 +341,7 @@ class scenario_runner_t
           {"ST-F3", &scenario_runner_t::bound_session_cross_move_order},
           {"ST-F4", &scenario_runner_t::straggler_forward_then_fail_fast},
           {"ST-F5", &scenario_runner_t::forwarding_mapping_eviction},
+          {"ST-F6", &scenario_runner_t::in_flight_request_correlation_and_timeout},
         };
         const auto found = scenarios.find (name);
         if (found == scenarios.end ()) {
@@ -840,6 +841,72 @@ class scenario_runner_t
         const auto evidence = get_evidence (_nodes.c);
         require_no_contains (evidence, "ST-F5|" + actor_id + "|packet_handler|after-eviction",
                              "ST-F5 evicted packet reached the target handler.");
+    }
+
+    void in_flight_request_correlation_and_timeout ()
+    {
+        in_flight_request_correlation ();
+        in_flight_request_timeout ();
+    }
+
+    // §10.5: a request issued against a still-current ref while the actor is
+    // moving follows the actor to its committed node, so the reply correlates
+    // back to the original caller.
+    void in_flight_request_correlation ()
+    {
+        const auto actor_id = "actor-inflight-req-" + unique_suffix ();
+        const auto spot_rid = "spot-inflight-req-" + unique_suffix ();
+        create_spot (_nodes.b, spot_rid, "delay-joined");
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 106);
+        const auto old_ref = get_actor_ref (_nodes.a, actor_id);
+
+        auto join_task = std::async (std::launch::async, [&] {
+            return join_actor (_nodes.a, actor_id, {"ST-F6", spot_rid});
+        });
+        wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|joined_wait|" + spot_rid});
+        auto request_task = std::async (std::launch::async, [&] {
+            return probe_ref (_nodes.a, actor_id, old_ref, {"ST-F6", "correlated-reply"},
+                              std::chrono::seconds (5));
+        });
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+        release_joined_gate (_nodes.b, spot_rid);
+
+        require (join_task.get ().accepted, "ST-F6 correlation transfer was rejected.");
+        const auto response = request_task.get ();
+        require (response.succeeded && response.reply && response.reply->node_rid == "actor-b",
+                 "ST-F6 reply did not correlate to the original caller: " + response.error_kind);
+        require (response.reply->marker == "correlated-reply",
+                 "ST-F6 correlated reply marker mismatch.");
+        wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|packet_handler|correlated-reply"});
+    }
+
+    // §10.5: the caller times out before the move commits, but the preserved
+    // request still reaches the target handler (late reply) once the actor is
+    // admitted on the target node.
+    void in_flight_request_timeout ()
+    {
+        const auto actor_id = "actor-inflight-req-timeout-" + unique_suffix ();
+        const auto spot_rid = "spot-inflight-req-timeout-" + unique_suffix ();
+        create_spot (_nodes.b, spot_rid, "delay-joined");
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 107);
+        const auto old_ref = get_actor_ref (_nodes.a, actor_id);
+
+        auto join_task = std::async (std::launch::async, [&] {
+            return join_actor (_nodes.a, actor_id, {"ST-F6", spot_rid});
+        });
+        wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|joined_wait|" + spot_rid});
+        auto request_task = std::async (std::launch::async, [&] {
+            return probe_ref (_nodes.a, actor_id, old_ref, {"ST-F6", "late-reply"},
+                              std::chrono::milliseconds (250));
+        });
+        std::this_thread::sleep_for (std::chrono::milliseconds (400));
+        const auto timeout = request_task.get ();
+        require (!timeout.succeeded && timeout.error_kind == "TimeoutException",
+                 "ST-F6 expected normal TimeoutException, got '" + timeout.error_kind + "'.");
+        release_joined_gate (_nodes.b, spot_rid);
+        require (join_task.get ().accepted, "ST-F6 timeout transfer was rejected.");
+        wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|packet_handler|late-reply",
+                                  "ST-F6|" + actor_id + "|late_reply_created|late-reply"});
     }
 
     straggler_setup_t transfer_for_straggler (const std::string &scenario, int state_version)

@@ -439,6 +439,7 @@ void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t>
         state->destroyed_actor_keys.insert (key);
         state->actor_instances.erase (key);
         state->actor_mailboxes.erase (key);
+        state->dispatched_request_replies.erase (key);
         destroy_actor_registry = state->destroy_actor_registry;
     }
     if (destroy_actor_registry) {
@@ -1193,6 +1194,7 @@ task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor
         _state->node->destroyed_actor_keys.insert (key);
         _state->node->actor_instances.erase (key);
         _state->node->actor_mailboxes.erase (key);
+        _state->node->dispatched_request_replies.erase (key);
         decrement_actor_count_unlocked (*_state);
         if (_state->node->destroy_actor_registry) {
             auto cleanup = _state->node->destroy_actor_registry (actor);
@@ -3009,15 +3011,53 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
             spot_actor_message_metadata_t metadata;
             metadata.content_type = std::move (packet.content_type);
             metadata.values = std::move (packet.metadata);
+            // A preserved request is dispatched to the request handler (§10.5
+            // late reply). Claim its id so the sender's own retry to the
+            // committed location returns this dispatch's cached reply instead of
+            // dispatching a second time (§10.2-1 exactly-once); if the retry
+            // already claimed it, skip.
+            std::string replay_request_id;
+            if (packet.is_request) {
+                const auto id_it = metadata.values.find ("__zlink.actorRequestId");
+                if (id_it != metadata.values.end () && !id_it->second.empty ()) {
+                    replay_request_id = id_it->second;
+                    if (!_state->dispatched_request_replies[key]
+                           .emplace (replay_request_id, std::nullopt)
+                           .second) {
+                        continue;
+                    }
+                }
+            }
+            const auto handler_kind = packet.is_request ? spot_handler_kind_t::actor_request
+                                                        : spot_handler_kind_t::actor_send;
             auto task =
               spot_handler_registry_t (context->_state)
-                .invoke_erased (spot_handler_kind_t::actor_send, packet.packet_name, {},
+                .invoke_erased (handler_kind, packet.packet_name, {},
                                 factory.value ().get ().actor_type, target.spot_instance.get (),
                                 backlog_actor.get (), *services, target_serializers, message,
                                 std::move (metadata));
             auto task_holder = std::make_shared<task_t<zlink::message_t>> (std::move (task));
             detail::observe_task_completion (
-              *task_holder, [task_holder] (const result_t<zlink::message_t> &) {});
+              *task_holder, [task_holder, node_state = _state, key, replay_request_id] (
+                              const result_t<zlink::message_t> &completed) {
+                  if (replay_request_id.empty ()) {
+                      return;
+                  }
+                  const std::lock_guard<std::recursive_mutex> lock (node_state->mutex);
+                  auto replies = node_state->dispatched_request_replies.find (key);
+                  if (replies == node_state->dispatched_request_replies.end ()) {
+                      return;
+                  }
+                  const auto entry = replies->second.find (replay_request_id);
+                  if (entry == replies->second.end ()) {
+                      return;
+                  }
+                  if (completed) {
+                      entry->second = completed.value ();
+                  } else {
+                      replies->second.erase (entry);
+                  }
+              });
         }
     }
     if (auto native = _state->native_node.lock ();
@@ -3139,19 +3179,22 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
 
     const auto key = actor_key (actor_ref);
     if (_state->actor_transfer_coordinator.blocks_dispatch (key)) {
-        // In-flight handoff (§10.2-1): one-way packets that arrive while the
-        // actor is moving are preserved in arrival order and travel to the
-        // target with the commit. Requests carry a reply channel that cannot
-        // move with the actor, so they fail fast as retriable and the sender
-        // re-resolves (§10.2-5 best-effort).
-        if (message_kind == stream_message_kind_t::send
-            && _state->actor_transfer_coordinator.try_append_backlog (
+        // In-flight handoff (§10.2-1): actor packets that arrive while the actor
+        // is moving are preserved in arrival order and travel to the target with
+        // the commit — never dropped. Sends return the empty success shape so
+        // preservation is indistinguishable from immediate dispatch. A request's
+        // reply channel cannot move with the actor, so it additionally fails fast
+        // as retriable and the caller re-resolves (§10.2-5) or times out; the
+        // preserved copy still reaches the committed target's handler (§10.5 late
+        // reply) with a best-effort reply.
+        const bool is_request = message_kind == stream_message_kind_t::request;
+        if (_state->actor_transfer_coordinator.try_append_backlog (
               key, detail::handoff_packet_t{std::string (packet_name), message.to_bytes (),
-                                            metadata.content_type, metadata.values})) {
+                                            metadata.content_type, metadata.values, is_request})) {
             emit_actor_handoff_marker ("handoff_backlog", actor_ref.actor_id (), packet_name);
-            // Same shape a dispatched send returns, so preservation is
-            // indistinguishable from immediate dispatch to the sender.
-            return result_t<std::optional<zlink::message_t>>::success (zlink::message_t{});
+            if (!is_request) {
+                return result_t<std::optional<zlink::message_t>>::success (zlink::message_t{});
+            }
         }
         return result_t<std::optional<zlink::message_t>>::failure (
           framework_error_kind_t::actor_location_stale, "actor transfer is in progress", true);
@@ -3270,6 +3313,29 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                  ? dispatch_message_kind_t::actor_send
                                  : dispatch_message_kind_t::actor_request;
 
+    // §10.2-1 exactly-once: a request preserved during the move and also retried
+    // by the sender (or replayed by the commit) carries a stable id. The first
+    // arrival dispatches; a repeat returns the cached reply (or fails retriable
+    // while that first dispatch is still in flight so the sender re-polls).
+    std::string dedup_request_id;
+    if (message_kind == stream_message_kind_t::request) {
+        const auto id_it = metadata.values.find ("__zlink.actorRequestId");
+        if (id_it != metadata.values.end () && !id_it->second.empty ()) {
+            dedup_request_id = id_it->second;
+            auto &replies = _state->dispatched_request_replies[key];
+            const auto existing = replies.find (dedup_request_id);
+            if (existing != replies.end ()) {
+                if (existing->second) {
+                    return result_t<std::optional<zlink::message_t>>::success (
+                      *existing->second);
+                }
+                return result_t<std::optional<zlink::message_t>>::failure (
+                  framework_error_kind_t::actor_location_stale,
+                  "actor request dispatch is in flight", true);
+            }
+            replies.emplace (dedup_request_id, std::nullopt);
+        }
+    }
     report_spot_dispatch_trace (_state, message_flow_outcome_t::received,
                                 dispatch_error_surface_t::spot_actor, dispatch_kind, packet_name,
                                 {}, found_location->second.value (), actor_ref.actor_id ());
@@ -3281,6 +3347,9 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                         serializers, message, std::move (metadata), dispatch_on_spot_serial)
         .result ();
     if (!reply) {
+        if (!dedup_request_id.empty ()) {
+            _state->dispatched_request_replies[key].erase (dedup_request_id);
+        }
         const auto *error = reply.error ();
         const framework_exception_t exception (
           reply.error_kind (), error != nullptr ? error->what () : "actor packet relay failed",
@@ -3296,6 +3365,9 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     report_spot_dispatch_trace (_state, message_flow_outcome_t::replied,
                                 dispatch_error_surface_t::spot_actor, dispatch_kind, packet_name,
                                 {}, found_location->second.value (), actor_ref.actor_id ());
+    if (!dedup_request_id.empty ()) {
+        _state->dispatched_request_replies[key][dedup_request_id] = reply.value ();
+    }
     return result_t<std::optional<zlink::message_t>>::success (std::move (reply.value ()));
 }
 

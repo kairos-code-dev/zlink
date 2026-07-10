@@ -65,6 +65,13 @@ class spot_node_builder_state_t
     std::set<std::string> actor_created_keys;
     std::set<std::string> destroying_actors;
     std::set<std::string> destroyed_actor_keys;
+    // Request id -> cached reply for requests already dispatched at this node
+    // (§10.2-1 exactly-once). A preserved-then-retried request carries a stable
+    // id: the first arrival (commit replay or the sender's retry) dispatches and
+    // caches its reply; later arrivals with the same id return the cached reply
+    // instead of dispatching again. nullopt means dispatch is still in flight.
+    std::map<std::string, std::map<std::string, std::optional<zlink::message_t>>>
+      dispatched_request_replies;
     struct actor_factory_registration_t
     {
         std::type_index actor_type{typeid (void)};

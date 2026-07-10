@@ -723,9 +723,13 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     auto late_backlog = runtime.take_actor_handoff_backlog (actor_ref);
     for (auto &packet : late_backlog) {
         emit_backlog_enqueued_marker (joined.value ().actor, packet.packet_name);
-        stream_header_t header (stream_message_kind_t::send, stream_codec_t::raw,
-                                stream_header_flags_t::none, std::nullopt,
-                                std::move (packet.packet_name));
+        // A preserved request is replayed as a request so it reaches the target's
+        // request handler (§10.5 late reply); its reply is best-effort — the
+        // original caller has already re-resolved or timed out.
+        const auto kind = packet.is_request ? stream_message_kind_t::request
+                                            : stream_message_kind_t::send;
+        stream_header_t header (kind, stream_codec_t::raw, stream_header_flags_t::none,
+                                std::nullopt, std::move (packet.packet_name));
         spot_actor_message_metadata_t metadata;
         metadata.content_type = std::move (packet.content_type);
         metadata.values = std::move (packet.metadata);

@@ -2489,8 +2489,15 @@ int main ()
     }
     auto handoff_backlog =
       handoff_source_runtime.take_actor_handoff_backlog (handoff_join.value ().actor);
-    if (handoff_backlog.size () != 2 || handoff_backlog[0].packet_name != "state.note"
-        || handoff_backlog[1].packet_name != "state.note"
+    // §10.2-1: the two moving sends AND the moving request are all preserved in
+    // arrival order (the request also failed fast at 209, but is not dropped —
+    // it reaches the committed target's handler for a best-effort late reply,
+    // §10.5). The request carries is_request so the replay dispatches it as a
+    // request rather than a send.
+    if (handoff_backlog.size () != 3 || handoff_backlog[0].packet_name != "state.note"
+        || handoff_backlog[0].is_request || handoff_backlog[1].packet_name != "state.note"
+        || handoff_backlog[1].is_request || handoff_backlog[2].packet_name != "state.read"
+        || !handoff_backlog[2].is_request
         || !handoff_source_runtime.take_actor_handoff_backlog (handoff_join.value ().actor)
               .empty ()) {
         return 211;

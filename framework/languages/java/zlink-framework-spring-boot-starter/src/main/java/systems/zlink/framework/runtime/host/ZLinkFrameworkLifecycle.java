@@ -236,7 +236,6 @@ public final class ZLinkFrameworkLifecycle
     }
 
     private static void boot(String step) {
-        System.out.println("[boot] component=framework-lifecycle step=" + step);
     }
 
 }

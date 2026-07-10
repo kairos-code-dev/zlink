@@ -1,0 +1,41 @@
+package systems.zlink.framework.runtime.channels;
+
+import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
+
+final class DefaultClientServerChannelRuntimeOptions
+    implements ZLinkClientServerChannelRuntimeOptions {
+    private final ZLinkChannelRuntime host;
+    private final String channelName;
+
+    DefaultClientServerChannelRuntimeOptions(ZLinkChannelRuntime host, String channelName) {
+        this.host = host;
+        this.channelName = channelName;
+    }
+
+    @Override
+    public ZLinkSocketRuntimeOptions configureServerSocket() {
+        return new DefaultChannelSocketRuntimeOptions(host, channelName);
+    }
+}
+
+final class DefaultChannelSocketRuntimeOptions implements ZLinkSocketRuntimeOptions {
+    private final ZLinkChannelRuntime host;
+    private final String channelName;
+
+    DefaultChannelSocketRuntimeOptions(ZLinkChannelRuntime host, String channelName) {
+        this.host = host;
+        this.channelName = channelName;
+    }
+
+    @Override
+    public int weight() {
+        return host.serverSocket(channelName).peerWeight();
+    }
+
+    @Override
+    public void weight(int value) {
+        ZLinkChannelRuntime.validatePeerWeight(value);
+        host.serverSocket(channelName).setPeerWeight(value);
+    }
+}

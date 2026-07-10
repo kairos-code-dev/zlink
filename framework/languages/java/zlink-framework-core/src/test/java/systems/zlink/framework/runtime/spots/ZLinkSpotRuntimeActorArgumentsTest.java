@@ -30,7 +30,7 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
         Request request = new Request();
         ZLinkSpotActorRequestContext context = requestContext("PlaceMarkReq");
 
-        Object[] args = ZLinkSpotRuntime.actorPacketArguments(
+        Object[] args = ZLinkSpotHandlerInvoker.actorPacketArguments(
             method,
             spot,
             actor,

@@ -34,19 +34,24 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
     private final ZLinkRegisteredLocationStores stores;
     private final ZLinkLocationRuntime runtime;
     private final ZLinkLocationOptions options;
-    private final ZLinkOwnerLeaseTracker leases;
-    private final ZLinkObservedLocationGenerations observed = new ZLinkObservedLocationGenerations();
+    private final ZLinkLiveLocationRows liveRows;
 
     public ZLinkLocationRuntimeQueryService(
         ZLinkRegisteredLocationStores stores,
         ZLinkLocationRuntime runtime,
         ZLinkLocationOptions options) {
+        this(stores, runtime, options, ZLinkLiveLocationRows.create(stores, options));
+    }
+
+    public ZLinkLocationRuntimeQueryService(
+        ZLinkRegisteredLocationStores stores,
+        ZLinkLocationRuntime runtime,
+        ZLinkLocationOptions options,
+        ZLinkLiveLocationRows liveRows) {
         this.stores = Objects.requireNonNull(stores, "stores");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.options = Objects.requireNonNull(options, "options");
-        this.leases = new ZLinkOwnerLeaseTracker(
-            stores.ownerLeaseStore(),
-            options.pollingInterval());
+        this.liveRows = Objects.requireNonNull(liveRows, "liveRows");
     }
 
     @Override
@@ -64,7 +69,7 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
     @Override
     public CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter) {
         return stores.peerStore().listPeerLocationsAsync(filter)
-            .thenCompose(rows -> filterLive(rows, ZLinkPeerLocation::ownerId, observed::acceptPeer));
+            .thenCompose(liveRows::filterLivePeers);
     }
 
     @Override
@@ -72,7 +77,7 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page) {
         return stores.spotStore().listSpotLocationsAsync(filter, normalize(page))
-            .thenCompose(raw -> filterLive(raw.items(), ZLinkSpotLocation::ownerId, observed::acceptSpot)
+            .thenCompose(raw -> liveRows.filterLiveSpots(raw.items())
                 .thenApply(items -> new ZLinkLocationPage<>(items, raw.continuationToken())));
     }
 
@@ -81,7 +86,7 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page) {
         return stores.actorStore().listActorLocationsAsync(filter, normalize(page))
-            .thenCompose(raw -> filterLive(raw.items(), ZLinkActorLocation::ownerId, observed::acceptActor)
+            .thenCompose(raw -> liveRows.filterLiveActors(raw.items())
                 .thenApply(items -> new ZLinkLocationPage<>(items, raw.continuationToken())));
     }
 
@@ -90,7 +95,7 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page) {
         return stores.routeStore().listRouteLocationsAsync(filter, normalize(page))
-            .thenCompose(raw -> filterLive(raw.items(), ZLinkRouteLocation::ownerId, observed::acceptRoute)
+            .thenCompose(raw -> liveRows.filterLiveRoutes(raw.items())
                 .thenApply(items -> new ZLinkLocationPage<>(items, raw.continuationToken())));
     }
 
@@ -242,27 +247,6 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
                     row.updatedAt()))
                 .filter(entry -> matches(entry, filter))
                 .toList(), page));
-    }
-
-    private <T> CompletionStage<List<T>> filterLive(
-        List<T> rows,
-        java.util.function.Function<T, String> ownerId,
-        java.util.function.Predicate<T> acceptObserved) {
-        CompletionStage<List<T>> result = CompletableFuture.completedFuture(new ArrayList<>());
-        for (T row : rows) {
-            result = result.thenCompose(live -> {
-                if (!acceptObserved.test(row)) {
-                    return CompletableFuture.completedFuture(live);
-                }
-                return leases.isOwnerLiveAsync(ownerId.apply(row)).thenApply(ownerLive -> {
-                    if (ownerLive) {
-                        live.add(row);
-                    }
-                    return live;
-                });
-            });
-        }
-        return result.thenApply(List::copyOf);
     }
 
     private static List<ZLinkLocationServiceSummary> summarize(

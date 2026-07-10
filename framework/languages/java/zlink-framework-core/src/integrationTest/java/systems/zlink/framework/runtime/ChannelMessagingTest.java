@@ -1128,6 +1128,33 @@ final class ChannelMessagingTest {
     }
 
     @Test
+    void routeMesh_missingRequestHandlerRepliesFrameworkError() {
+        String sourceEndpoint = tcpEndpoint();
+        String targetEndpoint = tcpEndpoint();
+        RoutingId sourceRid = RoutingId.from("route-missing-source");
+        RoutingId targetRid = RoutingId.from("route-missing-target");
+
+        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+            channel.setRoutingId(sourceRid);
+            channel.enableClient(targetEndpoint); };
+
+        DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+            channel.setRoutingId(targetRid);
+            channel.enableClient(sourceEndpoint); };
+
+        try (ZLinkFrameworkRuntime source =
+                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime target =
+                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+            ZLinkFrameworkException error = awaitRouteMissingHandlerError(source, targetRid);
+            assertTrue(error.getMessage().contains("HANDLER_MISSING"));
+            assertTrue(error.getMessage().contains("Missing"));
+        }
+    }
+
+    @Test
     void routeMesh_nonInitiatorRequestUsesInboundProbeIdentity() {
         String initiatorEndpoint = tcpEndpoint();
         String nonInitiatorEndpoint = tcpEndpoint();
@@ -1487,6 +1514,34 @@ final class ChannelMessagingTest {
             }
         }
         throw new AssertionError("route mesh request did not succeed", lastFailure);
+    }
+
+    private static ZLinkFrameworkException awaitRouteMissingHandlerError(
+        ZLinkFrameworkRuntime source,
+        RoutingId targetRid) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                source.route()
+                    .requestToNode("route", targetRid, message("hello"))
+                    .packetName("Missing")
+                    .timeout(Duration.ofMillis(100))
+                    .submit(String.class)
+                    .toCompletableFuture()
+                    .join();
+            } catch (CompletionException ex) {
+                if (ex.getCause() instanceof ZLinkFrameworkException frameworkError
+                    && frameworkError.getMessage().contains("HANDLER_MISSING")) {
+                    return frameworkError;
+                }
+                lastFailure = ex;
+            } catch (RuntimeException ex) {
+                lastFailure = ex;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("route mesh missing handler did not return framework error", lastFailure);
     }
 
     private static String awaitScannedRouteReply(ZLinkFrameworkRuntime source, RoutingId targetRid) {

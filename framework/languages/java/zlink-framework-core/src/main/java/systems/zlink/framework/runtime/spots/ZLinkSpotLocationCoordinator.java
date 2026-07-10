@@ -1,0 +1,123 @@
+package systems.zlink.framework.runtime.spots;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
+import systems.zlink.framework.spots.ZLinkSpotKind;
+
+final class ZLinkSpotLocationCoordinator {
+    private final Map<RoutingId, NodeLocation> nodes = new HashMap<>();
+    private ZLinkLocationLifecycle lifecycle;
+
+    void registerNode(
+        String meshName,
+        RoutingId nodeRid,
+        String routeEndpoint,
+        boolean publisherEnabled) {
+        nodes.put(
+            nodeRid,
+            new NodeLocation(meshName, nodeRid, routeEndpoint, publisherEnabled));
+    }
+
+    void setLifecycle(ZLinkLocationLifecycle lifecycle) {
+        this.lifecycle = lifecycle;
+    }
+
+    String publisherChannelName(RoutingId nodeRid) {
+        NodeLocation node = nodes.get(nodeRid);
+        return node != null && node.publisherEnabled() ? node.meshName() : null;
+    }
+
+    String meshNameForSpot(
+        RoutingId spotRid,
+        RoutingId primaryNodeRid,
+        boolean localUserSpot) {
+        if (spotRid == null) {
+            return null;
+        }
+        NodeLocation node = nodes.get(localUserSpot ? primaryNodeRid : spotRid);
+        return node == null ? null : node.meshName();
+    }
+
+    CompletionStage<ZLinkLocationWriteStatus> claimUserSpotAsync(
+        RoutingId primaryNodeRid,
+        RoutingId spotRid,
+        Class<?> spotType,
+        Runnable deactivate) {
+        if (lifecycle == null) {
+            return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
+        }
+        NodeLocation node = nodes.get(primaryNodeRid);
+        if (node == null) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("Location runtime is not available."));
+        }
+        return lifecycle.claimSpotAsync(
+            node.meshName(),
+            spotRid,
+            spotType.getName(),
+            node.nodeRid(),
+            ZLinkSpotKind.USER,
+            node.routeEndpoint(),
+            deactivate);
+    }
+
+    CompletionStage<Void> claimEntrySpotsAsync() {
+        if (lifecycle == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (NodeLocation node : nodes.values()) {
+            chain = chain.thenCompose(ignored -> claimEntrySpotAsync(node).thenApply(status -> null));
+        }
+        return chain;
+    }
+
+    CompletionStage<Void> releaseUserSpotAsync(RoutingId primaryNodeRid, RoutingId spotRid) {
+        if (lifecycle == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        NodeLocation node = nodes.get(primaryNodeRid);
+        if (node == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return lifecycle.releaseSpotAsync(node.meshName(), spotRid);
+    }
+
+    CompletionStage<Void> releaseEntrySpotAsync(RoutingId nodeRid) {
+        NodeLocation node = nodes.get(nodeRid);
+        if (lifecycle == null || node == null || !node.hasRouteEndpoint()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return lifecycle.releaseSpotAsync(node.meshName(), node.nodeRid());
+    }
+
+    private CompletionStage<ZLinkLocationWriteStatus> claimEntrySpotAsync(NodeLocation node) {
+        if (!node.hasRouteEndpoint() || lifecycle == null) {
+            return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
+        }
+        return lifecycle.claimSpotAsync(
+            node.meshName(),
+            node.nodeRid(),
+            null,
+            node.nodeRid(),
+            ZLinkSpotKind.ENTRY,
+            node.routeEndpoint(),
+            null);
+    }
+
+    private record NodeLocation(
+        String meshName,
+        RoutingId nodeRid,
+        String routeEndpoint,
+        boolean publisherEnabled) {
+
+        boolean hasRouteEndpoint() {
+            return routeEndpoint != null && !routeEndpoint.isBlank();
+        }
+    }
+}

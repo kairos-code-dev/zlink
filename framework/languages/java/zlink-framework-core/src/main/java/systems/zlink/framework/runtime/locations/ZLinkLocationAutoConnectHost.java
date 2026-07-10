@@ -290,6 +290,5 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     }
 
     private static void boot(String step) {
-        System.out.println("[boot] component=location-auto-connect step=" + step);
     }
 }

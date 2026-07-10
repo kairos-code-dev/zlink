@@ -99,12 +99,7 @@ final class ResponseBodyReader {
     }
 
     static String findHeader(Map<String, String> headers, String name) {
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(name)) {
-                return entry.getValue();
-            }
-        }
-        return null;
+        return headers.get(name.toLowerCase(Locale.ROOT));
     }
 
     // After decoding, drop Content-Encoding and the now-stale Content-Length (it described the
@@ -112,8 +107,8 @@ final class ResponseBodyReader {
     private static Map<String, String> stripEncodingHeaders(Map<String, String> headers) {
         Map<String, String> copy = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : headers.entrySet()) {
-            if (!entry.getKey().equalsIgnoreCase("content-encoding")
-                && !entry.getKey().equalsIgnoreCase("content-length")) {
+            String name = entry.getKey().toLowerCase(Locale.ROOT);
+            if (!name.equals("content-encoding") && !name.equals("content-length")) {
                 copy.put(entry.getKey(), entry.getValue());
             }
         }

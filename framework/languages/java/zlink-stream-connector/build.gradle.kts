@@ -6,11 +6,12 @@ plugins {
 description = "ZLink Java STREAM connector core"
 
 dependencies {
-    api(project(":zlink-framework-core"))
     api(zlinkLibs.zlink.bindings)
+    api("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     api("io.netty:netty-buffer:4.1.100.Final")
     api("io.netty:netty-codec-http:4.1.100.Final")
     api("io.netty:netty-handler:4.1.100.Final")
     api("io.netty:netty-transport:4.1.100.Final")
     implementation("org.lz4:lz4-java:1.8.0")
+    testImplementation(project(":zlink-framework-core"))
 }

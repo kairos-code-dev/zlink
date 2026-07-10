@@ -2,15 +2,12 @@ package systems.zlink.framework.runtime.streams;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -18,6 +15,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -34,16 +32,11 @@ import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
-import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActors;
-import systems.zlink.framework.streams.ZLinkSessionClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
-import systems.zlink.framework.streams.ZLinkSessionReplyCall;
-import systems.zlink.framework.streams.ZLinkSessionSendCall;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
@@ -54,18 +47,11 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.streams.ZLinkStreamSessionError;
 
 public final class ZLinkStreamRuntime implements AutoCloseable {
-    private static final int DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE = 64 * 1024;
+    private static final Logger LOGGER = Logger.getLogger(ZLinkStreamRuntime.class.getName());
     private static final String HEARTBEAT_PING_NAME = "$zlink.heartbeat.ping";
     private static final String HEARTBEAT_PONG_NAME = "$zlink.heartbeat.pong";
-    private static final long ASYNC_REPLY_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
     private static final boolean STREAM_TRACE =
         "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
-    private static final ScheduledExecutorService ASYNC_REPLY_EXECUTOR =
-        Executors.newSingleThreadScheduledExecutor(task -> {
-            Thread thread = new Thread(task, "zlink-stream-async-reply");
-            thread.setDaemon(true);
-            return thread;
-        });
     private final ZLinkBackendContext context;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actors;
@@ -251,7 +237,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     : systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
                 streamHeader.packetName(), null, null, corr, null, null, null, null));
         }
-        Message payloadCopy = Message.from(decodePayload(streamHeader, payload, compressionCodec));
+        Message payloadCopy = Message.from(ZLinkStreamPayloadCodec.decode(
+            streamHeader,
+            payload,
+            compressionCodec));
         ZLinkMessage sessionPayload = ZLinkMessage.fromEncoded(
             ZLinkMessagePayloads.encoded(payloadCopy),
             serializer);
@@ -366,7 +355,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         StreamNodeRegistration streamNode,
         ZLinkBackendStreamSocket stream,
         RoutingId routingId) {
-        DefaultSessionContext context = new DefaultSessionContext(
+        ZLinkStreamSessionContextState context = new ZLinkStreamSessionContextState(
             streamNode.name(),
             stream,
             routingId,
@@ -381,7 +370,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     sessionRelayRouteReady,
                     localActorDispatcher,
                     streamSessionRelayAttached.getOrDefault(streamNode.name(), false),
-                    defaultCodec));
+                    defaultCodec),
+            serializer,
+            defaultCodec,
+            compressionCodec,
+            flow);
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
             new ZLinkSessionPacketDispatcherRuntime<>(
                 streamNode.sessionPacketHandlers(),
@@ -484,392 +477,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private record SessionState(
         ZLinkSession session,
         ZLinkAsyncSerialQueue queue,
-        DefaultSessionContext context) {
-    }
-
-    private final class DefaultSessionContext implements ZLinkSessionContext {
-        private final String streamNodeName;
-        private final ZLinkBackendStreamSocket stream;
-        private final RoutingId routingId;
-        private final ZLinkSessionActors actors;
-        private ZLinkStreamHeader currentDispatchHeader;
-
-        DefaultSessionContext(
-            String streamNodeName,
-            ZLinkBackendStreamSocket stream,
-            RoutingId routingId,
-            ZLinkSessionActors actors) {
-            this.streamNodeName = streamNodeName;
-            this.stream = stream;
-            this.routingId = routingId;
-            this.actors = actors;
-        }
-
-        @Override
-        public String sessionId() {
-            return streamNodeName + ":" + routingId;
-        }
-
-        @Override
-        public Optional<RoutingId> routingId() {
-            return Optional.of(routingId);
-        }
-
-        @Override
-        public Optional<String> localAddr() {
-            return Optional.empty();
-        }
-
-        @Override
-        public Optional<String> remoteAddr() {
-            return Optional.empty();
-        }
-
-        @Override
-        public ZLinkSessionClient client() {
-            return new SessionClient(stream, routingId, this);
-        }
-
-        @Override
-        public ZLinkSessionActors actors() {
-            if (actors == null) {
-                throw new ZLinkConfigurationException(
-                    "stream node is not attached to a session relay");
-            }
-            return actors;
-        }
-
-        CompletionStage<Void> notifyBoundActorsDisconnected() {
-            if (actors instanceof ZLinkSessionActorsRuntime runtime) {
-                return runtime.notifyDisconnectedAll();
-            }
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<Void> close() {
-            return systems.zlink.framework.ZLinkSubmitStage.completed();
-        }
-
-        CompletionStage<Void> dispatchStage(
-            ZLinkStreamHeader header,
-            ZLinkMessage payload,
-            ZLinkSession session) {
-            currentDispatchHeader = header;
-            trace("stream-node dispatch-start node=" + streamNodeName
-                + " routingId=" + routingId
-                + " name=" + header.packetName()
-                + " requestSeq=" + header.requestSequence().orElse(null)
-                + " correlation=" + header.correlationId().orElse(null));
-            ZLinkSessionDispatchContext dispatch = new ZLinkSessionDispatchContext(
-                header.name(),
-                header.metadata(),
-                header.requestSequence().isPresent());
-            CompletionStage<Void> stage;
-            try {
-                stage = ZLinkHandlerStages.fromRunnable(() -> {
-                    ZLinkSessionActorsRuntime.enterRelayDispatch(dispatch, header);
-                    try {
-                        session.onDispatch(dispatch, payload);
-                    } finally {
-                        ZLinkSessionActorsRuntime.exitRelayDispatch(dispatch);
-                    }
-                });
-            } catch (RuntimeException ex) {
-                currentDispatchHeader = null;
-                return CompletableFuture.failedFuture(ex);
-            }
-            CompletableFuture<Void> result = new CompletableFuture<>();
-            stage.whenComplete((ignored, error) -> {
-                currentDispatchHeader = null;
-                if (error != null) {
-                    if (header.requestSequence().isEmpty()) {
-                        result.completeExceptionally(error);
-                        return;
-                    }
-                    sendErrorReply(header, error).whenComplete((errorIgnored, sendError) -> {
-                        if (sendError != null) {
-                            result.completeExceptionally(sendError);
-                        } else {
-                            result.complete(null);
-                        }
-                    });
-                    return;
-                }
-                if (header.requestSequence().isEmpty()
-                    && flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED)) {
-                        flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
-                            systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED,
-                            systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
-                            systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
-                            header.packetName(), null, null,
-                            header.correlationId().orElse(null), null, null, null, null));
-                }
-                result.complete(null);
-            });
-            return result;
-        }
-
-        void traceStreamReplied(ZLinkStreamHeader requestHeader) {
-            if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.REPLIED)) {
-                flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
-                    systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.REPLIED,
-                    systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
-                    systems.zlink.framework.configuration.ZLinkDispatchMessageKind.REQUEST,
-                    requestHeader.packetName(), null, null,
-                    requestHeader.correlationId()
-                        .orElseGet(() -> requestHeader.requestSequence().map(String::valueOf).orElse(null)),
-                    null, null, null, null));
-            }
-        }
-
-        Optional<ZLinkStreamHeader> currentDispatchHeader() {
-            return Optional.ofNullable(currentDispatchHeader);
-        }
-
-        private CompletionStage<Void> sendErrorReply(
-            ZLinkStreamHeader requestHeader,
-            Throwable error) {
-            String message = unwrap(error).getMessage();
-            if (message == null || message.isBlank()) {
-                message = unwrap(error).getClass().getName();
-            }
-            try (Message payload = Message.from(message.getBytes(StandardCharsets.UTF_8))) {
-                ZLinkStreamHeader replyHeader = new ZLinkStreamHeader(
-                    ZLinkStreamMessageKind.ERROR,
-                    ZLinkStreamCodec.JSON,
-                    EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                    requestHeader.requestSequence(),
-                    requestHeader.packetName(),
-                    Map.of(),
-                    requestHeader.correlationId());
-                submitReplyAsync(replyHeader, payload.toByteArray());
-                return systems.zlink.framework.ZLinkSubmitStage.completed();
-            }
-        }
-
-        private void submitReplyAsync(
-            ZLinkStreamHeader replyHeader,
-            byte[] payloadBytes) {
-            long deadline = System.nanoTime() + ASYNC_REPLY_TIMEOUT_NANOS;
-            class Attempt implements Runnable {
-                @Override
-                public void run() {
-                    try (Message payload = Message.from(payloadBytes)) {
-                        if (stream.reply(
-                            routingId,
-                            replyHeader,
-                            List.of(payload),
-                            SendFlags.DONT_WAIT)) {
-                            return;
-                        }
-                    } catch (RuntimeException ignored) {
-                        return;
-                    }
-                    if (System.nanoTime() < deadline) {
-                        ASYNC_REPLY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-                    }
-                }
-            }
-            new Attempt().run();
-        }
-    }
-
-    private static Throwable unwrap(Throwable error) {
-        Throwable current = error;
-        while ((current instanceof CompletionException || current instanceof ExecutionException)
-            && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current;
-    }
-
-    private final class SessionClient implements ZLinkSessionClient {
-        private final ZLinkBackendStreamSocket stream;
-        private final RoutingId routingId;
-        private final DefaultSessionContext context;
-
-        SessionClient(
-            ZLinkBackendStreamSocket stream,
-            RoutingId routingId,
-            DefaultSessionContext context) {
-            this.stream = stream;
-            this.routingId = routingId;
-            this.context = context;
-        }
-
-        @Override
-        public ZLinkSessionSendCall send(Object message) {
-            ZLinkPayloadEncoding.EncodedPayload encoded =
-                ZLinkPayloadEncoding.encode(serializer, message);
-            return new SessionSendCall(
-                stream,
-                routingId,
-                encoded.payload(),
-                encoded.packetName(),
-                Map.of(),
-                false,
-                defaultCodec,
-                compressionCodec);
-        }
-
-        @Override
-        public ZLinkSessionReplyCall reply(Object message) {
-            ZLinkPayloadEncoding.EncodedPayload encoded =
-                ZLinkPayloadEncoding.encode(serializer, message);
-            return new SessionReplyCall(
-                stream,
-                routingId,
-                encoded.payload(),
-                context,
-                encoded.packetName(),
-                Map.of(),
-                false,
-                compressionCodec);
-        }
-    }
-
-    private record SessionSendCall(
-        ZLinkBackendStreamSocket stream,
-        RoutingId routingId,
-        Message payload,
-        String packetName,
-        Map<String, String> metadata,
-        boolean compressed,
-        ZLinkStreamCodec codec,
-        ZLinkStreamCompressionCodec compressionCodec) implements ZLinkSessionSendCall {
-        @Override
-        public ZLinkSessionSendCall metadata(String key, String value) {
-            Map<String, String> next = new HashMap<>(metadata);
-            next.put(key, value);
-            return new SessionSendCall(
-                stream,
-                routingId,
-                payload,
-                packetName,
-                Map.copyOf(next),
-                compressed,
-                codec,
-                compressionCodec);
-        }
-
-        @Override
-        public ZLinkSessionSendCall packetName(String messageName) {
-            if (messageName == null || messageName.isBlank()) {
-                throw new IllegalArgumentException("messageName is required");
-            }
-            return new SessionSendCall(
-                stream,
-                routingId,
-                payload,
-                messageName,
-                metadata,
-                compressed,
-                codec,
-                compressionCodec);
-        }
-
-        @Override
-        public ZLinkSessionSendCall compress() {
-            return new SessionSendCall(
-                stream,
-                routingId,
-                payload,
-                packetName,
-                metadata,
-                true,
-                codec,
-                compressionCodec);
-        }
-
-        @Override
-        public systems.zlink.framework.ZLinkSubmitStage submit() {
-            EncodedStreamPayload encoded = encodePayload(payload, compressed, compressionCodec);
-            ZLinkStreamHeader header = new ZLinkStreamHeader(
-                ZLinkStreamMessageKind.SEND,
-                codec,
-                encoded.flags(),
-                Optional.empty(),
-                packetName,
-                metadata,
-                Optional.of(ZLinkStreamCorrelation.next()));
-            List<Message> parts = List.of(Message.from(encoded.payload()));
-            try {
-                if (!stream.send(routingId, header, parts, SendFlags.DONT_WAIT)) {
-                    throw new ZLinkConfigurationException("session send failed: " + routingId);
-                }
-                return systems.zlink.framework.ZLinkSubmitStage.completed();
-            } finally {
-                parts.forEach(Message::close);
-                payload.close();
-            }
-        }
-    }
-
-    private record SessionReplyCall(
-        ZLinkBackendStreamSocket stream,
-        RoutingId routingId,
-        Message payload,
-        DefaultSessionContext context,
-        String packetName,
-        Map<String, String> metadata,
-        boolean compressed,
-        ZLinkStreamCompressionCodec compressionCodec) implements ZLinkSessionReplyCall {
-        @Override
-        public ZLinkSessionReplyCall metadata(String key, String value) {
-            Map<String, String> next = new HashMap<>(metadata);
-            next.put(key, value);
-            return new SessionReplyCall(
-                stream,
-                routingId,
-                payload,
-                context,
-                packetName,
-                Map.copyOf(next),
-                compressed,
-                compressionCodec);
-        }
-
-        @Override
-        public ZLinkSessionReplyCall compress() {
-            return new SessionReplyCall(stream, routingId, payload, context, packetName, metadata, true, compressionCodec);
-        }
-
-        @Override
-        public systems.zlink.framework.ZLinkSubmitStage submit() {
-            Optional<ZLinkStreamHeader> currentHeader = context.currentDispatchHeader();
-            if (currentHeader.isEmpty() || currentHeader.get().requestSequence().isEmpty()) {
-                payload.close();
-                throw new IllegalStateException(
-                    "Reply is only available while handling a request packet.");
-            }
-            EncodedStreamPayload encoded = encodePayload(payload, compressed, compressionCodec);
-            List<Message> parts = List.of(Message.from(encoded.payload()));
-            try {
-                ZLinkStreamHeader current = currentHeader.get();
-                ZLinkStreamHeader replyHeader = new ZLinkStreamHeader(
-                    ZLinkStreamMessageKind.RESPONSE,
-                    current.codec(),
-                    encoded.flags(),
-                    current.requestSequence(),
-                    packetName,
-                    metadata,
-                    // Echo the request's correlation id onto the reply.
-                    current.correlationId());
-                if (!stream.reply(
-                    routingId,
-                    replyHeader,
-                    parts,
-                    SendFlags.DONT_WAIT)) {
-                    throw new ZLinkConfigurationException("session reply failed: " + routingId);
-                }
-                context.traceStreamReplied(current);
-                return systems.zlink.framework.ZLinkSubmitStage.completed();
-            } finally {
-                parts.forEach(Message::close);
-                payload.close();
-            }
-        }
+        ZLinkStreamSessionContextState context) {
     }
 
     private static ZLinkStreamCodec defaultCodec(ZLinkFrameworkRegistration registration) {
@@ -877,48 +485,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             .orElse(ZLinkStreamCodec.JSON);
     }
 
-    private static EncodedStreamPayload encodePayload(
-        Message payload,
-        boolean compress,
-        ZLinkStreamCompressionCodec compressionCodec) {
-        byte[] bytes = payload.toByteArray();
-        if (!compress) {
-            return new EncodedStreamPayload(bytes, EnumSet.noneOf(ZLinkStreamHeaderFlag.class));
-        }
-        if (compressionCodec == null) {
-            throw new IllegalStateException("compression codec is not configured");
-        }
-        return new EncodedStreamPayload(
-            compressionCodec.compress(bytes),
-            EnumSet.of(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
-    }
-
-    private static byte[] decodePayload(
-        ZLinkStreamHeader header,
-        Message payload,
-        ZLinkStreamCompressionCodec compressionCodec) {
-        byte[] bytes = payload.toByteArray();
-        if (!header.flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED)) {
-            return bytes;
-        }
-        if (compressionCodec == null) {
-            throw new IllegalStateException("compression codec is not configured");
-        }
-        byte[] decoded = compressionCodec.decompress(bytes, DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE);
-        if (decoded.length > DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE) {
-            throw new IllegalStateException("decompressed stream payload exceeds maximum stream payload size");
-        }
-        return decoded;
-    }
-
-    private record EncodedStreamPayload(
-        byte[] payload,
-        EnumSet<ZLinkStreamHeaderFlag> flags) {
-    }
-
-    private static void trace(String message) {
+    static void trace(String message) {
         if (STREAM_TRACE) {
-            System.out.println("[zlink-java-stream-trace] " + message);
+            LOGGER.fine("[zlink-java-stream-trace] " + message);
         }
     }
 }

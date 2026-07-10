@@ -46,7 +46,7 @@ final class ZLinkChannelRuntimeTest {
             ZLinkRequestContext.class,
             CancellationToken.class);
 
-        Object[] arguments = ZLinkChannelRuntime.methodArguments(method, "hello", context);
+        Object[] arguments = ZLinkChannelHandlerInvoker.methodArguments(method, "hello", context);
 
         assertSame("hello", arguments[0]);
         assertSame(context, arguments[1]);

@@ -116,10 +116,6 @@ public final class ZLinkStreamHeaderCodec {
             header.correlationId());
     }
 
-    static byte[] encode(int kind, String packetName, Optional<Long> requestSeq) {
-        return encode(kind, 0, 0, packetName, requestSeq, Map.of(), Optional.empty());
-    }
-
     private static byte[] encode(
         int kind,
         int codec,

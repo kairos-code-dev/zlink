@@ -72,6 +72,23 @@ final class HttpClientContractTest {
     }
 
     @Test
+    void typedSubmitReturnsNullBodyForEmptySuccessResponse() throws Exception {
+        TestSupport.Server server = TestSupport.httpServer(exchange ->
+            TestSupport.respond(exchange, 204, ""));
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
+            HttpResponse<Player> response = client.get("/players/none")
+                .submit(Player.class)
+                .toCompletableFuture()
+                .join();
+            assertEquals(204, response.status());
+            assertNull(response.body());
+            assertEquals("", response.rawBody());
+        } finally {
+            server.closeable().close();
+        }
+    }
+
+    @Test
     void percentEncodesQuery() throws Exception {
         AtomicReference<String> rawUrl = new AtomicReference<>();
         TestSupport.Server server = TestSupport.httpServer(exchange -> {

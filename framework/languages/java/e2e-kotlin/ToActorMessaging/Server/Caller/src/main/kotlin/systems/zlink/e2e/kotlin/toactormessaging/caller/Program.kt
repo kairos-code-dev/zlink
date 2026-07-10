@@ -50,7 +50,7 @@ class Program {
         http.post("/send", Contracts.ActorCallRequest::class.java) { request ->
             runBlocking {
                 try {
-                    val actorRef = resolveActorRef(directory, request.actorId())
+                    val actorRef = findActorOrThrow(directory, request.actorId())
                     actors.sendToActor(
                         actorRef,
                         Contracts.ActorNotify(request.scenario(), request.actorId(), request.value()),
@@ -67,7 +67,7 @@ class Program {
         http.post("/request", Contracts.ActorCallRequest::class.java) { request ->
             runBlocking {
                 try {
-                    val actorRef = resolveActorRef(directory, request.actorId())
+                    val actorRef = findActorOrThrow(directory, request.actorId())
                     val reply = actors.requestToActor(
                         actorRef,
                         Contracts.ActorAsk(request.scenario(), request.actorId(), request.value()),
@@ -123,7 +123,7 @@ private fun boot(step: String) {
     println("[boot] role=caller step=$step")
 }
 
-private fun resolveActorRef(
+private fun findActorOrThrow(
     directory: ZLinkActorDirectory,
     actorId: String,
 ): ActorRef {

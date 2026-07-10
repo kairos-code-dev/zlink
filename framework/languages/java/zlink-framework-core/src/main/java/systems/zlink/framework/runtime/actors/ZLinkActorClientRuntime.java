@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.actors;
 
-import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
@@ -9,9 +8,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
@@ -34,18 +30,12 @@ import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkActorClientRuntime implements ZLinkActorClient {
-    private static final Duration ROUTE_RETRY_DELAY = Duration.ofMillis(20);
     private static final Duration FALLBACK_ROUTE_RETRY_TIMEOUT = Duration.ofSeconds(5);
-    private static final ScheduledExecutorService ROUTE_RETRY_EXECUTOR =
-        Executors.newSingleThreadScheduledExecutor(task -> {
-            Thread thread = new Thread(task, "zlink-actor-client-route-retry");
-            thread.setDaemon(true);
-            return thread;
-        });
 
     private final java.util.function.Supplier<ZLinkBackendSpotNode> spotNode;
     private final ZLinkStoreLocationResolvers locations;
@@ -143,27 +133,11 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         ZLinkBackendActorRef actor,
         String packetName,
         Object message) {
-        long deadline = routeRetryDeadlineNanos(defaultTimeout);
-        return submitSendWithRouteRetry(actor, packetName, message, deadline);
-    }
-
-    private CompletionStage<Void> submitSendWithRouteRetry(
-        ZLinkBackendActorRef actor,
-        String packetName,
-        Object message,
-        long deadlineNanos) {
-        return submitSend(actor, packetName, message)
-            .exceptionallyCompose(error -> {
-                if (isRouteNotConnected(error) && System.nanoTime() < deadlineNanos) {
-                    return delayRouteRetry()
-                        .thenCompose(ignored -> submitSendWithRouteRetry(
-                            actor,
-                            packetName,
-                            message,
-                            deadlineNanos));
-                }
-                return failed(unwrap(error));
-            });
+        return ZLinkActorRetryScheduler.retryRouteUntil(
+                routeRetryTimeout(defaultTimeout),
+                () -> submitSend(actor, packetName, message),
+                ZLinkActorClientRuntime::isRouteNotConnected)
+            .exceptionallyCompose(error -> failed(unwrap(error)));
     }
 
     private <TReply> CompletionStage<TReply> submitRequestWithRouteRetry(
@@ -173,37 +147,11 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         Duration timeout,
         Class<TReply> replyType) {
         Duration effectiveTimeout = timeout == null ? defaultTimeout : timeout;
-        long deadline = routeRetryDeadlineNanos(effectiveTimeout);
-        return submitRequestWithRouteRetry(
-            actor,
-            packetName,
-            request,
-            timeout,
-            replyType,
-            deadline);
-    }
-
-    private <TReply> CompletionStage<TReply> submitRequestWithRouteRetry(
-        ZLinkBackendActorRef actor,
-        String packetName,
-        Object request,
-        Duration timeout,
-        Class<TReply> replyType,
-        long deadlineNanos) {
-        return submitRequest(actor, packetName, request, timeout, replyType)
-            .exceptionallyCompose(error -> {
-                if (isRouteNotConnected(error) && System.nanoTime() < deadlineNanos) {
-                    return delayRouteRetry()
-                        .thenCompose(ignored -> submitRequestWithRouteRetry(
-                            actor,
-                            packetName,
-                            request,
-                            timeout,
-                            replyType,
-                            deadlineNanos));
-                }
-                return failed(unwrap(error));
-            });
+        return ZLinkActorRetryScheduler.retryRouteUntil(
+                routeRetryTimeout(effectiveTimeout),
+                () -> submitRequest(actor, packetName, request, timeout, replyType),
+                ZLinkActorClientRuntime::isRouteNotConnected)
+            .exceptionallyCompose(error -> failed(unwrap(error)));
     }
 
     private CompletionStage<ZLinkBackendActorRef> resolveActorAddress(String actorId) {
@@ -312,24 +260,17 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         }
         if (reply.size() == 1) {
             byte[] frame = reply.get(0).toByteArray();
-            if (frame.length >= 6) {
-                ByteBuffer buffer = ByteBuffer.wrap(frame);
-                int headerSize = Short.toUnsignedInt(buffer.getShort());
-                int payloadSize = buffer.getInt();
-                if (frame.length == 6 + headerSize + payloadSize) {
-                    byte[] headerBytes = new byte[headerSize];
-                    buffer.get(headerBytes);
-                    byte[] payloadBytes = new byte[payloadSize];
-                    buffer.get(payloadBytes);
-                    Message payload = Message.from(payloadBytes);
-                    try {
-                        return decodePayload(
-                            ZLinkStreamHeaderCodec.decodeOrPlain(headerBytes),
-                            payload,
-                            replyType);
-                    } finally {
-                        payload.close();
-                    }
+            Optional<ZLinkStreamFrameCodec.DecodedFrame> decoded = ZLinkStreamFrameCodec.tryDecode(frame);
+            if (decoded.isPresent()) {
+                ZLinkStreamFrameCodec.DecodedFrame decodedFrame = decoded.get();
+                Message payload = Message.from(decodedFrame.body());
+                try {
+                    return decodePayload(
+                        ZLinkStreamHeaderCodec.decodeOrPlain(decodedFrame.header()),
+                        payload,
+                        replyType);
+                } finally {
+                    payload.close();
                 }
             }
         }
@@ -445,20 +386,10 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             && frameworkError.kind() == ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED;
     }
 
-    private static long routeRetryDeadlineNanos(Duration timeout) {
-        Duration effective = timeout == null || timeout.isZero() || timeout.isNegative()
+    private static Duration routeRetryTimeout(Duration timeout) {
+        return timeout == null || timeout.isZero() || timeout.isNegative()
             ? FALLBACK_ROUTE_RETRY_TIMEOUT
             : timeout;
-        return System.nanoTime() + effective.toNanos();
-    }
-
-    private static CompletionStage<Void> delayRouteRetry() {
-        CompletableFuture<Void> delayed = new CompletableFuture<>();
-        ROUTE_RETRY_EXECUTOR.schedule(
-            () -> delayed.complete(null),
-            ROUTE_RETRY_DELAY.toMillis(),
-            TimeUnit.MILLISECONDS);
-        return delayed;
     }
 
     private static RuntimeException actorLocationStale(String actorId, Throwable error) {

@@ -1,0 +1,29 @@
+package systems.zlink.framework.runtime.host;
+
+import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
+import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
+import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
+
+final class ZLinkFrameworkAutoConnectSubsystem {
+    private ZLinkFrameworkAutoConnectSubsystem() {
+    }
+
+    static void start(
+        ZLinkLocationAutoConnectHost locationAutoConnectHost,
+        ZLinkFrameworkRegistration registration,
+        ZLinkChannelRuntime channels,
+        ZLinkSpotRuntime spots) {
+        if (locationAutoConnectHost == null) {
+            return;
+        }
+
+        locationAutoConnectHost.startAsync(
+                registration,
+                channels,
+                spots == null ? java.util.Map.of() : spots.nodesByName(),
+                spots)
+            .toCompletableFuture()
+            .join();
+    }
+}

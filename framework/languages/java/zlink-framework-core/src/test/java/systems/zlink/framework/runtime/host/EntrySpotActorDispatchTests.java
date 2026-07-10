@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -64,6 +63,7 @@ import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
+import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -83,7 +83,14 @@ final class EntrySpotActorDispatchTests {
         try (ZLinkFrameworkRuntime runtime = startRuntime(backend)) {
             runtime.actorManager().create("actor-a", "probe").toCompletableFuture().get(5, TimeUnit.SECONDS);
 
-            backend.entrySpot.raiseActorReadable(actorRequestParts("actor-a", "request", "ok", 42, NO_BIND));
+            backend.entrySpot.raiseActorReadable(actorRequestParts(
+                "actor-a",
+                "request",
+                "ok",
+                42,
+                NO_BIND,
+                EnumSet.of(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED),
+                Map.of("trace-id", "trace-1")));
 
             ReplyRecord reply = awaitSingle(backend.node.noBindReplies);
             assertEquals("actor-a", reply.actor().actorId());
@@ -96,6 +103,8 @@ final class EntrySpotActorDispatchTests {
 
             DecodedFrame frame = decodeFrame(reply.parts().get(0));
             assertEquals(ZLinkStreamMessageKind.RESPONSE, frame.header().kind());
+            assertEquals(Map.of("trace-id", "trace-1"), frame.header().metadata());
+            assertFalse(frame.header().flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
             assertEquals("ok:actor-a", deserializeReply(frame).value());
         }
     }
@@ -185,15 +194,33 @@ final class EntrySpotActorDispatchTests {
         String value,
         long requestId,
         int flags) {
+        return actorRequestParts(
+            actorId,
+            packetName,
+            value,
+            requestId,
+            flags,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Map.of());
+    }
+
+    private static List<ZLinkBackendActorReceived> actorRequestParts(
+        String actorId,
+        String packetName,
+        String value,
+        long requestId,
+        int flags,
+        EnumSet<ZLinkStreamHeaderFlag> headerFlags,
+        Map<String, String> metadata) {
         ZLinkBackendActorRef actorRef =
             new ZLinkBackendActorRef(RoutingId.from("entry-node"), actorId, 1);
         ZLinkStreamHeader header = new ZLinkStreamHeader(
             ZLinkStreamMessageKind.REQUEST,
             ZLinkStreamCodec.JSON,
-            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            headerFlags,
             Optional.of(1L),
             packetName,
-            Map.of());
+            metadata);
         return List.of(
             new ZLinkBackendActorReceived(
                 actorRef,
@@ -242,14 +269,12 @@ final class EntrySpotActorDispatchTests {
     }
 
     private static DecodedFrame decodeFrame(Message message) {
-        ByteBuffer buffer = ByteBuffer.wrap(message.toByteArray());
-        int headerLength = Short.toUnsignedInt(buffer.getShort());
-        int bodyLength = buffer.getInt();
-        byte[] headerBytes = new byte[headerLength];
-        byte[] body = new byte[bodyLength];
-        buffer.get(headerBytes);
-        buffer.get(body);
-        return new DecodedFrame(ZLinkStreamHeaderCodec.decodeOrPlain(headerBytes), body);
+        ZLinkStreamFrameCodec.DecodedFrame frame = ZLinkStreamFrameCodec
+            .tryDecode(message.toByteArray())
+            .orElseThrow();
+        return new DecodedFrame(
+            ZLinkStreamHeaderCodec.decodeOrPlain(frame.header()),
+            frame.body());
     }
 
     private static ProbeReply deserializeReply(DecodedFrame frame) {

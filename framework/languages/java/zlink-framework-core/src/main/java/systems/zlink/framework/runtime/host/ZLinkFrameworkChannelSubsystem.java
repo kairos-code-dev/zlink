@@ -1,0 +1,58 @@
+package systems.zlink.framework.runtime.host;
+
+import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkFanoutClient;
+import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+
+final class ZLinkFrameworkChannelSubsystem {
+    private final ZLinkChannelRuntime channels;
+    private final ZLinkBackendContext backendContext;
+
+    private ZLinkFrameworkChannelSubsystem(
+        ZLinkChannelRuntime channels,
+        ZLinkBackendContext backendContext) {
+        this.channels = channels;
+        this.backendContext = backendContext;
+    }
+
+    static ZLinkFrameworkChannelSubsystem create(
+        DefaultZLinkFrameworkOptions options,
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory.MutableServices runtimeHandlers,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
+        ZLinkChannelBackendAdapter channelBackend = backendFactory.createChannelAdapter(adapterOptions);
+        ZLinkBackendContext backendContext = channelBackend.createContext();
+        ZLinkChannelRuntime channels = new ZLinkChannelRuntime(
+            channelBackend,
+            backendContext,
+            backendFactory,
+            adapterOptions,
+            options.registration(),
+            serializer,
+            runtimeHandlers,
+            eventDispatcher);
+        runtimeHandlers.add(ZLinkClient.class, channels);
+        runtimeHandlers.add(ZLinkFanoutClient.class, channels);
+        runtimeHandlers.add(ZLinkRouteClient.class, channels);
+        return new ZLinkFrameworkChannelSubsystem(channels, backendContext);
+    }
+
+    ZLinkChannelRuntime channels() {
+        return channels;
+    }
+
+    ZLinkBackendContext backendContext() {
+        return backendContext;
+    }
+}

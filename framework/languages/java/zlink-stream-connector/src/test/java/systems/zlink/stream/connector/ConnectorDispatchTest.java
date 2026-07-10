@@ -56,66 +56,21 @@ final class ConnectorDispatchTest {
     }
 
     @Test
-    void manualDispatchKeepsNewestReceivedMessagesWhenBounded() throws Exception {
-        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
-            ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
-                new ZLinkStreamConnectorOptions(
-                    server.endpoint(),
-                    ZLinkStreamDispatchMode.MANUAL,
-                    java.time.Duration.ofSeconds(1),
-                    1,
-                    java.time.Duration.ofSeconds(1),
-                    64 * 1024,
-                    64 * 1024,
-                    1,
-                    true,
-                    java.time.Duration.ofSeconds(1),
-                    java.time.Duration.ofSeconds(5),
-                    true,
-                    java.time.Duration.ofMillis(250),
-                    java.time.Duration.ofSeconds(5),
-                    2.0,
-                    false,
-                    ZLinkStreamCompression.LZ4,
-                    ZLinkStreamPacketNameResolver.defaultResolver(),
-                    null));
-            try {
-                java.util.List<String> handled = new java.util.concurrent.CopyOnWriteArrayList<>();
-                connector.on("Push", message -> {
-                    handled.add(new String(
-                        message.payload().payload().toByteArray(),
-                        StandardCharsets.UTF_8));
-                    message.payload().payload().close();
-                    return CompletableFuture.completedFuture(null);
-                });
+    void dispatchQueueKeepsNewestReceivedMessagesWhenBounded() {
+        ZLinkStreamDispatchQueue queue = new ZLinkStreamDispatchQueue(1);
+        java.util.List<String> handled = new java.util.ArrayList<>();
 
-                connector.connect().await();
-                for (int index = 0; index < 3; index++) {
-                    server.sendAsync(new ZLinkStreamWireProtocol.Header(
-                            ZLinkStreamWireProtocol.KIND_SEND,
-                            ZLinkStreamWireProtocol.CODEC_RAW,
-                            0,
-                            null,
-                            "Push",
-                            Map.of(),
-                            null),
-                        TcpStreamConnectorTestServer.bytes("push-" + index)).join();
-                }
+        queue.add("Push", () -> handled.add("push-0"));
+        queue.add("Push", () -> handled.add("push-1"));
+        queue.add("Push", () -> handled.add("push-2"));
 
-                TcpStreamConnectorTestServer.awaitCondition(
-                    () -> connector.pendingDispatchCount() == 1);
-                assertEquals(1, connector.receivedCount("Push"));
+        assertEquals(1, queue.size());
+        assertEquals(1, queue.receivedCount("Push"));
 
-                connector.dispatch().await();
+        queue.drain();
 
-                TcpStreamConnectorTestServer.awaitCondition(
-                    () -> connector.pendingDispatchCount() == 0 && handled.size() == 1);
-                assertEquals(java.util.List.of("push-2"), handled);
-                assertEquals(0, connector.receivedCount("Push"));
-            } finally {
-                connector.close().await();
-            }
-        }
+        assertEquals(java.util.List.of("push-2"), handled);
+        assertEquals(0, queue.receivedCount("Push"));
     }
 
     private static ZLinkStreamEncodedPayload payload(String packetName, String body) {

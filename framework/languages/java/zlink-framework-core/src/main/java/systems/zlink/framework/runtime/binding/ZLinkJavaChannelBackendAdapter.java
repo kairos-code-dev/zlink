@@ -1,0 +1,41 @@
+package systems.zlink.framework.runtime.binding;
+
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
+import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
+import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
+
+final class ZLinkJavaChannelBackendAdapter implements ZLinkChannelBackendAdapter {
+    @Override
+    public ZLinkBackendContext createContext() {
+        return new ZLinkJavaContext(Zlink.createContext());
+    }
+
+    @Override
+    public ZLinkBackendDealerSocket createDealerSocket(ZLinkBackendContext context) {
+        return new ZLinkJavaDealerSocket(ZLinkJavaSocketOptions.configureFrameworkSocket(nativeContext(context).createDealerSocket()));
+    }
+
+    @Override
+    public ZLinkBackendRouterSocket createRouterSocket(ZLinkBackendContext context) {
+        return new ZLinkJavaRouterSocket(ZLinkJavaSocketOptions.configureFrameworkSocket(nativeContext(context).createRouterSocket()));
+    }
+
+    @Override
+    public ZLinkBackendPublisherSocket createPublisherSocket(ZLinkBackendContext context) {
+        return new ZLinkJavaPublisherSocket(ZLinkJavaSocketOptions.configureFrameworkSocket(nativeContext(context).createPubSocket()));
+    }
+
+    @Override
+    public ZLinkBackendSubscriberSocket createSubscriberSocket(ZLinkBackendContext context) {
+        return new ZLinkJavaSubscriberSocket(ZLinkJavaSocketOptions.configureFrameworkSocket(nativeContext(context).createSubSocket()));
+    }
+
+    private static Context nativeContext(ZLinkBackendContext context) {
+        return ((ZLinkJavaContext) context).nativeContext();
+    }
+}

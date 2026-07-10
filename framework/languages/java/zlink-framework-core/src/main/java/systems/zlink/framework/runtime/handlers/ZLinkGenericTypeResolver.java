@@ -6,6 +6,7 @@ import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Predicate;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 public final class ZLinkGenericTypeResolver {
@@ -37,25 +38,22 @@ public final class ZLinkGenericTypeResolver {
         Class<?> type,
         Class<?> targetRawType,
         Map<TypeVariable<?>, Type> bindings) {
-        for (Type interfaceType : type.getGenericInterfaces()) {
-            ParameterizedType matched = matchType(interfaceType, targetRawType, bindings);
-            if (matched != null) {
-                return matched;
-            }
-        }
-        Type superclass = type.getGenericSuperclass();
-        if (superclass == null || superclass == Object.class) {
-            return null;
-        }
-        return matchType(superclass, targetRawType, bindings);
+        return findInterface(type, raw -> raw == targetRawType, bindings);
     }
 
     private static ParameterizedType findInterface(
         Class<?> type,
         String targetRawTypeName,
         Map<TypeVariable<?>, Type> bindings) {
+        return findInterface(type, raw -> raw.getName().equals(targetRawTypeName), bindings);
+    }
+
+    private static ParameterizedType findInterface(
+        Class<?> type,
+        Predicate<Class<?>> rawTypeMatches,
+        Map<TypeVariable<?>, Type> bindings) {
         for (Type interfaceType : type.getGenericInterfaces()) {
-            ParameterizedType matched = matchType(interfaceType, targetRawTypeName, bindings);
+            ParameterizedType matched = matchType(interfaceType, rawTypeMatches, bindings);
             if (matched != null) {
                 return matched;
             }
@@ -64,43 +62,38 @@ public final class ZLinkGenericTypeResolver {
         if (superclass == null || superclass == Object.class) {
             return null;
         }
-        return matchType(superclass, targetRawTypeName, bindings);
+        return matchType(superclass, rawTypeMatches, bindings);
     }
 
     private static ParameterizedType matchType(
         Type type,
         Class<?> targetRawType,
         Map<TypeVariable<?>, Type> bindings) {
-        Type resolved = resolve(type, bindings);
-        if (resolved instanceof ParameterizedType parameterized
-            && parameterized.getRawType() instanceof Class<?> raw) {
-            ParameterizedType concrete = resolvedParameterized(parameterized, bindings);
-            if (raw == targetRawType) {
-                return concrete;
-            }
-            return findInterface(raw, targetRawType, bind(raw, concrete.getActualTypeArguments()));
-        }
-        if (resolved instanceof Class<?> raw) {
-            return findInterface(raw, targetRawType, bindings);
-        }
-        return null;
+        return matchType(type, raw -> raw == targetRawType, bindings);
     }
 
     private static ParameterizedType matchType(
         Type type,
         String targetRawTypeName,
         Map<TypeVariable<?>, Type> bindings) {
+        return matchType(type, raw -> raw.getName().equals(targetRawTypeName), bindings);
+    }
+
+    private static ParameterizedType matchType(
+        Type type,
+        Predicate<Class<?>> rawTypeMatches,
+        Map<TypeVariable<?>, Type> bindings) {
         Type resolved = resolve(type, bindings);
         if (resolved instanceof ParameterizedType parameterized
             && parameterized.getRawType() instanceof Class<?> raw) {
             ParameterizedType concrete = resolvedParameterized(parameterized, bindings);
-            if (raw.getName().equals(targetRawTypeName)) {
+            if (rawTypeMatches.test(raw)) {
                 return concrete;
             }
-            return findInterface(raw, targetRawTypeName, bind(raw, concrete.getActualTypeArguments()));
+            return findInterface(raw, rawTypeMatches, bind(raw, concrete.getActualTypeArguments()));
         }
         if (resolved instanceof Class<?> raw) {
-            return findInterface(raw, targetRawTypeName, bindings);
+            return findInterface(raw, rawTypeMatches, bindings);
         }
         return null;
     }

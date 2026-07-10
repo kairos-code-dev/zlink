@@ -4,54 +4,31 @@ import systems.zlink.framework.runtime.backend.*;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
+import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.ZlinkRequestException;
-import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.sockets.RequestResult;
-import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
-import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
-import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
-    private static final Duration RELAY_SUBMIT_TIMEOUT = Duration.ofSeconds(30);
+    private static final Logger LOGGER = Logger.getLogger(ZLinkSessionActorsRuntime.class.getName());
+    static final Duration RELAY_SUBMIT_TIMEOUT = Duration.ofSeconds(30);
     private static final boolean STREAM_TRACE =
         "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
-    private static final ThreadLocal<ZLinkStreamHeader> CURRENT_RELAY_HEADER = new ThreadLocal<>();
-    private static final Map<ZLinkSessionDispatchContext, ZLinkStreamHeader> RELAY_HEADERS =
-        Collections.synchronizedMap(new WeakHashMap<>());
-    private static final ScheduledExecutorService RELAY_RETRY_EXECUTOR =
-        Executors.newSingleThreadScheduledExecutor(task -> {
-            Thread thread = new Thread(task, "zlink-java-session-actor-relay");
-            thread.setDaemon(true);
-            return thread;
-        });
-
+    private static final ZLinkSessionRelayHeaders RELAY_HEADERS = new ZLinkSessionRelayHeaders();
     private final ZLinkBackendStreamSocket stream;
     private final ZLinkBackendSpotNode spotNode;
     private final RoutingId sessionRid;
@@ -72,38 +49,21 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     public static void enterRelayDispatch(ZLinkStreamHeader header) {
-        CURRENT_RELAY_HEADER.set(header);
+        RELAY_HEADERS.enter(header);
     }
 
     public static void enterRelayDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkStreamHeader header) {
-        if (dispatch != null && header != null) {
-            RELAY_HEADERS.put(dispatch, header);
-        }
-        enterRelayDispatch(header);
+        RELAY_HEADERS.enter(dispatch, header);
     }
 
     public static void exitRelayDispatch() {
-        CURRENT_RELAY_HEADER.remove();
+        RELAY_HEADERS.exit();
     }
 
     public static void exitRelayDispatch(ZLinkSessionDispatchContext dispatch) {
-        if (dispatch != null) {
-            RELAY_HEADERS.remove(dispatch);
-        }
-        exitRelayDispatch();
-    }
-
-    private static Optional<ZLinkStreamHeader> currentRelayHeader() {
-        return Optional.ofNullable(CURRENT_RELAY_HEADER.get());
-    }
-
-    private static Optional<ZLinkStreamHeader> relayHeader(ZLinkSessionDispatchContext dispatch) {
-        if (dispatch == null) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(RELAY_HEADERS.get(dispatch));
+        RELAY_HEADERS.exit(dispatch);
     }
 
     public ZLinkSessionActorsRuntime(
@@ -256,7 +216,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     + " actorNode=" + ref.nodeRid()
                     + " actorId=" + ref.actorId()
                     + " generation=" + ref.generation());
-                BoundActor actor = new BoundActor(
+                ZLinkBoundActor actor = new ZLinkBoundActor(
                     stream,
                     sessionRid,
                     ref,
@@ -267,14 +227,15 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     routeReady,
                     null,
                     true,
-                    defaultCodec);
+                    defaultCodec,
+                    RELAY_HEADERS);
                 bound.add(actor);
                 return actor;
             })
             .thenCompose(actor -> actor.notifyRemoteBoundSession()
                 .thenApply(ignored -> (ZLinkSessionActor) actor))
             .whenComplete((actor, error) -> {
-                if (error != null && actor instanceof BoundActor boundActor) {
+                if (error != null && actor instanceof ZLinkBoundActor boundActor) {
                     bound.remove(boundActor);
                 }
             })
@@ -331,7 +292,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     sourceNodeRid,
                     sourceSessionRid);
                 boundSession.setBindingToken(bindingToken);
-                BoundActor boundActor = new BoundActor(
+                ZLinkBoundActor boundActor = new ZLinkBoundActor(
                     stream,
                     sessionRid,
                     ref,
@@ -342,7 +303,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     routeReady,
                     localActorDispatcher,
                     nativeSessionRelayAttached,
-                    defaultCodec);
+                    defaultCodec,
+                    RELAY_HEADERS);
                 boundSession.setUnbindListener(() -> bound.remove(boundActor));
                 bound.add(boundActor);
                 return boundActor;
@@ -350,38 +312,21 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     private CompletionStage<Void> awaitRouteReady(ZLinkBackendActorRef ref) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        long deadline = System.nanoTime() + RELAY_SUBMIT_TIMEOUT.toNanos();
-        class Attempt implements Runnable {
-            @Override
-            public void run() {
-                if (result.isDone()) {
-                    return;
-                }
-                if (routeReady.test(ref.nodeRid())) {
-                    trace("session-actor route-ready sessionRid=" + sessionRid
-                        + " actorNode=" + ref.nodeRid()
-                        + " actorId=" + ref.actorId()
-                        + " generation=" + ref.generation());
-                    result.complete(null);
-                    return;
-                }
-                if (System.nanoTime() >= deadline) {
-                    result.completeExceptionally(new TimeoutException(
-                        "session relay route was not ready before timeout: "
-                            + ref.actorId()));
-                    return;
-                }
-                RELAY_RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-            }
-        }
-        new Attempt().run();
-        return result;
+        return ZLinkActorRetryScheduler.waitUntilRelay(
+            RELAY_SUBMIT_TIMEOUT,
+            () -> routeReady.test(ref.nodeRid()),
+            () -> trace("session-actor route-ready sessionRid=" + sessionRid
+                + " actorNode=" + ref.nodeRid()
+                + " actorId=" + ref.actorId()
+                + " generation=" + ref.generation()),
+            () -> new TimeoutException(
+                "session relay route was not ready before timeout: "
+                    + ref.actorId()));
     }
 
     private static void trace(String message) {
         if (STREAM_TRACE) {
-            System.out.println("[zlink-java-stream-trace] " + message);
+            LOGGER.fine("[zlink-java-stream-trace] " + message);
         }
     }
 
@@ -396,347 +341,4 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             + (message == null || message.isBlank() ? "" : ":" + message);
     }
 
-    private static final class BoundActor implements ZLinkSessionActor {
-        private final ZLinkBackendStreamSocket stream;
-        private final RoutingId sessionRid;
-        private final ZLinkBackendActorRef ref;
-        private final Optional<ZLinkActor> managedActor;
-        private final ZLinkActorRuntime actors;
-        private final ZLinkMessageSerializer serializer;
-        private final long bindingToken;
-        private final Predicate<RoutingId> routeReady;
-        private final LocalActorDispatcher localActorDispatcher;
-        private final boolean nativeSessionRelayAttached;
-        private final ZLinkStreamCodec defaultCodec;
-
-        BoundActor(
-            ZLinkBackendStreamSocket stream,
-            RoutingId sessionRid,
-            ZLinkBackendActorRef ref,
-            Optional<ZLinkActor> managedActor,
-            ZLinkActorRuntime actors,
-            ZLinkMessageSerializer serializer,
-            long bindingToken,
-            Predicate<RoutingId> routeReady,
-            LocalActorDispatcher localActorDispatcher,
-            boolean nativeSessionRelayAttached,
-            ZLinkStreamCodec defaultCodec) {
-            this.stream = stream;
-            this.sessionRid = sessionRid;
-            this.ref = ref;
-            this.managedActor = managedActor;
-            this.actors = actors;
-            this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
-            this.bindingToken = bindingToken;
-            this.routeReady = routeReady == null ? ignored -> true : routeReady;
-            this.localActorDispatcher = localActorDispatcher;
-            this.nativeSessionRelayAttached = nativeSessionRelayAttached;
-            this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
-        }
-
-        @Override
-        public String actorId() {
-            return ref.actorId();
-        }
-
-        @Override
-        public ActorRef ref() {
-            return new ActorRef(ref.nodeRid(), ref.actorId(), ref.generation());
-        }
-
-        @Override
-        public CompletionStage<Void> relay(ZLinkMessage payload) {
-            return relay(currentRelayHeader(), payload);
-        }
-
-        @Override
-        public CompletionStage<Void> relay(
-            ZLinkSessionDispatchContext dispatch,
-            ZLinkMessage payload) {
-            return relay(relayHeader(dispatch).or(ZLinkSessionActorsRuntime::currentRelayHeader), payload);
-        }
-
-        private CompletionStage<Void> relay(
-            Optional<ZLinkStreamHeader> currentHeader,
-            ZLinkMessage payload) {
-            if (payload == null) {
-                return CompletableFuture.failedFuture(new IllegalArgumentException(
-                    "payload is required"));
-            }
-            if (currentHeader.isEmpty()) {
-                return CompletableFuture.failedFuture(new IllegalStateException(
-                    "Session actor relay requires an active stream dispatch."));
-            }
-            ZLinkStreamHeader header = currentHeader.get();
-            Message message = ZLinkMessagePayloads.message(payload, serializer);
-            byte[] payloadBytes = message.toByteArray();
-            message.close();
-            if (managedActor.isPresent() && localActorDispatcher != null) {
-                return relayLocal(header, payloadBytes);
-            }
-            return ensureNativeBinding()
-                .thenCompose(ignored -> relayWithRetry(header, payloadBytes));
-        }
-
-        private CompletionStage<Void> relayLocal(
-            ZLinkStreamHeader header,
-            byte[] payloadBytes) {
-            if (localActorDispatcher == null) {
-                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "local actor dispatch requires a Spot runtime"));
-            }
-            Message payload = Message.from(payloadBytes);
-            return localActorDispatcher.dispatch(ref, header, payload)
-                .thenCompose(reply -> {
-                    if (reply.isEmpty()) {
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    return replyLocal(header, reply.get());
-                })
-                .whenComplete((ignored, error) -> payload.close());
-        }
-
-        private CompletionStage<Void> replyLocal(
-            ZLinkStreamHeader header,
-            Message reply) {
-            try {
-                if (header.requestSequence().isEmpty()) {
-                    reply.close();
-                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                        "actor reply requires a stream request sequence: "
-                            + header.packetName()));
-                }
-                ZLinkStreamHeader replyHeader = new ZLinkStreamHeader(
-                    ZLinkStreamMessageKind.RESPONSE,
-                    header.codec(),
-                    EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                    header.requestSequence(),
-                    header.packetName(),
-                    Map.of(),
-                    header.correlationId());
-                byte[] replyBytes = reply.toByteArray();
-                CompletableFuture<Void> result = new CompletableFuture<>();
-                long deadline = System.nanoTime() + RELAY_SUBMIT_TIMEOUT.toNanos();
-                class Attempt implements Runnable {
-                    @Override
-                    public void run() {
-                        if (result.isDone()) {
-                            return;
-                        }
-                        try (Message attemptReply = Message.from(replyBytes)) {
-                            if (stream.reply(
-                                sessionRid,
-                                replyHeader,
-                                List.of(attemptReply),
-                                SendFlags.DONT_WAIT)) {
-                                result.complete(null);
-                                return;
-                            }
-                        } catch (RuntimeException ex) {
-                            result.completeExceptionally(ex);
-                            return;
-                        }
-                        if (System.nanoTime() >= deadline) {
-                            result.completeExceptionally(new TimeoutException(
-                                "local actor session reply was not ready before timeout: "
-                                    + ref.actorId()));
-                            return;
-                        }
-                        RELAY_RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-                    }
-                }
-                new Attempt().run();
-                return result;
-            } finally {
-                reply.close();
-            }
-        }
-
-        private CompletionStage<Void> awaitRouteReady() {
-            CompletableFuture<Void> result = new CompletableFuture<>();
-            long deadline = System.nanoTime() + RELAY_SUBMIT_TIMEOUT.toNanos();
-            class Attempt implements Runnable {
-                @Override
-                public void run() {
-                    if (result.isDone()) {
-                        return;
-                    }
-                    if (routeReady.test(ref.nodeRid())) {
-                        result.complete(null);
-                        return;
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        result.complete(null);
-                        return;
-                    }
-                    RELAY_RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-                }
-            }
-            new Attempt().run();
-            return result;
-        }
-
-        private CompletionStage<Void> relayWithRetry(
-            ZLinkStreamHeader header,
-            byte[] payloadBytes) {
-            CompletableFuture<Void> result = new CompletableFuture<>();
-            long deadline = System.nanoTime() + RELAY_SUBMIT_TIMEOUT.toNanos();
-            class Attempt implements Runnable {
-                @Override
-                public void run() {
-                    if (result.isDone()) {
-                        return;
-                    }
-                    Message payloadPart = Message.from(payloadBytes);
-                    try {
-                        boolean submitted = stream.relayBoundActor(
-                            sessionRid,
-                            ref.actorId(),
-                            header,
-                            List.of(payloadPart),
-                            SendFlags.DONT_WAIT);
-                        if (submitted) {
-                            result.complete(null);
-                            return;
-                        }
-                        if (System.nanoTime() >= deadline) {
-                            result.completeExceptionally(new TimeoutException(
-                                "session relay route was not ready before timeout: "
-                                    + ref.actorId()));
-                            return;
-                        }
-                        retryAfterNativeBinding(this);
-                    } catch (ZlinkSubmitException ex) {
-                        if (!isRetryableSubmitResult(ex.getResult())) {
-                            result.completeExceptionally(ex);
-                            return;
-                        }
-                        if (System.nanoTime() >= deadline) {
-                            result.completeExceptionally(new TimeoutException(
-                                "session relay route was not ready before timeout: "
-                                    + ref.actorId()));
-                            return;
-                        }
-                        retryAfterNativeBinding(this);
-                    } catch (RuntimeException ex) {
-                        result.completeExceptionally(ex);
-                    } finally {
-                        payloadPart.close();
-                    }
-                }
-            }
-            new Attempt().run();
-            return result;
-        }
-
-        private void retryAfterNativeBinding(Runnable attempt) {
-            stream.bindActor(sessionRid, ref)
-                .submit(Duration.ofSeconds(2))
-                .whenComplete((ignored, error) ->
-                    RELAY_RETRY_EXECUTOR.schedule(attempt, 10, TimeUnit.MILLISECONDS));
-        }
-
-        private static boolean isRetryableSubmitResult(SubmitResult result) {
-            return result == SubmitResult.NOT_CONNECTED
-                || result == SubmitResult.BACKPRESSURED
-                || result == SubmitResult.NOT_FOUND;
-        }
-
-        private CompletionStage<Void> ensureNativeBinding() {
-            CompletableFuture<Void> result = new CompletableFuture<>();
-            long deadline = System.nanoTime() + RELAY_SUBMIT_TIMEOUT.toNanos();
-            class Attempt implements Runnable {
-                @Override
-                public void run() {
-                    if (result.isDone()) {
-                        return;
-                    }
-                    stream.bindActor(sessionRid, ref)
-                        .submit(Duration.ofSeconds(2))
-                        .whenComplete((ignored, error) -> {
-                            if (error == null || isAlreadyBound(error)) {
-                                result.complete(null);
-                                return;
-                            }
-                            if (!isRetriableBindFailure(error)
-                                || System.nanoTime() >= deadline) {
-                                result.completeExceptionally(error);
-                                return;
-                            }
-                            RELAY_RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-                        });
-                }
-            }
-            new Attempt().run();
-            return result;
-        }
-
-        @Override
-        public CompletionStage<Void> notifyDisconnected() {
-            CompletionStage<Void> notification = managedActor
-                .map(actor -> actors.clearSessionBinding(actor, bindingToken)
-                    ? actors.notifyDisconnected(actor)
-                    : CompletableFuture.<Void>completedFuture(null))
-                .orElseGet(this::notifyRemoteDisconnected);
-            return notification.thenCompose(ignored -> stream.unbindActor(sessionRid, ref.actorId())
-                .submit(Duration.ofSeconds(30)));
-        }
-
-        private CompletionStage<Void> notifyRemoteDisconnected() {
-            if (!nativeSessionRelayAttached) {
-                return CompletableFuture.completedFuture(null);
-            }
-            ZLinkStreamHeader header = new ZLinkStreamHeader(
-                ZLinkStreamMessageKind.SEND,
-                defaultCodec,
-                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                Optional.empty(),
-                ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME,
-                Map.of());
-            return ensureNativeBinding()
-                .thenCompose(ignored -> relayWithRetry(header, new byte[0]));
-        }
-
-        private CompletionStage<Void> notifyRemoteBoundSession() {
-            if (!nativeSessionRelayAttached || managedActor.isPresent()) {
-                return CompletableFuture.completedFuture(null);
-            }
-            ZLinkStreamHeader header = new ZLinkStreamHeader(
-                ZLinkStreamMessageKind.SEND,
-                ZLinkStreamCodec.RAW,
-                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                Optional.empty(),
-                ZLinkBoundSessionRuntime.REMOTE_BOUND_SESSION_BIND_PACKET_NAME,
-                Map.of());
-            return ensureNativeBinding()
-                .thenCompose(ignored -> relayWithRetry(header, new byte[0]));
-        }
-    }
-
-    private static boolean isAlreadyBound(Throwable error) {
-        ZlinkRequestException request = findRequestException(error);
-        return request != null
-            && (request.getResult() == RequestResult.CONFLICT
-                || request.getResult() == RequestResult.BUSY
-                || request.getNativeErrno() == 16);
-    }
-
-    private static boolean isRetriableBindFailure(Throwable error) {
-        ZlinkRequestException request = findRequestException(error);
-        return request != null
-            && (request.getResult() == RequestResult.NOT_CONNECTED
-                || request.getResult() == RequestResult.NOT_FOUND
-                || request.getResult() == RequestResult.TIMED_OUT);
-    }
-
-    private static ZlinkRequestException findRequestException(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof ZlinkRequestException request) {
-                return request;
-            }
-            current = current.getCause();
-        }
-        return null;
-    }
 }

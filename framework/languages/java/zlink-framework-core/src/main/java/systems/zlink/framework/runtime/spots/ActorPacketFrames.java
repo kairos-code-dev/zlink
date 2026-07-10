@@ -1,6 +1,8 @@
 package systems.zlink.framework.runtime.spots;
 
 import java.nio.charset.StandardCharsets;
+import java.util.EnumSet;
+import java.util.Map;
 import java.util.Optional;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
@@ -8,6 +10,7 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class ActorPacketFrames {
@@ -23,7 +26,9 @@ final class ActorPacketFrames {
                 headerPart.message().toUtf8String(),
                 headerPart.requestSeq(),
                 false,
-                0);
+                0,
+                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                Map.of());
         }
     }
 
@@ -31,12 +36,13 @@ final class ActorPacketFrames {
         if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
             return Message.from(payload);
         }
-        return Message.from(ZLinkStreamFrameCodec.encode(
-            ZLinkStreamMessageKind.RESPONSE,
+        ZLinkStreamHeader replyHeader = ZLinkStreamHeader.createResponse(
+            packetHeader.toRequestHeader(),
             ZLinkStreamCodec.fromValue(packetHeader.codec()),
-            packetHeader.requestSeq(),
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
             packetHeader.packetName(),
-            payload.toByteArray()));
+            packetHeader.metadata());
+        return Message.from(ZLinkStreamFrameCodec.encode(replyHeader, payload.toByteArray()));
     }
 
     static Message encodeError(Header packetHeader, Throwable error) {
@@ -44,12 +50,9 @@ final class ActorPacketFrames {
         if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
             return Message.from(body);
         }
-        return Message.from(ZLinkStreamFrameCodec.encode(
-            ZLinkStreamMessageKind.ERROR,
-            ZLinkStreamCodec.JSON,
-            packetHeader.requestSeq(),
-            packetHeader.packetName(),
-            body));
+        ZLinkStreamHeader replyHeader =
+            ZLinkStreamHeader.createErrorResponse(packetHeader.toRequestHeader(), packetHeader.packetName());
+        return Message.from(ZLinkStreamFrameCodec.encode(replyHeader, body));
     }
 
     private static Header decodeStream(byte[] bytes, Optional<Long> backendRequestSeq) {
@@ -65,7 +68,9 @@ final class ActorPacketFrames {
             header.packetName(),
             requestSeq,
             true,
-            header.codec().value());
+            header.codec().value(),
+            header.flags(),
+            header.metadata());
     }
 
     private static String errorMessage(Throwable error) {
@@ -82,6 +87,27 @@ final class ActorPacketFrames {
         String packetName,
         Optional<Long> requestSeq,
         boolean streamHeader,
-        int codec) {
+        int codec,
+        EnumSet<ZLinkStreamHeaderFlag> flags,
+        Map<String, String> metadata) {
+        Header {
+            EnumSet<ZLinkStreamHeaderFlag> normalizedFlags =
+                EnumSet.noneOf(ZLinkStreamHeaderFlag.class);
+            if (flags != null) {
+                normalizedFlags.addAll(flags);
+            }
+            flags = normalizedFlags;
+            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        }
+
+        ZLinkStreamHeader toRequestHeader() {
+            return new ZLinkStreamHeader(
+                ZLinkStreamMessageKind.REQUEST,
+                ZLinkStreamCodec.fromValue(codec),
+                flags,
+                requestSeq,
+                packetName,
+                metadata);
+        }
     }
 }

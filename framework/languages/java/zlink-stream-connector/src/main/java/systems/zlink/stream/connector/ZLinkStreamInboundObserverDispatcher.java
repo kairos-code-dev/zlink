@@ -41,7 +41,7 @@ final class ZLinkStreamInboundObserverDispatcher implements AutoCloseable {
         ZLinkStreamInboundObservation observation = new ZLinkStreamInboundObservation(
             kindFromWire(header.kind()),
             header.name(),
-            DefaultZLinkStreamConnector.fromWireCodec(header.codec()),
+            ZLinkStreamConnectorPayloadCodec.fromWireCodec(header.codec()),
             header.requestSeq(),
             header.metadata(),
             payload.length,

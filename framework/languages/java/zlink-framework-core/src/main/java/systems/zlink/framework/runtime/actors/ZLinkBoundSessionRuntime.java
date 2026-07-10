@@ -3,35 +3,22 @@ package systems.zlink.framework.runtime.actors;
 import systems.zlink.framework.runtime.backend.*;
 
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
-import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.ZlinkConfigException;
-import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.errors.ZlinkSubmitException;
-import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -39,19 +26,8 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private static final java.time.Duration DEFAULT_TIMEOUT = java.time.Duration.ofSeconds(30);
-    private static final ScheduledThreadPoolExecutor RETRY_EXECUTOR =
-        new ScheduledThreadPoolExecutor(1, task -> {
-            Thread thread = new Thread(task, "zlink-bound-session-retry");
-            thread.setDaemon(true);
-            return thread;
-        });
     static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
         "zlink.framework.actor.bound_session.bind";
-
-    static {
-        RETRY_EXECUTOR.setRemoveOnCancelPolicy(true);
-        RETRY_EXECUTOR.prestartCoreThread();
-    }
     private final ZLinkBackendStreamSocket stream;
     private final ZLinkBackendSpotNode spotNode;
     private final RoutingId sessionRid;
@@ -116,78 +92,33 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private CompletionStage<Void> awaitRouteReady(
         ZLinkBackendActorRef targetActor,
         java.time.Duration timeout) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        long deadline = System.nanoTime() + timeout.toNanos();
-        class Attempt implements Runnable {
-            @Override
-            public void run() {
-                if (result.isDone()) {
-                    return;
-                }
-                if (routeReady.test(targetActor.nodeRid())) {
-                    result.complete(null);
-                    return;
-                }
-                if (System.nanoTime() >= deadline) {
-                    result.completeExceptionally(new TimeoutException(
-                        "remote bound session route was not ready before timeout: "
-                            + actorId));
-                    return;
-                }
-                RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-            }
-        }
-        new Attempt().run();
-        return result;
+        return ZLinkActorRetryScheduler.waitUntilRelay(
+            timeout,
+            () -> routeReady.test(targetActor.nodeRid()),
+            () -> {},
+            () -> new TimeoutException(
+                "remote bound session route was not ready before timeout: "
+                    + actorId));
     }
 
     private CompletionStage<Void> relayBoundSessionBindWithRetry(
         ZLinkStreamHeader header,
         java.time.Duration timeout) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        long deadline = System.nanoTime() + timeout.toNanos();
-        class Attempt implements Runnable {
-            @Override
-            public void run() {
-                if (result.isDone()) {
-                    return;
-                }
+        return ZLinkActorRetryScheduler.submitRelayUntilAccepted(
+            timeout,
+            () -> {
                 try (Message body = Message.from(new byte[0])) {
-                    if (stream.relayBoundActor(
+                    return stream.relayBoundActor(
                         sessionRid,
                         actorId,
                         header,
                         List.of(body),
-                        SendFlags.DONT_WAIT)) {
-                        result.complete(null);
-                        return;
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        result.completeExceptionally(new TimeoutException(
-                            "remote bound session bind relay was not ready before timeout: "
-                                + actorId));
-                        return;
-                    }
-                    RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-                } catch (ZlinkSubmitException ex) {
-                    if (!isRetryableSubmitResult(ex.getResult())) {
-                        result.completeExceptionally(ex);
-                        return;
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        result.completeExceptionally(new TimeoutException(
-                            "remote bound session bind relay was not ready before timeout: "
-                                + actorId));
-                        return;
-                    }
-                    RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-                } catch (RuntimeException ex) {
-                    result.completeExceptionally(ex);
+                        SendFlags.DONT_WAIT);
                 }
-            }
-        }
-        new Attempt().run();
-        return result;
+            },
+            () -> new TimeoutException(
+                "remote bound session bind relay was not ready before timeout: "
+                    + actorId));
     }
 
     private static CompletionStage<Void> bindActorWithRetry(
@@ -195,95 +126,21 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         RoutingId sessionRid,
         ZLinkBackendActorRef targetActor,
         java.time.Duration timeout) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        long deadline = System.nanoTime() + timeout.toNanos();
-        class Attempt implements Runnable {
-            @Override
-            public void run() {
-                if (result.isDone()) {
-                    return;
-                }
-                stream.bindActor(sessionRid, targetActor)
-                    .submit(java.time.Duration.ofSeconds(2))
-                    .whenComplete((ignored, error) -> {
-                        if (error == null || isAlreadyBound(error)) {
-                            result.complete(null);
-                            return;
-                        }
-                        if (!isRetriableBindFailure(error) || System.nanoTime() >= deadline) {
-                            result.completeExceptionally(error);
-                            return;
-                        }
-                        RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-                    });
-            }
-        }
-        new Attempt().run();
-        return result;
+        return ZLinkActorRetryScheduler.bindRelayUntilAccepted(
+            timeout,
+            () -> stream.bindActor(sessionRid, targetActor)
+                .submit(java.time.Duration.ofSeconds(2)),
+            ZLinkActorSubmitFaults::alreadyBound,
+            ZLinkActorSubmitFaults::retryableBoundSessionBindFailure);
     }
 
     private static CompletionStage<Void> ignoreMissingBinding(CompletionStage<Void> stage) {
         return stage.handle((ignored, error) -> {
-            if (error == null || isNotFound(error)) {
+            if (error == null || ZLinkActorSubmitFaults.requestNotFound(error)) {
                 return CompletableFuture.<Void>completedFuture(null);
             }
             return CompletableFuture.<Void>failedFuture(error);
         }).thenCompose(result -> result);
-    }
-
-    private static boolean isNotFound(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof ZlinkRequestException request) {
-                return request.getResult() == RequestResult.NOT_FOUND;
-            }
-            current = current.getCause();
-        }
-        return false;
-    }
-
-    private static boolean isAlreadyBound(Throwable error) {
-        ZlinkRequestException request = findRequestException(error);
-        return request != null
-            && (request.getResult() == RequestResult.CONFLICT
-                || request.getResult() == RequestResult.BUSY
-                || request.getNativeErrno() == 16);
-    }
-
-    private static boolean isRetriableBindFailure(Throwable error) {
-        ZlinkRequestException request = findRequestException(error);
-        if (request != null
-            && (request.getResult() == RequestResult.NOT_FOUND
-                || request.getResult() == RequestResult.NOT_CONNECTED
-                || request.getResult() == RequestResult.BUSY
-                || request.getNativeErrno() == 11
-                || request.getNativeErrno() == 16)) {
-            return true;
-        }
-        ZlinkConfigException config = findConfigException(error);
-        return config != null && config.getResult() == ConfigResult.NOT_FOUND;
-    }
-
-    private static ZlinkRequestException findRequestException(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof ZlinkRequestException request) {
-                return request;
-            }
-            current = current.getCause();
-        }
-        return null;
-    }
-
-    private static ZlinkConfigException findConfigException(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof ZlinkConfigException config) {
-                return config;
-            }
-            current = current.getCause();
-        }
-        return null;
     }
 
     @Override
@@ -295,11 +152,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             sessionRid,
             actorId,
             encoded.payload(),
-            encoded.packetName(),
-            Map.of(),
-            Optional.empty(),
-            defaultCodec,
-            ZLinkFrameworkTurns.captureCurrent());
+            ZLinkBoundSessionSendOptions.create(encoded.packetName(), defaultCodec));
     }
 
     @Override
@@ -317,42 +170,25 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         RoutingId sessionRid,
         String actorId,
         Message payload,
-        String defaultPacketName,
-        Map<String, String> metadata,
-        Optional<String> packetName,
-        ZLinkStreamCodec codec,
-        ZLinkYieldTurn turn) implements ZLinkBoundSessionSendCall {
+        ZLinkBoundSessionSendOptions options) implements ZLinkBoundSessionSendCall {
         @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
-            if (packetName == null || packetName.isBlank()) {
-                throw new IllegalArgumentException("packetName is required");
-            }
             return new SendCall(
                 stream,
                 sessionRid,
                 actorId,
                 payload,
-                defaultPacketName,
-                metadata,
-                Optional.of(packetName),
-                codec,
-                turn);
+                options.withPacketName(packetName));
         }
 
         @Override
         public ZLinkBoundSessionSendCall metadata(String key, String value) {
-            Map<String, String> next = new HashMap<>(metadata);
-            next.put(key, value);
             return new SendCall(
                 stream,
                 sessionRid,
                 actorId,
                 payload,
-                defaultPacketName,
-                Map.copyOf(next),
-                packetName,
-                codec,
-                turn);
+                options.withMetadata(key, value));
         }
 
         @Override
@@ -363,28 +199,11 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             } finally {
                 payload.close();
             }
-            ZLinkStreamHeader header = new ZLinkStreamHeader(
-                ZLinkStreamMessageKind.SEND,
-                codec,
-                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                Optional.empty(),
-                packetName.orElse(defaultPacketName),
-                metadata);
+            ZLinkStreamHeader header = options.header();
             return systems.zlink.framework.ZLinkSubmitStage.from(
                 sendWithRetry(stream, sessionRid, header, payloadBytes, actorId));
         }
 
-        private ZLinkYieldTurn requireTurn() {
-            if (turn == null) {
-                ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
-                if (current != null) {
-                    return current;
-                }
-                throw new IllegalStateException(
-                    "yield requires a framework Spot handler turn captured when the call object was created");
-            }
-            return turn;
-        }
     }
 
     private static CompletionStage<Void> sendWithRetry(
@@ -393,48 +212,19 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkStreamHeader header,
         byte[] payloadBytes,
         String actorId) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        long deadline = System.nanoTime() + DEFAULT_TIMEOUT.toNanos();
-        class Attempt implements Runnable {
-            @Override
-            public void run() {
-                if (result.isDone()) {
-                    return;
-                }
+        return ZLinkActorRetryScheduler.submitRelayUntilAcceptedAsync(
+            DEFAULT_TIMEOUT,
+            () -> {
                 try (Message payloadPart = Message.from(payloadBytes)) {
-                    if (stream.send(
+                    return stream.send(
                         sessionRid,
                         header,
                         List.of(payloadPart),
-                        SendFlags.DONT_WAIT)) {
-                        result.complete(null);
-                        return;
-                    }
-                } catch (ZlinkSubmitException ex) {
-                    if (!isRetryableSubmitResult(ex.getResult())) {
-                        result.completeExceptionally(ex);
-                        return;
-                    }
-                } catch (RuntimeException ex) {
-                    result.completeExceptionally(ex);
-                    return;
+                        SendFlags.DONT_WAIT);
                 }
-                if (System.nanoTime() >= deadline) {
-                    result.completeExceptionally(new ZLinkConfigurationException(
-                        "bound session send failed: " + actorId));
-                    return;
-                }
-                RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
-            }
-        }
-        RETRY_EXECUTOR.execute(new Attempt());
-        return result;
-    }
-
-    private static boolean isRetryableSubmitResult(SubmitResult result) {
-        return result == SubmitResult.NOT_CONNECTED
-            || result == SubmitResult.BACKPRESSURED
-            || result == SubmitResult.NOT_FOUND;
+            },
+            () -> new ZLinkConfigurationException(
+                "bound session send failed: " + actorId));
     }
 
 }

@@ -275,7 +275,7 @@ public interface ZLinkSpotActorRequestHandler<
 
 public interface ZLinkSpot<TActor extends ZLinkActor> {
     ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActorJoinAdmission admission,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken);
 
@@ -294,7 +294,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
 
 public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
     ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActorJoinAdmission admission,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken);
 
@@ -311,15 +311,6 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
         CancellationToken cancellationToken);
 }
 
-public record ZLinkActorJoinAdmission(
-    String actorId,
-    Class<? extends ZLinkActor> actorType,
-    RoutingId sourceSpotRid,
-    RoutingId targetSpotRid,
-    RoutingId sourceNodeRid,
-    RoutingId targetNodeRid) {
-}
-
 public interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
     ZLinkMessage transferOut(
         TActor actor,
@@ -332,10 +323,9 @@ public interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
 }
 ```
 
-`ZLinkActorTransferAdapter<TActor>` 등록은 remote transfer 지원 여부를 나타낸다. 등록이 없으면
-framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
-stateless transfer adapter 등록 API를 사용한다. 이 기본 adapter는 source에서 빈 `ZLinkMessage`를 보내고,
-target에서 기존 actor factory 또는 public actor 생성 경로로 `TActor` instance를 만든다.
+`ZLinkActorTransferAdapter<TActor>` 등록은 remote transfer에서 직접 옮길 actor state가 있음을 나타낸다.
+등록이 없으면 framework는 빈 `ZLinkMessage`를 보내고, target에서 기존 actor factory 또는 public actor
+생성 경로로 `TActor` instance를 만든다.
 
 `ZLinkSpotActorSendHandler`, `ZLinkEntrySpotActorSendHandler`도 같은 패턴을 따른다.
 Entry Spot actor request/send는 Entry Spot 전용 interface를 사용하고, user Spot actor
@@ -639,9 +629,6 @@ public interface ZLinkFrameworkOptions {
     void addActorFactory(
         String actorType,
         Class<? extends ZLinkActorFactory> factoryType);
-    void addStatelessActorTransfer(
-        String actorType,
-        Class<? extends ZLinkActor> actorClass);
     void addActorTransferAdapter(
         String actorType,
         Class<? extends ZLinkActorTransferAdapter<?>> adapterType);
@@ -924,22 +911,18 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
     default void onClosing() {
     }
 
-    default ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActorJoinAdmission admission,
+    ZLinkSpotActorJoinResponse onActorJoin(
+        String actorId,
         ZLinkMessage request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.reject();
-    }
+        CancellationToken cancellationToken);
 
-    default void onJoinedActor(
+    void onJoinedActor(
         TActor actor,
-        CancellationToken cancellationToken) {
-    }
+        CancellationToken cancellationToken);
 
-    default void onLeaveActor(
+    void onLeaveActor(
         TActor actor,
-        CancellationToken cancellationToken) {
-    }
+        CancellationToken cancellationToken);
 }
 
 public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
@@ -954,15 +937,13 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
     default void onClosing() {
     }
 
-    default void onJoinedActor(
+    void onJoinedActor(
         TActor actor,
-        CancellationToken cancellationToken) {
-    }
+        CancellationToken cancellationToken);
 
-    default void onLeaveActor(
+    void onLeaveActor(
         TActor actor,
-        CancellationToken cancellationToken) {
-    }
+        CancellationToken cancellationToken);
 }
 
 public interface ChannelClientConnections {

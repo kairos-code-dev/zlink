@@ -25,7 +25,7 @@ final class ZLinkProtobufMessageSerializer implements ZLinkMessageSerializer {
             return ZLinkEncodedPayload.from(protobuf.toByteArray());
         }
         throw new IllegalArgumentException(
-            "Protobuf codec cannot serialize value of type " + valueTypeName(value));
+            "Protobuf codec cannot serialize value of type " + ZLinkProtobufPayloads.valueTypeName(value));
     }
 
     @Override
@@ -80,7 +80,4 @@ final class ZLinkProtobufMessageSerializer implements ZLinkMessageSerializer {
         }
     }
 
-    private static String valueTypeName(Object value) {
-        return value == null ? "null" : value.getClass().getName();
-    }
 }

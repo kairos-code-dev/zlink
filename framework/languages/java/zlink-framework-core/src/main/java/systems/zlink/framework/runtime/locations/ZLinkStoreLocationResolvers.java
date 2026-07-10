@@ -1,12 +1,10 @@
 package systems.zlink.framework.runtime.locations;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.function.Function;
 import systems.zlink.framework.locations.ActorSpotRefResolver;
 import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.locations.SpotRefResolver;
@@ -25,74 +23,37 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 public final class ZLinkStoreLocationResolvers
     implements ZLinkPeerLocationResolver {
     private final ZLinkRegisteredLocationStores stores;
-    private final ZLinkOwnerLeaseTracker leaseTracker;
-    private final ZLinkObservedLocationGenerations observed = new ZLinkObservedLocationGenerations();
+    private final ZLinkLiveLocationRows liveRows;
 
     public ZLinkStoreLocationResolvers(
         ZLinkRegisteredLocationStores stores,
         ZLinkLocationOptions options) {
+        this(stores, ZLinkLiveLocationRows.create(stores, options));
+    }
+
+    public ZLinkStoreLocationResolvers(
+        ZLinkRegisteredLocationStores stores,
+        ZLinkLiveLocationRows liveRows) {
         this.stores = Objects.requireNonNull(stores, "stores");
-        Objects.requireNonNull(options, "options");
-        this.leaseTracker = new ZLinkOwnerLeaseTracker(
-            stores.ownerLeaseStore(),
-            options.pollingInterval());
+        this.liveRows = Objects.requireNonNull(liveRows, "liveRows");
     }
 
     @Override
     public CompletionStage<List<ZLinkPeerLocation>> listLivePeersAsync(ZLinkPeerLocationFilter filter) {
         return stores.peerStore().listPeerLocationsAsync(filter)
-            .thenCompose(rows -> filterLivePeers(rows.stream()
-                .filter(observed::acceptPeer)
-                .toList()));
+            .thenCompose(liveRows::filterLivePeers);
     }
 
     CompletionStage<ZLinkSpotLocation> resolveSpotRowAsync(ZLinkSpotLocationKey key) {
-        return resolveLiveAsync(
-            stores.spotStore().resolveSpotAsync(key),
-            ZLinkSpotLocation::ownerId,
-            observed::acceptSpot);
+        return liveRows.resolveLiveSpot(stores.spotStore().resolveSpotAsync(key));
     }
 
     public CompletionStage<ZLinkActorLocation> resolveActorRowAsync(ZLinkActorLocationKey key) {
-        return resolveLiveAsync(
-            stores.actorStore().resolveActorAsync(key),
-            ZLinkActorLocation::ownerId,
-            observed::acceptActor);
+        return liveRows.resolveLiveActor(stores.actorStore().resolveActorAsync(key));
     }
 
     CompletionStage<ZLinkRouteLocation> resolveRouteRowAsync(ZLinkRouteLocationKey key) {
-        return resolveLiveAsync(
-            stores.routeStore().resolveRouteAsync(key),
-            ZLinkRouteLocation::ownerId,
-            observed::acceptRoute);
-    }
-
-    private CompletionStage<List<ZLinkPeerLocation>> filterLivePeers(List<ZLinkPeerLocation> rows) {
-        CompletableFuture<List<ZLinkPeerLocation>> result =
-            CompletableFuture.completedFuture(new ArrayList<>());
-        for (ZLinkPeerLocation row : rows) {
-            result = result.thenCompose(live -> leaseTracker.isOwnerLiveAsync(row.ownerId())
-                .thenApply(ownerLive -> {
-                    if (ownerLive) {
-                        live.add(row);
-                    }
-                    return live;
-                }));
-        }
-        return result.thenApply(List::copyOf);
-    }
-
-    private <TRow> CompletionStage<TRow> resolveLiveAsync(
-        CompletionStage<TRow> rowStage,
-        Function<TRow, String> ownerId,
-        Function<TRow, Boolean> acceptObserved) {
-        return rowStage.thenCompose(row -> {
-            if (row == null || !acceptObserved.apply(row)) {
-                return CompletableFuture.completedFuture(null);
-            }
-            return leaseTracker.isOwnerLiveAsync(ownerId.apply(row))
-                .thenApply(live -> live ? row : null);
-        });
+        return liveRows.resolveLiveRoute(stores.routeStore().resolveRouteAsync(key));
     }
 
     public static final class AddressResolvers

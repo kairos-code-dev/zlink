@@ -1,15 +1,10 @@
 package systems.zlink.framework.runtime.actors;
 
 import java.time.Duration;
-import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
@@ -17,14 +12,8 @@ import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
-import systems.zlink.framework.execution.ZLinkFrameworkTurns;
-import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
-import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
-import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
-import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 
@@ -83,12 +72,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             targetEntrySpotRid,
             actorRef,
             encoded.payload(),
-            encoded.packetName(),
-            Map.of(),
-            Optional.empty(),
             timeout,
-            defaultCodec,
-            ZLinkFrameworkTurns.captureCurrent());
+            ZLinkBoundSessionSendOptions.create(encoded.packetName(), defaultCodec));
     }
 
     CompletionStage<Void> sendFrame(byte[] frameBytes) {
@@ -151,17 +136,10 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         RoutingId targetEntrySpotRid,
         ZLinkBackendActorRef actorRef,
         Message payload,
-        String defaultPacketName,
-        Map<String, String> metadata,
-        Optional<String> packetName,
         Duration timeout,
-        ZLinkStreamCodec codec,
-        ZLinkYieldTurn turn) implements ZLinkBoundSessionSendCall {
+        ZLinkBoundSessionSendOptions options) implements ZLinkBoundSessionSendCall {
         @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
-            if (packetName == null || packetName.isBlank()) {
-                throw new IllegalArgumentException("packetName is required");
-            }
             return new SendCall(
                 sourceEntrySpot,
                 routedTransport,
@@ -170,18 +148,12 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 targetEntrySpotRid,
                 actorRef,
                 payload,
-                defaultPacketName,
-                metadata,
-                Optional.of(packetName),
                 timeout,
-                codec,
-                turn);
+                options.withPacketName(packetName));
         }
 
         @Override
         public ZLinkBoundSessionSendCall metadata(String key, String value) {
-            Map<String, String> next = new HashMap<>(metadata);
-            next.put(key, value);
             return new SendCall(
                 sourceEntrySpot,
                 routedTransport,
@@ -190,53 +162,31 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 targetEntrySpotRid,
                 actorRef,
                 payload,
-                defaultPacketName,
-                Map.copyOf(next),
-                packetName,
                 timeout,
-                codec,
-                turn);
+                options.withMetadata(key, value));
         }
 
         @Override
         public systems.zlink.framework.ZLinkSubmitStage submit() {
             byte[] frameBytes;
             try {
-                ZLinkStreamHeader header = new ZLinkStreamHeader(
-                    ZLinkStreamMessageKind.SEND,
-                    codec,
-                    EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                    Optional.empty(),
-                    packetName.orElse(defaultPacketName),
-                    metadata);
-                frameBytes = ZLinkStreamFrameCodec.encode(header, payload.toByteArray());
+                frameBytes = options.encodeFrame(payload);
             } finally {
                 payload.close();
             }
             try (Message frame = Message.from(frameBytes)) {
-                ZLinkRoutedBoundSessionRuntime.sendFrame(
-                    sourceEntrySpot,
-                    routedTransport,
-                    routeChannelName,
-                    targetNodeRid,
-                    targetEntrySpotRid,
-                    actorRef,
-                    frame);
-                return systems.zlink.framework.ZLinkSubmitStage.completed();
+                return systems.zlink.framework.ZLinkSubmitStage.from(
+                    ZLinkRoutedBoundSessionRuntime.sendFrame(
+                        sourceEntrySpot,
+                        routedTransport,
+                        routeChannelName,
+                        targetNodeRid,
+                        targetEntrySpotRid,
+                        actorRef,
+                        frame));
             }
         }
 
-        private ZLinkYieldTurn requireTurn() {
-            if (turn == null) {
-                ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
-                if (current != null) {
-                    return current;
-                }
-                throw new IllegalStateException(
-                    "yield requires a framework Spot handler turn captured when the call object was created");
-            }
-            return turn;
-        }
     }
 
 }

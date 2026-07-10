@@ -320,7 +320,15 @@ static_checks
 start_redis_if_needed
 gradle_run :Client:installDist :Server:Delay:installDist :Server:Play:installDist :Server:Session:installDist
 local_package_root="${ZLINK_LOCAL_PACKAGE_ROOT:-${repo_root}/.artifacts/wsl}"
-bindings_jar="${local_package_root}/maven/systems/zlink/zlink/8.6.3/zlink-8.6.3.jar"
+bindings_version="$(python3 - "${repo_root}/framework/languages/java/gradle/libs.versions.toml" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as catalog:
+    print(tomllib.load(catalog)["versions"]["zlinkBindings"])
+PY
+)"
+bindings_jar="${local_package_root}/maven/systems/zlink/zlink/${bindings_version}/zlink-${bindings_version}.jar"
 python3 - "${bindings_jar}" <<'PY'
 import sys
 import zipfile

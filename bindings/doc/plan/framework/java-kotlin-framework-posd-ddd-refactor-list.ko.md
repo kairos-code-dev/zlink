@@ -121,9 +121,62 @@ Java 컴파일러 unused 경고(`-Xlint`)나 IDE inspection이 declaration-level
   - 2026-07-10 완료: connector production 의존은 framework-core로 되돌리지 않고,
     `ZLinkStreamCoreWireInteropTest`로 core↔connector header/frame 왕복을 고정했다. core
     `ZLinkStreamHeaderCodecTest`도 connector golden vector를 byte-exact로 검증한다.
-- [ ] **C2. ⭐Entry vs User activation dispatch 상태기계 2벌 near-verbatim** (벤치, per-message/dispatch)
+- [x] **C2. ⭐Entry vs User activation dispatch 상태기계 2벌 near-verbatim** (벤치, per-message/dispatch)
   - `spots/ZLinkSpotRuntime.java` — `EntrySpotActivation`(동기 void)과 `SpotActivation`(CompletionStage async)이 dispatch 골격을 통째 복제: route(`:2069-2230` ≈ `:5340-5500`), actor-message(`:2437-2614` ≈ `:5656-5814`), subscription(`:2301-2368` ≈ `:5513-5582`), actor-lifecycle(`:2390-2436` ≈ `:5607-5655`), routed relay(`:2232-2289` ≈ `:5959-6016`). `replyActorDispatchError`(`:2676-2718` == `:5833-5877`)는 완전 동일. dotnet C2/node C2 동형. kind/surface/reply-strategy 매개화한 `ZLinkSpotDispatchPipeline` + 공통 base activation으로 추출(actor 해결원·spotRid원·동기/async 어댑터만 주입). `reportDispatchError` 12-인자 positional 21회 호출(정의 `:4414`)도 `ZLinkDispatchFailure` 빌더로.
   - channels도 동형(하위): `dispatchSend`(`:2066`)/`dispatchRouteSend`(`:2114`)/`dispatchPublish`(`:2008`)/`dispatchRequest`(`:1397`)/`dispatchRouteRequest`(`:1927`) 5벌 + `invoke*Handler` 3+2벌(`:2292-2569`). 같은 dispatch core로.
+  - 2026-07-10 부분 완료: Entry/User activation의 `replyActorDispatchError` 중복을
+    `ZLinkSpotRuntime.replyActorDispatchError(SpotDispatchLine, ...)`로 모았다. 전체 상태기계 중복은 아직
+    남아 있으므로 C2는 완료가 아니다.
+  - 2026-07-10 부분 완료: Entry/User activation의 route/subscription dispatch에 반복되던
+    `ZLinkMessageFlowEvent` 생성과 enabled 확인을 `traceMessageFlow`로 모았다. dispatch 분기와 오류 처리
+    정책은 아직 각 activation에 남아 있다.
+  - 2026-07-10 부분 완료: actor packet dispatch와 routed actor join reply에 남아 있던 flow trace 생성도
+    같은 `traceMessageFlow`를 사용하게 했다. actor handler 선택, actor dispatch turn, bound-session reply
+    정책은 기존 위치에 남겨 dispatch pipeline 추출로 위장하지 않았다.
+  - 2026-07-10 부분 완료: SPOT outbound send/request/publish와 route reply 수신에 남아 있던 flow trace
+    생성도 `traceMessageFlow`로 모았다. outbound 전송, reply decode, yield turn, close 정책은 그대로
+    각 call 객체가 소유한다.
+  - 2026-07-10 부분 완료: `reportDispatchError`의 12-인자 positional 호출을 `DispatchFailureReport`
+    내부 report object로 바꿨다. surface/kind/reason/action은 생성 시 고정하고 packet/topic/spot/actor/source/
+    correlation/error는 이름 있는 setter로 채워, 호출부가 인자 순서를 외우지 않게 했다.
+  - 2026-07-10 부분 완료: Entry/User activation의 route SEND drop과 subscription drop 오류 보고를
+    `reportSpotRouteSendDropped`/`reportSpotSubscriptionDropped`로 모았다. helper는 report 필드 조립만
+    맡고 dispatch 분기, handler 선택, reply, close 정책은 여전히 activation에 남겼으므로 C2는 완료가 아니다.
+  - 2026-07-10 부분 완료: Entry/User activation의 actor-message handler missing 오류 보고를
+    `reportSpotActorHandlerMissing`으로 모았다. missing actor와 missing handler에서 공통으로 쓰되,
+    request error reply 생성과 pending header close 순서는 각 activation에 남겼다.
+  - 2026-07-10 부분 완료: Entry/User activation의 actor lifecycle ref/spot 추출과 joined/left 이벤트
+    무시 판정을 `actorLifecycleRef`/`actorLifecycleSpotRid`/`shouldIgnoreJoinedOrLeftLifecycle`로 모았다.
+    enqueue 방식과 lifecycle callback 실행은 각 activation에 남겼다.
+  - 2026-07-10 부분 완료: Entry/User activation의 actor-message header/body pairing과 pending header 보관
+    규칙을 `readActorMessage`와 `ActorMessageRead`로 모았다. actor lookup, handler 선택, reply/close,
+    dispatch queue 선택은 각 activation에 남겼다.
+  - 2026-07-10 부분 완료: Entry/User activation의 actor-message control packet 처리 중복을
+    `dispatchActorControlPacket`으로 모았다. native session bind와 session disconnected 처리는 일반 handler
+    dispatch와 분리했고, handler resolution과 actor dispatch queue 선택은 activation에 남겼다.
+  - 2026-07-10 부분 완료: Entry/User activation의 local actor packet handler 선택, request/send kind 검증,
+    actor type 검증, header/body 복사, actor serial dispatch 제출 중복을 `dispatchLocalActorPacket`으로 모았다.
+    local actor lookup, Entry 전용 remote joined actor routing, framework control packet 처리는 helper 밖에 남겨
+    서로 다른 정책을 한 메서드에 섞지 않았다. 전체 route/subscription/lifecycle 상태기계는 아직 남아 있어
+    C2는 완료가 아니다.
+  - 2026-07-10 부분 완료: Entry/User activation의 actor joined/left/disconnected 상태 전이와 callback 선택
+    중복을 `actorLifecycleTransition`으로 모았다. Entry는 반환된 operation을 Spot serial queue에 제출하고,
+    User Spot은 actor serial queue에 제출하므로 서로 다른 실행 순서는 호출자에 남겼다. lifecycle drain과
+    queue 선택이 아직 activation에 남아 있어 C2는 완료가 아니다.
+  - 2026-07-10 부분 완료: `SpotActivationBase`가 Entry/User의 일반 route request/send handler 선택,
+    오류 reply/drop, payload·route receive 수명, flow trace와 subscription handler dispatch를 공통으로 맡는다.
+    Entry는 handler를 Spot serial queue에 즉시 넣고 User Spot은 현재 stage 뒤에 순차 연결하는 차이만
+    `appendSpotHandler` hook으로 남겼다. framework actor route와 actor message 상태기계는 아직 남아 있어
+    C2는 완료가 아니다.
+  - 2026-07-10 부분 완료: Entry/User의 actor-message frame pairing, local actor lookup, actor 부재 reply,
+    framework control packet, local handler dispatch를 `SpotActivationBase.dispatchActorMessages`로 통합했다.
+    pending multipart header도 base가 소유한다. Entry 전용 actor surface 결정과 remote-joined forwarding만
+    override로 남겼다. actor join과 lifecycle event drain은 아직 activation별로 남아 있어 C2는 완료가 아니다.
+  - 2026-07-10 완료: `SpotActivationBase`가 일반 route/subscription, actor-message, actor lifecycle receive와
+    상태 전이, routed bound-session send/request, routed actor packet의 공통 정책을 소유한다. Entry/User 차이는
+    handler scheduling, lifecycle scheduling, resolved actor packet delivery 세 경계로 제한했다. actor join과
+    route drain은 Entry/User의 공개 의미와 실행 순서가 달라 각각 유지한다. 100,000 packet benchmark 3회
+    중앙값에서 throughput, wall time, p50/p95/p99가 모두 무회귀임을 확인했다.
 - [x] **C3. stream frame decode 인라인 + response 헤더 생성 반복** (벤치, per-reply)
   - `ZLinkStreamFrameCodec`에 `tryDecode` 추가(§B6) → `ZLinkActorClientRuntime:314-334` 손코딩 제거. "request→response 헤더(correlationId echo)" 생성 5곳(`streams/ZLinkStreamRuntime.java:850-858,638-645`, `actors/ZLinkSessionActorsRuntime.java:509-516`, `actors/ActorPacketFrames.java:34-40,46-53`) → `ZLinkStreamHeader.createResponse(requestHeader,codec,flags,metadata)` 팩토리. dotnet C9 동형.
 - [x] **C4. ⭐actor deadline-retry 스케줄러 관용구 ~10벌 + 4 executor** (벤치, per-relay/send)
@@ -160,14 +213,67 @@ Java 컴파일러 unused 경고(`-Xlint`)나 IDE inspection이 declaration-level
 
 공개 계약 + 각 모듈 test 통과를 유지한 채 분해(java는 nested class를 top-level package-private 파일로 승격). hot 경로 dispatch 클러스터만 벤치.
 
-- [ ] **D1. (P0) `spots/ZLinkSpotRuntime.java` (6236줄, 21 nested class, 코드베이스 최대)** — CRUD + 핸들러 스캔 + 두 dispatch 상태기계 + outbound + context + timer + location claim
+- [x] **D1. (P0) `spots/ZLinkSpotRuntime.java` (6236줄, 21 nested class, 코드베이스 최대)** — CRUD + 핸들러 스캔 + 두 dispatch 상태기계 + outbound + context + timer + location claim
   - **god-class `EntrySpotActivation`(2004-2846, ~843줄) + `SpotActivation`(5234-6236, ~1002줄):** §C2로 공유 `ZLinkSpotDispatchPipeline` + 공통 base activation 추출(최우선, **벤치**).
+    2026-07-10 부분 완료: `SpotActivationBase`로 일반 route/subscription, actor-message/lifecycle, routed
+    bound-session/actor packet 정책과 active receive/pending header ownership을 통합해 C2를 완료했다.
+    activation은 여전히 같은 파일에 있고 Entry/User 전용 route drain과 actor join 구현이 남아 있으므로
+    D1 god-file 분해 완료는 아니다.
   - **Outbound 클러스터(3428-4530, ~1100줄):** `DefaultSpotOutbound`(3428)/`AmbientSpotOutbound`(4007)/`DefaultSpotPublisherClient`(4040) + send·request·publish call 8클래스 → `spot-outbound` 파일(**벤치** per-reply, C8 보일러 동반).
+    2026-07-10 부분 완료: SPOT route request call 3곳에 반복되던 framework-error reply 확인,
+    empty reply 처리, payload 선택, deserialize, reply parts close 규칙을 `decodeSpotRouteReply`로 모았다.
+    2026-07-10 완료: direct backend, routed `SpotRef`, publisher cache, active callback scope를 각각
+    `ZLinkSpotDirectOutbound`, `ZLinkSpotRoutedOutbound`, `ZLinkSpotPublisherRuntime`,
+    `ZLinkSpotOutboundScope`로 분리하고 call builder를 top-level package-private 타입으로 옮겼다. 현재
+    계약에서 생성되지 않는 Egress send/request call과 Spot runtime resolver wiring도 제거했다.
   - **Context/Timer:** `DefaultEntrySpotContext`(1798)/`EntrySpotTimerSurface`(1953)/`DefaultSpotContext`(2858-3427, `ManagedTimer` 3050) → `spot-context` + `spot-timer`.
+    2026-07-10 부분 완료: `ManagedTimer`가 직접 갖고 있던 timer schedule 계산과 tick 생성을
+    `ZLinkSpotTimerSchedule` package-private 객체로 분리했다. `ManagedTimer`는 scheduling executor,
+    handler dispatch, 실패 이벤트 발행만 남겼다.
+    2026-07-10 부분 완료: timer collection, 옵션 검증, scheduling, handler 생성·호출, 실패 이벤트를
+    `ZLinkSpotTimerRegistry`로 옮겼다. context는 Spot serial line과 outbound scope를 적용하는 실행 정책
+    하나만 제공한다. Entry/User context 자체 분리는 아직 남아 있다.
+    2026-07-10 완료: Entry/User context와 Entry timer capability projection을 top-level 타입으로 옮겼다.
+    context는 package-private `ZLinkSpotContextHost`를 통해 lifecycle 정책만 요청하며 actor runtime, node map,
+    timer executor를 직접 보지 않는다.
   - **핸들러 스캔 정적(452-564 + `resolveActorPacketHandler` 1635 + `ScannedTimerRegistrar` 4696):** → `spot-handler-catalog`(리플렉션 스캔 idiomatic 유지).
+    2026-07-10 부분 완료: SPOT packet/subscription handler 등록 결과 값 타입을
+    `ZLinkSpotHandlerRegistration` 파일로 옮겼다. 스캔 정책과 actor handler 등록 정책은 아직
+    `ZLinkSpotRuntime`에 남아 있다.
+    2026-07-10 부분 완료: Entry/User context에 중복되던 registration-open 상태, configured handler type,
+    packet/subscription map, immutable snapshot 전환과 lookup을 top-level `ZLinkSpotHandlerCatalog`로 옮겼다.
+    scanner 결과와 actor handler 계약을 해석하는 loader는 runtime에 남아 있어 D1 handler-catalog 완료는
+    아니다.
+    2026-07-10 완료: scanned/configured packet·subscription·timer 계약 해석은
+    `ZLinkSpotHandlerLoader`로, 전역 actor packet handler 인덱스와 serializer type 준비는
+    `ZLinkSpotActorHandlerCatalog`로 옮겼다. 처음 만든 657줄 loader가 새 god-module 후보가 되어 두
+    lifecycle을 즉시 분리했다.
   - **Spot CRUD + location claim(575-772, `activateAsync` 1085, `claim*`/`release*` 702/724/751/762):** → `spot-lifecycle`(dotnet E1 연결).
-- [ ] **D2. (P1) `channels/ZLinkChannelRuntime.java` (3681줄)**
+    2026-07-10 부분 완료: node별 mesh, route endpoint, publisher 가능 여부와 location lifecycle을
+    `ZLinkSpotLocationCoordinator`로 옮겼다. runtime은 node metadata map을 직접 읽지 않고 user/entry
+    Spot claim·release와 mesh/publisher 조회를 의미 단위 API로 요청한다. Spot CRUD와 activation은 아직
+    runtime에 남아 있어 D1 lifecycle 분해 완료는 아니다.
+  - 2026-07-10 완료: `EntrySpotActivation`, `SpotActivation`, 공통 activation base와 생성 결과 값을
+    top-level package-private 타입으로 옮겼다. CRUD, pending create 단일화, location claim/release,
+    activation registry와 전체 종료는 `ZLinkSpotLifecycle`이 소유하고, context 구성과 callback 순서는
+    `ZLinkSpotActivationFactory`가 소유한다. bound-session 재시도와 dispatch failure 값도 runtime 밖으로
+    옮겼다. `ZLinkSpotRuntime`은 1855줄, nested 타입 0개가 되었고 core unit test 전체가 통과했다.
+    이 단계에서 남았던 activation의 actor runtime 직접 접근은 이후 §D-Cross에서 session coordinator와
+    Spot admission 객체를 통해 요청하도록 정리했다.
+- [x] **D2. (P1) `channels/ZLinkChannelRuntime.java` (3681줄)**
   - `ChannelSocketRegistry`(114-154,1192-1319), `ChannelRuntimeConfigurator`(279-497), `ChannelReceiveLoops`(1320/1691/1993, B3 착지), `ChannelDispatchers`(§C2 착지, 벤치), `ChannelHandlerInvokers`(2264-2955), `SpotRouteBridgeRawReplyCorrelator`(140-149,1509-1690), `SpotRouteBridgeDrainer`(1730-1828, 고정율 10ms drain `:1789` = §부록 D6 후보), `RouteSpotOutboundDispatcher`(747-1048, §C6 착지, 벤치), `ChannelClients`(2956-3678, call 7종).
+  - 2026-07-10 부분 완료: C6에서 분리한 route-to-SPOT 경로의 target value type을
+    `ZLinkSpotRouteTarget` 파일로 옮겼다. `ZLinkChannelRuntime`은 target 선택만 수행하고, 선택 결과의
+    값 타입 정의는 channel route-to-SPOT 패키지 내부 객체가 소유한다.
+  - 2026-07-10 완료: socket과 수동 연결 자원은 `ZLinkChannelSocketRegistry`, 생성·bind/connect 순서는
+    `ZLinkChannelRuntimeConfigurator`, handler lookup과 serial queue는 `ZLinkChannelDispatchRegistry`로
+    옮겼다. receive loop는 `ZLinkChannelReceiveLoops`가 scheduled 재개 방식으로 실행해 no-data 대기 중
+    executor thread를 막지 않는다. 일반 channel dispatch와 route/Spot bridge dispatch는 각각
+    `ZLinkChannelMessageDispatcher`, `ZLinkChannelRouteDispatcher`로 나눴다. handler 호출, client call,
+    retry, reply decode, raw reply correlation, bridge drain도 각각 별도 모듈이 소유한다.
+    `ZLinkChannelRuntime`은 951줄, nested 구현 타입 0개가 되었고 관련 channel unit test를 강제 재실행해
+    통과했다. 가장 큰 새 모듈은 handler 호출 정책만 소유하는 447줄 파일이며 socket, dispatch map,
+    receive loop를 알지 않는다.
 - [x] **D3. (R2/P1) `host/ZLinkFrameworkRuntime.java` (555줄)** — 생성자 `:72-308`(~236줄)이 8 서브시스템 조립 전량
   - wiring 번들화: Location(109-165)/Channel(166-184)/Spot(185-222)/Actor(223-280)/Stream(281-295)/AutoConnect(296-306) → 스테이지 팩토리(각 번들이 자기 `runtimeHandlers.add` 소유). `close()` 캐스케이드(`:472-520`, 6단 중첩 try/finally) → `Deque<Runnable>` LIFO 평탄화. **주의:** node/dotnet과 달리 Java의 bound-session relay는 host가 아니라 `actors/ZLinkNativeBoundSessionRuntime`·`streams/ZLinkStreamRuntime`에 있음(host는 배선만).
 - [x] **D4. `actors/ZLinkActorRuntime.java`** — 완료: `JoinSpotCall` → `ZLinkActorSpotJoinCall`,
@@ -220,8 +326,19 @@ Java 컴파일러 unused 경고(`-Xlint`)나 IDE inspection이 declaration-level
     `ZLinkJavaSpotBackendAdapter`, `ZLinkJavaStreamBackendAdapter` package-private 파일로 분리했다.
     socket linger 설정 정책은 `ZLinkJavaSocketOptions`가 소유한다. `ZLinkJavaBackendAdapterFactory`는
     backend adapter factory 메서드와 monitoring adapter 생성만 남는다.
-- [ ] **D-Cross. (R3, P1) actor↔spot 협업 경계 정리** (없음, back-door information leakage)
+- [x] **D-Cross. (R3, P1) actor↔spot 협업 경계 정리** (없음, back-door information leakage)
   - `actors/ZLinkActorRuntime.java`(actor ownership/생성/dispatch queue)와 `spots/ZLinkSpotRuntime.java`가 서로의 내부 순서를 알고 협업한다: SPOT의 actor-packet dispatch(`ZLinkSpotRuntime.java:1242-1436`)가 session bind + actor dispatch turn을 직접 호출하고, routed bound-session/actor-packet/actor-join(`ZLinkSpotRuntime.java:5959-6128`)도 SpotActivation 안에서 처리. 반대로 actor runtime이 Entry Spot route join·remote joined actor dispatch(`ZLinkActorRuntime.java:624-746`)·bind/native/routed session(`:929-1041`)을 소유. → session binding token/source node·session/no-bind 판정을 한 곳에 모으는 `ZLinkActorSessionCoordinator` 내부 객체 도입: SPOT은 "actor packet 처리" 요청만 넘기고 actor runtime은 생성·조회·dispatch queue invariant에 집중. public `ZLinkActorManager/Directory/Client` 유지. R1(§D1 spots) 이후 착수 — SPOT actor-packet dispatcher 분리 후 경계가 분명해짐. (§D1/§D4의 개별 추출과 조율.)
+  - 2026-07-10 완료: `ZLinkSpotRuntime`과 activation에서 `ZLinkActorRuntime` 직접 호출을 제거하고,
+    session dispatch·remote route·bound-session 전송은 `ZLinkActorSessionCoordinator`(241줄)가 맡는다.
+    actor 생성·join/leave·session binding token rollback은 `ZLinkActorSpotAdmission`(265줄)이 맡는다.
+    단일 coordinator로 합치는 대안은 477줄에 dispatch와 lifecycle 변경 이유가 다시 섞여 새 POSD 대상이
+    되었으므로 두 내부 객체로 분리했다. `ZLinkSpotRuntime`에는 조립 시 `attachActorRuntime` 타입만 남고,
+    public actor API는 바꾸지 않았다. 관련 actor/Entry Spot/node 단위 테스트를 강제 재실행해 통과했다.
+  - 최종 회귀 점검에서 channel monitoring source key 변경, 호출자가 지정한 Spot RID 대신 backend 임시
+    RID를 저장하던 문제, Kotlin YieldDispatch runner의 bindings 버전 하드코딩을 발견해 기존 계약과 중앙
+    version catalog 기준으로 고쳤다. 이후 루트 `./gradlew test --rerun-tasks` 45개 task와 Java/Kotlin
+    sample 전체를 통과했다. E2E는 full sweep 없이 Java `SM-B9`, `SM-D15`, `RM-C1`, `RM-C2`, `YD-D4`와
+    Kotlin `SM-B1` actor-session 묶음, `RM-C2`, `YD-D4`만 실행해 통과했다.
 - [x] **D8. (R5, P1) Location/Redis 구조 분해** — `locations/ZLinkLocationLifecycle.java`(290줄) 3책임(spot claim 41-74 / actor claim·takeover·상실 76-172,230 / actor-session route 173-216) → `ZLinkSpotLocationLifecycle`/`ZLinkActorOwnershipCoordinator`/`ZLinkActorSessionRouteLifecycle`(dotnet E1 동형; **Java 이점:** takeover가 intent 명시라 AsyncLocal scope 누출 없음).
   - `zlink-framework-locations-redis/.../ZLinkRedisLocationStore.java`(604줄) public facade 유지, 5객체로 분리(dotnet E2 동형). **⚠️ 범위 정확히**(메서드 경계 검증됨): `ZLinkRedisLocationKeys`(row/generation/index/owner/lease/stamp 키 naming `:554-598`), `ZLinkRedisLocationScriptsClient`(lease script `:204-272`[renew/remove/removeAll/listOwnerLeases] + write/remove script 호출 `:294-341` + result 변환 `toLeaseSnapshot`/`toWriteResult`/`propagateWriteFailure`/`unwrap` `:444-488`; **`getChangeStampAsync` `:275-279`는 script 아닌 plain `redis.get(stampKey)`라 별도 stamp accessor로**), `ZLinkRedisLocationRows`(`resolve`/`listRows`/`listPage`/`loadRows`/`toScannedPage`/`materialize` `:342-419`), `ZLinkRedisLocationFilters`(peer/spot/actor/route filter matching `:522-552`), `ZLinkRedisConnectionProvider`(`commands()`/`connection()` `:421-442` + `close()` future 버림 `:290-292` 함께 정리). row JSON wire format은 `ZLinkRedisLocationRowJson`이 계속 소유하되 **legacy actor-ref 호환 정책을 테스트로 고정**(row-key codec은 이미 별도 파일). **가드레일:** cross-language row format은 저장 계약이라 보존.
 - [x] **D9. (R4, P1) spring-boot-starter `ZLinkFrameworkCapabilityBeanRegistrar.java` (287줄)** — 4관심사 → `CapabilityBeanRegistrar`(capability delegate bean 등록 `:32-82`) + `ApplicationBeanRegistrar`(application type prototype + ctor collection dependency `:84-111`) + `SessionPacketHandlerDiscovery`(session-packet handler classpath 탐색 + Kotlin raw-type 이름 비교 `:113-194`, Kotlin 이름 비교를 이 객체에만 가둠) + package-private `ClasspathTypeScanner`(scanner 생성+class loading `:209-248`, `AssignableTypeFilter` 유무만 매개화). (`collectionElementType` `:196-207`은 `findCollectionDependencyImplementations`(`:101`)의 단일 소비 헬퍼 → `ApplicationBeanRegistrar`와 동거.) registrar는 `postProcessBeanFactory` orchestration만. http-client `ZLinkHttpRequestBuilder.java`(332줄) → `HttpRequestBodyEncoder`(form/multipart 295-331) + `HttpTargetBuilder`(query 251-265). testkit `FakeZLinkBackendAdapterFactory`(1243줄)는 테스트 인프라라 대상 아님.
@@ -885,9 +1002,9 @@ Java **고유**(dotnet/node에 없음): **C0(⚠️ stream-connector가 framewor
   요청한다.
 - POSD 자체 점검: 새 클래스는 public API가 아니며 상태 전이를 메서드로 숨긴다. 따라서 이번 산출물은
   호출자에게 내부 binding token/source rid 지식을 더 노출하지 않는다. `DefaultActorContext`가 public
-  facade와 상태 owner를 함께 맡던 얕은 모듈 위험은 줄었다. 다만 actor runtime과 spot runtime의 협업 순서
-  지식은 여전히 `D-Cross` 항목의 별도 대상이다. 이번 분리가 그 경계를 새 public API나 테스트 전용
-  adapter로 우회하지는 않았으므로, 추가 POSD 대상은 `D-Cross`로 남긴다.
+  facade와 상태 owner를 함께 맡던 얕은 모듈 위험은 줄었다. 이 단계에서 별도 대상으로 남겼던 actor
+  runtime과 spot runtime의 협업 순서는 이후 `D-Cross`에서 session dispatch와 Spot admission 책임으로
+  분리해 완료했다.
 - 검증:
   - `./gradlew --no-daemon :zlink-framework-core:compileJava`
   - `./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.HandlerContractTest --tests systems.zlink.framework.LocationContractTest --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.actors.ZLinkActorRetrySchedulerTest`
@@ -1081,6 +1198,567 @@ Java **고유**(dotnet/node에 없음): **C0(⚠️ stream-connector가 framewor
   - 관련 e2e build만 실행: `e2e/YieldDispatch`, `e2e-kotlin/YieldDispatch`
   - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
     `All Java/Kotlin samples passed`
+
+## 부록 AO. 2026-07-10 SPOT actor dispatch error reply 중복 정리
+
+- 부분 완료: C2/D1의 무위험 중복부터 줄였다. `EntrySpotActivation`과 `SpotActivation`에 각각 있던
+  `replyActorDispatchError` 본문을 `ZLinkSpotRuntime.replyActorDispatchError(SpotDispatchLine, ...)`로
+  모았다. no-bind actor reply, bound-session retry, frame 생성 실패 시 `headerPart.close()` 처리 순서는
+  기존과 같다.
+- POSD 자체 점검: 새 `SpotDispatchLine`은 dispatch queue에 작업을 넣는 최소 인터페이스다. Entry/User
+  activation의 동기/비동기 상태기계나 actor routing 의미를 알지 않으므로 얕은 pipeline이 아니다. 다만
+  activation 전체 route/subscription/lifecycle 중복은 그대로 남아 있어 C2는 완료하지 않았다. 다음 단계에서
+  helper가 늘어나면 공통 dispatch pipeline으로 묶기 전에 책임 이름을 먼저 정해야 한다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh`는
+    `TicTacToe.Java`, `Bingo.Java`, `TicTacToe.Kotlin`에서 transient port bind retry가 있었고,
+    최종 `All Java/Kotlin samples passed`까지 성공했다.
+
+## 부록 AP. 2026-07-10 channel route-to-SPOT target 값 타입 분리
+
+- 부분 완료: D2의 `RouteSpotOutboundDispatcher` 잔여 code-motion으로, `ZLinkChannelRuntime` 안에 있던
+  route-to-SPOT target marker/record를 `ZLinkSpotRouteTarget` package-private 파일로 옮겼다.
+- POSD 자체 점검: 새 파일은 route bridge인지 spot-router-node인지 나타내는 값 타입만 담는다. 전송,
+  retry, trace, reply correlation 규칙은 각각 `ZLinkSpotRouteBridgeDispatcher`,
+  `ZLinkSpotRouterNodeDispatcher`, `ZLinkSpotRouteBridgeRawReplies`가 계속 소유한다. target 파일에 전송
+  동작을 넣기 시작하면 선택 값과 실행 정책이 섞이는 새 POSD 대상이 되므로 금지한다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `./gradlew --no-daemon :zlink-framework-core:test --tests '*ZLinkChannelRuntimeTest'`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.clientServerSpotRouteEgress_requestReplySucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 AQ. 2026-07-10 SPOT timer schedule 계산 분리
+
+- 부분 완료: D1의 Context/Timer 클러스터 중 `DefaultSpotContext.ManagedTimer`에 섞여 있던 timer schedule
+  계산을 `ZLinkSpotTimerSchedule`로 분리했다. 새 객체는 period, overrun policy, delivery index,
+  scheduled index, skipped tick 계산과 `ZLinkTimerTick` 생성을 맡는다. `ManagedTimer`는 executor 예약,
+  SPOT serial dispatch, handler 호출, 실패 이벤트 발행만 맡는다.
+- 선택 근거: private helper로만 빼는 방법도 가능했지만, timer overrun policy는 독립 규칙이라 별도
+  package-private 객체와 단위 테스트로 고정하는 쪽이 더 깊은 모듈이다. public API는 늘리지 않았다.
+- POSD 자체 점검: `ZLinkSpotTimerSchedule`은 runtime, outbound, event dispatcher, handler factory를
+  모른다. 반대로 `ManagedTimer`도 scheduled index 계산식을 알지 않는다. 따라서 이번 산출물이 다시
+  얕은 pass-through 객체가 되지는 않는다. 다만 entry/user context 자체와 timer surface adapter는 아직
+  같은 파일에 남아 있으므로 D1은 완료하지 않는다. schedule 객체에 executor나 handler dispatch를 넣기
+  시작하면 정책 계산과 실행 경계가 섞이는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:test --tests 'systems.zlink.framework.runtime.spots.ZLinkSpotTimerScheduleTest'`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 AR. 2026-07-10 SPOT route reply 해석 규칙 중복 정리
+
+- 부분 완료: D1의 Outbound 클러스터 중 `SpotRefRequestCall`, `EgressSpotRequestCall`,
+  `SpotToSpotRequestCall`에 반복되던 SPOT route reply 해석 규칙을 `decodeSpotRouteReply`로 모았다.
+  framework-error marker 확인, 빈 reply의 empty message 처리, routed reply payload 선택, deserialize 오류에
+  reply parts 진단을 붙이는 규칙, reply parts close 순서를 한 곳에서 유지한다.
+- 선택 근거: call 객체를 곧바로 top-level로 옮기는 방법도 있지만, 현재 각 call은 route 선택, backend
+  callback, handler executor hop, flow trace를 함께 만진다. 큰 이동 전에 reply 해석이라는 순수 규칙부터
+  모으는 쪽이 책임 경계가 더 선명하고 위험이 작다.
+- POSD 자체 점검: 새 helper는 transport 선택, channel/runtime dispatch, callback thread 정책을 모른다.
+  call 객체는 reply frame 해석 세부식을 더 이상 알지 않는다. 다만 helper가 serializer를 쓰는 runtime
+  private 메서드라 아직 `spot-outbound` 파일 분리 완료는 아니다. helper에 transport fallback이나 trace
+  정책을 넣기 시작하면 실행 정책과 해석 규칙이 섞이는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `./gradlew --no-daemon :zlink-framework-core:test --tests '*ZLinkChannelRuntimeTest'`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.clientServerSpotRouteEgress_requestReplySucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh`는 첫 실행에서
+    native library load가 `file too short`로 실패했다. 즉시 `core/build/lib/libzlink.so.8.6.3`이 정상
+    ELF 파일임을 확인한 뒤 재실행했고, Kotlin Bingo의 transient port bind retry 1회 후 최종
+    `All Java/Kotlin samples passed`까지 성공했다.
+
+## 부록 AS. 2026-07-10 SPOT handler registration 값 타입 분리
+
+- 부분 완료: D1의 handler-catalog 클러스터 중 `SpotPacketHandlerRegistration`과
+  `SpotSubscriptionHandlerRegistration`을 `ZLinkSpotHandlerRegistration` package-private 파일로 옮겼다.
+  `ZLinkSpotRuntime`은 등록 값을 생성하고 조회하지만, 값 타입 정의 자체는 별도 내부 파일이 소유한다.
+- 선택 근거: reflection scan 정책을 바로 별도 객체로 옮기면 `handlerCatalog`, actor handler registration,
+  annotation validation 의존을 한꺼번에 옮겨야 한다. 먼저 값 타입만 분리하면 public API를 늘리지 않고
+  god-file의 중첩 타입 수를 줄일 수 있다.
+- POSD 자체 점검: 새 파일은 data carrier만 담으며 scan, duplicate policy, actor handler resolution을
+  모른다. 따라서 실행을 위임하는 얕은 helper는 아니다. 다만 registration 생성 정책과 actor handler
+  등록 정책이 여전히 `ZLinkSpotRuntime`에 남아 있으므로 D1 handler-catalog 완료는 아니다. 값 타입 파일에
+  scanner나 duplicate 정책이 섞이기 시작하면 값과 정책이 결합되는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.handlers.ZLinkHandlerScannerTest --tests systems.zlink.framework.HandlerContractTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.SpotManagerTest.spot_publishTimerAndClose_stopCallbacksWork --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_scannedHandlerGroupRequestSucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh`는
+    Kotlin Bingo에서 transient port bind retry 1회 후 최종 `All Java/Kotlin samples passed`까지 성공했다.
+
+## 부록 AT. 2026-07-10 SPOT route/subscription flow trace 생성 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation 중 route dispatch와 subscription dispatch에 반복되던
+  `ZLinkMessageFlowEvent` 생성, `dispatchErrors.flow().enabled(...)` 확인을 `traceMessageFlow` private
+  helper로 모았다.
+- 선택 근거: 전체 `ZLinkSpotDispatchPipeline`을 바로 도입하면 handler invocation, close 순서, actor join,
+  routed relay까지 한꺼번에 이동해야 한다. 먼저 flow event 생성 규칙만 모으면 dispatch 상태기계의 중복
+  표면을 줄이면서 실행 순서와 public 동작은 유지할 수 있다.
+- POSD 자체 점검: 새 helper는 event 생성과 enabled gate만 담당한다. route/subscription handler 선택,
+  backend reply, close, actor routing 정책은 알지 않는다. 따라서 새 dispatch pipeline으로 위장한 얕은
+  pass-through가 아니다. helper에 handler 호출이나 close 정책을 넣기 시작하면 trace와 dispatch 실행이
+  섞이는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_scannedHandlerGroupRequestSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.scannedMethodHandlerGroup_publishDispatches`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh`는 첫 실행에서
+    Kotlin TicTacToe가 `connector is not connected`로 실패했다. 실행 종료 후 남은 Java/Kotlin 샘플
+    프로세스가 없음을 확인하고 재실행했고, 최종 `All Java/Kotlin samples passed`까지 성공했다.
+
+## 부록 AU. 2026-07-10 SPOT actor flow trace 생성 중복 정리
+
+- 부분 완료: C2/D1의 actor packet dispatch와 routed actor join reply에 남아 있던
+  `ZLinkMessageFlowEvent` 생성, `dispatchErrors.flow().enabled(...)` 확인을 기존 `traceMessageFlow`
+  private helper로 모았다.
+- 선택 근거: route/subscription trace 정리 뒤 actor dispatch trace만 별도 생성식을 유지하면 같은
+  진단 이벤트 지식이 activation과 공통 helper에 나뉜다. actor handler 선택, actor dispatch turn,
+  bound-session/no-bind reply, close 순서는 그대로 두고 trace event 생성 규칙만 합치는 쪽이 더 작은 변경이다.
+- POSD 자체 점검: `traceMessageFlow`는 여전히 event 생성과 enabled gate만 담당한다. actor lookup,
+  handler invocation, reply 전송, retry, close 정책을 알지 않으므로 helper 자체가 새 얕은 dispatch
+  pipeline이 되지 않았다. 여기에 actor dispatch 실행 순서나 reply 정책을 넣기 시작하면 trace 책임과
+  dispatch 책임이 섞이는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 AV. 2026-07-10 SPOT outbound flow trace 생성 중복 정리
+
+- 부분 완료: C2/D1의 outbound 클러스터 중 SPOT route send/request, egress route send/request,
+  spot-to-spot send/request, external/local publish call에 반복되던 `ZLinkMessageFlowEvent` 생성과
+  `dispatchErrors.flow().enabled(...)` 확인을 `traceMessageFlow` private helper로 모았다.
+- 선택 근거: 이전 정리 뒤 helper 내부와 outbound call 객체에 같은 진단 이벤트 생성 지식이 나뉘어 있었다.
+  전송 대상 선택, route reply 해석, yield turn, payload close 순서는 call 객체에 남기고, trace event 생성
+  규칙만 모으는 쪽이 더 작은 책임 이동이다.
+- POSD 자체 점검: `traceMessageFlow`는 아직 event 생성과 enabled gate만 맡는다. channel/spot transport
+  선택, reply decode, callback thread hop, close 정책을 알지 않는다. helper가 outbound 실행 정책을 받기
+  시작하면 진단과 전송 책임이 섞이는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.scannedMethodHandlerGroup_publishDispatches --tests systems.zlink.framework.runtime.ChannelMessagingTest.clientServerSpotRouteEgress_requestReplySucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 AW. 2026-07-10 SPOT dispatch error report 인자 순서 정리
+
+- 부분 완료: C2/D1의 `reportDispatchError` 호출부에 반복되던 12-인자 positional 호출을
+  `DispatchFailureReport` 내부 report object로 바꿨다. actor, route, subscription 오류 호출부는
+  packet name, topic, spot routing id, actor id, source routing id, correlation id, error를 이름 있는
+  setter로 채운다.
+- 선택 근거: 전체 dispatch pipeline 추출 전에도 오류 보고 필드의 의미 지식은 한 곳으로 모을 수 있다.
+  enum 4개(surface/kind/reason/action)는 오류 종류의 필수 축이라 생성 시 고정하고, 나머지 선택 필드는
+  호출부에서 필요한 값만 명시하게 했다.
+- POSD 자체 점검: `DispatchFailureReport`는 dispatch 실행, reply 생성, handler 선택, close 정책을 모른다.
+  `ZLinkDispatchFailure` 생성 전에 의미 있는 필드 이름을 제공하는 내부 값 조립 객체일 뿐이다. 여기에
+  reply 전송이나 오류 처리 분기를 넣기 시작하면 report object가 얕은 pipeline으로 변하는 새 POSD 대상이
+  된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.DefaultZLinkFrameworkOptionsTest --tests systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracerTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.scannedMethodHandlerGroup_publishDispatches`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 AX. 2026-07-10 SPOT route/subscription drop report 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation에 남아 있던 route SEND drop과 subscription drop 오류 보고 중복을
+  `reportSpotRouteSendDropped`와 `reportSpotSubscriptionDropped` private helper로 모았다. Entry activation과
+  User activation은 handler 미등록, request-only handler에 들어온 SEND, 빈 subscription frame, subscription
+  handler 미등록 상황에서 같은 helper를 호출한다.
+- 선택 근거: 전체 activation 상태기계를 바로 합치면 동기 Entry 경로와 async User 경로, reply 여부, close 순서를
+  동시에 옮겨야 한다. 이번에는 오류 보고 필드 조립만 먼저 모아, 같은 의미의 drop report가 두 상태기계에
+  복제되지 않게 했다.
+- POSD 자체 점검: 새 helper는 `DispatchFailureReport`를 조립해 `reportDispatchError`로 넘기는 일만 맡는다.
+  route/subscription dispatch 실행, handler 선택, backend reply, frame close 정책은 알지 않는다. helper가
+  handler 호출이나 reply/close 정책까지 받기 시작하면, report helper가 얕은 dispatch pipeline으로 변하는 새
+  POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.scannedMethodHandlerGroup_publishDispatches`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 AY. 2026-07-10 SPOT actor handler missing report 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation actor-message dispatch에 반복되던 handler missing 오류 보고를
+  `reportSpotActorHandlerMissing` private helper로 모았다. 로컬 actor가 없을 때와 actor packet handler가
+  없을 때 모두 같은 helper가 packet name, actor id, source routing id, correlation id를 보고한다.
+- 선택 근거: actor-message 상태기계 전체를 바로 합치면 pending header 보관, request error reply, remote joined
+  actor routing, native session bind, handler invoke 순서를 한꺼번에 옮겨야 한다. 이번에는 동일한 report 필드
+  조립만 먼저 모아, 호출부가 오류 보고 축과 correlation id 조립을 반복하지 않게 했다.
+- POSD 자체 점검: 새 helper는 actor handler 선택, actor lookup, request error reply 생성, pending header close,
+  actor dispatch turn을 알지 않는다. helper가 header copy나 reply 전송까지 맡기 시작하면, report helper가
+  dispatch 실행 순서를 숨기는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_remoteActorRequestSucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh`는
+    Kotlin Bingo에서 transient port bind retry 1회 후 최종 `All Java/Kotlin samples passed`까지 성공했다.
+
+## 부록 AZ. 2026-07-10 SPOT actor lifecycle 판정 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation actor lifecycle dispatch에 반복되던 actor ref 선택,
+  lifecycle spot routing id 선택, joined/left 이벤트 무시 판정을 공통 private helper로 모았다.
+  `actorLifecycleRef`는 LEFT 이벤트의 previous actor와 그 외 이벤트의 current actor 선택을 담당한다.
+  `actorLifecycleSpotRid`는 LEFT 이벤트의 previous spot, JOINED 계열 이벤트의 current spot, fallback spot을
+  한 곳에서 고른다. `shouldIgnoreJoinedOrLeftLifecycle`는 다른 spot에 이미 joined 된 actor, backend callback
+  suppression으로 소비된 이벤트, 이미 같은 actor ref로 joined 된 이벤트를 무시하는 정책을 담당한다.
+- 선택 근거: lifecycle dispatch 전체를 바로 합치면 Entry의 serial queue와 User의 actor dispatch queue,
+  disconnected callback, markJoined/markLeft 실행 순서가 한꺼번에 이동한다. 이번에는 두 activation이 같은
+  의미로 반복하던 event 해석과 skip 정책만 분리했다.
+- POSD 자체 점검: 새 helper들은 backend lifecycle event 해석과 ignore policy만 맡는다. actorRuntime
+  dispatch queue 선택, markJoined/markLeft 호출, lifecycle callback 실행, disconnected 처리 순서는 모른다.
+  helper가 enqueue나 callback 실행까지 받기 시작하면 lifecycle policy와 실행 순서가 섞이는 새 POSD 대상이
+  된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_remoteActorRequestSucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 BA. 2026-07-10 SPOT actor-message frame read 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation actor-message dispatch에 반복되던 header/body pairing과
+  pending header 보관 규칙을 `readActorMessage`와 `ActorMessageRead` 내부 값 타입으로 모았다. header frame만
+  도착한 경우 새 header는 copy해서 pending으로 보관하고, 기존 pending header는 그대로 유지한다. header와
+  body가 모두 준비된 경우 호출부는 decoded header, payload, pending 여부를 받아 기존 dispatch 흐름을 계속
+  수행한다.
+- 선택 근거: actor-message dispatch 전체를 합치면 actor lookup, remote joined actor routing, native session
+  bind, handler resolution, request error reply, actor dispatch queue 선택을 한꺼번에 옮겨야 한다. 이번에는
+  wire frame read 상태 전이만 분리했다.
+- POSD 자체 점검: `ActorMessageRead`는 frame read 결과와 다음 pending/index만 표현한다. actorRuntime,
+  handler catalog, reply 전송, payload close, dispatch queue를 모른다. 이 값 타입이나 helper에 actor lookup
+  또는 reply/close 정책이 들어가면 frame parser와 dispatch policy가 섞이는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_remoteActorRequestSucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 BB. 2026-07-10 SPOT actor-message control packet 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation actor-message dispatch에 반복되던 framework control packet 처리를
+  `dispatchActorControlPacket`으로 모았다. remote bound-session bind packet은 native session bind를 수행하고,
+  session disconnected packet은 actor disconnected callback을 실행한다. pending header로 들어온 frame close도
+  같은 helper 안에서 처리한다.
+- 선택 근거: 이 두 packet은 사용자 handler로 넘기는 일반 actor packet이 아니라 framework 내부 제어 메시지다.
+  따라서 handler resolution보다 앞에서 따로 처리하는 책임 이름을 줄 수 있다. 반면 local actor lookup,
+  remote joined actor routing, user handler selection, request error reply는 일반 dispatch 상태기계의 일부라
+  이번 helper로 옮기지 않았다.
+- POSD 자체 점검: helper는 control packet 두 종류만 알고 일반 actor packet dispatch는 모른다. 여기에 handler
+  lookup, user callback, remote joined actor routing을 넣기 시작하면 control packet 처리와 일반 dispatch
+  policy가 섞이는 새 POSD 대상이 된다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_remoteActorRequestSucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 BC. 2026-07-10 SPOT local actor packet dispatch 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation에 반복되던 local actor packet handler 선택, request/send kind
+  검증, actor type 검증, header/body 복사, actor serial dispatch 제출을 `dispatchLocalActorPacket`으로 모았다.
+- 선택 근거: 첫 번째 안은 호출에 필요한 값을 record로 감싸는 방식이었지만, 필드 전달만 감추는 얕은 객체가
+  된다. 두 번째 안은 기존 `SpotDispatchLine`이 dispatch queue와 함께 spot ID와 outbound를 제공하게 하는
+  방식이다. 두 번째 안을 선택해 helper 인자를 11개에서 7개로 줄였고, Entry/User가 다르게 넘기던 내부 실패
+  로그 문구도 공통화했다.
+- 책임 경계: local actor lookup과 actor 부재 reply는 activation이 맡는다. Entry 전용 remote joined actor
+  routing과 framework control packet 처리도 helper 밖에 둔다. helper는 이미 local actor와 일반 사용자 packet이
+  선택된 뒤의 handler dispatch 규칙만 소유한다.
+- POSD 자체 점검: helper는 인자를 그대로 전달하는 메서드가 아니라 handler 선택, handler 종류와 actor 타입
+  검증, frame ownership 전환, serial dispatch 제출 정책을 숨긴다. 여기에 local/remote actor 선택, control
+  packet, lifecycle callback을 추가하면 다시 특수 정책과 범용 dispatch가 섞이는 새 리팩토링 대상이 된다.
+  따라서 다음 C2 단계에서도 이 경계를 확장하지 않고 activation 공통 골격을 별도로 비교한다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_remoteActorRequestSucceeds`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 BD. 2026-07-10 SPOT actor lifecycle 상태 전이 중복 정리
+
+- 부분 완료: C2/D1의 Entry/User activation에 반복되던 actor joined, left, disconnected 판정과 상태 전이,
+  lifecycle callback 선택을 `actorLifecycleTransition`으로 모았다.
+- 선택 근거: 첫 번째 안은 activation 공통 기반 클래스가 lifecycle event drain과 queue 제출까지 모두 맡는
+  방식이다. 이 방식은 Entry의 Spot serial queue와 User Spot의 actor serial queue 차이를 큰 추상화에 숨겨
+  인터페이스가 빠르게 커진다. 두 번째 안은 lifecycle event가 의미하는 상태 전이 operation만 공통화하고
+  queue 선택은 activation에 남기는 방식이다. 실행 순서를 바꾸지 않는 두 번째 안을 선택했다.
+- POSD 자체 점검: helper는 event kind를 상태 전이와 callback으로 바꾸는 정책을 숨기며, 호출자는 반환된
+  operation을 어느 queue에 제출할지만 결정한다. helper에 event drain, backend receive, queue 선택을 추가하면
+  실행 순서에 따른 시간적 분해와 특수 정책 혼합이 다시 생긴다. 이후 공통 activation을 검토할 때도 queue
+  차이를 명시적으로 유지한다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.ZLinkFrameworkLocationRuntimeTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.StreamSessionTest`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 BE. 2026-07-10 SPOT route/subscription 공통 activation 기반 도입
+
+- 부분 완료: C2/D1의 `EntrySpotActivation`과 `SpotActivation`이 `SpotActivationBase`를 공유한다. base는
+  일반 route request/send handler 선택, handler 종류 검증, error reply/drop, payload와 active route receive
+  수명, reply/dispatch trace를 소유한다. subscription의 frame 검증, handler 선택, payload 수명, drop/trace도
+  같은 base로 옮겼다.
+- 선택 근거: 첫 번째 안은 기존 중복마다 독립 helper를 더 만드는 방식이지만, 실행 단계별 작은 helper가
+  늘어나 시간적 분해가 심해진다. 두 번째 안은 activation의 공통 정책을 base에 두고 Entry/User의 실제 차이인
+  handler scheduling만 hook으로 남기는 방식이다. 두 번째 안을 선택했다.
+- 실행 순서 보존: Entry의 `appendSpotHandler`는 각 handler를 기존처럼 즉시 Spot serial queue에 넣는다.
+  User Spot은 이전 stage 뒤에 handler를 연결해 기존 순차 실행을 유지한다. framework 전용 actor join,
+  bound-session send, actor packet route는 일반 사용자 handler 정책과 섞지 않고 각 activation에 남겼다.
+- POSD 자체 점검: base는 공통 필드 전달용 객체가 아니라 handler 검증, 오류 의미, message ownership과
+  close-once 규칙을 숨긴다. 추상 hook은 scheduling 하나뿐이다. 앞으로 framework actor route의 서로 다른
+  정책을 boolean이나 다수 callback으로 억지로 넣으면 base 인터페이스가 구현보다 복잡해지는 새 리팩토링
+  대상이 되므로 별도 actor dispatch 경계를 먼저 정리한다. base 도입 뒤 단순 위임만 남은 Entry/User의
+  subscription dispatch wrapper는 자체 재검토에서 패스스루 위험 신호로 판정해 바로 제거했다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.clientServerSpotRouteEgress_requestReplySucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_missingRequestHandlerRepliesFrameworkError --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_sendByRoutingIdDispatchesToHandler`
+  - `StreamSessionTest`와 route 테스트를 한 Gradle worker에서 함께 실행했을 때 테스트 본문 완료 후 native
+    context 종료가 240초 timeout에 걸렸다. thread dump는 `Native.ctxTerm` 대기였고,
+    `timeout 180s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.StreamSessionTest`
+    단독 재실행은 8초에 성공했다.
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 BF. 2026-07-10 SPOT actor-message 상태기계 공통화
+
+- 부분 완료: C2/D1의 Entry/User activation에 남아 있던 actor-message frame pairing, pending multipart
+  header 보관, local actor lookup, actor 부재 오류 reply, framework control packet 처리, local actor handler
+  dispatch를 `SpotActivationBase.dispatchActorMessages`로 통합했다.
+- 선택 근거: 첫 번째 안은 local actor lookup과 missing reply helper를 추가하고 기존 두 loop를 유지하는
+  방식이지만, 실행 단계별 helper가 늘어 시간적 분해가 남는다. 두 번째 안은 pending header 상태까지 base가
+  소유하고 전체 공통 loop를 한 번만 구현하며 Entry 전용 차이만 override하는 방식이다. 두 번째 안을 선택했다.
+- Entry 전용 경계: `actorSpotSurface` override는 actor가 실제로 참여한 Spot surface를 선택한다.
+  `tryDispatchRemoteJoinedActorPacket` override는 다른 node가 소유하고 local Spot surface가 없는 actor만
+  bound-session 경로로 전달한다. User Spot은 base 기본 구현을 사용해 자신의 surface에서 local dispatch만 한다.
+- POSD 자체 점검: base는 frame ownership, actor lookup, 오류 의미, control/user packet 구분과 dispatch 제출
+  순서를 숨긴다. actor surface와 remote forwarding이라는 실제 정책 차이 두 개만 hook으로 노출했다.
+  공통화 뒤 단순 위임이 된 activation별 actor dispatch/reply wrapper는 제거했다. 이후 actor join이나 lifecycle
+  drain을 이 hook에 섞지 않고 각각 완결된 정책 단위로 비교한다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_remoteActorRequestSucceeds --tests systems.zlink.framework.runtime.StreamSessionTest`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - `ZLINK_REDIS_LOCATION_ENDPOINT=127.0.0.1:6379 timeout 900s ./samples/run_samples.sh` →
+    `All Java/Kotlin samples passed`
+
+## 부록 BG. 2026-07-10 C2 SPOT activation dispatch 통합 완료
+
+- 완료: `SpotActivationBase`가 Entry/User activation의 일반 route request/send, subscription, actor-message
+  frame 상태, actor lifecycle receive와 상태 전이, routed bound-session send/request, routed actor packet의 공통
+  지식과 message ownership을 소유한다.
+- 실행 차이: Entry는 handler와 lifecycle operation을 즉시 Spot serial queue에 넣는다. User Spot은 handler를
+  현재 stage 뒤에 연결하고 lifecycle operation을 actor serial queue에 넣는다. resolved actor packet은 base가
+  User Spot local dispatch를 기본으로 제공하고, Entry만 local actor surface와 remote-joined forwarding을 함께
+  결정한다. 처음의 surface/remote 두 hook은 hot path와 인터페이스를 다시 검토해 하나의 delivery hook으로
+  합쳤다.
+- 남겨 둔 차이: Entry route drain은 backend callback에서 즉시 받고 handler operation을 queue에 넣지만,
+  User route drain은 먼저 받은 frame을 Spot queue에서 순차 처리한다. actor join도 Entry의 actor 생성/admission과
+  User Spot의 join callback/routed join으로 의미가 다르다. 이를 공통화하려면 boolean과 callback hook이 더
+  필요해 base 인터페이스가 얕아지므로 C2 중복으로 보지 않는다.
+- POSD 자체 점검: 공통 base 도입 뒤 단순 위임만 하던 subscription, actor-message, error reply wrapper는
+  제거했다. base hook은 handler scheduling, lifecycle scheduling, resolved actor delivery 세 개이며 모두
+  실제 실행 정책 차이를 숨긴다. route drain이나 actor join을 이 hook에 추가하면 특수 정책과 범용 dispatch가
+  다시 섞이는 새 리팩토링 대상이 된다.
+- benchmark 강화: 기존 `EntrySpotAdmissionBurstBenchmark`의 10,000 packet 측정은 55~103ms에 끝나
+  scheduler noise가 wall throughput 중앙값을 흔들었다. 기본 부하를 200 actor x 500 packet, 총 100,000건으로
+  늘려 측정 구간을 약 0.4~0.5초로 만들었다.
+- benchmark 조건: detached `HEAD` baseline과 현재 tree에서 binding/native runtime을 모두 8.6.4로 고정했다.
+  각 tree에서 benchmark 자체의 best-of-3을 세 프로세스 실행하고 중앙값을 비교했다.
+  - baseline: wall 463.570ms, 215,717 packet/s, p50 16.8us, p95 42.6us, p99 88.5us
+  - current: wall 441.389ms, 226,557 packet/s, p50 16.0us, p95 32.6us, p99 64.1us
+  - current는 throughput 약 5.0% 향상, wall 약 4.8% 감소이며 latency percentile도 모두 감소했다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.EntrySpotActorDispatchTests --tests systems.zlink.framework.runtime.ZLinkFrameworkLocationRuntimeTest --tests systems.zlink.framework.runtime.spots.ActorPacketFramesTest`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:integrationTest --tests systems.zlink.framework.runtime.ChannelMessagingTest.clientServerSpotRouteEgress_requestReplySucceeds --tests systems.zlink.framework.runtime.ChannelMessagingTest.routeMesh_remoteActorRequestSucceeds --tests systems.zlink.framework.runtime.StreamSessionTest`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-framework-testkit:contractTest :zlink-framework-testkit:fakeBackendTest :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - 첫 sample 실행은 다른 process와 SupportChat 기본 port가 겹쳐 `ZlinkBindException`으로 종료했다. 해당
+    프로세스가 정리된 뒤 SupportChat endpoint를 별도 port대로 지정해 전체 runner를 처음부터 재실행했다.
+    TicTacToe의 일시적 port bind는 runner의 3회 retry 안에서 회복했고 최종 결과는
+    `All Java/Kotlin samples passed`였다.
+
+## 부록 BH. 2026-07-10 SPOT handler catalog 상태 분리
+
+- 부분 완료: D1 handler-catalog 범위에서 `DefaultEntrySpotContext`와 `DefaultSpotContext`가 각각 소유하던
+  registration-open 상태, configured handler type 목록, packet handler map, subscription handler map을
+  top-level `ZLinkSpotHandlerCatalog`로 통합했다.
+- 정보 은닉: configure 중에는 catalog의 `addHandler`만 사용할 수 있다. configure 종료 시 runtime loader가
+  만든 registration 결과를 catalog가 deep-copy해 immutable snapshot으로 바꾼다. dispatch는 mutable map이
+  아니라 packet/topic lookup만 사용하고 subscription bind는 immutable topic 집합만 읽는다.
+- 선택 근거: 첫 번째 안은 map만 별도 객체로 옮기고 runtime에 mutable map getter를 노출하는 방식이라
+  정보가 계속 누출된다. 두 번째 안은 catalog가 registration lifecycle과 snapshot을 소유하고, runtime은
+  scanner와 actor handler 계약을 해석해 한 번의 registration 결과만 반환한다. 두 번째 안을 선택했다.
+- POSD 자체 점검: catalog의 interface는 handler 추가, registration 종료, packet/topic 조회로 제한된다.
+  runtime loader는 reflection/scanner 해석을, catalog는 등록 상태와 조회 자료구조를 소유하므로 같은 지식을
+  나누지 않는다. loader까지 여러 callback으로 밀어 넣으면 catalog가 scanner 내부를 알아야 하는 새 POSD
+  대상이 되므로 이번 단계에서는 옮기지 않았다.
+- 검증:
+  - `./gradlew --no-daemon :zlink-framework-core:compileJava`
+  - `timeout 240s ./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.HandlerContractTest :zlink-framework-testkit:fakeBackendTest --tests systems.zlink.framework.testkit.SpotRuntimeFakeBackendTest --tests systems.zlink.framework.testkit.EntrySpotAdmissionBurstBenchmark`
+  - `./gradlew --no-daemon :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-spring-boot-starter:test :zlink-framework-locations-redis:test :zlink-stream-connector:test :zlink-framework-testkit:contractTest :zlink-framework-testkit:fakeBackendTest :zlink-http-client:test :zlink-framework-codec-msgpack:test :zlink-framework-codec-protobuf:test`
+  - 관련 e2e build만 실행: `e2e/SpotService`, `e2e/ToActorMessaging`, `e2e/YieldDispatch`,
+    `e2e-kotlin/SpotService`, `e2e-kotlin/ToActorMessaging`, `e2e-kotlin/YieldDispatch`
+  - SupportChat endpoint를 별도 port대로 지정해 전체 sample runner 실행 →
+    `All Java/Kotlin samples passed`
+
+## 부록 BI. 2026-07-10 SPOT location coordination 분리
+
+- 부분 완료: D1 lifecycle 범위에서 node별 mesh, route endpoint, publisher 가능 여부와
+  `ZLinkLocationLifecycle` 연결을 top-level `ZLinkSpotLocationCoordinator`로 옮겼다. user Spot 생성과
+  해제, entry Spot 일괄 claim과 개별 release, actor runtime에 제공하는 mesh 조회가 같은 metadata를
+  사용한다.
+- 선택 근거: 첫 번째 안은 claim/release 메서드만 옮기고 runtime의 metadata map을 인자로 넘기는
+  방식이라 얕은 wrapper와 정보 누출이 남는다. 두 번째 안은 coordinator가 metadata와 store lifecycle을
+  함께 소유하고 runtime에는 의미 단위 요청만 남긴다. 두 번째 안을 선택했다.
+- POSD 자체 점검: 추출 직후 runtime에 생긴 private pass-through 세 개는 호출부를 coordinator에 직접
+  연결해 제거했다. node metadata record와 map은 coordinator 밖으로 노출하지 않는다. 기존 public
+  `setLocationLifecycle`과 `claimEntrySpotLocationsAsync`는 host 조립 계약이므로 유지한다.
+- 검증: `./gradlew --no-daemon :zlink-framework-core:test --tests systems.zlink.framework.runtime.host.ZLinkFrameworkLocationRuntimeTest`
+  성공. 사용자 요청에 따라 이 증분에서는 sample과 E2E를 실행하지 않았으며 마지막 통합 검증으로
+  미뤘다.
+
+## 부록 BJ. 2026-07-10 SPOT handler loader와 actor catalog 분리
+
+- 완료: D1 handler-catalog 범위의 reflection/scanner 해석을 runtime에서 제거했다. per-Spot
+  packet/subscription/timer 등록 결과는 `ZLinkSpotHandlerLoader`가 만들고, actor packet handler의 전역
+  인덱스와 중복 검사, serializer type 준비는 `ZLinkSpotActorHandlerCatalog`가 소유한다.
+- 재설계: 첫 추출은 두 lifecycle을 657줄 loader 하나에 묶어 새 god-module 후보가 됐다. 대안 1은 이를
+  그대로 두는 것이고, 대안 2는 actor 인덱스와 per-Spot catalog 생성을 분리하는 것이다. mutable index와
+  serializer 준비 시점이 per-Spot snapshot과 다르므로 대안 2를 선택했다.
+- POSD 자체 점검: runtime에는 actor packet 조회와 Spot configure 종료 시 loader 호출만 남는다. actor
+  metadata map은 actor catalog 밖으로 노출하지 않으며 loader는 actor handler 여부만 catalog에 묻는다.
+  configured actor handler도 등록 시점에 serializer type을 준비하도록 지식을 한곳에 모았다.
+- 검증: `ZLinkSpotHandlerLoaderTest`, `ZLinkHandlerScannerTest`, `ZLinkSpotRuntimeActorArgumentsTest`,
+  `NodesAndServicesTest`, `HandlerContractTest` focused unit test 성공. sample과 E2E는 마지막 통합 검증으로
+  미뤘다.
+
+## 부록 BK. 2026-07-10 SPOT timer registry 분리
+
+- 부분 완료: timer collection, option 검증, schedule 진행, handler 생성·호출, unhandled failure event를
+  top-level `ZLinkSpotTimerRegistry`로 옮겼다. 기존 `ZLinkSpotTimerSchedule`은 tick 계산만 계속 소유한다.
+- 선택 근거: `ManagedTimer`만 옮기는 안은 runtime callback을 여러 개 요구하고 timer 지식을 양쪽에
+  남긴다. registry가 lifecycle 전체를 소유하고 context가 serial queue와 outbound scope를 합친 실행 정책
+  하나만 제공하는 안을 선택했다.
+- POSD 자체 점검: timer registry는 context, outbound, queue의 구체 타입을 알지 않는다. context의
+  `addTimer`는 public 계약 구현이고 `closeTimers`는 context resource 정리 경계다. 새 전달 helper는
+  추가하지 않았다.
+- 검증: `ZLinkSpotTimerRegistryTest`, `ZLinkSpotTimerScheduleTest`, `ZLinkHandlerScannerTest` focused unit
+  test 성공. sample과 E2E는 마지막 통합 검증으로 미뤘다.
+
+## 부록 BL. 2026-07-10 SPOT outbound 클러스터 분리
+
+- 완료: direct backend send/request/publish, routed `SpotRef` send/request, publisher node와 lazy Spot cache,
+  active callback outbound scope를 각각 별도 top-level 모듈로 옮겼다. immutable call 객체도 같은 package의
+  top-level 타입이며 runtime 내부 nested call은 남지 않는다.
+- dead code 제거: 이전 `RoutingId` 전용 send/request 계약에서 resolver를 사용하던 Egress call 두 개는
+  현재 `SpotRef` 계약으로 바뀐 뒤 생성 진입점이 없었다. actor join resolver는 actor runtime이 별도로
+  소유하므로 Spot runtime의 사용되지 않는 resolver field와 host wiring을 함께 제거했다.
+- 정보 은닉: `ZLinkSpotRouteMessages`가 packet frame 조립, framework-error reply 해석, reply part close를
+  소유한다. publisher runtime은 channel-node index와 lazy backend Spot 종료를 소유한다. runtime은 outbound
+  구성 factory만 제공한다.
+- POSD 자체 점검: 처음처럼 1,100줄 outbound 파일 하나로 이동하지 않고 transport 선택, direct I/O,
+  publisher lifecycle, callback-local 상태로 나눴다. 각 call builder는 public call 계약의 immutable option만
+  보유한다. top-level 이동으로 framework turn caller 이름이 바뀐 부분은 정확한 네 타입만 allowlist에
+  추가했으며 wildcard나 pass-through 우회는 추가하지 않았다.
+- 검증: `NodesAndServicesTest`, `ZLinkSpotRouteMessagesTest`, `ZLinkSpotOutboundScopeTest` focused unit test
+  성공. 이후 `:zlink-framework-core:test` 전체 237개 성공. 첫 전체 실행의 7개 실패는 새 loader test
+  fixture가 package scan에 포함된 문제였고, Java annotation handler 계약에 맞게 plain reply fixture로
+  고친 뒤 전체를 다시 실행했다. sample과 E2E는 마지막 통합 검증으로 미뤘다.
+
+## 부록 BM. 2026-07-10 SPOT handler invocation 분리
+
+- 완료: handler 생성, reflection/suspend 호출, typed payload deserialize와 reply serialize를
+  `ZLinkSpotHandlerInvoker`로 옮겼다. actor send/request context value type도 top-level로 분리했다.
+- 선택 근거: context를 먼저 이동하면 actor/handler/runtime callback이 10개 이상 필요했다. 먼저 여러
+  dispatch 경로에 흩어진 invocation 지식을 한 모듈로 모아 context와 activation의 의존성을 줄이는 안을
+  선택했다.
+- POSD 자체 점검: invoker는 dispatch ordering, backend receive, actor lifecycle을 알지 않는다. interface는
+  actor send/request와 Spot packet/request/subscription의 의미 단위 호출이며 reflection helper를 호출자에게
+  노출하지 않는다. 처음 넣었던 nested context record도 top-level로 옮겼다.
+- 검증: handler loader/scanner, actor argument, Entry actor dispatch, remote Spot request focused unit test
+  성공.
+
+## 부록 BN. 2026-07-10 SPOT context 분리
+
+- 완료: `DefaultEntrySpotContext`, `DefaultSpotContext`, Entry timer surface와 restricted Spot context를
+  top-level package-private 타입으로 옮겼다. worker, handler loader, serial queue는 기존 concrete
+  collaborator를 직접 사용한다.
+- 경계 설계: context가 필요한 actor destroy/leave, Spot close, outbound callback scope, timer registry 생성만
+  `ZLinkSpotContextHost`에 둔다. Java interface를 처음 적용했을 때 메서드가 암묵적으로 public이 되어
+  runtime public surface가 늘어나는 문제를 즉시 발견했고, package-private abstract base로 바꿨다.
+- POSD 자체 점검: context는 actor runtime, backend node map, timer executor, monitoring dispatcher를 직접
+  알지 않는다. host 메서드는 package-private이며 새 public API는 없다. runtime이 context private outbound
+  field를 읽던 곳은 기존 `dispatchOutbound()` capability로 바꿨다.
+- 검증: compile 이후 `:zlink-framework-core:test` 전체 237개 성공. sample과 E2E는 마지막 통합 검증으로
+  미뤘다.
 
 Gradle은 shared output/runner 환경 때문에 **순차 실행 권장**(`--no-daemon`):
 

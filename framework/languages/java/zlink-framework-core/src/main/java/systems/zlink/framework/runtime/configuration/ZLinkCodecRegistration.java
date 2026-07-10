@@ -78,25 +78,15 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
     }
 
     public Optional<ZLinkStreamCodec> streamCodecForCustomSerializer() {
-        Map<String, RegisteredSerializer> fallbackSerializers = new LinkedHashMap<>();
-        serializers.forEach((contentType, serializer) -> {
-            if (serializer.fallbackSerializer()) {
-                fallbackSerializers.put(contentType, serializer);
-            }
-        });
-
-        if (fallbackSerializers.isEmpty()) {
+        Optional<Map.Entry<String, RegisteredSerializer>> fallbackSerializer =
+            singleFallbackSerializer();
+        if (fallbackSerializer.isEmpty()) {
             if (serializers.size() == 1) {
                 return streamCodec(serializers.keySet().iterator().next());
             }
             return Optional.empty();
         }
-        if (fallbackSerializers.size() > 1) {
-            throw new ZLinkConfigurationException(
-                "payload serializer is ambiguous because more than one custom serializer is registered: "
-                    + fallbackSerializers.keySet());
-        }
-        return streamCodec(fallbackSerializers.keySet().iterator().next());
+        return streamCodec(fallbackSerializer.get().getKey());
     }
 
     /**
@@ -105,6 +95,11 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
      * then ambiguous.
      */
     public Optional<ZLinkMessageSerializer> customSerializer() {
+        return singleFallbackSerializer()
+            .map(entry -> entry.getValue().serializer());
+    }
+
+    private Optional<Map.Entry<String, RegisteredSerializer>> singleFallbackSerializer() {
         Map<String, RegisteredSerializer> fallbackSerializers = new LinkedHashMap<>();
         serializers.forEach((contentType, serializer) -> {
             if (serializer.fallbackSerializer()) {
@@ -120,7 +115,7 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
                 "payload serializer is ambiguous because more than one custom serializer is registered: "
                     + fallbackSerializers.keySet());
         }
-        return Optional.of(fallbackSerializers.values().iterator().next().serializer());
+        return Optional.of(fallbackSerializers.entrySet().iterator().next());
     }
 
     public ZLinkMessageSerializer serializerWithFallback(ZLinkMessageSerializer fallback) {
@@ -135,18 +130,26 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
         if (type == null) {
             return DEFAULT_JSON_CONTENT_TYPE;
         }
+        return singleSerializerFor(serializers, type)
+            .map(Map.Entry::getKey)
+            .orElse(DEFAULT_JSON_CONTENT_TYPE);
+    }
+
+    private static Optional<Map.Entry<String, RegisteredSerializer>> singleSerializerFor(
+        Map<String, RegisteredSerializer> serializers,
+        Class<?> type) {
         var matches = serializers.entrySet().stream()
             .filter(entry -> entry.getValue().canSerialize().test(type))
             .toList();
         if (matches.isEmpty()) {
-            return DEFAULT_JSON_CONTENT_TYPE;
+            return Optional.empty();
         }
         if (matches.size() > 1) {
             throw new ZLinkConfigurationException(
                 "payload serializer is ambiguous for type " + type.getName() + ": "
                     + matches.stream().map(Map.Entry::getKey).toList());
         }
-        return matches.get(0).getKey();
+        return Optional.of(matches.get(0));
     }
 
     private record RegisteredSerializer(
@@ -185,18 +188,9 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
         }
 
         private ZLinkMessageSerializer serializerFor(Class<?> type) {
-            var matches = serializers.entrySet().stream()
-                .filter(entry -> entry.getValue().canSerialize().test(type))
-                .toList();
-            if (matches.isEmpty()) {
-                return fallback;
-            }
-            if (matches.size() > 1) {
-                throw new ZLinkConfigurationException(
-                    "payload serializer is ambiguous for type " + type.getName() + ": "
-                        + matches.stream().map(Map.Entry::getKey).toList());
-            }
-            return matches.get(0).getValue().serializer();
+            return singleSerializerFor(serializers, type)
+                .map(entry -> entry.getValue().serializer())
+                .orElse(fallback);
         }
     }
 }

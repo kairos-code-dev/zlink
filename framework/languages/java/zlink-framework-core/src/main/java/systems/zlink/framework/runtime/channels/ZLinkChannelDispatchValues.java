@@ -1,0 +1,160 @@
+package systems.zlink.framework.runtime.channels;
+
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteSendContext;
+import systems.zlink.framework.channels.ZLinkSendContext;
+
+record ParsedPacket(String packetName, Message payload) {
+}
+
+final class PayloadDecodeDispatchException extends RuntimeException {
+    PayloadDecodeDispatchException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
+
+abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
+    private static final CancellationToken NONE = () -> false;
+    private final String channelName;
+    private final String packetName;
+    private final String contentType;
+
+    ChannelHandlerContextBase(
+        String channelName,
+        String packetName,
+        String contentType) {
+        this.channelName = channelName;
+        this.packetName = packetName;
+        this.contentType = contentType;
+    }
+
+    @Override
+    public final Optional<String> channelName() {
+        return presentText(channelName);
+    }
+
+    @Override
+    public final Optional<String> packetName() {
+        return presentText(packetName);
+    }
+
+    @Override
+    public final Optional<String> contentType() {
+        return presentText(contentType);
+    }
+
+    @Override
+    public final CancellationToken cancellationToken() {
+        return NONE;
+    }
+
+    private static Optional<String> presentText(String value) {
+        return Optional.ofNullable(value).filter(text -> !text.isBlank());
+    }
+}
+
+final class DefaultRequestContext
+    extends ChannelHandlerContextBase
+    implements ZLinkRequestContext {
+    DefaultRequestContext(String channelName, String packetName, String contentType) {
+        super(channelName, packetName, contentType);
+    }
+}
+
+final class DefaultSendContext
+    extends ChannelHandlerContextBase
+    implements ZLinkSendContext {
+    DefaultSendContext(String channelName, String packetName, String contentType) {
+        super(channelName, packetName, contentType);
+    }
+}
+
+final class DefaultPublishContext
+    extends ChannelHandlerContextBase
+    implements ZLinkPublishContext {
+    private final String topic;
+
+    DefaultPublishContext(
+        String channelName,
+        String packetName,
+        String topic,
+        String contentType) {
+        super(channelName, packetName, contentType);
+        this.topic = topic;
+    }
+
+    @Override
+    public String topic() {
+        return topic;
+    }
+
+    @Override
+    public Optional<String> source() {
+        return Optional.empty();
+    }
+}
+
+abstract class RouteHandlerContextBase extends ChannelHandlerContextBase {
+    private final RoutingId routingId;
+
+    RouteHandlerContextBase(
+        String channelName,
+        String packetName,
+        RoutingId routingId,
+        String contentType) {
+        super(channelName, packetName, contentType);
+        this.routingId = routingId;
+    }
+
+    public final RoutingId routingId() {
+        return routingId;
+    }
+}
+
+final class DefaultRouteRequestContext
+    extends RouteHandlerContextBase
+    implements ZLinkRouteRequestContext {
+    DefaultRouteRequestContext(
+        String channelName,
+        String packetName,
+        RoutingId routingId,
+        String contentType) {
+        super(channelName, packetName, routingId, contentType);
+    }
+}
+
+final class DefaultRouteSendContext
+    extends RouteHandlerContextBase
+    implements ZLinkRouteSendContext {
+    DefaultRouteSendContext(
+        String channelName,
+        String packetName,
+        RoutingId routingId,
+        String contentType) {
+        super(channelName, packetName, routingId, contentType);
+    }
+}
+
+final class NoDataBackoff {
+    private static final int MAX_MISSES = 6;
+    private static final long MAX_DELAY_MILLIS = 20L;
+    private int misses;
+
+    void reset() {
+        misses = 0;
+    }
+
+    long nextDelayNanos() {
+        misses = Math.min(misses + 1, MAX_MISSES);
+        long delayMillis = Math.min(1L << (misses - 1), MAX_DELAY_MILLIS);
+        return TimeUnit.MILLISECONDS.toNanos(delayMillis);
+    }
+}

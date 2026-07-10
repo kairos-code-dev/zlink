@@ -21,11 +21,21 @@ public final class ZLinkFrameworkTurns {
 
     private static final Set<String> FRAMEWORK_CALLERS = Set.of(
         "systems.zlink.framework.runtime.actors.ZLinkActorRuntime",
+        "systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotJoinCall",
+        "systems.zlink.framework.runtime.actors.ZLinkActorSpotJoinCall",
         "systems.zlink.framework.runtime.actors.ZLinkBoundSessionRuntime",
         "systems.zlink.framework.runtime.actors.ZLinkNativeBoundSessionRuntime",
         "systems.zlink.framework.runtime.actors.ZLinkRoutedBoundSessionRuntime",
         "systems.zlink.framework.runtime.channels.ZLinkChannelRuntime",
+        "systems.zlink.framework.runtime.channels.ZLinkChannelHandlerInvoker",
+        "systems.zlink.framework.runtime.channels.RequestCall",
+        "systems.zlink.framework.runtime.channels.RouteRequestCall",
+        "systems.zlink.framework.runtime.channels.RouteSpotRequestCall",
         "systems.zlink.framework.runtime.spots.DefaultZLinkWorkerCall",
+        "systems.zlink.framework.runtime.spots.ZLinkSpotDirectOutbound",
+        "systems.zlink.framework.runtime.spots.ZLinkSpotDirectRequestCall",
+        "systems.zlink.framework.runtime.spots.ZLinkSpotRoutedOutbound",
+        "systems.zlink.framework.runtime.spots.ZLinkSpotRoutedRequestCall",
         "systems.zlink.framework.runtime.spots.ZLinkSpotRuntime",
         "systems.zlink.framework.kotlin.ZLinkCoroutineTurnAwaitKt",
         "systems.zlink.framework.kotlin.ZLinkCoroutineSuspendHandlerInvoker");

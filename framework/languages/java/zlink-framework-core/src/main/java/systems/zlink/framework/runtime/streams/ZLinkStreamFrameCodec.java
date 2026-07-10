@@ -35,6 +35,23 @@ public final class ZLinkStreamFrameCodec {
         return frame.array();
     }
 
+    public static Optional<DecodedFrame> tryDecode(byte[] frame) {
+        if (frame == null || frame.length < 6) {
+            return Optional.empty();
+        }
+        ByteBuffer buffer = ByteBuffer.wrap(frame);
+        int headerSize = Short.toUnsignedInt(buffer.getShort());
+        int payloadSize = buffer.getInt();
+        if (payloadSize < 0 || frame.length != 6 + headerSize + payloadSize) {
+            return Optional.empty();
+        }
+        byte[] header = new byte[headerSize];
+        buffer.get(header);
+        byte[] body = new byte[payloadSize];
+        buffer.get(body);
+        return Optional.of(new DecodedFrame(header, body));
+    }
+
     public static byte[] encode(
         ZLinkStreamMessageKind kind,
         ZLinkStreamCodec codec,
@@ -50,5 +67,22 @@ public final class ZLinkStreamFrameCodec {
                 packetName,
                 Map.of()),
             body);
+    }
+
+    public record DecodedFrame(byte[] header, byte[] body) {
+        public DecodedFrame {
+            header = header == null ? null : header.clone();
+            body = body == null ? null : body.clone();
+        }
+
+        @Override
+        public byte[] header() {
+            return header.clone();
+        }
+
+        @Override
+        public byte[] body() {
+            return body.clone();
+        }
     }
 }

@@ -29,9 +29,6 @@ public final class ZLinkHttpRequestBuilder {
         .findAndAddModules()
         .build();
 
-    private record MultipartPart(String name, String filename, String content, String contentType) {
-    }
-
     private ZLinkHttpClient client;
     private final ZLinkHttpClientBuilder clientFactory;
     private final ZLinkHttpMethod method;
@@ -44,7 +41,7 @@ public final class ZLinkHttpRequestBuilder {
     private boolean consumed;
     private final List<Map.Entry<String, String>> query = new ArrayList<>();
     private final List<Map.Entry<String, String>> form = new ArrayList<>();
-    private final List<MultipartPart> multipart = new ArrayList<>();
+    private final List<ZLinkHttpRequestBodyEncoder.MultipartPart> multipart = new ArrayList<>();
 
     ZLinkHttpRequestBuilder(ZLinkHttpClient client, ZLinkHttpMethod method, String path) {
         this.client = client;
@@ -134,7 +131,7 @@ public final class ZLinkHttpRequestBuilder {
 
     public ZLinkHttpRequestBuilder multipart(String name, String value) {
         HttpClientText.requireNonBlank(name, "HTTP request multipart field name is required");
-        multipart.add(new MultipartPart(name, "", value, ""));
+        multipart.add(ZLinkHttpRequestBodyEncoder.multipartField(name, value));
         return this;
     }
 
@@ -142,7 +139,7 @@ public final class ZLinkHttpRequestBuilder {
         HttpClientText.requireNonBlank(name, "HTTP request multipart field name is required");
         HttpClientText.requireNonBlank(filename, "HTTP request multipart filename is required");
         HttpClientText.requireNonBlank(contentType, "HTTP request multipart content type is required");
-        multipart.add(new MultipartPart(name, filename, content, contentType));
+        multipart.add(ZLinkHttpRequestBodyEncoder.multipartFile(name, filename, content, contentType));
         return this;
     }
 
@@ -211,6 +208,9 @@ public final class ZLinkHttpRequestBuilder {
             if (raw.status() >= 400) {
                 throw new ZLinkFrameworkException("HTTP request failed with status " + raw.status());
             }
+            if (raw.body().isEmpty()) {
+                return new HttpResponse<>(raw.status(), raw.headers(), null, raw.body());
+            }
             try {
                 T body = MAPPER.readValue(raw.body(), type);
                 return new HttpResponse<>(raw.status(), raw.headers(), body, raw.body());
@@ -237,96 +237,19 @@ public final class ZLinkHttpRequestBuilder {
     }
 
     private HttpRequestSpec makeRequest(Consumer<byte[]> sink) {
-        BodyAndHeaders resolved = resolveBodyAndHeaders();
+        ZLinkHttpRequestBodyEncoder.BodyAndHeaders resolved = ZLinkHttpRequestBodyEncoder.resolve(
+            body,
+            bodyProvider,
+            headers,
+            form,
+            multipart);
         return new HttpRequestSpec(
             method,
-            resolveTarget(),
-            resolved.body,
+            ZLinkHttpTargetBuilder.resolve(path, query),
+            resolved.body(),
             bodyProvider,
-            resolved.headers,
+            resolved.headers(),
             timeout,
             sink);
-    }
-
-    private String resolveTarget() {
-        if (query.isEmpty()) {
-            return path;
-        }
-        StringBuilder target = new StringBuilder(path);
-        char separator = path.indexOf('?') >= 0 ? '&' : '?';
-        for (Map.Entry<String, String> entry : query) {
-            target.append(separator)
-                .append(HttpClientText.percentEncode(entry.getKey()))
-                .append('=')
-                .append(HttpClientText.percentEncode(entry.getValue()));
-            separator = '&';
-        }
-        return target.toString();
-    }
-
-    private record BodyAndHeaders(String body, Map<String, String> headers) {
-    }
-
-    private BodyAndHeaders resolveBodyAndHeaders() {
-        if (countBodySources() > 1) {
-            throw new ZLinkFrameworkException(
-                "HTTP request accepts a single body source: body, body_stream, form, or multipart");
-        }
-
-        Map<String, String> resolvedHeaders = new LinkedHashMap<>(headers);
-        if (body != null) {
-            return new BodyAndHeaders(body, resolvedHeaders);
-        }
-
-        if (!form.isEmpty()) {
-            resolvedHeaders.put("content-type", "application/x-www-form-urlencoded");
-            return new BodyAndHeaders(encodeFormBody(), resolvedHeaders);
-        }
-
-        if (!multipart.isEmpty()) {
-            String boundary = HttpClientText.makeMultipartBoundary();
-            resolvedHeaders.put("content-type", "multipart/form-data; boundary=" + boundary);
-            return new BodyAndHeaders(encodeMultipartBody(boundary), resolvedHeaders);
-        }
-
-        return new BodyAndHeaders(null, resolvedHeaders);
-    }
-
-    private int countBodySources() {
-        return (body != null ? 1 : 0)
-            + (bodyProvider != null ? 1 : 0)
-            + (form.isEmpty() ? 0 : 1)
-            + (multipart.isEmpty() ? 0 : 1);
-    }
-
-    private String encodeFormBody() {
-        StringBuilder encoded = new StringBuilder();
-        for (Map.Entry<String, String> entry : form) {
-            if (encoded.length() > 0) {
-                encoded.append('&');
-            }
-            encoded.append(HttpClientText.percentEncode(entry.getKey()))
-                .append('=')
-                .append(HttpClientText.percentEncode(entry.getValue()));
-        }
-        return encoded.toString();
-    }
-
-    private String encodeMultipartBody(String boundary) {
-        StringBuilder encoded = new StringBuilder();
-        for (MultipartPart part : multipart) {
-            encoded.append("--").append(boundary).append("\r\n");
-            encoded.append("Content-Disposition: form-data; name=\"").append(part.name()).append('"');
-            if (!part.filename().isEmpty()) {
-                encoded.append("; filename=\"").append(part.filename()).append('"');
-            }
-            encoded.append("\r\n");
-            if (!part.contentType().isEmpty()) {
-                encoded.append("Content-Type: ").append(part.contentType()).append("\r\n");
-            }
-            encoded.append("\r\n").append(part.content()).append("\r\n");
-        }
-        encoded.append("--").append(boundary).append("--\r\n");
-        return encoded.toString();
     }
 }

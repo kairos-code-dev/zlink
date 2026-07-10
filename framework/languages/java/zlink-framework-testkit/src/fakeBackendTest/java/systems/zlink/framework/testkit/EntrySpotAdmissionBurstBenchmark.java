@@ -24,7 +24,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
  */
 final class EntrySpotAdmissionBurstBenchmark {
     private static final int ACTORS = 200;
-    private static final int PACKETS_PER_ACTOR = 50;
+    private static final int PACKETS_PER_ACTOR = 500;
 
     @Test
     void entrySpotAdmissionBurst() throws Exception {

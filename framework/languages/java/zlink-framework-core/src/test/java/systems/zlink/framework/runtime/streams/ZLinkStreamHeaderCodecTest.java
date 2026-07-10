@@ -1,6 +1,8 @@
 package systems.zlink.framework.runtime.streams;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.EnumSet;
@@ -35,6 +37,25 @@ final class ZLinkStreamHeaderCodecTest {
     }
 
     @Test
+    void headerProtocol_matchesConnectorGoldenVector() {
+        ZLinkStreamHeader header = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(7L),
+            "Join",
+            Map.of("trace", "abc"));
+
+        byte[] encoded = ZLinkStreamHeaderCodec.encode(header);
+
+        assertArrayEquals(hex(
+                "02 01 03 00 00 00 00 00 00 00 07 04 4a 6f 69 6e "
+                    + "00 0c 01 05 74 72 61 63 65 00 03 61 62 63"),
+            encoded);
+        assertEquals(header, ZLinkStreamHeaderCodec.decodeOrPlain(encoded));
+    }
+
+    @Test
     void encodeDecodePreservesCorrelationId() {
         ZLinkStreamHeader header = new ZLinkStreamHeader(
             ZLinkStreamMessageKind.SEND,
@@ -54,5 +75,105 @@ final class ZLinkStreamHeaderCodecTest {
         assertEquals("MatchBingoReq", decoded.packetName());
         assertEquals(Optional.of("corr-java-bingo"), decoded.correlationId());
         assertTrue(decoded.flags().contains(ZLinkStreamHeaderFlag.HAS_CORRELATION_ID));
+    }
+
+    @Test
+    void createResponseEchoesRequestSequenceAndCorrelationId() {
+        ZLinkStreamHeader request = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(7L),
+            "RequestPacket",
+            Map.of(),
+            Optional.of("corr-7"));
+
+        ZLinkStreamHeader response = ZLinkStreamHeader.createResponse(
+            request,
+            ZLinkStreamCodec.JSON,
+            EnumSet.of(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED),
+            "ReplyPacket",
+            Map.of("trace-id", "abc"));
+
+        assertEquals(ZLinkStreamMessageKind.RESPONSE, response.kind());
+        assertEquals(Optional.of(7L), response.requestSequence());
+        assertEquals(Optional.of("corr-7"), response.correlationId());
+        assertEquals("ReplyPacket", response.packetName());
+        assertTrue(response.flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
+        assertTrue(response.flags().contains(ZLinkStreamHeaderFlag.HAS_METADATA));
+    }
+
+    @Test
+    void headerRejectsWireRuleViolations() {
+        assertThrows(IllegalArgumentException.class, () -> new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.SEND,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(7L),
+            "Send",
+            Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.empty(),
+            "Request",
+            Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.RESPONSE,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.empty(),
+            "Response",
+            Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.ERROR,
+            ZLinkStreamCodec.RAW,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(7L),
+            "Error",
+            Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.CONTROL,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.empty(),
+            "Ping",
+            Map.of()));
+    }
+
+    @Test
+    void headerRejectsInvalidWireLengths() {
+        assertThrows(IllegalArgumentException.class, () -> new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(0L),
+            "Request",
+            Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.SEND,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.empty(),
+            "x".repeat(256),
+            Map.of()));
+    }
+
+    @Test
+    void decodeRejectsHeadersThatViolateWireRules() {
+        assertThrows(IllegalArgumentException.class, () ->
+            ZLinkStreamHeaderCodec.decodeOrPlain(hex("02 01 00 04 4a 6f 69 6e")));
+        assertThrows(IllegalArgumentException.class, () ->
+            ZLinkStreamHeaderCodec.decodeOrPlain(hex("04 00 01 00 00 00 00 00 00 00 07 05 45 72 72 6f 72")));
+    }
+
+    private static byte[] hex(String value) {
+        String compact = value.replace(" ", "");
+        byte[] bytes = new byte[compact.length() / 2];
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = (byte) Integer.parseInt(compact.substring(i * 2, i * 2 + 2), 16);
+        }
+        return bytes;
     }
 }

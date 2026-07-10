@@ -1,0 +1,264 @@
+package systems.zlink.framework.runtime.streams;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
+import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
+import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionActors;
+import systems.zlink.framework.streams.ZLinkSessionClient;
+import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
+
+final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
+    private static final long ASYNC_REPLY_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
+    private static final ScheduledExecutorService ASYNC_REPLY_EXECUTOR =
+        Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "zlink-stream-async-reply");
+            thread.setDaemon(true);
+            return thread;
+        });
+
+    private final String streamNodeName;
+    private final ZLinkBackendStreamSocket stream;
+    private final RoutingId routingId;
+    private final ZLinkSessionActors actors;
+    private final ZLinkMessageSerializer serializer;
+    private final ZLinkStreamCodec defaultCodec;
+    private final ZLinkStreamCompressionCodec compressionCodec;
+    private final ZLinkMessageFlowTracer flow;
+    private ZLinkStreamHeader currentDispatchHeader;
+
+    ZLinkStreamSessionContextState(
+        String streamNodeName,
+        ZLinkBackendStreamSocket stream,
+        RoutingId routingId,
+        ZLinkSessionActors actors,
+        ZLinkMessageSerializer serializer,
+        ZLinkStreamCodec defaultCodec,
+        ZLinkStreamCompressionCodec compressionCodec,
+        ZLinkMessageFlowTracer flow) {
+        this.streamNodeName = streamNodeName;
+        this.stream = stream;
+        this.routingId = routingId;
+        this.actors = actors;
+        this.serializer = serializer;
+        this.defaultCodec = defaultCodec;
+        this.compressionCodec = compressionCodec;
+        this.flow = flow;
+    }
+
+    @Override
+    public String sessionId() {
+        return streamNodeName + ":" + routingId;
+    }
+
+    @Override
+    public Optional<RoutingId> routingId() {
+        return Optional.of(routingId);
+    }
+
+    @Override
+    public Optional<String> localAddr() {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> remoteAddr() {
+        return Optional.empty();
+    }
+
+    @Override
+    public ZLinkSessionClient client() {
+        return new ZLinkStreamSessionClient(
+            stream,
+            routingId,
+            this,
+            serializer,
+            defaultCodec,
+            compressionCodec);
+    }
+
+    @Override
+    public ZLinkSessionActors actors() {
+        if (actors == null) {
+            throw new ZLinkConfigurationException("stream node is not attached to a session relay");
+        }
+        return actors;
+    }
+
+    CompletionStage<Void> notifyBoundActorsDisconnected() {
+        if (actors instanceof ZLinkSessionActorsRuntime runtime) {
+            return runtime.notifyDisconnectedAll();
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletionStage<Void> close() {
+        return systems.zlink.framework.ZLinkSubmitStage.completed();
+    }
+
+    CompletionStage<Void> dispatchStage(
+        ZLinkStreamHeader header,
+        ZLinkMessage payload,
+        ZLinkSession session) {
+        currentDispatchHeader = header;
+        ZLinkStreamRuntime.trace("stream-node dispatch-start node=" + streamNodeName
+            + " routingId=" + routingId
+            + " name=" + header.packetName()
+            + " requestSeq=" + header.requestSequence().orElse(null)
+            + " correlation=" + header.correlationId().orElse(null));
+        ZLinkSessionDispatchContext dispatch = new ZLinkSessionDispatchContext(
+            header.name(),
+            header.metadata(),
+            header.requestSequence().isPresent());
+        CompletionStage<Void> stage;
+        try {
+            stage = ZLinkHandlerStages.fromRunnable(() -> {
+                ZLinkSessionActorsRuntime.enterRelayDispatch(dispatch, header);
+                try {
+                    session.onDispatch(dispatch, payload);
+                } finally {
+                    ZLinkSessionActorsRuntime.exitRelayDispatch(dispatch);
+                }
+            });
+        } catch (RuntimeException ex) {
+            currentDispatchHeader = null;
+            return CompletableFuture.failedFuture(ex);
+        }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        stage.whenComplete((ignored, error) -> completeDispatch(header, error, result));
+        return result;
+    }
+
+    void traceStreamReplied(ZLinkStreamHeader requestHeader) {
+        if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.REPLIED)) {
+            flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+                systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.REPLIED,
+                systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
+                systems.zlink.framework.configuration.ZLinkDispatchMessageKind.REQUEST,
+                requestHeader.packetName(),
+                null,
+                null,
+                requestHeader.correlationId()
+                    .orElseGet(() -> requestHeader.requestSequence().map(String::valueOf).orElse(null)),
+                null,
+                null,
+                null,
+                null));
+        }
+    }
+
+    Optional<ZLinkStreamHeader> currentDispatchHeader() {
+        return Optional.ofNullable(currentDispatchHeader);
+    }
+
+    private void completeDispatch(
+        ZLinkStreamHeader header,
+        Throwable error,
+        CompletableFuture<Void> result) {
+        currentDispatchHeader = null;
+        if (error != null) {
+            completeDispatchError(header, error, result);
+            return;
+        }
+        if (header.requestSequence().isEmpty()
+            && flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED)) {
+            flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+                systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED,
+                systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
+                systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
+                header.packetName(),
+                null,
+                null,
+                header.correlationId().orElse(null),
+                null,
+                null,
+                null,
+                null));
+        }
+        result.complete(null);
+    }
+
+    private void completeDispatchError(
+        ZLinkStreamHeader header,
+        Throwable error,
+        CompletableFuture<Void> result) {
+        if (header.requestSequence().isEmpty()) {
+            result.completeExceptionally(error);
+            return;
+        }
+        sendErrorReply(header, error).whenComplete((ignored, sendError) -> {
+            if (sendError != null) {
+                result.completeExceptionally(sendError);
+            } else {
+                result.complete(null);
+            }
+        });
+    }
+
+    private CompletionStage<Void> sendErrorReply(
+        ZLinkStreamHeader requestHeader,
+        Throwable error) {
+        String message = unwrap(error).getMessage();
+        if (message == null || message.isBlank()) {
+            message = unwrap(error).getClass().getName();
+        }
+        try (Message payload = Message.from(message.getBytes(StandardCharsets.UTF_8))) {
+            ZLinkStreamHeader replyHeader =
+                ZLinkStreamHeader.createErrorResponse(requestHeader, requestHeader.packetName());
+            submitReplyAsync(replyHeader, payload.toByteArray());
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
+        }
+    }
+
+    private void submitReplyAsync(
+        ZLinkStreamHeader replyHeader,
+        byte[] payloadBytes) {
+        long deadline = System.nanoTime() + ASYNC_REPLY_TIMEOUT_NANOS;
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                try (Message payload = Message.from(payloadBytes)) {
+                    if (stream.reply(routingId, replyHeader, List.of(payload), SendFlags.DONT_WAIT)) {
+                        return;
+                    }
+                } catch (RuntimeException ignored) {
+                    return;
+                }
+                if (System.nanoTime() < deadline) {
+                    ASYNC_REPLY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
+                }
+            }
+        }
+        new Attempt().run();
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+}

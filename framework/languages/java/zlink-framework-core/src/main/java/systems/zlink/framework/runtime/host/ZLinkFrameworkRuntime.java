@@ -14,34 +14,26 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
-import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
-import systems.zlink.framework.runtime.actors.ZLinkActorClientRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
-import systems.zlink.framework.runtime.actors.ZLinkStoreActorDirectory;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRuntime;
-import systems.zlink.framework.runtime.locations.ZLinkLocationRuntimeQueryService;
 import systems.zlink.framework.runtime.locations.ZLinkLocationReadinessService;
-import systems.zlink.framework.runtime.locations.ZLinkLocationSpotRemoteRefResolver;
-import systems.zlink.framework.runtime.locations.ZLinkLocationStoreResolver;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
-import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
-import systems.zlink.framework.spots.SpotRemoteRef;
+import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.ZlinkCloseException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -107,53 +99,17 @@ public final class ZLinkFrameworkRuntime
         runtimeHandlers.add(ZLinkFrameworkRegistration.class, this.registration);
         runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
         boot("locationStore resolve");
-        this.locationStores = ZLinkLocationStoreResolver.resolve(
-            this.registration.locations(),
-            runtimeHandlers);
+        ZLinkFrameworkLocationSubsystem locationSubsystem =
+            ZLinkFrameworkLocationSubsystem.create(this.registration, runtimeHandlers);
+        this.locationStores = locationSubsystem.locationStores();
         boot("locationStore resolve done enabled=" + (this.locationStores != null));
-        if (this.locationStores != null) {
-            boot("locationRuntime create");
-            this.locationStores.addTo(runtimeHandlers);
-            this.locationRuntime = new ZLinkLocationRuntime(
-                this.locationStores,
-                this.registration.locations().options().ownerLeaseTtl(),
-                this.registration.locations().options().heartbeatInterval());
-            boot("locationRuntime start");
-            this.locationRuntime.startAsync(RoutingId.from(this.locationRuntime.ownerId()))
-                .toCompletableFuture()
-                .join();
-            boot("locationRuntime start done");
-            this.locationRuntimeQuery = new ZLinkLocationRuntimeQueryService(
-                this.locationStores,
-                this.locationRuntime,
-                this.registration.locations().options());
-            this.locationLifecycle = new ZLinkLocationLifecycle(this.locationRuntime);
-            this.storeLocationResolvers =
-                new ZLinkStoreLocationResolvers(
-                    this.locationStores,
-                    this.registration.locations().options());
-            this.locationAutoConnectHost = new ZLinkLocationAutoConnectHost(
-                this.locationRuntime,
-                this.storeLocationResolvers,
-                this.registration.locations().options());
-            ZLinkStoreLocationResolvers.AddressResolvers locationAddressResolvers =
-                new ZLinkStoreLocationResolvers.AddressResolvers(
-                    spotMeshNames(this.registration),
-                    this.registration.locations().options().spotRouterChannels(),
-                    this.storeLocationResolvers);
-            this.locationSpotRemoteRefResolver =
-                new ZLinkLocationSpotRemoteRefResolver(locationAddressResolvers);
-            runtimeHandlers.add(ZLinkLocationRuntime.class, this.locationRuntime);
-            runtimeHandlers.add(ZLinkLocationRuntimeQuery.class, this.locationRuntimeQuery);
-            runtimeHandlers.add(ZLinkLocationLifecycle.class, this.locationLifecycle);
-            runtimeHandlers.add(ZLinkLocationAutoConnectHost.class, this.locationAutoConnectHost);
-            runtimeHandlers.add(ZLinkStoreLocationResolvers.class, this.storeLocationResolvers);
-            runtimeHandlers.add(
-                ZLinkStoreLocationResolvers.AddressResolvers.class,
-                locationAddressResolvers);
-            runtimeHandlers.add(
-                ZLinkLocationSpotRemoteRefResolver.class,
-                this.locationSpotRemoteRefResolver);
+        if (locationSubsystem.enabled()) {
+            this.locationRuntime = locationSubsystem.locationRuntime();
+            this.locationRuntimeQuery = locationSubsystem.locationRuntimeQuery();
+            this.locationLifecycle = locationSubsystem.locationLifecycle();
+            this.locationAutoConnectHost = locationSubsystem.locationAutoConnectHost();
+            this.locationSpotRemoteRefResolver = locationSubsystem.locationSpotRemoteRefResolver();
+            this.storeLocationResolvers = locationSubsystem.storeLocationResolvers();
             boot("locationRuntime create done");
         } else {
             this.locationRuntime = null;
@@ -163,147 +119,61 @@ public final class ZLinkFrameworkRuntime
             this.locationSpotRemoteRefResolver = null;
             this.storeLocationResolvers = null;
         }
-        boot("channelBackend create");
-        ZLinkChannelBackendAdapter channelBackend =
-            backendFactory.createChannelAdapter(adapterOptions);
-        ZLinkBackendContext backendContext = channelBackend.createContext();
-        this.backendContext = backendContext;
-        boot("channelRuntime create");
-        this.channels = new ZLinkChannelRuntime(
-            channelBackend,
-            backendContext,
+        ZLinkFrameworkChannelSubsystem channelSubsystem = ZLinkFrameworkChannelSubsystem.create(
+            options,
             backendFactory,
             adapterOptions,
-            options.registration(),
             serializer,
             runtimeHandlers,
             eventDispatcher);
-        boot("channelRuntime create done");
-        runtimeHandlers.add(ZLinkClient.class, this.channels);
-        runtimeHandlers.add(ZLinkFanoutClient.class, this.channels);
-        runtimeHandlers.add(ZLinkRouteClient.class, this.channels);
-        if (options.registration().spotNodes().isEmpty()) {
-            boot("spotRuntime skip");
-            this.spots = null;
-        } else {
-            boot("spotRuntime create");
-            this.spots = new ZLinkSpotRuntime(
-                backendFactory,
-                adapterOptions,
-                options.registration(),
-                channels,
-                backendContext,
-                serializer,
-                runtimeHandlers,
-                eventDispatcher);
-            this.spots.setLocationLifecycle(this.locationLifecycle);
-            boot("spotRuntime entrySpotLocation claim");
-            this.spots.claimEntrySpotLocationsAsync()
-                .toCompletableFuture()
-                .join();
-            boot("spotRuntime entrySpotLocation claim done");
-            boot("spotRuntime create done");
-        }
-        Class<? extends SpotRemoteRefResolver> resolverType =
-            options.registration().spotRemoteRefResolverType();
-        SpotRemoteRefResolver remoteAddressResolver = resolverType == null
-            ? this.locationSpotRemoteRefResolver
-            : (SpotRemoteRefResolver) runtimeHandlers.create(resolverType);
-        if (this.spots != null) {
-            runtimeHandlers.add(ZLinkSpotManager.class, this.spots);
-            if (remoteAddressResolver != null) {
-                this.spots.setRemoteAddressResolver(remoteAddressResolver);
-            }
-        }
-        if (this.spots != null) {
-            this.channels.registerSpotRouteBridgeOwner(this.spots::primaryNode);
-            this.channels.registerSpotRouteBridgeDispatchDrainer(
-                this.spots::drainRoutedDispatchQueues);
-        }
-        var actorNodeRegistration = options.registration().spotNodes().stream()
-            .filter(node -> !node.actorFactories().isEmpty())
-            .findFirst()
-            .orElse(null);
-        boot("actorRuntime create");
-        this.actors = spots != null && actorNodeRegistration != null
-            ? new ZLinkActorRuntime(
-                spots.node(actorNodeRegistration.nodeName()),
-                actorNodeRegistration.actorFactories(),
-                options.registration().defaultRequestTimeout(),
-                serializer,
-                runtimeHandlers,
-                defaultStreamCodec)
-            : null;
-        boot("actorRuntime create done enabled=" + (this.actors != null));
-        this.actorDirectory = this.actors != null
-            ? this.actors
-            : spots != null && this.storeLocationResolvers != null
-                ? new ZLinkStoreActorDirectory(this.storeLocationResolvers)
-                : null;
-        boot("actorClient create");
-        this.actorClient = spots != null && this.storeLocationResolvers != null
-            ? new ZLinkActorClientRuntime(
-                this.spots::primaryNode,
-                this.storeLocationResolvers,
-                serializer,
-                options.registration().defaultRequestTimeout())
-            : null;
-        boot("actorClient create done enabled=" + (this.actorClient != null));
-        if (this.actorClient != null) {
-            runtimeHandlers.add(ZLinkActorClient.class, this.actorClient);
-        }
-        if (this.actorDirectory != null) {
-            runtimeHandlers.add(ZLinkActorDirectory.class, this.actorDirectory);
-        }
-        if (this.actors != null) {
-            runtimeHandlers.add(ZLinkActorManager.class, this.actors);
-            this.actors.setLocationLifecycle(this.locationLifecycle);
-            this.actors.setStoreLocationResolvers(this.storeLocationResolvers);
-            this.actors.setMessageFlowTracer(
-                new systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer(
-                    this.registration.dispatchOptions(),
-                    handlerFactory,
-                    this.registration.handlerExecutor(),
-                    eventDispatcher));
-            this.actors.setRoutedTransport(
-                this.channels,
-                () -> this.spots.primaryNode().entrySpot().routingId());
-            if (remoteAddressResolver != null) {
-                this.actors.setRemoteAddressResolver(remoteAddressResolver);
-            }
-        }
-        if (this.actors != null) {
-            this.spots.attachActorRuntime(this.actors);
-            this.channels.registerRouteInternalRequestHandler(
-                ZLinkActorEntrySpotRoutePackets.JOIN_ENTRY_SPOT_PACKET_NAME,
-                this.actors::handleEntrySpotRouteJoin);
-        }
-        boot("streamRuntime create");
-        this.streams = options.registration().streamNodes().isEmpty()
-            ? null
-            : new ZLinkStreamRuntime(
-                backendFactory,
-                adapterOptions,
-                options.registration(),
-                spots == null ? java.util.Map.of() : spots.nodesByName(),
-                serializer,
-                actors,
-                runtimeHandlers,
-                spots == null ? ignored -> true : spots::isSessionRelayRouteReady,
-                spots,
-                eventDispatcher);
-        boot("streamRuntime create done enabled=" + (this.streams != null));
-        if (this.locationAutoConnectHost != null) {
-            boot("autoConnect start");
-            this.locationAutoConnectHost.startAsync(
-                    this.registration,
-                    this.channels,
-                    this.spots == null ? java.util.Map.of() : this.spots.nodesByName(),
-                    this.spots)
-                .toCompletableFuture()
-                .join();
-            boot("autoConnect start done");
-        }
+        this.backendContext = channelSubsystem.backendContext();
+        this.channels = channelSubsystem.channels();
+
+        ZLinkFrameworkSpotSubsystem spotSubsystem = ZLinkFrameworkSpotSubsystem.create(
+            options,
+            backendFactory,
+            adapterOptions,
+            serializer,
+            runtimeHandlers,
+            eventDispatcher,
+            this.channels,
+            this.backendContext,
+            this.locationLifecycle,
+            this.locationSpotRemoteRefResolver);
+        this.spots = spotSubsystem.spots();
+
+        ZLinkFrameworkActorSubsystem actorSubsystem = ZLinkFrameworkActorSubsystem.create(
+            this.registration,
+            serializer,
+            runtimeHandlers,
+            handlerFactory,
+            eventDispatcher,
+            defaultStreamCodec,
+            this.channels,
+            this.spots,
+            this.locationLifecycle,
+            this.storeLocationResolvers,
+            spotSubsystem.remoteAddressResolver());
+        this.actors = actorSubsystem.actors();
+        this.actorDirectory = actorSubsystem.actorDirectory();
+        this.actorClient = actorSubsystem.actorClient();
+
+        ZLinkFrameworkStreamSubsystem streamSubsystem = ZLinkFrameworkStreamSubsystem.create(
+            options,
+            backendFactory,
+            adapterOptions,
+            serializer,
+            runtimeHandlers,
+            eventDispatcher,
+            this.spots,
+            this.actors);
+        this.streams = streamSubsystem.streams();
+
+        ZLinkFrameworkAutoConnectSubsystem.start(
+            this.locationAutoConnectHost,
+            this.registration,
+            this.channels,
+            this.spots);
         boot("runtime constructor done");
     }
 
@@ -348,7 +218,6 @@ public final class ZLinkFrameworkRuntime
     }
 
     private static void boot(String step) {
-        System.out.println("[boot] component=framework-runtime step=" + step);
     }
 
     public ZLinkClient client() {
@@ -430,7 +299,9 @@ public final class ZLinkFrameworkRuntime
             return false;
         }
         spots.beginClose();
-        closeRuntimeComponent(spots::close);
+        ZLinkFrameworkShutdown shutdown = new ZLinkFrameworkShutdown();
+        shutdown.defer(spots::close);
+        shutdown.close();
         return true;
     }
 
@@ -462,68 +333,38 @@ public final class ZLinkFrameworkRuntime
         return streams.sessionActors(streamNodeName, sessionRid, actors);
     }
 
-    private static java.util.List<String> spotMeshNames(ZLinkFrameworkRegistration registration) {
-        return registration.spotNodes().stream()
-            .map(systems.zlink.framework.runtime.spots.SpotNodeRegistration::meshName)
-            .distinct()
-            .toList();
-    }
-
     @Override
     public void close() {
         if (spots != null && !spotRuntimeStopped.get()) {
             spots.beginClose();
         }
         channels.beginClose();
-        try {
-            if (actors != null) {
-                closeRuntimeComponent(actors::close);
-            }
-        } finally {
-            try {
-                if (streams != null) {
-                    closeRuntimeComponent(streams::close);
-                }
-            } finally {
-                try {
-                    if (locationAutoConnectHost != null) {
-                        closeRuntimeComponent(() -> locationAutoConnectHost.stopAsync()
-                            .toCompletableFuture()
-                            .join());
-                    }
-                    closeRuntimeComponent(channels::close);
-                } finally {
-                    try {
-                        if (spots != null && spotRuntimeStopped.compareAndSet(false, true)) {
-                            closeRuntimeComponent(spots::close);
-                        }
-                    } finally {
-                        try {
-                            if (locationRuntime != null) {
-                                closeRuntimeComponent(() -> locationRuntime.stopAsync()
-                                    .toCompletableFuture()
-                                    .join());
-                                closeRuntimeComponent(locationLifecycle::close);
-                                closeRuntimeComponent(locationRuntime::close);
-                            }
-                        } finally {
-                            try {
-                                closeRuntimeComponent(backendContext::close);
-                            } finally {
-                                closeHandlerExecutor();
-                            }
-                        }
-                    }
-                }
-            }
+        ZLinkFrameworkShutdown shutdown = new ZLinkFrameworkShutdown();
+        shutdown.defer(this::closeHandlerExecutor);
+        shutdown.defer(backendContext::close);
+        if (locationRuntime != null) {
+            shutdown.defer(locationRuntime::close);
+            shutdown.defer(locationLifecycle::close);
+            shutdown.defer(() -> locationRuntime.stopAsync().toCompletableFuture().join());
         }
-    }
-
-    private static void closeRuntimeComponent(Runnable close) {
-        try {
-            close.run();
-        } catch (ZlinkCloseException ignored) {
+        if (spots != null) {
+            shutdown.defer(() -> {
+                if (spotRuntimeStopped.compareAndSet(false, true)) {
+                    spots.close();
+                }
+            });
         }
+        shutdown.defer(channels::close);
+        if (locationAutoConnectHost != null) {
+            shutdown.defer(() -> locationAutoConnectHost.stopAsync().toCompletableFuture().join());
+        }
+        if (streams != null) {
+            shutdown.defer(streams::close);
+        }
+        if (actors != null) {
+            shutdown.defer(actors::close);
+        }
+        shutdown.close();
     }
 
     private void closeHandlerExecutor() {

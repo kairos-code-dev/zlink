@@ -120,6 +120,31 @@ class ZLinkStoreLocationResolversTest {
         assertEquals(List.of(), rows.listLivePeersAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
     }
 
+    @Test
+    void queryAndResolverShareObservedGenerationGuard() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
+        ZLinkRegisteredLocationStores stores = ZLinkRegisteredLocationStores.fromUnified(store);
+        ZLinkLocationOptions options = new ZLinkLocationOptions();
+        options.setPollingInterval(Duration.ofMillis(1));
+        ZLinkLiveLocationRows liveRows = ZLinkLiveLocationRows.create(stores, options);
+        store.renewOwnerLeaseAsync("owner-a", NODE, Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .get();
+        store.updateSpotAsync(spot("owner-a", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .get();
+
+        assertEquals(1, liveRows.filterLiveSpots(List.of(spot("owner-a", 5)))
+            .toCompletableFuture()
+            .get()
+            .size());
+        ZLinkStoreLocationResolvers rows = new ZLinkStoreLocationResolvers(stores, liveRows);
+
+        assertNull(rows.resolveSpotRowAsync(new ZLinkSpotLocationKey("game", SPOT))
+            .toCompletableFuture()
+            .get());
+    }
+
     private static ZLinkStoreLocationResolvers resolvers(ZLinkInMemoryLocationStore store) {
         ZLinkLocationOptions options = new ZLinkLocationOptions();
         options.setPollingInterval(Duration.ofMillis(1));

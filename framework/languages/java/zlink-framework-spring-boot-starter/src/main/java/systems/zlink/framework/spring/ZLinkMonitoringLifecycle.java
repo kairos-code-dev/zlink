@@ -101,19 +101,8 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
             return;
         }
         try {
-            if (poller != null) {
-                poller.shutdownNow();
-                poller = null;
-            }
-            for (AutoCloseable registration : List.copyOf(handlerRegistrations)) {
-                closeQuietly(registration);
-            }
-            handlerRegistrations.clear();
-            if (runtime != null) {
-                runtime.close();
-            }
+            teardown();
         } finally {
-            runtime = null;
             running = false;
         }
     }
@@ -185,6 +174,11 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
     }
 
     private void stopAfterFailedStart() {
+        teardown();
+        running = false;
+    }
+
+    private void teardown() {
         if (poller != null) {
             poller.shutdownNow();
             poller = null;
@@ -197,6 +191,5 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
             runtime.close();
             runtime = null;
         }
-        running = false;
     }
 }

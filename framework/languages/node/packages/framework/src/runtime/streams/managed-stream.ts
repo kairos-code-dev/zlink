@@ -10,6 +10,7 @@ import {
   ZLinkFrameworkException
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import { throwIfAborted } from '../abort';
 import { encodeFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type {
   ZLinkBackendActorRef,
@@ -116,10 +117,4 @@ function toBackendActorRef(actor: ActorRef): ZLinkBackendActorRef {
     actorId: actor.actorId,
     generation: actor.generation
   };
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
 }

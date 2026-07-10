@@ -18,7 +18,7 @@ import type {
   ZLinkNestSpotSubscriptionHandlerOptions,
   ZLinkNestSpotTimerHandlerOptions
 } from './contracts';
-import { loadFramework } from './framework-loader';
+import { framework } from './framework-loader';
 import {
   appendNestHandlerMetadata,
   appendNestSpotActorHandlerMetadata,
@@ -29,7 +29,6 @@ import {
   type ZLinkNestHandlerKind
 } from './handler-metadata';
 
-const framework = loadFramework();
 
 export function zlinkRequestHandler(
   groupName: string,

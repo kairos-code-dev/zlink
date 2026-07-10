@@ -11,10 +11,11 @@ import type {
 import type { ZLinkStreamBindingRuntime } from '../streams';
 import {
   decodeRemoteActorPacketTarget,
-  normalizeRuntimeRoutingId,
   sessionActorPacketTargetKey
-} from '../spots/route-wire-codec';
+} from '../actors/actor-packet-relay-wire';
+import { normalizeRoutingId as normalizeRuntimeRoutingId } from '../routing-id';
 import type { MeshRouterResolver } from './mesh-router-resolver';
+import { routingIdsEqual } from '../routing-id';
 
 export interface ZLinkRemoteActorPacketTargetStoreOptions {
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
@@ -80,7 +81,7 @@ export class ZLinkRemoteActorPacketTargetStore {
     const state = this.options.actorManager()?.getState(actorId);
     if (
       state?.remoteActorPacketTarget !== undefined &&
-      (state.spotRid === undefined || String(state.remoteActorPacketTarget.spotRid) === String(state.spotRid))
+      (state.spotRid === undefined || routingIdsEqual(state.remoteActorPacketTarget.spotRid, state.spotRid))
     ) {
       return state.remoteActorPacketTarget;
     }
@@ -147,13 +148,4 @@ export class ZLinkRemoteActorPacketTargetStore {
     this.sessionActorPacketTargetsByActor.set(sessionActorPacketTargetKey(actor), target);
     this.sessionActorPacketTargetsByActorId.set(actor.actorId, target);
   }
-}
-
-function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {
-  const leftHex = (left as { toHex?: () => string }).toHex?.();
-  const rightHex = (right as { toHex?: () => string }).toHex?.();
-  if (leftHex !== undefined && rightHex !== undefined) {
-    return leftHex === rightHex;
-  }
-  return String(left) === String(right);
 }

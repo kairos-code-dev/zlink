@@ -5,7 +5,7 @@ import type { ZLinkActorHandoffPacket } from '../actors/actor-handoff';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
 import { decodeChannelEnvelope } from '../channels/channel-envelope';
-import { decodeWireRoutingId } from './route-wire-codec';
+import { decodeRoutingId as decodeWireRoutingId } from '../routing-id';
 import {
   REMOTE_ACTOR_JOIN_PACKET,
   type ZLinkRemoteActorJoinWirePayload

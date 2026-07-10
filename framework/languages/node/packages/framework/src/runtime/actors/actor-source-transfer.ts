@@ -1,0 +1,24 @@
+import type { ActorRef, ZLinkActor, ZLinkMessage } from '../../contracts';
+import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
+import type { ZLinkActorRuntimeState } from './actor-runtime-state';
+import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from './actor-handoff';
+
+export interface ZLinkPreparedActorSource {
+  readonly adapterKey?: string;
+  readonly state: ZLinkMessage;
+  readonly handoffBacklog: readonly ZLinkActorHandoffPacket[];
+  commit(
+    target: ZLinkSpotRouteTarget,
+    targetActorRef: ActorRef,
+    results: readonly ZLinkActorHandoffResult[]
+  ): void;
+  rollback(): Promise<void>;
+}
+
+export interface ZLinkActorSourceTransfer {
+  prepareSource(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    signal?: AbortSignal
+  ): Promise<ZLinkPreparedActorSource>;
+}

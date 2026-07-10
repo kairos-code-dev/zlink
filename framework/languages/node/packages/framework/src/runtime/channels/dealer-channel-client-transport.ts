@@ -9,7 +9,7 @@ import {
   encodeChannelEnvelopeParts,
   ZLinkChannelMessageKind
 } from './channel-envelope';
-import { throwIfAborted } from './channel-abort';
+import { throwIfAborted } from '../abort';
 import {
   appendParts,
   submitRequestOperation

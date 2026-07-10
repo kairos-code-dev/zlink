@@ -4,6 +4,7 @@ import type {
   ZLinkSessionSendCall
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import { throwIfAborted } from '../abort';
 import {
   ensureSingleSubmit,
   resolvePacketName,
@@ -169,11 +170,5 @@ export class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
     } finally {
       message.close();
     }
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
   }
 }

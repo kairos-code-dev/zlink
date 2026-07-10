@@ -6,6 +6,8 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
+import { throwIfAborted } from '../abort';
+import { routingIdsEqual } from '../routing-id';
 import {
   ZLinkActorSessionBindingRegistry
 } from './actor-session-binding-registry';
@@ -174,13 +176,7 @@ function createBindingToken(): string {
 }
 
 function sameActorRef(left: ActorRef, right: ActorRef): boolean {
-  return String(left.nodeRid) === String(right.nodeRid)
+  return routingIdsEqual(left.nodeRid, right.nodeRid)
     && left.actorId === right.actorId
     && BigInt(left.generation) === BigInt(right.generation);
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
 }

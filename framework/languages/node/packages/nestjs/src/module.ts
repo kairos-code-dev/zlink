@@ -25,13 +25,13 @@ import type {
   ZLinkNestProviderDiscoveryOptions,
   ZLinkNestProviderDiscoveryRoot
 } from './contracts';
-import { hasNestHandlerDiscovery } from './discovery';
-import { loadFramework, type FrameworkRuntimeHost } from './framework-loader';
+import { framework, type FrameworkRuntimeHost } from './framework-loader';
 import { createZLinkNestFrameworkOptionsBuilder } from './options-builder';
 import {
   assertBuiltModuleOptions,
   createDiscoveredOptions,
-  createRegistrationOptions
+  createRegistrationOptions,
+  hasNestHandlerDiscovery
 } from './registration-composer';
 import {
   alwaysAvailableClientProviders,
@@ -43,7 +43,6 @@ import {
   providerToken
 } from './providers';
 
-const framework = loadFramework();
 
 export function zlinkDiscoverProviders(
   rootDir: string,

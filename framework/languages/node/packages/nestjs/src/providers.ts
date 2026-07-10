@@ -31,12 +31,7 @@ import {
   claimRuntimeEventHandler,
   isNestRuntimeEventHandler
 } from './handler-metadata';
-import {
-  loadFramework,
-  type FrameworkRuntimeHost
-} from './framework-loader';
-
-const framework = loadFramework();
+import { framework, type FrameworkRuntimeHost } from './framework-loader';
 
 type RuntimeHostWithNestLifecycle = FrameworkRuntimeHost & OnModuleInit & OnModuleDestroy;
 
@@ -48,7 +43,7 @@ interface AlwaysAvailableClientProviderSpec {
 const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProviderSpec[] = [
   {
     token: ZLINK_CHANNEL_CLIENT,
-    create: (registration, runtime) => new framework.DefaultZLinkChannelClient(registration, runtime.channelTransport)
+    create: (registration, runtime) => framework.createIntegrationChannelClient(registration, runtime)
   },
   {
     token: ZLINK_CHANNEL_RUNTIME_OPTIONS,
@@ -56,11 +51,11 @@ const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProv
   },
   {
     token: ZLINK_FANOUT_CLIENT,
-    create: (registration, runtime) => new framework.DefaultZLinkFanoutClient(registration, runtime.channelTransport)
+    create: (registration, runtime) => framework.createIntegrationFanoutClient(registration, runtime)
   },
   {
     token: ZLINK_ROUTE_CLIENT,
-    create: (registration, runtime) => new framework.DefaultZLinkRouteClient(registration, runtime.routeTransport)
+    create: (registration, runtime) => framework.createIntegrationRouteClient(registration, runtime)
   },
   {
     token: ZLINK_BOUND_SESSION_FACTORY,
@@ -149,14 +144,14 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     requiresRuntime: true,
     isEnabled: (registration) => framework.hasSpotPublisherClient(registration),
     create: (registration, runtime) =>
-      new framework.DefaultZLinkSpotPublisherClient(registration, requireRuntime(runtime).spotPublisherTransport)
+      framework.createIntegrationSpotPublisherClient(registration, requireRuntime(runtime))
   },
   {
     token: ZLINK_ACTOR_CLIENT,
     requiresRuntime: true,
     isEnabled: (registration) => framework.hasSpotNode(registration) && hasLocationStores(registration),
     create: (_registration, runtime) =>
-      new framework.DefaultZLinkActorClient(requireRuntime(runtime).createActorClientOptions())
+      framework.createIntegrationActorClient(requireRuntime(runtime))
   },
   {
     token: ZLINK_ACTOR_MANAGER,
@@ -164,15 +159,11 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     isEnabled: (registration) => framework.hasActorManager(registration),
     create: async (registration, runtime, moduleRef, discovery) => {
       const host = requireRuntime(runtime);
-      const hostActorOptions = host.createActorManagerOptions();
-      const actorManager = new framework.DefaultZLinkActorManager({
-        actorFactories: registration.actorFactories,
-        ...hostActorOptions,
-        boundSessionFactory: hostActorOptions.boundSessionFactory ?? host.boundSessionFactory.create.bind(host.boundSessionFactory),
-        providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
-      });
-      host.setActorManager(actorManager);
-      return actorManager;
+      return framework.createIntegrationActorManager(
+        registration,
+        host,
+        moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
+      );
     }
   },
   {
@@ -310,10 +301,10 @@ export function createRuntimeHost(
   moduleRef: ModuleRef,
   discovery: DiscoveryService
 ): RuntimeHostWithNestLifecycle {
-  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+  const runtime = framework.createIntegrationRuntimeHost(
     registration,
-    providerResolver: createProviderResolver(moduleRef, discovery)
-  }) as RuntimeHostWithNestLifecycle;
+    createProviderResolver(moduleRef, discovery)
+  ) as RuntimeHostWithNestLifecycle;
   runtime.onModuleInit = async () => {
     registerDiscoveredRuntimeEventHandlers(runtime.eventPublisher, discovery);
     await runtime.start();
@@ -407,27 +398,11 @@ async function createSpotManager(
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
 ): Promise<unknown> {
-  const hostSpotOptions = runtime.createSpotManagerOptions();
-  const manager = new framework.DefaultZLinkSpotManager({
-    spotFactories: [...registration.spotFactories],
-    spotTimerHandlers: [...registration.spotNodes.values()]
-      .flatMap((spotNode) => [...(spotNode.spotTimerHandlers ?? [])]),
-    spotPacketHandlers: [...registration.spotNodes.values()]
-      .flatMap((spotNode) => [...(spotNode.spotPacketHandlers ?? [])]),
-    spotSubscriptionHandlers: [...registration.spotNodes.values()]
-      .flatMap((spotNode) => [...(spotNode.spotSubscriptionHandlers ?? [])]),
-    spotActorSendHandlers: [...registration.spotNodes.values()]
-      .flatMap((spotNode) => [...(spotNode.spotActorSendHandlers ?? [])]),
-    spotActorRequestHandlers: [...registration.spotNodes.values()]
-      .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
-    ...hostSpotOptions,
-    spotRouteResolver: hostSpotOptions.spotRouteResolver,
-    routedTransport: runtime.routeTransport,
-    providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery),
-    workerRuntime: new framework.ZLinkSpotWorkerRuntime(registration.worker)
-  });
-  runtime.setSpotManager(manager);
-  return manager;
+  return framework.createIntegrationSpotManager(
+    registration,
+    runtime,
+    moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
+  );
 }
 
 async function createSpotOutbound(
@@ -436,13 +411,5 @@ async function createSpotOutbound(
   _moduleRef: ModuleRef | undefined,
   _discovery: DiscoveryService | undefined
 ): Promise<unknown> {
-  const hostSpotOptions = runtime.createSpotManagerOptions() as Record<string, unknown>;
-  return new framework.DefaultZLinkSpotOutbound(
-    new framework.ZLinkSpotSerialExecutor(),
-    undefined,
-    undefined,
-    undefined,
-    runtime.routeTransport,
-    hostSpotOptions.spotRouterChannelIdForMesh as ((meshName: string) => string) | undefined
-  );
+  return framework.createIntegrationSpotOutbound(runtime);
 }

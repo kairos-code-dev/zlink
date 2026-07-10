@@ -10,8 +10,6 @@ import type {
   ZLinkFrameworkRegistrationOptions,
   IZLinkLocationStore,
   ZLinkLocationOptions,
-  ZLinkMessageFlowLogMode,
-  ZLinkMessageFlowObserver,
   ZLinkMessageSerializer,
   ZLinkSession,
   ZLinkSessionFactory,
@@ -19,7 +17,6 @@ import type {
   ZLinkSpot,
   ZLinkSpotNodeOptions,
   ZLinkStreamCompressionBuilder,
-  ZLinkStreamCompressionCodec,
   ZLinkStreamNodeOptions
 } from '@zlink-systems/framework';
 import {
@@ -40,9 +37,8 @@ import {
   type ZLinkNestSpotNodeBuilder,
   type ZLinkNestStreamNodeBuilder
 } from './contracts';
-import { loadFramework } from './framework-loader';
+import { framework } from './framework-loader';
 
-const framework = loadFramework();
 
 class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptionsBuilder {
   private additionalOptions: ZLinkNestFrameworkAdditionalOptions = {};
@@ -52,6 +48,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
   private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
   private readonly codecOptions: MutableCodecRegistryOptions = { serializers: [], streamCodecs: [] };
+  private readonly codecRegistry = framework.createIntegrationCodecRegistryBuilder(this.codecOptions);
 
   options(options: ZLinkNestFrameworkAdditionalOptions): this {
     this.additionalOptions = { ...this.additionalOptions, ...options };
@@ -67,7 +64,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
       ...this.additionalOptions,
       dispatch: this.additionalOptions.dispatch ?? {}
     };
-    return new DefaultZLinkNestDispatchOptionsBuilder(
+    return framework.createIntegrationDispatchOptionsBuilder(
       this.additionalOptions.dispatch as NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>
     );
   }
@@ -99,12 +96,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): this {
     const adapters = new Map(this.additionalOptions.actorTransferAdapters);
-    if (adapters.has(actorType)) {
-      throw new framework.ZLinkConfigurationException(
-        `Duplicate actor transfer adapter for '${actorType.name}'.`
-      );
-    }
-    adapters.set(actorType, adapterType);
+    framework.registerActorTransferAdapter(adapters, actorType, adapterType);
     this.additionalOptions = {
       ...this.additionalOptions,
       actorTransferAdapters: adapters
@@ -113,14 +105,9 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   }
 
   setActorTransferForwardWindow(timeoutMs: number): this {
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {
-      throw new framework.ZLinkConfigurationException(
-        'actor transfer forward window must be a non-negative safe integer.'
-      );
-    }
     this.additionalOptions = {
       ...this.additionalOptions,
-      actorTransferForwardWindowMs: timeoutMs
+      actorTransferForwardWindowMs: framework.validateActorTransferForwardWindow(timeoutMs)
     };
     return this;
   }
@@ -128,7 +115,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   configureStreamCompression(): ZLinkStreamCompressionBuilder {
     const compression = { ...(this.additionalOptions.streamCompression ?? {}) };
     this.additionalOptions = { ...this.additionalOptions, streamCompression: compression };
-    return new DefaultZLinkNestStreamCompressionBuilder(compression);
+    return framework.createIntegrationStreamCompressionBuilder(compression);
   }
 
   configureLocations(): ZLinkLocationOptions {
@@ -142,23 +129,11 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   }
 
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
-    const existing = this.codecOptions.serializers.findIndex((entry) => entry.contentType === contentType);
-    const registration = { contentType, serializer };
-    if (existing >= 0) {
-      this.codecOptions.serializers[existing] = registration;
-    } else {
-      this.codecOptions.serializers.push(registration);
-    }
+    this.codecRegistry.addSerializer(contentType, serializer);
   }
 
   addStreamCodec(contentType: string, codec: unknown): void {
-    const existing = this.codecOptions.streamCodecs.findIndex((entry) => entry.contentType === contentType);
-    const registration = { contentType, codec };
-    if (existing >= 0) {
-      this.codecOptions.streamCodecs[existing] = registration;
-    } else {
-      this.codecOptions.streamCodecs.push(registration);
-    }
+    this.codecRegistry.addStreamCodec(contentType, codec);
   }
 
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
@@ -277,76 +252,6 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
 
   build(): ZLinkModuleOptions {
     return this.root.build();
-  }
-}
-
-interface MutableStreamCompressionOptions {
-  disabled?: boolean;
-  codec?: ZLinkStreamCompressionCodec;
-}
-
-class DefaultZLinkNestStreamCompressionBuilder implements ZLinkStreamCompressionBuilder {
-  constructor(private readonly options: MutableStreamCompressionOptions) {}
-
-  useDefault(): this {
-    this.options.disabled = false;
-    this.options.codec = undefined;
-    return this;
-  }
-
-  useLz4(): this {
-    return this.useDefault();
-  }
-
-  use(codec: ZLinkStreamCompressionCodec): this {
-    if (typeof codec.compress !== 'function' || typeof codec.decompress !== 'function') {
-      throw new framework.ZLinkConfigurationException(
-        'STREAM compression codec must provide compress and decompress functions.'
-      );
-    }
-    this.options.disabled = false;
-    this.options.codec = codec;
-    return this;
-  }
-
-  disable(): this {
-    this.options.disabled = true;
-    this.options.codec = undefined;
-    return this;
-  }
-}
-
-class DefaultZLinkNestDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
-  constructor(private readonly dispatch: NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>) {}
-
-  setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this {
-    this.dispatch.messageFlowObserverType = observerType;
-    return this;
-  }
-
-  messageFlow(mode: ZLinkMessageFlowLogMode): this {
-    (this.dispatch.diagnostics ??= {}).messageFlowLogMode = mode;
-    return this;
-  }
-
-  traceSampleRate(rate: number): this {
-    (this.dispatch.diagnostics ??= {}).sampleRate = rate;
-    return this;
-  }
-
-  includeMessageSizes(include: boolean): this {
-    (this.dispatch.diagnostics ??= {}).includeMessageSizes = include;
-    return this;
-  }
-
-  traceLogFile(path: string): this {
-    (this.dispatch.diagnostics ??= {}).logFile = path;
-    return this;
-  }
-
-  traceLabel(id: string): this {
-    (this.dispatch.diagnostics ??= {}).label = id;
-    return this;
   }
 }
 

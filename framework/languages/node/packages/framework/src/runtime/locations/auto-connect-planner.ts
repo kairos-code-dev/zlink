@@ -9,6 +9,7 @@ import {
   zlinkLocationRoleName
 } from './canonical-codec';
 import { ZLinkLocationKeyCodec } from './key-codec';
+import { routingIdsEqual } from '../routing-id';
 import type {
   ZLinkAutoConnectLocal,
   ZLinkAutoConnectTarget
@@ -139,11 +140,4 @@ function localIsPairwiseInitiator(local: ZLinkAutoConnectLocal, peer: ZLinkPeerL
     }
   }
   return local.endpoint.localeCompare(peer.endpoint) < 0;
-}
-
-function routingIdsEqual(left: RoutingId | undefined, right: RoutingId | undefined): boolean {
-  if (left === undefined || right === undefined) {
-    return left === right;
-  }
-  return encodeRoutingIdHex(left) === encodeRoutingIdHex(right);
 }

@@ -496,6 +496,101 @@ test('route raw SPOT requests through SpotNode router are serialized per route c
   assert.equal(maxActive, 1);
 });
 
+test('aborted raw SPOT request retains the physical route slot until its late reply arrives', async () => {
+  const calls = [];
+  const releases = [];
+  const fakeSpot = {
+    requestToSpot(_targetNodeRid, _targetSpot, request, callback) {
+      calls.push(request.data().toString());
+      releases.push(callback);
+      return true;
+    }
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{ routerChannelId: 'room.route' }],
+      spotNodes: { play: { router: { bind: 'inproc://play', routingId: 'play-node' } } }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([['play', { entrySpot() { return fakeSpot; } }]]));
+  const address = {
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node',
+    spotRid: 'session-node',
+    spotKind: framework.ZLinkSpotKind.Entry
+  };
+  const abort = new AbortController();
+  const first = manager.routeRequestRawToSpot(
+    address,
+    zlink.Message.from(Buffer.from('first')),
+    1000,
+    abort.signal
+  );
+  const second = manager.routeRequestRawToSpot(
+    address,
+    zlink.Message.from(Buffer.from('second')),
+    1000
+  );
+
+  await waitUntil(() => calls.length === 1);
+  abort.abort();
+  await assert.rejects(first, /aborted/i);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(calls, ['first']);
+
+  let lateReplyClosed = 0;
+  const lateReply = { close() { lateReplyClosed++; } };
+  releases.shift()(0, [lateReply]);
+  await waitUntil(() => calls.length === 2);
+  assert.equal(lateReplyClosed, 1);
+  releases.shift()(0, [zlink.Message.from(Buffer.from('second-reply'))]);
+  const secondReply = await second;
+  assert.equal(secondReply[0].data().toString(), 'second-reply');
+  secondReply[0].close();
+});
+
+test('timed-out raw SPOT request closes its late reply before releasing the route slot', async () => {
+  const calls = [];
+  const releases = [];
+  const fakeSpot = {
+    requestToSpot(_targetNodeRid, _targetSpot, request, callback) {
+      calls.push(request.data().toString());
+      releases.push(callback);
+      return true;
+    }
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      requestTimeoutMs: 20,
+      routeChannels: [{ routerChannelId: 'room.route' }],
+      spotNodes: { play: { router: { bind: 'inproc://play', routingId: 'play-node' } } }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([['play', { entrySpot() { return fakeSpot; } }]]));
+  const address = {
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node',
+    spotRid: 'session-node',
+    spotKind: framework.ZLinkSpotKind.Entry
+  };
+  const first = manager.routeRequestRawToSpot(address, zlink.Message.from(Buffer.from('first')));
+  const second = manager.routeRequestRawToSpot(address, zlink.Message.from(Buffer.from('second')), 1000);
+
+  await assert.rejects(first, /not ready|timed out/i);
+  assert.deepEqual(calls, ['first']);
+  let lateClosed = 0;
+  releases.shift()(0, [{ close() { lateClosed++; } }]);
+  await waitUntil(() => calls.length === 2);
+  assert.equal(lateClosed, 1);
+  releases.shift()(0, [zlink.Message.from(Buffer.from('second-reply'))]);
+  const reply = await second;
+  reply[0].close();
+});
+
 test('SpotNode router is not classified as packet route channel', () => {
   const registration = framework.createFrameworkRegistration({
     routeChannels: [{ routerChannelId: 'play-node' }],
@@ -569,6 +664,77 @@ test('route raw SPOT request through SpotNode router retries until route is read
   assert.equal(attempts, 2);
   assert.equal(reply[0].data().toString(), 'ready-reply');
   reply[0].close();
+});
+
+test('route raw SPOT request stops SpotNode readiness retries when aborted', async () => {
+  let attempts = 0;
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      requestTimeoutMs: 1000,
+      routeChannels: [{ routerChannelId: 'room.route' }],
+      spotNodes: {
+        play: { router: { bind: 'inproc://play', routingId: 'play-node' } }
+      }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([['play', {
+    entrySpot() {
+      return {
+        requestToSpot() {
+          attempts += 1;
+          return false;
+        }
+      };
+    }
+  }]]));
+  const abort = new AbortController();
+  const request = zlink.Message.from(Buffer.from('request'));
+  const pending = manager.routeRequestRawToSpot({
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node',
+    spotRid: 'session-node',
+    spotKind: framework.ZLinkSpotKind.Entry
+  }, request, 1000, abort.signal);
+
+  await waitUntil(() => attempts > 0);
+  abort.abort();
+  await assert.rejects(pending, /The operation was aborted/);
+  const attemptsAtAbort = attempts;
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(attempts, attemptsAtAbort);
+  request.close();
+});
+
+test('source Spot raw request aborts after native submission and closes a late reply', async () => {
+  let complete;
+  const sourceSpot = {
+    requestToSpot(_targetNodeRid, _spotRid, _request, callback) {
+      complete = callback;
+      return true;
+    }
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration(),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+  const abort = new AbortController();
+  const request = zlink.Message.from(Buffer.from('request'));
+  const pending = manager.routeRequestRawFromSpotToSpot(sourceSpot, {
+    routerChannelId: 'room.route',
+    targetNodeRid: 'play-node',
+    spotRid: 'room-1'
+  }, request, 1000, abort.signal);
+
+  abort.abort();
+  await assert.rejects(pending, /The operation was aborted/);
+  let closeCount = 0;
+  const lateReply = { close() { closeCount += 1; } };
+  complete(0, [lateReply]);
+  assert.equal(closeCount, 1);
+  request.close();
 });
 
 test('route channel request rejects when native router does not accept submit', async () => {
@@ -746,6 +912,49 @@ test('route bridge raw request completes when shared route receive loop observes
   reply[0].close();
   stopLoop = true;
   await manager.dispose();
+});
+
+test('channel runtime dispose rejects pending raw Spot route bridge requests', async () => {
+  const bridge = {
+    attachRouterChannel() {},
+    request() {
+      return {
+        message() { return this; },
+        timeout() { return this; },
+        submit() { return true; }
+      };
+    },
+    handleRouterReceived() { return false; },
+    async dispose() {}
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{ routerChannelId: 'room.route' }],
+      spotNodes: { play: { router: { bind: 'inproc://play', routingId: 'play-node' } } }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router: fakeRouteRouter() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([['play', {
+    createRouteBridge() { return bridge; },
+    entrySpot() { return { requestToSpot() { return false; } }; }
+  }]]));
+  manager.start({
+    errorSink: { reportRuntimeTaskException() {} },
+    run() { return Promise.resolve(); }
+  });
+  const request = zlink.Message.from(Buffer.from('request'));
+  const pending = manager.routeRequestRawToSpot({
+    routerChannelId: 'room.route',
+    targetNodeRid: 'play-node',
+    spotRid: 'room-1'
+  }, request, undefined);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  const rejected = assert.rejects(pending, /Channel runtime disposed/);
+  await manager.dispose();
+  await rejected;
+  request.close();
 });
 
 test('route bridge queued sends keep each target on its submitted operation', async () => {
@@ -3032,6 +3241,61 @@ test('ZLinkChannelRequestDispatcher waits for send-ready before completing backp
   assert.equal(replyEnvelope.header.kind, 5);
   assert.equal(replyEnvelope.header.correlationId, 'corr-backpressured-error');
   assert.match(replyEnvelope.header.errorMessage, /deterministic handler failure/);
+});
+
+test('ZLinkAsyncSubmitter discards queued ownership exactly once when aborted before submit', async () => {
+  const controller = new AbortController();
+  let readyHandler = () => undefined;
+  let discarded = 0;
+  const submitter = new framework.ZLinkAsyncSubmitter((handler) => { readyHandler = handler; });
+  const pending = submitter.submitCommand(
+    () => false,
+    controller.signal,
+    () => { discarded++; }
+  );
+
+  controller.abort();
+  await assert.rejects(() => pending, /aborted/i);
+  readyHandler();
+  submitter.dispose();
+  assert.equal(discarded, 1);
+});
+
+test('ZLinkAsyncSubmitter does not discard an accepted synchronous rejection', async () => {
+  let discarded = 0;
+  const submitter = new framework.ZLinkAsyncSubmitter(() => undefined);
+  const pending = submitter.submitRequest(
+    (_resolve, reject) => {
+      reject(new Error('synchronous transport failure'));
+      return true;
+    },
+    undefined,
+    1000,
+    () => { discarded++; }
+  );
+
+  await assert.rejects(pending, /synchronous transport failure/);
+  assert.equal(discarded, 0);
+  submitter.dispose();
+});
+
+test('ZLinkAsyncSubmitter settles with both abort and discard failures', async () => {
+  const controller = new AbortController();
+  const submitter = new framework.ZLinkAsyncSubmitter(() => undefined);
+  const pending = submitter.submitCommand(
+    () => false,
+    controller.signal,
+    () => { throw new Error('discard failed'); }
+  );
+
+  controller.abort();
+  await assert.rejects(pending, (error) => {
+    assert.equal(error instanceof AggregateError, true);
+    assert.match(error.message, /discard failed/i);
+    assert.equal(error.errors.length, 2);
+    return true;
+  });
+  submitter.dispose();
 });
 
 test('DERR-009 ZLinkChannelRequestDispatcher writes dispatch errors to file log', async () => {

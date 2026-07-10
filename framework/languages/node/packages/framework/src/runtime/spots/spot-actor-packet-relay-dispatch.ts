@@ -11,9 +11,9 @@ import {
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 import {
-  decodeWireRoutingId,
   encodeRemoteActorPacketTarget
-} from './route-wire-codec';
+} from '../actors/actor-packet-relay-wire';
+import { decodeRoutingId as decodeWireRoutingId } from '../routing-id';
 import type { ZLinkRemoteActorPacketRelay } from './spot-remote-route-codec';
 import {
   isReplyableRequestSeq,

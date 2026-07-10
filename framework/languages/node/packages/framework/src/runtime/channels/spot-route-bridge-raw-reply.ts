@@ -4,17 +4,19 @@ import {
 } from '../configuration';
 import {
   isSpotRouteBridgeReplyPayload
-} from '../spots/route-wire-codec';
+} from '../spots/spot-route-reply-wire';
 import {
   closeMessages
 } from './channel-envelope';
+import { createAbortError } from '../abort';
 
 interface ZLinkPendingRawSpotRouteBridgeRequest {
   completed: boolean;
   timeout: ReturnType<typeof setTimeout> | undefined;
   abortHandler: (() => void) | undefined;
   resolve(reply: readonly Message[]): void;
-  reject(error: unknown): void;
+  reject(error: unknown, releaseSubmission?: boolean): void;
+  attachSubmission(resolve: () => void, reject: (error: unknown) => void): boolean;
 }
 
 /**
@@ -33,13 +35,27 @@ export class ZLinkSpotRouteBridgeRawReplyRegistry {
     defaultTimeoutMs: number | undefined,
     signal: AbortSignal | undefined
   ): ZLinkPendingRawSpotRouteBridgeRequest {
+    let submissionComplete: (() => void) | undefined;
+    let submissionFailed: ((error: unknown) => void) | undefined;
     const pending: ZLinkPendingRawSpotRouteBridgeRequest = {
       completed: false,
       timeout: undefined,
       abortHandler: undefined,
+      attachSubmission: (complete, fail) => {
+        if (pending.completed) {
+          this.remove(routerChannelId, pending);
+          complete();
+          return false;
+        }
+        submissionComplete = complete;
+        submissionFailed = fail;
+        return true;
+      },
       resolve: (reply) => {
         if (pending.completed) {
           closeMessages(reply);
+          this.remove(routerChannelId, pending);
+          submissionComplete?.();
           return;
         }
         pending.completed = true;
@@ -50,20 +66,26 @@ export class ZLinkSpotRouteBridgeRawReplyRegistry {
         if (pending.abortHandler !== undefined) {
           signal?.removeEventListener('abort', pending.abortHandler);
         }
+        submissionComplete?.();
         resolve(reply);
       },
-      reject: (error) => {
+      reject: (error, releaseSubmission = false) => {
         if (pending.completed) {
+          if (releaseSubmission) {
+            this.remove(routerChannelId, pending);
+            submissionFailed?.(error);
+          }
           return;
         }
         pending.completed = true;
-        this.remove(routerChannelId, pending);
+        if (releaseSubmission) this.remove(routerChannelId, pending);
         if (pending.timeout !== undefined) {
           clearTimeout(pending.timeout);
         }
         if (pending.abortHandler !== undefined) {
           signal?.removeEventListener('abort', pending.abortHandler);
         }
+        if (releaseSubmission) submissionFailed?.(error);
         reject(error);
       }
     };
@@ -78,7 +100,7 @@ export class ZLinkSpotRouteBridgeRawReplyRegistry {
       );
     }
     if (signal !== undefined) {
-      pending.abortHandler = () => pending.reject(new Error('The operation was aborted.'));
+      pending.abortHandler = () => pending.reject(createAbortError());
       signal.addEventListener('abort', pending.abortHandler, { once: true });
     }
     return pending;
@@ -105,6 +127,13 @@ export class ZLinkSpotRouteBridgeRawReplyRegistry {
     }
     queue[0].resolve(received.parts);
     return true;
+  }
+
+  rejectAll(error: unknown): void {
+    const requests = [...this.pending.values()].flatMap((queue) => [...queue]);
+    for (const request of requests) {
+      request.reject(error, true);
+    }
   }
 }
 

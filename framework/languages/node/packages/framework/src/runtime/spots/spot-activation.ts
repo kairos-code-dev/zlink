@@ -24,14 +24,12 @@ import {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type {
-  ZLinkBackendActorRef,
   ZLinkBackendSpot,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
 import { ZLinkDispatchErrorReporter } from '../channels';
 import {
   ZLinkSpotActorHandlerRegistryRuntime,
-  type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import { ZLinkSpotWorkerRuntime } from '../workers';
@@ -57,12 +55,17 @@ import {
   type ZLinkDetachedTaskRunner
 } from './spot-actor-join-dispatch';
 import {
-  ZLinkSpotActorPacketDispatch,
-  type ZLinkActorResponseOptions
+  ZLinkSpotActorPacketDispatch
 } from './spot-actor-packet-dispatch';
-import type { ZLinkRemoteActorJoinActor, ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
-import type { ZLinkSpotActivation } from './spot-activation-registry';
+import { ZLinkSpotActivation } from './spot-activation-state';
 import type { ZLinkSpotLocationClaim } from './spot-location-claim';
+import type {
+  ZLinkNativeActorJoinSnapshot,
+  ZLinkSpotActorHandoffRuntime,
+  ZLinkSpotActorTransferRuntime,
+  ZLinkSpotBoundSessionRuntime
+} from './spot-runtime-ports';
+import { routingIdsEqual } from '../routing-id';
 import {
   replayActorHandoffBacklog,
   type ZLinkActorHandoffPacket,
@@ -92,79 +95,9 @@ export interface ZLinkSpotActivationLifecycleOptions {
   readonly createNativeSpot?: (spotRid: RoutingId) => ZLinkBackendSpot | undefined;
   readonly nativeSpotNodeProvider?: () => ZLinkBackendSpotNode | undefined;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
-  readonly routedActorProvider?: (
-    actorId: string,
-    actorType: string,
-    actorRef?: ZLinkBackendActorRef,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    actorCreateRequest?: Message,
-    signal?: AbortSignal
-  ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
-  readonly routedActorFinalizer?: (actor: ZLinkActor, spotRid: RoutingId) => Promise<void>;
-  readonly routedActorCommitter?: (actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot) => void;
-  readonly routedActorLeaveCommitter?: (actor: ZLinkActor) => void;
-  readonly routedActorRollback?: (actor: ZLinkActor) => Promise<void>;
-  readonly actorResponseSender?: (
-    actor: ZLinkActor,
-    packetName: string,
-    requestSeq: bigint,
-    response: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly actorErrorSender?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionReceiver?: (
-    actorId: string,
-    message: unknown,
-    packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionResponseReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    message: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionErrorReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
-  readonly remoteActorPacketTargetReceiver?: (
-    actorId: string,
-    target: ZLinkRemoteBoundSessionTarget
-  ) => void;
-  readonly remoteBoundSessionTargetResolver?: (
-    sourceNodeRid: RoutingId,
-    sourceSessionRid: RoutingId
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
-  readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
-  readonly actorPacketHandoff?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
-  ) => Promise<unknown> | undefined;
+  readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
+  readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
+  readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
   readonly leaveActor: (spotRid: RoutingId, actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
   readonly closeSpot: (spotRid: RoutingId, signal?: AbortSignal) => Promise<boolean>;
@@ -176,7 +109,22 @@ interface UserSpotLocationClaim {
 }
 
 export class ZLinkSpotActivationLifecycle {
+  private readonly cleanupStates = new WeakMap<ZLinkSpotActivation, {
+    closingAttempted: boolean;
+    timersDisposed: boolean;
+    nativeDisposed: boolean;
+    locationReleased: boolean;
+    inFlight?: Promise<void>;
+  }>();
+
   constructor(private readonly options: ZLinkSpotActivationLifecycleOptions) {}
+
+  resourcesReleased(activation: ZLinkSpotActivation): boolean {
+    const state = this.cleanupStates.get(activation);
+    return state?.timersDisposed === true &&
+      state.nativeDisposed === true &&
+      state.locationReleased === true;
+  }
 
   async create<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
@@ -210,6 +158,8 @@ export class ZLinkSpotActivationLifecycle {
     }
 
     let spot: ZLinkSpot | undefined;
+    let activation: ZLinkSpotActivation | undefined;
+    let lifecycleStarted = false;
     const context = createSpotContext({
       spotRid,
       handlers,
@@ -227,36 +177,56 @@ export class ZLinkSpotActivationLifecycle {
     });
     try {
       spot = await createFreshProviderInstance(spotType, this.options.providerResolver, context);
+      Object.defineProperty(spot, 'context', {
+        configurable: true,
+        enumerable: false,
+        value: context
+      });
+
+      // getOrCreateSpot registers the native Spot under this rid so core routes
+      // actor-join admission requests to it (createSpot alone does not register).
+      nativeSpot = this.options.createNativeSpot?.(spotRid);
+      activation = new ZLinkSpotActivation({
+        spotRid,
+        spotType,
+        spot,
+        serial,
+        timers,
+        actorHandlers,
+        handlers,
+        externalActorCount: () => this.options.actorCountProvider?.(spotRid) ?? 0,
+        nativeSpot
+      });
+      const nativeDispatch = this.attachNativeActorJoinDispatch(activation, nativeSpot);
+      lifecycleStarted = true;
+      return await this.runCreateLifecycle(activation, spotType, request, locationClaim, nativeDispatch, signal);
     } catch (error) {
-      await this.options.locationClaim.release(locationClaim.meshName, spotRid);
+      const cleanupErrors: unknown[] = [];
+      try {
+        if (activation !== undefined) {
+          await this.cleanupActivation(activation, locationClaim.meshName, lifecycleStarted, signal);
+        } else {
+          const partialCleanup = await Promise.allSettled([
+            timers.dispose(),
+            nativeSpot?.dispose(),
+            this.options.locationClaim.release(locationClaim.meshName, spotRid)
+          ]);
+          const partialErrors = partialCleanup
+            .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+            .map((result) => result.reason);
+          if (partialErrors.length === 1) throw partialErrors[0];
+          if (partialErrors.length > 1) {
+            throw new AggregateError(partialErrors, `Spot '${spotRid}' partial creation cleanup failed.`);
+          }
+        }
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError([error, ...cleanupErrors], `Spot '${spotRid}' creation cleanup failed.`);
+      }
       throw error;
     }
-    Object.defineProperty(spot, 'context', {
-      configurable: true,
-      enumerable: false,
-      value: context
-    });
-
-    const actors = new Map<string, ZLinkActor>();
-    const leftActors = new Set<string>();
-    // getOrCreateSpot registers the native Spot under this rid so core routes
-    // actor-join admission requests to it (createSpot alone does not register).
-    nativeSpot = this.options.createNativeSpot?.(spotRid);
-    const activation: ZLinkSpotActivation = {
-      spotRid,
-      spotType,
-      spot,
-      serial,
-      timers,
-      actors,
-      leftActors,
-      actorHandlers,
-      handlers,
-      actorCount: () => actors.size + (this.options.actorCountProvider?.(spotRid) ?? 0),
-      nativeSpot
-    };
-    const nativeDispatch = this.attachNativeActorJoinDispatch(activation, nativeSpot);
-    return await this.runCreateLifecycle(activation, spotType, request, locationClaim, nativeDispatch, signal);
   }
 
   async close(activation: ZLinkSpotActivation, signal?: AbortSignal): Promise<void> {
@@ -264,18 +234,12 @@ export class ZLinkSpotActivationLifecycle {
   }
 
   async closeInsideSerial(activation: ZLinkSpotActivation, signal?: AbortSignal): Promise<void> {
-    try {
-      await activation.spot.onClosing?.(signal);
-    } finally {
-      await activation.timers.dispose();
-      if (activation.nativeSpot !== undefined && typeof activation.nativeSpot.dispose === 'function') {
-        await activation.nativeSpot.dispose();
-      }
-      await this.options.locationClaim.release(
-        this.options.locationClaim.meshNameForRelease(),
-        activation.spotRid
-      );
-    }
+    await this.cleanupActivation(
+      activation,
+      this.options.locationClaim.meshNameForRelease(),
+      true,
+      signal
+    );
   }
 
   async dispatchActorPacket(
@@ -286,7 +250,7 @@ export class ZLinkSpotActivationLifecycle {
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef
   ): Promise<unknown> {
-    const handoff = this.options.actorPacketHandoff?.(
+    const handoff = this.options.actorHandoffRuntime?.capture(
       actorId,
       parts,
       returnResponse,
@@ -317,15 +281,16 @@ export class ZLinkSpotActivationLifecycle {
       spotRid: () => String(activation.spotRid),
       registry: activation.actorHandlers,
       serial: activation.serial,
-      resolveActor: (targetActorId) =>
-        activation.actors.get(targetActorId) ?? this.options.actorResolver?.(targetActorId),
-      actorLeft: (targetActorId) => activation.leftActors.has(targetActorId),
+      resolveActor: (targetActorId) => activation.hasDepartedActor(targetActorId)
+        ? undefined
+        : activation.resolveJoinedActor(targetActorId) ?? this.options.actorResolver?.(targetActorId),
+      actorLeft: (targetActorId) => activation.hasDepartedActor(targetActorId),
       onRemoteBoundSessionTarget: (targetActorId, target) =>
-        this.options.remoteActorPacketTargetReceiver?.(targetActorId, target),
+        this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(targetActorId, target),
       onDisconnectActor: (actor) =>
         activation.serial.execute(() => activation.spot.onDisconnectActor?.(actor)),
-      actorResponseSender: this.options.actorResponseSender,
-      actorErrorSender: this.options.actorErrorSender,
+      actorResponseSender: this.options.boundSessionRuntime?.sendActorResponse.bind(this.options.boundSessionRuntime),
+      actorErrorSender: this.options.boundSessionRuntime?.sendActorError.bind(this.options.boundSessionRuntime),
       providerResolver: this.options.providerResolver,
       messageSerializers: this.options.messageSerializers,
       dispatchErrors: this.options.dispatchErrors
@@ -342,58 +307,46 @@ export class ZLinkSpotActivationLifecycle {
     const nativeDispatch = new ZLinkSpotActorJoinDispatch({
       nativeSpot,
       serial: activation.serial,
-      resolveActor: (actorId) => activation.leftActors.has(actorId)
-        ? undefined
-        : activation.actors.get(actorId) ?? this.options.actorResolver?.(actorId),
-      getTarget: () => activation.spot,
-      defaultAccept: false,
-      routedActorProvider: this.options.routedActorProvider,
-      routedActorTransferProvider: this.options.routedActorTransferProvider,
-      finalizeRoutedActor: (actor) => this.options.routedActorFinalizer?.(actor, activation.spotRid),
-      rollbackRoutedActor: async (actor) => {
-        activation.leftActors.add(actor.actorId);
-        activation.actors.delete(actor.actorId);
-        this.options.routedActorLeaveCommitter?.(actor);
-        await this.options.routedActorRollback?.(actor);
+      actors: {
+        resolveActor: (actorId) => activation.hasDepartedActor(actorId)
+          ? undefined
+          : activation.resolveJoinedActor(actorId) ?? this.options.actorResolver?.(actorId),
+        getTarget: () => activation.spot,
+        defaultAccept: false,
+        transfer: this.options.actorTransferRuntime === undefined ? { kind: 'disabled' } : {
+          kind: 'enabled',
+          runtime: this.options.actorTransferRuntime
+        },
+        commitNativeActor: async (actor) => {
+          await this.commitNativeActorTransaction(activation, actor);
+        },
+        commitTransferredActor: (actor, backlog) => this.commitTransferredActorTransaction(activation, actor, backlog)
       },
-      rollbackNativeActor: async (actor) => {
-        activation.leftActors.add(actor.actorId);
-        activation.actors.delete(actor.actorId);
-        this.options.routedActorLeaveCommitter?.(actor);
+      packets: {
+        handle: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
+          this.dispatchActorPacket(
+            activation,
+            actorId,
+            parts,
+            returnResponse,
+            remoteBoundSessionTarget,
+            fallbackActorRef
+          ),
+        bindRemoteSession: (actor, sourceNodeRid, sourceSessionRid) => {
+          const node = this.options.nativeSpotNodeProvider?.();
+          if (node === undefined || routingIdsEqual(sourceNodeRid, node.routingId)) {
+            return;
+          }
+          const target = this.options.boundSessionRuntime?.resolveRemoteBoundSessionTarget(sourceNodeRid, sourceSessionRid);
+          if (target !== undefined) {
+            this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(actor.actorId, target);
+          }
+          node.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
+        },
+        replyNoBind: (info, parts, result) =>
+          this.options.nativeSpotNodeProvider?.()?.replyActorNoBind(info, parts, result)
       },
-      commitRoutedActor: (actor) => {
-        this.options.routedActorCommitter?.(actor, activation.spotRid, activation.spot);
-        activation.leftActors.delete(actor.actorId);
-        activation.actors.set(actor.actorId, actor);
-      },
-      replayRoutedActorBacklog: (actor, backlog) => this.replayActorBacklog(activation, actor, backlog),
-      actorPacketHandler: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
-        this.dispatchActorPacket(
-          activation,
-          actorId,
-          parts,
-          returnResponse,
-          remoteBoundSessionTarget,
-          fallbackActorRef
-        ),
-      routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
-      routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
-      routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
-      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
-      actorPacketTargetProvider: this.options.actorPacketTargetProvider,
-      bindRemoteActorSession: (actor, sourceNodeRid, sourceSessionRid) => {
-        const node = this.options.nativeSpotNodeProvider?.();
-        if (node === undefined || String(sourceNodeRid) === String(node.routingId)) {
-          return;
-        }
-        const target = this.options.remoteBoundSessionTargetResolver?.(sourceNodeRid, sourceSessionRid);
-        if (target !== undefined) {
-          this.options.remoteActorPacketTargetReceiver?.(actor.actorId, target);
-        }
-        node.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
-      },
-      replyActorNoBind: (info, parts, result) =>
-        this.options.nativeSpotNodeProvider?.()?.replyActorNoBind(info, parts, result),
+      boundSessionRuntime: this.options.boundSessionRuntime,
       messageSerializers: this.options.messageSerializers,
       providerResolver: this.options.providerResolver,
       dispatchErrors: this.options.dispatchErrors,
@@ -401,6 +354,69 @@ export class ZLinkSpotActivationLifecycle {
     });
     nativeDispatch.attach();
     return nativeDispatch;
+  }
+
+  private async commitNativeActorTransaction(
+    activation: ZLinkSpotActivation,
+    actor: ZLinkActor
+  ): Promise<void> {
+    const transfer = this.options.actorTransferRuntime;
+    const spotMeshName = this.options.locationClaim.meshNameForRelease();
+    let snapshot: ZLinkNativeActorJoinSnapshot | undefined;
+    let rollbackMembership: (() => void) | undefined;
+    try {
+      snapshot = await transfer?.claimNativeActorLocation(
+        actor,
+        activation.spotRid,
+        spotMeshName
+      );
+      transfer?.commitRoutedActor(actor, activation.spotRid, activation.spot);
+      rollbackMembership = activation.commitActorJoin(actor);
+      await activation.serial.execute(() => activation.spot.onJoinedActor?.(actor));
+      await transfer?.publishRoutedActorOwnership(actor);
+    } catch (error) {
+      rollbackMembership?.();
+      try {
+        if (snapshot !== undefined) {
+          await transfer?.rollbackNativeActorJoin(actor, snapshot);
+        }
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], 'Native actor admission and rollback both failed.');
+      }
+      throw error;
+    }
+  }
+
+  private async commitTransferredActorTransaction(
+    activation: ZLinkSpotActivation,
+    actor: ZLinkActor,
+    backlog: readonly ZLinkActorHandoffPacket[]
+  ): Promise<readonly ZLinkActorHandoffResult[]> {
+    const transfer = this.options.actorTransferRuntime;
+    try {
+      await transfer?.claimRoutedActorLocation(
+        actor,
+        activation.spotRid,
+        this.options.locationClaim.meshNameForRelease()
+      );
+      transfer?.commitRoutedActor(actor, activation.spotRid, activation.spot);
+      activation.commitActorJoin(actor);
+      await activation.serial.execute(() => activation.spot.onJoinedActor?.(actor));
+      const results = backlog.length === 0
+        ? []
+        : await this.replayActorBacklog(activation, actor, backlog);
+      await transfer?.publishRoutedActorOwnership(actor);
+      return results;
+    } catch (error) {
+      activation.commitActorDeparture(actor.actorId);
+      transfer?.clearRoutedActor(actor);
+      try {
+        await transfer?.rollbackRoutedActor(actor);
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], 'Actor admission and rollback both failed.');
+      }
+      throw error;
+    }
   }
 
   private async replayActorBacklog(
@@ -465,8 +481,7 @@ export class ZLinkSpotActivationLifecycle {
         await activation.spot.onInitialize?.(signal);
       });
       if (createResponse?.accepted === false) {
-        await activation.timers.dispose();
-        await this.options.locationClaim.release(locationClaim.meshName, activation.spotRid);
+        await this.cleanupActivation(activation, locationClaim.meshName, false, signal);
         return {
           spotRid: activation.spotRid,
           state: ZLinkSpotCreateState.Rejected,
@@ -480,9 +495,74 @@ export class ZLinkSpotActivationLifecycle {
         reply: this.decodeCreateReply(createResponse?.reply)
       };
     } catch (error) {
-      await this.close(activation, signal);
-      await this.options.locationClaim.release(locationClaim.meshName, activation.spotRid);
+      try {
+        await this.cleanupActivation(activation, locationClaim.meshName, true, signal);
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], `Spot '${activation.spotRid}' creation cleanup failed.`);
+      }
       throw error;
+    }
+  }
+
+  private async cleanupActivation(
+    activation: ZLinkSpotActivation,
+    locationMeshName: string,
+    notifyClosing: boolean,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const state = this.cleanupStates.get(activation) ?? {
+      closingAttempted: false,
+      timersDisposed: false,
+      nativeDisposed: false,
+      locationReleased: false
+    };
+    this.cleanupStates.set(activation, state);
+    if (state.inFlight !== undefined) return await state.inFlight;
+    state.inFlight = this.runCleanup(activation, locationMeshName, notifyClosing, signal, state)
+      .finally(() => { state.inFlight = undefined; });
+    return await state.inFlight;
+  }
+
+  private async runCleanup(
+    activation: ZLinkSpotActivation,
+    locationMeshName: string,
+    notifyClosing: boolean,
+    signal: AbortSignal | undefined,
+    state: {
+      closingAttempted: boolean;
+      timersDisposed: boolean;
+      nativeDisposed: boolean;
+      locationReleased: boolean;
+    }
+  ): Promise<void> {
+    const errors: unknown[] = [];
+    const cleanup = async (operation: () => Promise<void> | void, completed: () => void) => {
+      try {
+        await operation();
+        completed();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
+    if (notifyClosing && !state.closingAttempted) {
+      state.closingAttempted = true;
+      await cleanup(() => activation.spot.onClosing?.(signal), () => undefined);
+    }
+    if (!state.timersDisposed) {
+      await cleanup(() => activation.timers.dispose(), () => { state.timersDisposed = true; });
+    }
+    if (!state.nativeDisposed) {
+      await cleanup(() => activation.nativeSpot?.dispose(), () => { state.nativeDisposed = true; });
+    }
+    if (!state.locationReleased) {
+      await cleanup(
+        () => this.options.locationClaim.release(locationMeshName, activation.spotRid),
+        () => { state.locationReleased = true; }
+      );
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Spot '${activation.spotRid}' cleanup failed.`);
     }
   }
 

@@ -27,8 +27,7 @@ import {
   type ZLinkSpotLocationKey
 } from '../../contracts/Locations';
 import { ZLinkLocationKeyCodec } from './key-codec';
-
-const encodeRoutingIdHex = ZLinkLocationKeyCodec.encodeRoutingIdHex;
+import { routingIdsEqual } from '../routing-id';
 
 export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLocationChangeStampStore {
   private readonly leases = new Map<string, ZLinkOwnerLease>();
@@ -401,13 +400,6 @@ function matchesRoute(row: ZLinkRouteLocation, filter: ZLinkRouteLocationFilter)
   return (filter.routeKind === undefined || row.routeKind === filter.routeKind)
     && (filter.ownerNodeRid === undefined || routingIdsEqual(row.ownerNodeRid, filter.ownerNodeRid))
     && (filter.ownerId === undefined || row.ownerId === filter.ownerId);
-}
-
-function routingIdsEqual(left: RoutingId | undefined, right: RoutingId | undefined): boolean {
-  if (left === undefined || right === undefined) {
-    return left === right;
-  }
-  return encodeRoutingIdHex(left) === encodeRoutingIdHex(right);
 }
 
 function stampKey(scope: ZLinkLocationChangeStampScope): string {

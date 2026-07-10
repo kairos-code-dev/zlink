@@ -3,7 +3,7 @@ import type { ActorRef } from '../../contracts';
 export interface ZLinkPostCommitActorBinderOptions {
   readonly bind: (actorRef: ActorRef, force: boolean) => Promise<void>;
   readonly reportError?: (error: unknown) => void;
-  readonly signal?: AbortSignal;
+  readonly signal?: AbortSignal | (() => AbortSignal | undefined);
 }
 
 export class ZLinkPostCommitActorBinder {
@@ -25,7 +25,8 @@ export class ZLinkPostCommitActorBinder {
   private async run(actorId: string): Promise<void> {
     let retryDelayMs = 25;
     for (;;) {
-      if (this.options.signal?.aborted === true) return;
+      const signal = this.signal();
+      if (signal?.aborted === true) return;
       const actorRef = this.desiredRefs.get(actorId);
       if (actorRef === undefined) {
         return;
@@ -39,10 +40,16 @@ export class ZLinkPostCommitActorBinder {
         retryDelayMs = 25;
       } catch (error) {
         this.options.reportError?.(error);
-        if (!await delayUnlessAborted(retryDelayMs, this.options.signal)) return;
+        if (!await delayUnlessAborted(retryDelayMs, signal)) return;
         retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
       }
     }
+  }
+
+  private signal(): AbortSignal | undefined {
+    return typeof this.options.signal === 'function'
+      ? this.options.signal()
+      : this.options.signal;
   }
 }
 

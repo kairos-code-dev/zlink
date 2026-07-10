@@ -17,19 +17,16 @@ import type {
 import type { Message } from '../../contracts/Common/Message';
 import type { RequestResult } from '@zlink-systems/zlink';
 import type {
-  ZLinkRemoteActorPacketTarget,
   ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkSpotActorLifecycleDrain } from './spot-actor-lifecycle-drain';
-import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import {
   ZLinkSpotActorPacketDrain,
   type ZLinkActorDispatchPart
 } from './spot-actor-packet-drain';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
 import { ZLinkSpotNativeActorJoinAdmission } from './spot-native-actor-join-admission';
-import type { ZLinkRemoteActorJoinActor, ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import { ZLinkSpotRoutedFrameDispatch } from './spot-routed-frame-dispatch';
 import {
   ZLinkSpotSubscriptionDispatch
@@ -37,6 +34,10 @@ import {
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
+import type {
+  ZLinkSpotActorTransferRuntime,
+  ZLinkSpotBoundSessionRuntime
+} from './spot-runtime-ports';
 
 const ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1;
 const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
@@ -53,6 +54,43 @@ interface ZLinkActorJoinAdmissionTarget {
   onDisconnectActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
+interface ZLinkSpotActorAdmissionRuntime {
+  readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
+  readonly getTarget: () => ZLinkActorJoinAdmissionTarget;
+  readonly defaultAccept: boolean;
+  readonly transfer: {
+    readonly kind: 'disabled';
+  } | {
+    readonly kind: 'enabled';
+    readonly runtime: ZLinkSpotActorTransferRuntime;
+  };
+  readonly commitNativeActor?: (actor: ZLinkActor) => Promise<void>;
+  readonly commitTransferredActor?: (
+    actor: ZLinkActor,
+    backlog: readonly ZLinkActorHandoffPacket[]
+  ) => Promise<readonly ZLinkActorHandoffResult[]>;
+}
+
+interface ZLinkSpotActorPacketRuntime {
+  readonly handle: (
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse?: boolean,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ) => Promise<unknown>;
+  readonly bindRemoteSession?: (
+    actor: ZLinkBackendActorRef,
+    sourceNodeRid: RoutingId,
+    sourceSessionRid: RoutingId
+  ) => void;
+  readonly replyNoBind?: (
+    info: ZLinkBackendActorRecvInfo,
+    parts: readonly Message[],
+    result: RequestResult
+  ) => void;
+}
+
 export interface ZLinkDetachedTaskRunner {
   runDetached(taskName: string, callback: () => Promise<void>): void;
 }
@@ -60,71 +98,9 @@ export interface ZLinkDetachedTaskRunner {
 interface ZLinkSpotActorJoinDispatchOptions {
   readonly nativeSpot: ZLinkBackendSpot;
   readonly serial: ZLinkSpotSerialExecutor;
-  readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
-  readonly getTarget: () => ZLinkActorJoinAdmissionTarget;
-  readonly defaultAccept: boolean;
-  readonly routedActorProvider?: (
-    actorId: string,
-    actorType: string,
-    actorRef?: ZLinkBackendActorRef,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    actorCreateRequest?: Message,
-    signal?: AbortSignal
-  ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
-  readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly rollbackNativeActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
-  readonly replayRoutedActorBacklog?: (
-    actor: ZLinkActor,
-    backlog: readonly ZLinkActorHandoffPacket[]
-  ) => Promise<readonly ZLinkActorHandoffResult[]>;
-  readonly actorPacketHandler?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
-  ) => Promise<unknown>;
-  readonly routedBoundSessionReceiver?: (
-    actorId: string,
-    message: unknown,
-    packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionResponseReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    message: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionErrorReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
-  readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
-  readonly bindRemoteActorSession?: (
-    actor: ZLinkBackendActorRef,
-    sourceNodeRid: RoutingId,
-    sourceSessionRid: RoutingId
-  ) => void;
-  readonly replyActorNoBind?: (
-    info: ZLinkBackendActorRecvInfo,
-    parts: readonly Message[],
-    result: RequestResult
-  ) => void;
+  readonly actors: ZLinkSpotActorAdmissionRuntime;
+  readonly packets?: ZLinkSpotActorPacketRuntime;
+  readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
@@ -143,31 +119,31 @@ export class ZLinkSpotActorJoinDispatch {
   private readonly nativeSpot: ZLinkBackendSpot;
 
   constructor(private readonly options: ZLinkSpotActorJoinDispatchOptions) {
+    const actors = options.actors;
+    const transfer = actors.transfer.kind === 'enabled' ? actors.transfer : undefined;
     this.nativeSpot = options.nativeSpot;
     this.nativeSpotRid = String(options.nativeSpot.routingId);
     this.actorLifecycleDrain = new ZLinkSpotActorLifecycleDrain({
       nativeSpot: options.nativeSpot,
       serial: options.serial,
-      resolveActor: options.resolveActor,
-      getTarget: options.getTarget,
+      resolveActor: actors.resolveActor,
+      getTarget: actors.getTarget,
       waitIdle: waitSpotDispatchIdle
     });
     this.actorPacketDrain = new ZLinkSpotActorPacketDrain({
       messageSerializers: options.messageSerializers,
-      actorPacketHandler: options.actorPacketHandler,
-      bindRemoteActorSession: options.bindRemoteActorSession,
-      replyActorNoBind: options.replyActorNoBind,
+      actorPacketHandler: options.packets?.handle,
+      bindRemoteActorSession: options.packets?.bindRemoteSession,
+      replyActorNoBind: options.packets?.replyNoBind,
       waitIdle: waitSpotDispatchIdle
     });
     this.nativeActorJoinAdmission = new ZLinkSpotNativeActorJoinAdmission({
       nativeSpot: options.nativeSpot,
       serial: options.serial,
-      resolveActor: options.resolveActor,
-      getTarget: options.getTarget,
-      defaultAccept: options.defaultAccept,
-      finalizeRoutedActor: options.finalizeRoutedActor,
-      rollbackCommittedActor: options.rollbackNativeActor,
-      commitRoutedActor: options.commitRoutedActor,
+      resolveActor: actors.resolveActor,
+      getTarget: actors.getTarget,
+      defaultAccept: actors.defaultAccept,
+      commitAcceptedActor: actors.commitNativeActor,
       messageSerializers: options.messageSerializers,
       dispatchErrors: options.dispatchErrors
     });
@@ -175,20 +151,17 @@ export class ZLinkSpotActorJoinDispatch {
       nativeSpot: options.nativeSpot,
       nativeSpotRid: this.nativeSpotRid,
       serial: options.serial,
-      resolveActor: options.resolveActor,
-      getTarget: () => options.getTarget() as ZLinkActorJoinAdmissionTarget & ZLinkSpot,
-      defaultAccept: options.defaultAccept,
-      routedActorTransferProvider: options.routedActorTransferProvider,
-      finalizeRoutedActor: options.finalizeRoutedActor,
-      rollbackRoutedActor: options.rollbackRoutedActor,
-      commitRoutedActor: options.commitRoutedActor,
-      replayRoutedActorBacklog: options.replayRoutedActorBacklog,
-      actorPacketHandler: options.actorPacketHandler,
-      routedBoundSessionReceiver: options.routedBoundSessionReceiver,
-      routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
-      routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver,
-      routedBoundSessionOwnershipReceiver: options.routedBoundSessionOwnershipReceiver,
-      actorPacketTargetProvider: options.actorPacketTargetProvider,
+      resolveActor: actors.resolveActor,
+      getTarget: () => actors.getTarget() as ZLinkActorJoinAdmissionTarget & ZLinkSpot,
+      defaultAccept: actors.defaultAccept,
+      routedActorTransferProvider: transfer?.runtime.materializeRoutedActor.bind(transfer.runtime),
+      commitTransferredActor: actors.commitTransferredActor,
+      actorPacketHandler: options.packets?.handle,
+      routedBoundSessionReceiver: options.boundSessionRuntime?.receiveRoutedBoundSession.bind(options.boundSessionRuntime),
+      routedBoundSessionResponseReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionResponse.bind(options.boundSessionRuntime),
+      routedBoundSessionErrorReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionError.bind(options.boundSessionRuntime),
+      routedBoundSessionOwnershipReceiver: options.boundSessionRuntime?.receiveRemoteBoundSessionOwnership.bind(options.boundSessionRuntime),
+      actorPacketTargetProvider: options.boundSessionRuntime?.actorPacketTargetForState.bind(options.boundSessionRuntime),
       messageSerializers: options.messageSerializers,
       providerResolver: options.providerResolver,
       dispatchErrors: options.dispatchErrors,
@@ -197,7 +170,7 @@ export class ZLinkSpotActorJoinDispatch {
     this.subscriptions = new ZLinkSpotSubscriptionDispatch({
       nativeSpot: options.nativeSpot,
       serial: options.serial,
-      getTarget: () => options.getTarget() as ZLinkSpot,
+      getTarget: () => actors.getTarget() as ZLinkSpot,
       messageSerializers: options.messageSerializers,
       providerResolver: options.providerResolver,
       dispatchErrors: options.dispatchErrors,

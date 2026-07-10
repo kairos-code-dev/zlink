@@ -15,6 +15,7 @@ import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
+import { routingIdsEqual } from '../routing-id';
 
 export interface ZLinkRemoteBoundSessionTarget {
   readonly routerChannelId: string;
@@ -297,10 +298,6 @@ export class ZLinkActorRuntimeState {
 
 export function toFrameworkRoutingId(routingId: ZLinkBackendActorRef['nodeRid']): RoutingId {
   return String(routingId);
-}
-
-function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {
-  return String(left) === String(right);
 }
 
 export function toFrameworkActorRef(actor: ZLinkBackendActorRef): ActorRef {

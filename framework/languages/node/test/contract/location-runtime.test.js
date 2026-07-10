@@ -239,7 +239,10 @@ test('location lifecycle deactivates stale hosted actor and protects new owner r
   const takeover = await nodeB.runtime.writeActor(actor('ignored', 0n), framework.ZLinkLocationWriteIntent.Takeover);
   assert.equal(takeover.status, framework.ZLinkLocationWriteStatus.Stored);
 
-  await nodeA.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', rid('spot-1'));
+  await assert.rejects(
+    () => nodeA.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', rid('spot-1')),
+    /renewal.*rejected/i
+  );
   await Promise.resolve();
   assert.equal(deactivated, 1);
   assert.equal(nodeA.lifecycle.ownsActor('player', 'actor-1'), false);

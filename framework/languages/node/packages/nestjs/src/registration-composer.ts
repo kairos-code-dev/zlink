@@ -22,14 +22,6 @@ import {
   type ZLinkNestTypeResolver
 } from './contracts';
 import {
-  createDiscoveredPublishHandlers,
-  createDiscoveredRequestHandlers,
-  createDiscoveredSendHandlers,
-  createManualPublishHandlers,
-  createManualRequestHandlers,
-  createManualRouteRequestHandlers,
-  createManualRouteSendHandlers,
-  createManualSendHandlers,
   discoverProviderRefs,
   discoverSpotActorProviderRefs,
   discoverSpotProviderRefs,
@@ -37,11 +29,46 @@ import {
   type DiscoveredNestSpotActorProvider,
   type DiscoveredNestSpotProvider,
   type DiscoveredNestSpotTimerProvider
-} from './discovery';
-import { loadFramework } from './framework-loader';
+} from './provider-discovery';
+import {
+  createDiscoveredPublishHandlers,
+  createDiscoveredRequestHandlers,
+  createDiscoveredSendHandlers,
+  createManualPublishHandlers,
+  createManualRequestHandlers,
+  createManualRouteRequestHandlers,
+  createManualRouteSendHandlers,
+  createManualSendHandlers
+} from './handler-adapters';
+import { framework } from './framework-loader';
 import { copyRouteInternalState } from './options-builder';
 
-const framework = loadFramework();
+
+export function hasNestHandlerDiscovery(options: ZLinkNestModuleRegistrationOptions): boolean {
+  return hasConfiguredSpotNodes(options.spotNodes)
+    || Object.values(options.clientServerChannels ?? {}).some(
+      (channel) => (channel.handlerGroups ?? []).length > 0
+        || (channel.requestHandlerTypes ?? []).length > 0
+        || (channel.sendHandlerTypes ?? []).length > 0
+    )
+    || Object.values(options.fanoutChannels ?? {}).some(
+      (channel) => (channel.handlerGroups ?? []).length > 0
+        || (channel.publishHandlerTypes ?? []).length > 0
+    )
+    || Object.values(options.routerMeshes ?? {}).some(
+      (channel) => (channel.handlerGroups ?? []).length > 0
+        || (channel.requestHandlerTypes ?? []).length > 0
+        || (channel.sendHandlerTypes ?? []).length > 0
+    );
+}
+
+function hasConfiguredSpotNodes(value: ZLinkNestModuleRegistrationOptions['spotNodes']): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  return Array.isArray(value) ? value.length > 0 : Object.keys(value).length > 0;
+}
+
 
 export function createDiscoveredOptions(
   options: ZLinkNestModuleRegistrationOptions,

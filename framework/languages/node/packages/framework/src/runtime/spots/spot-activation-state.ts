@@ -1,0 +1,96 @@
+import type {
+  RoutingId,
+  Type,
+  ZLinkActor,
+  ZLinkSpot
+} from '../../contracts';
+import type { ZLinkBackendSpot } from '../backend/contracts';
+import type { ZLinkSpotActorHandlerRegistryRuntime } from '../actors';
+import type { DefaultZLinkSpotHandlerRegistry } from './spot-handler-registry';
+import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkSpotTimerRegistry } from './spot-timer';
+
+export interface ZLinkSpotActivationOptions {
+  readonly spotRid: RoutingId;
+  readonly spotType: Type<ZLinkSpot>;
+  readonly spot: ZLinkSpot;
+  readonly serial: ZLinkSpotSerialExecutor;
+  readonly timers: ZLinkSpotTimerRegistry;
+  readonly actorHandlers: ZLinkSpotActorHandlerRegistryRuntime;
+  readonly handlers: DefaultZLinkSpotHandlerRegistry;
+  readonly externalActorCount?: () => number;
+  readonly nativeSpot?: ZLinkBackendSpot;
+}
+
+export class ZLinkSpotActivation {
+  readonly spotRid: RoutingId;
+  readonly spotType: Type<ZLinkSpot>;
+  readonly spot: ZLinkSpot;
+  readonly serial: ZLinkSpotSerialExecutor;
+  readonly timers: ZLinkSpotTimerRegistry;
+  readonly actorHandlers: ZLinkSpotActorHandlerRegistryRuntime;
+  readonly handlers: DefaultZLinkSpotHandlerRegistry;
+  readonly nativeSpot?: ZLinkBackendSpot;
+
+  private readonly joinedActors = new Map<string, ZLinkActor>();
+  private readonly departedActorIds = new Set<string>();
+  private readonly externalActorCount: () => number;
+
+  constructor(options: ZLinkSpotActivationOptions) {
+    this.spotRid = options.spotRid;
+    this.spotType = options.spotType;
+    this.spot = options.spot;
+    this.serial = options.serial;
+    this.timers = options.timers;
+    this.actorHandlers = options.actorHandlers;
+    this.handlers = options.handlers;
+    this.externalActorCount = options.externalActorCount ?? (() => 0);
+    this.nativeSpot = options.nativeSpot;
+  }
+
+  resolveJoinedActor(actorId: string): ZLinkActor | undefined {
+    return this.joinedActors.get(actorId);
+  }
+
+  hasDepartedActor(actorId: string): boolean {
+    return this.departedActorIds.has(actorId);
+  }
+
+  commitActorJoin(actor: ZLinkActor): () => void {
+    const previousActor = this.joinedActors.get(actor.actorId);
+    const wasDeparted = this.departedActorIds.has(actor.actorId);
+    this.departedActorIds.delete(actor.actorId);
+    this.joinedActors.set(actor.actorId, actor);
+    return () => {
+      if (previousActor === undefined) {
+        this.joinedActors.delete(actor.actorId);
+      } else {
+        this.joinedActors.set(actor.actorId, previousActor);
+      }
+      if (wasDeparted) {
+        this.departedActorIds.add(actor.actorId);
+      } else {
+        this.departedActorIds.delete(actor.actorId);
+      }
+    };
+  }
+
+  beginActorTransfer(actorId: string): void {
+    this.departedActorIds.add(actorId);
+  }
+
+  cancelActorTransfer(actorId: string): void {
+    if (this.joinedActors.has(actorId)) {
+      this.departedActorIds.delete(actorId);
+    }
+  }
+
+  commitActorDeparture(actorId: string): void {
+    this.departedActorIds.add(actorId);
+    this.joinedActors.delete(actorId);
+  }
+
+  canClose(): boolean {
+    return this.joinedActors.size + this.externalActorCount() === 0;
+  }
+}

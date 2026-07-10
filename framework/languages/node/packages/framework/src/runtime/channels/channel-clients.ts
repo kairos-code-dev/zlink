@@ -16,7 +16,7 @@ import type {
   ZLinkRouteClientTransport,
   ZLinkSpotPublisherClientTransport
 } from './channel-transports';
-import { throwIfAborted } from './channel-abort';
+import { throwIfAborted } from '../abort';
 
 export class DefaultZLinkChannelClient implements ZLinkChannelClient {
   constructor(

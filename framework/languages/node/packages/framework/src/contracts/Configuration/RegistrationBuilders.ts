@@ -55,6 +55,10 @@ import type {
   ZLinkStreamTlsServerOptions,
   ZLinkWorkerOptions
 } from './RegistrationTypes';
+import {
+  registerActorTransferAdapter,
+  validateActorTransferForwardWindow
+} from './RegistrationBuilderPolicy';
 
 export function createFrameworkOptions(
   configure: (options: ZLinkFrameworkOptions) => void
@@ -106,18 +110,12 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): this {
-    if (this.options.actorTransferAdapters.has(actorType)) {
-      throw new ZLinkConfigurationException(`Duplicate actor transfer adapter for '${actorType.name}'.`);
-    }
-    this.options.actorTransferAdapters.set(actorType, adapterType);
+    registerActorTransferAdapter(this.options.actorTransferAdapters, actorType, adapterType);
     return this;
   }
 
   setActorTransferForwardWindow(timeoutMs: number): this {
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {
-      throw new ZLinkConfigurationException('actor transfer forward window must be a non-negative safe integer.');
-    }
-    this.options.actorTransferForwardWindowMs = timeoutMs;
+    this.options.actorTransferForwardWindowMs = validateActorTransferForwardWindow(timeoutMs);
     return this;
   }
 
@@ -209,7 +207,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 }
 
-class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
+export class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
   constructor(private readonly dispatch: ZLinkDispatchOptions) {}
 
   setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this {
@@ -357,7 +355,7 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
   }
 }
 
-class DefaultStreamCompressionBuilder implements ZLinkStreamCompressionBuilder {
+export class DefaultStreamCompressionBuilder implements ZLinkStreamCompressionBuilder {
   constructor(private readonly options: MutableStreamCompressionOptions) {}
 
   useDefault(): this {
@@ -564,7 +562,7 @@ interface MutableStreamNodeOptions {
   session?: Type;
 }
 
-interface MutableStreamCompressionOptions {
+export interface MutableStreamCompressionOptions {
   disabled?: boolean;
   codec?: ZLinkStreamCompressionCodec;
 }

@@ -24,6 +24,9 @@
       "@zlink-systems/framework": [
         "packages/framework/src"
       ],
+      "@zlink-systems/framework/nest-integration": [
+        "packages/framework/src/nest-integration"
+      ],
       "@zlink-systems/framework-codec-msgpack": [
         "packages/framework-codec-msgpack/src"
       ],

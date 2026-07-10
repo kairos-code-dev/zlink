@@ -1,6 +1,7 @@
 import type { ActorRef, RoutingId } from '../../contracts/Common';
 import type {
   IZLinkActorLocationStore,
+  ZLinkActorLocation,
   ZLinkLocationWriteStatus
 } from '../../contracts/Locations';
 import { ZLinkSpotKind } from '../../contracts/Spots';
@@ -115,6 +116,10 @@ export class ZLinkLocationLifecycle {
 
   ownsActor(actorType: string, actorId: string): boolean {
     return this.actorClaims.owns(actorType, actorId);
+  }
+
+  actorLocationSnapshot(actorId: string): ZLinkActorLocation | undefined {
+    return this.actorClaims.snapshot(actorId);
   }
 
   private async retryActorRelease(actorType: string, actorId: string): Promise<void> {

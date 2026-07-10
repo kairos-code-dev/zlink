@@ -19,6 +19,7 @@ import {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef, ZLinkBackendSpotNode } from '../backend';
+import { createAbortError, throwIfAborted } from '../abort';
 import { encodeFrameworkPayloadMessage, decodeFrameworkPayloadMessage } from '../messaging/payload-codec';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import {
@@ -144,7 +145,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
           parts,
           (result, replyParts) => {
             if (signal?.aborted === true) {
-              reject(new Error('The operation was aborted.'));
+              reject(createAbortError());
               return;
             }
             if (result !== RequestResult.Ok) {
@@ -375,11 +376,5 @@ function actorLocationStale(actorId: string, cause: unknown): ZLinkFrameworkExce
 function ensureSingleSubmit(executed: boolean): void {
   if (executed) {
     throw new Error('Actor client calls can be submitted only once.');
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
   }
 }

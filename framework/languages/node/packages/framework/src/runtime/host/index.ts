@@ -43,7 +43,11 @@ import type {
   DefaultZLinkActorManager,
   ZLinkActorManagerOptions
 } from '../actors';
-import { DefaultZLinkActorClient, ZLinkActorHandoffCoordinator } from '../actors';
+import {
+  DefaultZLinkActorClient,
+  ZLinkActorHandoffCoordinator,
+  ZLinkActorTransferRegistry
+} from '../actors';
 import {
   DefaultZLinkBoundSessionFactory,
   type ZLinkStreamPayloadCodec,
@@ -57,9 +61,12 @@ import type {
 import type { IZLinkLocationRuntimeQuery } from '../../contracts/Locations';
 import { ZLinkMonitoringRuntime } from './monitoring-runtime';
 import { ZLinkActorRuntimeOptionsFactory } from './actor-runtime-options-factory';
+import { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
+import { ZLinkEntryActorRuntimeService } from './entry-actor-runtime';
 import { ZLinkLocationRuntimeOwner } from './location-runtime-owner';
 import { MeshRouterResolver } from './mesh-router-resolver';
 import { ZLinkBoundSessionRelay } from './bound-session-relay';
+import { routingIdsEqual } from '../routing-id';
 import { ZLinkSpotRuntimeOptionsFactory } from './spot-runtime-options-factory';
 import { ZLinkChannelRuntimeOptionsFactory } from './channel-runtime-options-factory';
 import { ZLinkSpotNodeRuntimeOptionsFactory } from './spot-node-runtime-options-factory';
@@ -91,6 +98,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private readonly meshRouters: MeshRouterResolver;
   private readonly boundSessionRelay: ZLinkBoundSessionRelay;
   private readonly actorHandoff: ZLinkActorHandoffCoordinator;
+  private readonly actorTransferRegistry: ZLinkActorTransferRegistry;
+  private readonly actorTransferRuntime: ZLinkActorTransferRuntime;
+  private readonly entryActorRuntime: ZLinkEntryActorRuntimeService;
   private actorManager?: DefaultZLinkActorManager;
   private spotManager?: DefaultZLinkSpotManager;
   private readonly destroyedActorRefs = new Map<string, ActorRef>();
@@ -133,9 +143,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       messageSerializers: options.registration.messageSerializers,
       nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       relay: (actor, header, payload, signal) =>
-        this.boundSessionRelay.relayActorPacket(actor, header, payload, signal),
+        this.boundSessionRelay.actorPackets.relayActorPacket(actor, header, payload, signal),
       notifyDisconnected: (actor, signal) =>
-        this.boundSessionRelay.notifyBoundActorDisconnected(actor, signal)
+        this.boundSessionRelay.actorPackets.notifyBoundActorDisconnected(actor, signal)
     });
     this.actorHandoff = new ZLinkActorHandoffCoordinator({
       routedTransport: this.routeTransport,
@@ -167,14 +177,19 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         if (actorRef === undefined) return state?.remoteActorPacketTarget !== undefined;
         return current !== undefined && (
           current.generation !== actorRef.generation ||
-          String(current.nodeRid) !== String(actorRef.nodeRid)
+          !routingIdsEqual(current.nodeRid, actorRef.nodeRid)
         );
       },
       isCurrentHandoffTarget: (actorId, spotRid) => {
         const currentSpotRid = this.actorManager?.getState(actorId)?.spotRid;
-        return currentSpotRid !== undefined && String(currentSpotRid) === spotRid;
+        return routingIdsEqual(currentSpotRid, spotRid);
       }
     });
+    this.actorTransferRegistry = new ZLinkActorTransferRegistry(
+      options.registration.actorTransferAdapters,
+      options.providerResolver,
+      options.registration.messageSerializers
+    );
     this.boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
     this.boundSessionRelay = new ZLinkBoundSessionRelay({
       requestTimeoutMs: options.registration.requestTimeoutMs,
@@ -194,6 +209,33 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         }
         return factory(actorId);
       }
+    });
+    this.entryActorRuntime = new ZLinkEntryActorRuntimeService({
+      actorManager: () => this.actorManager,
+      spotManager: () => this.spotManager,
+      spotNodeRuntime: () => this.spotNodeRuntime,
+      streamBindingRuntime: this.streamBindingRuntime,
+      boundSessionRelay: this.boundSessionRelay,
+      reportPostCommitError: (error) =>
+        (this.errorSink ?? this.preStartErrorSink).reportRuntimeTaskException('entry actor commit', error),
+      shutdownSignal: () => this.state?.abortController.signal
+    });
+    this.actorTransferRuntime = new ZLinkActorTransferRuntime({
+      routeTransport: this.routeTransport,
+      messageSerializers: options.registration.messageSerializers,
+      spotManager: () => this.spotManager,
+      actorManager: () => this.actorManager,
+      primarySpotNode: () => this.requirePrimarySpotNode(),
+      notifyEntrySpotActorLeft: (actor, signal) =>
+        this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve(),
+      locationLifecycle: () => this.locationOwner.currentLifecycle,
+      actorHandoff: this.actorHandoff,
+      actorTransferRegistry: this.actorTransferRegistry,
+      clearRemoteActorPacketTarget: (actorId) =>
+        this.boundSessionRelay.clearRemoteActorPacketTarget(actorId),
+      reportPostCommitError: (error) =>
+        (this.errorSink ?? this.preStartErrorSink).reportRuntimeTaskException('source actor departure', error),
+      shutdownSignal: () => this.state?.abortController.signal
     });
   }
 
@@ -399,7 +441,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       dispatchErrorReporter: (errorSink) => this.createDispatchErrorReporter(errorSink),
       runtimeOrPreStartErrorSink: this.runtimeOrPreStartErrorSink,
       detachedTaskRunner: this.detachedTaskRunner()
-    }).create(this.actorRuntimeOptionsFactory());
+    }).create(this.actorTransferRuntime);
   }
 
   private actorRuntimeOptionsFactory(): ZLinkActorRuntimeOptionsFactory {
@@ -414,8 +456,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       primarySpotNodeOrUndefined: () => this.spotNodeRuntime?.primaryNode,
       notifyEntrySpotActorCreated: (nodeRid, actor, createRequest, signal) =>
         this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal) ?? Promise.resolve(),
-      notifyEntrySpotActorLeft: (actor, signal) =>
-        this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve(),
       locationLifecycle: () => this.locationOwner.currentLifecycle,
       primarySpotMeshName: () => this.meshRouters.primarySpotMeshName(),
       createLocationSpotRouteResolver: () => this.createLocationSpotRouteResolver(),
@@ -425,6 +465,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       reportPostCommitError: (error) =>
         this.runtimeOrPreStartErrorSink.reportRuntimeTaskException('post-commit actor binding', error),
       actorHandoff: this.actorHandoff,
+      actorTransferRuntime: this.actorTransferRuntime,
+      actorTransferRegistry: this.actorTransferRegistry,
       shutdownSignal: () => this.state?.abortController.signal
     });
   }
@@ -453,10 +495,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       providerResolver: this.options.providerResolver,
       dispatchErrors,
       runtimeEventPublisher: this.runtimeEventPublisher,
-      actorManager: () => this.actorManager,
-      spotManager: () => this.spotManager,
-      spotNodeRuntime: () => this.spotNodeRuntime,
-      streamBindingRuntime: this.streamBindingRuntime,
+      entryActorRuntime: this.entryActorRuntime,
       boundSessionRelay: this.boundSessionRelay,
       actorHandoff: this.actorHandoff,
       detachedTaskRunner: this.detachedTaskRunner()

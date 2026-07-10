@@ -15,6 +15,7 @@ import type {
   ZLinkStream
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import { throwIfAborted } from '../abort';
 import {
   messageToBytes,
   type ZLinkStreamFrameHeader,
@@ -310,11 +311,5 @@ function decodeStreamErrorPayload(payload: Message): Error {
     return new Error(typeof value.message === 'string' ? value.message : 'Stream request failed.');
   } catch {
     return new Error('Stream request failed.');
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
   }
 }

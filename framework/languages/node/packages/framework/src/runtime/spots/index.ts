@@ -21,6 +21,7 @@ import type {
 } from '../../contracts';
 import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
 import type { Message } from '../../contracts/Common/Message';
+import { throwIfAborted } from '../abort';
 import {
   ZLinkMessage,
   isZLinkMessage,
@@ -33,14 +34,13 @@ import {
   ZLinkConfigurationException
 } from '../configuration';
 import type {
-  ZLinkBackendActorRef,
   ZLinkBackendSpot,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
 
 import { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkSpotWorkerRuntime } from '../workers';
-import type { ZLinkRemoteActorPacketTarget, ZLinkRemoteBoundSessionTarget } from '../actors';
+import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import type { ZLinkLocationLifecycle } from '../locations';
 import {
   encodeFrameworkPayloadMessage
@@ -64,14 +64,17 @@ export {
   type ZLinkSpotHandlerRegistration
 } from './spot-handler-registry';
 export { ZLinkRuntimeSpotPublisherTransport } from './spot-publisher-transport';
-import type { ZLinkRemoteActorJoinActor, ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import {
-  ZLinkSpotActivationRegistry,
-  type ZLinkSpotActivation
+  ZLinkSpotActivationRegistry
 } from './spot-activation-registry';
+import type { ZLinkSpotActivation } from './spot-activation-state';
 import { ZLinkSpotActivationLifecycle } from './spot-activation';
 import { ZLinkSpotActorMembership, type ZLinkActorJoinRollback } from './spot-actor-membership';
-import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
+import type {
+  ZLinkSpotActorHandoffRuntime,
+  ZLinkSpotActorTransferRuntime,
+  ZLinkSpotBoundSessionRuntime
+} from './spot-runtime-ports';
 import type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 export type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import { ZLinkSpotLocationClaim } from './spot-location-claim';
@@ -93,9 +96,7 @@ export interface ZLinkSpotManagerOptions {
   readonly nodeRidProvider?: () => RoutingId | undefined;
   readonly entryNodeRid?: RoutingId;
   readonly entryNodeRidProvider?: () => RoutingId | undefined;
-  readonly actorEntryNodeRidProvider?: (actor: ZLinkActor) => RoutingId | undefined;
   readonly entrySpotCallbacks?: {
-    onJoinedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
     onLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   };
   readonly actorCountProvider?: (spotRid: RoutingId) => number;
@@ -118,86 +119,10 @@ export interface ZLinkSpotManagerOptions {
   readonly createNativeSpot?: (spotRid: RoutingId) => ZLinkBackendSpot | undefined;
   readonly nativeSpotNodeProvider?: () => ZLinkBackendSpotNode | undefined;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
-  readonly routedActorProvider?: (
-    actorId: string,
-    actorType: string,
-    actorRef?: ZLinkBackendActorRef,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    actorCreateRequest?: Message,
-    signal?: AbortSignal
-  ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
-  readonly routedActorFinalizer?: (actor: ZLinkActor, spotRid: RoutingId) => Promise<void>;
-  readonly routedActorCommitter?: (actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot) => void;
-  readonly routedActorLeaveCommitter?: (actor: ZLinkActor) => void;
-  readonly routedActorRollback?: (actor: ZLinkActor) => Promise<void>;
-  readonly actorResponseSender?: (
-    actor: ZLinkActor,
-    packetName: string,
-    requestSeq: bigint,
-    response: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly actorErrorSender?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionReceiver?: (
-    actorId: string,
-    message: unknown,
-    packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionResponseReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    message: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionErrorReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
-  readonly remoteActorPacketTargetReceiver?: (
-    actorId: string,
-    target: ZLinkRemoteBoundSessionTarget
-  ) => void;
-  readonly remoteBoundSessionTargetResolver?: (
-    sourceNodeRid: RoutingId,
-    sourceSessionRid: RoutingId
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
-  readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
-  readonly actorPacketHandoff?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
-  ) => Promise<unknown> | undefined;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
-  readonly localActorPacketRouter?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
-  ) => Promise<{ readonly handled: boolean; readonly response?: unknown }>;
+  readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
+  readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
+  readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
 }
 
 export class DefaultZLinkSpotManager implements ZLinkSpotManager {
@@ -232,8 +157,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       nodeRid: options.nodeRid,
       entryNodeRid: options.entryNodeRid,
       entryNodeRidProvider: options.entryNodeRidProvider,
-      actorEntryNodeRidProvider: options.actorEntryNodeRidProvider,
-      routedActorLeaveCommitter: options.routedActorLeaveCommitter
+      actorTransferRuntime: options.actorTransferRuntime
     });
     this.activationLifecycle = new ZLinkSpotActivationLifecycle({
       spotTimerHandlers: options.spotTimerHandlers,
@@ -258,23 +182,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       createNativeSpot: options.createNativeSpot,
       nativeSpotNodeProvider: options.nativeSpotNodeProvider,
       actorResolver: options.actorResolver,
-      routedActorProvider: options.routedActorProvider,
-      routedActorTransferProvider: options.routedActorTransferProvider,
-      routedActorFinalizer: options.routedActorFinalizer,
-      routedActorCommitter: options.routedActorCommitter,
-      routedActorLeaveCommitter: options.routedActorLeaveCommitter,
-      routedActorRollback: options.routedActorRollback,
-      actorResponseSender: options.actorResponseSender,
-      actorErrorSender: options.actorErrorSender,
-      routedBoundSessionReceiver: options.routedBoundSessionReceiver,
-      routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
-      routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver,
-      routedBoundSessionOwnershipReceiver: options.routedBoundSessionOwnershipReceiver,
-      remoteActorPacketTargetReceiver: options.remoteActorPacketTargetReceiver,
-      remoteBoundSessionTargetResolver: options.remoteBoundSessionTargetResolver,
-      actorPacketTargetProvider: options.actorPacketTargetProvider,
-      actorPacketHandoff: options.actorPacketHandoff,
       detachedTaskRunner: options.detachedTaskRunner,
+      actorTransferRuntime: options.actorTransferRuntime,
+      boundSessionRuntime: options.boundSessionRuntime,
+      actorHandoffRuntime: options.actorHandoffRuntime,
       leaveActor: (spotRid, actor, signal) => this.actorMembership.leaveActor(spotRid, actor, signal),
       closeSpot: (spotRid, signal) => this.close(spotRid, signal),
       registerActivation: (activation) => this.activations.register(activation)
@@ -338,22 +249,19 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     const args = normalizeSpotCreateArgs(requestOrSignal, signal);
-    const existingOrPending = await this.activations.existingOrPendingResult(spotType, spotRid);
-    if (existingOrPending !== undefined) {
-      return existingOrPending;
-    }
-
-    const ownedRequest = args.request === undefined
-      ? BindingMessage.from(Buffer.alloc(0))
-      : encodeFrameworkPayloadMessage(args.request, this.options.messageSerializers);
-    const ready = Promise.resolve().then(() => this.createActivation(spotType, spotRid, ownedRequest, args.signal));
-    try {
-      return await this.activations.trackPending(spotType, spotRid, ready);
-    } finally {
-      if (ownsFrameworkPayloadMessage(args.request)) {
-        ownedRequest.close();
+    const operation = this.activations.getOrBegin(spotType, spotRid, async () => {
+      const ownedRequest = args.request === undefined
+        ? BindingMessage.from(Buffer.alloc(0))
+        : encodeFrameworkPayloadMessage(args.request, this.options.messageSerializers);
+      try {
+        return await this.createActivation(spotType, spotRid, ownedRequest, args.signal);
+      } finally {
+        if (ownsFrameworkPayloadMessage(args.request)) {
+          ownedRequest.close();
+        }
       }
-    }
+    });
+    return await operation.ready;
   }
 
   async find(spotRid: RoutingId): Promise<ZLinkSpotInfo | null> {
@@ -365,15 +273,28 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   }
 
   async close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean> {
-    const activation = this.activations.takeClosable(spotRid);
-    if (activation === undefined) {
+    const activation = this.activations.resolve(spotRid);
+    const currentTurn = activation?.serial.isCurrentTurn === true;
+    const operation = this.activations.startClose(spotRid, (target) => currentTurn
+      ? target.serial.post(() => this.activationLifecycle.closeInsideSerial(target, signal))
+      : this.activationLifecycle.close(target, signal),
+    (target) => this.activationLifecycle.resourcesReleased(target));
+    if (operation === undefined) {
       return false;
     }
-    if (activation.serial.isCurrentTurn) {
-      void activation.serial.post(() => this.activationLifecycle.closeInsideSerial(activation, signal));
+    if (currentTurn) {
+      if (operation.started) {
+        this.options.detachedTaskRunner?.runDetached(
+          `spot close ${String(spotRid)}`,
+          () => operation.ready
+        );
+        if (this.options.detachedTaskRunner === undefined) {
+          void operation.ready.catch(() => undefined);
+        }
+      }
       return true;
     }
-    await this.activationLifecycle.close(activation, signal);
+    await operation.ready;
     return true;
   }
 
@@ -518,11 +439,6 @@ function normalizeSpotCreateArgs<TRequest>(
   return { request: requestOrSignal, signal };
 }
 
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
-}
 
 function isAbortSignal(value: unknown): value is AbortSignal {
   return typeof value === 'object'

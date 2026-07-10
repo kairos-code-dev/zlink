@@ -89,6 +89,50 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
   assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize', 'onClosing']);
 });
 
+test('ZLinkSpotManager shares concurrent close and finishes cleanup after onClosing failure', async () => {
+  const entered = createDeferred();
+  const release = createDeferred();
+  let closingCalls = 0;
+  let nativeDisposes = 0;
+  class FailingCloseSpot {
+    async onClosing() {
+      closingCalls++;
+      entered.resolve();
+      await release.promise;
+      throw new Error('close lifecycle failed');
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [FailingCloseSpot],
+    createNativeSpot: () => ({
+      routingId: 'failing-close-room',
+      setDispatchHandler() {},
+      setSubscription() {},
+      subscribe() { return false; },
+      recvActorLifecycle() { return null; },
+      drainReply() { return 0; },
+      drainChannelReply() { return 0; },
+      recvRoute() { return false; },
+      onSendReady() {},
+      async dispose() { nativeDisposes++; }
+    })
+  });
+  await manager.getOrCreate(FailingCloseSpot, 'failing-close-room');
+
+  const first = assert.rejects(() => manager.close('failing-close-room'), /close lifecycle failed/);
+  await entered.promise;
+  const second = assert.rejects(() => manager.close('failing-close-room'), /close lifecycle failed/);
+  assert.equal(await manager.find('failing-close-room'), null);
+  release.resolve();
+  await Promise.all([first, second]);
+
+  assert.equal(closingCalls, 1);
+  assert.equal(nativeDisposes, 1);
+  assert.equal(await manager.find('failing-close-room'), null);
+  assert.equal(await manager.close('failing-close-room'), false);
+  assert.equal(await manager.find('failing-close-room'), null);
+});
+
 test('ZLinkSpotManager claims location before activation and releases on close', async () => {
   const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const nodeA = await locationLifecycleNode(store, 'owner-a', 'node-a');
@@ -877,6 +921,30 @@ test('ZLinkSpotManager concurrent getOrCreate initializes once with the first cr
   assert.deepEqual(payloads, ['first-a']);
 });
 
+test('ZLinkSpotManager reserves same-turn getOrCreate before activation yields', async () => {
+  let constructed = 0;
+  const release = createDeferred();
+  class StageSpot {
+    constructor() {
+      constructed++;
+    }
+    async onCreate() {
+      await release.promise;
+      return { accepted: true };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
+  const first = manager.getOrCreate(StageSpot, 'same-turn-room');
+  const second = manager.getOrCreate(StageSpot, 'same-turn-room');
+  release.resolve();
+
+  const results = await Promise.all([first, second]);
+  assert.equal(constructed, 1);
+  assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Created).length, 1);
+  assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Existing).length, 1);
+});
+
 test('ZLinkSpotManager concurrent getOrCreate returns rejected to waiters with independent replies', async () => {
   const payloads = [];
   const entered = createDeferred();
@@ -921,6 +989,48 @@ test('ZLinkSpotManager create reject returns rejected state reply and does not r
   assert.equal(rejected.reply, 'reject:closed');
   assert.equal(await manager.find(rejected.spotRid), null);
   assert.deepEqual(await manager.list(), []);
+});
+
+test('ZLinkSpotManager rejection disposes native Spot and releases its location exactly once', async () => {
+  let nativeDisposes = 0;
+  let locationReleases = 0;
+  const nativeSpot = {
+    routingId: 'rejected-cleanup-room',
+    setDispatchHandler() {},
+    setSubscription() {},
+    subscribe() { return false; },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() { nativeDisposes++; }
+  };
+  const locationLifecycle = {
+    async claimSpot() { return framework.ZLinkLocationWriteStatus.Stored; },
+    async releaseSpot() { locationReleases++; }
+  };
+  class RejectingSpot {
+    async onCreate() {
+      return { accepted: false };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RejectingSpot],
+    nodeRid: 'node-a',
+    locationMeshName: 'play',
+    locationLifecycle,
+    createNativeSpot: () => nativeSpot
+  });
+  const result = await manager.getOrCreate(RejectingSpot, 'rejected-cleanup-room');
+
+  assert.equal(result.state, framework.ZLinkSpotCreateState.Rejected);
+  assert.equal(nativeDisposes, 1);
+  assert.equal(locationReleases, 1);
+  assert.equal(await manager.close('rejected-cleanup-room'), false);
+  assert.equal(nativeDisposes, 1);
+  assert.equal(locationReleases, 1);
 });
 
 test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection', async () => {
@@ -1150,14 +1260,16 @@ test('routed actor transfer separates admission from materialization and commit'
         actorRef: { nodeRid: zlink.RoutingId.from('target-node'), actorId, generation: 2n }
       };
     },
-    async commitRoutedActor(actor) {
-      events.push(`commit:${actor.actorId}`);
-    },
-    async finalizeRoutedActor(actor) {
+    async commitTransferredActor(actor) {
       events.push(`location:${actor.actorId}`);
-    },
-    async rollbackRoutedActor(actor) {
-      events.push(`rollback:${actor.actorId}`);
+      try {
+        events.push(`commit:${actor.actorId}`);
+        await target.onJoinedActor(actor);
+        return [];
+      } catch (error) {
+        events.push(`rollback:${actor.actorId}`);
+        throw error;
+      }
     }
   });
   const makeReceived = (payload) => {
@@ -1214,9 +1326,9 @@ test('routed actor transfer separates admission from materialization and commit'
   assert.deepEqual(events, [
     'admission:alice:join',
     'transferIn:alice:player:PlayerActor:state-42',
+    'location:alice',
     'commit:alice',
-    'joined:alice:state-42',
-    'location:alice'
+    'joined:alice:state-42'
   ]);
   assert.equal(replies[2].accepted, true);
   assert.equal(replies[2].actorNodeRid, 'target-node');
@@ -1260,8 +1372,9 @@ test('routed actor transfer separates admission from materialization and commit'
   await admission.admit(failingCommit.received);
   failingCommit.part.close();
   assert.equal(replies[7].accepted, false);
-  assert.deepEqual(events.slice(-4), [
+  assert.deepEqual(events.slice(-5), [
     'transferIn:alice:player:default:failed-state',
+    'location:alice',
     'commit:alice',
     'joined:alice:failed-state',
     'rollback:alice'

@@ -6,6 +6,7 @@ import type {
   ZLinkProviderResolver
 } from '../../contracts';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
+import { throwIfAborted } from '../abort';
 
 export interface ZLinkActorTransferState {
   readonly adapterKey?: string;
@@ -90,10 +91,4 @@ function emptyTransferState(
   serializers?: ReadonlyMap<string, ZLinkMessageSerializer>
 ): ZLinkMessage {
   return ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(Buffer.alloc(0)), serializers);
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
 }

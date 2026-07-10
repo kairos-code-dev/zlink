@@ -1,5 +1,4 @@
 import type {
-  ActorRef,
   RoutingId,
   ZLinkActor,
   ZLinkChannelClient,
@@ -18,7 +17,6 @@ import {
   type ZLinkSpotNodeOptions
 } from '../configuration';
 import type {
-  ZLinkBackendActorRef,
   ZLinkBackendAdapterFactory,
   ZLinkBackendContext,
   ZLinkBackendSpotNode
@@ -32,15 +30,10 @@ import {
   type ZLinkLocationEventSink,
   type ZLinkLocationRuntimeStores
 } from '../locations';
-import type {
-  ZLinkRemoteActorPacketTarget,
-  ZLinkRemoteBoundSessionTarget
-} from '../actors';
-import type { ZLinkRemoteActorJoinActor } from './spot-remote-codec';
+import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import { ZLinkSpotWorkerRuntime } from '../workers';
 import { ZLinkSpotActorJoinDispatch } from './spot-actor-join-dispatch';
 import type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
-import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import { ZLinkEntrySpotActivation } from './spot-entry-activation';
 import {
   createSpotNodeLocationAutoConnectContext,
@@ -56,6 +49,12 @@ import {
 import type { ZLinkSpotRoutedTransport } from './spot-outbound';
 import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import { routingIdsEqual } from '../routing-id';
+import type {
+  ZLinkEntryActorRuntime,
+  ZLinkSpotActorHandoffRuntime,
+  ZLinkSpotBoundSessionRuntime
+} from './spot-runtime-ports';
 
 export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -71,89 +70,10 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
-  readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
-  readonly routedActorProvider?: (
-    actorId: string,
-    actorType: string,
-    actorRef?: ZLinkBackendActorRef,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    actorCreateRequest?: Message,
-    signal?: AbortSignal
-  ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly routedBoundSessionReceiver?: (
-    actorId: string,
-    message: unknown,
-    packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionResponseReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    message: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionErrorReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
-  readonly remoteActorPacketTargetReceiver?: (
-    actorId: string,
-    target: ZLinkRemoteBoundSessionTarget
-  ) => void;
-  readonly remoteBoundSessionTargetResolver?: (
-    sourceNodeRid: RoutingId,
-    sourceSessionRid: RoutingId
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
-  readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
-  readonly actorPacketHandoff?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
-  ) => Promise<unknown> | undefined;
+  readonly entryActorRuntime?: ZLinkEntryActorRuntime;
+  readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
+  readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
-  readonly actorResponseSender?: (
-    actor: ZLinkActor,
-    packetName: string,
-    requestSeq: bigint,
-    response: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly actorErrorSender?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly localActorPacketRouter?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
-  ) => Promise<{ readonly handled: boolean; readonly response?: unknown }>;
-  readonly entryActorCommitter?: (actor: ZLinkActor) => Promise<void> | void;
-  readonly actorDestroyer?: (
-    node: ZLinkBackendSpotNode,
-    entryNodeRid: RoutingId,
-    actor: ZLinkActor,
-    signal?: AbortSignal
-  ) => Promise<void>;
 }
 
 export class ZLinkSpotNodeRuntimeManager {
@@ -233,9 +153,21 @@ export class ZLinkSpotNodeRuntimeManager {
     });
     for (const [spotNodeName, spotNode] of this.options.registration.spotNodes.entries()) {
       const node = spotAdapter.createSpotNode(this.options.context, spotNodeMode(spotNode));
-      connector.configure(node, spotNodeName, spotNode);
-      await this.initializeEntrySpot(spotNodeName, node, spotNode);
-      this.nodes.set(spotNodeName, node);
+      try {
+        connector.configure(node, spotNodeName, spotNode);
+        await this.initializeEntrySpot(spotNodeName, node, spotNode);
+        this.nodes.set(spotNodeName, node);
+      } catch (error) {
+        try {
+          await node.dispose();
+        } catch (disposeError) {
+          throw new AggregateError(
+            [error, disposeError],
+            `SPOT node '${spotNodeName}' startup cleanup failed.`
+          );
+        }
+        throw error;
+      }
     }
   }
 
@@ -254,7 +186,7 @@ export class ZLinkSpotNodeRuntimeManager {
     signal?: AbortSignal
   ): Promise<void> {
     const activation = [...this.entryActivations.values()].find(
-      (entryActivation) => String(entryActivation.nodeRid) === String(nodeRid)
+      (entryActivation) => routingIdsEqual(entryActivation.nodeRid, nodeRid)
     );
     return activation?.notifyCreateActor(actor, createRequest, signal) ?? Promise.resolve();
   }
@@ -293,20 +225,22 @@ export class ZLinkSpotNodeRuntimeManager {
     this.entryRouteDispatches.length = 0;
     this.autoConnectLoops.length = 0;
     this.ownedObjects.length = 0;
-    for (const bundle of this.publisherBundles.values()) {
-      bundle.submitter.dispose();
-    }
+    const publisherSubmitters = [...this.publisherBundles.values()].map((bundle) => bundle.submitter);
     this.publisherBundles.clear();
-    await Promise.allSettled(autoConnectLoops.map((loop) => loop.stop(signal)));
-    for (const object of ownedObjects.reverse()) {
-      await object.dispose();
-    }
-    for (const activation of entryActivations.reverse()) {
-      await activation.dispose();
-    }
-    for (const node of nodes.reverse()) {
-      await node.dispose();
-    }
+    const errors: unknown[] = [];
+    const settle = async (operations: readonly Promise<unknown>[]) => {
+      const results = await Promise.allSettled(operations);
+      errors.push(...results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason));
+    };
+    await settle(publisherSubmitters.map(async (submitter) => submitter.dispose()));
+    await settle(autoConnectLoops.map((loop) => loop.stop(signal)));
+    await settle(ownedObjects.reverse().map((object) => object.dispose()));
+    await settle(entryActivations.reverse().map((activation) => activation.dispose()));
+    await settle(nodes.reverse().map((node) => node.dispose()));
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'SPOT node runtime cleanup failed.');
   }
 
   private async initializeEntrySpot(
@@ -338,54 +272,45 @@ export class ZLinkSpotNodeRuntimeManager {
       actorRequestHandlers: spotNode.entrySpotActorRequestHandlers,
       workerRuntime: this.workerRuntime,
       messageSerializers: this.options.registration.messageSerializers,
-      actorResolver: (actorId) => this.options.actorResolver?.(actorId),
-      entryActorCommitter: this.options.entryActorCommitter,
-      routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
-      routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
-      routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
-      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
-      remoteActorPacketTargetReceiver: this.options.remoteActorPacketTargetReceiver,
-      actorPacketTargetProvider: this.options.actorPacketTargetProvider,
-      actorPacketHandoff: this.options.actorPacketHandoff,
+      entryActorRuntime: this.options.entryActorRuntime,
+      boundSessionRuntime: this.options.boundSessionRuntime,
+      actorHandoffRuntime: this.options.actorHandoffRuntime,
       detachedTaskRunner: this.options.detachedTaskRunner,
-      localActorPacketRouter: this.options.localActorPacketRouter,
-      actorResponseSender: this.options.actorResponseSender,
-      actorErrorSender: this.options.actorErrorSender,
       dispatchErrors: this.options.dispatchErrors,
-      runtimeEventPublisher: this.options.runtimeEventPublisher,
-      destroyActor: (nodeRid, actor, signal) => {
-        if (this.options.actorDestroyer === undefined) {
-          throw new ZLinkConfigurationException('Entry Spot actor destroy runtime is not started.');
-        }
-        return this.options.actorDestroyer(node, nodeRid, actor, signal);
-      }
+      runtimeEventPublisher: this.options.runtimeEventPublisher
     });
     try {
       await activation.create();
       await activation.configure();
       await activation.initialize();
     } catch (error) {
-      await activation.dispose();
+      try {
+        await activation.dispose();
+      } catch (disposeError) {
+        throw new AggregateError(
+          [error, disposeError],
+          `Entry Spot '${spotNodeName}' startup cleanup failed.`
+        );
+      }
       throw error;
     }
     this.entryActivations.set(spotNodeName, activation);
   }
 
   private initializeInternalEntryRouteDispatch(node: ZLinkBackendSpotNode): void {
-    if (this.options.routedBoundSessionReceiver === undefined) {
+    if (this.options.boundSessionRuntime === undefined) {
       return;
     }
     const dispatch = new ZLinkSpotActorJoinDispatch({
       nativeSpot: node.entrySpot(),
       serial: new ZLinkSpotSerialExecutor(),
-      resolveActor: (actorId) => this.options.actorResolver?.(actorId),
-      getTarget: () => ({}),
-      defaultAccept: true,
-      routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
-      routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
-      routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
-      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
-      actorPacketTargetProvider: this.options.actorPacketTargetProvider,
+      actors: {
+        resolveActor: (actorId) => this.options.entryActorRuntime?.resolveActor(actorId),
+        getTarget: () => ({}),
+        defaultAccept: true,
+        transfer: { kind: 'disabled' }
+      },
+      boundSessionRuntime: this.options.boundSessionRuntime,
       messageSerializers: this.options.messageSerializers,
       providerResolver: this.options.providerResolver,
       dispatchErrors: this.options.dispatchErrors,

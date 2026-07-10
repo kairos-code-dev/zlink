@@ -1,0 +1,72 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const {
+  ZLinkSpotActivation
+} = require('../../packages/framework/dist/runtime/spots/spot-activation-state');
+
+function createActivation(externalActorCount = () => 0) {
+  return new ZLinkSpotActivation({
+    spotRid: 'room-1',
+    spotType: class Room {},
+    spot: {},
+    serial: {},
+    timers: {},
+    actorHandlers: {},
+    handlers: {},
+    externalActorCount
+  });
+}
+
+test('spot activation owns join, transfer, departure, and rejoin invariants', () => {
+  const activation = createActivation();
+  const actor = { actorId: 'alice' };
+
+  activation.commitActorJoin(actor);
+  assert.equal(activation.resolveJoinedActor('alice'), actor);
+  assert.equal(activation.hasDepartedActor('alice'), false);
+  assert.equal(activation.canClose(), false);
+
+  activation.beginActorTransfer('alice');
+  assert.equal(activation.resolveJoinedActor('alice'), actor);
+  assert.equal(activation.hasDepartedActor('alice'), true);
+  assert.equal(activation.canClose(), false);
+
+  activation.cancelActorTransfer('alice');
+  assert.equal(activation.resolveJoinedActor('alice'), actor);
+  assert.equal(activation.hasDepartedActor('alice'), false);
+  assert.equal(activation.canClose(), false);
+
+  activation.commitActorDeparture('alice');
+  assert.equal(activation.resolveJoinedActor('alice'), undefined);
+  assert.equal(activation.hasDepartedActor('alice'), true);
+  assert.equal(activation.canClose(), true);
+
+  activation.commitActorJoin(actor);
+  assert.equal(activation.resolveJoinedActor('alice'), actor);
+  assert.equal(activation.hasDepartedActor('alice'), false);
+  assert.equal(activation.canClose(), false);
+});
+
+test('spot activation failed rejoin restores the departed state', () => {
+  const activation = createActivation();
+  const actor = { actorId: 'alice' };
+
+  activation.commitActorJoin(actor);
+  activation.commitActorDeparture('alice');
+  const rollback = activation.commitActorJoin(actor);
+  rollback();
+
+  assert.equal(activation.resolveJoinedActor('alice'), undefined);
+  assert.equal(activation.hasDepartedActor('alice'), true);
+  assert.equal(activation.canClose(), true);
+});
+
+test('spot activation includes external actors in its close decision', () => {
+  let externalActors = 1;
+  const activation = createActivation(() => externalActors);
+
+  assert.equal(activation.canClose(), false);
+  externalActors = 0;
+  assert.equal(activation.canClose(), true);
+});

@@ -14,6 +14,7 @@ import {
   ZLinkSocketNativeEventType
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import { throwIfAborted } from '../abort';
 import { ZLinkDispatchErrorReporter, ZLinkRouteDisconnectedError } from '../channels';
 import { flowIfEnabled } from '../diagnostics';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
@@ -529,10 +530,4 @@ function streamMonitorHasEndpoint(event: ZLinkBackendSocketMonitorEvent): boolea
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as { then?: unknown }).then === 'function';
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
 }

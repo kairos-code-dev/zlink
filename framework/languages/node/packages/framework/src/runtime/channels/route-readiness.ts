@@ -1,4 +1,4 @@
-import { throwIfAborted } from './channel-abort';
+import { createAbortError, throwIfAborted } from '../abort';
 
 export function isTransientRouteNotReadyError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -22,7 +22,7 @@ export function delay(milliseconds: number, signal: AbortSignal | undefined): Pr
     }
     abort = () => {
       clearTimeout(timeout);
-      reject(new Error('The operation was aborted.'));
+      reject(createAbortError());
     };
     signal.addEventListener('abort', abort, { once: true });
   });

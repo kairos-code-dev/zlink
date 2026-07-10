@@ -4,6 +4,7 @@ import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contract
 import type { ZLinkWorkerOptions } from '../configuration';
 import { ZLinkConfigurationException } from '../configuration';
 import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
+import { createAbortError } from '../abort';
 
 export type ZLinkWorkerWork<T> = (signal: AbortSignal) => T | Promise<T>;
 
@@ -57,7 +58,7 @@ export class ZLinkSpotWorkerRuntime {
 
   schedule<T>(work: ZLinkWorkerWork<T>, timeoutMs?: number, signal?: AbortSignal): Promise<T> {
     if (signal?.aborted === true) {
-      return Promise.reject(abortError());
+      return Promise.reject(createAbortError());
     }
     if (this.queue.length >= this.options.maxQueueLength) {
       return Promise.reject(new ZLinkFrameworkException(
@@ -117,7 +118,7 @@ export class ZLinkSpotWorkerRuntime {
       }
       if (signal !== undefined) {
         abortListener = () => {
-          settle(() => reject(abortError()));
+          settle(() => reject(createAbortError()));
           controller.abort();
         };
         signal.addEventListener('abort', abortListener, { once: true });
@@ -276,8 +277,4 @@ class ZLinkSerialDeliveredPromise<T> implements Promise<T> {
       })
     );
   }
-}
-
-function abortError(): Error {
-  return new Error('The operation was aborted.');
 }

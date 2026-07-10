@@ -6,6 +6,7 @@ import {
   type ZLinkSpotLocationKey
 } from '../../contracts/Locations';
 import { zlinkLocationAutoConnectTypeName, zlinkLocationRoleName } from './canonical-codec';
+import { encodeRoutingIdStorageHex } from '../routing-id';
 
 // Framework bookkeeping codec for in-memory row maps and generation guards.
 // Backend extensions keep their own storage codec so transport key layout
@@ -50,14 +51,5 @@ function encodeSegments(...segments: readonly string[]): string {
 }
 
 function encodeRoutingIdHex(routingId: RoutingId): string {
-  const value = routingId as unknown as { toHex?: () => string };
-  if (typeof value.toHex === 'function') {
-    return value.toHex.call(routingId).toLowerCase();
-  }
-
-  if (typeof routingId !== 'string') {
-    throw new TypeError('RoutingId must be a string or expose toHex().');
-  }
-
-  return Buffer.from(routingId, 'utf8').toString('hex');
+  return encodeRoutingIdStorageHex(routingId);
 }

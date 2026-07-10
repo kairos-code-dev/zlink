@@ -8,6 +8,8 @@ import type {
   ZLinkSpotActorJoinResponse
 } from '../../contracts';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
+import { throwIfAborted } from '../abort';
+import { routingIdsEqual } from '../routing-id';
 import type { Message } from '../../contracts/Common/Message';
 import {
   Message as BindingMessage
@@ -20,7 +22,8 @@ import { ZLinkSpotActorDispatcher } from '../actors';
 import {
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
-import type { ZLinkSpotActivation } from './spot-activation-registry';
+import type { ZLinkSpotActivation } from './spot-activation-state';
+import type { ZLinkSpotActorTransferRuntime } from './spot-runtime-ports';
 
 export interface ZLinkSpotActorMembershipOptions {
   readonly resolveActivation: (spotRid: RoutingId) => ZLinkSpotActivation | undefined;
@@ -33,8 +36,7 @@ export interface ZLinkSpotActorMembershipOptions {
   readonly nodeRid?: RoutingId;
   readonly entryNodeRid?: RoutingId;
   readonly entryNodeRidProvider?: () => RoutingId | undefined;
-  readonly actorEntryNodeRidProvider?: (actor: ZLinkActor) => RoutingId | undefined;
-  readonly routedActorLeaveCommitter?: (actor: ZLinkActor) => void;
+  readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
 }
 
 export type ZLinkActorJoinRollback = () => Promise<void> | void;
@@ -52,20 +54,24 @@ export class ZLinkSpotActorMembership {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
     const dispatcher = this.createActorDispatcher(activation);
-    const transaction: { rollback?: ZLinkActorJoinRollback; committed: boolean } = { committed: false };
+    const transaction: {
+      rollbackExternal?: ZLinkActorJoinRollback;
+      rollbackMembership?: () => void;
+      committed: boolean;
+    } = { committed: false };
     let response: ZLinkSpotActorJoinResponse;
     try {
       response = await dispatcher.admitActorJoin(actor, request, async () => {
         await this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
         const rollback = await commit(activation.spot);
-        if (rollback !== undefined) transaction.rollback = rollback;
-        activation.actors.set(actor.actorId, actor);
+        if (rollback !== undefined) transaction.rollbackExternal = rollback;
+        transaction.rollbackMembership = activation.commitActorJoin(actor);
         transaction.committed = true;
       });
     } catch (error) {
       if (transaction.committed) {
-        activation.actors.delete(actor.actorId);
-        await transaction.rollback?.();
+        transaction.rollbackMembership?.();
+        await transaction.rollbackExternal?.();
       }
       throw error;
     }
@@ -85,16 +91,16 @@ export class ZLinkSpotActorMembership {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(async () => {
-      activation.leftActors.add(actor.actorId);
+      activation.beginActorTransfer(actor.actorId);
       await activation.spot.onLeaveActor?.(actor, signal);
-      activation.actors.delete(actor.actorId);
-      this.options.routedActorLeaveCommitter?.(actor);
+      activation.commitActorDeparture(actor.actorId);
+      this.options.actorTransferRuntime?.clearRoutedActor(actor);
     });
     const localEntryNodeRid =
       this.options.entryNodeRidProvider?.() ??
       this.options.entryNodeRid ??
       this.options.nodeRid;
-    const entryNodeRid = this.options.actorEntryNodeRidProvider?.(actor) ??
+    const entryNodeRid = this.options.actorTransferRuntime?.actorEntryNodeRid(actor) ??
       localEntryNodeRid;
     if (entryNodeRid === undefined) {
       throw new ZLinkConfigurationException('Spot actor leave requires an Entry Spot node routing id.');
@@ -103,8 +109,8 @@ export class ZLinkSpotActorMembership {
     if (
       localEntryNodeRid !== undefined &&
       actorRef?.nodeRid !== undefined &&
-      String(actorRef.nodeRid) !== String(localEntryNodeRid) &&
-      String(entryNodeRid) !== String(localEntryNodeRid)
+      !routingIdsEqual(actorRef.nodeRid, localEntryNodeRid) &&
+      !routingIdsEqual(entryNodeRid, localEntryNodeRid)
     ) {
       return;
     }
@@ -127,25 +133,23 @@ export class ZLinkSpotActorMembership {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(async () => {
-      activation.leftActors.add(actor.actorId);
+      activation.beginActorTransfer(actor.actorId);
       await activation.spot.onLeaveActor?.(actor, signal);
-      activation.actors.delete(actor.actorId);
+      activation.commitActorDeparture(actor.actorId);
     });
   }
 
   async beginActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(() => {
-      activation.leftActors.add(actorId);
+      activation.beginActorTransfer(actorId);
     });
   }
 
   async cancelActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(() => {
-      if (activation.actors.has(actorId)) {
-        activation.leftActors.delete(actorId);
-      }
+      activation.cancelActorTransfer(actorId);
     });
   }
 
@@ -159,7 +163,7 @@ export class ZLinkSpotActorMembership {
     if (activation === undefined) {
       return false;
     }
-    const joinedActor = activation.actors.get(actor.actorId);
+    const joinedActor = activation.resolveJoinedActor(actor.actorId);
     if (joinedActor === undefined) {
       return false;
     }
@@ -183,11 +187,5 @@ export class ZLinkSpotActorMembership {
       serial: activation.serial,
       messageSerializers: this.options.messageSerializers
     });
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
   }
 }

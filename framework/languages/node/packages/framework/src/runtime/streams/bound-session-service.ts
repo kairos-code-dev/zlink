@@ -5,6 +5,7 @@ import {
   ZLinkFrameworkException
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import { throwIfAborted } from '../abort';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpotNode
@@ -394,11 +395,6 @@ function toBoundSessionSendActorRef(actor: ActorRef): ZLinkBackendActorRef {
   };
 }
 
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
-}
 
 async function delayNativeBoundSessionRetry(deadline: number, signal: AbortSignal | undefined): Promise<void> {
   const remaining = deadline - Date.now();

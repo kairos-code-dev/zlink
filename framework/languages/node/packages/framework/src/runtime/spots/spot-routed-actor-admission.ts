@@ -15,7 +15,7 @@ import {
   encodeFrameworkPayloadMessage,
   wrapFrameworkPayloadMessage
 } from '../messaging/payload-codec';
-import { encodeRoutingIdHex } from './route-wire-codec';
+import { routingIdWireHex as encodeRoutingIdHex } from '../routing-id';
 import {
   REMOTE_ACTOR_JOIN_PACKET,
   decodeRemoteActorJoinPayload,
@@ -42,10 +42,7 @@ interface ZLinkSpotRoutedActorAdmissionOptions {
   readonly getTarget: () => ZLinkRoutedActorAdmissionTarget;
   readonly defaultAccept: boolean;
   readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
-  readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
-  readonly replayRoutedActorBacklog?: (
+  readonly commitTransferredActor?: (
     actor: ZLinkActor,
     backlog: readonly ZLinkActorHandoffPacket[]
   ) => Promise<readonly ZLinkActorHandoffResult[]>;
@@ -199,7 +196,6 @@ export class ZLinkSpotRoutedActorAdmission {
     transferId: string,
     pending: ZLinkPendingRoutedActorTransfer
   ): Promise<Record<string, unknown>> {
-    let committedActor: ZLinkActor | undefined;
     try {
       if (decoded.transferState === undefined || this.options.routedActorTransferProvider === undefined) {
         throw new Error('Remote actor transfer commit cannot materialize the target actor.');
@@ -211,11 +207,7 @@ export class ZLinkSpotRoutedActorAdmission {
         decoded.transferState,
         decoded.remoteBoundSessionTarget
       );
-      committedActor = actor;
-      await this.options.commitRoutedActor?.(actor);
-      await this.options.serial.execute(() => this.options.getTarget().onJoinedActor?.(actor));
-      const handoffResults = await this.options.replayRoutedActorBacklog?.(actor, decoded.handoffBacklog) ?? [];
-      await this.options.finalizeRoutedActor?.(actor);
+      const handoffResults = await this.options.commitTransferredActor?.(actor, decoded.handoffBacklog) ?? [];
       const commitReply = {
         accepted: true,
         actorNodeRid: String(actorRef.nodeRid),
@@ -229,16 +221,8 @@ export class ZLinkSpotRoutedActorAdmission {
       this.scheduleExpiration(transferId, pending);
       return commitReply;
     } catch (error) {
-      let failure = error;
-      if (committedActor !== undefined) {
-        try {
-          await this.options.rollbackRoutedActor?.(committedActor);
-        } catch (rollbackError) {
-          failure = new AggregateError([error, rollbackError], 'Remote actor transfer and rollback both failed.');
-        }
-      }
       this.scheduleExpiration(transferId, pending);
-      throw failure;
+      throw error;
     }
   }
 

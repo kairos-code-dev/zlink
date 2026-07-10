@@ -17,6 +17,32 @@ async function waitFor(condition, label, timeoutMs = 1000) {
   throw new Error(`${label} timed out`);
 }
 
+function entryActorRuntime(resolveActor) {
+  return {
+    resolveActor,
+    async commitActorTransaction(_actor, onJoined) { await onJoined(); },
+    async destroyActor() {},
+    async routePacket() {
+      return { handled: false };
+    }
+  };
+}
+
+function boundSessionRuntime(overrides = {}) {
+  return {
+    async receiveRoutedBoundSession() {},
+    async receiveRoutedBoundSessionResponse() {},
+    async receiveRoutedBoundSessionError() {},
+    async receiveRemoteBoundSessionOwnership() {},
+    rememberRemoteBoundSessionTarget() {},
+    resolveRemoteBoundSessionTarget() { return undefined; },
+    actorPacketTargetForState() { return undefined; },
+    async sendActorResponse() {},
+    async sendActorError() {},
+    ...overrides
+  };
+}
+
 test('Entry Spot native actor request dispatches to registered handler and replies through actor response sender', async () => {
   const calls = [];
   let dispatchHandler;
@@ -63,20 +89,23 @@ test('Entry Spot native actor request dispatches to registered handler and repli
       packetName: 'Match'
     }],
     nativeSpot,
+    nativeNode: { routingId: 'node-a' },
     nodeRid: 'node-a',
     spotNodeName: 'entry-node',
-    actorResolver: (actorId) => actorId === actor.actorId ? actor : undefined,
-    actorResponseSender: async (targetActor, packetName, requestSeq, payload, replyOptions) => {
-      response = {
-        actorId: targetActor.actorId,
-        packetName,
-        requestSeq,
-        payload,
-        metadata: [...replyOptions.metadata.entries()],
-        compressPayload: replyOptions.compressPayload
-      };
-      calls.push('response');
-    }
+    entryActorRuntime: entryActorRuntime((actorId) => actorId === actor.actorId ? actor : undefined),
+    boundSessionRuntime: boundSessionRuntime({
+      async sendActorResponse(targetActor, packetName, requestSeq, payload, replyOptions) {
+        response = {
+          actorId: targetActor.actorId,
+          packetName,
+          requestSeq,
+          payload,
+          metadata: [...replyOptions.metadata.entries()],
+          compressPayload: replyOptions.compressPayload
+        };
+        calls.push('response');
+      }
+    })
   });
 
   await activation.create();
@@ -157,21 +186,24 @@ test('Entry Spot routed actor packet records source node as remote bound session
       packetName: 'Match'
     }],
     nativeSpot,
+    nativeNode: { routingId: 'play-node', bindRemoteActorSession() {} },
     nodeRid: 'play-node',
     spotNodeName: 'room',
-    actorResolver: (actorId) => actorId === actor.actorId ? actor : undefined,
-    remoteActorPacketTargetReceiver: (_actorId, target) => {
-      capturedTarget = target;
-    },
-    actorPacketTargetProvider: (actorId) => {
-      assert.equal(actorId, 'player-1');
-      return {
-        routerChannelId: 'bingo.room.route',
-        targetNodeRid: zlink.RoutingId.from('play-node-a'),
-        spotRid: zlink.RoutingId.from('room-1'),
-        spotKind: framework.ZLinkSpotKind.User
-      };
-    }
+    entryActorRuntime: entryActorRuntime((actorId) => actorId === actor.actorId ? actor : undefined),
+    boundSessionRuntime: boundSessionRuntime({
+      rememberRemoteBoundSessionTarget(_actorId, target) {
+        capturedTarget = target;
+      },
+      actorPacketTargetForState(actorId) {
+        assert.equal(actorId, 'player-1');
+        return {
+          routerChannelId: 'bingo.room.route',
+          targetNodeRid: zlink.RoutingId.from('play-node-a'),
+          spotRid: zlink.RoutingId.from('room-1'),
+          spotKind: framework.ZLinkSpotKind.User
+        };
+      }
+    })
   });
 
   await activation.create();
@@ -269,12 +301,15 @@ test('Entry Spot routed bound session command decodes registered channel seriali
   const activation = new spots.ZLinkEntrySpotActivation({
     entrySpotType: EntrySpot,
     nativeSpot,
+    nativeNode: { routingId: 'session-node' },
     nodeRid: 'session-node',
     spotNodeName: 'session',
     messageSerializers: new Map([[contentType, serializer]]),
-    routedBoundSessionReceiver: async (actorId, message, packetName, metadata) => {
-      received = { actorId, message, packetName, metadata: [...metadata.entries()] };
-    }
+    boundSessionRuntime: boundSessionRuntime({
+      async receiveRoutedBoundSession(actorId, message, packetName, metadata) {
+        received = { actorId, message, packetName, metadata: [...metadata.entries()] };
+      }
+    })
   });
 
   await activation.create();
@@ -345,7 +380,7 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
     }
   };
 
-  assert.deepEqual(runtime.boundSessionRelay.actorPacketTargetForState('player-2'), {
+  assert.deepEqual(runtime.boundSessionRelay.actorPackets.actorPacketTargetForState('player-2'), {
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'play-node-1',
     spotRid: 'bingo-room-1',
@@ -384,7 +419,7 @@ test('runtime host normalizes remote actor join bound-session route ids', async 
     }
   };
 
-  const result = await runtime.boundSessionRelay.receiveRemoteActorJoin({
+  const result = await runtime.boundSessionRelay.actorJoins.receive({
     packetName: '__zlink.actor.join_spot.request',
     spotRid: 'room-1',
     actorId: 'player-1',
@@ -446,8 +481,8 @@ test('runtime host remembers routed packet target for stream-bound actors withou
   };
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
 
-  await runtime.boundSessionRelay.relayRemoteActorPacket(actor, header, payload);
-  await runtime.boundSessionRelay.relayRemoteActorPacket(actor, { ...header, requestSeq: 2n, name: 'Submit' }, payload);
+  await runtime.boundSessionRelay.actorPackets.relayRemoteActorPacket(actor, header, payload);
+  await runtime.boundSessionRelay.actorPackets.relayRemoteActorPacket(actor, { ...header, requestSeq: 2n, name: 'Submit' }, payload);
 
   payload.close();
   assert.deepEqual(routedTargets, ['bingo.room.route:play-node-1', 'bingo.room.route:play-node-1']);
@@ -491,8 +526,8 @@ test('runtime host keeps routed packet target across stream actor wrappers', asy
   };
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
 
-  await runtime.boundSessionRelay.relayRemoteActorPacket({ actorId: 'player-2', ref: actorRef }, header, payload);
-  await runtime.boundSessionRelay.relayRemoteActorPacket(
+  await runtime.boundSessionRelay.actorPackets.relayRemoteActorPacket({ actorId: 'player-2', ref: actorRef }, header, payload);
+  await runtime.boundSessionRelay.actorPackets.relayRemoteActorPacket(
     { actorId: 'player-2', ref: actorRef },
     { ...header, requestSeq: 2n, name: 'Submit' },
     payload
@@ -564,8 +599,8 @@ test('runtime host raw actor relay reply updates actor packet target for the nex
   };
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
 
-  await runtime.boundSessionRelay.relayRemoteActorPacket(actor, header, payload);
-  await runtime.boundSessionRelay.relayRemoteActorPacket(
+  await runtime.boundSessionRelay.actorPackets.relayRemoteActorPacket(actor, header, payload);
+  await runtime.boundSessionRelay.actorPackets.relayRemoteActorPacket(
     actor,
     { ...header, requestSeq: 2n, name: 'SubmitBingoCardReq' },
     payload

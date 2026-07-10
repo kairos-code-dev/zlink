@@ -3,33 +3,26 @@ import type {
   RoutingId,
   ZLinkActor,
   ZLinkProviderResolver,
-  ZLinkSpot,
   ZLinkMessage
 } from '../../contracts';
-import { ZLinkSpotKind } from '../../contracts';
-import type { Message } from '../../contracts/Common/Message';
-import type { ZLinkBackendActorRef, ZLinkBackendSpotNode } from '../backend';
+import type { ZLinkBackendSpotNode } from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
-import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
+import type { DefaultZLinkActorManager } from '../actors';
 import type { DefaultZLinkSpotManager } from '../spots';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import {
   DefaultZLinkActorClient,
   ZLinkActorNativeJoinCoordinator,
-  ZLinkActorTransferRegistry,
-  ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
-  toFrameworkActorRef,
-  type ZLinkActorManagerOptions,
-  type ZLinkRemoteActorPacketTarget,
-  type ZLinkRemoteBoundSessionTarget
+  type ZLinkActorTransferRegistry,
+  type ZLinkActorManagerOptions
 } from '../actors';
 import type { ZLinkActorHandoffCoordinator } from '../actors';
 import { type ZLinkActorRoutedJoinTransport } from '../actors';
 import { ZLinkLocalFirstActorJoinCoordinator } from '../actors/local-first-actor-join-coordinator';
-import type { ZLinkActorRuntimeState } from '../actors/actor-runtime-state';
 import type { ZLinkLocationLifecycle, ZLinkStoreLocationResolvers } from '../locations';
 import type { ZLinkStreamBindingRuntime } from '../streams';
 import { ZLinkNativeFallbackBoundSession } from '../streams/native-fallback-bound-session';
+import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
 
 export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -37,17 +30,13 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
-  readonly actorManager: () => ZLinkActorRuntimeOptionsActorManager | undefined;
+  readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly primarySpotNode: () => ZLinkBackendSpotNode;
   readonly primarySpotNodeOrUndefined: () => ZLinkBackendSpotNode | undefined;
   readonly notifyEntrySpotActorCreated: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
     createRequest: ZLinkMessage,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly notifyEntrySpotActorLeft: (
-    actor: ZLinkActor,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
@@ -58,27 +47,9 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly rememberDestroyedActorRef: (actorId: string, actorRef: ActorRef) => void;
   readonly reportPostCommitError: (error: unknown) => void;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
+  readonly actorTransferRuntime: ZLinkActorTransferRuntime;
+  readonly actorTransferRegistry: ZLinkActorTransferRegistry;
   readonly shutdownSignal: () => AbortSignal | undefined;
-}
-
-export interface ZLinkActorRuntimeOptionsActorManager {
-  getState(actorId: string): ZLinkActorRuntimeState | undefined;
-  getOrCreateActor(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor>;
-  getOrCreateWithNativeRef(
-    actorId: string,
-    actorType: string,
-    actorRef: ZLinkBackendActorRef,
-    actorCreateRequest?: unknown,
-    signal?: AbortSignal
-  ): Promise<ZLinkActor>;
-  materializeTransferredActor(
-    actorId: string,
-    actorType: string,
-    adapterKey: string | undefined,
-    transferState: ZLinkMessage,
-    signal?: AbortSignal
-  ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ActorRef }>;
-  rollbackTransferredActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
 export class ZLinkActorRuntimeOptionsFactory {
@@ -98,11 +69,7 @@ export class ZLinkActorRuntimeOptionsFactory {
     | 'actorTransferRegistry'
     | 'shutdownSignal'
   > {
-    const actorTransferRegistry = new ZLinkActorTransferRegistry(
-      this.options.registration.actorTransferAdapters,
-      this.options.providerResolver,
-      this.options.registration.messageSerializers
-    );
+    const actorTransferRegistry = this.options.actorTransferRegistry;
     return {
       joinCoordinator: new ZLinkLocalFirstActorJoinCoordinator({
         localSpotManager: this.options.spotManager,
@@ -122,13 +89,7 @@ export class ZLinkActorRuntimeOptionsFactory {
             : this.options.streamBindingRuntime.rebindActor(actorRef, signal),
           postCommitErrorReporter: this.options.reportPostCommitError,
           locationLifecycle: this.options.locationLifecycle(),
-          actorTransferRegistry,
-          sourceActorLeaver: (actor, state, signal) => this.notifySourceActorLeft(actor, state, signal),
-          sourceActorMoveStarter: (actor, state) => this.beginSourceActorMove(actor, state),
-          sourceActorMoveCanceler: (actor, state) => this.cancelSourceActorMove(actor, state),
-          sourceActorHandoffSnapshot: (actorId) => this.options.actorHandoff.snapshot(actorId),
-          sourceActorHandoffCompleter: (actorId, target, targetActorRef, results) =>
-            this.options.actorHandoff.complete(actorId, target, targetActorRef, results),
+          sourceTransfer: this.options.actorTransferRuntime,
           messageSerializers: this.options.registration.messageSerializers,
           shutdownSignal: this.options.shutdownSignal()
         })
@@ -179,191 +140,4 @@ export class ZLinkActorRuntimeOptionsFactory {
     };
   }
 
-  async notifySourceActorLeft(
-    actor: ZLinkActor,
-    state: ZLinkActorRuntimeState,
-    signal?: AbortSignal
-  ): Promise<void> {
-    const sourceSpotRid = state.spotRid;
-    if (sourceSpotRid !== undefined) {
-      const manager = this.options.spotManager();
-      if (manager !== undefined) {
-        await manager.notifyActorLeftAfterTransfer(sourceSpotRid, actor, signal);
-        return;
-      }
-    }
-    await this.options.notifyEntrySpotActorLeft(actor, signal);
-  }
-
-  async beginSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
-    state.beginMove();
-    this.options.actorHandoff.begin(actor.actorId, state.nativeActorRef?.generation ?? 0n);
-    try {
-      if (state.spotRid !== undefined) {
-        await this.options.spotManager()?.beginActorTransfer(state.spotRid, actor.actorId);
-      }
-    } catch (error) {
-      this.options.actorHandoff.cancel(actor.actorId);
-      state.endMove();
-      throw error;
-    }
-  }
-
-  async cancelSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
-    try {
-      if (state.spotRid !== undefined) {
-        await this.options.spotManager()?.cancelActorTransfer(state.spotRid, actor.actorId);
-      }
-    } finally {
-      this.options.actorHandoff.cancel(actor.actorId);
-      state.endMove();
-    }
-  }
-
-  async getOrCreateRoutedActor(
-    actorId: string,
-    actorType: string,
-    actorRef?: ActorRef,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    actorCreateRequest?: Message,
-    signal?: AbortSignal
-  ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ZLinkBackendActorRef }> {
-    const actorManager = this.options.actorManager();
-    if (actorManager === undefined) {
-      throw new Error('Routed actor join requires ZLINK_ACTOR_MANAGER.');
-    }
-    const actor = actorRef === undefined
-      ? await actorManager.getOrCreateActor(actorId, actorType, signal)
-      : await actorManager.getOrCreateWithNativeRef(
-          actorId,
-          actorType,
-          actorRef as unknown as ZLinkBackendActorRef,
-          actorCreateRequest === undefined
-            ? undefined
-            : wrapFrameworkPayloadMessage(actorCreateRequest, this.options.registration.messageSerializers),
-          signal
-        );
-    const state = actorManager.getState(actorId);
-    if (state === undefined) {
-      throw new Error(`Actor '${actorId}' state was not created.`);
-    }
-    if (actorRef !== undefined) {
-      state.setNativeActorRef(actorRef as unknown as ZLinkBackendActorRef);
-      state.setRemoteBoundSessionTarget(remoteBoundSessionTarget);
-      return { actor, actorRef: actorRef as unknown as ZLinkBackendActorRef };
-    }
-    const localActorRef = state.ensureNativeActorRef(this.options.primarySpotNode());
-    return { actor, actorRef: localActorRef };
-  }
-
-  async materializeRoutedActor(
-    actorId: string,
-    actorType: string,
-    adapterKey: string | undefined,
-    transferState: Message,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    signal?: AbortSignal
-  ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ZLinkBackendActorRef }> {
-    const actorManager = this.options.actorManager();
-    if (actorManager === undefined) {
-      throw new Error('Routed actor transfer requires ZLINK_ACTOR_MANAGER.');
-    }
-    const materialized = await actorManager.materializeTransferredActor(
-      actorId,
-      actorType,
-      adapterKey,
-      wrapFrameworkPayloadMessage(transferState, this.options.registration.messageSerializers),
-      signal
-    );
-    const state = actorManager.getState(actorId);
-    if (state === undefined) {
-      throw new Error(`Actor '${actorId}' transfer state was not created.`);
-    }
-    state.setRemoteBoundSessionTarget(remoteBoundSessionTarget);
-    return {
-      actor: materialized.actor,
-      actorRef: materialized.actorRef as unknown as ZLinkBackendActorRef
-    };
-  }
-
-  commitRoutedActor(actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot): void {
-    this.options.actorManager()?.getState(actor.actorId)?.setJoinedSpot(spotRid, spot);
-  }
-
-  async finalizeRoutedActor(
-    actor: ZLinkActor,
-    spotRid: RoutingId,
-    spotMeshName: string
-  ): Promise<void> {
-    const manager = this.options.actorManager();
-    const state = manager?.getState(actor.actorId);
-    const actorType = state?.actorType;
-    const actorRef = state?.nativeActorRef;
-    const lifecycle = this.options.locationLifecycle();
-    if (state === undefined || actorType === undefined || actorRef === undefined || lifecycle === undefined) {
-      return;
-    }
-    const claim = await lifecycle.takeoverActorJoinedSpot(
-      actorType,
-      actor.actorId,
-      toFrameworkActorRef(actorRef),
-      spotMeshName,
-      spotRid,
-      async () => {
-        state.clearAfterDestroy();
-      }
-    );
-    if (claim.status === 'conflict') {
-      throw new Error(`Actor '${actor.actorId}' target location takeover was rejected.`);
-    }
-    if (claim.claimed !== undefined) {
-      state.setLocationGeneration(claim.claimed.generation);
-      const boundSessionTarget = state.remoteBoundSessionTarget;
-      if (boundSessionTarget !== undefined) {
-        try {
-          await this.options.routeTransport.sendToSpot(
-            {
-              routerChannelId: boundSessionTarget.routerChannelId,
-              targetNodeRid: boundSessionTarget.targetNodeRid,
-              spotRid: boundSessionTarget.spotRid,
-              spotKind: ZLinkSpotKind.Entry
-            },
-            {
-              actorId: actor.actorId,
-              actorNodeRid: String(actorRef.nodeRid),
-              actorNodeRidHex: (actorRef.nodeRid as { toHex?: () => string }).toHex?.(),
-              actorGeneration: actorRef.generation.toString(),
-              actorOwnershipGeneration: claim.claimed.generation.toString()
-            },
-            { packetName: ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET }
-          );
-        } catch (error) {
-          throw new Error(
-            `Actor '${actor.actorId}' bound-session ownership update failed on route ` +
-            `'${boundSessionTarget.routerChannelId}' to '${String(boundSessionTarget.targetNodeRid)}'.`,
-            { cause: error }
-          );
-        }
-      }
-    }
-    state.markLocationOwned();
-  }
-
-  clearRoutedActor(actor: ZLinkActor, clearRemoteActorPacketTarget: (actorId: string) => void): void {
-    const state = this.options.actorManager()?.getState(actor.actorId);
-    state?.clearJoinedSpot();
-    clearRemoteActorPacketTarget(actor.actorId);
-  }
-
-  async rollbackRoutedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
-    await this.options.actorManager()?.rollbackTransferredActor(actor, signal);
-  }
-
-  actorEntryNodeRid(actor: ZLinkActor): RoutingId | undefined {
-    return this.options.actorManager()?.getState(actor.actorId)?.nativeActorRef?.nodeRid as RoutingId | undefined;
-  }
-
-  actorPacketTarget(actorId: string): ZLinkRemoteActorPacketTarget | undefined {
-    return this.options.actorManager()?.getState(actorId)?.remoteActorPacketTarget;
-  }
 }

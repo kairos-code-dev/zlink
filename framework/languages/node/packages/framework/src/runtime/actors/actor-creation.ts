@@ -18,7 +18,7 @@ import {
   toFrameworkActorRef,
   toFrameworkRoutingId
 } from './actor-runtime-state';
-import type { ZLinkActorManagerOptions } from './index';
+import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 
 export interface ZLinkActorCreateRequest {
   readonly nativeRequest: Message | undefined;

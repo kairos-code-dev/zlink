@@ -43,10 +43,7 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
   readonly getTarget: () => ZLinkRoutedFrameAdmissionTarget & ZLinkSpot;
   readonly defaultAccept: boolean;
   readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
-  readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
-  readonly replayRoutedActorBacklog?: (
+  readonly commitTransferredActor?: (
     actor: ZLinkActor,
     backlog: readonly ZLinkActorHandoffPacket[]
   ) => Promise<readonly ZLinkActorHandoffResult[]>;
@@ -126,10 +123,7 @@ export class ZLinkSpotRoutedFrameDispatch {
       getTarget: options.getTarget,
       defaultAccept: options.defaultAccept,
       routedActorTransferProvider: options.routedActorTransferProvider,
-      finalizeRoutedActor: options.finalizeRoutedActor,
-      rollbackRoutedActor: options.rollbackRoutedActor,
-      commitRoutedActor: options.commitRoutedActor,
-      replayRoutedActorBacklog: options.replayRoutedActorBacklog,
+      commitTransferredActor: options.commitTransferredActor,
       messageSerializers: options.messageSerializers
     });
   }

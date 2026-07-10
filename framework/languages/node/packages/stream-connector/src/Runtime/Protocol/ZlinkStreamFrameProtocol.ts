@@ -1,0 +1,77 @@
+import type {
+  RequiredZlinkStreamConnectorOptions,
+  ZlinkStreamEncodedPayload,
+  ZlinkStreamMetadata
+} from '../../Contracts';
+import {
+  ZlinkStreamCodec,
+  ZlinkStreamMessageKind,
+  ZlinkStreamMetadataMap
+} from '../../Contracts';
+import { ZlinkStreamHeaderFlags } from '../../Contracts/ZlinkStreamEnums';
+import type { ZlinkStreamHeader } from '../../Contracts/ZlinkStreamModels';
+import {
+  compressPayload,
+  decompressIfNeeded
+} from './Compression/ZlinkStreamCompressionCodec';
+import { ZlinkStreamFrameCodec } from './ZlinkStreamFrameCodec';
+import { buildHeader, ZlinkStreamHeaderCodec } from './ZlinkStreamHeaderCodec';
+
+export const ZLINK_STREAM_HEARTBEAT_PING = '$zlink.heartbeat.ping';
+export const ZLINK_STREAM_HEARTBEAT_PONG = '$zlink.heartbeat.pong';
+
+export class ZlinkStreamFrameProtocol {
+  constructor(private readonly options: RequiredZlinkStreamConnectorOptions) {}
+
+  encode(
+    kind: ZlinkStreamMessageKind,
+    name: string,
+    payload: ZlinkStreamEncodedPayload,
+    metadata: ZlinkStreamMetadata,
+    compress: boolean,
+    requestSeq: bigint | undefined,
+    correlationId?: string
+  ): Uint8Array {
+    const payloadBytes = compress
+      ? compressPayload(payload.payload, this.options.compression, this.options.compressionCodec)
+      : payload.payload;
+    const header = buildHeader(kind, name, payload.codec, metadata, compress, requestSeq, correlationId);
+    return this.encodeFrame(header, payloadBytes);
+  }
+
+  encodeControl(name: string): Uint8Array {
+    return this.encodeFrame({
+      kind: ZlinkStreamMessageKind.Control,
+      codec: ZlinkStreamCodec.Raw,
+      flags: ZlinkStreamHeaderFlags.None,
+      name,
+      metadata: ZlinkStreamMetadataMap.empty
+    }, new Uint8Array());
+  }
+
+  decode(frameBytes: Uint8Array): { readonly header: ZlinkStreamHeader; readonly payload: Uint8Array } {
+    const frame = ZlinkStreamFrameCodec.decode(frameBytes);
+    return {
+      header: ZlinkStreamHeaderCodec.decode(frame.header),
+      payload: frame.payload
+    };
+  }
+
+  decodePayload(header: ZlinkStreamHeader, payload: Uint8Array): Uint8Array {
+    return decompressIfNeeded(
+      header,
+      payload,
+      this.options.compression,
+      this.options.compressionCodec,
+      this.options.maxReceivePayloadSize
+    );
+  }
+
+  private encodeFrame(header: ZlinkStreamHeader, payload: Uint8Array): Uint8Array {
+    return ZlinkStreamFrameCodec.encode(
+      ZlinkStreamHeaderCodec.encode(header),
+      payload,
+      this.options.maxSendPayloadSize
+    );
+  }
+}

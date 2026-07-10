@@ -1,7 +1,7 @@
 import type { RoutingId } from '../../contracts';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
-import { normalizeRuntimeRoutingId } from '../spots/route-wire-codec';
+import { normalizeRoutingId as normalizeRuntimeRoutingId, routingIdsEqual } from '../routing-id';
 
 export class MeshRouterResolver {
   constructor(private readonly registration: ZLinkFrameworkRegistration) {}
@@ -82,13 +82,4 @@ export class MeshRouterResolver {
     }
     return (meshName) => mapped.get(meshName) ?? meshName;
   }
-}
-
-function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {
-  const leftHex = (left as { toHex?: () => string }).toHex?.();
-  const rightHex = (right as { toHex?: () => string }).toHex?.();
-  if (leftHex !== undefined && rightHex !== undefined) {
-    return leftHex === rightHex;
-  }
-  return String(left) === String(right);
 }

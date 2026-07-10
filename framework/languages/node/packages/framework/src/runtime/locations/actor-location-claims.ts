@@ -195,6 +195,11 @@ export class ZLinkActorLocationClaims {
     }));
   }
 
+  snapshot(actorId: string): ZLinkActorLocation | undefined {
+    const tracked = this.actors.get(ZLinkLocationKeyCodec.encodeActorKey({ actorId }));
+    return tracked === undefined ? undefined : { ...tracked.row };
+  }
+
   onOwnershipLost(event: ZLinkOwnershipLostEvent): void {
     if (event.kind !== ZLinkLocationKind.Actor) {
       return;
@@ -218,11 +223,13 @@ export class ZLinkActorLocationClaims {
     if (tracked === undefined) {
       return;
     }
-    tracked.row = mutate(tracked.row);
-    const result = await this.runtime.writeActor(tracked.row, ZLinkLocationWriteIntent.Renew);
+    const candidate = mutate(tracked.row);
+    const result = await this.runtime.writeActor(candidate, ZLinkLocationWriteIntent.Renew);
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      tracked.row = { ...tracked.row, generation: result.generation, updatedAt: result.updatedAt };
+      tracked.row = { ...candidate, generation: result.generation, updatedAt: result.updatedAt };
+      return;
     }
+    throw new Error(`Actor location renewal for '${actorId}' was rejected with status ${result.status}.`);
   }
 }
 

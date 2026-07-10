@@ -49,9 +49,17 @@ export class ZLinkChannelSocketRegistry {
     this.subscribers.clear();
     this.routeRouters.clear();
     this.disposeSubmitters();
-    await Promise.all([...this.ownedMonitors].map((monitor) => monitor.dispose()));
+    const monitors = [...this.ownedMonitors];
     this.ownedMonitors.clear();
-    await Promise.all(sockets.map((socket) => socket.dispose()));
+    const cleanup = await Promise.allSettled([
+      ...monitors.map((monitor) => monitor.dispose()),
+      ...sockets.map((socket) => socket.dispose())
+    ]);
+    const errors = cleanup
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason);
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Channel socket cleanup failed.');
   }
 
   disposeSubmitters(): void {

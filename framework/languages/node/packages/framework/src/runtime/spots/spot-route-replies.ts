@@ -5,7 +5,7 @@ import {
   encodeChannelReplyParts
 } from '../channels/channel-envelope';
 import { ZLinkConfigurationException } from '../configuration';
-import { encodeSpotRouteBridgeReply } from './route-wire-codec';
+import { encodeSpotRouteBridgeReply } from './spot-route-reply-wire';
 import type { ZLinkDecodedRemoteActorJoinRequest } from './spot-remote-codec';
 
 export interface ZLinkRouteReplySubmitOperation {

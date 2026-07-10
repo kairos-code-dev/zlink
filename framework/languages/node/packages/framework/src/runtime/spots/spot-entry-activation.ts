@@ -20,10 +20,9 @@ import type {
   ZLinkSpotPublisherClient
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import type {
-  ZLinkRemoteActorPacketTarget,
-  ZLinkRemoteBoundSessionTarget
-} from '../actors';
+import { throwIfAborted } from '../abort';
+import { routingIdsEqual } from '../routing-id';
+import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import {
   ZLinkActorDispatchMailboxSet,
   ZLinkSpotActorHandlerRegistryRuntime
@@ -35,10 +34,7 @@ import type {
 } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkSpotWorkerRuntime } from '../workers';
-import {
-  ZLinkSpotActorPacketDispatch,
-  type ZLinkActorResponseOptions
-} from './spot-actor-packet-dispatch';
+import { ZLinkSpotActorPacketDispatch } from './spot-actor-packet-dispatch';
 import {
   ZLinkSpotActorJoinDispatch,
   type ZLinkDetachedTaskRunner
@@ -64,6 +60,11 @@ import {
   type ZLinkActorHandoffPacket,
   type ZLinkActorHandoffResult
 } from '../actors/actor-handoff';
+import type {
+  ZLinkEntryActorRuntime,
+  ZLinkSpotActorHandoffRuntime,
+  ZLinkSpotBoundSessionRuntime
+} from './spot-runtime-ports';
 
 interface ZLinkEntrySpotActivationOptions {
   readonly entrySpotType: Type<ZLinkEntrySpot>;
@@ -86,79 +87,9 @@ interface ZLinkEntrySpotActivationOptions {
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
-  readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
-  readonly entryActorCommitter?: (actor: ZLinkActor) => Promise<void> | void;
-  readonly destroyActor?: (
-    nodeRid: RoutingId,
-    actor: ZLinkActor,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionReceiver?: (
-    actorId: string,
-    message: unknown,
-    packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionResponseReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    message: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionErrorReceiver?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorPacketTarget?: unknown,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
-  readonly actorResponseSender?: (
-    actor: ZLinkActor,
-    packetName: string,
-    requestSeq: bigint,
-    response: unknown,
-    replyOptions: ZLinkActorResponseOptions,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly actorErrorSender?: (
-    actorId: string,
-    packetName: string,
-    requestSeq: bigint,
-    error: unknown,
-    metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly remoteActorPacketTargetReceiver?: (
-    actorId: string,
-    target: ZLinkRemoteBoundSessionTarget
-  ) => void;
-  readonly remoteBoundSessionTargetResolver?: (
-    sourceNodeRid: RoutingId,
-    sourceSessionRid: RoutingId
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
-  readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
-  readonly localActorPacketRouter?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
-  ) => Promise<{ readonly handled: boolean; readonly response?: unknown }>;
-  readonly actorPacketHandoff?: (
-    actorId: string,
-    parts: readonly Message[],
-    returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
-  ) => Promise<unknown> | undefined;
+  readonly entryActorRuntime?: ZLinkEntryActorRuntime;
+  readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
+  readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
 }
 
@@ -171,6 +102,7 @@ export class ZLinkEntrySpotActivation {
   private readonly outbound: DefaultZLinkSpotOutbound;
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
   private initialized = false;
+  private disposed = false;
 
   entrySpot: ZLinkEntrySpot;
   readonly context: ZLinkEntrySpotContext;
@@ -199,7 +131,14 @@ export class ZLinkEntrySpotActivation {
       providerResolver: options.providerResolver,
       runtimeEventPublisher: options.runtimeEventPublisher,
       workerRuntime: this.workerRuntime,
-      destroyActor: options.destroyActor
+      destroyActor: options.entryActorRuntime === undefined
+        ? undefined
+        : (nodeRid, actor, signal) => options.entryActorRuntime!.destroyActor(
+          options.nativeNode,
+          nodeRid,
+          actor,
+          signal
+        )
     });
     this.entrySpot = undefined as unknown as ZLinkEntrySpot;
     applyEntrySpotHandlerRegistrations(this.handlers, options.entrySpotType, {
@@ -257,13 +196,23 @@ export class ZLinkEntrySpotActivation {
   }
 
   async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    const errors: unknown[] = [];
+    const cleanup = async (operation: () => Promise<void> | void) => {
+      try {
+        await operation();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
     if (this.initialized) {
-      await this.serial.execute(() => this.entrySpot.onClosing?.());
+      await cleanup(() => this.serial.execute(() => this.entrySpot.onClosing?.()));
     }
-    await this.timers.dispose();
-    if (typeof this.options.nativeSpot.dispose === 'function') {
-      await this.options.nativeSpot.dispose();
-    }
+    await cleanup(() => this.timers.dispose());
+    await cleanup(() => this.options.nativeSpot.dispose());
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, 'Entry Spot cleanup failed.');
   }
 
   notifyCreateActor(actor: ZLinkActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void> {
@@ -285,29 +234,33 @@ export class ZLinkEntrySpotActivation {
     const dispatch = new ZLinkSpotActorJoinDispatch({
       nativeSpot: this.options.nativeSpot,
       serial: this.serial,
-      resolveActor: (actorId) => this.options.actorResolver?.(actorId),
-      getTarget: () => this.entrySpot,
-      defaultAccept: true,
-      commitRoutedActor: this.options.entryActorCommitter,
-      actorPacketHandler: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
-        this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef),
-      routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
-      routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
-      routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
-      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
-      actorPacketTargetProvider: this.options.actorPacketTargetProvider,
-      replayRoutedActorBacklog: (actor, backlog) => this.replayActorBacklog(actor, backlog),
-      bindRemoteActorSession: (actor, sourceNodeRid, sourceSessionRid) => {
-        if (String(sourceNodeRid) === String(this.options.nativeNode.routingId)) {
-          return;
+      actors: {
+        resolveActor: (actorId) => this.options.entryActorRuntime?.resolveActor(actorId),
+        getTarget: () => this.entrySpot,
+        defaultAccept: true,
+        transfer: { kind: 'disabled' },
+        commitNativeActor: (actor) => this.commitEntryActorTransaction(actor),
+        commitTransferredActor: async (actor, backlog) => {
+          await this.commitEntryActorTransaction(actor);
+          return await this.replayActorBacklog(actor, backlog);
         }
-        const target = this.options.remoteBoundSessionTargetResolver?.(sourceNodeRid, sourceSessionRid);
-        if (target !== undefined) {
-          this.options.remoteActorPacketTargetReceiver?.(actor.actorId, target);
-        }
-        this.options.nativeNode.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
       },
-      replyActorNoBind: (info, parts, result) => this.replyActorNoBind(info, parts, result),
+      packets: {
+        handle: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
+          this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef),
+        bindRemoteSession: (actor, sourceNodeRid, sourceSessionRid) => {
+          if (routingIdsEqual(sourceNodeRid, this.options.nativeNode.routingId)) {
+            return;
+          }
+          const target = this.options.boundSessionRuntime?.resolveRemoteBoundSessionTarget(sourceNodeRid, sourceSessionRid);
+          if (target !== undefined) {
+            this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(actor.actorId, target);
+          }
+          this.options.nativeNode.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
+        },
+        replyNoBind: (info, parts, result) => this.replyActorNoBind(info, parts, result)
+      },
+      boundSessionRuntime: this.options.boundSessionRuntime,
       messageSerializers: this.options.messageSerializers,
       providerResolver: this.options.providerResolver,
       dispatchErrors: this.options.dispatchErrors,
@@ -315,6 +268,16 @@ export class ZLinkEntrySpotActivation {
     });
     dispatch.configureSubscriptions(this.handlers.snapshot());
     dispatch.attach();
+  }
+
+  private async commitEntryActorTransaction(actor: ZLinkActor): Promise<void> {
+    const notifyJoined = () => this.serial.execute(() => this.entrySpot.onJoinedActor?.(actor));
+    const runtime = this.options.entryActorRuntime;
+    if (runtime === undefined) {
+      await notifyJoined();
+      return;
+    }
+    await runtime.commitActorTransaction(actor, notifyJoined);
   }
 
   notifyLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
@@ -334,7 +297,7 @@ export class ZLinkEntrySpotActivation {
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef
   ): Promise<unknown> {
-    const handoff = this.options.actorPacketHandoff?.(
+    const handoff = this.options.actorHandoffRuntime?.capture(
       actorId,
       parts,
       returnResponse,
@@ -388,19 +351,19 @@ export class ZLinkEntrySpotActivation {
       spot: this.entrySpot as unknown as ZLinkSpot,
       spotRid: () => String(this.options.nativeSpot.routingId),
       registry: this.actorHandlers,
-      resolveActor: (targetActorId) => this.options.actorResolver?.(targetActorId),
+      resolveActor: (targetActorId) => this.options.entryActorRuntime?.resolveActor(targetActorId),
       routeBeforeLocal: (targetActorId, targetParts, targetReturnResponse, targetRemoteBoundSessionTarget) =>
-        this.options.localActorPacketRouter?.(
+        this.options.entryActorRuntime?.routePacket(
           targetActorId,
           targetParts,
           targetReturnResponse,
           targetRemoteBoundSessionTarget
         ),
       onRemoteBoundSessionTarget: (targetActorId, target) =>
-        this.options.remoteActorPacketTargetReceiver?.(targetActorId, target),
+        this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(targetActorId, target),
       onDisconnectActor: (actor) => this.notifyDisconnectActor(actor),
-      actorResponseSender: this.options.actorResponseSender,
-      actorErrorSender: this.options.actorErrorSender,
+      actorResponseSender: this.options.boundSessionRuntime?.sendActorResponse.bind(this.options.boundSessionRuntime),
+      actorErrorSender: this.options.boundSessionRuntime?.sendActorError.bind(this.options.boundSessionRuntime),
       providerResolver: this.options.providerResolver,
       messageSerializers: this.options.messageSerializers,
       dispatchErrors: this.options.dispatchErrors
@@ -413,11 +376,5 @@ export class ZLinkEntrySpotActivation {
     result: RequestResult
   ): void {
     this.options.nativeNode.replyActorNoBind(info, parts, result);
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
   }
 }

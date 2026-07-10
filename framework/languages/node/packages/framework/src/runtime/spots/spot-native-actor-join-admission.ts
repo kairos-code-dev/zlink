@@ -35,9 +35,7 @@ interface ZLinkSpotNativeActorJoinAdmissionOptions {
   readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
   readonly getTarget: () => ZLinkNativeActorJoinAdmissionTarget;
   readonly defaultAccept: boolean;
-  readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly rollbackCommittedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
-  readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
+  readonly commitAcceptedActor?: (actor: ZLinkActor) => Promise<void>;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
 }
@@ -49,7 +47,6 @@ export class ZLinkSpotNativeActorJoinAdmission {
     const actorId = request.info.targetActor.actorId;
     let accepted = false;
     let reply: Message | undefined;
-    let stagedActor: ZLinkActor | undefined;
     const decoded = this.decodeNativeActorJoinRequest(request.message);
     try {
       if (decoded !== undefined) {
@@ -70,20 +67,10 @@ export class ZLinkSpotNativeActorJoinAdmission {
           ? undefined
           : encodeFrameworkPayloadMessage(response.reply, this.options.messageSerializers);
         if (accepted) {
-          stagedActor = actor;
-          await this.options.commitRoutedActor?.(actor);
-          await this.options.serial.execute(() => target.onJoinedActor?.(actor));
-          await this.options.finalizeRoutedActor?.(actor);
+          await this.options.commitAcceptedActor?.(actor);
         }
       }
     } catch (error) {
-      if (stagedActor !== undefined) {
-        try {
-          await this.options.rollbackCommittedActor?.(stagedActor);
-        } catch (rollbackError) {
-          this.reportHandlerException(actorId, rollbackError);
-        }
-      }
       this.reportHandlerException(actorId, error);
       accepted = false;
       reply?.close();

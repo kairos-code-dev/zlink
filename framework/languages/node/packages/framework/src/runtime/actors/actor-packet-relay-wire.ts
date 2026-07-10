@@ -1,0 +1,95 @@
+import type { ZLinkSessionActor } from '../../contracts';
+import { ZLinkSpotKind } from '../../contracts';
+import { decodeRoutingId, routingIdWireHex } from '../routing-id';
+import type { ZLinkRemoteActorPacketTarget } from './actor-runtime-state';
+
+export const ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET = '__zlink.actor.packet.relay';
+export const ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET = 'zlink.framework.actor.session_disconnected';
+
+export interface ZLinkRemoteActorPacketTargetWire {
+  readonly routerChannelId: string;
+  readonly targetNodeRid: string;
+  readonly targetNodeRidHex?: string;
+  readonly spotRid: string;
+  readonly spotRidHex?: string;
+  readonly spotKind: ZLinkSpotKind;
+}
+
+export function encodeRemoteActorPacketTarget(
+  target: ZLinkRemoteActorPacketTarget | undefined
+): ZLinkRemoteActorPacketTargetWire | undefined {
+  if (target === undefined) {
+    return undefined;
+  }
+  return {
+    routerChannelId: target.routerChannelId,
+    targetNodeRid: String(target.targetNodeRid),
+    targetNodeRidHex: routingIdWireHex(target.targetNodeRid),
+    spotRid: String(target.spotRid),
+    spotRidHex: routingIdWireHex(target.spotRid),
+    spotKind: target.spotKind ?? ZLinkSpotKind.User
+  };
+}
+
+export function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorPacketTarget | undefined {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    typeof (value as { routerChannelId?: unknown }).routerChannelId !== 'string' ||
+    typeof (value as { targetNodeRid?: unknown }).targetNodeRid !== 'string' ||
+    typeof (value as { spotRid?: unknown }).spotRid !== 'string'
+  ) {
+    return undefined;
+  }
+  return {
+    routerChannelId: (value as { routerChannelId: string }).routerChannelId,
+    targetNodeRid: decodeRoutingId(
+      (value as { targetNodeRid: string }).targetNodeRid,
+      (value as { targetNodeRidHex?: unknown }).targetNodeRidHex
+    ),
+    spotRid: decodeRoutingId(
+      (value as { spotRid: string }).spotRid,
+      (value as { spotRidHex?: unknown }).spotRidHex
+    ),
+    spotKind: (value as { spotKind?: unknown }).spotKind === ZLinkSpotKind.Entry
+      ? ZLinkSpotKind.Entry
+      : ZLinkSpotKind.User
+  };
+}
+
+export function sessionActorPacketTargetKey(actor: ZLinkSessionActor): string {
+  return `${String(actor.ref.nodeRid)}:${actor.actorId}:${String(actor.ref.generation)}`;
+}
+
+export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
+  readonly actorId: string;
+  readonly routerChannelId?: string;
+  readonly boundSessionTargetNodeRid?: string;
+  readonly boundSessionSpotRid?: string;
+  readonly header: string;
+  readonly payload: string;
+} {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    (payload as { packetName?: unknown }).packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
+    typeof (payload as { actorId?: unknown }).actorId !== 'string' ||
+    typeof (payload as { header?: unknown }).header !== 'string' ||
+    typeof (payload as { payload?: unknown }).payload !== 'string'
+  ) {
+    throw new Error('Remote actor packet relay payload is invalid.');
+  }
+  return {
+    actorId: (payload as { actorId: string }).actorId,
+    routerChannelId: optionalString(payload, 'routerChannelId'),
+    boundSessionTargetNodeRid: optionalString(payload, 'boundSessionTargetNodeRid'),
+    boundSessionSpotRid: optionalString(payload, 'boundSessionSpotRid'),
+    header: (payload as { header: string }).header,
+    payload: (payload as { payload: string }).payload
+  };
+}
+
+function optionalString(value: object, key: string): string | undefined {
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === 'string' ? field : undefined;
+}

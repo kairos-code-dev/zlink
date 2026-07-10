@@ -1,6 +1,5 @@
 import {
   Disposable,
-  ZlinkStreamError,
   ZlinkStreamErrorCode,
   ZlinkStreamInboundObservation
 } from '../Contracts';
@@ -8,6 +7,7 @@ import { ZlinkStreamHeaderFlags } from '../Contracts/ZlinkStreamEnums';
 import { ZlinkStreamMetadataMap } from '../Contracts/ZlinkStreamMetadata';
 import type { ZlinkStreamHeader } from '../Contracts/ZlinkStreamModels';
 import { subscription } from './ZlinkStreamSupport';
+import type { ZlinkStreamConnectorEvents } from './ZlinkStreamConnectorEvents';
 
 type InboundObserver = (observation: ZlinkStreamInboundObservation, signal?: AbortSignal) => Promise<void> | void;
 
@@ -20,7 +20,7 @@ export class ZlinkStreamInboundObservers {
   constructor(
     private readonly maxNotifications: number,
     private readonly maxPayloadPreviewBytes: number,
-    private readonly publishError: (error: ZlinkStreamError, signal?: AbortSignal) => Promise<void>
+    private readonly events: ZlinkStreamConnectorEvents
   ) {}
 
   add(observer: InboundObserver): Disposable {
@@ -96,7 +96,7 @@ export class ZlinkStreamInboundObservers {
     }
     this.dropReportPending = true;
     queueMicrotask(() => {
-      void this.publishError({
+      void this.events.publishError({
         code: ZlinkStreamErrorCode.ObserverDropped,
         message: 'Inbound observer notification was dropped because the observer queue is full.'
       }, signal).finally(() => {
@@ -107,7 +107,7 @@ export class ZlinkStreamInboundObservers {
 
   private async reportObserverFailed(cause: unknown, signal?: AbortSignal): Promise<void> {
     try {
-      await this.publishError({
+      await this.events.publishError({
         code: ZlinkStreamErrorCode.ObserverFailed,
         message: 'Inbound observer callback failed.',
         cause

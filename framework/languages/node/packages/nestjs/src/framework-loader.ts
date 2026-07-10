@@ -1,74 +1,17 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import type {
-  IZLinkLocationRuntimeQuery,
-  ZLinkChannelRuntimeOptions,
-  ZLinkFrameworkRegistration,
-  ZLinkFrameworkRegistrationOptions,
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher
-} from '@zlink-systems/framework';
+import type * as FrameworkIntegrationModule from '@zlink-systems/framework/nest-integration';
 
-export interface FrameworkRuntimeHost {
-  readonly channelTransport: unknown;
-  readonly routeTransport: unknown;
-  readonly channelRuntimeOptions: ZLinkChannelRuntimeOptions;
-  readonly spotPublisherTransport: unknown;
-  readonly streamBindingRuntime: unknown;
-  readonly boundSessionFactory: {
-    create(actorId: string): unknown;
-  };
-  readonly isStarted: boolean;
-  readonly locationRuntimeQuery?: IZLinkLocationRuntimeQuery;
-  readonly eventPublisher: ZLinkRuntimeEventPublisher;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  onApplicationBootstrap(): Promise<void>;
-  onApplicationShutdown(): Promise<void>;
-  setActorManager(actorManager: unknown): void;
-  setSpotManager(spotManager: unknown): void;
-  createActorManagerOptions(): Record<string, unknown>;
-  createActorClientOptions(): Record<string, unknown>;
-  createLocationRefResolver(): unknown;
-  createSpotManagerOptions(): Record<string, unknown>;
-}
+export type FrameworkRuntimeHost = FrameworkIntegrationModule.ZLinkNestIntegrationRuntimeHost;
 
-export interface FrameworkModule {
-  readonly ZLinkConfigurationException: new (message: string) => Error;
-  readonly ZLinkFrameworkRuntimeHost: new (options: {
-    readonly registration: ZLinkFrameworkRegistration;
-    readonly providerResolver?: ZLinkProviderResolver;
-  }) => FrameworkRuntimeHost;
-  readonly DefaultZLinkChannelClient: new (
-    registration: ZLinkFrameworkRegistration,
-    transport: unknown
-  ) => unknown;
-  readonly DefaultZLinkFanoutClient: new (
-    registration: ZLinkFrameworkRegistration,
-    transport: unknown
-  ) => unknown;
-  readonly DefaultZLinkRouteClient: new (
-    registration: ZLinkFrameworkRegistration,
-    transport: unknown
-  ) => unknown;
-  readonly DefaultZLinkActorClient: new (options: Record<string, unknown>) => unknown;
-  readonly DefaultZLinkSpotPublisherClient: new (
-    registration: ZLinkFrameworkRegistration,
-    transport: unknown
-  ) => unknown;
-  readonly DefaultZLinkActorManager: new (options: Record<string, unknown>) => unknown;
-  readonly DefaultZLinkSpotManager: new (options: Record<string, unknown>) => unknown;
-  readonly DefaultZLinkSpotOutbound: new (...args: unknown[]) => unknown;
-  readonly ZLinkSpotSerialExecutor: new () => unknown;
-  readonly ZLinkSpotWorkerRuntime: new (options?: unknown) => unknown;
-  createFrameworkRegistration(options: ZLinkFrameworkRegistrationOptions): ZLinkFrameworkRegistration;
-  hasSpotNode(registration: ZLinkFrameworkRegistration): boolean;
-  hasActorManager(registration: ZLinkFrameworkRegistration): boolean;
-  hasSpotPublisherClient(registration: ZLinkFrameworkRegistration): boolean;
-}
-
-export function loadFramework(): FrameworkModule {
+function loadFramework(): typeof FrameworkIntegrationModule {
   const requireFramework = createRequire(__filename);
   const frameworkEntry = requireFramework.resolve('@zlink-systems/framework');
-  return requireFramework(path.join(path.dirname(frameworkEntry), 'nest-integration')) as FrameworkModule;
+  return requireFramework(
+    path.join(path.dirname(frameworkEntry), 'nest-integration')
+  ) as typeof FrameworkIntegrationModule;
 }
+
+// The Nest package is a workspace adapter. It loads the framework's private
+// composition bridge without turning that bridge into a package subpath.
+export const framework = loadFramework();

@@ -1,4 +1,5 @@
 import { ZLinkConfigurationException } from '../configuration';
+import { createAbortError, throwIfAborted } from '../abort';
 
 type ZLinkRequestSubmit<TReply> = (
   resolve: (reply: TReply) => void,
@@ -8,6 +9,7 @@ type ZLinkRequestSubmit<TReply> = (
 interface ZLinkPendingSubmitOptions {
   readonly timeoutMs: number | undefined;
   readonly signal?: AbortSignal;
+  readonly onDiscard?: () => void;
 }
 
 export class ZLinkAsyncSubmitter {
@@ -28,11 +30,13 @@ export class ZLinkAsyncSubmitter {
     this.capacity = options.capacity ?? 4096;
   }
 
-  submitCommand(submit: () => boolean, signal?: AbortSignal): Promise<void> {
+  submitCommand(submit: () => boolean, signal?: AbortSignal, onDiscard?: () => void): Promise<void> {
     const pending = this.createPending<void>(
       () => submit(),
       true,
-      signal
+      signal,
+      undefined,
+      onDiscard
     );
     if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
       return pending.promise;
@@ -40,8 +44,13 @@ export class ZLinkAsyncSubmitter {
     return this.enqueue(pending);
   }
 
-  submitRequest<TReply>(submit: ZLinkRequestSubmit<TReply>, signal?: AbortSignal, timeoutMs?: number): Promise<TReply> {
-    const pending = this.createPending<TReply>(submit, false, signal, timeoutMs);
+  submitRequest<TReply>(
+    submit: ZLinkRequestSubmit<TReply>,
+    signal?: AbortSignal,
+    timeoutMs?: number,
+    onDiscard?: () => void
+  ): Promise<TReply> {
+    const pending = this.createPending<TReply>(submit, false, signal, timeoutMs, onDiscard);
     if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
       return pending.promise;
     }
@@ -72,18 +81,25 @@ export class ZLinkAsyncSubmitter {
     submit: ZLinkRequestSubmit<TReply>,
     completeOnAccepted: boolean,
     signal?: AbortSignal,
-    timeoutMs?: number
+    timeoutMs?: number,
+    onDiscard?: () => void
   ): ZLinkPendingSubmit<TReply> {
     if (this.disposed) {
-      throw new ZLinkConfigurationException('ZLink async submitter is disposed.');
+      const error = new ZLinkConfigurationException('ZLink async submitter is disposed.');
+      throw discardBeforePending(error, onDiscard);
     }
-    throwIfAborted(signal);
+    try {
+      throwIfAborted(signal);
+    } catch (error) {
+      throw discardBeforePending(error, onDiscard);
+    }
     const pending = new ZLinkPendingSubmit<TReply>(
       submit,
       completeOnAccepted,
       {
-        timeoutMs: timeoutMs ?? this.timeoutMs,
-        signal
+        timeoutMs: timeoutMs === -1 ? undefined : timeoutMs ?? this.timeoutMs,
+        signal,
+        onDiscard
       }
     );
     this.active.add(pending as ZLinkPendingSubmit<unknown>);
@@ -179,6 +195,16 @@ export class ZLinkAsyncSubmitter {
   }
 }
 
+function discardBeforePending(error: unknown, onDiscard: (() => void) | undefined): unknown {
+  if (onDiscard === undefined) return error;
+  try {
+    onDiscard();
+    return error;
+  } catch (discardError) {
+    return new AggregateError([error, discardError], 'Queued message discard failed.');
+  }
+}
+
 class ZLinkPendingSubmit<TReply> {
   readonly promise: Promise<TReply>;
   private resolvePromise!: (reply: TReply) => void;
@@ -187,11 +213,14 @@ class ZLinkPendingSubmit<TReply> {
   private readonly abortHandler: (() => void) | undefined;
   private readonly timeout: ReturnType<typeof setTimeout> | undefined;
   private completed = false;
+  private accepted = false;
+  private submitting = false;
+  private deferredSettlement: { readonly reply?: TReply; readonly error?: unknown } | undefined;
 
   constructor(
     private readonly submit: ZLinkRequestSubmit<TReply>,
     private readonly completeOnAccepted: boolean,
-    options: ZLinkPendingSubmitOptions
+    private readonly options: ZLinkPendingSubmitOptions
   ) {
     this.signal = options.signal;
     this.promise = new Promise<TReply>((resolve, reject) => {
@@ -205,7 +234,7 @@ class ZLinkPendingSubmit<TReply> {
       );
     }
     if (options.signal !== undefined) {
-      this.abortHandler = () => this.reject(new Error('The operation was aborted.'));
+      this.abortHandler = () => this.reject(createAbortError());
       options.signal.addEventListener('abort', this.abortHandler, { once: true });
     }
   }
@@ -220,13 +249,23 @@ class ZLinkPendingSubmit<TReply> {
     }
     let accepted: boolean;
     try {
+      this.submitting = true;
       accepted = this.submit(
         (reply) => this.resolve(reply),
         (error) => this.reject(error)
       );
     } catch (error) {
+      this.submitting = false;
       this.reject(error);
       return true;
+    }
+    this.submitting = false;
+    this.accepted = accepted;
+    const deferred = this.deferredSettlement;
+    this.deferredSettlement = undefined;
+    if (deferred !== undefined) {
+      if ('error' in deferred) this.reject(deferred.error);
+      else this.resolve(deferred.reply as TReply);
     }
     if (accepted && this.completeOnAccepted) {
       this.resolve(undefined as TReply);
@@ -235,6 +274,10 @@ class ZLinkPendingSubmit<TReply> {
   }
 
   resolve(reply: TReply): void {
+    if (this.submitting) {
+      this.deferredSettlement = { reply };
+      return;
+    }
     if (this.completed) {
       return;
     }
@@ -244,12 +287,24 @@ class ZLinkPendingSubmit<TReply> {
   }
 
   reject(error: unknown): void {
+    if (this.submitting) {
+      this.deferredSettlement = { error };
+      return;
+    }
     if (this.completed) {
       return;
     }
     this.completed = true;
+    let settlementError = error;
+    if (!this.accepted && this.options.onDiscard !== undefined) {
+      try {
+        this.options.onDiscard();
+      } catch (discardError) {
+        settlementError = new AggregateError([error, discardError], 'Queued message discard failed.');
+      }
+    }
     this.cleanup();
-    this.rejectPromise(error);
+    this.rejectPromise(settlementError);
   }
 
   private cleanup(): void {
@@ -259,11 +314,5 @@ class ZLinkPendingSubmit<TReply> {
     if (this.signal !== undefined && this.abortHandler !== undefined) {
       this.signal.removeEventListener('abort', this.abortHandler);
     }
-  }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
   }
 }

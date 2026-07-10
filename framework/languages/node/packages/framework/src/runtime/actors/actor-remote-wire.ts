@@ -1,9 +1,9 @@
 import type { RoutingId } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type { ZLinkBackendActorRef } from '../backend/contracts';
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from './actor-handoff';
+import { decodeRoutingId, routingIdWireHex } from '../routing-id';
 
 export const ZLINK_REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
 export const REMOTE_ACTOR_JOIN_PACKET = ZLINK_REMOTE_ACTOR_JOIN_PACKET;
@@ -12,16 +12,10 @@ export const REMOTE_ACTOR_JOIN_COMMIT = 'commit';
 export type ZLinkRemoteActorJoinPhase =
   | typeof REMOTE_ACTOR_JOIN_ADMISSION
   | typeof REMOTE_ACTOR_JOIN_COMMIT;
-export const ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET = '__zlink.actor.bound_session.send';
-export const ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET = '__zlink.actor.bound_session.response';
-export const ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET = '__zlink.actor.bound_session.error';
-export const ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET = '__zlink.actor.bound_session.ownership';
-export const ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET = 'zlink.framework.actor.session_disconnected';
-export const ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET = '__zlink.actor.packet.relay';
-
 export interface ZLinkRemoteActorJoinWirePayload {
   readonly packetName?: unknown;
   readonly spotRid?: unknown;
+  readonly spotRidHex?: unknown;
   readonly actorId?: unknown;
   readonly actorType?: unknown;
   readonly actorNodeRid?: unknown;
@@ -70,6 +64,7 @@ export interface ZLinkRemoteActorJoinRequest {
 export interface ZLinkRemoteActorJoinRequestPayload {
   readonly packetName: typeof REMOTE_ACTOR_JOIN_PACKET;
   readonly spotRid?: string;
+  readonly spotRidHex?: string;
   readonly actorId?: string;
   readonly actorType: string;
   readonly actorNodeRid?: string;
@@ -127,6 +122,7 @@ export function buildRemoteActorJoinRequestPayload(
   return {
     packetName: REMOTE_ACTOR_JOIN_PACKET,
     spotRid: options.targetSpotRid === undefined ? undefined : String(options.targetSpotRid),
+    spotRidHex: options.targetSpotRid === undefined ? undefined : encodeRoutingIdHex(options.targetSpotRid),
     actorId: options.actorId,
     actorType: options.actorType,
     actorNodeRid: actorRef === undefined ? undefined : String(actorRef.nodeRid),
@@ -150,11 +146,71 @@ export function buildRemoteActorJoinRequestPayload(
   };
 }
 
+export function decodeRemoteActorJoinPayload(payload: unknown): {
+  readonly spotRid: RoutingId;
+  readonly actorId: string;
+  readonly actorType: string;
+  readonly actorNodeRid: RoutingId;
+  readonly actorGeneration: string;
+  readonly sourceSpotRid?: RoutingId;
+  readonly routerChannelId?: string;
+  readonly boundSessionRouterChannelId?: string;
+  readonly boundSessionTargetNodeRid?: RoutingId;
+  readonly boundSessionSpotRid?: RoutingId;
+  readonly request: string;
+} {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    (payload as { packetName?: unknown }).packetName !== ZLINK_REMOTE_ACTOR_JOIN_PACKET ||
+    typeof (payload as { spotRid?: unknown }).spotRid !== 'string' ||
+    typeof (payload as { actorId?: unknown }).actorId !== 'string' ||
+    typeof (payload as { actorType?: unknown }).actorType !== 'string' ||
+    typeof (payload as { actorNodeRid?: unknown }).actorNodeRid !== 'string' ||
+    typeof (payload as { actorGeneration?: unknown }).actorGeneration !== 'string' ||
+    typeof (payload as { request?: unknown }).request !== 'string'
+  ) {
+    throw new Error('Remote actor join payload is invalid.');
+  }
+  return {
+    spotRid: decodeWireRoutingId(
+      (payload as { spotRid: string }).spotRid,
+      optionalString(payload, 'spotRidHex')
+    ),
+    actorId: (payload as { actorId: string }).actorId,
+    actorType: (payload as { actorType: string }).actorType,
+    actorNodeRid: decodeWireRoutingId(
+      (payload as { actorNodeRid: string }).actorNodeRid,
+      optionalString(payload, 'actorNodeRidHex')
+    ),
+    actorGeneration: (payload as { actorGeneration: string }).actorGeneration,
+    sourceSpotRid: optionalRoutingId(payload, 'sourceSpotRid', 'sourceSpotRidHex'),
+    routerChannelId: optionalString(payload, 'routerChannelId'),
+    boundSessionRouterChannelId: optionalString(payload, 'boundSessionRouterChannelId'),
+    boundSessionTargetNodeRid: optionalRoutingId(
+      payload,
+      'boundSessionTargetNodeRid',
+      'boundSessionTargetNodeRidHex'
+    ),
+    boundSessionSpotRid: optionalRoutingId(payload, 'boundSessionSpotRid', 'boundSessionSpotRidHex'),
+    request: (payload as { request: string }).request
+  };
+}
+
 function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
-  const toHex = (routingId as unknown as { toHex?: () => string }).toHex;
-  return typeof toHex === 'function' ? toHex.call(routingId) : undefined;
+  return routingIdWireHex(routingId);
 }
 
 export function decodeWireRoutingId(text: string, hex: string | undefined): RoutingId {
-  return hex === undefined ? text : String(BindingRoutingId.fromHex(hex));
+  return decodeRoutingId(text, hex);
+}
+
+function optionalString(value: object, key: string): string | undefined {
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === 'string' ? field : undefined;
+}
+
+function optionalRoutingId(value: object, textKey: string, hexKey: string): RoutingId | undefined {
+  const text = optionalString(value, textKey);
+  return text === undefined ? undefined : decodeWireRoutingId(text, optionalString(value, hexKey));
 }

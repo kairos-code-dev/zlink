@@ -41,22 +41,22 @@ export class ZLinkChannelRuntimeOptionsFactory {
     return new Map([
       [ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, {
         handle: async (payload) => {
-          await this.options.boundSessionRelay.receiveRemoteBoundSessionSend(payload);
+          await this.options.boundSessionRelay.boundSessions.receiveRemoteBoundSessionSend(payload);
         }
       }],
       [ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET, {
         handle: async (payload) => {
-          await this.options.boundSessionRelay.receiveRemoteBoundSessionResponse(payload);
+          await this.options.boundSessionRelay.boundSessions.receiveRemoteBoundSessionResponse(payload);
         }
       }],
       [ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET, {
         handle: async (payload) => {
-          await this.options.boundSessionRelay.receiveRemoteBoundSessionError(payload);
+          await this.options.boundSessionRelay.boundSessions.receiveRemoteBoundSessionError(payload);
         }
       }],
       [ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET, {
         handle: async (payload, routeContext) => {
-          await this.options.boundSessionRelay.receiveRemoteActorPacketRelay(payload, routeContext);
+          await this.options.boundSessionRelay.actorPackets.receiveRemoteActorPacketRelay(payload, routeContext);
         }
       }]
     ]);
@@ -66,11 +66,11 @@ export class ZLinkChannelRuntimeOptionsFactory {
     return new Map([
       [ZLINK_REMOTE_ACTOR_JOIN_PACKET, {
         handle: (payload, routeContext) =>
-          this.options.boundSessionRelay.receiveRemoteActorJoin(payload, routeContext)
+          this.options.boundSessionRelay.actorJoins.receive(payload, routeContext)
       }],
       [ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET, {
         handle: (payload, routeContext) =>
-          this.options.boundSessionRelay.receiveRemoteActorPacketRelay(payload, routeContext)
+          this.options.boundSessionRelay.actorPackets.receiveRemoteActorPacketRelay(payload, routeContext)
       }]
     ]);
   }

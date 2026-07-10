@@ -8,9 +8,9 @@ import {
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import { decodeStreamHeader } from '../streams/protocol';
-import type { ZLinkActorRoutedJoinTransport } from './actor-remote-joiner';
+import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
-import { ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET } from './actor-remote-wire';
+import { ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET } from './actor-packet-relay-wire';
 
 export const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 5_000;
 

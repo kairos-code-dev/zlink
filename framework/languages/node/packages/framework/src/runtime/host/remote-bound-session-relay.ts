@@ -1,5 +1,5 @@
 import { Message as BindingMessage } from '@zlink-systems/zlink';
-import type { ActorRef, ZLinkActor } from '../../contracts';
+import type { ActorRef, RoutingId, ZLinkActor } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import type { ZLinkBackendSpotNode } from '../backend';
 import {
@@ -15,15 +15,18 @@ import type { ZLinkActorResponseOptions } from '../spots/spot-actor-packet-dispa
 import {
   decodeRemoteBoundSessionErrorPayload,
   decodeRemoteBoundSessionResponsePayload,
-  decodeRemoteBoundSessionSendPayload,
-  encodeRemoteActorPacketTarget
-} from '../spots/route-wire-codec';
+  decodeRemoteBoundSessionSendPayload
+} from '../actors/bound-session-wire';
+import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
+import { decodeRoutingId as decodeWireRoutingId } from '../routing-id';
+import type { MeshRouterResolver } from './mesh-router-resolver';
 
 export interface ZLinkRemoteBoundSessionRelayOptions {
   readonly requestTimeoutMs?: number;
   readonly routeTransport: ZLinkActorRoutedJoinTransport;
   readonly streamBindingRuntime: () => ZLinkStreamBindingRuntime;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
+  readonly meshRouters: MeshRouterResolver;
   readonly primarySpotNode: () => ZLinkBackendSpotNode;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
   readonly boundSessionFactory: (actorId: string) => {
@@ -41,6 +44,8 @@ export interface ZLinkRemoteBoundSessionRelayOptions {
 }
 
 export class ZLinkRemoteBoundSessionRelay {
+  private readonly actorOwnershipGenerations = new Map<string, bigint>();
+
   constructor(private readonly options: ZLinkRemoteBoundSessionRelayOptions) {
   }
 
@@ -48,8 +53,22 @@ export class ZLinkRemoteBoundSessionRelay {
     actorId: string,
     message: unknown,
     packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>
+    metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef
   ): Promise<void> {
+    const ownershipGeneration = (actorRef as (ActorRef & { ownershipGeneration?: bigint }) | undefined)
+      ?.ownershipGeneration;
+    const currentGeneration = this.actorOwnershipGenerations.get(actorId);
+    if (
+      currentGeneration !== undefined &&
+      (ownershipGeneration === undefined || ownershipGeneration < currentGeneration)
+    ) return;
+    if (actorRef !== undefined) {
+      await this.options.streamBindingRuntime().refreshActor(actorRef);
+    }
+    if (ownershipGeneration !== undefined) {
+      this.actorOwnershipGenerations.set(actorId, ownershipGeneration);
+    }
     const sent = this.options.streamBindingRuntime().sendLocalBoundSession(actorId, message, packetName, metadata);
     if (sent) {
       return;
@@ -148,6 +167,50 @@ export class ZLinkRemoteBoundSessionRelay {
       new Map(Object.entries(response.metadata ?? {}))
     );
     return { ok: sent };
+  }
+
+  async receiveRemoteBoundSessionOwnership(payload: unknown): Promise<void> {
+    if (typeof payload !== 'object' || payload === null) {
+      throw new Error('Bound session ownership update payload must be an object.');
+    }
+    const value = payload as Record<string, unknown>;
+    if (
+      typeof value.actorId !== 'string' ||
+      typeof value.actorNodeRid !== 'string' ||
+      typeof value.actorGeneration !== 'string' ||
+      typeof value.actorOwnershipGeneration !== 'string'
+    ) {
+      throw new Error('Bound session ownership update is missing actor identity or generation.');
+    }
+    const actorRef = {
+      nodeRid: decodeWireRoutingId(value.actorNodeRid, value.actorNodeRidHex),
+      actorId: value.actorId,
+      generation: BigInt(value.actorGeneration)
+    } as ActorRef;
+    await this.options.streamBindingRuntime().refreshActor(actorRef);
+    this.actorOwnershipGenerations.set(value.actorId, BigInt(value.actorOwnershipGeneration));
+  }
+
+  rememberRemoteBoundSessionTarget(actorId: string, target: ZLinkRemoteBoundSessionTarget): void {
+    this.options.actorManager()?.getState(actorId)?.setRemoteBoundSessionTarget(target);
+  }
+
+  resolveRemoteBoundSessionTarget(
+    sourceNodeRid: RoutingId,
+    _sourceSessionRid: RoutingId
+  ): ZLinkRemoteBoundSessionTarget | undefined {
+    return this.options.meshRouters.remoteBoundSessionTargetForSource(sourceNodeRid);
+  }
+
+  actorPacketTargetForState(
+    actorId: string,
+    routerChannelIdHint?: string
+  ): ZLinkRemoteActorPacketTarget | undefined {
+    return this.options.actorPacketTargetForState(actorId, routerChannelIdHint);
+  }
+
+  clearOwnership(actorId: string): void {
+    this.actorOwnershipGenerations.delete(actorId);
   }
 
   async sendActorResponse(

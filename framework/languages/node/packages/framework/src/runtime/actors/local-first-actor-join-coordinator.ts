@@ -9,7 +9,7 @@ import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendSpotNode } from '../backend';
 import type { ZLinkLocationLifecycle } from '../locations';
 import type { DefaultZLinkSpotManager } from '../spots';
-import type { ZLinkActorJoinCoordinator } from './index';
+import type { ZLinkActorJoinCoordinator } from './actor-runtime-contracts';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import { ZLinkPostCommitActorBinder } from './post-commit-actor-binder';
 

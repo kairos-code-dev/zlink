@@ -1,7 +1,4 @@
-import type {
-  ActorRef,
-  ZLinkRuntimeEventPublisher
-} from '../../contracts';
+import type { ZLinkRuntimeEventPublisher } from '../../contracts';
 import type {
   DefaultZLinkActorManager,
   ZLinkActorHandoffCoordinator
@@ -25,7 +22,7 @@ import type {
   ZLinkSpotNodeRuntimeManager,
   ZLinkSpotRoutedTransport
 } from '../spots';
-import type { ZLinkActorRuntimeOptionsFactory } from './actor-runtime-options-factory';
+import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
 import type { ZLinkBoundSessionRelay } from './bound-session-relay';
 import type { MeshRouterResolver } from './mesh-router-resolver';
 
@@ -50,16 +47,13 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
 export class ZLinkSpotRuntimeOptionsFactory {
   constructor(private readonly options: ZLinkSpotRuntimeOptionsFactoryOptions) {}
 
-  create(actorRuntimeOptions: ZLinkActorRuntimeOptionsFactory): Partial<ZLinkSpotManagerOptions> {
+  create(actorTransferRuntime: ZLinkActorTransferRuntime): Partial<ZLinkSpotManagerOptions> {
     return {
       nodeRid: undefined,
       nodeRidProvider: () => this.primaryNode()?.routingId,
       entryNodeRid: undefined,
       entryNodeRidProvider: () => this.primaryNode()?.routingId,
-      actorEntryNodeRidProvider: (actor) => actorRuntimeOptions.actorEntryNodeRid(actor),
       entrySpotCallbacks: {
-        onJoinedActor: (actor, signal) =>
-          this.options.spotNodeRuntime()?.notifyPrimaryEntrySpotActorJoined(actor, signal) ?? Promise.resolve(),
         onLeaveActor: (actor, signal) =>
           this.options.spotNodeRuntime()?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve()
       },
@@ -83,90 +77,9 @@ export class ZLinkSpotRuntimeOptionsFactory {
         const state = this.options.actorManager()?.getState(actorId);
         return state?.isMoving === true ? undefined : state?.actor;
       },
-      routedActorProvider: (
-        actorId,
-        actorType,
-        actorRef,
-        remoteBoundSessionTarget,
-        actorCreateRequest,
-        signal
-      ) => actorRuntimeOptions.getOrCreateRoutedActor(
-        actorId,
-        actorType,
-        actorRef as ActorRef | undefined,
-        remoteBoundSessionTarget,
-        actorCreateRequest,
-        signal
-      ),
-      routedActorTransferProvider: (
-        actorId,
-        actorType,
-        adapterKey,
-        transferState,
-        remoteBoundSessionTarget,
-        signal
-      ) => actorRuntimeOptions.materializeRoutedActor(
-        actorId,
-        actorType,
-        adapterKey,
-        transferState,
-        remoteBoundSessionTarget,
-        signal
-      ),
-      routedActorFinalizer: (actor, spotRid) => actorRuntimeOptions.finalizeRoutedActor(
-        actor,
-        spotRid,
-        this.options.meshRouters.primarySpotMeshName() ?? ''
-      ),
-      routedActorCommitter: (actor, spotRid, spot) =>
-        actorRuntimeOptions.commitRoutedActor(actor, spotRid, spot),
-      routedActorLeaveCommitter: (actor) =>
-        actorRuntimeOptions.clearRoutedActor(
-          actor,
-          (actorId) => this.options.boundSessionRelay.clearRemoteActorPacketTarget(actorId)
-        ),
-      routedActorRollback: (actor) => actorRuntimeOptions.rollbackRoutedActor(actor),
-      routedBoundSessionReceiver: (actorId, message, packetName, metadata, actorRef) =>
-        this.options.boundSessionRelay.receiveRoutedBoundSession(actorId, message, packetName, metadata, actorRef),
-      routedBoundSessionResponseReceiver: (actorId, packetName, requestSeq, message, replyOptions, actorPacketTarget) =>
-        this.options.boundSessionRelay.receiveRoutedBoundSessionResponse(
-          actorId,
-          packetName,
-          requestSeq,
-          message,
-          replyOptions,
-          actorPacketTarget
-        ),
-      routedBoundSessionErrorReceiver: (actorId, packetName, requestSeq, error, metadata, actorPacketTarget) =>
-        this.options.boundSessionRelay.receiveRoutedBoundSessionError(
-          actorId,
-          packetName,
-          requestSeq,
-          error,
-          metadata,
-          actorPacketTarget
-        ),
-      routedBoundSessionOwnershipReceiver: (payload) =>
-        this.options.boundSessionRelay.receiveRemoteBoundSessionOwnership(payload),
-      remoteActorPacketTargetReceiver: (actorId, target) => {
-        const state = this.options.actorManager()?.getState(actorId);
-        state?.setRemoteBoundSessionTarget(target);
-      },
-      remoteBoundSessionTargetResolver: (sourceNodeRid) =>
-        this.options.meshRouters.remoteBoundSessionTargetForSource(sourceNodeRid),
-      actorPacketTargetProvider: (actorId) => this.options.boundSessionRelay.actorPacketTargetForState(actorId),
-      actorPacketHandoff: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
-        this.options.actorHandoff.capture(
-          actorId,
-          parts,
-          returnResponse,
-          remoteBoundSessionTarget,
-          fallbackActorRef
-        ),
-      actorResponseSender: (actor, packetName, requestSeq, response, replyOptions, signal) =>
-        this.options.boundSessionRelay.sendActorResponse(actor, packetName, requestSeq, response, replyOptions, signal),
-      actorErrorSender: (actorId, packetName, requestSeq, error, metadata, actorRef, signal) =>
-        this.options.boundSessionRelay.sendActorError(actorId, packetName, requestSeq, error, metadata, actorRef, signal),
+      actorTransferRuntime,
+      boundSessionRuntime: this.options.boundSessionRelay.boundSessions,
+      actorHandoffRuntime: this.options.actorHandoff,
       dispatchErrors: this.options.dispatchErrorReporter(this.options.runtimeOrPreStartErrorSink)
     };
   }

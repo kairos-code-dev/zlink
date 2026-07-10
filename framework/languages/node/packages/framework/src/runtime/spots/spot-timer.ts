@@ -17,6 +17,7 @@ import {
   ZLinkTimerOverrunPolicy
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
+import { throwIfAborted } from '../abort';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { createProviderInstance } from './spot-provider';
 
@@ -338,10 +339,4 @@ function exceptionType(cause: unknown): string {
 
 function exceptionMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
 }

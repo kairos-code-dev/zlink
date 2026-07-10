@@ -1,7 +1,6 @@
 import type {
   RoutingId,
   Type,
-  ZLinkActor,
   ZLinkSpot,
   ZLinkSpotCreateResult,
   ZLinkSpotInfo
@@ -11,35 +10,32 @@ import {
   ZLinkFrameworkException,
   ZLinkSpotCreateState
 } from '../../contracts';
-import type { ZLinkBackendSpot } from '../backend/contracts';
-import type { ZLinkSpotActorHandlerRegistryRuntime } from '../actors';
-import type { DefaultZLinkSpotHandlerRegistry } from './spot-handler-registry';
-import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
-import type { ZLinkSpotTimerRegistry } from './spot-timer';
-
-export interface ZLinkSpotActivation {
-  readonly spotRid: RoutingId;
-  readonly spotType: Type<ZLinkSpot>;
-  readonly spot: ZLinkSpot;
-  readonly serial: ZLinkSpotSerialExecutor;
-  readonly timers: ZLinkSpotTimerRegistry;
-  readonly actors: Map<string, ZLinkActor>;
-  readonly leftActors: Set<string>;
-  readonly actorHandlers: ZLinkSpotActorHandlerRegistryRuntime;
-  readonly handlers: DefaultZLinkSpotHandlerRegistry;
-  readonly actorCount: () => number;
-  readonly nativeSpot?: ZLinkBackendSpot;
-}
+import type { ZLinkSpotActivation } from './spot-activation-state';
+import { ZLinkConfigurationException } from '../configuration';
+export { ZLinkSpotActivation } from './spot-activation-state';
 
 interface PendingSpotActivation {
   readonly spotType: Type<ZLinkSpot>;
   readonly ready: Promise<ZLinkSpotCreateResult>;
 }
 
+export interface ZLinkSpotActivationOperation {
+  readonly owner: boolean;
+  readonly ready: Promise<ZLinkSpotCreateResult>;
+}
+
+export interface ZLinkSpotCloseOperation {
+  readonly activation: ZLinkSpotActivation;
+  readonly ready: Promise<void>;
+  readonly started: boolean;
+}
+
 export class ZLinkSpotActivationRegistry {
   private nextId = 1;
   private readonly activations = new Map<string, ZLinkSpotActivation>();
   private readonly pending = new Map<string, PendingSpotActivation>();
+  private readonly closing = new Map<string, ZLinkSpotCloseOperation>();
+  private readonly failedClose = new Set<string>();
 
   allocateSpotRid(): RoutingId {
     let spotRid: RoutingId;
@@ -51,39 +47,95 @@ export class ZLinkSpotActivationRegistry {
   }
 
   resolve(spotRid: RoutingId): ZLinkSpotActivation | undefined {
-    return this.activations.get(spotActivationKey(spotRid));
+    const key = spotActivationKey(spotRid);
+    return this.closing.has(key) || this.failedClose.has(key) ? undefined : this.activations.get(key);
   }
 
   has(spotRid: RoutingId): boolean {
-    return this.activations.has(spotActivationKey(spotRid));
+    const key = spotActivationKey(spotRid);
+    return !this.closing.has(key) && !this.failedClose.has(key) && this.activations.has(key);
   }
 
   list(): readonly ZLinkSpotInfo[] {
     return [...this.activations.values()]
+      .filter((activation) => {
+        const key = spotActivationKey(activation.spotRid);
+        return !this.closing.has(key) && !this.failedClose.has(key);
+      })
       .map((activation) => String(activation.spotRid))
       .sort((left, right) => left.localeCompare(right))
       .map((spotRid) => ({ spotRid }));
   }
 
   register(activation: ZLinkSpotActivation): void {
-    this.activations.set(spotActivationKey(activation.spotRid), activation);
+    const key = spotActivationKey(activation.spotRid);
+    if (this.activations.has(key)) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotTypeMismatch,
+        `Spot '${activation.spotRid}' was activated more than once.`
+      );
+    }
+    this.activations.set(key, activation);
   }
 
-  takeClosable(spotRid: RoutingId): ZLinkSpotActivation | undefined {
+  startClose(
+    spotRid: RoutingId,
+    close: (activation: ZLinkSpotActivation) => Promise<void>,
+    resourcesReleased: (activation: ZLinkSpotActivation) => boolean
+  ): ZLinkSpotCloseOperation | undefined {
     const key = spotActivationKey(spotRid);
+    const closing = this.closing.get(key);
+    if (closing !== undefined) {
+      return { ...closing, started: false };
+    }
     const activation = this.activations.get(key);
-    if (activation === undefined || activation.actorCount() > 0) {
+    if (activation === undefined || !activation.canClose()) {
       return undefined;
     }
-    this.activations.delete(key);
-    return activation;
+    const operation = {} as ZLinkSpotCloseOperation;
+    let completed = false;
+    const ready = Promise.resolve()
+      .then(() => close(activation))
+      .then(() => { completed = true; })
+      .finally(() => {
+        if (this.closing.get(key) === operation) {
+          this.closing.delete(key);
+          if (completed || resourcesReleased(activation)) {
+            this.activations.delete(key);
+            this.failedClose.delete(key);
+          } else {
+            this.failedClose.add(key);
+          }
+        }
+      });
+    Object.assign(operation, { activation, ready, started: true });
+    this.closing.set(key, operation);
+    return operation;
   }
 
-  async existingOrPendingResult(
+  getOrBegin(
     spotType: Type<ZLinkSpot>,
-    spotRid: RoutingId
-  ): Promise<ZLinkSpotCreateResult | undefined> {
+    spotRid: RoutingId,
+    create: () => Promise<ZLinkSpotCreateResult>
+  ): ZLinkSpotActivationOperation {
     const key = spotActivationKey(spotRid);
+    const closing = this.closing.get(key);
+    if (closing !== undefined) {
+      return {
+        owner: false,
+        ready: closing.ready
+          .catch(() => undefined)
+          .then(() => this.getOrBegin(spotType, spotRid, create).ready)
+      };
+    }
+    if (this.failedClose.has(key)) {
+      return {
+        owner: false,
+        ready: Promise.reject(new ZLinkConfigurationException(
+          `Spot '${spotRid}' cleanup has not completed.`
+        ))
+      };
+    }
     const existing = this.activations.get(key);
     if (existing !== undefined) {
       if (existing.spotType !== spotType) {
@@ -92,12 +144,23 @@ export class ZLinkSpotActivationRegistry {
           `Spot '${spotRid}' already exists with a different spot type.`
         );
       }
-      return { spotRid, state: ZLinkSpotCreateState.Existing };
+      return {
+        owner: false,
+        ready: Promise.resolve({ spotRid, state: ZLinkSpotCreateState.Existing })
+      };
     }
 
     const pending = this.pending.get(key);
     if (pending === undefined) {
-      return undefined;
+      const ready = Promise.resolve().then(create);
+      const pending: PendingSpotActivation = { spotType, ready };
+      this.pending.set(key, pending);
+      const tracked = ready.finally(() => {
+        if (this.pending.get(key) === pending) {
+          this.pending.delete(key);
+        }
+      });
+      return { owner: true, ready: tracked };
     }
     if (pending.spotType !== spotType) {
       throw new ZLinkFrameworkException(
@@ -105,24 +168,12 @@ export class ZLinkSpotActivationRegistry {
         `Spot '${spotRid}' is being created with a different spot type.`
       );
     }
-    const result = await pending.ready;
-    return result.state === ZLinkSpotCreateState.Created
-      ? { spotRid, state: ZLinkSpotCreateState.Existing }
-      : { spotRid, state: result.state, reply: result.reply };
-  }
-
-  async trackPending(
-    spotType: Type<ZLinkSpot>,
-    spotRid: RoutingId,
-    ready: Promise<ZLinkSpotCreateResult>
-  ): Promise<ZLinkSpotCreateResult> {
-    const key = spotActivationKey(spotRid);
-    this.pending.set(key, { spotType, ready });
-    try {
-      return await ready;
-    } finally {
-      this.pending.delete(key);
-    }
+    return {
+      owner: false,
+      ready: pending.ready.then((result) => result.state === ZLinkSpotCreateState.Created
+        ? { spotRid, state: ZLinkSpotCreateState.Existing }
+        : { spotRid, state: result.state, reply: result.reply })
+    };
   }
 }
 

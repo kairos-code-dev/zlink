@@ -1,24 +1,19 @@
 import type {
   ActorRef,
   RoutingId,
-  Type,
-  ZLinkProviderResolver,
   ZLinkActor,
   ZLinkActorDirectory,
-  ZLinkActorFactory,
-  ZLinkActorJoinResult,
-  ZLinkActorManager,
-  ZLinkBoundSession
+  ZLinkActorManager
 } from '../../contracts';
-import type { Message } from '../../contracts/Common/Message';
 import {
   ZLinkEncodedPayload,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
-import { ZLinkMessage, type ZLinkMessageSerializer } from '../../contracts';
+import { ZLinkMessage } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
+import { throwIfAborted } from '../abort';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpotNode
@@ -32,8 +27,6 @@ export {
 import {
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
-import type { ZLinkLocationLifecycle } from '../locations';
-import type { ZLinkActorTransferRegistry } from './actor-transfer-registry';
 export { DefaultZLinkActorContext } from './actor-context';
 import {
   ZLinkActorCreationCoordinator,
@@ -74,64 +67,32 @@ export {
 } from './spot-actor-dispatch';
 export {
   ZLinkActorNativeJoinCoordinator,
-  type ZLinkActorNativeJoinCoordinatorOptions,
-  type ZLinkActorRoutedJoinTransport
+  type ZLinkActorNativeJoinCoordinatorOptions
 } from './actor-remote-joiner';
+export type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
+export type {
+  ZLinkActorBoundSessionFactory,
+  ZLinkActorJoinCoordinator,
+  ZLinkActorManagerOptions
+} from './actor-runtime-contracts';
+import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 export {
   ZLinkActorTransferRegistry,
   type ZLinkActorTransferState
 } from './actor-transfer-registry';
 export {
-  ZLINK_REMOTE_ACTOR_JOIN_PACKET,
+  ZLINK_REMOTE_ACTOR_JOIN_PACKET
+} from './actor-remote-wire';
+export {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
-  ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
+  ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET
+} from './actor-packet-relay-wire';
+export {
   ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
-} from './actor-remote-wire';
-
-export interface ZLinkActorManagerOptions {
-  readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
-  readonly joinCoordinator?: ZLinkActorJoinCoordinator;
-  readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
-  readonly nativeActorNode?: ZLinkBackendSpotNode;
-  readonly nativeActorNodeProvider?: () => ZLinkBackendSpotNode | undefined;
-  readonly actorCreatedNodeRidProvider?: () => RoutingId | undefined;
-  readonly actorCreatedNotifier?: (
-    nodeRid: RoutingId,
-    actor: ZLinkActor,
-    createRequest: ZLinkMessage,
-    signal?: AbortSignal
-  ) => Promise<void>;
-  readonly actorDestroyedCleanup?: (actorId: string) => void;
-  readonly locationLifecycle?: ZLinkLocationLifecycle;
-  readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
-  readonly providerResolver?: ZLinkProviderResolver;
-  readonly actorTransferRegistry?: ZLinkActorTransferRegistry;
-  readonly shutdownSignal?: AbortSignal;
-}
-
-export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
-
-export interface ZLinkActorJoinCoordinator {
-  joinSpot(
-    actor: ZLinkActor,
-    state: ZLinkActorRuntimeState,
-    spotRid: RoutingId,
-    request: Message,
-    timeoutMs: number | undefined,
-    signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>>;
-  joinEntrySpot(
-    actor: ZLinkActor,
-    state: ZLinkActorRuntimeState,
-    nodeRid: RoutingId,
-    request: Message,
-    timeoutMs: number | undefined,
-    signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult<Message>>;
-}
+} from './bound-session-wire';
 
 export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDirectory {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
@@ -461,11 +422,6 @@ function delayUnlessAborted(delayMs: number, signal: AbortSignal | undefined): P
   });
 }
 
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) {
-    throw new Error('The operation was aborted.');
-  }
-}
 
 function normalizeCreateRequestArgs(
   signalOrRequest: AbortSignal | unknown,

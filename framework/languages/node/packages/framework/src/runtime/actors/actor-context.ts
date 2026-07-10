@@ -30,7 +30,7 @@ import {
 import type {
   ZLinkActorBoundSessionFactory,
   ZLinkActorJoinCoordinator
-} from './index';
+} from './actor-runtime-contracts';
 
 export class DefaultZLinkActorContext implements ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;

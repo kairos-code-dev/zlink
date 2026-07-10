@@ -16,6 +16,7 @@ CONFIGS=(
   ResilienceLifecycle
   RuntimeMonitoring
   SpotService
+  SpotActorTransfer
   StoreFailure
   ToActorMessaging
   YieldDispatch

@@ -23,6 +23,7 @@ builder.Logging.AddSimpleConsole(console =>
 builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
 builder.Services.AddSingleton<JoinedGateStore>();
+builder.Services.AddSingleton<TransferGateStore>();
 builder.Services.AddTransient<TransferActorAdapter>();
 builder.Services.AddZLinkFramework(framework =>
 {
@@ -75,6 +76,12 @@ app.MapPost("/joined-gates/{spotRid}/release", (
     JoinedGateStore gates) =>
 {
     return Results.Ok(new GateReleaseRes(spotRid, gates.Release(spotRid)));
+});
+app.MapPost("/transfer-gates/{actorId}/release", (
+    string actorId,
+    TransferGateStore gates) =>
+{
+    return Results.Ok(new GateReleaseRes(actorId, gates.Release(actorId)));
 });
 app.MapPost("/spots", async (
     CreateSpotReq request,
@@ -212,10 +219,12 @@ namespace SpotActorTransfer.ActorNode
         }
     }
 
-    internal sealed class TransferActorAdapter(EvidenceStore evidence)
+    internal sealed class TransferActorAdapter(
+        EvidenceStore evidence,
+        TransferGateStore transferGates)
         : IZLinkActorTransferAdapter<TransferActor>
     {
-        public ValueTask<ZLinkMessage> TransferOutAsync(
+        public async ValueTask<ZLinkMessage> TransferOutAsync(
             TransferActor actor,
             CancellationToken cancellationToken)
         {
@@ -227,7 +236,14 @@ namespace SpotActorTransfer.ActorNode
             }
 
             evidence.Add("transfer", actor.ActorId, "transfer_out", actor.StateVersion.ToString());
-            return ValueTask.FromResult(ZLinkMessage.From(new TransferStateDto(actor.ActorId, actor.StateVersion)));
+            if (actor.ActorId.StartsWith("actor-source-down-before-commit-", StringComparison.Ordinal))
+            {
+                evidence.Add("ST-C1", actor.ActorId, "before_commit_gate", actor.StateVersion.ToString());
+                await transferGates.WaitAsync(actor.ActorId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return ZLinkMessage.From(new TransferStateDto(actor.ActorId, actor.StateVersion));
         }
 
         public ValueTask<TransferActor> TransferInAsync(

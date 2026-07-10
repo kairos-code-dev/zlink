@@ -93,6 +93,15 @@ start_node() {
   pids+=("$!")
 }
 
+run_client() {
+  local scenario="$1"
+  dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+    --node-a-url "$NODE_A_URL" \
+    --node-b-url "$NODE_B_URL" \
+    --scenario "$scenario" \
+    >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
+}
+
 zlink_redis_start_scoped_assign \
   REDIS_CONTAINER \
   REDIS_ENDPOINT \
@@ -122,10 +131,23 @@ wait_health "$NODE_A_URL" actor-a
 wait_health "$NODE_B_URL" actor-b
 sleep 5
 
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
-  --node-a-url "$NODE_A_URL" \
-  --node-b-url "$NODE_B_URL" \
-  --scenario "$SCENARIO" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+: >"$LOG_DIR/client.stdout.log"
+: >"$LOG_DIR/client.stderr.log"
+
+if [[ "$SCENARIO" == "all" ]]; then
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3"
+  run_client "ST-C2"
+  sleep 1
+  NODE_A_HTTP_PORT="$(pick_port)"
+  NODE_A_ROUTER_PORT="$(pick_port)"
+  NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
+  NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
+  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
+  wait_health "$NODE_A_URL" actor-a
+  sleep 5
+  run_client "ST-C1"
+else
+  run_client "$SCENARIO"
+fi
 
 cat "$LOG_DIR/client.stdout.log"

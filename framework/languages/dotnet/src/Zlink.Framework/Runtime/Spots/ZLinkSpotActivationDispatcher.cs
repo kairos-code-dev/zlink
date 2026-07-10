@@ -198,6 +198,14 @@ internal sealed class ZLinkSpotActivationDispatcher
         if (!string.Equals(
                 header.MessageName,
                 ZLinkRemoteActorJoinPackets.RequestPacketName,
+                StringComparison.Ordinal)
+            && !string.Equals(
+                header.MessageName,
+                ZLinkRemoteActorJoinPackets.AdmissionPacketName,
+                StringComparison.Ordinal)
+            && !string.Equals(
+                header.MessageName,
+                ZLinkRemoteActorJoinPackets.CommitPacketName,
                 StringComparison.Ordinal))
             return false;
 
@@ -212,30 +220,46 @@ internal sealed class ZLinkSpotActivationDispatcher
             return true;
         }
 
-        ZLinkRemoteActorJoinReply reply;
         try
         {
+            if (string.Equals(header.MessageName, ZLinkRemoteActorJoinPackets.AdmissionPacketName, StringComparison.Ordinal))
+            {
+                var admissionRequest = ZLinkRemoteActorJoinPackets.DecodeAdmissionRequest(received.Parts);
+                var admissionReply = await runtime.AdmitRoutedActorJoinAsync(
+                        nativeSpot.RoutingId,
+                        admissionRequest,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                var admissionReplyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
+                    channelName,
+                    header.MessageName,
+                    header.CorrelationId,
+                    admissionReply,
+                    typeof(ZLinkRemoteActorAdmissionReply));
+                ZLinkSpotReplySubmitter.SubmitAndDispose(received, admissionReplyParts);
+                return true;
+            }
+
             var joinRequest = ZLinkRemoteActorJoinPackets.DecodeJoinRequest(received.Parts);
-            reply = await runtime.JoinRoutedActorAsync(
-                    nativeSpot.RoutingId,
-                    joinRequest,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            var reply = await runtime.JoinRoutedActorAsync(
+                nativeSpot.RoutingId,
+                joinRequest,
+                cancellationToken)
+            .ConfigureAwait(false);
+            var replyParts = ZLinkRemoteActorJoinPackets.EncodeJoinReplyEnvelope(
+                channelName,
+                header.MessageName,
+                header.CorrelationId,
+                reply);
+            ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
+
+            return true;
         }
         catch (Exception ex)
         {
             ReplyInternalRouteError(received, header, ex);
             return true;
         }
-
-        var replyParts = ZLinkRemoteActorJoinPackets.EncodeJoinReplyEnvelope(
-            channelName,
-            header.MessageName,
-            header.CorrelationId,
-            reply);
-        ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
-
-        return true;
     }
 
     private void ReplyInternalRouteError(

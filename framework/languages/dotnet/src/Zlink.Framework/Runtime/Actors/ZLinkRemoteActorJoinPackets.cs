@@ -3,8 +3,35 @@ namespace Zlink.Framework.Runtime.Actors;
 internal static class ZLinkRemoteActorJoinPackets
 {
     public const string RequestPacketName = "__zlink.actor.join_spot.request";
+    public const string AdmissionPacketName = "__zlink.actor.join_spot.admission";
+    public const string CommitPacketName = "__zlink.actor.join_spot.commit";
     public const string BoundSessionBindPacketName = "zlink.framework.actor.bound_session.bind";
     public const string SessionDisconnectedPacketName = "zlink.framework.actor.session_disconnected";
+
+    public static IReadOnlyList<Message> EncodeAdmissionRequest(
+        ZLinkEnvelopeHeader header,
+        string actorId,
+        string actorType,
+        RoutingId sourceSpotRid,
+        RoutingId sourceNodeRid,
+        ZLinkMessage request,
+        ZLinkCodecRegistryBuilder codecs)
+    {
+        var encodedRequest = request.Encode(codecs);
+        var payload = new ZLinkRemoteActorAdmissionRequest(
+            actorId,
+            actorType,
+            sourceSpotRid.ToBytes().ToArray(),
+            sourceNodeRid.ToBytes().ToArray(),
+            encodedRequest.ContentType,
+            encodedRequest.Payload.ToArray());
+
+        return ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            payload,
+            typeof(ZLinkRemoteActorAdmissionRequest),
+            null);
+    }
 
     public static IReadOnlyList<Message> EncodeJoinRequest(
         ZLinkEnvelopeHeader header,
@@ -43,6 +70,14 @@ internal static class ZLinkRemoteActorJoinPackets
                ?? throw new InvalidOperationException("Remote actor join request was empty.");
     }
 
+    public static ZLinkRemoteActorAdmissionRequest DecodeAdmissionRequest(IReadOnlyList<Message> parts)
+    {
+        return (ZLinkRemoteActorAdmissionRequest?)ZLinkEnvelopeCodec.DecodeBody(
+                   parts,
+                   typeof(ZLinkRemoteActorAdmissionRequest))
+               ?? throw new InvalidOperationException("Remote actor admission request was empty.");
+    }
+
     public static ZLinkRemoteActorBoundSessionRoute DecodeBoundSessionRoute(ZLinkRemoteActorJoinRequest request)
     {
         return new ZLinkRemoteActorBoundSessionRoute(
@@ -52,6 +87,16 @@ internal static class ZLinkRemoteActorJoinPackets
 
     public static ZLinkMessage DecodeJoinRequestPayload(
         ZLinkRemoteActorJoinRequest request,
+        ZLinkCodecRegistryBuilder codecs)
+    {
+        return DecodeJoinRequestPayload(
+            request.RequestContentType,
+            request.Request,
+            codecs);
+    }
+
+    public static ZLinkMessage DecodeAdmissionRequestPayload(
+        ZLinkRemoteActorAdmissionRequest request,
         ZLinkCodecRegistryBuilder codecs)
     {
         return DecodeJoinRequestPayload(
@@ -109,6 +154,29 @@ internal static class ZLinkRemoteActorJoinPackets
         }
     }
 
+    public static ZLinkRemoteActorAdmissionReply CreateAdmissionReply(
+        bool accepted,
+        ZLinkMessage? reply,
+        ZLinkCodecRegistryBuilder codecs)
+    {
+        var replyContentType = ZLinkEnvelopeCodec.DefaultContentType;
+        Message? encodedReply = null;
+        if (reply is not null)
+        {
+            var encoded = reply.Encode(codecs);
+            replyContentType = encoded.ContentType;
+            encodedReply = Message.From(encoded.Payload.Bytes.Span);
+        }
+
+        using (encodedReply)
+        {
+            return new ZLinkRemoteActorAdmissionReply(
+                accepted,
+                replyContentType,
+                encodedReply?.ToArray() ?? Array.Empty<byte>());
+        }
+    }
+
     public static IReadOnlyList<Message> EncodeJoinReplyEnvelope(
         string channelName,
         string messageName,
@@ -135,8 +203,31 @@ internal static class ZLinkRemoteActorJoinPackets
             null);
     }
 
+    public static ZLinkRemoteActorAdmissionReply DecodeAdmissionReplyAndDispose(
+        IReadOnlyList<Message> parts,
+        string actorId,
+        RoutingId targetSpotRid)
+    {
+        return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorAdmissionReply>(
+            parts,
+            "Remote actor admission reply was empty.",
+            $"Remote actor admission failed for '{actorId}' to SPOT '{targetSpotRid}'.",
+            null);
+    }
+
     public static ZLinkMessage DecodeJoinReplyPayload(
         ZLinkRemoteActorJoinReply reply,
+        ZLinkCodecRegistryBuilder codecs)
+    {
+        using var payload = Message.From(reply.Reply);
+        return ZLinkMessage.FromEnvelopePayload(
+            reply.ReplyContentType,
+            payload,
+            codecs);
+    }
+
+    public static ZLinkMessage DecodeAdmissionReplyPayload(
+        ZLinkRemoteActorAdmissionReply reply,
         ZLinkCodecRegistryBuilder codecs)
     {
         using var payload = Message.From(reply.Reply);
@@ -163,6 +254,19 @@ internal static class ZLinkRemoteActorJoinPackets
 internal readonly record struct ZLinkRemoteActorBoundSessionRoute(
     RoutingId? NodeRid,
     RoutingId? SessionRid);
+
+internal sealed record ZLinkRemoteActorAdmissionRequest(
+    string ActorId,
+    string ActorType,
+    byte[] SourceSpotRid,
+    byte[] SourceNodeRid,
+    string RequestContentType,
+    byte[] Request);
+
+internal sealed record ZLinkRemoteActorAdmissionReply(
+    bool Accepted,
+    string ReplyContentType,
+    byte[] Reply);
 
 internal sealed record ZLinkRemoteActorJoinRequest(
     string ActorId,

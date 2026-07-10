@@ -15,7 +15,8 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["ST-B4"] = RunRemoteStatelessTransferAsync,
     ["ST-D1"] = RunLocationCommitTimingAsync,
     ["ST-C3"] = RunCallbackFailureClassificationAsync,
-    ["ST-C2"] = RunSourceDownAfterTargetCommitAsync
+    ["ST-C2"] = RunSourceDownAfterTargetCommitAsync,
+    ["ST-C1"] = RunSourceDownBeforeCommitAsync
 };
 
 foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Keys))
@@ -208,6 +209,40 @@ async Task RunSourceDownAfterTargetCommitAsync()
     await WaitEvidenceAsync(nodeB, [
         $"ST-C2|{actorId}|packet_handler|after-source-down"
     ]);
+}
+
+async Task RunSourceDownBeforeCommitAsync()
+{
+    var actorId = $"actor-source-down-before-commit-{Guid.NewGuid():N}";
+    var spotRid = $"spot-source-down-before-commit-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 62);
+
+    var joinTask = JoinRawAsync(nodeA, actorId, new JoinTargetReq("ST-C1", spotRid));
+    await WaitEvidenceAsync(nodeB, [
+        $"ST-C1|{actorId}|admission|spot={spotRid}"
+    ]);
+    await WaitEvidenceAsync(nodeA, [
+        $"transfer|{actorId}|transfer_out|62",
+        $"ST-C1|{actorId}|before_commit_gate|62"
+    ]);
+
+    await ShutdownAsync(nodeA);
+    try
+    {
+        var response = await joinTask.WaitAsync(TimeSpan.FromSeconds(3));
+        Require(!response.Accepted, "ST-C1 join should not be accepted after source shutdown before commit.");
+    }
+    catch (Exception ex) when (ex is TimeoutException or InvalidOperationException or HttpRequestException)
+    {
+        // Source shutdown may abort the HTTP request before the app endpoint can return a failure body.
+    }
+
+    await Task.Delay(TimeSpan.FromSeconds(5));
+    var targetEvidence = await GetEvidenceAsync(nodeB);
+    RequireNoContains(targetEvidence, $"transfer|{actorId}|transfer_in|62", "ST-C1 target should not transfer in without commit.");
+    RequireNoContains(targetEvidence, $"transfer|{actorId}|joined|{spotRid}", "ST-C1 target should not join without commit.");
+    RequireNoContains(targetEvidence, $"ST-C1|{actorId}|packet_handler|", "ST-C1 target should not dispatch actor packets without commit.");
 }
 
 async Task RunCallbackFailureClassificationAsync()

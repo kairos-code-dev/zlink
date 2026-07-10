@@ -119,17 +119,45 @@ internal sealed partial class ZLinkFrameworkRuntime
         var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
         BindRemoteBoundSessionRoute(actorId, actorRef, boundRoute.NodeRid, boundRoute.SessionRid);
 
-        var result = await activation.JoinActorAsync(
+        await activation.CommitTransferredActorJoinAsync(
                 creation.Actor,
-                ZLinkRemoteActorJoinPackets.DecodeJoinRequestPayload(
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return ZLinkRemoteActorJoinPackets.CreateJoinReply(
+            true,
+            actorRef,
+            ZLinkMessage.Empty,
+            Registration.Codecs);
+    }
+
+    internal async ValueTask<ZLinkRemoteActorAdmissionReply> AdmitRoutedActorJoinAsync(
+        RoutingId spotRid,
+        ZLinkRemoteActorAdmissionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
+                             .ConfigureAwait(false)
+                         ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
+
+        if (!ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor type '{request.ActorType}' is not registered for remote actor transfer.");
+
+        var result = await activation.AdmitRemoteActorJoinAsync(
+                request.ActorId,
+                transfer.ActorType,
+                RoutingId.From(request.SourceSpotRid),
+                RoutingId.From(request.SourceNodeRid),
+                ZLinkRemoteActorJoinPackets.DecodeAdmissionRequestPayload(
                     request,
                     Registration.Codecs),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return ZLinkRemoteActorJoinPackets.CreateJoinReply(
+        return ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
             result.Accepted,
-            actorRef,
             result.Reply,
             Registration.Codecs);
     }

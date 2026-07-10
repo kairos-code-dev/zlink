@@ -96,3 +96,24 @@ internal sealed class JoinedGateStore
         return gate.TrySetResult();
     }
 }
+
+internal sealed class TransferGateStore
+{
+    private readonly ConcurrentDictionary<string, TaskCompletionSource> _gates = new(StringComparer.Ordinal);
+
+    public Task WaitAsync(string actorId, CancellationToken cancellationToken)
+    {
+        var gate = _gates.GetOrAdd(
+            actorId,
+            static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        return gate.Task.WaitAsync(cancellationToken);
+    }
+
+    public bool Release(string actorId)
+    {
+        var gate = _gates.GetOrAdd(
+            actorId,
+            static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        return gate.TrySetResult();
+    }
+}

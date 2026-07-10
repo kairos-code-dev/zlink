@@ -69,6 +69,39 @@ internal sealed class ZLinkActorRemoteJoiner(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor type '{actorState.ActorType}' is not registered for remote actor transfer.");
 
+        var sourceSpotRid = ResolveSourceSpotRid(actorState);
+
+        var admissionHeader = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            routerChannelId,
+            ZLinkRemoteActorJoinPackets.AdmissionPacketName,
+            registration.DefaultRequestTimeout);
+        var admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
+            admissionHeader,
+            actor.ActorId,
+            actorState.ActorType,
+            sourceSpotRid,
+            actorRef.NodeRid,
+            request,
+            registration.Codecs);
+        var admissionReplyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                routerChannelId,
+                targetNodeRid,
+                targetSpotRid,
+                admissionParts,
+                registration.DefaultRequestTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var admissionReply = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyAndDispose(
+            admissionReplyParts,
+            actor.ActorId,
+            targetSpotRid);
+        var admissionReplyMessage = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyPayload(
+            admissionReply,
+            registration.Codecs);
+        if (!admissionReply.Accepted)
+            return new ZLinkActorJoinResult(false, null, admissionReplyMessage);
+
         var transferState = await ZLinkActorTransferRegistry.TransferOutAsync(
                 services,
                 transfer,
@@ -82,7 +115,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             routerChannelId,
-            ZLinkRemoteActorJoinPackets.RequestPacketName,
+            ZLinkRemoteActorJoinPackets.CommitPacketName,
             registration.DefaultRequestTimeout);
         actorState.TryGetBoundSession(out var boundSession);
         var parts = ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
@@ -119,7 +152,18 @@ internal sealed class ZLinkActorRemoteJoiner(
         return new ZLinkActorJoinResult(
             reply.Accepted,
             reply.Accepted ? resultActorRef.ToNative() : null,
-            replyMessage);
+            admissionReplyMessage);
+    }
+
+    private RoutingId ResolveSourceSpotRid(ZLinkActorRuntimeState actorState)
+    {
+        if (actorState.LiveActivation is { } activation) return activation.SpotRid;
+
+        foreach (var spotNode in registration.SpotNodes.Values)
+            if (spotNode.EntrySpotOptions.RoutingId.Size > 0)
+                return spotNode.EntrySpotOptions.RoutingId;
+
+        return actorState.NativeActorRef?.NodeRid ?? default;
     }
 
     private async ValueTask ApplyRemoteActorMigrationAsync(
@@ -128,6 +172,11 @@ internal sealed class ZLinkActorRemoteJoiner(
         ZLinkBackendActorRef targetActorRef,
         CancellationToken cancellationToken)
     {
+        if (ZLinkBoundSessionDispatchScope.TryDefer(
+                actorState.ActorId,
+                ct => ApplyRemoteActorMigrationCoreAsync(actor, actorState, targetActorRef, ct)))
+            return;
+
         await ApplyRemoteActorMigrationCoreAsync(actor, actorState, targetActorRef, cancellationToken)
             .ConfigureAwait(false);
     }

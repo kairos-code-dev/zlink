@@ -49,6 +49,19 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
+    public Duration actorTransferForwardWindow() {
+        return registration.actorTransferForwardWindow();
+    }
+
+    @Override
+    public void setActorTransferForwardWindow(Duration window) {
+        if (window == null || window.isNegative()) {
+            throw new ZLinkConfigurationException("window must be zero or positive");
+        }
+        registration.setActorTransferForwardWindow(window);
+    }
+
+    @Override
     public ZLinkCodecRegistryBuilder codecs() {
         return registration.codecs();
     }

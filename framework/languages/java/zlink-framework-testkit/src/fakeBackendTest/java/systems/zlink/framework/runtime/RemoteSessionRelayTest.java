@@ -20,6 +20,7 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.testkit.TestZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -89,7 +90,7 @@ final class RemoteSessionRelayTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class GameSpot extends TestZLinkSpot<ZLinkActor> {
         static int disconnectCount;
 
         @Override
@@ -99,7 +100,7 @@ final class RemoteSessionRelayTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
             return ZLinkSpotActorJoinResponse.accept("joined");

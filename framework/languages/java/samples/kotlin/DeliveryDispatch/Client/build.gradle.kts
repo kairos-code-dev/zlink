@@ -4,8 +4,8 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":Shared"))
-    implementation(project(":Server:Configuration"))
+    implementation(project("${path.substringBeforeLast(":Client")}:Shared"))
+    implementation(project("${path.substringBeforeLast(":Client")}:Server:Configuration"))
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
     implementation(zlinkLibs.zlink.bindings)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2")

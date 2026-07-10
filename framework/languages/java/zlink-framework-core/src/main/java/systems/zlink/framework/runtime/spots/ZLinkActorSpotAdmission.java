@@ -5,10 +5,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.List;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
@@ -20,13 +22,20 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 final class ZLinkActorSpotAdmission {
     record RoutedJoin(
         ZLinkBackendActorRef actorRef,
-        ZLinkSpotActorJoinResponse response) {
+        ZLinkSpotActorJoinResponse response,
+        List<Message> handoffReplies) {
     }
 
     private ZLinkActorRuntime actors;
+    private final ZLinkPendingActorTransfers pendingTransfers =
+        new ZLinkPendingActorTransfers();
 
     void attach(ZLinkActorRuntime actors) {
         this.actors = actors;
+    }
+
+    void traceTransferMarker(String marker, String actorId, long arrivalIndex) {
+        requireActors().traceActorTransferMarker(marker, actorId, Long.toString(arrivalIndex));
     }
 
     CompletionStage<Void> destroyFromEntry(RoutingId nodeRid, ZLinkActor actor) {
@@ -69,150 +78,141 @@ final class ZLinkActorSpotAdmission {
     CompletionStage<ZLinkSpotActorJoinResponse> admitEntryActor(
         ZLinkBackendActorJoinRequest request,
         RoutingId spotRid,
-        Function<ZLinkActor, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
+        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
-        ZLinkActorRuntime runtime = requireActors();
-        return runtime.getOrCreateLocalActor(request.targetActor().actorId(), ZLinkActor.class)
-            .thenCompose(actor -> actor
-                .map(value -> admitLocalActor(
-                    value,
-                    request.targetActor(),
-                    spotRid,
-                    null,
-                    callback,
-                    joinedCallback))
-                .orElseGet(() -> CompletableFuture.failedFuture(
-                    new ZLinkConfigurationException(
-                        "Entry Spot actor join target actor is not available: "
-                            + request.targetActor().actorId()))));
+        return admitNativeActor(request, spotRid, null, callback, joinedCallback);
     }
 
     CompletionStage<ZLinkSpotActorJoinResponse> admitSpotActor(
         ZLinkBackendActorJoinRequest request,
         RoutingId spotRid,
         ZLinkSpot<?> spotSurface,
-        Function<ZLinkActor, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
+        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
-        ZLinkActorRuntime runtime = requireActors();
-        return runtime.getOrCreateLocalActor(request.targetActor().actorId(), ZLinkActor.class)
-            .thenCompose(actor -> actor
-                .map(value -> admitLocalActor(
-                    value,
-                    request.targetActor(),
-                    spotRid,
-                    spotSurface,
-                    callback,
-                    joinedCallback))
-                .orElseGet(() -> CompletableFuture.failedFuture(
-                    new ZLinkConfigurationException(
-                        "Spot actor join callback target actor is not available: "
-                            + request.targetActor().actorId()))));
+        return admitNativeActor(request, spotRid, spotSurface, callback, joinedCallback);
     }
 
-    CompletionStage<RoutedJoin> admitRoutedActor(
-        ZLinkActorSpotRoutePackets.JoinRequest request,
-        String routeChannelName,
-        RoutingId sourcePeerRid,
-        ZLinkBackendSpotNode primaryNode,
+    private CompletionStage<ZLinkSpotActorJoinResponse> admitNativeActor(
+        ZLinkBackendActorJoinRequest request,
         RoutingId spotRid,
         ZLinkSpot<?> spotSurface,
-        Function<ZLinkActor, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
+        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
-        ZLinkActorRuntime runtime = requireActors();
-        return runtime.getOrCreateManagedActorWithoutLocationClaim(
-                request.actorId(),
-                request.actorType())
-            .thenCompose(actor -> {
-                ZLinkBackendActorRef actorRef = runtime.actorRef(actor);
-                long bindingToken = bindRoutedJoin(
-                    runtime,
-                    actor,
-                    actorRef,
-                    request,
-                    routeChannelName,
-                    sourcePeerRid,
-                    primaryNode);
-                return invokeCallback(callback, actor)
-                    .thenCompose(response -> completeRoutedAdmission(
-                        runtime,
-                        actor,
-                        actorRef,
-                        spotRid,
-                        spotSurface,
-                        bindingToken,
-                        response,
-                        joinedCallback))
-                    .whenComplete((ignored, error) -> {
-                        if (error != null) {
-                            clearBinding(runtime, actor, bindingToken);
-                        }
-                    })
-                    .thenApply(response -> new RoutedJoin(actorRef, response));
-            });
-    }
-
-    private CompletionStage<ZLinkSpotActorJoinResponse> admitLocalActor(
-        ZLinkActor actor,
-        ZLinkBackendActorRef actorRef,
-        RoutingId spotRid,
-        ZLinkSpot<?> spotSurface,
-        Function<ZLinkActor, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
-        Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
-        ZLinkActorRuntime runtime = requireActors();
-        return invokeCallback(callback, actor)
+        String actorId = request.targetActor().actorId();
+        return invokeAdmissionCallback(callback, actorId)
             .thenCompose(response -> {
                 ZLinkSpotActorJoinResponse effective = effectiveResponse(response);
                 if (!effective.accepted()) {
                     return CompletableFuture.completedFuture(effective);
                 }
-                return runtime.markJoinedAsync(actor, actorRef, spotRid, spotSurface)
-                    .thenCompose(ignored -> joinedCallback.apply(actor))
-                    .thenApply(ignored -> effective)
+                ZLinkActorRuntime runtime = requireActors();
+                return runtime.getOrCreateLocalActor(actorId, ZLinkActor.class)
+                    .thenCompose(actor -> actor
+                        .map(value -> completeLocalAdmission(
+                            value,
+                            request.targetActor(),
+                            spotRid,
+                            spotSurface,
+                            effective,
+                            joinedCallback))
+                        .orElseGet(() -> CompletableFuture.failedFuture(
+                            new ZLinkConfigurationException(
+                                "Spot actor join target actor is not available: " + actorId))));
+            });
+    }
+
+    CompletionStage<ZLinkSpotActorJoinResponse> prepareRoutedActor(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        String routeChannelName,
+        RoutingId sourcePeerRid,
+        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback) {
+        if (!request.admission()) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor transfer admission request has the wrong phase"));
+        }
+        return invokeAdmissionCallback(callback, request.actorId())
+            .thenApply(ZLinkActorSpotAdmission::effectiveResponse)
+            .thenApply(response -> {
+                if (!response.accepted()) {
+                    return response;
+                }
+                pendingTransfers.add(request, routeChannelName, sourcePeerRid);
+                return response;
+            });
+    }
+
+    CompletionStage<RoutedJoin> commitRoutedActor(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        ZLinkMessage transferState,
+        ZLinkBackendSpotNode primaryNode,
+        RoutingId spotRid,
+        ZLinkSpot<?> spotSurface,
+        Function<ZLinkActor, CompletionStage<Void>> joinedCallback,
+        Function<ZLinkBackendActorRef, CompletionStage<List<Message>>> backlogReplay) {
+        if (!request.commit()) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor transfer commit request has the wrong phase"));
+        }
+        ZLinkPendingActorTransfers.Admission pending;
+        try {
+            pending = pendingTransfers.take(request);
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
+        }
+
+        ZLinkActorRuntime runtime = requireActors();
+        return runtime.materializeTransferredActor(
+                request.actorId(),
+                request.actorType(),
+                request.adapterKey(),
+                transferState)
+            .thenCompose(actor -> {
+                ZLinkBackendActorRef actorRef = runtime.actorRef(actor);
+                long bindingToken = bindRoutedTransfer(
+                    runtime,
+                    actor,
+                    actorRef,
+                    pending,
+                    primaryNode);
+                runtime.markJoined(actor, actorRef, spotRid, spotSurface);
+                return joinedCallback.apply(actor)
+                    .thenCompose(ignored -> backlogReplay.apply(actorRef))
+                    .thenCompose(replies -> runtime.commitJoinedLocation(actor, spotRid)
+                        .thenApply(committed -> {
+                            runtime.traceActorTransferMarker(
+                                "location_committed", actor.actorId(), request.transferId());
+                            return replies;
+                        }))
+                    .thenApply(replies -> new RoutedJoin(
+                        completeRemoteMove(runtime, actor),
+                        ZLinkSpotActorJoinResponse.accept(), replies))
                     .whenComplete((ignored, error) -> {
                         if (error != null) {
-                            runtime.markLeftAsync(actor);
+                            clearBinding(runtime, actor, bindingToken);
+                            runtime.rollbackTransferredActor(actor);
                         }
                     });
             });
     }
 
-    private CompletionStage<ZLinkSpotActorJoinResponse> completeRoutedAdmission(
+    private static ZLinkBackendActorRef completeRemoteMove(
         ZLinkActorRuntime runtime,
-        ZLinkActor actor,
-        ZLinkBackendActorRef actorRef,
-        RoutingId spotRid,
-        ZLinkSpot<?> spotSurface,
-        long bindingToken,
-        ZLinkSpotActorJoinResponse response,
-        Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
-        ZLinkSpotActorJoinResponse effective = effectiveResponse(response);
-        if (!effective.accepted()) {
-            clearBinding(runtime, actor, bindingToken);
-            return CompletableFuture.completedFuture(effective);
-        }
-        return runtime.markJoinedAsync(actor, actorRef, spotRid, spotSurface)
-            .thenCompose(ignored -> joinedCallback.apply(actor))
-            .thenApply(ignored -> effective)
-            .whenComplete((ignored, error) -> {
-                if (error != null) {
-                    runtime.markLeftAsync(actor);
-                    clearBinding(runtime, actor, bindingToken);
-                }
-            });
+        ZLinkActor actor) {
+        runtime.completeRemoteMove(actor);
+        return runtime.actorRef(actor);
     }
 
-    private static long bindRoutedJoin(
+    private static long bindRoutedTransfer(
         ZLinkActorRuntime runtime,
         ZLinkActor actor,
         ZLinkBackendActorRef actorRef,
-        ZLinkActorSpotRoutePackets.JoinRequest request,
-        String routeChannelName,
-        RoutingId sourcePeerRid,
+        ZLinkPendingActorTransfers.Admission pending,
         ZLinkBackendSpotNode primaryNode) {
+        ZLinkActorSpotRoutePackets.TransferRequest request = pending.request();
         if (request.hasSourceSessionRoute()) {
-            RoutingId sourceNodeRid = sourcePeerRid == null
+            RoutingId sourceNodeRid = pending.sourcePeerRid() == null
                 ? request.sourceNodeRid()
-                : sourcePeerRid;
+                : pending.sourcePeerRid();
             return runtime.bindNativeSession(
                 actor,
                 primaryNode,
@@ -220,15 +220,50 @@ final class ZLinkActorSpotAdmission {
                 sourceNodeRid,
                 request.sourceSessionRid());
         }
-        if (routeChannelName != null || sourcePeerRid != null) {
+        if (pending.routeChannelName() != null || pending.sourcePeerRid() != null) {
             return runtime.bindRoutedSession(
                 actor,
-                routeChannelName,
-                sourcePeerRid == null ? request.actorRef().nodeRid() : sourcePeerRid,
+                pending.routeChannelName(),
+                pending.sourcePeerRid() == null
+                    ? request.actorRef().nodeRid()
+                    : pending.sourcePeerRid(),
                 request.sourceEntrySpotRid(),
                 request.actorRef());
         }
         return runtime.bindNativeSession(actor, primaryNode, actorRef);
+    }
+
+    private static CompletionStage<ZLinkSpotActorJoinResponse> invokeAdmissionCallback(
+        Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
+        String actorId) {
+        try {
+            return callback.apply(actorId);
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
+        }
+    }
+
+    private CompletionStage<ZLinkSpotActorJoinResponse> completeLocalAdmission(
+        ZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
+        RoutingId spotRid,
+        ZLinkSpot<?> spotSurface,
+        ZLinkSpotActorJoinResponse response,
+        Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
+        ZLinkActorRuntime runtime = requireActors();
+        return runtime.leaveSourceForLocalMove(actor)
+            .thenCompose(ignored -> {
+                runtime.markJoined(actor, actorRef, spotRid, spotSurface);
+                return joinedCallback.apply(actor);
+            })
+            .thenCompose(ignored -> runtime.commitJoinedLocation(actor, spotRid))
+            .thenRun(() -> runtime.completeRemoteMove(actor))
+            .thenApply(ignored -> response)
+            .whenComplete((ignored, error) -> {
+                if (error != null) {
+                    runtime.failRemoteMove(actor, error);
+                }
+            });
     }
 
     private static void clearBinding(
@@ -243,16 +278,6 @@ final class ZLinkActorSpotAdmission {
     private static ZLinkSpotActorJoinResponse effectiveResponse(
         ZLinkSpotActorJoinResponse response) {
         return response == null ? ZLinkSpotActorJoinResponse.reject() : response;
-    }
-
-    private static CompletionStage<ZLinkSpotActorJoinResponse> invokeCallback(
-        Function<ZLinkActor, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
-        ZLinkActor actor) {
-        try {
-            return callback.apply(actor);
-        } catch (RuntimeException error) {
-            return CompletableFuture.failedFuture(error);
-        }
     }
 
     private ZLinkActorRuntime requireActors() {

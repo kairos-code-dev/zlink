@@ -35,10 +35,24 @@ public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        CustomerActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.accept();
+    }
+
+    @Override
+    public void onJoinedActor(
+        CustomerActor actor,
+        CancellationToken cancellationToken) {
+        customers.register(actor);
+    }
+
+    @Override
+    public void onLeaveActor(
+        CustomerActor actor,
+        CancellationToken cancellationToken) {
+        customers.remove(actor.actorId());
     }
 
     public Messages.SubscribeDeliveryAccepted subscribe(

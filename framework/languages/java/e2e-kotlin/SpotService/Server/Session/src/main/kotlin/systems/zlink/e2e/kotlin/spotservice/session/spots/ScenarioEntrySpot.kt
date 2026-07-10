@@ -50,11 +50,11 @@ class ScenarioEntrySpot(
     }
 
     override fun onActorJoin(
-        actor: ScenarioActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
-        evidence.record("ActorEntryJoinRequested", "entry", actor.actorId() + "#" + actor.nextSequence())
+        evidence.record("ActorEntryJoinRequested", "entry", actorId)
         return ZLinkSpotActorJoinResponse.accept()
     }
 
@@ -63,6 +63,12 @@ class ScenarioEntrySpot(
         cancellationToken: CancellationToken
     ) {
         evidence.record("ActorEntryJoined", "entry", actor.actorId() + "#" + actor.nextSequence())
+    }
+
+    override fun onLeaveActor(
+        actor: ScenarioActor,
+        cancellationToken: CancellationToken,
+    ) {
     }
 
     override fun onDisconnectActor(

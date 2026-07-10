@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.spots;
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
@@ -87,6 +88,14 @@ public final class SpotBuilders {
             String actorType,
             Class<? extends ZLinkActorFactory> factoryType) {
             node.addActorFactory(actorType, factoryType);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder addActorTransferAdapter(
+            String actorType,
+            Class<? extends ZLinkActorTransferAdapter<?>> adapterType) {
+            node.addActorTransferAdapter(actorType, adapterType);
             return this;
         }
     }

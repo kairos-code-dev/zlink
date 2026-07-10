@@ -32,7 +32,7 @@ public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> 
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        SupportUserActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.accept();

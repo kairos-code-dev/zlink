@@ -2,6 +2,7 @@ package systems.zlink.e2e.spotservice.shared;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
@@ -16,6 +17,14 @@ public final class ClientDriverSpot implements ZLinkSpot<ZLinkActor> {
     private final ZLinkRouteClient routes;
     private final ZLinkActorClient actors;
     private final ZLinkActorDirectory actorRefs;
+
+    @Override
+    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    }
 
     public ClientDriverSpot(
         ZLinkSpotContext context,

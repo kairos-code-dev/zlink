@@ -30,6 +30,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     private final BingoRoomSettingsInitializer settingsInitializer;
     private final Map<String, PlayerActor> actors = new HashMap<>();
     private final Map<String, PlayerActor> observers = new HashMap<>();
+    private final Map<String, Messages.BingoRoomJoinReq> pendingJoins = new HashMap<>();
     private BingoRoomModels.BingoRoomSettings settings =
         BingoRoomModels.BingoRoomSettings.create("two-player", 0, SampleTimings.DrawPeriod.toMillis());
     private BingoRoomGame game;
@@ -56,17 +57,27 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        PlayerActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         Messages.BingoRoomJoinReq joinRequest = request.decode(Messages.BingoRoomJoinReq.class);
-        return ZLinkSpotActorJoinResponse.accept(join(actor, joinRequest));
+        validateJoin(actorId, joinRequest);
+        Messages.BingoRoomState preview = joinRequest.getObserveOnly()
+            ? observerJoinState(joinRequest)
+            : game.previewJoin(actorId, joinRequest.getDisplayName());
+        pendingJoins.put(actorId, joinRequest);
+        return ZLinkSpotActorJoinResponse.accept(BingoMessages.bingoRoomJoinRes(preview));
     }
 
     @Override
     public void onJoinedActor(
         PlayerActor actor,
         CancellationToken cancellationToken) {
+        Messages.BingoRoomJoinReq request = pendingJoins.remove(actor.actorId());
+        if (request == null) {
+            throw new IllegalStateException("joined actor does not have a pending admission");
+        }
+        join(actor, request);
     }
 
     @Override
@@ -106,19 +117,12 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     public Messages.BingoRoomJoinRes join(
         PlayerActor actor,
         Messages.BingoRoomJoinReq request) {
-        if (!actor.actorId().equals(request.getActorId())) {
-            throw new IllegalStateException("Join request actor id does not match bound actor.");
-        }
-        if (!request.getObserveOnly() && !request.getRoomId().equals(context.spotRid().toString())) {
-            throw new IllegalStateException("Join request room id does not match bingo room.");
-        }
+        validateJoin(actor.actorId(), request);
         actor.setDisplayName(request.getDisplayName());
         actor.joinRoom(request.getRoomId());
         if (request.getObserveOnly()) {
-            return joinObserver(actor, request);
-        }
-        if (settings.observerMode()) {
-            throw new IllegalStateException("Player actor cannot join an observer BingoRoom.");
+            observers.put(actor.actorId(), actor);
+            return BingoMessages.bingoRoomJoinRes(observerJoinState(request));
         }
         actors.put(actor.actorId(), actor);
         BingoRoomGame.Change change = game.join(actor.actorId(), request.getDisplayName());
@@ -126,6 +130,26 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             change.events(),
             actorId -> actorId.equals(actor.actorId()) ? null : actors.get(actorId));
         return BingoMessages.bingoRoomJoinRes(change.state());
+    }
+
+    private void validateJoin(
+        String actorId,
+        Messages.BingoRoomJoinReq request) {
+        if (!actorId.equals(request.getActorId())) {
+            throw new IllegalStateException("Join request actor id does not match bound actor.");
+        }
+        if (!request.getObserveOnly() && !request.getRoomId().equals(context.spotRid().toString())) {
+            throw new IllegalStateException("Join request room id does not match bingo room.");
+        }
+        if (request.getObserveOnly()) {
+            if (!settings.observerMode() || !request.getRoomId().equals(settings.observedRoomId())) {
+                throw new IllegalStateException("Observe-only actor can join only its observer BingoRoom.");
+            }
+            return;
+        }
+        if (settings.observerMode()) {
+            throw new IllegalStateException("Player actor cannot join an observer BingoRoom.");
+        }
     }
 
     public Messages.SubmitBingoCardRes submitCard(
@@ -259,14 +283,9 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         }
     }
 
-    private Messages.BingoRoomJoinRes joinObserver(
-        PlayerActor actor,
+    private Messages.BingoRoomState observerJoinState(
         Messages.BingoRoomJoinReq request) {
-        if (!settings.observerMode() || !request.getRoomId().equals(settings.observedRoomId())) {
-            throw new IllegalStateException("Observe-only actor can join only its observer BingoRoom.");
-        }
-        observers.put(actor.actorId(), actor);
-        return BingoMessages.bingoRoomJoinRes(BingoMessages.bingoRoomState(
+        return BingoMessages.bingoRoomState(
             request.getRoomId(),
             "Running",
             "",
@@ -275,7 +294,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             null,
             List.of(),
             List.of(),
-            List.of()));
+            List.of());
     }
 
 }

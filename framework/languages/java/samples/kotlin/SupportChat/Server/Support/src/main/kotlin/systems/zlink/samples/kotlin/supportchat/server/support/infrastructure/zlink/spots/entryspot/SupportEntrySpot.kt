@@ -34,10 +34,22 @@ class SupportEntrySpot(
     }
 
     override fun onActorJoin(
-        actor: SupportUserActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse = ZLinkSpotActorJoinResponse.accept(request)
+
+    override fun onJoinedActor(
+        actor: SupportUserActor,
+        cancellationToken: CancellationToken,
+    ) {
+    }
+
+    override fun onLeaveActor(
+        actor: SupportUserActor,
+        cancellationToken: CancellationToken,
+    ) {
+    }
 
     override fun onDisconnectActor(
         actor: SupportUserActor,

@@ -22,6 +22,8 @@ final class ZLinkActorContextState {
     private ZLinkSpot<?> spot;
     private boolean joined;
     private boolean destroying;
+    private boolean moving;
+    private CompletableFuture<Void> moveCompletion = CompletableFuture.completedFuture(null);
 
     ZLinkActorContextState(ZLinkBackendActorRef actorRef) {
         this.actorId = actorRef.actorId();
@@ -64,6 +66,31 @@ final class ZLinkActorContextState {
         return joined;
     }
 
+    boolean moving() {
+        return moving;
+    }
+
+    void beginMove() {
+        if (moving) {
+            throw new ZLinkConfigurationException("actor is already moving: " + actorId);
+        }
+        moving = true;
+        moveCompletion = new CompletableFuture<>();
+    }
+
+    void endMove() {
+        moving = false;
+        moveCompletion.complete(null);
+    }
+
+    void failMove(Throwable error) {
+        moveCompletion.completeExceptionally(error);
+    }
+
+    CompletionStage<Void> moveCompletion() {
+        return moveCompletion;
+    }
+
     ZLinkBoundSession requireBoundSession() {
         if (boundSession == null) {
             throw new ZLinkConfigurationException("actor has no bound session: " + actorId);
@@ -83,6 +110,7 @@ final class ZLinkActorContextState {
         RoutingId spotRid,
         ZLinkSpot<?> spot) {
         this.actorRef = actorRef;
+        updateNativeBoundSessionActorRef(actorRef);
         this.spotRid = spotRid;
         this.spot = spot;
         this.joined = true;
@@ -145,6 +173,9 @@ final class ZLinkActorContextState {
     }
 
     void updateNativeBoundSessionActorRef(ZLinkBackendActorRef targetActor) {
+        if (boundSession instanceof ZLinkBoundSessionRuntime runtime) {
+            runtime.markNativeRebound(targetActor);
+        }
         if (boundSession instanceof ZLinkNativeBoundSessionRuntime runtime) {
             runtime.updateActorRef(targetActor);
         }
@@ -190,6 +221,9 @@ final class ZLinkActorContextState {
         spot = null;
         joined = false;
         destroying = false;
+        moving = false;
+        moveCompletion.completeExceptionally(new ZLinkConfigurationException(
+            "actor was destroyed while moving: " + actorId));
     }
 
     ZLinkBackendActorRef beginDestroy(RoutingId entryNodeRid, String actorId) {

@@ -23,8 +23,22 @@ class CourierEntrySpot(
     }
 
     override fun onActorJoin(
-        actor: CourierActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse = ZLinkSpotActorJoinResponse.accept()
+
+    override fun onJoinedActor(
+        actor: CourierActor,
+        cancellationToken: CancellationToken,
+    ) {
+        actors.register(actor)
+    }
+
+    override fun onLeaveActor(
+        actor: CourierActor,
+        cancellationToken: CancellationToken,
+    ) {
+        actors.remove(actor.actorId())
+    }
 }

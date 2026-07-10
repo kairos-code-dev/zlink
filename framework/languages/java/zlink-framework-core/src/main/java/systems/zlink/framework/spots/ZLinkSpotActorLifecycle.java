@@ -6,21 +6,19 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSpotActorLifecycle<TActor extends ZLinkActor> {
     default ZLinkSpotActorJoinResponse onActorJoin(
-        TActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.reject();
     }
 
-    default void onJoinedActor(
+    void onJoinedActor(
         TActor actor,
-        CancellationToken cancellationToken) {
-    }
+        CancellationToken cancellationToken);
 
-    default void onLeaveActor(
+    void onLeaveActor(
         TActor actor,
-        CancellationToken cancellationToken) {
-    }
+        CancellationToken cancellationToken);
 
     default void onDisconnectActor(
         TActor actor,

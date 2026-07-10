@@ -602,21 +602,25 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("request." + routingId + "." + firstPart(parts));
             if (isRoutedActorJoinRequest(parts)) {
-                ZLinkActorSpotRoutePackets.JoinRequest request =
-                    ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(1));
+                ZLinkActorSpotRoutePackets.TransferRequest request =
+                    ZLinkActorSpotRoutePackets.decodeTransferRequest(parts.get(1));
                 List<Message> routeReply;
                 Message joinedPayload = jsonStringMessage("joined");
                 Message rejectedPayload = Message.from(new byte[0]);
                 Message joinReply = null;
                 try {
                     boolean accepted = !request.actorId().contains("reject");
-                    joinReply = ZLinkActorSpotRoutePackets.encodeJoinReply(
-                        accepted,
-                        new ZLinkBackendActorRef(
-                            routingId,
-                            request.actorId(),
-                            request.actorGeneration() + 1),
-                        accepted ? joinedPayload : rejectedPayload);
+                    joinReply = request.admission()
+                        ? ZLinkActorSpotRoutePackets.encodeAdmissionReply(
+                            accepted,
+                            accepted ? joinedPayload : rejectedPayload)
+                        : ZLinkActorSpotRoutePackets.encodeJoinReply(
+                            true,
+                            new ZLinkBackendActorRef(
+                                routingId,
+                                request.actorId(),
+                                request.actorGeneration() + 1),
+                            rejectedPayload);
                     routeReply = List.of(Message.from(joinReply));
                 } finally {
                     if (joinReply != null) {
@@ -883,20 +887,24 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean request(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("bridge.request." + channelName + "." + targetNodeRid + "." + targetSpotRid + "." + firstPart(parts));
             if (isRoutedActorJoinRequest(parts)) {
-                ZLinkActorSpotRoutePackets.JoinRequest request =
-                    ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(1));
+                ZLinkActorSpotRoutePackets.TransferRequest request =
+                    ZLinkActorSpotRoutePackets.decodeTransferRequest(parts.get(1));
                 Message joinedPayload = jsonStringMessage("joined");
                 Message rejectedPayload = Message.from(new byte[0]);
                 Message joinReply = null;
                 try {
                     boolean accepted = !request.actorId().contains("reject");
-                    joinReply = ZLinkActorSpotRoutePackets.encodeJoinReply(
-                        accepted,
-                        new ZLinkBackendActorRef(
-                            targetNodeRid,
-                            request.actorId(),
-                            request.actorGeneration() + 1),
-                        accepted ? joinedPayload : rejectedPayload);
+                    joinReply = request.admission()
+                        ? ZLinkActorSpotRoutePackets.encodeAdmissionReply(
+                            accepted,
+                            accepted ? joinedPayload : rejectedPayload)
+                        : ZLinkActorSpotRoutePackets.encodeJoinReply(
+                            true,
+                            new ZLinkBackendActorRef(
+                                targetNodeRid,
+                                request.actorId(),
+                                request.actorGeneration() + 1),
+                            rejectedPayload);
                     callback.handle(new ZLinkBackendReceived(
                         Optional.empty(),
                         Optional.empty(),

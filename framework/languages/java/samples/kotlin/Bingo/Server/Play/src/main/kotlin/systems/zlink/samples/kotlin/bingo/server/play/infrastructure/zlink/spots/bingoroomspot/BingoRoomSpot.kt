@@ -43,6 +43,7 @@ class BingoRoomSpot(
 ) : ZLinkSuspendingSpot<PlayerActor>() {
     private val actors = mutableMapOf<String, PlayerActor>()
     private val observers = mutableMapOf<String, PlayerActor>()
+    private val pendingJoins = mutableMapOf<String, BingoRoomJoinReq>()
     private var settings = BingoRoomSettings.create(
         "two-player",
         0,
@@ -60,22 +61,31 @@ class BingoRoomSpot(
     }
 
     override suspend fun onActorJoinSuspending(
-        actor: PlayerActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
         val joinRequest = request.decode(BingoRoomJoinReq::class.java)
-        val reply = join(actor, joinRequest)
-        return ZLinkSpotActorJoinResponse.accept(reply)
+        validateJoin(actorId, joinRequest)
+        val preview = if (joinRequest.observeOnly) {
+            observerJoinState(joinRequest)
+        } else {
+            requireGame().previewJoin(actorId, joinRequest.displayName)
+        }
+        pendingJoins[actorId] = joinRequest
+        return ZLinkSpotActorJoinResponse.accept(BingoRoomJoinRes(preview))
     }
 
-    override fun onJoinedActor(
+    override suspend fun onJoinedActorSuspending(
         actor: PlayerActor,
         cancellationToken: CancellationToken,
     ) {
+        val request = pendingJoins.remove(actor.actorId())
+            ?: error("joined actor does not have a pending admission")
+        join(actor, request)
     }
 
-    override fun onLeaveActor(
+    override suspend fun onLeaveActorSuspending(
         actor: PlayerActor,
         cancellationToken: CancellationToken,
     ) {
@@ -106,23 +116,16 @@ class BingoRoomSpot(
         timer?.cancelAsync()?.await()
     }
 
-    suspend fun join(
+    fun join(
         actor: PlayerActor,
         request: BingoRoomJoinReq,
     ): BingoRoomJoinRes {
-        if (request.actorId != actor.actorId()) {
-            throw IllegalStateException("Join request actor id does not match bound actor.")
-        }
-        if (!request.observeOnly && request.roomId != context.spotRid().toString()) {
-            throw IllegalStateException("Join request room id does not match bingo room.")
-        }
+        validateJoin(actor.actorId(), request)
         actor.setDisplayName(request.displayName)
         actor.joinRoom(request.roomId)
         if (request.observeOnly) {
-            return joinObserver(actor, request)
-        }
-        if (settings.observerMode()) {
-            throw IllegalStateException("Player actor cannot join an observer BingoRoom.")
+            observers[actor.actorId()] = actor
+            return BingoRoomJoinRes(observerJoinState(request))
         }
         val change = requireGame().join(actor.actorId(), request.displayName)
         actors[actor.actorId()] = actor
@@ -131,6 +134,24 @@ class BingoRoomSpot(
             { actorId -> if (actorId == actor.actorId()) null else actors[actorId] },
         )
         return BingoRoomJoinRes(change.state)
+    }
+
+    private fun validateJoin(actorId: String, request: BingoRoomJoinReq) {
+        if (request.actorId != actorId) {
+            throw IllegalStateException("Join request actor id does not match bound actor.")
+        }
+        if (!request.observeOnly && request.roomId != context.spotRid().toString()) {
+            throw IllegalStateException("Join request room id does not match bingo room.")
+        }
+        if (request.observeOnly) {
+            if (!settings.observerMode() || request.roomId != settings.observedRoomId) {
+                throw IllegalStateException("Observe-only actor can join only its observer BingoRoom.")
+            }
+            return
+        }
+        if (settings.observerMode()) {
+            throw IllegalStateException("Player actor cannot join an observer BingoRoom.")
+        }
     }
 
     suspend fun submitCard(
@@ -237,7 +258,7 @@ class BingoRoomSpot(
             .await()
     }
 
-    private suspend fun publishEvents(
+    private fun publishEvents(
         events: List<BingoRoomEvent>,
         actorResolver: (String) -> PlayerActor?,
     ) {
@@ -246,7 +267,7 @@ class BingoRoomSpot(
         }
     }
 
-    private suspend fun publishEvent(
+    private fun publishEvent(
         event: BingoRoomEvent,
         recipient: PlayerActor?,
     ) {
@@ -287,16 +308,10 @@ class BingoRoomSpot(
         }
     }
 
-    private fun joinObserver(
-        actor: PlayerActor,
+    private fun observerJoinState(
         request: BingoRoomJoinReq,
-    ): BingoRoomJoinRes {
-        if (!settings.observerMode() || request.roomId != settings.observedRoomId) {
-            throw IllegalStateException("Observe-only actor can join only its observer BingoRoom.")
-        }
-        observers[actor.actorId()] = actor
-        return BingoRoomJoinRes(
-            BingoRoomState(
+    ): BingoRoomState =
+        BingoRoomState(
                 request.roomId,
                 BingoRoomGame.Running,
                 "",
@@ -306,9 +321,7 @@ class BingoRoomSpot(
                 emptyList(),
                 emptyList(),
                 emptyList(),
-            ),
-        )
-    }
+            )
 
     private fun requireGame(): BingoRoomGame =
         game ?: throw IllegalStateException("Observer BingoRoom does not own game state.")

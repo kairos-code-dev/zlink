@@ -1,6 +1,7 @@
 package systems.zlink.e2e.runtimemonitoring.service.handlers;
 
 import java.time.Duration;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -31,6 +32,14 @@ public final class MonitoringSpot implements ZLinkSpot<ZLinkActor> {
         context.addTimer("stopping-monitoring-timer", Duration.ofMillis(500),
             FailingTimerHandler.class, new ZLinkTimerOptions());
         return ZLinkSpotCreateResponse.accept();
+    }
+
+    @Override
+    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
     }
 
     public static final class FailingTimerHandler

@@ -10,6 +10,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
+import systems.zlink.framework.runtime.actors.ZLinkActorReplyRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
@@ -36,12 +37,14 @@ final class ZLinkActorSessionCoordinator {
         ZLinkActorRuntime.CreatedNotifier createdNotifier,
         Supplier<Object> actorCreateContextSupplier,
         Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier,
+        ZLinkActorRuntime.SourceActorLeaver sourceActorLeaver,
         Function<RoutingId, ZLinkSpot<?>> spotResolver,
         Function<RoutingId, String> spotMeshResolver) {
         this.actors = actors;
         actors.setCreatedNotifier(createdNotifier);
         actors.setActorCreateContextSupplier(actorCreateContextSupplier);
         actors.setDisconnectedNotifier(disconnectedNotifier);
+        actors.setSourceActorLeaver(sourceActorLeaver);
         actors.setSpotResolver(spotResolver);
         actors.setSpotMeshResolver(spotMeshResolver);
     }
@@ -64,6 +67,18 @@ final class ZLinkActorSessionCoordinator {
         return requireActors().submitActorDispatch(actor.actorId(), operation);
     }
 
+    CompletionStage<Optional<Message>> captureMoving(
+        ZLinkActor actor,
+        ZLinkStreamHeader header,
+        Message payload,
+        ZLinkActorReplyRoute replyRoute) {
+        return requireActors().captureMovingPacket(actor, header, payload, replyRoute);
+    }
+
+    boolean isMoving(ZLinkActor actor) {
+        return requireActors().isMoving(actor);
+    }
+
     CompletionStage<Optional<Message>> dispatchLocalSession(
         ZLinkBackendActorRef actorRef,
         ZLinkStreamHeader header,
@@ -77,6 +92,20 @@ final class ZLinkActorSessionCoordinator {
                 "local actor is not available: " + actorRef.actorId()));
         }
         ZLinkActor actor = localActor.get();
+        if (runtime.isMoving(actor)) {
+            CompletionStage<Optional<Message>> captured =
+                runtime.captureMovingPacket(actor, header, payload);
+            if (captured != null) {
+                return captured;
+            }
+            return runtime.awaitMoveCompletion(actor)
+                .thenCompose(ignored -> dispatchLocalSession(
+                    actorRef,
+                    header,
+                    payload,
+                    isLocalSpot,
+                    localDispatch));
+        }
         Optional<RoutingId> joinedSpotRid = runtime.spotRid(actor);
         if (joinedSpotRid.isPresent()
             && currentSpotSurface(actor) == null

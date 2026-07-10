@@ -41,7 +41,7 @@ class PlayEntrySpot(
     }
 
     override fun onActorJoin(
-        actor: PlayActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
@@ -54,6 +54,13 @@ class PlayEntrySpot(
         if (actor.destroyAfterEntrySpotJoin) {
             awaitStage(context.destroyActor(actor))
         }
+    }
+
+    override fun onLeaveActor(
+        actor: PlayActor,
+        cancellationToken: CancellationToken,
+    ) {
+        milestoneObservers.removeIf { it.actorId == actor.actorId }
     }
 
     override fun onDisconnectActor(

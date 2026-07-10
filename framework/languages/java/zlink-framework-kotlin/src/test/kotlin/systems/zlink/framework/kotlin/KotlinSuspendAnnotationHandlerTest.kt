@@ -655,4 +655,8 @@ data class SecondInterfacePlayerReply(val value: String)
 
 class InterfaceSpot(private val spotContext: ZLinkSpotContext) : ZLinkSpot<PlayerActor> {
     override fun context(): ZLinkSpotContext = spotContext
+
+    override fun onJoinedActor(actor: PlayerActor, cancellationToken: CancellationToken) = Unit
+
+    override fun onLeaveActor(actor: PlayerActor, cancellationToken: CancellationToken) = Unit
 }

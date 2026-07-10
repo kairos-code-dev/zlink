@@ -86,6 +86,9 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
         public ZLinkSpotContext context() {
             throw new UnsupportedOperationException();
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) { }
     }
 
     public static final class TestActor implements ZLinkActor {

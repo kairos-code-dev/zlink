@@ -50,7 +50,7 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        PlayActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.accept();
@@ -63,6 +63,13 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
         if (actor.destroyAfterEntrySpotJoin()) {
             await(context.destroyActor(actor));
         }
+    }
+
+    @Override
+    public void onLeaveActor(
+        PlayActor actor,
+        CancellationToken cancellationToken) {
+        milestoneObservers.removeIf(existing -> existing.actorId().equals(actor.actorId()));
     }
 
     @Override

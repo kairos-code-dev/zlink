@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -19,6 +20,8 @@ public final class SpotNodeRegistration {
     private final List<Class<? extends ZLinkSpot<?>>> spotFactories = new ArrayList<>();
     private final List<Class<? extends ZLinkEntrySpot<?>>> entrySpots = new ArrayList<>();
     private final Map<String, Class<? extends ZLinkActorFactory>> actorFactories =
+        new LinkedHashMap<>();
+    private final Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> actorTransferAdapters =
         new LinkedHashMap<>();
     private final List<RouterManualConnection> routerManualConnections = new ArrayList<>();
     private final List<String> pubSubManualConnections = new ArrayList<>();
@@ -52,6 +55,10 @@ public final class SpotNodeRegistration {
 
     public Map<String, Class<? extends ZLinkActorFactory>> actorFactories() {
         return Map.copyOf(actorFactories);
+    }
+
+    public Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> actorTransferAdapters() {
+        return Map.copyOf(actorTransferAdapters);
     }
 
     public String routerBind() {
@@ -170,6 +177,20 @@ public final class SpotNodeRegistration {
         enableRouter();
     }
 
+    void addActorTransferAdapter(
+        String actorType,
+        Class<? extends ZLinkActorTransferAdapter<?>> adapterType) {
+        if (adapterType == null) {
+            throw new ZLinkConfigurationException("actor transfer adapter type is required");
+        }
+        String type = requireEndpoint(actorType, "actor type");
+        if (actorTransferAdapters.putIfAbsent(type, adapterType) != null) {
+            throw new ZLinkConfigurationException(
+                "duplicate actor transfer adapter on node: " + type);
+        }
+        enableRouter();
+    }
+
     private final class EntrySpotOptions implements ZLinkEntrySpotOptions {
         @Override
         public RoutingId routingId() {
@@ -197,6 +218,12 @@ public final class SpotNodeRegistration {
         if (entrySpots.size() > 1) {
             throw new ZLinkConfigurationException(
                 "spot node registers multiple entry spots: " + nodeName);
+        }
+        for (String actorType : actorTransferAdapters.keySet()) {
+            if (!actorFactories.containsKey(actorType)) {
+                throw new ZLinkConfigurationException(
+                    "actor transfer adapter requires an actor factory on node: " + actorType);
+            }
         }
     }
 

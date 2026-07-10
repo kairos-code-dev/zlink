@@ -146,7 +146,7 @@ final class HandlerContractTest {
         ZLinkSpot.class.getMethod("onCreate", ZLinkMessage.class);
         ZLinkSpot.class.getMethod(
             "onActorJoin",
-            ZLinkActor.class,
+            String.class,
             ZLinkMessage.class,
             CancellationToken.class);
         ZLinkSpot.class.getMethod(
@@ -163,7 +163,7 @@ final class HandlerContractTest {
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(
             "onActorJoin",
-            ZLinkActor.class,
+            String.class,
             ZLinkMessage.class,
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(

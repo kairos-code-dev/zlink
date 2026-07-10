@@ -37,6 +37,28 @@ class TicTacToeMatch(
         return JoinChange(snapshot(), mark, isNewPlayer = true)
     }
 
+    fun previewJoin(actorId: String): JoinChange {
+        val existingMark = players[actorId]
+        if (existingMark != null) {
+            return JoinChange(snapshot(), existingMark, isNewPlayer = false)
+        }
+        check(players.size < 2) { "tic-tac-toe game already has two players" }
+
+        val mark = if (players.isEmpty()) "X" else "O"
+        val state = GameState(
+            roomId = roomId,
+            board = board.snapshot(),
+            status = if (players.size == 1) "InProgress" else status,
+            winner = winner,
+            nextTurn = nextTurn,
+            xActorId = if (mark == "X") actorId else players.entries.firstOrNull { it.value == "X" }?.key,
+            oActorId = if (mark == "O") actorId else players.entries.firstOrNull { it.value == "O" }?.key,
+            lastMoveActorId = lastMoveActorId,
+            lastMoveCell = lastMoveCell,
+        )
+        return JoinChange(state, mark, isNewPlayer = true)
+    }
+
     fun placeMark(actorId: String, cell: Int, now: Instant): MoveChange {
         val mark = players[actorId] ?: throw IllegalStateException("player has not joined")
         check(status == "InProgress") { "game is not in progress" }

@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JAVA_DIR="$(cd "${ROOT_DIR}/../.." && pwd)"
+source "${JAVA_DIR}/e2e-redis-common.sh"
+
+SCENARIO="${1:-${ZLINK_JAVA_E2E_SCENARIO:-all}}"
+if [[ "${SCENARIO}" == "all" ]]; then
+  for scenario in ST-A1 ST-A2 ST-A3 ST-B1 ST-B2 ST-B3 ST-B4 ST-C1 ST-C2 ST-C3 ST-D1 ST-D2 ST-E1 ST-E2 ST-F1 ST-F2 ST-F3 ST-F4 ST-F5 ST-F6; do
+    passed=0
+    for attempt in 1 2 3; do
+      if "${BASH_SOURCE[0]}" "${scenario}"; then
+        passed=1
+        break
+      fi
+      log_root="${ZLINK_JAVA_E2E_LOG_ROOT:-${ROOT_DIR}/log}"
+      latest_log="$(find "${log_root}" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)"
+      if [[ "${attempt}" == "3" ]] \
+         || ! rg --no-ignore -q "ZlinkBindException|BindException|Address already in use|errno=98" "${latest_log}"; then
+        exit 1
+      fi
+      echo "spot-actor-transfer transient bind failure; retrying ${scenario} (${attempt}/3)" >&2
+    done
+    [[ "${passed}" == "1" ]]
+  done
+  echo "spot-actor-transfer Java e2e all result=passed"
+  exit 0
+fi
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+PROJECT_ROOT="${ZLINK_JAVA_E2E_PROJECT_ROOT:-${ROOT_DIR}}"
+LOG_DIR="${ZLINK_JAVA_E2E_LOG_ROOT:-${ROOT_DIR}/log}/${RUN_ID}"
+REDIS_CONTAINER=""
+PIDS=()
+PID_A=""
+PID_B=""
+PID_C=""
+mkdir -p "${LOG_DIR}"
+
+cleanup() {
+  local pid
+  for pid in "${PIDS[@]:-}"; do
+    kill "${pid}" >/dev/null 2>&1 || true
+  done
+  for pid in "${PIDS[@]:-}"; do
+    wait "${pid}" >/dev/null 2>&1 || true
+  done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+read -r ROUTER_A_PORT ROUTER_B_PORT ROUTER_C_PORT HTTP_A_PORT HTTP_B_PORT HTTP_C_PORT STREAM_A_PORT STREAM_B_PORT STREAM_C_PORT <<<"$(python3 - <<'PY'
+import socket
+sockets=[]
+ports=[]
+for _ in range(9):
+    s=socket.socket()
+    s.bind(('127.0.0.1', 0))
+    sockets.append(s)
+    ports.append(str(s.getsockname()[1]))
+print(' '.join(ports))
+for s in sockets:
+    s.close()
+PY
+)"
+
+if [[ -z "${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
+  zlink_redis_start_scoped_assign \
+    REDIS_CONTAINER REDIS_PORT \
+    "zlink-java-spot-transfer" \
+    "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" \
+    "127.0.0.1::6379"
+  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+fi
+
+LOCATION_PREFIX="zlink:e2e:java:spot-transfer:${RUN_ID}:"
+NODE_BIN="${ZLINK_JAVA_E2E_NODE_BIN:-${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node}"
+CLIENT_BIN="${ZLINK_JAVA_E2E_CLIENT_BIN:-${ROOT_DIR}/Client/build/install/spot-actor-transfer-client/bin/spot-actor-transfer-client}"
+
+"${JAVA_DIR}/gradlew" \
+  -p "${PROJECT_ROOT}" \
+  --no-daemon \
+  installDist
+
+start_node() {
+  local rid="$1"
+  local router_port="$2"
+  local http_port="$3"
+  local stream_port="$4"
+  ZLINK_JAVA_E2E_NODE_RID="${rid}" \
+  ZLINK_JAVA_E2E_ROUTER_ENDPOINT="tcp://127.0.0.1:${router_port}" \
+  ZLINK_JAVA_E2E_ROUTER_PEERS="actor-a=tcp://127.0.0.1:${ROUTER_A_PORT},actor-b=tcp://127.0.0.1:${ROUTER_B_PORT},actor-c=tcp://127.0.0.1:${ROUTER_C_PORT}" \
+  ZLINK_JAVA_E2E_HTTP_ENDPOINT="http://127.0.0.1:${http_port}" \
+  ZLINK_JAVA_E2E_STREAM_ENDPOINT="tcp://127.0.0.1:${stream_port}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${LOCATION_PREFIX}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${LOG_DIR}" \
+    "${NODE_BIN}" >"${LOG_DIR}/${rid}.stdout.log" 2>"${LOG_DIR}/${rid}.stderr.log" &
+  PIDS+=("$!")
+  case "${rid}" in
+    actor-a) PID_A="$!" ;;
+    actor-b) PID_B="$!" ;;
+    actor-c) PID_C="$!" ;;
+  esac
+}
+
+wait_http() {
+  local url="$1"
+  local pid="$2"
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if curl --silent --fail --max-time 2 "${url}/health" >/dev/null; then
+      return 0
+    fi
+    if ! kill -0 "${pid}" >/dev/null 2>&1; then
+      echo "Node process ${pid} exited before ${url} became healthy" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+  echo "Timed out waiting for ${url}" >&2
+  return 1
+}
+
+wait_log_contains() {
+  local log_file="$1"
+  local pattern="$2"
+  local deadline=$((SECONDS + 10))
+  while (( SECONDS < deadline )); do
+    if [[ -f "${log_file}" ]] && rg -q "${pattern}" "${log_file}"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for '${pattern}' in ${log_file}" >&2
+  return 1
+}
+
+start_node actor-a "${ROUTER_A_PORT}" "${HTTP_A_PORT}" "${STREAM_A_PORT}"
+wait_http "http://127.0.0.1:${HTTP_A_PORT}" "${PID_A}"
+start_node actor-b "${ROUTER_B_PORT}" "${HTTP_B_PORT}" "${STREAM_B_PORT}"
+wait_http "http://127.0.0.1:${HTTP_B_PORT}" "${PID_B}"
+start_node actor-c "${ROUTER_C_PORT}" "${HTTP_C_PORT}" "${STREAM_C_PORT}"
+wait_http "http://127.0.0.1:${HTTP_C_PORT}" "${PID_C}"
+sleep 2
+
+run_client() {
+  ZLINK_JAVA_E2E_NODE_A_HTTP="http://127.0.0.1:${HTTP_A_PORT}" \
+  ZLINK_JAVA_E2E_NODE_B_HTTP="http://127.0.0.1:${HTTP_B_PORT}" \
+  ZLINK_JAVA_E2E_NODE_C_HTTP="http://127.0.0.1:${HTTP_C_PORT}" \
+  ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${LOG_DIR}" \
+  ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="tcp://127.0.0.1:${STREAM_A_PORT}" \
+  ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="tcp://127.0.0.1:${STREAM_B_PORT}" \
+    timeout -k 5s "${ZLINK_JAVA_E2E_CLIENT_TIMEOUT_SECONDS:-240}s" \
+    "${CLIENT_BIN}" >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"
+}
+
+if [[ "${SCENARIO}" == "ST-B2" || "${SCENARIO}" == "ST-C1" \
+   || "${SCENARIO}" == "ST-C2" || "${SCENARIO}" == "ST-D2" ]]; then
+  run_client &
+  CLIENT_PID="$!"
+  deadline=$((SECONDS + 30))
+  while [[ ! -f "${LOG_DIR}/${SCENARIO}.ready" ]]; do
+    if (( SECONDS >= deadline )); then
+      echo "Timed out waiting for ${SCENARIO} source shutdown gate" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  kill -KILL "${PID_A}" >/dev/null 2>&1 || true
+  touch "${LOG_DIR}/${SCENARIO}.killed"
+  wait "${PID_A}" >/dev/null 2>&1 || true
+  wait "${CLIENT_PID}"
+else
+  run_client
+fi
+
+grep -q "spot-actor-transfer e2e result=passed" "${LOG_DIR}/client.stdout.log"
+if [[ "${SCENARIO}" == "ST-B1" ]]; then
+  wait_log_contains "${LOG_DIR}/actor-a-flow.log" "packet=commit_request"
+  wait_log_contains "${LOG_DIR}/actor-b-flow.log" "packet=location_committed"
+  wait_log_contains "${LOG_DIR}/actor-a-flow.log" "packet=source_cleanup"
+fi
+if [[ "${SCENARIO}" == "ST-F6" ]]; then
+  grep -q "packet=handoff_request_frame" "${LOG_DIR}/actor-a-flow.log"
+  grep -q "packet=handoff_direct_reply" "${LOG_DIR}/actor-b-flow.log"
+  grep -q "|request_timeout|" "${LOG_DIR}/actor-a.evidence.log"
+fi
+cat "${LOG_DIR}/client.stdout.log"

@@ -162,7 +162,7 @@ final class EntrySpotActorDispatchTest {
             .join();
     }
 
-    public static final class EntryActorDispatchSpot implements ZLinkEntrySpot<ZLinkActor> {
+    public static final class EntryActorDispatchSpot extends TestZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
         public EntryActorDispatchSpot(ZLinkEntrySpotContext context) {

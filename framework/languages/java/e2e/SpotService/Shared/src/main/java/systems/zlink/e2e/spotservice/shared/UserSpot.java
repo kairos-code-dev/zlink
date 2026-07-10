@@ -1,6 +1,8 @@
 package systems.zlink.e2e.spotservice.shared;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.framework.CancellationToken;
@@ -17,6 +19,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     private String state = "";
     private boolean workerDone = true;
     private CountDownLatch workerFollowUp;
+    private final Map<String, Contracts.ActorProfile> pendingProfiles = new HashMap<>();
 
     public UserSpot(
         ZLinkSpotContext context,
@@ -64,26 +67,26 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ScenarioActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         Contracts.JoinAdmittedUserSpotActorReq admission = decodeAdmission(request);
         if (admission != null) {
-            actor.applyProfile(admission.profile());
             if (!admission.admit()) {
                 evidence.record("ActorUserJoinRejected", context.spotRid().toString(),
-                    actor.actorId() + "/" + admission.reason());
+                    actorId + "/" + admission.reason());
                 return ZLinkSpotActorJoinResponse.reject(new Contracts.JoinAdmittedUserSpotActorRes(
-                    actor.actorId(),
+                    actorId,
                     context.spotRid().toString(),
                     evidence.nodeRid(),
                     false,
                     "ActorJoinRejected"));
             }
+            pendingProfiles.put(actorId, admission.profile());
             evidence.record("ActorUserJoinAdmitted", context.spotRid().toString(),
-                actor.actorId() + "/" + admission.reason());
+                actorId + "/" + admission.reason());
             return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
-                actor.actorId(),
+                actorId,
                 context.spotRid().toString(),
                 evidence.nodeRid(),
                 admission.profile().displayName(),
@@ -91,11 +94,11 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
                 admission.tags()));
         }
         Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
-        actor.applyProfile(join.profile());
+        pendingProfiles.put(actorId, join.profile());
         evidence.record("ActorUserJoinRequested", context.spotRid().toString(),
-            actor.actorId() + "/" + join.profile().displayName() + "/" + String.join(",", join.tags()));
+            actorId + "/" + join.profile().displayName() + "/" + String.join(",", join.tags()));
         return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
-            actor.actorId(),
+            actorId,
             context.spotRid().toString(),
             evidence.nodeRid(),
             join.profile().displayName(),
@@ -120,6 +123,11 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     public void onJoinedActor(
         ScenarioActor actor,
         CancellationToken cancellationToken) {
+        Contracts.ActorProfile profile = pendingProfiles.remove(actor.actorId());
+        if (profile == null) {
+            throw new IllegalStateException("joined actor does not have a pending admission");
+        }
+        actor.applyProfile(profile);
         evidence.record("ActorUserJoined", context.spotRid().toString(),
             actor.actorId() + "#" + actor.nextSequence());
     }

@@ -23,4 +23,10 @@ public final class ActorDirectory {
         throw new IllegalStateException("Courier actor is not registered: " + actorId);
     }
 
+    public void remove(String actorId) {
+        synchronized (gate) {
+            actors.remove(actorId);
+        }
+    }
+
 }

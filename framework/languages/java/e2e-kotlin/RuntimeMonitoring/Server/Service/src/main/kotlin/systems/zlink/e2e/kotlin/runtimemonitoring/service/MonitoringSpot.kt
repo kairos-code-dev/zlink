@@ -1,6 +1,7 @@
 package systems.zlink.e2e.kotlin.runtimemonitoring.service
 
 import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
@@ -32,6 +33,10 @@ class MonitoringSpot(
         )
         return ZLinkSpotCreateResponse.accept()
     }
+
+    override fun onJoinedActor(actor: ZLinkActor, cancellationToken: CancellationToken) = Unit
+
+    override fun onLeaveActor(actor: ZLinkActor, cancellationToken: CancellationToken) = Unit
 
     class FailingTimerHandler : ZLinkSpotTimerHandler<MonitoringSpot> {
         override fun handle(spot: MonitoringSpot, tick: ZLinkTimerTick) {

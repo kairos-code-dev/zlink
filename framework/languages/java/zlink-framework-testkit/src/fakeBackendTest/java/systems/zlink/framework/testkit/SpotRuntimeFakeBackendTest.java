@@ -936,8 +936,8 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.entrySpot",
                 "create.entrySpot",
                 "entrySpot.setRoutingId",
-                "entrySpot.onDispatchEvent",
                 "spotNode.setRouterBind.inproc://spot-router",
+                "entrySpot.onDispatchEvent",
                 "close.entrySpot",
                 "close.spotNode",
                 "close.context"),
@@ -956,7 +956,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchEntrySpotActorJoinReadable("player-1");
-            awaitCall(backendFactory, "entrySpot.replyActorJoin.player-1.1");
+            awaitCall(backendFactory, "entrySpot.replyActorJoinPayload.player-1.1.");
         }
 
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorJoin.DONT_WAIT"));
@@ -1325,7 +1325,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class GameSpot extends TestZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
@@ -1336,7 +1336,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class PayloadSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class PayloadSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastCreatePayload = new AtomicReference<>();
 
         @Override
@@ -1355,7 +1355,7 @@ final class SpotRuntimeFakeBackendTest {
     public record CreatePayload(String value) {
     }
 
-    public static final class ProtobufCreateSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class ProtobufCreateSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastCreatePayload = new AtomicReference<>();
 
         @Override
@@ -1371,7 +1371,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class MessagePackCreateSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class MessagePackCreateSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastCreatePayload = new AtomicReference<>();
 
         @Override
@@ -1473,7 +1473,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class OutboundSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class OutboundSpot extends TestZLinkSpot<ZLinkActor> {
         static OutboundSpot instance;
         static ZLinkSpotContext context;
         static final AtomicReference<String> lastLeave = new AtomicReference<>();
@@ -1496,7 +1496,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class HandlerSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class HandlerSpot extends TestZLinkSpot<ZLinkActor> {
         static final List<String> dispatches = new CopyOnWriteArrayList<>();
         private final ZLinkSpotContext context;
 
@@ -1542,7 +1542,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class SerialSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class SerialSpot extends TestZLinkSpot<ZLinkActor> {
         private final ZLinkSpotContext context;
 
         public SerialSpot(ZLinkSpotContext context) {
@@ -1561,15 +1561,15 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
             SerialJoinRequest decoded = request.decode(SerialJoinRequest.class);
             SerialActorJoinHandler.events.add(
-                "join:start:" + actor.actorId() + ":" + decoded.value());
+                "join:start:" + actorId + ":" + decoded.value());
             SerialActorJoinHandler.started.complete(null);
             SerialActorJoinHandler.release.join();
-            SerialActorJoinHandler.events.add("join:end:" + actor.actorId());
+            SerialActorJoinHandler.events.add("join:end:" + actorId);
             return ZLinkSpotActorJoinResponse.accept("joined:" + decoded.value());
         }
     }
@@ -1672,7 +1672,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class AmbientOutboundSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class AmbientOutboundSpot extends TestZLinkSpot<ZLinkActor> {
         static ZLinkSpotOutbound outbound;
 
         @Override
@@ -1728,11 +1728,11 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
             String decoded = request.decode(String.class);
-            lastActorJoin.set(actor.actorId() + ":" + decoded);
+            lastActorJoin.set(actorId + ":" + decoded);
             if (Boolean.TRUE.equals(rejectJoin.get())) {
                 return ZLinkSpotActorJoinResponse.reject("entry-rejected:" + decoded);
             }
@@ -1754,7 +1754,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class InterfaceEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
+    public static final class InterfaceEntrySpot extends TestZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
         public InterfaceEntrySpot(ZLinkEntrySpotContext context) {
@@ -1792,7 +1792,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class SharedEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
+    public static final class SharedEntrySpot extends TestZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
         public SharedEntrySpot(ZLinkEntrySpotContext context) {
@@ -1810,7 +1810,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class SharedUserSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class SharedUserSpot extends TestZLinkSpot<ZLinkActor> {
         private final ZLinkSpotContext context;
 
         public SharedUserSpot(ZLinkSpotContext context) {
@@ -1858,7 +1858,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class LeaveDuringRequestSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class LeaveDuringRequestSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastLeave = new AtomicReference<>();
         private final ZLinkSpotContext context;
 
@@ -1874,6 +1874,14 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public void configure() {
             context.handlers().addHandler(LeaveDuringRequestHandler.class);
+        }
+
+        @Override
+        public ZLinkSpotActorJoinResponse onActorJoin(
+            String actorId,
+            ZLinkMessage request,
+            CancellationToken cancellationToken) {
+            return ZLinkSpotActorJoinResponse.accept();
         }
 
         @Override
@@ -1900,7 +1908,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class InterfaceUserSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class InterfaceUserSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastJoin = new AtomicReference<>();
         static final AtomicReference<String> lastPostJoin = new AtomicReference<>();
         private final ZLinkSpotContext context;
@@ -1920,11 +1928,11 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
             String decoded = request.decode(String.class);
-            lastJoin.set(actor.actorId() + ":" + decoded);
+            lastJoin.set(actorId + ":" + decoded);
             return ZLinkSpotActorJoinResponse.accept("joined:" + decoded);
         }
 

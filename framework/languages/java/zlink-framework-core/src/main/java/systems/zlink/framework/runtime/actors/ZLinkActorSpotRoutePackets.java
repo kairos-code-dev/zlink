@@ -1,7 +1,9 @@
 package systems.zlink.framework.runtime.actors;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
+import java.util.ArrayList;
 import java.util.List;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -12,33 +14,20 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 public final class ZLinkActorSpotRoutePackets {
     public static final String JOIN_SPOT_PACKET_NAME = "__zlink.actor.joinSpot";
+    public static final String ADMISSION_PHASE = "admission";
+    public static final String COMMIT_PHASE = "commit";
     public static final String BOUND_SESSION_SEND_PACKET_NAME = "__zlink.actor.boundSession.send";
     public static final String SESSION_DISCONNECTED_PACKET_NAME =
         "__zlink.actor.sessionDisconnected";
     public static final String ACTOR_PACKET_NAME = "__zlink.actor.packet";
+    public static final String HANDOFF_DIRECT_REPLY_ACK = "__zlink.actor.handoff.directAck";
 
     private ZLinkActorSpotRoutePackets() {
     }
 
-    public static Message encodeJoinRequest(
-        String actorId,
-        String actorType,
-        ZLinkBackendActorRef actorRef,
-        RoutingId sourceEntrySpotRid,
-        RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid) {
-        return Message.from(String.join(
-            "\n",
-            actorId,
-            actorType,
-            actorRef.nodeRid().toString(),
-            Long.toUnsignedString(actorRef.generation()),
-            sourceEntrySpotRid.toString(),
-            sourceNodeRid == null ? "" : sourceNodeRid.toString(),
-            sourceSessionRid == null ? "" : sourceSessionRid.toString()).getBytes(StandardCharsets.UTF_8));
-    }
-
-    public static List<Message> createJoinRequestParts(
+    public static List<Message> createAdmissionRequestParts(
+        String transferId,
+        Duration timeout,
         String actorId,
         String actorType,
         ZLinkBackendActorRef actorRef,
@@ -48,14 +37,167 @@ public final class ZLinkActorSpotRoutePackets {
         Message joinPayload) {
         return List.of(
             Message.from(JOIN_SPOT_PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
-            encodeJoinRequest(
+            encodeTransferRequest(
+                ADMISSION_PHASE,
+                transferId,
+                timeout,
                 actorId,
                 actorType,
                 actorRef,
                 sourceEntrySpotRid,
                 sourceNodeRid,
-                sourceSessionRid),
+                sourceSessionRid,
+                ""),
             Message.from(joinPayload));
+    }
+
+    public static List<Message> createCommitRequestParts(
+        String transferId,
+        Duration timeout,
+        String actorId,
+        String actorType,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotRid,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        String adapterKey,
+        Message transferState,
+        List<ZLinkActorHandoffPacket> backlog) {
+        List<Message> parts = new ArrayList<>();
+        parts.add(Message.from(JOIN_SPOT_PACKET_NAME.getBytes(StandardCharsets.UTF_8)));
+        parts.add(
+            encodeTransferRequest(
+                COMMIT_PHASE,
+                transferId,
+                timeout,
+                actorId,
+                actorType,
+                actorRef,
+                sourceEntrySpotRid,
+                sourceNodeRid,
+                sourceSessionRid,
+                adapterKey == null ? "" : adapterKey,
+                backlog.size()));
+        parts.add(Message.from(transferState));
+        for (ZLinkActorHandoffPacket packet : backlog) {
+            parts.add(Message.from(Long.toString(packet.arrivalIndex()).getBytes(StandardCharsets.UTF_8)));
+            parts.add(encodeReplyRoute(packet.replyRoute()));
+            parts.add(Message.from(ZLinkStreamHeaderCodec.encode(packet.header())));
+            parts.add(Message.from(packet.payload()));
+        }
+        return List.copyOf(parts);
+    }
+
+    private static Message encodeTransferRequest(
+        String phase,
+        String transferId,
+        Duration timeout,
+        String actorId,
+        String actorType,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotRid,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        String adapterKey) {
+        return encodeTransferRequest(
+            phase, transferId, timeout, actorId, actorType, actorRef,
+            sourceEntrySpotRid, sourceNodeRid, sourceSessionRid, adapterKey, 0);
+    }
+
+    private static Message encodeTransferRequest(
+        String phase,
+        String transferId,
+        Duration timeout,
+        String actorId,
+        String actorType,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotRid,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        String adapterKey,
+        int backlogCount) {
+        long timeoutMillis = timeout == null ? 30_000L : Math.max(1L, timeout.toMillis());
+        return Message.from(String.join(
+            "\n",
+            phase,
+            transferId,
+            Long.toString(timeoutMillis),
+            actorId,
+            actorType,
+            actorRef.nodeRid().toString(),
+            Long.toUnsignedString(actorRef.generation()),
+            sourceEntrySpotRid.toString(),
+            sourceNodeRid == null ? "" : sourceNodeRid.toString(),
+            sourceSessionRid == null ? "" : sourceSessionRid.toString(),
+            adapterKey,
+            Integer.toString(backlogCount)).getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static TransferRequest decodeTransferRequest(Message message) {
+        String[] fields = message.toUtf8String().split("\n", -1);
+        if (fields.length != 12
+            || (!ADMISSION_PHASE.equals(fields[0]) && !COMMIT_PHASE.equals(fields[0]))
+            || fields[1].isBlank()
+            || fields[3].isBlank()
+            || fields[4].isBlank()
+            || fields[5].isBlank()
+            || fields[7].isBlank()
+            || (fields[8].isBlank() != fields[9].isBlank())) {
+            throw new ZLinkConfigurationException("invalid actor Spot transfer request");
+        }
+        return new TransferRequest(
+            fields[0],
+            fields[1],
+            Long.parseLong(fields[2]),
+            fields[3],
+            fields[4],
+            RoutingId.from(fields[5]),
+            Long.parseUnsignedLong(fields[6]),
+            RoutingId.from(fields[7]),
+            fields[8].isBlank() ? null : RoutingId.from(fields[8]),
+            fields[9].isBlank() ? null : RoutingId.from(fields[9]),
+            fields[10].isBlank() ? null : fields[10],
+            Integer.parseInt(fields[11]));
+    }
+
+    public static List<WireHandoffPacket> decodeHandoffPackets(
+        List<Message> parts,
+        int backlogCount) {
+        if (backlogCount < 0 || parts.size() != 3 + backlogCount * 4) {
+            throw new ZLinkConfigurationException("invalid actor transfer handoff backlog");
+        }
+        List<WireHandoffPacket> backlog = new ArrayList<>(backlogCount);
+        for (int index = 0; index < backlogCount; index++) {
+            int offset = 3 + index * 4;
+            backlog.add(new WireHandoffPacket(
+                Long.parseLong(parts.get(offset).toUtf8String()),
+                decodeReplyRoute(parts.get(offset + 1)),
+                ZLinkStreamHeaderCodec.decodeOrPlain(parts.get(offset + 2).toByteArray()),
+                Message.from(parts.get(offset + 3))));
+        }
+        return List.copyOf(backlog);
+    }
+
+    public static Message encodeAdmissionReply(boolean accepted, Message reply) {
+        String encodedReply = reply == null
+            ? ""
+            : Base64.getEncoder().encodeToString(reply.toByteArray());
+        return Message.from(String.join(
+            "\n",
+            Boolean.toString(accepted),
+            encodedReply).getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static AdmissionReply decodeAdmissionReply(Message message) {
+        String[] fields = message.toUtf8String().split("\n", -1);
+        if (fields.length != 2) {
+            throw new ZLinkConfigurationException("invalid actor Spot admission reply");
+        }
+        return new AdmissionReply(
+            Boolean.parseBoolean(fields[0]),
+            fields[1].isBlank()
+                ? Message.from(new byte[0])
+                : Message.from(Base64.getDecoder().decode(fields[1])));
     }
 
     public static List<Message> createBoundSessionSendParts(
@@ -70,10 +212,12 @@ public final class ZLinkActorSpotRoutePackets {
     public static List<Message> createActorPacketParts(
         ZLinkBackendActorRef actorRef,
         ZLinkStreamHeader header,
-        Message payload) {
+        Message payload,
+        ZLinkActorReplyRoute replyRoute) {
         return List.of(
             Message.from(ACTOR_PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
             encodeActorRef(actorRef),
+            encodeReplyRoute(replyRoute),
             Message.from(ZLinkStreamHeaderCodec.encode(header)),
             Message.from(payload));
     }
@@ -89,14 +233,23 @@ public final class ZLinkActorSpotRoutePackets {
     }
 
     public static ActorPacket decodeActorPacket(List<Message> parts) {
-        if (parts.size() < 4
+        if (parts.size() < 5
             || !ACTOR_PACKET_NAME.equals(parts.get(0).toUtf8String())) {
             throw new ZLinkConfigurationException("invalid routed actor packet");
         }
         return new ActorPacket(
             decodeActorRef(parts.get(1), "invalid routed actor packet metadata"),
-            ZLinkStreamHeaderCodec.decodeOrPlain(parts.get(2).toByteArray()),
-            Message.from(parts.get(3)));
+            decodeReplyRoute(parts.get(2)),
+            ZLinkStreamHeaderCodec.decodeOrPlain(parts.get(3).toByteArray()),
+            Message.from(parts.get(4)));
+    }
+
+    public static Message createHandoffDirectReplyAck() {
+        return Message.from(HANDOFF_DIRECT_REPLY_ACK.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static boolean isHandoffDirectReplyAck(Message message) {
+        return message != null && HANDOFF_DIRECT_REPLY_ACK.equals(message.toUtf8String());
     }
 
     private static Message encodeActorRef(ZLinkBackendActorRef actorRef) {
@@ -105,6 +258,44 @@ public final class ZLinkActorSpotRoutePackets {
             actorRef.nodeRid().toString(),
             actorRef.actorId(),
             Long.toUnsignedString(actorRef.generation())).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static Message encodeReplyRoute(ZLinkActorReplyRoute route) {
+        if (route == null) {
+            return Message.from(new byte[0]);
+        }
+        return Message.from(String.join(
+            "\n",
+            route.actorRef().nodeRid().toString(),
+            route.actorRef().actorId(),
+            Long.toUnsignedString(route.actorRef().generation()),
+            route.sourceNodeRid().toString(),
+            route.sourceSessionRid().toString(),
+            Long.toUnsignedString(route.requestId()),
+            Integer.toUnsignedString(route.flags())).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static ZLinkActorReplyRoute decodeReplyRoute(Message message) {
+        if (message.toByteArray().length == 0) {
+            return null;
+        }
+        String[] fields = message.toUtf8String().split("\n", -1);
+        if (fields.length != 7
+            || fields[0].isBlank()
+            || fields[1].isBlank()
+            || fields[3].isBlank()
+            || fields[4].isBlank()) {
+            throw new ZLinkConfigurationException("invalid actor transfer reply route");
+        }
+        return new ZLinkActorReplyRoute(
+            new ZLinkBackendActorRef(
+                RoutingId.from(fields[0]),
+                fields[1],
+                Long.parseUnsignedLong(fields[2])),
+            RoutingId.from(fields[3]),
+            RoutingId.from(fields[4]),
+            Long.parseUnsignedLong(fields[5]),
+            Integer.parseUnsignedInt(fields[6]));
     }
 
     private static ZLinkBackendActorRef decodeActorRef(Message metadata, String errorMessage) {
@@ -118,28 +309,6 @@ public final class ZLinkActorSpotRoutePackets {
             RoutingId.from(fields[0]),
             fields[1],
             Long.parseUnsignedLong(fields[2]));
-    }
-
-    public static JoinRequest decodeJoinRequest(Message message) {
-        String[] fields = message.toUtf8String().split("\n", -1);
-        if ((fields.length != 5 && fields.length != 7)
-            || fields[0].isBlank()
-            || fields[1].isBlank()
-            || fields[2].isBlank()
-            || fields[4].isBlank()) {
-            throw new ZLinkConfigurationException("invalid actor Spot route join request");
-        }
-        if (fields.length == 7 && (fields[5].isBlank() != fields[6].isBlank())) {
-            throw new ZLinkConfigurationException("invalid actor Spot route source session metadata");
-        }
-        return new JoinRequest(
-            fields[0],
-            fields[1],
-            RoutingId.from(fields[2]),
-            Long.parseUnsignedLong(fields[3]),
-            RoutingId.from(fields[4]),
-            fields.length == 7 && !fields[5].isBlank() ? RoutingId.from(fields[5]) : null,
-            fields.length == 7 && !fields[6].isBlank() ? RoutingId.from(fields[6]) : null);
     }
 
     public static Message encodeJoinReply(
@@ -177,20 +346,51 @@ public final class ZLinkActorSpotRoutePackets {
             reply);
     }
 
-    public record JoinRequest(
+    public record TransferRequest(
+        String phase,
+        String transferId,
+        long timeoutMillis,
         String actorId,
         String actorType,
         RoutingId actorNodeRid,
         long actorGeneration,
         RoutingId sourceEntrySpotRid,
         RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid) {
+        RoutingId sourceSessionRid,
+        String adapterKey,
+        int backlogCount) {
         public ZLinkBackendActorRef actorRef() {
             return new ZLinkBackendActorRef(actorNodeRid, actorId, actorGeneration);
         }
 
+        public boolean admission() {
+            return ADMISSION_PHASE.equals(phase);
+        }
+
+        public boolean commit() {
+            return COMMIT_PHASE.equals(phase);
+        }
+
         public boolean hasSourceSessionRoute() {
             return sourceNodeRid != null && sourceSessionRid != null;
+        }
+    }
+
+    public record WireHandoffPacket(
+        long arrivalIndex,
+        ZLinkActorReplyRoute replyRoute,
+        ZLinkStreamHeader header,
+        Message payload) implements AutoCloseable {
+        @Override
+        public void close() {
+            payload.close();
+        }
+    }
+
+    public record AdmissionReply(boolean accepted, Message reply) implements AutoCloseable {
+        @Override
+        public void close() {
+            reply.close();
         }
     }
 
@@ -211,6 +411,7 @@ public final class ZLinkActorSpotRoutePackets {
 
     public record ActorPacket(
         ZLinkBackendActorRef actorRef,
+        ZLinkActorReplyRoute replyRoute,
         ZLinkStreamHeader header,
         Message payload) implements AutoCloseable {
         @Override

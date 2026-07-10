@@ -339,10 +339,22 @@ class ZLinkFrameworkLocationRuntimeTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             systems.zlink.framework.messaging.ZLinkMessage request,
             systems.zlink.framework.CancellationToken cancellationToken) {
             return ZLinkSpotActorJoinResponse.accept();
+        }
+
+        @Override
+        public void onJoinedActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+        }
+
+        @Override
+        public void onLeaveActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) {
         }
     }
 

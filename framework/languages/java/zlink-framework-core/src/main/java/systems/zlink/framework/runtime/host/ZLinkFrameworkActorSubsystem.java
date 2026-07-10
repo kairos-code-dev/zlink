@@ -53,7 +53,9 @@ final class ZLinkFrameworkActorSubsystem {
             ? new ZLinkActorRuntime(
                 spots.node(actorNodeRegistration.nodeName()),
                 actorNodeRegistration.actorFactories(),
+                actorNodeRegistration.actorTransferAdapters(),
                 registration.defaultRequestTimeout(),
+                registration.actorTransferForwardWindow(),
                 serializer,
                 runtimeHandlers,
                 defaultStreamCodec)

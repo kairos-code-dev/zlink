@@ -269,6 +269,13 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
         ZLinkActorSpotRoutePackets.ActorPacket packet =
             ZLinkActorSpotRoutePackets.decodeActorPacket(parts);
         return host.dispatchLocalSessionActor(packet.actorRef(), packet.header(), packet.payload())
+            .thenApply(reply -> {
+                Optional<Message> completed = host.replyTransferredRequestDirect(
+                    packet.header(), packet.replyRoute(), reply);
+                return packet.replyRoute() == null
+                    ? completed
+                    : Optional.of(ZLinkActorSpotRoutePackets.createHandoffDirectReplyAck());
+            })
             .whenComplete((ignored, error) -> packet.close());
     }
 

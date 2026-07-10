@@ -1730,6 +1730,9 @@ final class ChannelMessagingTest {
         public ZLinkSpotContext context() {
             return context;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class RemoteStateSpot implements ZLinkSpot<ZLinkActor> {
@@ -1743,6 +1746,9 @@ final class ChannelMessagingTest {
         public ZLinkSpotContext context() {
             return context;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
 
         @Override
         public void configure() {

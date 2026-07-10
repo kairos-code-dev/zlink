@@ -28,7 +28,8 @@ final class ActorPacketFrames {
                 false,
                 0,
                 EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                Map.of());
+                Map.of(),
+                Optional.empty());
         }
     }
 
@@ -70,7 +71,8 @@ final class ActorPacketFrames {
             true,
             header.codec().value(),
             header.flags(),
-            header.metadata());
+            header.metadata(),
+            header.correlationId());
     }
 
     private static String errorMessage(Throwable error) {
@@ -89,7 +91,8 @@ final class ActorPacketFrames {
         boolean streamHeader,
         int codec,
         EnumSet<ZLinkStreamHeaderFlag> flags,
-        Map<String, String> metadata) {
+        Map<String, String> metadata,
+        Optional<String> correlationId) {
         Header {
             EnumSet<ZLinkStreamHeaderFlag> normalizedFlags =
                 EnumSet.noneOf(ZLinkStreamHeaderFlag.class);
@@ -98,6 +101,7 @@ final class ActorPacketFrames {
             }
             flags = normalizedFlags;
             metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+            correlationId = correlationId == null ? Optional.empty() : correlationId;
         }
 
         ZLinkStreamHeader toRequestHeader() {
@@ -107,7 +111,19 @@ final class ActorPacketFrames {
                 flags,
                 requestSeq,
                 packetName,
-                metadata);
+                metadata,
+                correlationId);
+        }
+
+        ZLinkStreamHeader toStreamHeader() {
+            return new ZLinkStreamHeader(
+                requestSeq.isPresent() ? ZLinkStreamMessageKind.REQUEST : ZLinkStreamMessageKind.SEND,
+                ZLinkStreamCodec.fromValue(codec),
+                flags,
+                requestSeq,
+                packetName,
+                metadata,
+                correlationId);
         }
     }
 }

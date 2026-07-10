@@ -37,7 +37,7 @@ class BingoEntrySpot(
     }
 
     override fun onActorJoin(
-        actor: PlayerActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =

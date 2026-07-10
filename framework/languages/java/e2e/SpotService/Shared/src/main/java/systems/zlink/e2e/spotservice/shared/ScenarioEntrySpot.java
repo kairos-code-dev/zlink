@@ -60,10 +60,10 @@ public final class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ScenarioActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
-        evidence.record("ActorEntryJoinRequested", "entry", actor.actorId() + "#" + actor.nextSequence());
+        evidence.record("ActorEntryJoinRequested", "entry", actorId);
         return ZLinkSpotActorJoinResponse.accept();
     }
 
@@ -72,5 +72,11 @@ public final class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
         ScenarioActor actor,
         CancellationToken cancellationToken) {
         evidence.record("ActorEntryJoined", "entry", actor.actorId() + "#" + actor.nextSequence());
+    }
+
+    @Override
+    public void onLeaveActor(
+        ScenarioActor actor,
+        CancellationToken cancellationToken) {
     }
 }

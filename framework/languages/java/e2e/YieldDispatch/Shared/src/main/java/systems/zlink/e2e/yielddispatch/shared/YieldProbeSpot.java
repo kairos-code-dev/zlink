@@ -105,10 +105,10 @@ public final class YieldProbeSpot implements ZLinkSpot<YieldActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        YieldActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
-        if (actor.actorId().startsWith("ydb3-")) {
+        if (actorId.startsWith("ydb3-")) {
             Contracts.DelayReq delay = request.decode(Contracts.DelayReq.class);
             try {
                 Thread.sleep(delay.delayMillis());
@@ -117,7 +117,7 @@ public final class YieldProbeSpot implements ZLinkSpot<YieldActor> {
                 throw new IllegalStateException("actor join interrupted", error);
             }
         }
-        evidence.record("actor-target-join-requested", actor.actorId(), context.spotRid().toString());
+        evidence.record("actor-target-join-requested", actorId, context.spotRid().toString());
         return ZLinkSpotActorJoinResponse.accept();
     }
 
@@ -126,5 +126,11 @@ public final class YieldProbeSpot implements ZLinkSpot<YieldActor> {
         YieldActor actor,
         CancellationToken cancellationToken) {
         evidence.record("actor-target-joined", actor.actorId(), context.spotRid().toString());
+    }
+
+    @Override
+    public void onLeaveActor(
+        YieldActor actor,
+        CancellationToken cancellationToken) {
     }
 }

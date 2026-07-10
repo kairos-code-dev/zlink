@@ -12,4 +12,10 @@ class ActorDirectory {
     fun require(actorId: String): CourierActor =
         synchronized(actors) { actors[actorId] }
             ?: throw IllegalStateException("Courier actor is not registered: $actorId")
+
+    fun remove(actorId: String) {
+        synchronized(actors) {
+            actors.remove(actorId)
+        }
+    }
 }

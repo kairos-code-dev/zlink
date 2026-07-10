@@ -9,6 +9,7 @@ import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActorFactory;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActorTransferAdapter;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.PlayEntrySpot;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.sessions.PlaySession;
@@ -45,6 +46,7 @@ public final class PlayServer {
             node.addEntrySpot(PlayEntrySpot.class);
             node.addSpotFactory(TicTacToeGame.class);
             node.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);
+            node.addActorTransferAdapter(SampleNames.PlayActor, PlayActorTransferAdapter.class);
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint())
                 .registerSession(PlaySession.class)

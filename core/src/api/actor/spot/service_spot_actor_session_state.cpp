@@ -205,6 +205,8 @@ bool actor_session_state_t::detach_actor (actor_handle_t *actor_,
       binding_it->second.actors.find (actor_->actor_id);
     if (entry_it == binding_it->second.actors.end ())
         return false;
+    if (entry_it->second.actor != actor_)
+        return false;
 
     if (erase_entry_) {
         binding_it->second.actors.erase (entry_it);

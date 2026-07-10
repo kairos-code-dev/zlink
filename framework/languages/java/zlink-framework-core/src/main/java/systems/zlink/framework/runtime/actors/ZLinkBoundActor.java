@@ -31,7 +31,7 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 final class ZLinkBoundActor implements ZLinkSessionActor {
     private final ZLinkBackendStreamSocket stream;
     private final RoutingId sessionRid;
-    private final ZLinkBackendActorRef ref;
+    private volatile ZLinkBackendActorRef ref;
     private final Optional<ZLinkActor> managedActor;
     private final ZLinkActorRuntime actors;
     private final ZLinkMessageSerializer serializer;
@@ -41,6 +41,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
     private final boolean nativeSessionRelayAttached;
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkSessionRelayHeaders relayHeaders;
+    private volatile boolean nativeRebound;
 
     ZLinkBoundActor(
         ZLinkBackendStreamSocket stream,
@@ -76,7 +77,17 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
 
     @Override
     public ActorRef ref() {
-        return new ActorRef(ref.nodeRid(), ref.actorId(), ref.generation());
+        ZLinkBackendActorRef current = ref;
+        return new ActorRef(current.nodeRid(), current.actorId(), current.generation());
+    }
+
+    void rebindNativeActor(ZLinkBackendActorRef targetActor) {
+        if (!ref.actorId().equals(targetActor.actorId())) {
+            throw new ZLinkConfigurationException(
+                "bound session actor id mismatch: " + targetActor.actorId());
+        }
+        ref = targetActor;
+        nativeRebound = true;
     }
 
     @Override
@@ -106,7 +117,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         Message message = ZLinkMessagePayloads.message(payload, serializer);
         byte[] payloadBytes = message.toByteArray();
         message.close();
-        if (managedActor.isPresent() && localActorDispatcher != null) {
+        if (managedActor.isPresent() && localActorDispatcher != null && !nativeRebound) {
             return relayLocal(header, payloadBytes);
         }
         return ensureNativeBinding()
@@ -212,11 +223,11 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
 
     @Override
     public CompletionStage<Void> notifyDisconnected() {
-        CompletionStage<Void> notification = managedActor
-            .map(actor -> actors.clearSessionBinding(actor, bindingToken)
-                ? actors.notifyDisconnected(actor)
-                : CompletableFuture.<Void>completedFuture(null))
-            .orElseGet(this::notifyRemoteDisconnected);
+        CompletionStage<Void> notification = managedActor.isPresent() && !nativeRebound
+            ? (actors.clearSessionBinding(managedActor.get(), bindingToken)
+                ? actors.notifyDisconnected(managedActor.get())
+                : CompletableFuture.completedFuture(null))
+            : notifyRemoteDisconnected();
         return notification.thenCompose(ignored -> stream.unbindActor(sessionRid, ref.actorId())
             .submit(Duration.ofSeconds(30)));
     }

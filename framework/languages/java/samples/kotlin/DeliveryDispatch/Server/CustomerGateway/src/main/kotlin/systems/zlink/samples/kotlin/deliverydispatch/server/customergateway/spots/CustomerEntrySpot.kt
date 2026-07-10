@@ -25,10 +25,24 @@ class CustomerEntrySpot(
     }
 
     override fun onActorJoin(
-        actor: CustomerActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse = ZLinkSpotActorJoinResponse.accept()
+
+    override fun onJoinedActor(
+        actor: CustomerActor,
+        cancellationToken: CancellationToken,
+    ) {
+        customers.register(actor)
+    }
+
+    override fun onLeaveActor(
+        actor: CustomerActor,
+        cancellationToken: CancellationToken,
+    ) {
+        customers.remove(actor.actorId())
+    }
 
     fun subscribe(
         actor: CustomerActor,

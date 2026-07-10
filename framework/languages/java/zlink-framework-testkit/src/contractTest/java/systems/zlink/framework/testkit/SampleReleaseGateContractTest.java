@@ -1098,8 +1098,8 @@ final class SampleReleaseGateContractTest {
                 && gameTimerHandlerSource.contains("ZLinkSuspendingSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tick()"),
             "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
-        assertTrue(gameSpotSource.contains("override fun onJoinedActor(")
-                && gameSpotSource.contains("override fun onLeaveActor(")
+        assertTrue(gameSpotSource.contains("override suspend fun onJoinedActorSuspending(")
+                && gameSpotSource.contains("override suspend fun onLeaveActorSuspending(")
                 && entrySpotSource.contains("override fun onActorJoin(")
                 && entrySpotSource.contains("request: ZLinkMessage")
                 && entrySpotSource.contains("ZLinkSpotActorJoinResponse.accept")

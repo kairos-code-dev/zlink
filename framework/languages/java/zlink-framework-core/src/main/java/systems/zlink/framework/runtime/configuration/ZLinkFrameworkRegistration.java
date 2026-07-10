@@ -41,6 +41,7 @@ public final class ZLinkFrameworkRegistration {
     private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean closeHandlerExecutor = true;
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
+    private Duration actorTransferForwardWindow = Duration.ofSeconds(5);
     private Class<? extends SpotRemoteRefResolver> spotRemoteRefResolverType;
 
     public Duration defaultRequestTimeout() {
@@ -49,6 +50,14 @@ public final class ZLinkFrameworkRegistration {
 
     void setDefaultRequestTimeout(Duration defaultRequestTimeout) {
         this.defaultRequestTimeout = defaultRequestTimeout;
+    }
+
+    public Duration actorTransferForwardWindow() {
+        return actorTransferForwardWindow;
+    }
+
+    void setActorTransferForwardWindow(Duration actorTransferForwardWindow) {
+        this.actorTransferForwardWindow = actorTransferForwardWindow;
     }
 
     public ZLinkCodecRegistration codecs() {
@@ -128,6 +137,7 @@ public final class ZLinkFrameworkRegistration {
             types.addAll(spotNode.spotFactories());
             types.addAll(spotNode.entrySpots());
             types.addAll(spotNode.actorFactories().values());
+            types.addAll(spotNode.actorTransferAdapters().values());
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
             types.addAll(streamNode.applicationTypes());

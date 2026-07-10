@@ -11,6 +11,7 @@ import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActorFactory
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActorTransferAdapter
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.PlayEntrySpot
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.sessions.PlaySession
@@ -45,6 +46,7 @@ object PlayServer {
             node.addEntrySpot(PlayEntrySpot::class.java)
             node.addSpotFactory(TicTacToeGame::class.java)
             node.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)
+            node.addActorTransferAdapter(SampleNames.PlayActor, PlayActorTransferAdapter::class.java)
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint)
                 .registerSession(PlaySession::class.java)

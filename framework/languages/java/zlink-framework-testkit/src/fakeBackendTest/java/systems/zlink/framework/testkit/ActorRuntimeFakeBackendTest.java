@@ -561,62 +561,6 @@ final class ActorRuntimeFakeBackendTest {
     }
 
     @Test
-    void remoteRoutedActorJoinBindsNativeBoundSessionSend() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
-            route.enableClient("inproc://source-route"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");node.addSpotFactory(NotifyingJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
-        options.configureLocations().setSpotRouterChannel("game", "rooms");
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-        RoutingId roomRid = RoutingId.from("remote-room");
-
-        try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-            runtime.spotManager()
-                .create(NotifyingJoinSpot.class, roomRid)
-                .toCompletableFuture()
-                .join();
-            try (Message bridgePacket = Message.from("__zlink.routed_spot.egress.request");
-                 Message joinPacket = Message.from(ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME);
-                 Message joinRequest = ZLinkActorSpotRoutePackets.encodeJoinRequest(
-                    "player-routed-bound",
-                    "player",
-                    new ZLinkBackendActorRef(
-                        RoutingId.from("source-actor-node"),
-                        "player-routed-bound",
-                        7),
-                    RoutingId.from("source-entry"),
-                    RoutingId.from("source-session-node"),
-                    RoutingId.from("source-session"));
-                 Message joinPayload = Message.from(new byte[0])) {
-                backendFactory.dispatchRouteMeshSpotRequest(
-                    RoutingId.from("source"),
-                    roomRid,
-                    List.of(
-                        bridgePacket,
-                        joinPacket,
-                        joinRequest,
-                        joinPayload),
-                    1);
-            }
-            awaitCall(
-                backendFactory,
-                "spotRouteBridge.bridge.handleRouterReceived.rooms.__zlink.routed_spot.egress.request");
-        }
-
-        assertTrue(backendFactory.calls().stream().anyMatch(call ->
-                call.startsWith(
-                    "spotRouteBridge.bridge.handleRouterReceived.rooms.__zlink.routed_spot.egress.request")),
-            () -> "calls: " + conciseCalls(backendFactory));
-        assertEquals(
-            false,
-            backendFactory.calls().stream().anyMatch(call ->
-                call.startsWith("spotRouteBridge.bridge.request.rooms.room-remote.__zlink.actor.bound_session.send")),
-            () -> "calls: " + conciseCalls(backendFactory));
-    }
-
-    @Test
     void actorCreateDoesNotNotifyEntrySpotOwnedByDifferentNode() {
         SecondEntrySpot.createCount = 0;
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -730,7 +674,7 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class GameSpot extends TestZLinkSpot<ZLinkActor> {
         static GameSpot instance;
 
         public GameSpot() {
@@ -743,7 +687,7 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class CustomCodecJoinSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class CustomCodecJoinSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastJoin = new AtomicReference<>();
 
         @Override
@@ -753,16 +697,16 @@ final class ActorRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
             CustomJoinRequest decoded = request.decode(CustomJoinRequest.class);
-            lastJoin.set(actor.actorId() + ":" + decoded.value());
+            lastJoin.set(actorId + ":" + decoded.value());
             return ZLinkSpotActorJoinResponse.accept(new CustomJoinReply("reply:" + decoded.value()));
         }
     }
 
-    public static final class ProtobufJoinSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class ProtobufJoinSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastJoin = new AtomicReference<>();
 
         @Override
@@ -772,16 +716,16 @@ final class ActorRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
             StringValue decoded = request.decode(StringValue.class);
-            lastJoin.set(actor.actorId() + ":" + decoded.getValue());
+            lastJoin.set(actorId + ":" + decoded.getValue());
             return ZLinkSpotActorJoinResponse.accept(StringValue.of("reply:" + decoded.getValue()));
         }
     }
 
-    public static final class MessagePackJoinSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class MessagePackJoinSpot extends TestZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastJoin = new AtomicReference<>();
 
         @Override
@@ -791,11 +735,11 @@ final class ActorRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
             PackedJoinRequest decoded = request.decode(PackedJoinRequest.class);
-            lastJoin.set(actor.actorId() + ":" + decoded.value());
+            lastJoin.set(actorId + ":" + decoded.value());
             return ZLinkSpotActorJoinResponse.accept(new PackedJoinReply("reply:" + decoded.value()));
         }
     }
@@ -866,7 +810,7 @@ final class ActorRuntimeFakeBackendTest {
         return Message.from(payload.bytes());
     }
 
-    public static final class NotifyingJoinSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class NotifyingJoinSpot extends TestZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
@@ -874,15 +818,21 @@ final class ActorRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
-            ZLinkAwait.await(actor.context().boundSession().send("joined-notify").submit());
             return ZLinkSpotActorJoinResponse.accept("joined");
+        }
+
+        @Override
+        public void onJoinedActor(
+            ZLinkActor actor,
+            CancellationToken cancellationToken) {
+            ZLinkAwait.await(actor.context().boundSession().send("joined-notify").submit());
         }
     }
 
-    public static final class EntrySpot implements ZLinkEntrySpot<ZLinkActor> {
+    public static final class EntrySpot extends TestZLinkEntrySpot<ZLinkActor> {
         static EntrySpot instance;
         static int createCount;
         static int leftCount;
@@ -922,7 +872,7 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class SecondEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
+    public static final class SecondEntrySpot extends TestZLinkEntrySpot<ZLinkActor> {
         static int createCount;
         private final ZLinkEntrySpotContext context;
 

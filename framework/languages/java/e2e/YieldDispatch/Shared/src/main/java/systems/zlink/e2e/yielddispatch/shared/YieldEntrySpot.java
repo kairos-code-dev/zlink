@@ -29,9 +29,17 @@ public final class YieldEntrySpot implements ZLinkEntrySpot<YieldActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        YieldActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.accept();
+    }
+
+    @Override
+    public void onJoinedActor(YieldActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onLeaveActor(YieldActor actor, CancellationToken cancellationToken) {
     }
 }

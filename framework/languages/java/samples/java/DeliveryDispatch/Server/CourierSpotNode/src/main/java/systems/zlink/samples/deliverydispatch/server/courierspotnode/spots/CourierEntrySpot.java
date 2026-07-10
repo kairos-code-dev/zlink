@@ -34,9 +34,23 @@ public final class CourierEntrySpot implements ZLinkEntrySpot<CourierActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        CourierActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.accept();
+    }
+
+    @Override
+    public void onJoinedActor(
+        CourierActor actor,
+        CancellationToken cancellationToken) {
+        actors.register(actor);
+    }
+
+    @Override
+    public void onLeaveActor(
+        CourierActor actor,
+        CancellationToken cancellationToken) {
+        actors.remove(actor.actorId());
     }
 }

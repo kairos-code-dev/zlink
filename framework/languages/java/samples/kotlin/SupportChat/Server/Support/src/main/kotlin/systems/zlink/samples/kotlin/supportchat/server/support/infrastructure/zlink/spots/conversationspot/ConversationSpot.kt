@@ -38,6 +38,7 @@ class ConversationSpot(
     private val directory: SupportActorDirectory,
 ) : ZLinkSuspendingSpot<SupportUserActor>() {
     private val actors = linkedMapOf<String, SupportUserActor>()
+    private val pendingJoins = mutableSetOf<String>()
     private var conversation: Conversation? = null
     private var idleTimer: ZLinkTimer? = null
 
@@ -80,15 +81,33 @@ class ConversationSpot(
     }
 
     override suspend fun onActorJoinSuspending(
-        actor: SupportUserActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
         val conversation = requireConversation()
+        val join = request.decode(JoinConversationReq::class.java)
+        require(join.conversationId == conversation.conversationId) {
+            "join request targets a different conversation"
+        }
+        pendingJoins += actorId
+        return ZLinkSpotActorJoinResponse.accept(
+            JoinConversationRes(ConversationContracts.toState(conversation.snapshot())),
+        )
+    }
+
+    override suspend fun onJoinedActorSuspending(
+        actor: SupportUserActor,
+        cancellationToken: CancellationToken,
+    ) {
+        check(pendingJoins.remove(actor.actorId())) {
+            "joined actor does not have a pending admission"
+        }
+        val conversation = requireConversation()
         if (actor.role == SupportChatRoles.Agent) {
             val change = joinAgent(actor)
             publishChange(change)
-            return ZLinkSpotActorJoinResponse.accept(JoinConversationRes(ConversationContracts.toState(change.state)))
+            return
         }
 
         actor.joinConversation(conversation.conversationId)
@@ -100,7 +119,14 @@ class ConversationSpot(
             actor.participantId,
             actor.role,
         )
-        return ZLinkSpotActorJoinResponse.accept(JoinConversationRes(ConversationContracts.toState(conversation.snapshot())))
+    }
+
+    override suspend fun onLeaveActorSuspending(
+        actor: SupportUserActor,
+        cancellationToken: CancellationToken,
+    ) {
+        pendingJoins.remove(actor.actorId())
+        actors.remove(actor.participantId)
     }
 
     suspend fun checkIdle() {

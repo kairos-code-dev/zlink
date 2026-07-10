@@ -292,6 +292,18 @@ final class EntrySpotActorDispatchTests {
         public ZLinkEntrySpotContext context() {
             return context;
         }
+
+        @Override
+        public void onJoinedActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+        }
+
+        @Override
+        public void onLeaveActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+        }
     }
 
     public static final class ProbeActor implements ZLinkActor {

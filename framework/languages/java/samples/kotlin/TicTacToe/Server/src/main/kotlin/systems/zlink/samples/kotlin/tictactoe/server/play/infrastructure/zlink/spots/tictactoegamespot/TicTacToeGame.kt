@@ -36,6 +36,7 @@ class TicTacToeGame(
     val roomId: String = context.spotRid().toString()
     private val match = TicTacToeMatch(roomId, turnTimeout)
     private val players = mutableListOf<PlayerSlot>()
+    private val pendingJoins = mutableMapOf<String, TicTacToeGameJoinReq>()
     private var gameTick: ZLinkTimer? = null
     private var created = false
 
@@ -47,25 +48,30 @@ class TicTacToeGame(
     }
 
     override suspend fun onActorJoinSuspending(
-        actor: PlayActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
         val joinRequest = request.decode(TicTacToeGameJoinReq::class.java)
-        require(joinRequest.player.actorId == actor.actorId) {
+        require(joinRequest.player.actorId == actorId) {
             "join request actor id does not match bound actor"
         }
-        val reply = join(actor, joinRequest.roomId, joinRequest.player)
-        return ZLinkSpotActorJoinResponse.accept(reply)
+        validateJoin(joinRequest.roomId, joinRequest.player)
+        val preview = match.previewJoin(actorId)
+        pendingJoins[actorId] = joinRequest
+        return ZLinkSpotActorJoinResponse.accept(TicTacToeGameJoinRes(preview.state))
     }
 
-    override fun onJoinedActor(
+    override suspend fun onJoinedActorSuspending(
         actor: PlayActor,
         cancellationToken: CancellationToken,
     ) {
+        val joinRequest = pendingJoins.remove(actor.actorId)
+            ?: error("joined actor does not have a pending admission")
+        join(actor, joinRequest.roomId, joinRequest.player)
     }
 
-    override fun onLeaveActor(
+    override suspend fun onLeaveActorSuspending(
         actor: PlayActor,
         cancellationToken: CancellationToken,
     ) {
@@ -97,10 +103,8 @@ class TicTacToeGame(
         created = true
     }
 
-    suspend fun join(actor: PlayActor, roomId: String, player: PlayerInfo): TicTacToeGameJoinRes {
-        ensureCreated()
-        check(roomId == this.roomId) { "join request room id does not match game room" }
-        check(player.level >= SampleNames.RequiredLevel) { "player level does not satisfy room requirement" }
+    fun join(actor: PlayActor, roomId: String, player: PlayerInfo): TicTacToeGameJoinRes {
+        validateJoin(roomId, player)
         actor.applyPlayer(player)
         val change = match.joinPlayer(actor.actorId, Instant.now())
         var slot = players.firstOrNull { it.actor.actorId == actor.actorId }
@@ -117,6 +121,12 @@ class TicTacToeGame(
         }
         broadcast(state, actor.actorId)
         return TicTacToeGameJoinRes(state)
+    }
+
+    private fun validateJoin(roomId: String, player: PlayerInfo) {
+        ensureCreated()
+        check(roomId == this.roomId) { "join request room id does not match game room" }
+        check(player.level >= SampleNames.RequiredLevel) { "player level does not satisfy room requirement" }
     }
 
     suspend fun placeMark(actor: PlayActor, cell: Int): PlaceMarkRes {
@@ -154,19 +164,19 @@ class TicTacToeGame(
         check(created) { "tic-tac-toe game has not completed creation" }
     }
 
-    private suspend fun broadcast(state: GameState, excludedActorId: String?) {
+    private fun broadcast(state: GameState, excludedActorId: String?) {
         players
             .asSequence()
             .map { it.actor }
             .filter { excludedActorId == null || it.actorId != excludedActorId }
             .forEach { actor ->
-                actor.context().boundSession()
+                ZLinkAwait.await(actor.context().boundSession()
                     .send(GameStateNotify(state))
-                    .submit()
+                    .submit())
             }
     }
 
-    private suspend fun notifyPlayerJoined(
+    private fun notifyPlayerJoined(
         joinedActor: PlayActor,
         joinedSlot: PlayerSlot,
         state: GameState,
@@ -185,9 +195,9 @@ class TicTacToeGame(
             .map { it.actor }
             .filter { it.actorId != joinedActor.actorId }
             .forEach { actor ->
-                actor.context().boundSession()
+                ZLinkAwait.await(actor.context().boundSession()
                     .send(message)
-                    .submit()
+                    .submit())
             }
     }
 

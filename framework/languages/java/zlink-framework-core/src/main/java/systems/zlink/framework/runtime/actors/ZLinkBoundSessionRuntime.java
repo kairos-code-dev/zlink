@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
+import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -39,6 +40,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private final Predicate<RoutingId> routeReady;
     private long bindingToken;
     private Runnable unbindListener = () -> {};
+    private Consumer<ZLinkBackendActorRef> rebindListener = ignored -> {};
 
     ZLinkBoundSessionRuntime(
         ZLinkBackendStreamSocket stream,
@@ -69,6 +71,14 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         this.unbindListener = unbindListener == null ? () -> {} : unbindListener;
     }
 
+    void setRebindListener(Consumer<ZLinkBackendActorRef> rebindListener) {
+        this.rebindListener = rebindListener == null ? ignored -> {} : rebindListener;
+    }
+
+    void markNativeRebound(ZLinkBackendActorRef targetActor) {
+        rebindListener.accept(targetActor);
+    }
+
     CompletionStage<Void> rebindNativeActor(
         ZLinkBackendActorRef targetActor,
         java.time.Duration timeout) {
@@ -86,7 +96,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         return ignoreMissingBinding(stream.unbindActor(sessionRid, actorId).submit(timeout))
             .thenCompose(unbound -> awaitRouteReady(targetActor, timeout))
             .thenCompose(ignored -> bindActorWithRetry(stream, sessionRid, targetActor, timeout))
-            .thenCompose(ignored -> relayBoundSessionBindWithRetry(header, timeout));
+            .thenCompose(ignored -> relayBoundSessionBindWithRetry(header, timeout))
+            .thenRun(() -> rebindListener.accept(targetActor));
     }
 
     private CompletionStage<Void> awaitRouteReady(

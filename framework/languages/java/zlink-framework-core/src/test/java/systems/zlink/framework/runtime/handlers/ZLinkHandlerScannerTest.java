@@ -312,6 +312,9 @@ final class ZLinkHandlerScannerTest {
         public ZLinkSpotContext context() {
             throw new UnsupportedOperationException();
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) { }
     }
 
     public static final class TestEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
@@ -319,6 +322,9 @@ final class ZLinkHandlerScannerTest {
         public ZLinkEntrySpotContext context() {
             throw new UnsupportedOperationException();
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) { }
     }
 
     public static final class InterfaceEntrySpotActorRequestHandler

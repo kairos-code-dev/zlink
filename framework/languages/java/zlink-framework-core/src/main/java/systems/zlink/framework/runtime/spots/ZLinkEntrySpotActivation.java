@@ -248,7 +248,13 @@ final class EntrySpotActivation
         }
         if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
             handleRoutedActorPacketParts(received.parts())
-                .thenAccept(reply -> reply.ifPresent(message -> received.reply(List.of(message))))
+                .thenAccept(reply -> {
+                    if (received.requestSeq().isPresent()) {
+                        reply.ifPresent(message -> received.reply(List.of(message)));
+                    } else {
+                        reply.ifPresent(Message::close);
+                    }
+                })
                 .whenComplete((ignored, error) -> closeRouteReceived(received));
             return;
         }
@@ -384,7 +390,7 @@ final class EntrySpotActivation
         return host.actorAdmissions().admitEntryActor(
             request,
             backendSpot.routingId(),
-            actor -> invokeEntryActorJoin(actor, payload),
+            actorId -> invokeEntryActorJoin(actorId, payload),
             actor -> context.enqueueDispatch(() ->
                 host.notifySpotActorLifecycleAndSuppressBackendEvent(
                     entrySpot,
@@ -395,13 +401,13 @@ final class EntrySpotActivation
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<ZLinkSpotActorJoinResponse> invokeEntryActorJoin(
-        ZLinkActor actor,
+        String actorId,
         Message payload) {
         CompletableFuture<ZLinkSpotActorJoinResponse> admission = new CompletableFuture<>();
         context.enqueueDispatch(() ->
                 ZLinkHandlerStages.fromSupplier(() ->
                     ((ZLinkEntrySpot) entrySpot).onActorJoin(
-                        actor,
+                        actorId,
                         ZLinkMessage.fromEncoded(
                             ZLinkMessagePayloads.encoded(payload),
                             host.serializerForSpot()),

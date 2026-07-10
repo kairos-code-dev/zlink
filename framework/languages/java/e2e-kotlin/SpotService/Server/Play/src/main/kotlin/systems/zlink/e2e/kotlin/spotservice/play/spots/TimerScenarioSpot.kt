@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.spotservice.play.spots
 
+import systems.zlink.framework.CancellationToken
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
@@ -19,6 +20,11 @@ class TimerScenarioSpot(
     private val context: ZLinkSpotContext,
     private val evidence: ScenarioState
 ) : ZLinkSpot<ZLinkActor> {
+    override fun onJoinedActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+    }
+
+    override fun onLeaveActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+    }
     private var lastActivity = Instant.now()
     private var tickCount = 0
     private var skippedTicks = 0L

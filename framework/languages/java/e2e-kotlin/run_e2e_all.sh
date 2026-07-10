@@ -17,6 +17,7 @@ DEFAULT_SCENARIOS=(
   ResilienceLifecycle
   YieldDispatch
   ToActorMessaging
+  SpotActorTransfer
 )
 
 selected_scenarios=()

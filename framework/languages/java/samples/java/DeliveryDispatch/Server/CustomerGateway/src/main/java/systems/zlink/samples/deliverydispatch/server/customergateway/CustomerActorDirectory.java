@@ -15,6 +15,13 @@ public final class CustomerActorDirectory {
         }
     }
 
+    public void remove(String actorId) {
+        synchronized (gate) {
+            actors.remove(actorId);
+            deliveryCustomers.values().removeIf(actorId::equals);
+        }
+    }
+
     public void subscribe(String customerId, String deliveryId) {
         synchronized (gate) {
             deliveryCustomers.put(deliveryId, customerId);

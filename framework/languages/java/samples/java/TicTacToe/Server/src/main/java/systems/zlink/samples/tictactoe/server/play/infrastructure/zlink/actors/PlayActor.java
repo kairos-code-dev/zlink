@@ -41,6 +41,10 @@ public final class PlayActor implements ZLinkActor {
         return player;
     }
 
+    public PlayerInfo playerOrNull() {
+        return player;
+    }
+
     public int incrementWins() {
         PlayerInfo current = requirePlayer();
         PlayerInfo updated = new PlayerInfo(
@@ -60,6 +64,10 @@ public final class PlayActor implements ZLinkActor {
         if (joinedRoomId == null || joinedRoomId.isEmpty()) {
             throw new IllegalStateException("actor has not joined a room");
         }
+        return joinedRoomId;
+    }
+
+    public String joinedRoomId() {
         return joinedRoomId;
     }
 

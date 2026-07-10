@@ -48,7 +48,7 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        PlayerActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.accept();

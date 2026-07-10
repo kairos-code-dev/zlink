@@ -289,6 +289,9 @@ final class SessionActorsRuntimeIntegrationTest {
         public ZLinkSpotContext context() {
             return null;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class GameEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
@@ -302,6 +305,9 @@ final class SessionActorsRuntimeIntegrationTest {
         public ZLinkEntrySpotContext context() {
             return context;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class ActorEchoHandler {

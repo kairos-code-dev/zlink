@@ -175,11 +175,21 @@ public final class Program {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            TestActor actor,
+            String actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken) {
-            evidence.append(new Contracts.ActorEvidence("join", actor.actorId(), "join", "joined"));
+            evidence.append(new Contracts.ActorEvidence("admission", actorId, "join", "accepted"));
             return ZLinkSpotActorJoinResponse.accept();
+        }
+
+        @Override
+        public void onJoinedActor(TestActor actor, CancellationToken cancellationToken) {
+            evidence.append(new Contracts.ActorEvidence("join", actor.actorId(), "join", "joined"));
+        }
+
+        @Override
+        public void onLeaveActor(TestActor actor, CancellationToken cancellationToken) {
+            evidence.append(new Contracts.ActorEvidence("leave", actor.actorId(), "join", "left"));
         }
     }
 

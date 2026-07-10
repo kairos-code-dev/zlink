@@ -273,7 +273,13 @@ final class SpotActivation
         }
         if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
             return handleRoutedActorPacketParts(received.parts())
-                .thenAccept(reply -> reply.ifPresent(message -> received.reply(List.of(message))))
+                .thenAccept(reply -> {
+                    if (received.requestSeq().isPresent()) {
+                        reply.ifPresent(message -> received.reply(List.of(message)));
+                    } else {
+                        reply.ifPresent(Message::close);
+                    }
+                })
                 .thenApply(ignored -> (Void) null)
                 .whenComplete((ignored, error) -> closeRouteReceived(received));
         }
@@ -383,43 +389,113 @@ final class SpotActivation
         RoutingId sourcePeerRid,
         List<Message> parts) {
         ParsedPacket packet = ZLinkSpotRuntime.parsePacket(parts);
-        ZLinkActorSpotRoutePackets.JoinRequest joinRequest =
-            ZLinkActorSpotRoutePackets.decodeJoinRequest(packet.payload());
-        Message joinPayload = parts.size() > 2
+        ZLinkActorSpotRoutePackets.TransferRequest transferRequest =
+            ZLinkActorSpotRoutePackets.decodeTransferRequest(packet.payload());
+        Message phasePayload = parts.size() > 2
             ? Message.from(parts.get(2).toByteArray())
             : Message.from(new byte[0]);
-        return host.actorAdmissions().admitRoutedActor(
-                joinRequest,
+        List<ZLinkActorSpotRoutePackets.WireHandoffPacket> backlog = transferRequest.commit()
+            ? ZLinkActorSpotRoutePackets.decodeHandoffPackets(parts, transferRequest.backlogCount())
+            : List.of();
+        CompletionStage<List<Message>> replyStage = transferRequest.admission()
+            ? host.actorAdmissions().prepareRoutedActor(
+                transferRequest,
                 routeChannelName,
                 sourcePeerRid,
+                actorId -> host.runWithOutbound(context.dispatchOutbound(), () ->
+                    ZLinkHandlerStages.fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
+                        actorId,
+                        ZLinkMessage.fromEncoded(
+                            ZLinkMessagePayloads.encoded(phasePayload),
+                            host.serializerForSpot()),
+                        ZLinkSpotRuntime.noneCancellation()))))
+                .thenApply(response -> List.of(encodeRoutedAdmissionReply(response)))
+            : host.actorAdmissions().commitRoutedActor(
+                transferRequest,
+                ZLinkMessage.fromEncoded(
+                    ZLinkMessagePayloads.encoded(phasePayload),
+                    host.serializerForSpot()),
                 host.primaryNode(),
                 backendSpot.routingId(),
                 host.spotFor(backendSpot.routingId()),
-                actor -> host.runWithOutbound(context.dispatchOutbound(), () ->
-                    ZLinkHandlerStages.fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
-                        actor,
-                        ZLinkMessage.fromEncoded(
-                            ZLinkMessagePayloads.encoded(joinPayload),
-                            host.serializerForSpot()),
-                        ZLinkSpotRuntime.noneCancellation()))),
                 actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
                     spot,
                     actor,
                     backendSpot.routingId(),
-                    true))
-            .thenApply(join -> encodeRoutedJoinReply(join.actorRef(), join.response()))
-            .handle((reply, error) -> {
+                    true),
+                actorRef -> replayHandoff(actorRef, backlog))
+                .thenApply(join -> {
+                    List<Message> replies = new java.util.ArrayList<>();
+                    replies.add(encodeRoutedJoinReply(join.actorRef(), join.response()));
+                    replies.addAll(join.handoffReplies());
+                    return List.copyOf(replies);
+                });
+        return replyStage
+            .handle((replies, error) -> {
                 try {
                     if (error != null) {
                         throw new CompletionException(error);
                     }
-                    try (reply) {
-                        return List.of(Message.from(reply.toByteArray()));
-                    }
+                    List<Message> copies = replies.stream()
+                        .map(Message::from)
+                        .toList();
+                    replies.forEach(Message::close);
+                    return copies;
                 } finally {
-                    joinPayload.close();
+                    phasePayload.close();
+                    backlog.forEach(ZLinkActorSpotRoutePackets.WireHandoffPacket::close);
                 }
             });
+    }
+
+    private CompletionStage<List<Message>> replayHandoff(
+        ZLinkBackendActorRef actorRef,
+        List<ZLinkActorSpotRoutePackets.WireHandoffPacket> backlog) {
+        CompletionStage<List<Message>> tail =
+            CompletableFuture.completedFuture(new java.util.ArrayList<>());
+        for (ZLinkActorSpotRoutePackets.WireHandoffPacket packet : backlog) {
+            host.actorAdmissions().traceTransferMarker(
+                "backlog_enqueued", actorRef.actorId(), packet.arrivalIndex());
+            tail = tail.thenCompose(replies -> host.dispatchLocalSessionActor(
+                    actorRef,
+                    packet.header(),
+                    packet.payload())
+                .thenApply(reply -> appendHandoffReply(replies, actorRef, packet, reply)));
+        }
+        return tail.thenApply(List::copyOf);
+    }
+
+    private List<Message> appendHandoffReply(
+        List<Message> replies,
+        ZLinkBackendActorRef actorRef,
+        ZLinkActorSpotRoutePackets.WireHandoffPacket packet,
+        Optional<Message> reply) {
+        try {
+            if (packet.replyRoute() == null || reply.isEmpty()) {
+                replies.add(reply.map(Message::from)
+                    .orElseGet(() -> Message.from(new byte[0])));
+                return replies;
+            }
+            host.replyTransferredRequestDirect(
+                packet.header(), packet.replyRoute(), reply);
+            replies.add(Message.from(new byte[0]));
+            return replies;
+        } finally {
+            if (packet.replyRoute() == null) {
+                reply.ifPresent(Message::close);
+            }
+        }
+    }
+
+    private Message encodeRoutedAdmissionReply(ZLinkSpotActorJoinResponse response) {
+        Message reply = response.reply() == null
+            ? Message.from(new byte[0])
+            : ZLinkMessagePayloads.message(response.reply(), host.serializerForSpot());
+        try {
+            return ZLinkActorSpotRoutePackets.encodeAdmissionReply(response.accepted(), reply);
+        } finally {
+            reply.close();
+        }
     }
 
     private Message encodeRoutedJoinReply(
@@ -446,8 +522,8 @@ final class SpotActivation
             request,
             backendSpot.routingId(),
             host.spotFor(backendSpot.routingId()),
-            actor -> ZLinkHandlerStages.fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
-                actor,
+            actorId -> ZLinkHandlerStages.fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
+                actorId,
                 ZLinkMessage.fromEncoded(
                     ZLinkMessagePayloads.encoded(payload),
                     host.serializerForSpot()),

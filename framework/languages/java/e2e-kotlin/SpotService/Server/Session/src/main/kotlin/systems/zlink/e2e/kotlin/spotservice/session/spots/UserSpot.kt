@@ -16,6 +16,7 @@ class UserSpot(
     private val context: ZLinkSpotContext,
     private val evidence: ScenarioState
 ) : ZLinkSpot<ScenarioActor> {
+    private val pendingProfiles = mutableMapOf<String, Contracts.ActorProfile>()
     override fun context(): ZLinkSpotContext = context
 
     override fun configure() {
@@ -37,20 +38,20 @@ class UserSpot(
     }
 
     override fun onActorJoin(
-        actor: ScenarioActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
         val join = request.decode(Contracts.ActorJoinReq::class.java)
-        actor.applyProfile(join.profile)
+        pendingProfiles[actorId] = join.profile
         evidence.record(
             "ActorUserJoinRequested",
             context.spotRid().toString(),
-            actor.actorId() + "/" + join.profile.displayName + "/" + join.tags.joinToString(",")
+            actorId + "/" + join.profile.displayName + "/" + join.tags.joinToString(",")
         )
         return ZLinkSpotActorJoinResponse.accept(
             Contracts.ActorJoinRes(
-                actor.actorId(),
+                actorId,
                 context.spotRid().toString(),
                 evidence.nodeRid(),
                 join.profile.displayName,
@@ -64,6 +65,10 @@ class UserSpot(
         actor: ScenarioActor,
         cancellationToken: CancellationToken
     ) {
+        actor.applyProfile(
+            pendingProfiles.remove(actor.actorId())
+                ?: error("joined actor does not have a pending admission")
+        )
         evidence.record("ActorUserJoined", context.spotRid().toString(), actor.actorId() + "#" + actor.nextSequence())
     }
 

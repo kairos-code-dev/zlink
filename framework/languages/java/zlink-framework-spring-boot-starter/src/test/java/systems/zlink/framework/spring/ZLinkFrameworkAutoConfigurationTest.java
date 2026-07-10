@@ -1028,6 +1028,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
         public ZLinkSpotContext context() {
             return context;
         }
+
+        @Override
+        public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        }
+
+        @Override
+        public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        }
     }
 
     public static final class InjectedGameSpot implements ZLinkSpot<ZLinkActor> {
@@ -1048,6 +1056,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
         public ZLinkSpotContext context() {
             return context;
         }
+
+        @Override
+        public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        }
+
+        @Override
+        public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        }
     }
 
     public static final class PrivateConstructorSpot implements ZLinkSpot<ZLinkActor> {
@@ -1060,6 +1076,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public ZLinkSpotContext context() {
             return context;
+        }
+
+        @Override
+        public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+        }
+
+        @Override
+        public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
         }
     }
 

@@ -19,6 +19,7 @@ DEFAULT_SCENARIOS=(
   ResilienceLifecycle
   YieldDispatch
   ToActorMessaging
+  SpotActorTransfer
 )
 
 cleanup_done=0

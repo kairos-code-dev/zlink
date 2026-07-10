@@ -25,9 +25,17 @@ public final class ProbeEntrySpot implements ZLinkEntrySpot<ProbeActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ProbeActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.accept();
+    }
+
+    @Override
+    public void onJoinedActor(ProbeActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onLeaveActor(ProbeActor actor, CancellationToken cancellationToken) {
     }
 }

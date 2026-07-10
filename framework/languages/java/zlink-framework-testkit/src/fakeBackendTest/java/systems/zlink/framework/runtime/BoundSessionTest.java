@@ -24,6 +24,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.testkit.TestZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
@@ -175,7 +176,7 @@ final class BoundSessionTest {
         return options;
     }
 
-    public static final class BoundSessionEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
+    public static final class BoundSessionEntrySpot extends TestZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
         public BoundSessionEntrySpot(ZLinkEntrySpotContext context) {

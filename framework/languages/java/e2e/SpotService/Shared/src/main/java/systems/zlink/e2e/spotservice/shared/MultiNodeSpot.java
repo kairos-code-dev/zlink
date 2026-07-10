@@ -73,11 +73,23 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ScenarioActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
-        evidence.record("SpotOnlyActorJoined", context.spotRid().toString(), actor.actorId());
         return ZLinkSpotActorJoinResponse.accept();
+    }
+
+    @Override
+    public void onJoinedActor(
+        ScenarioActor actor,
+        CancellationToken cancellationToken) {
+        evidence.record("SpotOnlyActorJoined", context.spotRid().toString(), actor.actorId());
+    }
+
+    @Override
+    public void onLeaveActor(
+        ScenarioActor actor,
+        CancellationToken cancellationToken) {
     }
 
     public int add(int delta) {

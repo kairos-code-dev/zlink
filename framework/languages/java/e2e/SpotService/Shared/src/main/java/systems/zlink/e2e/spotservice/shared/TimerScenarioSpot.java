@@ -2,6 +2,7 @@ package systems.zlink.e2e.spotservice.shared;
 
 import java.time.Duration;
 import java.time.Instant;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -20,6 +21,14 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
     private String status = "open";
     private ZLinkTimer overrunTimer;
     private boolean idleKeepRecorded;
+
+    @Override
+    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    }
 
     public TimerScenarioSpot(
         ZLinkSpotContext context,

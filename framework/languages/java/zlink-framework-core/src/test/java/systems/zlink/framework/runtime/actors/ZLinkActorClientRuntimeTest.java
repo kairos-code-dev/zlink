@@ -175,6 +175,30 @@ final class ZLinkActorClientRuntimeTest {
         assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, frameworkError.kind());
     }
 
+    @Test
+    void inactiveExplicitActorRefMapsNotFoundToActorLocationStale() {
+        ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
+            () -> new RequestFailingSpotNode(RequestResult.NOT_FOUND),
+            new ZLinkStoreLocationResolvers(
+                ZLinkRegisteredLocationStores.fromUnified(storeWithActor("actor-1")),
+                new systems.zlink.framework.locations.ZLinkLocationOptions()),
+            new ZLinkJsonMessageSerializer(),
+            Duration.ofSeconds(5));
+
+        CompletionException error = assertThrows(
+            CompletionException.class,
+            () -> client.requestToActor(
+                    new ActorRef(RoutingId.from("actor-node"), "actor-1", 7),
+                    new Ping("hello"))
+                .packetName("Ping")
+                .submit(Pong.class)
+                .toCompletableFuture()
+                .join());
+
+        ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
+        assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, frameworkError.kind());
+    }
+
     private static ZLinkInMemoryLocationStore storeWithActor(String actorId) {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         store.renewOwnerLeaseAsync("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))

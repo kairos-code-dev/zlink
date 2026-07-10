@@ -4,9 +4,12 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkTimer;
@@ -22,6 +25,26 @@ final class ZLinkEntrySpotTimerSurface implements ZLinkSpot<ZLinkActor> {
     @Override
     public ZLinkSpotContext context() {
         return context;
+    }
+
+    @Override
+    public ZLinkSpotActorJoinResponse onActorJoin(
+        String actorId,
+        ZLinkMessage request,
+        CancellationToken cancellationToken) {
+        return ZLinkSpotActorJoinResponse.reject();
+    }
+
+    @Override
+    public void onJoinedActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onDisconnectActor(ZLinkActor actor, CancellationToken cancellationToken) {
     }
 }
 

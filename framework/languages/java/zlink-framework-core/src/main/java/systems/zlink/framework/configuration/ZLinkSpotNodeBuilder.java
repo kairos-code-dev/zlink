@@ -2,6 +2,7 @@ package systems.zlink.framework.configuration;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
 
@@ -31,4 +32,13 @@ public interface ZLinkSpotNodeBuilder {
     ZLinkSpotNodeBuilder addActorFactory(
         String actorType,
         Class<? extends ZLinkActorFactory> factoryType);
+
+    /**
+     * Registers the domain-state adapter used when this actor type moves to a
+     * different Spot node. Actor types without an adapter use the framework's
+     * empty-state transfer path.
+     */
+    ZLinkSpotNodeBuilder addActorTransferAdapter(
+        String actorType,
+        Class<? extends ZLinkActorTransferAdapter<?>> adapterType);
 }

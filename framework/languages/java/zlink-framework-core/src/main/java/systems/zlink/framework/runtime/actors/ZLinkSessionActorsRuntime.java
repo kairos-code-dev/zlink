@@ -306,6 +306,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     defaultCodec,
                     RELAY_HEADERS);
                 boundSession.setUnbindListener(() -> bound.remove(boundActor));
+                boundSession.setRebindListener(boundActor::rebindNativeActor);
                 bound.add(boundActor);
                 return boundActor;
             });

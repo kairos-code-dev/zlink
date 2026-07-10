@@ -27,6 +27,8 @@ class PlayActor(
     fun requirePlayer(): PlayerInfo =
         player ?: throw IllegalStateException("actor has not been authenticated")
 
+    fun playerOrNull(): PlayerInfo? = player
+
     fun incrementWins(): Int {
         val current = requirePlayer()
         val updated = current.copy(wins = current.wins + 1)
@@ -40,6 +42,8 @@ class PlayActor(
 
     fun requireJoinedGame(): String =
         joinedRoomId ?: throw IllegalStateException("actor has not joined a game")
+
+    fun joinedRoomIdOrNull(): String? = joinedRoomId
 
     fun markForDestroyAfterRoomLeave() {
         destroyAfterEntrySpotJoin = true

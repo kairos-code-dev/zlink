@@ -13,6 +13,10 @@ public interface ZLinkFrameworkOptions {
 
     void setDefaultRequestTimeout(Duration timeout);
 
+    Duration actorTransferForwardWindow();
+
+    void setActorTransferForwardWindow(Duration window);
+
     ZLinkCodecRegistryBuilder codecs();
 
     void addHandlersFromPackageOf(Class<?> markerType);

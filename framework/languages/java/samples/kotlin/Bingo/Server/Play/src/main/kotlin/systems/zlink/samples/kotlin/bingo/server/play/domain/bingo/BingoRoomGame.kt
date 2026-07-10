@@ -44,6 +44,19 @@ class BingoRoomGame(
         return Change(joinedState, events, false)
     }
 
+    fun previewJoin(actorId: String, displayName: String): BingoRoomState {
+        val existing = player(actorId)
+        if (existing != null) {
+            return snapshot()
+        }
+        if (status != WaitingForPlayers || players.size >= settings.requiredPlayers) {
+            throw IllegalStateException("Room $roomId cannot accept more players.")
+        }
+        val previewPlayers = players + BingoRoomPlayer(actorId, displayName, players.size, null)
+        val previewStatus = if (previewPlayers.size == settings.requiredPlayers) Running else status
+        return snapshot(previewPlayers, previewStatus)
+    }
+
     fun submitCard(
         actorId: String,
         submittedCard: List<Int>,
@@ -96,18 +109,23 @@ class BingoRoomGame(
         return Change(state, events, false)
     }
 
-    fun snapshot(): BingoRoomState {
-        val hostActorId = players.firstOrNull()?.actorId ?: ""
+    fun snapshot(): BingoRoomState = snapshot(players, status)
+
+    private fun snapshot(
+        snapshotPlayers: List<BingoRoomPlayer>,
+        snapshotStatus: String,
+    ): BingoRoomState {
+        val hostActorId = snapshotPlayers.firstOrNull()?.actorId ?: ""
         val lastDrawn = drawnNumbers.lastOrNull()
         return BingoRoomState(
             roomId,
-            status,
+            snapshotStatus,
             hostActorId,
             false,
             drawnNumbers.size,
             lastDrawn,
             drawnNumbers.toList(),
-            players.map { it.toState(hostActorId) },
+            snapshotPlayers.map { it.toState(hostActorId) },
             winners.toList(),
         )
     }

@@ -41,6 +41,34 @@ public final class TicTacToeMatch {
         return new JoinResult(newlyJoined, slot.mark(), snapshot());
     }
 
+    public JoinResult previewJoin(String actorId) {
+        PlayerSlot existing = players.stream()
+            .filter(player -> player.actorId().equals(actorId))
+            .findFirst()
+            .orElse(null);
+        if (existing != null) {
+            return new JoinResult(false, existing.mark(), snapshot());
+        }
+        if (players.size() >= 2) {
+            throw new IllegalStateException("tic-tac-toe game already has two players");
+        }
+
+        String mark = players.isEmpty() ? "X" : "O";
+        String xActorId = mark.equals("X") ? actorId : actorIdForMark("X");
+        String oActorId = mark.equals("O") ? actorId : actorIdForMark("O");
+        GameState state = new GameState(
+            roomId,
+            board.snapshot(),
+            players.size() == 1 ? "InProgress" : status,
+            winner.isEmpty() ? null : winner,
+            nextTurn,
+            xActorId,
+            oActorId,
+            lastMoveActorId.isEmpty() ? null : lastMoveActorId,
+            lastMoveCell < 0 ? null : lastMoveCell);
+        return new JoinResult(true, mark, state);
+    }
+
     public GameState placeMark(String actorId, int cell, Instant now, Duration turnTimeout) {
         PlayerSlot slot = player(actorId);
         if (!status.equals("InProgress")) {

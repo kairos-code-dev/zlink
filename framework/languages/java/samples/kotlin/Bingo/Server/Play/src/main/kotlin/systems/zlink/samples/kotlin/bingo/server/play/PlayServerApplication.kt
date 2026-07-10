@@ -18,6 +18,7 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorTransferAdapter
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer
@@ -66,6 +67,10 @@ class PlayServerApplication {
             node.addEntrySpot(BingoEntrySpot::class.java)
             node.addSpotFactory(BingoRoomSpot::class.java)
             node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
+            node.addActorTransferAdapter(
+                SampleNames.PlayerActorType,
+                PlayerActorTransferAdapter::class.java,
+            )
         }
 
     @Bean

@@ -46,12 +46,18 @@ class MultiNodeSpotA(
     }
 
     override fun onActorJoin(
-        actor: MultiNodeActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
-        evidence.add("spot-actor-joined|node=${Contracts.MULTI_SPOT_NODE_A}|spot=${context.spotRid()}|actor=${actor.actorId()}")
         return ZLinkSpotActorJoinResponse.accept()
+    }
+
+    override fun onJoinedActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+        evidence.add("spot-actor-joined|node=${Contracts.MULTI_SPOT_NODE_A}|spot=${context.spotRid()}|actor=${actor.actorId()}")
+    }
+
+    override fun onLeaveActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
     }
 }
 
@@ -82,12 +88,18 @@ class MultiNodeSpotB(
     }
 
     override fun onActorJoin(
-        actor: MultiNodeActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
-        evidence.add("spot-actor-joined|node=${Contracts.MULTI_SPOT_NODE_B}|spot=${context.spotRid()}|actor=${actor.actorId()}")
         return ZLinkSpotActorJoinResponse.accept()
+    }
+
+    override fun onJoinedActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+        evidence.add("spot-actor-joined|node=${Contracts.MULTI_SPOT_NODE_B}|spot=${context.spotRid()}|actor=${actor.actorId()}")
+    }
+
+    override fun onLeaveActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
     }
 }
 
@@ -207,6 +219,11 @@ class MultiNodeActorFactory : ZLinkActorFactory {
 class MultiNodeEntrySpot(
     private val context: ZLinkEntrySpotContext
 ) : ZLinkEntrySpot<MultiNodeActor> {
+    override fun onJoinedActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+    }
+
+    override fun onLeaveActor(actor: MultiNodeActor, cancellationToken: CancellationToken) {
+    }
     override fun context(): ZLinkEntrySpotContext = context
 
     override fun configure() {

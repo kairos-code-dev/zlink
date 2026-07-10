@@ -224,6 +224,9 @@ final class NodesAndServicesTest {
         public ZLinkSpotContext context() {
             return null;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public record Ping(String value) {
@@ -263,6 +266,9 @@ final class NodesAndServicesTest {
         public void configure() {
             context.handlers().addHandler(PingHandler.class);
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class PingHandler
@@ -307,6 +313,9 @@ final class NodesAndServicesTest {
                     }
                 });
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class TestRemoteAddressResolver
@@ -325,6 +334,9 @@ final class NodesAndServicesTest {
         public ZLinkEntrySpotContext context() {
             return null;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class EntrySpotB implements ZLinkEntrySpot<ZLinkActor> {
@@ -332,6 +344,9 @@ final class NodesAndServicesTest {
         public ZLinkEntrySpotContext context() {
             return null;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class PlayerActor implements ZLinkActor {

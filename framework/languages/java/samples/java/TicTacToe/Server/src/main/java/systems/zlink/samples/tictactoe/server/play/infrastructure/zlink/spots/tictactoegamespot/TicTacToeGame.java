@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -40,6 +42,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     private boolean cleanupStarted;
     private final TicTacToeGameCreatedHandler createdHandler;
     private final ObjectMapper json;
+    private final Map<String, TicTacToeGameJoinReq> pendingJoins = new HashMap<>();
 
     public TicTacToeGame(
         ZLinkSpotContext context,
@@ -68,21 +71,28 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        PlayActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         TicTacToeGameJoinReq joinRequest = request.decode(TicTacToeGameJoinReq.class);
-        if (!actor.actorId().equals(joinRequest.player().actorId())) {
+        if (!actorId.equals(joinRequest.player().actorId())) {
             throw new IllegalStateException("join request actor id does not match bound actor");
         }
-        TicTacToeGameJoinRes reply = join(actor, joinRequest.roomId(), joinRequest.player());
-        return ZLinkSpotActorJoinResponse.accept(reply);
+        validateJoin(joinRequest.roomId(), joinRequest.player());
+        TicTacToeMatch.JoinResult preview = match.previewJoin(actorId);
+        pendingJoins.put(actorId, joinRequest);
+        return ZLinkSpotActorJoinResponse.accept(new TicTacToeGameJoinRes(preview.state()));
     }
 
     @Override
     public void onJoinedActor(
         PlayActor actor,
         CancellationToken cancellationToken) {
+        TicTacToeGameJoinReq joinRequest = pendingJoins.remove(actor.actorId());
+        if (joinRequest == null) {
+            throw new IllegalStateException("joined actor does not have a pending admission");
+        }
+        join(actor, joinRequest.roomId(), joinRequest.player());
     }
 
     @Override
@@ -123,13 +133,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     }
 
     public TicTacToeGameJoinRes join(PlayActor actor, String roomId, PlayerInfo player) {
-        ensureCreated();
-        if (!this.roomId.equals(roomId)) {
-            throw new IllegalStateException("join request room id does not match game room");
-        }
-        if (player.level() < SampleNames.RequiredLevel) {
-            throw new IllegalStateException("player level does not satisfy room requirement");
-        }
+        validateJoin(roomId, player);
         actor.applyPlayer(player);
         TicTacToeMatch.JoinResult joined = match.join(
             actor.actorId(),
@@ -142,6 +146,16 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         }
         broadcast(joined.state(), actor.actorId());
         return new TicTacToeGameJoinRes(joined.state());
+    }
+
+    private void validateJoin(String roomId, PlayerInfo player) {
+        ensureCreated();
+        if (!this.roomId.equals(roomId)) {
+            throw new IllegalStateException("join request room id does not match game room");
+        }
+        if (player.level() < SampleNames.RequiredLevel) {
+            throw new IllegalStateException("player level does not satisfy room requirement");
+        }
     }
 
     public PlaceMarkRes placeMark(PlayActor actor, int cell) {
@@ -192,9 +206,9 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     private void broadcast(GameState state, String excludedActorId) {
         actors.stream()
             .filter(actor -> excludedActorId == null || !actor.actorId().equals(excludedActorId))
-            .forEach(actor -> actor.context().boundSession()
+            .forEach(actor -> await(actor.context().boundSession()
                 .send(new GameStateNotify(state))
-                .submit());
+                .submit()));
     }
 
     private void leaveFinishedActors(GameState state) {
@@ -222,9 +236,9 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
             state);
         actors.stream()
             .filter(actor -> !actor.actorId().equals(joinedActor.actorId()))
-            .forEach(actor -> actor.context().boundSession()
+            .forEach(actor -> await(actor.context().boundSession()
                 .send(message)
-                .submit());
+                .submit()));
     }
 
     private void rememberActor(PlayActor actor) {

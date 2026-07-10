@@ -23,6 +23,7 @@ import systems.zlink.samples.kotlin.supportchat.server.support.application.Suppo
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.FrameworkConversationStarter
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportUserActorFactory
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportUserActorTransferAdapter
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.ConversationSpot
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.notifications.ConversationNotificationPublisher
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.entryspot.SupportEntrySpot
@@ -55,6 +56,10 @@ class SupportApplication {
             node.enablePubSub(topology.supportEntrySpotEndpoint)
             node.addEntrySpot(SupportEntrySpot::class.java)
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory::class.java)
+            node.addActorTransferAdapter(
+                SampleNames.SupportActorType,
+                SupportUserActorTransferAdapter::class.java,
+            )
             node.addSpotFactory(ConversationSpot::class.java)
         }
 

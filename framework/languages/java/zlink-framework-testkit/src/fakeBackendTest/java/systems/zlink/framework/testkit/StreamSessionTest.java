@@ -577,7 +577,7 @@ final class StreamSessionTest {
         return result;
     }
 
-    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
+    public static final class GameSpot extends TestZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;

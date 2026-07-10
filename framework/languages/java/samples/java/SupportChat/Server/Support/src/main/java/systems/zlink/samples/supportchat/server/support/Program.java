@@ -22,6 +22,7 @@ import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActorFactory;
+import systems.zlink.samples.supportchat.server.support.actors.SupportUserActorTransferAdapter;
 import systems.zlink.samples.supportchat.server.support.domain.ConversationStore;
 import systems.zlink.samples.supportchat.server.support.spots.entryspot.SupportEntrySpot;
 
@@ -74,6 +75,9 @@ public final class Program {
             node.configureEntrySpot().setRoutingId(RoutingId.from(SampleTopology.SupportSpotNodeRid));
             node.addEntrySpot(SupportEntrySpot.class);
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);
+            node.addActorTransferAdapter(
+                SampleNames.SupportActorType,
+                SupportUserActorTransferAdapter.class);
         };
     }
 

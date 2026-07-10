@@ -59,10 +59,10 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ProbeActor actor,
+        String actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
-        if (actor.actorId().startsWith("YD-B3-")) {
+        if (actorId.startsWith("YD-B3-")) {
             Contracts.DelayReq delay = request.decode(Contracts.DelayReq.class);
             try {
                 Thread.sleep(delay.millis());
@@ -74,9 +74,17 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
         }
         Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
         return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
-            actor.actorId(),
+            actorId,
             context.spotRid().toString(),
             "joined:" + join.value()));
+    }
+
+    @Override
+    public void onJoinedActor(ProbeActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onLeaveActor(ProbeActor actor, CancellationToken cancellationToken) {
     }
 
     Contracts.ProbeRes handle(Contracts.ProbeReq request) {

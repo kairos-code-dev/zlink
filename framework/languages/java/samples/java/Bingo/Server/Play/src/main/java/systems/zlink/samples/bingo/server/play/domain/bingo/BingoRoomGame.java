@@ -52,6 +52,26 @@ public final class BingoRoomGame {
         return new Change(joinedState, events, false);
     }
 
+    public Messages.BingoRoomState previewJoin(String actorId, String displayName) {
+        BingoRoomModels.RoomPlayer existing = player(actorId);
+        if (existing != null) {
+            return snapshot();
+        }
+        if (!status.equals(WaitingForPlayers) || players.size() >= settings.requiredPlayers()) {
+            throw new IllegalStateException("Room " + roomId + " cannot accept more players.");
+        }
+        ArrayList<BingoRoomModels.RoomPlayer> previewPlayers = new ArrayList<>(players);
+        previewPlayers.add(new BingoRoomModels.RoomPlayer(
+            actorId,
+            displayName,
+            previewPlayers.size(),
+            null));
+        String previewStatus = previewPlayers.size() == settings.requiredPlayers()
+            ? Running
+            : status;
+        return snapshot(previewPlayers, previewStatus);
+    }
+
     public Change submitCard(String actorId, List<Integer> submittedCard) {
         int index = playerIndex(actorId);
         if (!status.equals(Running)) {
@@ -101,17 +121,23 @@ public final class BingoRoomGame {
     }
 
     public Messages.BingoRoomState snapshot() {
-        String hostActorId = players.isEmpty() ? "" : players.getFirst().actorId();
+        return snapshot(players, status);
+    }
+
+    private Messages.BingoRoomState snapshot(
+        List<BingoRoomModels.RoomPlayer> snapshotPlayers,
+        String snapshotStatus) {
+        String hostActorId = snapshotPlayers.isEmpty() ? "" : snapshotPlayers.getFirst().actorId();
         Integer lastDrawn = drawnNumbers.isEmpty() ? null : drawnNumbers.getLast();
         return BingoMessages.bingoRoomState(
             roomId,
-            status,
+            snapshotStatus,
             hostActorId,
             false,
             drawnNumbers.size(),
             lastDrawn,
             List.copyOf(drawnNumbers),
-            players.stream().map(player -> player.toState(hostActorId)).toList(),
+            snapshotPlayers.stream().map(player -> player.toState(hostActorId)).toList(),
             List.copyOf(winners));
     }
 

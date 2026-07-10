@@ -67,5 +67,12 @@ final class ZLinkSpotTimerRegistryTest {
         public ZLinkSpotContext context() {
             return null;
         }
+
+        @Override public void onJoinedActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 }

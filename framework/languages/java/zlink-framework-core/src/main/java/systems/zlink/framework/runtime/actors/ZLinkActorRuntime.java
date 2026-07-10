@@ -7,6 +7,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -29,6 +31,7 @@ import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
 import systems.zlink.framework.actors.ZLinkActorPlacement;
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
@@ -48,6 +51,7 @@ import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDirectory {
+    private static final CancellationToken NONE_CANCELLATION = () -> false;
     @FunctionalInterface
     public interface CreatedNotifier {
         CompletionStage<Void> notify(
@@ -57,20 +61,32 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             Object createContext);
     }
 
+    @FunctionalInterface
+    public interface SourceActorLeaver {
+        CompletionStage<Void> leave(ZLinkActor actor);
+    }
+
     private final ZLinkBackendSpotNode spotNode;
     private final Map<String, Class<? extends ZLinkActorFactory>> factories;
+    private final ZLinkActorTransferRegistry actorTransfers;
     private final Duration defaultRequestTimeout;
+    private final Duration actorTransferForwardWindow;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
     private final ZLinkStreamCodec defaultStreamCodec;
     private final Map<String, ZLinkActor> actors = new HashMap<>();
     private final Map<String, String> actorTypes = new HashMap<>();
     private final Map<ZLinkActor, DefaultActorContext> contextsByActor = new HashMap<>();
+    private final Set<String> pendingTransferredActors = ConcurrentHashMap.newKeySet();
+    private final Set<String> routedTransferredActors = ConcurrentHashMap.newKeySet();
     private final ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
+    private final ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
     private CreatedNotifier createdNotifier =
         (ignoredNode, ignoredActor, ignoredRequest, ignoredContext) -> CompletableFuture.completedFuture(null);
     private Supplier<Object> actorCreateContextSupplier = () -> null;
     private Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier =
+        ignored -> CompletableFuture.completedFuture(null);
+    private SourceActorLeaver sourceActorLeaver =
         ignored -> CompletableFuture.completedFuture(null);
     private Function<RoutingId, ZLinkSpot<?>> spotResolver = ignored -> null;
     private SpotRemoteRefResolver remoteAddressResolver;
@@ -91,7 +107,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer) {
-        this(spotNode, factories, defaultRequestTimeout, serializer, ZLinkHandlerFactory.reflection());
+        this(
+            spotNode,
+            factories,
+            Map.of(),
+            defaultRequestTimeout,
+            Duration.ofSeconds(5),
+            serializer,
+            ZLinkHandlerFactory.reflection(),
+            ZLinkStreamCodec.JSON);
     }
 
     public ZLinkActorRuntime(
@@ -103,7 +127,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this(
             spotNode,
             factories,
+            Map.of(),
             defaultRequestTimeout,
+            Duration.ofSeconds(5),
             serializer,
             handlerFactory,
             ZLinkStreamCodec.JSON);
@@ -112,7 +138,28 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public ZLinkActorRuntime(
         ZLinkBackendSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
+        Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory,
+        ZLinkStreamCodec defaultStreamCodec) {
+        this(
+            spotNode,
+            factories,
+            transferAdapters,
+            defaultRequestTimeout,
+            Duration.ofSeconds(5),
+            serializer,
+            handlerFactory,
+            defaultStreamCodec);
+    }
+
+    public ZLinkActorRuntime(
+        ZLinkBackendSpotNode spotNode,
+        Map<String, Class<? extends ZLinkActorFactory>> factories,
+        Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
+        Duration defaultRequestTimeout,
+        Duration actorTransferForwardWindow,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory,
         ZLinkStreamCodec defaultStreamCodec) {
@@ -128,8 +175,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this.spotNode = spotNode;
         this.factories = Map.copyOf(factories);
         this.defaultRequestTimeout = defaultRequestTimeout;
+        this.actorTransferForwardWindow = actorTransferForwardWindow == null
+            ? Duration.ofSeconds(5)
+            : actorTransferForwardWindow;
         this.serializer = serializer;
         this.handlerFactory = handlerFactory;
+        this.actorTransfers = new ZLinkActorTransferRegistry(
+            transferAdapters,
+            handlerFactory);
         this.defaultStreamCodec =
             defaultStreamCodec == null ? ZLinkStreamCodec.JSON : defaultStreamCodec;
     }
@@ -265,6 +318,317 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 : CompletableFuture.completedFuture(actor));
     }
 
+    public CompletionStage<ZLinkActor> materializeTransferredActor(
+        String actorId,
+        String actorType,
+        String adapterKey,
+        ZLinkMessage transferState) {
+        requireActorId(actorId);
+        Class<? extends ZLinkActorFactory> factoryType = requireFactory(actorType);
+        detachForwardingProxyForReentry(actorId);
+        if (actors.containsKey(actorId)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "target runtime already owns actor: " + actorId));
+        }
+        if (adapterKey != null && !adapterKey.equals(actorType)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor transfer adapter key does not match actor type: " + adapterKey));
+        }
+        return activateTransferredActor(
+                actorId,
+                actorType,
+                adapterKey,
+                transferState,
+                factoryType)
+            .thenApply(actor -> {
+                pendingTransferredActors.add(actorId);
+                routedTransferredActors.add(actorId);
+                return actor;
+            });
+    }
+
+    private synchronized void detachForwardingProxyForReentry(String actorId) {
+        ZLinkActorTransferHandoff.ForwardingSource forwarding =
+            handoff.forwardingSource(actorId).orElse(null);
+        ZLinkActor oldActor = actors.get(actorId);
+        if (forwarding == null || oldActor == null) {
+            return;
+        }
+        DefaultActorContext oldContext = contextsByActor.get(oldActor);
+        if (oldContext == null || !forwarding.targetActorRef().equals(oldContext.actorRef())) {
+            return;
+        }
+        actors.remove(actorId, oldActor);
+        actorTypes.remove(actorId);
+        contextsByActor.remove(oldActor);
+        dispatches.remove(actorId);
+    }
+
+    public CompletionStage<Void> rollbackTransferredActor(ZLinkActor actor) {
+        DefaultActorContext context = requireContext(actor);
+        ZLinkBackendActorRef actorRef = context.actorRef();
+        String actorType = actorTypes.getOrDefault(actor.actorId(), "");
+        context.markLeft();
+        return spotNode.destroyActor(actorRef, defaultRequestTimeout)
+            .exceptionally(error -> null)
+            .thenCompose(ignored -> locations.releaseActor(actorType, actor.actorId()))
+            .thenRun(() -> {
+                removeActorSessionRouteForContext(context);
+                context.clearAfterDestroy();
+                actors.remove(actor.actorId(), actor);
+                pendingTransferredActors.remove(actor.actorId());
+                routedTransferredActors.remove(actor.actorId());
+                actorTypes.remove(actor.actorId());
+                contextsByActor.remove(actor);
+                dispatches.remove(actor.actorId());
+            });
+    }
+
+    private CompletionStage<ZLinkActor> activateTransferredActor(
+        String actorId,
+        String actorType,
+        String adapterKey,
+        ZLinkMessage transferState,
+        Class<? extends ZLinkActorFactory> factoryType) {
+        Message nativeCreateRequest = Message.from(new byte[0]);
+        ZLinkBackendActorRef actorRef;
+        try {
+            actorRef = spotNode.createActor(actorId, nativeCreateRequest);
+        } catch (RuntimeException error) {
+            nativeCreateRequest.close();
+            throw error;
+        }
+        DefaultActorContext context = new DefaultActorContext(actorRef);
+        context.beginMove();
+        return ZLinkHandlerStages.fromSupplier(() -> {
+                ZLinkActor actor = adapterKey == null
+                    ? createFactory(factoryType).create(actorId, context)
+                    : actorTransfers.transferIn(
+                        actorType,
+                        actorId,
+                        context,
+                        transferState,
+                        NONE_CANCELLATION);
+                if (actor == null) {
+                    throw new ZLinkConfigurationException(
+                        "actor transfer did not materialize an actor: " + actorId);
+                }
+                return actor;
+            })
+            .thenApply(actor -> {
+                context.setActor(actor);
+                actors.put(actorId, actor);
+                actorTypes.put(actorId, actorType);
+                contextsByActor.put(actor, context);
+                return actor;
+            });
+    }
+
+    ZLinkActorTransferRegistry.TransferState transferOut(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        String actorType = actorTypes.get(actor.actorId());
+        if (actorType == null) {
+            throw new ZLinkConfigurationException(
+                "actor type is not registered for transfer: " + actor.actorId());
+        }
+        return actorTransfers.transferOut(actorType, actor, cancellationToken);
+    }
+
+    CompletionStage<Void> beginRemoteMove(ZLinkActor actor) {
+        DefaultActorContext context = requireContext(actor);
+        context.beginMove();
+        handoff.begin(actor.actorId());
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletionStage<Optional<Message>> captureMovingPacket(
+        ZLinkActor actor,
+        systems.zlink.framework.runtime.streams.ZLinkStreamHeader header,
+        Message payload) {
+        return captureMovingPacket(actor, header, payload, null);
+    }
+
+    public CompletionStage<Optional<Message>> captureMovingPacket(
+        ZLinkActor actor,
+        systems.zlink.framework.runtime.streams.ZLinkStreamHeader header,
+        Message payload,
+        ZLinkActorReplyRoute replyRoute) {
+        ZLinkActorHandoffPacket packet =
+            handoff.capture(actor.actorId(), header, payload, replyRoute);
+        if (packet == null) {
+            return null;
+        }
+        traceActorTransferMarker("handoff_backlog", actor.actorId(),
+            Long.toString(packet.arrivalIndex()));
+        if (replyRoute != null) {
+            traceActorTransferMarker(
+                "handoff_request_frame",
+                actor.actorId(),
+                Long.toUnsignedString(replyRoute.requestId())
+                    + ":" + Integer.toUnsignedString(replyRoute.flags()));
+        }
+        return packet.reply();
+    }
+
+    List<ZLinkActorHandoffPacket> takeRemoteMoveBacklog(ZLinkActor actor) {
+        return handoff.take(actor.actorId());
+    }
+
+    List<ZLinkActorHandoffPacket> finishRemoteMoveBacklog(ZLinkActor actor) {
+        return handoff.finish(actor.actorId());
+    }
+
+    public CompletionStage<Void> leaveSourceForLocalMove(ZLinkActor actor) {
+        DefaultActorContext context = requireContext(actor);
+        context.beginMove();
+        return sourceActorLeaver.leave(actor)
+            .thenRun(context::markLeft);
+    }
+
+    CompletionStage<Void> leaveSourceForRemoteMove(ZLinkActor actor) {
+        DefaultActorContext context = requireContext(actor);
+        RoutingId currentSpotRid = context.joinedSpotRid();
+        return sourceActorLeaver.leave(actor)
+            .thenCompose(ignored -> currentSpotRid == null
+                || routedTransferredActors.contains(actor.actorId())
+                ? CompletableFuture.completedFuture(null)
+                : spotNode.leaveActor(
+                        context.actorRef(),
+                        currentSpotRid,
+                        defaultRequestTimeout)
+                    .thenAccept(parts -> parts.forEach(Message::close)))
+            .thenRun(context::markLeft);
+    }
+
+    void cancelRemoteMove(ZLinkActor actor) {
+        failTransferBacklog(actor, new ZLinkConfigurationException("actor transfer was cancelled"));
+        requireContext(actor).endMove();
+    }
+
+    public void completeRemoteMove(ZLinkActor actor) {
+        requireContext(actor).endMove();
+    }
+
+    void retainForwardingSource(
+        ZLinkActor actor,
+        ZLinkBackendActorRef sourceActorRef,
+        ZLinkBackendActorRef targetActorRef) {
+        handoff.retain(
+            actor.actorId(), sourceActorRef, targetActorRef, actorTransferForwardWindow,
+            source -> retireForwardingSource(actor, source));
+    }
+
+    int forwardingSourceCount() {
+        return handoff.forwardingSourceCount();
+    }
+
+    private void retireForwardingSource(
+        ZLinkActor actor,
+        ZLinkActorTransferHandoff.ForwardingSource source) {
+        traceActorTransferMarker("mapping_evicted", actor.actorId(), null);
+        retryForwardingSourceCleanup(actor, source);
+    }
+
+    private void retryForwardingSourceCleanup(
+        ZLinkActor actor,
+        ZLinkActorTransferHandoff.ForwardingSource source) {
+        synchronized (this) {
+            DefaultActorContext context = contextsByActor.get(actor);
+            if (context == null || !source.targetActorRef().equals(context.actorRef())) {
+                return;
+            }
+        }
+        spotNode.destroyActor(source.sourceActorRef(), defaultRequestTimeout)
+            .whenComplete((ignored, error) -> {
+                if (error != null && !ZLinkActorSubmitFaults.requestNotFound(error)) {
+                    ZLinkActorRetryScheduler.scheduleRoute(
+                        () -> retryForwardingSourceCleanup(actor, source));
+                    return;
+                }
+                synchronized (this) {
+                    DefaultActorContext context = contextsByActor.get(actor);
+                    if (context == null || !source.targetActorRef().equals(context.actorRef())) {
+                        return;
+                    }
+                    traceActorTransferMarker(
+                        "source_cleanup",
+                        actor.actorId(),
+                        Long.toUnsignedString(source.sourceActorRef().generation()));
+                    actors.remove(actor.actorId(), actor);
+                    routedTransferredActors.remove(actor.actorId());
+                    actorTypes.remove(actor.actorId());
+                    contextsByActor.remove(actor);
+                    dispatches.remove(actor.actorId());
+                }
+            });
+    }
+
+    public void traceActorTransferMarker(String marker, String actorId, String correlationId) {
+        if (flow == null
+            || !flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED)) {
+            return;
+        }
+        flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+            systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED,
+            systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.SPOT_ACTOR,
+            systems.zlink.framework.configuration.ZLinkDispatchMessageKind.ACTOR_SEND,
+            marker,
+            null,
+            null,
+            correlationId,
+            null,
+            null,
+            actorId,
+            null));
+    }
+
+    public void failRemoteMove(ZLinkActor actor, Throwable error) {
+        failTransferBacklog(actor, error);
+        requireContext(actor).failMove(error);
+    }
+
+    private void failTransferBacklog(ZLinkActor actor, Throwable error) {
+        handoff.fail(actor.actorId(), error);
+    }
+
+    public boolean isMoving(ZLinkActor actor) {
+        return requireContext(actor).moving();
+    }
+
+    public CompletionStage<Void> awaitMoveCompletion(ZLinkActor actor) {
+        return requireContext(actor).moveCompletion();
+    }
+
+    public CompletionStage<Void> commitJoinedLocation(
+        ZLinkActor actor,
+        RoutingId spotRid) {
+        if (!pendingTransferredActors.remove(actor.actorId())) {
+            return renewActorJoinedLocation(actor, spotRid);
+        }
+        String actorType = actorTypes.get(actor.actorId());
+        return locations.claimActor(
+                actorType,
+                actor.actorId(),
+                spotNode.routingId(),
+                ZLinkLocationWriteIntent.TAKEOVER,
+                () -> deactivateActorOnOwnershipLoss(actor.actorId()))
+            .thenCompose(ignored -> locations.setActorRef(
+                actorType,
+                actor.actorId(),
+                publicRefFor(actor)))
+            .thenCompose(ignored -> renewActorJoinedLocation(actor, spotRid));
+    }
+
+    private DefaultActorContext requireContext(ZLinkActor actor) {
+        DefaultActorContext context = contextsByActor.get(actor);
+        if (context == null) {
+            throw new ZLinkConfigurationException(
+                "actor is not managed by this runtime: " + actor.actorId());
+        }
+        return context;
+    }
+
     static ActorRef toPublicActorRef(ZLinkBackendActorRef actorRef) {
         return new ActorRef(actorRef.nodeRid(), actorRef.actorId(), actorRef.generation());
     }
@@ -318,8 +682,11 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public CompletionStage<Optional<ActorRef>> find(String actorId) {
         requireActorId(actorId);
         ZLinkActor local = actors.get(actorId);
-        if (local != null) {
+        if (local != null && !pendingTransferredActors.contains(actorId)) {
             return CompletableFuture.completedFuture(Optional.of(publicRefFor(local)));
+        }
+        if (pendingTransferredActors.contains(actorId)) {
+            return locations.findStoredActorRef(actorId);
         }
         try {
             return CompletableFuture.completedFuture(Optional.of(toPublicActorRef(spotNode.actorLookup(actorId))));
@@ -659,7 +1026,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return remoteAddressResolver.resolveSpotRemoteRefAsync(spotRid)
             .thenCompose(address -> {
                 List<Message> parts =
-                    ZLinkActorSpotRoutePackets.createActorPacketParts(actorRef, header, payload);
+                    ZLinkActorSpotRoutePackets.createActorPacketParts(
+                        actorRef, header, payload, null);
                 try {
                     if (header.requestSequence().isPresent()
                         || header.kind() == systems.zlink.framework.streams.ZLinkStreamMessageKind.REQUEST) {
@@ -748,11 +1116,36 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return dispatches.runTurn(actorId, operation);
     }
 
+    boolean isActorDispatchActive(ZLinkActor actor) {
+        return dispatches.isActive(actor.actorId());
+    }
+
+    void continueAfterActorDispatch(
+        ZLinkActor actor,
+        Supplier<CompletionStage<Void>> operation) {
+        ZLinkActorDispatchSerials.QueuedTurn turn;
+        synchronized (this) {
+            turn = dispatches.prepare(actor.actorId());
+        }
+        dispatches.enqueue(turn, operation)
+            .whenComplete((ignored, error) -> {
+                if (error != null) {
+                    failRemoteMove(actor, error);
+                }
+            });
+    }
+
     public void setDisconnectedNotifier(
         Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier) {
         this.disconnectedNotifier = disconnectedNotifier == null
             ? ignored -> CompletableFuture.completedFuture(null)
             : disconnectedNotifier;
+    }
+
+    public void setSourceActorLeaver(SourceActorLeaver sourceActorLeaver) {
+        this.sourceActorLeaver = sourceActorLeaver == null
+            ? ignored -> CompletableFuture.completedFuture(null)
+            : sourceActorLeaver;
     }
 
     public void setCreatedNotifier(CreatedNotifier createdNotifier) {
@@ -1012,6 +1405,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 removeActorSessionRouteForContext(context);
                 context.clearAfterDestroy();
                 actors.remove(actor.actorId(), actor);
+                pendingTransferredActors.remove(actor.actorId());
+                routedTransferredActors.remove(actor.actorId());
                 actorTypes.remove(actor.actorId());
                 contextsByActor.remove(actor);
                 dispatches.remove(actor.actorId());
@@ -1032,6 +1427,26 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
 
         void setActor(ZLinkActor actor) {
             state.setActor(actor);
+        }
+
+        void beginMove() {
+            state.beginMove();
+        }
+
+        void endMove() {
+            state.endMove();
+        }
+
+        void failMove(Throwable error) {
+            state.failMove(error);
+        }
+
+        boolean moving() {
+            return state.moving();
+        }
+
+        CompletionStage<Void> moveCompletion() {
+            return state.moveCompletion();
         }
 
         ZLinkBackendActorRef actorRef() {
@@ -1192,6 +1607,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 actorTypes::get,
                 serializer,
                 flow,
+                ZLinkActorRuntime.this,
                 ZLinkActorRuntime.this::renewActorJoinedLocation);
         }
 

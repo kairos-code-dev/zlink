@@ -14,6 +14,13 @@ class CustomerActorDirectory {
         }
     }
 
+    fun remove(actorId: String) {
+        synchronized(gate) {
+            actors.remove(actorId)
+            deliveryCustomers.values.removeIf(actorId::equals)
+        }
+    }
+
     fun subscribe(customerId: String, deliveryId: String) {
         synchronized(gate) {
             deliveryCustomers[deliveryId] = customerId

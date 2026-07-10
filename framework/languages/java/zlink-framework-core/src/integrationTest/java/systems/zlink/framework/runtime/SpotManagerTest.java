@@ -188,6 +188,9 @@ final class SpotManagerTest {
             return null;
         }
 
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+
         @Override
         public void onInitialize() {
                     }
@@ -225,6 +228,9 @@ final class SpotManagerTest {
             return context;
         }
 
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+
         @Override
         public void onInitialize() {
             initializedOnVirtualThread.set(Thread.currentThread().isVirtual());
@@ -256,6 +262,9 @@ final class SpotManagerTest {
             return context;
         }
 
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+
         @Override
         public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
             return ZLinkSpotCreateResponse.reject("reject:" + request.decode(String.class));
@@ -285,6 +294,9 @@ final class SpotManagerTest {
         public ZLinkSpotContext context() {
             return context;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
 
         @Override
         public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {

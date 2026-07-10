@@ -59,6 +59,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
+import systems.zlink.framework.runtime.actors.ZLinkActorReplyRoute;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
@@ -582,6 +583,7 @@ public final class ZLinkSpotRuntime
             this::notifyEntrySpotActorCreated,
             () -> currentEntrySpotDispatch.get(),
             this::notifySpotActorDisconnected,
+            this::notifySourceActorLeftForRemoteMove,
             this::spotFor,
             this::meshNameForSpot);
         actorAdmissions.attach(actorRuntime);
@@ -650,6 +652,56 @@ public final class ZLinkSpotRuntime
                 header,
                 payload,
                 local));
+    }
+
+    Optional<Message> replyTransferredRequestDirect(
+        ZLinkStreamHeader requestHeader,
+        ZLinkActorReplyRoute replyRoute,
+        Optional<Message> reply) {
+        if (replyRoute == null || reply.isEmpty()) {
+            return reply;
+        }
+        traceMessageFlow(
+            ZLinkMessageFlowOutcome.REPLIED,
+            ZLinkDispatchErrorSurface.SPOT_ACTOR,
+            ZLinkDispatchMessageKind.ACTOR_REQUEST,
+            "handoff_direct_reply",
+            null,
+            null,
+            Long.toUnsignedString(replyRoute.requestId()),
+            replyRoute.sourceNodeRid().toString(),
+            null,
+            replyRoute.actorRef().actorId());
+        try (Message payload = reply.get()) {
+            ZLinkStreamHeader responseHeader = ZLinkStreamHeader.createResponse(
+                requestHeader,
+                requestHeader.codec(),
+                java.util.EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                requestHeader.packetName(),
+                requestHeader.metadata());
+            try (Message frame = Message.from(
+                    systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec.encode(
+                        responseHeader,
+                        payload.toByteArray()))) {
+                try {
+                    primaryNode.replyActorNoBind(
+                        replyRoute.actorRef(),
+                        replyRoute.sourceNodeRid(),
+                        replyRoute.sourceSessionRid(),
+                        replyRoute.requestId(),
+                        replyRoute.flags(),
+                        List.of(frame));
+                } catch (RuntimeException error) {
+                    throw new ZLinkConfigurationException(
+                        "handoff direct reply failed sourceNode="
+                            + replyRoute.sourceNodeRid()
+                            + " sourceSession=" + replyRoute.sourceSessionRid()
+                            + " requestId=" + Long.toUnsignedString(replyRoute.requestId()),
+                        error);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private CompletionStage<Optional<Message>> dispatchLocalSessionActor(
@@ -1026,6 +1078,21 @@ public final class ZLinkSpotRuntime
                 entrySpot.onDisconnectActor(actor, NONE_CANCELLATION));
         }
         return systems.zlink.framework.ZLinkSubmitStage.completed();
+    }
+
+    private CompletionStage<Void> notifySourceActorLeftForRemoteMove(ZLinkActor actor) {
+        Object spotSurface = localActorSpotSurface(actor);
+        if (spotSurface == null) {
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
+        }
+        RoutingId spotRid = spotSurface instanceof ZLinkSpot<?> spot
+            ? spot.context().spotRid()
+            : ((ZLinkEntrySpot<?>) spotSurface).context().spotRid();
+        return notifySpotActorLifecycleAndSuppressBackendEvent(
+            spotSurface,
+            actor,
+            spotRid,
+            false);
     }
 
     private CompletionStage<Void> notifyEntrySpotActorCreated(
@@ -1465,6 +1532,28 @@ public final class ZLinkSpotRuntime
         Message payloadCopy = bodyPart == null
             ? Message.from(new byte[0])
             : Message.from(bodyPart.message());
+        CompletionStage<Optional<Message>> captured = null;
+        if (actorSessions.isMoving(actor)) {
+            ZLinkActorReplyRoute replyRoute = isNoBindActorRequest(packetHeader, headerCopy)
+                ? new ZLinkActorReplyRoute(
+                    headerCopy.actor(),
+                    headerCopy.sourceNodeRid(),
+                    headerCopy.sourceSessionRid(),
+                    headerCopy.requestId(),
+                    headerCopy.flags())
+                : null;
+            captured = actorSessions.captureMoving(
+                actor, packetHeader.toStreamHeader(), payloadCopy, replyRoute);
+        }
+        if (captured != null) {
+            captured.thenCompose(reply -> replyCapturedActorPacket(
+                    actor, packetHeader, headerCopy, reply))
+                .whenComplete((ignored, error) -> {
+                    payloadCopy.close();
+                    headerCopy.close();
+                });
+            return;
+        }
         actorSessions.dispatch(
             actor,
             () -> dispatchActorPacketToHandler(
@@ -1477,6 +1566,39 @@ public final class ZLinkSpotRuntime
                 headerCopy,
                 payloadCopy,
                 "actor bound session reply failed"));
+    }
+
+    private CompletionStage<Void> replyCapturedActorPacket(
+        ZLinkActor actor,
+        ActorPacketFrames.Header packetHeader,
+        ZLinkBackendActorReceived headerPart,
+        Optional<Message> reply) {
+        if (reply.isEmpty()) {
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
+        }
+        byte[] frameBytes;
+        try (Message payload = reply.get();
+             Message frame = ActorPacketFrames.encodeReply(packetHeader, payload)) {
+            frameBytes = frame.toByteArray();
+        }
+        if (isNoBindActorRequest(packetHeader, headerPart)) {
+            try (Message frame = Message.from(frameBytes)) {
+                primaryNode.replyActorNoBind(
+                    headerPart.actor(),
+                    headerPart.sourceNodeRid(),
+                    headerPart.sourceSessionRid(),
+                    headerPart.requestId(),
+                    headerPart.flags(),
+                    List.of(frame));
+            }
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
+        }
+        return sendActorBoundSessionWithRetry(
+            primaryNode,
+            headerPart.actor(),
+            actor.actorId(),
+            frameBytes,
+            "actor handoff reply failed");
     }
 
     static void closePendingActorHeader(

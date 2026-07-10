@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.spotservice.client
 
+import systems.zlink.framework.CancellationToken
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
@@ -13,6 +14,11 @@ class ClientDriverSpot(
     private val context: ZLinkSpotContext,
     private val routes: ZLinkRouteClient
 ) : ZLinkSpot<ZLinkActor> {
+    override fun onJoinedActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+    }
+
+    override fun onLeaveActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+    }
     private var mode: String = nextMode
 
     override fun context(): ZLinkSpotContext = context

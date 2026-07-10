@@ -4,6 +4,7 @@ import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorFactory
+import systems.zlink.framework.actors.ZLinkActorTransferAdapter
 import systems.zlink.framework.channels.ZLinkPublishContext
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
@@ -138,6 +139,37 @@ abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
     protected abstract suspend fun createActor(actorId: String, context: ZLinkActorContext): ZLinkActor
 }
 
+abstract class ZLinkSuspendingActorTransferAdapter<TActor : ZLinkActor> :
+    ZLinkActorTransferAdapter<TActor> {
+    final override fun transferOut(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    ): ZLinkMessage = blocking {
+        transferOutSuspending(actor, cancellationToken)
+    }
+
+    final override fun transferIn(
+        actorId: String,
+        context: ZLinkActorContext,
+        state: ZLinkMessage,
+        cancellationToken: CancellationToken,
+    ): TActor = blocking {
+        transferInSuspending(actorId, context, state, cancellationToken)
+    }
+
+    protected abstract suspend fun transferOutSuspending(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    ): ZLinkMessage
+
+    protected abstract suspend fun transferInSuspending(
+        actorId: String,
+        context: ZLinkActorContext,
+        state: ZLinkMessage,
+        cancellationToken: CancellationToken,
+    ): TActor
+}
+
 abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     abstract override fun context(): ZLinkSpotContext
 
@@ -159,13 +191,31 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     }
 
     final override fun onActorJoin(
-        actor: TActor,
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
         blocking {
-            onActorJoinSuspending(actor, request, cancellationToken)
+            onActorJoinSuspending(actorId, request, cancellationToken)
         }
+
+    final override fun onJoinedActor(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    ) {
+        blocking {
+            onJoinedActorSuspending(actor, cancellationToken)
+        }
+    }
+
+    final override fun onLeaveActor(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    ) {
+        blocking {
+            onLeaveActorSuspending(actor, cancellationToken)
+        }
+    }
 
     protected open suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse =
         ZLinkSpotCreateResponse.accept()
@@ -176,12 +226,85 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     protected open suspend fun onClosingSuspending() {
     }
 
-    protected open suspend fun onActorJoinSuspending(
-        actor: TActor,
+    protected abstract suspend fun onActorJoinSuspending(
+        actorId: String,
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
-    ): ZLinkSpotActorJoinResponse =
-        ZLinkSpotActorJoinResponse.reject()
+    ): ZLinkSpotActorJoinResponse
+
+    protected abstract suspend fun onJoinedActorSuspending(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    )
+
+    protected abstract suspend fun onLeaveActorSuspending(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    )
+}
+
+abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> : ZLinkEntrySpot<TActor> {
+    abstract override fun context(): systems.zlink.framework.spots.ZLinkEntrySpotContext
+
+    final override fun onInitialize() {
+        blocking { onInitializeSuspending() }
+    }
+
+    final override fun onClosing() {
+        blocking { onClosingSuspending() }
+    }
+
+    final override fun onCreateActor(
+        actor: TActor,
+        createRequest: ZLinkMessage,
+        cancellationToken: CancellationToken,
+    ) {
+        blocking { onCreateActorSuspending(actor, createRequest, cancellationToken) }
+    }
+
+    final override fun onActorJoin(
+        actorId: String,
+        request: ZLinkMessage,
+        cancellationToken: CancellationToken,
+    ): ZLinkSpotActorJoinResponse = blocking {
+        onActorJoinSuspending(actorId, request, cancellationToken)
+    }
+
+    final override fun onJoinedActor(actor: TActor, cancellationToken: CancellationToken) {
+        blocking { onJoinedActorSuspending(actor, cancellationToken) }
+    }
+
+    final override fun onLeaveActor(actor: TActor, cancellationToken: CancellationToken) {
+        blocking { onLeaveActorSuspending(actor, cancellationToken) }
+    }
+
+    protected open suspend fun onInitializeSuspending() {
+    }
+
+    protected open suspend fun onClosingSuspending() {
+    }
+
+    protected abstract suspend fun onCreateActorSuspending(
+        actor: TActor,
+        createRequest: ZLinkMessage,
+        cancellationToken: CancellationToken,
+    )
+
+    protected abstract suspend fun onActorJoinSuspending(
+        actorId: String,
+        request: ZLinkMessage,
+        cancellationToken: CancellationToken,
+    ): ZLinkSpotActorJoinResponse
+
+    protected abstract suspend fun onJoinedActorSuspending(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    )
+
+    protected abstract suspend fun onLeaveActorSuspending(
+        actor: TActor,
+        cancellationToken: CancellationToken,
+    )
 }
 
 abstract class ZLinkSuspendingSession : ZLinkSession {

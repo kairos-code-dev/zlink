@@ -219,6 +219,9 @@ final class StreamSessionTest {
         public ZLinkSpotContext context() {
             return null;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class GameEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
@@ -232,6 +235,9 @@ final class StreamSessionTest {
         public ZLinkEntrySpotContext context() {
             return context;
         }
+
+        @Override public void onJoinedActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
+        @Override public void onLeaveActor(ZLinkActor actor, systems.zlink.framework.CancellationToken cancellationToken) { }
     }
 
     public static final class UserSpot implements ZLinkSpot<ZLinkActor> {
@@ -249,10 +255,16 @@ final class StreamSessionTest {
 
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
-            ZLinkActor actor,
+            String actorId,
             ZLinkMessage request,
             systems.zlink.framework.CancellationToken cancellationToken) {
             return ZLinkSpotActorJoinResponse.accept("joined");
+        }
+
+        @Override
+        public void onJoinedActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) {
         }
 
         @Override

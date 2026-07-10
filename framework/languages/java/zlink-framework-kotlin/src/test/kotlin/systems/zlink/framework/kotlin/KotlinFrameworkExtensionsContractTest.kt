@@ -409,6 +409,10 @@ class KotlinFrameworkExtensionsContractTest {
     private class TestSpot : ZLinkSpot<TestActor> {
         override fun context(): ZLinkSpotContext =
             throw UnsupportedOperationException("test spot has no runtime context")
+
+        override fun onJoinedActor(actor: TestActor, cancellationToken: CancellationToken) = Unit
+
+        override fun onLeaveActor(actor: TestActor, cancellationToken: CancellationToken) = Unit
     }
 
     companion object {

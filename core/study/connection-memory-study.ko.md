@@ -403,8 +403,10 @@ idle 연결당 ~35 KB(부하 시 상한 ~75 KB) 중 조정 가능한 몫:
   `tcp_rmem/tcp_wmem` 최대값이다. 연결이 아주 많고 연결당 대역이 낮은
   배치에서는 `ZLINK_OPT_RCVBUF/SNDBUF`로 소켓당 상한(예: 32 KB)을 정해
   autotuning의 과대 성장(최대 16 MB/소켓)을 막을 수 있다.
-- fd 예산: SpotNode ALL mesh는 peer당 3 fd이므로 `RLIMIT_NOFILE`과
-  `ZLINK_MAX_SOCKETS`를 함께 계산해야 한다.
+- fd 예산: SpotNode ALL mesh는 peer당 3 fd이므로 `RLIMIT_NOFILE`을 연결
+  수 기준으로 계산한다. `ZLINK_MAX_SOCKETS`는 연결 수가 아니라 소켓 핸들
+  수 제한이므로, 소켓을 많이 만드는 쪽(연결당 소켓 1개인 클라이언트,
+  SpotNode 다수 생성 프로세스)에서만 올린다.
 
 ### 6.7 [P7] auto-HWM 후속 설계 항목 — 부하 시 최악 경로 닫기
 

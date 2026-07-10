@@ -565,7 +565,7 @@ void on_pong(const zlink_routing_id_t *source_rid,
 | 서버 패턴 | 기본 점유 | 트래픽 후 잔류 | 순간 최대 (1 KB 버스트 실측) |
 |-----------|----------|----------------|------------------------------|
 | ROUTER (요청 수신) | ~28 KB | ~33 KB | ~66 KB |
-| STREAM (raw TCP) | ~27 KB | ~27 KB | ~27 KB |
+| STREAM (raw TCP) | ~26 KB | ~27 KB | ~27 KB |
 | PUB (구독자 fanout) | ~31 KB | ~36 KB | ~36 KB+ |
 
 예: ROUTER 서버가 10,000연결을 오래 유지하면 프로세스 RSS를 약 330 MB
@@ -591,7 +591,8 @@ fd가 크게 줄어든다. 양방향 full mesh는 다시 두 배로 계산한다
       올린다
 - [ ] 연결이 아주 많고 연결당 대역이 낮으면 `ZLINK_OPT_RCVBUF/SNDBUF`로
       소켓당 커널 버퍼 상한(예: 32 KB)을 걸어 autotuning 과대 성장
-      방지 (리눅스 기본 sysctl에서는 소켓당 최대 16 MB까지 자람)
+      방지 (상한은 커널 `tcp_rmem/tcp_wmem` max까지 — 배포판에 따라
+      다르며 측정 환경 기준 16 MB)
 - [ ] 지속 부하 배치는 `net.ipv4.tcp_mem`, `tcp_rmem/tcp_wmem` 상한 점검
       (idle 연결의 커널 버퍼 비용은 거의 0이다)
 - [ ] HWM profile이 순간 최대를 정한다 — 메모리가 빠듯하면 COMPACT,

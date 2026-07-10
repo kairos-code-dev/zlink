@@ -25,7 +25,7 @@ listener accept / connecter completion
   └─ asio_zmp_engine_t created      (asio_raw_engine_t for raw STREAM)
        └─ session_base_t created
             └─ engine plug → protocol handshake
-                 ├─ encoder/decoder allocated when the handshake completes
+                 ├─ encoder/decoder allocated right after the HELLO exchange
                  └─ engine_ready → pipepair()
                       = 2 pipe_t + 2 ypipes (socket ↔ session queues)
 ```
@@ -35,8 +35,8 @@ listener accept / connecter completion
 | Item | Allocated when | Size formula | Default (B) |
 |------|----------------|--------------|-------------|
 | ypipe queue chunks ×2 | pipepair constructor (eager) | `session_pipe_granularity(64) × sizeof(msg_t)(64) + 16` ×2 | 8,224 |
-| ZMP decoder buffer | handshake completion | `in_batch_size(8192) + 8 + ceil(8192/41) × 40` | 16,200 |
-| ZMP encoder buffer | handshake completion | `out_batch_size(8192)` | 8,192 |
+| ZMP decoder buffer | right after HELLO receipt (mid-handshake) | `in_batch_size(8192) + 8 + ceil(8192/41) × 40` | 16,200 |
+| ZMP encoder buffer | right after HELLO receipt (mid-handshake) | `out_batch_size(8192)` | 8,192 |
 | handshake read_buffer | first handshake read (lazy) | `handshake_read_buffer_size` | 512 |
 | asio_zmp_engine_t object | on accept | includes 3×1,040 handler_allocator + options_t copy (936) + HELLO 272×2 + rid 256 | 5,856 |
 | pipe_t objects ×2 | pipepair | embeds stream packet state and two msg_t | 1,280 |
@@ -90,8 +90,9 @@ study document §6.8 for the record).
 ### 2.2 The handshake read_buffer is small and lazily allocated
 
 The engine's `_pipeline.read_buffer` is a read target only while no decoder
-exists (the protocol handshake window). Once the decoder exists every new
-read goes directly into the decoder buffer. This buffer used to be
+exists (the protocol handshake window). Once the decoder exists, new reads
+go into the decoder buffer (or the pending buffer pool for a STREAM socket
+under backpressure) and this buffer is never used again. This buffer used to be
 `resize()`d to 8,192 B in the constructor; the zero-fill committed all 8 KB
 per connection even though it was never used again.
 

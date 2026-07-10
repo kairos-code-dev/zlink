@@ -571,7 +571,7 @@ composition come from the code structure.
 | Server pattern | Idle baseline | Post-traffic residual | Peak (1 KB burst, measured) |
 |----------------|--------------|------------------------|------------------------------|
 | ROUTER (request intake) | ~28 KB | ~33 KB | ~66 KB |
-| STREAM (raw TCP) | ~27 KB | ~27 KB | ~27 KB |
+| STREAM (raw TCP) | ~26 KB | ~27 KB | ~27 KB |
 | PUB (subscriber fanout) | ~31 KB | ~36 KB | ~36 KB+ |
 
 Example: a ROUTER server holding 10,000 long-lived connections should budget
@@ -599,7 +599,8 @@ bidirectional full mesh.
       connection, or a process hosting many SpotNodes)
 - [ ] With very many low-bandwidth connections, cap per-socket kernel
       buffers via `ZLINK_OPT_RCVBUF/SNDBUF` (e.g. 32 KB) to prevent
-      autotuning growth (default Linux sysctls let a socket grow to 16 MB)
+      autotuning growth (the ceiling is the kernel `tcp_rmem/tcp_wmem`
+      max — distribution dependent; 16 MB on the measurement host)
 - [ ] Under sustained load, review `net.ipv4.tcp_mem` and
       `tcp_rmem/tcp_wmem` ceilings (idle connections cost almost no kernel
       buffer memory)

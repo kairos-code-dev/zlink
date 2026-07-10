@@ -21,7 +21,7 @@ listener accept / connecter 완료
   └─ asio_zmp_engine_t 생성        (raw STREAM이면 asio_raw_engine_t)
        └─ session_base_t 생성
             └─ engine plug → 핸드셰이크
-                 ├─ 핸드셰이크 완료 시 encoder/decoder 할당
+                 ├─ HELLO 교환 직후 encoder/decoder 할당
                  └─ engine_ready → pipepair()
                       = pipe_t 2개 + ypipe 2개 (소켓 ↔ 세션 큐)
 ```
@@ -31,8 +31,8 @@ listener accept / connecter 완료
 | 항목 | 할당 시점 | 크기 공식 | 기본값 (B) |
 |------|----------|----------|-----------|
 | ypipe 큐 청크 ×2 | pipepair 생성자 (즉시) | `session_pipe_granularity(64) × sizeof(msg_t)(64) + 16` ×2 | 8,224 |
-| ZMP decoder 버퍼 | 핸드셰이크 완료 시 | `in_batch_size(8192) + 8 + ceil(8192/41) × 40` | 16,200 |
-| ZMP encoder 버퍼 | 핸드셰이크 완료 시 | `out_batch_size(8192)` | 8,192 |
+| ZMP decoder 버퍼 | HELLO 수신 직후 (핸드셰이크 도중) | `in_batch_size(8192) + 8 + ceil(8192/41) × 40` | 16,200 |
+| ZMP encoder 버퍼 | HELLO 수신 직후 (핸드셰이크 도중) | `out_batch_size(8192)` | 8,192 |
 | 핸드셰이크 read_buffer | 첫 핸드셰이크 read (지연) | `handshake_read_buffer_size` | 512 |
 | asio_zmp_engine_t 객체 | accept 시 | handler_allocator 3×1,040 + options_t 사본(936) + HELLO 272×2 + rid 256 포함 | 5,856 |
 | pipe_t 객체 ×2 | pipepair | stream packet 상태·msg_t 2개 내장 | 1,280 |
@@ -81,8 +81,9 @@ spare-chunk 캐시가 정상 흐름을 흡수한다. tcp/1024 기준 처리량·
 ### 2.2 핸드셰이크 read_buffer는 작게, 지연 할당한다
 
 엔진의 `_pipeline.read_buffer`는 decoder가 아직 없는 구간(프로토콜
-핸드셰이크)에서만 read 대상이 된다. decoder가 생긴 뒤의 모든 새 read는
-decoder 버퍼로 직접 들어간다. 예전에는 이 버퍼를 생성자에서 8,192 B로
+핸드셰이크)에서만 read 대상이 된다. decoder가 생긴 뒤의 새 read는
+decoder 버퍼(STREAM 소켓이 backpressure 상태일 때는 pending 버퍼 풀)로
+들어가고, 이 버퍼는 다시 쓰이지 않는다. 예전에는 이 버퍼를 생성자에서 8,192 B로
 `resize()`했는데, zero-fill 때문에 쓰지도 않은 8 KB가 연결마다 통째로
 커밋되었다.
 

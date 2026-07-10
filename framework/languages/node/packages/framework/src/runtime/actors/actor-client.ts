@@ -24,6 +24,7 @@ import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import {
   decodeStreamHeader,
   encodeStreamHeader,
+  tryDecodeStreamFrame,
   ZLinkStreamCodec,
   ZLinkStreamHeaderFlags,
   ZLinkStreamMessageKind
@@ -90,30 +91,6 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       }
       throw error;
     }
-  }
-
-  private async resolveActor(
-    actorId: string,
-    signal: AbortSignal | undefined,
-    missingKind: ZLinkFrameworkErrorKind.ActorRouteNotFound | ZLinkFrameworkErrorKind.ActorLocationStale
-  ): Promise<ZLinkBackendActorRef> {
-    const resolver = this.options.locationResolver();
-    if (resolver === undefined) {
-      throw new ZLinkFrameworkException(
-        missingKind,
-        `Actor route '${actorId}' was not found.`
-      );
-    }
-    const row = await resolver.resolveActorRow({ actorId }, signal);
-    if (row?.actorRef !== undefined) {
-      return row.actorRef as ZLinkBackendActorRef;
-    }
-    throw new ZLinkFrameworkException(
-      missingKind,
-      missingKind === ZLinkFrameworkErrorKind.ActorLocationStale
-        ? `Actor route '${actorId}' became stale.`
-        : `Actor route '${actorId}' was not found.`
-    );
   }
 
   private createPacketParts(
@@ -265,18 +242,14 @@ function decodeActorReply<TReply>(
   serializers?: ReadonlyMap<string, ZLinkMessageSerializer>
 ): TReply {
   if (reply.length === 1) {
-    const frame = reply[0].data();
-    if (frame.length >= 6) {
-      const headerSize = frame.readUInt16BE(0);
-      const payloadSize = frame.readUInt32BE(2);
-      if (frame.length === 6 + headerSize + payloadSize) {
-        const header = decodeStreamHeader(frame.subarray(6, 6 + headerSize));
-        return decodeActorReplyPayload<TReply>(
-          header.kind,
-          BindingMessage.from(frame.subarray(6 + headerSize, 6 + headerSize + payloadSize)) as Message,
-          serializers
-        );
-      }
+    const frame = tryDecodeStreamFrame(reply[0].data());
+    if (frame !== undefined) {
+      const header = decodeStreamHeader(frame.header);
+      return decodeActorReplyPayload<TReply>(
+        header.kind,
+        BindingMessage.from(frame.payload) as Message,
+        serializers
+      );
     }
   }
   if (reply.length >= 2) {

@@ -1458,6 +1458,20 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9204']);
   assert.equal(registration.spotPublisherClients.has('game'), true);
 
+  const orderedModule = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addSpotMesh('ordered')
+      .connectRouter('tcp://127.0.0.1:9211')
+      .connectRouter('node-b', 'tcp://127.0.0.1:9212')
+      .connectPeerPub('tcp://127.0.0.1:9213')
+      .enableRouter('tcp://0.0.0.0:9214', 'node-a')
+      .enablePubSub('tcp://0.0.0.0:9215', 'node-a')
+    .build());
+  const orderedRegistration = await resolveFrameworkRegistration(orderedModule);
+  const orderedSpotNode = orderedRegistration.spotNodes.get('ordered');
+  assert.deepEqual(orderedSpotNode.router.manualConnections, ['tcp://127.0.0.1:9211']);
+  assert.deepEqual(orderedSpotNode.router.manualPeerConnections, [{ peerRid: 'node-b', endpoint: 'tcp://127.0.0.1:9212' }]);
+  assert.deepEqual(orderedSpotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9213']);
+
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotMesh('')
@@ -1485,6 +1499,14 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
         .enablePubSub(undefined, 'node-b')
       .build())),
     /router and pubSub routingId must match/
+  );
+  await assert.rejects(
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotMesh('game')
+        .connectRouter('node-a', 'tcp://127.0.0.1:9216')
+        .connectRouter('node-a', 'tcp://127.0.0.1:9217')
+      .build())),
+    /manual peer routing id must be unique/
   );
 });
 

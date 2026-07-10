@@ -3,6 +3,9 @@ const test = require('node:test');
 
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
+const {
+  ZLinkSpotNativeActorJoinAdmission
+} = require('../../packages/framework/dist/runtime/spots/spot-native-actor-join-admission');
 const msgpack = require('../../packages/framework-codec-msgpack/dist');
 const protobuf = require('../../packages/framework-codec-protobuf/dist');
 
@@ -1208,6 +1211,62 @@ test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle
 
 // ActorJoinReadable dispatch-event value (core SpotDispatchEvent.ActorJoinReadable = 6).
 const ENTRY_ACTOR_JOIN_READABLE = 6;
+
+test('native actor join admission closes caller-owned reply when submit fails', async () => {
+  const requestMessage = zlink.Message.from(Buffer.from('join-request'));
+  const originalClose = zlink.Message.prototype.close;
+  let replyMessage;
+  let replyCloseCount = 0;
+  zlink.Message.prototype.close = function closeTrackedMessage() {
+    if (this === replyMessage) {
+      replyCloseCount += 1;
+    }
+    return originalClose.call(this);
+  };
+
+  try {
+    const admission = new ZLinkSpotNativeActorJoinAdmission({
+      nativeSpot: {
+        replyActorJoin() {
+          return {
+            message(message) {
+              replyMessage = message;
+              return this;
+            },
+            submit() {
+              throw new Error('actor join reply submit failed');
+            }
+          };
+        }
+      },
+      serial: {
+        execute(action) {
+          return Promise.resolve().then(action);
+        }
+      },
+      resolveActor: () => ({ actorId: 'joined-actor' }),
+      getTarget: () => ({
+        async onActorJoin() {
+          return { accepted: true, reply: 'accepted' };
+        }
+      }),
+      defaultAccept: false
+    });
+
+    await assert.rejects(
+      admission.admit({
+        info: { targetActor: { actorId: 'joined-actor' } },
+        message: requestMessage
+      }),
+      /actor join reply submit failed/
+    );
+    assert.notEqual(replyMessage, undefined);
+    assert.equal(replyCloseCount, 1);
+  } finally {
+    zlink.Message.prototype.close = originalClose;
+    requestMessage.close();
+  }
+});
 
 // Drives the native recv -> admit -> reply round-trip the Entry Spot activation
 // registers via setDispatchHandler. This mirrors how core delivers an admission

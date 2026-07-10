@@ -196,15 +196,19 @@ export class ZLinkHttpRequestBuilder {
       );
     }
     let body: T;
-    try {
-      body = JSON.parse(raw.body, safeJsonReviver) as T;
-    } catch (cause) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.PayloadDecodeFailed,
-        cause instanceof Error ? cause.message : 'HTTP response body decode failed',
-        false,
-        cause,
-      );
+    if (raw.body.length === 0) {
+      body = null as T;
+    } else {
+      try {
+        body = JSON.parse(raw.body, safeJsonReviver) as T;
+      } catch (cause) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+          cause instanceof Error ? cause.message : 'HTTP response body decode failed',
+          false,
+          cause,
+        );
+      }
     }
     return { status: raw.status, headers: raw.headers, body, rawBody: raw.body };
   }

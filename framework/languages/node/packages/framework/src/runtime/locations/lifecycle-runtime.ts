@@ -1,0 +1,40 @@
+import {
+  type ZLinkActorLocation,
+  type ZLinkActorLocationKey,
+  ZLinkLocationKind,
+  ZLinkLocationWriteIntent,
+  type ZLinkLocationWriteResult,
+  type ZLinkRouteLocation,
+  type ZLinkRouteLocationKey,
+  type ZLinkSpotLocation,
+  type ZLinkSpotLocationKey
+} from '../../contracts/Locations';
+
+export interface ZLinkOwnershipLostEvent {
+  readonly kind: ZLinkLocationKind;
+  readonly key: string;
+}
+
+export interface IZLinkLocationLifecycleRuntime {
+  readonly ownerId: string;
+  addOwnershipLostHandler(handler: (event: ZLinkOwnershipLostEvent) => void): void;
+  removeOwnershipLostHandler(handler: (event: ZLinkOwnershipLostEvent) => void): void;
+  writeActor(
+    actor: ZLinkActorLocation,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult>;
+  writeSpot(
+    spot: ZLinkSpotLocation,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult>;
+  writeRoute(
+    route: ZLinkRouteLocation,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult>;
+  removeActor(key: ZLinkActorLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
+  removeSpot(key: ZLinkSpotLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
+  removeRoute(key: ZLinkRouteLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
+}

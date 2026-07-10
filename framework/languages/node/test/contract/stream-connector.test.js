@@ -1284,9 +1284,11 @@ test('stream connector WebSocket transport caps queued message bytes', async () 
 });
 
 test('stream connector WebSocket handshake rejects oversized response headers', async () => {
+  let serverSocketClosed;
   const server = net.createServer((socket) => {
+    serverSocketClosed = new Promise((resolve) => socket.once('close', resolve));
     socket.once('data', () => {
-      socket.write(`HTTP/1.1 101 Switching Protocols\r\nX-Fill: ${'a'.repeat(17 * 1024)}`, () => socket.end());
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\nX-Fill: ${'a'.repeat(17 * 1024)}`);
     });
   });
 
@@ -1302,6 +1304,8 @@ test('stream connector WebSocket handshake rejects oversized response headers', 
       () => instance.connect(),
       (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
     );
+    assert.ok(serverSocketClosed);
+    await withTimeout(serverSocketClosed, 1000, 'server socket close after failed WebSocket handshake');
   } finally {
     await instance.close();
     await closeServer(server);

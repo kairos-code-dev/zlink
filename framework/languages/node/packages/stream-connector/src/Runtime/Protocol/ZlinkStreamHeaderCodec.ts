@@ -7,138 +7,57 @@ import {
 } from '../../Contracts';
 import { ZlinkStreamHeaderFlags } from '../../Contracts/ZlinkStreamEnums';
 import type { ZlinkStreamHeader } from '../../Contracts/ZlinkStreamModels';
-import {
-  connectorError,
-  readBigUInt64BE,
-  readUInt16BE,
-  utf8Decode,
-  utf8Encode,
-  writeBigUInt64BE,
-  writeUInt16BE
-} from '../ZlinkStreamSupport';
-import { ZlinkStreamMetadataCodec } from './ZlinkStreamMetadataCodec';
+import { decodeStreamWireHeader, encodeStreamWireHeader } from '@zlink-systems/stream-wire';
+import { connectorError } from '../ZlinkStreamSupport';
 import { validateName } from './ZlinkStreamPacketNameValidator';
 
 export class ZlinkStreamHeaderCodec {
   static encode(header: ZlinkStreamHeader): Uint8Array {
     validateName(header.name, header.kind === ZlinkStreamMessageKind.Control);
     validateHeaderSemantics(header);
-
-    const nameBytes = utf8Encode(header.name);
-    const hasRequestSeq = header.requestSeq !== undefined;
-    const hasMetadata = header.metadata.count > 0;
-    const correlationBytes = header.correlationId !== undefined && header.correlationId.length > 0
-      ? utf8Encode(header.correlationId)
-      : undefined;
-    if (correlationBytes !== undefined && correlationBytes.length > 0xff) {
-      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Correlation id is too large.');
+    try {
+      return encodeStreamWireHeader({
+        kind: header.kind,
+        codec: header.codec,
+        flags: header.flags,
+        requestSeq: header.requestSeq,
+        name: header.name,
+        metadata: header.metadata.values,
+        correlationId: header.correlationId
+      });
+    } catch (cause) {
+      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, streamWireErrorMessage(cause), cause);
     }
-    const hasCorrelation = correlationBytes !== undefined;
-    let flags = header.flags;
-    flags = hasRequestSeq ? flags | ZlinkStreamHeaderFlags.HasRequestSeq : flags & ~ZlinkStreamHeaderFlags.HasRequestSeq;
-    flags = hasMetadata ? flags | ZlinkStreamHeaderFlags.HasMetadata : flags & ~ZlinkStreamHeaderFlags.HasMetadata;
-    flags = hasCorrelation ? flags | ZlinkStreamHeaderFlags.HasCorrelationId : flags & ~ZlinkStreamHeaderFlags.HasCorrelationId;
-
-    const metadataSize = hasMetadata ? ZlinkStreamMetadataCodec.size(header.metadata) : 0;
-    const size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.length
-      + (hasMetadata ? 2 + metadataSize : 0)
-      + (hasCorrelation ? 1 + correlationBytes.length : 0);
-    const buffer = new Uint8Array(size);
-    let offset = 0;
-    buffer[offset++] = header.kind;
-    buffer[offset++] = header.codec;
-    buffer[offset++] = flags;
-    if (hasRequestSeq) {
-      if (header.requestSeq === 0n) {
-        throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Request sequence must not be zero.');
-      }
-      writeBigUInt64BE(buffer, offset, header.requestSeq);
-      offset += 8;
-    }
-    buffer[offset++] = nameBytes.length;
-    buffer.set(nameBytes, offset);
-    offset += nameBytes.length;
-    if (hasMetadata) {
-      writeUInt16BE(buffer, offset, metadataSize);
-      offset += 2;
-      ZlinkStreamMetadataCodec.write(header.metadata, buffer.subarray(offset, offset + metadataSize));
-      offset += metadataSize;
-    }
-    if (hasCorrelation) {
-      buffer[offset++] = correlationBytes.length;
-      buffer.set(correlationBytes, offset);
-      offset += correlationBytes.length;
-    }
-    return buffer;
   }
 
   static decode(header: Uint8Array): ZlinkStreamHeader {
-    if (header.length < 4) {
-      throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header is too short.');
+    let decoded: ZlinkStreamHeader;
+    try {
+      const wire = decodeStreamWireHeader(header);
+      const metadata = wire.metadata.size === 0
+        ? ZlinkStreamMetadataMap.empty
+        : ZlinkStreamMetadataMap.from(wire.metadata);
+      decoded = {
+        kind: wire.kind as ZlinkStreamMessageKind,
+        codec: wire.codec as ZlinkStreamCodec,
+        flags: wire.flags as ZlinkStreamHeaderFlags,
+        requestSeq: wire.requestSeq,
+        name: wire.name,
+        metadata,
+        correlationId: wire.correlationId
+      };
+    } catch (cause) {
+      throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, streamWireErrorMessage(cause), cause);
     }
-    let offset = 0;
-    const kind = header[offset++] as ZlinkStreamMessageKind;
-    const codec = header[offset++] as ZlinkStreamCodec;
-    const flags = header[offset++] as ZlinkStreamHeaderFlags;
-    validateEnum(kind, codec, flags);
-
-    let requestSeq: bigint | undefined;
-    if ((flags & ZlinkStreamHeaderFlags.HasRequestSeq) !== 0) {
-      if (header.length - offset < 8) {
-        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header request sequence is incomplete.');
-      }
-      requestSeq = readBigUInt64BE(header, offset);
-      if (requestSeq === 0n) {
-        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Request sequence must not be zero.');
-      }
-      offset += 8;
-    }
-
-    if (header.length - offset < 1) {
-      throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header name length is missing.');
-    }
-    const nameLength = header[offset++];
-    if (nameLength === 0 || header.length - offset < nameLength) {
-      throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header packet name is invalid.');
-    }
-    const name = utf8Decode(header.subarray(offset, offset + nameLength));
-    offset += nameLength;
-
-    let metadata = ZlinkStreamMetadataMap.empty;
-    if ((flags & ZlinkStreamHeaderFlags.HasMetadata) !== 0) {
-      if (header.length - offset < 2) {
-        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header metadata length is missing.');
-      }
-      const metadataLength = readUInt16BE(header, offset);
-      offset += 2;
-      if (header.length - offset < metadataLength) {
-        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header metadata is incomplete.');
-      }
-      metadata = ZlinkStreamMetadataCodec.decode(header.subarray(offset, offset + metadataLength));
-      offset += metadataLength;
-    }
-
-    let correlationId: string | undefined;
-    if ((flags & ZlinkStreamHeaderFlags.HasCorrelationId) !== 0) {
-      if (header.length - offset < 1) {
-        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header correlation id length is missing.');
-      }
-      const correlationLength = header[offset++];
-      if (header.length - offset < correlationLength) {
-        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header correlation id is incomplete.');
-      }
-      correlationId = utf8Decode(header.subarray(offset, offset + correlationLength));
-      offset += correlationLength;
-    }
-    if (offset !== header.length) {
-      throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header contains trailing bytes.');
-    }
-
-    const decoded = { kind, codec, flags, requestSeq, name, metadata, correlationId };
-    validateName(name, kind === ZlinkStreamMessageKind.Control);
+    validateEnum(decoded.kind, decoded.codec, decoded.flags);
+    validateName(decoded.name, decoded.kind === ZlinkStreamMessageKind.Control);
     validateHeaderSemantics(decoded);
     return decoded;
   }
+}
+
+function streamWireErrorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : 'Stream header is invalid.';
 }
 
 export function buildHeader(

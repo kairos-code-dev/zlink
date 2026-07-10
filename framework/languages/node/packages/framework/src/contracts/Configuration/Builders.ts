@@ -4,7 +4,7 @@ import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
 import type { IZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
 import type { Type } from '../Common';
-import type { ZLinkWorkerOptions } from './Registration';
+import type { ZLinkWorkerOptions } from './RegistrationTypes';
 import type { ZLinkSocketConfig } from './Configs';
 
 export interface ZLinkFrameworkOptions {

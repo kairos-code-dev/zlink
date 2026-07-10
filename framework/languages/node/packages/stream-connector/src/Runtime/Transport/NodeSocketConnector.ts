@@ -61,8 +61,13 @@ async function connectWebSocket(
       rejectUnauthorized: !options.skipServerCertificateValidation
     }), 443, 'secureConnect')
     : await connectSocket(endpoint, options.connectTimeoutMs, signal, (port, host) => net.connect({ port, host, keepAlive: true }), 80);
-  const leftover = await completeWebSocketHandshake(socket, endpoint, options.connectTimeoutMs, signal);
-  return new NodeWebSocketConnection(socket, options.maxReceivePayloadSize, leftover);
+  try {
+    const leftover = await completeWebSocketHandshake(socket, endpoint, options.connectTimeoutMs, signal);
+    return new NodeWebSocketConnection(socket, options.maxReceivePayloadSize, leftover);
+  } catch (error) {
+    socket.destroy();
+    throw error;
+  }
 }
 
 async function connectTcp(endpoint: URL, connectTimeoutMs: number, signal?: AbortSignal): Promise<net.Socket> {

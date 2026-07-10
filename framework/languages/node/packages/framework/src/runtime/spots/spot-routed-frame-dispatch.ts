@@ -1,0 +1,241 @@
+import type {
+  ZLinkActor,
+  ZLinkMessage,
+  ZLinkMessageSerializer,
+  ZLinkProviderResolver,
+  ZLinkSpot,
+  ZLinkSpotActorJoinResponse
+} from '../../contracts';
+import type { ActorRef } from '../../contracts/Common/ActorRef';
+import type { Message } from '../../contracts/Common/Message';
+import { Received as BindingReceived } from '@zlink-systems/zlink';
+import type {
+  ZLinkRemoteActorPacketTarget,
+  ZLinkRemoteBoundSessionTarget
+} from '../actors';
+import type {
+  ZLinkBackendActorRef,
+  ZLinkBackendSpot
+} from '../backend/contracts';
+import type { ZLinkDispatchErrorReporter } from '../channels';
+import type { ZLinkChannelEnvelopeCodecRegistry } from '../channels/channel-envelope';
+import { decodeRemoteActorPacketRelay } from './spot-remote-route-codec';
+import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
+import { ZLinkSpotActorPacketRelayDispatch } from './spot-actor-packet-relay-dispatch';
+import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
+import { ZLinkSpotRoutePacketDispatch } from './spot-route-packet-dispatch';
+import { ZLinkSpotRoutedActorAdmission } from './spot-routed-actor-admission';
+import { ZLinkSpotRoutedBoundSessionDispatch } from './spot-routed-bound-session-dispatch';
+import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
+import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkRemoteActorJoinActor } from './spot-remote-codec';
+
+interface ZLinkRoutedFrameAdmissionTarget {
+  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+}
+
+interface ZLinkSpotRoutedFrameDispatchOptions {
+  readonly nativeSpot: ZLinkBackendSpot;
+  readonly nativeSpotRid: string;
+  readonly serial: ZLinkSpotSerialExecutor;
+  readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
+  readonly getTarget: () => ZLinkRoutedFrameAdmissionTarget & ZLinkSpot;
+  readonly defaultAccept: boolean;
+  readonly routedActorProvider?: (
+    actorId: string,
+    actorType: string,
+    actorRef?: ZLinkBackendActorRef,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    actorCreateRequest?: Message,
+    signal?: AbortSignal
+  ) => Promise<ZLinkRemoteActorJoinActor>;
+  readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
+  readonly actorPacketHandler?: (
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse?: boolean,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ) => Promise<unknown>;
+  readonly routedBoundSessionReceiver?: (
+    actorId: string,
+    message: unknown,
+    packetName: string | undefined,
+    metadata: ReadonlyMap<string, string>,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly routedBoundSessionResponseReceiver?: (
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    message: unknown,
+    replyOptions: ZLinkActorResponseOptions,
+    actorPacketTarget?: unknown,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly routedBoundSessionErrorReceiver?: (
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>,
+    actorPacketTarget?: unknown,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly providerResolver?: ZLinkProviderResolver;
+  readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly waitIdle: () => Promise<void>;
+}
+
+export class ZLinkSpotRoutedFrameDispatch {
+  private routeDraining = false;
+  private readonly packetHandlers = new Map<string, ZLinkSpotHandlerRegistration[]>();
+  private readonly routedBoundSessionDispatch: ZLinkSpotRoutedBoundSessionDispatch;
+  private readonly actorPacketRelayDispatch: ZLinkSpotActorPacketRelayDispatch;
+  private readonly routePacketDispatch: ZLinkSpotRoutePacketDispatch;
+  private readonly routedActorAdmission: ZLinkSpotRoutedActorAdmission;
+
+  constructor(private readonly options: ZLinkSpotRoutedFrameDispatchOptions) {
+    this.routedBoundSessionDispatch = new ZLinkSpotRoutedBoundSessionDispatch({
+      channelCodecs: () => this.channelCodecs(),
+      routedBoundSessionReceiver: options.routedBoundSessionReceiver,
+      routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
+      routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver
+    });
+    this.actorPacketRelayDispatch = new ZLinkSpotActorPacketRelayDispatch({
+      resolveActor: options.resolveActor,
+      actorPacketHandler: options.actorPacketHandler,
+      actorPacketTargetProvider: options.actorPacketTargetProvider
+    });
+    this.routePacketDispatch = new ZLinkSpotRoutePacketDispatch({
+      packetHandlers: this.packetHandlers,
+      nativeSpotRid: options.nativeSpotRid,
+      serial: options.serial,
+      getTarget: options.getTarget,
+      providerResolver: options.providerResolver,
+      messageSerializers: options.messageSerializers,
+      dispatchErrors: options.dispatchErrors
+    });
+    this.routedActorAdmission = new ZLinkSpotRoutedActorAdmission({
+      serial: options.serial,
+      resolveActor: options.resolveActor,
+      getTarget: options.getTarget,
+      defaultAccept: options.defaultAccept,
+      routedActorProvider: options.routedActorProvider,
+      commitRoutedActor: options.commitRoutedActor,
+      messageSerializers: options.messageSerializers
+    });
+  }
+
+  configurePacketHandlers(registrations: readonly ZLinkSpotHandlerRegistration[]): void {
+    for (const registration of registrations) {
+      if (registration.kind !== 'packet') {
+        continue;
+      }
+      const packetName = registration.packetName ?? registration.handlerType.name;
+      const existing = this.packetHandlers.get(packetName) ?? [];
+      existing.push(registration);
+      this.packetHandlers.set(packetName, existing);
+    }
+  }
+
+  async drain(received: BindingReceived | undefined = undefined, retryDeadlineMs = Date.now()): Promise<void> {
+    if (this.routeDraining) {
+      if (received !== undefined) {
+        try {
+          await this.dispatch(received);
+        } finally {
+          received.close();
+        }
+      }
+      return;
+    }
+    this.routeDraining = true;
+    try {
+      if (received !== undefined) {
+        try {
+          await this.dispatch(received);
+        } finally {
+          received.close();
+        }
+        received = undefined;
+      }
+      for (;;) {
+        received ??= new BindingReceived();
+        try {
+          if (!this.options.nativeSpot.recvRoute(received, ZLINK_RECV_DONT_WAIT)) {
+            received.close();
+            await this.options.waitIdle();
+            return;
+          }
+        } catch (error) {
+          if (isRouteRecvRetryable(error)) {
+            closeReceivedQuietly(received);
+            if (Date.now() < retryDeadlineMs) {
+              setTimeout(() => void this.drain(undefined, retryDeadlineMs), 10);
+            }
+            return;
+          }
+          received.close();
+          throw error;
+        }
+        try {
+          await this.dispatch(received);
+        } finally {
+          received.close();
+        }
+        received = new BindingReceived();
+      }
+    } finally {
+      this.routeDraining = false;
+    }
+  }
+
+  async dispatchFromEvent(received: BindingReceived): Promise<void> {
+    try {
+      await this.dispatch(received);
+    } finally {
+      received.close();
+    }
+  }
+
+  private channelCodecs(): ZLinkChannelEnvelopeCodecRegistry | undefined {
+    return this.options.messageSerializers === undefined
+      ? undefined
+      : { serializers: this.options.messageSerializers };
+  }
+
+  private async dispatch(received: BindingReceived): Promise<void> {
+    if (received.parts.length < 1) {
+      return;
+    }
+    if (await this.routedBoundSessionDispatch.dispatch(received)) {
+      return;
+    }
+    const actorPacketRelay = decodeRemoteActorPacketRelay(received.parts, this.channelCodecs());
+    if (actorPacketRelay !== undefined && await this.actorPacketRelayDispatch.dispatch(received, actorPacketRelay)) {
+      return;
+    }
+    if (await this.routePacketDispatch.dispatch(received)) {
+      return;
+    }
+    await this.routedActorAdmission.admit(received);
+  }
+}
+
+function isRouteRecvRetryable(error: unknown): boolean {
+  return typeof error === 'object' &&
+    error !== null &&
+    ([201, 202, 204].includes(Number((error as { result?: unknown }).result)) ||
+      /Device or resource busy|Resource temporarily unavailable|Bad address/i.test(String((error as { message?: unknown }).message ?? '')));
+}
+
+function closeReceivedQuietly(received: BindingReceived): void {
+  try {
+    received.close();
+  } catch {
+  }
+}

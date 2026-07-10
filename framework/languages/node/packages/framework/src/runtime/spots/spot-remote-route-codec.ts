@@ -1,0 +1,281 @@
+import { Message as BindingMessage } from '@zlink-systems/zlink';
+import {
+  decodeChannelEnvelope,
+  decodeChannelPayload,
+  type ZLinkChannelEnvelopeCodecRegistry
+} from '../channels/channel-envelope';
+import {
+  ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
+} from '../actors';
+
+export interface ZLinkRemoteBoundSessionSend {
+  readonly actorId: string;
+  readonly message: unknown;
+  readonly packetName?: string;
+  readonly metadata: ReadonlyMap<string, string>;
+  readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
+}
+
+export interface ZLinkRemoteBoundSessionResponse {
+  readonly actorId: string;
+  readonly message: unknown;
+  readonly packetName: string;
+  readonly requestSeq: bigint;
+  readonly metadata: ReadonlyMap<string, string>;
+  readonly compressPayload: boolean;
+  readonly actorPacketTarget?: unknown;
+}
+
+export interface ZLinkRemoteBoundSessionError {
+  readonly actorId: string;
+  readonly error: unknown;
+  readonly packetName: string;
+  readonly requestSeq: bigint;
+  readonly metadata: ReadonlyMap<string, string>;
+  readonly actorPacketTarget?: unknown;
+}
+
+export interface ZLinkRemoteActorPacketRelay {
+  readonly actorId: string;
+  readonly routerChannelId?: string;
+  readonly boundSessionTargetNodeRid?: string;
+  readonly boundSessionSpotRid?: string;
+  readonly header: string;
+  readonly payload: string;
+  readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
+}
+
+export function decodeRemoteBoundSessionSend(
+  parts: readonly BindingMessage[],
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): ZLinkRemoteBoundSessionSend | undefined {
+  try {
+    if (parts.length === 1) {
+      const payload = JSON.parse(parts[0].data().toString()) as {
+        readonly packetName?: unknown;
+        readonly boundPacketName?: unknown;
+        readonly actorId?: unknown;
+        readonly message?: unknown;
+        readonly metadata?: unknown;
+      };
+      if (
+        payload.packetName !== ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET ||
+        typeof payload.actorId !== 'string'
+      ) {
+        return undefined;
+      }
+      return {
+        actorId: payload.actorId,
+        message: payload.message,
+        packetName: typeof payload.boundPacketName === 'string' ? payload.boundPacketName : undefined,
+        metadata: metadataOf(payload.metadata)
+      };
+    }
+    const envelope = decodeChannelEnvelope(parts);
+    if (envelope.packetName !== ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET) {
+      return undefined;
+    }
+    const payload = decodeChannelPayload(envelope, codecs) as {
+      readonly actorId?: unknown;
+      readonly message?: unknown;
+      readonly packetName?: unknown;
+      readonly boundPacketName?: unknown;
+      readonly metadata?: unknown;
+    };
+    if (typeof payload.actorId !== 'string') {
+      return undefined;
+    }
+    return {
+      actorId: payload.actorId,
+      message: payload.message,
+      packetName: typeof payload.boundPacketName === 'string' ? payload.boundPacketName : undefined,
+      metadata: metadataOf(payload.metadata),
+      envelope
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function decodeRemoteBoundSessionResponse(
+  parts: readonly BindingMessage[],
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): ZLinkRemoteBoundSessionResponse | undefined {
+  const decoded = decodeRemoteBoundSessionControl(parts, ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET, codecs);
+  if (decoded === undefined) {
+    return undefined;
+  }
+  return {
+    actorId: decoded.actorId,
+    message: decoded.payload.message,
+    packetName: decoded.packetName,
+    requestSeq: decoded.requestSeq,
+    metadata: decoded.metadata,
+    compressPayload: decoded.payload.compressPayload === true,
+    actorPacketTarget: decoded.actorPacketTarget
+  };
+}
+
+export function decodeRemoteBoundSessionError(
+  parts: readonly BindingMessage[],
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): ZLinkRemoteBoundSessionError | undefined {
+  const decoded = decodeRemoteBoundSessionControl(parts, ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET, codecs);
+  if (decoded === undefined) {
+    return undefined;
+  }
+  return {
+    actorId: decoded.actorId,
+    error: decoded.payload.error,
+    packetName: decoded.packetName,
+    requestSeq: decoded.requestSeq,
+    metadata: decoded.metadata,
+    actorPacketTarget: decoded.actorPacketTarget
+  };
+}
+
+export function decodeRemoteActorPacketRelay(
+  parts: readonly BindingMessage[],
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): ZLinkRemoteActorPacketRelay | undefined {
+  try {
+    if (parts.length >= 2 && parts[0].data().length > 0) {
+      const envelope = decodeChannelEnvelope(parts);
+      if (envelope.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET) {
+        return undefined;
+      }
+      const payload = decodeChannelPayload(envelope, codecs) as {
+        readonly packetName?: unknown;
+        readonly actorId?: unknown;
+        readonly routerChannelId?: unknown;
+        readonly boundSessionTargetNodeRid?: unknown;
+        readonly boundSessionSpotRid?: unknown;
+        readonly header?: unknown;
+        readonly payload?: unknown;
+      };
+      if (
+        payload.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
+        typeof payload.actorId !== 'string' ||
+        typeof payload.header !== 'string' ||
+        typeof payload.payload !== 'string'
+      ) {
+        return undefined;
+      }
+      return {
+        actorId: payload.actorId,
+        routerChannelId: stringOrUndefined(payload.routerChannelId),
+        boundSessionTargetNodeRid: stringOrUndefined(payload.boundSessionTargetNodeRid),
+        boundSessionSpotRid: stringOrUndefined(payload.boundSessionSpotRid),
+        header: payload.header,
+        payload: payload.payload,
+        envelope
+      };
+    }
+    if (parts.length !== 1) {
+      return undefined;
+    }
+    const payload = JSON.parse(parts[0].data().toString()) as {
+      readonly packetName?: unknown;
+      readonly actorId?: unknown;
+      readonly routerChannelId?: unknown;
+      readonly boundSessionTargetNodeRid?: unknown;
+      readonly boundSessionSpotRid?: unknown;
+      readonly header?: unknown;
+      readonly payload?: unknown;
+    };
+    if (
+      payload.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
+      typeof payload.actorId !== 'string' ||
+      typeof payload.header !== 'string' ||
+      typeof payload.payload !== 'string'
+    ) {
+      return undefined;
+    }
+    return {
+      actorId: payload.actorId,
+      routerChannelId: stringOrUndefined(payload.routerChannelId),
+      boundSessionTargetNodeRid: stringOrUndefined(payload.boundSessionTargetNodeRid),
+      boundSessionSpotRid: stringOrUndefined(payload.boundSessionSpotRid),
+      header: payload.header,
+      payload: payload.payload
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeRemoteBoundSessionControl(
+  parts: readonly BindingMessage[],
+  packetName: string,
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): {
+  readonly actorId: string;
+  readonly packetName: string;
+  readonly requestSeq: bigint;
+  readonly metadata: ReadonlyMap<string, string>;
+  readonly payload: {
+    readonly message?: unknown;
+    readonly error?: unknown;
+    readonly compressPayload?: unknown;
+  };
+  readonly actorPacketTarget?: unknown;
+} | undefined {
+  try {
+    const payload = parts.length === 1
+      ? JSON.parse(parts[0].data().toString()) as {
+          readonly packetName?: unknown;
+          readonly boundPacketName?: unknown;
+          readonly actorId?: unknown;
+          readonly requestSeq?: unknown;
+          readonly message?: unknown;
+          readonly error?: unknown;
+          readonly compressPayload?: unknown;
+          readonly metadata?: unknown;
+          readonly actorPacketTarget?: unknown;
+        }
+      : decodeChannelPayload(decodeChannelEnvelope(parts), codecs) as {
+          readonly packetName?: unknown;
+          readonly boundPacketName?: unknown;
+          readonly actorId?: unknown;
+          readonly requestSeq?: unknown;
+          readonly message?: unknown;
+          readonly error?: unknown;
+          readonly compressPayload?: unknown;
+          readonly metadata?: unknown;
+          readonly actorPacketTarget?: unknown;
+        };
+    if (
+      payload.packetName !== packetName ||
+      typeof payload.actorId !== 'string' ||
+      typeof payload.boundPacketName !== 'string' ||
+      typeof payload.requestSeq !== 'string'
+    ) {
+      return undefined;
+    }
+    return {
+      actorId: payload.actorId,
+      packetName: payload.boundPacketName,
+      requestSeq: BigInt(payload.requestSeq),
+      metadata: metadataOf(payload.metadata),
+      payload,
+      actorPacketTarget: payload.actorPacketTarget
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function metadataOf(value: unknown): ReadonlyMap<string, string> {
+  return new Map(Object.entries(
+    typeof value === 'object' && value !== null
+      ? value as Record<string, string>
+      : {}
+  ));
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}

@@ -1,0 +1,105 @@
+import { Received as BindingReceived } from '@zlink-systems/zlink';
+import type { ZLinkChannelEnvelopeCodecRegistry } from '../channels/channel-envelope';
+import {
+  decodeRemoteBoundSessionError,
+  decodeRemoteBoundSessionResponse,
+  decodeRemoteBoundSessionSend
+} from './spot-remote-route-codec';
+import {
+  isReplyableRequestSeq,
+  submitRoutePayloadReply,
+  submitRouteReply
+} from './spot-route-replies';
+import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
+
+interface ZLinkSpotRoutedBoundSessionDispatchOptions {
+  readonly channelCodecs: () => ZLinkChannelEnvelopeCodecRegistry | undefined;
+  readonly routedBoundSessionReceiver?: (
+    actorId: string,
+    message: unknown,
+    packetName: string | undefined,
+    metadata: ReadonlyMap<string, string>,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly routedBoundSessionResponseReceiver?: (
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    message: unknown,
+    replyOptions: ZLinkActorResponseOptions,
+    actorPacketTarget?: unknown,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly routedBoundSessionErrorReceiver?: (
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>,
+    actorPacketTarget?: unknown,
+    signal?: AbortSignal
+  ) => Promise<void>;
+}
+
+export class ZLinkSpotRoutedBoundSessionDispatch {
+  constructor(private readonly options: ZLinkSpotRoutedBoundSessionDispatchOptions) {}
+
+  async dispatch(received: BindingReceived): Promise<boolean> {
+    const boundSessionSend = decodeRemoteBoundSessionSend(received.parts, this.options.channelCodecs());
+    if (boundSessionSend !== undefined) {
+      await this.options.routedBoundSessionReceiver?.(
+        boundSessionSend.actorId,
+        boundSessionSend.message,
+        boundSessionSend.packetName,
+        boundSessionSend.metadata
+      );
+      if (isReplyableRequestSeq(received.requestSeq)) {
+        submitRoutePayloadReply(received, boundSessionSend.envelope, { ok: true });
+      }
+      return true;
+    }
+
+    const boundSessionResponse = decodeRemoteBoundSessionResponse(received.parts, this.options.channelCodecs());
+    if (boundSessionResponse !== undefined) {
+      await this.options.routedBoundSessionResponseReceiver?.(
+        boundSessionResponse.actorId,
+        boundSessionResponse.packetName,
+        boundSessionResponse.requestSeq,
+        boundSessionResponse.message,
+        {
+          metadata: boundSessionResponse.metadata,
+          compressPayload: boundSessionResponse.compressPayload
+        },
+        boundSessionResponse.actorPacketTarget
+      );
+      this.replyOk(received);
+      return true;
+    }
+
+    const boundSessionError = decodeRemoteBoundSessionError(received.parts, this.options.channelCodecs());
+    if (boundSessionError !== undefined) {
+      await this.options.routedBoundSessionErrorReceiver?.(
+        boundSessionError.actorId,
+        boundSessionError.packetName,
+        boundSessionError.requestSeq,
+        boundSessionError.error,
+        boundSessionError.metadata,
+        boundSessionError.actorPacketTarget
+      );
+      this.replyOk(received);
+      return true;
+    }
+
+    return false;
+  }
+
+  private replyOk(received: BindingReceived): void {
+    if (!isReplyableRequestSeq(received.requestSeq)) {
+      return;
+    }
+    submitRouteReply(
+      received.reply()
+        .message(Buffer.from(JSON.stringify({ ok: true })))
+    );
+  }
+}

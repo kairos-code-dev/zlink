@@ -2240,6 +2240,60 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
   }
 });
 
+test('ZLinkRoutePacketDispatcher drops route requests without reply sequence without throwing', async () => {
+  const reported = [];
+  const dispatcher = new framework.ZLinkRoutePacketDispatcher({
+    routerChannelId: 'mesh',
+    dispatchErrors: {
+      report(event) {
+        reported.push(event);
+      }
+    },
+    handlers: [
+      {
+        kind: 'request',
+        packetName: 'RoutePing',
+        handler: {
+          async handle() {
+            throw new Error('handler must not run without a reply path');
+          }
+        }
+      }
+    ]
+  });
+
+  const parts = encodeDotnetEnvelope({
+    kind: 1,
+    channelName: 'mesh',
+    messageName: 'RoutePing',
+    contentType: 'application/json',
+    correlationId: 'missing-seq',
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'ping' }).map((part) => fakeMessagePart(part));
+
+  await dispatcher.dispatch({
+    parts,
+    routingId: 'node-b',
+    requestSeq: null,
+    send() {
+      throw new Error('send path must not be used for request');
+    }
+  }, {
+    reply() {
+      throw new Error('reply path must not be used without requestSeq');
+    }
+  });
+
+  assert.equal(reported.length, 1);
+  assert.equal(reported[0].reason, framework.ZLinkDispatchErrorReason.ReplyPathMissing);
+  assert.equal(reported[0].action, framework.ZLinkDispatchErrorAction.Drop);
+  assert.equal(reported[0].packetName, 'RoutePing');
+  parts.forEach((part) => part.close());
+});
+
 test('ZLinkRoutePacketDispatcher forwards SPOT-addressed route frames to local SPOT delivery', async () => {
   const forwarded = [];
   const dispatcher = new framework.ZLinkRoutePacketDispatcher({
@@ -2755,6 +2809,62 @@ test('ZLinkChannelRequestDispatcher replies error and reports observer for missi
   assert.equal(events[0].packetName, 'MissingReq');
   assert.equal(events[0].channelName, 'api');
   assert.equal(events[0].correlationId, 'corr-1');
+});
+
+test('ZLinkChannelRequestDispatcher drops requests without reply sequence without invoking handlers', async () => {
+  const events = [];
+  let handlerInvocations = 0;
+  class DispatchObserver {
+    onMessageFlow(event) {
+      events.push(event);
+    }
+  }
+  const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    channelName: 'api',
+    dispatchErrors: dispatchErrorReporter(
+      DispatchObserver,
+      { reportRuntimeTaskException() {} }
+    ),
+    handlers: new Map([
+      ['Ping', {
+        handle() {
+          handlerInvocations += 1;
+          return 'pong';
+        }
+      }]
+    ])
+  });
+  const parts = encodeDotnetEnvelope({
+    kind: 1,
+    channelName: 'api',
+    messageName: 'Ping',
+    contentType: 'application/json',
+    correlationId: 'corr-no-seq',
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, 'ping').map(fakeMessagePart);
+
+  await dispatcher.dispatch({
+    parts,
+    routingId: 'client-1',
+    requestSeq: null
+  }, {
+    reply() {
+      assert.fail('request without requestSeq must not create a reply operation');
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(handlerInvocations, 0);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].surface, framework.ZLinkDispatchErrorSurface.Channel);
+  assert.equal(events[0].messageKind, framework.ZLinkDispatchMessageKind.Request);
+  assert.equal(events[0].errorReason, framework.ZLinkDispatchErrorReason.ReplyPathMissing);
+  assert.equal(events[0].errorAction, framework.ZLinkDispatchErrorAction.Drop);
+  assert.equal(events[0].packetName, 'Ping');
+  assert.equal(events[0].correlationId, 'corr-no-seq');
 });
 
 test('DERR-006 ZLinkChannelRequestDispatcher replies error and reports observer for payload decode failure', async () => {

@@ -9,5 +9,8 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "dependencies": {
+    "@zlink-systems/stream-wire": "0.1.0-SNAPSHOT"
   }
 }

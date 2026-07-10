@@ -4,6 +4,9 @@ const test = require('node:test');
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
+const {
+  ZLinkRemoteBoundSessionRelay
+} = require('../../packages/framework/dist/runtime/host/remote-bound-session-relay');
 const zlink = require('@zlink-systems/zlink');
 
 test('stream runtime is exported from framework root surface', () => {
@@ -547,6 +550,84 @@ test('runtime host native bound session retries while SessionRelay route is conn
   assert.deepEqual(attempts.map((entry) => entry.flags), [1, 1, 1]);
   assert.equal(attempts[2].frame.header.name, 'Notify');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(attempts[2].frame.payload)), { ok: true });
+});
+
+test('actor response compression reaches local, native, and remote bound-session transports', async () => {
+  const streamCalls = [];
+  const remotePayloads = [];
+  let localAccepted = true;
+  let remoteBoundSessionTarget;
+  const streamRuntime = {
+    sendLocalBoundSessionResponse(...args) {
+      streamCalls.push({ kind: 'local', args });
+      return localAccepted;
+    },
+    async sendNativeBoundSessionResponse(...args) {
+      streamCalls.push({ kind: 'native', args });
+    }
+  };
+  const relay = new ZLinkRemoteBoundSessionRelay({
+    routeTransport: {
+      async requestRawToSpot(_target, payload) {
+        remotePayloads.push(JSON.parse(payload.data().toString()));
+        return [];
+      }
+    },
+    streamBindingRuntime: () => streamRuntime,
+    actorManager: () => ({
+      getState() {
+        return {
+          nativeActorRef: { nodeRid: 'node-a', actorId: 'actor-compress', generation: 1n },
+          remoteBoundSessionTarget
+        };
+      }
+    }),
+    primarySpotNode: () => ({}),
+    destroyedActorRefs: new Map(),
+    boundSessionFactory() {
+      throw new Error('bound session factory must not be used by response delivery');
+    },
+    updateRemoteActorPacketTarget() {},
+    actorPacketTargetForState: () => undefined
+  });
+  const actor = { actorId: 'actor-compress' };
+  const replyOptions = {
+    metadata: new Map([['reply-trace-id', 'reply:actor-compress']]),
+    compressPayload: true
+  };
+
+  await relay.sendActorResponse(actor, 'Move', 41n, { accepted: 'local' }, replyOptions);
+  assert.equal(streamCalls[0].kind, 'local');
+  assert.equal(streamCalls[0].args[5], true);
+
+  localAccepted = false;
+  await relay.sendActorResponse(actor, 'Move', 42n, { accepted: 'native' }, replyOptions);
+  assert.equal(streamCalls[2].kind, 'native');
+  assert.equal(streamCalls[2].args[6], true);
+
+  remoteBoundSessionTarget = {
+    routerChannelId: 'route-main',
+    targetNodeRid: 'node-b',
+    spotRid: 'entry-b'
+  };
+  await relay.sendActorResponse(actor, 'Move', 43n, { accepted: 'remote' }, replyOptions);
+  assert.equal(remotePayloads.length, 1);
+  assert.equal(remotePayloads[0].compressPayload, true);
+  assert.deepEqual(remotePayloads[0].metadata, { 'reply-trace-id': 'reply:actor-compress' });
+
+  localAccepted = true;
+  await relay.receiveRemoteBoundSessionResponse({
+    packetName: framework.ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
+    actorId: 'actor-compress',
+    boundPacketName: 'Move',
+    requestSeq: '44',
+    message: { accepted: 'remote-received' },
+    metadata: { 'reply-trace-id': 'reply:remote-received' },
+    compressPayload: true
+  });
+  const receivedCall = streamCalls.at(-1);
+  assert.equal(receivedCall.kind, 'local');
+  assert.equal(receivedCall.args[5], true);
 });
 
 test('runtime host remote bound session send submits a routed Session command', async () => {
@@ -1594,6 +1675,37 @@ test('session client send compress writes dotnet LZ4-pickled stream payload', as
   assert.deepEqual(JSON.parse(new TextDecoder().decode(unpickleLz4(frame.payload))), { ok: true });
 });
 
+test('actor reply compression writes a compressed local bound-session response frame', async () => {
+  const written = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-actor-reply-compress', 'rid-actor-reply-compress'),
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
+    }
+  });
+  await context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-reply-compress', generation: 1n });
+
+  assert.equal(runtime.sendLocalBoundSessionResponse(
+    'actor-reply-compress',
+    'Move',
+    42n,
+    { accepted: true },
+    new Map([['reply-trace-id', 'reply:actor-reply-compress']]),
+    true
+  ), true);
+
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.requestSeq, 42n);
+  assert.equal(frame.header.metadata.get('reply-trace-id'), 'reply:actor-reply-compress');
+  assert.equal((frame.header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(unpickleLz4(frame.payload))), { accepted: true });
+});
+
 test('session client send compress uses configured stream compression codec', async () => {
   const written = [];
   const compression = prefixCompressionCodec('fw');
@@ -1665,7 +1777,8 @@ test('session client reply writes response frame only while dispatching request 
     flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
     requestSeq: 42n,
     name: 'Move',
-    metadata: connector.ZlinkStreamMetadataMap.empty
+    metadata: connector.ZlinkStreamMetadataMap.empty,
+    correlationId: 'reply-corr-42'
   });
   try {
     context.client.reply({ accepted: true }).metadata('trace', 'reply-1').submit();
@@ -1678,6 +1791,7 @@ test('session client reply writes response frame only while dispatching request 
   assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
   assert.equal(frame.header.requestSeq, 42n);
   assert.equal(frame.header.name, 'Move');
+  assert.equal(frame.header.correlationId, 'reply-corr-42');
   assert.equal(frame.header.metadata.get('trace'), 'reply-1');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { accepted: true });
 });

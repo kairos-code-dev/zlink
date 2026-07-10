@@ -115,31 +115,72 @@ export 표면을 유지하고 33개 계약 테스트를 통과시켜야 한다.
   - `runtime/channels/index.ts:3071`(seq 검사)/`:3082`(report+throw) — `ZLinkRoutePacketDispatcher.dispatch`가 request인데 seq 없으면 report 후 `throw`. `ZLinkRouteReceiveLoop.runLoop`이 `await task`(`:3220`)로 throw를 받아 **루프 종료** → 잘못된 프레임 하나로 라우트 채널 수신 정지(DoS성). **비대칭 원인 정정:** 채널 dispatcher도 `:2552`에서 동일하게 throw하지만, `ZLinkChannelReceiveLoop.runLoop`은 task를 `:2674`에서 시작하고 `:2676`에서 **await 없이 계속**(fire-and-forget 스케줄링)이라 unhandled rejection에 그침 — dispatcher 라인 차이가 아니라 receive-loop의 await 여부 차이. dotnet B4 계열. skip-and-continue(report+close)로 전환.
   - 2026-07-09 적용: report 후 `return`으로 drop-and-continue 처리했고, `channel-client.test.js`에 `requestSeq`
     없는 route request가 throw 없이 `ReplyPathMissing`/`Drop`으로 보고되는 회귀 테스트를 추가했다.
-- [ ] **B2. Location `AlreadyOwned` claim이 rollback 없이 재-activate로 낙하** (correctness, 낮은 신뢰)
+- [x] **B2. Location `AlreadyOwned` claim이 rollback 없이 재-activate로 낙하** (correctness, 낮은 신뢰)
   - `runtime/locations/index.ts:1533-1552` `executeActorClaimThenActivate` — `claimActor`가 `AlreadyOwned` 반환 시 switch가 `Conflict`만 조기 반환, `AlreadyOwned`는 `Claimed`와 동일하게 `activate()` 진입(`:1544-1545`). rollback arm `if (claim.status === Claimed)`(`:1547`)에 `AlreadyOwned` 미포함. 도달: `actors/index.ts:243` `createActor` → 이미 소유 중 actor에 이중 create 위험. dotnet B8 동형. `AlreadyOwned` arm(기존 반환/no-op) 명시.
   - 2026-07-09 재검토: 단순 조기 반환은 location lifecycle의 기존 내부 소유 추적과 맞지 않아 별도 설계 검토가 필요하다.
     이번 cleanup 범위에서는 적용하지 않는다.
+  - 2026-07-10 적용: `.NET` `ZLinkActorOwnershipCoordinator`와
+    `Actor_AlreadyOwned_Does_Not_Activate_A_Second_Instance` unit test를 대조해 의미를 확정했다. 같은 lifecycle이 이미
+    추적하는 actor는 두 번째 activation을 실행하지 않고 `activated`와 `existingLocation`이 모두 없는 결과를
+    반환하며 기존 claim을 유지한다. Node도 `AlreadyOwned`를 명시적으로 조기 반환하고, `Conflict`만 기존 location을
+    반환하며, 남은 `Claimed` 경로의 activation 실패는 조건 없이 release하도록 상태 분기를 완전하게 만들었다.
+  - 재검토: 기존 enum과 result 타입만 사용했으며, 현재 소유 actor 조회나 duplicate activation을 위한 새 helper/
+    wrapper를 만들지 않았다. claim 상태별 의미가 한 함수에 모여 결과가 새 POSD 대상으로 번지지 않았다.
+  - 검증: framework strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run lint`, `npm run build` 통과.
+    winner/conflict, already-owned 재활성화 방지, activation 실패 rollback 관련 unit 3개가 모두 통과했다. 샘플과
+    관련 E2E는 전체 리팩토링 완료 후 최종 게이트에서 실행한다.
 - [x] **B3. stream-connector WebSocket 핸드셰이크 실패 시 소켓 누수** (없음)
   - `stream-connector/src/Runtime/Transport/NodeSocketConnector.ts:64` `connectWebSocket`이 소켓 연결 성공 후 `completeWebSocketHandshake` 호출하나 `WebSocketHandshake.ts` 실패 경로(`:33,48,62,75,89,93`)가 `socket.destroy()`를 안 함 → 핸드셰이크 실패 시 열린 TCP/TLS 소켓 방치. (TLS/TCP 직결은 `connectSocket` error 리스너로 정리돼 안전.) try/catch → 실패 시 destroy. dotnet B3 동형(WS 한정).
   - 2026-07-09 적용: `connectWebSocket()`이 handshake 실패 시 socket을 `destroy()`하도록 보장했고,
     oversized response header 테스트가 서버 측 socket close까지 확인한다.
-- [ ] **B4. actor reply 옵션(metadata/compress)이 전면 무시됨** (벤치, silent no-op)
+- [x] **B4. actor reply 옵션(metadata/compress)이 전면 무시됨** (벤치, silent no-op)
   - `runtime/actors/index.ts:1416-1436` `DefaultZLinkSpotActorReplyOptions.metadata()`/`compress()`는 public 계약(`ZLinkSpotActorReplyOptions`) 구현이나 결과를 읽는 `snapshot()`(`:1430`) 소비처 0. 실제 응답 전송부(`spots/index.ts:3052-3059`, `~4038`)는 metadata에 `new Map()`, compression에 `undefined`를 하드코딩 → 액터 핸들러가 지정한 응답 metadata/압축이 조용히 유실. `dispatchRequestThen`이 `snapshot()`을 actorResponseSender로 배선하거나, 미지원이면 계약 분리(draft 후보).
   - 2026-07-09 부분 적용: `dispatchRequestThen()`이 reply option snapshot을 후속 전송 콜백에 전달하고,
     Entry Spot activation/default Spot manager의 `actorResponseSender` metadata 인자까지 연결했다. 기존 전송
     인터페이스에는 compression 인자가 없으므로 `compress()` 반영은 새 계약 설계가 필요한 잔여 항목으로 남긴다.
+  - 2026-07-10 완료 적용: stream frame factory와 bound-session 전송은 이미 compressed flag와 설정된 compression
+    codec을 지원하므로 새 공개 계약 없이 내부 연결만 보완했다. actor handler가 만든 reply option snapshot 전체를
+    `actorResponseSender`에 전달하고, local/native bound-session response frame 생성과 remote bound-session control
+    payload가 `compressPayload`를 보존하도록 했다. remote 수신 경로도 이 값을 복원해 최종 local response frame에
+    적용한다. metadata와 compression을 별도 인자로 계속 추가하지 않고 하나의 reply option 객체로 전달해 호출부가
+    wire 세부사항을 조립하지 않도록 했다.
+  - 재검토: handler별 codec 등록이나 새 compression adapter를 만들지 않았고, 기존 stream compression 설정과
+    frame factory가 실제 압축 규칙을 계속 단독 소유한다. reply option snapshot은 이미 존재하던 값 객체이며 sender
+    경계에서 metadata와 compression을 함께 전달하므로 새 pass-through helper나 병렬 추상화를 만들지 않았다.
+  - 검증: framework strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run lint`, `npm run build` 통과.
+    handler reply option snapshot, Entry Spot response sender, local compressed response frame, local/native/remote transport
+    전달과 remote 수신 복원을 확인하는 관련 unit/contract 4개가 모두 통과했다. 샘플과 관련 E2E는 전체 리팩토링
+    완료 후 최종 게이트에서 실행한다.
 - [x] **B5. Spot HandlerNotFound 동일 예외 이중 생성** (없음, 정보 누출)
   - `runtime/spots/index.ts:2953-2965` 및 `3953-3965` — 동일 `ZLinkFrameworkException(ActorDispatchHandlerNotFound, …)`를 `actorErrorSender`용·`throw`용으로 두 번 생성. dotnet B6 동형. 1회 생성 후 양쪽 전달.
   - 2026-07-09 적용: Entry Spot activation 경로와 default Spot manager 경로 모두 `missingActorError`를 한 번 생성해
     error sender와 throw 경로가 공유하도록 정리했다.
-- [ ] **B6. native actor-join `admit` reply Message 수명주기 미확정** (없음, 저신뢰)
+- [x] **B6. native actor-join `admit` reply Message 수명주기 미확정** (없음, 저신뢰)
   - `runtime/spots/index.ts:1462-1502` — accepted 경로가 `encodeFrameworkPayloadMessage`로 native Message를 만들어 submit 후 `reply.close()`가 없음(request/actorCreateRequest만 close). submit 소유이전 여부 확정 필요([[feedback_ownership_all_langs]]).
-- [ ] **B7. `closeActorBoundSession`/`destroyActor` signal 드롭** (없음)
+  - 2026-07-10 확인 및 적용: binding `Spot` 계약은 send/request/reply builder의 Message part를 성공한 submit에서
+    소비한다고 명시하며, `RuntimeActorJoinReplyOperation.submit()`도 payload를 `consume()`한 뒤 native reply를
+    호출한다. 따라서 성공 후 `reply.close()`를 추가하면 이중 해제가 된다. framework admission은 submit 성공
+    여부를 추적해 성공 시 operation에 소유권을 넘기고, `message()` 또는 `submit()`이 throw한 경우에만 caller-owned
+    reply를 닫도록 `try/finally`로 정리했다. decoded request와 actor create request도 submit 실패 여부와 무관하게
+    finally에서 닫는다.
+  - 검증: framework strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run lint`, `npm run build` 통과.
+    submit 실패 시 reply close를 추적하는 회귀 테스트와 기존 native admission round-trip 테스트 2개가 통과했다.
+    샘플과 관련 E2E는 전체 리팩토링 완료 후 최종 게이트에서 실행한다.
+- [x] **B7. `closeActorBoundSession`/`destroyActor` signal 드롭** (없음)
   - `runtime/backend/contracts/index.ts:352`가 `signal?: AbortSignal` 선언하나 `node-backend-adapter-factory.ts` Proxy가 미-래핑 → native `(actor, timeoutMs)` 직결, signal 미도달. `streams/index.ts:1134`는 await하므로 sync-over-async는 아니나 close 중 취소 무시. dotnet B9 동형(경미).
   - 2026-07-09 재검토: binding public surface는 `SpotNode.destroyActor(actorRef)` operation과 `Actor.closeBoundSession(timeoutMs)`를 제공하지만,
     framework backend contract는 `ActorRef`만 받아 `closeActorBoundSession(actorRef, timeoutMs, signal?)`를 요구한다.
     내부 native API를 직접 호출하면 binding public API 우회가 되므로 이번 범위에서는 구현하지 않고 binding/framework
     contract 정렬이 필요한 항목으로 남긴다.
+  - 2026-07-10 적용: adapter가 `createActor()`에서 받은 public `Actor` handle을 actor id별로 보관하고,
+    `closeActorBoundSession()`은 그 handle의 public `closeBoundSession(timeoutMs)`를 호출하도록 연결했다.
+    `destroyActor()`는 기존 Proxy fallback이 public `ActorDestroyOperation`을 반환만 하고 submit하지 않던 문제도 함께
+    고쳐 `timeout(timeoutMs).submit()`을 실제 실행하고 reply Message를 닫는다. signal은 submit 전 취소와 submit 후
+    대기 취소를 모두 처리하며, 취소 뒤 늦게 도착한 reply도 닫고 actor handle을 제거한다. binding 내부 API나
+    reflection은 사용하지 않았다.
+  - 검증: framework strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run lint`, `npm run build` 통과.
+    성공한 actor destroy/close와 진행 중 abort 뒤 late reply 정리를 추가한 `backend-contract.test.js` 14개가 모두
+    통과했다. 샘플과 관련 E2E는 전체 리팩토링 완료 후 최종 게이트에서 실행한다.
 - [x] **B8. http-client 2xx 빈 바디에서 `submit<T>` decode 실패** (없음, 저신뢰)
   - `http-client/src/request-builder.ts:198-208` — 204/304/빈 200에서 `JSON.parse('')` throw → 성공 응답이 `PayloadDecodeFailed`로 뒤집힘. C++ `submit<T>` 계약(빈 바디 null 허용 여부) 대조 후 short-circuit.
   - 2026-07-09 적용: 성공 응답의 body가 빈 문자열이면 `submit<T>()`가 `null` body와 빈 `rawBody`를 반환하도록
@@ -757,14 +798,31 @@ location lifecycle의 소유 추적 모델과 맞지 않아 새 POSD 리팩토�
 
 ## C. 구조 통합 — 지식 중복 소거
 
-- [ ] **C1. ⭐(R1, P0) stream wire 포맷이 core Streams와 stream-connector 위성에 통째 중복** (없음, 최대 유지보수 impact)
+- [x] **C1. ⭐(R1, P0) stream wire 포맷이 core Streams와 stream-connector 위성에 통째 중복** (없음, 최대 유지보수 impact)
   - 바이트 레이아웃 쌍둥이: 6B prefix(`protocol.ts:54-66` ↔ `stream-connector/.../ZlinkStreamFrameCodec.ts:5-30`), 헤더(`protocol.ts:70-179` ↔ `ZlinkStreamHeaderCodec.ts:22-142`), TLV metadata(`protocol.ts:284-356` ↔ `ZlinkStreamMetadataCodec.ts:4-74`), LZ4 pickle(`protocol.ts:239-448` ↔ `Compression/ZlinkStreamCompressionCodec.ts:68-192`, 주석까지 동일), BE 헬퍼(`protocol.ts:450-479` ↔ `ZlinkStreamSupport.ts:51-102`), enum 쌍둥이.
   - **진행형 divergence(잠재 비대칭):** connector `validateHeaderSemantics`(`ZlinkStreamHeaderCodec.ts:169-189`)는 중복 metadata 키를 **거부**(`ZlinkStreamMetadataCodec.ts:63`)하나 core `protocol.ts`는 조용히 덮어씀 → 한쪽이 받는 프레임을 다른 쪽이 거부 가능. stream-connector 단위 테스트 0(현 검증은 e2e `SpotService` round-trip뿐).
   - **방향(codex R1):** wire codec을 소유하는 내부 모듈 1개로 분리 → framework bound-session relay와 connector client가 같은 encode/decode 호출. 오류 타입은 각 패키지 경계에서 감싸고 wire codec은 "어떤 바이트가 유효한가"만 판정. **주의:** stream-connector public API 신설 금지 — workspace 내부 구현 모듈로 시작, 공유 모듈의 npm 노출 여부는 별도 spec/draft. 최소 착지: 두 코덱 상호 참조 주석 + 바이트 레이아웃 단일 spec 왕복 테스트(양측 인코드→상대 디코드). dotnet C1 동형.
   - 2026-07-09 최소 게이트 적용: framework decoder도 duplicate metadata key를 거부하도록 맞춰 connector와의
     수신 판정 divergence를 제거했다. `message-flow.test.js`에 full stream frame prefix/payload 교차 왕복과
     duplicate metadata 양쪽 거부 테스트를 추가했다. 공유 내부 모듈 추출은 아직 남은 C1 본작업이다.
-- [ ] **C2. ⭐decode→dispatch→report 상태기계 다발(channels 5벌 + spots 2벌)** (벤치, per-message)
+  - 2026-07-10 완료 적용: stream frame prefix, header field layout, metadata TLV, LZ4 pickle/unpickle byte 규칙은
+    private workspace package `@zlink-systems/stream-wire`로 옮겼다. framework `runtime/streams/protocol.ts`는 기존
+    import 경로와 타입을 유지한 채 shared wire 함수를 호출하고, stream-connector의 public
+    `ZlinkStreamFrameCodec`/`ZlinkStreamHeaderCodec`/metadata/compression codec은 connector 오류 타입과 semantic
+    검증만 감싸는 adapter가 됐다. `stream-wire`는 framework나 connector 계약 타입을 import하지 않아 새 public
+    API 의존 방향을 만들지 않고, 두 패키지가 같은 byte codec을 호출하도록 했다. 결과 모듈은 byte format과
+    compression package 규칙만 소유하므로 framework/connector facade나 pass-through 모듈이 되는 새 POSD 대상은
+    만들지 않는다고 판단했다.
+  - 검증: `@zlink-systems/stream-wire`, framework, stream-connector strict tsc
+    (`--noUnusedLocals --noUnusedParameters`) 통과. `npm run typecheck`, `npm run lint`, `npm run build` 통과.
+    stream wire/header/metadata/compression에 닿는 `message-flow.test.js`, `stream-connector*.test.js`,
+    `stream-runtime.test.js`, `stream-session-runtime.test.js` 묶음 138개가 통과했다. unit/contract는
+    `channel-client.test.js` 제외 전반 196개, `channel-client.test.js` 단독 56개, `nestjs-module.test.js`
+    54개, 후반 묶음 213개를 `--test-concurrency=1`로 나누어 모두 통과했다. 샘플은 첫 전체 실행에서
+    `DeliveryDispatch.Ts` Redis readiness timeout이 한 번 있었지만, 실패 지점부터 재실행해
+    `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts`가 모두 `PASS`였고, 앞선 실행에서
+    `TicTacToe.Ts`, `Bingo.Ts`도 `PASS`였다. full e2e는 실행하지 않았다.
+- [x] **C2. ⭐decode→dispatch→report 상태기계 다발(channels 5벌 + spots 2벌)** (벤치, per-message)
   - channels: `ZLinkChannelRequestDispatcher.dispatch` command(`:2474-2515`)/request(`:2516-2623`), `ZLinkChannelPublishDispatcher.dispatch`(`:2751-2835`), `ZLinkRoutePacketDispatcher.dispatch` command(`:3025-3065`)/request(`:3067-3141`). 동일 골격(envelope decode → packetName 검증 → `traceFlow(Received)` → handler lookup → missing report[+reply] → payload decode + filter + handler try/catch → `traceFlow(Dispatched/Replied)` → catch report). `(surface,kind,reason,action)` 튜플 + flow-guard ~15회 복붙.
   - spots: `ZLinkEntrySpotActivation.dispatchActorPacketInsideMailbox`(`:2875-3095`) ≈ `DefaultZLinkSpotManager.dispatchActorPacket`(`:3883-4093`) ~220줄 near-verbatim(차이는 actor 해결 소스·spotRid 소스뿐). error-report 튜플이 spots에서 26회, `flowIfEnabled` 10회.
   - kind/surface/reply-strategy 매개화 dispatch core 1개 + actor/spotRid 훅 주입. dotnet C2 동형.
@@ -772,6 +830,26 @@ location lifecycle의 소유 추적 모델과 맞지 않아 새 POSD 리팩토�
     user Spot의 차이는 actor resolver, left-actor disconnect 무시, local router, remote bound-session target
     기록, Spot serial executor 주입 콜백으로만 남겼다. channels dispatch 상태기계 중복은 아직 남아 있으므로 C2는
     완료로 표시하지 않는다.
+  - 2026-07-10 완료 적용: channel command, publish, route command, channel request, route request가 반복하던
+    payload decode, filter 실행, handler 호출, message-flow trace, 오류 분류, reply/error submit 순서는
+    `channel-dispatch-pipeline.ts`로 모았다. `channel-dispatchers.ts`에는 channel/route transport 선처리,
+    handler/context 선택, framework packet codec 선택, multipart reply operation 생성만 남겼다. request sequence가
+    없는 channel request도 route request와 같은 `ReplyPathMissing`/`Drop`으로 보고하고 handler를 호출하지 않도록
+    정리했다.
+  - 설계 검토: 종류마다 pipeline class를 추가하는 안은 같은 상태기계를 여러 class로 옮길 뿐이고, 모든 차이를
+    callback으로 받는 범용 strategy 안은 인터페이스 복잡도가 구현 복잡도에 가까워져 제외했다. 선택한 pipeline은
+    one-way와 request 두 동작만 제공하며, transport 경계에서 반드시 필요한 reply/error writer 두 개만 callback으로
+    받는다. 처음 만든 64줄 `channel-dispatch-flow.ts`는 trace/report만 감싼 얕은 모듈이 될 가능성이 있어 삭제하고,
+    실제 상태기계를 소유하는 pipeline에 합쳤다. generic report API도 private으로 내리고 호출자에는 의미가 고정된
+    `dropMissingReplyPath()`만 남겼다. 최종 파일은 `channel-dispatch-pipeline.ts` 214줄,
+    `channel-dispatchers.ts` 461줄이며, payload decode와 filter 실행 지식은 pipeline 한 곳에만 남아 결과가 다시
+    pass-through 또는 callback 집합인 POSD 대상으로 번지지 않았는지 확인했다.
+  - 검증: framework strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run lint`, `npm run build` 통과.
+    channel/route dispatcher 직접 계약 10개, channel request/send host 계약 2개, channel 오류 계약 3개,
+    publish 계약 3개, message-flow 계약 11개가 모두 통과했다. private invocation에 `async/await`를 한 겹 추가했을 때
+    backpressure submit 시점이 늦어지는 회귀를 테스트가 검출했고, 원래 Promise를 그대로 반환하도록 수정한 뒤
+    관련 dispatcher 계약 10개를 재실행해 모두 통과했다. 샘플과 관련 E2E는 전체 리팩토링 완료 후 최종 게이트에서
+    실행한다.
 - [x] **C3. dispatch reporter/tracer 파이프라인마다 중복 생성** (벤치)
   - `runtime/channels/index.ts:791,813,845` — command/publish/route 루프가 각각 `createDispatchErrorReporter`(→ `ZLinkDispatchErrorReporter`+`ZLinkMessageFlowTracer` 신규) 별 인스턴스 생성. `outboundFlow()`(`:915-923`)가 4번째 tracer. host도 `:233`(start)·`:704`(spotManager) 각각 new reporter. 1회 생성 후 공유 주입(+ B1 항목의 live-mode cell 단일화: `:888,918` cell 독립 생성이 런타임 토글 비대칭). dotnet C3 동형.
   - 2026-07-09 적용: channel runtime은 같은 runtime error sink에 대해 dispatch reporter를 WeakMap으로
@@ -832,8 +910,28 @@ location lifecycle의 소유 추적 모델과 맞지 않아 새 POSD 리팩토�
   - `http-client/src/runtime/response-body-reader.ts:47,72-79` `findHeader` 선형 스캔인데 입력은 이미 소문자화 dict(`collectHeaders:61-70`) → `headers[name]` 직접 조회. `text.ts:7` `isBlank` 파일-로컬화. dotnet C16 잔재 1건.
   - 2026-07-09 적용: `content-encoding` 조회를 소문자 header dict의 직접 조회로 바꾸고, 무참조 public helper였던
     `isBlank`는 `text.ts` 파일 내부 함수로 낮췄다.
-- [ ] **C12. (R6) native backend adapter Proxy property-name 분기 축소** (없음/code-motion)
+- [x] **C12. (R6) native backend adapter Proxy property-name 분기 축소** (없음/code-motion)
   - `node-backend-adapter-factory.ts:130`부터 native object를 Proxy로 감싸고 `:147-220`이 property 이름으로 backend/spot-node/route-bridge/messaging 분기. Proxy·resolver 분리(surface별)는 **의도된 설계**(가드레일)지만, property-name switch가 커질수록 어떤 native 기능이 어떤 계약으로 매핑되는지 타입 시스템이 못 보여줌(obscurity). socket/spot-node/route-bridge/monitor를 명시적 wrapper class/작은 factory로 분리, property-name switch는 호환 최소 범위로 축소. native binding parity 테스트와 함께 **마지막에**(P2). §A1의 dead 변환 헬퍼(`toNativeTopologyFilter`/`toFrameworkRoutingIdEntries`) 동반 제거 또는 실제 call path 연결.
+  - 2026-07-10 적용: SpotNode/Spot/route bridge는 `node-spot-backend-adapter.ts`, socket lifecycle/options/
+    messaging/session relay는 `node-socket-backend-adapter.ts`, monitor event 변환은
+    `node-monitor-backend-adapter.ts`, binding operation submit/abort/close/RID 변환은
+    `node-backend-adapter-support.ts`로 분리했다. `node-backend-adapter-factory.ts`는 context와 adapter 생성만
+    조정하는 133줄 composition root가 됐다. property 이름을 비교하는 resolver와 monitor Proxy는 모두 제거했고,
+    남은 Proxy 하나는 명시적 adapter에 없는 동일 시그니처 native 멤버만 전달하며 이름별 정책을 갖지 않는다.
+    기존 dead 변환 helper 두 개는 현재 source에 존재하지 않는 것도 재확인했다.
+  - 설계 검토: 기존 resolver를 surface별 파일로 이동하는 안은 문자열 기반 계약 해석을 그대로 보존하므로
+    제외했다. 모든 binding 메서드를 중복 선언하는 wrapper class 안도 binding 표면 전체를 복사해 change
+    amplification을 키우므로 제외했다. 선택한 구조는 backend 계약과 binding 계약이 다른 메서드만 명시적으로
+    소유하고, 같은 계약은 일반 fallback이 전달한다. 분리 후 support 361줄, Spot 295줄, socket 328줄, monitor
+    31줄이며 각각 operation 규칙, Spot/actor lifecycle, socket lifecycle, monitor event 변환만 소유하므로
+    원래 1,097줄 파일을 다른 god-file로 옮기지 않았는지 확인했다.
+  - C12 과정에서 B7의 실제 원인도 확인했다. 기존 fallback은 binding `destroyActor()`가 반환한 operation을
+    submit하지 않았고 `closeActorBoundSession()`은 binding SpotNode 계약에 없었다. 명시적 SpotNode adapter가
+    public Actor handle과 destroy operation 수명주기를 소유하도록 B7에서 함께 수정했다. socket `bindActor()`/
+    `unbindActor()`도 signal 대기 취소와 late reply Message 정리를 같은 support 규칙으로 맞췄다.
+  - 검증: framework strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run lint`, `npm run build` 통과.
+    backend binding parity, actor lifecycle, socket monitor, stream monitor/session에 닿는 unit/contract 19개가 모두
+    통과했다. 샘플과 관련 E2E는 전체 리팩토링 완료 후 최종 게이트에서 실행한다.
 
 **C 착수 순서:** C1(spec-test 게이트 먼저) → C4 → C3/C5/C6/C7 → C2/C8(hot, 벤치) → C9/C10/C11 → C12(P2).
 
@@ -1035,7 +1133,7 @@ location lifecycle의 소유 추적 모델과 맞지 않아 새 POSD 리팩토�
     모두 `PASS`를 확인했다. `channel-client.test.js` 제외 unit/contract 464개가 통과했고,
     `channel-client.test.js`는 route/routeMesh(22), codec/fanout/client/request-dispatch(7),
     CH/DERR/REG/DSC/backpressure(14) 묶음으로 분할 실행해 모두 통과했다. full e2e는 실행하지 않았다.
-- [ ] **D2. (R4) `runtime/channels/index.ts` (3692줄)** — 대부분 저위험 물리 분할, 디스패처/route-ops만 벤치
+- [x] **D2. (R4) `runtime/channels/index.ts` (3692줄)** — 대부분 저위험 물리 분할, 디스패처/route-ops만 벤치
 
   | 추출 파일 | 라인 | 위험 |
   |---|---|---|
@@ -1094,10 +1192,241 @@ location lifecycle의 소유 추적 모델과 맞지 않아 새 POSD 리팩토�
     통과. route bridge/raw SPOT/accepted Spot route 관련 묶음 13개와 route/bound-session 주변 묶음 52개가 통과했다.
     샘플은 6개 모두 `PASS`였고, `channel-client.test.js` 제외 unit/contract 464개도 통과했다. full e2e는 실행하지
     않았다.
-- [ ] **D3. (R2, P0) `runtime/host/index.ts` (2489줄)** — god-class `ZLinkFrameworkRuntimeHost`(125-1840, ~1716줄, 파일 최대 심볼). public 생성자·NestJS 사용 유지, start/stop 조정 + facade만 남김
+  - 2026-07-10 부분 적용: channel socket registry는 `channel-socket-registry.ts`로 분리했다. 새 파일은
+    client dealer, channel router, publisher, subscriber, route router의 lazy 생성/cache/dispose, submitter 소유권,
+    route router monitor의 disconnect 처리만 소유한다. `socketTraceId`는 `channel-socket-trace.ts`로, public
+    `ZLinkRouteDisconnectedError`는 `route-disconnected-error.ts`로 분리해 registry와 기존 auto-connect trace가 같은
+    helper를 공유하도록 했다. channel runtime manager는 socket registry 인스턴스를 호출만 하며, receive loop,
+    route dispatch, handler dispatch는 새 registry 파일로 넘기지 않았다. 이 시점의 `runtime/channels/index.ts`는
+    2904줄이고, 새 socket registry 파일은 290줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. channel/socket/monitoring/route/NestJS focused 묶음 57개와 route/bound-session 주변 묶음 52개가 통과했다.
+    샘플은 6개 모두 `PASS`였고, `channel-client.test.js` 제외 unit/contract 464개도 통과했다. full e2e는 실행하지
+    않았다.
+  - 2026-07-10 부분 적용: public channel/fanout/route/SPOT publisher client facade와 fluent call 객체는
+    `channel-clients.ts`로 분리했다. 새 파일은 registration 검증, 기본 request timeout 선택, transport 시작 여부
+    확인, one-way submit fire-and-forget 정책만 소유한다. dispatcher, socket registry, route bridge 상태를 가져오지
+    않고 `ZLinkChannelClientTransport`/`ZLinkRouteClientTransport`/`ZLinkSpotPublisherClientTransport`에만 의존하므로
+    `ZLinkChannelRuntimeManager` mirror가 되지 않는다. abort 선검사는 기존 transport와 client가 함께 쓰는 작은
+    `channel-abort.ts` helper로 분리해 중복 정의를 만들지 않았다. 이 시점의 `runtime/channels/index.ts`는
+    2635줄이고, 새 client 파일은 279줄, abort helper는 5줄이다. 분리 후 새 POSD 대상이 되는 얕은 pass-through
+    모듈은 만들지 않았다고 판단했다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. client facade/fanout/publisher/route transport 관련 `channel-client.test.js`/`nestjs-module.test.js`
+    focused 묶음 22개가 통과했다. 샘플은 `TicTacToe.Ts`, `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`,
+    `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`였고, `channel-client.test.js` 제외 unit/contract 464개도
+    통과했다. full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: location 기반 channel auto-connect capability 생성과 socket dial executor는
+    `channel-autoconnect.ts`로 분리했다. 새 파일은 location row 생성, manual endpoint 제외, route mesh
+    initiator dial 옵션, auto-connect trace formatting만 소유한다. `ZLinkChannelRuntimeManager`는 location context를
+    만들고 `ZLinkAutoConnectLoop` lifecycle을 시작/정지하는 책임만 유지한다. route send/request가 쓰는 trace
+    helper도 같은 파일에서 export해 auto-connect trace 문자열 규칙을 한 곳에 모았다. 이 시점의
+    `runtime/channels/index.ts`는 2341줄이고, 새 auto-connect 파일은 327줄이다. 분리 후 새 POSD 대상이 되는
+    pass-through class는 만들지 않았고, socket registry와 dispatcher 상태도 새 파일로 넘기지 않았다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. auto-connect/location/route transport 관련 `location-runtime.test.js`/`location-host.test.js`/
+    `channel-client.test.js`/`nestjs-module.test.js` focused 묶음 24개가 통과했다. 샘플은 첫 재실행에서
+    `TicTacToe.Ts` Redis 준비 timeout이 한 번 발생했으나 같은 명령 재실행에서 `TicTacToe.Ts`, `Bingo.Ts`,
+    `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`를 확인했다.
+    `channel-client.test.js` 제외 unit/contract 464개도 통과했다. full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: channel/router/subscriber receive loop polling과 received message close 책임은
+    `channel-receive-loops.ts`로 분리했다. 새 파일은 dispatcher 구체 클래스를 import하지 않고 structural
+    `dispatch()` interface만 받으므로 dispatcher 상태기계와 순환 의존을 만들지 않는다. envelope 여부 판정은
+    `channel-envelope-inspection.ts`의 `isChannelEnvelope()`로 분리해 channel receive loop와 route dispatcher가 같은
+    판정 규칙을 공유한다. route/channel dispatch 상태기계는 아직 `channels/index.ts`에 남겨 D2의 벤치 대상
+    변경과 섞지 않았다. 이 시점의 `runtime/channels/index.ts`는 2124줄이고, 새 receive-loop 파일은 274줄,
+    envelope inspection helper는 14줄이다. 분리 후 새 POSD 대상이 되는 얕은 wrapper는 만들지 않았다고 판단했다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. receive loop가 닿는 channel request/fanout/route/error/backpressure 관련 `channel-client.test.js`/
+    `nestjs-module.test.js`/`message-flow.test.js` focused 묶음 25개가 통과했다. 샘플은 `TicTacToe.Ts`,
+    `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`를
+    확인했다. `channel-client.test.js` 제외 unit/contract 전체 병렬 실행은 196번째 이후 300초 timeout이 한 번
+    발생했으나, 전반 196개와 후반 268개 분할 실행이 각각 통과했고 같은 전체 목록을
+    `--test-concurrency=1`로 순차 실행해 464개 모두 통과했다. full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: multipart submit 규칙은 `channel-multipart.ts`, framework 내부 packet의 codec bypass
+    판정은 `channel-framework-packets.ts`, route-to-SPOT direct envelope encode/decode는
+    `spot-direct-envelope.ts`, route readiness retry helper는 `route-readiness.ts`로 분리했다. public binding
+    socket adapter인 `ZLinkDealerChannelClientTransport`는 `dealer-channel-client-transport.ts`로 분리하고
+    `channels/index.ts`에서 기존 import 경로를 re-export했다. 이 변경은 dispatcher 이동 전 공통 규칙을 한 곳에
+    모으는 선행 분리이며, runtime manager나 dispatcher 구체 상태를 새 helper로 넘기지 않았다. 이 시점의
+    `runtime/channels/index.ts`는 1956줄이고, 새 helper 파일은 각각 `channel-multipart.ts` 67줄,
+    `channel-framework-packets.ts` 8줄, `spot-direct-envelope.ts` 44줄, `route-readiness.ts` 29줄,
+    `dealer-channel-client-transport.ts` 62줄이다. 분리 후 helper가 단순 pass-through 모듈이 되지 않고
+    multipart submit, codec 선택, direct envelope, readiness retry, public dealer adapter라는 독립 규칙을 각각
+    소유하는지 확인했다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. public dealer transport, route-to-SPOT direct envelope, route readiness 관련 `channel-client.test.js`/
+    `nestjs-module.test.js` focused 묶음 14개가 통과했다. 샘플은 `TicTacToe.Ts`, `Bingo.Ts`,
+    `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`를 확인했다.
+    `channel-client.test.js` 제외 unit/contract 전체를 `--test-concurrency=1`로 순차 실행해 464개 모두 통과했다.
+    full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: channel request dispatcher, fanout publish dispatcher, route packet dispatcher와
+    route handler 수집 규칙은 `channel-dispatchers.ts`로 분리했다. 새 파일은 envelope decode, handler lookup,
+    filter 실행, reply/error submit, dispatch error/message-flow 보고라는 dispatch 상태기계만 소유한다.
+    `ZLinkChannelRuntimeManager`는 dispatcher 인스턴스 생성과 receive loop lifecycle만 유지하고, socket registry,
+    auto-connect, route-to-SPOT outbound 분기, raw bridge reply queue는 dispatcher 파일로 넘기지 않았다.
+    `channel-dispatchers.ts`는 681줄로 작지는 않지만, 세 dispatcher가 같은 `(decode -> handler lookup -> invoke ->
+    reply/report)` 상태기계를 공유하는 C2 착지점이며 runtime manager mirror가 되지 않는지 확인했다. 이 시점의
+    `runtime/channels/index.ts`는 1321줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. dispatcher/channel/fanout/route/error/backpressure 관련 `channel-client.test.js`/`nestjs-module.test.js`/
+    `message-flow.test.js` focused 묶음 28개가 통과했다. 샘플은 `TicTacToe.Ts`, `Bingo.Ts`,
+    `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`를 확인했다.
+    `channel-client.test.js` 제외 unit/contract 전체를 `--test-concurrency=1`로 순차 실행해 464개 모두 통과했다.
+    full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: route-to-SPOT target 선택과 submit 전략은 `spot-route-dispatch-strategy.ts`로
+    분리했다. 새 파일은 local route dispatcher, route bridge, bound route router, SpotNode router, fallback route
+    router 선택과 raw/direct SPOT request submit, SpotNode router 직렬화 queue만 소유한다.
+    `ZLinkChannelRuntimeManager`는 route channel receive loop 생성, bridge attach/dispose, socket lifecycle,
+    diagnostics/outbound channel send는 그대로 유지하고 route-to-SPOT public method는 strategy로 위임한다.
+    `spot-route-dispatch-strategy.ts`는 699줄로 계획 당시 예상보다 크지만, runtime manager 전체를 import하지 않고
+    registration/socket registry/bridge map/raw reply queue/local dispatcher capability만 받는다. 따라서 분리 결과가
+    manager mirror가 아니라 route-to-SPOT 선택 정책 모듈인지 확인했다. 이 시점의 `runtime/channels/index.ts`는
+    754줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. route-to-SPOT, raw bridge, bound route, SpotNode router, routed actor/bound-session 관련
+    `channel-client.test.js`/`actor-manager.test.js`/`spot-manager.test.js`/`stream-runtime.test.js`/
+    `nestjs-module.test.js` focused 묶음 40개가 통과했다. 샘플 전체 실행은 `DeliveryDispatch.Ts`에서 native
+    segfault가 한 번 발생했지만, `DeliveryDispatch.Ts` 단독 재실행은 `PASS`였고 나머지 `TicTacToe.Ts`,
+    `Bingo.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts`도 `PASS`를 확인했다.
+    `channel-client.test.js` 제외 unit/contract 전체를 `--test-concurrency=1`로 순차 실행해 464개 모두 통과했다.
+    full e2e는 실행하지 않았다.
+  - 2026-07-10 적용 완료: channel runtime manager 본문과 option type은 `channel-runtime-manager.ts`로 이동했고,
+    `channels/index.ts`는 기존 public import 경로를 유지하는 43줄 re-export 파일로 줄였다. 새 manager 파일은
+    socket registry, dispatcher, receive loop, auto-connect, route-to-SPOT strategy를 조립하는 runtime lifecycle
+    orchestration만 소유하고, barrel re-export 책임은 다시 `index.ts`로 돌렸다. 따라서 분리 결과가 또 다른 public
+    surface 집계 모듈이나 runtime manager mirror가 되는 POSD 대상은 만들지 않았다고 판단했다.
+    이 시점의 `channel-runtime-manager.ts`는 715줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. channel/route/monitoring/location/route-to-SPOT/bound-session 관련 focused 묶음 56개가 통과했다.
+    샘플은 첫 묶음에서 `Bingo.Ts` Redis 준비 timeout이 한 번 발생했지만, 실패 지점부터 재실행해
+    `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts`가 모두 `PASS`였고,
+    첫 묶음에서 이미 `TicTacToe.Ts` `PASS`를 확인했다. `channel-client.test.js` 제외 unit/contract 전체를
+    `--test-concurrency=1`로 순차 실행해 464개 모두 통과했다. full e2e는 실행하지 않았다.
+- [x] **D3. (R2, P0) `runtime/host/index.ts` (2489줄)** — god-class `ZLinkFrameworkRuntimeHost`(125-1840, ~1716줄, 파일 최대 심볼). public 생성자·NestJS 사용 유지, start/stop 조정 + facade만 남김
   - **god-class 내부에서 추출**: `ZLinkBoundSessionRelay`(=RemoteActorDispatchGateway, ~880-1793, ~900줄, 원격 bound-session + actor packet relay 전량) — **벤치**(per-actor-packet hot). `ZLinkActorRuntimeOptionsFactory`(485-718, actor manager/client 옵션), `ZLinkLocationRuntimeOwner`(744-869, store/lifecycle/resolver/event sink), `MeshRouterResolver`(1764-1839).
   - **god-class 종료(1840) 이후 같은 파일의 top-level 자유 함수/클래스(클래스 메서드 아님) — 파일 단위 이동**: route-wire decoders(`sessionActorPacketTargetKey`+`decodeRemote*` 1842-2050) → `spots/route-wire-codec.ts`(encode 짝 이미 거기), `ZLinkNativeFallbackBoundSession(+SendCall)`(2052-2251)→streams, `ZLinkLocalFirstActorJoinCoordinator`+`LazyNative`(2253-2381)→actors, `ZLinkMonitoringRuntime`(2383-2457)→별도 파일.
   - 검증: `test/contract/*runtime*.test.js`, `stream-runtime.test.js`, `channel-client.test.js`, `actor-manager.test.js`, `monitoring-runtime.test.js`.
+  - 2026-07-10 부분 적용: host 파일 끝의 top-level runtime/helper를 먼저 이동했다. `ZLinkMonitoringRuntime`는
+    `runtime/host/monitoring-runtime.ts`로 옮겨 socket/location/spot monitoring source orchestration만 소유하게 했다.
+    route-wire decoder와 `sessionActorPacketTargetKey`, stream metadata 변환은 기존 encode/route id 규칙이 있던
+    `runtime/spots/route-wire-codec.ts`로 옮겼다. `ZLinkNativeFallbackBoundSession`과 send call은
+    `runtime/streams/native-fallback-bound-session.ts`로 옮겨 stream binding runtime과 routed transport capability만
+    요구하게 했다. `ZLinkLocalFirstActorJoinCoordinator`와 `ZLinkLazyNativeJoinCoordinator`는
+    `runtime/actors/local-first-actor-join-coordinator.ts`로 옮겨 actor join 선택 정책을 host option 조립에서 분리했다.
+    새 파일들은 `ZLinkFrameworkRuntimeHost` 전체를 import하지 않고 필요한 capability만 받으므로 host mirror나
+    pass-through 중심의 새 POSD 대상이 되지 않는지 확인했다. 이 시점의 `runtime/host/index.ts`는 1893줄이고,
+    새 파일은 각각 monitoring 87줄, native fallback bound-session 211줄, local-first join coordinator 131줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. monitoring, runtime host start, actor join, remote/routed actor, bound-session, SPOT route 관련 focused
+    묶음 63개가 통과했다. `channel-client.test.js` 제외 unit/contract 전체를 `--test-concurrency=1`로 순차 실행해
+    464개 모두 통과했다. 샘플은 `TicTacToe.Ts`, `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`,
+    `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`를 확인했다. full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: actor manager/client option 조립은 `runtime/host/actor-runtime-options-factory.ts`로
+    분리했다. 새 factory는 registration, route transport, stream binding runtime, primary node provider,
+    actor/spot manager provider 같은 capability만 받고, actor join coordinator, bound-session factory, actor
+    create/destroy callback, actor client option을 조립한다. location store/runtime/lifecycle/event/lease tracker와
+    owner node rid 선택은 `runtime/host/location-runtime-owner.ts`로 분리했다. 새 owner는 location runtime state만
+    소유하고, channel/spot/actor runtime 조립으로 번지지 않게 했다. mesh/router channel 이름 선택과 spot mesh
+    route channel 매핑은 `runtime/host/mesh-router-resolver.ts`로 분리했다. 이 resolver는 registration만 읽고
+    runtime state를 받지 않으므로 host mirror가 아니다. 이 시점의 `runtime/host/index.ts`는 1626줄이고, 새 파일은
+    actor option factory 188줄, location owner 214줄, mesh router resolver 94줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. location/runtime host/actor join/route/monitoring/bound-session 관련 focused 묶음 84개가 통과했다.
+    `channel-client.test.js` 제외 unit/contract 전체 순차 실행은 300초와 600초 timeout으로 중단되어, 같은 파일 범위를
+    전반 196개, `nestjs-module.test.js` 단독 54개, 후반 215개로 나누어 확인했다. 후반 묶음은 첫 실행에서 1개 실패가
+    있었지만 같은 묶음 재실행에서 215개 모두 통과했다. 샘플은 `TicTacToe.Ts`, `Bingo.Ts`,
+    `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`를 확인했다.
+    full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: remote bound-session send/response/error, remote actor join, actor packet relay,
+    routed actor disconnect 알림은 `runtime/host/bound-session-relay.ts`로 분리했다. host는 기존 테스트가 직접
+    호출하던 메서드 이름을 얇은 위임 메서드로 유지하고, 실제 relay 상태와 전송 흐름은 새 relay가 소유한다.
+    분리 결과가 다시 POSD 대상이 되는지 확인해 보니 relay 안에 actor packet target 캐시와 actor ref 기반 target
+    파생 규칙이 남아 있었으므로 `runtime/host/remote-actor-packet-target-store.ts`로 한 번 더 분리했다. 새 store는
+    WeakMap/actorId cache, wire target decode, local node와 remote target 비교 규칙만 소유한다. relay는 host에서
+    재할당 가능한 `streamBindingRuntime`을 provider로 조회해 기존 테스트/host 동작과 같은 경계를 유지한다.
+    이 시점의 `runtime/host/index.ts`는 863줄, `bound-session-relay.ts`는 882줄,
+    `remote-actor-packet-target-store.ts`는 157줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. remote actor, routed actor, bound-session, actor join, route bridge, actor packet relay 관련 focused 묶음
+    56개가 통과했다. `channel-client.test.js` 제외 unit/contract는 전반 196개, `nestjs-module.test.js` 54개,
+    후반 215개로 나누어 확인했고 모두 통과했다. 후반 묶음은 분리 중 발생한 captured stream response 회귀를 수정한
+    뒤 단일 회귀 테스트와 전체 후반 묶음 재실행에서 통과했다. 샘플은 첫 전체 실행에서 `GameQuest.Ts` Redis
+    container start가 한 번 실패했지만, 남은 `GameQuest.Ts`, `ShoppingMall.Ts`만 재실행해 둘 다 `PASS`를
+    확인했다. 앞선 실행에서 `TicTacToe.Ts`, `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`도 `PASS`였다.
+    full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: Spot manager runtime option 조립은
+    `runtime/host/spot-runtime-options-factory.ts`로 분리했다. 새 factory는 channel/fanout/spot publisher client,
+    routed transport, location lifecycle, native Spot provider, routed actor/bound-session callback을 묶어
+    `DefaultZLinkSpotManager`가 기대하는 option 객체를 만든다. start/stop lifecycle, channel/stream runtime 생성,
+    actor manager option 조립 자체는 가져오지 않아 host mirror가 아니라 Spot manager wiring 전용 모듈로 남겼다.
+    분리 뒤 `runtime/host/index.ts`는 775줄, 새 factory는 152줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. `createSpotManagerOptions`, routed actor provider, routed bound-session receiver, location route,
+    remote bound-session, actor packet target 관련 focused 묶음 12개가 통과했다. `channel-client.test.js` 제외
+    unit/contract는 전반 196개, `nestjs-module.test.js` 54개, 후반 215개로 나누어 확인했다. 후반 묶음은 첫 실행에서
+    1개 실패가 있었으나 같은 묶음 재실행에서 215개 모두 통과했다. 샘플은 첫 전체 실행에서 `GameQuest.Ts`
+    route 준비 timeout이 한 번 있었고, 실패 지점부터 `GameQuest.Ts`, `ShoppingMall.Ts`를 재실행해 둘 다
+    `PASS`를 확인했다. 앞선 실행에서 `TicTacToe.Ts`, `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`도
+    `PASS`였다. full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: channel runtime 내부 route handler와 local SPOT route dispatcher 조립은
+    `runtime/host/channel-runtime-options-factory.ts`로 분리했다. 새 factory는 remote actor/bound-session relay
+    packet을 relay에 연결하고, route-to-local-SPOT dispatch를 현재 Spot manager에 위임하는 책임만 가진다.
+    이어서 SpotNode runtime option 조립은 `runtime/host/spot-node-runtime-options-factory.ts`로 분리했다.
+    새 factory는 Entry actor commit, routed bound-session callback, local actor packet router, actor destroyer,
+    SpotNode용 channel/fanout/publisher client 조립만 소유한다. 두 factory 모두 start/stop 순서, rollback,
+    location auto-connect 시작, stream/monitoring runtime 생성은 가져오지 않아 startup host mirror가 되지 않도록
+    범위를 제한했다. 이 시점의 `runtime/host/index.ts`는 678줄, 새 channel option factory는 85줄,
+    SpotNode option factory는 156줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. remote actor, routed actor, bound-session, actor join, Entry Spot, route transport, accepted Spot route,
+    route bridge, actor packet target/relay, location route 관련 focused 묶음 56개가 통과했다.
+    `channel-client.test.js` 제외 unit/contract는 전반 196개, `nestjs-module.test.js` 54개, 후반 215개로 나누어
+    확인했다. 후반 묶음은 첫 실행에서 1개 실패가 있었으나 같은 묶음 재실행에서 215개 모두 통과했다.
+    샘플은 첫 전체 실행에서 `GameQuest.Ts` Redis container start가 한 번 실패했지만, 실패 지점부터
+    `GameQuest.Ts`, `ShoppingMall.Ts`를 재실행해 둘 다 `PASS`를 확인했다. 앞선 실행에서 `TicTacToe.Ts`,
+    `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`도 `PASS`였다. full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: location runtime start와 SpotNode/Channel auto-connect 연결은
+    `runtime/host/location-runtime-owner.ts`의 `startForRuntime()`으로 내렸다. 이 owner는 이미 location stores,
+    events, owner node rid, lifecycle을 소유하므로 location runtime 시작과 auto-connect 설정을 같은 정보 은닉
+    경계에 모으는 변경이다. host는 `start()`에서 location owner를 호출해 시작된 runtime만 받아 rollback에 사용한다.
+    이 변경은 channel/spot/stream runtime 생성 순서를 새 owner로 옮기지 않았으므로 startup host mirror가 되지
+    않는지 확인했다. 이 시점의 `runtime/host/index.ts`는 662줄이고, `location-runtime-owner.ts`는 246줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. location runtime, location route, auto-connect, runtime host location lifecycle, route transport,
+    remote bound-session 관련 focused 묶음 27개가 통과했다. `channel-client.test.js` 제외 unit/contract는 전반
+    196개, `nestjs-module.test.js` 54개를 확인했다. 후반 215개 묶음은 `sample-regression.test.js` 내부 전체
+    sample 실행에서 `GameQuest.Ts`가 한 번 실패해 214개 통과/1개 실패였고, 같은 sample-regression 단일 게이트를
+    재실행해 통과했다. 샘플은 첫 전체 실행에서 `SupportChat.Ts` Redis readiness timeout, 이어진 재실행에서
+    `ShoppingMall.Ts` workflow readiness timeout이 있었지만, 실패 지점부터 재실행해 `SupportChat.Ts`,
+    `GameQuest.Ts`, `ShoppingMall.Ts` 모두 `PASS`를 확인했다. 앞선 실행에서 `TicTacToe.Ts`, `Bingo.Ts`,
+    `DeliveryDispatch.Ts`도 `PASS`였다. full e2e는 실행하지 않았다.
+  - 2026-07-10 부분 적용: runtime start rollback과 stop dispose 순서는 `runtime/host/runtime-shutdown.ts`로
+    분리했다. 새 모듈은 start 실패 시 시작된 location runtime, monitoring, stream, SpotNode, channel, host
+    context를 정리하는 순서와 stop 시 abort, runtime dispose, location lifecycle 정리, listener task 대기,
+    context shutdown 순서를 한곳에서 소유한다. runtime 생성, option 조립, location auto-connect 시작은 가져오지
+    않아 startup host mirror가 아니며, 단순 pass-through가 아니라 shutdown 정책 경계를 숨기는 모듈인지 확인했다.
+    이 시점의 `runtime/host/index.ts`는 659줄이고, `runtime-shutdown.ts`는 57줄이다.
+  - 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`, `npm run build`
+    통과. lifecycle, framework start/stop, NestJS shutdown, location host, stream runtime/session, channel route
+    disconnect 관련 focused 묶음 13개가 통과했다. unit/contract는 전반 196개, `nestjs-module.test.js` 54개를
+    확인했다. 후반 묶음은 `sample-regression.test.js` 내부 sample runner에서 `Bingo.Ts`가 한 번 실패했지만,
+    같은 sample-regression 단일 게이트를 재실행해 통과했다. 샘플은 첫 전체 실행에서 `GameQuest.Ts` 연결 재설정이
+    한 번 있었고, 실패 지점부터 `GameQuest.Ts`, `ShoppingMall.Ts`를 재실행해 둘 다 `PASS`를 확인했다. 앞선
+    실행에서 `TicTacToe.Ts`, `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`도 `PASS`였다. full e2e는
+    실행하지 않았다.
+  - 2026-07-10 완료 적용: `bound-session-relay.ts`가 새 POSD 대상이 되는지 재점검했고, 원격 bound-session
+    send/response/error 제어가 actor packet relay와 섞여 있었다. 이 부분은 `runtime/host/remote-bound-session-relay.ts`로
+    분리했다. 새 파일은 remote bound-session payload decode, local stream 우선 전달, remote response/error 제어
+    packet 전송, native fallback 선택만 소유한다. 기존 `bound-session-relay.ts`는 actor packet relay, remote actor
+    join, disconnect 알림 조정에 집중한다. 이 시점의 `runtime/host/index.ts`는 659줄,
+    `bound-session-relay.ts`는 694줄, `remote-bound-session-relay.ts`는 322줄이다.
+  - 최종 검증: strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`,
+    `npm run build` 통과. remote bound-session, actor packet relay, routed actor, route bridge, stream session
+    reply/error 관련 focused 묶음 29개가 통과했다. unit/contract는 전반 묶음 100개, `nestjs-module.test.js`
+    54개, 후반 묶음 213개를 `--test-concurrency=1`로 나누어 모두 통과했다. 샘플은
+    `TicTacToe.Ts`, `Bingo.Ts`, `DeliveryDispatch.Ts`, `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts`
+    6개 모두 `PASS`를 확인했다. full e2e는 실행하지 않았다.
 - [x] **D4. `runtime/streams/index.ts` (2229줄)** — god-class `ZLinkStreamBindingRuntime`(784-1319)
   - `SessionActorCoordinator`(803-920,1216-1274) / `BoundSessionService`(922-1148,1387-1444, C5와 함께) / `BoundActorRelaySender`(1150-1190) / `ActorSessionBindingRegistry`(1321-1385, 이미 깨끗 → 파일만 분리).
   - 부차: `stream-frame-factory.ts`(1446-1570), `session-context.ts`(1572-1719), `session-requests.ts`(1801-1918), `stream-session-runtime.ts`(`ZLinkStreamSessionNodeRuntime` 531-751 + `SessionRuntime` 298-529 + `SerialExecutor` 753-782).
@@ -1204,8 +1533,25 @@ location lifecycle의 소유 추적 모델과 맞지 않아 새 POSD 리팩토�
     `ZLinkActorDispatchRouter` facade만 남아 415줄이다. 새 파일 중 가장 큰 `actor-remote-joiner.ts`는 509줄이지만
     wire shape을 알지 않고 join coordinator 정책만 소유하므로 추가 분리는 accessor threading에 가까운 것으로
     판단했다.
-- [ ] **D7. (R5, P1) `nestjs/src/index.ts` (2902줄 단일 파일)** — root export만 유지(`exports` 없이 `main`만 있으므로 import 경로 증가 금지), 구현 분해
+- [x] **D7. (R5, P1) `nestjs/src/index.ts` (2902줄 단일 파일)** — root export만 유지(`exports` 없이 `main`만 있으므로 import 경로 증가 금지), 구현 분해
   - `framework-loader.ts`(67-116 + `nest-integration` lazy load), `tokens.ts`(350-367), `contracts.ts`(118-348), `handler-metadata.ts`(369-375,1114-1239 decorator metadata append/read), `decorators.ts`(377-599), `options-builder.ts`(601-1112 fluent builder), `registration-composer.ts`(1424-1940 discovered→framework registration options), `discovery.ts`(1241-1286,1971-2504, C9 통합 후 provider discovery/scan), `module.ts`(1288-1422), `providers.ts`(2506-2897 Nest provider 배열 + runtime/manager factory). 순환 참조 주의(데코레이터↔메타데이터, 모듈↔프로바이더는 함수 경계). 검증: public export 회귀(`nestjs-module.test.js`) + `sample-regression.test.js`.
+  - 2026-07-10 부분 적용: DI 토큰은 `tokens.ts`, 데코레이터 메타데이터 저장·조회와 runtime event handler
+    중복 등록 방지는 `handler-metadata.ts`, framework 동적 로딩 경로와 runtime host 구조 계약은
+    `framework-loader.ts`로 옮겼다. root import 경로와 re-export는 유지했다. 메타데이터 모듈은 상태와
+    중복 등록 정책을 함께 소유하고, loader는 동적 로딩 경로를 숨기므로 단순 전달 모듈은 아니다. 다만
+    `index.ts`에 builder, discovery, provider 조립 책임이 남아 있어 D7은 완료 처리하지 않는다.
+  - 검증: NestJS strict tsc(`--noUnusedLocals --noUnusedParameters`), 루트 `npm run build` 통과. decorator
+    metadata/discovery 관련 focused unit 13개와 runtime lifecycle focused unit 1개가 통과했다. 전체 unit,
+    sample, 관련 e2e는 모든 리팩토링 완료 뒤 실행한다.
+  - 2026-07-10 완료: 공개 계약은 `contracts.ts`, 데코레이터는 `decorators.ts`, 설정 상태 조립은
+    `options-builder.ts`, provider 해석은 `discovery.ts`, 등록 구조 조립은 `registration-composer.ts`, Nest
+    provider factory는 `providers.ts`, module lifecycle과 동적 모듈 생성은 `module.ts`로 분리했다. 기존 package
+    root import는 13줄 `index.ts` 배럴에서 그대로 내보낸다. 가장 큰 세 구현 파일은 registration composer
+    575줄, options builder 554줄, discovery 535줄이지만 각각 한 정책을 끝까지 소유하며 서로의 상태를
+    복제하지 않는다. 따라서 이번 분리 결과가 다시 god file, 얕은 wrapper, 시간적 분해 대상이 되지는
+    않는다고 판단했다.
+  - 최종 관련 검증: NestJS strict tsc, 루트 `npm run build`, `nestjs-module.test.js` 전체 54개가 통과했다.
+    sample은 모든 리팩토링 완료 뒤 실행한다.
 - [x] **D8. `Registration.ts` (1333줄)** — validators는 이미 추출됨, 잔여 4관심사
   - `RegistrationTypes.ts`(47-371 계약 타입 41개 + 예외), 팩토리 진입점 유지(373-416), `RegistrationBuilders.ts`(418-928 빌더 11개 + C10 통합), `RegistrationCodecRegistry.ts`(925-996), `RegistrationNormalizers.ts`(1084-1169,1198-1333 to*/normalize* + C10 플래그 모듈).
   - 2026-07-09 부분 적용: codec registry 상태와 content type 검증을 `RegistrationCodecRegistry.ts`로
@@ -1218,8 +1564,26 @@ location lifecycle의 소유 추적 모델과 맞지 않아 새 POSD 리팩토�
     단순 pass-through 파일을 새로 만들지 않았다. `Registration.ts`는 public import 경로와 factory 진입점을
     유지하는 68줄 facade가 되었고, 내부 구현 모듈은 type-only dependency를 `RegistrationTypes.ts`로 직접
     가져오도록 정리했다. D8 분해 결과가 다시 POSD 대상이 되는 얕은 wrapper로 남지 않았는지 확인했다.
-- [ ] **D9. `framework-locations-redis/src/index.ts` (1130줄 단일, 선택)** — 의도적 격리라 삭제 아님, dotnet E2 동형 구조. 경계 주의(store-instance keyPrefix helper와 row-key codec은 별개):
+- [x] **D9. `framework-locations-redis/src/index.ts` (1130줄 단일, 선택)** — 의도적 격리라 삭제 아님, dotnet E2 동형 구조. 경계 주의(store-instance keyPrefix helper와 row-key codec은 별개):
   - `store.ts`(37-417, `ZLinkRedisLocationStore` 공개 클래스 + connection + write/remove/resolve), `redis-store-key-prefixes.ts`(419-455, `this.keyPrefix` 의존 private helper — 재사용 codec 아님), `redis-options.ts`(458-491, `MutableZLinkRedisLocationOptions`+`configureOptions`), `redis-row-keys.ts`(493-540, PeerKey/SpotKey/… + `encode*Key`/`encodeKeySegments` 실제 row-key codec), `redis-row-codec.ts`(576-1004, `LocationKind`+row JSON codec), `redis-scripts.ts`(1006-1130, Lua). `framework-codec-protobuf`(525줄)는 envelope 정리 후 재평가, `framework-codec-msgpack`(104줄)은 분해 불요.
+  - 2026-07-10 완료: package root는 2줄 배럴로 유지하고, Redis 연결·command orchestration은 `store.ts`,
+    옵션 구성은 `redis-options.ts`, composite row key codec은 `redis-row-keys.ts`, store instance prefix layout은
+    `redis-store-key-prefixes.ts`, row JSON/materialization과 write-result 해석은 `redis-row-codec.ts`, Lua 원자
+    연산은 `redis-scripts.ts`로 분리했다. prefix layout과 row-key codec은 별도 모듈이며 서로의 상태를
+    공유하지 않는다. store 438줄과 row codec 447줄은 각각 연결 lifecycle과 row 변환 정책을 끝까지
+    소유하므로 추가 분리는 parameter threading과 얕은 wrapper를 만들 가능성이 더 크다고 판단했다.
+  - 검증: Redis package strict tsc(`--noUnusedLocals --noUnusedParameters`), 루트 `npm run build`,
+    `location-redis-store.test.js` 전체 3개가 통과했다.
+
+### 2026-07-10 최종 검증
+
+- 계획 문서의 미완료 체크박스가 없음을 확인했고 `git diff --check`가 통과했다.
+- Node 전체 strict tsc(`--noUnusedLocals --noUnusedParameters`), `npm run typecheck`, `npm run lint`,
+  `npm run build`가 통과했다.
+- `npm test` 전체 unit/contract gate가 종료 코드 0으로 통과했다. gate 로그에 집계된 테스트는 528개다.
+- `npm run verify:samples`를 별도로 실행해 `TicTacToe.Ts`, `Bingo.Ts`, `DeliveryDispatch.Ts`,
+  `SupportChat.Ts`, `GameQuest.Ts`, `ShoppingMall.Ts` 6개 모두 `PASS`를 확인했다.
+- 요청에 따라 E2E는 실행하지 않았고 E2E를 포함하지 않는 전체 Node build만 확인했다.
 
 **D 착수 순서:** 무상태/이미-깨끗 유닛부터(D1 timer/serial/outbound, D4 ActorSessionBindingRegistry, D2 transports/options/clients) → 배럴 고정 후 god-class 도메인 분해(D3 RuntimeHost·D1 JoinDispatch) → hot 경로는 C2/C8 벤치 동반.
 

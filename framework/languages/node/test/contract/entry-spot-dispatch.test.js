@@ -36,6 +36,8 @@ test('Entry Spot native actor request dispatches to registered handler and repli
       assert.equal(actor.actorId, 'player-1');
       assert.equal(context.packetName, 'Match');
       assert.deepEqual(request, { value: 'ping' });
+      context.reply.metadata('reply-trace-id', 'reply:player-1');
+      context.reply.compress();
       calls.push('handler');
       return { value: 'pong' };
     }
@@ -64,8 +66,15 @@ test('Entry Spot native actor request dispatches to registered handler and repli
     nodeRid: 'node-a',
     spotNodeName: 'entry-node',
     actorResolver: (actorId) => actorId === actor.actorId ? actor : undefined,
-    actorResponseSender: async (targetActor, packetName, requestSeq, payload) => {
-      response = { actorId: targetActor.actorId, packetName, requestSeq, payload };
+    actorResponseSender: async (targetActor, packetName, requestSeq, payload, replyOptions) => {
+      response = {
+        actorId: targetActor.actorId,
+        packetName,
+        requestSeq,
+        payload,
+        metadata: [...replyOptions.metadata.entries()],
+        compressPayload: replyOptions.compressPayload
+      };
       calls.push('response');
     }
   });
@@ -102,7 +111,9 @@ test('Entry Spot native actor request dispatches to registered handler and repli
     actorId: 'player-1',
     packetName: 'Match',
     requestSeq: 7n,
-    payload: { value: 'pong' }
+    payload: { value: 'pong' },
+    metadata: [['reply-trace-id', 'reply:player-1']],
+    compressPayload: true
   });
 });
 

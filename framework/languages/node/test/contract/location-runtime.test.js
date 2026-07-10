@@ -155,6 +155,38 @@ test('location lifecycle claims before activation and loser never activates', as
   assert.equal(loser.existingLocation.ownerId, 'owner-a');
 });
 
+test('location lifecycle already-owned claim does not activate a second instance', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const node = await lifecycleNode(store, 'owner-a', 'node-a');
+
+  const first = await node.lifecycle.executeActorClaimThenActivate(
+    'player',
+    'actor-1',
+    rid('node-a'),
+    undefined,
+    async () => 'instance-a'
+  );
+  assert.equal(first.activated, 'instance-a');
+
+  let secondActivated = 0;
+  const second = await node.lifecycle.executeActorClaimThenActivate(
+    'player',
+    'actor-1',
+    rid('node-a'),
+    undefined,
+    async () => {
+      secondActivated += 1;
+      throw new Error('duplicate activation');
+    }
+  );
+
+  assert.equal(second.activated, undefined);
+  assert.equal(second.existingLocation, undefined);
+  assert.equal(secondActivated, 0);
+  assert.equal(node.lifecycle.ownsActor('player', 'actor-1'), true);
+  assert.notEqual(await store.resolveActor({ actorId: 'actor-1' }), undefined);
+});
+
 test('location lifecycle rolls failed activation back and renews actor spot state', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const node = await lifecycleNode(store, 'owner-a', 'node-a');

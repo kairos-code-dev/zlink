@@ -4,7 +4,7 @@ import { ZLinkFrameworkException, ZLinkFrameworkErrorKind } from '@zlink-systems
 
 /** Shared text helpers mirroring the C++ `client.cpp` anonymous-namespace utilities. */
 
-export function isBlank(value: string): boolean {
+function isBlank(value: string): boolean {
   return value.length === 0 || /^[\s]*$/u.test(value);
 }
 

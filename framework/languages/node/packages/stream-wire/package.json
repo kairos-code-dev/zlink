@@ -1,0 +1,13 @@
+{
+  "name": "@zlink-systems/stream-wire",
+  "version": "0.1.0-SNAPSHOT",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
+}

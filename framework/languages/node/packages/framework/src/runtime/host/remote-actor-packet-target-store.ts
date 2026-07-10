@@ -1,0 +1,159 @@
+import type {
+  ActorRef,
+  RoutingId,
+  ZLinkSessionActor
+} from '../../contracts';
+import { ZLinkSpotKind } from '../../contracts';
+import type {
+  DefaultZLinkActorManager,
+  ZLinkRemoteActorPacketTarget
+} from '../actors';
+import type { ZLinkStreamBindingRuntime } from '../streams';
+import {
+  decodeRemoteActorPacketTarget,
+  normalizeRuntimeRoutingId,
+  sessionActorPacketTargetKey
+} from '../spots/route-wire-codec';
+import type { MeshRouterResolver } from './mesh-router-resolver';
+
+export interface ZLinkRemoteActorPacketTargetStoreOptions {
+  readonly actorManager: () => DefaultZLinkActorManager | undefined;
+  readonly streamBindingRuntime: () => ZLinkStreamBindingRuntime;
+  readonly meshRouters: MeshRouterResolver;
+  readonly primaryNodeRid: () => RoutingId | undefined;
+}
+
+export class ZLinkRemoteActorPacketTargetStore {
+  private readonly sessionActorPacketTargets = new WeakMap<ZLinkSessionActor, ZLinkRemoteActorPacketTarget>();
+  private readonly sessionActorPacketTargetsByActor = new Map<string, ZLinkRemoteActorPacketTarget>();
+  private readonly sessionActorPacketTargetsByActorId = new Map<string, ZLinkRemoteActorPacketTarget>();
+
+  constructor(private readonly options: ZLinkRemoteActorPacketTargetStoreOptions) {}
+
+  updateFromWire(actorId: string, value: unknown): void {
+    const actorPacketTarget = this.decodeFromWire(value);
+    const state = this.options.actorManager()?.getState(actorId);
+    if (actorPacketTarget !== undefined) {
+      if (typeof state?.setRemoteActorPacketTarget === 'function') {
+        state.setRemoteActorPacketTarget(actorPacketTarget);
+      }
+      this.sessionActorPacketTargetsByActorId.set(actorId, actorPacketTarget);
+      return;
+    }
+    if (typeof state?.setRemoteActorPacketTarget === 'function') {
+      state.setRemoteActorPacketTarget(undefined);
+    }
+    this.sessionActorPacketTargetsByActorId.delete(actorId);
+  }
+
+  decodeFromWire(value: unknown): ZLinkRemoteActorPacketTarget | undefined {
+    return decodeRemoteActorPacketTarget(value);
+  }
+
+  clear(actorId: string): void {
+    const state = this.options.actorManager()?.getState(actorId);
+    if (typeof state?.setRemoteActorPacketTarget === 'function') {
+      state.setRemoteActorPacketTarget(undefined);
+    }
+    this.sessionActorPacketTargetsByActorId.delete(actorId);
+    const sessionActor = this.options.streamBindingRuntime().find(actorId);
+    if (sessionActor !== undefined) {
+      this.sessionActorPacketTargets.delete(sessionActor);
+      this.sessionActorPacketTargetsByActor.delete(sessionActorPacketTargetKey(sessionActor));
+    }
+    const actorRef = state?.nativeActorRef as ActorRef | undefined;
+    if (actorRef !== undefined) {
+      this.sessionActorPacketTargetsByActor.delete(
+        `${String(actorRef.nodeRid)}:${actorId}:${String(actorRef.generation)}`
+      );
+    }
+  }
+
+  cachedTargetForActor(actor: ZLinkSessionActor): ZLinkRemoteActorPacketTarget | undefined {
+    return this.sessionActorPacketTargets.get(actor)
+      ?? this.sessionActorPacketTargetsByActor.get(sessionActorPacketTargetKey(actor))
+      ?? this.sessionActorPacketTargetsByActorId.get(actor.actorId)
+      ?? this.targetForActorRef(actor.ref);
+  }
+
+  targetForState(actorId: string, routerChannelIdHint?: string): ZLinkRemoteActorPacketTarget | undefined {
+    const state = this.options.actorManager()?.getState(actorId);
+    if (
+      state?.remoteActorPacketTarget !== undefined &&
+      (state.spotRid === undefined || String(state.remoteActorPacketTarget.spotRid) === String(state.spotRid))
+    ) {
+      return state.remoteActorPacketTarget;
+    }
+    const spotRid = state?.spotRid;
+    if (spotRid !== undefined && state?.remoteActorPacketTarget !== undefined) {
+      return {
+        routerChannelId: state.remoteActorPacketTarget.routerChannelId,
+        targetNodeRid: state.remoteActorPacketTarget.targetNodeRid,
+        spotRid: normalizeRuntimeRoutingId(spotRid),
+        spotKind: ZLinkSpotKind.User
+      };
+    }
+    const actorRef = state?.nativeActorRef as ActorRef | undefined;
+    const targetNodeRid = actorRef?.nodeRid as RoutingId | undefined
+      ?? this.options.primaryNodeRid();
+    const routerChannelId = routerChannelIdHint
+      ?? this.options.meshRouters.defaultSpotRouterChannelId()
+      ?? this.options.meshRouters.defaultRouterChannelId();
+    const localNodeRid = this.options.primaryNodeRid();
+    if (
+      spotRid === undefined &&
+      targetNodeRid !== undefined &&
+      localNodeRid !== undefined &&
+      routingIdsEqual(targetNodeRid, localNodeRid)
+    ) {
+      return undefined;
+    }
+    if (spotRid === undefined || targetNodeRid === undefined || routerChannelId === undefined) {
+      return undefined;
+    }
+    return {
+      routerChannelId,
+      targetNodeRid: normalizeRuntimeRoutingId(targetNodeRid),
+      spotRid: normalizeRuntimeRoutingId(spotRid),
+      spotKind: ZLinkSpotKind.User
+    };
+  }
+
+  targetForActorRef(actorRef: ActorRef): ZLinkRemoteActorPacketTarget | undefined {
+    const targetNodeRid = actorRef.nodeRid as RoutingId;
+    const localNodeRid = this.options.primaryNodeRid();
+    if (localNodeRid !== undefined && routingIdsEqual(localNodeRid, targetNodeRid)) {
+      return undefined;
+    }
+    const routerChannelId = this.options.meshRouters.defaultSpotRouterChannelId()
+      ?? this.options.meshRouters.defaultRouterChannelId();
+    if (routerChannelId === undefined) {
+      return undefined;
+    }
+    return {
+      routerChannelId,
+      targetNodeRid,
+      spotRid: targetNodeRid,
+      spotKind: ZLinkSpotKind.Entry
+    };
+  }
+
+  rememberActorTarget(actor: ZLinkSessionActor, target: ZLinkRemoteActorPacketTarget): void {
+    const state = this.options.actorManager()?.getState(actor.actorId);
+    if (typeof state?.setRemoteActorPacketTarget === 'function') {
+      state.setRemoteActorPacketTarget(target);
+    }
+    this.sessionActorPacketTargets.set(actor, target);
+    this.sessionActorPacketTargetsByActor.set(sessionActorPacketTargetKey(actor), target);
+    this.sessionActorPacketTargetsByActorId.set(actor.actorId, target);
+  }
+}
+
+function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {
+  const leftHex = (left as { toHex?: () => string }).toHex?.();
+  const rightHex = (right as { toHex?: () => string }).toHex?.();
+  if (leftHex !== undefined && rightHex !== undefined) {
+    return leftHex === rightHex;
+  }
+  return String(left) === String(right);
+}

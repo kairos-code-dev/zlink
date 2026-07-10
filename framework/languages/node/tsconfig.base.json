@@ -40,6 +40,9 @@
       "@zlink-systems/stream-connector": [
         "packages/stream-connector/src"
       ],
+      "@zlink-systems/stream-wire": [
+        "packages/stream-wire/src"
+      ],
       "@zlink-systems/zlink": [
         "node_modules/@zlink-systems/zlink/dist/index.d.ts"
       ]

@@ -1411,7 +1411,9 @@ test('TicTacToe uses manual handler registration and other samples keep automati
     'Handlers',
     'bingo-room-timer-handler.ts'
   ), 'utf8');
-  const nestPackage = fs.readFileSync(path.join(workspaceRoot, 'packages', 'nestjs', 'src', 'index.ts'), 'utf8');
+  const nestPackage = sampleSourceFiles(path.join(workspaceRoot, 'packages', 'nestjs', 'src'))
+    .map((file) => fs.readFileSync(file, 'utf8'))
+    .join('\n');
   const required = [
     [nestPackage, 'export function zlinkRequestHandler'],
     [nestPackage, 'export function zlinkSpotTimerHandler'],

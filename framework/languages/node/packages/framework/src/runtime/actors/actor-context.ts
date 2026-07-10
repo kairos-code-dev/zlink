@@ -1,0 +1,251 @@
+import type {
+  ActorRef,
+  RoutingId,
+  Type,
+  ZLinkActor,
+  ZLinkActorContext,
+  ZLinkActorJoinEntrySpotCall,
+  ZLinkActorJoinResult,
+  ZLinkActorJoinSpotCall,
+  ZLinkBoundSession,
+  ZLinkSpot
+} from '../../contracts';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from '../../contracts';
+import type { Message } from '../../contracts/Common/Message';
+import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { isZLinkMessage, ZLinkMessage, type ZLinkMessageSerializer } from '../../contracts';
+import { ZLinkConfigurationException } from '../configuration';
+import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
+import {
+  decodeFrameworkPayloadMessage,
+  encodeFrameworkPayloadMessage
+} from '../messaging/payload-codec';
+import {
+  ZLinkActorRuntimeState,
+  toFrameworkActorRef
+} from './actor-runtime-state';
+import type {
+  ZLinkActorBoundSessionFactory,
+  ZLinkActorJoinCoordinator
+} from './index';
+
+export class DefaultZLinkActorContext implements ZLinkActorContext {
+  readonly boundSession: ZLinkBoundSession;
+
+  constructor(
+    private readonly state: ZLinkActorRuntimeState,
+    private readonly joinCoordinator: ZLinkActorJoinCoordinator | undefined,
+    boundSessionFactory: ZLinkActorBoundSessionFactory | undefined,
+    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
+  ) {
+    this.boundSession = boundSessionFactory?.(state.actorId) ?? new UnboundZLinkSession();
+  }
+
+  get spotRid(): RoutingId | undefined {
+    return this.state.spotRid;
+  }
+
+  get isJoined(): boolean {
+    return this.state.isJoined;
+  }
+
+  get actorRef(): ActorRef | undefined {
+    const actorRef = this.state.nativeActorRef;
+    return actorRef === undefined
+      ? undefined
+      : toFrameworkActorRef(actorRef);
+  }
+
+  getSpot<TSpot extends ZLinkSpot>(spotType?: Type<TSpot>): ZLinkSpot | TSpot {
+    const spot = this.state.spot;
+    if (spot === undefined) {
+      throw new ZLinkConfigurationException('Actor has not joined a SPOT.');
+    }
+    if (spotType !== undefined && !(spot instanceof spotType)) {
+      throw new ZLinkConfigurationException('Actor joined SPOT has a different spot type.');
+    }
+    return spot;
+  }
+
+  joinSpot(spotRid: RoutingId, request?: unknown): ZLinkActorJoinSpotCall {
+    return new DefaultZLinkActorJoinSpotCall(
+      this.state,
+      this.requireActor(),
+      this.requireJoinCoordinator(),
+      spotRid,
+      request,
+      this.messageSerializers
+    );
+  }
+
+  joinEntrySpot(nodeRid: RoutingId, request: unknown): ZLinkActorJoinEntrySpotCall {
+    return new DefaultZLinkActorJoinEntrySpotCall(
+      this.state,
+      this.requireActor(),
+      this.requireJoinCoordinator(),
+      nodeRid,
+      request,
+      this.messageSerializers
+    );
+  }
+
+  private requireActor(): ZLinkActor {
+    if (this.state.actor === undefined) {
+      throw new ZLinkConfigurationException('Actor context is not bound to an actor.');
+    }
+    return this.state.actor;
+  }
+
+  private requireJoinCoordinator(): ZLinkActorJoinCoordinator {
+    if (this.joinCoordinator === undefined) {
+      throw new ZLinkConfigurationException('Actor join runtime is not started.');
+    }
+    return this.joinCoordinator;
+  }
+}
+
+class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
+  private timeoutMs: number | undefined;
+  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
+
+  constructor(
+    private readonly state: ZLinkActorRuntimeState,
+    private readonly actor: ZLinkActor,
+    private readonly coordinator: ZLinkActorJoinCoordinator,
+    private readonly spotRid: RoutingId,
+    private readonly request: unknown,
+    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
+  ) {
+    this.yieldTurn = captureZLinkSpotSerialTurn();
+  }
+
+  timeout(timeoutMs: number): this {
+    this.timeoutMs = timeoutMs;
+    return this;
+  }
+
+  async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    const requestMessage = this.request === undefined
+      ? BindingMessage.from(Buffer.alloc(0))
+      : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
+    const ownsRequest = ownsFrameworkPayloadMessage(this.request);
+    try {
+      const result = await this.coordinator.joinSpot(
+        this.actor,
+        this.state,
+        this.spotRid,
+        requestMessage,
+        this.timeoutMs,
+        signal
+      );
+      return {
+        ...result,
+        reply: result.reply === undefined
+          ? undefined
+          : decodeFrameworkPayloadMessage<TReply>(result.reply, this.messageSerializers)
+      };
+    } finally {
+      if (ownsRequest) {
+        requestMessage.close();
+      }
+    }
+  }
+
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    if (this.yieldTurn === undefined) {
+      return Promise.reject(new ZLinkConfigurationException(
+        'yield requires a framework Spot handler turn captured when the call object was created.'
+      ));
+    }
+    return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));
+  }
+}
+
+class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
+  private timeoutMs: number | undefined;
+  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
+
+  constructor(
+    private readonly state: ZLinkActorRuntimeState,
+    private readonly actor: ZLinkActor,
+    private readonly coordinator: ZLinkActorJoinCoordinator,
+    private readonly nodeRid: RoutingId,
+    private readonly request: unknown,
+    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
+  ) {
+    this.yieldTurn = captureZLinkSpotSerialTurn();
+  }
+
+  timeout(timeoutMs: number): this {
+    this.timeoutMs = timeoutMs;
+    return this;
+  }
+
+  async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    const requestMessage = encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
+    const ownsRequest = ownsFrameworkPayloadMessage(this.request);
+    try {
+      const result = await this.coordinator.joinEntrySpot(
+        this.actor,
+        this.state,
+        this.nodeRid,
+        requestMessage,
+        this.timeoutMs,
+        signal
+      );
+      return {
+        ...result,
+        reply: result.reply === undefined
+          ? undefined
+          : decodeFrameworkPayloadMessage<TReply>(result.reply, this.messageSerializers)
+      };
+    } finally {
+      if (ownsRequest) {
+        requestMessage.close();
+      }
+    }
+  }
+
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    if (this.yieldTurn === undefined) {
+      return Promise.reject(new ZLinkConfigurationException(
+        'yield requires a framework Spot handler turn captured when the call object was created.'
+      ));
+    }
+    return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));
+  }
+}
+
+class UnboundZLinkSession implements ZLinkBoundSession {
+  send(): never {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      'Actor session is not bound.',
+      true
+    );
+  }
+
+  async disconnect(): Promise<void> {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorSessionNotBound,
+      'Actor session is not bound.',
+      true
+    );
+  }
+}
+
+function isMessage(value: unknown): value is Message {
+  if (value instanceof ZLinkMessage) {
+    return false;
+  }
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { data?: unknown }).data === 'function';
+}
+
+function ownsFrameworkPayloadMessage(value: unknown): boolean {
+  return value === undefined || !(isMessage(value) || (isZLinkMessage(value) && value.isEncoded()));
+}

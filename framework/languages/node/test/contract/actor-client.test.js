@@ -20,6 +20,18 @@ function createReplyParts(value) {
   ];
 }
 
+function createReplyFrame(value) {
+  return [
+    Message.from(Buffer.from(framework.encodeStreamFrame({
+      kind: framework.ZLinkStreamMessageKind.Response,
+      codec: framework.ZLinkStreamCodec.Json,
+      flags: framework.ZLinkStreamHeaderFlags.None,
+      name: 'ActorReply',
+      metadata: new Map()
+    }, Buffer.from(JSON.stringify(value)))))
+  ];
+}
+
 function createFailingResolver() {
   return {
     resolveActorRow() {
@@ -75,6 +87,25 @@ test('actor client request decodes the handler reply and never auto-creates a mi
     .submit();
 
   assert.deepEqual(reply, { value: 'pong' });
+});
+
+test('actor client request decodes a single framed handler reply through stream protocol', async () => {
+  const node = {
+    requestToActor(_actor, _parts, callback) {
+      callback(RequestResult.Ok, createReplyFrame({ value: 'framed-pong' }));
+      return true;
+    }
+  };
+  const client = new framework.DefaultZLinkActorClient({
+    nodeProvider: () => node,
+    locationResolver: () => createFailingResolver()
+  });
+
+  const reply = await client.requestToActor(actorRef(), { value: 'ping' })
+    .packetName('ActorAsk')
+    .submit();
+
+  assert.deepEqual(reply, { value: 'framed-pong' });
 });
 
 test('actor client maps stale ActorRef sends without resolving a replacement', async () => {

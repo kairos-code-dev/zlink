@@ -44,7 +44,9 @@ export class ResponseBodyReader {
     bytes: Buffer,
     headers: Record<string, string>,
   ): { body: Buffer; headers: Record<string, string> } {
-    const encoding = ResponseBodyReader.findHeader(headers, 'content-encoding');
+    const encoding = Object.prototype.hasOwnProperty.call(headers, 'content-encoding')
+      ? headers['content-encoding']
+      : undefined;
     // An empty body (HEAD / 204 / 304) carries no payload to decode even with Content-Encoding.
     if (encoding === undefined || bytes.length === 0) {
       return { body: bytes, headers };
@@ -69,14 +71,6 @@ export class ResponseBodyReader {
     return result;
   }
 
-  static findHeader(headers: Record<string, string>, name: string): string | undefined {
-    for (const [key, value] of Object.entries(headers)) {
-      if (key.toLowerCase() === name) {
-        return value;
-      }
-    }
-    return undefined;
-  }
 }
 
 // After decoding, drop Content-Encoding and the now-stale Content-Length (it described the

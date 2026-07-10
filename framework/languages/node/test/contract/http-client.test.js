@@ -101,6 +101,23 @@ test('HEAD returns status with empty body', async () => {
   }
 });
 
+test('typed submit returns null for successful empty body responses', async () => {
+  const server = await startServer((req, res) => {
+    res.statusCode = 204;
+    res.end();
+  });
+  const client = ZLinkHttpClient.create(server.baseUrl).build();
+  try {
+    const r = await client.get('/empty').submit();
+    assert.equal(r.status, 204);
+    assert.equal(r.body, null);
+    assert.equal(r.rawBody, '');
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
 test('percent-encodes query parameters', async () => {
   let rawUrl;
   const server = await startServer((req, res) => {

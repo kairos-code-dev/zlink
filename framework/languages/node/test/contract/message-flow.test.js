@@ -212,6 +212,46 @@ test('MFLOW-010b correlation id survives alongside metadata (no offset overlap)'
   assert.equal(frameworkDecoded.metadata.get('tenant'), 'acme');
 });
 
+test('MFLOW-010c stream frame prefix and payload round-trip across framework and connector codecs', () => {
+  const header = {
+    kind: streamProtocol.ZLinkStreamMessageKind.Request,
+    codec: streamProtocol.ZLinkStreamCodec.Json,
+    flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+    requestSeq: 11n,
+    name: 'FullFrame',
+    metadata: new Map([['trace', 'frame-1']]),
+    correlationId: 'corr-frame'
+  };
+  const payload = Buffer.from(JSON.stringify({ ok: true }));
+
+  const frameworkFrame = streamProtocol.encodeStreamFrame(header, payload);
+  const connectorFrame = connector.ZlinkStreamFrameCodec.decode(frameworkFrame);
+  const connectorHeader = connector.ZlinkStreamHeaderCodec.decode(connectorFrame.header);
+
+  assert.equal(connectorHeader.name, 'FullFrame');
+  assert.equal(connectorHeader.requestSeq, 11n);
+  assert.equal(connectorHeader.metadata.get('trace'), 'frame-1');
+  assert.equal(connectorHeader.correlationId, 'corr-frame');
+  assert.deepEqual(Buffer.from(connectorFrame.payload), payload);
+  assert.deepEqual(
+    Buffer.from(connector.ZlinkStreamFrameCodec.encode(connectorFrame.header, connectorFrame.payload)),
+    Buffer.from(frameworkFrame)
+  );
+});
+
+test('MFLOW-010d framework and connector reject duplicate stream metadata keys', () => {
+  const duplicateHeader = duplicateMetadataHeaderBytes();
+
+  assert.throws(
+    () => streamProtocol.decodeStreamHeader(duplicateHeader),
+    /metadata key is duplicated/i
+  );
+  assert.throws(
+    () => connector.ZlinkStreamHeaderCodec.decode(duplicateHeader),
+    /Duplicate metadata key/i
+  );
+});
+
 test('MFLOW-011 control packets reject a correlation id', () => {
   assert.throws(() => connector.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Control,
@@ -223,3 +263,40 @@ test('MFLOW-011 control packets reject a correlation id', () => {
     correlationId: 'nope'
   }));
 });
+
+function duplicateMetadataHeaderBytes() {
+  const name = Buffer.from('DupMeta');
+  const key = Buffer.from('trace');
+  const first = Buffer.from('one');
+  const second = Buffer.from('two');
+  const metadataLength = 1
+    + 1 + key.length + 2 + first.length
+    + 1 + key.length + 2 + second.length;
+  const header = Buffer.alloc(3 + 8 + 1 + name.length + 2 + metadataLength);
+  let offset = 0;
+  header[offset++] = connector.ZlinkStreamMessageKind.Request;
+  header[offset++] = connector.ZlinkStreamCodec.Json;
+  header[offset++] = connector.ZlinkStreamHeaderFlags.HasRequestSeq
+    | connector.ZlinkStreamHeaderFlags.HasMetadata;
+  header.writeBigUInt64BE(12n, offset);
+  offset += 8;
+  header[offset++] = name.length;
+  name.copy(header, offset);
+  offset += name.length;
+  header.writeUInt16BE(metadataLength, offset);
+  offset += 2;
+  header[offset++] = 2;
+  offset = writeMetadataEntry(header, offset, key, first);
+  writeMetadataEntry(header, offset, key, second);
+  return header;
+}
+
+function writeMetadataEntry(header, offset, key, value) {
+  header[offset++] = key.length;
+  key.copy(header, offset);
+  offset += key.length;
+  header.writeUInt16BE(value.length, offset);
+  offset += 2;
+  value.copy(header, offset);
+  return offset + value.length;
+}

@@ -1,18 +1,21 @@
 import type { Type, ZLinkSpot } from '../../contracts';
+import { ZLinkConfigurationException } from './ConfigurationException';
+import { requirePositiveInteger } from './RegistrationNormalizers';
+import type {
+  ZLinkFrameworkRegistration,
+  ZLinkFrameworkRegistrationOptions,
+  ZLinkRouteChannelOptions,
+  ZLinkRouteMeshChannelOptions,
+  ZLinkSpotNodeOptions,
+  ZLinkSpotPubSubCapabilityOptions,
+  ZLinkSpotRouterCapabilityOptions,
+  ZLinkSpotRouterPeerConnectionOptions,
+  ZLinkWorkerOptions
+} from './RegistrationTypes';
 import {
-  ZLinkConfigurationException,
-  requirePositiveInteger,
-  type ZLinkChannelOptions,
-  type ZLinkFrameworkRegistration,
-  type ZLinkFrameworkRegistrationOptions,
-  type ZLinkRouteChannelOptions,
-  type ZLinkRouteMeshChannelOptions,
-  type ZLinkSpotNodeOptions,
-  type ZLinkSpotPubSubCapabilityOptions,
-  type ZLinkSpotRouterCapabilityOptions,
-  type ZLinkSpotRouterPeerConnectionOptions,
-  type ZLinkWorkerOptions
-} from './Registration';
+  isRouteClientEnabled,
+  isRouteTransportDeclared
+} from './RouteChannelInternalState';
 
 export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
@@ -297,10 +300,16 @@ function validateRouterPeerConnections(
   capabilityName: string,
   manualPeerConnections: readonly ZLinkSpotRouterPeerConnectionOptions[] | undefined
 ): void {
+  const seenPeerRids = new Set<string>();
   for (const connection of manualPeerConnections ?? []) {
-    if (String(connection.peerRid).trim().length === 0) {
+    const peerRid = String(connection.peerRid);
+    if (peerRid.trim().length === 0) {
       throw new ZLinkConfigurationException(`${capabilityName} manual peer routing id must not be empty.`);
     }
+    if (seenPeerRids.has(peerRid)) {
+      throw new ZLinkConfigurationException(`${capabilityName} manual peer routing id must be unique.`);
+    }
+    seenPeerRids.add(peerRid);
     if (connection.endpoint.trim().length === 0) {
       throw new ZLinkConfigurationException(`${capabilityName} manual peer connection endpoint must not be empty.`);
     }
@@ -460,25 +469,4 @@ function requireSocketOptions(
   if (options.sendTimeoutMs !== undefined && (!Number.isInteger(options.sendTimeoutMs) || options.sendTimeoutMs < -1)) {
     throw new ZLinkConfigurationException(`${label} sendTimeoutMs must be -1 or a non-negative integer.`);
   }
-}
-
-interface RouteMeshInternalState {
-  readonly transportDeclared?: boolean;
-  readonly clientEnabled?: boolean;
-}
-
-function routeMeshInternalState(
-  routeChannel: ZLinkRouteChannelOptions | ZLinkRouteMeshChannelOptions
-): RouteMeshInternalState {
-  return routeChannel as RouteMeshInternalState;
-}
-
-function isRouteTransportDeclared(routeChannel: ZLinkRouteChannelOptions): boolean {
-  return routeMeshInternalState(routeChannel).transportDeclared === true;
-}
-
-function isRouteClientEnabled(
-  routeChannel: ZLinkRouteChannelOptions | ZLinkRouteMeshChannelOptions
-): boolean {
-  return routeMeshInternalState(routeChannel).clientEnabled === true;
 }

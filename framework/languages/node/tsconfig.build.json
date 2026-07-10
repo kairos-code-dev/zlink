@@ -2,6 +2,9 @@
   "files": [],
   "references": [
     {
+      "path": "./packages/stream-wire"
+    },
+    {
       "path": "./packages/framework"
     },
     {

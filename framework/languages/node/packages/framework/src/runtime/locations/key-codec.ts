@@ -33,6 +33,7 @@ export const ZLinkLocationKeyCodec = Object.freeze({
     return encodeSegments(String(key.routeKind), key.routeKey);
   },
 
+  encodeRoutingIdHex,
   normalizeActorType
 });
 

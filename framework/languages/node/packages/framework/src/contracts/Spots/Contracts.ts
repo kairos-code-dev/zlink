@@ -1,5 +1,5 @@
 import type { ZLinkActor } from '../Actors';
-import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall, ZLinkYieldRequestCall } from '../Channels';
+import type { ZLinkPublishCall, ZLinkSendCall, ZLinkYieldRequestCall } from '../Channels';
 import type { RoutingId, SpotRef, Type, ZLinkMessage } from '../Common';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
@@ -7,6 +7,23 @@ import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
 
 export interface ZLinkActorHandlerRegistry {
   addHandler(handlerType: Type): this;
+}
+
+export interface ZLinkActorJoinAdmission {
+  readonly actorId: string;
+  readonly actorType: Type<ZLinkActor>;
+  readonly sourceSpotRid: RoutingId;
+  readonly targetSpotRid: RoutingId;
+  readonly sourceNodeRid: RoutingId;
+  readonly targetNodeRid: RoutingId;
+}
+
+export interface ZLinkActorTransfer<TActor extends ZLinkActor> {
+  transferOut(actor: TActor, signal?: AbortSignal): Promise<ZLinkMessage>;
+  transferIn(actorId: string, state: ZLinkMessage, signal?: AbortSignal): Promise<TActor>;
+}
+
+export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> extends ZLinkActorTransfer<TActor> {
 }
 
 export interface ZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkActor> extends ZLinkActorHandlerRegistry {

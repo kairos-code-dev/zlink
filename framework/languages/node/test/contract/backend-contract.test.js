@@ -200,6 +200,99 @@ test('backend adapter normalizes missing SpotNode actor lookup to undefined', as
   }
 });
 
+test('backend adapter submits actor destroy and closes actor bound sessions through public binding operations', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+  const calls = [];
+  let replyClosed = false;
+
+  try {
+    spotNode.nativeInstance.createActor = (actorId) => ({
+      actorRef: { nodeRid: zlink.RoutingId.from('backend-node'), actorId, generation: 1n },
+      closeBoundSession(timeoutMs) {
+        calls.push({ kind: 'closeBoundSession', timeoutMs });
+      }
+    });
+    spotNode.nativeInstance.destroyActor = (actorRef) => ({
+      timeout(timeoutMs) {
+        calls.push({ kind: 'destroyTimeout', actorRef, timeoutMs });
+        return this;
+      },
+      submit() {
+        calls.push({ kind: 'destroySubmit' });
+        return Promise.resolve([{ close() { replyClosed = true; } }]);
+      }
+    });
+
+    const actorRef = spotNode.createActor('backend-destroy');
+    await spotNode.closeActorBoundSession(actorRef, 17);
+    await spotNode.destroyActor(actorRef, 23);
+
+    assert.deepEqual(calls.map((call) => call.kind), [
+      'closeBoundSession',
+      'destroyTimeout',
+      'destroySubmit'
+    ]);
+    assert.equal(calls[0].timeoutMs, 17);
+    assert.equal(calls[1].timeoutMs, 23);
+    assert.equal(calls[1].actorRef.actorId, 'backend-destroy');
+    assert.equal(replyClosed, true);
+    await assert.rejects(
+      spotNode.closeActorBoundSession(actorRef, 0),
+      (error) => error instanceof zlink.ConfigError && error.result === zlink.ConfigResult.NotFound
+    );
+  } finally {
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});
+
+test('backend adapter aborts actor destroy waits and closes late reply messages', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+  const abort = new AbortController();
+  let completeDestroy;
+  let replyClosed = false;
+
+  try {
+    spotNode.nativeInstance.createActor = (actorId) => ({
+      actorRef: { nodeRid: zlink.RoutingId.from('backend-node'), actorId, generation: 1n },
+      closeBoundSession() {}
+    });
+    spotNode.nativeInstance.destroyActor = () => ({
+      timeout() { return this; },
+      submit() {
+        return new Promise((resolve) => {
+          completeDestroy = resolve;
+        });
+      }
+    });
+
+    const actorRef = spotNode.createActor('backend-abort-destroy');
+    const destroy = spotNode.destroyActor(actorRef, 1000, abort.signal);
+    const reason = new Error('cancel backend actor destroy');
+    abort.abort(reason);
+    await assert.rejects(destroy, reason);
+
+    completeDestroy([{ close() { replyClosed = true; } }]);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(replyClosed, true);
+    await assert.rejects(
+      spotNode.closeActorBoundSession(actorRef, 0),
+      (error) => error instanceof zlink.ConfigError && error.result === zlink.ConfigResult.NotFound
+    );
+  } finally {
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});
+
 test('backend adapter submits SpotNode actor bound-session send operation', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();

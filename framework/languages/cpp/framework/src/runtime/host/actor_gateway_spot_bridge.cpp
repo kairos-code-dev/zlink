@@ -784,9 +784,22 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         return send_remote (*route, route->spot_rid);
     }
 
-    auto local =
-      runtime.relay_actor_packet (actor_ref, actor_context, header.kind (), header.packet_name (),
-                                  payload, provider, serializers, metadata);
+    // A relay for an actor whose ref is homed on another node and that has no
+    // local placement here must forward to the home node, not materialize a
+    // local incarnation in this node's entry spot. Skipping the local relay
+    // falls through to the resolver / send_remote path below. This keeps a
+    // bound-session relay to a remote actor (spot-actor §9) running on the
+    // actor's node rather than the session's node.
+    const bool homed_elsewhere =
+      !actor_ref.node_rid ().empty ()
+      && actor_ref.node_rid ().value () != runtime.node_rid ().value ()
+      && !runtime.actor_spot (actor_ref);
+    auto local = homed_elsewhere
+                   ? result_t<std::optional<zlink::message_t>>::failure (
+                       framework_error_kind_t::spot_route_not_found, "actor is homed on another node")
+                   : runtime.relay_actor_packet (actor_ref, actor_context, header.kind (),
+                                                 header.packet_name (), payload, provider,
+                                                 serializers, metadata);
     if (local
         || (local.error_kind () != framework_error_kind_t::spot_route_not_found
             && local.error_kind () != framework_error_kind_t::actor_route_not_found)) {

@@ -6,7 +6,7 @@
 > (§9 bound session transfer, §10 in-flight handoff),
 > 공통 검증표: [common/e2e/config-10-spot-actor-transfer.ko.md](../../framework/common/e2e/config-10-spot-actor-transfer.ko.md).
 > 상세 작업기록: [cpp-worker.ko.md](cpp-worker.ko.md), [in-flight-handoff/README.ko.md](in-flight-handoff/README.ko.md).
-> 최종 갱신 2026-07-11. 현재 **16/19 실측 통과**.
+> 최종 갱신 2026-07-11. **config-10 19/19 전량 통과**.
 
 ## 1. 시나리오 진행표 (19개)
 
@@ -20,7 +20,7 @@
 | ST-B3 | remote missing adapter | ✅ | 실측 통과 (기본 빈 state transfer) |
 | ST-B4 | remote empty-state transfer | ✅ | 실측 통과 |
 | ST-C1 | source down before commit | ✅ | 단독 실측 통과 |
-| ST-C2 | source down after target commit | ❌ | **ST-F6** — bound session이 node-b bind인데 actor는 node-a → cross-node push `request_timeout` |
+| ST-C2 | source down after target commit | ✅ | 2026-07-11 근본해결 (bound-session cross-node relay, 아래 F6-d) |
 | ST-C3 | callback 실패 분류 (4종) | ✅ | 실측 통과 |
 | ST-D1 | location commit timing | ✅ | 실측 통과 |
 | ST-D2 | stale source release fencing | ✅ | 실측 통과 |
@@ -32,7 +32,17 @@
 | ST-F4 | straggler forward then fail-fast | ✅ | 2026-07-11 근본해결 (cross-node stale-ref fail-fast, 아래 F6-a) |
 | ST-F5 | forwarding mapping eviction | ✅ | 2026-07-11 근본해결 (동상, chained hop) |
 
-**요약: 18 ✅ / 1 ❌ (C2만 남음)**
+**요약: 19 ✅ / 0 ❌ — config-10 전량 통과 (2026-07-11)**
+
+> **2026-07-11 C2 근본해결 (bound session cross-node relay, §9)**: 두 부분.
+> ① 테스트: pre-transfer bound push를 HTTP(by-id `request_to_actor`)가 아니라 **bound session stream
+> request**(`bound.bound_push`, dotnet `bound.Request` 동형)로 보냄 — 세션 handler가 bound session
+> route를 실어 actor로 relay하므로 actor가 다른 노드에 있어도 push 경로를 학습.
+> ② 프레임워크: `actor_gateway_spot_bridge.cpp:relay_actor_packet_through_route`에서 ref가 다른 노드에
+> homed고 로컬 placement가 없으면 **로컬 entry-spot 자동 admit을 건너뛰고 home 노드로 forward**. 이전엔
+> node-b가 원격 actor(node-a)를 자기 entry spot에 materialize해 handler가 엉뚱한 노드에서 돌았음.
+> guard는 bridge 경로에만 둠(직접 relay_actor_packet=수신자/유닛테스트는 무영향, spot_runtime unit 회귀 0).
+> 검증: config-10 19/19 + 샘플 6종 100% + framework unit 38/38.
 
 > **2026-07-11 F4/F5 근본해결**: `actor_client.cpp:request_to_actor_erased`에서 caller ref의
 > `node_rid`가 해결된 위치의 node와 다르면(=cross-node straggler) fail-fast `ActorLocationStale`
@@ -45,9 +55,9 @@
 
 | # | 작업 | 계층 | 우선순위 | 상태 | 의존/비고 |
 |---|------|------|:--------:|:----:|-----------|
-| 1 | **ST-F6**: §10.5 request-reply forwarding + §9 bound session transfer | framework | **P0** | ⬜ | dotnet `ZLinkActorSessionForwarder` 이식. C2·F4·F5 해제 |
-| 2 | §11-12 계약: commit 전 성공 노출 없음 + 실패 시 route 비오염 evidence | framework | P0 | 🟡 | 1 완료 시 config-10 ST-C로 마감 |
-| 3 | config-10 3-pass 전체 runner 그린 | e2e | P0 | 🟡 | 1 완료 후 러너 최종 확인 |
+| 1 | **ST-F6**: config-10 커버분(F4/F5/C2) 완료. 잔여=§10.5 **window 내** request-reply forward 상관(F6-c) — config-10 미커버 | framework | P1 | 🟡 | config-10은 post-window만 검증. within-window request forward는 별도 |
+| 2 | §11-12 계약: commit 전 성공 노출 없음 + 실패 시 route 비오염 evidence | framework | P0 | ✅ | config-10 ST-C1/C2/C3로 마감 |
+| 3 | config-10 3-pass 전체 runner 그린 (19/19) | e2e | P0 | ✅ | `handoff_backlog` marker만 잔여(row 4) |
 | 4 | `backlog_enqueued` marker 타이밍 정합 | framework | P1 | ⬜ | 순서는 보존(F1/F2 통과), marker 발화 시점만 잔여 |
 | 5 | H6: in-flight handoff POSD/DDD 루프 | doc/refactor | P1 | ⬜ | 전 언어 transverse |
 | 6 | P5: codex POSD/DDD 리팩토링 루프 CONVERGED | refactor | P1 | 🟡 | 회귀 그린 유지 |
@@ -60,11 +70,11 @@
 
 | 하위 | 내용 | 스펙 | 해제 시나리오 |
 |------|------|------|---------------|
-| F6-a | 요청을 ref 노드로 제출(actor_id 재해결 대신), source 노드가 window 내 forward | §10.2-6, §10.5 | F4 |
-| F6-b | chained hop forwarding mapping + eviction 후 fail-fast stale | §10.4-3 | F5 |
-| F6-c | request-reply 상관관계를 forward 경로에서 유지 (reply 채널 복귀) | §10.5 | F4/F5 |
-| F6-d | bound session route를 commit 시 target으로 rebind + source 전달 | §9 | C2 |
-| F6-e | source node 사망 시 bound session 정리/재바인드 | §9 | C2 |
+| F6-a | ✅ cross-node stale ref request fail-fast (node 비교, `actor_client.cpp`) | §10.2-6 | F4 |
+| F6-b | ✅ chained hop도 fail-fast stale (동일 fix) | §10.4-3 | F5 |
+| F6-c | ⬜ window **내** request forward + reply 상관 (config-10 미커버) | §10.5 | — |
+| F6-d | ✅ bound session cross-node relay (bridge homed-elsewhere guard + stream bound.request) | §9 | C2 |
+| F6-e | ✅ source 사망 후 target-local push (C2 after-source-down 통과) | §9 | C2 |
 
 **계층 확인**: core 전송 primitive(`request_to_spot`, mesh, STREAM)는 이미 존재.
 ST-F6는 그 위에서 actor-level 오케스트레이션을 하는 **framework 작업** (core 변경 아님).

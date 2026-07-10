@@ -289,6 +289,21 @@ class bound_session_t
           .submit ();
     }
 
+    // Issues a request over the bound session stream (mirrors dotnet
+    // bound.Request). The server relays it to the actor through the bound
+    // session route, so the actor learns where to push replies/notifies even
+    // when it lives on a different node than the session (spot-actor §9).
+    e2e::bound_push_res_t bound_push (const e2e::bound_push_req_t &request)
+    {
+        auto reply = _connector->request (request)
+                       .packet_name (e2e::bound_push_req_t::packet_name)
+                       .template submit<e2e::bound_push_res_t> ();
+        require (static_cast<bool> (reply),
+                 "bound session push request failed: code="
+                   + std::to_string (static_cast<int> (reply.error_code ())));
+        return reply.value ();
+    }
+
   private:
     std::optional<sc::connector_t> _connector;
 };
@@ -578,8 +593,7 @@ class scenario_runner_t
         const auto source_ref = get_actor_ref (_nodes.a, actor_id);
         bound_session_t bound (_nodes.b_stream_endpoint, "ST-C2", source_ref);
         auto before_push = bound.expect_push ("bound-before-transfer");
-        const auto before_reply =
-          bound_push (_nodes.b, actor_id, {"ST-C2", "bound-before-transfer"});
+        const auto before_reply = bound.bound_push ({"ST-C2", "bound-before-transfer"});
         require (before_reply.node_rid == "actor-a",
                  "ST-C2 pre-transfer bound push expected actor-a, got " + before_reply.node_rid);
         before_push.get ();

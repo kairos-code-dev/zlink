@@ -252,9 +252,13 @@ Server/ActorNode/{Program 669, Support 136}줄 — actor 노드 2개 + HTTP 컨�
 Shared/messages.hpp + Server/ActorNode/main.cpp(3 spot node actor-a/b/c, HTTP 컨트롤 엔드포인트
 + stream 세션 bind) + Client/main.cpp(19 시나리오) + run_e2e.sh 작성, 빌드 그린.
 - [x] ST-A1 · [x] ST-A2 · [x] ST-A3 (로컬 join/reject/moving-dispatch 차단 — 실측 통과)
-- [ ] ST-B1 [x] · ST-B2 · [x] ST-B3 · [x] ST-B4
-      (ST-B1/B3/B4 실측 통과. B2는 소스 shutdown 후 재기동 시나리오 — 배치 러너 대기)
-- [ ] ST-C1 · [ ] ST-C2 · [x] ST-C3(P1) (C3 콜백 실패 4종 실측 통과. C1/C2 shutdown 시퀀스 대기)
+- [x] ST-B1 · [x] ST-B2 · [x] ST-B3 · [x] ST-B4
+      (B1/B3/B4 + B2 source cleanup 실패 후 성공 — 단독 실측 통과)
+- [x] ST-C1 · [ ] ST-C2 · [x] ST-C3(P1)
+      (C1 source down before commit, C3 콜백 실패 4종 — 단독 실측 통과.
+      **C2는 cross-node bound-session push 의존**: 세션을 node-b에 bind했는데 actor는 아직 node-a라
+      push가 노드를 건너야 함(`request_timeout` code=3). cpp는 "reply/push 채널이 이동 못 함" 설계라
+      세션이 actor를 따라가는 forward가 없음 — F4/F5와 동일한 cross-node 채널 forward(ST-F6) 클래스)
 - [x] ST-D1 · [x] ST-D2(P1) (로컬/원격 커밋 타이밍·stale release fencing 실측 통과)
 - [x] ST-E1 · [x] ST-E2 (bound-session push after remote transfer / rebind isolation — 실측 통과.
       2026-07-11 근본해결: 블로커는 stream 왕복이 아니라 e2e messages.hpp DTO 직렬화 비대칭이었음 —
@@ -268,7 +272,9 @@ Shared/messages.hpp + Server/ActorNode/main.cpp(3 spot node actor-a/b/c, HTTP �
       `request_to_actor_erased`는 ref를 무시하고 actor_id로 재해결(라이브 위치)→성공. dotnet은 ref를
       native에 제출→노드가 window 내 forward/window 후 stale. cpp 요청은 forward 대신 fail-stale+재해결
       설계라 forward 상관(§10.5)이 없음 → ST-F6 구현 선행 필요. gen 비교 휴리스틱은 F6 케이스서 갈려 미채택)
-- [ ] e2e 전체 runner 통과 (첫 배치 14/16 실측 통과, 잔여=shutdown 3(B2/C1/C2) + straggler 2(F4/F5→ST-F6))
+- [ ] e2e 전체 runner 통과 (**16/19 실측 통과**: 첫배치 14 + B2 + C1. 잔여 3 = C2/F4/F5 —
+      전부 cross-node 채널 forward(ST-F6: request reply correlation + bound-session 이동) 클래스에
+      막힘. cpp는 reply/push 채널이 노드를 못 넘는 설계라 이 feature가 선행조건. 전 언어 공통 transverse 잔여)
 
 **config-10 포팅 중 발굴·수정한 프레임워크 결함**:
 1. 원격 transfer 요청 재시도: `actor_client_impl_t::request_to_actor_erased`가 moving 중

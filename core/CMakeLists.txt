@@ -8,7 +8,7 @@ if(POLICY CMP0048)
   cmake_policy(SET CMP0048 NEW)
 endif()
 
-project(zlink VERSION 8.6.3 LANGUAGES C CXX)
+project(zlink VERSION 9.0.0 LANGUAGES C CXX)
 
 # Internal repo targets still include the public header from core/include.
 # Define a build-only macro so in-tree code can access private build-only
@@ -1458,7 +1458,7 @@ else()
     # version of the package.
     set_target_properties(
       libzlink PROPERTIES COMPILE_DEFINITIONS "DLL_EXPORT" PUBLIC_HEADER "${public_headers}" VERSION "${ZLINK_VERSION}"
-                        SOVERSION "8" OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}" PREFIX "lib")
+                        SOVERSION "9" OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}" PREFIX "lib")
     if(ZLINK_BUILD_FRAMEWORK)
       set_target_properties(
         libzlink

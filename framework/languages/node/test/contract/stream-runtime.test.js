@@ -785,6 +785,64 @@ test('runtime host remote bound session receiver delivers to local stream before
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { hello: 'local' });
 });
 
+test('routed target push refreshes a bound session to the transferred actor ref before delivery', async () => {
+  const sourceRef = { nodeRid: 'actor-a', actorId: 'actor-transfer', generation: 1n };
+  const targetRef = {
+    nodeRid: 'actor-b',
+    actorId: 'actor-transfer',
+    generation: 2n,
+    ownershipGeneration: 2n
+  };
+  const staleSourceRef = { ...sourceRef, ownershipGeneration: 1n };
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const stream = recordingStream('session-transfer', 'session-a');
+  const context = host.streamBindingRuntime.createSessionContext(stream);
+  await context.actors.bind(sourceRef);
+  const refreshed = [];
+  host.streamBindingRuntime.refreshActor = async (actorRef) => {
+    refreshed.push(actorRef);
+  };
+
+  await host.receiveRemoteBoundSessionOwnership({
+    actorId: 'actor-transfer',
+    actorNodeRid: 'actor-b',
+    actorGeneration: '2',
+    actorOwnershipGeneration: '2'
+  });
+  await host.receiveRoutedBoundSession(
+    'actor-transfer',
+    { marker: 'stale-source-before-target-push' },
+    'Notify',
+    new Map(),
+    staleSourceRef
+  );
+  await host.receiveRoutedBoundSession(
+    'actor-transfer',
+    { marker: 'after-transfer' },
+    'Notify',
+    new Map(),
+    targetRef
+  );
+  await host.receiveRoutedBoundSession(
+    'actor-transfer',
+    { marker: 'stale-source' },
+    'Notify',
+    new Map(),
+    staleSourceRef
+  );
+
+  assert.equal(refreshed.length, 2);
+  assert.equal(refreshed[0].actorId, 'actor-transfer');
+  assert.equal(String(refreshed[0].nodeRid), 'actor-b');
+  assert.equal(refreshed[0].generation, 2n);
+  assert.deepEqual(refreshed[1], targetRef);
+  assert.equal(stream.writes.length, 1);
+  const frame = decodeFrame(bytesOf(stream.writes[0]));
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { marker: 'after-transfer' });
+});
+
 test('runtime host routed bound session receiver forwards through actor remote target when local stream is absent', async () => {
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()

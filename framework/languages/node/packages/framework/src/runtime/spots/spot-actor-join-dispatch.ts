@@ -30,7 +30,7 @@ import {
 } from './spot-actor-packet-drain';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
 import { ZLinkSpotNativeActorJoinAdmission } from './spot-native-actor-join-admission';
-import type { ZLinkRemoteActorJoinActor } from './spot-remote-codec';
+import type { ZLinkRemoteActorJoinActor, ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import { ZLinkSpotRoutedFrameDispatch } from './spot-routed-frame-dispatch';
 import {
   ZLinkSpotSubscriptionDispatch
@@ -47,7 +47,7 @@ const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
  * drains only need the callbacks declared here.
  */
 interface ZLinkActorJoinAdmissionTarget {
-  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onDisconnectActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
@@ -67,9 +67,10 @@ interface ZLinkSpotActorJoinDispatchOptions {
     actorCreateRequest?: Message,
     signal?: AbortSignal
   ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly nativeJoinBoundSessionTargetResolver?: (
-    info: ZLinkBackendActorJoinInfo
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
+  readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
+  readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
+  readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
+  readonly rollbackNativeActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
   readonly actorPacketHandler?: (
     actorId: string,
@@ -83,6 +84,7 @@ interface ZLinkSpotActorJoinDispatchOptions {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -103,6 +105,7 @@ interface ZLinkSpotActorJoinDispatchOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
   readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
   readonly bindRemoteActorSession?: (
     actor: ZLinkBackendActorRef,
@@ -153,8 +156,8 @@ export class ZLinkSpotActorJoinDispatch {
       resolveActor: options.resolveActor,
       getTarget: options.getTarget,
       defaultAccept: options.defaultAccept,
-      routedActorProvider: options.routedActorProvider,
-      nativeJoinBoundSessionTargetResolver: options.nativeJoinBoundSessionTargetResolver,
+      finalizeRoutedActor: options.finalizeRoutedActor,
+      rollbackCommittedActor: options.rollbackNativeActor,
       commitRoutedActor: options.commitRoutedActor,
       messageSerializers: options.messageSerializers,
       dispatchErrors: options.dispatchErrors
@@ -166,12 +169,15 @@ export class ZLinkSpotActorJoinDispatch {
       resolveActor: options.resolveActor,
       getTarget: () => options.getTarget() as ZLinkActorJoinAdmissionTarget & ZLinkSpot,
       defaultAccept: options.defaultAccept,
-      routedActorProvider: options.routedActorProvider,
+      routedActorTransferProvider: options.routedActorTransferProvider,
+      finalizeRoutedActor: options.finalizeRoutedActor,
+      rollbackRoutedActor: options.rollbackRoutedActor,
       commitRoutedActor: options.commitRoutedActor,
       actorPacketHandler: options.actorPacketHandler,
       routedBoundSessionReceiver: options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver,
+      routedBoundSessionOwnershipReceiver: options.routedBoundSessionOwnershipReceiver,
       actorPacketTargetProvider: options.actorPacketTargetProvider,
       messageSerializers: options.messageSerializers,
       providerResolver: options.providerResolver,

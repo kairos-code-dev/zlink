@@ -7,14 +7,7 @@ import type {
   ZLinkSpot,
   ZLinkSpotActorJoinResponse
 } from '../../contracts';
-import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
-  ZLinkDispatchErrorSurface,
-  ZLinkDispatchMessageKind,
-  ZLinkEncodedPayload,
-  ZLinkMessage
-} from '../../contracts';
+import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
   Message as BindingMessage
@@ -44,6 +37,8 @@ export interface ZLinkSpotActorMembershipOptions {
   readonly routedActorLeaveCommitter?: (actor: ZLinkActor) => void;
 }
 
+export type ZLinkActorJoinRollback = () => Promise<void> | void;
+
 export class ZLinkSpotActorMembership {
   constructor(private readonly options: ZLinkSpotActorMembershipOptions) {}
 
@@ -51,30 +46,29 @@ export class ZLinkSpotActorMembership {
     spotRid: RoutingId,
     actor: ZLinkActor,
     request: Message,
-    commit: (spot: ZLinkSpot) => Promise<void> | void,
+    commit: (spot: ZLinkSpot) => Promise<ZLinkActorJoinRollback | void> | ZLinkActorJoinRollback | void,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActorJoinResponse> {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
     const dispatcher = this.createActorDispatcher(activation);
-    const response = await dispatcher.admitActorJoin(actor, request, async () => {
-      await commit(activation.spot);
-      activation.actors.set(actor.actorId, actor);
-      const entryLeave = this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
-      if (entryLeave !== undefined) {
-        void entryLeave.catch((error) => {
-          this.options.dispatchErrors?.report({
-            surface: ZLinkDispatchErrorSurface.SpotActor,
-            messageKind: ZLinkDispatchMessageKind.ActorSend,
-            reason: ZLinkDispatchErrorReason.HandlerException,
-            action: ZLinkDispatchErrorAction.Drop,
-            spotRid: String(spotRid),
-            actorId: actor.actorId,
-            error
-          });
-        });
+    const transaction: { rollback?: ZLinkActorJoinRollback; committed: boolean } = { committed: false };
+    let response: ZLinkSpotActorJoinResponse;
+    try {
+      response = await dispatcher.admitActorJoin(actor, request, async () => {
+        await this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
+        const rollback = await commit(activation.spot);
+        if (rollback !== undefined) transaction.rollback = rollback;
+        activation.actors.set(actor.actorId, actor);
+        transaction.committed = true;
+      });
+    } catch (error) {
+      if (transaction.committed) {
+        activation.actors.delete(actor.actorId);
+        await transaction.rollback?.();
       }
-    });
+      throw error;
+    }
     return {
       accepted: response.accepted,
       reply: response.reply === undefined
@@ -123,6 +117,36 @@ export class ZLinkSpotActorMembership {
     } finally {
       request.close();
     }
+  }
+
+  async notifyActorLeftAfterTransfer(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const activation = this.requireActivation(spotRid);
+    await activation.serial.execute(async () => {
+      activation.leftActors.add(actor.actorId);
+      await activation.spot.onLeaveActor?.(actor, signal);
+      activation.actors.delete(actor.actorId);
+    });
+  }
+
+  async beginActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
+    const activation = this.requireActivation(spotRid);
+    await activation.serial.execute(() => {
+      activation.leftActors.add(actorId);
+    });
+  }
+
+  async cancelActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
+    const activation = this.requireActivation(spotRid);
+    await activation.serial.execute(() => {
+      if (activation.actors.has(actorId)) {
+        activation.leftActors.delete(actorId);
+      }
+    });
   }
 
   async notifyJoinedActorDisconnected(

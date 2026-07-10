@@ -2,6 +2,8 @@ import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs'
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
+import { PlayerActor } from './Infrastructure/ZLink/Actors/player-actor';
+import { PlayerActorTransferAdapter } from './Infrastructure/ZLink/Actors/player-actor-transfer-adapter';
 import { BingoEntrySpot } from './Infrastructure/ZLink/Spots/EntrySpot/bingo-entry-spot';
 import { BingoRoomSpot } from './Infrastructure/ZLink/Spots/BingoRoomSpot/bingo-room-spot';
 import { AllocateBingoRoomHandler } from './Infrastructure/ZLink/Handlers/allocate-bingo-room-handler';
@@ -53,6 +55,7 @@ function createBingoPlayModule(config: {
             .addHandlerGroup('play')
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
+          .addActorTransferAdapter(PlayerActor, PlayerActorTransferAdapter)
           .addSpotMesh(SampleNames.roomSpotNode)
             .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
             .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid, config.playSpotPubSubPeerEndpoints)
@@ -72,6 +75,7 @@ function createBingoPlayModule(config: {
       AllocateBingoRoomHandler,
       EnsurePlayerActorHandler,
       PlayerActorFactory,
+      PlayerActorTransferAdapter,
       BingoRoomAllocator,
       BingoEntrySpot,
       MatchBingoActorHandler,

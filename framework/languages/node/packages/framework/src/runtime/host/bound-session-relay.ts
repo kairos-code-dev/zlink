@@ -33,6 +33,7 @@ import {
 import {
   decodeRemoteActorJoinPayload,
   decodeRemoteActorPacketRelayPayload,
+  decodeWireRoutingId,
   encodeRemoteActorPacketTarget,
   normalizeRuntimeRoutingId,
   streamMetadataMap
@@ -64,6 +65,7 @@ export interface ZLinkBoundSessionRelayOptions {
 export class ZLinkBoundSessionRelay {
   private readonly actorPacketTargets: ZLinkRemoteActorPacketTargetStore;
   private readonly boundSessions: ZLinkRemoteBoundSessionRelay;
+  private readonly actorOwnershipGenerations = new Map<string, bigint>();
 
   constructor(private readonly options: ZLinkBoundSessionRelayOptions) {
     this.actorPacketTargets = new ZLinkRemoteActorPacketTargetStore({
@@ -90,8 +92,24 @@ export class ZLinkBoundSessionRelay {
     actorId: string,
     message: unknown,
     packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>
+    metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef
   ): Promise<void> {
+    const ownershipGeneration = (actorRef as (ActorRef & { ownershipGeneration?: bigint }) | undefined)
+      ?.ownershipGeneration;
+    const currentGeneration = this.actorOwnershipGenerations.get(actorId);
+    if (
+      currentGeneration !== undefined
+      && (ownershipGeneration === undefined || ownershipGeneration < currentGeneration)
+    ) {
+      return;
+    }
+    if (actorRef !== undefined) {
+      await this.options.streamBindingRuntime().refreshActor(actorRef);
+    }
+    if (ownershipGeneration !== undefined) {
+      this.actorOwnershipGenerations.set(actorId, ownershipGeneration);
+    }
     await this.boundSessions.receiveRoutedBoundSession(actorId, message, packetName, metadata);
   }
 
@@ -143,6 +161,28 @@ export class ZLinkBoundSessionRelay {
     return await this.boundSessions.receiveRemoteBoundSessionError(payload);
   }
 
+  async receiveRemoteBoundSessionOwnership(payload: unknown): Promise<void> {
+    if (typeof payload !== 'object' || payload === null) {
+      throw new Error('Bound session ownership update payload must be an object.');
+    }
+    const value = payload as Record<string, unknown>;
+    if (
+      typeof value.actorId !== 'string' ||
+      typeof value.actorNodeRid !== 'string' ||
+      typeof value.actorGeneration !== 'string' ||
+      typeof value.actorOwnershipGeneration !== 'string'
+    ) {
+      throw new Error('Bound session ownership update is missing actor identity or generation.');
+    }
+    const actorRef = {
+      nodeRid: decodeWireRoutingId(value.actorNodeRid, value.actorNodeRidHex),
+      actorId: value.actorId,
+      generation: BigInt(value.actorGeneration)
+    } as ActorRef;
+    await this.options.streamBindingRuntime().refreshActor(actorRef);
+    this.actorOwnershipGenerations.set(value.actorId, BigInt(value.actorOwnershipGeneration));
+  }
+
   async receiveRemoteActorJoin(
     payload: unknown,
     routeContext: ZLinkRouteRequestContext
@@ -178,7 +218,10 @@ export class ZLinkBoundSessionRelay {
         join.spotRid as RoutingId,
         actor,
         request,
-        (spot) => state.setJoinedSpot(join.spotRid as RoutingId, spot)
+        (spot) => {
+          state.setJoinedSpot(join.spotRid as RoutingId, spot);
+          return () => state.clearJoinedSpot();
+        }
       );
       const reply = response.reply as Message | undefined;
       return {
@@ -253,6 +296,7 @@ export class ZLinkBoundSessionRelay {
 
   clearRemoteActorPacketTarget(actorId: string): void {
     this.actorPacketTargets.clear(actorId);
+    this.actorOwnershipGenerations.delete(actorId);
   }
 
   async notifyActorDisconnectedById(actorId: string, signal?: AbortSignal): Promise<void> {

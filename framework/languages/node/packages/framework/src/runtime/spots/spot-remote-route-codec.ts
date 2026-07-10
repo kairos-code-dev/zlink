@@ -1,4 +1,5 @@
 import { Message as BindingMessage } from '@zlink-systems/zlink';
+import type { ActorRef } from '../../contracts';
 import {
   decodeChannelEnvelope,
   decodeChannelPayload,
@@ -7,15 +8,18 @@ import {
 import {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
 } from '../actors';
+import { decodeWireRoutingId } from '../actors/actor-remote-wire';
 
 export interface ZLinkRemoteBoundSessionSend {
   readonly actorId: string;
   readonly message: unknown;
   readonly packetName?: string;
   readonly metadata: ReadonlyMap<string, string>;
+  readonly actorRef?: ActorRef;
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
 }
 
@@ -38,6 +42,42 @@ export interface ZLinkRemoteBoundSessionError {
   readonly actorPacketTarget?: unknown;
 }
 
+export interface ZLinkRemoteBoundSessionOwnership {
+  readonly actorId: string;
+  readonly actorNodeRid: string;
+  readonly actorNodeRidHex?: string;
+  readonly actorGeneration: string;
+  readonly actorOwnershipGeneration: string;
+}
+
+export function decodeRemoteBoundSessionOwnership(
+  parts: readonly BindingMessage[],
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): ZLinkRemoteBoundSessionOwnership | undefined {
+  try {
+    const envelope = decodeChannelEnvelope(parts);
+    if (envelope.packetName !== ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET) return undefined;
+    const payload = decodeChannelPayload(envelope, codecs) as Record<string, unknown>;
+    if (
+      typeof payload.actorId !== 'string' ||
+      typeof payload.actorNodeRid !== 'string' ||
+      typeof payload.actorGeneration !== 'string' ||
+      typeof payload.actorOwnershipGeneration !== 'string'
+    ) {
+      return undefined;
+    }
+    return {
+      actorId: payload.actorId,
+      actorNodeRid: payload.actorNodeRid,
+      actorNodeRidHex: typeof payload.actorNodeRidHex === 'string' ? payload.actorNodeRidHex : undefined,
+      actorGeneration: payload.actorGeneration,
+      actorOwnershipGeneration: payload.actorOwnershipGeneration
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ZLinkRemoteActorPacketRelay {
   readonly actorId: string;
   readonly routerChannelId?: string;
@@ -58,6 +98,10 @@ export function decodeRemoteBoundSessionSend(
         readonly packetName?: unknown;
         readonly boundPacketName?: unknown;
         readonly actorId?: unknown;
+        readonly actorNodeRid?: unknown;
+        readonly actorNodeRidHex?: unknown;
+        readonly actorGeneration?: unknown;
+        readonly actorOwnershipGeneration?: unknown;
         readonly message?: unknown;
         readonly metadata?: unknown;
       };
@@ -71,7 +115,8 @@ export function decodeRemoteBoundSessionSend(
         actorId: payload.actorId,
         message: payload.message,
         packetName: typeof payload.boundPacketName === 'string' ? payload.boundPacketName : undefined,
-        metadata: metadataOf(payload.metadata)
+        metadata: metadataOf(payload.metadata),
+        actorRef: decodeActorRef(payload)
       };
     }
     const envelope = decodeChannelEnvelope(parts);
@@ -80,6 +125,10 @@ export function decodeRemoteBoundSessionSend(
     }
     const payload = decodeChannelPayload(envelope, codecs) as {
       readonly actorId?: unknown;
+      readonly actorNodeRid?: unknown;
+      readonly actorNodeRidHex?: unknown;
+      readonly actorGeneration?: unknown;
+      readonly actorOwnershipGeneration?: unknown;
       readonly message?: unknown;
       readonly packetName?: unknown;
       readonly boundPacketName?: unknown;
@@ -93,11 +142,40 @@ export function decodeRemoteBoundSessionSend(
       message: payload.message,
       packetName: typeof payload.boundPacketName === 'string' ? payload.boundPacketName : undefined,
       metadata: metadataOf(payload.metadata),
+      actorRef: decodeActorRef(payload),
       envelope
     };
   } catch {
     return undefined;
   }
+}
+
+function decodeActorRef(payload: {
+  readonly actorId?: unknown;
+  readonly actorNodeRid?: unknown;
+  readonly actorNodeRidHex?: unknown;
+  readonly actorGeneration?: unknown;
+  readonly actorOwnershipGeneration?: unknown;
+}): ActorRef | undefined {
+  if (
+    typeof payload.actorId !== 'string'
+    || typeof payload.actorNodeRid !== 'string'
+    || typeof payload.actorGeneration !== 'string'
+  ) {
+    return undefined;
+  }
+  const actorRef = {
+    actorId: payload.actorId,
+    nodeRid: decodeWireRoutingId(
+      payload.actorNodeRid,
+      typeof payload.actorNodeRidHex === 'string' ? payload.actorNodeRidHex : undefined
+    ),
+    generation: BigInt(payload.actorGeneration)
+  } as ActorRef & { ownershipGeneration?: bigint };
+  if (typeof payload.actorOwnershipGeneration === 'string') {
+    actorRef.ownershipGeneration = BigInt(payload.actorOwnershipGeneration);
+  }
+  return actorRef;
 }
 
 export function decodeRemoteBoundSessionResponse(

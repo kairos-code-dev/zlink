@@ -84,6 +84,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -104,6 +105,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
   readonly remoteActorPacketTargetReceiver?: (
     actorId: string,
     target: ZLinkRemoteBoundSessionTarget
@@ -332,6 +334,7 @@ export class ZLinkSpotNodeRuntimeManager {
       routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
+      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
       remoteActorPacketTargetReceiver: this.options.remoteActorPacketTargetReceiver,
       actorPacketTargetProvider: this.options.actorPacketTargetProvider,
       localActorPacketRouter: this.options.localActorPacketRouter,
@@ -370,6 +373,7 @@ export class ZLinkSpotNodeRuntimeManager {
       routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
+      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
       actorPacketTargetProvider: this.options.actorPacketTargetProvider,
       messageSerializers: this.options.messageSerializers,
       providerResolver: this.options.providerResolver,

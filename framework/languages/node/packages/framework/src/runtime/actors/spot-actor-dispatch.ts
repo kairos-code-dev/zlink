@@ -172,7 +172,7 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<ZLinkSpotActorJoinResponse> {
     return this.execute(async () => {
       const payload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
-      const result = await this.options.spot.onActorJoin?.(actor, payload) ?? { accepted: false };
+      const result = await this.options.spot.onActorJoin?.(actor.actorId, payload) ?? { accepted: false };
       if (!result.accepted) {
         return result;
       }

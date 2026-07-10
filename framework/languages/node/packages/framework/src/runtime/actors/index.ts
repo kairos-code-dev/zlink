@@ -34,6 +34,7 @@ import {
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
 import type { ZLinkLocationLifecycle } from '../locations';
+import type { ZLinkActorTransferRegistry } from './actor-transfer-registry';
 export { DefaultZLinkActorContext } from './actor-context';
 import {
   ZLinkActorCreationCoordinator,
@@ -71,10 +72,15 @@ export {
   type ZLinkActorRoutedJoinTransport
 } from './actor-remote-joiner';
 export {
+  ZLinkActorTransferRegistry,
+  type ZLinkActorTransferState
+} from './actor-transfer-registry';
+export {
   ZLINK_REMOTE_ACTOR_JOIN_PACKET,
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
   ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
 } from './actor-remote-wire';
@@ -96,6 +102,7 @@ export interface ZLinkActorManagerOptions {
   readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly actorTransferRegistry?: ZLinkActorTransferRegistry;
 }
 
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
@@ -121,6 +128,7 @@ export interface ZLinkActorJoinCoordinator {
 
 export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDirectory {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
+  private readonly transferredActorRollbackTasks = new Map<string, Promise<void>>();
   private readonly creation: ZLinkActorCreationCoordinator;
 
   constructor(private readonly options: ZLinkActorManagerOptions) {
@@ -146,6 +154,109 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     const args = normalizeCreateRequestArgs(signalOrRequest, signal);
     const result = await this.createOrGet(actorId, actorType, false, args.request, args.signal);
     return result.actorRef;
+  }
+
+  async materializeTransferredActor(
+    actorId: string,
+    actorType: string,
+    adapterKey: string | undefined,
+    transferState: ZLinkMessage,
+    signal?: AbortSignal
+  ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ActorRef }> {
+    throwIfAborted(signal);
+    const state = this.getOrCreateState(actorId);
+    const operation = state.getOrStartCreation(
+      actorType,
+      false,
+      () => this.creation.materializeTransferredActor(
+        actorId,
+        actorType,
+        state,
+        adapterKey === undefined
+          ? undefined
+          : () => {
+              const registry = this.options.actorTransferRegistry;
+              if (registry === undefined) {
+                throw new ZLinkConfigurationException('Actor transfer registry is not configured.');
+              }
+              return registry.transferIn(adapterKey, actorId, transferState, signal);
+            },
+        signal
+      )
+    );
+    try {
+      const actor = await operation.task;
+      return { actor, actorRef: this.actorRefForState(state) };
+    } catch (error) {
+      state.clearFailedCreation(operation.task);
+      throw error;
+    }
+  }
+
+  async rollbackTransferredActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    const state = this.states.get(actor.actorId);
+    if (state?.actor !== actor) {
+      return;
+    }
+    state.clearJoinedSpot();
+    if (!state.isMoving) {
+      state.beginMove();
+    }
+    const actorRef = state.nativeActorRef;
+    const node = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
+    try {
+      if (actorRef !== undefined && node !== undefined) {
+        await node.destroyActor(actorRef, 0, signal);
+      }
+    } catch (error) {
+      this.scheduleTransferredActorRollback(actor, state, node, actorRef);
+      throw error;
+    }
+    this.completeTransferredActorRollback(actor, state);
+  }
+
+  private scheduleTransferredActorRollback(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    node: ZLinkBackendSpotNode | undefined,
+    actorRef: ZLinkBackendActorRef | undefined
+  ): void {
+    if (this.transferredActorRollbackTasks.has(actor.actorId)) {
+      return;
+    }
+    const task = this.retryTransferredActorRollback(actor, state, node, actorRef)
+      .finally(() => this.transferredActorRollbackTasks.delete(actor.actorId));
+    this.transferredActorRollbackTasks.set(actor.actorId, task);
+  }
+
+  private async retryTransferredActorRollback(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    node: ZLinkBackendSpotNode | undefined,
+    actorRef: ZLinkBackendActorRef | undefined
+  ): Promise<void> {
+    let retryDelayMs = 25;
+    while (this.states.get(actor.actorId) === state) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      try {
+        if (node !== undefined && actorRef !== undefined) {
+          await node.destroyActor(actorRef, 0);
+        }
+        this.completeTransferredActorRollback(actor, state);
+        return;
+      } catch {
+        retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
+      }
+    }
+  }
+
+  private completeTransferredActorRollback(actor: ZLinkActor, state: ZLinkActorRuntimeState): void {
+    if (this.states.get(actor.actorId) !== state) {
+      return;
+    }
+    this.options.actorDestroyedCleanup?.(actor.actorId);
+    state.clearAfterDestroy();
+    this.states.delete(actor.actorId);
   }
 
   async ensure(
@@ -365,6 +476,12 @@ export class ZLinkActorDispatchRouter {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
         `Actor '${actorId}' is not created.`
+      );
+    }
+    if (state.isMoving) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${actorId}' is moving between Spots.`
       );
     }
 

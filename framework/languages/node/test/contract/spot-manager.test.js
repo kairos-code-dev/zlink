@@ -3,6 +3,9 @@ const test = require('node:test');
 
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
+const {
+  ZLinkSpotRoutedActorAdmission
+} = require('../../packages/framework/dist/runtime/spots/spot-routed-actor-admission');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const connector = require('../../packages/stream-connector/dist');
 const json = connector;
@@ -1031,11 +1034,12 @@ test('ZLinkSpotSerialExecutor runs spot work in submission order', async () => {
   assert.deepEqual(events, ['first:start', 'first:end', 'second']);
 });
 
-test('spot manager local actor join does not wait for entry leave callback', async () => {
+test('spot manager local actor join awaits entry leave before commit and joined callback', async () => {
   const events = [];
+  let finishLeave;
   class StageSpot {
-    async onActorJoin(actor, request) {
-      events.push(`join:${actor.actorId}:${request.decode()}`);
+    async onActorJoin(actorId, request) {
+      events.push(`join:${actorId}:${request.decode()}`);
       return { accepted: true, reply: 'joined' };
     }
     async onJoinedActor(actor) {
@@ -1047,31 +1051,260 @@ test('spot manager local actor join does not wait for entry leave callback', asy
     entrySpotCallbacks: {
       onLeaveActor(actor) {
         events.push(`entry-left:${actor.actorId}`);
-        return new Promise(() => {});
+        return new Promise((resolve) => {
+          finishLeave = resolve;
+        });
       }
     }
   });
   await manager.getOrCreate(StageSpot, 'stage-1');
   const actor = { actorId: 'alice' };
   const request = zlink.Message.from('hello');
-  const result = await Promise.race([
-    manager.admitActorJoin('stage-1', actor, request, () => events.push('commit')),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('admitActorJoin timed out')), 100))
-  ]);
+  const pending = manager.admitActorJoin('stage-1', actor, request, () => events.push('commit'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ['join:alice:hello', 'entry-left:alice']);
+  finishLeave();
+  const result = await pending;
 
   assert.equal(result.accepted, true);
   assert.equal(JSON.parse(result.reply.getString()), 'joined');
   assert.deepEqual(events, [
     'join:alice:hello',
-    'commit',
     'entry-left:alice',
+    'commit',
     'joined:alice'
   ]);
   request.close();
   result.reply.close();
 });
 
-test('spot manager passes native remote join source as actor bound-session target', async () => {
+test('spot manager rolls local membership back when joined callback fails', async () => {
+  const events = [];
+  let committed = false;
+  class StageSpot {
+    async onActorJoin() {
+      events.push('admission');
+      return { accepted: true };
+    }
+    async onJoinedActor() {
+      events.push('joined');
+      throw new Error('joined failed');
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    entrySpotCallbacks: {
+      async onLeaveActor() { events.push('entry-left'); }
+    }
+  });
+  await manager.getOrCreate(StageSpot, 'stage-rollback');
+  const request = zlink.Message.from('join');
+  await assert.rejects(
+    () => manager.admitActorJoin('stage-rollback', { actorId: 'alice' }, request, () => {
+      committed = true;
+      events.push('commit');
+      return () => {
+        committed = false;
+        events.push('rollback');
+      };
+    }),
+    /joined failed/
+  );
+
+  assert.equal(committed, false);
+  assert.deepEqual(events, ['admission', 'entry-left', 'commit', 'joined', 'rollback']);
+  await manager.close('stage-rollback');
+  request.close();
+});
+
+test('routed actor transfer separates admission from materialization and commit', async () => {
+  const events = [];
+  const replies = [];
+  let failJoined = false;
+  let admissionGate;
+  let transferInGate;
+  const target = {
+    async onActorJoin(actorId, request) {
+      events.push(`admission:${actorId}:${request.decode()}`);
+      await admissionGate;
+      return { accepted: true, reply: 'admitted' };
+    },
+    async onJoinedActor(actor) {
+      events.push(`joined:${actor.actorId}:${actor.value}`);
+      if (failJoined) {
+        throw new Error('joined failed');
+      }
+    }
+  };
+  const admission = new ZLinkSpotRoutedActorAdmission({
+    serial: new framework.ZLinkSpotSerialExecutor(),
+    resolveActor: () => undefined,
+    getTarget: () => target,
+    defaultAccept: false,
+    pendingAdmissionTimeoutMs: 5,
+    async routedActorTransferProvider(actorId, actorType, adapterKey, state) {
+      events.push(`transferIn:${actorId}:${actorType}:${adapterKey ?? 'default'}:${state.data().toString()}`);
+      await transferInGate;
+      return {
+        actor: { actorId, value: state.data().toString() },
+        actorRef: { nodeRid: zlink.RoutingId.from('target-node'), actorId, generation: 2n }
+      };
+    },
+    async commitRoutedActor(actor) {
+      events.push(`commit:${actor.actorId}`);
+    },
+    async finalizeRoutedActor(actor) {
+      events.push(`location:${actor.actorId}`);
+    },
+    async rollbackRoutedActor(actor) {
+      events.push(`rollback:${actor.actorId}`);
+    }
+  });
+  const makeReceived = (payload) => {
+    const part = zlink.Message.from(Buffer.from(JSON.stringify(payload)));
+    return {
+      part,
+      received: {
+        requestSeq: 1n,
+        parts: [part],
+        routingId: null,
+        spotRid: 'room-1',
+        reply() {
+          return {
+            message(message) {
+              replies.push(JSON.parse(Buffer.from(message).toString()));
+              return this;
+            },
+            submit() {}
+          };
+        }
+      }
+    };
+  };
+  const common = {
+    packetName: '__zlink.actor.join_spot.request',
+    actorId: 'alice',
+    actorType: 'player',
+    actorNodeRid: 'source-node',
+    actorGeneration: '1',
+    request: Buffer.from(JSON.stringify('join')).toString('base64'),
+    transferId: 'transfer-1'
+  };
+  const prepared = makeReceived({ ...common, phase: 'admission' });
+  assert.equal(await admission.admit(prepared.received), true);
+  prepared.part.close();
+  assert.deepEqual(events, ['admission:alice:join']);
+  assert.equal(replies[0].accepted, true);
+  assert.equal(Buffer.from(replies[0].reply, 'base64').toString(), JSON.stringify('admitted'));
+
+  const duplicateAdmission = makeReceived({ ...common, phase: 'admission' });
+  assert.equal(await admission.admit(duplicateAdmission.received), true);
+  duplicateAdmission.part.close();
+  assert.deepEqual(events, ['admission:alice:join']);
+  assert.equal(replies[1].accepted, true);
+
+  const committed = makeReceived({
+    ...common,
+    phase: 'commit',
+    transferAdapterKey: 'PlayerActor',
+    transferState: Buffer.from('state-42').toString('base64')
+  });
+  assert.equal(await admission.admit(committed.received), true);
+  committed.part.close();
+  assert.deepEqual(events, [
+    'admission:alice:join',
+    'transferIn:alice:player:PlayerActor:state-42',
+    'commit:alice',
+    'joined:alice:state-42',
+    'location:alice'
+  ]);
+  assert.equal(replies[2].accepted, true);
+  assert.equal(replies[2].actorNodeRid, 'target-node');
+
+  const duplicateCommit = makeReceived({
+    ...common,
+    phase: 'commit',
+    transferAdapterKey: 'PlayerActor',
+    transferState: Buffer.from('state-42').toString('base64')
+  });
+  assert.equal(await admission.admit(duplicateCommit.received), true);
+  duplicateCommit.part.close();
+  assert.equal(events.filter((event) => event.startsWith('transferIn:')).length, 1);
+  assert.equal(replies[3].accepted, true);
+
+  const expiring = makeReceived({ ...common, transferId: 'transfer-expired', phase: 'admission' });
+  assert.equal(await admission.admit(expiring.received), true);
+  expiring.part.close();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const lateCommit = makeReceived({
+    ...common,
+    transferId: 'transfer-expired',
+    phase: 'commit',
+    transferState: ''
+  });
+  assert.equal(await admission.admit(lateCommit.received), true);
+  lateCommit.part.close();
+  assert.equal(replies[5].accepted, false);
+  assert.equal(events.filter((event) => event.startsWith('joined:')).length, 1);
+
+  failJoined = true;
+  const failingAdmission = makeReceived({ ...common, transferId: 'transfer-fail', phase: 'admission' });
+  await admission.admit(failingAdmission.received);
+  failingAdmission.part.close();
+  const failingCommit = makeReceived({
+    ...common,
+    transferId: 'transfer-fail',
+    phase: 'commit',
+    transferState: Buffer.from('failed-state').toString('base64')
+  });
+  await admission.admit(failingCommit.received);
+  failingCommit.part.close();
+  assert.equal(replies[7].accepted, false);
+  assert.deepEqual(events.slice(-4), [
+    'transferIn:alice:player:default:failed-state',
+    'commit:alice',
+    'joined:alice:failed-state',
+    'rollback:alice'
+  ]);
+
+  failJoined = false;
+  let releaseAdmission;
+  admissionGate = new Promise((resolve) => { releaseAdmission = resolve; });
+  const concurrentAdmissionA = makeReceived({ ...common, transferId: 'transfer-concurrent', phase: 'admission' });
+  const concurrentAdmissionB = makeReceived({ ...common, transferId: 'transfer-concurrent', phase: 'admission' });
+  const admissionCountBefore = events.filter((event) => event.startsWith('admission:')).length;
+  const admissionA = admission.admit(concurrentAdmissionA.received);
+  await new Promise((resolve) => setImmediate(resolve));
+  const admissionB = admission.admit(concurrentAdmissionB.received);
+  releaseAdmission();
+  await Promise.all([admissionA, admissionB]);
+  concurrentAdmissionA.part.close();
+  concurrentAdmissionB.part.close();
+  assert.equal(events.filter((event) => event.startsWith('admission:')).length, admissionCountBefore + 1);
+
+  admissionGate = undefined;
+  let releaseTransferIn;
+  transferInGate = new Promise((resolve) => { releaseTransferIn = resolve; });
+  const concurrentCommitPayload = {
+    ...common,
+    transferId: 'transfer-concurrent',
+    phase: 'commit',
+    transferState: Buffer.from('concurrent-state').toString('base64')
+  };
+  const concurrentCommitA = makeReceived(concurrentCommitPayload);
+  const concurrentCommitB = makeReceived(concurrentCommitPayload);
+  const transferInCountBefore = events.filter((event) => event.startsWith('transferIn:')).length;
+  const commitA = admission.admit(concurrentCommitA.received);
+  await new Promise((resolve) => setImmediate(resolve));
+  const commitB = admission.admit(concurrentCommitB.received);
+  releaseTransferIn();
+  await Promise.all([commitA, commitB]);
+  concurrentCommitA.part.close();
+  concurrentCommitB.part.close();
+  assert.equal(events.filter((event) => event.startsWith('transferIn:')).length, transferInCountBefore + 1);
+});
+
+test('spot manager rejects one-phase native remote join without materializing a target actor', async () => {
   let dispatchHandler;
   let capturedTarget;
   const replies = [];
@@ -1147,10 +1380,8 @@ test('spot manager passes native remote join source as actor bound-session targe
   dispatchHandler({ event: 6 });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(capturedTarget.routerChannelId, 'bingo.room.route');
-  assert.equal(String(capturedTarget.targetNodeRid), 'play-b');
-  assert.equal(String(capturedTarget.spotRid), 'play-b-entry');
-  assert.equal(replies[0], 0);
+  assert.equal(capturedTarget, undefined);
+  assert.equal(replies[0], 1);
   await manager.close('room-1');
   nativeJoinMessage.close();
 });

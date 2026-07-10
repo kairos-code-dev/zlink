@@ -2,11 +2,15 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
-  ZLinkActorJoinResult
+  ZLinkActorJoinResult,
+  ZLinkMessageSerializer
 } from '../../contracts';
+import { randomUUID } from 'node:crypto';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkEncodedPayload,
+  ZLinkMessage,
   ZLinkSpotKind
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
@@ -31,18 +35,32 @@ import {
 import type { ZLinkActorJoinCoordinator } from './index';
 import {
   REMOTE_ACTOR_JOIN_PACKET,
+  REMOTE_ACTOR_JOIN_ADMISSION,
+  REMOTE_ACTOR_JOIN_COMMIT,
   buildRemoteActorJoinRequestPayload,
   decodeWireRoutingId,
   type ZLinkRemoteActorJoinReply,
   type ZLinkRemoteActorJoinRequest
 } from './actor-remote-wire';
+import type { ZLinkActorTransferRegistry } from './actor-transfer-registry';
+import { ZLinkPostCommitActorBinder } from './post-commit-actor-binder';
 
 export interface ZLinkActorNativeJoinCoordinatorOptions {
-  readonly node: ZLinkBackendSpotNode;
+  readonly node: ZLinkBackendSpotNode | (() => ZLinkBackendSpotNode);
   readonly spotRouteResolver?: ZLinkSpotRouteResolver;
   readonly routedTransport?: ZLinkActorRoutedJoinTransport;
   readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly remoteActorBinder?: (actorRef: ActorRef, signal?: AbortSignal, force?: boolean) => Promise<void>;
+  readonly postCommitErrorReporter?: (error: unknown) => void;
+  readonly actorTransferRegistry?: ZLinkActorTransferRegistry;
+  readonly sourceActorLeaver?: (
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly sourceActorMoveStarter?: (actor: ZLinkActor, state: ZLinkActorRuntimeState) => Promise<void>;
+  readonly sourceActorMoveCanceler?: (actor: ZLinkActor, state: ZLinkActorRuntimeState) => Promise<void>;
+  readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
 }
 
 export interface ZLinkActorRoutedJoinTransport {
@@ -93,7 +111,16 @@ export interface ZLinkActorRoutedJoinTransport {
 }
 
 export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
-  constructor(private readonly options: ZLinkActorNativeJoinCoordinatorOptions) {}
+  private readonly postCommitBinder: ZLinkPostCommitActorBinder | undefined;
+
+  constructor(private readonly options: ZLinkActorNativeJoinCoordinatorOptions) {
+    this.postCommitBinder = options.remoteActorBinder === undefined
+      ? undefined
+      : new ZLinkPostCommitActorBinder({
+          bind: (actorRef, force) => options.remoteActorBinder!(actorRef, undefined, force),
+          reportError: options.postCommitErrorReporter
+        });
+  }
 
   async joinSpot(
     actor: ZLinkActor,
@@ -104,17 +131,22 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     signal: AbortSignal | undefined
   ): Promise<ZLinkActorJoinResult<Message>> {
     throwIfAborted(signal);
-    const actorRef = state.ensureNativeActorRef(this.options.node);
+    const node = this.node();
+    const actorRef = state.ensureNativeActorRef(node);
     const spotRouteTarget = this.options.spotRouteResolver === undefined
       ? undefined
       : await this.options.spotRouteResolver.resolve(spotRid, signal);
     const isRemoteJoin = spotRouteTarget !== undefined && String(spotRouteTarget.targetNodeRid) !== String(actorRef.nodeRid);
-    if (isRemoteJoin && this.canUseRoutedTransport(spotRouteTarget)) {
+    if (isRemoteJoin) {
+      if (!this.canUseRoutedTransport(spotRouteTarget)) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+          `Remote actor join for '${actor.actorId}' requires the two-phase routed transfer protocol.`
+        );
+      }
       return await this.joinRemoteSpot(actor, state, actorRef, spotRouteTarget, request, timeoutMs, signal);
     }
-    const joinRequest = isRemoteJoin
-      ? this.encodeRemoteNativeJoinRequest(actor, state, request)
-      : request;
+    const joinRequest = request;
     const { result, parts } = await new Promise<{
       result: ZLinkBackendActorJoinResult;
       parts: readonly Message[];
@@ -123,7 +155,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         reject(new Error('The operation was aborted.'));
         return;
       }
-      const submitted = this.options.node.joinActor(
+      const submitted = node.joinActor(
           actorRef,
           spotRouteTarget?.targetNodeRid ?? actorRef.nodeRid,
           toBackendRoutingId(spotRid),
@@ -160,7 +192,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         toFrameworkRoutingId(result.joinedSpotRid)
       );
     }
-    await this.options.remoteActorBinder?.(toFrameworkActorRef(result.actor), signal, !isRemoteJoin);
+    this.postCommitBinder?.bindEventually(toFrameworkActorRef(result.actor));
     try {
       return {
         accepted: true,
@@ -169,27 +201,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       };
     } finally {
       this.disposeParts(parts.slice(1));
-      if (joinRequest !== request) {
-        joinRequest.close();
-      }
     }
-  }
-
-  private encodeRemoteNativeJoinRequest(actor: ZLinkActor, state: ZLinkActorRuntimeState, request: Message): Message {
-    const actorType = state.actorType;
-    const actorRef = state.nativeActorRef;
-    if (actorType === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actor.actorId}' does not have an actor type for remote SPOT join.`
-      );
-    }
-    return BindingMessage.from(Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
-      actorType,
-      actorRef,
-      actorCreateRequest: state.createRequestPayload,
-      request
-    }))));
   }
 
   private async joinRemoteSpot(
@@ -208,138 +220,91 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         `Actor '${actor.actorId}' does not have an actor type for remote SPOT join.`
       );
     }
-    if (this.canUseRoutedTransport(spotRouteTarget)) {
-      const routedTransport = this.options.routedTransport;
-      if (routedTransport === undefined) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Actor '${actor.actorId}' remote route transport is not configured.`
-        );
-      }
-      const entrySpotRid = this.options.node.entrySpot().routingId;
-      const boundSessionTarget = state.remoteBoundSessionTarget;
-      const joinRequest = buildRemoteActorJoinRequestPayload({
-        actorId: actor.actorId,
-        actorType,
-        actorRef,
-        actorCreateRequest: state.createRequestPayload,
-        request,
-        targetSpotRid: spotRouteTarget.spotRid,
-        routerChannelId: spotRouteTarget.routerChannelId,
-        sourceSpotRid: boundSessionTarget?.spotRid ?? entrySpotRid,
-        boundSessionTarget
-      });
-      const reply = typeof routedTransport.requestToSpot === 'function'
-        ? await routedTransport.requestToSpot<ZLinkRemoteActorJoinReply & { readonly reply?: string }>(
-            spotRouteTarget,
-            joinRequest,
-            {
-              packetName: REMOTE_ACTOR_JOIN_PACKET,
-              timeoutMs,
-              signal
-            }
-          )
-        : await routedTransport.request<ZLinkRemoteActorJoinReply & { readonly reply?: string }>(
-            spotRouteTarget.routerChannelId,
-            spotRouteTarget.targetNodeRid,
-            REMOTE_ACTOR_JOIN_PACKET,
-            joinRequest,
-            timeoutMs,
-            signal
-          );
-      return await this.applyRemoteJoinResult(
-        state,
-        reply,
-        spotRouteTarget,
-        reply.reply == null ? undefined : BindingMessage.from(Buffer.from(reply.reply, 'base64')),
-        signal
+    const routedTransport = this.options.routedTransport;
+    if (routedTransport === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${actor.actorId}' remote route transport is not configured.`
       );
     }
-    const entrySpotRid = this.options.node.entrySpot().routingId;
+    const entrySpotRid = this.node().entrySpot().routingId;
     const boundSessionTarget = state.remoteBoundSessionTarget;
-    const joinPayload = buildRemoteActorJoinRequestPayload({
+    const transferId = randomUUID();
+    const admissionRequest = buildRemoteActorJoinRequestPayload({
       actorId: actor.actorId,
       actorType,
       actorRef,
       actorCreateRequest: state.createRequestPayload,
       request,
+      targetSpotRid: spotRouteTarget.spotRid,
       routerChannelId: spotRouteTarget.routerChannelId,
       sourceSpotRid: boundSessionTarget?.spotRid ?? entrySpotRid,
-      boundSessionTarget
+      boundSessionTarget,
+      phase: REMOTE_ACTOR_JOIN_ADMISSION,
+      transferId
     });
-    const transport = this.options.routedTransport;
-    if (transport?.requestRawToSpot !== undefined) {
-      const payload = BindingMessage.from(Buffer.from(JSON.stringify(joinPayload)));
-      try {
-        const parts = await transport.requestRawToSpot(spotRouteTarget, payload, { timeoutMs, signal });
-        try {
-          if (parts.length === 0) {
-            throw new ZLinkFrameworkException(
-              ZLinkFrameworkErrorKind.ActorRouteNotFound,
-              `Remote actor join reply was empty for '${actor.actorId}'.`
-            );
-          }
-          const reply = JSON.parse(parts[0].getString('utf8')) as ZLinkRemoteActorJoinReply;
-          return await this.applyRemoteJoinResult(state, reply, spotRouteTarget, parts[1], signal);
-        } finally {
-          parts[0]?.close();
-          this.disposeParts(parts.slice(2));
-        }
-      } finally {
-        payload.close();
-      }
+    const admissionReply = await this.requestRemoteTransferWithRetry<
+      ZLinkRemoteActorJoinReply & { readonly reply?: string }
+    >(routedTransport, spotRouteTarget, admissionRequest, timeoutMs, signal);
+    const admissionMessage = admissionReply.reply == null
+      ? undefined
+      : BindingMessage.from(Buffer.from(admissionReply.reply, 'base64'));
+    if (!admissionReply.accepted) {
+      return {
+        accepted: false,
+        reply: admissionMessage
+      };
     }
-    const {
-      request: _encodedRequest,
-      ...headerPayload
-    } = joinPayload as ZLinkRemoteActorJoinRequest & { readonly request?: string };
-    const header = BindingMessage.from(Buffer.from(JSON.stringify(headerPayload)));
-    const outbound = this.options.node.getOrCreateSpot(`__zlink.actor.join.${String(actorRef.nodeRid)}`).spot;
+    let sourceLeft = false;
+    let moveStarted = false;
+    let transfer;
     try {
-      const parts = await new Promise<readonly Message[]>((resolve, reject) => {
-        if (signal?.aborted === true) {
-          reject(new Error('The operation was aborted.'));
-          return;
-        }
-        const submitted = outbound.requestToSpot(
-          spotRouteTarget.targetNodeRid,
-          spotRouteTarget.spotRid,
-          [header, request],
-          (result, replyParts) => {
-            if (result !== 0) {
-              reject(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            `Remote actor join failed for '${actor.actorId}' to SPOT '${spotRouteTarget.spotRid}' with result ${result}.`
-              ));
-              return;
-            }
-            resolve(replyParts as readonly Message[]);
-          },
-          0,
-          timeoutMs
-        );
-        if (!submitted) {
-          reject(new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            `Remote actor join submit failed for '${actor.actorId}'.`
-          ));
-        }
-      });
-      try {
-        if (parts.length === 0) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            `Remote actor join reply was empty for '${actor.actorId}'.`
-          );
-        }
-        const reply = JSON.parse(parts[0].getString('utf8')) as ZLinkRemoteActorJoinReply;
-        return await this.applyRemoteJoinResult(state, reply, spotRouteTarget, parts[1], signal);
-      } finally {
-        parts[0]?.close();
-        this.disposeParts(parts.slice(2));
+      await this.options.sourceActorMoveStarter?.(actor, state);
+      moveStarted = true;
+      transfer = await this.options.actorTransferRegistry?.transferOut(actor, signal) ?? {
+        state: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(Buffer.alloc(0)))
+      };
+      await this.options.sourceActorLeaver?.(actor, state, signal);
+      sourceLeft = true;
+    } catch (error) {
+      if (moveStarted && !sourceLeft) {
+        await this.options.sourceActorMoveCanceler?.(actor, state);
       }
-    } finally {
-      header.close();
+      admissionMessage?.close();
+      throw error;
+    }
+    const transferPayload = transfer.state.toEncodedPayload(this.options.messageSerializers).data();
+    const commitRequest = buildRemoteActorJoinRequestPayload({
+      actorId: actor.actorId,
+      actorType,
+      actorRef,
+      request,
+      targetSpotRid: spotRouteTarget.spotRid,
+      routerChannelId: spotRouteTarget.routerChannelId,
+      sourceSpotRid: boundSessionTarget?.spotRid ?? entrySpotRid,
+      boundSessionTarget,
+      phase: REMOTE_ACTOR_JOIN_COMMIT,
+      transferId,
+      transferAdapterKey: transfer.adapterKey,
+      transferState: Buffer.from(transferPayload)
+    });
+    try {
+      const commitReply = await this.requestRemoteTransferWithRetry<ZLinkRemoteActorJoinReply>(
+        routedTransport,
+        spotRouteTarget,
+        commitRequest,
+        timeoutMs,
+        signal
+      );
+      return await this.applyRemoteJoinResult(
+        state,
+        commitReply,
+        spotRouteTarget,
+        admissionMessage
+      );
+    } catch (error) {
+      admissionMessage?.close();
+      throw error;
     }
   }
 
@@ -347,8 +312,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     state: ZLinkActorRuntimeState,
     reply: ZLinkRemoteActorJoinReply,
     spotRouteTarget: ZLinkSpotRouteTarget,
-    replyMessage: Message | undefined,
-    signal: AbortSignal | undefined
+    replyMessage: Message | undefined
   ): Promise<ZLinkActorJoinResult<Message>> {
     const resultActor = {
       nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
@@ -356,6 +320,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       generation: BigInt(reply.actorGeneration)
     } as ActorRef;
     if (reply.accepted) {
+      state.endMove();
       state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
       state.setJoinedSpot(spotRouteTarget.spotRid);
       state.setRemoteActorPacketTarget({
@@ -364,15 +329,16 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         spotRid: spotRouteTarget.spotRid,
         spotKind: spotRouteTarget.spotKind
       });
-      if (state.actorType !== undefined) {
-        await this.options.locationLifecycle?.notifyActorJoinedSpot(
-          state.actorType,
-          reply.actorId,
-          spotRouteTarget.routerChannelId,
-          spotRouteTarget.spotRid
-        );
+      if (state.actorType !== undefined && state.ownsLocation) {
+        const actorType = state.actorType;
+        const cleanup = this.options.locationLifecycle?.releaseActorEventually(actorType, reply.actorId);
+        if (cleanup === undefined) {
+          state.markLocationReleased();
+        } else {
+          void cleanup.then(() => state.markLocationReleased());
+        }
       }
-      await this.options.remoteActorBinder?.(resultActor, signal, true);
+      this.postCommitBinder?.bindEventually(resultActor);
     }
     return {
       accepted: reply.accepted,
@@ -387,9 +353,76 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       return false;
     }
     if (transport.canRoutePacketChannel !== undefined) {
-      return transport.canRoutePacketChannel(spotRouteTarget.routerChannelId);
+      return transport.canRoutePacketChannel(spotRouteTarget.routerChannelId) ||
+        transport.requestRawToSpot !== undefined;
     }
-    return transport.canRouteChannel?.(spotRouteTarget.routerChannelId) !== false;
+    return transport.requestRawToSpot !== undefined ||
+      transport.canRouteChannel?.(spotRouteTarget.routerChannelId) !== false;
+  }
+
+  private async requestRemoteTransfer<TReply>(
+    transport: ZLinkActorRoutedJoinTransport,
+    target: ZLinkSpotRouteTarget,
+    payload: unknown,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined
+  ): Promise<TReply> {
+    if (
+      transport.canRoutePacketChannel?.(target.routerChannelId) === true &&
+      typeof transport.requestToSpot === 'function'
+    ) {
+      return await transport.requestToSpot<TReply>(target, payload, {
+        packetName: REMOTE_ACTOR_JOIN_PACKET,
+        timeoutMs,
+        signal
+      });
+    }
+    if (transport.requestRawToSpot !== undefined) {
+      const request = BindingMessage.from(Buffer.from(JSON.stringify(payload)));
+      try {
+        const parts = await transport.requestRawToSpot(target, request, { timeoutMs, signal });
+        try {
+          if (parts.length === 0) {
+            throw new ZLinkFrameworkException(
+              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+              'Remote actor transfer reply was empty.'
+            );
+          }
+          return JSON.parse(parts[0].getString('utf8')) as TReply;
+        } finally {
+          this.disposeParts(parts);
+        }
+      } finally {
+        request.close();
+      }
+    }
+    return await transport.request<TReply>(
+      target.routerChannelId,
+      target.targetNodeRid,
+      REMOTE_ACTOR_JOIN_PACKET,
+      payload,
+      timeoutMs,
+      signal
+    );
+  }
+
+  private async requestRemoteTransferWithRetry<TReply>(
+    transport: ZLinkActorRoutedJoinTransport,
+    target: ZLinkSpotRouteTarget,
+    payload: unknown,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined
+  ): Promise<TReply> {
+    try {
+      return await this.requestRemoteTransfer<TReply>(transport, target, payload, timeoutMs, signal);
+    } catch (firstError) {
+      throwIfAborted(signal);
+      try {
+        return await this.requestRemoteTransfer<TReply>(transport, target, payload, timeoutMs, signal);
+      } catch (retryError) {
+        throw new AggregateError([firstError, retryError], 'Remote actor transfer request failed twice.');
+      }
+    }
   }
 
   async joinEntrySpot(
@@ -401,7 +434,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     signal: AbortSignal | undefined
   ): Promise<ZLinkActorJoinResult<Message>> {
     throwIfAborted(signal);
-    const actorRef = state.ensureNativeActorRef(this.options.node);
+    const node = this.node();
+    const actorRef = state.ensureNativeActorRef(node);
     const remoteEntry = String(nodeRid) === String(actorRef.nodeRid)
       ? undefined
       : await this.tryResolveRemoteEntry(nodeRid, signal);
@@ -435,7 +469,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       parts: readonly Message[];
     }>(
       (resolve, reject) => {
-        const submitted = this.options.node.joinActorEntrySpot(
+        const submitted = node.joinActorEntrySpot(
           actorRef,
           toBackendRoutingId(nodeRid),
           request,
@@ -495,6 +529,12 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     } catch {
       return undefined;
     }
+  }
+
+  private node(): ZLinkBackendSpotNode {
+    return typeof this.options.node === 'function'
+      ? this.options.node()
+      : this.options.node;
   }
 }
 

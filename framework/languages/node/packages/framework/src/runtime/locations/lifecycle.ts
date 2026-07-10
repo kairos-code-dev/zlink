@@ -27,8 +27,10 @@ export type {
 
 export class ZLinkLocationLifecycle {
   private readonly actorClaims: ZLinkActorLocationClaims;
+  private readonly actorCleanupTasks = new Map<string, Promise<void>>();
   private readonly spotClaims: ZLinkSpotLocationClaims;
   private readonly actorSessionRoutes: ZLinkActorSessionRouteClaims;
+  private disposed = false;
   private readonly ownershipLostHandler = (event: ZLinkOwnershipLostEvent) => this.onOwnershipLost(event);
 
   constructor(
@@ -43,6 +45,7 @@ export class ZLinkLocationLifecycle {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.runtime.removeOwnershipLostHandler(this.ownershipLostHandler);
   }
 
@@ -69,6 +72,24 @@ export class ZLinkLocationLifecycle {
     await this.actorClaims.setRef(actorType, actorId, actorRef);
   }
 
+  async takeoverActorJoinedSpot(
+    actorType: string,
+    actorId: string,
+    actorRef: ActorRef,
+    spotMeshName: string,
+    spotRid: RoutingId,
+    deactivate?: () => Promise<void>
+  ): Promise<ZLinkActorClaimResult> {
+    return await this.actorClaims.takeoverJoinedSpot(
+      actorType,
+      actorId,
+      actorRef,
+      spotMeshName,
+      spotRid,
+      deactivate
+    );
+  }
+
   async notifyActorJoinedSpot(actorType: string, actorId: string, spotMeshName: string, spotRid: RoutingId): Promise<void> {
     await this.actorClaims.notifyJoinedSpot(actorType, actorId, spotMeshName, spotRid);
   }
@@ -81,8 +102,33 @@ export class ZLinkLocationLifecycle {
     await this.actorClaims.release(actorType, actorId);
   }
 
+  releaseActorEventually(actorType: string, actorId: string): Promise<void> {
+    const existing = this.actorCleanupTasks.get(actorId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const cleanup = this.retryActorRelease(actorType, actorId)
+      .finally(() => this.actorCleanupTasks.delete(actorId));
+    this.actorCleanupTasks.set(actorId, cleanup);
+    return cleanup;
+  }
+
   ownsActor(actorType: string, actorId: string): boolean {
     return this.actorClaims.owns(actorType, actorId);
+  }
+
+  private async retryActorRelease(actorType: string, actorId: string): Promise<void> {
+    let retryDelayMs = 50;
+    while (!this.disposed) {
+      try {
+        await this.actorClaims.release(actorType, actorId);
+        return;
+      } catch {
+        await waitForRetry(retryDelayMs);
+        retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
+      }
+    }
+    return;
   }
 
   async claimSpot(
@@ -114,4 +160,8 @@ export class ZLinkLocationLifecycle {
     this.spotClaims.onOwnershipLost(event);
     this.actorSessionRoutes.onOwnershipLost(event);
   }
+}
+
+function waitForRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }

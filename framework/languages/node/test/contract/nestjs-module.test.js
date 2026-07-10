@@ -1253,6 +1253,17 @@ test('ZLinkModule.forRoot maps route mesh channel options into runtime registrat
   assert.deepEqual(registration.routeChannelOptions.get('route').manualConnections, ['tcp://127.0.0.1:7013']);
 });
 
+test('zlinkFramework preserves actor transfer adapters in the runtime registration', async () => {
+  class PlayerActor {}
+  class PlayerActorTransferAdapter {}
+  const builder = nestjs.zlinkFramework();
+  builder.addActorTransferAdapter(PlayerActor, PlayerActorTransferAdapter);
+  const registration = await resolveFrameworkRegistration(
+    nestjs.ZLinkModule.forRoot(builder.build())
+  );
+  assert.equal(registration.actorTransferAdapters.get(PlayerActor), PlayerActorTransferAdapter);
+});
+
 test('framework options builder maps dotnet-shaped registration flow into options', () => {
   class GatewaySession {}
   class StageSpot {
@@ -1262,6 +1273,8 @@ test('framework options builder maps dotnet-shaped registration flow into option
   }
   class LocalStageSpot {}
   class StageEntrySpot {}
+  class StageActor {}
+  class StageActorTransferAdapter {}
   const streamCompressionCodec = {
     compress(payload) {
       return payload;
@@ -1273,6 +1286,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
 
   const options = framework.createFrameworkOptions((builder) => {
     builder.useInMemoryLocationStores();
+    builder.addActorTransferAdapter(StageActor, StageActorTransferAdapter);
     builder.configureStreamCompression().use(streamCompressionCodec);
     builder.addClientServerChannel('api').enableServer('tcp://0.0.0.0:9401');
     builder.addClientServerChannel('api').enableClient('tcp://127.0.0.1:9401');
@@ -1298,6 +1312,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   const route = registration.routeChannelOptions.get('route');
 
   assert.equal(registration.locations.useInMemoryStores, true);
+  assert.equal(registration.actorTransferAdapters.get(StageActor), StageActorTransferAdapter);
   assert.equal(registration.channels.get('api').server.bind, 'tcp://0.0.0.0:9401');
   assert.deepEqual(registration.channels.get('api').client.manualConnections, ['tcp://127.0.0.1:9401']);
   assert.equal(registration.channels.get('events').publisher.bind, 'tcp://0.0.0.0:9402');
@@ -1345,6 +1360,13 @@ test('framework options builder maps dotnet-shaped registration flow into option
       node.addSpotFactory(StageSpot);
     }),
     /Duplicate SPOT factory registration/
+  );
+  assert.throws(
+    () => framework.createFrameworkOptions((builder) => {
+      builder.addActorTransferAdapter(StageActor, StageActorTransferAdapter);
+      builder.addActorTransferAdapter(StageActor, StageActorTransferAdapter);
+    }),
+    /Duplicate actor transfer adapter/
   );
 });
 

@@ -44,6 +44,12 @@ export class ZLinkActorCreationCoordinator {
         actorId,
         nodeRid,
         async () => {
+          // A target takeover is the commit point of an in-flight remote move.
+          // Keep the source runtime state until the commit reply installs the
+          // remote ActorRef used to finish the caller's current request.
+          if (state.isMoving || state.remoteActorPacketTarget !== undefined) {
+            return;
+          }
           this.options.actorDestroyedCleanup?.(actorId);
           state.clearAfterDestroy();
         },
@@ -62,6 +68,31 @@ export class ZLinkActorCreationCoordinator {
     }
 
     return await this.createActorAfterClaim(actorId, actorType, state, createRequest, claimLocation, signal);
+  }
+
+  async materializeTransferredActor(
+    actorId: string,
+    actorType: string,
+    state: ZLinkActorRuntimeState,
+    restore: (() => Promise<ZLinkActor>) | undefined,
+    signal?: AbortSignal
+  ): Promise<ZLinkActor> {
+    const context = state.ensureContext(() => new DefaultZLinkActorContext(
+      state,
+      this.options.joinCoordinator,
+      this.options.boundSessionFactory,
+      this.options.messageSerializers
+    ));
+    const actor = restore === undefined
+      ? await (await this.createFactory(actorType)).create(actorId, context, signal)
+      : await restore();
+    attachTransferredActorContext(actor, context);
+    state.bindActor(actor, context);
+    const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
+    if (nativeActorNode !== undefined) {
+      state.ensureNativeActorRef(nativeActorNode);
+    }
+    return actor;
   }
 
   private async createActorAfterClaim(
@@ -140,6 +171,19 @@ export class ZLinkActorCreationCoordinator {
     }
     return factoryOrType;
   }
+}
+
+function attachTransferredActorContext(actor: ZLinkActor, context: ZLinkActor['context']): void {
+  const current = (actor as { context?: ZLinkActor['context'] }).context;
+  if (current === context) {
+    return;
+  }
+  Object.defineProperty(actor, 'context', {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: context
+  });
 }
 
 async function createProviderInstance<T>(

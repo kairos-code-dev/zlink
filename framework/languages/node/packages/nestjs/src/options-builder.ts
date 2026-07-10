@@ -1,5 +1,7 @@
 import type {
   Type,
+  ZLinkActor,
+  ZLinkActorTransferAdapter,
   ZLinkCodecExtension,
   ZLinkCodecRegistrar,
   ZLinkDispatchOptionsBuilder,
@@ -86,6 +88,24 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
         ...(this.additionalOptions.locations ?? {}),
         storeInstance: store
       }
+    };
+    return this;
+  }
+
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: Type<TActor>,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this {
+    const adapters = new Map(this.additionalOptions.actorTransferAdapters);
+    if (adapters.has(actorType)) {
+      throw new framework.ZLinkConfigurationException(
+        `Duplicate actor transfer adapter for '${actorType.name}'.`
+      );
+    }
+    adapters.set(actorType, adapterType);
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      actorTransferAdapters: adapters
     };
     return this;
   }
@@ -190,6 +210,14 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
 
   addLocationStore(store: IZLinkLocationStore): this {
     this.root.addLocationStore(store);
+    return this;
+  }
+
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: Type<TActor>,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this {
+    this.root.addActorTransferAdapter(actorType, adapterType);
     return this;
   }
 

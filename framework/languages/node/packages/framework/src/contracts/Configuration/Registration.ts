@@ -41,6 +41,7 @@ export function createFrameworkRegistration(
     codecs: codecRegistry.registration,
     requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
     actorFactories: actorFactoriesFromSpotNodes(spotNodes),
+    actorTransferAdapters: new Map(options.actorTransferAdapters),
     spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
     channels: toChannelMap(options.channels),
     channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined),

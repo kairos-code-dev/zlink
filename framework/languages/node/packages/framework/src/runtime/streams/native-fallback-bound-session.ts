@@ -122,9 +122,16 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     this.executed = true;
     const remoteTarget = this.options.remoteBoundSessionTargetProvider();
     if (remoteTarget !== undefined) {
+      const actorRef = this.options.actorRefProvider();
+      const ownershipGeneration = (actorRef as (ActorRef & { ownershipGeneration?: bigint }) | undefined)
+        ?.ownershipGeneration;
       const payload = {
         packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
         actorId: this.options.actorId,
+        actorNodeRid: actorRef === undefined ? undefined : String(actorRef.nodeRid),
+        actorNodeRidHex: (actorRef?.nodeRid as { toHex?: () => string } | undefined)?.toHex?.(),
+        actorGeneration: actorRef?.generation.toString(),
+        actorOwnershipGeneration: ownershipGeneration?.toString(),
         message: this.message,
         boundPacketName: this.selectedPacketName,
         metadata: Object.fromEntries(this.selectedMetadata)

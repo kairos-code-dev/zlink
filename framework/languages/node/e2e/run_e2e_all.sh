@@ -17,6 +17,7 @@ DEFAULT_CONFIGS=(
   ResilienceLifecycle
   YieldDispatch
   ToActorMessaging
+  SpotActorTransfer
 )
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 

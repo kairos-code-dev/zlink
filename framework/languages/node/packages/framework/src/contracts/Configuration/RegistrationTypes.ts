@@ -24,6 +24,7 @@ export interface ZLinkFrameworkRegistration {
   readonly codecs: ZLinkCodecRegistration;
   readonly requestTimeoutMs?: number;
   readonly actorFactories: ReadonlyMap<string, Type>;
+  readonly actorTransferAdapters: ReadonlyMap<Type, Type>;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
   readonly channels: ReadonlyMap<string, ZLinkChannelOptions>;
   readonly channelClients: ReadonlySet<string>;
@@ -88,6 +89,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly codecs?: ZLinkCodecRegistryOptions;
   readonly requestTimeoutMs?: number;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
+  readonly actorTransferAdapters?: ReadonlyMap<Type, Type>;
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
   readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
   readonly streamNodes?: Readonly<Record<string, ZLinkStreamNodeOptions>>;

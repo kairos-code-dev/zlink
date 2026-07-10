@@ -52,8 +52,8 @@ export class YieldEntrySpot implements ZLinkEntrySpot<YieldActor> {
     this.context.handlers.actorRequest('ActorPushYieldReq', EntryActorPushYieldHandler, YieldActor);
   }
 
-  async onActorJoin(actor: YieldActor): Promise<ZLinkSpotActorJoinResponse> {
-    void actor;
+  async onActorJoin(actorId: string): Promise<ZLinkSpotActorJoinResponse> {
+    void actorId;
     return { accepted: true };
   }
 }

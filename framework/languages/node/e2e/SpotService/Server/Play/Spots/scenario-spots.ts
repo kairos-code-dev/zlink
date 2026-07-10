@@ -63,14 +63,14 @@ export class ScenarioUserSpot implements ZLinkSpot {
     return this.value;
   }
 
-  async onActorJoin(actor: ScenarioActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     const payload = request.decode<Partial<{ readonly actorId: string }>>(Object as never);
     if (payload.actorId?.includes('reject') === true) {
       const evidence = ScenarioUserSpot.requireEvidence();
       evidence.add(
-        `spot-actor-join-rejected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+        `spot-actor-join-rejected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actorId}`
       );
-      return { accepted: false, reply: { accepted: false, actorId: actor.actorId } };
+      return { accepted: false, reply: { accepted: false, actorId } };
     }
     return { accepted: true };
   }

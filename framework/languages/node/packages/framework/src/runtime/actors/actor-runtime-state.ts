@@ -48,6 +48,8 @@ export class ZLinkActorRuntimeState {
   private remoteActorPacketTargetValue: ZLinkRemoteActorPacketTarget | undefined;
   private createRequestPayloadValue: Buffer | undefined;
   private ownsLocationValue = false;
+  private locationGenerationValue: bigint | undefined;
+  private movingValue = false;
   private destroying = false;
 
   constructor(readonly actorId: string) {}
@@ -92,8 +94,38 @@ export class ZLinkActorRuntimeState {
     return this.ownsLocationValue;
   }
 
+  get locationGeneration(): bigint | undefined {
+    return this.locationGenerationValue;
+  }
+
+  get isMoving(): boolean {
+    return this.movingValue;
+  }
+
+  beginMove(): void {
+    if (this.movingValue) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${this.actorId}' is already moving.`
+      );
+    }
+    this.movingValue = true;
+  }
+
+  endMove(): void {
+    this.movingValue = false;
+  }
+
   markLocationOwned(): void {
     this.ownsLocationValue = true;
+  }
+
+  markLocationReleased(): void {
+    this.ownsLocationValue = false;
+  }
+
+  setLocationGeneration(generation: bigint): void {
+    this.locationGenerationValue = generation;
   }
 
   beginDestroy(entryNodeRid: RoutingId): ZLinkBackendActorRef | undefined {
@@ -120,6 +152,7 @@ export class ZLinkActorRuntimeState {
 
   resetDestroying(): void {
     this.destroying = false;
+    this.movingValue = false;
   }
 
   ensureContext(createContext: () => ZLinkActorContext): ZLinkActorContext {
@@ -239,6 +272,7 @@ export class ZLinkActorRuntimeState {
     this.remoteActorPacketTargetValue = undefined;
     this.createRequestPayloadValue = undefined;
     this.ownsLocationValue = false;
+    this.locationGenerationValue = undefined;
     this.destroying = false;
   }
 }

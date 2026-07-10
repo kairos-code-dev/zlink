@@ -90,20 +90,20 @@ worker 문서:
 
 | ID | 시나리오 | 우선순위 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| ST-A1 | local join accept 순서 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-B2 | source cleanup 실패는 성공 유지 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-B3 | transfer adapter 미등록 기본 빈 state transfer | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-B4 | custom adapter가 빈 state를 반환해도 성공 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-C1 | source down after admission/before commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-C2 | source down after target commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-C3 | callback/transfer 실패 분류 | P1 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-D1 | location commit 시점(pending/committed) | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-D2 | stale source release generation fencing | P1 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-E1 | remote transfer 뒤 bound session push | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| ST-E2 | 실패한 transfer는 bound session route 비오염 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-A1 | local join accept 순서 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-B2 | source cleanup 실패는 성공 유지 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-B3 | transfer adapter 미등록 기본 빈 state transfer | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-B4 | custom adapter가 빈 state를 반환해도 성공 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-C1 | source down after admission/before commit | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-C2 | source down after target commit | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-C3 | callback/transfer 실패 분류 | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-D1 | location commit 시점(pending/committed) | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-D2 | stale source release generation fencing | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-E1 | remote transfer 뒤 bound session push | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-E2 | 실패한 transfer는 bound session route 비오염 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
 
 > Track D·E의 P0는 location store + stream connector가 있는 언어에서 public API만으로 구현한다.
 > 필요한 public 표면이 없으면 `🚫`로 두고 feature-map에 public contract parity gap으로 남긴다
@@ -139,18 +139,18 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 
 | # | 계약 항목 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: |
-| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 2 | remote transfer에서 admission/commit 분리 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 3 | `OnActorJoin` public callback은 actor id와 request만 받음 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| 4 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 5 | transfer adapter 미등록 시 기본 빈 state transfer | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| 6 | `OnJoinedActor`·`OnLeaveActor` 기본 no-op public API 없음 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| 7 | source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 8 | source down signal 없이 pending admission deadline 정리 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 9 | `OnJoinedActor` 완료 전 caller success 반환 안 함 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 10 | `OnJoinedActor` 완료 전 packet dispatch 차단 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 11 | location row가 pending/committed 구분 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
-| 12 | bound session transfer가 commit 전 성공 노출 안 함 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 2 | remote transfer에서 admission/commit 분리 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 3 | `OnActorJoin` public callback은 actor id와 request만 받음 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| 4 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 5 | transfer adapter 미등록 시 기본 빈 state transfer | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| 6 | `OnJoinedActor`·`OnLeaveActor` 기본 no-op public API 없음 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| 7 | source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 8 | source down signal 없이 pending admission deadline 정리 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 9 | `OnJoinedActor` 완료 전 caller success 반환 안 함 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 10 | `OnJoinedActor` 완료 전 packet dispatch 차단 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 11 | location row가 pending/committed 구분 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 12 | bound session transfer가 commit 전 성공 노출 안 함 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
 
 ## 5. 언어별 시작 gap 요약 (P0 audit 전 사전 정보)
 

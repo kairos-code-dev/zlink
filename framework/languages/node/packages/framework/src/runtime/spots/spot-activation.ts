@@ -58,7 +58,7 @@ import {
   ZLinkSpotActorPacketDispatch,
   type ZLinkActorResponseOptions
 } from './spot-actor-packet-dispatch';
-import type { ZLinkRemoteActorJoinActor } from './spot-remote-codec';
+import type { ZLinkRemoteActorJoinActor, ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import type { ZLinkSpotActivation } from './spot-activation-registry';
 import type { ZLinkSpotLocationClaim } from './spot-location-claim';
 
@@ -93,10 +93,11 @@ export interface ZLinkSpotActivationLifecycleOptions {
     actorCreateRequest?: Message,
     signal?: AbortSignal
   ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly nativeJoinBoundSessionTargetResolver?: (
-    info: ZLinkBackendActorJoinInfo
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
+  readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
+  readonly routedActorFinalizer?: (actor: ZLinkActor, spotRid: RoutingId) => Promise<void>;
   readonly routedActorCommitter?: (actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot) => void;
+  readonly routedActorLeaveCommitter?: (actor: ZLinkActor) => void;
+  readonly routedActorRollback?: (actor: ZLinkActor) => Promise<void>;
   readonly actorResponseSender?: (
     actor: ZLinkActor,
     packetName: string,
@@ -119,6 +120,7 @@ export interface ZLinkSpotActivationLifecycleOptions {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -139,6 +141,7 @@ export interface ZLinkSpotActivationLifecycleOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
   readonly remoteActorPacketTargetReceiver?: (
     actorId: string,
     target: ZLinkRemoteBoundSessionTarget
@@ -304,7 +307,19 @@ export class ZLinkSpotActivationLifecycle {
       getTarget: () => activation.spot,
       defaultAccept: false,
       routedActorProvider: this.options.routedActorProvider,
-      nativeJoinBoundSessionTargetResolver: this.options.nativeJoinBoundSessionTargetResolver,
+      routedActorTransferProvider: this.options.routedActorTransferProvider,
+      finalizeRoutedActor: (actor) => this.options.routedActorFinalizer?.(actor, activation.spotRid),
+      rollbackRoutedActor: async (actor) => {
+        activation.leftActors.add(actor.actorId);
+        activation.actors.delete(actor.actorId);
+        this.options.routedActorLeaveCommitter?.(actor);
+        await this.options.routedActorRollback?.(actor);
+      },
+      rollbackNativeActor: async (actor) => {
+        activation.leftActors.add(actor.actorId);
+        activation.actors.delete(actor.actorId);
+        this.options.routedActorLeaveCommitter?.(actor);
+      },
       commitRoutedActor: (actor) => {
         this.options.routedActorCommitter?.(actor, activation.spotRid, activation.spot);
         activation.leftActors.delete(actor.actorId);
@@ -315,6 +330,7 @@ export class ZLinkSpotActivationLifecycle {
       routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
+      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
       actorPacketTargetProvider: this.options.actorPacketTargetProvider,
       bindRemoteActorSession: (actor, sourceNodeRid, sourceSessionRid) => {
         const node = this.options.nativeSpotNodeProvider?.();

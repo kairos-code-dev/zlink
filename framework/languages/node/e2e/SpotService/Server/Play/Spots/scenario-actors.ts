@@ -75,8 +75,8 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
     evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actorId}`);
   }
 
-  async onActorJoin(actor: ScenarioActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actor;
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    void actorId;
     return { accepted: true, reply: request.decode() };
   }
 

@@ -4,8 +4,8 @@ import { CustomerActor } from '../../customer-actor';
 class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
   readonly context!: ZLinkEntrySpotContext<CustomerActor>;
 
-  async onActorJoin(actor: CustomerActor, request: unknown): Promise<ZLinkSpotActorJoinResponse> {
-    void actor;
+  async onActorJoin(actorId: string, request: unknown): Promise<ZLinkSpotActorJoinResponse> {
+    void actorId;
     void request;
     return { accepted: true };
   }

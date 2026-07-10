@@ -9,21 +9,9 @@ export interface ZLinkActorHandlerRegistry {
   addHandler(handlerType: Type): this;
 }
 
-export interface ZLinkActorJoinAdmission {
-  readonly actorId: string;
-  readonly actorType: Type<ZLinkActor>;
-  readonly sourceSpotRid: RoutingId;
-  readonly targetSpotRid: RoutingId;
-  readonly sourceNodeRid: RoutingId;
-  readonly targetNodeRid: RoutingId;
-}
-
-export interface ZLinkActorTransfer<TActor extends ZLinkActor> {
+export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
   transferOut(actor: TActor, signal?: AbortSignal): Promise<ZLinkMessage>;
   transferIn(actorId: string, state: ZLinkMessage, signal?: AbortSignal): Promise<TActor>;
-}
-
-export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> extends ZLinkActorTransfer<TActor> {
 }
 
 export interface ZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkActor> extends ZLinkActorHandlerRegistry {

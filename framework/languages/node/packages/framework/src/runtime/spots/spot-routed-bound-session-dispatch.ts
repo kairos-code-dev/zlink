@@ -1,7 +1,9 @@
 import { Received as BindingReceived } from '@zlink-systems/zlink';
+import type { ActorRef } from '../../contracts';
 import type { ZLinkChannelEnvelopeCodecRegistry } from '../channels/channel-envelope';
 import {
   decodeRemoteBoundSessionError,
+  decodeRemoteBoundSessionOwnership,
   decodeRemoteBoundSessionResponse,
   decodeRemoteBoundSessionSend
 } from './spot-remote-route-codec';
@@ -19,6 +21,7 @@ interface ZLinkSpotRoutedBoundSessionDispatchOptions {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -39,19 +42,27 @@ interface ZLinkSpotRoutedBoundSessionDispatchOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
 }
 
 export class ZLinkSpotRoutedBoundSessionDispatch {
   constructor(private readonly options: ZLinkSpotRoutedBoundSessionDispatchOptions) {}
 
   async dispatch(received: BindingReceived): Promise<boolean> {
+    const ownership = decodeRemoteBoundSessionOwnership(received.parts, this.options.channelCodecs());
+    if (ownership !== undefined) {
+      await this.options.routedBoundSessionOwnershipReceiver?.(ownership);
+      this.replyOk(received);
+      return true;
+    }
     const boundSessionSend = decodeRemoteBoundSessionSend(received.parts, this.options.channelCodecs());
     if (boundSessionSend !== undefined) {
       await this.options.routedBoundSessionReceiver?.(
         boundSessionSend.actorId,
         boundSessionSend.message,
         boundSessionSend.packetName,
-        boundSessionSend.metadata
+        boundSessionSend.metadata,
+        boundSessionSend.actorRef
       );
       if (isReplyableRequestSeq(received.requestSeq)) {
         submitRoutePayloadReply(received, boundSessionSend.envelope, { ok: true });

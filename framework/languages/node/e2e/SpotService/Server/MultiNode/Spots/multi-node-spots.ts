@@ -123,8 +123,8 @@ export class MultiNodeEntrySpot implements ZLinkEntrySpot<MultiNodeScenarioActor
       .add(`entry-created|rid=${MultiNodeEntrySpot.requireEvidence().rid}|actor=${actor.actorId}`);
   }
 
-  async onActorJoin(actor: MultiNodeScenarioActor): Promise<{ accepted: boolean }> {
-    void actor;
+  async onActorJoin(actorId: string): Promise<{ accepted: boolean }> {
+    void actorId;
     return { accepted: true };
   }
 
@@ -191,10 +191,15 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
     return reply;
   }
 
-  async onActorJoin(actor: MultiNodeScenarioActor): Promise<{ accepted: boolean }> {
+  async onActorJoin(actorId: string): Promise<{ accepted: boolean }> {
+    SpotOnlyUserSpot.requireEvidence()
+      .add(`spot-actor-admitted|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actorId}`);
+    return { accepted: true };
+  }
+
+  async onJoinedActor(actor: MultiNodeScenarioActor): Promise<void> {
     SpotOnlyUserSpot.requireEvidence()
       .add(`spot-actor-joined|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actor.actorId}`);
-    return { accepted: true };
   }
 
   add(delta: number): number {

@@ -535,6 +535,7 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
   }
 
   return {
+    actorTransferAdapters: options.actorTransferAdapters,
     channels,
     codecs: options.codecs,
     dispatch: options.dispatch,

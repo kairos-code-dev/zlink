@@ -1,4 +1,5 @@
-import type { ZLinkSpot, ZLinkSpotMeshBuilder } from '../Spots';
+import type { ZLinkActor } from '../Actors';
+import type { ZLinkActorTransferAdapter, ZLinkSpot, ZLinkSpotMeshBuilder } from '../Spots';
 import type { ZLinkSession, ZLinkSessionFactory, ZLinkStreamCompressionCodec } from '../Streams';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
@@ -18,6 +19,10 @@ export interface ZLinkFrameworkOptions {
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   useInMemoryLocationStores(): this;
   addLocationStore(store: IZLinkLocationStore): this;
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: Type<TActor>,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this;
   configureLocations(): ZLinkLocationOptions;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;

@@ -1649,7 +1649,7 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [playModule, '.addEntrySpot(BingoEntrySpot)'],
     [playModule, '.addSpotFactory(BingoRoomSpot)'],
     [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],
-    [roomSpot, 'onActorJoin(actor: PlayerActorType'],
+    [roomSpot, 'onActorJoin(actorId: string'],
     [roomSpot, 'onJoinedActor(actor: PlayerActorType'],
     [roomSpot, 'onLeaveActor(actor: PlayerActorType'],
     [roomSpot, 'onDisconnectActor(actor: PlayerActorType'],

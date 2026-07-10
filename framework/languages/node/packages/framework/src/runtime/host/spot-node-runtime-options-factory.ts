@@ -66,8 +66,8 @@ export class ZLinkSpotNodeRuntimeOptionsFactory {
       messageSerializers: this.options.registration.messageSerializers,
       actorResolver: (actorId) => this.options.actorManager()?.getState(actorId)?.actor,
       entryActorCommitter: (actor) => this.commitEntryActor(actor),
-      routedBoundSessionReceiver: (actorId, message, packetName, metadata) =>
-        this.options.boundSessionRelay.receiveRoutedBoundSession(actorId, message, packetName, metadata),
+      routedBoundSessionReceiver: (actorId, message, packetName, metadata, actorRef) =>
+        this.options.boundSessionRelay.receiveRoutedBoundSession(actorId, message, packetName, metadata, actorRef),
       routedBoundSessionResponseReceiver: (actorId, packetName, requestSeq, message, replyOptions, actorPacketTarget) =>
         this.options.boundSessionRelay.receiveRoutedBoundSessionResponse(
           actorId,
@@ -86,6 +86,8 @@ export class ZLinkSpotNodeRuntimeOptionsFactory {
           metadata,
           actorPacketTarget
         ),
+      routedBoundSessionOwnershipReceiver: (payload) =>
+        this.options.boundSessionRelay.receiveRemoteBoundSessionOwnership(payload),
       remoteActorPacketTargetReceiver: (actorId, target) => {
         const state = this.options.actorManager()?.getState(actorId);
         state?.setRemoteBoundSessionTarget(target);

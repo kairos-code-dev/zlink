@@ -65,13 +65,13 @@ export {
   type ZLinkSpotHandlerRegistration
 } from './spot-handler-registry';
 export { ZLinkRuntimeSpotPublisherTransport } from './spot-publisher-transport';
-import type { ZLinkRemoteActorJoinActor } from './spot-remote-codec';
+import type { ZLinkRemoteActorJoinActor, ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import {
   ZLinkSpotActivationRegistry,
   type ZLinkSpotActivation
 } from './spot-activation-registry';
 import { ZLinkSpotActivationLifecycle } from './spot-activation';
-import { ZLinkSpotActorMembership } from './spot-actor-membership';
+import { ZLinkSpotActorMembership, type ZLinkActorJoinRollback } from './spot-actor-membership';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import { ZLinkSpotLocationClaim } from './spot-location-claim';
 import { ZLinkRoutedSpotPacketDispatch } from './spot-routed-spot-packet-dispatch';
@@ -125,11 +125,11 @@ export interface ZLinkSpotManagerOptions {
     actorCreateRequest?: Message,
     signal?: AbortSignal
   ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly nativeJoinBoundSessionTargetResolver?: (
-    info: ZLinkBackendActorJoinInfo
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
+  readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
+  readonly routedActorFinalizer?: (actor: ZLinkActor, spotRid: RoutingId) => Promise<void>;
   readonly routedActorCommitter?: (actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot) => void;
   readonly routedActorLeaveCommitter?: (actor: ZLinkActor) => void;
+  readonly routedActorRollback?: (actor: ZLinkActor) => Promise<void>;
   readonly actorResponseSender?: (
     actor: ZLinkActor,
     packetName: string,
@@ -152,6 +152,7 @@ export interface ZLinkSpotManagerOptions {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -172,6 +173,7 @@ export interface ZLinkSpotManagerOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
   readonly remoteActorPacketTargetReceiver?: (
     actorId: string,
     target: ZLinkRemoteBoundSessionTarget
@@ -248,13 +250,17 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       nativeSpotNodeProvider: options.nativeSpotNodeProvider,
       actorResolver: options.actorResolver,
       routedActorProvider: options.routedActorProvider,
-      nativeJoinBoundSessionTargetResolver: options.nativeJoinBoundSessionTargetResolver,
+      routedActorTransferProvider: options.routedActorTransferProvider,
+      routedActorFinalizer: options.routedActorFinalizer,
       routedActorCommitter: options.routedActorCommitter,
+      routedActorLeaveCommitter: options.routedActorLeaveCommitter,
+      routedActorRollback: options.routedActorRollback,
       actorResponseSender: options.actorResponseSender,
       actorErrorSender: options.actorErrorSender,
       routedBoundSessionReceiver: options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver,
+      routedBoundSessionOwnershipReceiver: options.routedBoundSessionOwnershipReceiver,
       remoteActorPacketTargetReceiver: options.remoteActorPacketTargetReceiver,
       remoteBoundSessionTargetResolver: options.remoteBoundSessionTargetResolver,
       actorPacketTargetProvider: options.actorPacketTargetProvider,
@@ -385,7 +391,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     spotRid: RoutingId,
     actor: ZLinkActor,
     request: Message,
-    commit: (spot: ZLinkSpot) => Promise<void> | void,
+    commit: (spot: ZLinkSpot) => Promise<ZLinkActorJoinRollback | void> | ZLinkActorJoinRollback | void,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActorJoinResponse> {
     return await this.actorMembership.admitActorJoin(spotRid, actor, request, commit, signal);
@@ -397,6 +403,22 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<void> {
     await this.actorMembership.leaveActor(spotRid, actor, signal);
+  }
+
+  async notifyActorLeftAfterTransfer(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.actorMembership.notifyActorLeftAfterTransfer(spotRid, actor, signal);
+  }
+
+  async beginActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
+    await this.actorMembership.beginActorTransfer(spotRid, actorId);
+  }
+
+  async cancelActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
+    await this.actorMembership.cancelActorTransfer(spotRid, actorId);
   }
 
   async notifyJoinedSpotActorDisconnected(

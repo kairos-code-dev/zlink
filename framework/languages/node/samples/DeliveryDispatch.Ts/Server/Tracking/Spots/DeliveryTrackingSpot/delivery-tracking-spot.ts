@@ -17,6 +17,7 @@ class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
   private static directory: DeliverySpotDirectory | null = null;
   readonly context!: ZLinkSpotContext<CustomerActor>;
   private readonly customers = new Map<string, CustomerActor>();
+  private readonly pendingCustomers = new Set<string>();
   private readonly history: DeliveryStatusReq[] = [];
   private deliveryId = '';
 
@@ -31,14 +32,21 @@ class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
     return { accepted: true, reply: { deliveryId: this.deliveryId } };
   }
 
-  async onActorJoin(actor: CustomerActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     const join = request.decode<{ deliveryId: string; customerId: string }>(Object as never);
-    if (join.deliveryId !== this.deliveryId) {
+    if (join.deliveryId !== this.deliveryId || join.customerId !== actorId) {
       return { accepted: false };
     }
+    this.pendingCustomers.add(actorId);
+    return { accepted: true, reply: { deliveryId: join.deliveryId, customerId: actorId } satisfies DeliverySpotJoinRes };
+  }
+
+  async onJoinedActor(actor: CustomerActor): Promise<void> {
+    if (!this.pendingCustomers.delete(actor.actorId)) {
+      return;
+    }
     this.customers.set(actor.actorId, actor);
-    console.error(`deliverydispatch tracking spot: joined delivery=${join.deliveryId} customer=${actor.actorId}`);
-    return { accepted: true, reply: { deliveryId: join.deliveryId, customerId: actor.actorId } satisfies DeliverySpotJoinRes };
+    console.error(`deliverydispatch tracking spot: joined delivery=${this.deliveryId} customer=${actor.actorId}`);
   }
 
   record(status: DeliveryStatusReq): void {

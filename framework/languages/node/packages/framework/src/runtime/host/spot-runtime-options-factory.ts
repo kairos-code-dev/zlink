@@ -70,7 +70,10 @@ export class ZLinkSpotRuntimeOptionsFactory {
       spotRouteResolver: this.options.createLocationSpotRouteResolver(),
       createNativeSpot: (spotRid) => this.primaryNode()?.getOrCreateSpot(spotRid).spot,
       nativeSpotNodeProvider: () => this.primaryNode(),
-      actorResolver: (actorId) => this.options.actorManager()?.getState(actorId)?.actor,
+      actorResolver: (actorId) => {
+        const state = this.options.actorManager()?.getState(actorId);
+        return state?.isMoving === true ? undefined : state?.actor;
+      },
       routedActorProvider: (
         actorId,
         actorType,
@@ -86,7 +89,26 @@ export class ZLinkSpotRuntimeOptionsFactory {
         actorCreateRequest,
         signal
       ),
-      nativeJoinBoundSessionTargetResolver: (info) => this.nativeJoinBoundSessionTarget(info),
+      routedActorTransferProvider: (
+        actorId,
+        actorType,
+        adapterKey,
+        transferState,
+        remoteBoundSessionTarget,
+        signal
+      ) => actorRuntimeOptions.materializeRoutedActor(
+        actorId,
+        actorType,
+        adapterKey,
+        transferState,
+        remoteBoundSessionTarget,
+        signal
+      ),
+      routedActorFinalizer: (actor, spotRid) => actorRuntimeOptions.finalizeRoutedActor(
+        actor,
+        spotRid,
+        this.options.meshRouters.primarySpotMeshName() ?? ''
+      ),
       routedActorCommitter: (actor, spotRid, spot) =>
         actorRuntimeOptions.commitRoutedActor(actor, spotRid, spot),
       routedActorLeaveCommitter: (actor) =>
@@ -94,8 +116,9 @@ export class ZLinkSpotRuntimeOptionsFactory {
           actor,
           (actorId) => this.options.boundSessionRelay.clearRemoteActorPacketTarget(actorId)
         ),
-      routedBoundSessionReceiver: (actorId, message, packetName, metadata) =>
-        this.options.boundSessionRelay.receiveRoutedBoundSession(actorId, message, packetName, metadata),
+      routedActorRollback: (actor) => actorRuntimeOptions.rollbackRoutedActor(actor),
+      routedBoundSessionReceiver: (actorId, message, packetName, metadata, actorRef) =>
+        this.options.boundSessionRelay.receiveRoutedBoundSession(actorId, message, packetName, metadata, actorRef),
       routedBoundSessionResponseReceiver: (actorId, packetName, requestSeq, message, replyOptions, actorPacketTarget) =>
         this.options.boundSessionRelay.receiveRoutedBoundSessionResponse(
           actorId,
@@ -114,6 +137,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
           metadata,
           actorPacketTarget
         ),
+      routedBoundSessionOwnershipReceiver: (payload) =>
+        this.options.boundSessionRelay.receiveRemoteBoundSessionOwnership(payload),
       remoteActorPacketTargetReceiver: (actorId, target) => {
         const state = this.options.actorManager()?.getState(actorId);
         state?.setRemoteBoundSessionTarget(target);
@@ -126,22 +151,6 @@ export class ZLinkSpotRuntimeOptionsFactory {
       actorErrorSender: (actorId, packetName, requestSeq, error, metadata, actorRef, signal) =>
         this.options.boundSessionRelay.sendActorError(actorId, packetName, requestSeq, error, metadata, actorRef, signal),
       dispatchErrors: this.options.dispatchErrorReporter(this.options.runtimeOrPreStartErrorSink)
-    };
-  }
-
-  private nativeJoinBoundSessionTarget(info: {
-    readonly sourceActor: ActorRef;
-    readonly sourceSpotRid?: RoutingId;
-  }): ZLinkRemoteBoundSessionTarget | undefined {
-    const routerChannelId = this.options.meshRouters.defaultSpotRouterChannelId()
-      ?? this.options.meshRouters.defaultRouterChannelId();
-    if (routerChannelId === undefined) {
-      return undefined;
-    }
-    return {
-      routerChannelId,
-      targetNodeRid: normalizeRuntimeRoutingId(info.sourceActor.nodeRid),
-      spotRid: normalizeRuntimeRoutingId(info.sourceSpotRid ?? info.sourceActor.nodeRid)
     };
   }
 

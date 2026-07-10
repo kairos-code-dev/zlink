@@ -249,6 +249,25 @@ test('location lifecycle deactivates stale hosted actor and protects new owner r
   assert.equal(row.ownerId, 'owner-b');
 });
 
+test('location lifecycle retries source actor cleanup without losing the tracked generation', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const node = await lifecycleNode(store, 'owner-a', 'node-a');
+  await node.lifecycle.claimActor('player', 'actor-retry', rid('node-a'));
+  const removeActor = node.runtime.removeActor.bind(node.runtime);
+  let attempts = 0;
+  node.runtime.removeActor = async (...args) => {
+    attempts += 1;
+    if (attempts === 1) throw new Error('temporary store failure');
+    return await removeActor(...args);
+  };
+
+  await node.lifecycle.releaseActorEventually('player', 'actor-retry');
+
+  assert.equal(attempts, 2);
+  assert.equal(node.lifecycle.ownsActor('player', 'actor-retry'), false);
+  assert.equal(await store.resolveActor({ actorId: 'actor-retry' }), undefined);
+});
+
 test('location lifecycle claims spots and binds actor session routes with takeover', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const nodeA = await lifecycleNode(store, 'owner-a', 'node-a');

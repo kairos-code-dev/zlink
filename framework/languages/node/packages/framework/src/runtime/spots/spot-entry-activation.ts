@@ -90,6 +90,7 @@ interface ZLinkEntrySpotActivationOptions {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -110,6 +111,7 @@ interface ZLinkEntrySpotActivationOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
   readonly actorResponseSender?: (
     actor: ZLinkActor,
     packetName: string,
@@ -276,6 +278,7 @@ export class ZLinkEntrySpotActivation {
       routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
+      routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
       actorPacketTargetProvider: this.options.actorPacketTargetProvider,
       bindRemoteActorSession: (actor, sourceNodeRid, sourceSessionRid) => {
         if (String(sourceNodeRid) === String(this.options.nativeNode.routingId)) {

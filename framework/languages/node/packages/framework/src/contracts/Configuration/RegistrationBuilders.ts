@@ -2,6 +2,7 @@ import type {
   RoutingId,
   Type,
   ZLinkClientServerChannelBuilder,
+  ZLinkActor,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
@@ -10,6 +11,7 @@ import type {
   ZLinkRouteChannelBuilder,
   ZLinkRouteMeshChannelBuilder,
   ZLinkSpot,
+  ZLinkActorTransferAdapter,
   ZLinkSpotMeshBuilder,
   ZLinkSpotNodeBuilder,
   ZLinkStreamCompressionBuilder,
@@ -65,6 +67,7 @@ export function createFrameworkOptions(
 class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private readonly spotMeshes = new Set<string>();
   private readonly options: MutableFrameworkRegistrationOptions = {
+    actorTransferAdapters: new Map(),
     channels: {},
     routeChannels: [],
     streamNodes: {},
@@ -96,6 +99,17 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   addLocationStore(store: IZLinkLocationStore): this {
     this.options.locations ??= { options: {} };
     this.options.locations.storeInstance = store;
+    return this;
+  }
+
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: Type<TActor>,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this {
+    if (this.options.actorTransferAdapters.has(actorType)) {
+      throw new ZLinkConfigurationException(`Duplicate actor transfer adapter for '${actorType.name}'.`);
+    }
+    this.options.actorTransferAdapters.set(actorType, adapterType);
     return this;
   }
 
@@ -163,6 +177,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       streamCompression: this.options.streamCompression,
       spotNodes: this.options.spotNodes,
       spotFactories: this.options.spotFactories,
+      actorTransferAdapters: new Map(this.options.actorTransferAdapters),
       dispatch: this.options.dispatch,
       worker: this.options.worker,
       locations: this.options.locations
@@ -462,6 +477,7 @@ function endpointList(endpoint: string | readonly string[]): string[] {
 }
 
 interface MutableFrameworkRegistrationOptions {
+  actorTransferAdapters: Map<Type, Type>;
   codecs?: MutableCodecRegistryOptions;
   channels: Record<string, MutableChannelOptions>;
   routeChannels: MutableRouteChannelOptions[];

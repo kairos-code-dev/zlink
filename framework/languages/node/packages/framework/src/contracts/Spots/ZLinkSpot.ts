@@ -12,7 +12,7 @@ export interface ZLinkSpotActorJoinResponse extends ZLinkSpotAcceptRejectRespons
 export interface ZLinkSpotCreateResponse extends ZLinkSpotAcceptRejectResponse {}
 
 export interface ZLinkSpotActorLifecycle<TActor extends ZLinkActor = ZLinkActor> {
-  onActorJoin?(actor: TActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
   onDisconnectActor?(actor: TActor, signal?: AbortSignal): Promise<void>;

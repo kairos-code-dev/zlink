@@ -13,25 +13,19 @@ import {
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
 import type {
-  ZLinkBackendActorJoinInfo,
   ZLinkBackendActorJoinRequest,
-  ZLinkBackendActorRef,
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
-import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import {
   encodeFrameworkPayloadMessage,
   wrapFrameworkPayloadMessage
 } from '../messaging/payload-codec';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
-import {
-  REMOTE_ACTOR_JOIN_PACKET,
-  type ZLinkRemoteActorJoinActor
-} from './spot-remote-codec';
+import { REMOTE_ACTOR_JOIN_PACKET } from './spot-remote-codec';
 
 interface ZLinkNativeActorJoinAdmissionTarget {
-  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
@@ -41,17 +35,8 @@ interface ZLinkSpotNativeActorJoinAdmissionOptions {
   readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
   readonly getTarget: () => ZLinkNativeActorJoinAdmissionTarget;
   readonly defaultAccept: boolean;
-  readonly routedActorProvider?: (
-    actorId: string,
-    actorType: string,
-    actorRef?: ZLinkBackendActorRef,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    actorCreateRequest?: Message,
-    signal?: AbortSignal
-  ) => Promise<ZLinkRemoteActorJoinActor>;
-  readonly nativeJoinBoundSessionTargetResolver?: (
-    info: ZLinkBackendActorJoinInfo
-  ) => ZLinkRemoteBoundSessionTarget | undefined;
+  readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
+  readonly rollbackCommittedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
@@ -64,49 +49,45 @@ export class ZLinkSpotNativeActorJoinAdmission {
     const actorId = request.info.targetActor.actorId;
     let accepted = false;
     let reply: Message | undefined;
-    let joinedActor: ZLinkActor | undefined;
+    let stagedActor: ZLinkActor | undefined;
     const decoded = this.decodeNativeActorJoinRequest(request.message);
     try {
-      let actor = this.options.resolveActor(actorId);
-      if (actor === undefined && decoded !== undefined && this.options.routedActorProvider !== undefined) {
-        const remoteBoundSessionTarget = this.options.nativeJoinBoundSessionTargetResolver?.(request.info);
-        actor = (await this.options.routedActorProvider(
-          actorId,
-          decoded.actorType,
-          request.info.targetActor,
-          remoteBoundSessionTarget,
-          decoded.actorCreateRequest
-        )).actor;
+      if (decoded !== undefined) {
+        throw new Error('Remote actor join requires the two-phase routed transfer protocol.');
       }
+      const actor = this.options.resolveActor(actorId);
       if (actor !== undefined) {
         const target = this.options.getTarget();
-        const joinRequest = decoded?.request ?? request.message;
+        const joinRequest = request.message;
         const joinPayload = wrapFrameworkPayloadMessage(joinRequest, this.options.messageSerializers);
         const response: ZLinkSpotActorJoinResponse = await this.options.serial.execute(async () =>
           target.onActorJoin === undefined
             ? { accepted: this.options.defaultAccept }
-            : target.onActorJoin(actor, joinPayload)
+            : target.onActorJoin(actor.actorId, joinPayload)
         );
         accepted = response.accepted;
         reply = response.reply === undefined
           ? undefined
           : encodeFrameworkPayloadMessage(response.reply, this.options.messageSerializers);
         if (accepted) {
-          this.options.commitRoutedActor?.(actor);
-          joinedActor = actor;
+          stagedActor = actor;
+          await this.options.commitRoutedActor?.(actor);
+          await this.options.serial.execute(() => target.onJoinedActor?.(actor));
+          await this.options.finalizeRoutedActor?.(actor);
         }
       }
     } catch (error) {
+      if (stagedActor !== undefined) {
+        try {
+          await this.options.rollbackCommittedActor?.(stagedActor);
+        } catch (rollbackError) {
+          this.reportHandlerException(actorId, rollbackError);
+        }
+      }
       this.reportHandlerException(actorId, error);
       accepted = false;
+      reply?.close();
       reply = undefined;
-    }
-    if (joinedActor !== undefined) {
-      try {
-        await this.options.serial.execute(() => this.options.getTarget().onJoinedActor?.(joinedActor));
-      } catch (error) {
-        this.reportHandlerException(actorId, error);
-      }
     }
     const operation = this.options.nativeSpot.replyActorJoin(request, accepted ? 0 : 1);
     let submitted = false;

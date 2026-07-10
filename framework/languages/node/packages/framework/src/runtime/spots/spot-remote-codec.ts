@@ -5,14 +5,27 @@ import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
 import { decodeChannelEnvelope } from '../channels/channel-envelope';
 import { decodeWireRoutingId } from './route-wire-codec';
+import {
+  REMOTE_ACTOR_JOIN_PACKET,
+  type ZLinkRemoteActorJoinWirePayload
+} from '../actors/actor-remote-wire';
 
-export const REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
+export { REMOTE_ACTOR_JOIN_PACKET };
 export const REMOTE_BOUND_SESSION_BIND_PACKET = 'zlink.framework.actor.bound_session.bind';
 
 export interface ZLinkRemoteActorJoinActor {
   readonly actor: ZLinkActor;
   readonly actorRef: ZLinkBackendActorRef;
 }
+
+export type ZLinkRoutedActorTransferProvider = (
+  actorId: string,
+  actorType: string,
+  adapterKey: string | undefined,
+  transferState: Message,
+  remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+  signal?: AbortSignal
+) => Promise<ZLinkRemoteActorJoinActor>;
 
 export interface ZLinkDecodedRemoteActorJoinRequest {
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
@@ -23,26 +36,13 @@ export interface ZLinkDecodedRemoteActorJoinRequest {
   readonly remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget;
   readonly actorCreateRequest?: Message;
   readonly request: Message;
+  readonly phase?: 'admission' | 'commit';
+  readonly transferId?: string;
+  readonly transferAdapterKey?: string;
+  readonly transferState?: Message;
 }
 
-export interface ZLinkRemoteActorJoinWirePayload {
-  readonly packetName?: unknown;
-  readonly actorId?: unknown;
-  readonly actorType?: unknown;
-  readonly actorNodeRid?: unknown;
-  readonly actorNodeRidHex?: unknown;
-  readonly actorGeneration?: unknown;
-  readonly actorCreateRequest?: unknown;
-  readonly sourceSpotRid?: unknown;
-  readonly sourceSpotRidHex?: unknown;
-  readonly routerChannelId?: unknown;
-  readonly boundSessionRouterChannelId?: unknown;
-  readonly boundSessionTargetNodeRid?: unknown;
-  readonly boundSessionTargetNodeRidHex?: unknown;
-  readonly boundSessionSpotRid?: unknown;
-  readonly boundSessionSpotRidHex?: unknown;
-  readonly request?: unknown;
-}
+export type { ZLinkRemoteActorJoinWirePayload };
 
 export function hasRemoteActorJoinIdentity(
   value: unknown
@@ -81,6 +81,10 @@ export function decodeRemoteActorJoinPayload(
   raw: boolean,
   envelope?: ReturnType<typeof decodeChannelEnvelope>
 ): ZLinkDecodedRemoteActorJoinRequest {
+  const phase = payload.phase === 'admission' || payload.phase === 'commit'
+    ? payload.phase
+    : undefined;
+  const transferProtocol = phase !== undefined;
   return {
     envelope,
     raw,
@@ -95,16 +99,28 @@ export function decodeRemoteActorJoinPayload(
     actorCreateRequest: typeof payload.actorCreateRequest === 'string'
       ? BindingMessage.from(Buffer.from(payload.actorCreateRequest, 'base64'))
       : undefined,
+    phase,
+    transferId: typeof payload.transferId === 'string' ? payload.transferId : undefined,
+    transferAdapterKey: typeof payload.transferAdapterKey === 'string'
+      ? payload.transferAdapterKey
+      : undefined,
+    transferState: typeof payload.transferState === 'string'
+      ? BindingMessage.from(Buffer.from(payload.transferState, 'base64'))
+      : undefined,
     remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
-      payload.boundSessionRouterChannelId ?? payload.routerChannelId,
-      payload.boundSessionTargetNodeRid ?? (
-        received.routingId === null
-          ? payload.actorNodeRid
-          : String(received.routingId)
-      ),
+      transferProtocol ? payload.boundSessionRouterChannelId : payload.boundSessionRouterChannelId ?? payload.routerChannelId,
+      transferProtocol
+        ? payload.boundSessionTargetNodeRid
+        : payload.boundSessionTargetNodeRid ?? (
+            received.routingId === null
+              ? payload.actorNodeRid
+              : String(received.routingId)
+          ),
       payload.boundSessionTargetNodeRidHex,
-      payload.boundSessionSpotRid ?? payload.sourceSpotRid ?? received.spotRid ?? undefined,
-      payload.boundSessionSpotRidHex ?? payload.sourceSpotRidHex
+      transferProtocol
+        ? payload.boundSessionSpotRid
+        : payload.boundSessionSpotRid ?? payload.sourceSpotRid ?? received.spotRid ?? undefined,
+      transferProtocol ? payload.boundSessionSpotRidHex : payload.boundSessionSpotRidHex ?? payload.sourceSpotRidHex
     ),
     request
   };

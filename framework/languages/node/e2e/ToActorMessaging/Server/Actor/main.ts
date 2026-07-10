@@ -60,8 +60,8 @@ class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
     evidence.append({ scenario: 'create', actorId: actor.actorId, kind: 'create', value: 'created' });
   }
 
-  async onActorJoin(actor: TestActor, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
-    evidence.append({ scenario: 'join', actorId: actor.actorId, kind: 'join', value: 'joined' });
+  async onActorJoin(actorId: string, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
+    evidence.append({ scenario: 'join', actorId, kind: 'join', value: 'joined' });
     return { accepted: true };
   }
 }

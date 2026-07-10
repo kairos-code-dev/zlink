@@ -37,6 +37,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
   readonly context!: ZLinkSpotContext<PlaySpotActor>;
   private roomId = InitialRoomId;
   private match: TicTacToeMatchType<PlaySpotActor> = new TicTacToeMatch<PlaySpotActor>(InitialRoomId);
+  private readonly pendingJoins = new Map<string, TicTacToeGameJoinReq>();
   private gameTick?: ZLinkTimer;
 
   async configure(): Promise<void> {
@@ -59,12 +60,12 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     this.gameTick = undefined;
   }
 
-  async onActorJoin(actor: PlaySpotActor, requestMessage: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, requestMessage: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     try {
-      console.log(`game spot: onActorJoin received. actor=${actor.actorId} roomId=${this.roomId}`);
+      console.log(`game spot: onActorJoin received. actor=${actorId} roomId=${this.roomId}`);
       const request = requestMessage.decode<TicTacToeGameJoinReq>();
-      const response = await this.join(actor, request);
-      console.log(`game spot: onActorJoin completed. actor=${actor.actorId} roomId=${this.roomId}`);
+      const response = this.admit(actorId, request);
+      console.log(`game spot: onActorJoin completed. actor=${actorId} roomId=${this.roomId}`);
       return { accepted: true, reply: response };
     } catch (error) {
       return {
@@ -75,6 +76,39 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
   }
 
   async onJoinedActor(actor: PlaySpotActor): Promise<void> {
+    const request = this.pendingJoins.get(actor.actorId);
+    if (request !== undefined) {
+      this.pendingJoins.delete(actor.actorId);
+      actor.displayName = request.player.displayName;
+      actor.level = request.player.level;
+      actor.wins = request.player.wins;
+      actor.roomId = request.roomId;
+      const joined = this.requireMatch().players.get(actor.actorId);
+      if (joined === undefined) {
+        throw new Error(`Accepted TicTacToe actor '${actor.actorId}' has no pending room membership.`);
+      }
+      joined.actor = actor;
+      const state = this.requireMatch().snapshot();
+      if (this.requireMatch().players.size === 2) {
+        for (const player of this.requireMatch().players.values()) {
+          if (player.actorId === actor.actorId) {
+            continue;
+          }
+          player.actor.push(
+            PacketNames.playerJoinedNotify,
+            playerJoinedNotify(
+              this.roomId,
+              actor.actorId,
+              actor.displayName,
+              actor.level,
+              joined.mark,
+              state
+            )
+          );
+          player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+        }
+      }
+    }
     console.log(`game spot: actor joined. actor=${actor.actorId} roomId=${this.roomId}`);
   }
 
@@ -151,43 +185,27 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
       .submit();
   }
 
-  private async join(actor: PlaySpotActor, request: TicTacToeGameJoinReq): Promise<JoinGameRes> {
+  private admit(actorId: string, request: TicTacToeGameJoinReq): JoinGameRes {
     const match = this.requireMatch();
     const roomId = this.requireRoomId();
     if (request.roomId !== roomId) {
       throw new Error(`Actor requested join for a different room. roomId=${request.roomId}`);
     }
-    if (request.player.actorId !== actor.actorId) {
-      throw new Error(`Join player '${request.player.actorId}' does not match actor '${actor.actorId}'.`);
+    if (request.player.actorId !== actorId) {
+      throw new Error(`Join player '${request.player.actorId}' does not match actor '${actorId}'.`);
     }
     if (request.player.level < SampleDefaults.requiredLevel) {
       throw new Error(`Player level ${request.player.level} is below required level ${SampleDefaults.requiredLevel}.`);
     }
-    actor.displayName = request.player.displayName;
-    actor.level = request.player.level;
-    actor.wins = request.player.wins;
-    const result = match.joinPlayer(actor);
-    actor.roomId = roomId;
+    this.pendingJoins.set(actorId, request);
+    const placeholder = {
+      actorId,
+      displayName: request.player.displayName,
+      level: request.player.level,
+      wins: request.player.wins
+    } as PlaySpotActor;
+    const result = match.joinPlayer(placeholder);
     const state = result.state;
-    if (result.newlyJoined && match.players.size === 2) {
-      for (const player of match.players.values()) {
-        if (player.actorId === result.joined.actorId) {
-          continue;
-        }
-        player.actor.push(
-          PacketNames.playerJoinedNotify,
-          playerJoinedNotify(
-            roomId,
-            result.joined.actorId,
-            result.joined.actor.displayName,
-            result.joined.actor.level,
-            result.joined.mark,
-            state
-          )
-        );
-        player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
-      }
-    }
     return joinGameRes(state);
   }
 

@@ -22,6 +22,7 @@ export enum ZLinkActorClaimStatus {
 export interface ZLinkActorClaimResult {
   readonly status: ZLinkActorClaimStatus;
   readonly existing?: ZLinkActorLocation;
+  readonly claimed?: ZLinkActorLocation;
 }
 
 export interface ZLinkActorClaimActivation<TActor> {
@@ -87,11 +88,17 @@ export class ZLinkActorLocationClaims {
     };
     const result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.NewClaim);
     if (result.status === ZLinkLocationWriteStatus.Stored) {
+      const claimed = {
+        ...row,
+        generation: result.generation,
+        ownerId: this.runtime.ownerId,
+        updatedAt: result.updatedAt
+      };
       this.actors.set(canonical, {
-        row: { ...row, generation: result.generation, ownerId: this.runtime.ownerId, updatedAt: result.updatedAt },
+        row: claimed,
         deactivate
       });
-      return { status: ZLinkActorClaimStatus.Claimed };
+      return { status: ZLinkActorClaimStatus.Claimed, claimed };
     }
 
     if (result.status === ZLinkLocationWriteStatus.RejectedConflict) {
@@ -106,6 +113,49 @@ export class ZLinkActorLocationClaims {
 
   async setRef(actorType: string, actorId: string, actorRef: ActorRef): Promise<void> {
     await this.renew(actorType, actorId, (row) => ({ ...row, actorRef }));
+  }
+
+  async takeoverJoinedSpot(
+    actorType: string,
+    actorId: string,
+    actorRef: ActorRef,
+    spotMeshName: string,
+    spotRid: RoutingId,
+    deactivate?: () => Promise<void>
+  ): Promise<ZLinkActorClaimResult> {
+    const normalizedType = ZLinkLocationKeyCodec.normalizeActorType(actorType);
+    const key = { actorId };
+    const canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
+    const row: ZLinkActorLocation = {
+      actorType: normalizedType,
+      actorId,
+      actorRef,
+      nodeRid: actorRef.nodeRid,
+      generation: 0n,
+      locationKind: ZLinkSpotKind.User,
+      spotMeshName,
+      spotRid,
+      ownerId: '',
+      updatedAt: new Date(0)
+    };
+    const result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.Takeover);
+    if (result.status !== ZLinkLocationWriteStatus.Stored) {
+      return {
+        status: ZLinkActorClaimStatus.Conflict,
+        existing: await this.actorStore.resolveActor(key)
+      };
+    }
+    const claimed = {
+      ...row,
+      generation: result.generation,
+      ownerId: this.runtime.ownerId,
+      updatedAt: result.updatedAt
+    };
+    this.actors.set(canonical, {
+      row: claimed,
+      deactivate
+    });
+    return { status: ZLinkActorClaimStatus.Claimed, claimed };
   }
 
   async notifyJoinedSpot(actorType: string, actorId: string, spotMeshName: string, spotRid: RoutingId): Promise<void> {
@@ -133,8 +183,10 @@ export class ZLinkActorLocationClaims {
     if (tracked === undefined) {
       return;
     }
-    this.actors.delete(canonical);
     await this.runtime.removeActor(key, tracked.row.generation);
+    if (this.actors.get(canonical) === tracked) {
+      this.actors.delete(canonical);
+    }
   }
 
   owns(_actorType: string, actorId: string): boolean {

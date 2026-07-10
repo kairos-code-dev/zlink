@@ -375,11 +375,16 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       primarySpotNodeOrUndefined: () => this.spotNodeRuntime?.primaryNode,
       notifyEntrySpotActorCreated: (nodeRid, actor, createRequest, signal) =>
         this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal) ?? Promise.resolve(),
+      notifyEntrySpotActorLeft: (actor, signal) =>
+        this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve(),
       locationLifecycle: () => this.locationOwner.currentLifecycle,
+      primarySpotMeshName: () => this.meshRouters.primarySpotMeshName(),
       createLocationSpotRouteResolver: () => this.createLocationSpotRouteResolver(),
       createActorLocationResolver: () => this.createActorLocationResolver(),
       forgetDestroyedActorRef: (actorId) => this.destroyedActorRefs.delete(actorId),
-      rememberDestroyedActorRef: (actorId, actorRef) => this.destroyedActorRefs.set(actorId, actorRef)
+      rememberDestroyedActorRef: (actorId, actorRef) => this.destroyedActorRefs.set(actorId, actorRef),
+      reportPostCommitError: (error) =>
+        this.runtimeOrPreStartErrorSink.reportRuntimeTaskException('post-commit actor binding', error)
     });
   }
 
@@ -452,6 +457,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   }
 
   private createLocationSpotRouteResolver(): ZLinkSpotRouteResolver | undefined {
+    this.ensureLocationRuntime();
     return this.locationOwner.createSpotRouteResolver(
       this.meshRouters.spotLocationMeshNames(),
       this.meshRouters.spotRouterChannelIdByMesh()
@@ -466,9 +472,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     actorId: string,
     message: unknown,
     packetName: string | undefined,
-    metadata: ReadonlyMap<string, string>
+    metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef
   ): Promise<void> {
-    await this.boundSessionRelay.receiveRoutedBoundSession(actorId, message, packetName, metadata);
+    await this.boundSessionRelay.receiveRoutedBoundSession(actorId, message, packetName, metadata, actorRef);
   }
 
   async receiveRoutedBoundSessionResponse(
@@ -517,6 +524,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
 
   async receiveRemoteBoundSessionError(payload: unknown): Promise<{ readonly ok: boolean }> {
     return await this.boundSessionRelay.receiveRemoteBoundSessionError(payload);
+  }
+
+  async receiveRemoteBoundSessionOwnership(payload: unknown): Promise<void> {
+    await this.boundSessionRelay.receiveRemoteBoundSessionOwnership(payload);
   }
 
   async receiveRemoteActorJoin(

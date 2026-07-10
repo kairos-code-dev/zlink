@@ -34,7 +34,7 @@ export class YieldProbeSpot implements ZLinkSpot<YieldActor> {
     this.context.handlers.actorRequest('ActorPushYieldReq', SpotActorPushYieldHandler);
   }
 
-  async onActorJoin(actor: YieldActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse> {
     const delay = request.decode<DelayReq>(Object as never);
     if (delay.delayMs > 0) {
       await new Promise<void>((resolve, reject) => {
@@ -45,7 +45,7 @@ export class YieldProbeSpot implements ZLinkSpot<YieldActor> {
         }, { once: true });
       });
     }
-    this.evidence.add(`actor-joined|rid=${this.evidence.rid}|spot=${this.context.spotRid}|actor=${actor.actorId}`);
+    this.evidence.add(`actor-admitted|rid=${this.evidence.rid}|spot=${this.context.spotRid}|actor=${actorId}`);
     return { accepted: true, reply: delay };
   }
 

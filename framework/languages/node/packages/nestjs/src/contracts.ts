@@ -2,6 +2,7 @@ import type { InjectionToken, ModuleMetadata } from '@nestjs/common';
 import type {
   Type,
   ZLinkActor,
+  ZLinkActorTransferAdapter,
   ZLinkChannelPublishHandlerRegistration,
   ZLinkChannelRequestHandlerRegistration,
   ZLinkChannelSendHandlerRegistration,
@@ -203,6 +204,10 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   useInMemoryLocationStores(): this;
   addLocationStore(store: IZLinkLocationStore): this;
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: Type<TActor>,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this;
   configureLocations(): ZLinkLocationOptions;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;

@@ -14,7 +14,6 @@ import type {
   ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import type {
-  ZLinkBackendActorRef,
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
@@ -28,10 +27,10 @@ import { ZLinkSpotRoutedActorAdmission } from './spot-routed-actor-admission';
 import { ZLinkSpotRoutedBoundSessionDispatch } from './spot-routed-bound-session-dispatch';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
-import type { ZLinkRemoteActorJoinActor } from './spot-remote-codec';
+import type { ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 
 interface ZLinkRoutedFrameAdmissionTarget {
-  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
@@ -42,14 +41,9 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
   readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
   readonly getTarget: () => ZLinkRoutedFrameAdmissionTarget & ZLinkSpot;
   readonly defaultAccept: boolean;
-  readonly routedActorProvider?: (
-    actorId: string,
-    actorType: string,
-    actorRef?: ZLinkBackendActorRef,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    actorCreateRequest?: Message,
-    signal?: AbortSignal
-  ) => Promise<ZLinkRemoteActorJoinActor>;
+  readonly routedActorTransferProvider?: ZLinkRoutedActorTransferProvider;
+  readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
+  readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
   readonly actorPacketHandler?: (
     actorId: string,
@@ -63,6 +57,7 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
+    actorRef?: ActorRef,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -83,6 +78,7 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
   readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -103,7 +99,8 @@ export class ZLinkSpotRoutedFrameDispatch {
       channelCodecs: () => this.channelCodecs(),
       routedBoundSessionReceiver: options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
-      routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver
+      routedBoundSessionErrorReceiver: options.routedBoundSessionErrorReceiver,
+      routedBoundSessionOwnershipReceiver: options.routedBoundSessionOwnershipReceiver
     });
     this.actorPacketRelayDispatch = new ZLinkSpotActorPacketRelayDispatch({
       resolveActor: options.resolveActor,
@@ -121,10 +118,11 @@ export class ZLinkSpotRoutedFrameDispatch {
     });
     this.routedActorAdmission = new ZLinkSpotRoutedActorAdmission({
       serial: options.serial,
-      resolveActor: options.resolveActor,
       getTarget: options.getTarget,
       defaultAccept: options.defaultAccept,
-      routedActorProvider: options.routedActorProvider,
+      routedActorTransferProvider: options.routedActorTransferProvider,
+      finalizeRoutedActor: options.finalizeRoutedActor,
+      rollbackRoutedActor: options.rollbackRoutedActor,
       commitRoutedActor: options.commitRoutedActor,
       messageSerializers: options.messageSerializers
     });

@@ -38,10 +38,9 @@ async function requestWithNewClient(options: ConsumerOptions, request: ProfileRe
     const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
     return await requestProfile(channel, request, 5000);
   } finally {
-    await Promise.race([
-      app.close(),
-      new Promise<void>((resolve) => setTimeout(resolve, 5000))
-    ]);
+    // Each storm iteration owns a complete runtime. Do not start the next one
+    // until its sockets, location leases, and background tasks have stopped.
+    await app.close();
   }
 }
 

@@ -6,11 +6,41 @@ import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
 
 export const ZLINK_REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
 export const REMOTE_ACTOR_JOIN_PACKET = ZLINK_REMOTE_ACTOR_JOIN_PACKET;
+export const REMOTE_ACTOR_JOIN_ADMISSION = 'admission';
+export const REMOTE_ACTOR_JOIN_COMMIT = 'commit';
+export type ZLinkRemoteActorJoinPhase =
+  | typeof REMOTE_ACTOR_JOIN_ADMISSION
+  | typeof REMOTE_ACTOR_JOIN_COMMIT;
 export const ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET = '__zlink.actor.bound_session.send';
 export const ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET = '__zlink.actor.bound_session.response';
 export const ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET = '__zlink.actor.bound_session.error';
+export const ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET = '__zlink.actor.bound_session.ownership';
 export const ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET = 'zlink.framework.actor.session_disconnected';
 export const ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET = '__zlink.actor.packet.relay';
+
+export interface ZLinkRemoteActorJoinWirePayload {
+  readonly packetName?: unknown;
+  readonly spotRid?: unknown;
+  readonly actorId?: unknown;
+  readonly actorType?: unknown;
+  readonly actorNodeRid?: unknown;
+  readonly actorNodeRidHex?: unknown;
+  readonly actorGeneration?: unknown;
+  readonly actorCreateRequest?: unknown;
+  readonly phase?: unknown;
+  readonly transferId?: unknown;
+  readonly transferAdapterKey?: unknown;
+  readonly transferState?: unknown;
+  readonly sourceSpotRid?: unknown;
+  readonly sourceSpotRidHex?: unknown;
+  readonly routerChannelId?: unknown;
+  readonly boundSessionRouterChannelId?: unknown;
+  readonly boundSessionTargetNodeRid?: unknown;
+  readonly boundSessionTargetNodeRidHex?: unknown;
+  readonly boundSessionSpotRid?: unknown;
+  readonly boundSessionSpotRidHex?: unknown;
+  readonly request?: unknown;
+}
 
 export interface ZLinkRemoteActorJoinRequest {
   readonly packetName: typeof REMOTE_ACTOR_JOIN_PACKET;
@@ -20,6 +50,10 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly actorNodeRidHex?: string;
   readonly actorGeneration: string;
   readonly actorCreateRequest?: string;
+  readonly phase?: ZLinkRemoteActorJoinPhase;
+  readonly transferId?: string;
+  readonly transferAdapterKey?: string;
+  readonly transferState?: string;
   readonly routerChannelId?: string;
   readonly sourceSpotRid?: string;
   readonly sourceSpotRidHex?: string;
@@ -39,6 +73,10 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
   readonly actorCreateRequest?: string;
+  readonly phase?: ZLinkRemoteActorJoinPhase;
+  readonly transferId?: string;
+  readonly transferAdapterKey?: string;
+  readonly transferState?: string;
   readonly sourceSpotRid?: string;
   readonly sourceSpotRidHex?: string;
   readonly routerChannelId?: string;
@@ -60,6 +98,10 @@ interface ZLinkRemoteActorJoinRequestPayloadOptions {
   readonly routerChannelId?: string;
   readonly sourceSpotRid?: RoutingId;
   readonly boundSessionTarget?: ZLinkRemoteBoundSessionTarget;
+  readonly phase?: ZLinkRemoteActorJoinPhase;
+  readonly transferId?: string;
+  readonly transferAdapterKey?: string;
+  readonly transferState?: Buffer;
 }
 
 export interface ZLinkRemoteActorJoinReply {
@@ -85,6 +127,10 @@ export function buildRemoteActorJoinRequestPayload(
     actorNodeRidHex: actorRef === undefined ? undefined : encodeRoutingIdHex(actorRef.nodeRid),
     actorGeneration: actorRef === undefined ? undefined : actorRef.generation.toString(),
     actorCreateRequest: options.actorCreateRequest?.toString('base64'),
+    phase: options.phase,
+    transferId: options.transferId,
+    transferAdapterKey: options.transferAdapterKey,
+    transferState: options.transferState?.toString('base64'),
     sourceSpotRid: sourceSpotRid === undefined ? undefined : String(sourceSpotRid),
     sourceSpotRidHex: sourceSpotRid === undefined ? undefined : encodeRoutingIdHex(sourceSpotRid),
     routerChannelId: options.routerChannelId,

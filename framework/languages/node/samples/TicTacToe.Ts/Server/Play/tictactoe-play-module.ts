@@ -5,6 +5,8 @@ import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../Configuration/sample-settings';
 import { CreateGameHandler } from './Infrastructure/ZLink/Handlers/create-game-handler';
 import { PlayActorFactory } from './Infrastructure/ZLink/Actors/play-actor-factory';
+import { PlayActor } from './Infrastructure/ZLink/Actors/play-actor';
+import { PlayActorTransferAdapter } from './Infrastructure/ZLink/Actors/play-actor-transfer-adapter';
 import { PlayActorJoinGameHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler';
 import { PlayActorLeaveGameHandler } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play-actor-leave-game-handler';
 import { PlayActorPlaceMarkHandler } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play-actor-place-mark-handler';
@@ -55,6 +57,7 @@ function createTicTacToePlayModule(config: {
             .addRequestHandler(PacketNames.createGameReq, CreateGameHandler)
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient(config.apiEndpoints)
+            .addActorTransferAdapter(PlayActor, PlayActorTransferAdapter)
             .addStreamNode(SampleNames.playStream)
               .bind(config.playStreamEndpoint)
             .registerSession(PlaySessionFactory)
@@ -78,6 +81,7 @@ function createTicTacToePlayModule(config: {
       TicTacToeGameCreator,
       CreateGameHandler,
       PlayActorFactory,
+      PlayActorTransferAdapter,
       MilestoneObserverRegistry,
       PlayEntrySpot,
       PlayActorJoinGameHandler,

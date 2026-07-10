@@ -16,7 +16,7 @@ type PlayClient = {
 
 class PlayActor implements ZLinkActor, TicTacToeActor {
   readonly actorId: string;
-  readonly context: ZLinkActorContext;
+  readonly context!: ZLinkActorContext;
   displayName: string;
   level: number;
   wins: number;
@@ -26,9 +26,15 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
   private nextSeq: number;
   private client: PlayClient | undefined;
 
-  constructor(actorId: string, displayName: string, context: ZLinkActorContext, level = 0, wins = 0) {
+  constructor(actorId: string, displayName: string, context?: ZLinkActorContext, level = 0, wins = 0) {
     this.actorId = actorId;
-    this.context = context;
+    if (context !== undefined) {
+      Object.defineProperty(this, 'context', {
+        configurable: true,
+        enumerable: true,
+        value: context
+      });
+    }
     this.displayName = displayName;
     this.level = level;
     this.wins = wins;

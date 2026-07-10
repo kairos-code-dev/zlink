@@ -24,7 +24,6 @@ import type {
   ZLinkBackendRouterSocket
 } from '../backend/contracts';
 import type { ZLinkFrameworkRegistration } from '../configuration';
-import { socketTraceId } from './channel-socket-trace';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
 
 export interface ZLinkChannelLocationAutoConnectContext {
@@ -160,7 +159,7 @@ export function buildChannelAutoConnectCapabilities(
       executor: new ZLinkSocketAutoConnectExecutor(
         sockets.routeRouter(routeChannel.routerChannelId),
         new Set(routeChannel.manualConnections ?? []),
-        { routerInitiatorDial: true, routeChannelId: routeChannel.routerChannelId }
+        { routerInitiatorDial: true }
       )
     });
   }
@@ -171,7 +170,7 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   constructor(
     private readonly socket: ZLinkBackendConnectableSocket,
     private readonly manualEndpoints: ReadonlySet<string>,
-    private readonly options: { readonly routerInitiatorDial?: boolean; readonly routeChannelId?: string } = {}
+    private readonly options: { readonly routerInitiatorDial?: boolean } = {}
   ) {}
 
   connect(target: ZLinkAutoConnectTarget): boolean {
@@ -181,21 +180,8 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
     if (this.options.routerInitiatorDial === true) {
       configureRouterInitiatorDial(this.socket, target);
     }
-    if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-      traceAutoConnectSocketDial('connect begin', this.socket, target, this.options.routeChannelId);
-    }
-    try {
-      const result = this.socket.connect(target.endpoint);
-      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-        traceAutoConnectSocketDial('connect return', this.socket, target, this.options.routeChannelId, `result=${String(result)}`);
-      }
-      return true;
-    } catch (error) {
-      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-        traceAutoConnectSocketDial('connect error', this.socket, target, this.options.routeChannelId, formatAutoConnectError(error));
-      }
-      throw error;
-    }
+    this.socket.connect(target.endpoint);
+    return true;
   }
 
   disconnect(target: ZLinkAutoConnectTarget): void {
@@ -225,53 +211,6 @@ function configureRouterInitiatorDial(socket: ZLinkBackendConnectableSocket, tar
   if ('probe' in options) {
     options.probe = true;
   }
-}
-
-function traceAutoConnectSocketDial(
-  event: string,
-  socket: ZLinkBackendConnectableSocket,
-  target: ZLinkAutoConnectTarget,
-  routeChannelId: string | undefined,
-  detail?: string
-): void {
-  console.error(
-    `[zlink-autoconnect] socket ${event} id=${socketTraceId(socket)} channel=${routeChannelId ?? '<none>'} ` +
-    `rid=${formatAutoConnectSocketRid(target.nodeRid)} endpoint=${target.endpoint}` +
-    (detail === undefined ? '' : ` ${detail}`)
-  );
-}
-
-export function traceRouteMeshSocket(
-  event: string,
-  routeChannelId: string | undefined,
-  socket: ZLinkBackendConnectableSocket,
-  targetNodeRid?: string
-): void {
-  if (process.env.ZLINK_AUTOCONNECT_TRACE !== '1') {
-    return;
-  }
-  console.error(
-    `[zlink-autoconnect] socket ${event} id=${socketTraceId(socket)} channel=${routeChannelId ?? '<none>'}` +
-    (targetNodeRid === undefined ? '' : ` target=${targetNodeRid}`)
-  );
-}
-
-function formatAutoConnectSocketRid(rid: RoutingId | undefined): string {
-  if (rid === undefined) {
-    return '<none>';
-  }
-  const value = rid as unknown as { toHex?: () => string };
-  if (typeof value.toHex === 'function') {
-    return value.toHex.call(rid).toLowerCase();
-  }
-  return Buffer.from(rid, 'utf8').toString('hex');
-}
-
-function formatAutoConnectError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
-  }
-  return String(error);
 }
 
 function autoConnectLocal(

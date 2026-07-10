@@ -156,7 +156,7 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     requiresRuntime: true,
     isEnabled: (registration) => framework.hasSpotNode(registration) && hasLocationStores(registration),
     create: (_registration, runtime) =>
-      new framework.DefaultZLinkActorClient(requireRuntime(runtime).createActorClientOptions?.() ?? {})
+      new framework.DefaultZLinkActorClient(requireRuntime(runtime).createActorClientOptions())
   },
   {
     token: ZLINK_ACTOR_MANAGER,
@@ -164,14 +164,14 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     isEnabled: (registration) => framework.hasActorManager(registration),
     create: async (registration, runtime, moduleRef, discovery) => {
       const host = requireRuntime(runtime);
-      const hostActorOptions = host.createActorManagerOptions?.() as Record<string, unknown> | undefined;
+      const hostActorOptions = host.createActorManagerOptions();
       const actorManager = new framework.DefaultZLinkActorManager({
         actorFactories: registration.actorFactories,
         ...hostActorOptions,
-        boundSessionFactory: hostActorOptions?.boundSessionFactory ?? host.boundSessionFactory.create.bind(host.boundSessionFactory),
+        boundSessionFactory: hostActorOptions.boundSessionFactory ?? host.boundSessionFactory.create.bind(host.boundSessionFactory),
         providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
       });
-      host.setActorManager?.(actorManager);
+      host.setActorManager(actorManager);
       return actorManager;
     }
   },
@@ -192,7 +192,7 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     requiresRuntime: true,
     isEnabled: (registration) => hasLocationStores(registration),
     create: (_registration, runtime) => {
-      const resolver = requireRuntime(runtime).createLocationRefResolver?.();
+      const resolver = requireRuntime(runtime).createLocationRefResolver();
       if (resolver === undefined) {
         throw new framework.ZLinkConfigurationException('SpotRef resolver requires location stores.');
       }
@@ -204,7 +204,7 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     requiresRuntime: true,
     isEnabled: (registration) => hasLocationStores(registration),
     create: (_registration, runtime) => {
-      const resolver = requireRuntime(runtime).createLocationRefResolver?.();
+      const resolver = requireRuntime(runtime).createLocationRefResolver();
       if (resolver === undefined) {
         throw new framework.ZLinkConfigurationException('Actor SpotRef resolver requires location stores.');
       }
@@ -407,7 +407,7 @@ async function createSpotManager(
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
 ): Promise<unknown> {
-  const hostSpotOptions = runtime.createSpotManagerOptions?.() as Record<string, unknown> | undefined;
+  const hostSpotOptions = runtime.createSpotManagerOptions();
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
     spotTimerHandlers: [...registration.spotNodes.values()]
@@ -421,12 +421,12 @@ async function createSpotManager(
     spotActorRequestHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
     ...hostSpotOptions,
-    spotRouteResolver: hostSpotOptions?.spotRouteResolver,
+    spotRouteResolver: hostSpotOptions.spotRouteResolver,
     routedTransport: runtime.routeTransport,
     providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery),
     workerRuntime: new framework.ZLinkSpotWorkerRuntime(registration.worker)
   });
-  runtime.setSpotManager?.(manager);
+  runtime.setSpotManager(manager);
   return manager;
 }
 
@@ -436,13 +436,13 @@ async function createSpotOutbound(
   _moduleRef: ModuleRef | undefined,
   _discovery: DiscoveryService | undefined
 ): Promise<unknown> {
-  const hostSpotOptions = runtime.createSpotManagerOptions?.() as Record<string, unknown> | undefined;
+  const hostSpotOptions = runtime.createSpotManagerOptions() as Record<string, unknown>;
   return new framework.DefaultZLinkSpotOutbound(
     new framework.ZLinkSpotSerialExecutor(),
     undefined,
     undefined,
     undefined,
     runtime.routeTransport,
-    hostSpotOptions?.spotRouterChannelIdForMesh as ((meshName: string) => string) | undefined
+    hostSpotOptions.spotRouterChannelIdForMesh as ((meshName: string) => string) | undefined
   );
 }

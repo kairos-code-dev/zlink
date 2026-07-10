@@ -36,37 +36,35 @@ export class ZLinkSpotActorLifecycleDrain {
   constructor(private readonly options: ZLinkSpotActorLifecycleDrainOptions) {}
 
   async drain(): Promise<void> {
-    try {
-      for (;;) {
-        const event = this.options.nativeSpot.recvActorLifecycle(ZLINK_RECV_DONT_WAIT) as ZLinkSpotActorLifecycleEvent | null;
-        if (event === null) {
-          await this.options.waitIdle();
-          return;
-        }
-        const actorRef = event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT
-          ? event.info.previousActor
-          : event.info.currentActor;
-        const actorId = actorRef?.actorId;
-        const actor = actorId === undefined ? undefined : this.options.resolveActor(actorId);
-        if (actor === undefined) {
-          continue;
-        }
-        await this.options.serial.execute(() => {
-          const target = this.options.getTarget();
-          if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
-            return target.onJoinedActor?.(actor);
-          }
-          if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
-            return target.onLeaveActor?.(actor);
-          }
-          if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED) {
-            return target.onDisconnectActor?.(actor);
-          }
-          return undefined;
-        });
+    for (;;) {
+      const event = this.options.nativeSpot.recvActorLifecycle(
+        ZLINK_RECV_DONT_WAIT
+      ) as ZLinkSpotActorLifecycleEvent | null;
+      if (event === null) {
+        await this.options.waitIdle();
+        return;
       }
-    } catch (error) {
-      console.error(error);
+      const actorRef = event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT
+        ? event.info.previousActor
+        : event.info.currentActor;
+      const actorId = actorRef?.actorId;
+      const actor = actorId === undefined ? undefined : this.options.resolveActor(actorId);
+      if (actor === undefined) {
+        continue;
+      }
+      await this.options.serial.execute(() => {
+        const target = this.options.getTarget();
+        if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
+          return target.onJoinedActor?.(actor);
+        }
+        if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
+          return target.onLeaveActor?.(actor);
+        }
+        if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED) {
+          return target.onDisconnectActor?.(actor);
+        }
+        return undefined;
+      });
     }
   }
 }

@@ -1,7 +1,7 @@
 import type { GameplayEventEnvelope } from '../../../Shared/Contracts/messages';
 
 const GameplayDomain = {
-  monsterKilled(playerId: string, monsterId: string, areaId: string, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
+  monsterKilled(playerId: string, monsterId: string, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {
     return createEvent(playerId, idempotencyKey, 'monsterKilled', monsterId, 1, sourceApi);
   },
   itemCollected(playerId: string, itemId: string, count: number, idempotencyKey: string, sourceApi: string): GameplayEventEnvelope {

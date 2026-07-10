@@ -38,9 +38,16 @@ async function createEntryFixture(entrySpotType, packetHandlers = [], options = 
     registry,
     spot: activation.entrySpot
   });
-  const router = new framework.ZLinkActorDispatchRouter(manager, {
-    entryExecutor: activation.serialExecutor
-  });
+  const mailboxes = new framework.ZLinkActorDispatchMailboxSet();
+  const router = {
+    submit(actorId, operation) {
+      return mailboxes.submit(actorId, () => {
+        const state = manager.getState(actorId);
+        if (state?.actor === undefined) throw new Error(`Actor '${actorId}' is not created.`);
+        return operation({ actor: state.actor, spotRid: state.spotRid });
+      });
+    }
+  };
   return { manager, activation, registry, dispatcher, router };
 }
 

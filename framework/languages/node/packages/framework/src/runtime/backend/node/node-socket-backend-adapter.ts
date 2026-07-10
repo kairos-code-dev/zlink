@@ -35,14 +35,12 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
   const adapter = {
     nativeInstance,
     async dispose(): Promise<void> {
-      traceSocketLifecycle('dispose', boundEndpoints);
       disableSocketLinger(nativeInstance);
       closeSocketRoutes(nativeInstance, peerRoutingIds);
       closeSocketEndpoints(nativeInstance, boundEndpoints, connectedEndpoints);
       await closeWithBusyRetry(nativeInstance);
     },
     close(): void {
-      traceSocketLifecycle('close', boundEndpoints);
       nativeInstance.close();
     },
     bind(endpoint: string): void {
@@ -50,11 +48,6 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
       boundEndpoints.add(endpoint);
     },
     unbind(endpoint: string): void {
-      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-        console.error(
-          `[zlink-autoconnect] socket unbind endpoint=${endpoint}\n` + new Error('unbind-stack').stack
-        );
-      }
       (nativeInstance as T & { unbind(endpoint: string): void }).unbind(endpoint);
       boundEndpoints.delete(endpoint);
     },
@@ -254,16 +247,6 @@ function requireSocketOptions<TOptions>(socket: { readonly options?: TOptions })
     throw new TypeError('Binding socket does not expose options.');
   }
   return socket.options;
-}
-
-function traceSocketLifecycle(action: 'close' | 'dispose', boundEndpoints: Set<string>): void {
-  if (process.env.ZLINK_AUTOCONNECT_TRACE !== '1' || boundEndpoints.size === 0) {
-    return;
-  }
-  console.error(
-    `[zlink-autoconnect] socket ${action} bound=${[...boundEndpoints].join(',')}\n` +
-      new Error(`${action}-stack`).stack
-  );
 }
 
 function closeSocketRoutes(target: unknown, peerRoutingIds: Set<unknown>): void {

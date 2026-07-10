@@ -228,8 +228,18 @@ export class ZLinkSpotActorPacketDrain {
   }
 }
 
-function frameworkErrorPayload(error: unknown): { readonly code: string; readonly message: string } {
+function frameworkErrorPayload(error: unknown): {
+  readonly code: string;
+  readonly message: string;
+  readonly kind?: string;
+  readonly isRetriable?: boolean;
+} {
   return error instanceof Error
-    ? { code: error.constructor.name, message: error.message }
+    ? {
+        code: error.constructor.name,
+        message: error.message,
+        kind: 'kind' in error ? String(error.kind) : undefined,
+        isRetriable: 'isRetriable' in error && error.isRetriable === true
+      }
     : { code: typeof error, message: String(error) };
 }

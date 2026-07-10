@@ -36,6 +36,7 @@ export interface ZLinkActorClientOptions {
   readonly locationResolver: () => ZLinkStoreLocationResolvers | undefined;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly defaultRequestTimeoutMs?: number;
+  readonly staleActorRefReporter?: (actorId: string) => void;
 }
 
 export class DefaultZLinkActorClient implements ZLinkActorClient {
@@ -68,6 +69,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       await this.submitActorSend(actor as ZLinkBackendActorRef, parts);
     } catch (error) {
       if (isStaleActorError(error)) {
+        this.options.staleActorRefReporter?.(actor.actorId);
         throw actorLocationStale(actor.actorId, error);
       }
       throw error;
@@ -87,6 +89,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       return await this.submitActorRequest<TReply>(actor as ZLinkBackendActorRef, parts, timeoutMs, signal);
     } catch (error) {
       if (isStaleActorError(error)) {
+        this.options.staleActorRefReporter?.(actor.actorId);
         throw actorLocationStale(actor.actorId, error);
       }
       throw error;
@@ -268,10 +271,18 @@ function decodeActorReplyPayload<TReply>(
   serializers?: ReadonlyMap<string, ZLinkMessageSerializer>
 ): TReply {
   if (kind === ZLinkStreamMessageKind.Error) {
-    const error = decodeFrameworkPayloadMessage<{ readonly message?: string }>(payload, serializers);
+    const error = decodeFrameworkPayloadMessage<{
+      readonly message?: string;
+      readonly kind?: string;
+      readonly isRetriable?: boolean;
+    }>(payload, serializers);
+    const kind = Object.values(ZLinkFrameworkErrorKind).includes(error.kind as ZLinkFrameworkErrorKind)
+      ? error.kind as ZLinkFrameworkErrorKind
+      : ZLinkFrameworkErrorKind.RequestFailed;
     throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.RequestFailed,
-      error.message ?? 'Actor request failed.'
+      kind,
+      error.message ?? 'Actor request failed.',
+      error.isRetriable
     );
   }
   return decodeFrameworkPayloadMessage<TReply>(payload, serializers);

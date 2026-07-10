@@ -1,6 +1,7 @@
 import type { ZLinkBackendActorRef } from '../backend/contracts';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import type { ZLinkActor } from '../../contracts';
+import type { ZLinkActorHandoffPacket } from '../actors/actor-handoff';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
 import { decodeChannelEnvelope } from '../channels/channel-envelope';
@@ -40,6 +41,7 @@ export interface ZLinkDecodedRemoteActorJoinRequest {
   readonly transferId?: string;
   readonly transferAdapterKey?: string;
   readonly transferState?: Message;
+  readonly handoffBacklog: readonly ZLinkActorHandoffPacket[];
 }
 
 export type { ZLinkRemoteActorJoinWirePayload };
@@ -107,6 +109,7 @@ export function decodeRemoteActorJoinPayload(
     transferState: typeof payload.transferState === 'string'
       ? BindingMessage.from(Buffer.from(payload.transferState, 'base64'))
       : undefined,
+    handoffBacklog: decodeHandoffBacklog(payload.handoffBacklog),
     remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
       transferProtocol ? payload.boundSessionRouterChannelId : payload.boundSessionRouterChannelId ?? payload.routerChannelId,
       transferProtocol
@@ -124,6 +127,22 @@ export function decodeRemoteActorJoinPayload(
     ),
     request
   };
+}
+
+function decodeHandoffBacklog(value: unknown): readonly ZLinkActorHandoffPacket[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry, expectedIndex) => {
+    if (
+      typeof entry !== 'object' || entry === null ||
+      (entry as { index?: unknown }).index !== expectedIndex ||
+      typeof (entry as { header?: unknown }).header !== 'string' ||
+      typeof (entry as { payload?: unknown }).payload !== 'string' ||
+      typeof (entry as { returnResponse?: unknown }).returnResponse !== 'boolean'
+    ) {
+      throw new Error('Remote actor handoff backlog is not a contiguous packet sequence.');
+    }
+    return entry as ZLinkActorHandoffPacket;
+  });
 }
 
 export function decodeRemoteActorRef(

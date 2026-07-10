@@ -1,5 +1,4 @@
-import { createRequire } from 'node:module';
-import path from 'node:path';
+import * as msgpack from '@msgpack/msgpack';
 import {
   ZLinkEncodedPayload,
   type ZLinkCodecExtension,
@@ -14,13 +13,6 @@ import {
 
 export const ZLINK_MESSAGEPACK_CONTENT_TYPE = 'application/x-msgpack';
 export const zlinkStreamMessagePackCodecName = 'messagepack';
-
-interface MessagePackRuntime {
-  encode(value: unknown): Uint8Array;
-  decode(value: Uint8Array): unknown;
-}
-
-const msgpack = loadMessagePack();
 
 export type ZLinkMessagePackCodecExtension = ZLinkCodecExtension & ZlinkStreamPayloadCodec;
 
@@ -88,17 +80,4 @@ function inferMessageType(value: unknown): Function | undefined {
   }
   const constructor = Object.getPrototypeOf(value)?.constructor;
   return constructor === Object ? undefined : constructor;
-}
-
-function loadMessagePack(): MessagePackRuntime {
-  const requireMsgPack = createRequire(__filename);
-  try {
-    return requireMsgPack('@msgpack/msgpack') as MessagePackRuntime;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') {
-      throw error;
-    }
-    const zlinkEntryPath = requireMsgPack.resolve('@zlink-systems/zlink');
-    return requireMsgPack(path.resolve(path.dirname(zlinkEntryPath), '..', 'node_modules', '@msgpack', 'msgpack')) as MessagePackRuntime;
-  }
 }

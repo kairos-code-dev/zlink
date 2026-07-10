@@ -232,7 +232,7 @@ wait_topology
 : >"$LOG_DIR/client.stderr.log"
 
 if [[ "$SCENARIO" == "all" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-C3,ST-D1,ST-D2,ST-E1,ST-E2"
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-C3,ST-D1,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6"
   run_client "ST-C2"
   restart_node_a
   run_client "ST-B2"

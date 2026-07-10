@@ -30,6 +30,7 @@ import {
   submitRoutedActorJoinReply
 } from './spot-route-replies';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 interface ZLinkRoutedActorAdmissionTarget {
   onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
@@ -44,6 +45,10 @@ interface ZLinkSpotRoutedActorAdmissionOptions {
   readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
+  readonly replayRoutedActorBacklog?: (
+    actor: ZLinkActor,
+    backlog: readonly ZLinkActorHandoffPacket[]
+  ) => Promise<readonly ZLinkActorHandoffResult[]>;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly pendingAdmissionTimeoutMs?: number;
 }
@@ -209,13 +214,15 @@ export class ZLinkSpotRoutedActorAdmission {
       committedActor = actor;
       await this.options.commitRoutedActor?.(actor);
       await this.options.serial.execute(() => this.options.getTarget().onJoinedActor?.(actor));
+      const handoffResults = await this.options.replayRoutedActorBacklog?.(actor, decoded.handoffBacklog) ?? [];
       await this.options.finalizeRoutedActor?.(actor);
       const commitReply = {
         accepted: true,
         actorNodeRid: String(actorRef.nodeRid),
         actorNodeRidHex: encodeRoutingIdHex(actorRef.nodeRid),
         actorId: actorRef.actorId,
-        actorGeneration: actorRef.generation.toString()
+        actorGeneration: actorRef.generation.toString(),
+        handoffResults
       };
       pending.phase = 'committed';
       pending.commitReply = commitReply;

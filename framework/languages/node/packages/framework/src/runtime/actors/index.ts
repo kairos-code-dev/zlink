@@ -8,8 +8,7 @@ import type {
   ZLinkActorFactory,
   ZLinkActorJoinResult,
   ZLinkActorManager,
-  ZLinkBoundSession,
-  ZLinkSpot
+  ZLinkBoundSession
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
@@ -44,7 +43,14 @@ export {
   ZLinkActorDispatchMailbox,
   ZLinkActorDispatchMailboxSet
 } from './actor-mailbox';
-import { ZLinkActorDispatchMailboxSet } from './actor-mailbox';
+export {
+  DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS,
+  ZLinkActorHandoffCoordinator,
+  decodeHandoffPacket,
+  type ZLinkActorHandoffPacket,
+  type ZLinkActorHandoffResult,
+  type ZLinkActorHandoffTarget
+} from './actor-handoff';
 export {
   ZLinkActorRuntimeState,
   toFrameworkActorRef,
@@ -103,6 +109,7 @@ export interface ZLinkActorManagerOptions {
   readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly actorTransferRegistry?: ZLinkActorTransferRegistry;
+  readonly shutdownSignal?: AbortSignal;
 }
 
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
@@ -165,6 +172,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ActorRef }> {
     throwIfAborted(signal);
     const state = this.getOrCreateState(actorId);
+    state.prepareForRemoteReentry();
     const operation = state.getOrStartCreation(
       actorType,
       false,
@@ -236,8 +244,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     actorRef: ZLinkBackendActorRef | undefined
   ): Promise<void> {
     let retryDelayMs = 25;
-    while (this.states.get(actor.actorId) === state) {
-      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    while (this.states.get(actor.actorId) === state && this.options.shutdownSignal?.aborted !== true) {
+      if (!await delayUnlessAborted(retryDelayMs, this.options.shutdownSignal)) return;
       try {
         if (node !== undefined && actorRef !== undefined) {
           await node.destroyActor(actorRef, 0);
@@ -437,63 +445,20 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
 
 }
 
-export interface ZLinkActorDispatchSnapshot {
-  readonly actor: ZLinkActor;
-  readonly actorId: string;
-  readonly actorType?: string;
-  readonly spotRid?: RoutingId;
-  readonly spot?: ZLinkSpot;
-  readonly isJoined: boolean;
-}
-
-export interface ZLinkActorDispatchRouterOptions {
-  readonly entryExecutor?: {
-    execute<T>(operation: () => Promise<T> | T): Promise<T>;
-  };
-}
-
-export class ZLinkActorDispatchRouter {
-  private readonly mailboxes = new ZLinkActorDispatchMailboxSet();
-
-  constructor(
-    private readonly manager: Pick<DefaultZLinkActorManager, 'getState'>,
-    _options: ZLinkActorDispatchRouterOptions = {}
-  ) {}
-
-  submit<T>(
-    actorId: string,
-    operation: (snapshot: ZLinkActorDispatchSnapshot) => Promise<T> | T
-  ): Promise<T> {
-    return this.mailboxes.submit(actorId, () => {
-      const snapshot = this.createSnapshot(actorId);
-      return operation(snapshot);
-    });
-  }
-
-  private createSnapshot(actorId: string): ZLinkActorDispatchSnapshot {
-    const state = this.manager.getState(actorId);
-    if (state?.actor === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actorId}' is not created.`
-      );
-    }
-    if (state.isMoving) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actorId}' is moving between Spots.`
-      );
-    }
-
-    return {
-      actor: state.actor,
-      actorId: state.actorId,
-      actorType: state.actorType,
-      spotRid: state.spotRid,
-      spot: state.spot,
-      isJoined: state.isJoined
+function delayUnlessAborted(delayMs: number, signal: AbortSignal | undefined): Promise<boolean> {
+  if (signal?.aborted === true) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const deadline = setTimeout(() => {
+      signal?.removeEventListener('abort', aborted);
+      resolve(true);
+    }, delayMs);
+    deadline.unref();
+    const aborted = (): void => {
+      clearTimeout(deadline);
+      resolve(false);
     };
-  }
+    signal?.addEventListener('abort', aborted, { once: true });
+  });
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

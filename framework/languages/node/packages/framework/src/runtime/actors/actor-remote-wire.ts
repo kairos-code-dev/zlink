@@ -3,6 +3,7 @@ import type { Message } from '../../contracts/Common/Message';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type { ZLinkBackendActorRef } from '../backend/contracts';
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
+import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from './actor-handoff';
 
 export const ZLINK_REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
 export const REMOTE_ACTOR_JOIN_PACKET = ZLINK_REMOTE_ACTOR_JOIN_PACKET;
@@ -40,6 +41,7 @@ export interface ZLinkRemoteActorJoinWirePayload {
   readonly boundSessionSpotRid?: unknown;
   readonly boundSessionSpotRidHex?: unknown;
   readonly request?: unknown;
+  readonly handoffBacklog?: unknown;
 }
 
 export interface ZLinkRemoteActorJoinRequest {
@@ -62,6 +64,7 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly boundSessionTargetNodeRidHex?: string;
   readonly boundSessionSpotRid?: string;
   readonly boundSessionSpotRidHex?: string;
+  readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
 }
 
 export interface ZLinkRemoteActorJoinRequestPayload {
@@ -86,6 +89,7 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly boundSessionSpotRid?: string;
   readonly boundSessionSpotRidHex?: string;
   readonly request?: string;
+  readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
 }
 
 interface ZLinkRemoteActorJoinRequestPayloadOptions {
@@ -102,6 +106,7 @@ interface ZLinkRemoteActorJoinRequestPayloadOptions {
   readonly transferId?: string;
   readonly transferAdapterKey?: string;
   readonly transferState?: Buffer;
+  readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
 }
 
 export interface ZLinkRemoteActorJoinReply {
@@ -110,6 +115,7 @@ export interface ZLinkRemoteActorJoinReply {
   readonly actorNodeRidHex?: string;
   readonly actorId: string;
   readonly actorGeneration: string;
+  readonly handoffResults?: readonly ZLinkActorHandoffResult[];
 }
 
 export function buildRemoteActorJoinRequestPayload(
@@ -131,6 +137,7 @@ export function buildRemoteActorJoinRequestPayload(
     transferId: options.transferId,
     transferAdapterKey: options.transferAdapterKey,
     transferState: options.transferState?.toString('base64'),
+    handoffBacklog: options.handoffBacklog,
     sourceSpotRid: sourceSpotRid === undefined ? undefined : String(sourceSpotRid),
     sourceSpotRidHex: sourceSpotRid === undefined ? undefined : encodeRoutingIdHex(sourceSpotRid),
     routerChannelId: options.routerChannelId,
@@ -149,7 +156,5 @@ function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
 }
 
 export function decodeWireRoutingId(text: string, hex: string | undefined): RoutingId {
-  return hex === undefined
-    ? BindingRoutingId.from(text) as unknown as RoutingId
-    : BindingRoutingId.fromHex(hex) as unknown as RoutingId;
+  return hex === undefined ? text : String(BindingRoutingId.fromHex(hex));
 }

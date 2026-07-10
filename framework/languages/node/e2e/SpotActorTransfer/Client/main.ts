@@ -53,7 +53,13 @@ const scenarios: Record<string, () => Promise<void>> = {
   'ST-D1': runD1,
   'ST-D2': runD2,
   'ST-E1': runE1,
-  'ST-E2': runE2
+  'ST-E2': runE2,
+  'ST-F1': runF1,
+  'ST-F2': runF2,
+  'ST-F3': runF3,
+  'ST-F4': runF4,
+  'ST-F5': runF5,
+  'ST-F6': runF6
 };
 
 async function main(): Promise<void> {
@@ -357,6 +363,211 @@ async function runE2(): Promise<void> {
   }
 }
 
+async function runF1(): Promise<void> {
+  const actorId = unique('actor-handoff-gate-f1');
+  const spotRid = unique('spot-handoff-order');
+  await createSpot(nodeB, spotRid);
+  await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 101);
+  const join = joinActor(nodeA, actorId, { scenario: 'ST-F1', targetSpotRid: spotRid });
+  await waitEvidence(nodeA, [`ST-F1|${actorId}|before_commit_gate|101`]);
+  for (const marker of ['P1', 'P2', 'P3']) await sendHandoff(nodeA, actorId, 'ST-F1', marker);
+  await post(nodeA, `/transfer-gates/${actorId}/release`, {});
+  require((await join).accepted, 'ST-F1 join failed.');
+  const targetEntries = await waitEvidence(nodeB, ['P1', 'P2', 'P3'].map(
+    (marker) => `ST-F1|${actorId}|packet_handler|${marker}`
+  ));
+  assertOrder(targetEntries, actorId, ['packet_handler', 'packet_handler', 'packet_handler']);
+  require(!has(await getEvidence(nodeA), actorId, 'packet_handler'), 'ST-F1 source dispatched moving packets.');
+}
+
+async function runF2(): Promise<void> {
+  const actorId = unique('actor-handoff-gate-f2');
+  const spotRid = unique('spot-handoff-overtake');
+  await createSpot(nodeB, spotRid);
+  await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 102);
+  const join = joinActor(nodeA, actorId, { scenario: 'ST-F2', targetSpotRid: spotRid });
+  await waitEvidence(nodeA, [`ST-F2|${actorId}|before_commit_gate|102`]);
+  await sendHandoff(nodeA, actorId, 'ST-F2', 'B1');
+  await sendHandoff(nodeA, actorId, 'ST-F2', 'B2');
+  await post(nodeA, `/transfer-gates/${actorId}/release`, {});
+  require((await join).accepted, 'ST-F2 join failed.');
+  await sendHandoff(nodeB, actorId, 'ST-F2', 'D1');
+  const entries = await waitEvidence(nodeB, [
+    `ST-F2|${actorId}|backlog_enqueued|0`,
+    `ST-F2|${actorId}|packet_handler|B1`,
+    `ST-F2|${actorId}|backlog_enqueued|1`,
+    `ST-F2|${actorId}|packet_handler|B2`,
+    `ST-F2|${actorId}|location_committed|node=actor-b|spot=${spotRid}`,
+    `ST-F2|${actorId}|packet_handler|D1`
+  ]);
+  assertOrder(entries, actorId, [
+    'backlog_enqueued',
+    'packet_handler',
+    'backlog_enqueued',
+    'packet_handler',
+    'location_committed',
+    'packet_handler'
+  ]);
+}
+
+async function runF3(): Promise<void> {
+  const actorId = uniqueShort('actor-handoff-gate-f3');
+  const spotRid = unique('spot-handoff-bound');
+  await createSpot(nodeB, spotRid);
+  const source = await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 103);
+  const connector = await connectAndBind(options.sessionAStreamEndpoint, 'ST-F3', source, uniqueShort('transfer'));
+  try {
+    const join = joinActor(nodeA, actorId, { scenario: 'ST-F3', targetSpotRid: spotRid });
+    await waitEvidence(nodeA, [`ST-F3|${actorId}|before_commit_gate|103`]);
+    await connector.send({ scenario: 'ST-F3', marker: 'S1' } satisfies ProbeReq)
+      .packetName(SpotActorTransferNames.packetHandoff).submit();
+    await connector.send({ scenario: 'ST-F3', marker: 'S2' } satisfies ProbeReq)
+      .packetName(SpotActorTransferNames.packetHandoff).submit();
+    await post(nodeA, `/transfer-gates/${actorId}/release`, {});
+    require((await join).accepted, 'ST-F3 join failed.');
+    await connector.send({ scenario: 'ST-F3', marker: 'S3' } satisfies ProbeReq)
+      .packetName(SpotActorTransferNames.packetHandoff).submit();
+    await connector.send({ scenario: 'ST-F3', marker: 'S4' } satisfies ProbeReq)
+      .packetName(SpotActorTransferNames.packetHandoff).submit();
+    const entries = await waitEvidence(nodeB, ['S1', 'S2', 'S3', 'S4'].map(
+      (marker) => `ST-F3|${actorId}|packet_handler|${marker}`
+    ));
+    assertOrder(entries, actorId, ['packet_handler', 'packet_handler', 'packet_handler', 'packet_handler']);
+  } finally {
+    await connector.close();
+  }
+}
+
+async function runF4(): Promise<void> {
+  const actorId = unique('actor-straggler');
+  const spotRid = unique('spot-straggler');
+  await createSpot(nodeB, spotRid);
+  await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 104);
+  await getRef(nodeA, actorId);
+  require((await joinActor(nodeA, actorId, { scenario: 'ST-F4', targetSpotRid: spotRid })).accepted, 'ST-F4 join failed.');
+  await waitEvidence(nodeA, [`ST-F4|${actorId}|forwarding_mapped|500`]);
+  await post(nodeA, `/actors/${actorId}/probe-stale`, { scenario: 'ST-F4', marker: 'G1' } satisfies ProbeReq);
+  await waitEvidence(nodeB, [`ST-F4|${actorId}|packet_handler|G1`]);
+  await delay(700);
+  let failed = false;
+  try {
+    await post(nodeA, `/actors/${actorId}/probe-stale`, { scenario: 'ST-F4', marker: 'G2' } satisfies ProbeReq);
+  } catch {
+    failed = true;
+  }
+  require(failed, 'ST-F4 old ref packet after cutoff did not fail fast.');
+  const source = await waitEvidence(nodeA, [
+    `ST-F4|${actorId}|straggler_forward|`,
+    `ST-F4|${actorId}|mapping_evicted|`,
+    `ST-F4|${actorId}|stale_fail_fast|`
+  ]);
+  require(source.length > 0, 'ST-F4 forwarding evidence missing.');
+  require(
+    !(await getEvidence(nodeB)).some((entry) => entry.actorId === actorId && entry.value === 'G2'),
+    'ST-F4 cutoff packet reached target.'
+  );
+}
+
+async function runF5(): Promise<void> {
+  const actorId = unique('actor-map-chain');
+  const spotB = unique('spot-map-chain-b');
+  const spotA = unique('spot-map-chain-a');
+  await createSpot(nodeB, spotB);
+  await createSpot(nodeA, spotA);
+  await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 105);
+  await getRef(nodeA, actorId);
+  require((await joinActor(nodeA, actorId, { scenario: 'ST-F5', targetSpotRid: spotB })).accepted, 'ST-F5 first join failed.');
+  require((await joinActor(nodeB, actorId, { scenario: 'ST-F5', targetSpotRid: spotA })).accepted, 'ST-F5 chained join failed.');
+  const response = await post<ProbeRes>(nodeA, `/actors/${actorId}/probe-stale`, {
+    scenario: 'ST-F5',
+    marker: 'chain'
+  } satisfies ProbeReq);
+  require(response.nodeRid === 'actor-a', 'ST-F5 chained straggler did not reach final target.');
+  await waitEvidence(nodeA, [
+    `ST-F5|${actorId}|forwarding_mapped|500`,
+    `ST-F5|${actorId}|straggler_forward|`
+  ]);
+  await waitEvidence(nodeB, [
+    `ST-F5|${actorId}|forwarding_mapped|500`,
+    `ST-F5|${actorId}|straggler_forward|`
+  ]);
+  await delay(700);
+  await waitEvidence(nodeA, [`ST-F5|${actorId}|mapping_evicted|`]);
+  await waitEvidence(nodeB, [`ST-F5|${actorId}|mapping_evicted|`]);
+}
+
+async function runF6(): Promise<void> {
+  const replyActorId = unique('actor-handoff-gate-f6-reply');
+  const replySpotRid = unique('spot-handoff-request-reply');
+  await createSpot(nodeB, replySpotRid);
+  await createActor(nodeA, replyActorId, SpotActorTransferNames.actorTypeStateful, 106);
+  const replyJoin = joinActor(nodeA, replyActorId, {
+    scenario: 'ST-F6',
+    targetSpotRid: replySpotRid
+  });
+  await waitEvidence(nodeA, [`ST-F6|${replyActorId}|before_commit_gate|106`]);
+  const inFlightReply = post<ProbeRes>(nodeA, `/actors/${replyActorId}/probe`, {
+    scenario: 'ST-F6',
+    marker: 'R1',
+    requestTimeoutMs: 5000
+  } satisfies ProbeReq);
+  await waitEvidence(nodeA, [`ST-F6|${replyActorId}|handoff_backlog|0`]);
+  const requestFrameEvidence = await waitEvidence(nodeA, [
+    `ST-F6|${replyActorId}|handoff_request_frame|index=0|requestSeq=`
+  ]);
+  const requestFrame = requestFrameEvidence.find(
+    (entry) => entry.actorId === replyActorId && entry.kind === 'handoff_request_frame'
+  );
+  require(
+    requestFrame !== undefined && /requestSeq=\d+\|flags=[1-9]\d*/.test(requestFrame.value),
+    'ST-F6 handoff evidence did not preserve request id and flags.'
+  );
+  await post(nodeA, `/transfer-gates/${replyActorId}/release`, {});
+  require((await replyJoin).accepted, 'ST-F6 reply-correlation join failed.');
+  const reply = await inFlightReply;
+  require(
+    reply.marker === 'R1' && reply.actorId === replyActorId && reply.nodeRid === 'actor-b',
+    'ST-F6 in-flight request reply did not correlate to the original caller.'
+  );
+  const replyEvidence = await waitEvidence(nodeB, [
+    `ST-F6|${replyActorId}|packet_handler|R1`,
+    `ST-F6|${replyActorId}|request_reply|R1`
+  ]);
+  require(
+    replyEvidence.filter((entry) => entry.actorId === replyActorId && entry.kind === 'request_reply').length === 1,
+    'ST-F6 correlated request produced a duplicate reply.'
+  );
+
+  const timeoutActorId = unique('actor-handoff-gate-f6-timeout');
+  const timeoutSpotRid = unique('spot-handoff-request-timeout');
+  await createSpot(nodeB, timeoutSpotRid);
+  await createActor(nodeA, timeoutActorId, SpotActorTransferNames.actorTypeStateful, 107);
+  const timeoutJoin = joinActor(nodeA, timeoutActorId, {
+    scenario: 'ST-F6',
+    targetSpotRid: timeoutSpotRid
+  });
+  await waitEvidence(nodeA, [`ST-F6|${timeoutActorId}|before_commit_gate|107`]);
+  const timedRequest = post<ProbeRes>(nodeA, `/actors/${timeoutActorId}/probe`, {
+    scenario: 'ST-F6',
+    marker: 'late',
+    delayMs: 300,
+    requestTimeoutMs: 100
+  } satisfies ProbeReq);
+  await waitEvidence(nodeA, [`ST-F6|${timeoutActorId}|handoff_backlog|0`]);
+  await post(nodeA, `/transfer-gates/${timeoutActorId}/release`, {});
+  let timedOut = false;
+  try {
+    await timedRequest;
+  } catch {
+    timedOut = true;
+  }
+  require(timedOut, 'ST-F6 delayed in-flight request did not use the caller request timeout.');
+  require((await timeoutJoin).accepted, 'ST-F6 timeout join failed.');
+  await waitEvidence(nodeB, [`ST-F6|${timeoutActorId}|request_reply|late`]);
+  const afterLateReply = await probeActor(nodeB, timeoutActorId, 'ST-F6', 'after-late');
+  require(afterLateReply.marker === 'after-late', 'ST-F6 late reply disrupted the next request.');
+}
+
 async function runRemoteTransfer(scenario: string, actorId: string, actorType: string, stateVersion: number, stateful: boolean): Promise<void> {
   const spotRid = unique('spot-remote');
   await createSpot(nodeB, spotRid);
@@ -488,6 +699,10 @@ async function joinActor(node: HttpClient, actorId: string, request: JoinTargetR
 
 async function probeActor(node: HttpClient, actorId: string, scenario: string, marker: string): Promise<ProbeRes> {
   return await post(node, `/actors/${actorId}/probe`, { scenario, marker } satisfies ProbeReq);
+}
+
+async function sendHandoff(node: HttpClient, actorId: string, scenario: string, marker: string): Promise<void> {
+  await post(node, `/actors/${actorId}/handoff`, { scenario, marker } satisfies ProbeReq);
 }
 
 async function getRef(node: HttpClient, actorId: string): Promise<ActorRefSnapshotRes> {

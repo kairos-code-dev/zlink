@@ -61,12 +61,10 @@ import {
 } from './dispatch-error-reporter';
 import { ZLinkSpotRouteBridgeRawReplyRegistry } from './spot-route-bridge-raw-reply';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
-import { socketTraceId } from './channel-socket-trace';
 import { throwIfAborted } from './channel-abort';
 import {
   buildChannelAutoConnectCapabilities,
   createChannelLocationAutoConnectContext,
-  traceRouteMeshSocket,
   type ZLinkChannelLocationAutoConnectContext
 } from './channel-autoconnect';
 import {
@@ -180,14 +178,7 @@ export class ZLinkChannelRuntimeManager {
   }
 
   bindRouteMeshRouters(): void {
-    const traceAutoConnect = process.env.ZLINK_AUTOCONNECT_TRACE === '1';
     for (const routeChannel of this.registration.routeChannelOptions.values()) {
-      if (traceAutoConnect) {
-        console.error(
-          `[zlink-autoconnect] bindRouteMeshRouters channel=${routeChannel.routerChannelId} ` +
-            `bind=${routeChannel.bind ?? '<none>'}`
-        );
-      }
       if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
         this.sockets.routeRouter(routeChannel.routerChannelId);
       }
@@ -310,19 +301,9 @@ export class ZLinkChannelRuntimeManager {
       return undefined;
     }
     const bridge = spotRouteNode.createRouteBridge();
-    if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-      console.error(
-        `[zlink-autoconnect] routeBridge attach begin channel=${channelName} socket=${socketTraceId(router)}`
-      );
-    }
     bridge.attachRouterChannel(channelName, router, {
       capabilities: ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND
     });
-    if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-      console.error(
-        `[zlink-autoconnect] routeBridge attach done channel=${channelName} socket=${socketTraceId(router)}`
-      );
-    }
     this.spotRouteBridges.set(channelName, bridge);
     return bridge;
   }
@@ -494,7 +475,6 @@ export class ZLinkChannelRuntimeManager {
   ): Promise<void> {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
-    traceRouteMeshSocket('route send', routerChannelId, router, targetNodeRid);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
@@ -523,7 +503,6 @@ export class ZLinkChannelRuntimeManager {
   ): Promise<TReply> {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
-    traceRouteMeshSocket('route request', routerChannelId, router, targetNodeRid);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Request,

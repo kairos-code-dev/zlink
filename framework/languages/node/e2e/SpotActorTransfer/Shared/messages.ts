@@ -8,6 +8,7 @@ export const SpotActorTransferNames = {
   actorTypeFailTransferIn: 'transfer-fail-in',
   packetJoin: 'JoinTargetReq',
   packetProbe: 'ProbeReq',
+  packetHandoff: 'HandoffProbe',
   packetBoundPush: 'BoundPushReq',
   packetBoundNotify: 'BoundPushNotify',
   packetBindActor: 'BindActorSessionReq'
@@ -28,7 +29,12 @@ export interface JoinTargetRes {
   stateVersion: number;
   errorKind?: string;
 }
-export interface ProbeReq { scenario: string; marker: string }
+export interface ProbeReq {
+  scenario: string;
+  marker: string;
+  delayMs?: number;
+  requestTimeoutMs?: number;
+}
 export interface ProbeRes {
   scenario: string;
   actorId: string;

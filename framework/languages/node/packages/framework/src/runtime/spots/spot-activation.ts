@@ -25,7 +25,6 @@ import {
 import type { Message } from '../../contracts/Common/Message';
 import type {
   ZLinkBackendActorRef,
-  ZLinkBackendActorJoinInfo,
   ZLinkBackendSpot,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
@@ -53,7 +52,10 @@ import {
 } from './spot-timer';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { createSpotContext } from './spot-context';
-import { ZLinkSpotActorJoinDispatch } from './spot-actor-join-dispatch';
+import {
+  ZLinkSpotActorJoinDispatch,
+  type ZLinkDetachedTaskRunner
+} from './spot-actor-join-dispatch';
 import {
   ZLinkSpotActorPacketDispatch,
   type ZLinkActorResponseOptions
@@ -61,6 +63,11 @@ import {
 import type { ZLinkRemoteActorJoinActor, ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import type { ZLinkSpotActivation } from './spot-activation-registry';
 import type { ZLinkSpotLocationClaim } from './spot-location-claim';
+import {
+  replayActorHandoffBacklog,
+  type ZLinkActorHandoffPacket,
+  type ZLinkActorHandoffResult
+} from '../actors/actor-handoff';
 
 export interface ZLinkSpotActivationLifecycleOptions {
   readonly spotTimerHandlers?: readonly ZLinkSpotTimerHandlerRegistration[];
@@ -151,6 +158,14 @@ export interface ZLinkSpotActivationLifecycleOptions {
     sourceSessionRid: RoutingId
   ) => ZLinkRemoteBoundSessionTarget | undefined;
   readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly actorPacketHandoff?: (
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse?: boolean,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ) => Promise<unknown> | undefined;
+  readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
   readonly leaveActor: (spotRid: RoutingId, actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
   readonly closeSpot: (spotRid: RoutingId, signal?: AbortSignal) => Promise<boolean>;
   readonly registerActivation: (activation: ZLinkSpotActivation) => void;
@@ -271,6 +286,32 @@ export class ZLinkSpotActivationLifecycle {
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef
   ): Promise<unknown> {
+    const handoff = this.options.actorPacketHandoff?.(
+      actorId,
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef
+    );
+    if (handoff !== undefined) return await handoff;
+    return await this.dispatchActorPacketDirect(
+      activation,
+      actorId,
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef
+    );
+  }
+
+  private async dispatchActorPacketDirect(
+    activation: ZLinkSpotActivation,
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse = false,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ): Promise<unknown> {
     return new ZLinkSpotActorPacketDispatch({
       spot: activation.spot,
       spotRid: () => String(activation.spotRid),
@@ -325,8 +366,16 @@ export class ZLinkSpotActivationLifecycle {
         activation.leftActors.delete(actor.actorId);
         activation.actors.set(actor.actorId, actor);
       },
-      actorPacketHandler: (actorId, parts, returnResponse, remoteBoundSessionTarget) =>
-        this.dispatchActorPacket(activation, actorId, parts, returnResponse, remoteBoundSessionTarget),
+      replayRoutedActorBacklog: (actor, backlog) => this.replayActorBacklog(activation, actor, backlog),
+      actorPacketHandler: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
+        this.dispatchActorPacket(
+          activation,
+          actorId,
+          parts,
+          returnResponse,
+          remoteBoundSessionTarget,
+          fallbackActorRef
+        ),
       routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
       routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
@@ -347,10 +396,37 @@ export class ZLinkSpotActivationLifecycle {
         this.options.nativeSpotNodeProvider?.()?.replyActorNoBind(info, parts, result),
       messageSerializers: this.options.messageSerializers,
       providerResolver: this.options.providerResolver,
-      dispatchErrors: this.options.dispatchErrors
+      dispatchErrors: this.options.dispatchErrors,
+      detachedTaskRunner: this.options.detachedTaskRunner
     });
     nativeDispatch.attach();
     return nativeDispatch;
+  }
+
+  private async replayActorBacklog(
+    activation: ZLinkSpotActivation,
+    actor: ZLinkActor,
+    backlog: readonly ZLinkActorHandoffPacket[]
+  ): Promise<readonly ZLinkActorHandoffResult[]> {
+    return await replayActorHandoffBacklog(
+      backlog,
+      (parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
+        this.dispatchActorPacketDirect(
+          activation,
+          actor.actorId,
+          parts,
+          returnResponse,
+          remoteBoundSessionTarget,
+          fallbackActorRef
+        ),
+      (index) => this.options.runtimeEventPublisher?.publish({
+          sourceName: 'zlink.framework.actor-handoff',
+          timestamp: new Date(),
+          marker: 'backlog_enqueued',
+          actorId: actor.actorId,
+          index
+        })
+    );
   }
 
   private async runCreateLifecycle<TSpot extends ZLinkSpot>(

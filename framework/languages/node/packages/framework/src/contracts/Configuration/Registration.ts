@@ -30,6 +30,8 @@ export * from './RegistrationTypes';
 import { validateFrameworkRegistration } from './RegistrationValidators';
 export { validateFrameworkRegistration };
 
+const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 5_000;
+
 export function createFrameworkRegistration(
   options: ZLinkFrameworkRegistrationOptions = {}
 ): ZLinkFrameworkRegistration {
@@ -42,6 +44,11 @@ export function createFrameworkRegistration(
     requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
     actorFactories: actorFactoriesFromSpotNodes(spotNodes),
     actorTransferAdapters: new Map(options.actorTransferAdapters),
+    actorTransferForwardWindowMs: normalizeNonNegativeInteger(
+      options.actorTransferForwardWindowMs,
+      'actorTransferForwardWindowMs',
+      DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS
+    ),
     spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
     channels: toChannelMap(options.channels),
     channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined),
@@ -60,6 +67,14 @@ export function createFrameworkRegistration(
   };
   validateFrameworkRegistration(registration, options);
   return registration;
+}
+
+function normalizeNonNegativeInteger(value: number | undefined, name: string, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`${name} must be a non-negative safe integer.`);
+  }
+  return value;
 }
 
 export function createFrameworkRegistrationWithBuilder(

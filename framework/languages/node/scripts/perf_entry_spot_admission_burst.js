@@ -2,16 +2,12 @@
 // Admission-burst benchmark for Entry Spot actor packet dispatch.
 //
 // Scenario: N actors each submit M actor send packets through the Entry Spot
-// dispatch path (ZLinkActorDispatchRouter -> ZLinkSpotActorDispatcher with a
+// dispatch path (per-actor mailbox -> ZLinkSpotActorDispatcher with a
 // realistic Entry Spot send handler). Measures wall total, throughput, and
 // per-packet completion latency p50/p95/p99.
 //
-// The script runs against the built framework (packages/framework/dist). When
-// the build exposes the unified Entry Spot serial dispatch surface
-// (ZLinkEntrySpotActivation.serialExecutor + ZLinkActorDispatchRouter entry
-// executor option), the benchmark wires it the way the runtime does; on older
-// builds it falls back to the legacy per-actor mailbox-only path. This keeps
-// the same script usable for baseline vs patched comparison.
+// The script runs against the built framework (packages/framework/dist) and
+// uses the same per-actor mailbox policy as Entry Spot actor packet dispatch.
 
 const path = require('node:path');
 const { performance } = require('node:perf_hooks');
@@ -58,7 +54,7 @@ async function createFixture() {
   });
   const actors = [];
   for (let index = 0; index < ACTOR_COUNT; index += 1) {
-    actors.push(await manager.create(`player-${index}`, 'player'));
+    actors.push(await manager.getOrCreateActor(`player-${index}`, 'player'));
   }
 
   const activation = new framework.ZLinkEntrySpotActivation({
@@ -76,31 +72,25 @@ async function createFixture() {
     handlerType: AdmissionPacketHandler
   });
 
-  const entryExecutor = activation.serialExecutor;
-  const unified = entryExecutor !== undefined;
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry,
-    spot: activation.entrySpot,
-    serial: unified ? entryExecutor : undefined
+    spot: activation.entrySpot
   });
-  const router = unified
-    ? new framework.ZLinkActorDispatchRouter(manager, { entryExecutor })
-    : new framework.ZLinkActorDispatchRouter(manager);
+  const mailboxes = new framework.ZLinkActorDispatchMailboxSet();
 
-  return { manager, activation, dispatcher, router, actors, unified };
+  return { manager, activation, dispatcher, mailboxes, actors };
 }
 
 async function runBurst(fixture, packetsPerActor, recordLatencies) {
-  const { dispatcher, router, actors } = fixture;
+  const { dispatcher, mailboxes, actors } = fixture;
   const latencies = recordLatencies ? [] : undefined;
   const submissions = [];
   const startWall = performance.now();
   for (let packet = 0; packet < packetsPerActor; packet += 1) {
     for (const actor of actors) {
       const startedAt = performance.now();
-      const submission = router
-        .submit(actor.actorId, (snapshot) =>
-          dispatcher.dispatchSend(snapshot.actor, 'admission.move', packet))
+      const submission = mailboxes
+        .submit(actor.actorId, () => dispatcher.dispatchSend(actor, 'admission.move', packet))
         .then(() => {
           if (latencies !== undefined) {
             latencies.push(performance.now() - startedAt);
@@ -144,7 +134,7 @@ async function main() {
     return values[Math.floor(values.length / 2)];
   };
 
-  console.log(`entry-spot admission burst (${fixture.unified ? 'unified-serial' : 'legacy-mailbox'} dispatch)`);
+  console.log('entry-spot admission burst (per-actor mailbox dispatch)');
   console.log(`actors=${ACTOR_COUNT} packetsPerActor=${PACKETS_PER_ACTOR} totalPackets=${totalPackets} rounds=${ROUNDS}`);
   for (const [index, result] of results.entries()) {
     console.log(

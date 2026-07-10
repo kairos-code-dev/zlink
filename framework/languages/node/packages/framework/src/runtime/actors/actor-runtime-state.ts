@@ -1,4 +1,3 @@
-import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type {
   ActorRef,
   RoutingId,
@@ -275,26 +274,32 @@ export class ZLinkActorRuntimeState {
     this.locationGenerationValue = undefined;
     this.destroying = false;
   }
+
+  prepareForRemoteReentry(): void {
+    if (this.remoteActorPacketTargetValue === undefined) return;
+    this.creationTask = undefined;
+    this.configured = false;
+    this.context = undefined;
+    this.actorTypeValue = undefined;
+    this.actorValue = undefined;
+    this.spotValue = undefined;
+    this.spotRidValue = undefined;
+    this.nativeActorRefValue = undefined;
+    this.remoteBoundSessionTargetValue = undefined;
+    this.remoteActorPacketTargetValue = undefined;
+    this.createRequestPayloadValue = undefined;
+    this.ownsLocationValue = false;
+    this.locationGenerationValue = undefined;
+    this.movingValue = false;
+    this.destroying = false;
+  }
 }
 
 export function toFrameworkRoutingId(routingId: ZLinkBackendActorRef['nodeRid']): RoutingId {
-  const value = routingId as unknown;
-  return value instanceof BindingRoutingId
-    ? value as unknown as RoutingId
-    : BindingRoutingId.from(String(routingId)) as unknown as RoutingId;
-}
-
-function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
-  const toHex = (routingId as unknown as { toHex?: () => string }).toHex;
-  return typeof toHex === 'function' ? toHex.call(routingId) : undefined;
+  return String(routingId);
 }
 
 function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {
-  const leftHex = encodeRoutingIdHex(left);
-  const rightHex = encodeRoutingIdHex(right);
-  if (leftHex !== undefined || rightHex !== undefined) {
-    return leftHex === rightHex;
-  }
   return String(left) === String(right);
 }
 

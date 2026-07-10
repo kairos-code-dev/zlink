@@ -85,6 +85,7 @@ export interface ZLinkRemoteActorPacketRelay {
   readonly boundSessionSpotRid?: string;
   readonly header: string;
   readonly payload: string;
+  readonly actorRef?: ActorRef;
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
 }
 
@@ -101,6 +102,7 @@ export function decodeRemoteBoundSessionSend(
         readonly actorNodeRid?: unknown;
         readonly actorNodeRidHex?: unknown;
         readonly actorGeneration?: unknown;
+        readonly handoffTargetSpotRid?: unknown;
         readonly actorOwnershipGeneration?: unknown;
         readonly message?: unknown;
         readonly metadata?: unknown;
@@ -233,6 +235,10 @@ export function decodeRemoteActorPacketRelay(
         readonly boundSessionSpotRid?: unknown;
         readonly header?: unknown;
         readonly payload?: unknown;
+        readonly actorNodeRid?: unknown;
+        readonly actorNodeRidHex?: unknown;
+        readonly actorGeneration?: unknown;
+        readonly handoffTargetSpotRid?: unknown;
       };
       if (
         payload.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
@@ -249,6 +255,12 @@ export function decodeRemoteActorPacketRelay(
         boundSessionSpotRid: stringOrUndefined(payload.boundSessionSpotRid),
         header: payload.header,
         payload: payload.payload,
+        actorRef: decodeForwardedActorRef({
+          actorId: payload.actorId,
+          actorNodeRid: payload.actorNodeRid,
+          actorNodeRidHex: payload.actorNodeRidHex,
+          actorGeneration: payload.actorGeneration
+        }, payload.handoffTargetSpotRid),
         envelope
       };
     }
@@ -263,6 +275,10 @@ export function decodeRemoteActorPacketRelay(
       readonly boundSessionSpotRid?: unknown;
       readonly header?: unknown;
       readonly payload?: unknown;
+      readonly actorNodeRid?: unknown;
+      readonly actorNodeRidHex?: unknown;
+      readonly actorGeneration?: unknown;
+      readonly handoffTargetSpotRid?: unknown;
     };
     if (
       payload.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
@@ -278,11 +294,33 @@ export function decodeRemoteActorPacketRelay(
       boundSessionTargetNodeRid: stringOrUndefined(payload.boundSessionTargetNodeRid),
       boundSessionSpotRid: stringOrUndefined(payload.boundSessionSpotRid),
       header: payload.header,
-      payload: payload.payload
+      payload: payload.payload,
+      actorRef: decodeForwardedActorRef({
+        actorId: payload.actorId,
+        actorNodeRid: payload.actorNodeRid,
+        actorNodeRidHex: payload.actorNodeRidHex,
+        actorGeneration: payload.actorGeneration
+      }, payload.handoffTargetSpotRid)
     };
   } catch {
     return undefined;
   }
+}
+
+function decodeForwardedActorRef(payload: {
+  readonly actorId?: unknown;
+  readonly actorNodeRid?: unknown;
+  readonly actorNodeRidHex?: unknown;
+  readonly actorGeneration?: unknown;
+}, targetSpotRid: unknown): ActorRef | undefined {
+  const actorRef = decodeActorRef(payload);
+  if (actorRef !== undefined) {
+    (actorRef as ActorRef & { handoffForwarded?: boolean }).handoffForwarded = true;
+    if (typeof targetSpotRid === 'string') {
+      (actorRef as ActorRef & { handoffTargetSpotRid?: string }).handoffTargetSpotRid = targetSpotRid;
+    }
+  }
+  return actorRef;
 }
 
 function decodeRemoteBoundSessionControl(

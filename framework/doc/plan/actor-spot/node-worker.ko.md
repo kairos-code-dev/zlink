@@ -68,7 +68,7 @@ Node의 무게중심은 실제 public source interface 정렬 + runtime 실동�
 | remote transfer | admission/commit 분리. source `transferOut` → source `onLeaveActor` → commit(state) → target `transferIn` materialize → membership commit → `onJoinedActor` → committed location → commit ack → success. remote에서 `onCreateActor` 호출 안 함(정본 §7). |
 | transfer adapter 미등록 | 실패가 아니다. source는 빈 `ZLinkMessage`로 이동하고 target은 actor factory/public 생성 경로로 materialize한다. |
 | custom adapter 빈 state | `addActorTransferAdapter`가 등록되어 있고 `transferOut`이 빈 `ZLinkMessage`를 반환해도 정상 transfer다. |
-| moving dispatch 차단 | 정본 §3.4. |
+| moving packet handoff | 정본 §3.4·§10. moving 중 source dispatch를 차단하면서 packet을 순서대로 보존하고, target replay 뒤 location을 공개한다. old ref는 기본 5초 동안 다음 hop으로 forward한 뒤 fail-fast한다. |
 | pending admission deadline | 정본 §5.2(down signal 없이 deadline 정리). |
 | 멱등 source cleanup | 정본 §5.1. |
 | location pending/committed + fencing | 정본 §8. |
@@ -94,7 +94,8 @@ Node의 무게중심은 실제 public source interface 정렬 + runtime 실동�
   gateway 2 · transfer controller(실제 app HTTP endpoint) · consumer(HTTP client + stream connector).
 - client는 언어별 HTTP client wrapper, 상태 변경 관찰은 stream connector. framework host 구성·내부
   client·test-only helper 직접 사용 금지(e2e README 코드 규칙).
-- 시나리오(P1은 ST-C3·ST-D2뿐, 나머지 전부 P0): ST-A1/A2/A3, ST-B1/B2/B3/**B4**, ST-C1/C2/C3, ST-D1/D2, ST-E1/E2.
+- 시나리오(P1은 ST-C3·ST-D2·ST-F4/F5/F6, 나머지는 P0): ST-A1/A2/A3,
+  ST-B1/B2/B3/**B4**, ST-C1/C2/C3, ST-D1/D2, ST-E1/E2, ST-F1/F2/F3/F4/F5/F6.
   - ST-B3 = adapter 미등록 actor type의 기본 빈 state transfer 성공.
   - ST-B4 = custom adapter가 빈 state를 반환해도 성공(`actor-empty-state`, target joined 이후 별도 store에서 domain state 로드 marker).
 - evidence: callback order marker(`admission, transfer_out(_empty), leave, commit_request,
@@ -116,8 +117,8 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 
 ## 체크리스트 (Node)
 
-### 계약 항목(§11)
-- [x] 1~12 (README §4 Node 열). runtime audit와 contract/E2E 증거로 모두 `✅` 확정.
+### 계약 항목(§12)
+- [x] 1~18 (README §4 Node 열). runtime audit와 contract/E2E 증거로 모두 `✅` 확정.
 
 ### interface/문서
 - [x] 실제 source public interface를 actor id admission/adapter 모델로 변경
@@ -137,10 +138,13 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 - [x] ST-C1 · [x] ST-C2 · [x] ST-C3(P1)
 - [x] ST-D1 · [x] ST-D2(P1)
 - [x] ST-E1 · [x] ST-E2
+- [x] ST-F1 · [x] ST-F2 · [x] ST-F3
+- [x] ST-F4(P1) · [x] ST-F5(P1) · [x] ST-F6(P1)
 - [x] e2e 전체 runner 통과
 
 ### P5
 - [x] codex POSD/DDD 리팩토링 루프 CONVERGED(회귀 그린 유지)
+- [x] handoff H6 재리뷰 CONVERGED(request framing·replay·forwarding owner 단일화)
 
 ## 함정 (Node)
 
@@ -176,14 +180,18 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
   generation과 ActorRef를 보낸다. 따라서 첫 target push보다 stale source push가 먼저 도착해도 폐기된다.
   E1/E2는 같은 stream connector binding이 성공한 이동 뒤 target push를 받고, 실패한 이동 뒤에는 기존
   binding을 유지하는지 확인한다.
+- **in-flight handoff**: `ZLinkActorHandoffCoordinator`가 moving ingress, commit backlog, trailing
+  forwarding, window와 mapping 축출을 한 곳에서 소유한다. target은 backlog를 actor queue에서 replay한
+  뒤 location을 공개한다. request는 request sequence·flags·correlation 정보를 그대로 보존하고, caller
+  timeout이 먼저 끝난 late reply는 기존 orphan 처리 경로를 따른다.
 - **샘플**: Bingo와 TicTacToe는 domain state adapter를 등록했다. DeliveryDispatch는 옮길 domain state가
   없어 기본 빈 state transfer를 사용한다. SupportChat, GameQuest, ShoppingMall을 포함한 전체 sample
   runner가 통과했다.
-- **config-10**: `framework/languages/node/e2e/SpotActorTransfer`에 ST-A1~ST-E2 14개 시나리오를 구현했다.
+- **config-10**: `framework/languages/node/e2e/SpotActorTransfer`에 ST-A1~ST-F6 20개 시나리오를 구현했다.
   pending deadline은 ST-C1의 공개 결과와 deadline 뒤 late commit을 거부하는 contract test로 함께
   증명한다. source cleanup은 ST-B2의 성공 유지 결과와 location remove가 한 번 실패한 뒤 같은
   generation으로 재시도되는 contract test로 검증한다. 검증 전용 public API나 application timer marker는
-  추가하지 않았다.
+  추가하지 않았다. Track F 전체 증거는 `log/20260710-200221-3864800`이다.
 
 ## P5 수렴 기록
 
@@ -228,12 +236,16 @@ unversioned 입력과 새 versioned 입력을 비교한 microbenchmark다.
 현재 검증:
 
 - `npm run build && npm run typecheck && npm run lint` — 통과
-- actor/spot/location/stream contract tests — 155/155 통과
+- handoff 인접 actor/spot/location/stream/NestJS contract tests — 263/263 통과
+- `test/contract/actor-handoff.test.js` — 6/6 통과
 - `e2e/SpotActorTransfer/run_e2e.sh all` — ST-A1~ST-E2 14/14 통과,
   `log/20260710-152609-2661347`
+- `e2e/SpotActorTransfer/run_e2e.sh ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6` — 6/6 통과,
+  `log/20260710-200221-3864800`
 - `samples/run_samples.sh` — TicTacToe, Bingo, DeliveryDispatch, SupportChat, GameQuest,
   ShoppingMall 6/6 통과
 - `e2e/run_e2e_all.sh` — 10개 config 전체 통과, 763초. RL-A3는 요청마다 만든 runtime의
   `app.close()`를 5초 뒤 버리던 lifecycle 누수를 제거한 뒤 단독 4회와 전체 누적 실행에서 통과했다.
 - `npm test` — build, typecheck, lint, contract, sample regression, smoke gate 전체 통과. sample 전체
-  runner를 포함한 최종 gate다.
+  runner를 포함한 기존 최종 gate다. 이번 handoff 변경 뒤에는 반복 실행 중 channel 파일이 간헐적으로
+  대기해 channel 57/57, sample 6/6, 나머지 runtime gate를 분리 실행해 모두 통과시켰다.

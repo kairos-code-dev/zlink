@@ -60,7 +60,10 @@ export class ZLinkSpotActorPacketRelayDispatch {
     let closeFrameMessages = true;
     try {
       const frameHeader = decodeStreamHeader(messageToBytes(header));
-      const canDeferResponse = this.options.resolveActor(actorPacketRelay.actorId) !== undefined;
+      const canDeferResponse =
+        (actorPacketRelay.actorRef as (ActorRef & { handoffForwarded?: boolean }) | undefined)
+          ?.handoffForwarded !== true &&
+        this.options.resolveActor(actorPacketRelay.actorId) !== undefined;
       if (
         canDeferResponse &&
         frameHeader.kind === ZLinkStreamMessageKind.Request &&
@@ -70,7 +73,8 @@ export class ZLinkSpotActorPacketRelayDispatch {
           actorPacketRelay.actorId,
           [header, payload],
           false,
-          remoteBoundSessionTarget
+          remoteBoundSessionTarget,
+          actorPacketRelay.actorRef
         );
         closeFrameMessages = false;
         void dispatch.catch(() => undefined).finally(() => {
@@ -87,7 +91,8 @@ export class ZLinkSpotActorPacketRelayDispatch {
         actorPacketRelay.actorId,
         [header, payload],
         true,
-        remoteBoundSessionTarget
+        remoteBoundSessionTarget,
+        actorPacketRelay.actorRef
       );
       const actorPacketTarget = this.actorPacketTarget(actorPacketRelay.actorId);
       if (isReplyableRequestSeq(received.requestSeq)) {

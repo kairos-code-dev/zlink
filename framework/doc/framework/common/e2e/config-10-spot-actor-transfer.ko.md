@@ -18,7 +18,8 @@ location commit, bound session route, failure cleanup이 같은 순서와 의미
 
 - 다룬다: 같은 node join 순서, remote actor transfer 정상 경로, transfer state 복원, 빈 state transfer, admission/commit
   분리, source node down 전후 동작, location row commit 시점, moving 중 actor packet dispatch 차단,
-  transfer adapter 미등록 기본 동작과 callback 실패, bound session 이전.
+  transfer adapter 미등록 기본 동작과 callback 실패, bound session 이전, **actor 이동 중 in-flight packet
+  handoff(순서 보존·publish 전 replay·straggler forwarding과 mapping 축출·request reply correlation과 timeout)**.
 - 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), yield 후 mailbox 재개(Config 8),
   actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
 - 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. join 완료 신호는
@@ -41,6 +42,9 @@ actor 노드는 아래 evidence를 공통으로 남긴다.
 - actor id, actor type, actor generation 또는 ref snapshot, source/target spot rid, source/target node rid.
 - callback order marker: `admission`, `transfer_out`, `leave`, `commit_request`, `transfer_in`, `joined`,
   `location_committed`, `commit_ack`, `source_cleanup`.
+- in-flight handoff marker: `handoff_backlog`(moving 중 보존한 packet), `backlog_enqueued`(target queue 적재),
+  `straggler_forward`(공개 뒤 forward), `mapping_evicted`(window 후 축출), `stale_fail_fast`(축출 뒤 old ref 거부).
+  각 actor packet은 arrival sequence index를 함께 남겨 target 처리 순서와 대조할 수 있어야 한다.
 - `OnActorJoin` 입력 snapshot. actor id 외에 actor instance나 route metadata가 전달되었거나 저장되면 실패 evidence로 남긴다.
 - transfer state marker. state를 담는 actor type은 source actor state version과 target actor 복원 state가 같은지 확인할 수 있어야 한다. 빈 state actor type은 target `OnJoinedActor` 이후 별도 조회 marker를 남긴다.
 - actor packet handler marker. moving 중 source와 target 양쪽 handler가 동시에 처리하지 않았는지 대조한다.
@@ -281,11 +285,113 @@ target pending admission만 정리되는가.
   분류되고, target actor push 성공으로 보이면 실패다.
 - 세부 동작: 실패한 transfer의 bound session 비오염.
 
+### Track F — in-flight packet handoff (source queue handoff)
+
+[spot-actor.ko.md §10](../spec/spot-actor.ko.md)의 source queue handoff 계약을 배포 형태로 검증한다.
+모든 시나리오는 arrival sequence index로 "보낸 순서 vs target 처리 순서"를 대조한다.
+
+#### ST-F1 in-flight handoff order
+
+우선순위: `P0`
+
+**한마디로:** actor가 moving 상태인 동안 도착한 actor packet이 유실 없이 target에서 도착 순서대로
+처리되는가(§10.2-1,2).
+
+- 절차: `actor-inflight-order`를 `actor-a`에 만들고 `actor-b`의 user Spot으로 remote transfer를
+  시작한다. target `OnJoinedActor`를 bounded latch로 지연시켜 moving 구간을 연다. 그 사이 controller가
+  이 actor로 향하는 actor packet `P1 -> P2 -> P3`를 순서대로 보낸다. latch를 해제한 뒤 처리 순서를 관찰한다.
+- 검증: 세 packet 모두 유실 없이 **target actor handler에서 `P1 -> P2 -> P3` 순서로** 처리된다.
+  moving 구간에 source Spot handler가 이 packet들을 처리한 evidence가 없어야 한다(§3.4). source는
+  `handoff_backlog` marker에 arrival index를 순서대로 남기고, target은 `backlog_enqueued`로 같은 순서를 남긴다.
+- 세부 동작: moving 중 packet 보존과 정렬 handoff.
+
+#### ST-F2 direct overtakes prevented
+
+우선순위: `P0`
+
+**한마디로:** 이동 완료 직후 새 location으로 온 direct packet이 handoff backlog보다 먼저 처리되지
+않는가(§10.2-3).
+
+- 절차: `actor-inflight-overtake`를 remote transfer한다. moving 구간에 source로 backlog packet
+  `B1 -> B2`를 넣는다. transfer commit과 location publish가 끝난 직후, controller가 새 location으로
+  re-resolve해 direct packet `D1`을 보낸다.
+- 검증: target 처리 순서는 `B1 -> B2 -> D1`이다. `D1`이 `B1`/`B2`보다 먼저 처리되면 실패다. evidence
+  order에서 `backlog_enqueued`가 `location_committed`보다 먼저 나와야 한다(backlog가 publish 전에 queue에
+  적재됨). 이 순서가 뒤집히면 실패다.
+- 세부 동작: publish 전 replay로 direct 추월 차단.
+
+#### ST-F3 bound session cross-move order
+
+우선순위: `P0`
+
+**한마디로:** 한 bound session이 이동을 가로질러 보낸 packet이 보낸 순서대로 actor에 도달하는가(§10.2-4).
+
+- 절차: consumer가 `session-a`에 연결해 `actor-bound-order`를 bind한다. client가 연속 packet
+  `S1 -> S2 -> S3 -> S4`를 보내는 도중에 controller가 `actor-b`로 remote transfer를 실행해, 일부는
+  rebind 전(source 경유), 일부는 rebind 후(target 직행)가 되도록 한다.
+- 검증: target actor가 네 packet을 **`S1 -> S2 -> S3 -> S4` 순서로** 받는다. session route rebind 경계에서
+  역전된 evidence가 있으면 실패다. rebind 전 packet의 backlog handoff가 rebind 후 direct packet보다 먼저
+  target queue에 적재되어야 한다.
+- 세부 동작: bound session의 cross-move per-session FIFO.
+
+#### ST-F4 straggler forward then fail-fast
+
+우선순위: `P1`
+
+**한마디로:** location 공개 뒤 stale ref로 온 straggler가 window(기본 5초) 안에서는 target으로
+forward되고, window 초과분은 fail-fast로 분류되는가(§10.2-6, §10.4).
+
+- 절차: `actor-straggler`를 remote transfer해 완료(location published)까지 간다. old generation ref를
+  캡처한 by-id caller가 (a) window 안에 packet `G1`을, (b) window 경과 후 packet `G2`를 같은 old ref로
+  보낸다. window 값은 controller가 짧게(예: 1~2초로 override) 설정해 실행 시간을 줄일 수 있다.
+- 검증: `G1`은 `straggler_forward`를 거쳐 target actor에서 처리된다. `G2`는 `stale_fail_fast`로
+  분류되고(`ActorLocationStale`) target에서 처리되지 않으며, caller는 re-resolve 후 재전송해야 한다.
+  framework가 `G2`를 자동 저장·재전송한 evidence가 있으면 실패다.
+- 세부 동작: straggler bounded forwarding과 cutoff.
+
+#### ST-F5 forwarding mapping eviction
+
+우선순위: `P1`
+
+**한마디로:** window 후 forwarding mapping이 축출되어 누수가 없고, window 안 재이동은 entry를 갱신하는가(§10.4).
+
+- 절차: 두 부분으로 실행한다. (a) `actor-map-evict`를 remote transfer한 뒤 window 경과를 bounded wait로
+  두고 `mapping_evicted` marker를 관찰한다. (b) `actor-map-chain`을 window 안에 `actor-a -> actor-b ->
+  actor-a의 다른 user Spot`처럼 **다른 node로 두 번** 연속 이동시키고 각 node의 forwarding entry snapshot을
+  관찰한다. 첫 node(`actor-a`)의 old ref로 straggler를 주입한다.
+- 검증: (a) window 경과 후 `mapping_evicted`가 남고, 이후 old ref packet은 `stale_fail_fast`다. (b) **각
+  source node는 그 actor에 대해 entry가 최대 하나**이고 그 entry는 자기 **다음 hop**을 가리킨다(첫 node는
+  두 번째 node를, 두 번째 node는 최종 target을). 첫 node에 주입한 straggler는 hop을 따라 최종 target까지
+  전달된다. 한 node 안에 이전 target을 가리키는 잔여 entry가 함께 남으면 실패다. 각 window 경과 후 모든
+  entry가 축출되어 누수가 없다.
+- 세부 동작: mapping retained state의 bounded 축출과 node별 chained forward(hop 전달).
+
+#### ST-F6 in-flight request reply correlation과 timeout
+
+우선순위: `P1`
+
+**한마디로:** 이동 중 도착한 **request**(reply 대기)가 이동 후 target에서 처리되어 reply가 원래
+caller로 correlate되고, timeout은 caller 기존 경로로 동작하는가(§10.5). ST-F1~F3은 Send만 쓰므로
+request의 reply correlation·timeout 경로는 이 시나리오가 검증한다.
+
+- 절차: 두 부분으로 실행한다. (a) **reply correlation** — `actor-inflight-req`를 remote transfer한다.
+  moving 구간에 controller가 이 actor로 request(충분히 긴 timeout)를 보낸다. 이동 완료 후 target actor가
+  처리해 reply를 낸다. (b) **timeout** — 같은 흐름에서 request timeout을 이동 완료보다 짧게 두거나 target
+  처리를 지연시켜 caller timeout이 나게 하고, 그 뒤 늦은 reply가 생기게 한다.
+- 검증: (a) reply가 **원래 caller로 request id correlate**되어 도착한다(중복·오배달 없음). handoff/forward
+  evidence에 request id·flags가 보존됐음을 남긴다. reply가 source를 다시 거친 evidence가 있으면 안 된다
+  (target→caller 직행). (b) timeout 케이스는 caller가 **normal request timeout 실패**로 분류하고(이동 전용
+  예외 경로 없음), 뒤늦은 reply는 late-reply drop된다.
+- 세부 동작: in-flight request의 reply correlation·timeout·framing 보존.
+
 ## 5. 완료 기준
 
 - Track A, Track B, Track C의 `P0` 시나리오는 모든 framework 언어가 같은 의미로 구현해야 한다.
 - Track D와 Track E의 `P0` 시나리오는 location store와 stream connector가 있는 언어에서 public API만으로
   구현해야 한다. 필요한 public 표면이 없으면 feature-map에 public contract parity gap으로 남긴다.
+- Track F의 `P0` 시나리오(ST-F1~F3)는 remote transfer를 지원하는 모든 언어가 같은 순서 의미로 구현해야
+  한다. `P1`(ST-F4~F6)은 straggler forwarding window, mapping 축출, request reply correlation과 timeout을
+  public 관찰 수단으로 검증할 수 있는 언어에서 구현하고, 없으면 parity gap으로 남긴다.
 - callback order는 단순 로그 문자열 grep이 아니라 역할 server evidence와 message flow correlation id로
   검증한다.
 - location 검증은 public resolver/query 또는 역할 server endpoint로 관찰한다. 내부 store key를 client가

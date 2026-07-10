@@ -179,6 +179,18 @@ function createDiscoveredSpotNodeOptions(
     throw new framework.ZLinkConfigurationException('ZLink SPOT actor handlers require a registered SpotNode.');
   }
 
+  addDiscoveredSpotTimers(spotNodeEntries, timerRefs);
+  addDiscoveredSpotHandlers(spotNodeEntries, spotRefs);
+  addDiscoveredSpotActorHandlers(spotNodeEntries, refs);
+  return spotNodes;
+}
+
+type MutableSpotNodeEntry = [string, Mutable<ZLinkSpotNodeOptions>];
+
+function addDiscoveredSpotTimers(
+  spotNodeEntries: readonly MutableSpotNodeEntry[],
+  timerRefs: readonly DiscoveredNestSpotTimerProvider[]
+): void {
   for (const ref of timerRefs) {
     if (ref.metadata.entrySpot !== undefined) {
       const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
@@ -222,7 +234,12 @@ function createDiscoveredSpotNodeOptions(
       ];
     }
   }
+}
 
+function addDiscoveredSpotHandlers(
+  spotNodeEntries: readonly MutableSpotNodeEntry[],
+  spotRefs: readonly DiscoveredNestSpotProvider[]
+): void {
   for (const ref of spotRefs) {
     if (ref.metadata.kind === 'entrySpotPacket' || ref.metadata.kind === 'entrySpotSubscription') {
       const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
@@ -293,7 +310,12 @@ function createDiscoveredSpotNodeOptions(
       }
     }
   }
+}
 
+function addDiscoveredSpotActorHandlers(
+  spotNodeEntries: readonly MutableSpotNodeEntry[],
+  refs: readonly DiscoveredNestSpotActorProvider[]
+): void {
   for (const ref of refs) {
     if (ref.metadata.kind === 'entrySpotActorSend' || ref.metadata.kind === 'entrySpotActorRequest') {
       const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
@@ -358,8 +380,6 @@ function createDiscoveredSpotNodeOptions(
       }
     }
   }
-
-  return spotNodes;
 }
 
 function toMutableSpotNodeRecord(value: ZLinkFrameworkRegistrationOptions['spotNodes']): Record<string, Mutable<ZLinkSpotNodeOptions>> {
@@ -536,17 +556,21 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
 
   return {
     actorTransferAdapters: options.actorTransferAdapters,
+    actorTransferForwardWindowMs: options.actorTransferForwardWindowMs,
     channels,
     codecs: options.codecs,
     dispatch: options.dispatch,
     filters: options.filters,
     locations: options.locations,
     monitoring: options.monitoring,
+    requestTimeoutMs: options.requestTimeoutMs,
     routeChannels,
     spotFactories: options.spotFactories,
     spotNodes: options.spotNodes,
     spotPublisherClients: options.spotPublisherClients,
-    streamNodes: options.streams
+    streamCompression: options.streamCompression,
+    streamNodes: options.streams,
+    worker: options.worker
   };
 }
 

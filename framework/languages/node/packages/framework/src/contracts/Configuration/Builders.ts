@@ -23,6 +23,8 @@ export interface ZLinkFrameworkOptions {
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): this;
+  /** Overrides the 5 second source forwarding window for stale actor references. */
+  setActorTransferForwardWindow(timeoutMs: number): this;
   configureLocations(): ZLinkLocationOptions;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;

@@ -39,11 +39,14 @@ import {
   REMOTE_ACTOR_JOIN_COMMIT,
   buildRemoteActorJoinRequestPayload,
   decodeWireRoutingId,
-  type ZLinkRemoteActorJoinReply,
-  type ZLinkRemoteActorJoinRequest
+  type ZLinkRemoteActorJoinReply
 } from './actor-remote-wire';
 import type { ZLinkActorTransferRegistry } from './actor-transfer-registry';
 import { ZLinkPostCommitActorBinder } from './post-commit-actor-binder';
+import type {
+  ZLinkActorHandoffPacket,
+  ZLinkActorHandoffResult
+} from './actor-handoff';
 
 export interface ZLinkActorNativeJoinCoordinatorOptions {
   readonly node: ZLinkBackendSpotNode | (() => ZLinkBackendSpotNode);
@@ -60,7 +63,15 @@ export interface ZLinkActorNativeJoinCoordinatorOptions {
   ) => Promise<void>;
   readonly sourceActorMoveStarter?: (actor: ZLinkActor, state: ZLinkActorRuntimeState) => Promise<void>;
   readonly sourceActorMoveCanceler?: (actor: ZLinkActor, state: ZLinkActorRuntimeState) => Promise<void>;
+  readonly sourceActorHandoffSnapshot?: (actorId: string) => readonly ZLinkActorHandoffPacket[];
+  readonly sourceActorHandoffCompleter?: (
+    actorId: string,
+    target: ZLinkSpotRouteTarget,
+    targetActorRef: ActorRef,
+    results: readonly ZLinkActorHandoffResult[]
+  ) => void;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly shutdownSignal?: AbortSignal;
 }
 
 export interface ZLinkActorRoutedJoinTransport {
@@ -118,7 +129,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       ? undefined
       : new ZLinkPostCommitActorBinder({
           bind: (actorRef, force) => options.remoteActorBinder!(actorRef, undefined, force),
-          reportError: options.postCommitErrorReporter
+          reportError: options.postCommitErrorReporter,
+          signal: options.shutdownSignal
         });
   }
 
@@ -274,6 +286,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       throw error;
     }
     const transferPayload = transfer.state.toEncodedPayload(this.options.messageSerializers).data();
+    const handoffBacklog = this.options.sourceActorHandoffSnapshot?.(actor.actorId) ?? [];
     const commitRequest = buildRemoteActorJoinRequestPayload({
       actorId: actor.actorId,
       actorType,
@@ -286,7 +299,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       phase: REMOTE_ACTOR_JOIN_COMMIT,
       transferId,
       transferAdapterKey: transfer.adapterKey,
-      transferState: Buffer.from(transferPayload)
+      transferState: Buffer.from(transferPayload),
+      handoffBacklog
     });
     try {
       const commitReply = await this.requestRemoteTransferWithRetry<ZLinkRemoteActorJoinReply>(
@@ -296,6 +310,18 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         timeoutMs,
         signal
       );
+      if (commitReply.accepted) {
+        this.options.sourceActorHandoffCompleter?.(
+          actor.actorId,
+          spotRouteTarget,
+          {
+            nodeRid: decodeWireRoutingId(commitReply.actorNodeRid, commitReply.actorNodeRidHex),
+            actorId: commitReply.actorId,
+            generation: BigInt(commitReply.actorGeneration)
+          },
+          commitReply.handoffResults ?? []
+        );
+      }
       return await this.applyRemoteJoinResult(
         state,
         commitReply,

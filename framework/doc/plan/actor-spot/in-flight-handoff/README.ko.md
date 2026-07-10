@@ -16,8 +16,8 @@
 | [common/spec/spot-actor.ko.md §3.4](../../../framework/common/spec/spot-actor.ko.md) | moving 중 dispatch 금지(handoff의 전제). |
 | [common/spec/spot-actor.ko.md §8](../../../framework/common/spec/spot-actor.ko.md) | location publish 시점·generation fencing. |
 | [common/spec/spot-actor.ko.md §9](../../../framework/common/spec/spot-actor.ko.md) | bound session transfer(rebind 경계). |
-| [common/e2e/config-10 §4 Track F](../../../framework/common/e2e/config-10-spot-actor-transfer.ko.md) | **검증 정본**. ST-F1~F5 배포형 e2e. |
-| `spot-actor.ko.md §12`(언어 요구 13~17) / `§13`(회귀 테스트) | 언어별 구현/테스트 MUST 목록. |
+| [common/e2e/config-10 §4 Track F](../../../framework/common/e2e/config-10-spot-actor-transfer.ko.md) | **검증 정본**. ST-F1~F6 배포형 e2e. |
+| `spot-actor.ko.md §12`(언어 요구 13~18) / `§13`(회귀 테스트) | 언어별 구현/테스트 MUST 목록. |
 
 ## 1. 무엇을 구현하나 (계약 요지)
 
@@ -36,6 +36,9 @@ actor가 이동(moving)하는 동안 그 actor로 도착한 packet을 **유실 �
    forward/direct로 갈리면 상대 순서는 best-effort.
 6. **straggler cutoff(§10.2-6, §10.4).** location 공개 뒤 stale ref straggler는 `actorTransferForwardWindow`
    **(기본 5초)** 동안 arrival order로 forward, window 후 mapping 축출 + fail-fast(`ActorLocationStale`).
+7. **request framing 보존(§10.5).** in-flight packet이 request면 handoff·forward가 request id·flags·reply
+   route를 보존해, 이동 후 target 처리 reply가 **원래 caller로 correlate**된다. timeout은 caller 기존
+   경로(이동이 리셋 안 함), late reply는 drop. Send는 이 절 불필요.
 
 ## 2. 공통 설계 모델 (구현 관점)
 
@@ -91,7 +94,8 @@ gap이 있으면 P2에서 window·replay-before-publish·mapping 축출을 추�
 | **H2. publish 전 replay** | backlog enqueue를 location publish보다 먼저로 고정. bound session rebind 경계도 backlog-먼저. | ST-F2, ST-F3 통과 |
 | **H3. window + fail-fast** | `actorTransferForwardWindow`(기본 5초, override 가능) 도입. straggler forward, window 후 fail-fast. `straggler_forward`/`stale_fail_fast` marker. | ST-F4 통과 |
 | **H4. mapping 축출** | window 후 mapping 제거(누수 없음), node별 chained forward(다음 hop), node당·actor당 entry ≤1. `mapping_evicted` marker. | ST-F5 통과 |
-| **H5. contract 테스트** | `§13` 신규 4종(in-flight handoff order / direct overtakes prevented / bound session cross-move order / straggler forward then fail-fast) + forwarding mapping eviction을 in-process runner/fake backend로. | 경량 회귀 그린 |
+| **H5. contract 테스트** | `§13` 신규 6종(in-flight handoff order / direct overtakes prevented / bound session cross-move order / straggler forward then fail-fast / forwarding mapping eviction / in-flight request reply correlation)을 in-process runner/fake backend로. 마지막 항목은 handoff frame의 request id·flags 보존(§10.5)을 검증(ST-F6). | 경량 회귀 그린 |
+| **H6. POSD/DDD 리팩토링 루프** | H1~H5가 그린이 된 뒤, 새/변경 handoff 코드를 codex 에이전트로 반복 리뷰하며 의미있는 POSD/DDD 항목이 없어질 때까지 정리(§8). | codex 재리뷰 CONVERGED |
 
 각 단계는 상위 계획의 P0~P4와 병행/후행할 수 있으나, **H1~H2는 admission/commit 분리(상위 P2)가 선행**돼야
 한다(commit 경로에 backlog를 실어야 하므로).
@@ -123,12 +127,13 @@ index**를 붙여 target 처리 순서와 대조한다.
 | ST-F3 | P0 | bound session `S1→S4`가 rebind 경계를 가로질러 순서 유지. |
 | ST-F4 | P1 | window 내 straggler forward, window 후 `stale_fail_fast`, 자동 재전송 없음. |
 | ST-F5 | P1 | window 후 `mapping_evicted`·누수 없음, chained 재이동은 entry 갱신(≤1). |
+| ST-F6 | P1 | 이동 중 **request**가 target 처리 후 reply를 원래 caller로 correlate, timeout은 caller 기존 경로, late reply drop. (ST-F1~F3은 Send만 씀) |
 
 ### 5.2 §13 contract 테스트 (in-process 경량)
 
-같은 계약을 fake backend/in-process runner로 검증하는 5종(§13 표의 in-flight handoff order / direct
+같은 계약을 fake backend/in-process runner로 검증하는 6종(§13 표의 in-flight handoff order / direct
 overtakes prevented / bound session cross-move order / straggler forward then fail-fast / forwarding
-mapping eviction). config-10을 못 돌리는 CI에서도 회귀를 잡는 층이다.
+mapping eviction / in-flight request reply correlation). config-10을 못 돌리는 CI에서도 회귀를 잡는 층이다.
 
 ## 6. 언어별 시작점 (H0 audit 대상)
 
@@ -154,17 +159,55 @@ mapping eviction). config-10을 못 돌리는 CI에서도 회귀를 잡는 층�
 - **fail-fast 분류.** window 후 straggler는 `ActorLocationStale`로 분류하고 재전송은 caller 몫이다.
   framework가 저장·재전송하면 계약 위반.
 
-## 8. 완료 기준
+## 8. POSD/DDD 리팩토링 루프 (H6, 완료 전 전 언어 공통)
 
-- H0~H5가 순서대로 그린이고, 상위 계획 P0~P4(admission/commit 분리 포함)가 선행 그린이다.
-- config-10 Track F의 P0(ST-F1~F3) + P1(ST-F4~F5)이 그 언어에서 그린(또는 public 표면 부재 시 parity gap 기록).
-- `§13` 신규 회귀 5종이 in-process로 그린.
-- 마스터 표(../README.ko.md §3, §4)의 ST-F*·계약 13~17 열을 그 언어 상태로 갱신.
+H1~H5(구현 + config-10 Track F + contract 테스트 그린)가 끝난 **뒤**에만 시작한다. 목적은 새 handoff
+코드(ingress capture, backlog snapshot/replay gate, forwarding mapping, window/eviction, request framing)가
+POSD의 깊은 모듈·정보 은닉·복잡성을 아래로 내리는 설계 원칙과 DDD의 도메인 책임 경계 관점에서
+god-file·책임 혼합·중복·vestigial을 남기지 않게 정리하는 것이다. 상위 계획 [../README.ko.md §6](../README.ko.md)
+의 P5 루프와 같은 흐름이며, 이 루프는 그 P5의 **handoff 부분을 구체화**한 것이다.
+
+**루프 (의미있는 항목이 없어질 때까지 반복):**
+
+1. **게이트 확인** — config-10 Track F(P0 전부) + §13 contract 테스트가 그린인지 먼저 확인. 리팩토링은
+   그린 상태에서만 진행한다.
+2. **codex 에이전트 리뷰** — 해당 언어의 새/변경 handoff 코드에 codex 에이전트로 POSD/DDD 리뷰를 돌린다.
+   handoff 특화 관점(아래).
+3. **의미있는 항목 반영** — 리뷰가 낸 항목 중 **의미있는 것만** 반영한다. 핫패스(actor dispatch 큐 등)를
+   건드리는 변경은 baseline vs patched 벤치 증거를 첨부한다(측정 없는 perf 변경 금지).
+4. **회귀 확인** — 반영 후 config-10 Track F + contract 테스트를 다시 그린으로.
+5. **재리뷰 → 수렴 판정** — 다시 2번으로 돌아가 codex 리뷰를 반복한다. 리뷰가 **의미있는 리팩토링
+   항목을 더 이상 내지 않으면(CONVERGED)** 루프를 종료한다. "취향/사소" 항목만 남으면 수렴으로 본다.
+6. **기록** — 각 라운드의 반영 항목·수렴 판정을 이 문서의 언어별 완료 기록 절(§10~§13) 또는 언어별 refactor-list에 남긴다.
+
+**handoff 특화 리뷰 관점 (codex 프롬프트 seed):**
+
+- ingress capture / backlog snapshot / target replay gate 책임이 한 god-메서드에 뭉치지 않고 분리됐는가.
+- forwarding mapping 저장소의 **owner 단일화** — window timer·eviction·chained hop 로직이 한 곳에 응집됐는가.
+- backlog 직렬화·arrival index 처리가 여러 곳에 중복되지 않았는가.
+- **기존 재라우팅(`ShouldForward` 등)과 새 handoff 경로의 중복·이중 책임** 정리, 구 경로 vestigial 제거.
+- moving-dispatch 가드와 §3.4 기존 가드의 통합(가드 중복 방지).
+- request framing 보존 로직이 send/request 경로에 흩어지지 않고 한 곳에서 처리되는가(§10.5).
+- 핫패스 주석 게이트 — actor dispatch 큐 같은 hot TU에 변경이 있으면 주석·벤치 근거를 남겼는가.
+
+> 참고: 이 저장소의 기존 POSD/DDD 전수 리뷰 방식(언어별 refactor-list + codex 병합 + 다라운드 검증
+> CONVERGED)과 같은 흐름을 따른다. codex 리뷰는 한 요청에 한 항목만(병렬 OK, 묶기 금지).
+
+## 9. 완료 기준
+
+- H0~H6가 순서대로 그린이고, 상위 계획 P0~P4(admission/commit 분리 포함)가 선행 그린이다.
+- config-10 Track F의 P0(ST-F1~F3) + P1(ST-F4~F6)이 그 언어에서 그린(또는 public 표면 부재 시 parity gap 기록).
+- `§13` 신규 회귀 6종이 in-process로 그린.
+- 마스터 표(../README.ko.md §3, §4)의 ST-F*·계약 13~18 열을 그 언어 상태로 갱신.
 - window 기본값 5초를 언어 간 동일하게 사용(override는 배포별).
+- **H6 codex 리팩토링 루프가 CONVERGED**(의미있는 POSD/DDD 항목이 더 나오지 않음)이고, 각 라운드 기록이 남았다.
 
-## 9. .NET 완료 기록 (2026-07-10)
+> 아래 언어별 기록(§10~§12)은 처음에는 H0~H5·ST-F1~F5 기준으로 작성됐다. Node는 H6와
+> ST-F6/계약18까지 갱신했으며, 다른 언어는 각 기록의 잔여 표기를 따른다.
 
-.NET은 H0~H5를 완료했다.
+## 10. .NET 완료 기록 (2026-07-10)
+
+.NET은 H0~H5를 완료했다(H6·ST-F6 잔여).
 
 - H0 audit: 기존 Spot 직렬 큐는 moving 중 packet을 source handler에서 실행하지 않는 데에는 충분했지만,
   commit 응답 뒤 source 큐를 개별 forward하므로 target direct packet의 추월 가능성이 있었다. 또한
@@ -183,7 +226,7 @@ mapping eviction). config-10을 못 돌리는 CI에서도 회귀를 잡는 층�
   mapping 교체·축출을 검증한다.
 - 배포형 회귀: `e2e/SpotActorTransfer/run_e2e.sh ST-F1 ST-F2 ST-F3 ST-F4 ST-F5`가 Track F 전체를 검증한다.
 
-## 10. C++ 진행 기록 (2026-07-10)
+## 11. C++ 진행 기록 (2026-07-10)
 
 C++는 H0~H4 구현과 H5 경량 회귀를 완료했다. Track F 배포형(ST-F1~F5)은 config-10 cpp port에서
 검증 예정이다(진행 중).
@@ -211,9 +254,9 @@ C++는 H0~H4 구현과 H5 경량 회귀를 완료했다. Track F 배포형(ST-F1
 - 잔여: bound session cross-move 순서(ST-F3)와 straggler 실전 forward(ST-F4)는 배포형에서만 검증
   가능하므로 config-10 cpp port(Track F 포함)에서 마감한다.
 
-## 11. Node 완료 기록 (2026-07-10)
+## 12. Node 완료 기록 (2026-07-10)
 
-Node는 H0~H5를 완료했다.
+Node는 H0~H6와 ST-F1~F6을 완료했다.
 
 - H0 audit: 기존 runtime은 moving 동안 user Spot의 actor를 `leftActors`로만 가려 packet을 보존하지
   않았다. remote commit payload에도 transfer state만 있었고 backlog, bounded forwarding mapping,
@@ -228,6 +271,21 @@ Node는 H0~H5를 완료했다.
   ref와 target Spot을 함께 전달해 A→B→A 연쇄 이동에서도 반복 forwarding 없이 최종 target에 도달한다.
 - bound session: moving 구간의 session frame도 같은 backlog에 들어가며, target replay 뒤 새 route로
   들어온 frame이 이어진다. ST-F3에서 `S1→S2→S3→S4` 순서를 확인했다.
-- 경량 회귀: `test/contract/actor-handoff.test.js`의 5개 테스트가 backlog 순서, publish 경계, bound-session
-  순서, cutoff, mapping 교체·축출을 검증한다.
-- 배포형 회귀: `e2e/SpotActorTransfer/run_e2e.sh ST-F1,ST-F2,ST-F3,ST-F4,ST-F5`가 Track F 전체를 검증한다.
+- request framing: source capture는 request sequence, flags, correlation id가 든 stream header 전체를
+  backlog에 보존한다. target 처리 결과는 원래 대기 중인 request에 한 번만 연결되며, caller timeout이
+  먼저 끝나면 뒤늦은 결과는 기존 late-reply 경로에서 버린다. `handoff_request_frame` evidence로 request
+  sequence와 flags 보존도 확인한다.
+- 경량 회귀: `test/contract/actor-handoff.test.js`의 6개 테스트가 backlog 순서, publish 경계, bound-session
+  순서, cutoff, mapping 교체·축출, request framing·reply correlation·caller timeout을 검증한다.
+- 배포형 회귀: `e2e/SpotActorTransfer/run_e2e.sh ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6`가 Track F 전체를 검증한다.
+- H6 1차: handoff 상태·snapshot·trailing forward·window mapping을 `ZLinkActorHandoffCoordinator` 한 곳의
+  책임으로 모으고 Host의 bound-session 패스스루와 이전 dispatcher 잔재를 제거했다. shutdown signal로
+  사후 retry를 중단하고 detached task 오류도 공통 runner가 소유하게 했다.
+- H6 2차: Entry Spot과 User Spot에 중복돼 있던 target replay·결과 생성·message close를
+  `replayActorHandoffBacklog`로 통합했다. request framing evidence는 실패해도 handoff 동작을 바꾸지 않게
+  격리했고, target이 request replay 결과를 누락하면 source가 조용히 성공시키지 않고 실패시킨다.
+- H6 성능: normal actor dispatch에 추가된 idle handoff 확인을 500만 회·7라운드로 측정한 중앙값은
+  baseline 2.16ns, 적용 경로 7.29ns(증가 5.13ns)였다. 실제 per-actor mailbox admission burst는
+  200 actor × 50 packet × 5라운드에서 중앙 처리량 905,052 packet/s였다.
+- H6 재리뷰: ingress capture, replay, forwarding mapping, framing 소유자가 각각 한 곳이고 기존 경로와
+  중복된 의미 있는 리팩토링 항목이 더 남지 않아 `CONVERGED`로 판정했다.

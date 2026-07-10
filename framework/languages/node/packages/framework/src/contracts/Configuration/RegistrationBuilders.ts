@@ -113,6 +113,14 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return this;
   }
 
+  setActorTransferForwardWindow(timeoutMs: number): this {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {
+      throw new ZLinkConfigurationException('actor transfer forward window must be a non-negative safe integer.');
+    }
+    this.options.actorTransferForwardWindowMs = timeoutMs;
+    return this;
+  }
+
   configureLocations(): ZLinkLocationOptions {
     this.options.locations ??= { options: {} };
     this.options.locations.options ??= {};
@@ -178,6 +186,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       spotNodes: this.options.spotNodes,
       spotFactories: this.options.spotFactories,
       actorTransferAdapters: new Map(this.options.actorTransferAdapters),
+      actorTransferForwardWindowMs: this.options.actorTransferForwardWindowMs,
       dispatch: this.options.dispatch,
       worker: this.options.worker,
       locations: this.options.locations
@@ -478,6 +487,7 @@ function endpointList(endpoint: string | readonly string[]): string[] {
 
 interface MutableFrameworkRegistrationOptions {
   actorTransferAdapters: Map<Type, Type>;
+  actorTransferForwardWindowMs?: number;
   codecs?: MutableCodecRegistryOptions;
   channels: Record<string, MutableChannelOptions>;
   routeChannels: MutableRouteChannelOptions[];

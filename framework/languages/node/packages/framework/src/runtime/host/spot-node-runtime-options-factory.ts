@@ -20,11 +20,13 @@ import type {
   DefaultZLinkSpotManager,
   ZLinkSpotNodeRuntimeManager,
   ZLinkSpotNodeRuntimeManagerOptions,
+  ZLinkDetachedTaskRunner,
   ZLinkSpotRoutedTransport
 } from '../spots';
 import type { MeshRouterResolver } from './mesh-router-resolver';
 import type { ZLinkBoundSessionRelay } from './bound-session-relay';
 import type { ZLinkStreamBindingRuntime } from '../streams';
+import type { ZLinkActorHandoffCoordinator } from '../actors';
 
 export interface ZLinkSpotNodeRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -42,6 +44,8 @@ export interface ZLinkSpotNodeRuntimeOptionsFactoryOptions {
   readonly spotNodeRuntime: () => ZLinkSpotNodeRuntimeManager | undefined;
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
   readonly boundSessionRelay: ZLinkBoundSessionRelay;
+  readonly actorHandoff: ZLinkActorHandoffCoordinator;
+  readonly detachedTaskRunner: ZLinkDetachedTaskRunner;
 }
 
 export class ZLinkSpotNodeRuntimeOptionsFactory {
@@ -63,6 +67,7 @@ export class ZLinkSpotNodeRuntimeOptionsFactory {
       providerResolver: this.options.providerResolver,
       dispatchErrors: this.options.dispatchErrors,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
+      detachedTaskRunner: this.options.detachedTaskRunner,
       messageSerializers: this.options.registration.messageSerializers,
       actorResolver: (actorId) => this.options.actorManager()?.getState(actorId)?.actor,
       entryActorCommitter: (actor) => this.commitEntryActor(actor),
@@ -95,6 +100,14 @@ export class ZLinkSpotNodeRuntimeOptionsFactory {
       remoteBoundSessionTargetResolver: (sourceNodeRid) =>
         this.options.meshRouters.remoteBoundSessionTargetForSource(sourceNodeRid),
       actorPacketTargetProvider: (actorId) => this.options.boundSessionRelay.actorPacketTargetForState(actorId),
+      actorPacketHandoff: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
+        this.options.actorHandoff.capture(
+          actorId,
+          parts,
+          returnResponse,
+          remoteBoundSessionTarget,
+          fallbackActorRef
+        ),
       localActorPacketRouter: (actorId, parts, returnResponse, remoteBoundSessionTarget) =>
         this.dispatchLocalActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget),
       actorResponseSender: (actor, packetName, requestSeq, response, replyOptions, signal) =>

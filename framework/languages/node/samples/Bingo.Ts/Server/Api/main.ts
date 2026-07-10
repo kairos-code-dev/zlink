@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { createBingoApiModule } from './bingo-api-module';
-import { SampleNames } from '../Configuration/sample-names';
 import { loadSampleConfig } from '../Configuration/sample-config';
 async function bootstrap(): Promise<void> {
   const config = loadSampleConfig();

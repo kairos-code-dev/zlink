@@ -246,7 +246,7 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
 
   const actor = await manager.getOrCreateActor('alice', 'player');
   assert.equal(await manager.getOrCreateActor('alice', 'player'), actor);
-  assert.deepEqual(actor.context.actorRef, { nodeRid: zlink.RoutingId.from('node-a'), actorId: 'alice', generation: 1n });
+  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-a', actorId: 'alice', generation: 1n });
 
   assert.deepEqual(events, [
     'create:alice',
@@ -305,8 +305,8 @@ test('ZLinkActorManager claims location before activation and releases on destro
   await managerA.create('alice', 'player');
   const row = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
   assert.equal(row.ownerId, 'owner-a');
-  assert.equal(row.nodeRid.toHex(), rid('node-a').toHex());
-  assert.deepEqual(row.actorRef, { nodeRid: rid('node-a'), actorId: 'alice', generation: 7n });
+  assert.equal(row.nodeRid, 'node-a');
+  assert.deepEqual(row.actorRef, { nodeRid: 'node-a', actorId: 'alice', generation: 7n });
 
   await assert.rejects(
     () => managerB.create('alice', 'player'),
@@ -450,7 +450,7 @@ test('ZLinkActorManager resolves native actor node lazily at actor creation', as
 
   const actor = await manager.getOrCreateActor('lazy', 'player');
 
-  assert.deepEqual(actor.context.actorRef, { nodeRid: zlink.RoutingId.from('node-lazy'), actorId: 'lazy', generation: 3n });
+  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-lazy', actorId: 'lazy', generation: 3n });
 });
 
 test('ZLinkActorManager clears failed create state when Entry Spot create callback fails', async () => {
@@ -740,77 +740,6 @@ test('ZLinkActorDispatchMailboxSet serializes same actor and allows different ac
   releaseAlice();
   await Promise.all([aliceFirst, aliceSecond]);
   assert.deepEqual(events, ['alice:first:start', 'bob:first', 'alice:first:end', 'alice:second']);
-});
-
-test('ZLinkActorDispatchRouter rechecks actor location after queued mailbox turn starts', async () => {
-  const events = [];
-  class PlayerActor {
-    constructor(actorId, context) {
-      this.actorId = actorId;
-      this.context = context;
-    }
-  }
-  class PlayerFactory {
-    create(actorId, context) {
-      return new PlayerActor(actorId, context);
-    }
-  }
-  const manager = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map([['player', PlayerFactory]])
-  });
-  await manager.create('alice', 'player');
-  const router = new framework.ZLinkActorDispatchRouter(manager);
-  let releaseFirst;
-  const firstStarted = new Promise((resolve) => {
-    releaseFirst = resolve;
-  });
-  let allowFirstToFinish;
-  const firstCanFinish = new Promise((resolve) => {
-    allowFirstToFinish = resolve;
-  });
-
-  const first = router.submit('alice', async (snapshot) => {
-    events.push(`first:${snapshot.spotRid ?? 'entry'}`);
-    releaseFirst();
-    await firstCanFinish;
-  });
-  await firstStarted;
-  const second = router.submit('alice', async (snapshot) => {
-    events.push(`second:${snapshot.spotRid}`);
-  });
-
-  manager.getState('alice').setJoinedSpot('stage-1', { context: { spotRid: 'stage-1' } });
-  allowFirstToFinish();
-  await Promise.all([first, second]);
-
-  assert.deepEqual(events, ['first:entry', 'second:stage-1']);
-});
-
-test('ZLinkActorDispatchRouter blocks actor packets while a transfer is moving', async () => {
-  class PlayerActor {
-    constructor(actorId, context) {
-      this.actorId = actorId;
-      this.context = context;
-    }
-  }
-  class PlayerFactory {
-    create(actorId, context) {
-      return new PlayerActor(actorId, context);
-    }
-  }
-  const manager = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map([['player', PlayerFactory]])
-  });
-  await manager.create('alice', 'player');
-  const state = manager.getState('alice');
-  const router = new framework.ZLinkActorDispatchRouter(manager);
-  state.beginMove();
-  await assert.rejects(
-    () => router.submit('alice', () => 'unexpected'),
-    /moving between Spots/
-  );
-  state.endMove();
-  assert.equal(await router.submit('alice', () => 'ready'), 'ready');
 });
 
 test('ZLinkActorContext delegates join calls to coordinator with timeout', async () => {
@@ -1108,10 +1037,10 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
 
   assert.equal(result.accepted, true);
-  assert.deepEqual(result.actor, { ...joinedRef, nodeRid: zlink.RoutingId.from('node-a') });
+  assert.deepEqual(result.actor, { ...joinedRef, nodeRid: 'node-a' });
   assert.equal(result.reply, 'native-reply');
   assert.equal(actor.context.isJoined, true);
-  assert.deepEqual(actor.context.spotRid, zlink.RoutingId.from('stage-1'));
+  assert.equal(actor.context.spotRid, 'stage-1');
   assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
   assert.deepEqual(events, [
     'lookup:alice',
@@ -1462,7 +1391,7 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
   const entryRequest = encodedMessage('entry');
   const result = await actor.context.joinEntrySpot('node-b', entryRequest).timeout(50).submit();
 
-  assert.deepEqual(result.actor, { ...entryRef, nodeRid: zlink.RoutingId.from('node-b') });
+  assert.deepEqual(result.actor, { ...entryRef, nodeRid: 'node-b' });
   assert.equal(actor.context.isJoined, false);
   assert.equal(actor.context.spotRid, undefined);
   assert.equal(manager.getState('alice').nativeActorRef, entryRef);
@@ -1513,11 +1442,7 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
   await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
   await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
   assert.equal(await manager.find('alice'), undefined);
-  const router = new framework.ZLinkActorDispatchRouter(manager);
-  await assert.rejects(
-    () => router.submit('alice', () => 'unexpected'),
-    { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
-  );
+  assert.equal(await manager.find('alice'), undefined);
 
   const recreated = await manager.getOrCreateActor('alice', 'player');
   manager.getState('alice').ensureNativeActorRef(node);

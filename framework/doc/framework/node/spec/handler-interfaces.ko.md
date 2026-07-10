@@ -1431,6 +1431,7 @@ export interface ZLinkFrameworkOptions {
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>,
   ): this;
+  setActorTransferForwardWindow(timeoutMs: number): this;
   addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this;
   addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this;
   configureLocations(): ZLinkLocationOptions;
@@ -1448,6 +1449,11 @@ export interface ZLinkMetadataPolicyBuilder {
   forward(enabled?: boolean): this;
 }
 ```
+
+`setActorTransferForwardWindow(timeoutMs)`는 actor가 다른 node로 이동한 뒤 source가 old ref packet을 다음
+hop으로 넘기는 시간을 밀리초 단위로 정한다. 기본값은 5초다. `0`을 지정하면 commit backlog까지만
+handoff하고 이후 old ref packet은 즉시 `ActorLocationStale`로 끝난다. 이 값은 packet 순서를 보장하는
+설정이 아니라, source가 stale ref를 흡수하는 시간과 mapping 보유 시간을 조절하는 설정이다.
 
 > 구현 기준: builder 는 현재 runtime registration 이 실제로 소비하는 channel,
 > stream node, SpotNode, location store, spot factory 구성을 만든다. codec/filter/handler

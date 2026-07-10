@@ -1,9 +1,11 @@
 import type {
   ActorRef,
-  RoutingId,
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
-import type { DefaultZLinkActorManager, ZLinkRemoteBoundSessionTarget } from '../actors';
+import type {
+  DefaultZLinkActorManager,
+  ZLinkActorHandoffCoordinator
+} from '../actors';
 import {
   DefaultZLinkChannelClient,
   DefaultZLinkFanoutClient,
@@ -17,8 +19,12 @@ import type { ZLinkFrameworkRegistration } from '../configuration';
 import type { ZLinkLocationLifecycle } from '../locations';
 import type { ZLinkBackendSpotNode } from '../backend';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
-import type { ZLinkSpotManagerOptions, ZLinkSpotNodeRuntimeManager, ZLinkSpotRoutedTransport } from '../spots';
-import { normalizeRuntimeRoutingId } from '../spots/route-wire-codec';
+import type {
+  ZLinkDetachedTaskRunner,
+  ZLinkSpotManagerOptions,
+  ZLinkSpotNodeRuntimeManager,
+  ZLinkSpotRoutedTransport
+} from '../spots';
 import type { ZLinkActorRuntimeOptionsFactory } from './actor-runtime-options-factory';
 import type { ZLinkBoundSessionRelay } from './bound-session-relay';
 import type { MeshRouterResolver } from './mesh-router-resolver';
@@ -35,8 +41,10 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
   readonly createLocationSpotRouteResolver: () => ZLinkSpotRouteResolver | undefined;
   readonly boundSessionRelay: ZLinkBoundSessionRelay;
+  readonly actorHandoff: ZLinkActorHandoffCoordinator;
   readonly dispatchErrorReporter: (errorSink: ZLinkDispatchErrorSink) => ZLinkDispatchErrorReporter;
   readonly runtimeOrPreStartErrorSink: ZLinkDispatchErrorSink;
+  readonly detachedTaskRunner: ZLinkDetachedTaskRunner;
 }
 
 export class ZLinkSpotRuntimeOptionsFactory {
@@ -65,6 +73,7 @@ export class ZLinkSpotRuntimeOptionsFactory {
       spotRouterChannelIdForMesh: this.options.meshRouters.spotRouterChannelIdByMesh(),
       messageSerializers: this.options.registration.messageSerializers,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
+      detachedTaskRunner: this.options.detachedTaskRunner,
       locationLifecycle: this.options.locationLifecycle(),
       locationMeshName: this.options.meshRouters.primarySpotMeshName(),
       spotRouteResolver: this.options.createLocationSpotRouteResolver(),
@@ -146,6 +155,14 @@ export class ZLinkSpotRuntimeOptionsFactory {
       remoteBoundSessionTargetResolver: (sourceNodeRid) =>
         this.options.meshRouters.remoteBoundSessionTargetForSource(sourceNodeRid),
       actorPacketTargetProvider: (actorId) => this.options.boundSessionRelay.actorPacketTargetForState(actorId),
+      actorPacketHandoff: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
+        this.options.actorHandoff.capture(
+          actorId,
+          parts,
+          returnResponse,
+          remoteBoundSessionTarget,
+          fallbackActorRef
+        ),
       actorResponseSender: (actor, packetName, requestSeq, response, replyOptions, signal) =>
         this.options.boundSessionRelay.sendActorResponse(actor, packetName, requestSeq, response, replyOptions, signal),
       actorErrorSender: (actorId, packetName, requestSeq, error, metadata, actorRef, signal) =>

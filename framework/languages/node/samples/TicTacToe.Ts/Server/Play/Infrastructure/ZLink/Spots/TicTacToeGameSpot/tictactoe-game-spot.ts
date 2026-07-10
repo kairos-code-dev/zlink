@@ -122,7 +122,6 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
 
   async placeMark(actor: PlaySpotActor, cell: number): Promise<PlaceMarkRes> {
     const match = this.requireMatch();
-    const roomId = this.requireRoomId();
     const before = match.snapshot();
     const change = match.placeMark(actor.actorId, cell);
     const state = change.state;

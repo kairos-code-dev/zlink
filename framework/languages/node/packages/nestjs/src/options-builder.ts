@@ -18,6 +18,8 @@ import type {
   ZLinkSocketConfig,
   ZLinkSpot,
   ZLinkSpotNodeOptions,
+  ZLinkStreamCompressionBuilder,
+  ZLinkStreamCompressionCodec,
   ZLinkStreamNodeOptions
 } from '@zlink-systems/framework';
 import {
@@ -108,6 +110,25 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
       actorTransferAdapters: adapters
     };
     return this;
+  }
+
+  setActorTransferForwardWindow(timeoutMs: number): this {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {
+      throw new framework.ZLinkConfigurationException(
+        'actor transfer forward window must be a non-negative safe integer.'
+      );
+    }
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      actorTransferForwardWindowMs: timeoutMs
+    };
+    return this;
+  }
+
+  configureStreamCompression(): ZLinkStreamCompressionBuilder {
+    const compression = { ...(this.additionalOptions.streamCompression ?? {}) };
+    this.additionalOptions = { ...this.additionalOptions, streamCompression: compression };
+    return new DefaultZLinkNestStreamCompressionBuilder(compression);
   }
 
   configureLocations(): ZLinkLocationOptions {
@@ -221,6 +242,15 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
     return this;
   }
 
+  setActorTransferForwardWindow(timeoutMs: number): this {
+    this.root.setActorTransferForwardWindow(timeoutMs);
+    return this;
+  }
+
+  configureStreamCompression(): ZLinkStreamCompressionBuilder {
+    return this.root.configureStreamCompression();
+  }
+
   configureLocations(): ZLinkLocationOptions {
     return this.root.configureLocations();
   }
@@ -247,6 +277,42 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
 
   build(): ZLinkModuleOptions {
     return this.root.build();
+  }
+}
+
+interface MutableStreamCompressionOptions {
+  disabled?: boolean;
+  codec?: ZLinkStreamCompressionCodec;
+}
+
+class DefaultZLinkNestStreamCompressionBuilder implements ZLinkStreamCompressionBuilder {
+  constructor(private readonly options: MutableStreamCompressionOptions) {}
+
+  useDefault(): this {
+    this.options.disabled = false;
+    this.options.codec = undefined;
+    return this;
+  }
+
+  useLz4(): this {
+    return this.useDefault();
+  }
+
+  use(codec: ZLinkStreamCompressionCodec): this {
+    if (typeof codec.compress !== 'function' || typeof codec.decompress !== 'function') {
+      throw new framework.ZLinkConfigurationException(
+        'STREAM compression codec must provide compress and decompress functions.'
+      );
+    }
+    this.options.disabled = false;
+    this.options.codec = codec;
+    return this;
+  }
+
+  disable(): this {
+    this.options.disabled = true;
+    this.options.codec = undefined;
+    return this;
   }
 }
 

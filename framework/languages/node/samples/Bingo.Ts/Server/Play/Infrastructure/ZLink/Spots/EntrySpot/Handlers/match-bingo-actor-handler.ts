@@ -4,7 +4,6 @@ import { PlayerActor } from '../../../Actors/player-actor';
 import {
   bingoRoomJoinReq,
   matchBingoApiReq,
-  matchBingoReq,
   matchBingoRes,
   PacketNames
 } from '../../../../../../../Shared/Contracts/messages';

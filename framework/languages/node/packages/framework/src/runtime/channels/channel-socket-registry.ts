@@ -16,7 +16,6 @@ import type {
   ZLinkMonitoringBackendAdapter
 } from '../backend/contracts';
 import { ZLinkAsyncSubmitter } from '../messaging';
-import { socketTraceId } from './channel-socket-trace';
 import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
 
 export class ZLinkChannelSocketRegistry {
@@ -197,29 +196,11 @@ export class ZLinkChannelSocketRegistry {
     this.trackRouteMonitor(routerChannelId, router);
     if ((routeChannel.manualConnections ?? []).length > 0) {
       for (const endpoint of routeChannel.manualConnections ?? []) {
-        if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-          console.error(
-            `[zlink-autoconnect] routeRouter manual connect begin channel=${routerChannelId} ` +
-              `endpoint=${endpoint} socket=${socketTraceId(router)}`
-          );
-        }
         router.connect(endpoint);
-        if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-          console.error(
-            `[zlink-autoconnect] routeRouter manual connect done channel=${routerChannelId} ` +
-              `endpoint=${endpoint} socket=${socketTraceId(router)}`
-          );
-        }
       }
     }
     if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
       router.bind(routeChannel.bind);
-      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
-        console.error(
-          `[zlink-autoconnect] routeRouter bound channel=${routerChannelId} ` +
-            `endpoint=${routeChannel.bind} socket=${socketTraceId(router)}`
-        );
-      }
     }
     this.routeRouters.set(routerChannelId, router);
     return router;

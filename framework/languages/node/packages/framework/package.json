@@ -11,6 +11,7 @@
     }
   },
   "dependencies": {
+    "@zlink-systems/zlink": "8.6.4",
     "@zlink-systems/stream-wire": "0.1.0-SNAPSHOT"
   }
 }

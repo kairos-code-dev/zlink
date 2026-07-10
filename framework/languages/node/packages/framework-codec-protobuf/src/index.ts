@@ -1,5 +1,4 @@
-import { createRequire } from 'node:module';
-import path from 'node:path';
+import * as protobufjs from 'protobufjs';
 import {
   ZLinkEncodedPayload,
   type ZLinkCodecExtension,
@@ -166,7 +165,7 @@ export function createZlinkStreamProtobufEnvelopeCodec(
 export function createZlinkProtobufJsEnvelopeCodec(
   options: ProtobufJsEnvelopeCodecOptions
 ): ZLinkProtobufEnvelopeCodecExtension {
-  const protobuf = loadProtobufJs() as ProtobufJs;
+  const protobuf = protobufjs as unknown as ProtobufJs;
   const root = protobuf.loadSync(options.protoPath);
   const lookupType = (typeName: string): ProtobufJsType =>
     root.lookupType(`${options.packageName}.${typeName}`);
@@ -265,19 +264,6 @@ export function toProto<T>(value: T, type: ProtobufType<T>, messageType?: Functi
 export function fromProto<T>(payload: ZlinkStreamEncodedPayload, type: ProtobufType<T>): T {
   ensureProtobuf(payload);
   return type.decode(payload.payload);
-}
-
-export function loadProtobufJs(): unknown {
-  const requireProtobuf = createRequire(__filename);
-  try {
-    return requireProtobuf('protobufjs') as unknown;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') {
-      throw error;
-    }
-    const zlinkEntryPath = requireProtobuf.resolve('@zlink-systems/zlink');
-    return requireProtobuf(path.resolve(path.dirname(zlinkEntryPath), '..', 'node_modules', 'protobufjs')) as unknown;
-  }
 }
 
 function encodeValue(value: unknown): Buffer {

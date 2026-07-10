@@ -39,6 +39,7 @@ import type {
 import type { ZLinkRemoteActorJoinActor } from './spot-remote-codec';
 import { ZLinkSpotWorkerRuntime } from '../workers';
 import { ZLinkSpotActorJoinDispatch } from './spot-actor-join-dispatch';
+import type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import { ZLinkEntrySpotActivation } from './spot-entry-activation';
 import {
@@ -115,6 +116,14 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
     sourceSessionRid: RoutingId
   ) => ZLinkRemoteBoundSessionTarget | undefined;
   readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly actorPacketHandoff?: (
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse?: boolean,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ) => Promise<unknown> | undefined;
+  readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
   readonly actorResponseSender?: (
     actor: ZLinkActor,
     packetName: string,
@@ -337,6 +346,8 @@ export class ZLinkSpotNodeRuntimeManager {
       routedBoundSessionOwnershipReceiver: this.options.routedBoundSessionOwnershipReceiver,
       remoteActorPacketTargetReceiver: this.options.remoteActorPacketTargetReceiver,
       actorPacketTargetProvider: this.options.actorPacketTargetProvider,
+      actorPacketHandoff: this.options.actorPacketHandoff,
+      detachedTaskRunner: this.options.detachedTaskRunner,
       localActorPacketRouter: this.options.localActorPacketRouter,
       actorResponseSender: this.options.actorResponseSender,
       actorErrorSender: this.options.actorErrorSender,
@@ -377,7 +388,8 @@ export class ZLinkSpotNodeRuntimeManager {
       actorPacketTargetProvider: this.options.actorPacketTargetProvider,
       messageSerializers: this.options.messageSerializers,
       providerResolver: this.options.providerResolver,
-      dispatchErrors: this.options.dispatchErrors
+      dispatchErrors: this.options.dispatchErrors,
+      detachedTaskRunner: this.options.detachedTaskRunner
     });
     dispatch.attach();
     this.entryRouteDispatches.push(dispatch);

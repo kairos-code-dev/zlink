@@ -85,15 +85,12 @@ export function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorP
 }
 
 export function normalizeRuntimeRoutingId(value: RoutingId | string): RoutingId {
-  const raw = value as unknown;
-  return raw instanceof BindingRoutingId
-    ? raw as unknown as RoutingId
-    : BindingRoutingId.from(String(value)) as unknown as RoutingId;
+  return String(value);
 }
 
 export function decodeWireRoutingId(text: string, hex: unknown): RoutingId {
   return typeof hex === 'string'
-    ? BindingRoutingId.fromHex(hex) as unknown as RoutingId
+    ? String(BindingRoutingId.fromHex(hex))
     : normalizeRuntimeRoutingId(text);
 }
 

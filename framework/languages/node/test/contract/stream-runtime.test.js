@@ -712,7 +712,7 @@ test('runtime host remote bound session receiver forwards through actor remote t
   });
 
   let completed = false;
-  const received = host.receiveRemoteBoundSessionSend({
+  const received = host.boundSessionRelay.receiveRemoteBoundSessionSend({
     packetName: '__zlink.actor.bound_session.send',
     actorId: 'actor-hop',
     message: { hello: 'world' },
@@ -769,7 +769,7 @@ test('runtime host remote bound session receiver delivers to local stream before
     }
   });
 
-  await host.receiveRemoteBoundSessionSend({
+  await host.boundSessionRelay.receiveRemoteBoundSessionSend({
     packetName: '__zlink.actor.bound_session.send',
     actorId: 'actor-local-hop',
     message: { hello: 'local' },
@@ -805,27 +805,27 @@ test('routed target push refreshes a bound session to the transferred actor ref 
     refreshed.push(actorRef);
   };
 
-  await host.receiveRemoteBoundSessionOwnership({
+  await host.boundSessionRelay.receiveRemoteBoundSessionOwnership({
     actorId: 'actor-transfer',
     actorNodeRid: 'actor-b',
     actorGeneration: '2',
     actorOwnershipGeneration: '2'
   });
-  await host.receiveRoutedBoundSession(
+  await host.boundSessionRelay.receiveRoutedBoundSession(
     'actor-transfer',
     { marker: 'stale-source-before-target-push' },
     'Notify',
     new Map(),
     staleSourceRef
   );
-  await host.receiveRoutedBoundSession(
+  await host.boundSessionRelay.receiveRoutedBoundSession(
     'actor-transfer',
     { marker: 'after-transfer' },
     'Notify',
     new Map(),
     targetRef
   );
-  await host.receiveRoutedBoundSession(
+  await host.boundSessionRelay.receiveRoutedBoundSession(
     'actor-transfer',
     { marker: 'stale-source' },
     'Notify',
@@ -933,7 +933,7 @@ test('runtime host actor packet target prefers stored remote room target', () =>
     }
   });
 
-  const target = host.actorPacketTargetForState('actor-remote-room');
+  const target = host.boundSessionRelay.actorPacketTargetForState('actor-remote-room');
   assert.equal(target.routerChannelId, 'room.route');
   assert.equal(target.targetNodeRid, 'room-owner-node');
   assert.equal(String(target.spotRid), 'room-spot');
@@ -969,7 +969,7 @@ test('runtime host joined Spot route keeps remote owner node when actor ref is l
     }
   });
 
-  const target = host.actorPacketTargetForState('actor-remote-room');
+  const target = host.boundSessionRelay.actorPacketTargetForState('actor-remote-room');
   assert.equal(target.routerChannelId, 'room.route');
   assert.equal(target.targetNodeRid, 'room-owner-node');
   assert.equal(String(target.spotRid), 'room-spot');
@@ -1006,7 +1006,7 @@ test('runtime host actor packet target uses spot mesh when route mesh also exist
     }
   });
 
-  const target = host.actorPacketTargetForState('actor-remote-room');
+  const target = host.boundSessionRelay.actorPacketTargetForState('actor-remote-room');
   assert.equal(target.routerChannelId, 'spot.service');
   assert.equal(String(target.targetNodeRid), 'play-node');
   assert.equal(String(target.spotRid), 'room-spot');
@@ -1067,7 +1067,7 @@ test('runtime host actor packet target lets local joined actors use native gatew
     }
   });
 
-  assert.equal(host.actorPacketTargetForState('actor-local-room'), undefined);
+  assert.equal(host.boundSessionRelay.actorPacketTargetForState('actor-local-room'), undefined);
 });
 
 test('runtime host local spot join uses SpotManager for actors with native refs', async () => {
@@ -1477,7 +1477,7 @@ test('runtime host completes relayed actor request on captured stream after acto
   };
 
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
-  await runtime.relayRemoteActorPacket(actor, {
+  await runtime.boundSessionRelay.relayRemoteActorPacket(actor, {
     kind: streamProtocol.ZLinkStreamMessageKind.Request,
     codec: streamProtocol.ZLinkStreamCodec.Json,
     flags: streamProtocol.ZLinkStreamHeaderFlags.None,
@@ -1532,7 +1532,7 @@ test('runtime host awaits routed actor disconnect notification before session cl
   };
 
   let disconnectCompleted = false;
-  const disconnecting = runtime.notifyRemoteActorDisconnected('actor-disconnect-await', {
+  const disconnecting = runtime.boundSessionRelay.notifyRemoteActorDisconnected('actor-disconnect-await', {
     routerChannelId: 'spot.service',
     targetNodeRid: 'play-node',
     spotRid: 'play-node'

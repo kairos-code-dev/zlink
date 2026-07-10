@@ -23,6 +23,7 @@ import {
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
+import type { ZLinkActorHandoffCoordinator } from '../actors';
 import { type ZLinkActorRoutedJoinTransport } from '../actors';
 import { ZLinkLocalFirstActorJoinCoordinator } from '../actors/local-first-actor-join-coordinator';
 import type { ZLinkActorRuntimeState } from '../actors/actor-runtime-state';
@@ -56,6 +57,8 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly forgetDestroyedActorRef: (actorId: string) => void;
   readonly rememberDestroyedActorRef: (actorId: string, actorRef: ActorRef) => void;
   readonly reportPostCommitError: (error: unknown) => void;
+  readonly actorHandoff: ZLinkActorHandoffCoordinator;
+  readonly shutdownSignal: () => AbortSignal | undefined;
 }
 
 export interface ZLinkActorRuntimeOptionsActorManager {
@@ -93,6 +96,7 @@ export class ZLinkActorRuntimeOptionsFactory {
     | 'locationLifecycle'
     | 'boundSessionFactory'
     | 'actorTransferRegistry'
+    | 'shutdownSignal'
   > {
     const actorTransferRegistry = new ZLinkActorTransferRegistry(
       this.options.registration.actorTransferAdapters,
@@ -122,11 +126,16 @@ export class ZLinkActorRuntimeOptionsFactory {
           sourceActorLeaver: (actor, state, signal) => this.notifySourceActorLeft(actor, state, signal),
           sourceActorMoveStarter: (actor, state) => this.beginSourceActorMove(actor, state),
           sourceActorMoveCanceler: (actor, state) => this.cancelSourceActorMove(actor, state),
-          messageSerializers: this.options.registration.messageSerializers
+          sourceActorHandoffSnapshot: (actorId) => this.options.actorHandoff.snapshot(actorId),
+          sourceActorHandoffCompleter: (actorId, target, targetActorRef, results) =>
+            this.options.actorHandoff.complete(actorId, target, targetActorRef, results),
+          messageSerializers: this.options.registration.messageSerializers,
+          shutdownSignal: this.options.shutdownSignal()
         })
       }),
       messageSerializers: this.options.registration.messageSerializers,
       actorTransferRegistry,
+      shutdownSignal: this.options.shutdownSignal(),
       nativeActorNodeProvider: this.options.primarySpotNodeOrUndefined,
       locationLifecycle: this.options.locationLifecycle(),
       boundSessionFactory: (actorId) => new ZLinkNativeFallbackBoundSession({
@@ -165,7 +174,8 @@ export class ZLinkActorRuntimeOptionsFactory {
       nodeProvider: this.options.primarySpotNodeOrUndefined,
       locationResolver: this.options.createActorLocationResolver,
       messageSerializers: this.options.registration.messageSerializers,
-      defaultRequestTimeoutMs: this.options.registration.requestTimeoutMs
+      defaultRequestTimeoutMs: this.options.registration.requestTimeoutMs,
+      staleActorRefReporter: (actorId) => this.options.actorHandoff.recordStaleFailure(actorId)
     };
   }
 
@@ -187,11 +197,13 @@ export class ZLinkActorRuntimeOptionsFactory {
 
   async beginSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
     state.beginMove();
+    this.options.actorHandoff.begin(actor.actorId, state.nativeActorRef?.generation ?? 0n);
     try {
       if (state.spotRid !== undefined) {
         await this.options.spotManager()?.beginActorTransfer(state.spotRid, actor.actorId);
       }
     } catch (error) {
+      this.options.actorHandoff.cancel(actor.actorId);
       state.endMove();
       throw error;
     }
@@ -203,6 +215,7 @@ export class ZLinkActorRuntimeOptionsFactory {
         await this.options.spotManager()?.cancelActorTransfer(state.spotRid, actor.actorId);
       }
     } finally {
+      this.options.actorHandoff.cancel(actor.actorId);
       state.endMove();
     }
   }

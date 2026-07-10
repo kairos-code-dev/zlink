@@ -25,12 +25,12 @@ export interface FrameworkRuntimeHost {
   stop(): Promise<void>;
   onApplicationBootstrap(): Promise<void>;
   onApplicationShutdown(): Promise<void>;
-  setActorManager?(actorManager: unknown): void;
-  setSpotManager?(spotManager: unknown): void;
-  createActorManagerOptions?(): object;
-  createActorClientOptions?(): Record<string, unknown>;
-  createLocationRefResolver?(): unknown;
-  createSpotManagerOptions?(): object;
+  setActorManager(actorManager: unknown): void;
+  setSpotManager(spotManager: unknown): void;
+  createActorManagerOptions(): Record<string, unknown>;
+  createActorClientOptions(): Record<string, unknown>;
+  createLocationRefResolver(): unknown;
+  createSpotManagerOptions(): Record<string, unknown>;
 }
 
 export interface FrameworkModule {
@@ -39,11 +39,23 @@ export interface FrameworkModule {
     readonly registration: ZLinkFrameworkRegistration;
     readonly providerResolver?: ZLinkProviderResolver;
   }) => FrameworkRuntimeHost;
-  readonly DefaultZLinkChannelClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
-  readonly DefaultZLinkFanoutClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
-  readonly DefaultZLinkRouteClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
+  readonly DefaultZLinkChannelClient: new (
+    registration: ZLinkFrameworkRegistration,
+    transport: unknown
+  ) => unknown;
+  readonly DefaultZLinkFanoutClient: new (
+    registration: ZLinkFrameworkRegistration,
+    transport: unknown
+  ) => unknown;
+  readonly DefaultZLinkRouteClient: new (
+    registration: ZLinkFrameworkRegistration,
+    transport: unknown
+  ) => unknown;
   readonly DefaultZLinkActorClient: new (options: Record<string, unknown>) => unknown;
-  readonly DefaultZLinkSpotPublisherClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
+  readonly DefaultZLinkSpotPublisherClient: new (
+    registration: ZLinkFrameworkRegistration,
+    transport: unknown
+  ) => unknown;
   readonly DefaultZLinkActorManager: new (options: Record<string, unknown>) => unknown;
   readonly DefaultZLinkSpotManager: new (options: Record<string, unknown>) => unknown;
   readonly DefaultZLinkSpotOutbound: new (...args: unknown[]) => unknown;
@@ -57,5 +69,6 @@ export interface FrameworkModule {
 
 export function loadFramework(): FrameworkModule {
   const requireFramework = createRequire(__filename);
-  return requireFramework(path.resolve(__dirname, '../../framework/dist/nest-integration')) as FrameworkModule;
+  const frameworkEntry = requireFramework.resolve('@zlink-systems/framework');
+  return requireFramework(path.join(path.dirname(frameworkEntry), 'nest-integration')) as FrameworkModule;
 }

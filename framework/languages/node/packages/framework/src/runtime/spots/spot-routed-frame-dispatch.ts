@@ -28,6 +28,7 @@ import { ZLinkSpotRoutedBoundSessionDispatch } from './spot-routed-bound-session
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import type { ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
+import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 interface ZLinkRoutedFrameAdmissionTarget {
   onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
@@ -45,6 +46,10 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
   readonly finalizeRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
+  readonly replayRoutedActorBacklog?: (
+    actor: ZLinkActor,
+    backlog: readonly ZLinkActorHandoffPacket[]
+  ) => Promise<readonly ZLinkActorHandoffResult[]>;
   readonly actorPacketHandler?: (
     actorId: string,
     parts: readonly Message[],
@@ -124,6 +129,7 @@ export class ZLinkSpotRoutedFrameDispatch {
       finalizeRoutedActor: options.finalizeRoutedActor,
       rollbackRoutedActor: options.rollbackRoutedActor,
       commitRoutedActor: options.commitRoutedActor,
+      replayRoutedActorBacklog: options.replayRoutedActorBacklog,
       messageSerializers: options.messageSerializers
     });
   }

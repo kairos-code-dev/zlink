@@ -35,8 +35,7 @@ import {
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpot,
-  ZLinkBackendSpotNode,
-  ZLinkBackendActorJoinInfo
+  ZLinkBackendSpotNode
 } from '../backend/contracts';
 
 import { ZLinkDispatchErrorReporter } from '../channels';
@@ -73,6 +72,8 @@ import {
 import { ZLinkSpotActivationLifecycle } from './spot-activation';
 import { ZLinkSpotActorMembership, type ZLinkActorJoinRollback } from './spot-actor-membership';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
+import type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
+export type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import { ZLinkSpotLocationClaim } from './spot-location-claim';
 import { ZLinkRoutedSpotPacketDispatch } from './spot-routed-spot-packet-dispatch';
 export { ZLinkEntrySpotActivation } from './spot-entry-activation';
@@ -183,6 +184,14 @@ export interface ZLinkSpotManagerOptions {
     sourceSessionRid: RoutingId
   ) => ZLinkRemoteBoundSessionTarget | undefined;
   readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly actorPacketHandoff?: (
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse?: boolean,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ) => Promise<unknown> | undefined;
+  readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
   readonly localActorPacketRouter?: (
     actorId: string,
     parts: readonly Message[],
@@ -264,6 +273,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       remoteActorPacketTargetReceiver: options.remoteActorPacketTargetReceiver,
       remoteBoundSessionTargetResolver: options.remoteBoundSessionTargetResolver,
       actorPacketTargetProvider: options.actorPacketTargetProvider,
+      actorPacketHandoff: options.actorPacketHandoff,
+      detachedTaskRunner: options.detachedTaskRunner,
       leaveActor: (spotRid, actor, signal) => this.actorMembership.leaveActor(spotRid, actor, signal),
       closeSpot: (spotRid, signal) => this.close(spotRid, signal),
       registerActivation: (activation) => this.activations.register(activation)

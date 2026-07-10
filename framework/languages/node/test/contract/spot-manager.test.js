@@ -770,7 +770,7 @@ test('ZLinkSpotManager replies no-bind actor handler exceptions as HandlerExcept
     assert.equal(noBindReplies.length, 1);
     const decoded = decodeActorReplyFrame(noBindReplies[0].replyParts[0]);
     assert.equal(decoded.header.kind, streamProtocol.ZLinkStreamMessageKind.Error);
-    assert.deepEqual(decoded.payload, { code: 'Error', message: 'handler boom' });
+    assert.deepEqual(decoded.payload, { code: 'Error', message: 'handler boom', isRetriable: false });
     assert.equal(dispatchEvents.length, 1);
     assert.equal(dispatchEvents[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerException);
     assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);

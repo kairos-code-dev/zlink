@@ -31,7 +31,6 @@ class GameplayActionService {
     return await this.publishAndNotify(GameplayDomain.monsterKilled(
       request.playerId,
       request.monsterId,
-      request.areaId,
       request.idempotencyKey,
       this.apiName
     ));

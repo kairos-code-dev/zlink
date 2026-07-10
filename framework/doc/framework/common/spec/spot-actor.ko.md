@@ -378,7 +378,150 @@ reply가 target node의 actor instance로 이어져야 한다.
   reconnect 흐름으로 복구한다.
 - transfer가 성공하면 source node의 old binding release는 멱등적으로 처리한다.
 
-## 10. callback과 transfer 오류 처리
+## 10. actor 이동 중 in-flight packet 처리 (source queue handoff)
+
+§3.4는 actor가 moving 상태에 들어간 뒤 source Spot이 그 actor의 packet을 handler로 dispatch하면
+안 된다고 정한다. 이 절은 그 사이 **도착한 packet을 어떻게 보존하고 target으로 넘기는지**를 고정해,
+이동이 없었을 때와 같은 결과 — actor가 받을 packet을 유실 없이 보낸 순서대로 받는 것 — 을 모든
+언어가 같은 방식으로 보장하게 한다.
+
+기준 관점은 **개별 packet의 재라우팅이 아니라 정렬된 queue의 handoff**다. 이동이 없었다면 moving 중
+도착한 packet은 source에 있는 actor의 serial queue(§3.4가 허용하는 per-actor serial queue/mailbox)에
+arrival order로 쌓여 있었을 것이다. 이동은 이 backlog를 target으로 옮겨 **같은 순서로 다시 dispatch**
+하는 것으로 정의한다. queue가 이미 FIFO이므로 순서 보존은 구조적으로 성립하며, client에게
+pre-transfer queueing 같은 협조를 요구하지 않는다.
+
+### 10.1 용어
+
+| 용어 | 의미 |
+| --- | --- |
+| in-flight packet | actor가 moving 상태에 들어간 뒤 target join이 완료되기 전에 그 actor로 도착한 actor packet(bound session relay 또는 by-id dispatch). |
+| handoff backlog | moving 시작 시점에 source actor queue에 남아 있던 미dispatch packet과, 이동 중 source로 더 도착한 packet을 arrival order로 모은 정렬 집합. |
+| straggler | location이 target으로 공개된(=이동 완료) 뒤에도 stale ref를 든 sender가 source로 보낸 actor packet. |
+| forwarding mapping | source가 이동 완료 뒤에도 일정 기간 유지하는 `(actorId, old generation) → target location` 매핑. straggler를 target으로 넘기는 데 쓴다. |
+
+### 10.2 공통 규칙
+
+1. **유실 금지·이중 dispatch 금지.** moving 중 source는 actor packet을 source Spot handler로
+   dispatch하면 안 되고(§3.4), drop해서도 안 된다. arrival order를 유지한 채 보존한다.
+2. **정렬 handoff (cross-node).** commit 시 source는 보존한 handoff backlog를 arrival order를 보존해
+   target으로 전달해야 한다. 전달 채널은 언어별로 다를 수 있으나 순서 보존은 계약이다. **source는 moving
+   시작부터 forwarding mapping 활성화(§10.4)까지 도착 packet을 끊김 없이 arrival order로 보존·전달한다** —
+   commit 요청에 동봉한 backlog와 그 이후 straggler forwarding 사이에 순서 공백이나 유실이 없어야 한다
+   (commit 요청과 commit ack 사이에 도착해 backlog snapshot을 놓친 packet도 보존했다가 순서대로 이어
+   전달한다). 같은 node join은 actor instance와 그 queue를 그대로 유지하므로(§4) backlog를 재구성하지
+   않고 이 규칙을 구조적으로 만족한다.
+3. **new-path 개방 전 replay (핵심).** target은 handoff backlog를 target actor의 dispatch queue에
+   **enqueue한 뒤에** 그 actor로 향하는 **새 경로를 연다.** 새 경로는 둘이며 둘 다 backlog enqueue
+   이후여야 한다: (a) committed target location 공개(§8, by-id direct 경로), (b) bound session route의
+   target 활성화(§9, session direct 경로). 즉 `backlog enqueue < location publish` 이고
+   `backlog enqueue < session route 활성화`다. 이 순서를 지켜야 이후 두 경로로 들어오는 direct packet이
+   backlog를 추월하지 못한다. backlog의 실제 handler dispatch는 §3.4에 따라 target `OnJoinedActor`
+   완료 후에 시작한다.
+4. **per-session FIFO 보장.** bound session route는 commit과 함께 target으로 atomically rebind되고(§9),
+   §10.2-3에 따라 backlog가 rebound session의 direct packet보다 먼저 enqueue되므로, **한 bound session이
+   보낸 packet은 이동을 가로질러도 보낸 순서대로 actor에 도달한다.** 이 보장은 client의 협조를 요구하지
+   않으며, voluntary join과 involuntary transfer(rebalance/drain) 모두에 적용된다(involuntary 이동 중
+   계속 도착하는 session packet도 rebind 전이면 backlog로, 후면 direct로 가되 순서는 §10.2-3이 지킨다).
+5. **by-id sender는 best-effort.** bound session이 아닌 by-id dispatch(다른 actor/handler가 actorId로
+   호출)는 각 sender가 자기 re-resolve 시점에 source→target으로 경로를 바꾼다. 같은 sender의 packet이
+   전부 forwarding mapping을 거치면 arrival order로 보존되지만, 한 sender가 이동 창에서 일부는
+   forward·일부는 direct로 갈리면 상대 순서는 보장하지 않는다. 이 방향의 cross-move ordering은
+   best-effort이며, 강한 순서가 필요한 by-id 호출자는 자체 sequencing으로 보완해야 한다.
+6. **straggler forwarding과 cutoff.** location 공개 뒤 source로 온 straggler는 source가 forwarding
+   mapping을 유지하는 동안 arrival order로 target에 forward해야 한다. 유지 기간은 `actorTransferForwardWindow`
+   (기본 5초, §10.4)로 고정하며, **자원 회수 상한이지 correctness 파라미터가 아니다.** mapping이 evict된
+   뒤 같은 old ref로 온 packet은 fail-fast(`ActorLocationStale` / `ActorRouteNotFound`)로 처리하고,
+   sender가 re-resolve해 재전송한다. framework는 in-flight packet을 저장했다가 이 bounded forwarding을
+   넘어서 자동 재전송하지 않는다.
+
+### 10.3 cross-node handoff 순서
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SND as sender(s)
+  participant SA as Framework @source node
+  participant TB as Framework @target node
+  participant Q as target actor queue
+  Note over SA: actor moving — packet을 dispatch 안 하고 arrival order로 보존
+  SND->>SA: actor packet (in-flight)
+  Note over SA: handoff backlog에 순서대로 적재
+  SA->>TB: commit transfer(state + handoff backlog)
+  TB->>TB: TransferIn -> actor / OnJoinedActor
+  TB->>Q: enqueue backlog (arrival order)
+  Note over TB: 그 다음에 location publish (backlog가 queue 앞에 있음)
+  SND->>TB: actor packet (direct, re-resolve 후)
+  TB->>Q: enqueue after backlog
+  Note over Q: dispatch 순서 = backlog 먼저 → direct 나중 (FIFO 유지)
+```
+
+- **backlog enqueue → new-path 개방(location publish + session route 활성화) → direct 수용** 순서가
+  뒤바뀌면 direct packet이 backlog를 추월해 per-session FIFO가 깨진다. by-id 경로(location)와 session
+  경로 **둘 다** backlog enqueue 이후여야 한다(§10.2-3). 이 순서가 이 절의 핵심 강제 배타 지점이다.
+- straggler(§10.1)는 forwarding mapping을 통해 backlog 뒤에 이어 붙는다. mapping 축출 이후는
+  fail-fast다.
+
+### 10.4 relay 유지 기간 (cutoff)
+
+§10.2-6은 straggler를 "forwarding mapping을 유지하는 동안" forward한다고만 정한다. 모든 언어가 같은
+경계에서 같게 동작하려면 그 유지 기간을 고정해야 한다. 유지 기간을 언어별로 자유화하면 같은 시점에
+도착한 straggler가 언어마다 forward되거나 fail-fast되어 관찰 동작이 갈린다.
+
+**forwarding mapping 수명:**
+
+1. **생성.** source가 target commit ack를 받아 target location을 확정한 시점(= location이 target으로
+   publish되는 시점, moving 종료)에 `(actorId, old generation) → target location` mapping을 만든다.
+2. **유지 (MUST 하한).** 생성 후 최소 `actorTransferForwardWindow` 동안 유지한다. 이 구간에 old
+   generation ref로 도착한 packet은 arrival order로 target에 forward한다. 이 유지는 source의
+   old-generation location row/owner lease release(§8 stale owner release)와 **독립**이다 — lease를
+   먼저 fencing해도 mapping은 window 동안 남아 straggler를 흡수한다.
+3. **축출 (MUST 상한).** forwarding mapping은 source가 들고 있는 transfer별 **retained state**다.
+   window 경과 후 이 mapping을 **반드시 제거해야 한다** — window마다 제거하지 않으면 transfer가 잦은
+   구간(rebalance/drain)에서 mapping이 무한히 쌓여 자원 누수가 된다. 이 축출은 §5.1의 멱등 사후
+   정리(source ref/session/location cleanup)에 포함되며, source node가 죽어 정리가 지연돼도 mapping은
+   해당 node 소멸과 함께 사라지므로 target ownership에는 영향이 없다. 축출 뒤 old generation ref로 온
+   packet은 fail-fast(`ActorLocationStale`)로 처리한다.
+4. **chained forward.** forwarding mapping은 **source node별**로 유지하며, 한 node에서 같은 actor에
+   대한 entry는 최대 하나다(전역 하나가 아니라 node당 하나). actor가 window 안에 A→B→C로 연쇄
+   이동하면, A의 mapping은 그 hop의 target인 B를, B의 mapping은 C를 가리킨다. A로 온 straggler는 A의
+   mapping을 따라 B로, 다시 B의 mapping을 따라 C로 **hop을 따라 전달**된다(A가 C를 직접 아는 것이
+   아니라 각 node가 자기 다음 hop만 안다). 각 hop은 자기 window 동안 자기 mapping을 유지한다. 한 node가
+   같은 actor를 다시 host했다가 또 내보내면 그 node의 기존 entry를 새 target으로 갱신하고 window를
+   재시작한다(entry를 누적하지 않는다).
+
+**`actorTransferForwardWindow` 계약:**
+
+- **기본값은 5초로 고정한다.** 모든 언어 framework는 이 기본값을 동일하게 사용해야 한다.
+- 배포별 override를 허용한다. override의 단위·표현·설정 API는 언어별 spec에서 고정하되, 기본값
+  5초는 언어 간에 바꾸지 않는다.
+- 이 값은 **correctness 파라미터가 아니라 straggler 흡수율 vs source 자원 보유의 트레이드오프**다
+  (§10.2-6). per-session FIFO는 window 값과 무관하게 성립한다(§10.2-4). window를 크게 잡으면 stale
+  ref straggler를 더 오래 흡수하고 source mapping을 더 오래 들고, 작게 잡으면 fail-fast가 빨리 난다.
+- window를 `0`으로 override하면 commit 시점 backlog만 handoff하고 이후 straggler는 즉시 fail-fast다
+  (가장 단순, straggler 에러 최대). window 기본값 5초는 이 극단이 아니라 stale ref가 한 round-trip
+  안에 re-resolve할 시간을 주는 값이다.
+
+### 10.5 request packet의 reply correlation과 timeout
+
+§10.2~§10.4는 packet **전달·순서**를 다룬다. actor packet이 **request**(reply 대기)면 이동을
+가로질러도 아래를 추가로 보장한다. Send(fire-and-forget)는 이 절이 필요 없다.
+
+1. **framing 보존.** handoff backlog와 straggler forwarding은 packet의 **request id, flags, reply
+   route(caller 좌표)**를 그대로 보존해야 한다. 이동 후 target actor가 그 request를 처리하면 reply는
+   원래 caller로 **정확히 correlate**되어 돌아간다(actor 이동 사실을 caller가 몰라도 된다). reply는
+   source를 다시 거치지 않고 target에서 caller 좌표로 바로 간다.
+2. **timeout은 caller의 기존 timeout.** 이동은 request timeout을 리셋하지 않는다. caller가 request를
+   보낼 때 시작한 timeout이 그대로 흐른다. 이동+handoff 지연이 timeout 안이면 정상 reply, timeout을
+   넘기면 caller는 **평소와 같은 request timeout 실패**로 분류한다. 이동 전용 timeout 경로를 신설하지
+   않는다.
+3. **late reply drop.** caller가 이미 timeout된 뒤 target이 늦게 만든 reply는 normal late-reply(orphan)
+   처리로 버린다 — 이동 특유의 예외 경로가 아니다.
+4. **straggler request.** window(§10.4) 안 straggler가 request면 forward된 뒤 target에서 처리되고
+   reply가 correlate된다. window 후 fail-fast면 caller는 reply가 아니라 `ActorLocationStale`을 받고
+   re-resolve·재요청한다.
+
+## 11. callback과 transfer 오류 처리
 
 `OnActorJoin`, `OnLeaveActor`, `OnJoinedActor`와 actor transfer adapter는 application 코드이므로 실패할 수
 있다. framework는 실패 시점을 기준으로 join 결과를 다르게 처리한다.
@@ -399,7 +542,7 @@ target membership과 location row를 rollback하는 것이다. 이미 외부 sto
 섞여 있어 즉시 되돌릴 수 없으면, framework는 해당 actor의 target user Spot packet dispatch를 막고
 runtime error event와 reconcile 대상으로 기록해야 한다.
 
-## 11. 언어별 구현 요구 사항
+## 12. 언어별 구현 요구 사항
 
 각 언어 framework는 다음 항목을 feature-map 또는 구현 문서에 표시해야 한다.
 
@@ -415,11 +558,17 @@ runtime error event와 reconcile 대상으로 기록해야 한다.
 - target `OnJoinedActor` 완료 전 actor packet dispatch가 target user Spot으로 들어가지 않는지
 - location row가 pending join과 committed join을 구분하는지
 - bound session transfer가 commit 완료 전 성공으로 노출되지 않는지
+- moving 중 도착한 actor packet을 drop하지 않고 arrival order로 보존해 target으로 handoff하는지(§10.2-1,2)
+- target이 handoff backlog를 location publish 전에 enqueue해 direct packet의 추월을 막는지(§10.2-3)
+- bound session이 보낸 packet이 이동을 가로질러 per-session FIFO로 도달하는지(§10.2-4)
+- location 공개 뒤 straggler를 bounded forwarding으로 넘기고 상한 초과 시 fail-fast로 처리하는지(§10.2-6)
+- forwarding mapping을 `actorTransferForwardWindow`(기본 5초) 후 축출해 누수 없이 정리하는지, node당·actor당 entry가 최대 하나이고 각 entry가 다음 hop을 가리키는지(§10.4)
+- 이동 중 request packet의 reply correlation과 timeout을 보존하는지(reply가 원래 caller로 correlate, timeout은 caller 기존 경로, late reply는 drop)(§10.5)
 
 이 항목 중 하나라도 빠지면 그 언어는 이 스펙을 완전히 만족하지 않는다. 구현 gap은 "테스트 미구현"이
 아니라 public contract parity gap으로 기록한다.
 
-## 12. 회귀 테스트 기준
+## 13. 회귀 테스트 기준
 
 모든 언어는 최소한 아래 테스트를 가져야 한다.
 
@@ -436,6 +585,12 @@ runtime error event와 reconcile 대상으로 기록해야 한다.
 | joined callback failure | target joined callback 실패 시 caller가 success를 받지 않는다. |
 | packet during moving | moving 상태에서 source와 target 양쪽 user Spot handler가 동시에 actor packet을 처리하지 않는다. |
 | bound session transfer | remote transfer 성공 뒤 bound session push가 target actor로 도달하고, 실패한 transfer는 성공으로 보이지 않는다. |
+| in-flight handoff order | moving 중 도착한 packet이 유실 없이 target에서 도착 순서대로 처리된다(§10.2-1,2). |
+| direct overtakes prevented | 이동 완료 직후 새 location으로 온 direct packet이 handoff backlog보다 먼저 처리되지 않는다(§10.2-3). |
+| bound session cross-move order | 한 bound session이 이동 창을 가로질러 보낸 packet이 보낸 순서대로 actor에 도달한다(§10.2-4). |
+| straggler forward then fail-fast | location 공개 뒤 straggler는 bounded window 안에서 target으로 forward되고, window 초과분은 fail-fast로 분류된다(§10.2-6). |
+| forwarding mapping eviction | `actorTransferForwardWindow`(기본 5초) 경과 후 forwarding mapping이 제거되어 누수가 없고, window 안 재이동은 entry를 갱신한다(§10.4). |
+| in-flight request reply correlation | 이동 중 도착한 request가 target 처리 후 reply를 원래 caller로 correlate하고, timeout은 caller 기존 경로이며 late reply는 drop된다(§10.5). |
 
 테스트는 단순 source grep이 아니라 실제 runner나 fake backend로 callback 순서, location row, actor packet
 dispatch 결과를 검증해야 한다.

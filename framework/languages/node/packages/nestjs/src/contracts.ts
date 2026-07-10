@@ -31,6 +31,7 @@ import type {
   ZLinkSpotNodeOptions,
   ZLinkSpotNodeRegistrationOptions,
   ZLinkStreamNodeOptions,
+  ZLinkStreamCompressionBuilder,
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
 
@@ -208,6 +209,8 @@ export interface ZLinkNestFrameworkOptionsBuilder {
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): this;
+  setActorTransferForwardWindow(timeoutMs: number): this;
+  configureStreamCompression(): ZLinkStreamCompressionBuilder;
   configureLocations(): ZLinkLocationOptions;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;

@@ -20,7 +20,6 @@ import { BINGO_MATCH_QUEUE } from './Application/RoomAllocation/bingo-match-queu
 import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
-import { PacketNames } from '../../Shared/Contracts/messages';
 function createBingoPlayModule(config: {
 	  playEndpoint: string;
 	  playRouteEndpoint: string;

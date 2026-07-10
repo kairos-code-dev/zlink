@@ -10,7 +10,6 @@ import type {
 } from '../../contracts';
 import { ZLinkBackendSpotDispatchEvent } from '../backend/contracts';
 import type {
-  ZLinkBackendActorJoinInfo,
   ZLinkBackendActorRef,
   ZLinkBackendActorRecvInfo,
   ZLinkBackendSpot
@@ -37,6 +36,7 @@ import {
 } from './spot-subscription-dispatch';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 const ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1;
 const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
@@ -51,6 +51,10 @@ interface ZLinkActorJoinAdmissionTarget {
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onDisconnectActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+}
+
+export interface ZLinkDetachedTaskRunner {
+  runDetached(taskName: string, callback: () => Promise<void>): void;
 }
 
 interface ZLinkSpotActorJoinDispatchOptions {
@@ -72,6 +76,10 @@ interface ZLinkSpotActorJoinDispatchOptions {
   readonly rollbackRoutedActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly rollbackNativeActor?: (actor: ZLinkActor) => Promise<void> | undefined;
   readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void;
+  readonly replayRoutedActorBacklog?: (
+    actor: ZLinkActor,
+    backlog: readonly ZLinkActorHandoffPacket[]
+  ) => Promise<readonly ZLinkActorHandoffResult[]>;
   readonly actorPacketHandler?: (
     actorId: string,
     parts: readonly Message[],
@@ -120,6 +128,7 @@ interface ZLinkSpotActorJoinDispatchOptions {
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
 }
 
 export class ZLinkSpotActorJoinDispatch {
@@ -133,7 +142,7 @@ export class ZLinkSpotActorJoinDispatch {
   private readonly routedFrames: ZLinkSpotRoutedFrameDispatch;
   private readonly nativeSpot: ZLinkBackendSpot;
 
-  constructor(options: ZLinkSpotActorJoinDispatchOptions) {
+  constructor(private readonly options: ZLinkSpotActorJoinDispatchOptions) {
     this.nativeSpot = options.nativeSpot;
     this.nativeSpotRid = String(options.nativeSpot.routingId);
     this.actorLifecycleDrain = new ZLinkSpotActorLifecycleDrain({
@@ -173,6 +182,7 @@ export class ZLinkSpotActorJoinDispatch {
       finalizeRoutedActor: options.finalizeRoutedActor,
       rollbackRoutedActor: options.rollbackRoutedActor,
       commitRoutedActor: options.commitRoutedActor,
+      replayRoutedActorBacklog: options.replayRoutedActorBacklog,
       actorPacketHandler: options.actorPacketHandler,
       routedBoundSessionReceiver: options.routedBoundSessionReceiver,
       routedBoundSessionResponseReceiver: options.routedBoundSessionResponseReceiver,
@@ -206,11 +216,11 @@ export class ZLinkSpotActorJoinDispatch {
     }
     this.nativeSpot.setDispatchHandler((info) => {
       if (info.event === ZLinkBackendSpotDispatchEvent.ActorJoinReadable) {
-        void this.drain();
+        this.runDetached('spot actor join drain', () => this.drain());
         return;
       }
       if (info.event === ZLinkBackendSpotDispatchEvent.SubscribeReadable) {
-        void this.subscriptions.drain().catch((error) => console.error(error));
+        this.runDetached('spot subscription drain', () => this.subscriptions.drain());
         return;
       }
       if (info.event === ZLinkBackendSpotDispatchEvent.ChannelReplyReadable) {
@@ -227,20 +237,28 @@ export class ZLinkSpotActorJoinDispatch {
       }
       if (info.event === ZLinkBackendSpotDispatchEvent.RoutedReadable) {
         if (info.routed !== undefined && info.routed !== null) {
-          void this.routedFrames.dispatchFromEvent(info.routed);
+          this.runDetached('spot routed frame dispatch', () => this.routedFrames.dispatchFromEvent(info.routed!));
         }
         return;
       }
       if (info.event === ZLinkBackendSpotDispatchEvent.ActorReadable) {
-        void this.actorPacketDrain.drain(info as unknown as {
+        this.runDetached('spot actor packet drain', () => this.actorPacketDrain.drain(info as unknown as {
           recvActorPart(flags?: number): ZLinkActorDispatchPart | null;
-        });
+        }));
         return;
       }
       if (info.event === ZLinkBackendSpotDispatchEvent.ActorLifecycleReadable) {
-        void this.actorLifecycleDrain.drain();
+        this.runDetached('spot actor lifecycle drain', () => this.actorLifecycleDrain.drain());
       }
     });
+  }
+
+  private runDetached(taskName: string, callback: () => Promise<void>): void {
+    if (this.options.detachedTaskRunner !== undefined) {
+      this.options.detachedTaskRunner.runDetached(taskName, callback);
+      return;
+    }
+    void callback().catch(() => undefined);
   }
 
   private async drain(): Promise<void> {

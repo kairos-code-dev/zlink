@@ -221,8 +221,8 @@ test('Entry Spot routed actor packet records source node as remote bound session
   assert.equal(capturedTarget.routerChannelId, 'bingo.room.route');
   assert.equal(String(capturedTarget.targetNodeRid), 'session-node');
   assert.equal(String(capturedTarget.spotRid), 'session-entry');
-  assert.equal(capturedTarget.targetNodeRid instanceof zlink.RoutingId, true);
-  assert.equal(capturedTarget.spotRid instanceof zlink.RoutingId, true);
+  assert.equal(typeof capturedTarget.targetNodeRid, 'string');
+  assert.equal(typeof capturedTarget.spotRid, 'string');
   await waitFor(() => replies.length === 1, 'routed actor packet reply');
   const reply = JSON.parse(Buffer.from(replies[0]).toString('utf8'));
   assert.deepEqual(reply.actorPacketTarget, {
@@ -345,10 +345,10 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
     }
   };
 
-  assert.deepEqual(runtime.actorPacketTargetForState('player-2'), {
+  assert.deepEqual(runtime.boundSessionRelay.actorPacketTargetForState('player-2'), {
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'play-node-1',
-    spotRid: zlink.RoutingId.from('bingo-room-1'),
+    spotRid: 'bingo-room-1',
     spotKind: 2
   });
 });
@@ -384,7 +384,7 @@ test('runtime host normalizes remote actor join bound-session route ids', async 
     }
   };
 
-  const result = await runtime.receiveRemoteActorJoin({
+  const result = await runtime.boundSessionRelay.receiveRemoteActorJoin({
     packetName: '__zlink.actor.join_spot.request',
     spotRid: 'room-1',
     actorId: 'player-1',
@@ -402,8 +402,8 @@ test('runtime host normalizes remote actor join bound-session route ids', async 
   assert.equal(capturedTarget.routerChannelId, 'bingo.room.route');
   assert.equal(String(capturedTarget.targetNodeRid), 'session-node');
   assert.equal(String(capturedTarget.spotRid), 'session-node');
-  assert.equal(capturedTarget.targetNodeRid instanceof zlink.RoutingId, true);
-  assert.equal(capturedTarget.spotRid instanceof zlink.RoutingId, true);
+  assert.equal(typeof capturedTarget.targetNodeRid, 'string');
+  assert.equal(typeof capturedTarget.spotRid, 'string');
 });
 
 test('runtime host remembers routed packet target for stream-bound actors without actor manager', async () => {
@@ -446,8 +446,8 @@ test('runtime host remembers routed packet target for stream-bound actors withou
   };
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
 
-  await runtime.relayRemoteActorPacket(actor, header, payload);
-  await runtime.relayRemoteActorPacket(actor, { ...header, requestSeq: 2n, name: 'Submit' }, payload);
+  await runtime.boundSessionRelay.relayRemoteActorPacket(actor, header, payload);
+  await runtime.boundSessionRelay.relayRemoteActorPacket(actor, { ...header, requestSeq: 2n, name: 'Submit' }, payload);
 
   payload.close();
   assert.deepEqual(routedTargets, ['bingo.room.route:play-node-1', 'bingo.room.route:play-node-1']);
@@ -491,8 +491,8 @@ test('runtime host keeps routed packet target across stream actor wrappers', asy
   };
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
 
-  await runtime.relayRemoteActorPacket({ actorId: 'player-2', ref: actorRef }, header, payload);
-  await runtime.relayRemoteActorPacket(
+  await runtime.boundSessionRelay.relayRemoteActorPacket({ actorId: 'player-2', ref: actorRef }, header, payload);
+  await runtime.boundSessionRelay.relayRemoteActorPacket(
     { actorId: 'player-2', ref: actorRef },
     { ...header, requestSeq: 2n, name: 'Submit' },
     payload
@@ -564,8 +564,12 @@ test('runtime host raw actor relay reply updates actor packet target for the nex
   };
   const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
 
-  await runtime.relayRemoteActorPacket(actor, header, payload);
-  await runtime.relayRemoteActorPacket(actor, { ...header, requestSeq: 2n, name: 'SubmitBingoCardReq' }, payload);
+  await runtime.boundSessionRelay.relayRemoteActorPacket(actor, header, payload);
+  await runtime.boundSessionRelay.relayRemoteActorPacket(
+    actor,
+    { ...header, requestSeq: 2n, name: 'SubmitBingoCardReq' },
+    payload
+  );
 
   payload.close();
   assert.deepEqual(routedTargets, [

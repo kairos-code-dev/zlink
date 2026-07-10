@@ -5,7 +5,6 @@ import { AuthenticateUserHandler } from './Handlers/authenticate-user-handler';
 import { OpenConversationHandler } from './Handlers/open-conversation-handler';
 import { createSupportChatApiModule } from './supportchat-api-module';
 import { loadSampleConfig } from '../Configuration/sample-config';
-import { SampleTimings } from '../Configuration/sample-names';
 import { closeServer, endpointPort, waitForShutdown } from '../runtime-support';
 import { SupportChatStateStore } from '../Support/supportchat-state';
 import type { SupportChatServerConfig } from '../Configuration/sample-config';

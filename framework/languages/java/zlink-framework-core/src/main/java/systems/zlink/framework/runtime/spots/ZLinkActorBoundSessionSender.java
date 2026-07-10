@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -18,18 +17,6 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 
 final class ZLinkActorBoundSessionSender {
     private static final long RETRY_DELAY_MILLIS = 25;
-    private static final ScheduledThreadPoolExecutor RETRY_EXECUTOR =
-        new ScheduledThreadPoolExecutor(1, task -> {
-            Thread thread = new Thread(task, "zlink-actor-session-reply-retry");
-            thread.setDaemon(true);
-            return thread;
-        });
-
-    static {
-        RETRY_EXECUTOR.setRemoveOnCancelPolicy(true);
-        RETRY_EXECUTOR.prestartCoreThread();
-    }
-
     private final Duration timeout;
     private final BooleanSupplier closing;
     private final Consumer<String> trace;
@@ -50,7 +37,7 @@ final class ZLinkActorBoundSessionSender {
         byte[] frameBytes,
         String failureMessage) {
         CompletableFuture<Void> result = new CompletableFuture<>();
-        RETRY_EXECUTOR.execute(new SendAttempt(
+        CompletableFuture.runAsync(new SendAttempt(
             node,
             actor,
             actorId,
@@ -104,7 +91,8 @@ final class ZLinkActorBoundSessionSender {
                     failureMessage + ": " + actorId));
                 return;
             }
-            RETRY_EXECUTOR.schedule(this, RETRY_DELAY_MILLIS, TimeUnit.MILLISECONDS);
+            CompletableFuture.delayedExecutor(RETRY_DELAY_MILLIS, TimeUnit.MILLISECONDS)
+                .execute(this);
         }
 
         private boolean trySend() {

@@ -13,25 +13,22 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 
 final class ZLinkChannelMessageDispatcher {
     private final ZLinkChannelDispatchRegistry registry;
     private final ZLinkChannelHandlerInvoker invoker;
     private final ZLinkChannelDispatchReporter errors;
     private final ZLinkMessageFlowTracer flow;
-    private final String frameworkErrorMarker;
-
     ZLinkChannelMessageDispatcher(
         ZLinkChannelDispatchRegistry registry,
         ZLinkChannelHandlerInvoker invoker,
         ZLinkChannelDispatchReporter errors,
-        ZLinkMessageFlowTracer flow,
-        String frameworkErrorMarker) {
+        ZLinkMessageFlowTracer flow) {
         this.registry = registry;
         this.invoker = invoker;
         this.errors = errors;
         this.flow = flow;
-        this.frameworkErrorMarker = frameworkErrorMarker;
     }
 
     void dispatchRequest(
@@ -43,7 +40,7 @@ final class ZLinkChannelMessageDispatcher {
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
-            if (frameworkErrorMarker.equals(packet.packetName())) {
+            if (ZLinkFrameworkErrorReply.isPacketName(packet.packetName())) {
                 errors.report(
                     ZLinkDispatchErrorSurface.CHANNEL,
                     received.requestSeq().isPresent()

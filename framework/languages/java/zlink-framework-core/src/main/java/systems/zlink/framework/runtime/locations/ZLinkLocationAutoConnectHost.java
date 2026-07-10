@@ -48,9 +48,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         Objects.requireNonNull(channels, "channels");
         Objects.requireNonNull(spotNodesByName, "spotNodesByName");
 
-        boot("autoConnectHost start");
         List<ZLinkChannelRuntime.AutoConnectSurface> surfaces = channels.autoConnectSurfaces();
-        boot("autoConnectHost channelSurfaces count=" + surfaces.size());
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
             addChannelLoop(surface);
         }
@@ -78,11 +76,9 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
 
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (ZLinkAutoConnectLoop loop : loops) {
-            boot("autoConnectHost loopStart");
             chain = chain.thenCompose(ignored -> loop.startAsync());
         }
-        return chain.whenComplete((ignored, failure) ->
-            boot("autoConnectHost start done loops=" + loops.size()));
+        return chain;
     }
 
     public CompletionStage<Void> stopAsync() {
@@ -94,11 +90,6 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     }
 
     private void addChannelLoop(ZLinkChannelRuntime.AutoConnectSurface surface) {
-        boot(
-            "autoConnectHost addChannelLoop type=" + surface.type()
-                + " mesh=" + surface.meshName()
-                + " role=" + surface.role()
-                + " endpoint=" + surface.endpoint());
         ZLinkAutoConnectExecutor executor = surface.socket() == null
             ? ZLinkAutoConnectExecutor.NONE
             : new ConnectableSocketExecutor(surface.socket(), Set.copyOf(surface.manualEndpoints()));
@@ -129,14 +120,8 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         boolean advertisable = ZLinkAutoConnectPlanner.hasRid(nodeRid)
             || (endpoint != null && !endpoint.isBlank());
         if (!advertisable && executor == ZLinkAutoConnectExecutor.NONE) {
-            boot("autoConnectHost addLoop skip type=" + type + " mesh=" + meshName + " role=" + role);
             return;
         }
-        boot(
-            "autoConnectHost addLoop type=" + type
-                + " mesh=" + meshName
-                + " role=" + role
-                + " endpoint=" + endpoint);
         ZLinkAutoConnectPlanner.Local local =
             new ZLinkAutoConnectPlanner.Local(type, meshName, role, nodeRid, endpoint);
         ZLinkPeerLocation row = advertisable
@@ -200,24 +185,17 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         @Override
         public void connect(ZLinkAutoConnectPlanner.Target target) {
             if (manualEndpoints.contains(target.endpoint())) {
-                boot("autoConnect route connect skipManual endpoint=" + target.endpoint());
                 return;
             }
             if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
                 synchronized (connectGate) {
-                    boot("autoConnect route setConnectRoutingId endpoint=" + target.endpoint());
                     socket.setConnectRoutingId(target.nodeRid());
-                    boot("autoConnect route setProbe endpoint=" + target.endpoint());
                     socket.setProbe(true);
-                    boot("autoConnect route connect endpoint=" + target.endpoint());
                     socket.connect(target.endpoint());
-                    boot("autoConnect route connect done endpoint=" + target.endpoint());
                 }
                 return;
             }
-            boot("autoConnect route connect endpoint=" + target.endpoint());
             socket.connect(target.endpoint());
-            boot("autoConnect route connect done endpoint=" + target.endpoint());
         }
 
         @Override
@@ -289,6 +267,4 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         }
     }
 
-    private static void boot(String step) {
-    }
 }

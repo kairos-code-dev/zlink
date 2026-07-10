@@ -54,7 +54,6 @@ final class ZLinkAutoConnectReconciler {
                 local.type(), local.meshName(), null, null, null)))
             .handle((rows, failure) -> {
                 if (failure != null) {
-                    boot("tick fail local=" + localSummary() + " error=" + failure.getClass().getSimpleName());
                     storeFailed = true;
                     localPublished = false;
                     return null;
@@ -84,31 +83,21 @@ final class ZLinkAutoConnectReconciler {
             recoveryDeferUntilNanos = System.nanoTime() + options.heartbeatInterval().toNanos();
         }
 
-        boot("tick peers count=" + rows.size() + " local=" + localSummary());
-        for (ZLinkAutoConnectPlanner.PeerDecision decision : ZLinkAutoConnectPlanner.decideAll(local, rows)) {
-            boot("tick peer " + peerSummary(decision.peer()) + " decision=" + decisionSummary(decision));
-        }
         Map<String, ZLinkAutoConnectPlanner.Target> desired =
             ZLinkAutoConnectPlanner.computeDesired(local, rows);
-        boot("tick desired count=" + desired.size() + " active=" + active.size() + " local=" + localSummary());
         List<String> toRemove = new ArrayList<>();
         for (Map.Entry<String, ZLinkAutoConnectPlanner.Target> entry : desired.entrySet()) {
             ZLinkAutoConnectPlanner.Target current = active.get(entry.getKey());
             ZLinkAutoConnectPlanner.Target target = entry.getValue();
             if (current == null) {
-                boot("connect start local=" + localSummary() + " target=" + targetSummary(target));
                 executor.connect(target);
-                boot("connect done local=" + localSummary() + " target=" + targetSummary(target));
                 active.put(entry.getKey(), target);
                 continue;
             }
             if (!current.endpoint().equals(target.endpoint())
                 || !Objects.equals(current.ownerId(), target.ownerId())) {
-                boot("reconnect disconnect local=" + localSummary() + " target=" + targetSummary(current));
                 executor.disconnect(current);
-                boot("reconnect connect local=" + localSummary() + " target=" + targetSummary(target));
                 executor.connect(target);
-                boot("reconnect done local=" + localSummary() + " target=" + targetSummary(target));
                 active.put(entry.getKey(), target);
             }
         }
@@ -120,9 +109,7 @@ final class ZLinkAutoConnectReconciler {
             }
             for (String key : toRemove) {
                 ZLinkAutoConnectPlanner.Target target = active.remove(key);
-                boot("disconnect start local=" + localSummary() + " target=" + targetSummary(target));
                 executor.disconnect(target);
-                boot("disconnect done local=" + localSummary() + " target=" + targetSummary(target));
             }
         }
     }
@@ -131,15 +118,8 @@ final class ZLinkAutoConnectReconciler {
         if (localRow == null || localPublished) {
             return CompletableFuture.completedFuture(null);
         }
-        String key = ZLinkLocationKeyCodec.encodePeerKey(localKey());
-        boot("claim attempt key=" + key + " local=" + localSummary());
         return runtime.writePeerAsync(localRow, ZLinkLocationWriteIntent.NEW_CLAIM)
             .thenCompose(result -> {
-                boot(
-                    "claim result key=" + key
-                        + " status=" + result.status()
-                        + " generation=" + result.generation()
-                        + " local=" + localSummary());
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {
                     localGeneration = result.generation();
                     localPublished = true;
@@ -154,23 +134,10 @@ final class ZLinkAutoConnectReconciler {
                         localGeneration, Instant.EPOCH);
                     return runtime.writePeerAsync(renewed, ZLinkLocationWriteIntent.RENEW)
                         .thenAccept(renewedResult -> {
-                            boot(
-                                "claim renew key=" + key
-                                    + " status=" + renewedResult.status()
-                                    + " generation=" + renewedResult.generation()
-                                    + " local=" + localSummary());
                             localPublished = renewedResult.status() == ZLinkLocationWriteStatus.STORED;
                         });
                 }
                 return CompletableFuture.<Void>completedFuture(null);
-            })
-            .whenComplete((ignored, failure) -> {
-                if (failure != null) {
-                    boot(
-                        "claim failure key=" + key
-                            + " error=" + failure.getClass().getSimpleName()
-                            + " local=" + localSummary());
-                }
             });
     }
 
@@ -183,43 +150,4 @@ final class ZLinkAutoConnectReconciler {
             localRow.endpoint());
     }
 
-    private String localSummary() {
-        return "type=" + local.type()
-            + " mesh=" + local.meshName()
-            + " role=" + local.role()
-            + " rid=" + ridOf(local.nodeRid())
-            + " endpoint=" + local.endpoint();
-    }
-
-    private static String peerSummary(ZLinkPeerLocation peer) {
-        return "type=" + peer.autoConnectType()
-            + " mesh=" + peer.meshName()
-            + " role=" + peer.role()
-            + " rid=" + ridOf(peer.nodeRid())
-            + " endpoint=" + peer.endpoint()
-            + " owner=" + peer.ownerId()
-            + " generation=" + peer.generation();
-    }
-
-    private static String decisionSummary(ZLinkAutoConnectPlanner.PeerDecision decision) {
-        if (!decision.shouldDial()) {
-            return "skip reason=" + decision.skipReason();
-        }
-        return "dial target=" + targetSummary(decision.target());
-    }
-
-    private static String targetSummary(ZLinkAutoConnectPlanner.Target target) {
-        return "key=" + target.key()
-            + " role=" + target.role()
-            + " rid=" + ridOf(target.nodeRid())
-            + " endpoint=" + target.endpoint()
-            + " owner=" + target.ownerId();
-    }
-
-    private static String ridOf(systems.zlink.contracts.core.RoutingId rid) {
-        return ZLinkAutoConnectPlanner.hasRid(rid) ? rid.toHex() : "";
-    }
-
-    private static void boot(String step) {
-    }
 }

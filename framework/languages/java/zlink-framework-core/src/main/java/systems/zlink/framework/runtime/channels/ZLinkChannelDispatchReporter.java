@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.channels;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletionException;
 import systems.zlink.contracts.core.RoutingId;
@@ -12,16 +11,12 @@ import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 
 final class ZLinkChannelDispatchReporter {
     private final ZLinkDispatchErrorReporter reporter;
-    private final String frameworkErrorMarker;
-
-    ZLinkChannelDispatchReporter(
-        ZLinkDispatchErrorReporter reporter,
-        String frameworkErrorMarker) {
+    ZLinkChannelDispatchReporter(ZLinkDispatchErrorReporter reporter) {
         this.reporter = reporter;
-        this.frameworkErrorMarker = frameworkErrorMarker;
     }
 
     void replyError(
@@ -36,9 +31,7 @@ final class ZLinkChannelDispatchReporter {
         String sourceRid,
         Throwable error) {
         Throwable cause = unwrap(error);
-        List<Message> reply = List.of(
-            Message.from(frameworkErrorMarker.getBytes(StandardCharsets.UTF_8)),
-            Message.from(errorText(reason, packetName, cause).getBytes(StandardCharsets.UTF_8)));
+        List<Message> reply = ZLinkFrameworkErrorReply.create(errorText(reason, packetName, cause));
         replyRawAndClose(router, routingId, requestSeq, reply);
         report(
             surface,

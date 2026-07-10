@@ -29,24 +29,19 @@ public final class ZLinkHttpRequestBuilder {
         .findAndAddModules()
         .build();
 
-    private ZLinkHttpClient client;
-    private final ZLinkHttpClientBuilder clientFactory;
+    private final RequestClientLease clientLease;
     private final ZLinkHttpMethod method;
     private final String path;
     private String body;
     private Supplier<byte[]> bodyProvider;
     private final Map<String, String> headers = new LinkedHashMap<>();
     private Duration timeout;
-    private final boolean ownsClient;
-    private boolean consumed;
     private final List<Map.Entry<String, String>> query = new ArrayList<>();
     private final List<Map.Entry<String, String>> form = new ArrayList<>();
     private final List<ZLinkHttpRequestBodyEncoder.MultipartPart> multipart = new ArrayList<>();
 
     ZLinkHttpRequestBuilder(ZLinkHttpClient client, ZLinkHttpMethod method, String path) {
-        this.client = client;
-        this.clientFactory = null;
-        this.ownsClient = false;
+        this.clientLease = RequestClientLease.shared(client);
         this.method = method;
         this.path = path;
         validatePath(path);
@@ -55,9 +50,7 @@ public final class ZLinkHttpRequestBuilder {
     // One-shot constructor: the client is built lazily at the terminal operation and closed
     // afterwards, so any pre-submit validation failure cannot leak an eagerly-built client.
     ZLinkHttpRequestBuilder(ZLinkHttpClientBuilder clientFactory, ZLinkHttpMethod method, String path) {
-        this.client = null;
-        this.clientFactory = clientFactory;
-        this.ownsClient = true;
+        this.clientLease = RequestClientLease.oneShot(clientFactory);
         this.method = method;
         this.path = path;
         validatePath(path);
@@ -143,42 +136,9 @@ public final class ZLinkHttpRequestBuilder {
         return this;
     }
 
-    // Resolves the client to run on, building a one-shot client lazily. A one-shot request builder is
-    // single-use so its lazily-built client is closed exactly once.
-    private ZLinkHttpClient resolveClient() {
-        if (ownsClient && consumed) {
-            throw new ZLinkFrameworkException("A one-shot HTTP request can only be submitted once");
-        }
-        consumed = true;
-        if (client == null) {
-            client = clientFactory.build();
-        }
-        return client;
-    }
-
-    private void closeIfOwned() {
-        if (ownsClient && client != null) {
-            try {
-                client.close();
-            } catch (RuntimeException ignored) {
-                // A one-shot cleanup failure must not mask the request result.
-            }
-        }
-    }
-
     /** Submits the request and returns the raw response. */
     public CompletionStage<RawHttpResponse> submitRaw() {
-        var spec = makeRequest(null);
-        ZLinkHttpClient resolved = resolveClient();
-        try {
-            return resolved.runtime().executeAsync(spec)
-                .thenApply(result -> new RawHttpResponse(result.status(), result.headers(), result.body()))
-                .whenComplete((result, error) -> closeIfOwned());
-        } catch (RuntimeException error) {
-            // A synchronous failure before the stage is returned must still close an owned client.
-            closeIfOwned();
-            throw error;
-        }
+        return execute(null);
     }
 
     /**
@@ -189,15 +149,18 @@ public final class ZLinkHttpRequestBuilder {
         if (sink == null) {
             throw new ZLinkFrameworkException("HTTP request download sink is required");
         }
+        return execute(sink);
+    }
+
+    private CompletionStage<RawHttpResponse> execute(Consumer<byte[]> sink) {
         var spec = makeRequest(sink);
-        ZLinkHttpClient resolved = resolveClient();
+        ZLinkHttpClient resolved = clientLease.acquire();
         try {
             return resolved.runtime().executeAsync(spec)
                 .thenApply(result -> new RawHttpResponse(result.status(), result.headers(), result.body()))
-                .whenComplete((result, error) -> closeIfOwned());
+                .whenComplete((result, error) -> clientLease.release());
         } catch (RuntimeException error) {
-            // A synchronous failure before the stage is returned must still close an owned client.
-            closeIfOwned();
+            clientLease.release();
             throw error;
         }
     }
@@ -251,5 +214,54 @@ public final class ZLinkHttpRequestBuilder {
             resolved.headers(),
             timeout,
             sink);
+    }
+
+    private static final class RequestClientLease {
+        private final ZLinkHttpClientBuilder factory;
+        private final boolean owned;
+        private ZLinkHttpClient client;
+        private boolean acquired;
+
+        private RequestClientLease(
+            ZLinkHttpClient client,
+            ZLinkHttpClientBuilder factory,
+            boolean owned) {
+            this.client = client;
+            this.factory = factory;
+            this.owned = owned;
+        }
+
+        static RequestClientLease shared(ZLinkHttpClient client) {
+            return new RequestClientLease(client, null, false);
+        }
+
+        static RequestClientLease oneShot(ZLinkHttpClientBuilder factory) {
+            return new RequestClientLease(null, factory, true);
+        }
+
+        synchronized ZLinkHttpClient acquire() {
+            if (owned && acquired) {
+                throw new ZLinkFrameworkException(
+                    "A one-shot HTTP request can only be submitted once");
+            }
+            acquired = true;
+            if (client == null) {
+                client = factory.build();
+            }
+            return client;
+        }
+
+        synchronized void release() {
+            if (!owned || client == null) {
+                return;
+            }
+            try {
+                client.close();
+            } catch (RuntimeException ignored) {
+                // Cleanup must not replace the request result.
+            } finally {
+                client = null;
+            }
+        }
     }
 }

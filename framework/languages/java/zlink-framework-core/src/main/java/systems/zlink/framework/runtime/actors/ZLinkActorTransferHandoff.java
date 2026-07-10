@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,8 +18,8 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 /** Owns the transfer-only backlog and bounded source-retirement state. */
-final class ZLinkActorTransferHandoff {
-    private static final ScheduledExecutorService RETIREMENTS =
+final class ZLinkActorTransferHandoff implements AutoCloseable {
+    private final ScheduledExecutorService retirementsExecutor =
         Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "zlink-actor-transfer-retirement");
             thread.setDaemon(true);
@@ -30,9 +31,12 @@ final class ZLinkActorTransferHandoff {
     private final AtomicLong arrivalIndex = new AtomicLong();
     private final Map<String, ForwardingSource> forwardingSources =
         new ConcurrentHashMap<>();
+    private final java.util.Set<Retention> retirements = ConcurrentHashMap.newKeySet();
     private final AtomicLong forwardingToken = new AtomicLong();
+    private boolean closed;
 
-    void begin(String actorId) {
+    synchronized void begin(String actorId) {
+        requireOpen();
         backlogs.put(actorId, Collections.synchronizedList(new ArrayList<>()));
     }
 
@@ -94,22 +98,23 @@ final class ZLinkActorTransferHandoff {
         }
     }
 
-    void retain(
+    synchronized void retain(
         String actorId,
         ZLinkBackendActorRef sourceActorRef,
         ZLinkBackendActorRef targetActorRef,
         Duration window,
         Consumer<ForwardingSource> retirement) {
+        requireOpen();
         ForwardingSource source = new ForwardingSource(
             sourceActorRef, targetActorRef, forwardingToken.incrementAndGet());
         forwardingSources.put(actorId, source);
-        RETIREMENTS.schedule(
-            () -> {
-                forwardingSources.remove(actorId, source);
-                retirement.accept(source);
-            },
+        Retention retained = new Retention(actorId, source, retirement);
+        retirements.add(retained);
+        ScheduledFuture<?> future = retirementsExecutor.schedule(
+            () -> retire(retained),
             window.toMillis(),
             TimeUnit.MILLISECONDS);
+        retained.future(future);
     }
 
     Optional<ForwardingSource> forwardingSource(String actorId) {
@@ -118,6 +123,78 @@ final class ZLinkActorTransferHandoff {
 
     int forwardingSourceCount() {
         return forwardingSources.size();
+    }
+
+    @Override
+    public synchronized void close() {
+        if (closed) {
+            return;
+        }
+        closed = true;
+        retirementsExecutor.shutdownNow();
+        List.copyOf(retirements).forEach(retained -> {
+            ScheduledFuture<?> future = retained.future();
+            if (future != null) {
+                future.cancel(false);
+            }
+            try {
+                retire(retained);
+            } catch (RuntimeException ignored) {
+                // Runtime shutdown must continue retiring the remaining owned sources.
+            }
+        });
+        backlogs.keySet().forEach(actorId -> fail(
+            actorId, new IllegalStateException("Actor runtime closed during transfer.")));
+    }
+
+    private void retire(Retention retained) {
+        if (!retirements.remove(retained)) {
+            return;
+        }
+        forwardingSources.remove(retained.actorId(), retained.source());
+        retained.retirement().accept(retained.source());
+    }
+
+    private void requireOpen() {
+        if (closed) {
+            throw new IllegalStateException("Actor transfer handoff is closed.");
+        }
+    }
+
+    private static final class Retention {
+        private final String actorId;
+        private final ForwardingSource source;
+        private final Consumer<ForwardingSource> retirement;
+        private volatile ScheduledFuture<?> future;
+
+        private Retention(
+            String actorId,
+            ForwardingSource source,
+            Consumer<ForwardingSource> retirement) {
+            this.actorId = actorId;
+            this.source = source;
+            this.retirement = retirement;
+        }
+
+        String actorId() {
+            return actorId;
+        }
+
+        ForwardingSource source() {
+            return source;
+        }
+
+        Consumer<ForwardingSource> retirement() {
+            return retirement;
+        }
+
+        ScheduledFuture<?> future() {
+            return future;
+        }
+
+        void future(ScheduledFuture<?> future) {
+            this.future = future;
+        }
     }
 
     record ForwardingSource(

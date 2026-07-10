@@ -16,24 +16,10 @@ import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 public final class ChannelRegistration {
     private final String name;
     private final ChannelKind kind;
-    private final List<String> serverBinds = new ArrayList<>();
-    private final List<String> clientManualEndpoints = new ArrayList<>();
-    private final List<String> publisherBinds = new ArrayList<>();
-    private final List<String> subscriberManualEndpoints = new ArrayList<>();
-    private final List<String> routeBinds = new ArrayList<>();
-    private final List<String> routeManualEndpoints = new ArrayList<>();
+    private final ClientServerState clientServer = new ClientServerState();
+    private final FanoutState fanout = new FanoutState();
+    private final RouteMeshState routeMesh = new RouteMeshState();
     private final Set<String> handlerGroups = new LinkedHashSet<>();
-    private final List<ChannelSendHandlerRegistration> sendHandlers = new ArrayList<>();
-    private final List<ChannelRequestHandlerRegistration> requestHandlers = new ArrayList<>();
-    private final List<ChannelPublishHandlerRegistration> publishHandlers = new ArrayList<>();
-    private final List<ChannelRouteSendHandlerRegistration> routeSendHandlers =
-        new ArrayList<>();
-    private final List<ChannelRouteRequestHandlerRegistration> routeRequestHandlers =
-        new ArrayList<>();
-    private boolean clientEnabled;
-    private boolean serverEnabled;
-    private boolean publisherEnabled;
-    private boolean subscriberEnabled;
     private RoutingId routingId;
     private RoutingId routeRoutingId;
     private Duration defaultRequestTimeout;
@@ -52,47 +38,47 @@ public final class ChannelRegistration {
     }
 
     List<String> serverBinds() {
-        return serverBinds;
+        return clientServer.serverBinds;
     }
 
     List<String> clientManualEndpoints() {
-        return clientManualEndpoints;
+        return clientServer.manualEndpoints;
     }
 
     List<ChannelRequestHandlerRegistration> requestHandlers() {
-        return requestHandlers;
+        return clientServer.requestHandlers;
     }
 
     List<ChannelSendHandlerRegistration> sendHandlers() {
-        return sendHandlers;
+        return clientServer.sendHandlers;
     }
 
     List<String> publisherBinds() {
-        return publisherBinds;
+        return fanout.publisherBinds;
     }
 
     List<String> subscriberManualEndpoints() {
-        return subscriberManualEndpoints;
+        return fanout.subscriberManualEndpoints;
     }
 
     List<ChannelPublishHandlerRegistration> publishHandlers() {
-        return publishHandlers;
+        return fanout.publishHandlers;
     }
 
     List<String> routeBinds() {
-        return routeBinds;
+        return routeMesh.binds;
     }
 
     List<String> routeManualEndpoints() {
-        return routeManualEndpoints;
+        return routeMesh.manualEndpoints;
     }
 
     List<ChannelRouteRequestHandlerRegistration> routeRequestHandlers() {
-        return routeRequestHandlers;
+        return routeMesh.requestHandlers;
     }
 
     List<ChannelRouteSendHandlerRegistration> routeSendHandlers() {
-        return routeSendHandlers;
+        return routeMesh.sendHandlers;
     }
 
     public List<String> handlerGroups() {
@@ -101,19 +87,19 @@ public final class ChannelRegistration {
 
     public List<Class<?>> handlerTypes() {
         List<Class<?>> types = new ArrayList<>();
-        for (ChannelSendHandlerRegistration handler : sendHandlers) {
+        for (ChannelSendHandlerRegistration handler : clientServer.sendHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelRequestHandlerRegistration handler : requestHandlers) {
+        for (ChannelRequestHandlerRegistration handler : clientServer.requestHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelPublishHandlerRegistration handler : publishHandlers) {
+        for (ChannelPublishHandlerRegistration handler : fanout.publishHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelRouteSendHandlerRegistration handler : routeSendHandlers) {
+        for (ChannelRouteSendHandlerRegistration handler : routeMesh.sendHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelRouteRequestHandlerRegistration handler : routeRequestHandlers) {
+        for (ChannelRouteRequestHandlerRegistration handler : routeMesh.requestHandlers) {
             types.add(handler.handlerType());
         }
         return List.copyOf(types);
@@ -139,35 +125,39 @@ public final class ChannelRegistration {
     }
 
     boolean clientEnabled() {
-        return clientEnabled;
+        return clientServer.clientEnabled || routeMesh.clientEnabled;
     }
 
     boolean publisherEnabled() {
-        return publisherEnabled;
+        return fanout.publisherEnabled;
     }
 
     boolean subscriberEnabled() {
-        return subscriberEnabled;
+        return fanout.subscriberEnabled;
     }
 
     void enableClient() {
-        clientEnabled = true;
+        if (kind == ChannelKind.ROUTE_MESH) {
+            routeMesh.clientEnabled = true;
+        } else {
+            clientServer.clientEnabled = true;
+        }
     }
 
     void enableServer() {
-        serverEnabled = true;
+        clientServer.serverEnabled = true;
     }
 
     void enablePublisher() {
-        publisherEnabled = true;
+        fanout.publisherEnabled = true;
     }
 
     void enableSubscriber() {
-        subscriberEnabled = true;
+        fanout.subscriberEnabled = true;
     }
 
     void addServerBind(String endpoint) {
-        serverBinds.add(requireEndpoint(endpoint));
+        clientServer.serverBinds.add(requireEndpoint(endpoint));
     }
 
     void setRoutingId(RoutingId routingId) {
@@ -181,15 +171,15 @@ public final class ChannelRegistration {
     }
 
     void addClientManualEndpoint(String endpoint) {
-        clientManualEndpoints.add(requireEndpoint(endpoint));
+        clientServer.manualEndpoints.add(requireEndpoint(endpoint));
     }
 
     void addPublisherBind(String endpoint) {
-        publisherBinds.add(requireEndpoint(endpoint));
+        fanout.publisherBinds.add(requireEndpoint(endpoint));
     }
 
     void addSubscriberManualEndpoint(String endpoint) {
-        subscriberManualEndpoints.add(requireEndpoint(endpoint));
+        fanout.subscriberManualEndpoints.add(requireEndpoint(endpoint));
     }
 
     void setRouteRoutingId(RoutingId routingId) {
@@ -197,11 +187,11 @@ public final class ChannelRegistration {
     }
 
     void addRouteBind(String endpoint) {
-        routeBinds.add(requireEndpoint(endpoint));
+        routeMesh.binds.add(requireEndpoint(endpoint));
     }
 
     void addRouteManualEndpoint(String endpoint) {
-        routeManualEndpoints.add(requireEndpoint(endpoint));
+        routeMesh.manualEndpoints.add(requireEndpoint(endpoint));
     }
 
     void addHandlerGroup(String groupName) {
@@ -215,35 +205,35 @@ public final class ChannelRegistration {
     void addSendHandler(ChannelSendHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "client/server channel send handler packet name");
-        sendHandlers.add(handler.withPacketName(
+        clientServer.sendHandlers.add(handler.withPacketName(
             resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
     void addRequestHandler(ChannelRequestHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "client/server channel request handler packet name");
-        requestHandlers.add(handler.withPacketName(
+        clientServer.requestHandlers.add(handler.withPacketName(
             resolvePacketName(handler.requestType(), handler.packetName())));
     }
 
     void addPublishHandler(ChannelPublishHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "fanout channel publish handler packet name");
-        publishHandlers.add(handler.withPacketName(
+        fanout.publishHandlers.add(handler.withPacketName(
             resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
     void addRouteRequestHandler(ChannelRouteRequestHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "route mesh request handler packet name");
-        routeRequestHandlers.add(handler.withPacketName(
+        routeMesh.requestHandlers.add(handler.withPacketName(
             resolvePacketName(handler.requestType(), handler.packetName())));
     }
 
     void addRouteSendHandler(ChannelRouteSendHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "route mesh send handler packet name");
-        routeSendHandlers.add(handler.withPacketName(
+        routeMesh.sendHandlers.add(handler.withPacketName(
             resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
@@ -266,11 +256,13 @@ public final class ChannelRegistration {
     private void validateClientServer(
         boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        if (clientEnabled && !locationAutoConnectEnabled && clientManualEndpoints.isEmpty()) {
+        if (clientServer.clientEnabled
+            && !locationAutoConnectEnabled
+            && clientServer.manualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "client/server channel client requires location auto-connect or manual connections: " + name);
         }
-        if (serverEnabled && serverBinds.isEmpty()) {
+        if (clientServer.serverEnabled && clientServer.serverBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "client/server channel server requires at least one bind endpoint: " + name);
         }
@@ -279,7 +271,10 @@ public final class ChannelRegistration {
         boolean hasMappedHandlers =
             hasMappedHandler(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.SEND)
                 || hasMappedHandler(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.REQUEST);
-        if (serverEnabled && requestHandlers.isEmpty() && sendHandlers.isEmpty() && !hasMappedHandlers) {
+        if (clientServer.serverEnabled
+            && clientServer.requestHandlers.isEmpty()
+            && clientServer.sendHandlers.isEmpty()
+            && !hasMappedHandlers) {
             throw new ZLinkConfigurationException(
                 "client/server channel server requires a send/request handler or handler group: " + name);
         }
@@ -288,7 +283,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.CHANNEL,
             ZLinkScannedHandlerKind.SEND,
             "duplicate client/server send handler packet name");
-        for (ChannelSendHandlerRegistration handler : sendHandlers) {
+        for (ChannelSendHandlerRegistration handler : clientServer.sendHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate client/server send handler packet name: "
@@ -300,7 +295,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.CHANNEL,
             ZLinkScannedHandlerKind.REQUEST,
             "duplicate client/server request handler packet name");
-        for (ChannelRequestHandlerRegistration handler : requestHandlers) {
+        for (ChannelRequestHandlerRegistration handler : clientServer.requestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate client/server request handler packet name: "
@@ -312,11 +307,13 @@ public final class ChannelRegistration {
     private void validateFanout(
         boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        if (publisherEnabled && publisherBinds.isEmpty()) {
+        if (fanout.publisherEnabled && fanout.publisherBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "fanout channel publisher requires at least one bind endpoint: " + name);
         }
-        if (subscriberEnabled && !locationAutoConnectEnabled && subscriberManualEndpoints.isEmpty()) {
+        if (fanout.subscriberEnabled
+            && !locationAutoConnectEnabled
+            && fanout.subscriberManualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "fanout channel subscriber requires location auto-connect or manual connections: " + name);
         }
@@ -324,7 +321,9 @@ public final class ChannelRegistration {
             Set.of(ZLinkScannedHandlerKind.PUBLISH));
         boolean hasMappedPublishHandlers =
             hasMappedHandler(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.PUBLISH);
-        if (subscriberEnabled && publishHandlers.isEmpty() && !hasMappedPublishHandlers) {
+        if (fanout.subscriberEnabled
+            && fanout.publishHandlers.isEmpty()
+            && !hasMappedPublishHandlers) {
             throw new ZLinkConfigurationException(
                 "fanout channel subscriber requires a publish handler or handler group: " + name);
         }
@@ -333,7 +332,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.CHANNEL,
             ZLinkScannedHandlerKind.PUBLISH,
             "duplicate fanout publish handler packet name");
-        for (ChannelPublishHandlerRegistration handler : publishHandlers) {
+        for (ChannelPublishHandlerRegistration handler : fanout.publishHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate fanout publish handler packet name: "
@@ -345,11 +344,13 @@ public final class ChannelRegistration {
     private void validateRouteMesh(
         boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        if (routeBinds.isEmpty() && !clientEnabled) {
+        if (routeMesh.binds.isEmpty() && !routeMesh.clientEnabled) {
             throw new ZLinkConfigurationException(
                 "route mesh channel must enable server or client capability: " + name);
         }
-        if (clientEnabled && !locationAutoConnectEnabled && routeManualEndpoints.isEmpty()) {
+        if (routeMesh.clientEnabled
+            && !locationAutoConnectEnabled
+            && routeMesh.manualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "route mesh channel requires location auto-connect or manual connections: " + name);
         }
@@ -360,7 +361,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.ROUTE,
             ZLinkScannedHandlerKind.SEND,
             "duplicate route mesh send handler packet name");
-        for (ChannelRouteSendHandlerRegistration handler : routeSendHandlers) {
+        for (ChannelRouteSendHandlerRegistration handler : routeMesh.sendHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate route mesh send handler packet name: "
@@ -373,7 +374,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.ROUTE,
             ZLinkScannedHandlerKind.REQUEST,
             "duplicate route mesh request handler packet name");
-        for (ChannelRouteRequestHandlerRegistration handler : routeRequestHandlers) {
+        for (ChannelRouteRequestHandlerRegistration handler : routeMesh.requestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate route mesh request handler packet name: "
@@ -448,6 +449,31 @@ public final class ChannelRegistration {
                     label + ": " + name + "/" + handler.packetName());
             }
         }
+    }
+
+    private static final class ClientServerState {
+        private final List<String> serverBinds = new ArrayList<>();
+        private final List<String> manualEndpoints = new ArrayList<>();
+        private final List<ChannelSendHandlerRegistration> sendHandlers = new ArrayList<>();
+        private final List<ChannelRequestHandlerRegistration> requestHandlers = new ArrayList<>();
+        private boolean clientEnabled;
+        private boolean serverEnabled;
+    }
+
+    private static final class FanoutState {
+        private final List<String> publisherBinds = new ArrayList<>();
+        private final List<String> subscriberManualEndpoints = new ArrayList<>();
+        private final List<ChannelPublishHandlerRegistration> publishHandlers = new ArrayList<>();
+        private boolean publisherEnabled;
+        private boolean subscriberEnabled;
+    }
+
+    private static final class RouteMeshState {
+        private final List<String> binds = new ArrayList<>();
+        private final List<String> manualEndpoints = new ArrayList<>();
+        private final List<ChannelRouteSendHandlerRegistration> sendHandlers = new ArrayList<>();
+        private final List<ChannelRouteRequestHandlerRegistration> requestHandlers = new ArrayList<>();
+        private boolean clientEnabled;
     }
 
 }

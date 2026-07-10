@@ -87,12 +87,12 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 
 public final class ZLinkChannelRuntime
     implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, ZLinkChannelRuntimeOptions,
         AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(ZLinkChannelRuntime.class.getName());
-    private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
     private static final String SPOT_ROUTE_BRIDGE_SEND_PACKET_NAME =
         "__zlink.routed_spot.egress.send";
     private static final String SPOT_ROUTE_BRIDGE_REQUEST_PACKET_NAME =
@@ -318,15 +318,12 @@ public final class ZLinkChannelRuntime
             replyDecoder,
             this::sendToSpotViaRouterChannel,
             this::requestToSpotViaRouterChannel);
-        this.dispatchReporter = new ZLinkChannelDispatchReporter(
-            dispatchErrors,
-            FRAMEWORK_ERROR_REPLY_MARKER);
+        this.dispatchReporter = new ZLinkChannelDispatchReporter(dispatchErrors);
         this.messageDispatcher = new ZLinkChannelMessageDispatcher(
             dispatchRegistry,
             channelHandlerInvoker,
             dispatchReporter,
-            dispatchErrors.flow(),
-            FRAMEWORK_ERROR_REPLY_MARKER);
+            dispatchErrors.flow());
         this.routeDispatcher = new ZLinkChannelRouteDispatcher(
             sockets,
             dispatchRegistry,
@@ -335,8 +332,7 @@ public final class ZLinkChannelRuntime
             dispatchReporter,
             dispatchErrors.flow(),
             spotRouteBridgeDrainer,
-            this::resolveSpotRouteBridgeForDispatch,
-            FRAMEWORK_ERROR_REPLY_MARKER);
+            this::resolveSpotRouteBridgeForDispatch);
         this.context = Objects.requireNonNull(context, "context");
         this.ownsContext = ownsContext;
         ZLinkScannedHandlerCatalog handlerCatalog =
@@ -847,16 +843,15 @@ public final class ZLinkChannelRuntime
     }
 
     static boolean isFrameworkErrorReply(List<Message> parts) {
-        return parts.size() >= 2
-            && FRAMEWORK_ERROR_REPLY_MARKER.equals(parts.get(0).toUtf8String());
+        return ZLinkFrameworkErrorReply.isReply(parts);
     }
 
     private static boolean isFrameworkErrorPacket(String packetName) {
-        return FRAMEWORK_ERROR_REPLY_MARKER.equals(packetName);
+        return ZLinkFrameworkErrorReply.isPacketName(packetName);
     }
 
     static String frameworkErrorReplyMessage(List<Message> parts) {
-        return parts.get(1).toUtf8String();
+        return ZLinkFrameworkErrorReply.message(parts);
     }
 
     private void startRouteLoop(String channelName, ZLinkBackendRouterSocket router) {

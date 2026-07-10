@@ -8,7 +8,7 @@ import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.future.future
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.locations.ZLinkActorLocation
@@ -33,7 +33,7 @@ import systems.zlink.framework.locations.ZLinkSpotLocationFilter
 import systems.zlink.framework.locations.ZLinkSpotLocationKey
 
 abstract class ZLinkSuspendingLocationStore(
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val scope: CoroutineScope = dispatcherScope(Dispatchers.IO),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ZLinkLocationStore {
     protected fun <T> async(block: suspend () -> T): CompletionStage<T> =
@@ -208,3 +208,8 @@ abstract class ZLinkSuspendingLocationStore(
 
     protected abstract suspend fun listOwnerLeases(): ZLinkOwnerLeaseSnapshot
 }
+
+private fun dispatcherScope(dispatcher: CoroutineDispatcher): CoroutineScope =
+    object : CoroutineScope {
+        override val coroutineContext: CoroutineContext = dispatcher
+    }

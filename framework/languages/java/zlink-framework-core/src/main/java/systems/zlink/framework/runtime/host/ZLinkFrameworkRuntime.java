@@ -82,10 +82,7 @@ public final class ZLinkFrameworkRuntime
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
-        boot("runtime constructor");
-        boot("options validate");
         options.validate();
-        boot("options validate done");
         this.registration = options.registration();
         var diagnostics = this.registration.dispatchOptions().diagnostics();
         this.messageFlowMode =
@@ -98,11 +95,9 @@ public final class ZLinkFrameworkRuntime
             ZLinkHandlerFactory.services(handlerFactory);
         runtimeHandlers.add(ZLinkFrameworkRegistration.class, this.registration);
         runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
-        boot("locationStore resolve");
         ZLinkFrameworkLocationSubsystem locationSubsystem =
             ZLinkFrameworkLocationSubsystem.create(this.registration, runtimeHandlers);
         this.locationStores = locationSubsystem.locationStores();
-        boot("locationStore resolve done enabled=" + (this.locationStores != null));
         if (locationSubsystem.enabled()) {
             this.locationRuntime = locationSubsystem.locationRuntime();
             this.locationRuntimeQuery = locationSubsystem.locationRuntimeQuery();
@@ -110,7 +105,6 @@ public final class ZLinkFrameworkRuntime
             this.locationAutoConnectHost = locationSubsystem.locationAutoConnectHost();
             this.locationSpotRemoteRefResolver = locationSubsystem.locationSpotRemoteRefResolver();
             this.storeLocationResolvers = locationSubsystem.storeLocationResolvers();
-            boot("locationRuntime create done");
         } else {
             this.locationRuntime = null;
             this.locationRuntimeQuery = null;
@@ -174,7 +168,6 @@ public final class ZLinkFrameworkRuntime
             this.registration,
             this.channels,
             this.spots);
-        boot("runtime constructor done");
     }
 
     static ZLinkFrameworkRuntime start(
@@ -215,9 +208,6 @@ public final class ZLinkFrameworkRuntime
     private static ZLinkStreamCodec defaultStreamCodec(DefaultZLinkFrameworkOptions options) {
         return options.registration().codecs().streamCodecForCustomSerializer()
             .orElse(ZLinkStreamCodec.JSON);
-    }
-
-    private static void boot(String step) {
     }
 
     public ZLinkClient client() {

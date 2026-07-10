@@ -231,6 +231,6 @@ public final class ZLinkRedisLocationStore implements
 
     @Override
     public void close() {
-        closeAsync();
+        closeAsync().toCompletableFuture().join();
     }
 }

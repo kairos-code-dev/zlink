@@ -5,10 +5,10 @@ import java.util.Objects;
 import systems.zlink.contracts.messaging.Message;
 
 final class ZLinkStreamConnectorPayloadCodec {
-    private final ZLinkStreamConnectorOptions options;
+    private final ZLinkStreamConnectorConfiguration configuration;
 
-    ZLinkStreamConnectorPayloadCodec(ZLinkStreamConnectorOptions options) {
-        this.options = Objects.requireNonNull(options, "options");
+    ZLinkStreamConnectorPayloadCodec(ZLinkStreamConnectorConfiguration configuration) {
+        this.configuration = Objects.requireNonNull(configuration, "configuration");
     }
 
     ZLinkStreamEncodedPayload copy(ZLinkStreamEncodedPayload payload) {
@@ -22,13 +22,13 @@ final class ZLinkStreamConnectorPayloadCodec {
 
     byte[] encode(ZLinkStreamEncodedPayload payload, boolean compress) {
         byte[] body = drainPayload(payload);
-        if (body.length > options.maxSendPayloadSize()) {
+        if (body.length > configuration.limits().sendPayload()) {
             throw new IllegalArgumentException("payload exceeds max payload size");
         }
         if (!compress) {
             return body;
         }
-        ZLinkStreamCompressionCodec codec = options.compressionCodec();
+        ZLinkStreamCompressionCodec codec = configuration.transport().compressionCodec();
         if (codec == null) {
             throw new IllegalStateException("compression codec is not configured");
         }
@@ -39,12 +39,12 @@ final class ZLinkStreamConnectorPayloadCodec {
         if ((header.flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) == 0) {
             return payload;
         }
-        ZLinkStreamCompressionCodec codec = options.compressionCodec();
+        ZLinkStreamCompressionCodec codec = configuration.transport().compressionCodec();
         if (codec == null) {
             throw new IllegalStateException("compression codec is not configured");
         }
-        byte[] decoded = codec.decompress(payload, options.maxReceivePayloadSize());
-        if (decoded.length > options.maxReceivePayloadSize()) {
+        byte[] decoded = codec.decompress(payload, configuration.limits().receivePayload());
+        if (decoded.length > configuration.limits().receivePayload()) {
             throw new IllegalStateException("decompressed stream payload exceeds maximum stream payload size");
         }
         return decoded;

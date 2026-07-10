@@ -6,13 +6,13 @@ import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicReference;
 
 final class ZLinkRedisLocationConnection {
     private final ZLinkRedisLocationOptions options;
     private final RedisClient client;
-    private final AtomicReference<CompletableFuture<StatefulRedisConnection<String, String>>> connection =
-        new AtomicReference<>();
+    private CompletableFuture<StatefulRedisConnection<String, String>> connection;
+    private CompletionStage<Void> closeStage;
+    private boolean closed;
 
     ZLinkRedisLocationConnection(ZLinkRedisLocationOptions options) {
         this.options = options;
@@ -23,30 +23,49 @@ final class ZLinkRedisLocationConnection {
         return connection().thenApply(StatefulRedisConnection::async);
     }
 
-    CompletionStage<Void> closeAsync() {
-        CompletableFuture<StatefulRedisConnection<String, String>> current = connection.getAndSet(null);
-        CompletionStage<Void> closed = current == null
+    synchronized CompletionStage<Void> closeAsync() {
+        if (closeStage != null) {
+            return closeStage;
+        }
+        closed = true;
+        CompletableFuture<StatefulRedisConnection<String, String>> current = connection;
+        connection = null;
+        CompletionStage<Void> connectionClosed = current == null
             ? CompletableFuture.completedFuture(null)
-            : current.thenCompose(StatefulRedisConnection::closeAsync);
-        return closed.thenCompose(ignored -> client.shutdownAsync()).thenApply(ignored -> null);
+            : current.handle((connected, failure) -> connected)
+                .thenCompose(connected -> connected == null
+                    ? CompletableFuture.completedFuture(null)
+                    : connected.closeAsync());
+        closeStage = connectionClosed
+            .thenCompose(ignored -> client.shutdownAsync())
+            .thenApply(ignored -> null);
+        return closeStage;
     }
 
-    private CompletionStage<StatefulRedisConnection<String, String>> connection() {
-        CompletableFuture<StatefulRedisConnection<String, String>> existing = connection.get();
-        if (existing != null) {
-            return existing;
+    private synchronized CompletionStage<StatefulRedisConnection<String, String>> connection() {
+        if (closed) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("Redis location connection is closed."));
+        }
+        if (connection != null) {
+            return connection;
         }
 
         CompletableFuture<StatefulRedisConnection<String, String>> created =
             client.connectAsync(StringCodec.UTF8, options.redisUri()).toCompletableFuture();
+        connection = created;
         created.whenComplete((ignored, failure) -> {
             if (failure != null) {
-                connection.compareAndSet(created, null);
+                clearFailedConnection(created);
             }
         });
-        if (connection.compareAndSet(null, created)) {
-            return created;
+        return created;
+    }
+
+    private synchronized void clearFailedConnection(
+        CompletableFuture<StatefulRedisConnection<String, String>> failed) {
+        if (connection == failed) {
+            connection = null;
         }
-        return connection.get();
     }
 }

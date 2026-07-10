@@ -3,7 +3,6 @@ package systems.zlink.framework.runtime.actors;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -15,23 +14,11 @@ final class ZLinkActorRetryScheduler {
     private static final Duration RELAY_RETRY_DELAY = Duration.ofMillis(10);
     private static final Duration ROUTE_RETRY_DELAY = Duration.ofMillis(20);
     private static final Duration NATIVE_BOUND_SESSION_RETRY_DELAY = Duration.ofMillis(25);
-    private static final ScheduledThreadPoolExecutor EXECUTOR =
-        new ScheduledThreadPoolExecutor(1, task -> {
-            Thread thread = new Thread(task, "zlink-actor-retry");
-            thread.setDaemon(true);
-            return thread;
-        });
-
-    static {
-        EXECUTOR.setRemoveOnCancelPolicy(true);
-        EXECUTOR.prestartCoreThread();
-    }
-
     private ZLinkActorRetryScheduler() {
     }
 
     static void execute(Runnable attempt) {
-        EXECUTOR.execute(attempt);
+        CompletableFuture.runAsync(attempt);
     }
 
     static void scheduleRelay(Runnable attempt) {
@@ -251,7 +238,7 @@ final class ZLinkActorRetryScheduler {
         }
         Attempt attempt = new Attempt();
         if (executeFirstAttempt) {
-            EXECUTOR.execute(attempt);
+            CompletableFuture.runAsync(attempt);
         } else {
             attempt.run();
         }
@@ -259,7 +246,8 @@ final class ZLinkActorRetryScheduler {
     }
 
     private static void schedule(Runnable attempt, Duration delay) {
-        EXECUTOR.schedule(attempt, delay.toMillis(), TimeUnit.MILLISECONDS);
+        CompletableFuture.delayedExecutor(delay.toMillis(), TimeUnit.MILLISECONDS)
+            .execute(attempt);
     }
 
     @FunctionalInterface

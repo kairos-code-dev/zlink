@@ -7,8 +7,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -30,12 +28,6 @@ import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 
 final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
     private static final long ASYNC_REPLY_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
-    private static final ScheduledExecutorService ASYNC_REPLY_EXECUTOR =
-        Executors.newSingleThreadScheduledExecutor(task -> {
-            Thread thread = new Thread(task, "zlink-stream-async-reply");
-            thread.setDaemon(true);
-            return thread;
-        });
 
     private final String streamNodeName;
     private final ZLinkBackendStreamSocket stream;
@@ -246,7 +238,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
                     return;
                 }
                 if (System.nanoTime() < deadline) {
-                    ASYNC_REPLY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
+                    CompletableFuture.delayedExecutor(10, TimeUnit.MILLISECONDS).execute(this);
                 }
             }
         }

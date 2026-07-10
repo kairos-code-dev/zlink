@@ -5,10 +5,12 @@ import java.time.Instant
 import java.util.concurrent.Flow.Publisher
 import java.util.concurrent.Flow.Subscriber
 import java.util.concurrent.Flow.Subscription
+import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.locations.ZLinkActorLocation
@@ -101,6 +103,23 @@ class KotlinLocationExtensionsTest {
         assertEquals(listOf("owner-a"), rows.map { it.ownerId() })
     }
 
+    @Test
+    fun `default suspending store scope isolates operation failures`() {
+        val store = SuspendingStore()
+        store.failNextUpdate()
+
+        assertThrows(ExecutionException::class.java) {
+            store.updatePeerAsync(peer("failed"), ZLinkLocationWriteIntent.NEW_CLAIM)
+                .toCompletableFuture()
+                .get()
+        }
+        val recovered = store.updatePeerAsync(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .get()
+
+        assertEquals(42, recovered.generation())
+    }
+
     private class StaticWatchStore(
         private val event: ZLinkLocationChanged,
     ) : ZLinkLocationWatchStore {
@@ -120,12 +139,21 @@ class KotlinLocationExtensionsTest {
 
     private class SuspendingStore : ZLinkSuspendingLocationStore() {
         private val peers = mutableListOf<ZLinkPeerLocation>()
+        private var failNextUpdate = false
+
+        fun failNextUpdate() {
+            failNextUpdate = true
+        }
 
         override suspend fun updatePeer(
             peer: ZLinkPeerLocation,
             intent: ZLinkLocationWriteIntent,
         ): ZLinkLocationWriteResult {
             delay(1)
+            if (failNextUpdate) {
+                failNextUpdate = false
+                error("location update failed")
+            }
             peers += peer
             return ZLinkLocationWriteResult.stored(42, NOW)
         }

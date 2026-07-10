@@ -76,6 +76,7 @@ final class ZLinkActorTransferHandoffTest {
         assertEquals(1, handoff.forwardingSourceCount());
         assertTrue(retired.await(1, TimeUnit.SECONDS));
         assertEquals(0, handoff.forwardingSourceCount());
+        handoff.close();
     }
 
     @Test
@@ -99,6 +100,21 @@ final class ZLinkActorTransferHandoffTest {
             .targetActorRef().generation());
         assertTrue(retired.await(1, TimeUnit.SECONDS));
         assertEquals(List.of(2L, 4L), retiredTargets);
+        assertEquals(0, handoff.forwardingSourceCount());
+        handoff.close();
+    }
+
+    @Test
+    void closeRetiresOwnedForwardingSourcesImmediately() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        List<Long> retiredTargets = new CopyOnWriteArrayList<>();
+        handoff.retain("actor", ref("source", 1), ref("target", 2),
+            Duration.ofMinutes(1), source ->
+                retiredTargets.add(source.targetActorRef().generation()));
+
+        handoff.close();
+
+        assertEquals(List.of(2L), retiredTargets);
         assertEquals(0, handoff.forwardingSourceCount());
     }
 

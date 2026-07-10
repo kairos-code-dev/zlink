@@ -9,10 +9,9 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 
 final class ZLinkSpotRouteMessages {
-    private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
-
     private final ZLinkMessageSerializer serializer;
 
     ZLinkSpotRouteMessages(ZLinkMessageSerializer serializer) {
@@ -31,7 +30,7 @@ final class ZLinkSpotRouteMessages {
             if (isFrameworkErrorReply(replyParts)) {
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.REQUEST_FAILED,
-                    replyParts.get(1).toUtf8String());
+                    ZLinkFrameworkErrorReply.message(replyParts));
             }
             Message firstReply = replyParts.isEmpty()
                 ? (emptyReply = Message.from(new byte[0]))
@@ -55,8 +54,7 @@ final class ZLinkSpotRouteMessages {
     }
 
     private static boolean isFrameworkErrorReply(List<Message> parts) {
-        return parts.size() >= 2
-            && FRAMEWORK_ERROR_REPLY_MARKER.equals(parts.get(0).toUtf8String());
+        return ZLinkFrameworkErrorReply.isReply(parts);
     }
 
     private static String describe(List<Message> parts) {

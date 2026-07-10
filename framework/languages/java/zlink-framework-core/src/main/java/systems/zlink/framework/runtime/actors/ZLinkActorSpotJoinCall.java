@@ -33,13 +33,12 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 import systems.zlink.framework.spots.SpotRemoteRefResolver;
 import systems.zlink.framework.spots.SpotRemoteRef;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 final class ZLinkActorSpotJoinCall implements ZLinkActorJoinSpotCall {
-    private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
-
     private final ZLinkActorRuntime.DefaultActorContext context;
     private final RoutingId spotRid;
     private final Message request;
@@ -572,12 +571,11 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinSpotCall {
     }
 
     private boolean isFrameworkErrorReply(List<Message> parts) {
-        return parts.size() >= 2
-            && FRAMEWORK_ERROR_REPLY_MARKER.equals(parts.get(0).toUtf8String());
+        return ZLinkFrameworkErrorReply.isReply(parts);
     }
 
     private String frameworkErrorReplyMessage(List<Message> parts) {
-        return parts.get(1).toUtf8String();
+        return ZLinkFrameworkErrorReply.message(parts);
     }
 
     private CompletionStage<RoutingId> resolveRemoteTargetNode(RoutingId spotRid) {

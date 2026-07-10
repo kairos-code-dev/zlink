@@ -14,6 +14,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 
 final class ZLinkChannelRouteDispatcher {
     private final ZLinkChannelSocketRegistry sockets;
@@ -24,8 +25,6 @@ final class ZLinkChannelRouteDispatcher {
     private final ZLinkMessageFlowTracer flow;
     private final ZLinkSpotRouteBridgeDrainer bridgeDrainer;
     private final Function<String, ZLinkBackendSpotRouteBridge> bridgeResolver;
-    private final String frameworkErrorMarker;
-
     ZLinkChannelRouteDispatcher(
         ZLinkChannelSocketRegistry sockets,
         ZLinkChannelDispatchRegistry registry,
@@ -34,8 +33,7 @@ final class ZLinkChannelRouteDispatcher {
         ZLinkChannelDispatchReporter errors,
         ZLinkMessageFlowTracer flow,
         ZLinkSpotRouteBridgeDrainer bridgeDrainer,
-        Function<String, ZLinkBackendSpotRouteBridge> bridgeResolver,
-        String frameworkErrorMarker) {
+        Function<String, ZLinkBackendSpotRouteBridge> bridgeResolver) {
         this.sockets = sockets;
         this.registry = registry;
         this.rawReplies = rawReplies;
@@ -44,7 +42,6 @@ final class ZLinkChannelRouteDispatcher {
         this.flow = flow;
         this.bridgeDrainer = bridgeDrainer;
         this.bridgeResolver = bridgeResolver;
-        this.frameworkErrorMarker = frameworkErrorMarker;
     }
 
     void dispatch(
@@ -62,7 +59,7 @@ final class ZLinkChannelRouteDispatcher {
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
-            if (frameworkErrorMarker.equals(packet.packetName())) {
+            if (ZLinkFrameworkErrorReply.isPacketName(packet.packetName())) {
                 errors.report(
                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                     received.requestSeq().isPresent()

@@ -23,7 +23,7 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 final class ZLinkStreamConnectionLifecycle {
-    private final ZLinkStreamConnectorOptions options;
+    private final ZLinkStreamConnectorConfiguration configuration;
     private final ScheduledExecutorService timeouts;
     private final ZLinkStreamDispatchQueue dispatchQueue;
     private final ZLinkStreamPendingRequests pendingRequests;
@@ -41,7 +41,7 @@ final class ZLinkStreamConnectionLifecycle {
     private volatile boolean connectStarted;
 
     ZLinkStreamConnectionLifecycle(
-        ZLinkStreamConnectorOptions options,
+        ZLinkStreamConnectorConfiguration configuration,
         ScheduledExecutorService timeouts,
         ZLinkStreamDispatchQueue dispatchQueue,
         ZLinkStreamPendingRequests pendingRequests,
@@ -50,7 +50,7 @@ final class ZLinkStreamConnectionLifecycle {
         Consumer<ZLinkStreamError> errorPublisher,
         Runnable disconnectedNotifier,
         Function<String, CompletionStage<Void>> controlSender) {
-        this.options = options;
+        this.configuration = configuration;
         this.timeouts = timeouts;
         this.dispatchQueue = dispatchQueue;
         this.pendingRequests = pendingRequests;
@@ -107,12 +107,12 @@ final class ZLinkStreamConnectionLifecycle {
         if (isConnected()) {
             return CompletableFuture.completedFuture(null);
         }
-        if (!options.reconnectEnabled()) {
+        if (!configuration.reconnect().enabled()) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("reconnect attempts are disabled"));
         }
         transitionTo(ZLinkStreamConnectionState.RECONNECTING);
-        return reconnectAttemptStage(1, options.reconnectInitialDelay());
+        return reconnectAttemptStage(1, configuration.reconnect().initialDelay());
     }
 
     CompletionStage<Void> close() {
@@ -157,10 +157,11 @@ final class ZLinkStreamConnectionLifecycle {
         }
         if (isTlsEndpoint()) {
             return ZLinkTlsTransportConnection.connectStage(
-                options.endpoint(),
-                options.connectTimeout(),
-                options.maxReceivePayloadSize(),
-                options.skipServerCertificateValidation()).thenAccept(this::activateConnection);
+                configuration.endpoint(),
+                configuration.timeouts().connect(),
+                configuration.limits().receivePayload(),
+                configuration.transport().skipServerCertificateValidation())
+                .thenAccept(this::activateConnection);
         }
         return connectTcpStage();
     }
@@ -177,15 +178,15 @@ final class ZLinkStreamConnectionLifecycle {
 
         var timeout = timeouts.schedule(
             () -> result.completeExceptionally(
-                new TimeoutException("connect timed out after " + options.connectTimeout())),
-            options.connectTimeout().toMillis(),
+                new TimeoutException("connect timed out after " + configuration.timeouts().connect())),
+            configuration.timeouts().connect().toMillis(),
             TimeUnit.MILLISECONDS);
 
         InetSocketAddress address = new InetSocketAddress(
-            options.endpoint().getHost(),
-            DefaultZLinkStreamConnector.resolvePort(options.endpoint()));
+            configuration.endpoint().getHost(),
+            DefaultZLinkStreamConnector.resolvePort(configuration.endpoint()));
         DefaultZLinkStreamConnector.trace(
-            "connector connect-start endpoint=" + options.endpoint() + " address=" + address);
+            "connector connect-start endpoint=" + configuration.endpoint() + " address=" + address);
         channel.connect(address, null, new CompletionHandler<Void, Void>() {
             @Override
             public void completed(Void ignored, Void attachment) {
@@ -197,9 +198,10 @@ final class ZLinkStreamConnectionLifecycle {
                 }
                 ZLinkTcpTransportConnection tcp = new ZLinkTcpTransportConnection(
                     channel,
-                    options.maxReceivePayloadSize());
+                    configuration.limits().receivePayload());
                 activateConnection(tcp);
-                DefaultZLinkStreamConnector.trace("connector connect-complete endpoint=" + options.endpoint());
+                DefaultZLinkStreamConnector.trace(
+                    "connector connect-complete endpoint=" + configuration.endpoint());
                 result.complete(null);
             }
 
@@ -208,7 +210,7 @@ final class ZLinkStreamConnectionLifecycle {
                 timeout.cancel(false);
                 closeRawQuietly(channel);
                 DefaultZLinkStreamConnector.trace(
-                    "connector connect-failed endpoint=" + options.endpoint() + " error=" + exc);
+                    "connector connect-failed endpoint=" + configuration.endpoint() + " error=" + exc);
                 result.completeExceptionally(exc);
             }
         });
@@ -222,20 +224,21 @@ final class ZLinkStreamConnectionLifecycle {
 
     private CompletionStage<Void> connectWebSocketStage() {
         HttpClient.Builder clientBuilder = HttpClient.newBuilder()
-            .connectTimeout(options.connectTimeout());
-        if (options.skipServerCertificateValidation()) {
+            .connectTimeout(configuration.timeouts().connect());
+        if (configuration.transport().skipServerCertificateValidation()) {
             clientBuilder.sslContext(insecureSslContext());
         }
         return ZLinkWebSocketTransportConnection.connectStage(
             clientBuilder.build(),
-            options.endpoint(),
-            options.maxReceivePayloadSize()).thenAccept(ws -> {
+            configuration.endpoint(),
+            configuration.limits().receivePayload()).thenAccept(ws -> {
                 if (state == ZLinkStreamConnectionState.CLOSED) {
                     closeQuietly(ws);
                     throw new IllegalStateException("connector is closed");
                 }
                 activateConnection(ws);
-                DefaultZLinkStreamConnector.trace("connector connect-complete endpoint=" + options.endpoint());
+                DefaultZLinkStreamConnector.trace(
+                    "connector connect-complete endpoint=" + configuration.endpoint());
             });
     }
 
@@ -277,12 +280,12 @@ final class ZLinkStreamConnectionLifecycle {
         stopHeartbeat();
         closeQuietly(failed);
         pendingRequests.failAll(ex);
-        transitionTo(options.reconnectEnabled()
+        transitionTo(configuration.reconnect().enabled()
             ? ZLinkStreamConnectionState.RECONNECTING
             : ZLinkStreamConnectionState.DISCONNECTED);
         disconnectedNotifier.run();
         if (state == ZLinkStreamConnectionState.RECONNECTING) {
-            reconnectAttemptStage(1, options.reconnectInitialDelay());
+            reconnectAttemptStage(1, configuration.reconnect().initialDelay());
         }
     }
 
@@ -317,28 +320,30 @@ final class ZLinkStreamConnectionLifecycle {
     }
 
     private Duration nextReconnectDelay(Duration current) {
-        long nextMillis = Math.round(current.toMillis() * options.reconnectBackoffFactor());
+        long nextMillis = Math.round(
+            current.toMillis() * configuration.reconnect().backoffFactor());
         if (nextMillis <= 0) {
-            nextMillis = options.reconnectInitialDelay().toMillis();
+            nextMillis = configuration.reconnect().initialDelay().toMillis();
         }
-        return Duration.ofMillis(Math.min(nextMillis, options.reconnectMaxDelay().toMillis()));
+        return Duration.ofMillis(Math.min(
+            nextMillis, configuration.reconnect().maxDelay().toMillis()));
     }
 
     private boolean reconnectAttemptsExhausted(int attempt) {
-        int maxAttempts = options.maxReconnectAttempts();
+        int maxAttempts = configuration.reconnect().maxAttempts();
         return maxAttempts != ZLinkStreamConnectorOptions.UNLIMITED_RECONNECT_ATTEMPTS
             && attempt >= maxAttempts;
     }
 
     private void startHeartbeat() {
         stopHeartbeat();
-        if (!options.heartbeatEnabled()) {
+        if (!configuration.heartbeat().enabled()) {
             return;
         }
         heartbeatTask = timeouts.scheduleAtFixedRate(
             this::heartbeatTick,
-            options.heartbeatInterval().toMillis(),
-            options.heartbeatInterval().toMillis(),
+            configuration.heartbeat().interval().toMillis(),
+            configuration.heartbeat().interval().toMillis(),
             TimeUnit.MILLISECONDS);
     }
 
@@ -356,7 +361,7 @@ final class ZLinkStreamConnectionLifecycle {
             return;
         }
         long idleNanos = System.nanoTime() - lastInboundNanos;
-        if (idleNanos > options.heartbeatTimeout().toNanos()) {
+        if (idleNanos > configuration.heartbeat().timeout().toNanos()) {
             handleReceiveFailure(current, new TimeoutException("Heartbeat timed out"));
             return;
         }
@@ -386,17 +391,13 @@ final class ZLinkStreamConnectionLifecycle {
         }
     }
 
-    private static boolean isWebSocketEndpoint(ZLinkStreamConnectorOptions options) {
-        String scheme = options.endpoint().getScheme();
+    private boolean isWebSocketEndpoint() {
+        String scheme = configuration.endpoint().getScheme();
         return "ws".equals(scheme) || "wss".equals(scheme);
     }
 
-    private boolean isWebSocketEndpoint() {
-        return isWebSocketEndpoint(options);
-    }
-
     private boolean isTlsEndpoint() {
-        return "tls".equals(options.endpoint().getScheme());
+        return "tls".equals(configuration.endpoint().getScheme());
     }
 
     private static SSLContext insecureSslContext() {

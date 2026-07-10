@@ -23,10 +23,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private static final int MAX_PACKET_NAME_BYTES = 255;
     private static final boolean STREAM_TRACE =
         "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
-    private static final ScheduledExecutorService TIMEOUTS =
+    private final ScheduledExecutorService timeouts =
         Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory());
 
     private final ZLinkStreamConnectorOptions options;
+    private final ZLinkStreamConnectorConfiguration configuration;
     private final Map<String, List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>>> handlers =
         new ConcurrentHashMap<>();
     private final List<ZLinkStreamErrorHandler> errorHandlers = new CopyOnWriteArrayList<>();
@@ -47,11 +48,13 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
     DefaultZLinkStreamConnector(ZLinkStreamConnectorOptions options) {
-        this.options = validate(options);
-        this.dispatchQueue = new ZLinkStreamDispatchQueue(this.options.maxReceivedMessages());
-        this.payloadCodec = new ZLinkStreamConnectorPayloadCodec(this.options);
+        this.configuration = ZLinkStreamConnectorConfiguration.from(options);
+        this.options = this.configuration.publicOptions();
+        this.dispatchQueue = new ZLinkStreamDispatchQueue(
+            this.configuration.limits().receivedMessages());
+        this.payloadCodec = new ZLinkStreamConnectorPayloadCodec(this.configuration);
         this.receiveDispatcher = new ZLinkStreamReceiveDispatcher(
-            this.options,
+            this.configuration,
             handlers,
             dispatchQueue,
             pendingRequests,
@@ -60,8 +63,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             this::publishError,
             this::sendControl);
         this.lifecycle = new ZLinkStreamConnectionLifecycle(
-            this.options,
-            TIMEOUTS,
+            this.configuration,
+            timeouts,
             dispatchQueue,
             pendingRequests,
             inboundObservers,
@@ -114,7 +117,16 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public ZLinkStreamLifecycleCall close() {
-        return new DefaultZLinkStreamLifecycleCall(lifecycle::close);
+        return new DefaultZLinkStreamLifecycleCall(this::closeInternal);
+    }
+
+    private CompletionStage<Void> closeInternal() {
+        try {
+            return lifecycle.close().whenComplete((ignored, failure) -> timeouts.shutdown());
+        } catch (RuntimeException error) {
+            timeouts.shutdown();
+            throw error;
+        }
     }
 
     @Override
@@ -137,7 +149,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         return new ZLinkStreamConnectorRequestCall(
             this,
             payloadCodec.copy(payload),
-            options.requestTimeout(),
+            configuration.timeouts().request(),
             false);
     }
 
@@ -200,7 +212,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         ensureConnected();
         long requestSeq = nextRequestSeq();
         CompletableFuture<ZLinkStreamEncodedPayload> pending =
-            pendingRequests.add(requestSeq, timeout, TIMEOUTS);
+            pendingRequests.add(requestSeq, timeout, timeouts);
 
         byte[] body = payloadCodec.encode(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
@@ -229,8 +241,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         byte[] frame = ZLinkStreamWireProtocol.encodeFrame(
             encodedHeader,
             payload,
-            options.maxSendPayloadSize());
-        trace("connector write-start endpoint=" + options.endpoint()
+            configuration.limits().sendPayload());
+        trace("connector write-start endpoint=" + configuration.endpoint()
             + " kind=" + header.kind()
             + " name=" + header.name()
             + " requestSeq=" + header.requestSeq()
@@ -240,13 +252,13 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             sendChain = sendChain.thenCompose(ignored -> writeFrame(frame));
             return sendChain.whenComplete((ignored, ex) -> {
                 if (ex == null) {
-                    trace("connector write-complete endpoint=" + options.endpoint()
+                    trace("connector write-complete endpoint=" + configuration.endpoint()
                         + " kind=" + header.kind()
                         + " name=" + header.name()
                         + " requestSeq=" + header.requestSeq()
                         + " correlation=" + header.correlationId());
                 } else {
-                    trace("connector write-failed endpoint=" + options.endpoint()
+                    trace("connector write-failed endpoint=" + configuration.endpoint()
                         + " kind=" + header.kind()
                         + " name=" + header.name()
                         + " requestSeq=" + header.requestSeq()
@@ -288,7 +300,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private void publishError(ZLinkStreamError error) {
         for (ZLinkStreamErrorHandler handler : List.copyOf(errorHandlers)) {
             Runnable dispatch = () -> invokeErrorCallback(handler, error);
-            if (options.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
+            if (configuration.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
                 dispatch.run();
             } else {
                 dispatchQueue.add(dispatch);
@@ -330,63 +342,6 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     @FunctionalInterface
     private interface UserCallback {
         CompletionStage<Void> invoke();
-    }
-
-    private static void requirePositive(Duration value, String name) {
-        Objects.requireNonNull(value, name);
-        if (value.isZero() || value.isNegative()) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
-    }
-
-    private static ZLinkStreamConnectorOptions validate(
-        ZLinkStreamConnectorOptions options) {
-        Objects.requireNonNull(options, "options");
-        Objects.requireNonNull(options.endpoint(), "endpoint");
-        requireSupportedEndpointScheme(options.endpoint().getScheme());
-        Objects.requireNonNull(options.dispatchMode(), "dispatchMode");
-        Objects.requireNonNull(options.nameResolver(), "nameResolver");
-        requirePositive(options.connectTimeout(), "connectTimeout");
-        requirePositive(options.requestTimeout(), "requestTimeout");
-        requirePositive(options.waitTimeout(), "waitTimeout");
-        requirePositive(options.heartbeatInterval(), "heartbeatInterval");
-        requirePositive(options.heartbeatTimeout(), "heartbeatTimeout");
-        if (options.heartbeatEnabled()
-            && !options.heartbeatTimeout().minus(options.heartbeatInterval()).isPositive()) {
-            throw new IllegalArgumentException(
-                "heartbeatTimeout must be greater than heartbeatInterval");
-        }
-        requirePositive(options.reconnectInitialDelay(), "reconnectInitialDelay");
-        requirePositive(options.reconnectMaxDelay(), "reconnectMaxDelay");
-        if (options.reconnectBackoffFactor() < 1.0) {
-            throw new IllegalArgumentException("reconnectBackoffFactor must be at least 1.0");
-        }
-        if (options.maxReconnectAttempts() < ZLinkStreamConnectorOptions.UNLIMITED_RECONNECT_ATTEMPTS) {
-            throw new IllegalArgumentException("maxReconnectAttempts must be unlimited or positive");
-        }
-        if (options.reconnectEnabled() && options.maxReconnectAttempts() == 0) {
-            throw new IllegalArgumentException("maxReconnectAttempts must be unlimited or positive");
-        }
-        if (options.maxSendPayloadSize() <= 0) {
-            throw new IllegalArgumentException("maxSendPayloadSize must be positive");
-        }
-        if (options.maxReceivePayloadSize() <= 0) {
-            throw new IllegalArgumentException("maxReceivePayloadSize must be positive");
-        }
-        if (options.maxReceivedMessages() <= 0) {
-            throw new IllegalArgumentException("maxReceivedMessages must be positive");
-        }
-        Objects.requireNonNull(options.compression(), "compression");
-        return options;
-    }
-
-    private static void requireSupportedEndpointScheme(String scheme) {
-        if (scheme == null || scheme.isBlank()) {
-            throw new IllegalArgumentException("endpoint URI scheme is required");
-        }
-        if (!List.of("tcp", "tls", "ws", "wss").contains(scheme)) {
-            throw new IllegalArgumentException("unsupported endpoint URI scheme: " + scheme);
-        }
     }
 
     static int resolvePort(java.net.URI endpoint) {

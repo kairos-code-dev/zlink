@@ -6,7 +6,6 @@ import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.future.future
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -28,7 +27,9 @@ class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
     @JvmOverloads
     constructor(dispatcher: CoroutineDispatcher = Dispatchers.Default) {
         this.dispatcher = dispatcher
-        this.scope = CoroutineScope(SupervisorJob() + dispatcher)
+        this.scope = object : CoroutineScope {
+            override val coroutineContext: CoroutineContext = dispatcher
+        }
     }
 
     @JvmOverloads

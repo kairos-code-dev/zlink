@@ -77,6 +77,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.locations.SpotRef;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
@@ -112,7 +113,6 @@ public final class ZLinkSpotRuntime
     implements ZLinkSpotManager, AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(ZLinkSpotRuntime.class.getName());
     private static final int ACTOR_RECV_INFO_NO_BIND = 1;
-    private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
 
     private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
         "zlink.framework.actor.bound_session.bind";
@@ -1768,9 +1768,7 @@ public final class ZLinkSpotRuntime
         ZLinkDispatchErrorReason reason,
         Throwable error) {
         Throwable cause = unwrapCompletion(error);
-        List<Message> reply = List.of(
-            Message.from(FRAMEWORK_ERROR_REPLY_MARKER.getBytes(StandardCharsets.UTF_8)),
-            Message.from(errorText(reason, packetName, cause).getBytes(StandardCharsets.UTF_8)));
+        List<Message> reply = ZLinkFrameworkErrorReply.create(errorText(reason, packetName, cause));
         try {
             received.reply(reply);
         } catch (RuntimeException ignored) {

@@ -3,42 +3,14 @@ package systems.zlink.framework.execution;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
-import java.util.Set;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.errors.ZLinkOperationCanceledException;
 
 public final class ZLinkFrameworkTurns {
-    private static final ScheduledExecutorService CANCELLATION_WATCHER =
-        Executors.newSingleThreadScheduledExecutor(task -> {
-            Thread thread = new Thread(task, "zlink-framework-cancellation-watcher");
-            thread.setDaemon(true);
-            return thread;
-        });
-
-    private static final Set<String> FRAMEWORK_CALLERS = Set.of(
-        "systems.zlink.framework.runtime.actors.ZLinkActorRuntime",
-        "systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotJoinCall",
-        "systems.zlink.framework.runtime.actors.ZLinkActorSpotJoinCall",
-        "systems.zlink.framework.runtime.actors.ZLinkBoundSessionRuntime",
-        "systems.zlink.framework.runtime.actors.ZLinkNativeBoundSessionRuntime",
-        "systems.zlink.framework.runtime.actors.ZLinkRoutedBoundSessionRuntime",
-        "systems.zlink.framework.runtime.channels.ZLinkChannelRuntime",
-        "systems.zlink.framework.runtime.channels.ZLinkChannelHandlerInvoker",
-        "systems.zlink.framework.runtime.channels.RequestCall",
-        "systems.zlink.framework.runtime.channels.RouteRequestCall",
-        "systems.zlink.framework.runtime.channels.RouteSpotRequestCall",
-        "systems.zlink.framework.runtime.spots.DefaultZLinkWorkerCall",
-        "systems.zlink.framework.runtime.spots.ZLinkSpotDirectOutbound",
-        "systems.zlink.framework.runtime.spots.ZLinkSpotDirectRequestCall",
-        "systems.zlink.framework.runtime.spots.ZLinkSpotRoutedOutbound",
-        "systems.zlink.framework.runtime.spots.ZLinkSpotRoutedRequestCall",
-        "systems.zlink.framework.runtime.spots.ZLinkSpotRuntime",
-        "systems.zlink.framework.kotlin.ZLinkCoroutineTurnAwaitKt",
-        "systems.zlink.framework.kotlin.ZLinkCoroutineSuspendHandlerInvoker");
+    private static final StackWalker CALLERS =
+        StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
 
     private ZLinkFrameworkTurns() {
     }
@@ -97,12 +69,21 @@ public final class ZLinkFrameworkTurns {
             return operation;
         }
         CompletableFuture<T> result = new CompletableFuture<>();
-        var watcher = CANCELLATION_WATCHER.scheduleWithFixedDelay(() -> {
-            if (cancellationToken.isCancellationRequested()) {
-                result.completeExceptionally(new ZLinkOperationCanceledException(
-                    "operation was canceled"));
+        class CancellationCheck implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                if (cancellationToken.isCancellationRequested()) {
+                    result.completeExceptionally(new ZLinkOperationCanceledException(
+                        "operation was canceled"));
+                    return;
+                }
+                CompletableFuture.delayedExecutor(10, TimeUnit.MILLISECONDS).execute(this);
             }
-        }, 0, 10, TimeUnit.MILLISECONDS);
+        }
+        new CancellationCheck().run();
         operation.whenComplete((value, error) -> {
             if (error != null) {
                 result.completeExceptionally(error);
@@ -110,7 +91,6 @@ public final class ZLinkFrameworkTurns {
                 result.complete(value);
             }
         });
-        result.whenComplete((ignored, error) -> watcher.cancel(false));
         return result;
     }
 
@@ -122,28 +102,21 @@ public final class ZLinkFrameworkTurns {
     }
 
     private static void requireFrameworkCaller() {
-        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-        for (int i = 2; i < stack.length; i++) {
-            String className = stack[i].getClassName();
-            if (className.equals(ZLinkFrameworkTurns.class.getName())) {
-                continue;
-            }
-            if (isFrameworkCaller(className)) {
-                return;
-            }
-            break;
+        boolean frameworkCaller = CALLERS.walk(frames -> frames
+            .dropWhile(frame -> frame.getDeclaringClass() == ZLinkFrameworkTurns.class)
+            .findFirst()
+            .map(StackWalker.StackFrame::getDeclaringClass)
+            .map(Class::getPackageName)
+            .filter(ZLinkFrameworkTurns::isFrameworkPackage)
+            .isPresent());
+        if (!frameworkCaller) {
+            throw new IllegalStateException(
+                "ZLink framework turn helpers are only available to framework-managed call objects");
         }
-        throw new IllegalStateException(
-            "ZLink framework turn helpers are only available to framework-managed call objects");
     }
 
-    private static boolean isFrameworkCaller(String className) {
-        for (String frameworkCaller : FRAMEWORK_CALLERS) {
-            if (className.equals(frameworkCaller)
-                || className.startsWith(frameworkCaller + "$")) {
-                return true;
-            }
-        }
-        return false;
+    private static boolean isFrameworkPackage(String packageName) {
+        return packageName.startsWith("systems.zlink.framework.runtime.")
+            || packageName.equals("systems.zlink.framework.kotlin");
     }
 }

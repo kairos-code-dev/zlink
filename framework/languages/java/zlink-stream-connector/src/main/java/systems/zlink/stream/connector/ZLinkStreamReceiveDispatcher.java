@@ -12,7 +12,7 @@ final class ZLinkStreamReceiveDispatcher {
     private static final String HEARTBEAT_PING_NAME = "$zlink.heartbeat.ping";
     private static final String HEARTBEAT_PONG_NAME = "$zlink.heartbeat.pong";
 
-    private final ZLinkStreamConnectorOptions options;
+    private final ZLinkStreamConnectorConfiguration configuration;
     private final Map<String, List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>>> handlers;
     private final ZLinkStreamDispatchQueue dispatchQueue;
     private final ZLinkStreamPendingRequests pendingRequests;
@@ -22,7 +22,7 @@ final class ZLinkStreamReceiveDispatcher {
     private final Function<String, CompletionStage<Void>> controlSender;
 
     ZLinkStreamReceiveDispatcher(
-        ZLinkStreamConnectorOptions options,
+        ZLinkStreamConnectorConfiguration configuration,
         Map<String, List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>>> handlers,
         ZLinkStreamDispatchQueue dispatchQueue,
         ZLinkStreamPendingRequests pendingRequests,
@@ -30,7 +30,7 @@ final class ZLinkStreamReceiveDispatcher {
         ZLinkStreamConnectorPayloadCodec payloadCodec,
         Consumer<ZLinkStreamError> errorPublisher,
         Function<String, CompletionStage<Void>> controlSender) {
-        this.options = options;
+        this.configuration = configuration;
         this.handlers = handlers;
         this.dispatchQueue = dispatchQueue;
         this.pendingRequests = pendingRequests;
@@ -43,7 +43,7 @@ final class ZLinkStreamReceiveDispatcher {
     void dispatch(byte[] encodedHeader, byte[] payload) {
         ZLinkStreamWireProtocol.Header header = ZLinkStreamWireProtocol.decodeHeader(encodedHeader);
         byte[] decodedPayload = payloadCodec.decode(header, payload);
-        DefaultZLinkStreamConnector.trace("connector read-frame endpoint=" + options.endpoint()
+        DefaultZLinkStreamConnector.trace("connector read-frame endpoint=" + configuration.endpoint()
             + " kind=" + header.kind()
             + " name=" + header.name()
             + " requestSeq=" + header.requestSeq()
@@ -120,7 +120,7 @@ final class ZLinkStreamReceiveDispatcher {
                     header.metadata())));
             }
         };
-        if (options.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
+        if (configuration.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
             dispatch.run();
         } else {
             dispatchQueue.add(header.name(), dispatch);

@@ -66,15 +66,12 @@ public final class ZLinkFrameworkLifecycle
         if (running) {
             return;
         }
-        boot("lifecycle start");
         runtime = ZLinkFrameworkRuntime.start(
             options,
             backendAdapterFactory,
             handlerFactory,
             eventDispatcher);
-        boot("lifecycle start runtime done");
         running = true;
-        boot("lifecycle start done");
     }
 
     @Override
@@ -233,9 +230,6 @@ public final class ZLinkFrameworkLifecycle
             throw new ZLinkConfigurationException("ZLink framework runtime is not running");
         }
         return runtime;
-    }
-
-    private static void boot(String step) {
     }
 
 }

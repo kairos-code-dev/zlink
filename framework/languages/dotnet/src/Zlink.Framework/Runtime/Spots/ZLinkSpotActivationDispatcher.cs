@@ -162,6 +162,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 {
                     ZLinkActorSessionForwarder.Forward(
                         runtime,
+                        runtimeState,
                         targetActor,
                         frame.SourceNodeRid,
                         frame.SourceSessionRid,
@@ -176,7 +177,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             {
                 await DispatchActorStreamPartAsync(
                         actor,
-                        frame.Actor,
+                        frame.ReplyActor,
                         frame.Actor.ActorId,
                         frame.SourceNodeRid,
                         frame.SourceSessionRid,
@@ -233,7 +234,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 StringComparison.Ordinal)
             && !string.Equals(
                 header.MessageName,
-                ZLinkRemoteActorJoinPackets.HandoffBarrierPacketName,
+                ZLinkRemoteActorJoinPackets.HandoffCompletionPacketName,
                 StringComparison.Ordinal))
             return false;
 
@@ -268,18 +269,18 @@ internal sealed class ZLinkSpotActivationDispatcher
                 return true;
             }
 
-            if (string.Equals(header.MessageName, ZLinkRemoteActorJoinPackets.HandoffBarrierPacketName, StringComparison.Ordinal))
+            if (string.Equals(header.MessageName, ZLinkRemoteActorJoinPackets.HandoffCompletionPacketName, StringComparison.Ordinal))
             {
-                var barrierRequest = ZLinkRemoteActorJoinPackets.DecodeHandoffBarrierRequest(received.Parts);
-                await runtime.CompleteRoutedActorHandoffBarrierAsync(barrierRequest, cancellationToken)
+                var completionRequest = ZLinkRemoteActorJoinPackets.DecodeHandoffCompletionRequest(received.Parts);
+                await runtime.CompleteRoutedActorHandoffAsync(completionRequest, cancellationToken)
                     .ConfigureAwait(false);
-                var barrierReplyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
+                var completionReplyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
                     channelName,
                     header.MessageName,
                     header.CorrelationId,
-                    barrierRequest,
-                    typeof(ZLinkRemoteActorHandoffBarrierRequest));
-                ZLinkSpotReplySubmitter.SubmitAndDispose(received, barrierReplyParts);
+                    completionRequest,
+                    typeof(ZLinkRemoteActorHandoffCompletionRequest));
+                ZLinkSpotReplySubmitter.SubmitAndDispose(received, completionReplyParts);
                 return true;
             }
 

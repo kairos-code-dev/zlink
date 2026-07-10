@@ -27,7 +27,8 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["ST-F2"] = RunDirectOvertakePreventionAsync,
     ["ST-F3"] = RunBoundSessionCrossMoveOrderAsync,
     ["ST-F4"] = RunStragglerForwardThenFailFastAsync,
-    ["ST-F5"] = RunForwardingMappingEvictionAsync
+    ["ST-F5"] = RunForwardingMappingEvictionAsync,
+    ["ST-F6"] = RunInFlightRequestCorrelationAndTimeoutAsync
 };
 
 foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Keys))
@@ -489,6 +490,68 @@ async Task RunForwardingMappingEvictionAsync()
         "ST-F5 evicted packet reached the target handler.");
 }
 
+async Task RunInFlightRequestCorrelationAndTimeoutAsync()
+{
+    await RunInFlightRequestCorrelationAsync();
+    await RunInFlightRequestTimeoutAsync();
+}
+
+async Task RunInFlightRequestCorrelationAsync()
+{
+    var actorId = $"actor-inflight-req-{Guid.NewGuid():N}";
+    var spotRid = $"spot-inflight-req-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid, "delay-joined");
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 106);
+    var oldRef = await GetActorRefAsync(nodeA, actorId);
+
+    var joinTask = JoinAsync(nodeA, actorId, new JoinTargetReq("ST-F6", spotRid));
+    await WaitEvidenceAsync(nodeB, [$"ST-F6|{actorId}|joined_wait|{spotRid}"]);
+    var requestTask = ProbeRefAsync(
+        nodeA,
+        actorId,
+        oldRef,
+        new ProbeReq("ST-F6", "correlated-reply"),
+        TimeSpan.FromSeconds(5));
+    await Task.Delay(200);
+    await ReleaseJoinedGateAsync(nodeB, spotRid);
+
+    Require((await joinTask).Accepted, "ST-F6 correlation transfer was rejected.");
+    var response = await requestTask;
+    Require(response.Succeeded && response.Reply?.NodeRid == "actor-b",
+        $"ST-F6 reply did not correlate to the original caller: {response.ErrorKind}");
+    Require(response.Reply?.Marker == "correlated-reply", "ST-F6 correlated reply marker mismatch.");
+    await WaitEvidenceAsync(nodeB, [$"ST-F6|{actorId}|packet_handler|correlated-reply"]);
+}
+
+async Task RunInFlightRequestTimeoutAsync()
+{
+    var actorId = $"actor-inflight-req-timeout-{Guid.NewGuid():N}";
+    var spotRid = $"spot-inflight-req-timeout-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid, "delay-joined");
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 107);
+    var oldRef = await GetActorRefAsync(nodeA, actorId);
+
+    var joinTask = JoinAsync(nodeA, actorId, new JoinTargetReq("ST-F6", spotRid));
+    await WaitEvidenceAsync(nodeB, [$"ST-F6|{actorId}|joined_wait|{spotRid}"]);
+    var requestTask = ProbeRefAsync(
+        nodeA,
+        actorId,
+        oldRef,
+        new ProbeReq("ST-F6", "late-reply"),
+        TimeSpan.FromMilliseconds(250));
+    await Task.Delay(400);
+    var timeout = await requestTask;
+    Require(!timeout.Succeeded && timeout.ErrorKind == nameof(TimeoutException),
+        $"ST-F6 expected normal TimeoutException, got '{timeout.ErrorKind}'.");
+
+    await ReleaseJoinedGateAsync(nodeB, spotRid);
+    Require((await joinTask).Accepted, "ST-F6 timeout transfer was rejected.");
+    await WaitEvidenceAsync(nodeB, [
+        $"ST-F6|{actorId}|packet_handler|late-reply",
+        $"ST-F6|{actorId}|late_reply_created|late-reply"
+    ]);
+}
+
 async Task<(string ActorId, ActorRefSnapshotRes OldRef)> TransferForStragglerAsync(string scenario, int stateVersion)
 {
     var actorId = $"actor-straggler-{scenario}-{Guid.NewGuid():N}";
@@ -723,10 +786,16 @@ async Task<ActorRefProbeRes> ProbeRefAsync(
     ZLinkHttpClient client,
     string actorId,
     ActorRefSnapshotRes actor,
-    ProbeReq request)
+    ProbeReq request,
+    TimeSpan? timeout = null)
 {
     return (await client.Post($"/actors/{actorId}/probe-ref")
-               .Body(new ActorRefProbeReq(request.Scenario, request.Marker, actor.NodeRid, actor.Generation))
+               .Body(new ActorRefProbeReq(
+                   request.Scenario,
+                   request.Marker,
+                   actor.NodeRid,
+                   actor.Generation,
+                   checked((int)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds)))
                .SubmitAsync<ActorRefProbeRes>()).Body
            ?? throw new InvalidOperationException("Actor ref probe response was null.");
 }

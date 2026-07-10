@@ -15,13 +15,32 @@ internal static class ZLinkActorHandoffIngress
                 continue;
 
             var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
-            if (state.NotifyHandoffFrameArrived())
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"backlog_enqueued actor={frame.Actor.ActorId} trailing=true");
             if (state.TryCaptureHandoffFrame(frame))
             {
                 frame.Body.Dispose();
                 continue;
+            }
+
+            try
+            {
+                if (ZLinkActorSessionForwarder.ShouldForward(state, frame.Actor, out var targetActor))
+                {
+                    using (frame.Body)
+                        ZLinkActorSessionForwarder.Forward(
+                            runtime,
+                            state,
+                            targetActor,
+                            frame.SourceNodeRid,
+                            frame.SourceSessionRid,
+                            frame.Header,
+                            frame.Body);
+                    continue;
+                }
+            }
+            catch (ZLinkFrameworkException exception)
+                when (exception.Kind == ZLinkFrameworkErrorKind.ActorLocationStale)
+            {
+                // The async dispatcher owns stale request replies.
             }
 
             dispatchable.Add(new ZLinkBackendActorPart(
@@ -31,7 +50,8 @@ internal static class ZLinkActorHandoffIngress
                 frame.RequestId,
                 frame.Flags,
                 Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(frame.Header).Span),
-                true));
+                true,
+                frame.ReplyActor));
             dispatchable.Add(new ZLinkBackendActorPart(
                 frame.Actor,
                 frame.SourceNodeRid,
@@ -39,7 +59,8 @@ internal static class ZLinkActorHandoffIngress
                 frame.RequestId,
                 frame.Flags,
                 frame.Body,
-                false));
+                false,
+                frame.ReplyActor));
         }
 
         return dispatchable;

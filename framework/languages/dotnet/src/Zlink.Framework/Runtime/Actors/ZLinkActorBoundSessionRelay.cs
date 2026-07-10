@@ -159,6 +159,8 @@ internal static class ZLinkActorBoundSessionRelay
     {
         var frame = reply.ToFrame(requestHeader);
         using var replyMessage = Message.From(frame);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");
         runtime.ReplyActorNoBind(
             actorRef,
             sourceNodeRid,

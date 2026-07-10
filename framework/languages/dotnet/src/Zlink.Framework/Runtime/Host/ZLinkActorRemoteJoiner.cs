@@ -65,6 +65,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 $"Actor '{actor.ActorId}' does not have an actor type for remote SPOT join.");
 
         var actorType = actorState.ActorType;
+        var handoffId = Guid.NewGuid().ToString("N");
         ZLinkActorTransferRegistry.TryResolve(registration, actorType, out var transfer);
         actorState.BeginHandoffCapture();
 
@@ -79,6 +80,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     routerChannelId,
                     request,
                     actorType,
+                    handoffId,
                     transfer,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -99,6 +101,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         string routerChannelId,
         ZLinkMessage request,
         string actorType,
+        string handoffId,
         ZLinkActorTransferRegistration? transfer,
         CancellationToken cancellationToken)
     {
@@ -161,6 +164,7 @@ internal sealed class ZLinkActorRemoteJoiner(
             header,
             actor.ActorId,
             actorType,
+            handoffId,
             boundSession.SessionNodeRid,
             boundSession.SessionRid,
             transferState,
@@ -188,20 +192,21 @@ internal sealed class ZLinkActorRemoteJoiner(
         if (reply.Accepted)
         {
             var trailingFrames = actorState.CompleteHandoffCapture();
-            ForwardHandoffFrames(targetActorRef: resultActorRef, trailingFrames);
-            await AwaitTargetHandoffBarrierAsync(
+            await CompleteTargetHandoffAsync(
                     actor.ActorId,
-                    trailingFrames.Count,
+                    handoffId,
+                    trailingFrames,
                     targetNodeRid,
                     targetSpotRid,
                     routerChannelId,
-                    cancellationToken)
+                    CancellationToken.None)
                 .ConfigureAwait(false);
             actorState.InstallForwardingMapping(
                 actorRef,
                 resultActorRef,
                 registration.ActorTransferForwardWindow);
-            await ApplyRemoteActorMigrationAsync(actor, actorState, resultActorRef, cancellationToken)
+
+            await ApplyRemoteActorMigrationAsync(actor, actorState, resultActorRef, CancellationToken.None)
                 .ConfigureAwait(false);
         }
         else
@@ -215,9 +220,10 @@ internal sealed class ZLinkActorRemoteJoiner(
             admissionReplyMessage);
     }
 
-    private async ValueTask AwaitTargetHandoffBarrierAsync(
+    private async ValueTask CompleteTargetHandoffAsync(
         string actorId,
-        int expectedFrameCount,
+        string handoffId,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         string routerChannelId,
@@ -226,12 +232,13 @@ internal sealed class ZLinkActorRemoteJoiner(
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             routerChannelId,
-            ZLinkRemoteActorJoinPackets.HandoffBarrierPacketName,
+            ZLinkRemoteActorJoinPackets.HandoffCompletionPacketName,
             registration.DefaultRequestTimeout);
-        var parts = ZLinkRemoteActorJoinPackets.EncodeHandoffBarrierRequest(
+        var parts = ZLinkRemoteActorJoinPackets.EncodeHandoffCompletionRequest(
             header,
             actorId,
-            expectedFrameCount);
+            handoffId,
+            frames);
         var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
                 routerChannelId,
                 targetNodeRid,
@@ -240,29 +247,17 @@ internal sealed class ZLinkActorRemoteJoiner(
                 registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        _ = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorHandoffBarrierRequest>(
+        _ = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorHandoffCompletionRequest>(
             replyParts,
-            "Remote actor handoff barrier reply was empty.",
-            $"Remote actor handoff barrier failed for '{actorId}'.",
+            "Remote actor handoff completion reply was empty.",
+            $"Remote actor handoff completion failed for '{actorId}'.",
             null);
     }
 
-    private void ForwardHandoffFrames(
-        ZLinkBackendActorRef targetActorRef,
-        IReadOnlyList<ZLinkActorHandoffFrame> frames)
+    private static void ReportCommittedHandoffFailure(string operation, Exception exception)
     {
-        foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
-        {
-            using var body = Message.From(frame.Body);
-            var header = ZLinkStreamProtocolDefaults.DecodeHeader(frame.Header);
-            ZLinkActorSessionForwarder.Forward(
-                runtime,
-                targetActorRef,
-                RoutingId.From(frame.SourceNodeRid),
-                RoutingId.From(frame.SourceSessionRid),
-                header,
-                body);
-        }
+        ZLinkFrameworkDebugLog.TaskFailure(operation, exception);
+        ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(exception);
     }
 
     private RoutingId ResolveSourceSpotRid(ZLinkActorRuntimeState actorState)
@@ -299,8 +294,15 @@ internal sealed class ZLinkActorRemoteJoiner(
     {
         _ = actor;
         actorState.BindNativeActorRef(targetActorRef);
-        await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            ReportCommittedHandoffFailure("actor-session-rebind", exception);
+        }
         actorState.InvalidateContext();
         // The target runtime claimed the actor location with Takeover as
         // part of hosting the joined instance; releasing this owner's stale

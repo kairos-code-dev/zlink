@@ -90,31 +90,31 @@ worker 문서:
 
 | ID | 시나리오 | 우선순위 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| ST-A1 | local join accept 순서 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-B2 | source cleanup 실패는 성공 유지 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-B3 | transfer adapter 미등록 기본 빈 state transfer | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-B4 | custom adapter가 빈 state를 반환해도 성공 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-C1 | source down after admission/before commit | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-C2 | source down after target commit | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-C3 | callback/transfer 실패 분류 | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-D1 | location commit 시점(pending/committed) | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-D2 | stale source release generation fencing | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-E1 | remote transfer 뒤 bound session push | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-E2 | 실패한 transfer는 bound session route 비오염 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-F1 | in-flight handoff order | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-F2 | direct overtakes prevented | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-F3 | bound session cross-move order | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-F4 | straggler forward then fail-fast | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-F5 | forwarding mapping eviction | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| ST-F6 | in-flight request reply correlation·timeout | P1 | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| ST-A1 | local join accept 순서 | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-B2 | source cleanup 실패는 성공 유지 | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-B3 | transfer adapter 미등록 기본 빈 state transfer | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-B4 | custom adapter가 빈 state를 반환해도 성공 | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-C1 | source down after admission/before commit | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-C2 | source down after target commit | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-C3 | callback/transfer 실패 분류 | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-D1 | location commit 시점(pending/committed) | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-D2 | stale source release generation fencing | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-E1 | remote transfer 뒤 bound session push | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-E2 | 실패한 transfer는 bound session route 비오염 | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-F1 | in-flight handoff order | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-F2 | direct overtakes prevented | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-F3 | bound session cross-move order | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-F4 | straggler forward then fail-fast | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-F5 | forwarding mapping eviction | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-F6 | in-flight request reply correlation·timeout | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
 
-> Track F(ST-F1~F6)는 `spot-actor.ko.md §10`(source queue handoff) 신설 계약이다. ST-F1~F5는 Node와
-> .NET이 구현·배포형 검증을 완료했다. ST-F6(§10.5 request reply correlation·timeout)은 Node가 먼저
-> 배포형 검증을 완료했다. 나머지 언어는 handoff frame의 request id·flags 보존과 reply correlation,
-> caller timeout, late reply 처리를 검증하는 테스트를 추가해야 한다.
+> Track F(ST-F1~F6)는 `spot-actor.ko.md §10`(source queue handoff) 신설 계약이다. ST-F1~F5는 Node·.NET·
+> Java/Kotlin이 구현·배포형 검증 완료(C++만 구현 중). ST-F6(§10.5 request reply correlation·timeout)은
+> Node, .NET, Java/Kotlin이 배포형 검증을 완료했다. C++는 handoff frame의 request id·flags 보존과
+> reply correlation·caller timeout·late reply 처리를 검증하는 테스트를 추가해야 한다.
 > 구현 런북은 [in-flight-handoff/README.ko.md](in-flight-handoff/README.ko.md)를 따른다.
 >
 > Track D·E의 P0는 location store + stream connector가 있는 언어에서 public API만으로 구현한다.
@@ -161,30 +161,30 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 
 | # | 계약 항목 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: |
-| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 2 | remote transfer에서 admission/commit 분리 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 3 | `OnActorJoin` public callback은 actor id와 request만 받음 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 4 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 5 | transfer adapter 미등록 시 기본 빈 state transfer | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 6 | `OnJoinedActor`·`OnLeaveActor` 기본 no-op public API 없음 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 7 | source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 8 | source down signal 없이 pending admission deadline 정리 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 9 | `OnJoinedActor` 완료 전 caller success 반환 안 함 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 10 | `OnJoinedActor` 완료 전 packet dispatch 차단 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 11 | location row가 pending/committed 구분 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 12 | bound session transfer가 commit 전 성공 노출 안 함 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
-| 13 | moving 중 packet을 drop 없이 arrival order 보존·handoff (§10.2-1,2) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 14 | handoff backlog를 location publish 전에 enqueue (추월 방지, §10.2-3) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 15 | bound session packet이 이동 가로질러 per-session FIFO (§10.2-4) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 16 | straggler bounded forwarding 후 상한 초과 시 fail-fast (§10.2-6) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 17 | forwarding mapping을 window(기본 5s) 후 축출·누수 없음, node당·actor당 entry ≤1(다음 hop 지시) (§10.4) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
-| 18 | 이동 중 request의 reply correlation·timeout·framing 보존 (§10.5) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 2 | remote transfer에서 admission/commit 분리 | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 3 | `OnActorJoin` public callback은 actor id와 request만 받음 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 4 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 5 | transfer adapter 미등록 시 기본 빈 state transfer | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 6 | `OnJoinedActor`·`OnLeaveActor` 기본 no-op public API 없음 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 7 | source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 8 | source down signal 없이 pending admission deadline 정리 | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 9 | `OnJoinedActor` 완료 전 caller success 반환 안 함 | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 10 | `OnJoinedActor` 완료 전 packet dispatch 차단 | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 11 | location row가 pending/committed 구분 | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 12 | bound session transfer가 commit 전 성공 노출 안 함 | 🔶 | ✅ | ✅ | ✅ | ✅ |
+| 13 | moving 중 packet을 drop 없이 arrival order 보존·handoff (§10.2-1,2) | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 14 | handoff backlog를 location publish 전에 enqueue (추월 방지, §10.2-3) | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 15 | bound session packet이 이동 가로질러 per-session FIFO (§10.2-4) | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 16 | straggler bounded forwarding 후 상한 초과 시 fail-fast (§10.2-6) | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 17 | forwarding mapping을 window(기본 5s) 후 축출·누수 없음, node당·actor당 entry ≤1(다음 hop 지시) (§10.4) | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| 18 | 이동 중 request의 reply correlation·timeout·framing 보존 (§10.5) | ⬜ | ✅ | ✅ | ✅ | ✅ |
 
 > 항목 13~17은 `spot-actor.ko.md §10`(source queue handoff) 신설로 생긴 계약이다. Node와 .NET은 moving
 > ingress capture, commit backlog, target replay gate, bounded forwarding mapping으로 구현했다.
-> 항목 18(§10.5 request reply correlation·timeout)은 Node가 handoff frame의 request id·flags 보존,
-> 원 caller reply correlation, caller timeout과 late reply를 계약·배포형 회귀로 검증했다. 나머지 언어는
-> 아직 검증 전이다.
+> 항목 18(§10.5 request reply correlation·timeout)은 Node, .NET, Java/Kotlin이 handoff frame의 request
+> id·flags 보존, 원 caller reply correlation, caller timeout과 late reply를 계약·배포형 회귀로 검증했다.
+> C++는 아직 검증 전이다.
 
 ## 5. 언어별 시작 gap 요약 (P0 audit 전 사전 정보)
 

@@ -69,7 +69,8 @@ public sealed record ActorRefProbeReq(
     string Scenario,
     string Marker,
     string NodeRid,
-    long Generation);
+    long Generation,
+    int TimeoutMs = 5000);
 
 public sealed record ActorRefProbeRes(
     bool Succeeded,

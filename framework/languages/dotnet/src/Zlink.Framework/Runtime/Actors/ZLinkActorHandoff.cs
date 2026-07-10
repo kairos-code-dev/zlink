@@ -8,6 +8,8 @@ internal enum ZLinkActorFrameRoute
 }
 
 internal sealed record ZLinkActorHandoffFrame(
+    byte[] ReplyActorNodeRid,
+    ulong ReplyActorGeneration,
     byte[] SourceNodeRid,
     byte[] SourceSessionRid,
     ulong RequestId,
@@ -23,6 +25,8 @@ internal static class ZLinkActorHandoffFrames
         long arrivalIndex)
     {
         return new ZLinkActorHandoffFrame(
+            frame.ReplyActor.NodeRid.ToBytes().ToArray(),
+            frame.ReplyActor.Generation,
             frame.SourceNodeRid.ToBytes().ToArray(),
             frame.SourceSessionRid.ToBytes().ToArray(),
             frame.RequestId,
@@ -39,6 +43,10 @@ internal static class ZLinkActorHandoffFrames
         var parts = new List<ZLinkBackendActorPart>(frames.Count * 2);
         foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
         {
+            var replyActor = new ZLinkBackendActorRef(
+                RoutingId.From(frame.ReplyActorNodeRid),
+                actor.ActorId,
+                frame.ReplyActorGeneration);
             parts.Add(new ZLinkBackendActorPart(
                 actor,
                 RoutingId.From(frame.SourceNodeRid),
@@ -46,7 +54,8 @@ internal static class ZLinkActorHandoffFrames
                 frame.RequestId,
                 frame.Flags,
                 Message.From(frame.Header),
-                true));
+                true,
+                replyActor));
             parts.Add(new ZLinkBackendActorPart(
                 actor,
                 RoutingId.From(frame.SourceNodeRid),
@@ -54,7 +63,8 @@ internal static class ZLinkActorHandoffFrames
                 frame.RequestId,
                 frame.Flags,
                 Message.From(frame.Body),
-                false));
+                false,
+                replyActor));
         }
 
         return parts;

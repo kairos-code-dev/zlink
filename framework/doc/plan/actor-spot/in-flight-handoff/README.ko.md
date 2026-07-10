@@ -202,29 +202,41 @@ god-file·책임 혼합·중복·vestigial을 남기지 않게 정리하는 것�
 - window 기본값 5초를 언어 간 동일하게 사용(override는 배포별).
 - **H6 codex 리팩토링 루프가 CONVERGED**(의미있는 POSD/DDD 항목이 더 나오지 않음)이고, 각 라운드 기록이 남았다.
 
-> 아래 언어별 기록(§10~§12)은 처음에는 H0~H5·ST-F1~F5 기준으로 작성됐다. Node는 H6와
-> ST-F6/계약18까지 갱신했으며, 다른 언어는 각 기록의 잔여 표기를 따른다.
+> 아래 언어별 기록(§10~§13)은 처음에는 H0~H5·ST-F1~F5 기준으로 작성됐다. Node, .NET,
+> Java/Kotlin은 H6와 ST-F6/계약18까지 갱신했으며, 나머지 언어는 각 기록의 잔여 표기를 따른다.
 
 ## 10. .NET 완료 기록 (2026-07-10)
 
-.NET은 H0~H5를 완료했다(H6·ST-F6 잔여).
+.NET은 H0~H6와 ST-F1~F6을 완료했다.
 
 - H0 audit: 기존 Spot 직렬 큐는 moving 중 packet을 source handler에서 실행하지 않는 데에는 충분했지만,
   commit 응답 뒤 source 큐를 개별 forward하므로 target direct packet의 추월 가능성이 있었다. 또한
   `ShouldForward`는 유지 시간을 제한하지 않았다.
 - H1/H2: actor runtime state가 moving ingress frame을 arrival index와 함께 보존한다. source는 commit
   payload에 snapshot을 싣고, target은 이 backlog를 actor handoff queue에 먼저 넣는다. target은
-  `OnJoinedActorAsync`가 끝날 때까지 새로 도착한 frame도 같은 queue 뒤에 보존한 뒤 순서대로 replay한다.
+  `OnJoinedActorAsync` 뒤 초기 backlog를 replay하되 capture를 유지한다. 완료 요청에서 source trailing
+  frame 뒤에 target에서 새로 보존한 frame을 합쳐 replay한 다음 location을 공개한다.
 - H3/H4: source node는 old generation에서 다음 hop으로 가는 mapping 하나를 유지한다. 기본 window는
   5초이며 `IZLinkFrameworkOptions.ActorTransferForwardWindow`로 배포별 override할 수 있다. window가 끝나면
   mapping을 제거하고 old ref request를 `ActorLocationStale`로 응답한다. A→B→C 배포 시나리오에서 hop별
   forwarding과 두 source node의 독립 축출을 확인했다.
-- bound session: commit 응답과 함께 도착한 trailing frame을 target으로 보낸 뒤, target ingress barrier가
-  받은 개수를 확인한 다음에 source session rebind를 완료한다. 이 경계로 replay packet 뒤에 rebound
-  session packet이 이어진다.
-- 경량 회귀: `ActorHandoffTests` 5개가 order, direct 추월 방지, bound-session 순서, window cutoff,
-  mapping 교체·축출을 검증한다.
-- 배포형 회귀: `e2e/SpotActorTransfer/run_e2e.sh ST-F1 ST-F2 ST-F3 ST-F4 ST-F5`가 Track F 전체를 검증한다.
+- bound session: target은 commit 요청의 session route를 `OnJoinedActorAsync` 전에 설치한다. 이때부터
+  target ingress capture가 새 session packet도 backlog 뒤에 보존한다. target은 handoff id와 trailing
+  frame을 받은 뒤 replay와 location 공개를 마치고 응답하며, source는 이 응답 뒤에만 정리를 확정한다.
+  따라서 개수 기반 barrier 없이 replay packet과 새 session packet의 순서를 유지한다.
+- request framing: handoff frame이 원 actor ref와 request id·flags를 보존한다. target reply는 원 caller의
+  process-wide request id로 correlate하며, caller timeout 뒤 도착한 reply는 기존 late-reply 경로에서
+  버린다.
+- 경량 회귀: `ActorHandoffTests` 7개가 order, direct 추월 방지, bound-session 순서, window cutoff,
+  mapping 교체·축출, 완료 요청 멱등성, request framing을 검증한다.
+- 배포형 회귀: `e2e/SpotActorTransfer/run_e2e.sh ST-F1 ST-F2 ST-F3 ST-F4 ST-F5 ST-F6`가 Track F
+  전체를 검증한다. ST-F6은 정상 reply correlation과 caller timeout 뒤 late reply drop을 함께 확인한다.
+- H6: 완료 신호를 frame 개수 barrier로 유지하는 안과 handoff id를 가진 상관 완료 요청으로 모으는 안을
+  비교해 후자를 선택했다. 상태 전이는 `ZLinkActorRuntimeState`, wire framing은
+  `ZLinkRemoteActorJoinPackets`, ingress capture/forward는 `ZLinkActorHandoffIngress`, location 공개는
+  `ZLinkActorOwnershipCoordinator` 한 곳이 각각 소유한다. 2차 재리뷰에서 completion wire에 중복으로
+  남은 session route를 제거하고 target capture를 location 공개까지 유지하도록 바로잡았다. count
+  barrier와 중복 route 지식이 더 남지 않아 `CONVERGED`로 판정했다.
 
 ## 11. C++ 진행 기록 (2026-07-10)
 
@@ -252,7 +264,10 @@ C++는 H0~H4 구현과 H5 경량 회귀를 완료했다. Track F 배포형(ST-F1
   유지, per-key)·tombstone 생존을 검증한다. moving 중 packet 분류를 바꾼 데 따라 기존 단언 6곳을
   `request_rejected`→`actor_location_stale`로 갱신했다.
 - 잔여: bound session cross-move 순서(ST-F3)와 straggler 실전 forward(ST-F4)는 배포형에서만 검증
-  가능하므로 config-10 cpp port(Track F 포함)에서 마감한다.
+  가능하므로 config-10 cpp port(Track F 포함)에서 마감한다. 이후 추가된 계약인 ST-F6/계약18(§10.5 —
+  backlog/forwarding의 request framing 보존과 target→caller 직접 correlate. 현재 구현은 moving 중
+  request를 retriable fail-fast로 처리하는 §10.5 이전 상태)과 H6(§8 POSD/DDD 루프)도 다른 언어와
+  같이 잔여다.
 
 ## 12. Node 완료 기록 (2026-07-10)
 
@@ -289,3 +304,46 @@ Node는 H0~H6와 ST-F1~F6을 완료했다.
   200 actor × 50 packet × 5라운드에서 중앙 처리량 905,052 packet/s였다.
 - H6 재리뷰: ingress capture, replay, forwarding mapping, framing 소유자가 각각 한 곳이고 기존 경로와
   중복된 의미 있는 리팩토링 항목이 더 남지 않아 `CONVERGED`로 판정했다.
+
+## 13. Java/Kotlin 완료 기록 (2026-07-10)
+
+Java 런타임 한 벌과 이를 공유하는 Kotlin surface에서 H0~H6와 ST-F1~F6을 완료했다.
+
+- H0 audit: actor packet은 `ZLinkActorDispatchSerials`에서 직렬화됐지만 remote 이동 중 packet을
+  보존하는 상태와 commit wire backlog가 없었다. routed target에서 다시 이동할 때 native Spot leave를
+  호출하는 경로도 실제 membership 형태와 맞지 않았다. stale source native actor는 곧바로 제거되어
+  forwarding window와 축출 상태도 없었다.
+- H1: `ZLinkActorTransferHandoff`가 moving 시작 뒤 packet을 arrival index와 함께 보존한다.
+  `ZLinkActorSpotRoutePackets`는 index, stream header, payload를 commit request에 싣고 target에서 같은
+  순서로 복원한다. source capture와 target enqueue는 각각 `handoff_backlog`, `backlog_enqueued` message
+  flow marker를 남긴다.
+- H2: `ZLinkActorSpotAdmission.commitRoutedActor`는 target의 joined callback과 backlog replay가 끝난 뒤
+  location을 publish한다. `location_committed` marker도 이 경계 뒤에 기록한다. commit snapshot 뒤에
+  source로 들어온 packet은 같은 직렬선에서 target으로 이어 보내며, ST-F2의 `B1→B2→D1`과 ST-F3의
+  bound session `S1→S2→S3→S4`로 순서를 확인했다.
+- H3: `actorTransferForwardWindow`의 기본값은 5초이고 배포별 override를 허용한다. source native actor를
+  window 동안 유지하므로 old generation ref가 target으로 전달된다. window가 끝나면 source actor를
+  제거하고 이후 request가 실패한다. config-10은 2초 override로 forward와 fail-fast를 함께 검증한다.
+- H4: forwarding 상태는 node에서 actor ID별 `Map` entry 하나만 유지한다. A→B→C 시나리오에서 A의
+  stale ref가 두 hop을 따라 C에 도달하고, A와 B의 source actor가 각자 window 뒤 제거되는지 확인했다.
+  `mapping_evicted`, `straggler_forward`, `stale_fail_fast` 증거도 actor node 로그에 남긴다.
+- H5: `ZLinkActorTransferHandoffTest`의 6개 테스트가 backlog arrival order, commit snapshot 뒤 trailing
+  packet 순서, bound-session metadata, forwarding cutoff, 반복 이동 mapping 교체·축출, request header와
+  native reply 좌표 보존을 검증한다.
+- request framing: handoff wire는 stream request header와 original actor ref, caller node/session,
+  native request id·flags를 함께 보존한다. target은 이 좌표로 caller에 직접 reply하고 source에는
+  one-way 전달 완료만 남긴다. ST-F6은 정상 correlation과 caller timeout 뒤 late reply drop을 검증한다.
+- 배포형 회귀: Java와 Kotlin의 `SpotActorTransfer/run_e2e.sh`가 ST-F1~F6을 모두 실행한다. Kotlin은
+  suspend handler와 Kotlin actor node를 사용하고, backlog와 forwarding 구현은 Java 런타임을 공유한다.
+- H6 1차: runtime 본체에 backlog·window state를 계속 두는 안과 transfer 전용 소유자로 분리하는 안을
+  비교해 `ZLinkActorTransferHandoff`로 상태·snapshot·mapping·retirement를 모았다. wire framing은
+  `ZLinkActorSpotRoutePackets`, target direct reply는 `ZLinkSpotRuntime` 한 곳이 소유한다.
+- H6 2차: normal actor dispatch에서 reply 좌표를 먼저 만들던 경로를 moving 확인 뒤로 옮겨, 이동하지
+  않는 hot path는 기존 moving state 확인만 하고 allocation을 만들지 않게 했다. target replay와 late
+  forwarding은 같은 direct-reply helper를 사용하고 source reply 중계를 제거했다.
+- H6 성능: `EntrySpotAdmissionBurstBenchmark`의 현재 200 actor × 500 packet 결과는 210,797 packet/s,
+  p95 40.9µs였다. 기존 200 actor × 50 packet baseline 중앙값 183,062 packet/s와 비교해 throughput
+  회귀가 없었다. workload 크기가 달라 latency 수치는 직접 비교하지 않고 throughput gate만 사용했다.
+- H6 재리뷰: ingress capture, backlog snapshot, mapping 수명, wire framing, target direct reply의 owner가
+  각각 한 곳이고 normal dispatch에 새 allocation이 없음을 확인했다. 의미 있는 추가 리팩토링 항목이
+  남지 않아 `CONVERGED`로 판정했다.

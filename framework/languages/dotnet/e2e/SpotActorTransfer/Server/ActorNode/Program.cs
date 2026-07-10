@@ -203,7 +203,7 @@ app.MapPost("/actors/{actorId}/probe-ref", async (
                 actor,
                 new ProbeReq(request.Scenario, request.Marker))
             .PacketName(nameof(ProbeReq))
-            .Timeout(TimeSpan.FromSeconds(5))
+            .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
             .Async<ProbeRes>(cancellationToken);
         return Results.Ok(new ActorRefProbeRes(true, response, null));
     }
@@ -655,7 +655,7 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class ProbeHandler(EvidenceStore evidence)
         : IZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, ProbeReq, ProbeRes>
     {
-        public ValueTask<ProbeRes> HandleAsync(
+        public async ValueTask<ProbeRes> HandleAsync(
             TransferUserSpot spot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
@@ -665,13 +665,18 @@ namespace SpotActorTransfer.ActorNode
             _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             evidence.Add(request.Scenario, actor.ActorId, "packet_handler", request.Marker);
-            return ValueTask.FromResult(new ProbeRes(
+            if (request.Scenario == "ST-F6" && request.Marker == "late-reply")
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                evidence.Add(request.Scenario, actor.ActorId, "late_reply_created", request.Marker);
+            }
+            return new ProbeRes(
                 request.Scenario,
                 actor.ActorId,
                 spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(),
                 actor.StateVersion,
-                request.Marker));
+                request.Marker);
         }
     }
 

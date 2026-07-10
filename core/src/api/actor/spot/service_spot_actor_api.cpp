@@ -1838,11 +1838,6 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_reply_no_bind (
     memset (&owner_node_rid, 0, sizeof (owner_node_rid));
     if (owner_node->node_routing_id (&owner_node_rid) != 0)
         return errno_to_submit_result (errno);
-    if (!same_routing_id (owner_node_rid, info_->actor.node_rid)) {
-        errno = EINVAL;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
     return send_no_bind_reply_from_owner (owner_node, owner_node_rid, info_->source_node_rid,
                                           info_->source_session_rid, info_->actor.actor_id,
                                           info_->actor.generation, info_->request_id, result_,

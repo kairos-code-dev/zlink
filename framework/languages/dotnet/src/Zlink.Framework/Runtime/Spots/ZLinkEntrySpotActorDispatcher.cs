@@ -70,6 +70,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                 {
                     ZLinkActorSessionForwarder.Forward(
                         runtime,
+                        actorState,
                         targetActor,
                         frame.SourceNodeRid,
                         frame.SourceSessionRid,
@@ -85,7 +86,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                     activation,
                     actorState,
                     actor,
-                    frame.Actor,
+                    frame.ReplyActor,
                     frame.SourceNodeRid,
                     frame.SourceSessionRid,
                     frame.RequestId,

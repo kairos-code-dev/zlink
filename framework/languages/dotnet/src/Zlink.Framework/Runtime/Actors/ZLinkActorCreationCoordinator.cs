@@ -60,6 +60,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorTransferRegistration? transfer,
         ZLinkMessage transferState,
         ZLinkActorClaimMode claimMode,
+        bool publishActorRef,
         CancellationToken cancellationToken)
     {
         var creation = await state.GetOrStartActorCreationAsync(
@@ -72,6 +73,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                     transfer,
                     transferState,
                     claimMode,
+                    publishActorRef,
                     CancellationToken.None).AsTask(),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -96,6 +98,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorTransferRegistration? transfer,
         ZLinkMessage transferState,
         ZLinkActorClaimMode claimMode,
+        bool publishActorRef,
         CancellationToken cancellationToken)
     {
         if (transfer is null)
@@ -109,7 +112,8 @@ internal sealed class ZLinkActorCreationCoordinator(
                     factoryType,
                     ZLinkMessage.Empty,
                     claimMode,
-                    cancellationToken)
+                    cancellationToken,
+                    publishActorRef)
                 .ConfigureAwait(false);
         }
 
@@ -120,7 +124,8 @@ internal sealed class ZLinkActorCreationCoordinator(
                 transfer,
                 transferState,
                 claimMode,
-                cancellationToken)
+                cancellationToken,
+                publishActorRef)
             .ConfigureAwait(false);
     }
 
@@ -144,7 +149,8 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorTransferRegistration transfer,
         ZLinkMessage transferState,
         ZLinkActorClaimMode claimMode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool publishActorRef)
     {
         if (Lifecycle is not { } lifecycle)
             return await ActivateTransferredActorCoreAsync(state, actorId, transfer, transferState, cancellationToken)
@@ -169,7 +175,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                     : $"Actor '{actorId}' is already active on node '{location.NodeRid}' (location claim conflict).");
         }
 
-        if (state.NativeActorRef is { } nativeRef)
+        if (publishActorRef && state.NativeActorRef is { } nativeRef)
             await lifecycle.PublishActorRefAsync(
                     actorId,
                     nativeRef.ToNative(),
@@ -214,7 +220,8 @@ internal sealed class ZLinkActorCreationCoordinator(
         Type factoryType,
         ZLinkMessage createRequest,
         ZLinkActorClaimMode claimMode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool publishActorRef = true)
     {
         if (Lifecycle is not { } lifecycle)
             return await ActivateActorCoreAsync(state, actorId, factoryType, createRequest, cancellationToken)
@@ -242,7 +249,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                     : $"Actor '{actorId}' is already active on node '{location.NodeRid}' (location claim conflict).");
         }
 
-        if (state.NativeActorRef is { } nativeRef)
+        if (publishActorRef && state.NativeActorRef is { } nativeRef)
             await lifecycle.PublishActorRefAsync(
                     actorId,
                     nativeRef.ToNative(),

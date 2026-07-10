@@ -5,7 +5,7 @@ internal static class ZLinkRemoteActorJoinPackets
     public const string RequestPacketName = "__zlink.actor.join_spot.request";
     public const string AdmissionPacketName = "__zlink.actor.join_spot.admission";
     public const string CommitPacketName = "__zlink.actor.join_spot.commit";
-    public const string HandoffBarrierPacketName = "__zlink.actor.join_spot.handoff_barrier";
+    public const string HandoffCompletionPacketName = "__zlink.actor.join_spot.handoff_completion";
     public const string BoundSessionBindPacketName = "zlink.framework.actor.bound_session.bind";
     public const string SessionDisconnectedPacketName = "zlink.framework.actor.session_disconnected";
 
@@ -38,6 +38,7 @@ internal static class ZLinkRemoteActorJoinPackets
         ZLinkEnvelopeHeader header,
         string actorId,
         string actorType,
+        string handoffId,
         RoutingId? boundSessionNodeRid,
         RoutingId boundSessionRid,
         ZLinkMessage transferState,
@@ -50,6 +51,7 @@ internal static class ZLinkRemoteActorJoinPackets
         var payload = new ZLinkRemoteActorJoinRequest(
             actorId,
             actorType,
+            handoffId,
             boundSessionNodeRid?.ToBytes().ToArray(),
             boundSessionRid.Size > 0 ? boundSessionRid.ToBytes().ToArray() : null,
             encodedTransferState.ContentType,
@@ -73,25 +75,29 @@ internal static class ZLinkRemoteActorJoinPackets
                ?? throw new InvalidOperationException("Remote actor join request was empty.");
     }
 
-    public static IReadOnlyList<Message> EncodeHandoffBarrierRequest(
+    public static IReadOnlyList<Message> EncodeHandoffCompletionRequest(
         ZLinkEnvelopeHeader header,
         string actorId,
-        int expectedFrameCount)
+        string handoffId,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames)
     {
         return ZLinkEnvelopeCodec.EncodeParts(
             header,
-            new ZLinkRemoteActorHandoffBarrierRequest(actorId, expectedFrameCount),
-            typeof(ZLinkRemoteActorHandoffBarrierRequest),
+            new ZLinkRemoteActorHandoffCompletionRequest(
+                actorId,
+                handoffId,
+                frames),
+            typeof(ZLinkRemoteActorHandoffCompletionRequest),
             null);
     }
 
-    public static ZLinkRemoteActorHandoffBarrierRequest DecodeHandoffBarrierRequest(
+    public static ZLinkRemoteActorHandoffCompletionRequest DecodeHandoffCompletionRequest(
         IReadOnlyList<Message> parts)
     {
-        return (ZLinkRemoteActorHandoffBarrierRequest?)ZLinkEnvelopeCodec.DecodeBody(
+        return (ZLinkRemoteActorHandoffCompletionRequest?)ZLinkEnvelopeCodec.DecodeBody(
                    parts,
-                   typeof(ZLinkRemoteActorHandoffBarrierRequest))
-               ?? throw new InvalidOperationException("Remote actor handoff barrier request was empty.");
+                   typeof(ZLinkRemoteActorHandoffCompletionRequest))
+               ?? throw new InvalidOperationException("Remote actor handoff completion request was empty.");
     }
 
     public static ZLinkRemoteActorAdmissionRequest DecodeAdmissionRequest(IReadOnlyList<Message> parts)
@@ -295,6 +301,7 @@ internal sealed record ZLinkRemoteActorAdmissionReply(
 internal sealed record ZLinkRemoteActorJoinRequest(
     string ActorId,
     string ActorType,
+    string HandoffId,
     byte[]? BoundSessionNodeRid,
     byte[]? BoundSessionRid,
     string TransferStateContentType,
@@ -311,6 +318,7 @@ internal sealed record ZLinkRemoteActorJoinReply(
     string ReplyContentType,
     byte[] Reply);
 
-internal sealed record ZLinkRemoteActorHandoffBarrierRequest(
+internal sealed record ZLinkRemoteActorHandoffCompletionRequest(
     string ActorId,
-    int ExpectedFrameCount);
+    string HandoffId,
+    IReadOnlyList<ZLinkActorHandoffFrame> Frames);

@@ -26,30 +26,34 @@ internal static class ZLinkActorSessionForwarder
 
     public static void Forward(
         ZLinkFrameworkRuntime runtime,
+        ZLinkActorRuntimeState actorState,
         ZLinkBackendActorRef targetActor,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         ZlinkStreamHeader header,
         Message body)
     {
-        var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
-        using var headerPart = Message.From(headerBytes);
-        if (!runtime.ForwardActorBoundSessionPart(
-                targetActor,
-                sourceNodeRid,
-                sourceSessionRid,
-                headerPart,
-                true,
-                SendFlags.None))
-            throw new InvalidOperationException("Actor session header forward failed.");
+        actorState.ForwardFrame(() =>
+        {
+            var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
+            using var headerPart = Message.From(headerBytes);
+            if (!runtime.ForwardActorBoundSessionPart(
+                    targetActor,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    headerPart,
+                    true,
+                    SendFlags.None))
+                throw new InvalidOperationException("Actor session header forward failed.");
 
-        if (!runtime.ForwardActorBoundSessionPart(
-                targetActor,
-                sourceNodeRid,
-                sourceSessionRid,
-                body,
-                false,
-                SendFlags.None))
-            throw new InvalidOperationException("Actor session body forward failed.");
+            if (!runtime.ForwardActorBoundSessionPart(
+                    targetActor,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    body,
+                    false,
+                    SendFlags.None))
+                throw new InvalidOperationException("Actor session body forward failed.");
+        });
     }
 }

@@ -67,7 +67,8 @@ internal sealed record ZLinkBackendActorPart(
     ulong RequestId,
     uint Flags,
     Message Message,
-    bool More);
+    bool More,
+    ZLinkBackendActorRef? ReplyActor = null);
 
 internal sealed record ZLinkBackendActorJoinRequest(
     ZLinkBackendActorRef SourceActor,

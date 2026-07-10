@@ -77,6 +77,7 @@ internal sealed partial class ZLinkActorSessionManager(
         ZLinkActorTransferRegistration? transfer,
         ZLinkMessage transferState,
         ZLinkActorClaimMode claimMode,
+        bool publishActorRef,
         CancellationToken cancellationToken = default)
     {
         var state = _actorSessions.GetOrCreate(actorId);
@@ -87,6 +88,7 @@ internal sealed partial class ZLinkActorSessionManager(
                 transfer,
                 transferState,
                 claimMode,
+                publishActorRef,
                 cancellationToken)
             .ConfigureAwait(false);
     }

@@ -84,7 +84,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer);
         var actorState = GetOrCreateActorState(request.ActorId);
-        actorState.ImportHandoffFrames(request.HandoffFrames);
+        actorState.ImportHandoffFrames(request.HandoffId, request.HandoffFrames);
 
         try
         {
@@ -98,6 +98,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     transfer,
                     ZLinkRemoteActorJoinPackets.DecodeTransferState(request, Registration.Codecs),
                     ZLinkActorClaimMode.TakeoverExistingOwner,
+                    publishActorRef: false,
                     cancellationToken)
                 .ConfigureAwait(false);
             var actorId = request.ActorId;
@@ -107,20 +108,17 @@ internal sealed partial class ZLinkFrameworkRuntime
                                $"Actor '{actorId}' does not have a native Actor ref.");
             var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
             await BindRemoteBoundSessionRouteAsync(
-                    actorId,
+                    request.ActorId,
                     actorRef,
                     boundRoute.NodeRid,
                     boundRoute.SessionRid,
                     cancellationToken)
                 .ConfigureAwait(false);
-
-            await activation.CommitTransferredActorJoinAndReplayAsync(
+            await activation.PrepareTransferredActorJoinAndReplayAsync(
                     creation.Actor,
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
-
-            actorState.PrepareHandoffBarrier(Registration.DefaultRequestTimeout);
 
             return ZLinkRemoteActorJoinPackets.CreateJoinReply(
                 true,
@@ -135,13 +133,56 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
     }
 
-    internal async ValueTask CompleteRoutedActorHandoffBarrierAsync(
-        ZLinkRemoteActorHandoffBarrierRequest request,
+    internal async ValueTask CompleteRoutedActorHandoffAsync(
+        ZLinkRemoteActorHandoffCompletionRequest request,
         CancellationToken cancellationToken)
     {
         var actorState = GetOrCreateActorState(request.ActorId);
-        await actorState.WaitForHandoffBarrierAsync(request.ExpectedFrameCount, cancellationToken)
+        if (!actorState.TryBeginHandoffCompletion(request.HandoffId)) return;
+
+        try
+        {
+            var activation = actorState.LiveActivation
+                             ?? throw new ZLinkFrameworkException(
+                                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                 $"Actor '{request.ActorId}' is not hosted by an active Spot during handoff completion.");
+            await activation.ReplayTransferredActorHandoffAsync(
+                    actorState,
+                    request.Frames,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await PublishTransferredActorLocationAsync(actorState, activation, cancellationToken)
+                .ConfigureAwait(false);
+            actorState.CompleteHandoffContinuation(request.HandoffId);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"handoff_completion actor={request.ActorId} id={request.HandoffId} frames={request.Frames.Count}");
+        }
+        catch
+        {
+            actorState.CancelHandoffContinuation(request.HandoffId);
+            throw;
+        }
+    }
+
+    private async ValueTask PublishTransferredActorLocationAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkSpotActivation activation,
+        CancellationToken cancellationToken)
+    {
+        if (LocationLifecycle is not { } locations) return;
+
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorState.ActorId}' does not have a native Actor ref during location commit.");
+        await locations.ActorOwnership.CommitTransferredActorLocationAsync(
+                actorState.ActorId,
+                actorRef.ToNative(),
+                activation.SpotRid,
+                cancellationToken)
             .ConfigureAwait(false);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"location_committed actor={actorState.ActorId} spot={activation.SpotRid}");
     }
 
     internal async ValueTask<ZLinkRemoteActorAdmissionReply> AdmitRoutedActorJoinAsync(

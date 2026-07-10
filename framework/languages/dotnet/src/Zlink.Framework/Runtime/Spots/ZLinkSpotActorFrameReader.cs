@@ -2,6 +2,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal readonly record struct ZLinkSpotActorFrame(
     ZLinkBackendActorRef Actor,
+    ZLinkBackendActorRef ReplyActor,
     RoutingId SourceNodeRid,
     RoutingId SourceSessionRid,
     ulong RequestId,
@@ -42,6 +43,7 @@ internal static class ZLinkSpotActorFrameReader
 
         frame = new ZLinkSpotActorFrame(
             headerPart.Actor,
+            headerPart.ReplyActor ?? headerPart.Actor,
             headerPart.SourceNodeRid,
             headerPart.SourceSessionRid,
             headerPart.RequestId,

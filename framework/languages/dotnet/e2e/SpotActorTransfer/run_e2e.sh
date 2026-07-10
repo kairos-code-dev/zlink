@@ -91,7 +91,7 @@ start_node() {
     --stream-endpoint "$stream" \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR" \
-    >"$LOG_DIR/${rid}.stdout.log" 2>"$LOG_DIR/${rid}.stderr.log" &
+    >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }
 
@@ -152,7 +152,7 @@ sleep 5
 : >"$LOG_DIR/client.stderr.log"
 
 if [[ "$SCENARIO" == "all" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5"
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6"
   run_client "ST-C2"
   sleep 1
   NODE_A_HTTP_PORT="$(pick_port)"
@@ -188,9 +188,37 @@ require_runtime_marker() {
   fi
 }
 
+require_marker_order() {
+  local actor_prefix="$1"
+  local first="$2"
+  local second="$3"
+  python3 - "$LOG_DIR" "$actor_prefix" "$first" "$second" <<'PY'
+import pathlib
+import re
+import sys
+
+log_dir, actor_prefix, first, second = sys.argv[1:]
+lines = []
+for path in pathlib.Path(log_dir).glob("actor-*.stderr.log"):
+    lines.extend(path.read_text().splitlines())
+actor_pattern = re.compile(rf"actor=({re.escape(actor_prefix)}[^ ]+)")
+actors = {m.group(1) for line in lines if (m := actor_pattern.search(line))}
+if len(actors) != 1:
+    raise SystemExit(f"Expected one actor for prefix {actor_prefix}, got {sorted(actors)}")
+actor = next(iter(actors))
+first_index = next((i for i, line in enumerate(lines) if first in line and f"actor={actor}" in line), None)
+second_index = next((i for i, line in enumerate(lines) if second in line and f"actor={actor}" in line), None)
+if first_index is None or second_index is None or first_index >= second_index:
+    raise SystemExit(f"Marker order failed for {actor}: {first}={first_index}, {second}={second_index}")
+PY
+}
+
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F1"* ]]; then
   require_runtime_marker handoff_backlog
   require_runtime_marker backlog_enqueued
+fi
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F2"* ]]; then
+  require_marker_order actor-inflight-overtake- backlog_enqueued location_committed
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F4"* ]]; then
   require_runtime_marker straggler_forward
@@ -198,6 +226,15 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F4"* ]]; then
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F5"* ]]; then
   require_runtime_marker mapping_evicted
+  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-a target=actor-b entries=1' "$LOG_DIR"/actor-a.stderr.log
+  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-b target=actor-c entries=1' "$LOG_DIR"/actor-b.stderr.log
+  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-a.stderr.log
+  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-b.stderr.log
+fi
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F6"* ]]; then
+  grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-a.stderr.log
+  grep -h -E -q 'backlog_enqueued actor=actor-inflight-req-.* request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-b.stderr.log
+  grep -h -E -q 'request_reply_direct actor=actor-inflight-req-' "$LOG_DIR"/actor-b.stderr.log
 fi
 
 cat "$LOG_DIR/client.stdout.log"

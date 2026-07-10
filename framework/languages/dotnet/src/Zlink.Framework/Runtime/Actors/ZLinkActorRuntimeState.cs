@@ -6,14 +6,15 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _sessionGate = new();
     private readonly object _handoffGate = new();
+    private readonly object _forwardGate = new();
     private readonly List<ZLinkActorHandoffFrame> _handoffFrames = [];
     private Task<IZLinkActor>? _actorCreationTask;
     private ZLinkActorBoundSession? _boundSession;
     private CancellationTokenSource? _forwardingExpiry;
     private ZLinkActorForwardingMapping? _forwarding;
-    private TaskCompletionSource? _handoffBarrier;
-    private int _handoffBarrierArrivals;
-    private int _handoffBarrierExpected = int.MaxValue;
+    private string? _handoffId;
+    private bool _handoffCompletionInProgress;
+    private bool _handoffCompletionApplied;
     private bool _handoffCaptureActive;
     private long _handoffArrivalIndex;
 
@@ -88,63 +89,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         }
     }
 
-    public void PrepareHandoffBarrier(TimeSpan timeout)
-    {
-        TaskCompletionSource barrier;
-        lock (_handoffGate)
-        {
-            _handoffBarrierArrivals = 0;
-            _handoffBarrierExpected = int.MaxValue;
-            barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            _handoffBarrier = barrier;
-        }
-
-        _ = ExpireHandoffBarrierAsync(timeout, barrier);
-    }
-
-    public bool NotifyHandoffFrameArrived()
-    {
-        lock (_handoffGate)
-        {
-            if (_handoffBarrier is null) return false;
-
-            _handoffBarrierArrivals++;
-            if (_handoffBarrierArrivals >= _handoffBarrierExpected)
-                _handoffBarrier?.TrySetResult();
-            return true;
-        }
-    }
-
-    public async ValueTask WaitForHandoffBarrierAsync(
-        int expectedFrameCount,
-        CancellationToken cancellationToken)
-    {
-        Task barrier;
-        lock (_handoffGate)
-        {
-            var completion = _handoffBarrier
-                             ?? throw new InvalidOperationException($"Actor '{ActorId}' handoff barrier was not prepared.");
-            _handoffBarrierExpected = expectedFrameCount;
-            if (_handoffBarrierArrivals >= expectedFrameCount) completion.TrySetResult();
-            barrier = completion.Task;
-        }
-
-        await barrier.WaitAsync(cancellationToken).ConfigureAwait(false);
-        lock (_handoffGate) _handoffBarrier = null;
-    }
-
-    private async Task ExpireHandoffBarrierAsync(TimeSpan timeout, TaskCompletionSource barrier)
-    {
-        await Task.Delay(timeout).ConfigureAwait(false);
-        lock (_handoffGate)
-        {
-            if (!ReferenceEquals(_handoffBarrier, barrier)) return;
-
-            _handoffBarrier = null;
-            barrier.TrySetCanceled();
-        }
-    }
-
     public bool TryCaptureHandoffFrame(ZLinkSpotActorFrame frame)
     {
         lock (_handoffGate)
@@ -153,15 +97,23 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
             _handoffFrames.Add(ZLinkActorHandoffFrames.Capture(frame, _handoffArrivalIndex++));
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"handoff_backlog actor={ActorId} arrival={_handoffArrivalIndex - 1}");
+                $"handoff_backlog actor={ActorId} arrival={_handoffArrivalIndex - 1} kind={frame.Header.Kind} request_id={frame.RequestId} flags={frame.Flags}");
             return true;
         }
     }
 
-    public void ImportHandoffFrames(IReadOnlyList<ZLinkActorHandoffFrame> frames)
+    public void ImportHandoffFrames(
+        string handoffId,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames)
     {
+        if (string.IsNullOrWhiteSpace(handoffId))
+            throw new InvalidOperationException("Actor handoff id must not be empty.");
+
         lock (_handoffGate)
         {
+            _handoffId = handoffId;
+            _handoffCompletionInProgress = false;
+            _handoffCompletionApplied = false;
             _handoffCaptureActive = true;
             _handoffFrames.Clear();
             _handoffArrivalIndex = 0;
@@ -169,9 +121,53 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
             {
                 _handoffFrames.Add(frame with { ArrivalIndex = _handoffArrivalIndex++ });
                 ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"backlog_enqueued actor={ActorId} arrival={_handoffArrivalIndex - 1}");
+                    $"backlog_enqueued actor={ActorId} arrival={_handoffArrivalIndex - 1} request_id={frame.RequestId} flags={frame.Flags}");
             }
         }
+    }
+
+    public bool TryBeginHandoffCompletion(string handoffId)
+    {
+        lock (_handoffGate)
+        {
+            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Actor '{ActorId}' received handoff completion for an inactive transfer.");
+            if (_handoffCompletionApplied) return false;
+            if (_handoffCompletionInProgress)
+                throw new InvalidOperationException(
+                    $"Actor '{ActorId}' handoff completion is already in progress.");
+
+            _handoffCompletionInProgress = true;
+            return true;
+        }
+    }
+
+    public void CompleteHandoffContinuation(string handoffId)
+    {
+        lock (_handoffGate)
+        {
+            EnsureActiveHandoffCompletion(handoffId);
+            _handoffCompletionInProgress = false;
+            _handoffCompletionApplied = true;
+        }
+    }
+
+    public void CancelHandoffContinuation(string handoffId)
+    {
+        lock (_handoffGate)
+        {
+            if (string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
+                _handoffCompletionInProgress = false;
+        }
+    }
+
+    private void EnsureActiveHandoffCompletion(string handoffId)
+    {
+        if (!_handoffCompletionInProgress
+            || !string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Actor '{ActorId}' does not have an active handoff completion.");
     }
 
     public IReadOnlyList<ZLinkActorHandoffFrame> DrainHandoffFrames()
@@ -220,6 +216,8 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
                 sourceActor,
                 targetActor,
                 DateTimeOffset.UtcNow + window);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"mapping_installed actor={ActorId} source={sourceActor.NodeRid} target={targetActor.NodeRid} entries=1");
         }
 
         _ = EvictForwardingMappingAsync(window, expiry);
@@ -249,6 +247,27 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         }
     }
 
+    public void ForwardFrame(Action forward)
+    {
+        ArgumentNullException.ThrowIfNull(forward);
+        lock (_forwardGate) forward();
+    }
+
+    internal bool TryGetForwardingMapping(out ZLinkActorForwardingMapping mapping)
+    {
+        lock (_handoffGate)
+        {
+            if (_forwarding is { } current)
+            {
+                mapping = current;
+                return true;
+            }
+
+            mapping = default!;
+            return false;
+        }
+    }
+
     private async Task EvictForwardingMappingAsync(TimeSpan window, CancellationTokenSource expiry)
     {
         try
@@ -260,7 +279,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
                 _forwarding = null;
                 _forwardingExpiry = null;
-                ZLinkFrameworkDebugLog.SpotDiscovery($"mapping_evicted actor={ActorId}");
+                ZLinkFrameworkDebugLog.SpotDiscovery($"mapping_evicted actor={ActorId} entries=0");
             }
         }
         catch (OperationCanceledException) when (expiry.IsCancellationRequested)
@@ -379,8 +398,10 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         {
             _handoffCaptureActive = false;
             _handoffFrames.Clear();
+            _handoffId = null;
+            _handoffCompletionInProgress = false;
+            _handoffCompletionApplied = false;
             _forwarding = null;
-            _handoffBarrier = null;
             _forwardingExpiry?.Cancel();
             _forwardingExpiry = null;
         }

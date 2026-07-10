@@ -51,6 +51,7 @@ public sealed class ActorTransferTests
             header,
             "actor-1",
             "player",
+            "handoff-1",
             RoutingId.From("source-node"),
             RoutingId.From("session-1"),
             ZLinkMessage.From("transfer-state"),

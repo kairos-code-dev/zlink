@@ -17,15 +17,11 @@ struct no_bind_pending_key_t
 
     bool operator< (const no_bind_pending_key_t &other_) const
     {
-        if (request_id != other_.request_id)
-            return request_id < other_.request_id;
-        if (generation != other_.generation)
-            return generation < other_.generation;
-        if (target_node_rid != other_.target_node_rid)
-            return target_node_rid < other_.target_node_rid;
-        if (actor_id != other_.actor_id)
-            return actor_id < other_.actor_id;
-        return caller_endpoint_rid < other_.caller_endpoint_rid;
+        // request_id is allocated from one process-wide sequence, so it is the
+        // stable correlation key when an actor moves before producing a reply.
+        // The target node and actor generation are routing snapshots and may
+        // legitimately differ by the time the reply arrives.
+        return request_id < other_.request_id;
     }
 };
 

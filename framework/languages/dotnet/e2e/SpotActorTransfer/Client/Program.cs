@@ -5,6 +5,7 @@ using Zlink.HttpClient;
 var options = ClientOptions.Parse(args);
 using var nodeA = ZLinkHttpClient.Create(options.NodeAUrl).Timeout(TimeSpan.FromSeconds(30)).Build();
 using var nodeB = ZLinkHttpClient.Create(options.NodeBUrl).Timeout(TimeSpan.FromSeconds(30)).Build();
+using var nodeC = ZLinkHttpClient.Create(options.NodeCUrl).Timeout(TimeSpan.FromSeconds(30)).Build();
 
 var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreCase)
 {
@@ -21,7 +22,12 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["ST-C2"] = RunSourceDownAfterTargetCommitAsync,
     ["ST-C1"] = RunSourceDownBeforeCommitAsync,
     ["ST-E1"] = RunBoundSessionPushAfterRemoteTransferAsync,
-    ["ST-E2"] = RunBoundSessionRebindIsolationAsync
+    ["ST-E2"] = RunBoundSessionRebindIsolationAsync,
+    ["ST-F1"] = RunInFlightHandoffOrderAsync,
+    ["ST-F2"] = RunDirectOvertakePreventionAsync,
+    ["ST-F3"] = RunBoundSessionCrossMoveOrderAsync,
+    ["ST-F4"] = RunStragglerForwardThenFailFastAsync,
+    ["ST-F5"] = RunForwardingMappingEvictionAsync
 };
 
 foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Keys))
@@ -379,6 +385,137 @@ async Task RunBoundSessionRebindIsolationAsync()
     Require(!oldPush.IsCompleted, "ST-E2 old bound session received push after rebind.");
 }
 
+async Task RunInFlightHandoffOrderAsync()
+{
+    var actorId = $"actor-inflight-order-{Guid.NewGuid():N}";
+    var spotRid = $"spot-inflight-order-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid, "delay-joined");
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 101);
+    var oldRef = await GetActorRefAsync(nodeA, actorId);
+
+    var joinTask = JoinAsync(nodeA, actorId, new JoinTargetReq("ST-F1", spotRid));
+    await WaitEvidenceAsync(nodeB, [$"ST-F1|{actorId}|joined_wait|{spotRid}"]);
+    foreach (var marker in new[] { "P1", "P2", "P3" })
+        await SendRefAsync(nodeA, actorId, oldRef, new HandoffPacket("ST-F1", marker));
+    await Task.Delay(300);
+    var sourceEvidence = await GetEvidenceAsync(nodeA);
+    RequireNoContains(sourceEvidence, $"ST-F1|{actorId}|handoff_packet|", "ST-F1 packet ran on the source node.");
+
+    await ReleaseJoinedGateAsync(nodeB, spotRid);
+    Require((await joinTask).Accepted, "ST-F1 transfer was rejected.");
+    await AssertEvidenceOrderAsync(nodeB, actorId, "handoff_packet", ["P1", "P2", "P3"]);
+}
+
+async Task RunDirectOvertakePreventionAsync()
+{
+    var actorId = $"actor-inflight-overtake-{Guid.NewGuid():N}";
+    var spotRid = $"spot-inflight-overtake-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid, "delay-joined");
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 102);
+    var oldRef = await GetActorRefAsync(nodeA, actorId);
+
+    var joinTask = JoinAsync(nodeA, actorId, new JoinTargetReq("ST-F2", spotRid));
+    await WaitEvidenceAsync(nodeB, [$"ST-F2|{actorId}|joined_wait|{spotRid}"]);
+    foreach (var marker in new[] { "B1", "B2" })
+        await SendRefAsync(nodeA, actorId, oldRef, new HandoffPacket("ST-F2", marker));
+    await Task.Delay(300);
+    await ReleaseJoinedGateAsync(nodeB, spotRid);
+    Require((await joinTask).Accepted, "ST-F2 transfer was rejected.");
+    var targetRef = await GetActorRefAsync(nodeB, actorId);
+    await SendRefAsync(nodeB, actorId, targetRef, new HandoffPacket("ST-F2", "D1"));
+    await AssertEvidenceOrderAsync(nodeB, actorId, "handoff_packet", ["B1", "B2", "D1"]);
+}
+
+async Task RunBoundSessionCrossMoveOrderAsync()
+{
+    var actorId = $"actor-bound-order-{Guid.NewGuid():N}";
+    var spotRid = $"spot-bound-order-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid, "delay-joined");
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 103);
+    var oldRef = await GetActorRefAsync(nodeA, actorId);
+    await using var bound = await ConnectAndBindAsync(options.NodeAStreamEndpoint, "ST-F3", oldRef);
+
+    var joinTask = JoinAsync(nodeA, actorId, new JoinTargetReq("ST-F3", spotRid));
+    await WaitEvidenceAsync(nodeB, [$"ST-F3|{actorId}|joined_wait|{spotRid}"]);
+    bound.Send(new HandoffPacket("ST-F3", "S1")).PacketName(nameof(HandoffPacket)).Submit();
+    bound.Send(new HandoffPacket("ST-F3", "S2")).PacketName(nameof(HandoffPacket)).Submit();
+    await Task.Delay(300);
+    await ReleaseJoinedGateAsync(nodeB, spotRid);
+    Require((await joinTask).Accepted, "ST-F3 transfer was rejected.");
+    bound.Send(new HandoffPacket("ST-F3", "S3")).PacketName(nameof(HandoffPacket)).Submit();
+    bound.Send(new HandoffPacket("ST-F3", "S4")).PacketName(nameof(HandoffPacket)).Submit();
+    await AssertEvidenceOrderAsync(nodeB, actorId, "handoff_packet", ["S1", "S2", "S3", "S4"]);
+}
+
+async Task RunStragglerForwardThenFailFastAsync()
+{
+    var (actorId, oldRef) = await TransferForStragglerAsync("ST-F4", 104);
+    await SendRefAsync(nodeA, actorId, oldRef, new HandoffPacket("ST-F4", "G1"));
+    await WaitEvidenceAsync(nodeB, [$"ST-F4|{actorId}|handoff_packet|G1"]);
+
+    await Task.Delay(TimeSpan.FromMilliseconds(3300));
+    var stale = await ProbeRefAsync(nodeA, actorId, oldRef, new ProbeReq("ST-F4", "G2"));
+    Require(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
+        $"ST-F4 expected ActorLocationStale, got '{stale.ErrorKind}'.");
+}
+
+async Task RunForwardingMappingEvictionAsync()
+{
+    var actorId = $"actor-map-chain-{Guid.NewGuid():N}";
+    var spotB = $"spot-map-chain-b-{Guid.NewGuid():N}";
+    var spotC = $"spot-map-chain-c-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotB);
+    await CreateSpotAsync(nodeC, spotC);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 105);
+    var oldRefA = await GetActorRefAsync(nodeA, actorId);
+    Require((await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-F5", spotB))).Accepted,
+        "ST-F5 first transfer was rejected.");
+    var oldRefB = await GetActorRefAsync(nodeB, actorId);
+    Require((await JoinAsync(nodeB, actorId, new JoinTargetReq("ST-F5", spotC))).Accepted,
+        "ST-F5 chained transfer was rejected.");
+
+    await SendRefAsync(nodeA, actorId, oldRefA, new HandoffPacket("ST-F5", "chain-to-final"));
+    await WaitEvidenceAsync(nodeC, [$"ST-F5|{actorId}|handoff_packet|chain-to-final"]);
+
+    await Task.Delay(TimeSpan.FromMilliseconds(3300));
+    var stale = await ProbeRefAsync(nodeA, actorId, oldRefA, new ProbeReq("ST-F5", "after-eviction"));
+    Require(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
+        $"ST-F5 expected evicted mapping to fail stale, got '{stale.ErrorKind}'.");
+    var staleB = await ProbeRefAsync(nodeB, actorId, oldRefB, new ProbeReq("ST-F5", "after-eviction-b"));
+    Require(!staleB.Succeeded && staleB.ErrorKind == "ActorLocationStale",
+        $"ST-F5 expected node-b mapping eviction, got '{staleB.ErrorKind}'.");
+    var evidence = await GetEvidenceAsync(nodeC);
+    RequireNoContains(evidence, $"ST-F5|{actorId}|packet_handler|after-eviction",
+        "ST-F5 evicted packet reached the target handler.");
+}
+
+async Task<(string ActorId, ActorRefSnapshotRes OldRef)> TransferForStragglerAsync(string scenario, int stateVersion)
+{
+    var actorId = $"actor-straggler-{scenario}-{Guid.NewGuid():N}";
+    var spotRid = $"spot-straggler-{scenario}-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, stateVersion);
+    var oldRef = await GetActorRefAsync(nodeA, actorId);
+    Require((await JoinAsync(nodeA, actorId, new JoinTargetReq(scenario, spotRid))).Accepted,
+        $"{scenario} transfer was rejected.");
+    return (actorId, oldRef);
+}
+
+async Task AssertEvidenceOrderAsync(
+    ZLinkHttpClient client,
+    string actorId,
+    string kind,
+    string[] values)
+{
+    await WaitEvidenceAsync(client, values.Select(value => $"{actorId}|{kind}|{value}").ToArray());
+    var evidence = (await GetEvidenceAsync(client))
+        .Where(item => item.ActorId == actorId && item.Kind == kind)
+        .Select(item => item.Value)
+        .ToArray();
+    Require(evidence.SequenceEqual(values),
+        $"Actor '{actorId}' {kind} order mismatch: {string.Join(",", evidence)}.");
+}
+
 async Task RunTransferOutFailureAsync()
 {
     var actorId = $"actor-fail-transfer-out-{Guid.NewGuid():N}";
@@ -582,6 +719,29 @@ async Task<ProbeRes> ProbeAsync(ZLinkHttpClient client, string actorId, ProbeReq
            ?? throw new InvalidOperationException("Probe response was null.");
 }
 
+async Task<ActorRefProbeRes> ProbeRefAsync(
+    ZLinkHttpClient client,
+    string actorId,
+    ActorRefSnapshotRes actor,
+    ProbeReq request)
+{
+    return (await client.Post($"/actors/{actorId}/probe-ref")
+               .Body(new ActorRefProbeReq(request.Scenario, request.Marker, actor.NodeRid, actor.Generation))
+               .SubmitAsync<ActorRefProbeRes>()).Body
+           ?? throw new InvalidOperationException("Actor ref probe response was null.");
+}
+
+async Task SendRefAsync(
+    ZLinkHttpClient client,
+    string actorId,
+    ActorRefSnapshotRes actor,
+    HandoffPacket packet)
+{
+    await client.Post($"/actors/{actorId}/send-ref")
+        .Body(new ActorRefProbeReq(packet.Scenario, packet.Marker, actor.NodeRid, actor.Generation))
+        .SubmitRawAsync();
+}
+
 async Task<BoundPushRes> BoundPushAsync(ZLinkHttpClient client, string actorId, BoundPushReq request)
 {
     return (await client.Post($"/actors/{actorId}/bound-push").Body(request).SubmitAsync<BoundPushRes>()).Body
@@ -667,6 +827,7 @@ static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<st
 internal sealed record ClientOptions(
     string NodeAUrl,
     string NodeBUrl,
+    string NodeCUrl,
     string NodeAStreamEndpoint,
     string NodeBStreamEndpoint,
     string Scenario)
@@ -684,6 +845,7 @@ internal sealed record ClientOptions(
         return new ClientOptions(
             values["node-a-url"],
             values["node-b-url"],
+            values["node-c-url"],
             values["node-a-stream-endpoint"],
             values["node-b-stream-endpoint"],
             values.TryGetValue("scenario", out var scenario) ? scenario : "all");

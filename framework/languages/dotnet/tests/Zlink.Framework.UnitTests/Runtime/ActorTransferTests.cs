@@ -55,6 +55,7 @@ public sealed class ActorTransferTests
             RoutingId.From("session-1"),
             ZLinkMessage.From("transfer-state"),
             ZLinkMessage.From("join-request"),
+            [],
             codecs);
 
         var decoded = ZLinkRemoteActorJoinPackets.DecodeJoinRequest(parts);

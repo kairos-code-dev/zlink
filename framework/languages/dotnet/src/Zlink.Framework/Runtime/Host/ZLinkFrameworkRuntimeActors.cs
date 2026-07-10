@@ -83,44 +83,65 @@ internal sealed partial class ZLinkFrameworkRuntime
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
         ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer);
+        var actorState = GetOrCreateActorState(request.ActorId);
+        actorState.ImportHandoffFrames(request.HandoffFrames);
 
-        // Hosting handoff: the source node still owns the location row, so
-        // the local claim may fence it out with Takeover. This path does not
-        // call the Entry Spot create callback; transfer materialization is
-        // not a new application-level actor creation.
-        var creation = await _actorSessionManager.TransferAndBindActorAsync(
-                request.ActorId,
-                request.ActorType,
-                transfer,
-                ZLinkRemoteActorJoinPackets.DecodeTransferState(request, Registration.Codecs),
-                ZLinkActorClaimMode.TakeoverExistingOwner,
-                cancellationToken)
-            .ConfigureAwait(false);
-        var actorId = request.ActorId;
-        var actorState = GetOrCreateActorState(actorId);
-        var actorRef = actorState.NativeActorRef
-                       ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                           $"Actor '{actorId}' does not have a native Actor ref.");
-        var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
-        await BindRemoteBoundSessionRouteAsync(
-                actorId,
+        try
+        {
+            // Hosting handoff: the source node still owns the location row, so
+            // the local claim may fence it out with Takeover. This path does not
+            // call the Entry Spot create callback; transfer materialization is
+            // not a new application-level actor creation.
+            var creation = await _actorSessionManager.TransferAndBindActorAsync(
+                    request.ActorId,
+                    request.ActorType,
+                    transfer,
+                    ZLinkRemoteActorJoinPackets.DecodeTransferState(request, Registration.Codecs),
+                    ZLinkActorClaimMode.TakeoverExistingOwner,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var actorId = request.ActorId;
+            var actorRef = actorState.NativeActorRef
+                           ?? throw new ZLinkFrameworkException(
+                               ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                               $"Actor '{actorId}' does not have a native Actor ref.");
+            var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
+            await BindRemoteBoundSessionRouteAsync(
+                    actorId,
+                    actorRef,
+                    boundRoute.NodeRid,
+                    boundRoute.SessionRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await activation.CommitTransferredActorJoinAndReplayAsync(
+                    creation.Actor,
+                    actorState,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            actorState.PrepareHandoffBarrier(Registration.DefaultRequestTimeout);
+
+            return ZLinkRemoteActorJoinPackets.CreateJoinReply(
+                true,
                 actorRef,
-                boundRoute.NodeRid,
-                boundRoute.SessionRid,
-                cancellationToken)
-            .ConfigureAwait(false);
+                ZLinkMessage.Empty,
+                Registration.Codecs);
+        }
+        catch
+        {
+            actorState.CancelHandoffCapture();
+            throw;
+        }
+    }
 
-        await activation.CommitTransferredActorJoinAsync(
-                creation.Actor,
-                cancellationToken)
+    internal async ValueTask CompleteRoutedActorHandoffBarrierAsync(
+        ZLinkRemoteActorHandoffBarrierRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actorState = GetOrCreateActorState(request.ActorId);
+        await actorState.WaitForHandoffBarrierAsync(request.ExpectedFrameCount, cancellationToken)
             .ConfigureAwait(false);
-
-        return ZLinkRemoteActorJoinPackets.CreateJoinReply(
-            true,
-            actorRef,
-            ZLinkMessage.Empty,
-            Registration.Codecs);
     }
 
     internal async ValueTask<ZLinkRemoteActorAdmissionReply> AdmitRoutedActorJoinAsync(

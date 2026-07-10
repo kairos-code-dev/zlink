@@ -82,7 +82,7 @@ start_node() {
   local url="$2"
   local router="$3"
   local stream="$4"
-  setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
+  ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -100,6 +100,7 @@ run_client() {
   dotnet run --no-build --project "$CLIENT_PROJECT" -- \
     --node-a-url "$NODE_A_URL" \
     --node-b-url "$NODE_B_URL" \
+    --node-c-url "$NODE_C_URL" \
     --node-a-stream-endpoint "$NODE_A_STREAM" \
     --node-b-stream-endpoint "$NODE_B_STREAM" \
     --scenario "$scenario" \
@@ -117,16 +118,22 @@ REDIS_KEY_PREFIX="zlink:e2e:spot-actor-transfer:$(date +%s)-$$"
 
 NODE_A_HTTP_PORT="$(pick_port)"
 NODE_B_HTTP_PORT="$(pick_port)"
+NODE_C_HTTP_PORT="$(pick_port)"
 NODE_A_ROUTER_PORT="$(pick_port)"
 NODE_B_ROUTER_PORT="$(pick_port)"
+NODE_C_ROUTER_PORT="$(pick_port)"
 NODE_A_STREAM_PORT="$(pick_port)"
 NODE_B_STREAM_PORT="$(pick_port)"
+NODE_C_STREAM_PORT="$(pick_port)"
 NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
 NODE_B_URL="http://127.0.0.1:$NODE_B_HTTP_PORT"
+NODE_C_URL="http://127.0.0.1:$NODE_C_HTTP_PORT"
 NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
 NODE_B_ROUTER="tcp://127.0.0.1:$NODE_B_ROUTER_PORT"
+NODE_C_ROUTER="tcp://127.0.0.1:$NODE_C_ROUTER_PORT"
 NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
 NODE_B_STREAM="tcp://127.0.0.1:$NODE_B_STREAM_PORT"
+NODE_C_STREAM="tcp://127.0.0.1:$NODE_C_STREAM_PORT"
 
 echo "log_dir=$LOG_DIR"
 dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
@@ -134,16 +141,18 @@ dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
 start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
 start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM"
+start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" "$NODE_C_STREAM"
 
 wait_health "$NODE_A_URL" actor-a
 wait_health "$NODE_B_URL" actor-b
+wait_health "$NODE_C_URL" actor-c
 sleep 5
 
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"
 
 if [[ "$SCENARIO" == "all" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2"
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5"
   run_client "ST-C2"
   sleep 1
   NODE_A_HTTP_PORT="$(pick_port)"
@@ -169,6 +178,26 @@ if [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-C1"
 else
   run_client "$SCENARIO"
+fi
+
+require_runtime_marker() {
+  local marker="$1"
+  if ! grep -h -q "$marker" "$LOG_DIR"/actor-*.stderr.log; then
+    echo "Missing runtime marker '$marker'. Logs: $LOG_DIR" >&2
+    return 1
+  fi
+}
+
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F1"* ]]; then
+  require_runtime_marker handoff_backlog
+  require_runtime_marker backlog_enqueued
+fi
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F4"* ]]; then
+  require_runtime_marker straggler_forward
+  require_runtime_marker stale_fail_fast
+fi
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F5"* ]]; then
+  require_runtime_marker mapping_evicted
 fi
 
 cat "$LOG_DIR/client.stdout.log"

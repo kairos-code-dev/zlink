@@ -53,6 +53,10 @@ public sealed record ProbeReq(
     string Scenario,
     string Marker);
 
+public sealed record HandoffPacket(
+    string Scenario,
+    string Marker);
+
 public sealed record ProbeRes(
     string Scenario,
     string ActorId,
@@ -60,6 +64,17 @@ public sealed record ProbeRes(
     string NodeRid,
     int StateVersion,
     string Marker);
+
+public sealed record ActorRefProbeReq(
+    string Scenario,
+    string Marker,
+    string NodeRid,
+    long Generation);
+
+public sealed record ActorRefProbeRes(
+    bool Succeeded,
+    ProbeRes? Reply,
+    string? ErrorKind);
 
 public sealed record BindActorSessionReq(
     string Scenario,

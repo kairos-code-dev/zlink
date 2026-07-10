@@ -6,6 +6,8 @@ internal sealed class ZLinkFrameworkRegistration
 {
     public TimeSpan DefaultRequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
+    public TimeSpan ActorTransferForwardWindow { get; set; } = TimeSpan.FromSeconds(5);
+
     public TimeSpan? DefaultSocketSendTimeout { get; set; } = TimeSpan.FromMilliseconds(1000);
 
     public ZLinkCodecRegistryBuilder Codecs { get; } = new();

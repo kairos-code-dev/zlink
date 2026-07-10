@@ -164,6 +164,14 @@ public interface IZLinkFrameworkOptions
 {
     TimeSpan DefaultRequestTimeout { get; set; }
 
+    /// <summary>
+    ///     Gets or sets how long a source node forwards packets sent through
+    ///     the actor reference that was current before a remote transfer. The
+    ///     default is five seconds. Zero disables forwarding after the commit;
+    ///     negative values are rejected.
+    /// </summary>
+    TimeSpan ActorTransferForwardWindow { get; set; }
+
     TimeSpan? DefaultSocketSendTimeout { get; set; }
 
     IZLinkCodecRegistryBuilder Codecs { get; }

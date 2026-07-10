@@ -185,6 +185,8 @@ public sealed class BuilderContracts
         public List<string> SpotMeshes { get; } = [];
         public TimeSpan DefaultRequestTimeout { get; set; }
 
+        public TimeSpan ActorTransferForwardWindow { get; set; } = TimeSpan.FromSeconds(5);
+
         public TimeSpan? DefaultSocketSendTimeout { get; set; }
 
         IZLinkCodecRegistryBuilder IZLinkFrameworkOptions.Codecs => Codecs;

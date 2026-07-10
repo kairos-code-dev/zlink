@@ -183,6 +183,10 @@ internal sealed class ZLinkActorClient(
             var error = JsonSerializer.Deserialize<ZLinkStreamWireError>(
                 payload,
                 ZLinkJsonSerializerOptions.Default);
+            if (Enum.TryParse<ZLinkFrameworkErrorKind>(error?.Code, out var kind))
+                throw new ZLinkFrameworkException(
+                    kind,
+                    error?.Message ?? "Actor request failed.");
             throw new InvalidOperationException(error?.Message ?? "Actor request failed.");
         }
 

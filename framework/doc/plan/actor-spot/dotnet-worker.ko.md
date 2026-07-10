@@ -169,6 +169,7 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 
 ### 계약 항목(§11)
 - [x] 1~12 (README §4 .NET 열). runtime audit와 config-10 evidence로 확정.
+- [x] 13~17 (in-flight handoff, publish 전 queue 적재, bound-session FIFO, bounded forwarding, mapping 축출).
 
 ### interface/문서
 - [x] 실제 source public interface를 actor id admission/adapter 모델로 변경
@@ -190,6 +191,7 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 - [x] ST-C1 · [x] ST-C2 · [x] ST-C3
 - [x] ST-D1 · [x] ST-D2
 - [x] ST-E1 · [x] ST-E2
+- [x] ST-F1 · [x] ST-F2 · [x] ST-F3 · [x] ST-F4 · [x] ST-F5
 - [x] e2e 전체 runner 통과
 
 ### P5
@@ -212,10 +214,30 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 ### 최종 검증 (2026-07-10)
 
 - `dotnet build Zlink.Framework.sln --no-restore`: 경고 0개, 오류 0개.
-- unit test: 292개 통과. contract test: 36개 통과. sample regression test: 28개 통과.
+- unit test: 300개 통과. contract test: 36개 통과. sample regression test: 28개 통과.
 - `e2e/SpotActorTransfer/run_e2e.sh`: ST-A1~ST-E2 전체 통과.
 - `samples/run_samples.sh`: TicTacToe, Bingo, SupportChat, ShoppingMall, DeliveryDispatch, GameQuest 통과.
 - `e2e/run_e2e_all.sh`: 10개 config 전체 통과, `total PASS (1090s)`.
+
+### In-flight handoff 추가 검증 (2026-07-10)
+
+- `ActorHandoffTests`: 신규 계약 테스트 5개 통과.
+- `e2e/SpotActorTransfer/run_e2e.sh ST-F1 ST-F2 ST-F3 ST-F4 ST-F5`: Track F 전체 통과.
+- `ActorTransferForwardWindow` 기본값 5초와 배포별 override 계약을 public options에 반영했다.
+- ST-F5는 actor-a→actor-b→actor-c 연쇄 이동으로 hop별 forwarding을 확인하고, window 뒤 두 source
+  mapping이 각각 `ActorLocationStale`로 fail-fast하는지 확인한다.
+
+### In-flight handoff POSD 재점검
+
+- 대안 1은 source Spot queue에 남은 작업을 commit 뒤 개별 forward하는 방식이다. 구현은 작지만 target의
+  direct packet이 backlog를 추월하고, bound session rebind 경계를 닫지 못해 제외했다.
+- 대안 2는 actor runtime state가 moving ingress frame과 forwarding mapping을 함께 소유하고, remote join
+  protocol이 backlog와 target barrier를 전달하는 방식이다. 호출자에게 새 packet buffer나 codec 등록을
+  요구하지 않고 순서 결정과 retained state를 framework 내부에 숨길 수 있어 이 방식을 선택했다.
+- 재점검에서 사용하지 않는 별도 commit 경로와 임시 barrier marker를 제거했다. ingress capture,
+  commit payload, target replay, cutoff timer의 책임은 기존 actor state·remote join·Spot ingress 경계에
+  각각 남겼고, 새 public 표면은 공통 계약에 필요한 window 설정 하나뿐이다. 추가로 의미있는 POSD/DDD
+  항목은 남지 않는다.
 
 ## 함정 (.NET)
 

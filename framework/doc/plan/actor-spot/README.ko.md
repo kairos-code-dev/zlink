@@ -104,20 +104,29 @@ worker 문서:
 | ST-D2 | stale source release generation fencing | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
 | ST-E1 | remote transfer 뒤 bound session push | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
 | ST-E2 | 실패한 transfer는 bound session route 비오염 | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-F1 | in-flight handoff order | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-F2 | direct overtakes prevented | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-F3 | bound session cross-move order | P0 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-F4 | straggler forward then fail-fast | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| ST-F5 | forwarding mapping eviction | P1 | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
 
+> Track F(ST-F1~F5)는 `spot-actor.ko.md §10`(source queue handoff) 신설 계약이다. Node와 .NET은 구현과
+> 배포형 검증을 완료했고, 나머지 언어는 아직 구현 전이다.
+> 구현 런북은 [in-flight-handoff/README.ko.md](in-flight-handoff/README.ko.md)를 따른다.
+>
 > Track D·E의 P0는 location store + stream connector가 있는 언어에서 public API만으로 구현한다.
 > 필요한 public 표면이 없으면 `🚫`로 두고 feature-map에 public contract parity gap으로 남긴다
 > (skip으로 "완료" 처리 금지).
 
-### 3.1 §12 회귀 테스트 → 시나리오 매핑 ("contract 테스트"의 정의)
+### 3.1 §13 회귀 테스트 → 시나리오 매핑 ("contract 테스트"의 정의)
 
-정본 `spot-actor.ko.md §12`는 별도의 MUST로 언어별 **최소 회귀 테스트 11종**을 요구한다. 이는
+정본 `spot-actor.ko.md §13`는 별도의 MUST로 언어별 **최소 회귀 테스트 16종**을 요구한다. 이는
 config-10 e2e(무거운 다중 프로세스)와 별개로 **각 언어가 in-process runner/fake backend로 갖춰야 하는
-경량 회귀 suite**다. 이 문서에서 말하는 **"contract 테스트"는 이 §12 회귀 suite**를 가리킨다(언어별
-in-process 테스트 프로젝트에 둔다). 아래 매핑처럼 내용상 config-10 시나리오가 §12를 포괄하므로, e2e와
+경량 회귀 suite**다. 이 문서에서 말하는 **"contract 테스트"는 이 §13 회귀 suite**를 가리킨다(언어별
+in-process 테스트 프로젝트에 둔다). 아래 매핑처럼 내용상 config-10 시나리오가 §13를 포괄하므로, e2e와
 contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 검증한다.
 
-| §12 테스트 | 대응 시나리오 |
+| §13 테스트 | 대응 시나리오 |
 | --- | --- |
 | local join accept order | ST-A1 |
 | local join reject no side effect | ST-A2 |
@@ -130,12 +139,21 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 | joined callback failure | ST-C3 |
 | packet during moving | ST-A3 |
 | bound session transfer | ST-E1 / ST-E2 |
+| in-flight handoff order | ST-F1 (P0) |
+| direct overtakes prevented | ST-F2 (P0) |
+| bound session cross-move order | ST-F3 (P0) |
+| straggler forward then fail-fast | ST-F4 (P1) |
+| forwarding mapping eviction | ST-F5 (P1) |
 
-각 worker의 P5 게이트는 **config-10 e2e(P0 전부) + 이 §12 contract 테스트**가 모두 그린인지 확인한다.
+각 worker의 P5 게이트는 **config-10 e2e(P0 전부) + 이 §13 contract 테스트**가 모두 그린인지 확인한다.
 
-## 4. 마스터 체크 표 — 계약 항목(§11) × 언어
+> 신규 5종(ST-F*)은 `spot-actor.ko.md §10`(source queue handoff) 추가로 생긴 계약이며, config-10
+> Track F(`config-10-spot-actor-transfer.ko.md §4 Track F`)에 시나리오가 정의되어 있다. 구현 런북은
+> [in-flight-handoff/README.ko.md](in-flight-handoff/README.ko.md)를 따른다(현재 전 언어 미구현).
 
-`spot-actor.ko.md §11`의 언어별 구현 요구 12항목. 하나라도 빠지면 그 언어는 스펙 미충족(parity gap).
+## 4. 마스터 체크 표 — 계약 항목(§12) × 언어
+
+`spot-actor.ko.md §12`의 언어별 구현 요구 17항목. 하나라도 빠지면 그 언어는 스펙 미충족(parity gap).
 
 | # | 계약 항목 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: |
@@ -151,6 +169,14 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 | 10 | `OnJoinedActor` 완료 전 packet dispatch 차단 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
 | 11 | location row가 pending/committed 구분 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
 | 12 | bound session transfer가 commit 전 성공 노출 안 함 | 🔶 | ⬜ | ⬜ | ✅ | ✅ |
+| 13 | moving 중 packet을 drop 없이 arrival order 보존·handoff (§10.2-1,2) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| 14 | handoff backlog를 location publish 전에 enqueue (추월 방지, §10.2-3) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| 15 | bound session packet이 이동 가로질러 per-session FIFO (§10.2-4) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| 16 | straggler bounded forwarding 후 상한 초과 시 fail-fast (§10.2-6) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+| 17 | forwarding mapping을 window(기본 5s) 후 축출·누수 없음, node당·actor당 entry ≤1(다음 hop 지시) (§10.4) | ⬜ | ⬜ | ⬜ | ✅ | ✅ |
+
+> 항목 13~17은 `spot-actor.ko.md §10`(source queue handoff) 신설로 생긴 계약이다. Node와 .NET은 moving
+> ingress capture, commit backlog, target replay gate, bounded forwarding mapping으로 구현했다.
 
 ## 5. 언어별 시작 gap 요약 (P0 audit 전 사전 정보)
 
@@ -193,9 +219,11 @@ god-file·책임 혼합·중복·vestigial을 남기지 않게 정리하는 것�
 
 전체 작업이 완료된 것으로 보려면:
 
-1. 4언어 모두 §4 계약 12항목이 `✅`이다. `🚫`는 중간 상태나 별도 승인된 불가능 항목 표시일 뿐,
+1. 4언어 모두 §4 계약 17항목이 `✅`이다. `🚫`는 중간 상태나 별도 승인된 불가능 항목 표시일 뿐,
    이 작업의 기본 완료 조건이 아니다.
-2. config-10 Track A·B·C의 P0 시나리오(ST-B4 포함)가 4언어에서 같은 의미로 `✅`(Kotlin 포함).
+2. config-10 Track A·B·C의 P0 시나리오(ST-B4 포함)와 Track F의 P0(ST-F1~F3)가 4언어에서 같은 의미로
+   `✅`(Kotlin 포함). Track F의 P1(ST-F4~F5)은 window/mapping을 public 관찰 수단으로 검증할 수 있는
+   언어에서 `✅`, 없으면 `🚫`+feature-map 근거.
 3. Track D·E의 P0가 location store + stream connector 보유 언어에서 `✅`이다. public 표면 부재 등으로
    즉시 구현할 수 없는 경우에는 `🚫`와 feature-map 근거를 남기되, 전체 완료 전에 별도 승인받는다.
 4. 언어 문서(dotnet guide, cpp handler-interfaces 등)가 정본 transfer-adapter 모델과 정합.

@@ -37,10 +37,34 @@ internal static class ZLinkEntrySpotActorDispatcher
                 continue;
             }
 
-            if (ZLinkActorSessionForwarder.ShouldForward(
+            ZLinkBackendActorRef targetActor;
+            bool shouldForward;
+            try
+            {
+                shouldForward = ZLinkActorSessionForwarder.ShouldForward(
                     actorState,
                     frame.Actor,
-                    out var targetActor))
+                    out targetActor);
+            }
+            catch (ZLinkFrameworkException exception)
+                when (exception.Kind == ZLinkFrameworkErrorKind.ActorLocationStale)
+            {
+                using (frame.Body)
+                    await ZLinkActorBoundSessionRelay.ReplyStaleActorAsync(
+                            runtime,
+                            frame.Actor,
+                            frame.SourceNodeRid,
+                            frame.SourceSessionRid,
+                            frame.RequestId,
+                            frame.Flags,
+                            frame.Header,
+                            exception,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                continue;
+            }
+
+            if (shouldForward)
             {
                 using (frame.Body)
                 {

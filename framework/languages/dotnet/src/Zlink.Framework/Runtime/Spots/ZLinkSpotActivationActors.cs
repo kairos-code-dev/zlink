@@ -129,17 +129,41 @@ internal sealed partial class ZLinkSpotActivation
         return state.Result;
     }
 
-    public ValueTask CommitTransferredActorJoinAsync(
+    public ValueTask CommitTransferredActorJoinAndReplayAsync(
         IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(actor);
         return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
-            ? CommitActorJoinCoreAsync(actor, cancellationToken)
+            ? CommitTransferredActorJoinAndReplayCoreAsync(actor, actorState, cancellationToken)
             : ExecuteSerializedAsync(
-                static (activation, state, ct) => activation.CommitActorJoinCoreAsync(state, ct),
-                actor,
+                static (activation, state, ct) => activation.CommitTransferredActorJoinAndReplayCoreAsync(
+                    state.Actor,
+                    state.ActorState,
+                    ct),
+                (Actor: actor, ActorState: actorState),
                 cancellationToken);
+    }
+
+    private async ValueTask CommitTransferredActorJoinAndReplayCoreAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        await CommitActorJoinCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+
+        var backlog = actorState.CompleteHandoffCapture();
+        if (backlog.Count == 0) return;
+
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actor.ActorId}' does not have a native Actor ref during handoff replay.");
+        await _dispatcher.DispatchActorPartsAsync(
+                ZLinkActorHandoffFrames.Restore(actorRef, backlog),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public ValueTask NotifyActorDisconnectedAsync(

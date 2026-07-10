@@ -67,12 +67,15 @@ internal sealed class ZLinkEntrySpotDispatchPump(
             || info.ActorParts is not { Count: > 0 } actorParts)
             return;
 
+        var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(runtime, actorParts);
+        if (dispatchable.Count == 0) return;
+
         taskRunner.RunDetached(
             "entry-spot-actor-dispatch",
             ct => new ValueTask(ZLinkEntrySpotActorDispatcher.DispatchAsync(
                 runtime,
                 activation,
-                actorParts,
+                dispatchable,
                 ct)));
     }
 

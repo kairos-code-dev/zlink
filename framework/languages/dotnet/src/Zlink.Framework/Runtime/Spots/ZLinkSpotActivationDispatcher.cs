@@ -129,10 +129,34 @@ internal sealed class ZLinkSpotActivationDispatcher
                 continue;
             }
 
-            if (ZLinkActorSessionForwarder.ShouldForward(
+            ZLinkBackendActorRef targetActor;
+            bool shouldForward;
+            try
+            {
+                shouldForward = ZLinkActorSessionForwarder.ShouldForward(
                     runtimeState,
                     frame.Actor,
-                    out var targetActor))
+                    out targetActor);
+            }
+            catch (ZLinkFrameworkException exception)
+                when (exception.Kind == ZLinkFrameworkErrorKind.ActorLocationStale)
+            {
+                using (frame.Body)
+                    await ZLinkActorBoundSessionRelay.ReplyStaleActorAsync(
+                            runtime,
+                            frame.Actor,
+                            frame.SourceNodeRid,
+                            frame.SourceSessionRid,
+                            frame.RequestId,
+                            frame.Flags,
+                            frame.Header,
+                            exception,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                continue;
+            }
+
+            if (shouldForward)
             {
                 using (frame.Body)
                 {
@@ -206,6 +230,10 @@ internal sealed class ZLinkSpotActivationDispatcher
             && !string.Equals(
                 header.MessageName,
                 ZLinkRemoteActorJoinPackets.CommitPacketName,
+                StringComparison.Ordinal)
+            && !string.Equals(
+                header.MessageName,
+                ZLinkRemoteActorJoinPackets.HandoffBarrierPacketName,
                 StringComparison.Ordinal))
             return false;
 
@@ -237,6 +265,21 @@ internal sealed class ZLinkSpotActivationDispatcher
                     admissionReply,
                     typeof(ZLinkRemoteActorAdmissionReply));
                 ZLinkSpotReplySubmitter.SubmitAndDispose(received, admissionReplyParts);
+                return true;
+            }
+
+            if (string.Equals(header.MessageName, ZLinkRemoteActorJoinPackets.HandoffBarrierPacketName, StringComparison.Ordinal))
+            {
+                var barrierRequest = ZLinkRemoteActorJoinPackets.DecodeHandoffBarrierRequest(received.Parts);
+                await runtime.CompleteRoutedActorHandoffBarrierAsync(barrierRequest, cancellationToken)
+                    .ConfigureAwait(false);
+                var barrierReplyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
+                    channelName,
+                    header.MessageName,
+                    header.CorrelationId,
+                    barrierRequest,
+                    typeof(ZLinkRemoteActorHandoffBarrierRequest));
+                ZLinkSpotReplySubmitter.SubmitAndDispose(received, barrierReplyParts);
                 return true;
             }
 

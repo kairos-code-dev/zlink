@@ -28,6 +28,7 @@ builder.Services.AddSingleton<JoinedGateStore>();
 builder.Services.AddSingleton<TransferGateStore>();
 builder.Services.AddZLinkFramework(framework =>
 {
+    framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(3);
     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(options.RedisEndpoint)
         .SetKeyPrefix(options.RedisKeyPrefix)));
@@ -185,6 +186,52 @@ app.MapPost("/actors/{actorId}/probe", async (
         .Timeout(TimeSpan.FromSeconds(10))
         .Async<ProbeRes>(cancellationToken);
     return Results.Ok(response);
+});
+app.MapPost("/actors/{actorId}/probe-ref", async (
+    string actorId,
+    ActorRefProbeReq request,
+    IZLinkActorClient actorClient,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var actor = new ActorRef(
+            RoutingId.From(request.NodeRid),
+            actorId,
+            checked((ulong)request.Generation));
+        var response = await actorClient.RequestToActor(
+                actor,
+                new ProbeReq(request.Scenario, request.Marker))
+            .PacketName(nameof(ProbeReq))
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<ProbeRes>(cancellationToken);
+        return Results.Ok(new ActorRefProbeRes(true, response, null));
+    }
+    catch (ZLinkFrameworkException ex)
+    {
+        return Results.Ok(new ActorRefProbeRes(false, null, ex.Kind.ToString()));
+    }
+    catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+    {
+        return Results.Ok(new ActorRefProbeRes(false, null, ex.GetType().Name));
+    }
+});
+app.MapPost("/actors/{actorId}/send-ref", async (
+    string actorId,
+    ActorRefProbeReq request,
+    IZLinkActorClient actorClient,
+    CancellationToken cancellationToken) =>
+{
+    var actor = new ActorRef(
+        RoutingId.From(request.NodeRid),
+        actorId,
+        checked((ulong)request.Generation));
+    await actorClient.SendToActor(
+            actor,
+            new HandoffPacket(request.Scenario, request.Marker))
+        .PacketName(nameof(HandoffPacket))
+        .Async(cancellationToken);
+    return Results.Ok();
 });
 app.MapPost("/actors/{actorId}/bound-push", async (
     string actorId,
@@ -577,6 +624,33 @@ namespace SpotActorTransfer.ActorNode
         }
     }
 
+    [ZLinkSpotActorRequestHandler(nameof(JoinTargetReq))]
+    internal sealed class UserSpotJoinTargetHandler(EvidenceStore evidence)
+        : IZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, JoinTargetReq, JoinTargetRes>
+    {
+        public async ValueTask<JoinTargetRes> HandleAsync(
+            TransferUserSpot spot,
+            TransferActor actor,
+            ZLinkSpotActorRequestContext context,
+            JoinTargetReq request,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = context;
+            var joined = await actor.Context.JoinSpot(RoutingId.From(request.TargetSpotRid), request)
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Async<JoinTargetRes>(cancellationToken);
+            evidence.Add(request.Scenario, actor.ActorId, "commit_request", request.TargetSpotRid);
+            return new JoinTargetRes(
+                request.Scenario,
+                actor.ActorId,
+                joined.Accepted,
+                evidence.NodeRid,
+                request.TargetSpotRid,
+                actor.StateVersion);
+        }
+    }
+
     [ZLinkSpotActorRequestHandler(nameof(ProbeReq))]
     internal sealed class ProbeHandler(EvidenceStore evidence)
         : IZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, ProbeReq, ProbeRes>
@@ -598,6 +672,25 @@ namespace SpotActorTransfer.ActorNode
                 spot.Context.NodeRid.ToString(),
                 actor.StateVersion,
                 request.Marker));
+        }
+    }
+
+    [ZLinkSpotActorSendHandler(nameof(HandoffPacket))]
+    internal sealed class HandoffPacketHandler(EvidenceStore evidence)
+        : IZLinkSpotActorSendHandler<TransferUserSpot, TransferActor, HandoffPacket>
+    {
+        public ValueTask HandleAsync(
+            TransferUserSpot spot,
+            TransferActor actor,
+            ZLinkSpotActorSendContext context,
+            HandoffPacket message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add(message.Scenario, actor.ActorId, "handoff_packet", message.Marker);
+            return ValueTask.CompletedTask;
         }
     }
 

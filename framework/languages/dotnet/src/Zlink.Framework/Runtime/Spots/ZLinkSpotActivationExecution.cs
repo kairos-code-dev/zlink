@@ -85,9 +85,15 @@ internal sealed partial class ZLinkSpotActivation
                     activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
                 () => QueueSerialized(static (activation, ct) =>
                     activation.DispatchActorLifecycleDrainAsync(ct)),
-                actorParts => QueueSerialized(
-                    static (activation, state, ct) => activation._dispatcher.DispatchActorPartsAsync(state, ct),
-                    actorParts));
+                actorParts =>
+                {
+                    var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(_runtime, actorParts);
+                    if (dispatchable.Count == 0) return;
+
+                    QueueSerialized(
+                        static (activation, state, ct) => activation._dispatcher.DispatchActorPartsAsync(state, ct),
+                        dispatchable);
+                });
 
             return 0;
         });

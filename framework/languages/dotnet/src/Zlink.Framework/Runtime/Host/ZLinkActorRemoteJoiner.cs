@@ -64,7 +64,44 @@ internal sealed class ZLinkActorRemoteJoiner(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor '{actor.ActorId}' does not have an actor type for remote SPOT join.");
 
-        ZLinkActorTransferRegistry.TryResolve(registration, actorState.ActorType, out var transfer);
+        var actorType = actorState.ActorType;
+        ZLinkActorTransferRegistry.TryResolve(registration, actorType, out var transfer);
+        actorState.BeginHandoffCapture();
+
+        try
+        {
+            return await SubmitRoutedJoinActorCoreAsync(
+                    actor,
+                    actorRef,
+                    actorState,
+                    targetNodeRid,
+                    targetSpotRid,
+                    routerChannelId,
+                    request,
+                    actorType,
+                    transfer,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            actorState.CancelHandoffCapture();
+            throw;
+        }
+    }
+
+    private async ValueTask<ZLinkActorJoinResult> SubmitRoutedJoinActorCoreAsync(
+        IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
+        ZLinkActorRuntimeState actorState,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        string routerChannelId,
+        ZLinkMessage request,
+        string actorType,
+        ZLinkActorTransferRegistration? transfer,
+        CancellationToken cancellationToken)
+    {
 
         var sourceSpotRid = ResolveSourceSpotRid(actorState);
 
@@ -76,7 +113,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         var admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
             admissionHeader,
             actor.ActorId,
-            actorState.ActorType,
+            actorType,
             sourceSpotRid,
             actorRef.NodeRid,
             request,
@@ -97,7 +134,10 @@ internal sealed class ZLinkActorRemoteJoiner(
             admissionReply,
             registration.Codecs);
         if (!admissionReply.Accepted)
+        {
+            actorState.CancelHandoffCapture();
             return new ZLinkActorJoinResult(false, null, admissionReplyMessage);
+        }
 
         var transferState = transfer is null
             ? ZLinkMessage.Empty
@@ -120,11 +160,12 @@ internal sealed class ZLinkActorRemoteJoiner(
         var parts = ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
             header,
             actor.ActorId,
-            actorState.ActorType,
+            actorType,
             boundSession.SessionNodeRid,
             boundSession.SessionRid,
             transferState,
             request,
+            actorState.DrainHandoffFrames(),
             registration.Codecs);
 
         var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
@@ -145,13 +186,83 @@ internal sealed class ZLinkActorRemoteJoiner(
             registration.Codecs);
 
         if (reply.Accepted)
+        {
+            var trailingFrames = actorState.CompleteHandoffCapture();
+            ForwardHandoffFrames(targetActorRef: resultActorRef, trailingFrames);
+            await AwaitTargetHandoffBarrierAsync(
+                    actor.ActorId,
+                    trailingFrames.Count,
+                    targetNodeRid,
+                    targetSpotRid,
+                    routerChannelId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            actorState.InstallForwardingMapping(
+                actorRef,
+                resultActorRef,
+                registration.ActorTransferForwardWindow);
             await ApplyRemoteActorMigrationAsync(actor, actorState, resultActorRef, cancellationToken)
                 .ConfigureAwait(false);
+        }
+        else
+        {
+            actorState.CancelHandoffCapture();
+        }
 
         return new ZLinkActorJoinResult(
             reply.Accepted,
             reply.Accepted ? resultActorRef.ToNative() : null,
             admissionReplyMessage);
+    }
+
+    private async ValueTask AwaitTargetHandoffBarrierAsync(
+        string actorId,
+        int expectedFrameCount,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        string routerChannelId,
+        CancellationToken cancellationToken)
+    {
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            routerChannelId,
+            ZLinkRemoteActorJoinPackets.HandoffBarrierPacketName,
+            registration.DefaultRequestTimeout);
+        var parts = ZLinkRemoteActorJoinPackets.EncodeHandoffBarrierRequest(
+            header,
+            actorId,
+            expectedFrameCount);
+        var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                routerChannelId,
+                targetNodeRid,
+                targetSpotRid,
+                parts,
+                registration.DefaultRequestTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        _ = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorHandoffBarrierRequest>(
+            replyParts,
+            "Remote actor handoff barrier reply was empty.",
+            $"Remote actor handoff barrier failed for '{actorId}'.",
+            null);
+    }
+
+    private void ForwardHandoffFrames(
+        ZLinkBackendActorRef targetActorRef,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames)
+    {
+        foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
+        {
+            using var body = Message.From(frame.Body);
+            var header = ZLinkStreamProtocolDefaults.DecodeHeader(frame.Header);
+            ZLinkActorSessionForwarder.Forward(
+                runtime,
+                targetActorRef,
+                RoutingId.From(frame.SourceNodeRid),
+                RoutingId.From(frame.SourceSessionRid),
+                header,
+                body);
+        }
     }
 
     private RoutingId ResolveSourceSpotRid(ZLinkActorRuntimeState actorState)

@@ -47,6 +47,7 @@
         <Compile Include="Runtime/AutoConnectLoopTests.cs"/>
         <Compile Include="Runtime/AutoConnectReconcilerTests.cs"/>
         <Compile Include="Runtime/ActorTransferTests.cs"/>
+        <Compile Include="Runtime/ActorHandoffTests.cs"/>
         <Compile Include="Runtime/TransportFailFastTests.cs"/>
         <Compile Include="Runtime/BackendAdapterFactoryTests.cs"/>
         <Compile Include="Runtime/BackendMonitorWrapperTests.cs"/>

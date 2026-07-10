@@ -21,6 +21,20 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         }
     }
 
+    public TimeSpan ActorTransferForwardWindow
+    {
+        get => _registration.ActorTransferForwardWindow;
+        set
+        {
+            if (value < TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(
+                    nameof(value),
+                    value,
+                    "Actor transfer forward window must not be negative.");
+            _registration.ActorTransferForwardWindow = value;
+        }
+    }
+
     public TimeSpan? DefaultSocketSendTimeout
     {
         get => _registration.DefaultSocketSendTimeout;

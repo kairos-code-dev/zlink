@@ -38,11 +38,14 @@ internal sealed class ZLinkActorReply(
 
     public static ZLinkActorReply FromError(Exception exception)
     {
+        var code = exception is ZLinkFrameworkException frameworkException
+            ? frameworkException.Kind.ToString()
+            : exception.GetType().Name;
         return new ZLinkActorReply(
             ZlinkStreamMessageKind.Error,
             ZlinkStreamCodec.Json,
             ZLinkEnvelopeCodec.EncodeJsonBytes(
-                new ZLinkStreamWireError(exception.GetType().Name, exception.Message)),
+                new ZLinkStreamWireError(code, exception.Message)),
             ZlinkStreamHeaderFlags.None,
             ZlinkStreamMetadata.Empty);
     }

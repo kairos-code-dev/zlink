@@ -7,9 +7,21 @@ internal static class ZLinkActorSessionForwarder
         ZLinkBackendActorRef frameActor,
         out ZLinkBackendActorRef targetActor)
     {
-        targetActor = actorState.NativeActorRef ?? frameActor;
-        return targetActor.NodeRid != frameActor.NodeRid
-               || targetActor.Generation != frameActor.Generation;
+        var route = actorState.ResolveFrameRoute(frameActor, out targetActor);
+        if (route == ZLinkActorFrameRoute.Stale)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"stale_fail_fast actor={frameActor.ActorId} generation={frameActor.Generation}");
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor ref '{frameActor.ActorId}' generation '{frameActor.Generation}' is stale.");
+        }
+
+        if (route == ZLinkActorFrameRoute.Forward)
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"straggler_forward actor={frameActor.ActorId} generation={frameActor.Generation}");
+
+        return route == ZLinkActorFrameRoute.Forward;
     }
 
     public static void Forward(

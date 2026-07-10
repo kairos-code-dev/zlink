@@ -102,6 +102,51 @@ internal static class ZLinkActorBoundSessionRelay
             .ConfigureAwait(false);
     }
 
+    public static async ValueTask ReplyStaleActorAsync(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        ZlinkStreamHeader requestHeader,
+        ZLinkFrameworkException exception,
+        CancellationToken cancellationToken)
+    {
+        if (requestHeader.Kind != ZlinkStreamMessageKind.Request
+            || requestHeader.RequestSeq is null)
+            return;
+
+        var dispatch = EnterDispatch(
+            runtime,
+            actorRef.ActorId,
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags);
+        try
+        {
+            await SendReplyAsync(
+                    runtime,
+                    actorRef.ActorId,
+                    actorRef,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    requestId,
+                    flags,
+                    dispatch.IsNoBind,
+                    requestHeader,
+                    ZLinkActorReply.FromError(exception),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await dispatch.DrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await dispatch.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     private static void ReplyNoBind(
         ZLinkFrameworkRuntime runtime,
         ZLinkBackendActorRef actorRef,

@@ -2651,6 +2651,7 @@ public interface IZLinkRouteMeshChannelBuilder
 public interface IZLinkFrameworkOptions
 {
     TimeSpan DefaultRequestTimeout { get; set; }
+    TimeSpan ActorTransferForwardWindow { get; set; }
 
     TimeSpan? DefaultSocketSendTimeout { get; set; }
 
@@ -2673,7 +2674,10 @@ public interface IZLinkFrameworkOptions
 }
 ```
 
-`DefaultRequestTimeout`의 기본값은 30초다. `DefaultSocketSendTimeout`의 기본값은
+`DefaultRequestTimeout`의 기본값은 30초다. `ActorTransferForwardWindow`의 기본값은 5초이며,
+remote actor 이동 뒤 old generation ref를 다음 hop으로 전달하는 기간을 정한다. 0으로 지정하면 commit
+backlog만 넘기고 이후 straggler는 바로 stale 오류로 끝난다. 음수는 허용하지 않는다.
+`DefaultSocketSendTimeout`의 기본값은
 core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request timeout은
 `SetDefaultRequestTimeout(...)`으로 지정할 수 있다.
 

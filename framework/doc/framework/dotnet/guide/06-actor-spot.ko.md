@@ -57,6 +57,18 @@ stateDiagram-v2
 - 생성 직후 **Entry Spot**, `JoinSpot` 으로 user Spot(room)에 들어가고 framework 가 `leave` 로 되돌린다.
 - destroy 는 **Entry Spot 에서만** 가능하다(user Spot 이면 먼저 `leave`). 여기엔 client 가 없다.
 
+**왜 client 없이 사는 actor 가 필요한가.** binding 은 "지금 이 actor 를 누가 조종하느냐"일 뿐,
+actor 의 존재 이유가 아니다. client 를 안 붙이고 살려 두는 대표 경우는 둘이다.
+
+- **재접속 사이 상태 유지** — 연결이 잠깐 끊겨도 진행 상태·위치는 그대로 남고, 재접속하면 새
+  session 이 **같은 actor** 에 다시 bind 된다. TicTacToe·Bingo 는 disconnect 때 actor 를 지우지
+  않고 `MarkDisconnected` 만 찍어 두고, SupportChat 은 conversation membership 을 actor 에 묶어
+  둬서 재접속한 client 가 상태만 다시 fetch 하면 이어가게 한다.
+- **서버 내부 로직이 구동하는 상태 객체** — client 요청이 아니라 다른 actor·handler 가 `actorId`
+  routing 으로 호출하는 대상. 대표적으로 **봇/NPC** 를 이렇게 만든다. 사람 client 를 bind 하는
+  대신 서버 로직(또는 spot 타이머)이 같은 player actor 를 `actorId` 로 구동해 수를 두면, **사람과
+  봇을 같은 actor 타입으로 한 room 에 섞을 수 있다** — 상대편 입장에선 bound 여부를 몰라도 된다.
+
 **(B) client session 에 bind — client 요청을 그 actor 가 처리한다 (binding 축, [07](07-actor-session.ko.md)).**
 Session 역할이 client STREAM 을 받아 actor 에 `bind` 하면, client packet 이 그 actor 로 relay 되고
 actor 가 처리한 결과가 같은 session 을 타고 client 로 돌아간다. actor 는 (A)와 **같은 인스턴스**로,
@@ -167,7 +179,23 @@ public sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
 ```
 
 > create payload 가 필요 없으면 `GetOrCreateAsync(actorId, actorType, ct)` 오버로드를 쓴다.
-> `Generation` 은 actor 가 다른 노드로 migration 될 때마다 올라가는 값이다(§3 "actor 이동").
+>
+> **`Generation` 은 무엇에 쓰는 값인가 — fencing token.** ref 3종 중 `NodeRid`·`ActorId` 가
+> "그 actor 가 누구이고 어느 노드에 있나"를 가리킨다면, `Generation` 은 "이 ref 가 아직 **지금 살아
+> 있는 바로 그 actor**를 가리키는가"를 판별한다. 같은 `actorId` 라도 actor 가 다른 노드로 migration 되면
+> store 가 `generation` 을 원자적으로 +1 발급한다(§3 "actor 이동"). **바뀌는 기준은 "어느 Spot 이냐"가
+> 아니라 "어느 노드냐"다** — 같은 노드 안에서 Spot 만 이동하면(Entry Spot ↔ 같은 노드의 user Spot)
+> 기존 인스턴스를 그대로 쓰므로 `generation` 은 그대로다. 노드를 넘는 transfer 때만 올라간다. 그래서 어떤 session·caller 가
+> 예전 ref(옛 `generation`)를 그대로 들고 호출하면, source node는 기본 5초 동안 새 node로 전달해
+> 이동 직후 도착한 packet을 흡수한다. 이 시간이 지나면 framework 는 죽은/엉뚱한 노드로 보내는 대신
+> **stale 로 판정해 되돌린다**(`ActorLocationStale`). caller 는 resolver 에서 새 live ref 를 다시 얻어
+> 재호출하고, 그 사이 옛 노드에서 handler 가 잘못 실행되는 일은 없다. 즉 노드가 바뀌어도 "옛 위치로
+> 조용히 잘못 배달"되지 않게 막는 세대 번호다. (fencing 규칙 전체는
+> [spec/aspnet-core-location](../spec/aspnet-core-location.ko.md).)
+>
+> 5초는 `ActorTransferForwardWindow`의 기본값이다. 배포 환경에서 이 값을 바꿀 수 있지만, 값을 늘리면
+> stale ref를 더 오래 흡수하는 대신 source node가 forwarding mapping을 더 오래 보관한다. 이 값은
+> bound session의 packet 순서 보장과는 무관하다.
 
 ## 3. Spot 이 actor 를 호스팅 — 콜백과 트리거 함수
 
@@ -204,20 +232,26 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 
 **① 같은 노드 — route 이동(단일 인스턴스).** 인스턴스는 그대로 두고 위치(route)만 바꾼다.
 
+`JoinSpot` 을 부르는 주체는 **지금 Entry Spot 에 살고 있는 그 actor**(정확히는 그 actor 의 handler)다 —
+actor 가 스스로 "나를 BingoRoom 으로 옮겨 달라"고 요청하는 흐름이다(§4.②의 Entry Spot actor handler
+참고). framework 는 target(BingoRoom)에 입장 허가를 물어보고(admission), 허가되면 **source(Entry Spot)에
+"떠났다"(`OnLeave`), target(BingoRoom)에 "도착했다"(`OnJoined`)**를 알린다. actor 객체는 내내 같은 하나다.
+
 ```mermaid
 sequenceDiagram
   autonumber
-  participant A as Actor
+  participant A as actor (요청 주체)
+  participant E as Entry Spot<br/>(actor 의 현재 위치)
   participant FW as framework / core
-  participant E as Entry Spot
-  participant R as BingoRoom
-  A->>FW: JoinSpot(roomRid, req)
-  FW->>R: OnActorJoinAsync(actorId, req)
+  participant R as BingoRoom<br/>(옮겨 갈 user Spot)
+  Note over A,E: actor(id=X) 는 지금 Entry Spot 에 호스팅됨.<br/>그 actor 의 handler 가 아래 JoinSpot 을 부른다.
+  A->>FW: Context.JoinSpot(roomRid, req)
+  FW->>R: OnActorJoinAsync(actorId, req) — 입장 admission 판정
   R-->>FW: Accept(reply)
-  FW->>E: OnLeaveActorAsync
-  Note over FW: Commit membership
-  FW->>R: OnJoinedActorAsync
-  Note over FW: Commit actor location
+  FW->>E: OnLeaveActorAsync — actor 가 Entry Spot 을 떠남
+  Note over FW: membership 확정
+  FW->>R: OnJoinedActorAsync — 같은 인스턴스가 BingoRoom 에 도착
+  Note over FW: location 확정
   FW-->>A: joined(Accepted, reply)
 ```
 
@@ -227,6 +261,39 @@ sequenceDiagram
 `ZLinkMessage`로 만들고, target node가 그 message로 actor instance를 materialize한다. `OnActorJoinAsync`
 는 target admission만 결정하고, remote materialize는 새 actor 생성이 아니므로 Entry Spot
 `OnCreateActorAsync`는 호출하지 않는다.
+
+먼저 큰 그림 — actor 인스턴스가 **A 노드의 Spot 을 떠나 B 노드의 Spot 에서 다시 살아난다**. 같은
+`actorId` 지만 노드를 넘었으므로 `generation` 이 +1 되고, client 의 bound STREAM 도 A→B 로 함께 옮겨져
+push 가 끊기지 않는다.
+
+```mermaid
+flowchart LR
+  C(["client"])
+  subgraph NA["Node A — 이주 전"]
+    SA["Source Spot"]
+    AA["actor id=X<br/>generation=N"]
+    SA --- AA
+  end
+  subgraph NB["Node B — 이주 후"]
+    SB["user Spot (BingoRoom)"]
+    AB["actor id=X<br/>generation=N+1"]
+    SB --- AB
+  end
+  C -- "bound STREAM (이주 전)" --- AA
+  AA == "actor state: TransferOut → ZLinkMessage → TransferIn" ==> AB
+  C == "같은 STREAM 이 B 로 함께 이동 (push 유지)" ==> AB
+  linkStyle 0,1 stroke-width:1px
+  linkStyle 2 stroke:#64748b,stroke-width:1.5px
+  linkStyle 3,4 stroke:#d97706,stroke-width:3px
+```
+
+> 굵은 주황선 둘(`actor state` + `같은 STREAM`)이 **같이 B 로 이동**하는 짝이다. 얇은 회색 실선은
+> 이주 전 client↔A 의 bind 로, 이동이 끝나면 client 는 끊김 없이 B 의 actor 로 push 를 받는다.
+
+- A 의 인스턴스는 state 를 넘긴 뒤 **retire**(이후 접근하면 stale), B 가 그 state 로 새 인스턴스를 materialize.
+- 이동 후 caller 가 옛 ref(`generation=N`)로 부르면 `ActorLocationStale` — 새 ref(`N+1`)로 re-resolve 한다.
+
+아래는 이 이주에서 프레임워크가 부르는 **콜백 순서**를 단계별로 편 것이다.
 
 ```mermaid
 sequenceDiagram

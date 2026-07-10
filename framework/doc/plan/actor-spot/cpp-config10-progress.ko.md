@@ -53,6 +53,10 @@
 
 ## 2. 잔여 작업표
 
+> **config-10 목표(19/19 근본수정 통과)는 완료.** 아래 #1-4는 config-10 스코프로 마감했다.
+> #5-8은 config-10 완료 조건이 아니라 그 **바깥의 후속 트랙**(전 언어 POSD/DDD 리뷰 루프,
+> 공개 계약 결정, 샘플 코드 검토)으로, config-10 통과와 독립이다.
+
 | # | 작업 | 계층 | 우선순위 | 상태 | 의존/비고 |
 |---|------|------|:--------:|:----:|-----------|
 | 1 | **ST-F6**: config-10 커버분(F4/F5/C2) 완료. 잔여=§10.5 **window 내** request-reply forward 상관(F6-c) — config-10 미커버 | framework | P1 | 🟡 | config-10은 post-window만 검증. within-window request forward는 별도 |
@@ -126,8 +130,12 @@ ST-F6는 그 위에서 actor-level 오케스트레이션을 하는 **framework �
 | 항목 | 커밋 |
 |------|------|
 | config-10 e2e + §10 handoff + detached-close + connector + boost ODR (39파일) | `244074ccf` |
-| config-10 상태 문서 갱신 (16/19) | `53320238a` |
+| config-10 상태 문서 갱신 (E1/E2/F3 decode fix, 16/19) | `53320238a` |
+| 진행확인표 문서 신설 | `924138c34` |
+| F4/F5 cross-node stale-ref request fail-fast (18/19) | `a1e37650d` |
+| C2 bound-session cross-node relay (bridge homed-elsewhere guard + stream bound.request, 19/19) | `55da51a0a` |
+| handoff marker 정합 (backlog_enqueued post-ack, F4/F5 mapping_evicted, best-effort) | `e5d11a783` |
 
-E1/E2/F3 근본해결: connector 응답 디코드(`apply_packet_payload`)에 `from_json`
-fallback이 없어 no-op으로 빈 메시지를 남기던 갭 → e2e DTO에 `to_stream_payload`/
-`from_stream_payload` ADL 브리지 추가. B2/C1 단독 통과 확인.
+**최종 검증(2026-07-11)**: config-10 full runner 19/19 (exit 0) · 샘플 스모크 6종
+(Bingo/TicTacToe/DeliveryDispatch/SupportChat/GameQuest/ShoppingMall) 100% ·
+framework unit+contract 38/38 · spot_runtime/location unit green. 회귀 0.

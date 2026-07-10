@@ -4,7 +4,8 @@ internal sealed class ZLinkSpotRuntimeManager(
     IServiceProvider services,
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendAdapterFactory backendAdapterFactory,
-    ZLinkFrameworkRegistration registration)
+    ZLinkFrameworkRegistration registration,
+    ZLinkLocationLifecycle? locationLifecycle)
 {
     private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new(runtime);
 
@@ -12,7 +13,8 @@ internal sealed class ZLinkSpotRuntimeManager(
         services,
         runtime,
         backendAdapterFactory,
-        registration);
+        registration,
+        locationLifecycle);
 
     public ZLinkEntrySpotActorRouter EntrySpotActors => _entrySpotActors;
 
@@ -26,11 +28,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         string channelName)
     {
         if (state.SpotNodes.TryGetValue(channelName, out var node))
-        {
-            if (node.TryGetPublisherBundle(channelName, out var bundle)) return bundle;
-
             return node.GetOrCreatePublisherBundle(channelName);
-        }
 
         throw new ZLinkConfigurationException(
             $"SPOT publisher mesh '{channelName}' is not registered.");

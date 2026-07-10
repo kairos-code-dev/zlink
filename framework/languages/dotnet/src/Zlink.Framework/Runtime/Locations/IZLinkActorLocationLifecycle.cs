@@ -20,7 +20,6 @@ internal interface IZLinkActorLocationLifecycle
         CancellationToken cancellationToken);
 
     ValueTask<ZLinkLocationWriteResult> PublishActorRefAsync(
-        string actorType,
         string actorId,
         ActorRef actorRef,
         CancellationToken cancellationToken = default);

@@ -77,6 +77,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
     }
 
     private IZLinkBackendSpot? _entrySpot;
+    private readonly object _entrySpotGate = new();
 
     public IZLinkBackendSpotRouteBridge CreateRouteBridge()
     {
@@ -90,7 +91,12 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         // one arbitrary registered facade — which must be the one the
         // dispatch pump listens on. Handing out duplicates silently
         // black-holes bound-actor session relays for entry-resident actors.
-        return _entrySpot ??= new ZLinkBackendSpotWrapper(nativeSpotNode.EntrySpot());
+        if (_entrySpot is { } entrySpot) return entrySpot;
+
+        lock (_entrySpotGate)
+        {
+            return _entrySpot ??= new ZLinkBackendSpotWrapper(nativeSpotNode.EntrySpot());
+        }
     }
 
     public ZLinkBackendActorRef CreateActor(string actorId, Message createRequest)

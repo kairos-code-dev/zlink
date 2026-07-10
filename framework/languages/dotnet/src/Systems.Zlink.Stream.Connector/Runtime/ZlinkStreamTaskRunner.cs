@@ -2,9 +2,7 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamTaskRunner(CancellationToken shutdownToken)
 {
-    public Task Run(
-        string name,
-        Func<CancellationToken, ValueTask> callback)
+    public Task Run(Func<CancellationToken, ValueTask> callback)
     {
         return Task.Factory.StartNew(
             static state => RunCoreAsync((TaskState)state!),
@@ -14,11 +12,9 @@ internal sealed class ZlinkStreamTaskRunner(CancellationToken shutdownToken)
             TaskScheduler.Default).Unwrap();
     }
 
-    public void RunDetached(
-        string name,
-        Func<CancellationToken, ValueTask> callback)
+    public void RunDetached(Func<CancellationToken, ValueTask> callback)
     {
-        _ = Run(name, callback);
+        _ = Run(callback);
     }
 
     private static async Task RunCoreAsync(TaskState state)

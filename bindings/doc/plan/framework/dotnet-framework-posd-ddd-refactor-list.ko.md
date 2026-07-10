@@ -405,113 +405,143 @@ timeout 420s framework/languages/dotnet/e2e/YieldDispatch/run_e2e.sh
 
 ---
 
-## F. 2026-07-10 재리뷰 — A~E 구현 완료 후 fresh pass (8-에이전트 read-only)
+## F. 2026-07-10 재리뷰 — A~E 구현 완료 후 fresh pass
 
-> A~E는 전부 구현·검증 완료(체크박스 [x]) 상태다. 이 섹션은 **리팩토링이 끝난 현재 코드**를 8개 서브시스템으로
-> 나눠 다시 전수한 결과다. 대부분은 A~E 삭제/이동이 남긴 **잔여물**(vestigial)이거나 그 과정에서 새로 생긴
-> shallow 계층이고, 한 건(F-BUG1)은 B1 수정이 core codec에 **미러링되지 않아 실제로 터진 drift 버그**다.
-> 파일:라인은 재리뷰 시점 기준 — 편집 전 재확인. 위험 표기는 §머리말과 동일.
+> 아래 상세 설명은 A~E 완료 직후 발견한 문제의 당시 상태를 기록한다. 2026-07-10 후속 작업에서
+> F-BUG, F-DEAD, F-DUP, F-POSD를 모두 처리했고 체크박스를 닫았다. 파일:라인은 발견 시점 기준이며,
+> 현재 상태와 검증 근거는 이 절 끝의 `F 완료 결과`와 `후속 검증 기록`을 기준으로 판단한다.
 
 ### F-BUG. 결함 (correctness)
 
-- [ ] **F-BUG1. ⭐core `ZLinkStreamMetadataCodec`가 자기 출력을 디코드 못 함 — B1 수정이 core에 미미러** (correctness, drift)
+- [x] **F-BUG1. ⭐core `ZLinkStreamMetadataCodec`가 자기 출력을 디코드 못 함 — B1 수정이 core에 미미러** (correctness, drift)
   - `Runtime/Streams/ZLinkStreamMetadataCodec.cs:40`이 `DecodeString(..., "value")` 호출, private `DecodeString`(`:83`)은 key/value 공히 `length == 0`에서 throw. 그러나 `Write`/`CalculatePayloadSize`(`:62`)는 **빈 key만** 거부 → 빈 value는 `valueLength=0`으로 인코드됨. 위성 connector의 byte-twin codec은 B1에서 `allowEmpty: true`로 고쳤으나(`Systems.Zlink.Stream.Connector/Runtime/Protocol/ZlinkStreamMetadataCodec.cs:41,88`) **core copy는 안 고쳐짐**. 메인 루프 grep으로 확인: core `:83`은 `if (length == 0 || …) throw`, connector `:88`은 `if ((!allowEmpty && length == 0) || …)`.
   - 결과: 빈 value 메타데이터를 실은 stream 헤더를 `ZLinkStreamHeaderCodec.Encode`(`:78`)가 만들고 `Decode`(`:142`)가 `"Metadata value is invalid"` throw → framework↔framework(및 ↔connector) 라운드트립 실패. C1 drift gate(`StreamWireInteropTests.cs:58-60`)는 `.With("optional","")`를 만들지만 encode-parity와 frame-prefix codec만 검증하고 `CoreHeaderCodec.Decode`는 안 태워서 이 drift가 게이트에 안 걸린다.
   - 방향: decode에서 zero-length value 허용(key는 ≥1 유지), connector와 대칭화. `StreamWireInteropTests`에 실제 `CoreHeaderCodec.Encode → Decode` 라운드트립 + connector→core 헤더 decode 케이스 추가로 게이트 사각 메움. 신뢰도 High.
-- [ ] **F-BUG2. entry-spot actor send 경로의 동일-양분기 — reply 경로의 entry-spot 라우팅 누락 의심** (correctness/dead)
+- [x] **F-BUG2. entry-spot actor send 경로의 동일 분기 — 죽은 조건 분기** (correctness/dead)
   - `ZLinkEntrySpotActorDispatcher.cs:200-208` — `if (actorState.LiveActivation is not null)` 양쪽이 byte-identical `SubmitActorAsync(...)`. 형제 reply 경로(`:161-198`)는 같은 조건에서 non-null→`SubmitActorForReplyAsync`, null→`SubmitEntryOrCurrentActorForReplyAsync`(entry-spot actor router 먼저 시도)로 **비대칭**. send에는 대응 entry-spot 라우팅이 없음 → (a) 순수 dead 분기라 단일 호출로 접거나, (b) live activation 없는 relay send가 `TrySubmitEntrySpotActor…` 라우팅을 놓치는 잠재 결함. 리더가 판별 불가. 먼저 send-vs-reply 의도 확정. 신뢰도 High(분기 중복)/Medium(라우팅 갭).
-- [ ] **F-BUG3. `ZLinkBackendSpotNodeWrapper.EntrySpot()` 비원자 `??=` 레이스** (race, 낮은 빈도·심각)
+- [x] **F-BUG3. `ZLinkBackendSpotNodeWrapper.EntrySpot()` 비원자 `??=` 레이스** (race, 낮은 빈도·심각)
   - `Runtime/Backend/DotNet/Wrappers/ZLinkBackendSpotNodeWrapper.cs:79,86-94` — 주석이 "매 native `EntrySpot()`는 새 facade 등록 → 중복 배포 시 bound-actor session relay를 조용히 black-hole"이라 경고하는데 가드는 lock 없는 `_entrySpot ??= new …`. 동시 최초 호출 2개가 각자 native `EntrySpot()` 호출·2 facade 등록 가능(정확히 주석이 경고한 실패). 초기화가 대개 단일 스레드로 warm-up(`ZLinkSpotNodeRuntime.cs:85/95/103`)하지만 warm 안 되는 router-capable 노드(entry-spot 타입 없음/`RoutingId.Size==0`)는 동시 dispatch에서 최초 구현. 방향: lazy init lock 또는 node init에서 강제 warm-up. 신뢰도 Low(창 좁음)/심각도 High.
-- [ ] **F-BUG4. Stream.Connector request timeout 예산 2회 순차 적용(~2×)** (defect, 낮음)
+- [x] **F-BUG4. Stream.Connector request timeout 예산 2회 순차 적용(~2×)** (defect, 낮음)
   - `Systems.Zlink.Stream.Connector/Runtime/ZlinkStreamConnector.cs:284-300` — `timeoutCts.CancelAfter(timeout)`가 `SendPacketAsync`(`:287-292`)를 감싸고, 이어 `_pending.WaitAsync(pending, timeout, ct)`(`:300`)가 **또** `CancelAfter(timeout)`(`ZlinkStreamPendingRequests.cs:47-48`). 두 창이 순차라 느린 send는 최대 `timeout`, reply 대기 추가 `timeout` → 실효 데드라인 ~2×. 방향: send+wait에 단일 데드라인 공유. 신뢰도 Low-Medium.
-- [ ] **F-BUG5. publish fan-out이 한 endpoint decode 실패에 전체 중단** (defect, 낮음)
+- [x] **F-BUG5. publish fan-out이 한 endpoint decode 실패에 전체 중단** (defect, 낮음)
   - `Runtime/Channels/ZLinkChannelPublishDispatchPipeline.cs:47-56` — `foreach(endpoint)` 안 `scope.TryDecode` 실패 시 `return`으로 루프 종료. 같은 name이 서로 다른 message type으로 해석되는 구독자들에서 한 type decode 실패가 나머지 구독자(정상 type 포함) 배달을 조용히 스킵. 핸들러 예외 arm(`:75-83`)은 `continue`로 진행 → fan-out 의미 불일치. name→type 대개 1:1이라 영향 제한. 방향: decode 실패도 `continue`. 신뢰도 Low.
 
 ### F-DEAD. 삭제 트랙 (대부분 A~E 삭제의 잔여물, 전부 grep 무참조 확인)
 
-- [ ] **F-DEAD1. 직접-native spot outbound 클러스터(C6/D2 재배선 잔여)** (없음)
+- [x] **F-DEAD1. 직접-native spot outbound 클러스터(C6/D2 재배선 잔여)** (없음)
   - `ZLinkSpotOutboundTransport.cs:19-41`(`RequestToSpotAsync`)·`:54-61`(`SendToSpot` bool), `ZLinkSpotOutboundEndpoint.cs:114-121`(`SendToSpot` bool). C6/D2가 spot↔spot outbound를 runtime router-channel로 재배선한 뒤 직접-native 경로가 phantom화. 삭제 시 `ZLinkSpotOutboundTransport`는 publish-only로 축소. 신뢰도 High.
-- [ ] **F-DEAD2. `AddPublisherBundle` 무호출 pass-through 쌍** (없음)
+- [x] **F-DEAD2. `AddPublisherBundle` 무호출 pass-through 쌍** (없음)
   - `ZLinkSpotNodeRuntime.cs:119-122` → `ZLinkSpotNodeBundleRegistry.cs:25-31`. bundle은 항상 lazy `GetOrCreatePublisherBundle`로만 생성 → add 경로 무참조. 신뢰도 High.
-- [ ] **F-DEAD3. `SubmitResolved…` 사슬(host+router) 무호출** (없음)
+- [x] **F-DEAD3. `SubmitResolved…` 사슬(host+router) 무호출** (없음)
   - `ZLinkEntrySpotActorRouter.cs:102-114`(`SubmitResolvedAsync`, `actor` 인자도 미read) + 유일 소비처 `Runtime/Host/ZLinkFrameworkRuntimeSpots.cs:101`(`SubmitResolvedEntrySpotActorAsync`) 무호출. 둘 다 삭제. 신뢰도 High.
-- [ ] **F-DEAD4. `ZLinkSpotActorFrameReader.DisposeFrame` 무참조** (없음)
+- [x] **F-DEAD4. `ZLinkSpotActorFrameReader.DisposeFrame` 무참조** (없음)
   - `ZLinkSpotActorFrameReader.cs:54-61` — B4가 `TryRead` 실패 경로 정리를 강화한 뒤 남은 stale 병렬 정리 진입점. frame teardown 지식을 `TryRead`에만 두도록 삭제. 신뢰도 High.
-- [ ] **F-DEAD5. 액터 generation write-only 사슬(A-AS1 잔여)** (없음)
+- [x] **F-DEAD5. 액터 generation write-only 사슬(A-AS1 잔여)** (없음)
   - `Runtime/Actors/ZLinkActorRuntimeState.cs:9`(`_actorGeneration`)·`:279-288`(`EnsureActorGeneration`) + 호출부 `ZLinkActorCreationCoordinator.cs:143`. A-AS1이 유일 reader `CurrentActorGeneration`를 지웠으나 counter/mutator/call은 잔존 → 매 activation마다 write-only 유지. 필드+메서드+call 삭제. 신뢰도 High.
-- [ ] **F-DEAD6. `ZLinkSessionContext.CleanupActorBindingsAsync` 무참조** (없음)
+- [x] **F-DEAD6. `ZLinkSessionContext.CleanupActorBindingsAsync` 무참조** (없음)
   - `Runtime/Streams/ZLinkSessionContext.cs:95-98`. live 정리 경로는 `ZLinkStreamSessionRuntime.cs:231→_context.CleanupAsync→ActorCoordinator.CleanupAsync`. 삭제. 신뢰도 High.
-- [ ] **F-DEAD7. `GetSpotRouteBridgeOwner` + write-only `SpotRouteBridgeOwners` 딕셔너리(A-CH1/2 잔여)** (없음)
+- [x] **F-DEAD7. `GetSpotRouteBridgeOwner` + write-only `SpotRouteBridgeOwners` 딕셔너리(A-CH1/2 잔여)** (없음)
   - `Runtime/Host/ZLinkFrameworkRuntime.cs:84-95`(private, 무호출), dict `ZLinkFrameworkRuntimeState.cs:38`, 유일 writer `Runtime/Channels/ZLinkRouteChannelInitializer.cs:95`(`.Add`). 딕셔너리는 매 route-channel init에서 채워지나 read 없음(live한 `SpotRouteBridges` list와 다름). 메서드+property+add 삭제. 신뢰도 High.
-- [ ] **F-DEAD8. `ZlinkStreamTaskRunner` `name` 파라미터 전 호출부에서 폐기** (없음)
+- [x] **F-DEAD8. `ZlinkStreamTaskRunner` `name` 파라미터 전 호출부에서 폐기** (없음)
   - `Systems.Zlink.Stream.Connector/Runtime/ZlinkStreamTaskRunner.cs:5-22` — `TaskState`에 `Name` 없음, 6개 호출부가 진단 라벨(`"stream-receive-loop"` 등) 전달하나 폐기. 폐기 대신 fault catch에서 사용하거나 파라미터+리터럴 6개 제거. 신뢰도 High.
-- [ ] **F-DEAD9. Redis key codec decode/parse 방향 production-dead(A-LO1 병렬 인스턴스)** (없음)
+- [x] **F-DEAD9. Redis key codec decode/parse 방향 production-dead(A-LO1 병렬 인스턴스)** (없음)
   - `Zlink.Framework.Locations.Redis/ZLinkRedisLocationKeyCodec.cs:48-89,157-175` — store는 encode만(16곳). `DecodeKey`/`Decode*Key`/`ParseAutoConnectType`/`ParseRole` 전부 production 무참조. store가 `IZLinkLocationWatchStore` 미구현(`ZLinkFrameworkServiceRegistrar.cs:253` 분기 미도달)이라 key 역복원 소비처 없음. `DecodeKey`+`DecodeActorKey`만 `RedisLocationStoreTests.cs:41`(Actor arm)이 자기 코드 살림 = A-SP2 안티패턴. 방향: decode 방향 제거(테스트는 encode-only 단언) 또는 spec-required 주석+게이트. 신뢰도 High.
-- [ ] **F-DEAD10. Stream.Connector typed-handler dispatch 도달불가 catch** (없음)
+- [x] **F-DEAD10. Stream.Connector typed-handler dispatch 도달불가 catch** (없음)
   - `Systems.Zlink.Stream.Connector/Runtime/ZlinkStreamReceiveDispatcher.cs:74-88` — `DispatchUserCallbackAsync`가 핸들러 예외를 밖으로 안 흘림(`ZlinkStreamConnectorCallbacks.cs:101-116,188-198`에서 catch+report/swallow)이라 `"Typed message handler failed."` catch 도달 불가. 중복 try/catch 제거하고 callback layer report에 의존. 신뢰도 Medium-High.
-- [ ] **F-DEAD11. `ZLinkClientCallCodec.DecodeJsonReply<TReply>` 무참조** (없음)
+- [x] **F-DEAD11. `ZLinkClientCallCodec.DecodeJsonReply<TReply>` 무참조** (없음)
   - `Runtime/Messaging/ZLinkClientCallCodec.cs:74` — 전 트리 호출부 0. 삭제. 신뢰도 High.
-- [ ] **F-DEAD12. 미사용 `DecodeBody(Message,…)` 단일-메시지 오버로드(A-CH3 잔여)** (없음)
+- [x] **F-DEAD12. 미사용 `DecodeBody(Message,…)` 단일-메시지 오버로드(A-CH3 잔여)** (없음)
   - `Runtime/Messaging/ZLinkEnvelopeCodec.cs:214`(3-arg, 완전 무참조), `:209`(2-arg, `EnvelopeCodecTests`만). :214 삭제, :209는 테스트를 4-arg core로 옮기고 드롭. 신뢰도 High(:214)/Medium(:209).
-- [ ] **F-DEAD13. `HttpHeaderLookup.Find` OrdinalIgnoreCase fallback 루프 도달불가(C16 잔여)** (없음, 방어적)
+- [x] **F-DEAD13. `HttpHeaderLookup.Find` OrdinalIgnoreCase fallback 루프 도달불가(C16 잔여)** (없음, 방어적)
   - `Zlink.HttpClient/Runtime/HttpHeaderLookup.cs:9-14` — 모든 production 호출부가 이미 `OrdinalIgnoreCase` dict 전달 → `TryGetValue`가 해결, 선형 스캔 미실행(테스트만 case-sensitive dict로 태움). 계약 방어로 유지+주석 or 제거. 신뢰도 Low.
 
 ### F-DUP. 중복 / 지식 누출
 
-- [ ] **F-DUP1. stale-address `RequestTargetNotFound` 정책 4곳 손복제** (없음/posd-leak)
+- [x] **F-DUP1. stale-address `RequestTargetNotFound` 정책 4곳 손복제** (없음/posd-leak)
   - `Runtime/Host/ZLinkFrameworkRuntimeChannels.cs:57-67,90-100,110-116,139-145` — "mesh가 node rid 모름 ⇒ stale address(미수렴 아님) ⇒ `RequestTargetNotFound` throw + 동일 메시지 포맷"이 catch-rewrap 2곳 + if-preguard 2곳으로 4벌. dispose 포함 단일 헬퍼(`ThrowStaleRouteTarget`/`TryGuardKnownPeer`)로. 신뢰도 Medium.
-- [ ] **F-DUP2. reply-envelope 해석 프로토콜 2개 디코더 중복** (없음/posd-leak)
+- [x] **F-DUP2. reply-envelope 해석 프로토콜 2개 디코더 중복** (없음/posd-leak)
   - `Runtime/Messaging/ZLinkClientCallCodec.cs:42-56`(`DecodeEnvelopeReply`, throwing) vs `ZLinkEnvelopeReplyCompletion.cs:12-45`(`Complete<TReply>`, callback) — empty⇒throw, `Kind==Error`⇒`ZLinkEnvelopeErrorMapper.CreateException`, else null-body 가드 후 `DecodeBody`가 독립 2벌(둘 다 live). "reply envelope 읽는 계약"을 단일 헬퍼로 추출, wrapper는 throw-vs-callback+dispose만. 신뢰도 Medium.
-- [ ] **F-DUP3. `ZLinkSpotPeerConnector` 동일 connect 헬퍼 2벌** (없음)
+- [x] **F-DUP3. `ZLinkSpotPeerConnector` 동일 connect 헬퍼 2벌** (없음)
   - `ZLinkSpotPeerConnector.cs:37-47`(`ConnectPeer`) vs `:49-59`(`ConnectRouterPeer` string) — byte-identical "connect + Busy swallow", 같은 backend `ConnectPeer(string)` 호출. router-vs-pubsub 이름이 존재 않는 구분 암시. 두 string 헬퍼 통합(rid 오버로드는 분리 유지). 신뢰도 High.
-- [ ] **F-DUP4. 중복 `TryGetPublisherBundle` pre-check + pass-through 표면** (벤치, per-publish)
+- [x] **F-DUP4. 중복 `TryGetPublisherBundle` pre-check + pass-through 표면** (벤치, per-publish)
   - `ZLinkSpotRuntimeManager.cs:28-33`가 `TryGetPublisherBundle`→있으면 반환, 없으면 `GetOrCreatePublisherBundle` 호출. 후자(`ZLinkSpotNodeBundleRegistry.cs:43-54`)가 이미 동일 존재체크 수행 → 매 external publish마다 이중 dict 조회. body를 `GetOrCreatePublisherBundle` 단일 호출로, 고아 `TryGetPublisherBundle`(node+registry) 삭제. 신뢰도 Medium-High.
-- [ ] **F-DUP5. `actorType`가 ownership-coordinator 거의 전 메서드에서 dead param** (없음/posd-leak)
+- [x] **F-DUP5. `actorType`가 ownership-coordinator 거의 전 메서드에서 dead param** (없음/posd-leak)
   - `Runtime/Locations/ZLinkActorOwnershipCoordinator.cs`(:164,178,196,215,232,254,291) + `IZLinkActorLocationLifecycle.cs:22`. actor-location key는 `actorId`만(`EncodeActorKey`), `actorType`는 claim 경로에서만 row에 stamp. `Publish/Notify*/Release/Owns/Renew`는 `actorType`를 안 읽거나 discard하는 `RenewActorAsync`로 전달만. "actor 정체성=(type,id)" 오해 유발(key schema 정보 누출). claim 진입점만 남기고 나머지 시그니처에서 드롭. 신뢰도 High.
-- [ ] **F-DUP6. Stream.Connector metadata UTF-8 byte-count 이중 계산** (벤치, per-send·metadata時)
+- [x] **F-DUP6. Stream.Connector metadata UTF-8 byte-count 이중 계산** (벤치, per-send·metadata時)
   - `Systems.Zlink.Stream.Connector/Runtime/Protocol/ZlinkStreamMetadataCodec.cs` — `CalculatePayloadSize`(`:54-76`)가 entry별 `GetByteCount(key/value)`로 버퍼 사이즈 계산, `Write`(`:13-28`)가 배치용으로 재계산. 공통 경로에선 metadata 비어 short-circuit. 단일 패스 또는 per-entry 길이 재사용. 신뢰도 Medium.
-- [ ] **F-DUP7. Stream.Connector name 검증 send당 2~3회 재실행** (벤치, per-send)
+- [x] **F-DUP7. Stream.Connector name 검증 send당 2~3회 재실행** (벤치, per-send)
   - `ResolveName`(`ZlinkStreamConnector.cs:316`)·`BuildOutboundFrame`(`ZlinkStreamFrameSender.cs:20`)·`headerCodec.Encode`(`ZlinkStreamHeaderCodec.cs:19`)가 각각 `ValidateName`(reserved-prefix + `GetByteCount`) 실행. public 경계 1회 검증 후 codec/sender는 신뢰(또는 debug assert). 신뢰도 Medium.
-- [ ] **F-DUP8. `ListLivePeersAsync` reconcile tick당 이중 필터·이중 할당** (벤치, per-tick)
+- [x] **F-DUP8. `ListLivePeersAsync` reconcile tick당 이중 필터·이중 할당** (벤치, per-tick)
   - `Runtime/Locations/ZLinkStoreLocationResolvers.cs:51-70` + `ZLinkLiveLocationRows.cs:21-37` — `fresh` 리스트(IsKnown+observed) 만든 뒤 2-arg `FilterAsync`(lease 필터)가 `live` 재구성. 3-arg 오버로드(`:39-58`)는 observed+lease를 1패스로 접고 query service가 사용. 2-arg는 이 caller 전용. unknown-row 진단 로그만 predicate화 걸림돌. predicate 통합 후 2-arg `FilterAsync` 삭제. 신뢰도 Low-Medium.
-- [ ] **F-DUP9. `ZLinkLocationSpotRouteRefResolver` stale 이중 `<summary>`(C12 잔여)** (없음, doc)
+- [x] **F-DUP9. `ZLinkLocationSpotRouteRefResolver` stale 이중 `<summary>`(C12 잔여)** (없음, doc)
   - `Runtime/Locations/ZLinkLocationSpotRouteRefResolver.cs:3-14` — mesh-name 도출을 서술하는 첫 summary는 C12가 그 지식을 `ZLinkSpotMeshLocationResolver.cs:13-17`로 옮긴 뒤 lying comment. 첫 summary 삭제, "store 위 default resolver" summary만 유지. 신뢰도 Medium.
 
-### F-POSD. shallow / pass-through / 구조 (기회 될 때)
+### F-POSD. shallow / pass-through / 구조
 
-- [ ] **F-POSD1. actor/entry-spot runtime partial의 단일-await tail-call이 불필요 async state machine(D2/D4 미완 잔여)** (벤치, 일부 per-actor-message hot)
+- [x] **F-POSD1. actor/entry-spot runtime partial의 단일-await tail-call이 불필요 async state machine(D2/D4 미완 잔여)** (벤치, 일부 per-actor-message hot)
   - `Runtime/Host/ZLinkFrameworkRuntimeActors.cs`(`SubmitActorAsync:178`, `SubmitActorForReplyAsync:308`, `SubmitActorByIdAsync:317`, `CreateActorAsync:269`, `DestroyActorAsync:78`, `JoinActorToSpotAsync:154`, `AttachActorAsync:162`, `DisconnectActorAsync:170`, `FindActorAsync:278`, `NotifyActorDisconnectedByIdAsync:326` 등) + `ZLinkFrameworkRuntimeSpots.cs:63-79,81-99`. 본문이 단일 `await _x.Y(...)`(post-await 작업 없음)라 ValueTask 위 state machine만 생성. D4(`RouteChannelRuntime`)·D2(`ZLinkSpotManagerService`)가 지운 바로 그 패턴. ValueTask 직반환. hot submit 경로는 baseline-vs-patched 벤치 후 커밋. 신뢰도 High(패턴)/Medium(perf 재질).
-- [ ] **F-POSD2. `transportName`이 command/request 파이프라인의 스레드된 상수(C5 잔여)** (없음)
+- [x] **F-POSD2. `transportName`이 command/request 파이프라인의 스레드된 상수(C5 잔여)** (없음)
   - `Runtime/Channels/ZLinkChannelCommandDispatchPipeline.cs:16`·`ZLinkChannelRequestDispatchPipeline.cs:15` — 유일 caller `ZLinkChannelPacketDispatcher`(`:82,128`)가 항상 리터럴 `"Channel"`. publish 파이프라인(`:22`)은 이미 하드코딩 → 불일치. 파라미터 제거·`"Channel"` 하드코딩(또는 공유 상수). 신뢰도 Medium.
-- [ ] **F-POSD3. `ZLinkEntrySpotActorRouter.TryAsync`가 2계층 통과 `runtimeState` 폐기** (없음/posd-shallow)
+- [x] **F-POSD3. `ZLinkEntrySpotActorRouter.TryAsync`가 2계층 통과 `runtimeState` 폐기** (없음/posd-shallow)
   - `ZLinkEntrySpotActorRouter.cs:9-17`(`_ = runtimeState;`) ← `ZLinkFrameworkRuntimeSpots.TrySubmitEntrySpotActorAsync:63-79` ← `ZLinkActorDispatchRouter.cs:120`. turn 재진입이라 serialize 안 해 state 불필요한데 3 시그니처를 타고 전달만. `TryAsync`+host wrapper에서 드롭. 신뢰도 Medium.
-- [ ] **F-POSD4. `LocationLifecycle`가 service-locator property로 bind/unbind마다 재-resolve** (없음/ddd)
+- [x] **F-POSD4. `LocationLifecycle`가 service-locator property로 bind/unbind마다 재-resolve** (없음/ddd)
   - `Runtime/Host/ZLinkFrameworkRuntimeActors.cs:375-376`(property, `Services.GetService(...) as`), read `:418`/`:447`. 다른 collaborator는 ctor-주입 필드인데 이것만 매 접근 컨테이너 조회 + `as` null이면 route 알림이 조용히 optional화. 1회 resolve(캐시/ctor) 또는 의존을 명시. optional 설계면 의도를 코드로. 신뢰도 Medium.
-- [ ] **F-POSD5. session cleanup 3-홉 pass-through** (없음)
+- [x] **F-POSD5. session cleanup 3-홉 pass-through** (없음)
   - `Runtime/Streams/ZLinkSessionActorCoordinator.cs:116-121`(`CleanupAsync`→`CleanupBindingsAsync`)→`:109-114`(→`_bindings.CleanupAsync`). F-DEAD6 제거 후 `context.CleanupAsync→coordinator.CleanupAsync→CleanupBindingsAsync→registry.CleanupAsync` 3무가치 홉. 단일 메서드로 접음. 신뢰도 Medium.
-- [ ] **F-POSD6. `ZLinkEntrySpotActorDispatch`가 `Activation` 위 near-pure pass-through veneer** (없음, 낮음)
+- [x] **F-POSD6. `ZLinkEntrySpotActorDispatch`가 `Activation` 위 near-pure pass-through veneer** (없음, 낮음)
   - `ZLinkEntrySpotActorDispatch.cs` — 11멤버 중 9개가 `ZLinkEntrySpotActivation` 메서드로 1:1 forward(5개 `TryResolveX`는 동일 null-guard 반복). 실가치는 `Attach` one-shot 불변식·`RequireActivation`만. entry-spot actor 연산 추가마다 2곳 수정(change amplification). router가 단일 `TryGetAttachedActivation(out …)`로 `Activation` 직접 조회 검토. 신뢰도 Low.
-- [ ] **F-POSD7. 잔여 소형 shallow(기회 될 때)** (없음)
+- [x] **F-POSD7. 잔여 소형 shallow(기회 될 때)** (없음)
   - `ZLinkSpotOutboundEndpoint.cs:33-40,42-48` public→private 단일-caller pass-through 쌍(인라인); `ZLinkSessionActorCoordinator.cs:26-36` `BindActorAsync(ActorRef)` 얕은 forwarder(`BindActorCoreAsync` 인라인); `Zlink.Framework.AspNetCore/ZLinkFrameworkServiceRegistrar.cs:138-149` 동일 술어 `if(HasSpotNode)` 블록 2연속(D8이 `HasSpotPublisherClient` 제거 후 남음, 병합); `ZLinkActorOwnershipCoordinator.cs:58` 활성화 rollback을 항상-참 `catch when(Status==Claimed)`로 가림(B7류, plain catch/assert). 신뢰도 Low.
-- [ ] **F-POSD8. `ZLinkSpotSubscriptionPump` 20ms 고정율 poll이 event-driven subscribe와 중복** (벤치)
+- [x] **F-POSD8. `ZLinkSpotSubscriptionPump` 20ms 고정율 poll이 event-driven subscribe와 중복** (벤치)
   - `ZLinkSpotSubscriptionPump.cs:5,39-64`(20ms `Task.Delay` 루프) vs 네이티브 `subscribeReadable` 배선(`ZLinkSpotActivationExecution.cs:84`→`ZLinkSpotNativeDispatchRouter.cs:26-28`이 동일 `DispatchSubscriptionsAsync` drain). D6가 spot-route bridge에서 제거한 fixed-rate safety loop와 동형 — 구독 있는 activation마다 런타임 생애 상시 wakeup. native edge 신뢰성 검증 후 poll 제거 or safety net 명문화. **삭제 전 동작 확인 필수.** 신뢰도 Medium.
 
-### F 권장 순서
+- [x] **F-POSD9. 초기화 실패 정리의 sync-over-async와 런타임 hot path lazy 생성** (correctness/POSD)
+  - 후속 재검토에서 channel·route·stream 초기화 실패 경로가 `DisposeAsync().AsTask().GetAwaiter().GetResult()`로
+    정리되고, client/publisher bundle이 실제 호출 시점에 만들어지는 문제를 추가로 확인했다. 초기화 사슬을
+    `ValueTask`로 전파하고 실패 정리를 `await`하도록 바꿨다. 등록된 client/publisher bundle은 시작할 때 모두
+    만들며, 호출 경로는 이미 초기화된 bundle만 조회한다.
 
-1. **F-BUG1 먼저** — 실제 drift 버그 + 게이트 사각. core codec 대칭화 + `StreamWireInteropTests` decode 라운드트립 추가. 위험 없음(빌드+단위).
-2. **F-BUG2 판정** — send-vs-reply 의도 확정(dead 접기 or entry-spot 라우팅 보강). 그 다음 F-BUG3/4/5.
-3. **F-DEAD 스윕** — 전부 grep 무참조·저위험. A~E 삭제 잔여물이라 표면 축소로 이후 분석 경량화(특히 F-DEAD1/5/7).
-4. **F-DUP** — F-DUP1/2/5(정책·계약 누출) 우선, hot 표기(F-DUP4/6/7/8)는 벤치 후.
-5. **F-POSD** — 기회 될 때. F-POSD1은 hot submit이라 벤치 게이트, F-POSD8은 동작 확인 후.
+### F 완료 결과
 
-2026-07-10 후속 검증 기록:
+- **F-BUG1~5**: 빈 metadata value의 core decode를 connector와 맞추고 양방향 wire 회귀 테스트를 추가했다.
+  동일한 entry-spot send 분기는 단일 호출로 접었고, `EntrySpot()` 최초 생성은 lock으로 보호했다. request는
+  send와 reply 대기에 하나의 timeout token을 공유하며, publish fan-out decode 실패는 다음 endpoint로 진행한다.
+- **F-DEAD1~13**: 직접-native spot outbound 잔여, publisher bundle add 경로, `SubmitResolved` 사슬,
+  frame dispose 진입점, write-only actor generation, session cleanup 별도 진입점, route bridge owner map,
+  폐기하던 task 이름, Redis key 역변환, 도달 불가 catch, 미사용 reply/body decode, HTTP header fallback을 삭제했다.
+- **F-DUP1~9**: stale route 예외 생성과 reply envelope decode를 각각 한곳으로 모았다. peer connect의 string 경로는
+  하나로 합치고 routing-id 경로는 의미가 다른 backend 오버로드라 같은 이름의 오버로드로 유지했다.
+  publisher 이중 조회, ownership의 죽은 `actorType`, metadata write의 두 번째 byte-count, send 경로의 반복 name 검증,
+  live peer 이중 필터·할당, stale summary를 제거했다.
+- **F-POSD1~6**: 후처리 없는 `ValueTask` wrapper는 직접 반환하고, 상수 `transportName`과 폐기하던 `runtimeState`를
+  제거했다. location lifecycle/topology 협력자는 런타임 생성 시 한 번만 resolve해 하위 구성요소에 전달한다.
+  session cleanup 홉을 접고 `ZLinkEntrySpotActorDispatch` veneer를 삭제해 runtime과 router가 activation을 직접 사용한다.
+- **F-POSD7**: outbound endpoint의 단일 호출 private wrapper를 인라인하고, AspNetCore의 인접 조건 블록과 ownership
+  rollback catch를 정리했다. `BindActorCoreAsync`는 `BindActorAsync`와 `BindOrGetActorAsync` 두 실제 호출자가 공유하는
+  native bind 불변식이므로 삭제하지 않고 유지했으며, 얕은 public wrapper만 직접 반환으로 바꿨다.
+- **F-POSD8~9**: 고정 20ms subscription pump를 삭제하고 native readable callback 한 경로만 남겼다. channel·route·stream
+  초기화와 실패 정리를 끝까지 비동기로 연결하고 등록된 outbound bundle을 시작 단계에서 생성해 hot path의 lazy
+  생성과 sync-over-async를 함께 제거했다.
 
-- `dotnet test framework/languages/dotnet/Zlink.Framework.sln --nologo` 통과.
-- sample build loop 통과: Bingo, DeliveryDispatch, GameQuest, ShoppingMall, SupportChat, TicTacToe.
-- `dotnet test framework/languages/dotnet/tests/Zlink.Framework.Locations.Redis.Tests/Zlink.Framework.Locations.Redis.Tests.csproj --nologo` 통과: 26 passed, 6 skipped.
-- `timeout 420s framework/languages/dotnet/e2e/SpotService/run_e2e.sh` 통과: `spot-service e2e result=passed`.
-- `timeout 420s framework/languages/dotnet/e2e/YieldDispatch/run_e2e.sh` 통과: `yield-dispatch e2e result=passed`.
-- `framework/languages/dotnet/bench/with-grpc/run_local.sh` smoke 통과:
-  - current request-window, 1024B, 5초 active: `zlink-framework-dotnet` 115.83 KOPS.
-  - current send-saturation, 1024B, 2초 active: `zlink-framework-dotnet` 229.84 KMSG/s.
-  - HEAD baseline 2초 smoke와 current 2초 smoke 비교에서는 request-window가 109.36 KOPS → 93.15 KOPS, send-saturation이 240.65 KMSG/s → 229.84 KMSG/s였다. 짧은 smoke라 최종 성능 판정으로 보지 않고, 큰 하락이 아니므로 별도 최적화 작업으로 넘긴다.
+### F 적용 순서 기록
+
+1. F-BUG1의 core codec 대칭화와 decode 회귀 테스트를 먼저 적용했다.
+2. F-BUG2를 죽은 분기로 판정해 접은 뒤 나머지 correctness 항목을 처리했다.
+3. F-DEAD를 삭제해 표면을 줄인 다음 F-DUP의 정책·계약 중복을 통합했다.
+4. F-POSD를 적용하고 hot path smoke와 subscription 관련 E2E를 마지막 게이트로 실행했다.
+
+### 2026-07-10 후속 검증 기록
+
+- 핵심 회귀 filter 통과: metadata interop, entry-spot dispatch/concurrency, publish fan-out을 포함해 23 passed.
+- `dotnet test framework/languages/dotnet/Zlink.Framework.sln --nologo` 통과: 511 passed, 0 failed, 0 skipped.
+- sample runner 통과: TicTacToe, Bingo, SupportChat, ShoppingMall, DeliveryDispatch, GameQuest. 각 runner가
+  `result/evidence=completed`까지 확인했으며 build는 0 warnings, 0 errors였다.
+- E2E runner 10개 통과: LocationMessaging, PubSub, RegistrationCodec, ResilienceLifecycle, RuntimeMonitoring,
+  SpotActorTransfer, SpotService, StoreFailure, ToActorMessaging, YieldDispatch. 장시간 연속 실행 중 PubSub PS-B2 timeout,
+  SpotActorTransfer actor-b 시작 지연, StoreFailure Redis 연결 실패가 각각 한 번 발생했으나 해당 runner 전체 또는
+  실패 시나리오를 독립 환경에서 다시 실행했을 때 모두 통과해 코드 회귀가 재현되지 않았다.
+- 전체 솔루션 build는 0 errors이며, E2E 샘플의 기존 compiler warning 8건도 함께 제거해 0 warnings로 확인했다.
+- 1024B, 2초 local smoke에서 `zlink-framework-dotnet`은 request-window 129.20 KOPS,
+  send-saturation 366.80 KMSG/s였다. 짧은 smoke라 절대 성능 판정에는 쓰지 않지만, 같은 문서에 남은 이전
+  2초 smoke의 93.15 KOPS / 229.84 KMSG/s보다 낮아지는 회귀는 관측되지 않았다.
+- 제거 대상 식별자는 production/test `.cs` 전 범위에서 no-hit을 확인했고 `git diff --check`도 통과했다.

@@ -39,26 +39,11 @@ internal sealed class ZlinkStreamPendingRequests
         return true;
     }
 
-    public async ValueTask<ZlinkStreamFrame> WaitAsync(
+    public ValueTask<ZlinkStreamFrame> WaitAsync(
         PendingRequest pending,
-        TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
-
-        try
-        {
-            return await pending.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            _pending.TryRemove(pending.RequestSeq.Value, out _);
-            throw ZlinkStreamConnector.Error(
-                ZlinkStreamErrorCode.RequestTimeout,
-                "Request timed out.",
-                ex);
-        }
+        return new ValueTask<ZlinkStreamFrame>(pending.Task.WaitAsync(cancellationToken));
     }
 
     public void Remove(ZlinkStreamRequestSeq requestSeq)

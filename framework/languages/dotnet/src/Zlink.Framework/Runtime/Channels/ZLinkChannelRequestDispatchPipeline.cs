@@ -12,7 +12,6 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
 {
     public async Task DispatchAsync(
         string channelName,
-        string transportName,
         Received received,
         ZLinkEnvelopeHeader header,
         Action<ZLinkEnvelopeHeader, object?, Type?> reply,
@@ -21,7 +20,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
     {
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
-            transportName,
+            "Channel",
             ZLinkDispatchMessageKind.Request,
             "Request",
             header.MessageName,

@@ -36,27 +36,10 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return RequestToChannelThroughSharedClientAsync(channelName, parts, timeout, cancellationToken);
-    }
-
-    public ValueTask SendToChannelAsync(
-        string channelName,
-        IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
-    {
-        return SendToChannelThroughSharedClientAsync(channelName, parts, cancellationToken);
-    }
-
-    private async ValueTask<IReadOnlyList<Message>> RequestToChannelThroughSharedClientAsync(
-        string channelName,
-        IReadOnlyList<Message> parts,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        var bundle = runtime.GetOrCreateClientBundle(channelName);
+        var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
-        return await ZLinkRawRequestSubmitter.SubmitAsync(
+        return ZLinkRawRequestSubmitter.SubmitAsync(
                 bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink request submitter is not initialized."),
                 parts,
@@ -67,16 +50,15 @@ internal sealed class ZLinkSpotOutboundEndpoint(
                     currentTimeout),
                 requestTimeout,
                 "SPOT channel request failed with result '{0}'.",
-                cancellationToken)
-            .ConfigureAwait(false);
+                cancellationToken);
     }
 
-    private ValueTask SendToChannelThroughSharedClientAsync(
+    public ValueTask SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        var bundle = runtime.GetOrCreateClientBundle(channelName);
+        var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
@@ -109,15 +91,6 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         CancellationToken cancellationToken)
     {
         return outbound.PublishCurrentAsync(topic, parts, cancellationToken);
-    }
-
-    public bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        SendFlags flags)
-    {
-        return outbound.SendToSpot(targetRid, targetSpotRid, parts, flags);
     }
 
     public ValueTask SendToSpotAsync(

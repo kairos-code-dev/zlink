@@ -60,7 +60,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             ?.Node;
     }
 
-    internal async ValueTask<bool> TrySubmitEntrySpotActorAsync(
+    internal ValueTask<bool> TrySubmitEntrySpotActorAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
@@ -68,17 +68,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
     {
         var state = GetOrStartState();
-        return await _spots.EntrySpotActors.TryAsync(
+        return _spots.EntrySpotActors.TryAsync(
                 state,
                 actor,
-                runtimeState,
                 header,
                 payload,
-                cancellationToken)
-            .ConfigureAwait(false);
+                cancellationToken);
     }
 
-    internal async ValueTask<EntrySpotActorReplyDispatchResult> TrySubmitEntrySpotActorForReplyAsync(
+    internal ValueTask<EntrySpotActorReplyDispatchResult> TrySubmitEntrySpotActorForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
@@ -87,32 +85,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
     {
         var state = GetOrStartState();
-        return await _spots.EntrySpotActors.TrySubmitForReplyAsync(
+        return _spots.EntrySpotActors.TrySubmitForReplyAsync(
                 state,
                 actor,
                 runtimeState,
                 header,
                 payload,
                 callerOwnsDispatchTurn,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    internal async ValueTask SubmitResolvedEntrySpotActorAsync(
-        IZLinkActor actor,
-        ZLinkActorRuntimeState runtimeState,
-        ZlinkStreamHeader header,
-        Func<CancellationToken, ValueTask> operation,
-        CancellationToken cancellationToken = default)
-    {
-        GetOrStartState();
-        await _spots.EntrySpotActors.SubmitResolvedAsync(
-                actor,
-                runtimeState,
-                header,
-                operation,
-                cancellationToken)
-            .ConfigureAwait(false);
+                cancellationToken);
     }
 
     internal async ValueTask NotifyEntrySpotActorJoinedAsync(

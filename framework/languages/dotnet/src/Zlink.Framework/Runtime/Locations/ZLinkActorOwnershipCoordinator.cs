@@ -55,11 +55,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             var activated = await activate(cancellationToken).ConfigureAwait(false);
             return new ZLinkActorClaimActivation<TActor>(activated, null);
         }
-        catch when (claim.Status == ZLinkActorClaimStatus.Claimed)
+        catch
         {
             // The claim preceded the failed activation; without a rollback
             // the key would stay owned by an instance that never existed.
-            await ReleaseActorAsync(actorType, actorId, CancellationToken.None).ConfigureAwait(false);
+            await ReleaseActorAsync(actorId, CancellationToken.None).ConfigureAwait(false);
             throw;
         }
     }
@@ -162,13 +162,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     public async ValueTask<ZLinkLocationWriteResult> PublishActorRefAsync(
-        string actorType,
         string actorId,
         ActorRef actorRef,
         CancellationToken cancellationToken = default)
     {
         var result = await RenewActorAsync(
-            actorType,
             actorId,
             row => row with { ActorRef = actorRef },
             cancellationToken).ConfigureAwait(false);
@@ -176,13 +174,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     internal async ValueTask NotifyActorJoinedSpotAsync(
-        string actorType,
         string actorId,
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         await RenewActorAsync(
-                actorType,
                 actorId,
                 row => row with
                 {
@@ -194,13 +190,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     internal async ValueTask NotifyActorMovedToEntrySpotAsync(
-        string actorType,
         string actorId,
         RoutingId targetNodeRid,
         CancellationToken cancellationToken = default)
     {
         await RenewActorAsync(
-                actorType,
                 actorId,
                 row => row with
                 {
@@ -213,12 +207,10 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     internal async ValueTask NotifyActorLeftSpotAsync(
-        string actorType,
         string actorId,
         CancellationToken cancellationToken = default)
     {
         await RenewActorAsync(
-                actorType,
                 actorId,
                 row => row with
                 {
@@ -230,7 +222,6 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     internal async ValueTask ReleaseActorAsync(
-        string actorType,
         string actorId,
         CancellationToken cancellationToken = default)
     {
@@ -251,7 +242,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             .ConfigureAwait(false);
     }
 
-    internal bool OwnsActor(string actorType, string actorId)
+    internal bool OwnsActor(string actorId)
     {
         var canonical = ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(
             actorId));
@@ -289,7 +280,6 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     private async ValueTask<ZLinkLocationWriteResult?> RenewActorAsync(
-        string actorType,
         string actorId,
         Func<ZLinkActorLocation, ZLinkActorLocation> mutate,
         CancellationToken cancellationToken)

@@ -9,7 +9,6 @@ internal sealed partial class ZLinkSpotActivation
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         _stopSource.Cancel();
-        await _subscriptionPump.StopAsync();
 
         await _timers.DisposeAsync();
         await _serial.DisposeAsync();
@@ -93,12 +92,6 @@ internal sealed partial class ZLinkSpotActivation
             return 0;
         });
 
-        _subscriptionPump.StartIfNeeded(
-            _subscriptions.HasSubscriptions,
-            StopToken,
-            ct => ExecuteSerializedAsync(
-                static (activation, innerCt) => activation.DispatchSubscriptionsAsync(innerCt),
-                ct));
         var create = new SpotCreateCallState(request);
         await ExecuteSerializedAsync(
             static async (activation, state, ct) =>
@@ -113,32 +106,29 @@ internal sealed partial class ZLinkSpotActivation
         return create.Response;
     }
 
-    public async ValueTask SubmitActorAsync(
+    public ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
     {
-        await _actorDispatchSubmitter.Async(
-                actor,
-                runtimeState,
-                header,
-                body,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return _actorDispatchSubmitter.Async(actor, runtimeState, header, body, cancellationToken);
     }
 
-    public async ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
+    public ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
     {
-        return await _actorDispatchSubmitter
-            .SubmitForReplyAsync(actor, runtimeState, header, body, cancellationToken)
-            .ConfigureAwait(false);
+        return _actorDispatchSubmitter.SubmitForReplyAsync(
+            actor,
+            runtimeState,
+            header,
+            body,
+            cancellationToken);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken)
@@ -148,19 +138,19 @@ internal sealed partial class ZLinkSpotActivation
             cancellationToken);
     }
 
-    private async ValueTask ExecuteSerializedAsync(
+    private ValueTask ExecuteSerializedAsync(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
-        await _serial.ExecuteAsync(operation, cancellationToken).ConfigureAwait(false);
+        return _serial.ExecuteAsync(operation, cancellationToken);
     }
 
-    private async ValueTask ExecuteSerializedAsync<TState>(
+    private ValueTask ExecuteSerializedAsync<TState>(
         Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
         TState state,
         CancellationToken cancellationToken)
     {
-        await _serial.ExecuteAsync(operation, state, cancellationToken).ConfigureAwait(false);
+        return _serial.ExecuteAsync(operation, state, cancellationToken);
     }
 
     private void QueueSerialized(Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation)

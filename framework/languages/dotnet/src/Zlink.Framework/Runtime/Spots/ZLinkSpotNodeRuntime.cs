@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
@@ -15,6 +13,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private IZLinkBackendSpot? _entrySpot;
+    private ZLinkEntrySpotActivation? _entrySpotActivation;
 
     public ZLinkSpotNodeRuntime(
         IServiceProvider services,
@@ -24,7 +23,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         IZLinkBackendContext context,
         IZLinkChannelBackendAdapter channelAdapter,
         IZLinkBackendSpotNode node,
-        string spotChannelName)
+        string spotChannelName,
+        ZLinkLocationLifecycle? locationLifecycle)
     {
         _services = services;
         _runtime = runtime;
@@ -35,7 +35,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             new ZLinkRuntimeErrorSink(),
             _stopSource.Token);
         _monitoringSnapshots = new ZLinkSpotMonitoringSnapshotProvider(node);
-        EntrySpotActorDispatch = new ZLinkEntrySpotActorDispatch(registration.SpotNodeName);
         _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             frameworkRegistration,
@@ -47,7 +46,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             frameworkRegistration,
             registration,
             node,
-            spotChannelName);
+            spotChannelName,
+            locationLifecycle);
     }
 
     public string Name => Registration.SpotNodeName;
@@ -60,9 +60,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 
-    internal ZLinkEntrySpotActivation? EntrySpotActivation => EntrySpotActorDispatch.Activation;
-
-    internal ZLinkEntrySpotActorDispatch EntrySpotActorDispatch { get; }
+    internal ZLinkEntrySpotActivation? EntrySpotActivation => _entrySpotActivation;
 
     public async ValueTask DisposeAsync()
     {
@@ -105,7 +103,14 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         var activation = await CreateEntrySpotActivationAsync(entrySpot)
             .ConfigureAwait(false);
-        if (activation is not null) EntrySpotActorDispatch.Attach(activation);
+        if (activation is not null)
+        {
+            if (_entrySpotActivation is not null)
+                throw new InvalidOperationException(
+                    $"SPOT node '{Registration.SpotNodeName}' already has an Entry Spot activation.");
+
+            _entrySpotActivation = activation;
+        }
 
         new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner)
             .Attach(entrySpot);
@@ -116,21 +121,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return _monitoringSnapshots.MonitorStatus();
     }
 
-    public void AddPublisherBundle(string channelName, ZLinkSpotPublisherBundle bundle)
-    {
-        _bundles.AddPublisherBundle(channelName, bundle);
-    }
-
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)
     {
         return _bundles.GetOrCreatePublisherBundle(channelName);
-    }
-
-    public bool TryGetPublisherBundle(
-        string channelName,
-        [NotNullWhen(true)] out ZLinkSpotPublisherBundle? bundle)
-    {
-        return _bundles.TryGetPublisherBundle(channelName, out bundle);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
@@ -228,7 +221,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         if (_entrySpot is null) return;
 
-        if (EntrySpotActorDispatch.Activation is { } activation)
+        if (_entrySpotActivation is { } activation)
         {
             await activation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
             await activation.DisposeAsync().ConfigureAwait(false);

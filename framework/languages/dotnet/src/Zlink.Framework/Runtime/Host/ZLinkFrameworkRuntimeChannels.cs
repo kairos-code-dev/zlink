@@ -2,14 +2,14 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    internal ZLinkChannelRuntimeBundle GetOrCreateClientBundle(string channelName)
+    internal ZLinkChannelRuntimeBundle GetClientBundle(string channelName)
     {
-        return _channels.GetOrCreateClientBundle(GetOrStartState(), channelName);
+        return _channels.GetClientBundle(GetOrStartState(), channelName);
     }
 
-    internal ZLinkChannelRuntimeBundle GetOrCreatePublisherBundle(string channelName)
+    internal ZLinkChannelRuntimeBundle GetPublisherBundle(string channelName)
     {
-        return _channels.GetOrCreatePublisherBundle(GetOrStartState(), channelName);
+        return _channels.GetPublisherBundle(GetOrStartState(), channelName);
     }
 
     internal ZLinkRouteChannelRuntime GetRouteChannel(string routerChannelId)
@@ -27,10 +27,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     /// </summary>
     private bool? IsKnownRouteMeshPeer(string routerChannelId, RoutingId targetNodeRid)
     {
-        return Services.GetService(typeof(IZLinkAutoConnectTopologyQuery))
-            is IZLinkAutoConnectTopologyQuery topology
-            ? topology.IsKnownRouteMeshPeer(routerChannelId, targetNodeRid)
-            : null;
+        return _topologyQuery?.IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
     }
 
     internal async ValueTask SubmitRouteSendAsync<TMessage>(
@@ -60,10 +57,11 @@ internal sealed partial class ZLinkFrameworkRuntime
             // The mesh does not know this rid at all: the address is stale
             // or wrong, not merely unconverged. Retrying the send cannot
             // help; the caller must re-resolve.
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestTargetNotFound,
-                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for '{packetName}'.",
-                innerException: exception);
+            throw CreateUnknownRouteTargetException(
+                routerChannelId,
+                targetNodeRid,
+                $"packet '{packetName}'",
+                exception);
         }
     }
 
@@ -93,10 +91,11 @@ internal sealed partial class ZLinkFrameworkRuntime
             // The mesh does not know this rid at all: the address is stale
             // or wrong, not merely unconverged. Retrying the request cannot
             // help; the caller must re-resolve.
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestTargetNotFound,
-                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for '{packetName}'.",
-                innerException: exception);
+            throw CreateUnknownRouteTargetException(
+                routerChannelId,
+                targetNodeRid,
+                $"packet '{packetName}'",
+                exception);
         }
     }
 
@@ -110,9 +109,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
         {
             ZLinkMessageParts.DisposeAll(parts);
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestTargetNotFound,
-                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for SPOT '{targetSpotRid}'.");
+            throw CreateUnknownRouteTargetException(
+                routerChannelId,
+                targetNodeRid,
+                $"SPOT '{targetSpotRid}'");
         }
 
         await _spotRouteRouter.SendAsync(
@@ -139,9 +139,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
         {
             ZLinkMessageParts.DisposeAll(parts);
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestTargetNotFound,
-                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for SPOT '{targetSpotRid}'.");
+            throw CreateUnknownRouteTargetException(
+                routerChannelId,
+                targetNodeRid,
+                $"SPOT '{targetSpotRid}'");
         }
 
         return await _spotRouteRouter.RequestAsync(
@@ -152,6 +153,18 @@ internal sealed partial class ZLinkFrameworkRuntime
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static ZLinkFrameworkException CreateUnknownRouteTargetException(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        string targetDescription,
+        Exception? innerException = null)
+    {
+        return new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.RequestTargetNotFound,
+            $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for {targetDescription}.",
+            innerException: innerException);
     }
 
     internal IZLinkBackendSocket GetMonitoringSocket(string sourceName)

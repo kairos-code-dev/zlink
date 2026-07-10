@@ -6,7 +6,8 @@ internal sealed class ZLinkSpotNodeCatalog(
     ZLinkFrameworkRegistration frameworkRegistration,
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
-    string spotChannelName) : IAsyncDisposable
+    string spotChannelName,
+    ZLinkLocationLifecycle? lifecycle) : IAsyncDisposable
 {
     private readonly ZLinkSpotActivationFactory _activationFactory = new(
         services,
@@ -19,9 +20,6 @@ internal sealed class ZLinkSpotNodeCatalog(
     private readonly object _gate = new();
     private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
     private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
-
-    private ZLinkLocationLifecycle? Lifecycle =>
-        services.GetService(typeof(ZLinkLocationLifecycle)) as ZLinkLocationLifecycle;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
 
@@ -285,7 +283,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         Type spotType,
         CancellationToken cancellationToken)
     {
-        if (Lifecycle is not { } lifecycle) return;
+        if (lifecycle is null) return;
 
         var spotRid = activation.SpotRid;
         var status = await lifecycle.SpotLocations.ClaimAsync(
@@ -309,7 +307,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     private async ValueTask ReleaseSpotLocationAsync(RoutingId spotRid)
     {
-        if (Lifecycle is { } lifecycle)
+        if (lifecycle is not null)
             await lifecycle.SpotLocations.ReleaseAsync(spotChannelName, spotRid).ConfigureAwait(false);
     }
 

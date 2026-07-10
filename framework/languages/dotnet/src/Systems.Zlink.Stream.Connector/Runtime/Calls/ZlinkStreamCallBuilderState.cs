@@ -14,7 +14,6 @@ internal sealed class ZlinkStreamCallBuilderState(string? name)
 
     public void SetMessageName(string name)
     {
-        ZlinkStreamConnector.ValidateName(name);
         Name = name;
     }
 

@@ -7,7 +7,7 @@ internal static class PublisherEndpoints
 {
     public static WebApplication MapPublisherEndpoints(this WebApplication app)
     {
-        app.MapPost("/publish/event", async (
+        app.MapPost("/publish/event", (
             string topic,
             string runId,
             int sequence,
@@ -23,7 +23,7 @@ internal static class PublisherEndpoints
                 .Submit(cancellationToken);
             return Results.Ok(new { status = "published", topic, runId, sequence });
         });
-        app.MapPost("/publish/missing", async (
+        app.MapPost("/publish/missing", (
             string topic,
             string runId,
             int sequence,

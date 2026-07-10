@@ -1,13 +1,6 @@
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
-/// Resolves a spot rid to its live location row by trying every spot mesh
-/// channel name registered on this node (the same value the auto-connect
-/// host advertises under: SpotMeshChannelName ?? SpotNodeName). Every
-/// try reads the store — resolvers have no cache. Scheduled for removal
-/// with the address-based egress (spot-address messaging draft §10.3).
-/// </summary>
-/// <summary>
 /// Default <see cref="IZLinkSpotRouteRefResolver"/> over the location
 /// store, replacing the removed registry-backed resolver. Registered only
 /// when location stores are enabled and no custom resolver was added.

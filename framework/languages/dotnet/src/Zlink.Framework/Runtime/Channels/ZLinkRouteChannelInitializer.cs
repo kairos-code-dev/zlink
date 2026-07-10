@@ -6,13 +6,13 @@ internal sealed class ZLinkRouteChannelInitializer(
     IServiceProvider services,
     ZLinkFrameworkRegistration registration)
 {
-    public void Initialize(
+    public async ValueTask InitializeAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkChannelBackendAdapter adapter)
     {
         foreach (var routedRegistration in registration.RouteChannels.Values)
         {
-            var runtime = CreateRuntime(state, adapter, routedRegistration);
+            var runtime = await CreateRuntimeAsync(state, adapter, routedRegistration).ConfigureAwait(false);
             state.RouteChannels.Add(routedRegistration.RouterChannelId, runtime);
             try
             {
@@ -23,7 +23,7 @@ internal sealed class ZLinkRouteChannelInitializer(
             catch
             {
                 state.RouteChannels.Remove(routedRegistration.RouterChannelId);
-                runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                await runtime.DisposeAsync().ConfigureAwait(false);
                 throw;
             }
         }
@@ -35,7 +35,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         foreach (var endpoint in routedRegistration.ManualConnections) yield return endpoint;
     }
 
-    private ZLinkRouteChannelRuntime CreateRuntime(
+    private async ValueTask<ZLinkRouteChannelRuntime> CreateRuntimeAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkChannelBackendAdapter adapter,
         ZLinkRouteChannelRegistration routedRegistration)
@@ -64,18 +64,19 @@ internal sealed class ZLinkRouteChannelInitializer(
                     new ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                         services.GetRequiredService<ZLinkFrameworkRuntime>())),
                 state.StopTokenSource.Token);
-            AttachSpotRouteBridgeIfAccepted(state, routedRegistration, runtime);
+            await AttachSpotRouteBridgeIfAcceptedAsync(state, routedRegistration, runtime)
+                .ConfigureAwait(false);
             return runtime;
         }
         catch
         {
-            if (router is not null) router.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            if (router is not null) await router.DisposeAsync().ConfigureAwait(false);
 
             throw;
         }
     }
 
-    private void AttachSpotRouteBridgeIfAccepted(
+    private async ValueTask AttachSpotRouteBridgeIfAcceptedAsync(
         ZLinkFrameworkRuntimeState state,
         ZLinkRouteChannelRegistration routedRegistration,
         ZLinkRouteChannelRuntime runtime)
@@ -92,11 +93,10 @@ internal sealed class ZLinkRouteChannelInitializer(
         {
             runtime.AttachSpotRouteBridge(bridge);
             state.SpotRouteBridges.Add(bridge);
-            state.SpotRouteBridgeOwners.Add(routedRegistration.RouterChannelId, spotRuntime);
         }
         catch
         {
-            bridge.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            await bridge.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }

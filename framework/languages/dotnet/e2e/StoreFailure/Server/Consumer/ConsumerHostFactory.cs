@@ -140,7 +140,7 @@ internal static class ConsumerHostFactory
                 return Results.Problem(ex.Message);
             }
         });
-        app.MapPost("/profile/command", async (
+        app.MapPost("/profile/command", (
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {

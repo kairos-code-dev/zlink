@@ -187,13 +187,6 @@ internal static class ZLinkEntrySpotActorDispatcher
                 return;
             }
 
-            if (actorState.LiveActivation is not null)
-            {
-                await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
             await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
                 .ConfigureAwait(false);
         }

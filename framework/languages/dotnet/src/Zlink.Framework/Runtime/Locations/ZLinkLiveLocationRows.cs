@@ -21,24 +21,6 @@ internal sealed class ZLinkLiveLocationRows(ZLinkOwnerLeaseTracker leaseTracker)
     public async ValueTask<IReadOnlyList<TRow>> FilterAsync<TRow>(
         IReadOnlyList<TRow> rows,
         Func<TRow, string> ownerOf,
-        CancellationToken cancellationToken)
-    {
-        var live = new List<TRow>(rows.Count);
-        foreach (var row in rows)
-        {
-            if (await leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken)
-                    .ConfigureAwait(false))
-            {
-                live.Add(row);
-            }
-        }
-
-        return live;
-    }
-
-    public async ValueTask<IReadOnlyList<TRow>> FilterAsync<TRow>(
-        IReadOnlyList<TRow> rows,
-        Func<TRow, string> ownerOf,
         Func<TRow, bool> acceptObserved,
         CancellationToken cancellationToken)
     {

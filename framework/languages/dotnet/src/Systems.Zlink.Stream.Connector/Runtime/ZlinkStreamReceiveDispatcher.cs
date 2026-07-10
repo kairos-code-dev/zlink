@@ -72,20 +72,10 @@ internal sealed class ZlinkStreamReceiveDispatcher(
 
         var handlers = typedHandlers.Snapshot(header.Name);
         foreach (var handler in handlers)
-            try
-            {
-                await callbacks.DispatchUserCallbackAsync(
-                        dispatchedToken => handler.Invoke(message, dispatchedToken),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await callbacks.PublishErrorAsync(new ZlinkStreamError(
-                    ZlinkStreamErrorCode.UserCallbackFailed,
-                    "Typed message handler failed.",
-                    ex), cancellationToken).ConfigureAwait(false);
-            }
+            await callbacks.DispatchUserCallbackAsync(
+                    dispatchedToken => handler.Invoke(message, dispatchedToken),
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 
     private static ZlinkStreamError ParseErrorPayload(ReadOnlyMemory<byte> payload)

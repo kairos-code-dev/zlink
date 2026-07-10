@@ -18,6 +18,7 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
         IServiceProvider services,
         IZLinkBackendAdapterFactory backendAdapterFactory,
         ZLinkFrameworkRegistration registration,
+        ZLinkLocationLifecycle? locationLifecycle,
         ZLinkHandlerRegistry handlerRegistry,
         ZLinkHandlerDispatcher dispatcher,
         Func<ZLinkFrameworkRuntimeState> getOrStartState,
@@ -35,14 +36,23 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
                     runtime,
                     services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkChannelPacketDispatcher>())));
         var streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
-        var spots = new ZLinkSpotRuntimeManager(services, runtime, backendAdapterFactory, registration);
+        var spots = new ZLinkSpotRuntimeManager(
+            services,
+            runtime,
+            backendAdapterFactory,
+            registration,
+            locationLifecycle);
         var stateFactory = new ZLinkFrameworkRuntimeStateFactory(
             backendAdapterFactory,
             registration,
             channels,
             streams,
             spots);
-        var actorSessionManager = new ZLinkActorSessionManager(runtime, services, getActorSpotNode);
+        var actorSessionManager = new ZLinkActorSessionManager(
+            runtime,
+            services,
+            getActorSpotNode,
+            locationLifecycle);
         var actors = new ZLinkFrameworkActorFacade(
             runtime,
             registration,

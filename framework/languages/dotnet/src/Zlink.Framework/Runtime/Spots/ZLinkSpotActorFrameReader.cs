@@ -51,15 +51,6 @@ internal static class ZLinkSpotActorFrameReader
         return true;
     }
 
-    public static void DisposeFrame(
-        IReadOnlyList<ZLinkBackendActorPart> parts,
-        ref int index,
-        ZLinkBackendActorPart headerPart)
-    {
-        headerPart.Message.Dispose();
-        DisposeContinuationParts(parts, ref index, headerPart.More);
-    }
-
     private static Message? TakeBodyPart(
         IReadOnlyList<ZLinkBackendActorPart> parts,
         ref int index,

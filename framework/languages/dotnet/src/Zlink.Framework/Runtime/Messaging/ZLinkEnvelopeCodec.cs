@@ -206,16 +206,6 @@ internal static class ZLinkEnvelopeCodec
         return DecodeBody(parts[1], bodyType, contentType, codecs);
     }
 
-    public static object? DecodeBody(Message bodyMessage, Type bodyType)
-    {
-        return DecodeBody(bodyMessage, bodyType, JsonContentType, null);
-    }
-
-    public static object? DecodeBody(Message bodyMessage, Type bodyType, string contentType)
-    {
-        return DecodeBody(bodyMessage, bodyType, contentType, null);
-    }
-
     public static object? DecodeBody(
         Message bodyMessage,
         Type bodyType,

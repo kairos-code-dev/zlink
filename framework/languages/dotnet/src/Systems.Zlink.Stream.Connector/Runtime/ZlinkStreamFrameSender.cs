@@ -17,7 +17,6 @@ internal sealed class ZlinkStreamFrameSender(
         bool compress,
         ZlinkStreamRequestSeq? requestSeq)
     {
-        ZlinkStreamConnector.ValidateName(name, kind == ZlinkStreamMessageKind.Control);
         var payloadBytes = payload.Payload;
         ZlinkStreamFrameCodec.ValidateSendPayload(payloadBytes.Length, options.MaxSendPayloadSize);
         var flags = requestSeq is null

@@ -16,14 +16,18 @@ internal static class ZLinkStreamMetadataCodec
         destination[offset++] = (byte)metadata.Count;
         foreach (var (key, value) in metadata.Values)
         {
-            var keyLength = Encoding.UTF8.GetByteCount(key);
-            var valueLength = Encoding.UTF8.GetByteCount(value);
+            var keyLengthOffset = offset++;
+            var keyLength = Encoding.UTF8.GetBytes(key, destination[offset..]);
+            destination[keyLengthOffset] = checked((byte)keyLength);
+            offset += keyLength;
 
-            destination[offset++] = (byte)keyLength;
-            offset += Encoding.UTF8.GetBytes(key, destination.Slice(offset, keyLength));
-            BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(offset, sizeof(ushort)), (ushort)valueLength);
+            var valueLengthOffset = offset;
             offset += sizeof(ushort);
-            offset += Encoding.UTF8.GetBytes(value, destination.Slice(offset, valueLength));
+            var valueLength = Encoding.UTF8.GetBytes(value, destination[offset..]);
+            BinaryPrimitives.WriteUInt16BigEndian(
+                destination.Slice(valueLengthOffset, sizeof(ushort)),
+                checked((ushort)valueLength));
+            offset += valueLength;
         }
     }
 
@@ -37,7 +41,7 @@ internal static class ZLinkStreamMetadataCodec
         for (var i = 0; i < count; i++)
         {
             var key = DecodeString(metadata, ref offset, true, "key");
-            var value = DecodeString(metadata, ref offset, false, "value");
+            var value = DecodeString(metadata, ref offset, false, "value", allowEmpty: true);
 
             if (!values.TryAdd(key, value))
                 throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Duplicate metadata key.");
@@ -75,12 +79,13 @@ internal static class ZLinkStreamMetadataCodec
         ReadOnlySpan<byte> metadata,
         ref int offset,
         bool byteLength,
-        string name)
+        string name,
+        bool allowEmpty = false)
     {
         var length = byteLength
             ? ReadByteLength(metadata, ref offset, name)
             : ReadUInt16Length(metadata, ref offset, name);
-        if (length == 0 || metadata.Length - offset < length)
+        if ((!allowEmpty && length == 0) || metadata.Length - offset < length)
             throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, $"Metadata {name} is invalid.");
 
         var value = Encoding.UTF8.GetString(metadata.Slice(offset, length));

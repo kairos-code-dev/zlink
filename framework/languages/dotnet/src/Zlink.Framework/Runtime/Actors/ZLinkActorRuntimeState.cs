@@ -6,7 +6,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _sessionGate = new();
     private Task<IZLinkActor>? _actorCreationTask;
-    private ulong _actorGeneration;
     private ZLinkActorBoundSession? _boundSession;
 
     public string ActorId { get; } = actorId;
@@ -68,7 +67,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public void BindNativeActorRef(ZLinkBackendActorRef actorRef)
     {
         NativeActorRef = actorRef;
-        EnsureActorGeneration(actorRef.Generation);
     }
 
     public bool BindActorInstance(IZLinkActor actor)
@@ -343,17 +341,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         var previous = CurrentDispatch;
         CurrentDispatch = new ZLinkActorDispatchState(header);
         return new DispatchScope(this, previous);
-    }
-
-    public void EnsureActorGeneration(ulong nativeGeneration)
-    {
-        if (nativeGeneration != 0)
-        {
-            _actorGeneration = nativeGeneration;
-            return;
-        }
-
-        if (_actorGeneration == 0) _actorGeneration = 1;
     }
 
     private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)

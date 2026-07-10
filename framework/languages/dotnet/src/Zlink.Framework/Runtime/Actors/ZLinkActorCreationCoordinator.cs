@@ -6,11 +6,11 @@ internal sealed class ZLinkActorCreationCoordinator(
     ZLinkFrameworkRuntime runtime,
     IServiceProvider services,
     Func<IZLinkBackendSpotNode?> getActorSpotNode,
+    IZLinkActorLocationLifecycle? lifecycle,
     Func<ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext,
     Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> bindActorContext)
 {
-    private IZLinkActorLocationLifecycle? Lifecycle =>
-        services.GetService(typeof(IZLinkActorLocationLifecycle)) as IZLinkActorLocationLifecycle;
+    private IZLinkActorLocationLifecycle? Lifecycle { get; } = lifecycle;
 
     public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         ZLinkActorRuntimeState state,
@@ -171,7 +171,6 @@ internal sealed class ZLinkActorCreationCoordinator(
 
         if (state.NativeActorRef is { } nativeRef)
             await lifecycle.PublishActorRefAsync(
-                    actorType,
                     actorId,
                     nativeRef.ToNative(),
                     cancellationToken)
@@ -204,7 +203,6 @@ internal sealed class ZLinkActorCreationCoordinator(
 
         bindActorContext(actor, state);
         EnsureNativeActorRef(state, actor.ActorId, ZLinkMessage.Empty);
-        state.EnsureActorGeneration(state.NativeActorRef?.Generation ?? 0);
 
         return actor;
     }
@@ -246,7 +244,6 @@ internal sealed class ZLinkActorCreationCoordinator(
 
         if (state.NativeActorRef is { } nativeRef)
             await lifecycle.PublishActorRefAsync(
-                    actorType,
                     actorId,
                     nativeRef.ToNative(),
                     cancellationToken)
@@ -275,8 +272,6 @@ internal sealed class ZLinkActorCreationCoordinator(
 
         bindActorContext(actor, state);
         EnsureNativeActorRef(state, actor.ActorId, createRequest);
-
-        state.EnsureActorGeneration(state.NativeActorRef?.Generation ?? 0);
 
         return actor;
     }

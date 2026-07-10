@@ -18,21 +18,11 @@ internal static class ZLinkEnvelopeReplyCompletion
                 return;
             }
 
-            if (reply.Count == 0)
-            {
-                fail(new InvalidOperationException($"{operationName} reply is empty."));
-                return;
-            }
-
-            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-            if (replyHeader.Kind == ZLinkMessageKind.Error)
-            {
-                fail(ZLinkEnvelopeErrorMapper.CreateException(replyHeader, $"{operationName} failed."));
-                return;
-            }
-
-            complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), replyHeader.ContentType, codecs)
-                     ?? throw new InvalidOperationException($"{operationName} reply body is null."));
+            complete(ZLinkEnvelopeReplyDecoder.Decode<TReply>(
+                reply,
+                $"{operationName} reply is empty.",
+                $"{operationName} failed.",
+                codecs));
         }
         catch (Exception exception)
         {

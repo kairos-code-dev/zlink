@@ -23,16 +23,12 @@ internal sealed class ZLinkSessionActorCoordinator(
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask<IZLinkSessionActor> BindActorAsync(
+    public ValueTask<IZLinkSessionActor> BindActorAsync(
         ZLinkSessionContext context,
         ActorRef actor,
         CancellationToken cancellationToken)
     {
-        return await BindActorCoreAsync(
-                context,
-                actor,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return BindActorCoreAsync(context, actor, cancellationToken);
     }
 
     public async ValueTask<IZLinkSessionActor> BindOrGetActorAsync(
@@ -95,29 +91,21 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask NotifyActorDisconnectedAsync(
+    public ValueTask NotifyActorDisconnectedAsync(
         IZLinkSessionActor actor,
         CancellationToken cancellationToken)
     {
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
-        await runtime.NotifyActorDisconnectedAsync(actorRef.Ref, cancellationToken)
-            .ConfigureAwait(false);
+        return runtime.NotifyActorDisconnectedAsync(actorRef.Ref, cancellationToken);
     }
 
-    public async ValueTask CleanupBindingsAsync(
+    public ValueTask CleanupAsync(
         ZLinkSessionContext context,
         CancellationToken cancellationToken)
     {
-        await _bindings.CleanupAsync(context, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async ValueTask CleanupAsync(
-        ZLinkSessionContext context,
-        CancellationToken cancellationToken)
-    {
-        await CleanupBindingsAsync(context, cancellationToken).ConfigureAwait(false);
+        return _bindings.CleanupAsync(context, cancellationToken);
     }
 
     private async ValueTask DispatchLocalAsync(

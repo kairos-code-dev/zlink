@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeBundleRegistry(
@@ -20,24 +18,6 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
         }
 
         foreach (var publisher in publishers) await publisher.DisposeAsync();
-    }
-
-    public void AddPublisherBundle(string channelName, ZLinkSpotPublisherBundle bundle)
-    {
-        lock (_gate)
-        {
-            _publisherBundles.Add(channelName, bundle);
-        }
-    }
-
-    public bool TryGetPublisherBundle(
-        string channelName,
-        [NotNullWhen(true)] out ZLinkSpotPublisherBundle? bundle)
-    {
-        lock (_gate)
-        {
-            return _publisherBundles.TryGetValue(channelName, out bundle);
-        }
     }
 
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)

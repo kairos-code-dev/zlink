@@ -9,7 +9,7 @@ internal sealed class ZLinkSpotPeerConnector(
         cancellationToken.ThrowIfCancellationRequested();
         if (!connections.TryAddRouterManual(endpoint)) return ValueTask.FromResult(false);
 
-        ConnectRouterPeer(endpoint);
+        ConnectPeer(endpoint);
         return ValueTask.FromResult(true);
     }
 
@@ -21,7 +21,7 @@ internal sealed class ZLinkSpotPeerConnector(
         cancellationToken.ThrowIfCancellationRequested();
         if (!connections.TryAddRouterManual(endpoint)) return ValueTask.FromResult(false);
 
-        ConnectRouterPeer(peerRid, endpoint);
+        ConnectPeer(peerRid, endpoint);
         return ValueTask.FromResult(true);
     }
 
@@ -46,19 +46,7 @@ internal sealed class ZLinkSpotPeerConnector(
         }
     }
 
-    private void ConnectRouterPeer(string endpoint)
-    {
-        try
-        {
-            node.ConnectPeer(endpoint);
-        }
-        catch (ZlinkConnectException error)
-            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
-        {
-        }
-    }
-
-    private void ConnectRouterPeer(RoutingId peerRid, string endpoint)
+    private void ConnectPeer(RoutingId peerRid, string endpoint)
     {
         try
         {

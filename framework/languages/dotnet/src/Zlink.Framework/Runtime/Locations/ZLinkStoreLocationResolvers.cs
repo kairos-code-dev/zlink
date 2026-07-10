@@ -48,26 +48,24 @@ internal sealed class ZLinkStoreLocationResolvers :
         // view backwards (monotonic read guard). Rows with values outside
         // the closed auto-connect/role sets are ignored too and reported to
         // diagnostics (draft 6.5).
-        var fresh = new List<ZLinkPeerLocation>(rows.Count);
-        foreach (var row in rows)
-        {
-            if (!ZLinkLocationValueCodec.IsKnown(row.AutoConnectType)
-                || !ZLinkLocationValueCodec.IsKnown(row.Role))
-            {
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"peer row ignored: unknown auto-connect type '{row.AutoConnectType}' "
-                    + $"or role '{row.Role}' (mesh '{row.MeshName}', endpoint '{row.Endpoint}')");
-                continue;
-            }
-
-            if (_observed.AcceptPeer(row))
-            {
-                fresh.Add(row);
-            }
-        }
-
-        return await _liveRows.FilterAsync(fresh, static row => row.OwnerId, cancellationToken)
+        return await _liveRows.FilterAsync(
+                rows,
+                static row => row.OwnerId,
+                AcceptPeer,
+                cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private bool AcceptPeer(ZLinkPeerLocation row)
+    {
+        if (ZLinkLocationValueCodec.IsKnown(row.AutoConnectType)
+            && ZLinkLocationValueCodec.IsKnown(row.Role))
+            return _observed.AcceptPeer(row);
+
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"peer row ignored: unknown auto-connect type '{row.AutoConnectType}' "
+            + $"or role '{row.Role}' (mesh '{row.MeshName}', endpoint '{row.Endpoint}')");
+        return false;
     }
 
     internal async ValueTask<ZLinkSpotLocation?> ResolveSpotRowAsync(

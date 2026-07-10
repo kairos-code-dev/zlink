@@ -10,7 +10,11 @@ public sealed class EnvelopeCodecTests
     {
         using var body = Message.From("raw-join-request");
 
-        var decoded = ZLinkEnvelopeCodec.DecodeBody(body, typeof(Message));
+        var decoded = ZLinkEnvelopeCodec.DecodeBody(
+            body,
+            typeof(Message),
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null);
 
         Assert.Same(body, decoded);
     }
@@ -39,7 +43,9 @@ public sealed class EnvelopeCodecTests
 
         var decoded = (ActorSnapshotReply)ZLinkEnvelopeCodec.DecodeBody(
             body,
-            typeof(ActorSnapshotReply))!;
+            typeof(ActorSnapshotReply),
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null)!;
 
         Assert.Equal(snapshot.NodeRid, decoded.Actor.NodeRid);
         Assert.Equal("delivery-courier-node-1", decoded.Actor.NodeRid.ToString());

@@ -132,7 +132,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
     private void StartDrain()
     {
         if (Interlocked.Exchange(ref _drainStarted, 1) == 0)
-            _taskRunner.RunDetached("stream-inbound-observer-dispatch", DrainAsync);
+            _taskRunner.RunDetached(DrainAsync);
     }
 
     private void ReportDropped()
@@ -140,7 +140,6 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
         if (Interlocked.Exchange(ref _dropReportPending, 1) != 0) return;
 
         _taskRunner.RunDetached(
-            "stream-inbound-observer-dropped",
             async token =>
             {
                 try

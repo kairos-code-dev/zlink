@@ -6,7 +6,8 @@ internal sealed class ZLinkSpotNodeInitializer(
     IServiceProvider services,
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendAdapterFactory backendAdapterFactory,
-    ZLinkFrameworkRegistration registration)
+    ZLinkFrameworkRegistration registration,
+    ZLinkLocationLifecycle? locationLifecycle)
 {
     public async ValueTask InitializeAsync(ZLinkFrameworkRuntimeState state)
     {
@@ -38,7 +39,8 @@ internal sealed class ZLinkSpotNodeInitializer(
                 state.Context,
                 channelAdapter,
                 node,
-                spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName);
+                spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName,
+                locationLifecycle);
 
             nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
             if (spotNodeRegistration.Router is not null
@@ -91,8 +93,7 @@ internal sealed class ZLinkSpotNodeInitializer(
     {
         if (spotNodeRegistration.Router is null) return;
 
-        if (services.GetService(typeof(ZLinkLocationLifecycle)) is not ZLinkLocationLifecycle lifecycle)
-            return;
+        if (locationLifecycle is not { } lifecycle) return;
 
         var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName,

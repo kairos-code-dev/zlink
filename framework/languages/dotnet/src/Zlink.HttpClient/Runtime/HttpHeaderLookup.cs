@@ -6,13 +6,7 @@ internal static class HttpHeaderLookup
 {
     public static string? Find(IReadOnlyDictionary<string, string> headers, string name)
     {
-        if (headers.TryGetValue(name, out var direct)) return direct;
-
-        foreach (var (key, value) in headers)
-            if (key.Equals(name, StringComparison.OrdinalIgnoreCase))
-                return value;
-
-        return null;
+        return headers.TryGetValue(name, out var value) ? value : null;
     }
 
     public static IReadOnlyDictionary<string, string> Without(

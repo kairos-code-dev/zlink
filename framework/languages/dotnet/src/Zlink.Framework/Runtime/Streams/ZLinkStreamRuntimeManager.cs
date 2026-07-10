@@ -5,7 +5,7 @@ internal sealed class ZLinkStreamRuntimeManager(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
-    public void InitializeStreamNodes(ZLinkFrameworkRuntimeState state)
+    public async ValueTask InitializeStreamNodesAsync(ZLinkFrameworkRuntimeState state)
     {
         if (registration.StreamNodes.Count == 0) return;
 
@@ -40,13 +40,13 @@ internal sealed class ZLinkStreamRuntimeManager(
                 state.StreamNodes.Remove(streamNodeRegistration.StreamNodeName);
                 if (runtime is not null)
                 {
-                    runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    await runtime.DisposeAsync().ConfigureAwait(false);
                 }
                 else
                 {
-                    if (monitor is not null) monitor.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    if (monitor is not null) await monitor.DisposeAsync().ConfigureAwait(false);
 
-                    if (socket is not null) socket.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    if (socket is not null) await socket.DisposeAsync().ConfigureAwait(false);
                 }
 
                 throw;

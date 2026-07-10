@@ -561,7 +561,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Registers_ActorDirectory_With_LocationStore_Without_ActorFactory()
+    public async Task AddZLinkFramework_Registers_ActorDirectory_With_LocationStore_Without_ActorFactory()
     {
         var services = new ServiceCollection();
 
@@ -570,7 +570,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseInMemoryLocationStores();
         });
 
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
         Assert.NotNull(provider.GetService<IZLinkActorDirectory>());
         Assert.Null(provider.GetService<IZLinkActorManager>());
     }

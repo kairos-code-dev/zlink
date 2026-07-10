@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Zlink.Framework.Runtime.Messaging;
 
 internal static class ZLinkClientCallCodec
@@ -39,7 +37,27 @@ internal static class ZLinkClientCallCodec
             codecs);
     }
 
-    public static TReply DecodeEnvelopeReply<TReply>(
+    public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
+        IReadOnlyList<Message> reply,
+        string emptyMessage,
+        string errorMessage,
+        ZLinkCodecRegistryBuilder? codecs)
+    {
+        try
+        {
+            return ZLinkEnvelopeReplyDecoder.Decode<TReply>(reply, emptyMessage, errorMessage, codecs);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(reply);
+        }
+    }
+
+}
+
+internal static class ZLinkEnvelopeReplyDecoder
+{
+    public static TReply Decode<TReply>(
         IReadOnlyList<Message> reply,
         string emptyMessage,
         string errorMessage,
@@ -53,30 +71,6 @@ internal static class ZLinkClientCallCodec
 
         return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), replyHeader.ContentType, codecs)
                ?? throw new InvalidOperationException("Reply body is null.");
-    }
-
-    public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
-        IReadOnlyList<Message> reply,
-        string emptyMessage,
-        string errorMessage,
-        ZLinkCodecRegistryBuilder? codecs)
-    {
-        try
-        {
-            return DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage, codecs);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(reply);
-        }
-    }
-
-    public static TReply DecodeJsonReply<TReply>(
-        ReadOnlySpan<byte> reply,
-        string nullMessage)
-    {
-        return JsonSerializer.Deserialize<TReply>(reply, ZLinkJsonSerializerOptions.Default)
-               ?? throw new InvalidOperationException(nullMessage);
     }
 }
 

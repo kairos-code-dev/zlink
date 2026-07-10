@@ -262,11 +262,9 @@ internal sealed class ZlinkStreamConnectorLifecycle(
                 _connection = connection;
                 _sessionCts = sessionCts;
                 _receiveTask = taskRunner.Run(
-                    "stream-receive-loop",
                     _ => new ValueTask(RunReceiveLoopGuardedAsync(runReceiveLoop, sessionCts.Token)));
                 _heartbeatTask = options.Heartbeat.Enabled
                     ? taskRunner.Run(
-                        "stream-heartbeat-loop",
                         _ => new ValueTask(RunHeartbeatLoopAsync(sessionCts.Token)))
                     : null;
                 change = SetStateLocked(ZlinkStreamConnectionState.Connected, null);

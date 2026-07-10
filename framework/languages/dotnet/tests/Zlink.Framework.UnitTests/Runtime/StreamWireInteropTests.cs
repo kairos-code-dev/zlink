@@ -21,6 +21,26 @@ public sealed class StreamWireInteropTests
     }
 
     [Fact]
+    public void CoreHeaderCodec_RoundTripsEmptyMetadataValue()
+    {
+        var header = CreateHeader();
+
+        var decoded = CoreHeaderCodec.Decode(CoreHeaderCodec.Encode(header));
+
+        Assert.Equal(string.Empty, decoded.Metadata.Values["optional"]);
+    }
+
+    [Fact]
+    public void ConnectorHeaderEncoding_DecodesWithCoreHeaderCodec()
+    {
+        var encoded = new ConnectorHeaderCodec().Encode(CreateHeader());
+
+        var decoded = CoreHeaderCodec.Decode(encoded);
+
+        Assert.Equal(string.Empty, decoded.Metadata.Values["optional"]);
+    }
+
+    [Fact]
     public void ConnectorFrameEncoding_DecodesWithCoreFrameCodec()
     {
         var header = new ConnectorHeaderCodec().Encode(CreateHeader());

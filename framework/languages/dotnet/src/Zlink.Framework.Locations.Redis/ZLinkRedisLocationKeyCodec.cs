@@ -45,49 +45,6 @@ internal static class ZLinkRedisLocationKeyCodec
     internal static string EncodeRouteKey(ZLinkRouteLocationKey key) =>
         Encode(((int)key.RouteKind).ToString(CultureInfo.InvariantCulture), key.RouteKey);
 
-    internal static ZLinkLocationKey DecodeKey(ZLinkLocationKind kind, string encoded) =>
-        kind switch
-        {
-            ZLinkLocationKind.Peer => new ZLinkLocationKey.Peer(DecodePeerKey(encoded)),
-            ZLinkLocationKind.Spot => new ZLinkLocationKey.Spot(DecodeSpotKey(encoded)),
-            ZLinkLocationKind.Actor => new ZLinkLocationKey.Actor(DecodeActorKey(encoded)),
-            ZLinkLocationKind.Route => new ZLinkLocationKey.Route(DecodeRouteKey(encoded)),
-            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown location kind.")
-        };
-
-    private static ZLinkPeerLocationKey DecodePeerKey(string encoded)
-    {
-        var segments = Decode(encoded, expectedCount: 4);
-        var identity = segments[3];
-        RoutingId? nodeRid = string.IsNullOrEmpty(identity) ? null : RoutingId.FromHex(identity);
-        return new ZLinkPeerLocationKey(
-            ParseAutoConnectType(segments[0]),
-            segments[1],
-            ParseRole(segments[2]),
-            nodeRid,
-            nodeRid is null ? identity : null);
-    }
-
-    private static ZLinkSpotLocationKey DecodeSpotKey(string encoded)
-    {
-        var segments = Decode(encoded, expectedCount: 2);
-        return new ZLinkSpotLocationKey(segments[0], RoutingId.FromHex(segments[1]));
-    }
-
-    private static ZLinkActorLocationKey DecodeActorKey(string encoded)
-    {
-        var segments = Decode(encoded, expectedCount: 1);
-        return new ZLinkActorLocationKey(segments[0]);
-    }
-
-    private static ZLinkRouteLocationKey DecodeRouteKey(string encoded)
-    {
-        var segments = Decode(encoded, expectedCount: 2);
-        return new ZLinkRouteLocationKey(
-            (ZLinkRouteKind)int.Parse(segments[0], CultureInfo.InvariantCulture),
-            segments[1]);
-    }
-
     private static string Encode(params string[] segments)
     {
         var builder = new StringBuilder();
@@ -100,38 +57,6 @@ internal static class ZLinkRedisLocationKeyCodec
         }
 
         return builder.ToString();
-    }
-
-    private static string[] Decode(string encoded, int expectedCount)
-    {
-        var segments = new string[expectedCount];
-        var offset = 0;
-        for (var i = 0; i < expectedCount; i++)
-        {
-            var colon = encoded.IndexOf(':', offset);
-            if (colon < 0)
-            {
-                throw new FormatException("Encoded location key segment length is missing.");
-            }
-
-            var length = int.Parse(encoded[offset..colon], CultureInfo.InvariantCulture);
-            var start = colon + 1;
-            var end = start + length;
-            if (length < 0 || end > encoded.Length)
-            {
-                throw new FormatException("Encoded location key segment length is invalid.");
-            }
-
-            segments[i] = encoded[start..end];
-            offset = end;
-        }
-
-        if (offset != encoded.Length)
-        {
-            throw new FormatException("Encoded location key has trailing data.");
-        }
-
-        return segments;
     }
 
     private static string ToCanonicalString(ZLinkLocationAutoConnectType type) => type switch
@@ -154,23 +79,4 @@ internal static class ZLinkRedisLocationKeyCodec
         _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown location role.")
     };
 
-    private static ZLinkLocationAutoConnectType ParseAutoConnectType(string name) => name switch
-    {
-        "route-mesh" => ZLinkLocationAutoConnectType.RouteMesh,
-        "client-server" => ZLinkLocationAutoConnectType.ClientServer,
-        "dealer-mesh" => ZLinkLocationAutoConnectType.DealerMesh,
-        "fanout" => ZLinkLocationAutoConnectType.Fanout,
-        "spot-mesh" => ZLinkLocationAutoConnectType.SpotMesh,
-        _ => throw new FormatException($"Unknown auto-connect type '{name}'.")
-    };
-
-    private static ZLinkLocationRole ParseRole(string name) => name switch
-    {
-        "spot" => ZLinkLocationRole.Spot,
-        "router" => ZLinkLocationRole.Router,
-        "dealer" => ZLinkLocationRole.Dealer,
-        "pub" => ZLinkLocationRole.Pub,
-        "sub" => ZLinkLocationRole.Sub,
-        _ => throw new FormatException($"Unknown location role '{name}'.")
-    };
 }

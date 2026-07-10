@@ -2,7 +2,6 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundTransport(
     IZLinkBackendSpot nativeSpot,
-    TimeSpan defaultRequestTimeout,
     TimeSpan? sendTimeout,
     CancellationToken stopToken) : IAsyncDisposable
 {
@@ -16,30 +15,6 @@ internal sealed class ZLinkSpotOutboundTransport(
         return _submitter.DisposeAsync();
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        var requestTimeout = timeout ?? defaultRequestTimeout;
-        return await ZLinkRawRequestSubmitter.SubmitAsync(
-                _submitter,
-                parts,
-                (pending, callback, currentTimeout) => nativeSpot.RequestToSpot(
-                    targetNodeRid,
-                    targetSpotRid,
-                    pending,
-                    callback,
-                    SendFlags.DontWait,
-                    currentTimeout),
-                requestTimeout,
-                "SPOT request failed with result '{0}'.",
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     public ValueTask PublishCurrentAsync(
         string topic,
         IReadOnlyList<Message> parts,
@@ -51,12 +26,4 @@ internal sealed class ZLinkSpotOutboundTransport(
             cancellationToken);
     }
 
-    public bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        SendFlags flags)
-    {
-        return nativeSpot.SendToSpot(targetRid, targetSpotRid, parts, flags);
-    }
 }

@@ -53,7 +53,7 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                         dispatchErrors,
                         ZLinkDispatchErrorAction.Drop,
                         out message))
-                    return;
+                    continue;
 
                 decodedMessages.Add(endpoint.MessageType, message);
             }

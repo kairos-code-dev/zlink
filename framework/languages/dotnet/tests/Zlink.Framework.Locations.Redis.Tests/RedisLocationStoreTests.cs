@@ -33,17 +33,6 @@ public sealed class RedisLocationStoreTests
     }
 
     [Fact]
-    public void Redis_Key_Codec_Decodes_Encoded_Keys_To_Typed_Union()
-    {
-        var encoded = ZLinkRedisLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey("actor-1"));
-
-        var decoded = Assert.IsType<ZLinkLocationKey.Actor>(
-            ZLinkRedisLocationKeyCodec.DecodeKey(ZLinkLocationKind.Actor, encoded));
-
-        Assert.Equal("actor-1", decoded.Key.ActorId);
-    }
-
-    [Fact]
     public void RemoveAllByOwner_Uses_One_Lua_Script_For_All_Four_Kinds()
     {
         Assert.Contains("for i = 1, 4 do", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);

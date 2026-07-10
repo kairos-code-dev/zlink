@@ -6,7 +6,7 @@ internal sealed class ZLinkChannelBundleFactory(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
-    public ZLinkChannelRuntimeBundle CreateClientBundle(
+    public async ValueTask<ZLinkChannelRuntimeBundle> CreateClientBundleAsync(
         ZLinkFrameworkRuntimeState state,
         string channelName,
         ZLinkChannelRegistration channel)
@@ -47,14 +47,15 @@ internal sealed class ZLinkChannelBundleFactory(
         catch
         {
             if (bundle is not null)
-                DisposeFailedBundle(bundle);
-            else if (dealer is not null) dealer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                await bundle.DisposeAsync().ConfigureAwait(false);
+            else if (dealer is not null)
+                await dealer.DisposeAsync().ConfigureAwait(false);
 
             throw;
         }
     }
 
-    public ZLinkChannelRuntimeBundle CreateServerBundle(
+    public async ValueTask<ZLinkChannelRuntimeBundle> CreateServerBundleAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkChannelBackendAdapter adapter,
         string channelName,
@@ -84,14 +85,15 @@ internal sealed class ZLinkChannelBundleFactory(
         catch
         {
             if (bundle is not null)
-                DisposeFailedBundle(bundle);
-            else if (router is not null) router.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                await bundle.DisposeAsync().ConfigureAwait(false);
+            else if (router is not null)
+                await router.DisposeAsync().ConfigureAwait(false);
 
             throw;
         }
     }
 
-    public ZLinkChannelRuntimeBundle CreateSubscriberBundle(
+    public async ValueTask<ZLinkChannelRuntimeBundle> CreateSubscriberBundleAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkChannelBackendAdapter adapter,
         string channelName,
@@ -121,14 +123,15 @@ internal sealed class ZLinkChannelBundleFactory(
         catch
         {
             if (bundle is not null)
-                DisposeFailedBundle(bundle);
-            else if (subscriber is not null) subscriber.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                await bundle.DisposeAsync().ConfigureAwait(false);
+            else if (subscriber is not null)
+                await subscriber.DisposeAsync().ConfigureAwait(false);
 
             throw;
         }
     }
 
-    public ZLinkChannelRuntimeBundle CreatePublisherBundle(
+    public async ValueTask<ZLinkChannelRuntimeBundle> CreatePublisherBundleAsync(
         ZLinkFrameworkRuntimeState state,
         string channelName,
         ZLinkChannelRegistration channel,
@@ -164,8 +167,9 @@ internal sealed class ZLinkChannelBundleFactory(
         catch
         {
             if (bundle is not null)
-                DisposeFailedBundle(bundle);
-            else if (publisher is not null) publisher.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                await bundle.DisposeAsync().ConfigureAwait(false);
+            else if (publisher is not null)
+                await publisher.DisposeAsync().ConfigureAwait(false);
 
             throw;
         }
@@ -194,8 +198,4 @@ internal sealed class ZLinkChannelBundleFactory(
         }
     }
 
-    private static void DisposeFailedBundle(ZLinkChannelRuntimeBundle bundle)
-    {
-        bundle.DisposeAsync().AsTask().GetAwaiter().GetResult();
-    }
 }

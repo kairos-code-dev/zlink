@@ -5,7 +5,6 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
 
-using SpotService.Shared;
 using Zlink.Framework.Contracts.Locations;
 
 namespace SpotService.Server.Play.Spots;

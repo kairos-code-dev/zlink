@@ -3,12 +3,12 @@ namespace Zlink.Framework.Runtime.Actors;
 internal sealed partial class ZLinkActorSessionManager(
     ZLinkFrameworkRuntime runtime,
     IServiceProvider services,
-    Func<IZLinkBackendSpotNode?> getActorSpotNode)
+    Func<IZLinkBackendSpotNode?> getActorSpotNode,
+    ZLinkLocationLifecycle? locationLifecycle)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
 
-    private ZLinkLocationLifecycle? LocationLifecycle =>
-        services.GetService(typeof(ZLinkLocationLifecycle)) as ZLinkLocationLifecycle;
+    private ZLinkLocationLifecycle? LocationLifecycle { get; } = locationLifecycle;
 
     private ZLinkActorCreationCoordinator? _actorCreationInitialized;
     private ZLinkActorDispatchRouter? _dispatchRouterInitialized;
@@ -18,6 +18,7 @@ internal sealed partial class ZLinkActorSessionManager(
             runtime,
             services,
             getActorSpotNode,
+            LocationLifecycle?.ActorOwnership,
             EnsureActorContext,
             BindActorContext);
 

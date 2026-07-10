@@ -16,6 +16,8 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkChannelRuntimeManager _channels;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
+    private readonly ZLinkLocationLifecycle? _locationLifecycle;
+    private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
     private readonly ZLinkSpotRuntimeManager _spots;
     private readonly ZLinkFrameworkRuntimeStateFactory _stateFactory;
@@ -35,11 +37,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         Services = services;
         _backendAdapterFactory = backendAdapterFactory;
         Registration = registration;
+        _locationLifecycle = services.GetService<ZLinkLocationLifecycle>();
+        _topologyQuery = services.GetService<IZLinkAutoConnectTopologyQuery>();
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
             this,
             services,
             backendAdapterFactory,
             registration,
+            _locationLifecycle,
             handlerRegistry,
             dispatcher,
             GetOrStartState,
@@ -80,19 +85,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal IZLinkRouteClient RouteClient => Services.GetRequiredService<IZLinkRouteClient>();
 
     public bool IsStarted => _state is not null;
-
-    private ZLinkSpotNodeRuntime? GetSpotRouteBridgeOwner(string routerChannelId)
-    {
-        var state = _state;
-        if (state is null) return null;
-
-        lock (state.SyncRoot)
-        {
-            return state.SpotRouteBridgeOwners.TryGetValue(routerChannelId, out var owner)
-                ? owner
-                : null;
-        }
-    }
 
     internal void DrainSpotRouteBridges()
     {

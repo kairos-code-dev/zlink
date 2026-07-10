@@ -198,7 +198,6 @@ internal sealed partial class ZLinkSpotActivation
         {
             var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
             await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
-                    actorState.ActorType ?? string.Empty,
                     actor.ActorId,
                     SpotRid,
                     cancellationToken)
@@ -262,7 +261,6 @@ internal sealed partial class ZLinkSpotActivation
 
         if (_runtime.LocationLifecycle is { } locations)
             await locations.ActorOwnership.NotifyActorLeftSpotAsync(
-                    actorState.ActorType ?? string.Empty,
                     actor.ActorId,
                     cancellationToken)
                 .ConfigureAwait(false);

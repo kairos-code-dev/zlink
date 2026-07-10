@@ -9,8 +9,6 @@ internal sealed class ZLinkSpotSubscriptionRegistry
 
     private readonly List<ZLinkSpotSubscriptionRegistration> _registrations = [];
 
-    public bool HasSubscriptions => _descriptorsByTopic.Count > 0;
-
     public void Add(string topic, Type handlerType)
     {
         if (string.IsNullOrWhiteSpace(topic))

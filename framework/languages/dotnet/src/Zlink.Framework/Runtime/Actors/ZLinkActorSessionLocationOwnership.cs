@@ -61,7 +61,6 @@ internal sealed partial class ZLinkActorSessionManager
         if (LocationLifecycle is not { } lifecycle) return;
 
         await lifecycle.ActorOwnership.ReleaseActorAsync(
-                state.ActorType ?? string.Empty,
                 state.ActorId,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -81,7 +80,6 @@ internal sealed partial class ZLinkActorSessionManager
         if (LocationLifecycle is not { } lifecycle) return;
 
         await lifecycle.ActorOwnership.NotifyActorMovedToEntrySpotAsync(
-                state.ActorType ?? string.Empty,
                 state.ActorId,
                 targetNodeRid,
                 cancellationToken)

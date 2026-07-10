@@ -212,6 +212,105 @@ public sealed class UnhandledDispatchPolicyTests
     }
 
     [Fact]
+    public async Task ChannelPublishDecodeFailure_DoesNotStopOtherEndpointTypes()
+    {
+        var probe = new PublishProbe();
+        var services = new ServiceCollection()
+            .AddSingleton(probe)
+            .AddTransient<CapturingPublishHandler>()
+            .BuildServiceProvider();
+        var registration = new ZLinkFrameworkRegistration();
+        var registry = new ZLinkHandlerRegistry([
+            new ZLinkHandlerEndpointDescriptor(
+                ZLinkMessageKind.Publish,
+                "SharedEvent",
+                typeof(NeverInvokedHandler),
+                static (_, _, _, _, _, _) => null,
+                [ZLinkHandlerArgumentKind.Message],
+                typeof(int),
+                null,
+                null,
+                false,
+                new HashSet<string>(StringComparer.Ordinal),
+                "play"),
+            new ZLinkHandlerEndpointDescriptor(
+                ZLinkMessageKind.Publish,
+                "SharedEvent",
+                typeof(CapturingPublishHandler),
+                static (target, message, _, _, _, _) =>
+                    ((CapturingPublishHandler)target).Handle((TestPublishedEvent)message!),
+                [ZLinkHandlerArgumentKind.Message],
+                typeof(TestPublishedEvent),
+                null,
+                null,
+                false,
+                new HashSet<string>(StringComparer.Ordinal),
+                "play")
+        ]);
+        var pipeline = new ZLinkChannelPublishDispatchPipeline(
+            registry,
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration),
+            static _ => new HashSet<string>(StringComparer.Ordinal),
+            LogLevel.Warning,
+            new ZLinkDispatchErrorReporter(registration.DispatchOptions, services),
+            registration.Codecs,
+            new CapturingLogger<ZLinkChannelPublishDispatchPipeline>());
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Publish,
+            "play",
+            "SharedEvent",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            "events",
+            null,
+            null);
+        var parts = ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            new TestPublishedEvent("delivered"),
+            typeof(TestPublishedEvent),
+            null);
+        var backendFactory = new ZLinkDotNetBackendAdapterFactory();
+        var channelAdapter = backendFactory.CreateChannelAdapter();
+        await using var context = channelAdapter.CreateContext();
+        await using var publisher = channelAdapter.CreatePublisherSocket(context);
+        await using var subscriber = channelAdapter.CreateSubscriberSocket(context);
+        var endpoint = GetTcpEndpoint();
+        publisher.Bind(endpoint);
+        subscriber.Connect(endpoint);
+        subscriber.SetSubscription(string.Empty);
+        using var topicMessage = new TopicMessage();
+
+        try
+        {
+            var timeout = Stopwatch.StartNew();
+            var received = false;
+            while (timeout.Elapsed < TimeSpan.FromSeconds(2))
+            {
+                publisher.Publish("events", parts, SendFlags.None);
+                if (subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
+                {
+                    received = true;
+                    break;
+                }
+
+                await Task.Delay(10);
+            }
+
+            Assert.True(received, "The publish test message was not received.");
+            await pipeline.DispatchAsync("play", topicMessage, header, CancellationToken.None);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+
+        Assert.Equal("delivered", probe.Value);
+    }
+
+    [Fact]
     public async Task DispatchErrorReporter_DeliversMessageFlowErrorSnapshot()
     {
         var observer = new CapturingMessageFlowObserver();
@@ -312,6 +411,22 @@ public sealed class UnhandledDispatchPolicyTests
     private sealed record TestRequest(string Value);
 
     private sealed record TestReply(string Value);
+
+    private sealed record TestPublishedEvent(string Value);
+
+    private sealed class PublishProbe
+    {
+        public string? Value { get; set; }
+    }
+
+    private sealed class CapturingPublishHandler(PublishProbe probe)
+    {
+        public ValueTask Handle(TestPublishedEvent message)
+        {
+            probe.Value = message.Value;
+            return ValueTask.CompletedTask;
+        }
+    }
 
     private sealed class TestActor(string actorId) : IZLinkActor
     {

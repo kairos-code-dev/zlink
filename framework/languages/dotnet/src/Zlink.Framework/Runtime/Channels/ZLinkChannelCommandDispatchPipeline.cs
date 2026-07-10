@@ -13,14 +13,13 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
 {
     public async Task DispatchAsync(
         string channelName,
-        string transportName,
         IReadOnlyList<Message> parts,
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
-            transportName,
+            "Channel",
             ZLinkDispatchMessageKind.Send,
             "Send",
             header.MessageName,

@@ -143,7 +143,7 @@ public sealed class RuntimeUnitTests
     [Fact]
     public void HttpHeaderLookup_finds_and_removes_headers_case_insensitively()
     {
-        IReadOnlyDictionary<string, string> headers = new Dictionary<string, string>
+        IReadOnlyDictionary<string, string> headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Content-Type"] = "application/json",
             ["CONTENT-LENGTH"] = "42",

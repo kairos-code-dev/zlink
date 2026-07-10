@@ -133,7 +133,6 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         Action<TResult> callback)
     {
         taskRunner.RunDetached(
-            "stream-request-callback",
             async _ =>
             {
                 try
@@ -238,7 +237,6 @@ internal sealed class ZlinkStreamConnectorCallbacks(
             count = Interlocked.Decrement(ref _pendingDispatchCount);
             if (dropped.RunWhenDropped)
                 taskRunner.RunDetached(
-                    "stream-dispatch-overflow-callback",
                     async token => await InvokeUserCallbackAsync(
                             dropped.Callback,
                             token,

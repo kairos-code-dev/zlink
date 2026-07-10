@@ -297,15 +297,21 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
                 throw;
             }
 
-            var packet = await _pending.WaitAsync(pending, timeout, cancellationToken).ConfigureAwait(false);
+            var packet = await _pending.WaitAsync(pending, timeoutCts.Token).ConfigureAwait(false);
             var replyHeader = _headerCodec.Decode(packet.Header);
             var replyBody = _frameSender.DecompressIfNeeded(replyHeader, packet.Payload);
             return new ZlinkStreamEncodedPayload(replyHeader.Codec, replyBody);
         }
-        catch
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw Error(
+                ZlinkStreamErrorCode.RequestTimeout,
+                "Request timed out.",
+                ex);
+        }
+        finally
         {
             _pending.Remove(pending.RequestSeq);
-            throw;
         }
     }
 
@@ -313,7 +319,6 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     {
         ThrowIfClosed();
         var name = _nameResolver.Resolve(payloadType);
-        ValidateName(name);
         return name;
     }
 

@@ -54,4 +54,21 @@ public sealed class BackendAdapterFactoryTests
 
         Assert.NotNull(factory.CreateMonitoringAdapter());
     }
+
+    [Fact]
+    public async Task SpotNode_EntrySpot_IsSingleton_UnderConcurrentFirstAccess()
+    {
+        var factory = new ZLinkDotNetBackendAdapterFactory();
+        var channelAdapter = factory.CreateChannelAdapter();
+        var spotAdapter = factory.CreateSpotAdapter();
+        await using var context = channelAdapter.CreateContext();
+        await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
+
+        var accesses = Enumerable.Range(0, 32)
+            .Select(_ => Task.Run(spotNode.EntrySpot))
+            .ToArray();
+        var entrySpots = await Task.WhenAll(accesses);
+
+        Assert.All(entrySpots, entrySpot => Assert.Same(entrySpots[0], entrySpot));
+    }
 }

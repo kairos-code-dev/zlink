@@ -79,7 +79,6 @@ internal sealed class ZLinkChannelPacketDispatcher
             case ZLinkMessageKind.Command:
                 await _commandPipeline.DispatchAsync(
                         channelName,
-                        "Channel",
                         received.Parts,
                         header,
                         cancellationToken)
@@ -125,7 +124,6 @@ internal sealed class ZLinkChannelPacketDispatcher
     {
         await _requestPipeline.DispatchAsync(
                 channelName,
-                "Channel",
                 received,
                 header,
                 (replyHeader, reply, replyType) => ZLinkChannelReplyWriter.ReplyRequest(

@@ -16,14 +16,18 @@ internal static class ZlinkStreamMetadataCodec
         destination[offset++] = (byte)metadata.Count;
         foreach (var (key, value) in metadata.Values)
         {
-            var keyLength = Encoding.UTF8.GetByteCount(key);
-            var valueLength = Encoding.UTF8.GetByteCount(value);
+            var keyLengthOffset = offset++;
+            var keyLength = Encoding.UTF8.GetBytes(key, destination[offset..]);
+            destination[keyLengthOffset] = checked((byte)keyLength);
+            offset += keyLength;
 
-            destination[offset++] = (byte)keyLength;
-            offset += Encoding.UTF8.GetBytes(key, destination.Slice(offset, keyLength));
-            BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(offset, 2), (ushort)valueLength);
+            var valueLengthOffset = offset;
             offset += 2;
-            offset += Encoding.UTF8.GetBytes(value, destination.Slice(offset, valueLength));
+            var valueLength = Encoding.UTF8.GetBytes(value, destination[offset..]);
+            BinaryPrimitives.WriteUInt16BigEndian(
+                destination.Slice(valueLengthOffset, 2),
+                checked((ushort)valueLength));
+            offset += valueLength;
         }
     }
 

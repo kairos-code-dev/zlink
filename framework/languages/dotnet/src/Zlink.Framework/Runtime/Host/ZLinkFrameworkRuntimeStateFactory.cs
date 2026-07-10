@@ -14,12 +14,12 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
 
         try
         {
-            channels.InitializeInboundChannels(state, channelAdapter);
-            channels.InitializePublisherChannels(state, channelAdapter);
-            channels.InitializeClientChannels(state);
+            await channels.InitializeInboundChannelsAsync(state, channelAdapter).ConfigureAwait(false);
+            await channels.InitializePublisherChannelsAsync(state, channelAdapter).ConfigureAwait(false);
+            await channels.InitializeClientChannelsAsync(state).ConfigureAwait(false);
             await spots.InitializeSpotNodesAsync(state).ConfigureAwait(false);
-            channels.InitializeRouteChannels(state, channelAdapter);
-            streams.InitializeStreamNodes(state);
+            await channels.InitializeRouteChannelsAsync(state, channelAdapter).ConfigureAwait(false);
+            await streams.InitializeStreamNodesAsync(state).ConfigureAwait(false);
             return state;
         }
         catch (Exception error)

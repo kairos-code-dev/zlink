@@ -92,11 +92,6 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask CleanupActorBindingsAsync(CancellationToken cancellationToken)
-    {
-        await ActorCoordinator.CleanupBindingsAsync(this, cancellationToken).ConfigureAwait(false);
-    }
-
     internal async ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
         await ActorCoordinator.CleanupAsync(this, cancellationToken).ConfigureAwait(false);

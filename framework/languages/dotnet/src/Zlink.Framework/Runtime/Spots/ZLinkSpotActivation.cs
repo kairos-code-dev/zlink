@@ -19,7 +19,6 @@ internal sealed partial class ZLinkSpotActivation :
     private readonly AsyncServiceScope _scope;
     private readonly ZLinkSpotSerialExecutor _serial;
     private readonly CancellationTokenSource _stopSource = new();
-    private readonly ZLinkSpotSubscriptionPump _subscriptionPump = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
     private readonly ZLinkSpotTimerRegistry _timers = new();
     private ZLinkSpotActorHandlerRegistry? _actorHandlers;
@@ -47,7 +46,6 @@ internal sealed partial class ZLinkSpotActivation :
         DefaultRequestTimeout = defaultRequestTimeout;
         _outbound = new ZLinkSpotOutboundTransport(
             nativeSpot,
-            defaultRequestTimeout,
             sendTimeout,
             _stopSource.Token);
         _outboundEndpoint = new ZLinkSpotOutboundEndpoint(

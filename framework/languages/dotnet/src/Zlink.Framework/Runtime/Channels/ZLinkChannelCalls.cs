@@ -36,7 +36,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
     private ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var bundle = _runtime.GetOrCreateClientBundle(_channelName);
+        var bundle = _runtime.GetClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var traceSent = _runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent);
         var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -103,7 +103,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
 
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        var bundle = runtime.GetOrCreateClientBundle(channelName);
+        var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var timeout = _timeout ?? registration.ResolveChannelRequestTimeout(channelName);
         var traceSent = runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent);
@@ -208,7 +208,7 @@ internal sealed class ZLinkPublishCall(
     private ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var bundle = runtime.GetOrCreatePublisherBundle(channelName);
+        var bundle = runtime.GetPublisherBundle(channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
         var traceSent = runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent);
         var header = ZLinkClientCallCodec.CreateEnvelope(

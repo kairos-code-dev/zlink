@@ -66,7 +66,6 @@ internal sealed partial class ZLinkActorSessionManager
 
             if (LocationLifecycle is { } lifecycle)
                 await lifecycle.ActorOwnership.ReleaseActorAsync(
-                        actorType ?? string.Empty,
                         actor.ActorId,
                         CancellationToken.None)
                     .ConfigureAwait(false);

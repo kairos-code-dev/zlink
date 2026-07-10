@@ -26,7 +26,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
     private readonly AsyncServiceScope _scope;
     private readonly ZLinkSerialExecutionQueue _serial;
     private readonly CancellationTokenSource _stopSource = new();
-    private readonly ZLinkSpotSubscriptionPump _subscriptionPump = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
     private readonly ZLinkSpotTimerRegistry _timers = new();
     private bool _configurationOpen = true;
@@ -78,7 +77,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
             EntrySpot.GetType());
         _outbound = new ZLinkSpotOutboundTransport(
             nativeSpot,
-            defaultRequestTimeout,
             sendTimeout,
             _stopSource.Token);
         _outboundEndpoint = new ZLinkSpotOutboundEndpoint(
@@ -110,7 +108,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         _stopSource.Cancel();
-        await _subscriptionPump.StopAsync();
         await _timers.DisposeAsync().ConfigureAwait(false);
         await _serial.DisposeAsync().ConfigureAwait(false);
         await _outbound.DisposeAsync().ConfigureAwait(false);
@@ -167,16 +164,11 @@ internal sealed partial class ZLinkEntrySpotActivation :
         _actorHandlers.Bind();
     }
 
-    public async ValueTask InitializeAsync(CancellationToken cancellationToken)
+    public ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
-        _subscriptionPump.StartIfNeeded(
-            _subscriptions.HasSubscriptions,
-            _stopSource.Token,
-            DispatchSubscriptionsAsync);
-
-        await ExecuteAsync(
+        return ExecuteAsync(
             static (activation, ct) => activation.EntrySpot.OnInitializeAsync(ct),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
     }
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)

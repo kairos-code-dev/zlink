@@ -35,7 +35,7 @@ handler와 outbound client만 작성하고, 연결과 라우팅은 framework가 
 framework는 새 transport를 만들지 않는다. `zlink-framework-kotlin`은 Java framework가
 노출하는 같은 channel·Spot·actor·stream 위에 `suspend`/`Flow` 표면만 얹는다. 그래서
 기능과 의미론(lifecycle, 실패 모델, 등록 규칙)은 Java framework를 정본으로 공유하고
-([spec](../../java/spec/README.ko.md)·[internals](../../java/internals/dotnet-to-java-surface-mapping.ko.md)),
+([spec](../../java/spec/README.ko.md)·[runtime internals](../../java/internals/runtime-lifecycle.ko.md)),
 이 guide는 Kotlin 사용 표면만 다룬다.
 
 ### zlink core 와 기본 socket 패턴
@@ -82,7 +82,7 @@ coroutine handler를 켜는 한 줄(`useCoroutineHandlers(dispatcher)`)과 첫 r
 작성한다. 공개 계약의 정확한 시그니처는 Java/Kotlin 공유 spec
 [인터페이스 카탈로그](../../java/spec/handler-interfaces.ko.md)를 기준으로 보고, `.NET`과
 Java/Kotlin 표면을 대조해야 할 때는
-[표면 매핑 정책](../../java/internals/dotnet-to-java-surface-mapping.ko.md)을 함께 읽는다.
+[runtime lifecycle](../../java/internals/runtime-lifecycle.ko.md)을 함께 읽는다.
 
 ## 5. 읽는 순서
 

@@ -254,6 +254,8 @@ Bingo/
           BingoMatchQueue
           BingoRoomAllocator
       Infrastructure/
+        Redis/
+          RedisBingoMatchQueue
         ZLink/
           Actors/
             PlayerActor
@@ -261,8 +263,6 @@ Bingo/
           Handlers/
             AllocateBingoRoomHandler
             EnsurePlayerActorHandler
-          Matchmaking/
-            RedisBingoMatchQueue
           Spots/
             EntrySpot/
               BingoEntrySpot
@@ -272,6 +272,7 @@ Bingo/
             BingoRoomSpot/
               BingoRoom
               Handlers/
+                BingoRoomDrawTimerHandler
                 StopObservingBingoEventsHandler
                 BingoRewardAcquiredEventHandler
                 SubmitBingoCardHandler
@@ -295,7 +296,7 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Play/Domain/Bingo/*` | domain model | card, draw deck, room status, winner 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
 | `Server/Play/Application/RoomAllocation/*` | application use case | match queue 계약, waiting room 재사용 결정, room allocation 결과 생성을 조율한다. |
 | `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Spot pub/sub publish/subscribe를 application/domain 호출로 변환한다. |
-| `Server/Play/Infrastructure/ZLink/Matchmaking/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
+| `Server/Play/Infrastructure/Redis/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
 
 의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, location store,
 stream session, session relay, logger를 알지 않는다. Application은 room 배정 같은 use
@@ -397,6 +398,8 @@ Server/Play/
       BingoMatchQueue
       BingoRoomAllocator
   Infrastructure/
+    Redis/
+      RedisBingoMatchQueue
     ZLink/
       Actors/
         PlayerActor
@@ -404,8 +407,6 @@ Server/Play/
       Handlers/
         AllocateBingoRoomHandler
         EnsurePlayerActorHandler
-      Matchmaking/
-        RedisBingoMatchQueue
       Spots/
         EntrySpot/
           BingoEntrySpot
@@ -415,6 +416,7 @@ Server/Play/
         BingoRoomSpot/
           BingoRoom
           Handlers/
+            BingoRoomDrawTimerHandler
             StopObservingBingoEventsHandler
             BingoRewardAcquiredEventHandler
             SubmitBingoCardHandler
@@ -429,7 +431,7 @@ Server/Play/
 | `Domain/Bingo/BingoRoomGame` | player join, room status, card 제출 가능 여부, draw timer 시작/종료 신호, room event 생성을 소유한다. |
 | `Application/RoomAllocation/BingoMatchQueue` | room allocation use case가 필요로 하는 waiting room reservation 계약을 정의한다. |
 | `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 match queue reservation과 room allocation 결과 생성을 조율한다. |
-| `Infrastructure/ZLink/Matchmaking/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
+| `Infrastructure/Redis/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
 | `Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward pub/sub publish/subscribe를 맡는다. |
 | `Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
 | `Infrastructure/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 actor의 public method만 호출하고 stream frame을 직접 만들지 않는다. |

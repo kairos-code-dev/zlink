@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md) | [다음: ZLink Framework Node Regression Test Matrix](regression-test-matrix.ko.md)
+[문서 목록](../README.ko.md) | [이전: Regression Test Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [Scope](implementation-scope-and-nongoals.ko.md) | [표면 매핑](dotnet-to-node-surface-mapping.ko.md)
+[Node.js 묶음](../README.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Regression Matrix](regression-test-matrix.ko.md)
 
 # ZLink Framework Node.js Backend Dependency Policy
 
@@ -155,5 +155,5 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md) | [다음: ZLink Framework Node Regression Test Matrix](regression-test-matrix.ko.md)
+[문서 목록](../README.ko.md) | [이전: Regression Test Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

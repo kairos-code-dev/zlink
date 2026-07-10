@@ -185,14 +185,18 @@ TicTacToe/
           Sessions/
             PlaySession
           Spots/
-            PlayEntrySpot
-            TicTacToeGame
-            Handlers/
-              PlayActorObserveMilestoneHandler
-              PlayActorJoinGameHandler
-              PlayActorLeaveGameHandler
-              PlayActorPlaceMarkHandler
-              TicTacToeGameTimerHandler
+            EntrySpot/
+              PlayEntrySpot
+              Handlers/
+                PlayActorObserveMilestoneHandler
+                PlayActorJoinGameHandler
+                PlayerWinMilestoneEventHandler
+            TicTacToeGameSpot/
+              TicTacToeGame
+              Handlers/
+                PlayActorLeaveGameHandler
+                PlayActorPlaceMarkHandler
+                TicTacToeGameTimerHandler
 ```
 
 위 구조는 파일명 고정 규칙이 아니라 역할과 경계의 기준이다. 예를 들어 Java/Kotlin은
@@ -467,6 +471,7 @@ Server/Play/
           Handlers/
             PlayActorObserveMilestoneHandler
             PlayActorJoinGameHandler
+            PlayerWinMilestoneEventHandler
         TicTacToeGameSpot/
           TicTacToeGame
           Handlers/

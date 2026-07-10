@@ -1156,7 +1156,6 @@ public enum ZLinkStreamSessionError
     Internal = 0,
     TransportError,
     // OnErrorAsync로 전달되지 않는다. handshake 실패는 runtime monitoring에만 남긴다.
-    // stream-open-items.ko.md section 4.2 참고.
     HandshakeFailed
 }
 
@@ -3765,9 +3764,7 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 
 모든 public service interface 를 항상 DI 에 등록하지는 않는다. 생성자 주입은
 그 기능을 사용할 수 있다는 신호가 되므로, 역할이 없는 service 는 등록하지
-않는다. 자세한 결정 배경은
-[di-capability-exposure-policy.ko.md](../internals/di-capability-exposure-policy.ko.md) 에서
-다룬다.
+않는다. 이 절이 `.NET` public service의 DI 등록 계약을 소유한다.
 
 | Interface | DI 등록 조건 |
 |-----------|--------------|
@@ -3777,8 +3774,14 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkSpotManager` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
 | `IZLinkSpotPublisherClient` | Spot publisher client 역할이 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
-| `IZLinkBoundSessionFactory`, `IZLinkBoundSession` | actor bound session runtime 등록한다 |
 | `IZLinkSpotRefResolver` | 해당 resolver registration 이 있을 때 등록한다 |
+
+actor factory가 하나라도 있으면 같은 process에 `SpotNode`가 있어야 한다. 이 조건은
+host 시작 전에 검증한다. `SpotNode` 없이 actor factory만 등록하면
+`ZLinkConfigurationException`이 발생한다. `IZLinkBoundSessionFactory`는 framework
+내부 runtime service이며 public DI 표면이 아니다. actor가 client session으로 보낼 때는
+`IZLinkActorContext.BoundSession`을 사용하고, 현재 binding이 없으면
+`ActorSessionNotBound`로 실패한다.
 
 local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix 가
 아니라, 애플리케이션이 해당 channel 에서 server 역할을 수행한다는 의미다.

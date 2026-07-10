@@ -6,10 +6,8 @@
 
 [.NET 묶음](../../README.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md)
 
-> 이 문서는 실행 가능한 DeliveryDispatch 샘플 설명이다. "요청을 만들고 수행자를
-> 배정한 뒤 상태를 실시간으로 보여 주는" 도메인에 ZLink 를 도입할지 판단하려면
-> [16-case-ride-hailing](../case-studies/16-case-ride-hailing.ko.md)을 먼저 보고, 이
-> 문서에서는 DTO, 서버 구조, 실행 흐름을 확인한다. 언어 중립 공통 시나리오는
+> 이 문서는 실행 가능한 DeliveryDispatch sample의 DTO, 서버 구조, 실행 흐름을
+> 설명한다. 언어 중립 공통 시나리오는
 > [spec/sample/deliverydispatch](../../../common/sample/deliverydispatch/README.ko.md)이 다룬다.
 
 ## 1. 목적

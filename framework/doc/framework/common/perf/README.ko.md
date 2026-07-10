@@ -45,21 +45,19 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 | channel → remote Spot echo | server 간 channel에서 remote Spot으로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
 | remote Spot → channel echo | remote Spot에서 channel server로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
 | Spot execution Async/Yield echo | Spot handler의 remote request `Async`/`Yield` 대기 비용과 `runWorker(...)` local worker pool offload `Async`/`Yield` 대기 비용, queue 진행성 측정 | 1 KiB | 4 KiB |
-| actor client(no-bind) → actor echo | session 없는 server 측 caller가 actor id로 직접 send/request하는 비용 측정 (`L13`, draft 계약) | 4 KiB | 1 KiB |
+| actor client(no-bind) → actor echo | session 없는 server 측 caller가 `ActorRef`로 직접 send/request하는 비용 측정 | 4 KiB | 1 KiB |
 | publish → subscriber fanout | publisher 하나가 여러 subscriber에게 이벤트를 뿌릴 때 fanout 처리량과 delivery latency 측정 | 1 KiB | 4 KiB |
 
 `publish → subscriber fanout` 축은 `framework/doc/framework/common/spec/interaction-model.ko.md` §3.3과
 `framework/doc/framework/common/spec/channel-topology.ko.md`가 정의하는 `publish-subscribe` 공용
 상호작용 모델, 그리고 `framework/doc/framework/common/e2e/config-3-pubsub.ko.md`의 fanout 시나리오를
-기준으로 한다. `publish-subscribe`는 이미 5개 언어 모두 구현되어 승격된 공개 계약이므로, `L13`과 달리
-이 축은 언어별 스킵 없이 다른 다섯 축과 동일하게 필수로 구현한다.
+기준으로 한다. `publish-subscribe`는 이미 5개 언어 모두 구현된 공개 계약이므로, 이 축은 언어별
+스킵 없이 다른 다섯 축과 동일하게 필수로 구현한다.
 
-`actor client(no-bind) → actor echo` 축은 `framework/doc/plan/framework-public-contract-posd-redesign.ko.md`
-3절의 `L13`(actor client, `SendToActor`/`RequestToActor`) 계약과 `framework/doc/framework/common/e2e/config-9-to-actor-messaging.ko.md`
-시나리오를 기준으로 한다. 이 문서를 쓰는 시점 기준 `L13`은 언어별 구현이 진행 중이고 공통 e2e가 아직
-그린이 아니므로, 이 축의 perf 시나리오는 구현을 기다리는 target blueprint다. `L13` public API가 없는
-언어는 이 축을 스킵하고 나머지 다섯 축만 표준 perf로 유지하며, `L13`이 없다는 이유로 전체 perf 구현을
-지연하지 않는다.
+`actor client(no-bind) → actor echo` 축은
+`framework/doc/framework/common/spec/actor-model.ko.md` 6.1절의 actor client 계약과
+`framework/doc/framework/common/e2e/config-9-to-actor-messaging.ko.md` 시나리오를 기준으로 한다.
+공개 actor client를 제공하는 모든 framework 언어는 이 축을 같은 필수 perf 범위로 유지한다.
 
 payload 크기는 message payload 본문 크기를 뜻한다. framework header, connector frame, codec metadata는
 포함하지 않는다. 각 언어는 같은 byte pattern을 만들어야 한다. 압축이나 문자열 interning 효과가 결과를
@@ -249,7 +247,7 @@ framework/languages/<lang>/perf/
 |   |-- Channel/
 |   |-- Spot/
 |   |-- RemoteEcho/
-|   |-- ActorCaller/        `L13` actor client 공개 API가 있는 언어에서만 둔다
+|   |-- ActorCaller/        actor client를 호출하는 session 없는 server
 |   |-- Publisher/
 |   |-- Subscriber/
 |   `-- Registry/           registry가 필요한 언어/시나리오에서만 둔다
@@ -351,7 +349,7 @@ thread pool queue 같은 언어별 runner 상태를 기록한다. client process
 | `Channel` | channel request/send handler, trigger endpoint | channel ↔ Spot |
 | `Spot` | Spot factory, Spot handler, timer가 필요하면 perf 전용 timer | Spot ↔ channel, Async/Yield |
 | `RemoteEcho` | Spot execution 시나리오에서 Spot handler가 호출하는 단순 channel echo server | Async/Yield remote request |
-| `ActorCaller` | session을 만들지 않는 외부 caller, `L13` actor client 공개 API로 `SendToActor`/`RequestToActor` 호출 실행 | actor client no-bind echo |
+| `ActorCaller` | session을 만들지 않는 외부 caller, actor client의 `SendToActor`/`RequestToActor` 호출 실행 | actor client no-bind echo |
 | `Publisher` | publish channel server, `EventPublish`/`Publish(...).Async()` 공개 API로 이벤트 발행 | publish fanout |
 | `Subscriber` | subscribe handler, 수신 event를 evidence/metric으로 기록 | publish fanout |
 | `Registry` | discovery가 필요한 구성의 registry | measured path 아님 |
@@ -791,20 +789,17 @@ perf로 재는 것이며, e2e가 이미 확인한 기능(순서 보장 등)을 �
 | 비교 목적 | worker pool 완료 대기 중 `Yield`가 Spot queue 진행을 풀어 주는지, worker→Spot mailbox 재개 비용 |
 | 실패 분류 | `WorkerQueueFull`, `WorkerTimeout`을 `errors.byKind`에 구분 기록 |
 
-같은 조건의 `spot-worker-offload-async-echo`와 비교할 때는 두 실행 모두 같은 `--worker-task-millis`,
-`--worker-pool-size`, payload, in-flight 조건을 써야 한다. 이 축은 `channel-topology.ko.md`가
-정의하는 분산 worker pool 라우팅("worker-dispatch" 상호작용 모델, 여러 worker 프로세스로 부하를
-분산하는 모델)과는 다르다. 그 모델은 `spec/usecase-validation.ko.md`에 "모델은 있으나 retry,
-in-flight failure, 처리 보장 논의가 부족함"으로 기록된 미확정 설계이고 공개 API가 없으므로 perf
-대상이 아니다. 여기서 재는 `runWorker(...)`는 같은 프로세스 안의 Spot 전용 worker thread pool
-offload로, 이미 5개 언어 모두 구현되어 있는 별개의 확정 공개 API다.
+같은 조건의 `spot-worker-offload-async-echo`와 비교할 때는 두 실행 모두 같은
+`--worker-task-millis`, `--worker-pool-size`, payload, in-flight 조건을 써야 한다.
+여기서 재는 `runWorker(...)`는 같은 프로세스 안의 Spot 전용 worker thread pool
+offload다. 여러 프로세스에 작업을 분산하는 별도 공개 계약을 뜻하지 않는다.
 
 ### 10.13 `actor-no-bind-request-echo`
 
-session이 없는 `ActorCaller` server가 `L13` actor client 공개 API의 `RequestToActor` 호출로 actor id에
-직접 request를 보내고 reply를 받는다. client는 benchmark trigger만 `ActorCaller`에 보내며, 측정
-대상은 server 간 actor client no-bind request/reply다. `RequestToActor`의 await 완료는 "resolve
-성공 + 로컬 mailbox 인계"가 아니라 handler reply 도착을 뜻한다(no-bind 계약 정의 그대로).
+session이 없는 `ActorCaller` server가 actor client의 `RequestToActor` 호출로 미리 얻은 `ActorRef`에
+request를 보내고 reply를 받는다. client는 benchmark trigger만 `ActorCaller`에 보내며, 측정
+대상은 server 간 actor client no-bind request/reply다. `RequestToActor`의 await 완료는 handler reply
+도착을 뜻한다.
 
 | 항목 | 값 |
 |------|----|
@@ -812,7 +807,7 @@ session이 없는 `ActorCaller` server가 `L13` actor client 공개 API의 `Requ
 | payload | 대표 4 KiB, 함께 1 KiB |
 | mode | `request` |
 | 측정 단위 | server 간 echo completion |
-| 비교 목적 | session bind 없이 actor id로 직접 request할 때 resolve + no-bind 전달 비용 |
+| 비교 목적 | session bind 없이 `ActorRef`로 request할 때 no-bind 전달 비용 |
 | 실패 분류 | `ActorRouteNotFound`, `ActorLocationStale`, `RouteNotConnected`를 `errors.byKind`에 구분 기록 |
 
 이 시나리오는 언제나 bind되지 않은 actor를 대상으로 한다. `config-9-to-actor-messaging.ko.md`의 bind
@@ -820,7 +815,7 @@ session이 없는 `ActorCaller` server가 `L13` actor client 공개 API의 `Requ
 
 ### 10.14 `actor-no-bind-send-send-echo`
 
-`ActorCaller` server가 `SendToActor`로 actor id에 echo 요청을 보내고, actor handler가 같은
+`ActorCaller` server가 `SendToActor`로 `ActorRef`에 echo 요청을 보내고, actor handler가 같은
 `ActorCaller`로 send 응답을 보낸다. `SendToActor` 자체의 await 완료(resolve 성공 + 로컬 mailbox
 인계)와 실제 echo 왕복(correlation 완료)은 서로 다른 시점이므로 둘을 분리해서 기록한다.
 
@@ -934,8 +929,6 @@ subscriber별로 연속 수신 여부를 검증하는 유일한 키다. `topic`�
 | `process.allocatedMb` | MiB | runtime이 제공할 수 있으면 allocated bytes |
 | `gc.gen0`, `gc.gen1`, `gc.gen2` | count | GC 횟수. GC가 없는 언어는 `null` |
 | `errors.byKind` | object | timeout, decode, route, connection, handler 등 오류 분류. `actor-no-bind-*` 시나리오는 `ActorRouteNotFound`, `ActorLocationStale`, `RouteNotConnected`도 별도 key로 기록 |
-| `actor.resolve.latency.p95Ms` | ms | `L13` no-bind 호출에서 actor id resolve에 걸린 시간 p95 |
-| `actor.resolve.latency.p99Ms` | ms | `L13` no-bind 호출에서 actor id resolve에 걸린 시간 p99 |
 | `actor.localHandoff.latency.p95Ms` | ms | `SendToActor` await 완료(로컬 mailbox 인계)까지 걸린 시간 p95 |
 | `actor.localHandoff.latency.p99Ms` | ms | `SendToActor` await 완료(로컬 mailbox 인계)까지 걸린 시간 p99 |
 | `spot.mailboxDepth.max` | count | 측정 중 관측된 Spot mailbox 최대 depth |
@@ -1292,8 +1285,8 @@ C++ 구현은 release build 산출물을 사용한다. core runtime 또는 bindi
 12. `spot-worker-offload-async-echo`, `spot-worker-offload-yield-echo`를 구현한다. `RemoteEcho`
     서버 없이 `SpotServer`만으로 `runWorker(...)` 완료를 기다리는 경로이므로 10~11단계와 독립적으로
     진행할 수 있다.
-13. `L13` actor client 공개 API가 있는 언어는 `actor-no-bind-request-echo`, `actor-no-bind-send-send-echo`를
-    구현한다. 없는 언어는 이 단계를 건너뛰고 14단계로 진행한다.
+13. actor client를 제공하는 모든 framework 언어는 `actor-no-bind-request-echo`,
+    `actor-no-bind-send-send-echo`를 구현한다.
 14. `pubsub-fanout-echo`를 구현한다. `Publisher`/`Subscriber` role과 `--subscriber-count` 분할을
     먼저 만들고, warmup의 "모든 subscriber 최초 수신 확인" barrier부터 맞춘다.
 15. `run_perf.sh`가 모든 표준 시나리오를 실행하고 결과를 한 디렉토리에 모으게 한다.
@@ -1352,8 +1345,7 @@ runner를 다른 host 또는 여러 host에 분산한다.
 
 언어별 perf 구현은 아래 조건을 만족해야 완료로 본다.
 
-- 표준 scenario 이름을 모두 지원한다. 단 `actor-no-bind-request-echo`/`actor-no-bind-send-send-echo`는
-  해당 언어에 `L13` actor client 공개 API가 있을 때만 요구한다.
+- 표준 scenario 이름을 모두 지원한다.
 - 각 scenario가 `1 KiB`와 `4 KiB` payload, 기본 connection 수를 따른다.
 - client/server metrics가 공통 result schema로 저장된다.
 - `request`와 `send-send`가 같은 in-flight 기준으로 실행된다.

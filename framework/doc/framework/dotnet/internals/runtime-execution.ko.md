@@ -1,0 +1,63 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../../README.ko.md) | [이전: Runtime Lifecycle](runtime-lifecycle.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
+<!-- framework-adapter-nav:end -->
+
+[.NET 묶음](../README.ko.md) | [Session Actor Dispatch 계약](../spec/session-actor-dispatch.ko.md)
+
+# ZLink Framework .NET Runtime Execution
+
+## 1. 목적
+
+이 문서는 session, actor와 Spot handler의 실행 순서를 만드는 내부 queue 소유권을
+설명한다. public API와 사용법은 session actor dispatch와 Spot spec이 소유한다.
+
+## 2. 실행 경계
+
+runtime은 transport callback에서 application handler를 직접 호출하지 않는다.
+transport 진입점은 실행 항목을 해당 queue에 넣고, managed task가 handler를 실행한다.
+
+| 입력 | 내부 직렬화 경계 |
+|------|------------------|
+| 같은 stream session의 lifecycle과 packet | session 실행 queue |
+| Entry Spot 또는 아직 user Spot에 속하지 않은 actor packet | actor mailbox |
+| user Spot의 packet, actor packet, timer와 subscription | user Spot 실행 queue |
+| 서로 다른 actor 또는 서로 다른 user Spot | 서로 독립된 queue |
+
+actor가 이동할 때 dispatch 위치는 queue 대기 전에 고정하지 않는다. 실행 차례가 왔을
+때 현재 actor 위치를 다시 확인해야 이전 Spot으로 stale dispatch가 발생하지 않는다.
+
+## 3. 작업 완료와 오류 관측
+
+queue 항목은 실행 callback과 completion을 함께 가진다. request는 handler가 reply나
+오류를 만들 때까지 completion을 기다리고, one-way 작업은 enqueue 이후 호출자를
+해제할 수 있다. 호출자가 completion을 기다리지 않는 handler 예외도 runtime error
+sink가 관찰해야 하며 unobserved task exception으로 남겨서는 안 된다.
+
+runtime stop token이 취소되면 새 항목을 받지 않고, 아직 실행하지 않은 항목을
+cancellation 또는 dispose 실패로 완료한다. queue drain을 기다리기 위해 transport
+callback thread나 호출자 thread를 점유하지 않는다.
+
+## 4. 정보 은닉
+
+queue 구현 타입, channel 자료구조, drain gate와 task scheduling 방식은 internal이다.
+spec과 application 예제는 이러한 타입 이름을 사용하지 않고 다음 공개 의미만
+설명한다.
+
+- 같은 session callback의 순서
+- actor와 user Spot의 실행 직렬성
+- handler cancellation과 오류 관측
+- actor 이동 뒤 현재 위치에서 dispatch되는 의미
+
+## 5. 회귀 테스트
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `SerialExecutorTests.SerialExecutionQueue_YieldTurn_Allows_Later_Work_Then_Resumes_On_Line` | yield 중에도 단일 실행 줄의 순서와 재개 위치를 유지한다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot 전체를 하나의 queue로 묶지 않고 actor별 mailbox를 사용한다. |
+| `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 기다리는 호출이 취소돼도 이미 등록한 작업을 임의로 제거하지 않는다. |
+| `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session 작업 오류를 관찰하고 다음 작업을 계속 실행한다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../README.ko.md) | [이전: Runtime Lifecycle](runtime-lifecycle.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -19,19 +19,16 @@ const requiredNodeVersions = ['20', '22'];
 const workflowPath = path.join(repoRoot, '.github', 'workflows', 'framework-node.yml');
 const packagePath = path.join(nodeRoot, 'package.json');
 const regressionMatrixPath = path.join(nodeDocRoot, 'internals', 'regression-test-matrix.ko.md');
-const implementationScopePath = path.join(nodeDocRoot, 'internals', 'implementation-scope-and-nongoals.ko.md');
 
 const errors = [];
 
 const workflow = read(workflowPath);
 const packageJson = JSON.parse(read(packagePath));
 const regressionMatrix = read(regressionMatrixPath);
-const implementationScope = read(implementationScopePath);
 
 for (const platform of requiredPlatforms) {
   requireText(workflow, platform, `${path.relative(repoRoot, workflowPath)} must include ${platform}`);
   requireText(regressionMatrix, platform, `${path.relative(repoRoot, regressionMatrixPath)} must include ${platform}`);
-  requireText(implementationScope, platform, `${path.relative(repoRoot, implementationScopePath)} must include ${platform}`);
 }
 
 for (const version of requiredNodeVersions) {

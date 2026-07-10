@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
@@ -10,8 +10,8 @@
 > 어디 붙어 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
 > **반복 문제로 나올 때** 효과가 크다.
 >
-> 이 챕터는 그 판단을 돕는 **허브 + 도입 판단 문서**다. 도메인별 상세 사례는 §5 의
-> 개별 케이스가, 사용법 정식은 04~09 챕터가 다룬다.
+> 이 챕터는 그 판단을 돕는 도입 판단 문서다. 실행 가능한 업무 흐름은 §5의 정본
+> sample이, 기능별 사용법은 04~09 챕터가 다룬다.
 
 ## 1. 한눈에 보는 사용처
 
@@ -92,40 +92,22 @@ channel/spot 계약으로 메시징할 수 있다.
 
 요지: ZLink 은 transport·dispatch 계층이지 **datastore·durable log·HFT 버스가
 아니다.** 분산 데이터 일관성(saga·outbox·idempotency)·영속·중복 제어 같은
-도메인 난제는 그대로 응용/인프라가 진다(각 케이스의 "그대로 남는 것" 참고).
+도메인 난제는 그대로 응용과 인프라가 책임진다.
 
-## 5. 케이스 스터디 — 도메인별 개별 문서
+## 5. 정본 sample로 확인하기
 
-쉬운 기본형 → 기능이 모두 필요한 강한 사례 → 경계가 분명한 사례 순으로 읽으면 된다.
+업무 흐름과 실행 결과를 확인할 때는 공통 sample과 `.NET` sample 문서를 함께 본다.
+공통 문서는 언어 중립 시나리오를, `.NET` 문서는 공개 API를 사용한 등록과 실행 방법을
+설명한다.
 
-| 케이스 | 무엇을 보나 | ZLink 핵심 기능 |
-|--------|-------------|-----------------|
-| [13 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md) | channel messaging 기본형(request/send/pub-sub) | channel + pub/sub |
-| [14 내부 마이크로서비스 mesh + 운영](case-studies/14-case-microservice-mesh.ko.md) | 서비스 위치 조회와 운영·topology | channel + location store + monitoring |
-| [15 실시간 멀티플레이 게임](case-studies/15-case-realtime-game.ko.md) | STREAM+SPOT+actor 가 모두 필요한 강한 사례 | STREAM + SPOT + actor + session dispatch |
-| [16 라이드헤일링 디스패치](case-studies/16-case-ride-hailing.ko.md) | zone 상태와 위치 fan-out | STREAM + pub/sub + zone SPOT |
-| [17 채팅·메시징](case-studies/17-case-chat-messaging.ko.md) | room membership 과 presence | STREAM + room SPOT + BoundSession |
-| [17-1 마켓플레이스 채팅](case-studies/17-1-case-marketplace-chat.ko.md) | 거래·문의 conversation | STREAM + conversation actor/SPOT |
-| [17-2 라이브 커머스 채팅](case-studies/17-2-case-live-commerce-chat.ko.md) | live chat, slow mode, moderation | STREAM + stream SPOT |
-| [17-3 게임 채팅](case-studies/17-3-case-game-chat.ko.md) | party/guild/match chat scope | STREAM + player actor + room |
-| [18 트레이딩 시스템](case-studies/18-case-trading-system.ko.md) | SPOT 모델은 맞지만 HFT 핫패스는 제외되는 경계 사례 | STREAM + symbol SPOT + pub/sub |
-
-각 케이스는 "도메인의 진짜 난제 → 기존 스택 → ZLink 스택 → 코드 비교 → 아키텍처·
-메시지 흐름 비교 → 줄어드는 것/그대로 남는 것" 순으로 구성된다.
-
-### 5.1 케이스 스터디와 샘플 문서의 차이
-
-케이스 스터디와 샘플은 역할이 다르다.
-
-| 구분 | 먼저 답하는 질문 | 문서가 다루는 것 |
-|------|------------------|--------------------|
-| 케이스 스터디 | "이 도메인에 ZLink 를 넣을 만한가?" | 도메인 난제, 기존 스택, ZLink 매핑, 줄어드는 것, 그대로 남는 것 |
-| 샘플 문서(`guide/samples/`) | "실제로 어떻게 등록하고 실행하나?" | 프로젝트 구조, 등록 코드, handler/DTO, 실행 방법, 검증 흐름 |
-
-따라서 케이스 스터디는 실행 가능한 전체 예제를 대체하지 않는다. 케이스에서 도입
-판단과 아키텍처 위치를 잡고, 같은 패턴을 코드로 따라 해 볼 때 샘플 문서를 본다.
-샘플 문서는 기능별 구현 학습이 목적이므로, 특정 도메인에서 ZLink 가 맞는지
-판단하는 내용은 이 문서와 각 케이스 스터디가 다룬다.
+| sample | 확인하는 업무 흐름 | `.NET` 실행 문서 |
+|--------|--------------------|------------------|
+| Bingo | session gateway, Entry Spot, room timer, bound push | [Bingo](samples/bingo-game-sample.ko.md) |
+| TicTacToe | 수동 연결, scale-out, 실시간 게임 | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
+| SupportChat | 대화 상태, 재연결, idle close | [SupportChat](samples/supportchat-sample.ko.md) |
+| DeliveryDispatch | 배차, 재배정, 상태 fanout | [DeliveryDispatch](samples/deliverydispatch-sample.ko.md) |
+| ShoppingMall | 주문 workflow, 보상, projection | [ShoppingMall](samples/shoppingmall-sample.ko.md) |
+| GameQuest | player owner routing, quest event sourcing | [GameQuest](samples/gamequest-sample.ko.md) |
 
 ## 6. 참고 — gRPC·service mesh 스택과의 비교
 
@@ -280,16 +262,8 @@ sequenceDiagram
 
 ## 7. 더 보기
 
-- 케이스 스터디:
-  [13](case-studies/13-case-ecommerce-checkout.ko.md) ·
-  [14](case-studies/14-case-microservice-mesh.ko.md) ·
-  [15](case-studies/15-case-realtime-game.ko.md) ·
-  [16](case-studies/16-case-ride-hailing.ko.md) ·
-  [17](case-studies/17-case-chat-messaging.ko.md) ·
-  [17-1](case-studies/17-1-case-marketplace-chat.ko.md) ·
-  [17-2](case-studies/17-2-case-live-commerce-chat.ko.md) ·
-  [17-3](case-studies/17-3-case-game-chat.ko.md) ·
-  [18](case-studies/18-case-trading-system.ko.md)
+- 공통 업무 시나리오: [Framework Common Sample Scenarios](../../common/sample/README.ko.md)
+- `.NET` 실행 예제: [Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
 - 표면 매핑: [04-channel-messaging](04-channel-messaging.ko.md) §0, [12-interface-catalog](12-interface-catalog.ko.md) §1.6
 - 기능 선택 지도: [11-feature-map](11-feature-map.ko.md)
 
@@ -303,5 +277,5 @@ sequenceDiagram
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: Channel Messaging Sample](samples/channel-messaging-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

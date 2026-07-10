@@ -203,8 +203,7 @@ var placed = await client
 로 검증된다. 아래 본문 예제는 같은 표면을 profile/account/user 등 다른 웹 도메인으로
 보여 준다.
 
-> 비슷한 서비스를 새로 만들 때의 케이스 스터디·플래그십 워크스루·솔직한 경계
-> (여전히 gRPC 가 맞는 곳)와 도입 판단은
+> 비슷한 서비스를 새로 만들 때의 기술 선택 경계와 도입 판단은
 > [13-grpc-alternative](13-grpc-alternative.ko.md) 가 다룬다.
 
 ## 1. channel 종류

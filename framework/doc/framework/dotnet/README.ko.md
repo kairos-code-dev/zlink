@@ -4,7 +4,7 @@
 
 [Framework 문서](../../README.ko.md) | [공통 스펙](../common/README.ko.md)
 
-[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/async-execution-policy.ko.md) | [인터페이스](spec/handler-interfaces.ko.md) | [channel](spec/aspnet-core-channel-messaging.ko.md) | [SPOT](spec/aspnet-core-spot.ko.md) | [SpotNode](spec/spot-node.ko.md) | [Stage wrapper](spec/stage-wrapper-on-spot.ko.md) | [STREAM](spec/aspnet-core-stream.ko.md) | [Actor](spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](spec/session-actor-dispatch.ko.md) | [Stream Connector](guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | [Monitoring](spec/aspnet-core-monitoring.ko.md) | [Location](spec/aspnet-core-location.ko.md) | [Behavior Matrix](internals/behavior-matrix.ko.md) | [DI Capability](internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Lifecycle](internals/lifecycle-and-failure-semantics.ko.md) | [Scope](internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md) | [channel 샘플](guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](guide/samples/spot-samples.ko.md) | [STREAM 샘플](guide/samples/stream-samples.ko.md)
+[공통 스펙](../common/README.ko.md) | [비동기 실행](../common/spec/async-execution-policy.ko.md) | [인터페이스](spec/handler-interfaces.ko.md) | [channel](spec/aspnet-core-channel-messaging.ko.md) | [SPOT](spec/aspnet-core-spot.ko.md) | [SpotNode](spec/spot-node.ko.md) | [Stage wrapper](spec/stage-wrapper-on-spot.ko.md) | [STREAM](spec/aspnet-core-stream.ko.md) | [Actor](spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](spec/session-actor-dispatch.ko.md) | [Stream Connector](guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../core/doc/guide/unity-stream-connector.ko.md) | [Monitoring](spec/aspnet-core-monitoring.ko.md) | [Location](spec/aspnet-core-location.ko.md) | [Runtime Lifecycle](internals/runtime-lifecycle.ko.md) | [Runtime Execution](internals/runtime-execution.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md) | [channel 샘플](guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](guide/samples/spot-samples.ko.md) | [STREAM 샘플](guide/samples/stream-samples.ko.md)
 
 # ZLink Framework for .NET
 
@@ -131,12 +131,9 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 계약은 spec 문서가 다루며, 가이드는 그 의미를 실사용 코드로 풀어 준다. 실행
 가능한 전체 샘플은 `guide/samples/`에 모여 있다.
 
-케이스 스터디와 샘플 문서는 일부 코드 조각을 함께 다루지만 목적이 다르다.
-케이스 스터디는 **도입 판단과 아키텍처 매핑**을 맡는다. 즉 어떤 도메인 난제가
-있고, ZLink 를 넣으면 무엇이 줄어들며, 무엇은 여전히 DB·broker·도메인 로직에
-남는지 설명하며 `guide/case-studies/`에 모여 있다. 샘플 문서는 **실행 가능한 구현
-학습**을 맡는다. 즉 프로젝트 구조, 등록 코드, handler, DTO, 실행 방법을 따라 할 수
-있게 정리한다.
+업무 흐름의 정본은 공통 sample이고, `guide/samples/`는 그 흐름을 `.NET` 공개 API로
+실행하는 방법을 설명한다. 도입 범위와 기술 선택 기준은 기능 guide가 담당하며,
+실행되지 않는 별도 도메인 사례 문서는 두지 않는다.
 
 | 문서 | 역할 |
 |------|------|
@@ -152,16 +149,7 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 | [guide/10-monitoring.ko.md](guide/10-monitoring.ko.md) | socket / location / spot runtime 이벤트 관찰 사용법 |
 | [guide/11-feature-map.ko.md](guide/11-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
 | [guide/12-interface-catalog.ko.md](guide/12-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
-| [guide/13-grpc-alternative.ko.md](guide/13-grpc-alternative.ko.md) | **ZLink 을 어디에 쓰나** — 사용처·문제 신호·경계 + 케이스 허브(도입 판단 문서) |
-| [guide/case-studies/13-case-ecommerce-checkout.ko.md](guide/case-studies/13-case-ecommerce-checkout.ko.md) | 케이스: 전자상거래 체크아웃 — channel messaging 도입 판단 + 양쪽 비교 |
-| [guide/case-studies/14-case-microservice-mesh.ko.md](guide/case-studies/14-case-microservice-mesh.ko.md) | 케이스: 내부 마이크로서비스 mesh + 운영(location/topology) |
-| [guide/case-studies/15-case-realtime-game.ko.md](guide/case-studies/15-case-realtime-game.ko.md) | 케이스: 실시간 멀티플레이 게임 — STREAM + SPOT + actor |
-| [guide/case-studies/16-case-ride-hailing.ko.md](guide/case-studies/16-case-ride-hailing.ko.md) | 케이스: 라이드헤일링 dispatch — zone SPOT + 위치 fan-out |
-| [guide/case-studies/17-case-chat-messaging.ko.md](guide/case-studies/17-case-chat-messaging.ko.md) | 케이스: 채팅·메시징 — room SPOT + BoundSession |
-| [guide/case-studies/17-1-case-marketplace-chat.ko.md](guide/case-studies/17-1-case-marketplace-chat.ko.md) | 케이스: 마켓플레이스 채팅 — 구매자·판매자 conversation |
-| [guide/case-studies/17-2-case-live-commerce-chat.ko.md](guide/case-studies/17-2-case-live-commerce-chat.ko.md) | 케이스: 라이브 커머스·라이브스트림 채팅 — stream SPOT + moderation |
-| [guide/case-studies/17-3-case-game-chat.ko.md](guide/case-studies/17-3-case-game-chat.ko.md) | 케이스: 게임 채팅 — player actor + party/guild/match room |
-| [guide/case-studies/18-case-trading-system.ko.md](guide/case-studies/18-case-trading-system.ko.md) | 케이스: 트레이딩 — symbol SPOT 과 HFT 경계 |
+| [guide/13-grpc-alternative.ko.md](guide/13-grpc-alternative.ko.md) | **ZLink 을 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
 
 ### 2.1 기준 문서 (interface catalog)
 
@@ -188,27 +176,23 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 | [stage-wrapper-on-spot.ko.md](spec/stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 추가로 필요한 조건 |
 | [aspnet-core-location.ko.md](spec/aspnet-core-location.ko.md) | location store 등록, 자동 연결, resolver/runtime query DI 표면, monitoring 연동 |
 
-### 2.3 구현 준비 문서
+### 2.3 유지보수 문서
 
-다음 문서들은 public API 를 소개하기 위한 문서가 아니다. 실제 구현을 어디까지
-진행할 수 있는지, 그리고 어떤 기준으로 완료를 판단할지를 미리 닫아 두기 위한
-문서다.
+다음 문서는 public API 사용법이 아니라 backend 경계, 내부 lifecycle과 회귀 검증을
+설명한다. 공개 오류와 허용 조합은 각 기능 spec을 따른다.
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [behavior-matrix.ko.md](internals/behavior-matrix.ko.md) | 역할 조합별 기대 동작, startup validation, 허용 / 비허용 조합 |
-| [di-capability-exposure-policy.ko.md](internals/di-capability-exposure-policy.ko.md) | DI 로 노출되는 public service interface 와 역할 등록 조건 |
-| [lifecycle-and-failure-semantics.ko.md](internals/lifecycle-and-failure-semantics.ko.md) | startup / shutdown 순서, fail-fast[^fail-fast] 규칙, reconnect 와 runtime error 의 의미 |
-| [regression-test-matrix.ko.md](internals/regression-test-matrix.ko.md) | 구현 중에도 항상 유지해야 할 회귀 테스트 항목, CI 계층, release gate |
-| [implementation-scope-and-nongoals.ko.md](internals/implementation-scope-and-nongoals.ko.md) | 현재 계획의 전체 구현 범위, 비목표, 완료 판정 기준 |
-| [backend-dependency-policy.ko.md](internals/backend-dependency-policy.ko.md) | 현재 backend 의존 관계와 향후 저수준 라이브러리 교체 기준 |
+| [runtime-lifecycle.ko.md](internals/runtime-lifecycle.ko.md) | host와 내부 runtime의 시작·종료 배선과 소유권 |
+| [runtime-execution.ko.md](internals/runtime-execution.ko.md) | session, actor와 Spot handler의 내부 실행 queue와 오류 관측 |
+| [regression-test-matrix.ko.md](internals/regression-test-matrix.ko.md) | 항상 유지해야 할 회귀 테스트 항목, CI 계층, release gate |
+| [backend-dependency-policy.ko.md](internals/backend-dependency-policy.ko.md) | backend 의존 관계와 저수준 라이브러리 교체 경계 |
 
 ### 2.4 샘플 문서
 
 샘플 문서는 등록 코드부터 handler, client 호출까지 한 번에 보여 주는 실행 가능한
-코드를 모아 둔다. 인터페이스 정의를 다시 나열하지는 않는다. 특정 도메인에 ZLink 를
-도입할지 판단하는 설명은 12번 문서와 케이스 스터디가 맡고, 샘플은 그 판단 뒤에
-실제 등록·실행 흐름을 확인하는 문서로 둔다.
+코드를 모아 둔다. 인터페이스 정의를 다시 나열하지는 않는다. 기능 선택 기준은
+guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·실행 흐름을 보여 준다.
 
 | 문서 | 다루는 범위 |
 |------|------------|
@@ -274,8 +258,8 @@ hosted service[^hosted-service], handler 모델, location store 기반 자동 �
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | `.NET` draft 문서마다 `회귀 테스트` 단락이 존재한다. |
-| `RegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | `regression-test-matrix.ko.md` 가 각 draft 문서 파일명을 모두 참조한다. |
+| `RegressionTests.DotNetContractDocuments_AllExposeRegressionTestSection` | `.NET` 계약·sample·internals 문서마다 `회귀 테스트` 단락이 존재한다. |
+| `RegressionTests.DotNetRegressionMatrix_References_AllContractDocuments` | `regression-test-matrix.ko.md`가 현재 검증 대상 문서 파일명을 모두 참조한다. |
 | `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime` | 테스트 runtime 에서 framework 루트를 찾을 수 있어, 문서 회귀 테스트가 저장소 기준으로 실행된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

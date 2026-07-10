@@ -1002,6 +1002,37 @@ metric, publish 는 Debug 로그 또는 metric 과 observer event 를 남긴다.
 로그와 metric 은 생략하지 않는다. observer callback 실패는 runtime error sink 로 분리하며 원래 reply
 또는 drop 결과를 바꾸지 않는다.
 
+### 10.2 startup validation
+
+channel 등록은 다음 조건을 host 시작 전에 검증한다.
+
+| 구성 | 결과 |
+|------|------|
+| 같은 channel 이름을 두 번 등록 | `ZLinkConfigurationException` |
+| server 또는 publisher의 빈 bind endpoint | `ZLinkConfigurationException` |
+| client/subscriber에 store도 manual endpoint도 없음 | `ZLinkConfigurationException` |
+| server에 request/send handler와 SPOT route acceptance가 모두 없음 | `ZLinkConfigurationException` |
+| subscriber에 publish handler가 없음 | `ZLinkConfigurationException` |
+| client/server channel에 publish handler 등록 | `ZLinkConfigurationException` |
+| fanout channel에 request/send handler 등록 | `ZLinkConfigurationException` |
+| channel 종류와 맞지 않는 handler group 매핑 | `ZLinkConfigurationException` |
+| 매핑한 handler group에 handler가 없음 | `ZLinkConfigurationException` |
+| 같은 channel에서 같은 `kind + packet name` handler 중복 | `ZLinkConfigurationException` |
+| 서로 다른 channel에서 같은 packet name 사용 | 허용. handler namespace는 channel별로 분리된다 |
+
+location store가 등록되어 있어도 `EnableClient(endpoint)`나
+`EnableSubscriber(endpoint)`로 endpoint를 명시한 역할은 manual 연결을 사용한다.
+다른 역할의 자동 연결 설정에는 영향을 주지 않는다.
+
+### 10.3 host 중지 중 호출
+
+host stopping이 시작되면 새 inbound dispatch를 받지 않는다. 이미 실행 중인 handler에는
+cancellation token을 전달하고 graceful shutdown 시간 안에 끝날 기회를 준다. 이 시점에
+새로 시작하는 outbound request나 submit의 성공은 보장하지 않는다. runtime이 dispose할
+때 아직 전송되지 않은 pending submit은 예외로 완료되므로, 호출자는 정상 완료로
+간주하면 안 된다. cancellation과 timeout을 포함한 구체적인 오류 계약은 각 호출 API의
+오류 절을 따른다.
+
 ## 11. 회귀 테스트
 
 이 절에서는 channel 문서가 다루는 항목이 함께 깨지지 않도록, 어떤 시나리오를 회귀

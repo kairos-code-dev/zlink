@@ -1,6 +1,6 @@
 # ZLink Framework SpotNode 계약 (Node.js / NestJS)
 
-[Node 묶음](../README.ko.md) | [SPOT](nestjs-spot.ko.md) | [인터페이스](handler-interfaces.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
+[Node 묶음](../README.ko.md) | [SPOT](nestjs-spot.ko.md) | [인터페이스](handler-interfaces.ko.md)
 
 이 문서는 `Node.js` framework 의 `SpotNode` 설정 중 core route 계약과 직접
 맞물리는 부분, 그리고 spot manager 표면(create / get / list / close)을 정리한다.
@@ -80,8 +80,8 @@ zlinkFramework()
 ## SpotManager 표면
 
 dotnet `IZLinkSpotManager` 는 node 에서 `ZLinkSpotManager` provider 로 노출하고,
-NestJS DI 로 생성자 주입한다(`ZLinkChannelClient` 등 다른 outbound client 와 동일
-규칙, [표면 매핑 §3.3](../internals/dotnet-to-node-surface-mapping.ko.md)). spot
+NestJS DI로 생성자 주입한다. `ZLinkChannelClient` 등 다른 outbound client와 같은
+provider 노출 원칙을 따른다. spot
 인스턴스는 `SpotNode` 가 생성·소유하고, application 은 manager 로 **생성·조회·
 제거**만 한다.
 
@@ -115,7 +115,7 @@ export class StageService {
 
 TypeScript 는 런타임 타입 소거가 있으므로, dotnet 의 generic `TSpot` 은 spot
 클래스 생성자를 첫 인자로 넘기는 형태(`create(StageSpot)`)로 표현한다. factory
-식별은 등록된 클래스 생성자로 한다([표면 매핑 §4.3](../internals/dotnet-to-node-surface-mapping.ko.md)).
+식별은 등록된 클래스 생성자로 한다.
 
 ### 반환 타입
 

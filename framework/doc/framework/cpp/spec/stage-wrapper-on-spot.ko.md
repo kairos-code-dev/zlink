@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ SPOT Samples](../internals/spot-samples.ko.md) | [다음: Draft -- C++ STREAM Decisions](../internals/stream-open-items.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ SPOT Samples](../guide/samples/spot-samples.ko.md) | [다음: C++ STREAM](cpp-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
@@ -41,5 +41,5 @@ room이나 stage 상태 변경은 core SPOT dispatch boundary 안에서만 처�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ SPOT Samples](../internals/spot-samples.ko.md) | [다음: Draft -- C++ STREAM Decisions](../internals/stream-open-items.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ SPOT Samples](../guide/samples/spot-samples.ko.md) | [다음: C++ STREAM](cpp-stream.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

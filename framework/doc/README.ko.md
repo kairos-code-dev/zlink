@@ -14,7 +14,6 @@
 | **Framework adapter** | `framework/` | [공통 스펙](framework/common/README.ko.md) | 메시징·SPOT·actor·stream 프레임워크 본체 |
 | **HTTP Client** | `http-client/` | [언어별 문서](http-client/dotnet/README.ko.md) | fluent HTTP/JSON client |
 | **Stream Connector** | `stream-connector/` | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) | client 측 STREAM 접속 라이브러리(C++) |
-| 구현 계획 | `plan/` | [codec 통합 계획](plan/framework-codec-extension-unification-plan.ko.md), [STREAM 사용자 header 제거 계획](plan/framework-stream-user-header-removal-plan.ko.md) | 컴포넌트 횡단 작업 순서 |
 
 정식 언어: `.NET` · `Java/Kotlin` · `Node.js` · `C++`.
 
@@ -38,12 +37,6 @@
 | [비동기 실행 정책](framework/common/spec/async-execution-policy.ko.md) | async submit, blocking 금지, coroutine/adapter 공통 의미 |
 | [Actor 모델](framework/common/spec/actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |
 | [Session Actor Dispatch](framework/common/spec/session-actor-dispatch.ko.md) | session과 actor를 연결하는 helper와 routing 정책 |
-| [Use case 검증](framework/common/spec/usecase-validation.ko.md) | 현재 스펙이 use case를 얼마나 설명하는지 점검 |
-
-**Use case** ([색인](framework/common/use-cases/README.ko.md)) — 9종: service-to-service RPC,
-playhouse play→api, worker dispatch, domain event fanout, cache invalidation,
-stage state sync, real-time notification fanout, scatter-gather query, workflow orchestration.
-
 **공통 샘플 시나리오** ([색인](framework/common/sample/README.ko.md)) — 정본 6종을 모든 언어가
 같은 역할 분리·메시지 이름·smoke 순서로 구현한다.
 
@@ -64,16 +57,15 @@ stage state sync, real-time notification fanout, scatter-gather query, workflow 
 
 | 언어 | 진입점 | guide | spec | internals |
 |------|--------|-------|------|-----------|
-| `.NET` | [framework/dotnet](framework/dotnet/README.ko.md) | 12장 + case-studies + samples | ASP.NET Core 계약 | DI·lifecycle·회귀 |
+| `.NET` | [framework/dotnet](framework/dotnet/README.ko.md) | 기능 guide + samples | ASP.NET Core 계약 | backend·runtime·회귀 |
 | `Java` | [framework/java](framework/java/README.ko.md) | Spring Boot 가이드 (blocking/`CompletionStage`) | Spring 계약 | 구현·검증 |
 | `Kotlin` | [framework/kotlin](framework/kotlin/README.ko.md) | Kotlin 전용 가이드 (`suspend`/`Flow`) | Java 공유 | Java 공유 |
 | `Node.js` | [framework/node](framework/node/README.ko.md) | NestJS 가이드 | NestJS 계약 | 구현·검증 |
-| `C++` | [framework/cpp](framework/cpp/README.ko.md) | 가이드 + 샘플 맵·기능 맵 | C++ 계약 | 구현 계획·POSD |
+| `C++` | [framework/cpp](framework/cpp/README.ko.md) | 가이드 + samples | C++ 계약 | runtime·backend·회귀 |
 
 > 가이드 골격(언어별 세부 번호는 다를 수 있음): 개요 → 시작하기 → 핵심 개념 →
 > 채널 메시징 → SPOT → actor/session → STREAM → Registry → 모니터링 → 기능 맵 →
-> 인터페이스 카탈로그 → gRPC 대안. 그 뒤 case-studies(이커머스·메시·게임·라이드헤일링·
-> 채팅·트레이딩)와 정본 샘플 문서가 이어진다.
+> 인터페이스 카탈로그 → gRPC 대안 → 정본 sample 문서 순으로 이어진다.
 
 ---
 
@@ -110,15 +102,6 @@ client 측에서 STREAM 서버에 접속하는 별도 라이브러리(C++). Unre
 
 > `.NET`·`Java/Kotlin`·`Node.js`는 connector가 framework guide의 STREAM·streaming-client
 > 장에 thin client로 포함된다(별도 트리 없음).
-
----
-
-## 4. 구현 계획 (`plan/`)
-
-| 문서 | 다루는 범위 |
-|------|-------------|
-| [Framework codec extension 통합 계획](plan/framework-codec-extension-unification-plan.ko.md) | JSON 기본값, Protobuf/MessagePack extension, custom codec, connector/HTTP client 적용 구조 |
-| [STREAM 사용자 header 제거 계획](plan/framework-stream-user-header-removal-plan.ko.md) | 사용자 header 생성/전달 제거, dispatch context, `_raw` API 정리 |
 
 ---
 

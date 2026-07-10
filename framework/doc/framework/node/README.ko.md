@@ -1,11 +1,11 @@
 # ZLink Framework for Node.js -- 문서
 
 > 이 묶음은 `Node.js`, `NestJS`용 ZLink Framework 정식 문서다. 문서는
-> `guide/`(사용법·케이스 스터디), `spec/`(공개 계약), `internals/`(구현·검증 기준)로
+> `guide/`(사용법·sample), `spec/`(공개 계약), `internals/`(구현·검증 기준)로
 > 나뉜다. 공통 의미는 [공통 스펙](../common/README.ko.md)을 따르며, 여기서는
-> 그 의미를 Node.js / NestJS 표면으로만 구체화한다. dotnet 문서와 표기가 어긋나면
-> dotnet **코드**가 기능의 최종 기준이고, 그 번역 규칙은
-> [표면 매핑 정책](internals/dotnet-to-node-surface-mapping.ko.md)이 소유한다.
+> 그 의미를 Node.js와 NestJS 표면으로만 구체화한다. 공개 계약은 이 디렉토리의
+> spec과 공통 framework spec이 소유하며, 다른 언어 구현은 계약 해석을 비교하는
+> 참고 자료로만 사용한다.
 
 비동기 실행, `Promise`, helper 동기 함수의 공통 의미는
 [비동기 실행과 coroutine 정책](../common/spec/async-execution-policy.ko.md)을 따른다.
@@ -34,11 +34,7 @@ NestJS 애플리케이션 개발자가 읽고 바로 따라 쓸 수 있도록 �
 | [09-monitoring](guide/09-monitoring.ko.md) | typed runtime event 관찰 |
 | [10-feature-map](guide/10-feature-map.ko.md) | .NET 기능 이름의 Node 대응 |
 | [11-interface-catalog](guide/11-interface-catalog.ko.md) | 주요 public interface 목록 |
-| [12-grpc-alternative](guide/12-grpc-alternative.ko.md) | gRPC/HTTP 대비 도입 판단 + 케이스 스터디 |
-
-도입 판단과 아키텍처 매핑을 위한 도메인별 케이스 스터디는
-[12-grpc-alternative](guide/12-grpc-alternative.ko.md)에서 진입하며, `guide/case-studies/`
-13–18에 둔다.
+| [12-grpc-alternative](guide/12-grpc-alternative.ko.md) | gRPC/HTTP 대비 도입 판단과 기술 선택 경계 |
 
 ## 2. 공개 계약 spec
 
@@ -61,20 +57,14 @@ API만 설명한다.
 
 ## 3. 내부 기준 (`internals/`)
 
-`internals/`는 유지보수자를 위한 framework 경계, backend 의존, lifecycle, 회귀
-기준을 정의한다. spec 만으로 못 정하는 **횡단 결정**에서 참조한다. 이식 기준의
-키스톤은 `dotnet-to-node-surface-mapping`이다.
+`internals/`는 유지보수자를 위한 backend 의존, 내부 lifecycle과 회귀 기준을
+정의한다. 공개 API와 허용 조합은 spec에서 확인한다.
 
 | 문서 | 범위 |
 |------|------|
-| [dotnet-to-node-surface-mapping](internals/dotnet-to-node-surface-mapping.ko.md) | **이식 기준**(번역 규칙) |
 | [backend-dependency-policy](internals/backend-dependency-policy.ko.md) | backend 교체 가능성, public surface 격리 |
-| [di-capability-exposure-policy](internals/di-capability-exposure-policy.ko.md) | 역할 별 DI 노출 규칙 |
-| [lifecycle-and-failure-semantics](internals/lifecycle-and-failure-semantics.ko.md) | 시동/종료/실패 의미 |
-| [behavior-matrix](internals/behavior-matrix.ko.md) | 기능별 동작 매트릭스 |
-| [implementation-scope-and-nongoals](internals/implementation-scope-and-nongoals.ko.md) | 범위·비목표 |
+| [runtime-lifecycle](internals/runtime-lifecycle.ko.md) | NestJS hook과 내부 runtime의 시작·종료 배선 |
 | [regression-test-matrix](internals/regression-test-matrix.ko.md) | 회귀 테스트 기준 |
-| [cross-language-smoke](internals/cross-language-smoke.ko.md) | cross-language wire 계약 smoke 기준 |
 
 ## 4. 정본 샘플 (`guide/samples/`)
 

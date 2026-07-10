@@ -82,7 +82,6 @@ public enum ZLinkStreamSessionError
     Internal = 0,
     TransportError,
     // OnErrorAsync로 전달되지 않는다. handshake 실패는 runtime monitoring에만 남긴다.
-    // stream-open-items.ko.md section 4.2 참고.
     HandshakeFailed
 }
 
@@ -406,6 +405,13 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
   은 `ZLinkSessionDispatchContext` 와 `ZLinkMessage` payload 를 받는 계약으로 둔다.
   request header 값은 runtime 이 dispatch context 안에서 보존하므로 application 이
   header 객체를 만들거나 relay 호출에 다시 넘기지 않는다.
+
+### 7.1 startup validation
+
+- stream node에는 bind endpoint가 반드시 있어야 한다.
+- 한 stream node에는 session 타입을 하나만 등록한다.
+- 같은 session 타입을 중복 등록하거나 session을 둘 이상 등록하면
+  `ZLinkConfigurationException`으로 host 시작 전에 실패한다.
 
 ## 8. 회귀 테스트
 

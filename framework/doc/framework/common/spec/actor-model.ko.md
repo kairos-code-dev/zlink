@@ -261,8 +261,9 @@ registry에 두기 위해서다. Entry 단계와 user Spot 단계를 하나의 a
 
 ## 6. Outbound: actor를 부르는 쪽
 
-다른 application 코드가 특정 actor를 부를 때는 **actor id**만 안다. 호출자는
-actor가 어느 노드 어느 spot에 사는지 알 필요가 없다.
+다른 application 코드가 특정 actor를 부르기 시작할 때는 domain key인 actor id만 알 수 있다.
+호출자는 location resolver나 actor manager로 메시징 대상 값인 `ActorRef`를 얻은 뒤 actor client에
+넘긴다. actor가 어느 노드 어느 spot에 사는지 직접 조합하거나 별도 routing id를 전달하지 않는다.
 
 actor 안에서 user Spot에 join할 때도 같은 규칙이다. actor context의 `JoinSpot(...)`
 public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표면에는
@@ -282,6 +283,22 @@ public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표�
 위치의 저장소는 application이 등록한 location store(예: 공식 Redis extension)다.
 framework는 특정 store 제품을 강제하지 않고, row의 등록·갱신은 actor/spot lifecycle이
 자동으로 수행한다.
+
+### 6.1 server-to-actor 메시징
+
+서버 측 caller가 stream session을 거치지 않고 actor mailbox로 보내는 public 표면은 actor client다.
+send와 request는 모두 `ActorRef`를 대상으로 받으며, actor id만 받는 overload는 제공하지 않는다.
+호출자가 id만 알고 있으면 먼저 resolver나 actor manager에서 ref를 얻어야 한다. 이 경계를 두는
+이유는 위치 조회, generation 검증, 실제 전송을 한 호출에 숨기지 않고 stale ref를 명시적으로
+판정하기 위해서다.
+
+- send 완료는 대상 actor owner가 메시지를 mailbox에 인계했음을 뜻한다.
+- request 완료는 같은 인계 뒤 actor handler의 reply가 caller에게 돌아왔음을 뜻한다.
+- 어느 경우에도 이 호출로 actor의 bound session을 만들거나 바꾸지 않는다.
+- 존재하지 않는 actor, stale generation, 끊긴 route는
+  [framework API의 오류 분류](framework-api.ko.md)에 따라 구분한다.
+
+구체적인 bind 상태별 검증은 [Config 9](../e2e/config-9-to-actor-messaging.ko.md)에 둔다.
 
 ## 7. Session actor dispatch (gateway) 패턴
 

@@ -6,9 +6,8 @@
 
 [.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Actor](../../spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../../spec/session-actor-dispatch.ko.md)
 
-> 이 문서는 Bingo 샘플의 설계와 구현 흐름을 정리한다. 실시간 게임 도메인에 ZLink 를
-> 도입할지 판단하는 내용은
-> [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)이 맡는다.
+> 이 문서는 Bingo sample의 `.NET` 설계와 실행 흐름을 정리한다. 언어 중립 업무
+> 시나리오는 [공통 Bingo sample](../../../common/sample/bingo/README.ko.md)이 소유한다.
 
 ## 1. 목적
 

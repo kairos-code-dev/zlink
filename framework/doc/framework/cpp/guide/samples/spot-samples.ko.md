@@ -1,15 +1,15 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Interface Alignment](../spec/handler-interfaces.ko.md) | [다음: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: C++ Interface Contract](../../spec/handler-interfaces.ko.md) | [다음: C++ Stage Wrapper On SPOT](../../spec/stage-wrapper-on-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../common/README.ko.md)
+[스펙 목차](../../../common/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](cpp-framework-policy.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [SPOT](../spec/cpp-spot.ko.md)
+[C++ 묶음](../../README.ko.md) | [Framework 인터페이스](../../spec/cpp-framework-interfaces.ko.md) | [SPOT](../../spec/cpp-spot.ko.md)
 
-# Draft -- ZLink Framework C++ SPOT Samples
+# ZLink Framework C++ SPOT Samples
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` `SPOT` 초안을 샘플로 보기 위한 문서다.
+이 문서는 현재 C++ public API를 사용하는 SpotNode, Spot handler와 actor 예제를
+설명한다. 공개 계약은 [Spot spec](../../spec/cpp-spot.ko.md)이 소유한다.
 
 ## 1. 등록과 `spot_name`
 
@@ -146,5 +146,5 @@ framework runtime의 bound session 경로를 사용한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Interface Alignment](../spec/handler-interfaces.ko.md) | [다음: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: C++ Interface Contract](../../spec/handler-interfaces.ko.md) | [다음: C++ Stage Wrapper On SPOT](../../spec/stage-wrapper-on-spot.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

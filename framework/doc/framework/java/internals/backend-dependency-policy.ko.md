@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [표면 매핑](dotnet-to-java-surface-mapping.ko.md)
+[문서 목록](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Regression Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Java Backend Dependency Policy
@@ -93,5 +93,5 @@ status는 꼭 필요한 경우 optional detail로만 둔다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [표면 매핑](dotnet-to-java-surface-mapping.ko.md)
+[문서 목록](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Regression Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

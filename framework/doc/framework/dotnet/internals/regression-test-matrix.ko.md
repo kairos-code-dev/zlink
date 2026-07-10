@@ -1,18 +1,18 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Lifecycle And Failure Semantics](lifecycle-and-failure-semantics.ko.md) | [다음: ZLink Framework .NET Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Runtime Execution](runtime-execution.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Lifecycle](lifecycle-and-failure-semantics.ko.md) | [use case validation](../../common/spec/usecase-validation.ko.md)
+[.NET 묶음](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Runtime Execution](runtime-execution.ko.md) | [Backend Policy](backend-dependency-policy.ko.md) | [공통 E2E](../../common/e2e/README.ko.md)
 
 # ZLink Framework .NET Regression Test Matrix
 
 ## 1. 목적
 
-use case validation 문서는 설계 설명이 어디까지 닿아 있는지를 보는 문서다.
-반면 이 문서는 결이 다르다. 구현이 바뀌더라도 "무엇이 깨지면 회귀로 본다"는
-기준을 테스트 항목 단위로 못 박는 데 목적이 있다.
+이 문서는 구현이 바뀌더라도 무엇이 깨지면 회귀로 보는지를 테스트 항목 단위로
+정리한다. 공개 동작의 의미는 책임 spec이 소유하고, 이 문서는 그 계약을 검증하는
+테스트와 release gate만 소유한다.
 
 ## 2. CI 계층
 
@@ -65,7 +65,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `AddClientServerChannel(...).EnableClient(endpoint)` | `integration-single-process` | manual request/send 성공 |
 | `AddFanoutChannel(...).EnableSubscriber(endpoint)` | `integration-single-process` | manual 기반 subscribe 성공 |
 | client 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
-| 같은 역할에서 location store 자동 연결/manual 혼용 | `unit` | startup validation 예외 |
+| location store가 있는 역할에 manual endpoint 명시 | `unit` | 명시한 역할은 manual 연결을 사용하고 다른 역할의 자동 연결에는 영향을 주지 않는다 |
 | publisher 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher 전용 channel | `integration-single-process` | publish submit 성공 |
 | subscriber location-store attach | `integration-multi-process` | 원격 publish 수신 |
@@ -217,7 +217,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 |------|------|-----------|
 | location store 시작 순서 | `integration-single-process` | framework runtime 이 location store 등록 뒤 자동 연결을 시작한다 |
 | 원격 query client | `integration-multi-process` | location topology snapshot 조회가 성공한다 |
-| monitoring source 이름 불일치 | `unit` | startup validation 예외 |
+| socket/Spot monitoring source 이름 불일치 | `unit` | startup validation 예외 |
+| location monitoring runtime 누락 | `unit` | location source를 등록했지만 location runtime이 없으면 startup validation 예외 |
 | registry polling diff | `integration-multi-process` | topology, status, service summary event가 발생한다 |
 | spot polling diff | `integration-multi-process` | status, peers, subjects event가 발생한다 |
 
@@ -229,7 +230,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 2. `net8.0`, `net10.0` 양쪽 모두 통과
 3. 위 여섯 runtime RID 전체에서 CI gate 통과
 4. happy-path 샘플과 대표 failure-path가 각각 한 번 이상 커버되어 있음
-5. `behavior-matrix.ko.md`에 정리한 비허용 조합이 모두 테스트로 고정되어 있음
+5. 책임 spec에 정의한 비허용 조합이 모두 테스트로 고정되어 있음
 
 즉 샘플이 한 번 실행되는 것만으로는 충분하지 않다. startup validation 과
 runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
@@ -251,14 +252,14 @@ backend gate 와 별도로 유지한다.
 
 ## 10. 문서별 회귀 테스트 단락
 
-이 디렉토리의 각 draft 문서는, 자기 항목이 어떤 테스트로 고정되어 있는지 짧은
+이 디렉토리의 각 계약·sample·internals 문서는, 자기 항목이 어떤 테스트로 고정되어 있는지 짧은
 `회귀 테스트` 단락을 갖고 있어야 한다. 중앙 matrix 만 갱신해서는 곤란하다.
 세부 문서의 독자가 어떤 테스트를 봐야 하는지 놓치기 쉽기 때문이다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 아래 문서가 모두 `회귀 테스트` 단락을 가진다. |
-| `RegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | 이 matrix가 아래 문서 파일명을 모두 참조한다. |
+| `RegressionTests.DotNetContractDocuments_AllExposeRegressionTestSection` | 아래 문서가 모두 `회귀 테스트` 단락을 가진다. |
+| `RegressionTests.DotNetRegressionMatrix_References_AllContractDocuments` | 이 matrix가 아래 문서 파일명을 모두 참조한다. |
 
 대상 문서는 다음과 같다.
 
@@ -274,11 +275,9 @@ backend gate 와 별도로 유지한다.
 - `streaming-client.ko.md`
 - `aspnet-core-monitoring.ko.md`
 - `aspnet-core-location.ko.md`
-- `behavior-matrix.ko.md`
-- `di-capability-exposure-policy.ko.md`
 - `regression-test-matrix.ko.md`
-- `lifecycle-and-failure-semantics.ko.md`
-- `implementation-scope-and-nongoals.ko.md`
+- `runtime-lifecycle.ko.md`
+- `runtime-execution.ko.md`
 - `backend-dependency-policy.ko.md`
 - `channel-messaging-samples.ko.md`
 - `spot-samples.ko.md`
@@ -305,5 +304,5 @@ backend gate 와 별도로 유지한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Lifecycle And Failure Semantics](lifecycle-and-failure-semantics.ko.md) | [다음: ZLink Framework .NET Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Runtime Execution](runtime-execution.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -4,9 +4,10 @@
 언어별 샘플은 구현 방식과 문법은 달라도 이 문서의 서버 역할, 메시지 흐름,
 메시지 필드, 검증 기준에 맞춘다.
 
-공통 샘플 문서는 언어별 guide가 아니라 framework 공통 spec 아래에 둔다. 같은 샘플을
-.NET, Java, Node, C++ 등에서 구현할 때 한 언어 문서가 다른 언어의 사실상 기준이
-되지 않게 하기 위해서다.
+공통 sample은 실제 업무 흐름의 정본이지만 새 public API 계약의 근거는 아니다.
+공개 동작과 제약은 [공통 spec](../README.ko.md)이 소유하고, 이 문서는 그 계약을
+실행 가능한 업무 흐름으로 보여 준다. 언어별 sample은 한 언어 구현을 기준으로
+복사하지 않고 이 공통 시나리오와 해당 언어 spec을 함께 따른다.
 
 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
 GameQuest)은 `.NET` 샘플에서 검증된 흐름을 기준으로 삼되, 모든 framework 언어
@@ -216,7 +217,7 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
   잘못된 실행으로 이어진다. helper는 `zlink_redis_start_scoped_assign`처럼 호출부 변수에 값을
   대입하는 함수로 제공하고, 함수 실패가 그대로 runner 실패가 되게 한다.
 - 통합 sample runner는 transient bind 실패(`Address already in use`, `EADDRINUSE`,
-  `errno=98`)만 제한적으로 retry할 수 있다. readiness timeout, sample self-check assertion 실패나
+  `already bound`, `errno=98`)만 제한적으로 retry할 수 있다. readiness timeout, sample self-check assertion 실패나
   framework semantic failure는 retry로 가리지 않고 바로 실패로 남긴다.
 - 실패 시 runner는 `log_dir=...` 또는 sample별 로그 위치를 출력하고, 각 프로세스의
   stdout/stderr와 framework log를 `logs/*.log`에 남긴다.

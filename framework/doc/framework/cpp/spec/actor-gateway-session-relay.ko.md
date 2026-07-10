@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [SPOT](cpp-spot.ko.md) | [STREAM](cpp-stream.ko.md) | [Registry](cpp-registry.ko.md)
+[C++ 묶음](../README.ko.md) | [Runtime Architecture](../internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [SPOT](cpp-spot.ko.md) | [STREAM](cpp-stream.ko.md) | [Registry](cpp-registry.ko.md)
 
 # Spec -- ZLink Framework C++ ActorGateway Session Relay
 

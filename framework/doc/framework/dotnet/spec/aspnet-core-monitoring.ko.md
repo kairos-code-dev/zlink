@@ -349,6 +349,20 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
   failure event 는 framework timer loop 에서 즉시 만든다. 제거된 자동 발견 runtime
   event payload 는 다시 두지 않는다.
 
+### 7.1 startup validation
+
+- socket source는 `<channel>.<capability>` 형식을 사용하며, 해당 channel 역할이 실제로
+  등록되어 있어야 한다.
+- Spot source는 등록된 SpotNode 이름을 가리켜야 한다.
+- location source를 사용하려면 location runtime이 등록되어 있어야 한다. location
+  source 이름은 event를 구분하는 사용자 지정 이름이며, store row나 역할 이름과
+  대조하지 않는다.
+- polling source의 interval은 0보다 커야 한다. 0 이하의 interval은 시작 전에 거부한다.
+- 위 조건을 만족하지 않으면 `ZLinkConfigurationException`으로 host 시작 전에
+  실패한다.
+- 임의 source 자동 발견은 지원하지 않는다. 자동 연결 상태는 `location-runtime`
+  source와 runtime query로 관찰한다.
+
 ## 8. 회귀 테스트
 
 이 절은 monitoring 표면이 어떤 테스트로 회귀를 막는지를 정리한다.

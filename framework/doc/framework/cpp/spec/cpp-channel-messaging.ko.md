@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ Channel Messaging Samples](../internals/channel-messaging-samples.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Channel Messaging Samples](../guide/samples/channel-messaging-samples.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [channel 샘플](../internals/channel-messaging-samples.ko.md)
+[C++ 묶음](../README.ko.md) | [Runtime Architecture](../internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md)
 
 # Spec -- ZLink Framework C++ Channel Messaging
 
@@ -210,5 +210,5 @@ CTest label은 `framework-zlink-channel`을 사용한다. 전체 zlink 회귀 �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ Channel Messaging Samples](../internals/channel-messaging-samples.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Channel Messaging Samples](../guide/samples/channel-messaging-samples.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

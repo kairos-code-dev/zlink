@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../framework/common/README.ko.md)
 
-[C++ 묶음](../../../framework/cpp/README.ko.md) | [C++ 정책](../../../framework/cpp/internals/cpp-framework-policy.ko.md) | [Application Framework](../../../framework/cpp/spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../../../framework/cpp/spec/cpp-framework-interfaces.ko.md) | [HTTP Hosting](../../../framework/cpp/spec/cpp-http-hosting.ko.md)
+[C++ 묶음](../../../framework/cpp/README.ko.md) | [Runtime Architecture](../../../framework/cpp/internals/runtime-architecture.ko.md) | [Application Framework](../../../framework/cpp/spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../../../framework/cpp/spec/cpp-framework-interfaces.ko.md) | [HTTP Hosting](../../../framework/cpp/spec/cpp-http-hosting.ko.md)
 
 # Spec -- ZLink HTTP Client For C++
 

@@ -6,9 +6,9 @@
 
 [.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md)
 
-> 이 문서는 실행 가능한 game sample 설명이다. 실시간 게임 도메인에 ZLink 를 도입할지
-> 판단하려면 [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)을 먼저 보고,
-> 이 문서에서는 등록 코드, DTO, 실행 흐름을 확인한다.
+> 이 문서는 실행 가능한 TicTacToe sample의 등록 코드, DTO, 실행 흐름을 설명한다.
+> 언어 중립 업무 시나리오는
+> [공통 TicTacToe sample](../../../common/sample/tictactoe/README.ko.md)이 소유한다.
 
 ## 1. 목적
 

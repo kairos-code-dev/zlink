@@ -7,9 +7,8 @@
 [Node.js 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md)
 
 > 이 문서는 Node.js `ZLink Framework`(NestJS)의 STREAM **스펙**이다. 표면은 NestJS
-> 모양이다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다. 번역 규칙은
-> [dotnet→node 표면 매핑](../internals/dotnet-to-node-surface-mapping.ko.md) 를
-> 따른다.
+> 모양이다. 실제 이름과 시그니처는 `framework/languages/node`의 public declaration을
+> 기준으로 검증한다.
 
 # ZLink Framework NestJS STREAM Integration
 
@@ -458,9 +457,8 @@ framework 의 기본 표면은 다음 정도까지만 유지한다.
 - `ZLinkMessage`
 
 객체 변환은 binding core 의 `Message` 자체가 아니라, framework `ZLinkMessage` 와
-codec extension / serializer provider 가 맡는다. 패키지 분리는
-[표면 매핑 §2](../internals/dotnet-to-node-surface-mapping.ko.md) 의
-`@zlink-systems/stream-connector-{json,msgpack,protobuf}` 구성을 따른다.
+codec extension과 serializer provider가 맡는다. 확장 package는 각 package의 public
+entry point와 codec spec을 기준으로 구성한다.
 
 예를 들면 다음과 같이 쓴다.
 

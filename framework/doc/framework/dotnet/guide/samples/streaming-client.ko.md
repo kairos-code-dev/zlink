@@ -11,8 +11,8 @@
 > 이 문서는 **릴리스 전 초안**이다.
 > 즉 아직 배포된 공개 계약[^public-contract]이 아니며, `.NET`과 Unity에서 `ZLink STREAM`[^stream]
 > 서버에 접속하는 stream connector[^stream-connector]를 어떤 모양으로 노출할지 정리해 둔
-> 문서다. ZLink 를 어디에 쓸지 판단하는 케이스 스터디가 아니라, 외부 client 가
-> STREAM 서버와 주고받을 packet 을 만드는 sample/API 설명 문서다.
+> 문서다. 외부 client가 STREAM 서버와 주고받을 packet을 만드는 sample/API 설명
+> 문서이며, 기술 선택 기준은 [13-grpc-alternative](../13-grpc-alternative.ko.md)가 맡는다.
 
 ## 1. 목적
 

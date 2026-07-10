@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [use cases](../use-cases/README.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Interaction Model
 
@@ -30,8 +30,6 @@
 | `command` | 응답을 기다리지 않는 one-way 전송 | 높음 |
 | `publish-subscribe` | 발행자와 구독자가 느슨하게 연결된다 | 높음 |
 | `stream` | 연결 수명 위에서 packet 또는 session 단위로 처리한다 | 높음 |
-| `worker-dispatch` | 여러 worker 중 하나가 처리한다 | 중간 |
-| `scatter-gather` | 여러 대상에 요청을 보내고 결과를 모은다 | 낮음 |
 
 각 모델이 어떤 내부 transport에 매핑되는지는
 [channel-topology.ko.md](channel-topology.ko.md)의 section 3을 참고한다.
@@ -151,19 +149,6 @@ actor 의 packet 이 Entry Spot 하나의 실행 줄에 묶이지 않는다. Ent
 actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은 권위 상태를 바꾸는
 주기 작업은 그 상태를 소유하는 user Spot timer 로 등록해야 한다.
 
-### 3.5 worker-dispatch
-
-- 의미상으로는 command 또는 request-response의 변형이지만, 사용자 기대가
-  다르므로 별도 use case로 본다.
-- 사용자는 "어느 worker가 받는가"보다 "worker group에 작업을 보낸다"를 먼저
-  떠올린다.
-
-### 3.6 scatter-gather
-
-- 하나의 논리 요청이 여러 실제 요청으로 fan-out된다.
-- 결과를 일부만 모을지 모두 기다릴지 정책이 필요하다.
-- 단일 unary RPC의 단순 확장이 아니라 aggregate 모델에 가깝다.
-
 ## 4. 기본 원칙
 
 - framework가 직접 통합할 transport 축은 네 가지로 한정한다. 구체적인 축
@@ -185,25 +170,6 @@ actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은
 - 현재 방향에서는 `SpotNode.router` 경로를 공개 high-level direct API로 그대로
   드러내지 않고, current channel publish와 cross-channel send/request를 분리해서
   설명한다.
-- 같은 내부 topology를 쓰더라도, use case가 다르면 공용 이름도 다르게 둔다.
-  예를 들어 `request-response`와 `worker-dispatch`는 둘 다 어떤 routed transport
-  위에 올릴 수 있어도, 같은 개념으로 설명하지 않는다.
-
-## 5. use case와의 연결
-
-| use case | 기본 모델 |
-|----------|-----------|
-| 일반 웹 백엔드 서비스 호출 | `request-response` |
-| playhouse play -> api | `request-response` |
-| room/stage/zone 안의 channel 호출 | `request-response` 또는 `command` |
-| worker dispatch | `worker-dispatch` 또는 `command` |
-| domain event fanout | `publish-subscribe` |
-| cache invalidation / config refresh | `publish-subscribe` |
-| stage state sync | `publish-subscribe` |
-| real-time notification fanout | `publish-subscribe` |
-| session actor dispatch | `stream` + actor create/dispatch + session proxy |
-| scatter-gather query | `scatter-gather` |
-| workflow orchestration | `request-response` + `publish-subscribe` 조합 |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

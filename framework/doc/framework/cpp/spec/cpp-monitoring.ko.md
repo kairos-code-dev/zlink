@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Runtime Architecture](../internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
@@ -237,5 +237,5 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Runtime Architecture](../internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

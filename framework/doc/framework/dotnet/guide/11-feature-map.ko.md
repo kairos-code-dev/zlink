@@ -64,18 +64,18 @@ flowchart TD
 
 ## 4. 기능을 실제로 보여 주는 샘플
 
-각 샘플은 의도가 겹치지 않게 서로 다른 기능 묶음을 맡는다. "이 기능을 실행 코드로
-보고 싶다" 면 아래에서 대표 샘플로 이동한다. 도입 판단(언제·왜)은 연결된 케이스
-스터디가, 실행은 샘플이 맡는다.
+각 sample은 의도가 겹치지 않게 서로 다른 기능 묶음을 맡는다. "이 기능을 실행 코드로
+보고 싶다"면 아래에서 대표 sample로 이동한다. 언어 중립 업무 흐름은 공통 sample이,
+`.NET` 등록과 실행 방법은 연결된 문서가 맡는다.
 
-| 샘플 | 핵심 기능 묶음 | codec | 케이스 스터디 | deep-dive 문서 |
-|------|----------------|:-----:|---------------|----------------|
-| TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | JSON | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
-| Bingo | location store 자동 연결, 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [Bingo](samples/bingo-game-sample.ko.md) |
-| SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [17 채팅·메시징](case-studies/17-case-chat-messaging.ko.md) | [SupportChat](samples/supportchat-sample.ko.md) |
-| DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [16 라이드헤일링](case-studies/16-case-ride-hailing.ko.md) | [DeliveryDispatch](samples/deliverydispatch-sample.ko.md) |
-| ShoppingMall | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [13 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md) | [ShoppingMall](samples/shoppingmall-sample.ko.md) |
-| GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [GameQuest](samples/gamequest-sample.ko.md) |
+| sample | 핵심 기능 묶음 | codec | 언어별 실행 문서 |
+|--------|----------------|:-----:|------------------|
+| TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | JSON | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
+| Bingo | location store 자동 연결, 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [Bingo](samples/bingo-game-sample.ko.md) |
+| SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [SupportChat](samples/supportchat-sample.ko.md) |
+| DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [DeliveryDispatch](samples/deliverydispatch-sample.ko.md) |
+| ShoppingMall | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [ShoppingMall](samples/shoppingmall-sample.ko.md) |
+| GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [GameQuest](samples/gamequest-sample.ko.md) |
 
 > 기능별 사용법은 04~09 가, 샘플의 언어 중립 공통 시나리오는
 > [spec/sample](../../common/sample/README.ko.md) 가 다룬다.
@@ -86,7 +86,8 @@ flowchart TD
 - ZLink 을 어디에 쓰나(새 서비스 도입 판단): [13-grpc-alternative](13-grpc-alternative.ko.md)
 - 모든 계약 인터페이스를 코드로(ContractTests 검증): [12-interface-catalog](12-interface-catalog.ko.md)
 - 전체 인터페이스 카탈로그(언어 중립 정식): [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
-- 동작/검증 기준: [internals/behavior-matrix](../internals/behavior-matrix.ko.md)
+- 동작 계약은 각 기능 spec을 따르고, 검증 범위는
+  [regression test matrix](../internals/regression-test-matrix.ko.md)에서 확인한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

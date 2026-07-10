@@ -9,9 +9,8 @@
 # ZLink Framework NestJS SPOT Integration
 
 > 이 문서는 Node.js `ZLink Framework`(NestJS)의 SPOT **스펙**이다. 표면은 NestJS /
-> TypeScript 모양이다. 번역 규칙은
-> [dotnet-to-node-surface-mapping.ko.md](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 를 따른다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
+> TypeScript 모양이다. 실제 이름과 시그니처는 `framework/languages/node`의 public
+> declaration을 기준으로 검증한다.
 
 ## 현재 구현 기준
 

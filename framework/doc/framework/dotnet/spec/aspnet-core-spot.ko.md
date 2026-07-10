@@ -1092,6 +1092,21 @@ channel 등록으로 확인할 수 있어야 한다. 주소만 알고 연결하�
 
 이름이다. target Spot 은 string overload 없이 `RoutingId` 로 지정한다.
 
+### 11.1 startup validation
+
+SPOT 등록은 다음 조건을 host 시작 전에 검증한다.
+
+| 구성 | 결과 |
+|------|------|
+| 같은 process에서 둘 이상의 `AddSpotMesh(...)` 등록 | `ZLinkConfigurationException` |
+| 같은 Spot factory 타입 중복 | `ZLinkConfigurationException` |
+| 같은 Entry Spot 타입 중복 | `ZLinkConfigurationException` |
+| route bridge에 router-capable channel이 없음 | `ZLinkConfigurationException` |
+| route egress channel에 store 또는 manual peer가 없음 | `ZLinkConfigurationException` |
+| fanout/dealer mesh를 routed SPOT egress로 지정 | `ZLinkConfigurationException` |
+| location store 없이 local-only Spot factory 등록 | 허용 |
+| local Spot factory 없이 외부 publish 역할만 등록 | 허용. `IZLinkSpotPublisherClient`를 사용한다 |
+
 ## 12. 회귀 테스트
 
 이 절은 SPOT 문서가 다룬 항목들을 어떤 테스트로 검증하는지 한꺼번에 본다.

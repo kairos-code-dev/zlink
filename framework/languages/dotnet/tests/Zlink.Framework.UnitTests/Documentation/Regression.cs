@@ -5,7 +5,7 @@ namespace Zlink.Framework.UnitTests.Documentation;
 
 public sealed class RegressionTests
 {
-    private static readonly string[] DotNetDraftDocuments =
+    private static readonly string[] DotNetContractDocuments =
     [
         "README.ko.md",
         "handler-interfaces.ko.md",
@@ -19,11 +19,9 @@ public sealed class RegressionTests
         "streaming-client.ko.md",
         "aspnet-core-monitoring.ko.md",
         "aspnet-core-location.ko.md",
-        "behavior-matrix.ko.md",
-        "di-capability-exposure-policy.ko.md",
         "regression-test-matrix.ko.md",
-        "lifecycle-and-failure-semantics.ko.md",
-        "implementation-scope-and-nongoals.ko.md",
+        "runtime-lifecycle.ko.md",
+        "runtime-execution.ko.md",
         "backend-dependency-policy.ko.md",
         "channel-messaging-samples.ko.md",
         "spot-samples.ko.md",
@@ -53,19 +51,6 @@ public sealed class RegressionTests
         "13-grpc-alternative.ko.md"
     ];
 
-    private static readonly string[] GuideCaseStudyDocuments =
-    [
-        "13-case-ecommerce-checkout.ko.md",
-        "14-case-microservice-mesh.ko.md",
-        "15-case-realtime-game.ko.md",
-        "16-case-ride-hailing.ko.md",
-        "17-case-chat-messaging.ko.md",
-        "17-1-case-marketplace-chat.ko.md",
-        "17-2-case-live-commerce-chat.ko.md",
-        "17-3-case-game-chat.ko.md",
-        "18-case-trading-system.ko.md"
-    ];
-
     private static readonly IReadOnlySet<string> RemovedE2ETestClasses =
         new HashSet<string>(StringComparer.Ordinal)
         {
@@ -93,38 +78,25 @@ public sealed class RegressionTests
             "TopologyTests"
         };
 
-    // Core registry/discovery removal (framework-location-resolver-store draft,
-    // section 20.1) deleted these test classes. The dotnet spec documents that
-    // still reference them are rewritten by the draft's documentation plan
-    // (section 23); until then their stale references are exempt.
-    private static readonly IReadOnlySet<string> RemovedRegistryTestClasses =
-        new HashSet<string>(StringComparer.Ordinal)
-        {
-            "RegistryAndMonitoringTests",
-            "RegistryRemoteAddressesTests"
-        };
-
     [Fact]
-    public void DotNetDraftDocuments_AllExposeRegressionTestSection()
+    public void DotNetContractDocuments_AllExposeRegressionTestSection()
     {
         var directory = GetDotNetDocRoot();
-        // Narrative guide docs and case studies are onboarding prose, not contract
-        // docs: they are exempt from the regression-section requirement.
+        // Narrative guide docs are onboarding prose, not contract docs, so they
+        // are exempt from the regression-section requirement.
         // Samples remain contract-bound and stay in the strict set.
         var guideRoot = Path.Combine(directory, "guide");
-        var caseStudyRoot = Path.Combine(guideRoot, "case-studies");
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
             .Where(path => !IsUnderDirectory(path, guideRoot, true))
-            .Where(path => !IsUnderDirectory(path, caseStudyRoot, true))
             .Select(Path.GetFileName)
             .OfType<string>()
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(DotNetDraftDocuments.Order(StringComparer.Ordinal), actualDocuments);
+        Assert.Equal(DotNetContractDocuments.Order(StringComparer.Ordinal), actualDocuments);
 
-        foreach (var document in DotNetDraftDocuments)
+        foreach (var document in DotNetContractDocuments)
         {
             var path = ResolveDoc(document);
             var text = File.ReadAllText(path);
@@ -164,22 +136,6 @@ public sealed class RegressionTests
             Assert.Matches(@"(?m)^# .+", text);
         }
 
-        var caseStudyRoot = Path.Combine(guideRoot, "case-studies");
-        var actualCaseStudies = Directory
-            .EnumerateFiles(caseStudyRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .OfType<string>()
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.Equal(GuideCaseStudyDocuments.Order(StringComparer.Ordinal), actualCaseStudies);
-
-        foreach (var document in GuideCaseStudyDocuments)
-        {
-            var text = File.ReadAllText(Path.Combine(caseStudyRoot, document));
-            Assert.Contains("<!-- framework-adapter-nav:start -->", text, StringComparison.Ordinal);
-            Assert.Matches(@"(?m)^# .+", text);
-        }
     }
 
     [Fact]
@@ -274,19 +230,19 @@ public sealed class RegressionTests
     }
 
     [Fact]
-    public void DotNetRegressionMatrix_References_AllDraftDocuments()
+    public void DotNetRegressionMatrix_References_AllContractDocuments()
     {
         var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
 
-        foreach (var document in DotNetDraftDocuments) Assert.Contains(document, matrix, StringComparison.Ordinal);
+        foreach (var document in DotNetContractDocuments) Assert.Contains(document, matrix, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void DotNetDraftRegressionTestReferences_Resolve_ToActiveTestMethods()
+    public void DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods()
     {
         var activeTests = GetActiveTestMethods();
 
-        foreach (var document in DotNetDraftDocuments)
+        foreach (var document in DotNetContractDocuments)
         {
             var path = ResolveDoc(document);
             var text = File.ReadAllText(path);
@@ -296,8 +252,6 @@ public sealed class RegressionTests
             foreach (var reference in references)
             {
                 if (IsRemovedE2ETestReference(reference)) continue;
-
-                if (IsRemovedRegistryTestReference(reference)) continue;
 
                 Assert.Contains(reference, activeTests);
             }
@@ -318,33 +272,6 @@ public sealed class RegressionTests
         Assert.Contains("session callback 직렬성", matrix, StringComparison.Ordinal);
         Assert.Contains("runtime task exception observation", matrix, StringComparison.Ordinal);
         Assert.Contains("execution queue cancellation semantics", matrix, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void DotNetSessionActorDispatch_Documents_ExecutionSerialization_Core_Code()
-    {
-        var document = File.ReadAllText(ResolveDoc("session-actor-dispatch.ko.md"));
-
-        Assert.Contains("## 2.3 실행 직렬화 핵심 코드", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkSerialWorkItem", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkSerialExecutionQueue", document, StringComparison.Ordinal);
-        Assert.Contains("private readonly SemaphoreSlim _drainGate = new(1, 1);", document, StringComparison.Ordinal);
-        Assert.Contains("internal interface IZLinkRuntimeErrorSink", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkRuntimeTaskRunner", document, StringComparison.Ordinal);
-        Assert.Contains("TaskScheduler.Default", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkStreamSessionRuntime", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkActorDispatchRuntime", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkUserSpotRuntime", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkEntrySpotRuntime", document, StringComparison.Ordinal);
-        Assert.Contains("internal sealed class ZLinkNodeMessageRuntime", document, StringComparison.Ordinal);
-        var normalized = NormalizeWhitespace(document);
-        Assert.Contains("queue 에 들어간 work item 을 중간에서", normalized, StringComparison.Ordinal);
-        Assert.Contains("fire-and-forget handler 예외", normalized, StringComparison.Ordinal);
-    }
-
-    private static string NormalizeWhitespace(string value)
-    {
-        return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static string GetDotNetDocRoot()
@@ -444,15 +371,6 @@ public sealed class RegressionTests
 
         var className = reference[..separatorIndex];
         return RemovedE2ETestClasses.Contains(className);
-    }
-
-    private static bool IsRemovedRegistryTestReference(string reference)
-    {
-        var separatorIndex = reference.IndexOf('.');
-        if (separatorIndex <= 0) return false;
-
-        var className = reference[..separatorIndex];
-        return RemovedRegistryTestClasses.Contains(className);
     }
 
     private static bool HasFactOrTheoryAttribute(string text, int methodIndex)

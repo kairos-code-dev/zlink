@@ -34,13 +34,12 @@
 
 ## internals 목록
 
-[cpp-framework-overview](internals/cpp-framework-overview.ko.md)(산출물 경계·goal 노트) ·
-[cpp-framework-policy](internals/cpp-framework-policy.ko.md) ·
-[cpp-framework-implementation-plan](internals/cpp-framework-implementation-plan.ko.md) ·
-[cpp-framework-posd-refactoring-log](internals/cpp-framework-posd-refactoring-log.ko.md) ·
-[stream-open-items](internals/stream-open-items.ko.md) ·
-샘플 노트([channel](internals/channel-messaging-samples.ko.md) /
-[spot](internals/spot-samples.ko.md) /
-[stream](internals/stream-samples.ko.md))
+[runtime architecture](internals/runtime-architecture.ko.md) ·
+[backend dependency policy](internals/backend-dependency-policy.ko.md) ·
+[regression test matrix](internals/regression-test-matrix.ko.md)
+
+기능별 실행 예제는 guide의 [channel](guide/samples/channel-messaging-samples.ko.md),
+[Spot](guide/samples/spot-samples.ko.md),
+[stream](guide/samples/stream-samples.ko.md) 문서에서 확인한다.
 
 상위 framework 공통 문서는 [framework/doc](../../README.ko.md)을 본다.

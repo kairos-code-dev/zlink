@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [SPOT 샘플](../internals/spot-samples.ko.md) | [Stage wrapper](stage-wrapper-on-spot.ko.md)
+[C++ 묶음](../README.ko.md) | [Runtime Architecture](../internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [Stage wrapper](stage-wrapper-on-spot.ko.md)
 
 # Spec -- ZLink Framework C++ SPOT
 

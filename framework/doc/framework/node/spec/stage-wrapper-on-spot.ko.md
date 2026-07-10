@@ -9,10 +9,8 @@
 # Stage Wrapper On SPOT
 
 > 이 문서는 Node.js / NestJS 에서 `SPOT` 위에 상위 stage 모델을 얹는 조건을 다룬다.
-> 표면은 NestJS 모양이며, 기준은 `framework/languages/node` 의 공개 표면과 런타임이다.
-> 이 항목은 기본 공개 API 계약이 아니라 상위 모델 가이드다. 표면 매핑
-> 규칙은 [dotnet-to-node-surface-mapping](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 가 소유한다.
+> 표면은 NestJS 모양이며, 기준은 `framework/languages/node`의 공개 표면과
+> 런타임이다. 이 항목은 기본 공개 API 계약이 아니라 상위 모델 가이드다.
 
 ## 1. 왜 이 문서가 필요한가
 

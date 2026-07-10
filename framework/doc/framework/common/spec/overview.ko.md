@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Overview
 
@@ -126,12 +126,6 @@ header만 읽는 장점도 잃는다.
 - command
 - publish-subscribe
 - stream
-
-고급 조합 모델은 아래처럼 별도 조합 범주로 다룬다.
-
-- worker-dispatch
-- scatter-gather
-- workflow orchestration
 
 현재 방향에서는 `STREAM`도 네 가지 직접 통합 축 중 하나다. 다만 `send/request`처럼 모든
 프레임워크의 기본 업무 API로 똑같이 보이게 하기보다, 연결 수명과 packet 처리

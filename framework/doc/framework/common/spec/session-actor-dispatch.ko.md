@@ -721,8 +721,8 @@ client session으로 가는 방향만 `SessionProxy`다.
 | `SendToActor(...)` | `SessionProxy.Send(actorId, message)` | actor -> client 방향 호출로만 남긴다. |
 | `RequestActor(...)` | `SessionProxy.Request(actorId, request)` | reply type은 기존 call builder 규칙을 따른다. |
 
-> 이름 구분: 이 표의 `SendToActor(...)`는 과거 session gateway 표면을 제거한 이력이다. L13 actor
-> client의 `IZLinkActorClient.SendToActor(...)` / `RequestToActor(...)`는 서버 측 caller가 actor id로
+> 이름 구분: 이 표의 `SendToActor(...)`는 과거 session gateway 표면을 제거한 이력이다. actor
+> client의 `IZLinkActorClient.SendToActor(...)` / `RequestToActor(...)`는 서버 측 caller가 `ActorRef`로
 > actor mailbox에 보내는 별도 표면이며, session proxy 또는 actor -> client 전송을 의미하지 않는다.
 
 alias는 두지 않는다. 정식 sample, guide, 새 draft 문서에서는 session -> actor 방향을

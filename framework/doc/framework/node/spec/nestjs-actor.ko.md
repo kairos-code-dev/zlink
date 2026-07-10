@@ -4,12 +4,11 @@
 
 [스펙 목차](../README.ko.md)
 
-[node 묶음](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md) | [STREAM](nestjs-stream.ko.md) | [Registry](nestjs-registry.ko.md)
+[node 묶음](../README.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md) | [STREAM](nestjs-stream.ko.md) | [Registry](nestjs-registry.ko.md)
 
 > 이 문서는 Node.js `ZLink Framework`(NestJS)의 actor 계약을 다루는 **정식 spec**
-> 이다. 표면은 NestJS / TypeScript 관용구를 쓴다. 번역 규칙은
-> [.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 이 소유한다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
+> 이다. 표면은 NestJS와 TypeScript 관용구를 쓰며, 실제 이름과 시그니처는
+> `framework/languages/node`의 public declaration을 기준으로 검증한다.
 
 # ZLink Framework NestJS Actor
 

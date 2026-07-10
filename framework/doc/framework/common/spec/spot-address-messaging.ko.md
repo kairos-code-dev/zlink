@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Location Store — Redis](location-store-redis.ko.md) | [다음: Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Location Store — Redis](location-store-redis.ko.md) | [다음: 공통 Sample](../sample/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -112,7 +112,8 @@ owner 이동, node 장애, 정상 lifecycle의 spot destroy 후 보유 주소는
 
 ### 4.1 request 실패 분류 — fail-fast
 
-이 spot request 분류는 기존 `ZLinkFrameworkErrorKind`만 쓴다(이 표를 위한 새 종류를 추가하지 않는다). actor 대상 표면의 실패 분류(`ActorLocationStale`·`ActorCreateRejected` 신설 포함)는 POSD 재설계 정본(framework/doc/plan/framework-public-contract-posd-redesign.ko.md L12~L13)이 별도로 정의한다.
+이 spot request 분류는 기존 `ZLinkFrameworkErrorKind`만 쓴다(이 표를 위한 새 종류를 추가하지 않는다).
+actor 대상 표면의 실패 분류는 [framework API 오류 계약](framework-api.ko.md)을 따른다.
 
 | 상태 | 판정 위치 | 오류 | 호출자의 다음 행동 |
 |------|-----------|------|--------------------|

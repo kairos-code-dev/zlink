@@ -21,25 +21,63 @@ actor 는 **ID 로 식별되는 상태 보유 객체**다. 같은 `ActorId` 로 
 호출자는 actor 가 어느 SpotNode/Spot 에 있는지 몰라도 된다. `actorId` 만으로 호출하면 routing 은
 framework 가 등록된 resolver 로 푼다.
 
-actor 의 상태는 **서로 독립인 두 축**으로 본다. 이 챕터는 **위치 축**, 다음 챕터([07](07-actor-session.ko.md))는
-**binding 축**이다.
+actor **하나**를 볼 때 서로 독립인 **두 속성**이 있다.
 
-| 축 | 값 | 다루는 곳 |
-|----|------|----------|
-| **위치(location)** | Entry Spot(생성 직후 기본) ↔ user Spot(join 후) | **이 챕터(§3 spot 호스팅)** |
-| **binding** | unbound ↔ STREAM session 에 bound | [07-actor-session](07-actor-session.ko.md) |
+- **위치(location)** — 이 actor 가 **어느 Spot 에 사는가**. Entry Spot(생성 직후 기본) ↔ user Spot.
+- **binding** — 이 actor 에 **어느 client 의 연결이 물려 있는가**. `bind` 는 client 의 STREAM
+  session 을 actor 에 이어 주는 것이다. bound 되면 그 client 가 보낸 packet 이 이 actor 로 들어오고,
+  actor 가 보낸 메시지는 그 session 을 타고 같은 client 로 돌아간다 — **client 연결 하나 ↔ actor
+  하나를 잇는 선**이라고 보면 된다.
 
-위치 이동과 session binding 은 독립이다. user Spot join 에 session bind 가 꼭 필요한 것은 아니다.
+| 속성 | 값 | 바꾸는 트리거 | 다루는 곳 |
+|----|------|------|----------|
+| **위치(location)** | Entry Spot ↔ user Spot | `JoinSpot` / `leave` | **이 챕터(§3)** |
+| **binding** | unbound ↔ client STREAM session 에 bound | `bind` / `disconnect·unbind` | [07-actor-session](07-actor-session.ko.md) |
 
-```text
-None
-  +-- factory.CreateAsync --> Created (Entry Spot, unbound)
-        +-- bind session --> Entry Spot + bound
-        |     +-- JoinSpot --> user Spot + bound
-        |           +-- leave (framework) --> Entry Spot + bound
-        +-- DestroyActorAsync (Entry Spot) --> None
-        +-- disconnect/unbind (framework) --> Entry/user Spot 유지
+두 속성은 **완전히 독립**이다. user Spot 에 join 하는 데 client bind 가 필요 없고, 반대로 client 가
+끊겨 unbound 가 돼도 actor 의 위치·상태는 그대로 남는다(같은 `actorId` 로 다시 붙으면 새 session 이
+같은 actor 에 bind 될 뿐이다). 그래서 actor 는 **두 가지 모습**으로 돈다.
+
+**(A) session 없이 — spot 이 actor 를 호스팅한다 (위치 축, 이 챕터).** client 가 안 붙어도 actor 는
+살아 있고, `actorId` routing 으로 다른 actor·handler 가 호출한다. 바뀌는 건 **어느 Spot 에 사는지**뿐이다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+stateDiagram-v2
+    direction LR
+    [*]       --> EntrySpot: factory.CreateAsync
+    EntrySpot --> UserSpot : JoinSpot
+    UserSpot  --> EntrySpot: leave (framework)
+    EntrySpot --> [*]      : DestroyActorAsync
+
+    state "actor @ Entry Spot" as EntrySpot
+    state "actor @ user Spot"  as UserSpot
 ```
+
+- 생성 직후 **Entry Spot**, `JoinSpot` 으로 user Spot(room)에 들어가고 framework 가 `leave` 로 되돌린다.
+- destroy 는 **Entry Spot 에서만** 가능하다(user Spot 이면 먼저 `leave`). 여기엔 client 가 없다.
+
+**(B) client session 에 bind — client 요청을 그 actor 가 처리한다 (binding 축, [07](07-actor-session.ko.md)).**
+Session 역할이 client STREAM 을 받아 actor 에 `bind` 하면, client packet 이 그 actor 로 relay 되고
+actor 가 처리한 결과가 같은 session 을 타고 client 로 돌아간다. actor 는 (A)와 **같은 인스턴스**로,
+Entry/user 어느 Spot 에 있든 bind 될 수 있다.
+
+```mermaid
+sequenceDiagram
+    participant C as client
+    participant S as Session 역할
+    participant A as actor @ Spot
+    C->>S: STREAM 연결
+    S->>A: bind(actor)
+    C->>S: 요청 packet
+    S->>A: relay(payload)
+    A->>A: handler 처리 (actor 상태 변경)
+    A-->>S: BoundSession.Send(응답)
+    S-->>C: STREAM push
+```
+
+- client 는 STREAM 하나만 들면 된다. actor 가 어느 Spot 에 사는지는 client 가 몰라도 된다.
+- client 가 끊겨도 actor·spot membership 은 그대로 — 재접속하면 새 session 이 같은 actor 에 다시 bind 된다.
 
 framework 가 자동으로 관리하는 것: Entry Spot 생성/소멸, user Spot 에서 Entry Spot 으로 leave.
 session disconnect 는 actor membership 을 바꾸지 않는다. actor 에게 끊김을 알려야 하면 응용이 대상

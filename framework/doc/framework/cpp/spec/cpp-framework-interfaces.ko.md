@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](cpp-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](cpp-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../internals/runtime-architecture.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](cpp-application-framework.ko.md) | [channel](cpp-channel-messaging.ko.md) | [SPOT](cpp-spot.ko.md) | [STREAM](cpp-stream.ko.md) | [HTTP Client](../../../http-client/cpp/README.ko.md) | [HTTP Hosting](cpp-http-hosting.ko.md)
+[C++ 묶음](../README.ko.md) | [Runtime Architecture](../internals/runtime-architecture.ko.md) | [Application Framework](cpp-application-framework.ko.md) | [channel](cpp-channel-messaging.ko.md) | [SPOT](cpp-spot.ko.md) | [STREAM](cpp-stream.ko.md) | [HTTP Client](../../../http-client/cpp/README.ko.md) | [HTTP Hosting](cpp-http-hosting.ko.md)
 
 # Spec -- ZLink Framework C++ Interface Design
 
@@ -2152,5 +2152,5 @@ int main(int argc, char **argv)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](cpp-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](cpp-channel-messaging.ko.md) | [다음: C++ Runtime Architecture](../internals/runtime-architecture.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

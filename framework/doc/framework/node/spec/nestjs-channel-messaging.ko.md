@@ -9,9 +9,8 @@
 # ZLink Framework NestJS Channel Messaging
 
 > 이 문서는 Node.js `ZLink Framework`(NestJS)의 channel messaging **스펙**이다.
-> 호스트 표면은 NestJS, 언어 표면은 TypeScript 다. 번역 규칙은
-> [dotnet-to-node-surface-mapping.ko.md](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 가 소유한다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
+> 호스트 표면은 NestJS, 언어 표면은 TypeScript다. 실제 이름과 시그니처는
+> `framework/languages/node`의 public declaration을 기준으로 검증한다.
 
 ## 현재 구현 기준
 
@@ -1091,9 +1090,9 @@ NestJS provider lifecycle hook 으로 매핑한다.
 
 runtime 시동에서 socket bind/connect 와 discovery 시작이 일어나므로, handler provider
 들이 DI 에서 모두 resolvable 한 시점(`onApplicationBootstrap`) 에 시동을 건다.
-lifecycle 의 정식 의미(시동 순서, 실패 처리, 종료 보장)는
-[lifecycle-and-failure-semantics](../internals/lifecycle-and-failure-semantics.ko.md) 가
-소유한다.
+사용자가 관찰하는 시동 validation, 실패와 종료 의미는 이 문서의 책임 절이
+소유한다. 내부 NestJS hook과 runtime 종료 순서는
+[runtime lifecycle](../internals/runtime-lifecycle.ko.md)에서 설명한다.
 
 ## 10. 결정된 기준
 

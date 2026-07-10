@@ -1,15 +1,15 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../../stream-connector/cpp/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../common/README.ko.md)
+[스펙 목차](../../../common/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](cpp-framework-policy.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [STREAM](../spec/cpp-stream.ko.md)
+[C++ 묶음](../../README.ko.md) | [Framework 인터페이스](../../spec/cpp-framework-interfaces.ko.md) | [STREAM](../../spec/cpp-stream.ko.md)
 
-# Draft -- ZLink Framework C++ STREAM Samples
+# ZLink Framework C++ STREAM Samples
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` `STREAM` 초안을 샘플로 보기 위한 문서다.
+이 문서는 현재 C++ public API를 사용하는 stream session 등록과 connector 예제를
+설명한다. 공개 계약은 [stream spec](../../spec/cpp-stream.ko.md)이 소유한다.
 
 ## 1. Packet session 등록
 
@@ -102,5 +102,5 @@ session은 ActorGateway를 통해 actor로 packet을 넘긴다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../../stream-connector/cpp/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

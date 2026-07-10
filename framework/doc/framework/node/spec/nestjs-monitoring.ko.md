@@ -15,9 +15,8 @@
 > 통합), `ZLinkRuntimeEventHandler<TEvent>` provider discovery, `ZLinkMonitoringModule`
 > public module path, timer handler failure 의 즉시 event 발행이 구현돼 있다.
 >
-> 번역 규칙은
-> [.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 을 따른다. 이 문서대로 구현하면 .NET 과 동일한 monitoring 동작을 얻는다.
+> 공통 monitoring 의미는 공통 spec을 따르며, 이 문서는 Node.js의 public 타입과
+> NestJS 등록 계약을 정의한다.
 
 ## 1. 목표
 

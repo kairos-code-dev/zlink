@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [Scope](implementation-scope-and-nongoals.ko.md)
+[문서 목록](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Backend Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Java Regression Test Matrix
@@ -226,5 +226,5 @@ release gate command:
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [Scope](implementation-scope-and-nongoals.ko.md)
+[문서 목록](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Backend Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

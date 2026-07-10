@@ -1,7 +1,7 @@
 # ZLink Framework for Java/Kotlin -- 문서
 
 > 이 묶음은 `Java`, `Kotlin`, `Spring Boot`용 ZLink Framework 문서다. 문서는
-> `guide/`(사용법·케이스 스터디), `spec/`(공개 계약), `internals/`(구현·검증 기준)로
+> `guide/`(사용법·sample), `spec/`(공개 계약), `internals/`(구현·검증 기준)로
 > 나뉜다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따르며, 여기서는 그 의미를
 > Java/Kotlin 표면으로 구체화한다.
@@ -57,12 +57,8 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 
 | 문서 | 범위 |
 |------|------|
-| [dotnet-to-java-surface-mapping](internals/dotnet-to-java-surface-mapping.ko.md) | 이식 기준과 번역 규칙 |
 | [backend-dependency-policy](internals/backend-dependency-policy.ko.md) | Java binding 의존 격리 |
-| [di-capability-exposure-policy](internals/di-capability-exposure-policy.ko.md) | 역할별 Spring bean 노출 규칙 |
-| [lifecycle-and-failure-semantics](internals/lifecycle-and-failure-semantics.ko.md) | 시동, 종료, 실패 의미 |
-| [behavior-matrix](internals/behavior-matrix.ko.md) | 기능별 validation/runtime 판정 |
-| [implementation-scope-and-nongoals](internals/implementation-scope-and-nongoals.ko.md) | 구현 범위와 비목표 |
+| [runtime-lifecycle](internals/runtime-lifecycle.ko.md) | Spring lifecycle과 내부 runtime 소유권 |
 | [regression-test-matrix](internals/regression-test-matrix.ko.md) | `.NET` 동등성 회귀 테스트 기준 |
 
 ## 4. 샘플
@@ -87,9 +83,3 @@ ShoppingMall, GameQuest)은 공통 샘플 기준에 따라 JSON codec, Registry/
 | [channel-messaging-samples](guide/samples/channel-messaging-samples.ko.md) | channel 등록, handler, outbound client 샘플 |
 | [spot-samples](guide/samples/spot-samples.ko.md) | room/stage/zone 기준 Spot 등록과 publish/request 샘플 |
 | [stream-samples](guide/samples/stream-samples.ko.md) | stream 등록, header session, actor relay 샘플 |
-
-## 5. 케이스 스터디
-
-도입 판단과 아키텍처 매핑을 위한 도메인별 케이스 스터디는
-[12-grpc-alternative](guide/12-grpc-alternative.ko.md)에서 진입하며,
-[guide/case-studies/](guide/case-studies/13-case-ecommerce-checkout.ko.md) 13–18에 둔다.

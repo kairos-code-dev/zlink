@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md)
+[문서 목록](../README.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Node.js 묶음](../README.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md) | [STREAM](nestjs-stream.ko.md) | [Actor](nestjs-actor.ko.md) | [Monitoring](nestjs-monitoring.ko.md)
@@ -13,9 +13,9 @@
 builder 정의** 를 한곳에 모아 두는 카탈로그다.
 
 이 문서는 [.NET Interface Catalog](../../dotnet/spec/handler-interfaces.ko.md)
-를 TypeScript / NestJS 표면으로 옮긴 결과다. 번역 규칙은
-[.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
-이 소유한다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
+를 TypeScript와 NestJS 표면으로 구체화한 결과다. 공통 의미는 공통 spec을 따르고,
+실제 이름과 시그니처는 `framework/languages/node`의 public declaration을 기준으로
+검증한다.
 다만 Spot Actor Join / Transfer 관련 interface 는
 [공통 스펙](../../common/spec/spot-actor.ko.md)을 만족하기 위한 목표 공개 계약이다.
 현재 Node.js 구현이 이 표면과 다르면 구현 완료가 아니라 public contract parity gap으로
@@ -424,15 +424,6 @@ export interface ZLinkEntrySpot {
   onLeaveActor?(actor: ZLinkActor): Promise<void>;
 }
 
-export interface ZLinkActorJoinAdmission {
-  readonly actorId: string;
-  readonly actorType: Type<ZLinkActor>;
-  readonly sourceSpotRid: RoutingId;
-  readonly targetSpotRid: RoutingId;
-  readonly sourceNodeRid: RoutingId;
-  readonly targetNodeRid: RoutingId;
-}
-
 export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
   transferOut(actor: TActor, signal?: AbortSignal): Promise<ZLinkMessage>;
 
@@ -440,10 +431,12 @@ export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
 }
 ```
 
-`ZLinkActorTransferAdapter<TActor>` 등록은 remote transfer 지원 여부를 나타낸다. 등록이 없으면
-framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
-stateless transfer adapter 등록 API를 사용한다. 이 기본 adapter는 source에서 빈 `ZLinkMessage`를 보내고,
-target에서 기존 actor factory 또는 public actor 생성 경로로 `TActor` instance를 만든다.
+`ZLinkActorTransferAdapter<TActor>` 등록은 remote transfer에서 직접 옮길 actor state가 있음을 나타낸다.
+등록이 없으면 framework는 빈 `ZLinkMessage`를 보내고, target에서 기존 actor factory 또는 public actor
+생성 경로로 `TActor` instance를 만든다.
+
+`transferIn`이 반환한 actor에는 framework가 target node의 actor context를 연결한다. 따라서 adapter는
+domain state로 actor를 복원하는 일만 맡고, route나 session, location 정보를 생성자 인자로 받지 않는다.
 
 > 코드 기준(중요): dotnet `IZLinkSpotContext` 는 handler 등록 표면과 outbound 표면을
 > **interface 상속**으로 합치지 않는다. 대신 `Handlers` / `Outbound` 두 sub-property 로
@@ -671,16 +664,16 @@ user Spot handler 는 spot 객체와 actor 객체를 함께 받는다. room/game
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후 후속 처리는
 Spot 멤버 `onJoinedActor(actor)` 와 `onLeaveActor(actor)` 로 선언한다.
-user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(admission, request)` 가
+user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(actorId, request)` 가
 맡는다. Entry Spot 도 명시적 `joinEntrySpot(nodeRid, request)` 재진입에 대해 같은
-`onActorJoin(admission, request)` admission 을 선택적으로 선언할 수 있다. Entry Spot 이
+`onActorJoin(actorId, request)` admission 을 선택적으로 선언할 수 있다. Entry Spot 이
 `onActorJoin` 을 선언하지 않으면 재진입은 그대로 accept 된다. actor 최초 생성 직후 첫 Entry
 Spot 배치는 admission 이 아니라 `onCreateActor(actor, createRequest)` 로만 처리한다.
 
 ```ts
 export class MatchSpot implements ZLinkSpot {
   async onActorJoin(
-    admission: ZLinkActorJoinAdmission,
+    actorId: string,
     request: ZLinkMessage,
   ): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
@@ -979,14 +972,14 @@ join call object에서만 사용할 수 있으며, join completion을 기다리�
 
 ```ts
 export interface ZLinkSpot {
-  onActorJoin?(admission: ZLinkActorJoinAdmission, request: ZLinkMessage, signal?: AbortSignal):
+  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal):
     Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 ```
 
-Entry Spot 도 `onActorJoin?(admission, request)` 을 선택적으로 선언해 명시적 재진입
+Entry Spot 도 `onActorJoin?(actorId, request)` 을 선택적으로 선언해 명시적 재진입
 (`joinEntrySpot(nodeRid, request)`) admission 을 처리할 수 있다. 선언하지 않은 Entry Spot
 재진입은 그대로 accept 된다. user Spot 과 Entry Spot 모두 `onActorJoin` 이
 `accepted: true` 를 반환할 때만 actor 위치를 commit 하고 `onJoinedActor` 를 호출한다.
@@ -1411,8 +1404,9 @@ token 만 교체한다. factory 가 새 actor 를 만드는 경우에도 반환 
 ### 6.1 framework 등록 루트 (= NestJS module options)
 
 dotnet 의 `AddZLinkFramework(options => ...)` 는 node 에서 `ZLinkModule.forRoot(...)` /
-`forRootFactory(...)` 가 반환하는 `DynamicModule` 로 매핑된다. dotnet builder 메서드 한 개 =
-node options 키 한 개로 1:1 대응시키는 것을 기본으로 한다(표면 매핑 §5).
+`forRootFactory(...)`가 반환하는 `DynamicModule`로 구성한다. Node.js 표면은 다른
+언어의 builder 모양을 복제하지 않고 TypeScript options와 builder의 현재 공개 계약을
+따른다.
 
 두 가지 표면을 함께 둔다. (A) NestJS 선언적 module-options, (B) fluent builder. 둘은 같은
 등록을 표현한다. builder 는 dotnet `IZLinkFrameworkOptions` 의 등록 흐름을 TypeScript
@@ -1433,9 +1427,6 @@ export interface ZLinkFrameworkOptions {
   addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this;
   addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this;
   addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this;
-  addStatelessActorTransfer<TActor extends ZLinkActor>(
-    actorType: Type<TActor>,
-  ): this;
   addActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>,
@@ -2528,5 +2519,5 @@ filter order / handler-result / spot actor registry / local session relay)도 �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md)
+[문서 목록](../README.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

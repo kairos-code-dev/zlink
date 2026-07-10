@@ -108,8 +108,7 @@ test('node implementation reference docs declare regression coverage sections', 
 test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
   const files = [
     path.join(docRoot, 'spec', 'nestjs-channel-messaging.ko.md'),
-    path.join(docRoot, 'spec', 'handler-interfaces.ko.md'),
-    path.join(docRoot, 'internals', 'di-capability-exposure-policy.ko.md')
+    path.join(docRoot, 'spec', 'handler-interfaces.ko.md')
   ];
   const offenders = [];
 

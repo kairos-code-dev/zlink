@@ -1,11 +1,11 @@
 # ZLink Framework Node.js — NestJS Overview (부트스트랩 · DI · Lifecycle · Backend 어댑터)
 
-[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [handler-interfaces](handler-interfaces.ko.md)
+[문서 목록](../README.ko.md) | [handler-interfaces](handler-interfaces.ko.md)
 
-[DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md) | [Backend 의존 정책](../internals/backend-dependency-policy.ko.md)
+[Runtime Lifecycle](../internals/runtime-lifecycle.ko.md) | [Backend 의존 정책](../internals/backend-dependency-policy.ko.md)
 
-> 이 문서는 [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)을
-> 따른다. 호스트 표면은 NestJS 의 `DynamicModule` + provider lifecycle hook, 언어
+> 이 문서는 공통 framework 계약을 NestJS와 TypeScript 표면으로 구체화한다. 호스트
+> 표면은 NestJS의 `DynamicModule`과 provider lifecycle hook, 언어
 > 표면은 TypeScript(`Promise`, `interface`, decorator)다. 표기가 어긋나면
 > `framework/languages/node` **코드**가 기준이다.
 >
@@ -55,8 +55,8 @@ framework runtime 과 client 는 NestJS DI 컨테이너가 resolve 하며, runti
 종료는 NestJS lifecycle hook 을 통해 처리한다.
 
 .NET 빌더 메서드(`AddClientServerChannel`, `AddSpotMesh`, `UseDiscovery` …)
-**한 개** = NestJS options 객체의 **키 한 개**로 1:1 대응시키는 것을 기본으로
-한다(키 표는 [표면 매핑 정책 §5](../internals/dotnet-to-node-surface-mapping.ko.md)).
+**한 개**를 NestJS options 객체의 **키 한 개**로 기계적으로 대응시키지 않는다.
+Node.js public options와 builder가 책임을 이해하기 쉬운 단위로 제공한다.
 
 ```ts
 // node (NestJS) — 동기 등록
@@ -125,8 +125,8 @@ export class PricingModule {}
 > `ZLinkFrameworkRegistrationValidator.Validate(...)` 를 돌린다. NestJS 도
 > `forRoot(...)` 에서는 `DynamicModule` 을 만들기 전에 검증을 수행하고,
 > `forRootFactory(...)` 에서는 NestJS 가 factory 를 실행해 옵션을 받은 직후
-> registration 을 만든다. 잘못된 registration 조합·필수 endpoint 누락은
-> runtime start 전에 실패한다([lifecycle §2~3](../internals/lifecycle-and-failure-semantics.ko.md)).
+> registration을 만든다. 잘못된 registration 조합과 필수 endpoint 누락은
+> runtime start 전에 실패한다. 구체 조건은 각 기능 spec이 소유한다.
 
 ### 2.2 Registry / Registry Query Client 모듈
 
@@ -169,9 +169,9 @@ inject, useFactory })` 를 지원한다. 설정 provider 에서 endpoint 를 읽
 NestJS 표준 async module 패턴과 같은 방식으로 쓴다.
 
 > embedded registry 와 framework runtime 이 같은 프로세스에 공존할 때의 시동·
-> 종료 순서(registry 먼저 시동, framework 뒤 — 종료는 그 역순)는 §4 와
-> [lifecycle §2,4](../internals/lifecycle-and-failure-semantics.ko.md) 가
-> 소유한다. registry 의 정식 표면은 [nestjs-registry](nestjs-registry.ko.md)
+> 종료 순서(registry 먼저 시동, framework 뒤 — 종료는 그 역순)는 §4와
+> [runtime lifecycle](../internals/runtime-lifecycle.ko.md)이 설명한다. registry의
+> 정식 표면은 [nestjs-registry](nestjs-registry.ko.md)
 > 가 확정한다.
 
 ---
@@ -214,10 +214,9 @@ factory, Spot, session 처럼 의존성을 받는 확장 지점은 NestJS provid
 
 핵심 원칙은 **주입 가능성 = 기능 가능성**이다. 어떤 역할도 등록하지
 않았는데 그 service 를 주입받을 수 있으면 안 된다. 따라서 일부 provider 는
-역할 조건이 충족될 때만 `providers`/`exports` 에 들어간다. 정식 정의는
-[di-capability-exposure-policy](../internals/di-capability-exposure-policy.ko.md)
-가 소유한다. 아래는 .NET `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)`
-의 등록 조건을 옮긴 요약이다.
+역할 조건이 충족될 때만 `providers`와 `exports`에 들어간다. 이 절과
+[handler interfaces](handler-interfaces.ko.md)가 Node.js provider 노출 계약을
+소유한다. 아래는 역할별 등록 조건의 요약이다.
 
 `forRootFactory(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 registration 이
 DI 단계에서 확정되기 전에는 어떤 역할이 필요한지 알 수 없다. 그래서 이 두
@@ -319,9 +318,9 @@ framework runtime state dispose 세부 순서(.NET `ZLinkFrameworkRuntimeState
 
 startup 단계에서 runtime state 를 만들다가 한 컴포넌트라도 생성에 실패하면,
 그때까지 만든 state 를 **그 자리에서 dispose 한 뒤 예외를 다시 던진다.** 반쯤
-열린 socket 이나 매달린 `Context` 를 남기지 않는다. 시동/종료/실패의 정식
-의미는 [lifecycle-and-failure-semantics](../internals/lifecycle-and-failure-semantics.ko.md)
-가 소유한다.
+열린 socket이나 매달린 `Context`를 남기지 않는다. 사용자가 관찰하는 실패 의미는
+각 기능 spec이 소유하고, 내부 정리 순서는
+[runtime lifecycle](../internals/runtime-lifecycle.ko.md)에서 설명한다.
 
 ---
 
@@ -734,4 +733,4 @@ backend 스왑 지점의 전부다. framework 의 다른 어떤 코드도 `@zlin
 | `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootFactory`, provider token 노출, startup validation, 실제 NestJS application context 주입, lifecycle 연결이 동작한다. |
 | `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 overview 가 자기 회귀 테스트 단락을 유지한다. |
 
-[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)
+[문서 목록](../README.ko.md) | [Runtime Lifecycle](../internals/runtime-lifecycle.ko.md) | [Backend Policy](../internals/backend-dependency-policy.ko.md)

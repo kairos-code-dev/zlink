@@ -385,18 +385,8 @@ registration이 정한다. 자세한 규칙은 [04-channel-messaging](04-channel
 9. [10-monitoring](10-monitoring.ko.md) — runtime 이벤트 관찰
 10. [11-feature-map](11-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 11. [12-interface-catalog](12-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-12. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
-13. 케이스 스터디 — 도입 판단과 아키텍처 매핑:
-    [13 전자상거래](case-studies/13-case-ecommerce-checkout.ko.md) ·
-    [14 mesh+운영](case-studies/14-case-microservice-mesh.ko.md) ·
-    [15 게임](case-studies/15-case-realtime-game.ko.md) ·
-    [16 라이드헤일링](case-studies/16-case-ride-hailing.ko.md) ·
-    [17 채팅](case-studies/17-case-chat-messaging.ko.md) ·
-    [17-1 마켓플레이스 채팅](case-studies/17-1-case-marketplace-chat.ko.md) ·
-    [17-2 라이브 커머스 채팅](case-studies/17-2-case-live-commerce-chat.ko.md) ·
-    [17-3 게임 채팅](case-studies/17-3-case-game-chat.ko.md) ·
-    [18 트레이딩](case-studies/18-case-trading-system.ko.md)
-13. [guide/samples](samples/channel-messaging-samples.ko.md) — 등록 코드와 실행 흐름을 확인하는 기능별 샘플
+12. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink을 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
+13. [guide/samples](samples/channel-messaging-samples.ko.md) — 정본 업무 시나리오의 등록 코드와 실행 흐름
 14. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
 
 ---

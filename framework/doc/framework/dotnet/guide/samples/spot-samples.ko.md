@@ -8,9 +8,9 @@
 
 # ZLink Framework .NET SPOT Samples
 
-> 이 문서는 실행 가능한 sample 중심 문서다. room, stage, zone 같은 도메인에 ZLink 를
-> 넣을지 판단하는 설명은 [13-grpc-alternative](../13-grpc-alternative.ko.md)와 각
-> 케이스 스터디가 맡고, 이 문서는 SPOT 등록과 호출 코드를 따라 하는 데 집중한다.
+> 이 문서는 실행 가능한 sample 중심 문서다. 기술 선택 기준은
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)가 맡고, 이 문서는 SPOT 등록과
+> 호출 코드를 따라 하는 데 집중한다.
 
 ## 1. 이 문서의 목적
 

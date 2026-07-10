@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Channel Topology
 
@@ -81,7 +81,6 @@ section 3을 참고한다.
 | `command` | `DEALER(client) -> ROUTER(server)` channel 단위 send |
 | `publish-subscribe` | `PUB/SUB` 또는 같은 channel의 `SPOT` mesh |
 | `stream` | `STREAM` |
-| `worker-dispatch` | 별도 조합 모델 |
 
 위 표의 `request-response`, `command`, `publish-subscribe` 중 서버 간 framework
 message로 흐르는 경로는 모두 multipart `header + payload` wire 계약을 따른다. routed
@@ -131,10 +130,10 @@ SPOT 내부 peer topology와 channel 단위 호출은 서로 다른 경로로 �
    것이다. 애플리케이션 수준 요청이 rid 지정이 필요해 보이면 대부분 2의
    상태 대상 요청이며, actor/spot 표면이나 owner 일관 channel로 표현한다.
 
-## 4. playhouse use case에 대한 해석
+## 4. 여러 서비스 channel을 호출하는 구성
 
-`playhouse` 시나리오에서는 play 서버가 여러 api channel에 요청을 보내야 할 수
-있다. 이때 사용자가 생각하는 단위는 보통 socket이 아니라 channel client다.
+한 서버가 여러 API channel에 요청을 보내는 구성에서도 사용자가 생각하는 단위는
+socket이 아니라 channel client다.
 
 예를 들면 아래처럼 보는 편이 자연스럽다.
 

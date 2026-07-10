@@ -1,23 +1,20 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js Lifecycle And Failure Semantics](lifecycle-and-failure-semantics.ko.md) | [다음: ZLink Framework Node.js Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md)
+[문서 목록](../README.ko.md) | [이전: Runtime Lifecycle](runtime-lifecycle.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[표면 매핑 정책](dotnet-to-node-surface-mapping.ko.md)
-
-[Node.js 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Lifecycle](lifecycle-and-failure-semantics.ko.md) | [use case validation](../../common/spec/usecase-validation.ko.md)
+[Node.js 묶음](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Backend Policy](backend-dependency-policy.ko.md) | [공통 E2E](../../common/e2e/README.ko.md)
 
 # ZLink Framework Node.js Regression Test Matrix
 
-> 이 문서는 [표면 매핑 정책](dotnet-to-node-surface-mapping.ko.md)을 따른다.
-> 회귀 항목의 기준은 `framework/languages/node` 의 구현과 Node 테스트
+> 회귀 항목의 기준은 `framework/languages/node`의 구현과 Node 테스트
 > (`node:test` 기반 `*.test.js`, `test(...)`)다. dotnet 회귀 matrix 는 parity
 > 비교용 선택 참고로만 본다.
 
 ## 1. 목적
 
-use case validation 문서는 설계 설명이 어디까지 닿아 있는지를 보는 문서다.
-반면 이 문서는 결이 다르다. 구현이 바뀌더라도 "무엇이 깨지면 회귀로 본다"는
-기준을 테스트 항목 단위로 못 박는 데 목적이 있다.
+이 문서는 구현이 바뀌더라도 무엇이 깨지면 회귀로 보는지를 테스트 항목 단위로
+정리한다. 공개 동작은 책임 spec이 소유하고, 이 문서는 검증과 release gate만
+소유한다.
 
 dotnet 테스트 프로젝트는 다음 세 묶음이다. Node 테스트 패키지는 이를 1:1로
 미러링한다.
@@ -81,7 +78,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| binding public API gap list | `unit` | P2~P8 에 필요한 channel/spot/stream/registry/monitoring/SessionRelay/bound session API가 목록화되고 gap이 0이다 |
+| binding public API parity | `unit` | channel, Spot, stream, registry, monitoring, session relay와 bound session이 binding public API만으로 동작한다 |
 | framework public-api-only import guard | `unit` | framework runtime/adapter package가 binding internal path, native addon symbol, generated private helper를 import하지 않는다 |
 | session relay public API smoke | `integration-single-process` | stream session relay가 binding public API만으로 동작한다(별도 attach 없음) |
 | bound session public API smoke | `integration-single-process` | bound session send/disconnect가 binding public API만으로 동작한다 |
@@ -151,7 +148,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 > dotnet `ContractTests/Configuration/ConnectionAndConfigContracts`,
 > `UnitTests/Configuration/Registration` 미러. NestJS provider token 노출 규칙
-> (`di-capability-exposure-policy`)을 검증한다.
+> 역할별 provider 노출 조건을 검증한다.
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
@@ -292,7 +289,7 @@ runtime/ABI matrix job 과 cross-language job 으로 나누어 실행한다.
 2. `npm run verify:runtime-matrix` 로 `node20`, `node22` 양쪽 모두 통과
 3. 위 여섯 플랫폼 ABI 전체에서 CI gate 통과
 4. happy-path 샘플과 대표 failure-path가 각각 한 번 이상 커버되어 있음
-5. `behavior-matrix.ko.md`에 정리한 비허용 조합이 모두 테스트로 고정되어 있음
+5. 책임 spec에 정의한 비허용 조합이 모두 테스트로 고정되어 있음
 6. `npm run verify:cross-language` 로 cross-language smoke 필수 경로가 통과되어
    Node 구현이 dotnet/C++/Java 와 같은 wire 계약을 지킨다는 것을 확인함
 
@@ -368,14 +365,10 @@ dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한�
 - `nestjs-stream.ko.md` (dotnet `aspnet-core-stream.ko.md`)
 - `session-actor-dispatch.ko.md`
 - `spot-node.ko.md`
-- `stream-open-items.ko.md`
 - `nestjs-monitoring.ko.md` (dotnet `aspnet-core-monitoring.ko.md`)
 - `nestjs-registry.ko.md` (dotnet `aspnet-core-registry.ko.md`)
-- `behavior-matrix.ko.md`
-- `di-capability-exposure-policy.ko.md`
 - `regression-test-matrix.ko.md`
-- `lifecycle-and-failure-semantics.ko.md`
-- `implementation-scope-and-nongoals.ko.md`
+- `runtime-lifecycle.ko.md`
 - `backend-dependency-policy.ko.md`
 - `channel-messaging-samples.ko.md`
 - `spot-samples.ko.md`
@@ -396,5 +389,5 @@ dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js Lifecycle And Failure Semantics](lifecycle-and-failure-semantics.ko.md) | [다음: ZLink Framework Node.js Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md)
+[문서 목록](../README.ko.md) | [이전: Runtime Lifecycle](runtime-lifecycle.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

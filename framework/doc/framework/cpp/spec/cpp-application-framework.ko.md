@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Runtime Architecture](../internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [HTTP Client](../../../http-client/cpp/README.ko.md) | [HTTP Hosting](cpp-http-hosting.ko.md)
+[C++ 묶음](../README.ko.md) | [Runtime Architecture](../internals/runtime-architecture.ko.md) | [Framework 인터페이스](cpp-framework-interfaces.ko.md) | [HTTP Client](../../../http-client/cpp/README.ko.md) | [HTTP Hosting](cpp-http-hosting.ko.md)
 
 # Spec -- ZLink Framework C++ Application Framework
 
@@ -544,5 +544,5 @@ STREAM connector request, notification callback, server-side log를 모두 확�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Runtime Architecture](../internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](cpp-framework-interfaces.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

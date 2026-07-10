@@ -1,9 +1,9 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md)<!-- framework-adapter-nav:end -->
+[문서 목록](../../../README.ko.md) | [이전: Regression Test Matrix](regression-test-matrix.ko.md)<!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [Scope](implementation-scope-and-nongoals.ko.md)
+[.NET 묶음](../README.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Regression Matrix](regression-test-matrix.ko.md)
 
 # ZLink Framework .NET Backend Dependency Policy
 
@@ -147,4 +147,4 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md)<!-- framework-adapter-nav:bottom:end -->
+[문서 목록](../../../README.ko.md) | [이전: Regression Test Matrix](regression-test-matrix.ko.md)<!-- framework-adapter-nav:bottom:end -->

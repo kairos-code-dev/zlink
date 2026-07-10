@@ -7,6 +7,10 @@
 이 문서는 ZLink Framework의 언어별 구현이 **실제 배포와 똑같이 생긴 서버 위에서도 제대로
 도는지**를 확인하는 e2e 테스트를 정리한 것이다.
 
+E2E는 공통 spec에 정의된 계약을 검증하고 구현 누락을 찾는 기준이다. E2E 시나리오나
+다른 언어 구현만을 근거로 새 public API를 추가하지 않는다. 시나리오 수행에 새 API가
+필요해 보이면 먼저 공통 spec에 계약 근거가 있는지 확인한다.
+
 같은 검증이라도 e2e는 contract 테스트나 샘플과 결이 다르다.
 
 - contract 테스트는 API 하나하나의 약속을 in-process로 빠르게 못 박는다.
@@ -393,7 +397,7 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
   잘못된 실행으로 이어진다. helper는 `zlink_redis_start_scoped_assign`처럼 호출부 변수에 값을
   대입하는 함수로 제공하고, 함수 실패가 그대로 runner 실패가 되게 한다.
 - 통합 e2e runner는 transient bind 실패(`Address already in use`, `EADDRINUSE`,
-  `errno=98`)만 제한적으로 retry할 수 있다. scenario assertion 실패, runtime semantic
+  `already bound`, `errno=98`)만 제한적으로 retry할 수 있다. scenario assertion 실패, runtime semantic
   failure, native abort, store recovery 조건 미충족은 retry 대상이 아니며 원인 로그를 남기고 실패한다.
 
 ### 2.6 feature-map 작성 규칙

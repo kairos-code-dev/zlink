@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Message Model
 
@@ -214,8 +214,8 @@ core protocol API만 제공한다.
 - 이 문서는 공용 logical message kind와 header 의미만 정한다.
 - header의 binary encoding 형식과 serializer 내부 규칙은 binding 또는 codec 확장
   문서에서 다룬다.
-- 표준 status code 체계, aggregate result 형식, payload 없는 메시지 표현은 상위
-  use case가 더 모인 뒤 별도 계약 문서에서 다룬다.
+- 표준 status code 체계와 payload 없는 메시지 표현은 현재 구현과 공개 계약이
+  필요로 할 때 별도 spec에서 다룬다.
 - `STREAM` monitor 이벤트를 session error로 어디까지 승격할지는 `STREAM` 바인딩
   문서에서 다룬다.
 

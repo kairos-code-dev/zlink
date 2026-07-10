@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [공통 sample](../sample/README.ko.md) | [공통 E2E](../e2e/README.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework API
 
@@ -127,7 +127,7 @@
 - session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
   공개 키로 사용한다. session -> actor 방향은 actor bind/relay helper로,
   actor -> client 방향은 bound session(`IZLinkBoundSession`)으로 나눈다. actor 개념의 라이프사이클
-  과 표면은 [actor-model.ko.md](actor-model.ko.md)에서, gateway use case의 사용성
+  과 표면은 [actor-model.ko.md](actor-model.ko.md)에서, gateway 패턴의 사용성
   결정은 [session-actor-dispatch.ko.md](session-actor-dispatch.ko.md)에서
   본다.
 
@@ -861,8 +861,6 @@ dispatch loop를 framework host가 직접 관리하는 것이다. application이
   모델로 분리한다.
 - `STREAM` 정책 설명은 framework Header 기반 packet session과 session lifecycle
   축으로 충분하다고 본다.
-- scatter-gather 같은 aggregate helper는 adapter 기본 기능이 아니라 별도 확장
-  계층으로 둔다.
 - context에는 routing, timeout, trace 같은 공통 metadata만 올리고, workflow 엔진
   수준의 metadata는 기본 표면으로 끌어올리지 않는다.
 

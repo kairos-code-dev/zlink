@@ -5,6 +5,10 @@
 `samples/`는 [공통 샘플 시나리오](../../common/sample/README.ko.md) 정본을 cpp framework
 구조로 구현한 묶음이다. 기능을 처음 붙일 때는 해당 샘플의 같은 자리를 먼저 본다.
 
+기능별 최소 예제는 [channel messaging](samples/channel-messaging-samples.ko.md),
+[Spot](samples/spot-samples.ko.md), [stream](samples/stream-samples.ko.md) 문서에서
+확인한다. 이 문서의 정본 sample 지도와 기능별 최소 예제는 같은 public API를 사용한다.
+
 > **샘플 패리티:** cpp는 정본 샘플 전체 — **TicTacToe · Bingo · SupportChat · DeliveryDispatch ·
 > ShoppingMall · GameQuest** — 를 제공한다. TicTacToe·Bingo·SupportChat은 Spot/actor/session
 > 구조까지 구현한 full 샘플이고, DeliveryDispatch·ShoppingMall·GameQuest는 현재 업무 흐름과

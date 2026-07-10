@@ -100,6 +100,9 @@ class spot_node_builder_state_t
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, actor_transfer_registration_t> actor_transfers;
     actor_transfer_coordinator_t actor_transfer_coordinator;
+    // Straggler forwarding window (spot-actor §10.4). The 5 second default is
+    // fixed across languages; deployments may override it.
+    std::chrono::milliseconds actor_transfer_forward_window{5000};
     std::map<std::string, std::shared_ptr<void>> actor_instances;
     std::map<std::string, std::shared_ptr<std::mutex>> actor_mailboxes;
     std::map<std::string, spot_route_t> actor_routes;
@@ -269,7 +272,7 @@ class spot_node_runtime_t
     void record_actor_spot (const actor_ref_t &actor_ref, spot_rid_t spot_rid);
     std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
     void record_actor_route (const actor_ref_t &actor_ref, spot_route_t route);
-    std::optional<std::string> default_route_channel_name () const;
+    std::optional<std::string> actor_route_transport_name () const;
     void request_stop () noexcept;
     bool stopping () const noexcept;
     void cancel_timers () noexcept;
@@ -282,6 +285,15 @@ class spot_node_runtime_t
     void bind_location_lifecycle (runtime::location_lifecycle_t &lifecycle);
     void bind_spot_location_resolver (spot_location_resolver_t &resolver);
     std::shared_ptr<service::spot_node_t> native_node () const;
+    result_t<void> send_spot_mesh_parts (
+      const zlink::routing_id_t &target_node_rid,
+      const zlink::routing_id_t &target_spot_rid,
+      runtime::messaging::message_parts_t parts) const;
+    result_t<runtime::messaging::message_parts_t> request_spot_mesh_parts (
+      const zlink::routing_id_t &target_node_rid,
+      const zlink::routing_id_t &target_spot_rid,
+      runtime::messaging::message_parts_t parts,
+      std::chrono::milliseconds timeout) const;
     void publish_peer_snapshot_if_changed ();
     std::vector<spot_context_t> active_contexts () const;
     result_t<void> dispatch_subscription (const spot_context_t &context,
@@ -330,13 +342,25 @@ class spot_node_runtime_t
                                 spot_rid_t source_spot_rid,
                                 spot_rid_t target_spot_rid,
                                 const zlink::message_t &request);
-    result_t<actor_join_reply_t> commit_remote_actor_to_spot (std::string transfer_id,
-                                                              const actor_ref_t &actor_ref,
-                                                              spot_rid_t target_spot_rid,
-                                                              zlink::message_t transfer_state,
-                                                              actor_context_t actor_context = {});
+    // handoff_backlog holds the in-flight packets the source preserved while the
+    // actor was moving (§10.2-2). They are enqueued on the target actor's
+    // dispatch queue before the committed location is published (§10.2-3), and
+    // services may be null only when the backlog is empty.
+    result_t<actor_join_reply_t>
+    commit_remote_actor_to_spot (std::string transfer_id,
+                                 const actor_ref_t &actor_ref,
+                                 spot_rid_t target_spot_rid,
+                                 zlink::message_t transfer_state,
+                                 actor_context_t actor_context = {},
+                                 std::vector<handoff_packet_t> handoff_backlog = {},
+                                 service_provider_t *services = nullptr);
     std::size_t cleanup_expired_actor_admissions ();
     std::string next_actor_transfer_id ();
+    // In-flight handoff (spot-actor §10): drains the packets preserved while the
+    // actor was moving, in arrival order. The commit path calls this once to fill
+    // the commit request and once more after the ack for packets that raced it.
+    std::vector<handoff_packet_t> take_actor_handoff_backlog (const actor_ref_t &actor_ref);
+    void set_actor_transfer_forward_window (std::chrono::milliseconds window);
     result_t<remote_actor_transfer_t> transfer_actor_out (const actor_ref_t &actor_ref);
     result_t<void> leave_actor_for_remote_transfer (const actor_ref_t &actor_ref);
     void fail_remote_actor_transfer (const actor_ref_t &actor_ref, bool reconcile);
@@ -765,9 +789,12 @@ class spot_node_runtime_t
                               std::type_index actor_type,
                               spot_rid_t spot_rid,
                               const actor_ref_t &actor_ref);
-    void leave_previous_actor_route_unlocked (const std::string &key,
-                                              std::type_index actor_type,
-                                              void *actor);
+    // Releases node_lock while the previous spot runs the user leave callback on its
+    // serial queue, then re-acquires it before mutating node state.
+    void leave_previous_actor_route (const std::string &key,
+                                     std::type_index actor_type,
+                                     void *actor,
+                                     std::unique_lock<std::recursive_mutex> &node_lock);
     void commit_accepted_actor_join_unlocked (const std::string &key,
                                               spot_context_t &context,
                                               const actor_ref_t &committed,

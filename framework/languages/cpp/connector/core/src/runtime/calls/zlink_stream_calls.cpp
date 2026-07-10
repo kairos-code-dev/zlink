@@ -610,6 +610,7 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
 {
     std::function<void (result_t<request_reply_t>)> callback;
     std::string packet_name;
+    bool deliver_direct = false;
     const bool succeeded = static_cast<bool> (result);
     const auto error_code = result ? error_code_t{} : result.error_code ();
     {
@@ -621,6 +622,7 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
         }
         packet_name = found->second.packet.name;
         callback = std::move (found->second.callback);
+        deliver_direct = found->second.deliver_direct;
         cancel_timer (found->second.timeout_timer);
         state->pending_requests.erase (found);
     }
@@ -628,6 +630,12 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
                    succeeded
                      ? "result=success"
                      : "result=failure error=" + std::to_string (static_cast<int> (error_code)));
+    if (deliver_direct) {
+        if (callback) {
+            callback (std::move (result));
+        }
+        return;
+    }
     schedule_delivery (state,
                        [callback = std::move (callback), result = std::move (result)] () mutable {
                            if (callback) {
@@ -705,8 +713,11 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
               value.packet.metadata};
             enqueue_inbound_observer_notification (state, observation_header, value.payload_length,
                                                    std::move (value.payload_preview));
-            trace_request ("read-dispatch", value.request_seq, value.packet.name,
-                           std::string ("kind=") + message_kind_name (value.kind));
+            trace_connector_write (
+              *state, "read-dispatch",
+              "seq="
+                + (value.request_seq ? std::to_string (*value.request_seq) : std::string ("-"))
+                + " name=" + value.packet.name + " kind=" + message_kind_name (value.kind));
             if (value.kind == message_kind_t::response && value.request_seq
                 && state->pending_requests.find (*value.request_seq)
                      != state->pending_requests.end ()) {
@@ -726,6 +737,13 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
         }
         reschedule =
           is_transport_connected (*state) && !state->close_requested.load () && !transport_error;
+        if (!reschedule) {
+            trace_connector_write (*state, "read-pump-stop",
+                                   std::string ("connected=")
+                                     + (is_transport_connected (*state) ? "true" : "false")
+                                     + " close=" + (state->close_requested.load () ? "true" : "false")
+                                     + " transport_error=" + (transport_error ? "true" : "false"));
+        }
     }
 
     for (auto &packet : pushed_packets) {
@@ -765,18 +783,24 @@ void schedule_request_pump (std::shared_ptr<connector_state_t> state)
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         if (state->read_in_progress || state->close_requested.load ()
             || !is_transport_connected (*state)) {
+            trace_connector_write (*state, "read-start-skip",
+                                   std::string ("in_progress=")
+                                     + (state->read_in_progress ? "true" : "false")
+                                     + " close=" + (state->close_requested.load () ? "true" : "false")
+                                     + " connected="
+                                     + (is_transport_connected (*state) ? "true" : "false"));
             return;
         }
         state->read_in_progress = true;
         connection = state->connection;
     }
-    trace_request ("read-start", std::nullopt, {});
+    trace_connector_write (*state, "read-start");
     connection->async_read_some (8192, [state] (boost::system::error_code error,
                                                 std::vector<std::uint8_t> bytes) mutable {
         std::optional<error_t> transport_error;
-        trace_request ("read-completion", std::nullopt, {},
-                       error ? "result=failure error=" + error.message ()
-                             : "result=success bytes=" + std::to_string (bytes.size ()));
+        trace_connector_write (*state, "read-completion",
+                               error ? "result=failure error=" + error.message ()
+                                     : "result=success bytes=" + std::to_string (bytes.size ()));
         {
             std::lock_guard<std::mutex> lock (state->transport_mutex);
             state->read_in_progress = false;
@@ -1036,7 +1060,8 @@ void resume_pending_writes_after_connect (std::shared_ptr<connector_state_t> sta
 void submit_request_async (std::shared_ptr<void> state_handle,
                            packet_t packet,
                            std::chrono::milliseconds timeout,
-                           std::function<void (result_t<request_reply_t>)> callback);
+                           std::function<void (result_t<request_reply_t>)> callback,
+                           bool deliver_direct);
 
 result_t<void> submit_send (std::shared_ptr<connector_state_t> state, packet_t packet)
 {
@@ -1086,10 +1111,12 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
     if (use_async_request_pump) {
         auto promise = std::make_shared<std::promise<result_t<request_reply_t>>> ();
         auto future = promise->get_future ();
-        submit_request_async (state, std::move (packet), timeout,
-                              [promise] (result_t<request_reply_t> result) mutable {
-                                  promise->set_value (std::move (result));
-                              });
+        submit_request_async (
+          state, std::move (packet), timeout,
+          [promise] (result_t<request_reply_t> result) mutable {
+              promise->set_value (std::move (result));
+          },
+          /*deliver_direct=*/true);
         return future.get ();
     }
     std::unique_lock<std::mutex> lock (state->transport_mutex);
@@ -1183,7 +1210,8 @@ result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
 void submit_request_async (std::shared_ptr<void> state_handle,
                            packet_t packet,
                            std::chrono::milliseconds timeout,
-                           std::function<void (result_t<request_reply_t>)> callback)
+                           std::function<void (result_t<request_reply_t>)> callback,
+                           bool deliver_direct)
 {
     if (!state_handle) {
         if (callback) {
@@ -1224,7 +1252,8 @@ void submit_request_async (std::shared_ptr<void> state_handle,
                                                         "stream connector request timed out"));
               });
             state->pending_requests.emplace (
-              seq, pending_request_t{seq, packet, std::move (callback), timeout_timer});
+              seq,
+              pending_request_t{seq, packet, std::move (callback), timeout_timer, deliver_direct});
             if (auto encoded = encode_packet_frame (*state, message_kind_t::request, packet, seq);
                 !encoded) {
                 auto found = state->pending_requests.find (seq);
@@ -1243,6 +1272,12 @@ void submit_request_async (std::shared_ptr<void> state_handle,
     }
 
     if (immediate_result) {
+        if (deliver_direct) {
+            if (callback) {
+                callback (std::move (*immediate_result));
+            }
+            return;
+        }
         schedule_delivery (state, [callback = std::move (callback),
                                    result = std::move (*immediate_result)] () mutable {
             if (callback) {
@@ -1363,6 +1398,10 @@ result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
                     return result_t<packet_t>::failure (error_code_t::closed,
                                                         "stream connector is closed");
                 }
+                if (state->last_disconnect_error) {
+                    return result_t<packet_t>::failure (state->last_disconnect_error->code,
+                                                        state->last_disconnect_error->message);
+                }
                 return result_t<packet_t>::failure (error_code_t::disconnected,
                                                     "stream connector is not connected");
             }
@@ -1415,6 +1454,10 @@ result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
                 if (state->close_requested.load ()) {
                     return result_t<packet_t>::failure (error_code_t::closed,
                                                         "stream connector is closed");
+                }
+                if (state->last_disconnect_error) {
+                    return result_t<packet_t>::failure (state->last_disconnect_error->code,
+                                                        state->last_disconnect_error->message);
                 }
                 return result_t<packet_t>::failure (error_code_t::disconnected,
                                                     "stream connector is not connected");

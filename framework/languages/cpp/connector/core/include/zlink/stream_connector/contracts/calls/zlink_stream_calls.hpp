@@ -33,7 +33,8 @@ submit_request (std::shared_ptr<void> state, packet_t packet, std::chrono::milli
 void submit_request_async (std::shared_ptr<void> state,
                            packet_t packet,
                            std::chrono::milliseconds timeout,
-                           std::function<void (result_t<request_reply_t>)> callback);
+                           std::function<void (result_t<request_reply_t>)> callback,
+                           bool deliver_direct = false);
 result_t<packet_t> submit_wait (std::shared_ptr<void> state,
                                 std::string packet_name,
                                 std::function<bool (const packet_t &)> predicate,

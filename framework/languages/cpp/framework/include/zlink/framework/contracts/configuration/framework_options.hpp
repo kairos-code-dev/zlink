@@ -1039,6 +1039,10 @@ class spot_node_options_builder_t
             if (routing_id) {
                 spot_node.set_routing_id (*routing_id);
             }
+            if (options->actor_transfer_forward_window) {
+                spot_node.set_actor_transfer_forward_window (
+                  *options->actor_transfer_forward_window);
+            }
             if (!router_endpoint.empty ()) {
                 spot_node.enable_router (router_endpoint);
                 for (const auto &endpoint : router_manual_connections) {
@@ -1299,6 +1303,17 @@ class zlink_framework_options_t
     const std::set<std::string> &route_mesh_client_channels () const noexcept
     {
         return _options->route_mesh_channels_with_client;
+    }
+
+    zlink_framework_options_t &
+    set_actor_transfer_forward_window (std::chrono::milliseconds window)
+    {
+        if (window < std::chrono::milliseconds::zero ()) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "actor transfer forward window must not be negative");
+        }
+        _options->actor_transfer_forward_window = window;
+        return *this;
     }
 
     zlink_framework_options_t &set_default_request_timeout (std::chrono::milliseconds timeout)

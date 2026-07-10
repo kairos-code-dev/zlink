@@ -386,6 +386,13 @@ void spot_node_access_t::track_owned_socket (spot_node_t *node_, socket_base_t *
         node_->track_owned_socket (socket_);
 }
 
+void spot_node_access_t::mark_socket_detached_close (spot_node_t *node_,
+                                                     const socket_base_t *socket_)
+{
+    if (node_)
+        node_->mark_socket_detached_close (socket_);
+}
+
 void spot_node_access_t::untrack_owned_socket (spot_node_t *node_, const socket_base_t *socket_)
 {
     if (node_ && socket_)

@@ -34,6 +34,7 @@ class service_runtime_base_t
     int fault_errno () const;
     void register_socket (socket_base_t *socket_);
     void unregister_socket (const socket_base_t *socket_);
+    void mark_socket_detached_close (const socket_base_t *socket_);
     int close_socket (socket_base_t *&socket_, int timeout_ms_ = 10000);
     int close_socket_and_wait (socket_base_t *&socket_, int timeout_ms_ = 10000);
     int wait_drained (int timeout_ms_);

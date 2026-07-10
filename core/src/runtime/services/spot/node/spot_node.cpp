@@ -466,6 +466,11 @@ void spot_node_t::untrack_owned_socket (const socket_base_t *socket_)
     _lifecycle.unregister_socket (socket_);
 }
 
+void spot_node_t::mark_socket_detached_close (const socket_base_t *socket_)
+{
+    _lifecycle.mark_socket_detached_close (socket_);
+}
+
 bool spot_node_t::owns_socket (const socket_base_t *socket_) const
 {
     return _lifecycle.owns_socket (socket_);

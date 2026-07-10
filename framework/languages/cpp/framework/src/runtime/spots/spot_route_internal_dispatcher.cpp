@@ -9,6 +9,8 @@
 
 #include <zlink.hpp>
 
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <vector>
 
@@ -17,6 +19,19 @@ namespace zlink::framework::detail
 
 namespace
 {
+
+void trace_actor_transfer_target (std::string_view stage,
+                                  std::string_view actor_id,
+                                  std::string_view transfer_id = {})
+{
+    const auto *enabled = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
+    if (enabled == nullptr || *enabled == '\0') {
+        return;
+    }
+    std::cerr << "zlink actor-transfer stage=" << stage
+              << " actor=" << actor_id
+              << " transfer=" << transfer_id << '\n';
+}
 
 constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKind";
 constexpr std::string_view actor_relay_kind_send = "send";
@@ -44,34 +59,6 @@ bool should_bind_actor_session_route (spot_actor_message_metadata_t &metadata)
     const auto bind = found->second != "false";
     metadata.values.erase (found);
     return bind;
-}
-
-result_t<zlink::message_t> encode_bound_session_frame (stream_codec_t codec,
-                                                       std::string packet_name,
-                                                       const zlink::message_t &payload)
-{
-    stream_runtime_t stream_runtime (std::make_shared<stream_runtime_state_t> ());
-    const stream_header_t header (stream_message_kind_t::send, codec, stream_header_flags_t::none,
-                                  std::nullopt, std::move (packet_name));
-    auto encoded_header = stream_runtime.encode_header (header);
-    if (!encoded_header) {
-        return result_t<zlink::message_t>::failure (
-          encoded_header.error_kind (), encoded_header.error () ? encoded_header.error ()->what ()
-                                                                : "STREAM header encode failed");
-    }
-    const auto payload_bytes = payload.to_bytes ();
-    const auto header_size = encoded_header.value ().size ();
-    std::vector<std::uint8_t> frame;
-    frame.reserve (6 + header_size + payload_bytes.size ());
-    frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
-    frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
-    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
-    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
-    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
-    frame.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
-    frame.insert (frame.end (), encoded_header.value ().begin (), encoded_header.value ().end ());
-    frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
-    return result_t<zlink::message_t>::success (zlink::message_t::from (std::move (frame)));
 }
 
 framework_error_kind_t submit_result_error_kind (zlink::submit_result_t result)
@@ -162,49 +149,6 @@ void spot_route_internal_dispatcher_t::bind_actor_session_route (
   std::optional<zlink::routing_id_t> session_rid,
   bool replace_existing) const
 {
-    auto native = _runtime.native_node ();
-    if (native && session_rid && session_rid->size () > 0) {
-        const auto native_actor = zlink::service::spot_node_t::remote_actor_ref (
-          zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
-          std::string (actor_ref.actor_id ()), actor_ref.generation ());
-        native->bind_remote_actor_bound_session (native_actor, session_node_rid, *session_rid);
-        actor_gateway.bind_session_sink (
-          actor_ref,
-          [native, native_actor] (std::string packet_name,
-                                  const zlink::message_t &payload) mutable {
-              auto frame = encode_bound_session_frame (stream_codec_t::message_pack,
-                                                       std::move (packet_name), payload);
-              if (!frame) {
-                  return task_t<void> (result_t<void>::failure (
-                    frame.error_kind (), frame.error ()
-                                           ? frame.error ()->what ()
-                                           : "actor bound session frame encode failed"));
-              }
-              try {
-                  auto submitted = native->send_bound_session_msg (native_actor)
-                                     .message (std::move (frame.value ()))
-                                     .submit ();
-                  if (!submitted) {
-                      return task_t<void> (result_t<void>::failure (
-                        framework_error_kind_t::request_failed,
-                        "actor bound session send was backpressured", true));
-                  }
-                  return task_t<void> (result_t<void>::success ());
-              }
-              catch (const zlink::submit_error_t &error) {
-                  return task_t<void> (result_t<void>::failure (
-                    submit_result_error_kind (error.result ()), error.what ()));
-              }
-              catch (const std::exception &error) {
-                  return task_t<void> (result_t<void>::failure (
-                    framework_error_kind_t::request_failed, error.what ()));
-              }
-          },
-          stream_codec_t::message_pack, replace_existing);
-        actor_gateway.record_bound_session_route (actor_ref, std::move (session_node_rid),
-                                                  std::move (*session_rid));
-        return;
-    }
     actor_gateway.bind_session_route (actor_ref, _route_client, route_channel_name,
                                       session_node_rid, stream_codec_t::message_pack,
                                       replace_existing);
@@ -221,7 +165,7 @@ actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
 {
     auto actor_gateway = _actor_gateway;
     bind_actor_session_route (actor_gateway, actor_ref,
-                              _runtime.default_route_channel_name ().value_or (header.channel_name),
+                              _runtime.actor_route_transport_name ().value_or (header.channel_name),
                               received.source_node_rid, received.source_session_rid, false);
     return actor_gateway;
 }
@@ -243,6 +187,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
         if (header.message_name == spot_actor_admission_route_request_t::packet_name) {
             auto request = _serializers->get<spot_actor_admission_route_request_t> ().deserialize (
               detail::encoded_payload_from_raw (body.value ()));
+            trace_actor_transfer_target ("admission-received", request.actor_id,
+                                         request.transfer_id);
             auto runtime = _runtime;
             auto admitted = runtime.admit_remote_actor_to_spot (
               request.transfer_id, actor_ref_from_spot_route (request),
@@ -260,19 +206,32 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 admitted.value ().reply
                   ? detail::message_to_raw (*admitted.value ().reply, *_serializers).to_bytes ()
                   : std::vector<std::uint8_t>{}};
+            trace_actor_transfer_target ("admission-replying", request.actor_id,
+                                         request.transfer_id);
             return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
               _serializers->get<spot_actor_admission_route_reply_t> ().serialize (reply)));
         }
         if (header.message_name == spot_actor_commit_route_request_t::packet_name) {
             auto request = _serializers->get<spot_actor_commit_route_request_t> ().deserialize (
               detail::encoded_payload_from_raw (body.value ()));
+            trace_actor_transfer_target ("commit-received", request.actor_id, request.transfer_id);
             auto actor_ref = actor_ref_from_spot_route (request);
             auto actor_gateway = bind_actor_route (actor_ref, header, received);
+            trace_actor_transfer_target ("commit-route-bound", request.actor_id,
+                                         request.transfer_id);
             auto runtime = _runtime;
+            std::vector<handoff_packet_t> handoff_backlog;
+            handoff_backlog.reserve (request.handoff_backlog.size ());
+            for (auto &packet : request.handoff_backlog) {
+                handoff_backlog.push_back (handoff_packet_t{
+                  std::move (packet.packet_name_value), std::move (packet.payload),
+                  std::move (packet.content_type), std::move (packet.metadata)});
+            }
             auto committed = runtime.commit_remote_actor_to_spot (
               request.transfer_id, actor_ref, spot_rid_t::from_string (request.target_spot_rid),
               zlink::message_t::from (request.transfer_state),
-              actor_gateway.actor_context (actor_ref));
+              actor_gateway.actor_context (actor_ref), std::move (handoff_backlog), &services);
+            trace_actor_transfer_target ("commit-applied", request.actor_id, request.transfer_id);
             if (!committed) {
                 return result_t<zlink::message_t>::failure (
                   committed.error_kind (),
@@ -289,10 +248,11 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             if (!request.bound_session_node_rid.empty () && !request.bound_session_rid.empty ()) {
                 bind_actor_session_route (
                   actor_gateway, committed.value ().actor,
-                  _runtime.default_route_channel_name ().value_or (header.channel_name),
+                  _runtime.actor_route_transport_name ().value_or (header.channel_name),
                   zlink::routing_id_t::from (request.bound_session_node_rid),
                   zlink::routing_id_t::from (request.bound_session_rid), true);
             }
+            trace_actor_transfer_target ("commit-replying", request.actor_id, request.transfer_id);
             return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
               _serializers->get<spot_actor_join_route_reply_t> ().serialize (
                 make_spot_actor_join_route_reply (committed.value ()))));

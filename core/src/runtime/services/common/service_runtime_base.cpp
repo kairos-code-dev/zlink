@@ -143,6 +143,11 @@ void zlink::service_runtime_base_t::unregister_socket (const socket_base_t *sock
     _sockets.unregister_socket (socket_);
 }
 
+void zlink::service_runtime_base_t::mark_socket_detached_close (const socket_base_t *socket_)
+{
+    _sockets.mark_detached_close (socket_);
+}
+
 int zlink::service_runtime_base_t::close_socket (socket_base_t *&socket_, int timeout_ms_)
 {
     LIBZLINK_UNUSED (timeout_ms_);
@@ -170,6 +175,7 @@ int zlink::service_runtime_base_t::wait_drained (int timeout_ms_)
 
     const uint64_t deadline_ms = compute_deadline_ms (timeout_ms_);
     while (true) {
+        _sockets.drop_detached_closing ();
         size_t owned_count = 0;
         service_socket_registry_t::socket_map_t closing;
         _sockets.snapshot_drain_state (&owned_count, &closing);
@@ -209,6 +215,13 @@ int zlink::service_runtime_base_t::force_wait_remaining (int timeout_ms_)
             if (socket)
                 socket_close_ops_t::request_close (socket);
         }
+
+        _sockets.drop_detached_closing ();
+        size_t owned_count = 0;
+        closing.clear ();
+        _sockets.snapshot_drain_state (&owned_count, &closing);
+        if (owned_count == 0 && closing.empty ())
+            return 0;
 
         if (wait_for_closing_sockets (_ctx, &_sockets, closing, timeout_ms_, deadline_ms,
                                       "[service-force-drain] timeout")

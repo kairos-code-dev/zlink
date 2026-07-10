@@ -2,6 +2,8 @@
 
 #include "runtime/spots/spot_route_packets.hpp"
 
+#include "runtime/streams/stream_runtime.hpp"
+
 #include <nlohmann/json.hpp>
 
 #include <typeindex>
@@ -9,6 +11,36 @@
 
 namespace zlink::framework::detail
 {
+
+result_t<zlink::message_t> encode_actor_bound_session_frame (
+  stream_codec_t codec,
+  std::string packet_name,
+  const zlink::message_t &payload)
+{
+    stream_runtime_t stream_runtime (std::make_shared<stream_runtime_state_t> ());
+    const stream_header_t header (stream_message_kind_t::send, codec,
+                                  stream_header_flags_t::none, std::nullopt,
+                                  std::move (packet_name));
+    auto encoded_header = stream_runtime.encode_header (header);
+    if (!encoded_header) {
+        return result_t<zlink::message_t>::failure (
+          encoded_header.error_kind (), encoded_header.error () ? encoded_header.error ()->what ()
+                                                                : "STREAM header encode failed");
+    }
+    const auto payload_bytes = payload.to_bytes ();
+    const auto header_size = encoded_header.value ().size ();
+    std::vector<std::uint8_t> frame;
+    frame.reserve (6 + header_size + payload_bytes.size ());
+    frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
+    frame.insert (frame.end (), encoded_header.value ().begin (), encoded_header.value ().end ());
+    frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
+    return result_t<zlink::message_t>::success (zlink::message_t::from (std::move (frame)));
+}
 
 void to_json (nlohmann::json &json, const spot_actor_admission_route_request_t &value)
 {
@@ -45,6 +77,22 @@ void from_json (const nlohmann::json &json, spot_actor_admission_route_reply_t &
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }
 
+void to_json (nlohmann::json &json, const spot_actor_handoff_packet_t &value)
+{
+    json = nlohmann::json{{"packetName", value.packet_name_value},
+                          {"payload", value.payload},
+                          {"contentType", value.content_type},
+                          {"metadata", value.metadata}};
+}
+
+void from_json (const nlohmann::json &json, spot_actor_handoff_packet_t &value)
+{
+    value.packet_name_value = json.at ("packetName").get<std::string> ();
+    value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
+    value.content_type = json.value ("contentType", "");
+    value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
+}
+
 void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &value)
 {
     json = nlohmann::json{{"transferId", value.transfer_id},
@@ -55,7 +103,8 @@ void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &val
                           {"targetSpotRid", value.target_spot_rid},
                           {"boundSessionNodeRid", value.bound_session_node_rid},
                           {"boundSessionRid", value.bound_session_rid},
-                          {"transferState", value.transfer_state}};
+                          {"transferState", value.transfer_state},
+                          {"handoffBacklog", value.handoff_backlog}};
 }
 
 void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &value)
@@ -69,6 +118,8 @@ void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &v
     value.bound_session_node_rid = json.value ("boundSessionNodeRid", "");
     value.bound_session_rid = json.value ("boundSessionRid", "");
     value.transfer_state = json.at ("transferState").get<std::vector<std::uint8_t>> ();
+    value.handoff_backlog =
+      json.value ("handoffBacklog", std::vector<spot_actor_handoff_packet_t>{});
 }
 
 void to_json (nlohmann::json &json, const spot_actor_join_route_request_t &value)

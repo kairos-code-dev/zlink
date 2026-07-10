@@ -237,7 +237,11 @@ void schedule_delivery (std::shared_ptr<connector_state_t> state, std::function<
         return;
     }
     if (state->options.dispatch_mode == dispatch_mode_t::immediate) {
-        callback ();
+        // Deliver on the shared runner instead of the calling thread. Deliveries
+        // are frequently invoked from the connector's own read pump; running user
+        // callbacks inline there lets a slow or blocking callback starve the pump
+        // (and deadlock when the callback waits on a later inbound frame).
+        post_runtime_operation ([callback = std::move (callback)] () mutable { callback (); });
         return;
     }
     std::lock_guard<std::mutex> lock (state->transport_mutex);
@@ -292,6 +296,10 @@ void change_state (std::shared_ptr<connector_state_t> state,
                       << " error=\"" << error->message << "\"";
         }
         std::cerr << '\n';
+    }
+    if (error
+        && (next == connection_state_t::disconnected || next == connection_state_t::closed)) {
+        state->last_disconnect_error = error;
     }
     connection_state_changed_t changed{previous, next, error};
     for (const auto &handler : state->state_handlers) {

@@ -42,6 +42,73 @@ void actor_transfer_coordinator_t::complete_move (const std::string &actor_key)
     cancel_move (actor_key);
 }
 
+bool actor_transfer_coordinator_t::try_append_backlog (const std::string &actor_key,
+                                                       handoff_packet_t packet)
+{
+    std::lock_guard lock (_mutex);
+    const auto moving = _moves.find (actor_key);
+    if (moving == _moves.end ()) {
+        return false;
+    }
+    // Only the source side of a move preserves packets; the target side keeps
+    // rejecting until the commit installs the actor (§3.4).
+    if (moving->second.phase != actor_move_phase_t::local
+        && moving->second.phase != actor_move_phase_t::source_remote
+        && moving->second.phase != actor_move_phase_t::reconcile) {
+        return false;
+    }
+    _backlogs[actor_key].push_back (std::move (packet));
+    return true;
+}
+
+std::vector<handoff_packet_t>
+actor_transfer_coordinator_t::take_backlog (const std::string &actor_key)
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _backlogs.find (actor_key);
+    if (found == _backlogs.end ()) {
+        return {};
+    }
+    auto backlog = std::move (found->second);
+    _backlogs.erase (found);
+    return backlog;
+}
+
+void actor_transfer_coordinator_t::activate_forwarding (
+  const std::string &actor_key,
+  std::uint64_t old_generation,
+  std::chrono::steady_clock::time_point evict_at)
+{
+    std::lock_guard lock (_mutex);
+    // At most one entry per actor: a re-transfer refreshes the entry toward the
+    // new hop and restarts the window instead of accumulating entries (§10.4-4).
+    _forwardings[actor_key] = forwarding_entry_t{old_generation, evict_at};
+}
+
+bool actor_transfer_coordinator_t::forwards_stale_generation (const std::string &actor_key,
+                                                              std::uint64_t generation) const
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _forwardings.find (actor_key);
+    return found != _forwardings.end () && generation <= found->second.old_generation;
+}
+
+std::vector<std::string>
+actor_transfer_coordinator_t::evict_expired_forwarding (std::chrono::steady_clock::time_point now)
+{
+    std::lock_guard lock (_mutex);
+    std::vector<std::string> evicted;
+    for (auto found = _forwardings.begin (); found != _forwardings.end ();) {
+        if (found->second.evict_at <= now) {
+            evicted.push_back (found->first);
+            found = _forwardings.erase (found);
+        } else {
+            ++found;
+        }
+    }
+    return evicted;
+}
+
 bool actor_transfer_coordinator_t::blocks_dispatch (const std::string &actor_key) const
 {
     std::lock_guard lock (_mutex);

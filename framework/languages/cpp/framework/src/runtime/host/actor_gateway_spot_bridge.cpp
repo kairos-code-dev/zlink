@@ -14,7 +14,9 @@
 
 #include <condition_variable>
 #include <chrono>
+#include <cstdlib>
 #include <future>
+#include <iostream>
 #include <mutex>
 #include <thread>
 
@@ -27,6 +29,38 @@ namespace
 constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKind";
 constexpr std::string_view actor_relay_kind_send = "send";
 constexpr std::string_view actor_relay_kind_request = "request";
+
+// config-10 Track F evidence marker (in-flight handoff runbook 4): stragglers
+// forwarded through a retained mapping are visible to the e2e runner.
+void emit_straggler_forward_marker (const actor_ref_t &actor_ref)
+{
+    static const bool enabled = [] {
+        const char *value = std::getenv ("ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS");
+        return value != nullptr && *value != '\0' && std::string_view (value) != "0";
+    }();
+    if (!enabled) {
+        return;
+    }
+    std::cerr << "zlink actor-handoff marker=straggler_forward actor=" << actor_ref.actor_id ()
+              << " generation=" << actor_ref.generation () << '\n';
+}
+
+void trace_actor_transfer (std::string_view stage,
+                           const actor_ref_t &actor_ref,
+                           const node_rid_t &target_node_rid = {},
+                           const spot_rid_t &target_spot_rid = {})
+{
+    const auto *enabled = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
+    if (enabled == nullptr || *enabled == '\0') {
+        return;
+    }
+    std::cerr << "zlink actor-transfer stage=" << stage
+              << " actor=" << actor_ref.actor_id ()
+              << " generation=" << actor_ref.generation ()
+              << " sourceNode=" << actor_ref.node_rid ().value ()
+              << " targetNode=" << target_node_rid.value ()
+              << " targetSpot=" << target_spot_rid.value () << '\n';
+}
 
 void remember_actor_relay_kind (spot_actor_message_metadata_t &metadata, stream_message_kind_t kind)
 {
@@ -180,6 +214,7 @@ request_spot_mesh_parts (spot_node_runtime_t runtime,
             return result_t<runtime::messaging::message_parts_t>::failure (
               framework_error_kind_t::route_not_connected, "SPOT route peer is not ready");
         }
+        trace_actor_transfer ("mesh-ready", actor_ref_t{}, target_node_rid, target_spot_rid);
         auto native_parts = parts.items ();
         if (native_parts.empty ()) {
             return result_t<runtime::messaging::message_parts_t>::failure (
@@ -205,11 +240,13 @@ request_spot_mesh_parts (spot_node_runtime_t runtime,
             submit = std::move (submit).message (*iterator);
         }
         auto pending = std::move (submit).timeout (std::chrono::seconds (30)).async ();
+        trace_actor_transfer ("mesh-submitted", actor_ref_t{}, target_node_rid, target_spot_rid);
         while (pending.wait_for (std::chrono::milliseconds (10)) != std::future_status::ready) {
             if (runtime.stopping ()) {
                 return stopping_failure ();
             }
         }
+        trace_actor_transfer ("mesh-completed", actor_ref_t{}, target_node_rid, target_spot_rid);
         auto reply = pending.get ();
         return result_t<runtime::messaging::message_parts_t>::success (
           runtime::messaging::message_parts_t (std::move (reply)));
@@ -326,8 +363,9 @@ request_remote_actor_admission (spot_node_runtime_t runtime,
                                          spot_actor_admission_route_request_t::packet_name,
                                          std::chrono::seconds (30));
     auto parts = codec.encode_envelope_parts (header, request, serializers);
-    auto reply_parts =
-      request_spot_mesh_parts (runtime, target_node_rid, target_spot_rid, std::move (parts));
+    auto reply_parts = request_spot_mesh_parts (
+      runtime, target_node_rid,
+      spot_rid_t::from_string (std::string (target_node_rid.value ())), std::move (parts));
     if (!reply_parts) {
         return result_t<spot_actor_admission_route_reply_t>::failure (
           reply_parts.error_kind (),
@@ -370,8 +408,9 @@ request_remote_actor_commit (spot_node_runtime_t runtime,
                                          spot_actor_commit_route_request_t::packet_name,
                                          std::chrono::seconds (30));
     auto parts = codec.encode_envelope_parts (header, request, serializers);
-    auto reply_parts =
-      request_spot_mesh_parts (runtime, target_node_rid, target_spot_rid, std::move (parts));
+    auto reply_parts = request_spot_mesh_parts (
+      runtime, target_node_rid,
+      spot_rid_t::from_string (std::string (target_node_rid.value ())), std::move (parts));
     if (!reply_parts) {
         return result_t<actor_join_reply_t>::failure (
           reply_parts.error_kind (),
@@ -555,6 +594,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
                                   const zlink::message_t &payload,
                                   serializer_registry_t &serializers)
 {
+    trace_actor_transfer ("resolve-start", actor_ref, {}, spot_rid);
     auto route = runtime.resolve_spot (spot_rid);
     if (!route) {
         if (rid_targets_node (spot_rid.value (), local_spot_node_rid)) {
@@ -570,6 +610,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     if (route->node_rid.empty () || route->node_rid.value () == local_spot_node_rid) {
         return runtime.join_actor_to_spot_erased (actor_ref, std::move (spot_rid), payload);
     }
+    trace_actor_transfer ("resolved", actor_ref, route->node_rid, route->spot_rid);
     if ((!route_channel_name || route_channel_name->empty ()) && !runtime.native_node ()) {
         return result_t<actor_join_reply_t>::failure (
           framework_error_kind_t::spot_route_not_found,
@@ -581,6 +622,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
                                                       "source actor is not joined to a local spot");
     }
     const auto transfer_id = runtime.next_actor_transfer_id ();
+    trace_actor_transfer ("admission-start", actor_ref, route->node_rid, route->spot_rid);
     auto admitted = request_remote_actor_admission (
       runtime, route_client, route_channel_name, route->node_rid, route->spot_rid,
       spot_actor_admission_route_request_t{
@@ -593,6 +635,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         .target_spot_rid = std::string (route->spot_rid.value ()),
         .payload = payload.to_bytes ()},
       serializers);
+    trace_actor_transfer ("admission-completed", actor_ref, route->node_rid, route->spot_rid);
     if (!admitted) {
         return result_t<actor_join_reply_t>::failure (
           admitted.error_kind (),
@@ -603,6 +646,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
           actor_join_reply_t{1, actor_ref, zlink::message_t::from (admitted.value ().payload)});
     }
 
+    trace_actor_transfer ("transfer-out-start", actor_ref, route->node_rid, route->spot_rid);
     auto transfer = runtime.transfer_actor_out (actor_ref);
     if (!transfer) {
         return result_t<actor_join_reply_t>::failure (
@@ -615,6 +659,18 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
           left.error_kind (), left.error () ? left.error ()->what () : "source actor leave failed");
     }
     const auto bound_session = actor_gateway.bound_session_route (actor_ref);
+    // In-flight handoff (§10.2-2): the packets preserved while the actor was
+    // moving travel with the commit so the target can replay them before it
+    // publishes the committed location.
+    auto handoff_backlog = runtime.take_actor_handoff_backlog (actor_ref);
+    std::vector<spot_actor_handoff_packet_t> wire_backlog;
+    wire_backlog.reserve (handoff_backlog.size ());
+    for (auto &packet : handoff_backlog) {
+        wire_backlog.push_back (spot_actor_handoff_packet_t{
+          std::move (packet.packet_name), std::move (packet.payload),
+          std::move (packet.content_type), std::move (packet.metadata)});
+    }
+    trace_actor_transfer ("commit-start", actor_ref, route->node_rid, route->spot_rid);
     auto joined = request_remote_actor_commit (
       runtime, route_client, route_channel_name, route->node_rid, route->spot_rid,
       spot_actor_commit_route_request_t{
@@ -628,8 +684,10 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
           bound_session ? bound_session->node_rid.to_string () : std::string{},
         .bound_session_rid =
           bound_session ? bound_session->session_rid.to_string () : std::string{},
-        .transfer_state = transfer.value ().state.to_bytes ()},
+        .transfer_state = transfer.value ().state.to_bytes (),
+        .handoff_backlog = std::move (wire_backlog)},
       serializers);
+    trace_actor_transfer ("commit-completed", actor_ref, route->node_rid, route->spot_rid);
     if (!joined) {
         runtime.fail_remote_actor_transfer (actor_ref, true);
         return joined;
@@ -640,6 +698,22 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     }
     runtime.complete_remote_actor_transfer (
       actor_ref, joined.value ().actor, spot_route_t{route->node_rid, spot_rid, route->spot_name});
+    // §10.2-2: packets that arrived between the backlog snapshot and the commit
+    // ack were still preserved. Forward them in arrival order now that the
+    // forwarding mapping points at the target; later stragglers follow the
+    // same mapping until its window evicts it.
+    auto late_backlog = runtime.take_actor_handoff_backlog (actor_ref);
+    for (auto &packet : late_backlog) {
+        stream_header_t header (stream_message_kind_t::send, stream_codec_t::raw,
+                                stream_header_flags_t::none, std::nullopt,
+                                std::move (packet.packet_name));
+        spot_actor_message_metadata_t metadata;
+        metadata.content_type = std::move (packet.content_type);
+        metadata.values = std::move (packet.metadata);
+        (void) relay_actor_packet_to_remote_actor_mesh (
+          runtime, actor_gateway, joined.value ().actor, route->node_rid, route->spot_rid, header,
+          zlink::message_t::from (packet.payload), metadata, serializers);
+    }
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{joined.value ().result_code, joined.value ().actor,
                          zlink::message_t::from (admitted.value ().payload)});
@@ -703,6 +777,10 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
     auto route = runtime.actor_route (actor_ref);
     if (route && !route->node_rid.empty ()
         && route->node_rid.value () != runtime.node_rid ().value ()) {
+        if (const auto current = runtime.current_actor_ref (actor_ref);
+            current && current->generation () > actor_ref.generation ()) {
+            emit_straggler_forward_marker (actor_ref);
+        }
         return send_remote (*route, route->spot_rid);
     }
 

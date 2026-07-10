@@ -208,18 +208,11 @@ target_link_libraries(zlink_http_client PUBLIC
   zlink::framework
   nlohmann_json::nlohmann_json)
 target_link_libraries(zlink_http_client PRIVATE Threads::Threads)
-if(ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR)
-  target_include_directories(zlink_http_client SYSTEM BEFORE PRIVATE
-    "${ZLINK_FRAMEWORK_CPP_SYSTEM_BOOST_INCLUDE_DIR}")
-endif()
-if(Boost_FOUND AND Boost_INCLUDE_DIRS)
-  target_include_directories(zlink_http_client PRIVATE ${Boost_INCLUDE_DIRS})
-elseif(Boost_FOUND AND Boost_INCLUDE_DIR)
-  target_include_directories(zlink_http_client PRIVATE ${Boost_INCLUDE_DIR})
-elseif(EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost/boost/asio.hpp")
-  target_include_directories(zlink_http_client PRIVATE
-    "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/core/external/boost")
-endif()
+# All Boost consumers must resolve the same Boost checkout. Mixing Boost trees
+# in one binary (for example vendored asio with a system beast) is undefined
+# behavior at the ABI level, so the http client uses the shared helper instead
+# of its own include wiring.
+zlink_framework_cpp_add_boost_headers(zlink_http_client)
 if(OpenSSL_FOUND)
   target_compile_definitions(zlink_http_client PRIVATE
     ZLINK_HTTP_CLIENT_WITH_OPENSSL)
@@ -726,6 +719,9 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     target_link_zlink_test_harness(${target_name})
     target_include_directories(${target_name} PRIVATE
       ${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)
+    # Test sources include Boost directly; they must resolve the same Boost
+    # tree as the connector objects (see zlink_framework_cpp_add_boost_headers).
+    zlink_framework_cpp_add_boost_headers(${target_name})
     add_test(NAME ${target_name} COMMAND ${target_name})
     set_tests_properties(${target_name} PROPERTIES
       LABELS "${labels}"
@@ -738,6 +734,9 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     target_link_zlink_test_harness(${target_name})
     target_include_directories(${target_name} PRIVATE
       ${ZLINK_FRAMEWORK_CPP_DIR}/http-client/src)
+    # Test sources include Boost (beast test server); they must resolve the
+    # same Boost tree as the http client objects.
+    zlink_framework_cpp_add_boost_headers(${target_name})
     add_test(NAME ${target_name} COMMAND ${target_name})
     set_tests_properties(${target_name} PROPERTIES
       LABELS "${labels}"
@@ -970,6 +969,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   target_include_directories(test_cpp_framework_store_location_resolvers PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  zlink_framework_cpp_add_boost_headers(test_cpp_framework_store_location_resolvers)
   add_test(NAME test_cpp_framework_store_location_resolvers
     COMMAND test_cpp_framework_store_location_resolvers)
   set_tests_properties(test_cpp_framework_store_location_resolvers PROPERTIES
@@ -1344,6 +1344,20 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  add_executable(zlink_cpp_e2e_spot_actor_transfer_node
+    e2e/SpotActorTransfer/Server/ActorNode/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_actor_transfer_node PRIVATE
+    zlink::framework
+    zlink::framework_locations_redis)
+  target_include_directories(zlink_cpp_e2e_spot_actor_transfer_node PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_spot_actor_transfer_client
+    e2e/SpotActorTransfer/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_actor_transfer_client PRIVATE
+    zlink::http_client
+    zlink::stream_connector)
+
   add_executable(zlink_cpp_e2e_to_actor_messaging_actor
     e2e/ToActorMessaging/Server/Actor/main.cpp)
   target_link_libraries(zlink_cpp_e2e_to_actor_messaging_actor PRIVATE
@@ -1486,6 +1500,9 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_runtime_monitoring_trigger PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  # Trigger support headers include Boost directly; keep it on the same tree
+  # as the framework objects.
+  zlink_framework_cpp_add_boost_headers(zlink_cpp_e2e_runtime_monitoring_trigger)
 
 endif()
 
@@ -1495,6 +1512,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     target_link_libraries(${target_name} PRIVATE ${ARGN})
     target_include_directories(${target_name} PRIVATE
       ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+    # Sample sources include Boost directly (asio-based redis helpers). Without
+    # this the vcpkg Boost that rides in on redis++'s interface include path
+    # wins for the sample TU while the framework objects use the vendored tree,
+    # mixing two Boost versions in one binary (ODR/ABI mismatch, observed as a
+    # deterministic SEGV in asio scheduler internals).
+    zlink_framework_cpp_add_boost_headers(${target_name})
   endfunction()
 
   add_zlink_framework_sample(

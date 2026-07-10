@@ -106,66 +106,81 @@ class location_runtime_t
     location_write_result_t write_peer (peer_location_t peer, location_write_intent_t intent)
     {
         peer.owner_id = _owner_id;
+        auto canonical = location_key_codec_t::encode_peer_key (peer_location_key_t{
+          peer.auto_connect_type, peer.mesh_name, peer.role, peer.node_rid, peer.endpoint});
         auto result = _store->update_peer (std::move (peer), intent).result ().value ();
-        notify_if_stale (result);
+        notify_if_stale (result, location_kind_t::peer, canonical);
         return result;
     }
 
     location_write_result_t remove_peer (peer_location_key_t key, std::int64_t generation)
     {
+        auto canonical = location_key_codec_t::encode_peer_key (key);
         auto result =
           _store->remove_peer (std::move (key), location_owner_token_t{_owner_id, generation})
             .result ()
             .value ();
-        notify_if_stale (result);
+        notify_if_stale (result, location_kind_t::peer, canonical);
         return result;
     }
 
     location_write_result_t write_spot (spot_location_t spot, location_write_intent_t intent)
     {
         spot.owner_id = _owner_id;
+        auto canonical = location_key_codec_t::encode_spot_key (
+          spot_location_key_t{spot.mesh_name, spot.spot_rid});
         auto result = _store->update_spot (std::move (spot), intent).result ().value ();
-        notify_if_stale (result);
+        notify_if_stale (result, location_kind_t::spot, canonical);
         return result;
     }
 
     location_write_result_t remove_spot (spot_location_key_t key, std::int64_t generation)
     {
+        auto canonical = location_key_codec_t::encode_spot_key (key);
         auto result =
           _store->remove_spot (std::move (key), location_owner_token_t{_owner_id, generation})
             .result ()
             .value ();
-        notify_if_stale (result);
+        notify_if_stale (result, location_kind_t::spot, canonical);
         return result;
     }
 
     location_write_result_t write_actor (actor_location_t actor, location_write_intent_t intent)
     {
         actor.owner_id = _owner_id;
+        auto canonical =
+          location_key_codec_t::encode_actor_key (actor_location_key_t{actor.actor_id});
         auto result = _store->update_actor (std::move (actor), intent).result ().value ();
-        notify_if_stale (result);
+        notify_if_stale (result, location_kind_t::actor, canonical);
         return result;
     }
 
     location_write_result_t write_route (route_location_t route, location_write_intent_t intent)
     {
         route.owner_id = _owner_id;
+        auto canonical = location_key_codec_t::encode_route_key (
+          route_location_key_t{route.route_kind, route.route_key});
         auto result = _store->update_route (std::move (route), intent).result ().value ();
-        notify_if_stale (result);
+        notify_if_stale (result, location_kind_t::route, canonical);
         return result;
     }
 
     location_write_result_t remove_actor (actor_location_key_t key, std::int64_t generation)
     {
+        auto canonical = location_key_codec_t::encode_actor_key (key);
         auto result =
           _store->remove_actor (std::move (key), location_owner_token_t{_owner_id, generation})
             .result ()
             .value ();
-        notify_if_stale (result);
+        notify_if_stale (result, location_kind_t::actor, canonical);
         return result;
     }
 
-    void on_ownership_lost (std::function<void ()> callback)
+    // A stale write only proves that this owner lost that one row. The callback
+    // receives the row kind and canonical key so listeners deactivate exactly
+    // that claim (the .NET runtime raises OwnershipLost per key the same way).
+    void
+    on_ownership_lost (std::function<void (location_kind_t, const std::string &)> callback)
     {
         std::lock_guard lock (_callbacks_gate);
         _ownership_lost_callbacks.push_back (std::move (callback));
@@ -196,18 +211,20 @@ class location_runtime_t
         }
     }
 
-    void notify_if_stale (const location_write_result_t &result)
+    void notify_if_stale (const location_write_result_t &result,
+                          location_kind_t kind,
+                          const std::string &canonical_key)
     {
         if (result.status != location_write_status_t::ignored_stale) {
             return;
         }
-        std::vector<std::function<void ()>> callbacks;
+        std::vector<std::function<void (location_kind_t, const std::string &)>> callbacks;
         {
             std::lock_guard lock (_callbacks_gate);
             callbacks = _ownership_lost_callbacks;
         }
         for (const auto &callback : callbacks) {
-            callback ();
+            callback (kind, canonical_key);
         }
     }
 
@@ -232,7 +249,8 @@ class location_runtime_t
     mutable std::optional<std::chrono::system_clock::time_point> _owner_lease_renewed_at;
     mutable std::optional<std::string> _last_error;
     std::mutex _callbacks_gate;
-    std::vector<std::function<void ()>> _ownership_lost_callbacks;
+    std::vector<std::function<void (location_kind_t, const std::string &)>>
+      _ownership_lost_callbacks;
 };
 
 } // namespace zlink::framework::runtime

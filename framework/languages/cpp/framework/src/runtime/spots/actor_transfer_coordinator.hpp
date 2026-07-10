@@ -11,6 +11,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace zlink::framework::detail
 {
@@ -33,6 +34,17 @@ struct pending_actor_admission_t
     std::chrono::steady_clock::time_point deadline;
 };
 
+// One in-flight actor packet preserved while its actor is moving (spot-actor
+// spec §10). Only one-way packets are preserved; requests fail fast so the
+// sender can re-resolve and retry.
+struct handoff_packet_t
+{
+    std::string packet_name;
+    std::vector<std::uint8_t> payload;
+    std::string content_type;
+    std::map<std::string, std::string> metadata;
+};
+
 class actor_transfer_coordinator_t
 {
   public:
@@ -43,6 +55,23 @@ class actor_transfer_coordinator_t
     void complete_move (const std::string &actor_key);
     bool blocks_dispatch (const std::string &actor_key) const;
     std::optional<actor_move_phase_t> phase (const std::string &actor_key) const;
+
+    // In-flight handoff (spot-actor spec §10). One-way packets that arrive while
+    // the actor is moving are preserved here in arrival order; the commit path
+    // drains them into the commit request, and packets that race the commit ack
+    // drain into the forwarding path afterwards.
+    bool try_append_backlog (const std::string &actor_key, handoff_packet_t packet);
+    std::vector<handoff_packet_t> take_backlog (const std::string &actor_key);
+
+    // Forwarding mapping lifetime (§10.4): activated when the source confirms
+    // the target commit, refreshed on re-transfer (at most one entry per actor),
+    // and evicted after the forward window so retained state cannot pile up.
+    void activate_forwarding (const std::string &actor_key,
+                              std::uint64_t old_generation,
+                              std::chrono::steady_clock::time_point evict_at);
+    bool forwards_stale_generation (const std::string &actor_key,
+                                    std::uint64_t generation) const;
+    std::vector<std::string> evict_expired_forwarding (std::chrono::steady_clock::time_point now);
 
     bool try_add_admission (std::string transfer_id, pending_actor_admission_t admission);
     std::optional<pending_actor_admission_t> begin_commit (const std::string &transfer_id,
@@ -62,9 +91,17 @@ class actor_transfer_coordinator_t
         std::string transfer_id;
     };
 
+    struct forwarding_entry_t
+    {
+        std::uint64_t old_generation = 0;
+        std::chrono::steady_clock::time_point evict_at;
+    };
+
     mutable std::mutex _mutex;
     std::map<std::string, move_state_t> _moves;
     std::map<std::string, pending_actor_admission_t> _admissions;
+    std::map<std::string, std::vector<handoff_packet_t>> _backlogs;
+    std::map<std::string, forwarding_entry_t> _forwardings;
     std::uint64_t _next_transfer_id = 1;
 };
 

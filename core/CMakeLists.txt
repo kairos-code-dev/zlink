@@ -1459,6 +1459,16 @@ else()
     set_target_properties(
       libzlink PROPERTIES COMPILE_DEFINITIONS "DLL_EXPORT" PUBLIC_HEADER "${public_headers}" VERSION "${ZLINK_VERSION}"
                         SOVERSION "9" OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}" PREFIX "lib")
+    # Only the public zlink_* C API may be visible from the shared library.
+    # Internal C++ and bundled third-party symbols (for example boost::asio)
+    # otherwise interpose a consumer's own copies at load time, which crashes
+    # when the two sides were compiled with different configurations.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      target_link_options(libzlink PRIVATE
+        "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/libzlink.vers")
+      set_property(TARGET libzlink APPEND PROPERTY
+        LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/libzlink.vers")
+    endif()
     if(ZLINK_BUILD_FRAMEWORK)
       set_target_properties(
         libzlink

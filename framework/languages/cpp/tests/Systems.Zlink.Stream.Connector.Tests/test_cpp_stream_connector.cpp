@@ -149,6 +149,14 @@ class early_reply_connection_t final : public zlink::stream_connector::detail::s
                           std::function<void (boost::system::error_code, std::vector<std::uint8_t>)>
                             completion) override
     {
+        // A real socket keeps an idle read pending. Completing exhausted reads
+        // inline with empty data re-enters the read pump on the caller stack
+        // until it overflows, so hold the completion once the scripted reply
+        // has been consumed.
+        if (_reply.empty ()) {
+            _pending_read = std::move (completion);
+            return;
+        }
         auto reply = std::move (_reply);
         _reply.clear ();
         completion (boost::system::error_code{}, std::move (reply));
@@ -185,6 +193,7 @@ class early_reply_connection_t final : public zlink::stream_connector::detail::s
   private:
     bool _open = true;
     std::vector<std::uint8_t> _reply;
+    std::function<void (boost::system::error_code, std::vector<std::uint8_t>)> _pending_read;
 };
 
 class oversized_compression_codec_t final : public zlink::stream_connector::compression_codec_t
@@ -995,6 +1004,17 @@ int main ()
         return 5;
     }
     {
+        // Async sends/requests ride the shared runner (write strand + posted
+        // delivery), so completions are awaited with a bounded poll instead of
+        // being asserted synchronously after submit.
+        const auto eventually = [] (const std::function<bool ()> &predicate) {
+            const auto deadline =
+              std::chrono::steady_clock::now () + std::chrono::seconds (2);
+            while (!predicate () && std::chrono::steady_clock::now () < deadline) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            }
+            return predicate ();
+        };
         zlink::stream_connector::connector_options_t async_send_options;
         async_send_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         auto async_send_state =
@@ -1002,7 +1022,7 @@ int main ()
         async_send_state->state = zlink::stream_connector::connection_state_t::connected;
         auto async_send_connection = std::make_shared<async_write_connection_t> ();
         async_send_state->connection = async_send_connection;
-        bool async_send_seen = false;
+        std::atomic<bool> async_send_seen{false};
         zlink::stream_connector::detail::submit_send_async (
           async_send_state,
           zlink::stream_connector::packet_t{.name = "async.send",
@@ -1010,8 +1030,10 @@ int main ()
           [&] (zlink::stream_connector::result_t<void> result) {
               async_send_seen = static_cast<bool> (result);
           });
-        if (!async_send_seen || async_send_connection->written.empty ()
-            || async_send_state->sent_packets.size () != 1
+        if (!eventually ([&] {
+                return async_send_seen.load () && !async_send_connection->written.empty ()
+                       && async_send_state->sent_packets.size () == 1;
+            })
             || async_send_state->sent_packets[0].name != "async.send") {
             return 155;
         }
@@ -1020,7 +1042,7 @@ int main ()
           std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
         async_write_failure_state->state = zlink::stream_connector::connection_state_t::connected;
         async_write_failure_state->connection = std::make_shared<async_write_connection_t> (true);
-        bool async_write_failure_seen = false;
+        std::atomic<bool> async_write_failure_seen{false};
         zlink::stream_connector::detail::submit_send_async (
           async_write_failure_state,
           zlink::stream_connector::packet_t{.name = "async.write.fail",
@@ -1030,7 +1052,8 @@ int main ()
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::send_failed;
           });
-        if (!async_write_failure_seen || !async_write_failure_state->sent_packets.empty ()) {
+        if (!eventually ([&] { return async_write_failure_seen.load (); })
+            || !async_write_failure_state->sent_packets.empty ()) {
             return 158;
         }
 
@@ -1039,7 +1062,7 @@ int main ()
         async_closed_state->state = zlink::stream_connector::connection_state_t::connected;
         async_closed_state->connection = std::make_shared<async_write_connection_t> ();
         async_closed_state->close_requested.store (true);
-        bool async_closed_seen = false;
+        std::atomic<bool> async_closed_seen{false};
         zlink::stream_connector::detail::submit_send_async (
           async_closed_state,
           zlink::stream_connector::packet_t{.name = "async.closed",
@@ -1048,13 +1071,13 @@ int main ()
               async_closed_seen =
                 !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
           });
-        if (!async_closed_seen) {
+        if (!eventually ([&] { return async_closed_seen.load (); })) {
             return 159;
         }
 
         auto async_disconnected_state =
           std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
-        bool async_disconnected_seen = false;
+        std::atomic<bool> async_disconnected_seen{false};
         zlink::stream_connector::detail::submit_send_async (
           async_disconnected_state,
           zlink::stream_connector::packet_t{.name = "async.disconnected",
@@ -1064,7 +1087,7 @@ int main ()
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::disconnected;
           });
-        if (!async_disconnected_seen) {
+        if (!eventually ([&] { return async_disconnected_seen.load (); })) {
             return 160;
         }
 
@@ -1073,7 +1096,7 @@ int main ()
           std::make_shared<zlink::stream_connector::detail::connector_state_t> (async_send_options);
         async_validation_state->state = zlink::stream_connector::connection_state_t::connected;
         async_validation_state->connection = std::make_shared<async_write_connection_t> ();
-        bool async_validation_seen = false;
+        std::atomic<bool> async_validation_seen{false};
         zlink::stream_connector::detail::submit_send_async (
           async_validation_state,
           zlink::stream_connector::packet_t{.name = "async.validation",
@@ -1083,11 +1106,11 @@ int main ()
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::frame_too_large;
           });
-        if (!async_validation_seen) {
+        if (!eventually ([&] { return async_validation_seen.load (); })) {
             return 161;
         }
 
-        bool async_request_unbound_seen = false;
+        std::atomic<bool> async_request_unbound_seen{false};
         zlink::stream_connector::detail::submit_request_async (
           {}, zlink::stream_connector::packet_t{.name = "unbound.request"},
           std::chrono::milliseconds (1),
@@ -1098,11 +1121,11 @@ int main ()
                 && result.error_code ()
                      == zlink::stream_connector::error_code_t::configuration_error;
           });
-        if (!async_request_unbound_seen) {
+        if (!eventually ([&] { return async_request_unbound_seen.load (); })) {
             return 162;
         }
 
-        bool async_request_closed_seen = false;
+        std::atomic<bool> async_request_closed_seen{false};
         zlink::stream_connector::detail::submit_request_async (
           async_closed_state, zlink::stream_connector::packet_t{.name = "closed.request"},
           std::chrono::milliseconds (1),
@@ -1111,11 +1134,11 @@ int main ()
               async_request_closed_seen =
                 !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
           });
-        if (!async_request_closed_seen) {
+        if (!eventually ([&] { return async_request_closed_seen.load (); })) {
             return 163;
         }
 
-        bool async_request_disconnected_seen = false;
+        std::atomic<bool> async_request_disconnected_seen{false};
         zlink::stream_connector::detail::submit_request_async (
           async_disconnected_state,
           zlink::stream_connector::packet_t{.name = "disconnected.request"},
@@ -1126,11 +1149,11 @@ int main ()
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::disconnected;
           });
-        if (!async_request_disconnected_seen) {
+        if (!eventually ([&] { return async_request_disconnected_seen.load (); })) {
             return 164;
         }
 
-        bool async_request_validation_seen = false;
+        std::atomic<bool> async_request_validation_seen{false};
         zlink::stream_connector::detail::submit_request_async (
           async_validation_state,
           zlink::stream_connector::packet_t{.name = "validation.request",
@@ -1142,7 +1165,7 @@ int main ()
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::frame_too_large;
           });
-        if (!async_request_validation_seen) {
+        if (!eventually ([&] { return async_request_validation_seen.load (); })) {
             return 165;
         }
 
@@ -1154,7 +1177,7 @@ int main ()
           zlink::stream_connector::connection_state_t::connected;
         async_request_write_failure_state->connection =
           std::make_shared<async_write_connection_t> (true);
-        bool async_request_write_failure_seen = false;
+        std::atomic<bool> async_request_write_failure_seen{false};
         zlink::stream_connector::detail::submit_request_async (
           async_request_write_failure_state,
           zlink::stream_connector::packet_t{.name = "write.failure.request",
@@ -1166,8 +1189,10 @@ int main ()
                 !result
                 && result.error_code () == zlink::stream_connector::error_code_t::send_failed;
           });
-        if (!async_request_write_failure_seen
-            || async_request_write_failure_state->pending_requests.size () != 0) {
+        if (!eventually ([&] {
+                return async_request_write_failure_seen.load ()
+                       && async_request_write_failure_state->pending_requests.size () == 0;
+            })) {
             return 166;
         }
 
@@ -1182,8 +1207,8 @@ int main ()
               .dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate});
         early_reply_state->state = zlink::stream_connector::connection_state_t::connected;
         early_reply_state->connection = early_reply_connection;
-        int early_reply_callback_count = 0;
-        bool early_reply_seen = false;
+        std::atomic<int> early_reply_callback_count{0};
+        std::atomic<bool> early_reply_seen{false};
         zlink::stream_connector::detail::submit_request_async (
           early_reply_state,
           zlink::stream_connector::packet_t{.name = "early.reply.request",
@@ -1194,14 +1219,17 @@ int main ()
               ++early_reply_callback_count;
               early_reply_seen = result && result.value ().payload.to_string () == "early-reply";
           });
-        if (early_reply_connection->written.empty () || !early_reply_connection->write_completion
-            || !early_reply_seen || early_reply_callback_count != 1
-            || !early_reply_state->pending_requests.empty ()) {
+        if (!eventually ([&] {
+                return !early_reply_connection->written.empty ()
+                       && static_cast<bool> (early_reply_connection->write_completion)
+                       && early_reply_seen.load () && early_reply_callback_count.load () == 1
+                       && early_reply_state->pending_requests.empty ();
+            })) {
             return 171;
         }
         early_reply_connection->complete_write ();
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
-        if (!early_reply_seen || early_reply_callback_count != 1
+        if (!early_reply_seen.load () || early_reply_callback_count.load () != 1
             || !early_reply_state->pending_requests.empty ()) {
             return 173;
         }
@@ -1221,8 +1249,8 @@ int main ()
               .dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate});
         interleaved_state->state = zlink::stream_connector::connection_state_t::connected;
         interleaved_state->connection = interleaved_connection;
-        int interleaved_wait_callback_count = 0;
-        bool interleaved_push_seen = false;
+        std::atomic<int> interleaved_wait_callback_count{0};
+        std::atomic<bool> interleaved_push_seen{false};
         interleaved_state->pending_waits.emplace (
           1, zlink::stream_connector::detail::pending_wait_t{
                1,
@@ -1233,7 +1261,7 @@ int main ()
                    interleaved_push_seen =
                      result && result.value ().payload.to_string () == "push-payload";
                }});
-        bool interleaved_reply_seen = false;
+        std::atomic<bool> interleaved_reply_seen{false};
         zlink::stream_connector::detail::submit_request_async (
           interleaved_state,
           zlink::stream_connector::packet_t{.name = "interleaved.request",
@@ -1244,15 +1272,20 @@ int main ()
               interleaved_reply_seen =
                 result && result.value ().payload.to_string () == "reply-payload";
           });
-        if (interleaved_connection->written.empty () || !interleaved_connection->write_completion
-            || !interleaved_push_seen || interleaved_wait_callback_count != 1
-            || !interleaved_reply_seen || !interleaved_state->pending_requests.empty ()
-            || !interleaved_state->pending_waits.empty ()) {
+        if (!eventually ([&] {
+                return !interleaved_connection->written.empty ()
+                       && static_cast<bool> (interleaved_connection->write_completion)
+                       && interleaved_push_seen.load ()
+                       && interleaved_wait_callback_count.load () == 1
+                       && interleaved_reply_seen.load ()
+                       && interleaved_state->pending_requests.empty ()
+                       && interleaved_state->pending_waits.empty ();
+            })) {
             return 174;
         }
         interleaved_connection->complete_write ();
-        if (!interleaved_push_seen || interleaved_wait_callback_count != 1
-            || !interleaved_reply_seen || !interleaved_state->pending_requests.empty ()
+        if (!interleaved_push_seen.load () || interleaved_wait_callback_count.load () != 1
+            || !interleaved_reply_seen.load () || !interleaved_state->pending_requests.empty ()
             || !interleaved_state->pending_waits.empty ()) {
             return 175;
         }
@@ -1752,7 +1785,7 @@ int main ()
       });
     dispatch_until (connector, immediate_wait_callback_latch, std::chrono::milliseconds (100));
     if (!immediate_wait_callback_seen) {
-        return 155;
+        return 176;
     }
 
     bool pending_wait_callback_seen = false;

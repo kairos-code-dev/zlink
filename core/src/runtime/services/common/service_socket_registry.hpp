@@ -10,6 +10,7 @@
 #include "utils/mutex.hpp"
 
 #include <map>
+#include <set>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -39,6 +40,35 @@ class service_socket_registry_t
         scoped_lock_t lock (_sync);
         _owned_sockets.erase (socket_->socket_id ());
         _closing_sockets.erase (socket_->socket_id ());
+        _detached_close_ids.erase (socket_->socket_id ());
+    }
+
+    //  Marks a socket whose peers are application-owned sockets. Terminating
+    //  an inproc pipe to such a peer is only acknowledged when the peer
+    //  application thread processes commands, which the service cannot force,
+    //  so teardown must not block on this socket's reaper removal.
+    void mark_detached_close (const socket_base_t *socket_)
+    {
+        if (!socket_)
+            return;
+        scoped_lock_t lock (_sync);
+        _detached_close_ids.insert (socket_->socket_id ());
+    }
+
+    //  Drops tracking for detached-close sockets whose close has already been
+    //  requested: the context reaps them once the peer cooperates or the
+    //  context terminates. Sockets never closed stay tracked as leaks.
+    void drop_detached_closing ()
+    {
+        scoped_lock_t lock (_sync);
+        for (std::set<int>::iterator it = _detached_close_ids.begin ();
+             it != _detached_close_ids.end ();) {
+            if (_closing_sockets.erase (*it) != 0) {
+                std::set<int>::iterator drop_it = it++;
+                _detached_close_ids.erase (drop_it);
+            } else
+                ++it;
+        }
     }
 
     int close_socket (socket_base_t *&socket_, const socket_base_t **closed_socket_ = NULL)
@@ -100,6 +130,7 @@ class service_socket_registry_t
         scoped_lock_t lock (_sync);
         _owned_sockets.clear ();
         _closing_sockets.clear ();
+        _detached_close_ids.clear ();
     }
 
     void erase_closing_socket (int socket_id_)
@@ -129,6 +160,7 @@ class service_socket_registry_t
     mutable mutex_t _sync;
     socket_map_t _owned_sockets;
     socket_map_t _closing_sockets;
+    std::set<int> _detached_close_ids;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (service_socket_registry_t)
 };

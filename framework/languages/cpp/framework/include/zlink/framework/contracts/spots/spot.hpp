@@ -1325,6 +1325,10 @@ class spot_node_builder_t
     spot_node_builder_t &connect_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_peer_pub (std::string endpoint);
     spot_node_builder_t &set_spot_route_channel (std::string route_channel_name);
+    // In-flight handoff (spot-actor.ko.md 10.4): how long this node keeps the
+    // straggler forwarding mapping after a completed transfer. Default 5s;
+    // deployments override it, tests shorten it.
+    spot_node_builder_t &set_actor_transfer_forward_window (std::chrono::milliseconds window);
     template <typename TSpot> spot_node_builder_t &add_spot (std::string spot_name)
     {
         static_assert (std::is_base_of_v<spot_t, TSpot>,

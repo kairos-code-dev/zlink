@@ -278,12 +278,12 @@ if(BUILD_SHARED)
   target_link_libraries(testutil libzlink ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
 endif()
 
-if(BUILD_STATIC AND (NOT BUILD_SHARED OR WIN32))
-  # Windows DLL builds do not export private helper symbols that testutil uses.
-  # Keep all test executables on the static helper path when it is available.
+if(BUILD_STATIC)
+  # Shared library builds export only the public zlink_* C API (Windows DLL
+  # exports and the Linux version script agree on this), so tests that reach
+  # private helper symbols must link the static library instead.
   set(TESTUTIL_LIB testutil-static)
 else()
-  # use testutil for tests and testutil-static for unit tests
   set(TESTUTIL_LIB testutil)
 endif()
 

@@ -34,6 +34,17 @@ struct spot_actor_admission_route_reply_t
     std::vector<std::uint8_t> payload;
 };
 
+// One preserved in-flight packet carried with the commit (spot-actor §10.2-2).
+// The target enqueues these in order before it publishes the committed
+// location, so direct packets cannot overtake them (§10.2-3).
+struct spot_actor_handoff_packet_t
+{
+    std::string packet_name_value;
+    std::vector<std::uint8_t> payload;
+    std::string content_type;
+    std::map<std::string, std::string> metadata;
+};
+
 struct spot_actor_commit_route_request_t
 {
     static constexpr const char *packet_name = "__zlink.spot.actor.join.commit";
@@ -47,6 +58,7 @@ struct spot_actor_commit_route_request_t
     std::string bound_session_node_rid;
     std::string bound_session_rid;
     std::vector<std::uint8_t> transfer_state;
+    std::vector<spot_actor_handoff_packet_t> handoff_backlog;
 };
 
 struct spot_actor_join_route_request_t
@@ -130,6 +142,11 @@ struct actor_bound_session_route_reply_t
 {
     bool accepted = true;
 };
+
+result_t<zlink::message_t> encode_actor_bound_session_frame (
+  stream_codec_t codec,
+  std::string packet_name,
+  const zlink::message_t &payload);
 
 spot_actor_join_route_request_t make_spot_actor_join_route_request (
   const actor_ref_t &actor_ref,

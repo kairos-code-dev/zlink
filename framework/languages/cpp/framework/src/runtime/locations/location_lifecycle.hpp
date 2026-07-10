@@ -36,11 +36,21 @@ class location_lifecycle_t
         _runtime (&runtime), _state (std::make_shared<state_t> ())
     {
         std::weak_ptr<state_t> weak_state = _state;
-        runtime.on_ownership_lost ([weak_state] {
-            if (auto state = weak_state.lock ()) {
-                deactivate_all (*state);
-            }
-        });
+        // Ownership loss arrives per row: only the claim for that canonical key is
+        // deactivated. Other claims held by this owner stay live (.NET parity).
+        runtime.on_ownership_lost (
+          [weak_state] (location_kind_t kind, const std::string &canonical_key) {
+              auto state = weak_state.lock ();
+              if (!state) {
+                  return;
+              }
+              if (kind == location_kind_t::actor) {
+                  deactivate_actor (*state, canonical_key);
+              } else if (kind == location_kind_t::spot) {
+                  std::lock_guard lock (state->gate);
+                  state->spots.erase (canonical_key);
+              }
+          });
     }
 
     ~location_lifecycle_t ()
@@ -194,16 +204,12 @@ class location_lifecycle_t
                 return {location_write_status_t::ignored_stale, 0, {}};
             }
             actor = found->second.actor;
+            // Untracked before the write: a stale remove after another owner's
+            // takeover is ignored by the store and must not fire deactivation.
+            _state->actors.erase (found);
         }
 
-        const auto result = _runtime->remove_actor (
-          actor_location_key_t{actor.actor_id}, actor.generation);
-        if (result.status == location_write_status_t::stored
-            || result.status == location_write_status_t::ignored_stale) {
-            std::lock_guard lock (_state->gate);
-            _state->actors.erase (actor_key (actor));
-        }
-        return result;
+        return _runtime->remove_actor (actor_location_key_t{actor.actor_id}, actor.generation);
     }
 
     std::size_t tracked_actor_count () const

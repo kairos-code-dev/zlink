@@ -45,6 +45,10 @@ struct pending_request_t
     packet_t packet;
     std::function<void (result_t<request_reply_t>)> callback;
     std::shared_ptr<boost::asio::steady_timer> timeout_timer;
+    // Internal sync-over-async bridges set this: their callback only resolves
+    // a promise, so it must run directly instead of riding the user delivery
+    // queue (which the blocked caller can never dispatch in queued mode).
+    bool deliver_direct = false;
 };
 
 struct pending_wait_t
@@ -107,6 +111,10 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     bool request_pump_scheduled = false;
     bool read_in_progress = false;
     std::optional<error_t> inbound_error;
+    // Last error that drove a disconnect/close transition. Synchronous waiters
+    // that observe the transport already down report this instead of a generic
+    // "not connected" when the pump consumed the inbound error first.
+    std::optional<error_t> last_disconnect_error;
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
     boost::asio::io_context &io_context;

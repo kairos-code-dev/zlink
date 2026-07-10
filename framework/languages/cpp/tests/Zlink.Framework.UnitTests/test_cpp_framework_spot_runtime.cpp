@@ -369,6 +369,7 @@ struct stateful_relay_spot_t : zlink::framework::spot_t
     void configure (zlink::framework::spot_context_t &context)
     {
         context.handlers ().add_actor_request<&stateful_relay_spot_t::read> ("state.read");
+        context.handlers ().add_actor_send<&stateful_relay_spot_t::on_note> ("state.note");
     }
 
     zlink::framework::spot_actor_join_response_t
@@ -406,6 +407,22 @@ struct stateful_relay_spot_t : zlink::framework::spot_t
         if (lifecycle_probe) {
             lifecycle_probe->record ("joined");
         }
+        if (joined_reentry_probe) {
+            // Run the probe on a separate thread: it calls back into the runtime,
+            // which must not deadlock against the thread driving the commit.
+            auto done = std::make_shared<std::promise<bool>> ();
+            auto result = done->get_future ();
+            std::thread worker ([probe = joined_reentry_probe, done] {
+                done->set_value (probe ());
+            });
+            if (result.wait_for (std::chrono::seconds (2)) == std::future_status::ready) {
+                joined_reentry_ok = result.get ();
+                worker.join ();
+            } else {
+                joined_reentry_ok = false;
+                worker.detach ();
+            }
+        }
     }
 
     void block_next_joined ()
@@ -435,6 +452,31 @@ struct stateful_relay_spot_t : zlink::framework::spot_t
         return {actor.state};
     }
 
+    void on_note (stateful_relay_actor_t &,
+                  const zlink::framework::spot_actor_send_context_t &,
+                  const relay_reply_t &note)
+    {
+        std::lock_guard lock (notes_gate);
+        notes.push_back (note.value);
+        notes_changed.notify_all ();
+    }
+
+    bool wait_for_notes (std::size_t count, std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock (notes_gate);
+        return notes_changed.wait_for (lock, timeout,
+                                       [this, count] { return notes.size () >= count; });
+    }
+
+    std::vector<std::string> notes_snapshot ()
+    {
+        std::lock_guard lock (notes_gate);
+        return notes;
+    }
+
+    std::mutex notes_gate;
+    std::condition_variable notes_changed;
+    std::vector<std::string> notes;
     std::string joined_state;
     std::mutex joined_gate;
     std::condition_variable joined_changed;
@@ -443,6 +485,8 @@ struct stateful_relay_spot_t : zlink::framework::spot_t
     bool fail_leave = false;
     bool fail_joined = false;
     std::shared_ptr<stateful_lifecycle_probe_t> lifecycle_probe;
+    std::function<bool ()> joined_reentry_probe;
+    bool joined_reentry_ok = false;
 };
 
 struct relay_entry_spot_t : public zlink::framework::entry_spot_t
@@ -2221,7 +2265,7 @@ int main ()
         || stateful_location->spot_rid->to_string () != stateful_source.spot_rid.value ()
         || stateful_pending_packet
         || stateful_pending_packet.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected) {
+             != zlink::framework::framework_error_kind_t::actor_location_stale) {
         stateful_target_spot->release_joined ();
         (void) stateful_commit_future.get ();
         return 163;
@@ -2263,6 +2307,276 @@ int main ()
     }
     stateful_source_locations.stop ();
     stateful_target_locations.stop ();
+
+    // Regression: commit_remote_actor_to_spot must not hold the node mutex while
+    // on_actor_joined runs. The callback may trigger work on another thread that
+    // calls back into the runtime, which needs the node mutex.
+    auto reentry_spot = std::make_shared<stateful_relay_spot_t> ();
+    zlink::framework::zlink_builder_t reentry_host;
+    zlink::framework::detail::channel_runtime_t::from (reentry_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto reentry_builder = reentry_host.add_spot_node ("reentry-node");
+    reentry_builder.add_actor_factory<stateful_relay_actor_factory_t> ("stateful-player")
+      .add_spot<stateful_relay_spot_t> ("reentry-target",
+                                        [reentry_spot] { return reentry_spot; });
+    const auto reentry_target = reentry_builder.create_spot ("reentry-target");
+    auto reentry_runtime = zlink::framework::detail::spot_node_runtime_t::from (reentry_builder);
+    reentry_spot->joined_reentry_probe = [&reentry_runtime] {
+        const auto blocked = reentry_runtime.transfer_actor_out (zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string ("reentry-source"), "stateful-player",
+          "reentry-missing", 1));
+        return !blocked;
+    };
+    const auto reentry_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("reentry-source"), "stateful-player",
+      "reentry-actor", 1);
+    auto reentry_admitted = reentry_runtime.admit_remote_actor_to_spot (
+      "reentry-transfer-1", reentry_ref,
+      zlink::framework::spot_rid_t::from_string ("reentry-source-spot"), reentry_target.spot_rid,
+      zlink::message_t{});
+    if (!reentry_admitted || !reentry_admitted.value ().accepted) {
+        return 200;
+    }
+    auto reentry_committed = reentry_runtime.commit_remote_actor_to_spot (
+      "reentry-transfer-1", reentry_ref, reentry_target.spot_rid, zlink::message_t{});
+    if (!reentry_committed) {
+        return 201;
+    }
+    if (!reentry_spot->joined_reentry_ok) {
+        return 202;
+    }
+
+    // Regression: a stale location-loss notification must not erase the newer
+    // forwarding route that a completed transfer recorded (generation fencing).
+    zlink::framework::runtime::in_memory_location_store_t fencing_store;
+    zlink::framework::runtime::location_runtime_t fencing_source_locations (
+      fencing_store, {}, "fencing-source-owner");
+    zlink::framework::runtime::location_runtime_t fencing_taker_locations (
+      fencing_store, {}, "fencing-taker-owner");
+    fencing_source_locations.start (zlink::routing_id_t::from ("fencing-source-node"));
+    fencing_taker_locations.start (zlink::routing_id_t::from ("fencing-taker-node"));
+    zlink::framework::runtime::location_lifecycle_t fencing_source_lifecycle (
+      fencing_source_locations);
+    zlink::framework::runtime::location_lifecycle_t fencing_taker_lifecycle (
+      fencing_taker_locations);
+    auto fencing_spot_instance = std::make_shared<stateful_relay_spot_t> ();
+    zlink::framework::zlink_builder_t fencing_host;
+    zlink::framework::detail::channel_runtime_t::from (fencing_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto fencing_builder = fencing_host.add_spot_node ("fencing-source-node");
+    fencing_builder.add_actor_factory<stateful_relay_actor_factory_t> ("stateful-player")
+      .add_spot<stateful_relay_spot_t> ("fencing-spot",
+                                        [fencing_spot_instance] { return fencing_spot_instance; });
+    const auto fencing_spot = fencing_builder.create_spot ("fencing-spot");
+    auto fencing_runtime = zlink::framework::detail::spot_node_runtime_t::from (fencing_builder);
+    fencing_runtime.bind_location_lifecycle (fencing_source_lifecycle);
+    const auto fencing_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("fencing-source-node"), "stateful-player",
+      "fencing-actor", 1);
+    auto fencing_join = fencing_runtime.join_actor_to_spot_erased (
+      fencing_ref, fencing_spot.spot_rid, zlink::message_t{});
+    if (!fencing_join || fencing_join.value ().result_code != 0) {
+        return 203;
+    }
+    const auto fencing_moved = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("fencing-target-node"), "stateful-player",
+      "fencing-actor", fencing_join.value ().actor.generation () + 1);
+    fencing_runtime.record_actor_route (
+      fencing_moved,
+      zlink::framework::spot_route_t{
+        zlink::framework::node_rid_t::from_string ("fencing-target-node"),
+        zlink::framework::spot_rid_t::from_string ("fencing-target-spot"), "fencing-target"});
+    auto fencing_taken = fencing_taker_lifecycle.claim_actor (
+      zlink::framework::actor_location_t{
+        .actor_id = "fencing-actor",
+        .actor_type = "stateful-player",
+        .actor_ref = fencing_moved,
+        .node_rid = zlink::routing_id_t::from ("fencing-target-node"),
+        .location_kind = zlink::spot_kind::user,
+        .spot_mesh_name = "fencing-target",
+        .spot_rid = zlink::routing_id_t::from ("fencing-target-spot"),
+        .generation = 0},
+      {}, true);
+    if (fencing_taken.status != zlink::framework::location_write_status_t::stored) {
+        return 204;
+    }
+    (void) fencing_source_lifecycle.renew_actor (
+      zlink::framework::actor_location_key_t{"fencing-actor"});
+    auto fencing_current = fencing_runtime.current_actor_ref (fencing_join.value ().actor);
+    if (!fencing_current || fencing_current->generation () != fencing_moved.generation ()) {
+        return 205;
+    }
+    fencing_source_locations.stop ();
+    fencing_taker_locations.stop ();
+
+    // In-flight handoff (§10): sends that arrive while the actor is moving are
+    // preserved in arrival order, travel with the commit, and replay on the
+    // target before any direct packet can overtake them; requests fail fast as
+    // retriable. The straggler forwarding mapping is evicted once its window
+    // elapses, leaving only the generation tombstone.
+    auto handoff_source_spot = std::make_shared<stateful_relay_spot_t> ();
+    auto handoff_target_spot = std::make_shared<stateful_relay_spot_t> ();
+    zlink::framework::zlink_builder_t handoff_source_host;
+    zlink::framework::detail::channel_runtime_t::from (handoff_source_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto handoff_source_builder = handoff_source_host.add_spot_node ("handoff-source-node");
+    handoff_source_builder.add_actor_factory<stateful_relay_actor_factory_t> ("stateful-player")
+      .add_actor_transfer_adapter<stateful_relay_actor_t, stateful_relay_transfer_t> (
+        "stateful-player")
+      .add_spot<stateful_relay_spot_t> ("handoff-source",
+                                        [handoff_source_spot] { return handoff_source_spot; });
+    zlink::framework::zlink_builder_t handoff_target_host;
+    zlink::framework::detail::channel_runtime_t::from (handoff_target_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto handoff_target_builder = handoff_target_host.add_spot_node ("handoff-target-node");
+    handoff_target_builder.add_actor_factory<stateful_relay_actor_factory_t> ("stateful-player")
+      .add_actor_transfer_adapter<stateful_relay_actor_t, stateful_relay_transfer_t> (
+        "stateful-player")
+      .add_spot<stateful_relay_spot_t> ("handoff-target",
+                                        [handoff_target_spot] { return handoff_target_spot; });
+    const auto handoff_source = handoff_source_builder.create_spot ("handoff-source");
+    const auto handoff_target = handoff_target_builder.create_spot ("handoff-target");
+    auto handoff_source_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (handoff_source_builder);
+    auto handoff_target_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (handoff_target_builder);
+    const auto handoff_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("handoff-source-node"), "stateful-player",
+      "handoff-actor", 1);
+    auto handoff_join = handoff_source_runtime.join_actor_to_spot_erased (
+      handoff_ref, handoff_source.spot_rid, zlink::message_t{});
+    if (!handoff_join || handoff_join.value ().result_code != 0) {
+        return 206;
+    }
+    auto handoff_instance =
+      handoff_source_runtime.actor_instance<stateful_relay_actor_t> (handoff_join.value ().actor);
+    if (!handoff_instance) {
+        return 206;
+    }
+    handoff_instance->get ().state = "handoff-v1";
+    auto handoff_admitted = handoff_target_runtime.admit_remote_actor_to_spot (
+      "handoff-transfer-1", handoff_join.value ().actor, handoff_source.spot_rid,
+      handoff_target.spot_rid, zlink::message_t{});
+    auto handoff_transfer = handoff_source_runtime.transfer_actor_out (handoff_join.value ().actor);
+    if (!handoff_admitted || !handoff_admitted.value ().accepted || !handoff_transfer) {
+        return 207;
+    }
+    zlink::framework::service_collection_t handoff_services;
+    auto handoff_provider = handoff_services.build_provider ();
+    auto handoff_moving_send_1 = handoff_source_runtime.relay_actor_packet (
+      handoff_join.value ().actor, {}, zlink::framework::detail::stream_message_kind_t::send, "state.note",
+      zlink::message_t::from (std::string ("note-1")), handoff_provider, manual_serializers);
+    auto handoff_moving_send_2 = handoff_source_runtime.relay_actor_packet (
+      handoff_join.value ().actor, {}, zlink::framework::detail::stream_message_kind_t::send, "state.note",
+      zlink::message_t::from (std::string ("note-2")), handoff_provider, manual_serializers);
+    if (!handoff_moving_send_1 || !handoff_moving_send_2
+        || !handoff_source_spot->notes_snapshot ().empty ()) {
+        return 208;
+    }
+    auto handoff_moving_request = handoff_source_runtime.relay_actor_packet (
+      handoff_join.value ().actor, {}, "state.read", zlink::message_t{}, handoff_provider,
+      manual_serializers);
+    if (handoff_moving_request
+        || handoff_moving_request.error_kind ()
+             != zlink::framework::framework_error_kind_t::actor_location_stale
+        || !handoff_moving_request.error () || !handoff_moving_request.error ()->is_retriable ()) {
+        return 209;
+    }
+    auto handoff_left =
+      handoff_source_runtime.leave_actor_for_remote_transfer (handoff_join.value ().actor);
+    if (!handoff_left) {
+        return 210;
+    }
+    auto handoff_backlog =
+      handoff_source_runtime.take_actor_handoff_backlog (handoff_join.value ().actor);
+    if (handoff_backlog.size () != 2 || handoff_backlog[0].packet_name != "state.note"
+        || handoff_backlog[1].packet_name != "state.note"
+        || !handoff_source_runtime.take_actor_handoff_backlog (handoff_join.value ().actor)
+              .empty ()) {
+        return 211;
+    }
+    auto handoff_committed = handoff_target_runtime.commit_remote_actor_to_spot (
+      "handoff-transfer-1", handoff_join.value ().actor, handoff_target.spot_rid,
+      std::move (handoff_transfer.value ().state), {}, std::move (handoff_backlog),
+      &handoff_provider);
+    if (!handoff_committed) {
+        return 212;
+    }
+    auto handoff_direct_send = handoff_target_runtime.relay_actor_packet (
+      handoff_committed.value ().actor, {}, zlink::framework::detail::stream_message_kind_t::send,
+      "state.note", zlink::message_t::from (std::string ("note-3")), handoff_provider,
+      manual_serializers);
+    if (!handoff_direct_send) {
+        return 213;
+    }
+    if (!handoff_target_spot->wait_for_notes (3, std::chrono::seconds (2))) {
+        return 214;
+    }
+    const auto handoff_notes = handoff_target_spot->notes_snapshot ();
+    if (handoff_notes.size () != 3 || handoff_notes[0] != "note-1" || handoff_notes[1] != "note-2"
+        || handoff_notes[2] != "note-3") {
+        return 214;
+    }
+    handoff_source_runtime.complete_remote_actor_transfer (
+      handoff_join.value ().actor, handoff_committed.value ().actor,
+      zlink::framework::spot_route_t{handoff_target_runtime.node_rid (), handoff_target.spot_rid,
+                                     "handoff-target"});
+    // Default window: the forwarding mapping must survive cleanup while active.
+    if (handoff_source_runtime.cleanup_expired_actor_admissions () != 0
+        || !handoff_source_runtime.actor_route (handoff_join.value ().actor)) {
+        return 215;
+    }
+    // Second transfer with a zero window: the mapping is evicted on cleanup
+    // while the first actor's active mapping stays, and only the generation
+    // tombstone survives so stale refs keep resolving to the new generation.
+    const auto handoff_evict_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("handoff-source-node"), "stateful-player",
+      "handoff-actor-2", 1);
+    auto handoff_evict_join = handoff_source_runtime.join_actor_to_spot_erased (
+      handoff_evict_ref, handoff_source.spot_rid, zlink::message_t{});
+    if (!handoff_evict_join || handoff_evict_join.value ().result_code != 0) {
+        return 216;
+    }
+    auto handoff_evict_admitted = handoff_target_runtime.admit_remote_actor_to_spot (
+      "handoff-transfer-2", handoff_evict_join.value ().actor, handoff_source.spot_rid,
+      handoff_target.spot_rid, zlink::message_t{});
+    auto handoff_evict_transfer =
+      handoff_source_runtime.transfer_actor_out (handoff_evict_join.value ().actor);
+    if (!handoff_evict_admitted || !handoff_evict_admitted.value ().accepted
+        || !handoff_evict_transfer) {
+        return 216;
+    }
+    auto handoff_evict_left =
+      handoff_source_runtime.leave_actor_for_remote_transfer (handoff_evict_join.value ().actor);
+    if (!handoff_evict_left) {
+        return 216;
+    }
+    auto handoff_evict_committed = handoff_target_runtime.commit_remote_actor_to_spot (
+      "handoff-transfer-2", handoff_evict_join.value ().actor, handoff_target.spot_rid,
+      std::move (handoff_evict_transfer.value ().state));
+    if (!handoff_evict_committed) {
+        return 216;
+    }
+    handoff_source_runtime.set_actor_transfer_forward_window (std::chrono::milliseconds (0));
+    handoff_source_runtime.complete_remote_actor_transfer (
+      handoff_evict_join.value ().actor, handoff_evict_committed.value ().actor,
+      zlink::framework::spot_route_t{handoff_target_runtime.node_rid (), handoff_target.spot_rid,
+                                     "handoff-target"});
+    if (!handoff_source_runtime.actor_route (handoff_evict_join.value ().actor)) {
+        return 217;
+    }
+    if (handoff_source_runtime.cleanup_expired_actor_admissions () == 0
+        || handoff_source_runtime.actor_route (handoff_evict_join.value ().actor)
+        || !handoff_source_runtime.actor_route (handoff_join.value ().actor)) {
+        return 217;
+    }
+    auto handoff_evict_current =
+      handoff_source_runtime.current_actor_ref (handoff_evict_join.value ().actor);
+    if (!handoff_evict_current
+        || handoff_evict_current->generation ()
+             != handoff_evict_committed.value ().actor.generation ()) {
+        return 218;
+    }
 
     auto local_move_probe = std::make_shared<stateful_lifecycle_probe_t> ();
     auto local_move_source_spot = std::make_shared<stateful_relay_spot_t> ();
@@ -2324,9 +2638,9 @@ int main ()
     const auto events_during_move = local_move_probe->snapshot ();
     if (source_packet_during_move || target_packet_during_move
         || source_packet_during_move.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected
+             != zlink::framework::framework_error_kind_t::actor_location_stale
         || target_packet_during_move.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected
+             != zlink::framework::framework_error_kind_t::actor_location_stale
         || events_during_move != std::vector<std::string> ({"admission", "leave"})) {
         local_move_target_spot->release_joined ();
         (void) local_join_future.get ();
@@ -2462,7 +2776,7 @@ int main ()
     auto transfer_in_source_packet = source_packet (transfer_in_actor.value ().actor);
     if (!transfer_in_left || transfer_in_failure || transfer_in_source_packet
         || transfer_in_source_packet.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected
+             != zlink::framework::framework_error_kind_t::actor_location_stale
         || failure_target_runtime.actor_instance<stateful_relay_actor_t> (
           transfer_in_actor.value ().actor)) {
         return 172;
@@ -2497,9 +2811,9 @@ int main ()
     if (!joined_failure_left || joined_failure || joined_failure_source_packet
         || joined_failure_target_packet
         || joined_failure_source_packet.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected
+             != zlink::framework::framework_error_kind_t::actor_location_stale
         || joined_failure_target_packet.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected
+             != zlink::framework::framework_error_kind_t::actor_location_stale
         || !failure_target_runtime.actor_instance<stateful_relay_actor_t> (
           joined_failure_actor.value ().actor)) {
         return 173;
@@ -2625,7 +2939,7 @@ int main ()
                                            expiring_provider, expiring_serializers);
     if (!expiring_admitted || !expiring_admitted.value ().accepted || packet_during_pending
         || packet_during_pending.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected) {
+             != zlink::framework::framework_error_kind_t::actor_location_stale) {
         return 159;
     }
     std::this_thread::sleep_for (std::chrono::milliseconds (10));
@@ -2681,7 +2995,7 @@ int main ()
                                         zlink::message_t{}, moving_provider, moving_serializers);
     if (moving_packet
         || moving_packet.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_rejected) {
+             != zlink::framework::framework_error_kind_t::actor_location_stale) {
         return 153;
     }
     const auto target_transfer_ref = zlink::framework::actor_ref_t (

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -136,40 +137,43 @@ class actor_client_impl_t final : public actor_client_t
       message_t request,
       std::optional<std::chrono::milliseconds> timeout) override
     {
+        // In-flight handoff (spot-actor.ko.md 10.2-5): a request that lands
+        // while the actor is moving fails fast as retriable, and the sender
+        // re-resolves and retries. The caller's timeout keeps running across
+        // retries — the move does not reset it (10.5-2).
         const auto actor_id = std::string (actor_ref.actor_id ());
-        auto actor = resolve_actor (actor_id, stale_policy_t::route_not_found);
-        if (!actor) {
-            co_return result_t<message_t>::failure (
-              actor.error_kind (), actor.error () ? actor.error ()->what ()
-                                                  : "actor route was not found",
-              actor.error () && actor.error ()->is_retriable ());
+        const auto budget = timeout.value_or (_default_timeout);
+        const auto deadline = std::chrono::steady_clock::now () + budget;
+        auto policy = stale_policy_t::route_not_found;
+        result_t<message_t> last = result_t<message_t>::failure (
+          framework_error_kind_t::actor_location_stale, "actor location is stale", true);
+        while (true) {
+            auto actor = resolve_actor (actor_id, policy);
+            if (actor) {
+                const auto now = std::chrono::steady_clock::now ();
+                if (now >= deadline) {
+                    co_return result_t<message_t>::failure (
+                      framework_error_kind_t::timeout, "actor request timed out", true);
+                }
+                const auto remaining =
+                  std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+                last = submit_request (actor.value (), packet_name, request, remaining);
+                if (last || !is_stale_actor_error (last.error_kind ())) {
+                    co_return last;
+                }
+            } else if (!actor.error () || !actor.error ()->is_retriable ()) {
+                co_return result_t<message_t>::failure (
+                  actor.error_kind (),
+                  actor.error () ? actor.error ()->what () : "actor route was not found",
+                  actor.error () && actor.error ()->is_retriable ());
+            }
+            policy = stale_policy_t::location_stale;
+            if (std::chrono::steady_clock::now () + std::chrono::milliseconds (50) >= deadline) {
+                co_return result_t<message_t>::failure (
+                  framework_error_kind_t::timeout, "actor request timed out", true);
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
         }
-        auto first =
-          submit_request (actor.value (), packet_name, request, timeout.value_or (_default_timeout));
-        if (first) {
-            co_return first;
-        }
-        if (!is_stale_actor_error (first.error_kind ())) {
-            co_return first;
-        }
-        auto resolved = resolve_actor (actor_id, stale_policy_t::location_stale);
-        if (!resolved) {
-            co_return result_t<message_t>::failure (
-              resolved.error_kind (), resolved.error () ? resolved.error ()->what ()
-                                                       : "actor location is stale",
-              true);
-        }
-        auto retry = submit_request (resolved.value (), std::move (packet_name), std::move (request),
-                                     timeout.value_or (_default_timeout));
-        if (retry) {
-            co_return retry;
-        }
-        if (is_stale_actor_error (retry.error_kind ())) {
-            co_return result_t<message_t>::failure (
-              framework_error_kind_t::actor_location_stale,
-              "actor route is stale after re-resolve", true);
-        }
-        co_return retry;
     }
 
     serializer_registry_t &actor_client_serializers () override { return *_serializers; }
@@ -399,7 +403,8 @@ class actor_client_impl_t final : public actor_client_t
                                                                const std::string &message)
     {
         if (message.find ("stale") != std::string::npos
-            || message.find ("conflict") != std::string::npos) {
+            || message.find ("conflict") != std::string::npos
+            || message.find ("transfer is in progress") != std::string::npos) {
             return framework_error_kind_t::actor_location_stale;
         }
         if (message.find ("not found") != std::string::npos
@@ -432,7 +437,8 @@ class actor_client_impl_t final : public actor_client_t
                                                message);
         }
         if (message.find ("conflict") != std::string::npos
-            || message.find ("stale") != std::string::npos) {
+            || message.find ("stale") != std::string::npos
+            || message.find ("transfer is in progress") != std::string::npos) {
             return result_t<TResult>::failure (framework_error_kind_t::actor_location_stale,
                                                message, true);
         }

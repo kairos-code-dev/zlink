@@ -289,6 +289,15 @@ int spot_data_plane_t::initialize_runtime (spot_node_t *node_,
         spot_node_access_t::track_owned_socket (node_, state_out_->peer_ctrl_sub);
         spot_node_access_t::track_owned_socket (node_, state_out_->routed_router);
         spot_node_access_t::track_owned_socket (node_, state_out_->fanout);
+        //  These sockets carry pipes to application-owned peers (external
+        //  routers, subscribers, peer nodes). Their inproc pipe termination
+        //  can only be acknowledged by the peer application thread, so node
+        //  destroy must not block on their reaper removal.
+        spot_node_access_t::mark_socket_detached_close (node_, state_out_->mesh_pub);
+        spot_node_access_t::mark_socket_detached_close (node_, state_out_->mesh_xsub);
+        spot_node_access_t::mark_socket_detached_close (node_, state_out_->peer_ctrl_pub);
+        spot_node_access_t::mark_socket_detached_close (node_, state_out_->peer_ctrl_sub);
+        spot_node_access_t::mark_socket_detached_close (node_, state_out_->routed_router);
     }
 
     spot_data_plane_configure_runtime_sockets (runtime_, state_out_);

@@ -173,6 +173,7 @@ class spot_node_t
     bool is_shutting_down () const;
     socket_base_t *create_socket (int socket_type_) const;
     void track_owned_socket (socket_base_t *socket_);
+    void mark_socket_detached_close (const socket_base_t *socket_);
     int destroy_attachment (uint64_t attachment_id_);
     int destroy_attachment_async (uint64_t attachment_id_);
     spot_internal_receiver_t *ensure_internal_receiver ();

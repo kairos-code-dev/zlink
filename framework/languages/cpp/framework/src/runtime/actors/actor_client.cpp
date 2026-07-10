@@ -142,6 +142,9 @@ class actor_client_impl_t final : public actor_client_t
         // re-resolves and retries. The caller's timeout keeps running across
         // retries — the move does not reset it (10.5-2).
         const auto actor_id = std::string (actor_ref.actor_id ());
+        const auto caller_node_rid =
+          actor_ref.node_rid ().empty () ? std::string{}
+                                         : std::string (actor_ref.node_rid ().value ());
         const auto budget = timeout.value_or (_default_timeout);
         const auto deadline = std::chrono::steady_clock::now () + budget;
         auto policy = stale_policy_t::route_not_found;
@@ -150,6 +153,24 @@ class actor_client_impl_t final : public actor_client_t
         while (true) {
             auto actor = resolve_actor (actor_id, policy);
             if (actor) {
+                // In-flight handoff (spot-actor.ko.md §10.2-6): a request carries
+                // a reply channel and is addressed by ref, not re-resolved by id
+                // (unlike a best-effort by-id send, §10.2-5). If the caller's ref
+                // names a different node than the actor's committed location, the
+                // ref is a cross-node straggler: after the forwarding window it
+                // must fail fast so the sender re-resolves, rather than silently
+                // following the actor to its new incarnation. A local move keeps
+                // the same node, so an in-flight request against a still-current
+                // ref (A3) is unaffected and keeps retrying below.
+                if (!caller_node_rid.empty ()
+                    && actor.value ().node_rid.value () != caller_node_rid) {
+                    co_return result_t<message_t>::failure (
+                      framework_error_kind_t::actor_location_stale,
+                      "actor ref is stale: the actor moved to node '"
+                        + std::string (actor.value ().node_rid.value ()) + "', ref names node '"
+                        + caller_node_rid + "'. actor=" + actor_id,
+                      false);
+                }
                 const auto now = std::chrono::steady_clock::now ();
                 if (now >= deadline) {
                     co_return result_t<message_t>::failure (

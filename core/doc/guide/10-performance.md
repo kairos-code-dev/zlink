@@ -543,6 +543,72 @@ void on_pong(const zlink_routing_id_t *source_rid,
 
 > For details on internal optimization mechanisms such as speculative I/O and gather write, see [architecture.md](../internals/architecture.md).
 
+## 8. Memory Planning for Large Connection Counts
+
+When a server holds thousands to tens of thousands of connections, the fixed
+per-connection memory dominates the process footprint. Plan capacity by
+distinguishing three values for each connection:
+
+- **Idle baseline** — the fixed cost paid from the moment the connection is
+  established
+- **Post-traffic residual** — what a connection keeps holding once it has
+  seen any traffic. The library keeps a connection's internal buffers for
+  the connection's lifetime, so memory does not fall back to the idle value
+  after traffic stops (confirmed by measurement). **This is the
+  capacity-planning baseline for long-running servers**
+- **Peak** — the queueing spike during bursts. HWM sets the ceiling and the
+  value depends on the workload (message size × HWM). **Use this for
+  container memory limits / OOM thresholds**
+
+### Per-connection memory by pattern (measured)
+
+Measured at 10,000 connections (post-8.6.3 development tree with the session
+pipe chunk and handshake buffer reductions applied, Linux x86-64, default
+options, balanced auto-HWM; lower-bound values with one message passed per
+connection). Absolute values vary by environment, but the ratios and
+composition come from the code structure.
+
+| Server pattern | Idle baseline | Post-traffic residual | Peak (1 KB burst, measured) |
+|----------------|--------------|------------------------|------------------------------|
+| ROUTER (request intake) | ~28 KB | ~33 KB | ~66 KB |
+| STREAM (raw TCP) | ~27 KB | ~27 KB | ~27 KB |
+| PUB (subscriber fanout) | ~31 KB | ~36 KB | ~36 KB+ |
+
+Example: a ROUTER server holding 10,000 long-lived connections should budget
+about 330 MB of process RSS (residual basis) and reserve ~660 MB when burst
+peaks are considered. At 50,000 connections that becomes ~1.7 GB / ~3.3 GB.
+
+### Count SpotNode mesh peers at 2–3×
+
+A SpotNode uses several TCP connections per peer. ALL mode uses 3 links
+(~79 KB + 3 fds per peer); PUBSUB mode uses 2 links (~46 KB + 2 fds per
+peer). If a deployment only needs pub/sub, simply selecting PUBSUB mode cuts
+per-peer memory and fd usage substantially. Double the numbers again for a
+bidirectional full mesh.
+
+### Large-connection checklist
+
+- [ ] Size process memory on the residual value and container limits on the
+      peak value
+- [ ] Run SpotNode in the narrowest mode that covers the deployment
+      (PUBSUB/ROUTED)
+- [ ] fd budget: set `RLIMIT_NOFILE` from connection count × (2–3 per peer
+      for SpotNode) plus headroom. `ZLINK_MAX_SOCKETS` limits **socket
+      handles** (default 4095), not connections — raise it only on the side
+      that creates many sockets (e.g. a client with one socket per
+      connection, or a process hosting many SpotNodes)
+- [ ] With very many low-bandwidth connections, cap per-socket kernel
+      buffers via `ZLINK_OPT_RCVBUF/SNDBUF` (e.g. 32 KB) to prevent
+      autotuning growth (default Linux sysctls let a socket grow to 16 MB)
+- [ ] Under sustained load, review `net.ipv4.tcp_mem` and
+      `tcp_rmem/tcp_wmem` ceilings (idle connections cost almost no kernel
+      buffer memory)
+- [ ] The HWM profile sets the peak — choose COMPACT when memory is tight,
+      THROUGHPUT when throughput matters most (see §3)
+
+> For what a single connection allocates internally and when, see
+> [Per-Connection Memory](../internals/connection-memory.md).
+
 ---
 <!-- zlink-nav:bottom:start -->
 [← Message API](09-message-api.md) | [Thread Safety →](11-thread-safety.md)

@@ -1419,6 +1419,7 @@ tail latency, CPU 사용률을 악화시키면 채택하지 않는다 — 구조
 - [RAW 프로토콜 상세](protocol-raw.ko.md)
 - [STREAM 소켓 WS/WSS 최적화](stream-socket.ko.md)
 - [스레딩 및 동시성 모델](threading-model.ko.md)
+- [연결당 메모리 구조](connection-memory.ko.md)
 - [성능 특성 및 튜닝 가이드](../guide/10-performance.ko.md)
 
 ### B. 핵심 인터페이스 요약

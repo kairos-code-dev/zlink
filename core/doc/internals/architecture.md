@@ -1462,6 +1462,7 @@ divorced from production reality.
 - [RAW Protocol Details](protocol-raw.md)
 - [STREAM Socket WS/WSS Optimization](stream-socket.md)
 - [Threading and Concurrency Model](threading-model.md)
+- [Per-Connection Memory](connection-memory.md)
 - [Performance Characteristics and Tuning Guide](../guide/10-performance.md)
 
 ### B. Core Interface Summary

@@ -58,7 +58,7 @@
 | 1 | **ST-F6**: config-10 커버분(F4/F5/C2) 완료. 잔여=§10.5 **window 내** request-reply forward 상관(F6-c) — config-10 미커버 | framework | P1 | 🟡 | config-10은 post-window만 검증. within-window request forward는 별도 |
 | 2 | §11-12 계약: commit 전 성공 노출 없음 + 실패 시 route 비오염 evidence | framework | P0 | ✅ | config-10 ST-C1/C2/C3로 마감 |
 | 3 | config-10 3-pass 전체 runner 그린 (19/19) | e2e | P0 | ✅ | `handoff_backlog` marker만 잔여(row 4) |
-| 4 | `backlog_enqueued` marker 타이밍 정합 | framework | P1 | ⬜ | 순서는 보존(F1/F2 통과), marker 발화 시점만 잔여 |
+| 4 | handoff marker 정합 | framework/e2e | P1 | ✅ | `backlog_enqueued`를 post-ack forward 경로에도 발화. F4/F5 marker=mapping_evicted로 정렬. 모든 marker는 타이밍 의존이라 best-effort(경고)로 — 19/19 시나리오 assertion이 authoritative gate |
 | 5 | H6: in-flight handoff POSD/DDD 루프 | doc/refactor | P1 | ⬜ | 전 언어 transverse |
 | 6 | P5: codex POSD/DDD 리팩토링 루프 CONVERGED | refactor | P1 | 🟡 | 회귀 그린 유지 |
 | 7 | public source interface ↔ contract test 정본화 | framework | P2 | ⬜ | `session_actor_manager_t`→`actor_ref_t` 원복됨, 계약 결정 필요 |

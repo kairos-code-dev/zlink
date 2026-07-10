@@ -30,19 +30,37 @@ constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKi
 constexpr std::string_view actor_relay_kind_send = "send";
 constexpr std::string_view actor_relay_kind_request = "request";
 
-// config-10 Track F evidence marker (in-flight handoff runbook 4): stragglers
-// forwarded through a retained mapping are visible to the e2e runner.
-void emit_straggler_forward_marker (const actor_ref_t &actor_ref)
+bool actor_handoff_markers_enabled ()
 {
     static const bool enabled = [] {
         const char *value = std::getenv ("ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS");
         return value != nullptr && *value != '\0' && std::string_view (value) != "0";
     }();
-    if (!enabled) {
+    return enabled;
+}
+
+// config-10 Track F evidence marker (in-flight handoff runbook 4): stragglers
+// forwarded through a retained mapping are visible to the e2e runner.
+void emit_straggler_forward_marker (const actor_ref_t &actor_ref)
+{
+    if (!actor_handoff_markers_enabled ()) {
         return;
     }
     std::cerr << "zlink actor-handoff marker=straggler_forward actor=" << actor_ref.actor_id ()
               << " generation=" << actor_ref.generation () << '\n';
+}
+
+// §10.2-2: preserved backlog packets that arrive between the backlog snapshot
+// and the commit ack are enqueued at the target through the post-ack forward
+// path (not the commit-embedded replay loop), so mirror the backlog_enqueued
+// marker here too — the packet is being enqueued at the committed target.
+void emit_backlog_enqueued_marker (const actor_ref_t &actor_ref, std::string_view packet_name)
+{
+    if (!actor_handoff_markers_enabled ()) {
+        return;
+    }
+    std::cerr << "zlink actor-handoff marker=backlog_enqueued actor=" << actor_ref.actor_id ()
+              << " packet=" << packet_name << '\n';
 }
 
 void trace_actor_transfer (std::string_view stage,
@@ -704,6 +722,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     // same mapping until its window evicts it.
     auto late_backlog = runtime.take_actor_handoff_backlog (actor_ref);
     for (auto &packet : late_backlog) {
+        emit_backlog_enqueued_marker (joined.value ().actor, packet.packet_name);
         stream_header_t header (stream_message_kind_t::send, stream_codec_t::raw,
                                 stream_header_flags_t::none, std::nullopt,
                                 std::move (packet.packet_name));

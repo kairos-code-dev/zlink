@@ -7,7 +7,7 @@ internal static class ZLinkActorTransferRegistry
     public static bool TryResolve(
         ZLinkFrameworkRegistration registration,
         string actorType,
-        out ZLinkActorTransferRegistration transfer)
+        out ZLinkActorTransferRegistration? transfer)
     {
         foreach (var spotNode in registration.SpotNodes.Values)
         {
@@ -15,7 +15,7 @@ internal static class ZLinkActorTransferRegistry
                 return true;
         }
 
-        transfer = null!;
+        transfer = null;
         return false;
     }
 
@@ -25,10 +25,8 @@ internal static class ZLinkActorTransferRegistry
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        if (transfer.Stateless) return ZLinkMessage.Empty;
-
         await using var scope = services.CreateAsyncScope();
-        var adapter = scope.ServiceProvider.GetRequiredService(transfer.AdapterType!);
+        var adapter = scope.ServiceProvider.GetRequiredService(transfer.AdapterType);
         var invokerType = typeof(ZLinkActorTransferInvoker<>).MakeGenericType(transfer.ActorType);
         return await ((IZLinkActorTransferOutInvoker)Activator.CreateInstance(invokerType)!)
             .TransferOutAsync(adapter, actor, cancellationToken)
@@ -44,7 +42,7 @@ internal static class ZLinkActorTransferRegistry
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
-        var adapter = scope.ServiceProvider.GetRequiredService(transfer.AdapterType!);
+        var adapter = scope.ServiceProvider.GetRequiredService(transfer.AdapterType);
         var invokerType = typeof(ZLinkActorTransferInvoker<>).MakeGenericType(transfer.ActorType);
         return await ((IZLinkActorTransferInInvoker)Activator.CreateInstance(invokerType)!)
             .TransferInAsync(adapter, actorId, context, state, cancellationToken)

@@ -14,8 +14,7 @@ public sealed class ActorTransferTests
             .BuildServiceProvider();
         var transfer = new ZLinkActorTransferRegistration(
             typeof(TransferActor),
-            typeof(TransferActorAdapter),
-            Stateless: false);
+            typeof(TransferActorAdapter));
         var source = new TransferActor("actor-1", new TestActorContext(), "source-state");
         var state = await ZLinkActorTransferRegistry.TransferOutAsync(
             services,

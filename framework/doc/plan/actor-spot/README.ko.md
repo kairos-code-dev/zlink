@@ -5,14 +5,14 @@
 반영하기 위한 작업 계획이다. 언어별 작업자는 자기 언어 worker 문서 하나만 읽고도 누락 없이 진행할
 수 있게 작성했고, 이 README는 언어 공통 계약과 전 언어 진행 현황(체크 표)을 모은다.
 
-> 용어 주의: 이번 스펙 개정에서 예전 "transfer codec"은 **"transfer adapter"**로 이름이 바뀌었고
-> **stateless adapter**(빈 state transfer) 개념이 추가됐다. 이 문서는 정본 용어("adapter")를 쓴다.
+> 용어 주의: 이번 스펙 개정에서 예전 "transfer codec"은 **"transfer adapter"**로 이름이 바뀌었다.
+> adapter를 등록하지 않은 actor type은 별도 API 없이 framework 기본 빈 state transfer를 사용한다.
 
 ## 0. 근거 문서 (정본)
 
 | 문서 | 역할 |
 | --- | --- |
-| [common/spec/spot-actor.ko.md](../../framework/common/spec/spot-actor.ko.md) | **계약 정본**. admission/commit 분리, transfer adapter(+stateless), callback 순서, 장애 처리 기준. 언어 구현이 이 의미와 다르면 parity gap. |
+| [common/spec/spot-actor.ko.md](../../framework/common/spec/spot-actor.ko.md) | **계약 정본**. admission/commit 분리, transfer adapter, 기본 빈 state transfer, callback 순서, 장애 처리 기준. 언어 구현이 이 의미와 다르면 parity gap. |
 | [common/e2e/config-10-spot-actor-transfer.ko.md](../../framework/common/e2e/config-10-spot-actor-transfer.ko.md) | **검증 정본**. 실제 배포형 서버 위에서 계약을 확인하는 e2e 시나리오(Track A~E, ST-A1~ST-E2). |
 | [common/spec/actor-model.ko.md](../../framework/common/spec/actor-model.ko.md) | actor 개념·lifecycle 전체 배경. |
 | `framework/<언어>/spec/handler-interfaces.ko.md` | **언어별 목표 interface 정본**(java/node/dotnet). 실제 source public API가 아직 이 문서와 다르면 P1에서 source interface를 함께 바꾼다. |
@@ -29,9 +29,8 @@ worker 문서:
 
 정본 `spot-actor.ko.md`의 **transfer-adapter 모델**이 이번 적용 대상이다. 핵심:
 
-1. **`OnActorJoin`은 admission만 한다.** actor instance를 받지 않고
-   `ZLinkActorJoinAdmission`(ActorId/ActorType/Source·TargetSpotRid/Source·TargetNodeRid)만
-   받는다. Accept/Reject만 결정하고 membership·location·client event·instance 접근을 하지 않는다.
+1. **`OnActorJoin`은 admission만 한다.** actor instance를 받지 않고 actor id와 request만 받는다.
+   Accept/Reject만 결정하고 membership·location·client event·instance 접근을 하지 않는다.
    반환형은 언어별 admission 응답 타입(`ZLinkSpotActorJoinResponse`(java/node) /
    `ZLinkSpotActorJoinResult`(dotnet) / `spot_actor_join_response_t`(cpp))이다.
 2. **`OnJoinedActor`가 join 완료 신호다.** caller 성공 reply, public location commit, target
@@ -39,14 +38,14 @@ worker 문서:
 3. **`OnLeaveActor`는 target `OnJoinedActor`보다 먼저** 관찰된다(source Spot이 있는 이동).
 4. **join 완료 전 packet dispatch 금지.** moving 구간에 source·target 양쪽 handler가 같은 actor
    packet을 동시에 처리하면 안 된다.
-5. **remote transfer는 actor type별 transfer adapter로 state를 옮긴다.**
-   `TransferOut(actor) → ZLinkMessage`, `TransferIn(actorId, state) → actor`. **adapter 등록 여부가
-   remote transfer 지원 여부**다 — 미등록 actor type은 remote transfer를 **시작 전에 실패**
-   (source leave 없음). **같은 node join은 adapter를 쓰지 않고 인스턴스를 그대로 이동**한다.
-6. **stateless adapter(빈 state transfer).** state 이동이 필요 없는 actor type은 **stateless 등록
-   API**(actor type만 등록)로 framework 기본 adapter를 쓴다. 이 adapter는 source에서 **빈
-   `ZLinkMessage`**를 보내고 target에서 actor factory/public 생성 경로로 instance를 만든다. framework는
-   **adapter 미등록(실패)과 빈 state transfer(정상 stateless)를 구분**해야 한다.
+5. **remote transfer는 state가 필요한 actor type만 transfer adapter를 등록한다.**
+   `TransferOut(actor) → ZLinkMessage`, `TransferIn(actorId, state) → actor`. adapter 미등록 actor
+   type은 실패가 아니라 framework 기본 빈 state transfer로 이동한다. **같은 node join은 adapter를
+   쓰지 않고 인스턴스를 그대로 이동**한다.
+6. **기본 빈 state transfer.** 별도 adapter가 없으면 source는 **빈 `ZLinkMessage`**를 보내고 target은
+   actor factory/public 생성 경로로 instance를 만든다. domain state가 필요하면 사용자가
+   `ActorTransferAdapter`를 등록한다. `AddStatelessActorTransfer`/`addStatelessActorTransfer` 계열 API는
+   제거 대상이다.
 7. **admission/commit 분리(remote).** target node는 admission 단계에서 target instance·membership·
    public location을 만들지 않는다. commit 요청의 state를 `TransferIn`으로 복원해 materialize한 뒤
    `OnJoinedActor`를 호출한다. remote materialize는 새 actor 생성이 아니므로 target Entry Spot
@@ -61,19 +60,15 @@ worker 문서:
 
 ### 1.1 문서/코드 정합 이슈 (worker가 반드시 처리)
 
-- **.NET guide `06-actor-spot.ko.md`** — remote 이동 다이어그램이 `OnCreateActorAsync` + factory
-  재생성 + "in-memory 상태 전송 안 됨" 모델로 남아 있다(정본은 transfer adapter로 state를 옮기고
-  remote에서 `OnCreateActor`를 호출하지 않는다). → dotnet-worker에서 reconcile.
+- **.NET** — public source, guide, 샘플과 e2e를 정본에 맞췄다. remote 이동은 transfer adapter 또는
+  기본 빈 state transfer를 사용하며 target에서 `OnCreateActor`를 호출하지 않는다.
 - **실제 public source interface** — 2026-07-10 현재 언어별 spec 문서는 목표 정본이지만,
   source 코드는 일부 구형 actor-instance 기반 `OnActorJoin` 또는 adapter 미구현 상태일 수 있다.
   worker는 P0에서 실제 source를 확인한 뒤 P1에서 public source interface와 샘플 compile break를 함께
   처리한다.
-- **C++** — interface 정본 `cpp-framework-interfaces.ko.md`는 **이미** admission/adapter 모델
-  (`on_actor_join(actor_join_admission_t, message_t) → spot_actor_join_response_t`,
-  `actor_transfer_adapter_t<TActor>`, `add_stateless_actor_transfer` / `add_actor_transfer_adapter`)로
-  정렬돼 있다. 실제 C++ source와 contract test가 이 표면을 아직 요구하지 않으면 **(a) 정렬용 stale
-  문서 `cpp/spec/handler-interfaces.ko.md` 정리**, **(b) public source/contract test를 목표 정본에 맞춤**,
-  **(c) runtime 코드가 정본 interface 의미대로 돌도록 구현**이 필요하다. → cpp-worker P0/P1 참고.
+- **C++** — interface 정본도 이번 결정에 맞춰 `on_actor_join(actor_id, message_t)`와
+  `add_actor_transfer_adapter` 중심으로 정리해야 한다. `actor_join_admission_t`와
+  `add_stateless_actor_transfer`가 source나 test에 남아 있으면 P1에서 제거한다. → cpp-worker P0/P1 참고.
 
 ## 2. 작업 축 (모든 언어 공통 6단계)
 
@@ -82,9 +77,9 @@ worker 문서:
 | 축 | 내용 |
 | --- | --- |
 | **P0. 현황 audit** | 현재 runtime/interface/샘플이 정본 계약 대비 어디까지 만족하는지 코드로 확인하고 gap 목록화. 추정 금지. |
-| **P1. Interface/contract 정렬** | admission·transfer adapter(+stateless)·joined/leave surface를 목표 정본과 일치시키고, 실제 public source interface·등록 API·샘플 compile break·언어 문서를 함께 reconcile. |
-| **P2. Framework runtime 구현** | admission/commit 분리, transfer adapter 호출, stateless 기본 adapter, `OnJoinedActor` gate, moving dispatch 차단, pending/committed location, generation fencing, pending admission deadline, 멱등 source cleanup, bound session transfer. |
-| **P3. 샘플 적용** | local join(Bingo/TicTacToe)과 **remote transfer(DeliveryDispatch·SupportChat 같은 다중 node 샘플)**에 transfer adapter 등록 + 정본 순서 반영. 마지막에 언어별 sample 전체 runner가 깨지지 않는지 확인. |
+| **P1. Interface/contract 정렬** | admission·transfer adapter·joined/leave surface를 목표 정본과 일치시키고, 기존 `ZLinkActorJoinAdmission`/`AddStatelessActorTransfer`/joined·leave 기본 no-op API 제거, 실제 public source interface·샘플 compile break·언어 문서를 함께 reconcile. |
+| **P2. Framework runtime 구현** | admission/commit 분리, transfer adapter 호출, adapter 미등록 기본 빈 state transfer, `OnJoinedActor` gate, moving dispatch 차단, pending/committed location, generation fencing, pending admission deadline, 멱등 source cleanup, bound session transfer. |
+| **P3. 샘플 적용** | Bingo/TicTacToe/SupportChat처럼 actor domain state가 있는 샘플에 transfer adapter 등록 + 정본 순서 반영. DeliveryDispatch처럼 옮길 domain state가 없거나 진행 중 request 상태만 있는 actor는 기본 빈 state transfer를 사용한다. 마지막에 언어별 sample 전체 runner가 깨지지 않는지 확인. |
 | **P4. e2e config-10 구현** | `languages/<lang>/e2e/SpotActorTransfer`(신규)에 Track A~E(ST-A1~ST-E2) 구현. 역할 server endpoint + runner. 마지막에 언어별 e2e 전체 runner가 깨지지 않는지 확인. |
 | **P5. POSD/DDD 리팩토링 루프** | P0~P4가 그린이 된 뒤, codex 에이전트 리뷰로 POSD/DDD 관점 리팩토링을 **의미있는 항목이 없어질 때까지 반복**(§6). |
 
@@ -95,20 +90,20 @@ worker 문서:
 
 | ID | 시나리오 | 우선순위 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| ST-A1 | local join accept 순서 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| ST-B2 | source cleanup 실패는 성공 유지 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-B3 | transfer adapter 미등록 실패 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| ST-B4 | remote transfer empty state(stateless adapter) | P0 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| ST-C1 | source down after admission/before commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-C2 | source down after target commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-C3 | callback/transfer 실패 분류 | P1 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-D1 | location commit 시점(pending/committed) | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-D2 | stale source release generation fencing | P1 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-E1 | remote transfer 뒤 bound session push | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| ST-E2 | 실패한 transfer는 bound session route 비오염 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| ST-A1 | local join accept 순서 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-A2 | local join reject side effect 없음 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-A3 | target joined 전 packet dispatch 차단 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-B1 | remote transfer 성공 순서·state 복원 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-B2 | source cleanup 실패는 성공 유지 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-B3 | transfer adapter 미등록 기본 빈 state transfer | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-B4 | custom adapter가 빈 state를 반환해도 성공 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-C1 | source down after admission/before commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-C2 | source down after target commit | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-C3 | callback/transfer 실패 분류 | P1 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-D1 | location commit 시점(pending/committed) | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-D2 | stale source release generation fencing | P1 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-E1 | remote transfer 뒤 bound session push | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| ST-E2 | 실패한 transfer는 bound session route 비오염 | P0 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
 
 > Track D·E의 P0는 location store + stream connector가 있는 언어에서 public API만으로 구현한다.
 > 필요한 public 표면이 없으면 `🚫`로 두고 feature-map에 public contract parity gap으로 남긴다
@@ -129,7 +124,7 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 | remote join success order | ST-B1 |
 | remote transfer state | ST-B1 |
 | remote transfer empty state | ST-B4 |
-| missing transfer adapter | ST-B3 |
+| missing transfer adapter uses default empty state | ST-B3 |
 | source down before commit | ST-C1 |
 | source down after commit | ST-C2 (+ ST-B2) |
 | joined callback failure | ST-C3 |
@@ -140,20 +135,22 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 
 ## 4. 마스터 체크 표 — 계약 항목(§11) × 언어
 
-`spot-actor.ko.md §11`의 언어별 구현 요구 10항목. 하나라도 빠지면 그 언어는 스펙 미충족(parity gap).
+`spot-actor.ko.md §11`의 언어별 구현 요구 12항목. 하나라도 빠지면 그 언어는 스펙 미충족(parity gap).
 
 | # | 계약 항목 | C++ | Java | Kotlin | Node | .NET |
 | --- | --- | :---: | :---: | :---: | :---: | :---: |
-| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| 2 | remote transfer에서 admission/commit 분리 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| 3 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| 4 | transfer adapter 미등록 시 remote transfer 명시 실패 | ⬜ | ⬜ | ⬜ | ⬜ | 🔶 |
-| 5 | source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 6 | source down signal 없이 pending admission deadline 정리 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 7 | `OnJoinedActor` 완료 전 caller success 반환 안 함 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 8 | `OnJoinedActor` 완료 전 packet dispatch 차단 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 9 | location row가 pending/committed 구분 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 10 | bound session transfer가 commit 전 성공 노출 안 함 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| 1 | 같은 node join callback 순서 `OnActorJoin→OnLeave→OnJoined` | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 2 | remote transfer에서 admission/commit 분리 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 3 | `OnActorJoin` public callback은 actor id와 request만 받음 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| 4 | transfer adapter로 state message 전달 **또는 빈 state transfer 명시 처리** | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 5 | transfer adapter 미등록 시 기본 빈 state transfer | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| 6 | `OnJoinedActor`·`OnLeaveActor` 기본 no-op public API 없음 | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| 7 | source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 8 | source down signal 없이 pending admission deadline 정리 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 9 | `OnJoinedActor` 완료 전 caller success 반환 안 함 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 10 | `OnJoinedActor` 완료 전 packet dispatch 차단 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 11 | location row가 pending/committed 구분 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
+| 12 | bound session transfer가 commit 전 성공 노출 안 함 | 🔶 | ⬜ | ⬜ | ⬜ | ✅ |
 
 ## 5. 언어별 시작 gap 요약 (P0 audit 전 사전 정보)
 
@@ -161,10 +158,10 @@ contract 테스트는 같은 계약을 두 층위(배포형/in-process)에서 �
 
 | 언어 | interface 정본 | 특이 gap |
 | --- | --- | --- |
-| **C++** | `cpp-framework-interfaces.ko.md`에 목표 정본 정의됨(`actor_join_admission_t`, `spot_actor_join_response_t`, `actor_transfer_adapter_t<TActor>`, `add_stateless_actor_transfer`/`add_actor_transfer_adapter`). | 실제 source/contract test가 구형이면 P1에서 public interface와 test expectation까지 정렬. 이후 runtime 구현 + stale `handler-interfaces.ko.md` 정리. |
-| **Java/Kotlin** | `handler-interfaces.ko.md`에 목표 정본 정의됨(`ZLinkActorTransferAdapter<TActor>`, `onActorJoin(ZLinkActorJoinAdmission)`, `addStatelessActorTransfer`/`addActorTransferAdapter`). | 실제 Java source는 P0에서 확인하고, 구형이면 P1에서 source public interface와 Kotlin surface를 함께 변경. |
-| **Node** | `handler-interfaces.ko.md`에 목표 정본 정의됨(`ZLinkActorTransferAdapter<TActor>`, `onActorJoin(admission, request)`, `addStatelessActorTransfer`/`addActorTransferAdapter`). | 실제 Node source는 P0에서 확인하고, 구형이면 P1에서 source public interface와 runtime dispatch를 함께 변경. |
-| **.NET** | `handler-interfaces.ko.md`에 목표 정본 정의됨(`IZLinkActorTransferAdapter<TActor>`, `OnActorJoinAsync(ZLinkActorJoinAdmission)`, `AddStatelessActorTransfer`/`AddActorTransferAdapter`). | 실제 .NET source는 P0에서 확인하고, 구형이면 P1에서 source public interface와 샘플 compile break를 함께 변경. guide 06-actor-spot도 reconcile. |
+| **C++** | 목표 정본은 `actor_transfer_adapter_t<TActor>`, `on_actor_join(actor_id, request)`, `add_actor_transfer_adapter`다. | `actor_join_admission_t`, `add_stateless_actor_transfer`, joined·leave 기본 no-op API가 남아 있으면 P1에서 제거. |
+| **Java/Kotlin** | 목표 정본은 `ZLinkActorTransferAdapter<TActor>`, `onActorJoin(actorId, request)`, `addActorTransferAdapter`다. | 실제 Java source는 P0에서 확인하고, 구형이면 P1에서 source public interface와 Kotlin surface를 함께 변경. |
+| **Node** | 목표 정본은 `ZLinkActorTransferAdapter<TActor>`, `onActorJoin(actorId, request)`, `addActorTransferAdapter`다. | 실제 Node source는 P0에서 확인하고, 구형이면 P1에서 source public interface와 runtime dispatch를 함께 변경. |
+| **.NET** | `IZLinkActorTransferAdapter<TActor>`, `OnActorJoinAsync(string actorId, request)`, `AddActorTransferAdapter`를 구현했다. | source, guide, 샘플, config-10과 전체 runner 검증을 완료했다. |
 
 ## 6. P5 — POSD/DDD 리팩토링 루프 (구현 완료 후, 전 언어 공통)
 
@@ -196,13 +193,13 @@ god-file·책임 혼합·중복·vestigial을 남기지 않게 정리하는 것�
 
 전체 작업이 완료된 것으로 보려면:
 
-1. 4언어 모두 §4 계약 10항목이 `✅`이다. `🚫`는 중간 상태나 별도 승인된 불가능 항목 표시일 뿐,
+1. 4언어 모두 §4 계약 12항목이 `✅`이다. `🚫`는 중간 상태나 별도 승인된 불가능 항목 표시일 뿐,
    이 작업의 기본 완료 조건이 아니다.
 2. config-10 Track A·B·C의 P0 시나리오(ST-B4 포함)가 4언어에서 같은 의미로 `✅`(Kotlin 포함).
 3. Track D·E의 P0가 location store + stream connector 보유 언어에서 `✅`이다. public 표면 부재 등으로
    즉시 구현할 수 없는 경우에는 `🚫`와 feature-map 근거를 남기되, 전체 완료 전에 별도 승인받는다.
 4. 언어 문서(dotnet guide, cpp handler-interfaces 등)가 정본 transfer-adapter 모델과 정합.
-5. 샘플이 정본 순서로 동작하고 remote transfer 샘플이 transfer adapter를 등록.
+5. 샘플이 정본 순서로 동작하고, Bingo/TicTacToe/SupportChat처럼 actor domain state가 있는 remote transfer 샘플이 transfer adapter를 등록.
 6. 언어별 sample 전체 runner와 e2e 전체 runner가 config-10 추가 뒤에도 통과한다.
 7. 모든 P0 시나리오가 source/target node rid·actor id·transfer id·callback order marker·location
    snapshot·bound session snapshot을 실패 evidence로 남긴다.

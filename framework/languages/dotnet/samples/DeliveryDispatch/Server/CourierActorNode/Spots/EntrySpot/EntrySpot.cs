@@ -31,10 +31,16 @@ internal sealed class CourierEntrySpot(
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
     }
+
+    public ValueTask OnJoinedActorAsync(CourierActor actor, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    public ValueTask OnLeaveActorAsync(CourierActor actor, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
 }

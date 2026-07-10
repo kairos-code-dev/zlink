@@ -81,12 +81,14 @@ start_node() {
   local rid="$1"
   local url="$2"
   local router="$3"
+  local stream="$4"
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" \
+    --stream-endpoint "$stream" \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR" \
     >"$LOG_DIR/${rid}.stdout.log" 2>"$LOG_DIR/${rid}.stderr.log" &
@@ -98,6 +100,8 @@ run_client() {
   dotnet run --no-build --project "$CLIENT_PROJECT" -- \
     --node-a-url "$NODE_A_URL" \
     --node-b-url "$NODE_B_URL" \
+    --node-a-stream-endpoint "$NODE_A_STREAM" \
+    --node-b-stream-endpoint "$NODE_B_STREAM" \
     --scenario "$scenario" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
@@ -115,17 +119,21 @@ NODE_A_HTTP_PORT="$(pick_port)"
 NODE_B_HTTP_PORT="$(pick_port)"
 NODE_A_ROUTER_PORT="$(pick_port)"
 NODE_B_ROUTER_PORT="$(pick_port)"
+NODE_A_STREAM_PORT="$(pick_port)"
+NODE_B_STREAM_PORT="$(pick_port)"
 NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
 NODE_B_URL="http://127.0.0.1:$NODE_B_HTTP_PORT"
 NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
 NODE_B_ROUTER="tcp://127.0.0.1:$NODE_B_ROUTER_PORT"
+NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
+NODE_B_STREAM="tcp://127.0.0.1:$NODE_B_STREAM_PORT"
 
 echo "log_dir=$LOG_DIR"
 dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
-start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER"
+start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM"
 
 wait_health "$NODE_A_URL" actor-a
 wait_health "$NODE_B_URL" actor-b
@@ -135,14 +143,27 @@ sleep 5
 : >"$LOG_DIR/client.stderr.log"
 
 if [[ "$SCENARIO" == "all" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3"
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2"
   run_client "ST-C2"
   sleep 1
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_ROUTER_PORT="$(pick_port)"
+  NODE_A_STREAM_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
-  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
+  NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
+  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+  wait_health "$NODE_A_URL" actor-a
+  sleep 5
+  run_client "ST-B2"
+  sleep 1
+  NODE_A_HTTP_PORT="$(pick_port)"
+  NODE_A_ROUTER_PORT="$(pick_port)"
+  NODE_A_STREAM_PORT="$(pick_port)"
+  NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
+  NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
+  NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
+  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
   wait_health "$NODE_A_URL" actor-a
   sleep 5
   run_client "ST-C1"

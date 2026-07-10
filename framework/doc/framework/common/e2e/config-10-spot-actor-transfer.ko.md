@@ -18,7 +18,7 @@ location commit, bound session route, failure cleanup이 같은 순서와 의미
 
 - 다룬다: 같은 node join 순서, remote actor transfer 정상 경로, transfer state 복원, 빈 state transfer, admission/commit
   분리, source node down 전후 동작, location row commit 시점, moving 중 actor packet dispatch 차단,
-  transfer adapter 미등록과 callback 실패, bound session 이전.
+  transfer adapter 미등록 기본 동작과 callback 실패, bound session 이전.
 - 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), yield 후 mailbox 재개(Config 8),
   actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
 - 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. join 완료 신호는
@@ -31,7 +31,7 @@ location commit, bound session route, failure cleanup이 같은 순서와 의미
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. actor/spot location row와 owner lease는 framework lifecycle이 관리한다. |
-| actor 노드 | 2 (`actor-a`, `actor-b`) | Entry Spot + user Spot + actor mailbox host. 각 node는 같은 actor type과 같은 transfer adapter를 등록한다. lifecycle callback과 transfer adapter는 order marker를 남긴다. |
+| actor 노드 | 2 (`actor-a`, `actor-b`) | Entry Spot + user Spot + actor mailbox host. 각 node는 같은 actor type을 등록하고, state 이동이 필요한 actor type에는 같은 transfer adapter를 등록한다. lifecycle callback과 transfer adapter는 order marker를 남긴다. |
 | session gateway | 2 (`session-a`, `session-b`) | stream session을 받고 actor bind와 actor push를 관찰한다. remote transfer 뒤 bound session push가 target actor로 이어지는지 검증한다. |
 | transfer controller | 1 | 실제 사용자 요청을 받는 역할 server. HTTP endpoint 안에서 actor 생성, join, transfer, packet send, failure injection을 public framework API로 실행한다. |
 | consumer | 시나리오별 | HTTP client wrapper로 transfer controller endpoint를 호출하고, 필요한 경우 stream connector로 session gateway에 연결해 push와 bind 상태를 관찰한다. |
@@ -41,7 +41,7 @@ actor 노드는 아래 evidence를 공통으로 남긴다.
 - actor id, actor type, actor generation 또는 ref snapshot, source/target spot rid, source/target node rid.
 - callback order marker: `admission`, `transfer_out`, `leave`, `commit_request`, `transfer_in`, `joined`,
   `location_committed`, `commit_ack`, `source_cleanup`.
-- `OnActorJoin` 입력 snapshot. actor instance가 전달되었거나 저장되면 실패 evidence로 남긴다.
+- `OnActorJoin` 입력 snapshot. actor id 외에 actor instance나 route metadata가 전달되었거나 저장되면 실패 evidence로 남긴다.
 - transfer state marker. state를 담는 actor type은 source actor state version과 target actor 복원 state가 같은지 확인할 수 있어야 한다. 빈 state actor type은 target `OnJoinedActor` 이후 별도 조회 marker를 남긴다.
 - actor packet handler marker. moving 중 source와 target 양쪽 handler가 동시에 처리하지 않았는지 대조한다.
 - bound session snapshot. transfer 전후 push 대상 session gateway와 client connector를 비교한다.
@@ -77,7 +77,7 @@ location commit, success reply가 정해진 순서로 관찰되는가.
   Spot으로 `JoinSpot`을 실행한다. controller는 join reply를 받은 뒤 actor packet을 target user Spot으로
   보낸다.
 - 검증: evidence order는 `admission -> leave -> joined -> location_committed -> success_reply`다.
-  `OnActorJoin` evidence에는 actor id/type과 request만 있고 actor instance snapshot이 없어야 한다.
+  `OnActorJoin` evidence에는 actor id와 request만 있고 actor instance snapshot이나 route metadata가 없어야 한다.
   success reply 이전에 location row가 committed target user Spot으로 공개되면 실패다. join 이후 packet은
   target user Spot handler에서만 처리된다.
 - 세부 동작: 같은 node join 완료 조건과 actor instance 미노출 admission.
@@ -145,33 +145,34 @@ target ownership이 유지되는가.
   release 재시도가 target generation을 지우면 실패다.
 - 세부 동작: source cleanup의 사후 멱등 정리.
 
-#### ST-B3 transfer adapter 미등록
+#### ST-B3 transfer adapter 미등록 기본 빈 state transfer
 
 우선순위: `P0`
 
-**한마디로:** remote transfer 대상 actor type에 transfer adapter가 없으면 source leave 없이 실패하는가.
+**한마디로:** remote transfer 대상 actor type에 transfer adapter가 없어도 framework 기본 빈 state transfer로 성공하는가.
 
 - 절차: `actor-no-adapter` type에는 actor factory만 등록하고 transfer adapter는 등록하지 않는다. 같은 node
   join이 아니라 반드시 다른 node user Spot으로 remote transfer를 시도한다.
-- 검증: caller는 명시적 transfer adapter 미등록 실패를 받는다. source `OnLeaveActor`, target `TransferIn`,
-  target `OnJoinedActor`, target location commit evidence가 없어야 한다. source membership과 source
-  actor location은 유지된다.
-- 세부 동작: transfer adapter 미등록 실패 정책.
+- 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty_default -> leave ->
+  commit_request -> transfer_in_empty_default -> joined -> location_committed -> commit_ack -> success_reply`다.
+  source `OnLeaveActor`, target `OnJoinedActor`, target location commit이 모두 정상 순서로 관찰된다.
+- 세부 동작: transfer adapter 미등록 기본 빈 state transfer.
 
 #### ST-B4 remote transfer empty state
 
 우선순위: `P0`
 
-**한마디로:** stateless transfer adapter가 등록되어 있으면 빈 `ZLinkMessage`로도 target actor가 만들어지고
+**한마디로:** custom transfer adapter가 빈 `ZLinkMessage`를 반환해도 target actor가 만들어지고
 domain state를 별도로 읽어 올 수 있는가.
 
-- 절차: `actor-empty-state` type에는 stateless transfer adapter를 등록한다. source `TransferOut`은 빈
+- 절차: `actor-empty-state` type에는 custom transfer adapter를 등록한다. source `TransferOut`은 빈
   `ZLinkMessage`를 반환한다. target `TransferIn`은 actor id와 public actor 생성 경로로 target actor를
   만든다. target `OnJoinedActor`는 actor id로 별도 저장소에서 domain state를 읽고 marker를 남긴다.
 - 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty -> leave ->
   commit_request -> transfer_in_empty -> joined -> domain_state_loaded -> location_committed -> commit_ack
-  -> success_reply`다. transfer adapter 미등록 실패와 혼동하면 안 된다.
-- 세부 동작: 등록된 stateless transfer adapter와 빈 state transfer.
+  -> success_reply`다. adapter 미등록 기본 빈 state transfer와 같은 성공 의미지만, custom adapter
+  경로가 빈 state를 반환해도 정상이라는 점을 별도로 확인한다.
+- 세부 동작: custom adapter 빈 state transfer.
 
 ### Track C — failure/recovery
 

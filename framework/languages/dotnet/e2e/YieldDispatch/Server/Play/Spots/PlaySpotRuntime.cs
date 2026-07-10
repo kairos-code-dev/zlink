@@ -15,7 +15,7 @@ internal sealed class YieldProbeSpot(
     public IZLinkSpotContext Context { get; } = context;
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -26,8 +26,22 @@ internal sealed class YieldProbeSpot(
             if (delay.DelayMs > 0) await Task.Delay(TimeSpan.FromMilliseconds(delay.DelayMs), cancellationToken);
         }
 
-        evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={admission.ActorId}");
+        evidence.Add($"actor-admitted|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actorId}");
         return ZLinkSpotActorJoinResult.Accept(request);
+    }
+
+    public ValueTask OnJoinedActorAsync(YieldActor actor, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnLeaveActorAsync(YieldActor actor, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"actor-left|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
     }
 
     public bool TryAddTimerState(YieldTimerState state)

@@ -69,7 +69,7 @@ internal sealed class ConversationSpot(
     // this spot when it is joining this conversation. The customer's own actor is the
     // participant; each agent joins through its own per-conversation actor.
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -77,10 +77,10 @@ internal sealed class ConversationSpot(
         var join = request.Decode<JoinConversationReq>();
         if (string.Equals(join.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
         {
-            var participantId = string.IsNullOrWhiteSpace(join.ParticipantId) ? admission.ActorId : join.ParticipantId;
+            var participantId = string.IsNullOrWhiteSpace(join.ParticipantId) ? actorId : join.ParticipantId;
             var displayName = string.IsNullOrWhiteSpace(join.DisplayName) ? participantId : join.DisplayName;
             var change = conversation.JoinAgent(participantId, displayName, NowUnixMs());
-            _pendingJoinChanges[admission.ActorId] = change;
+            _pendingJoinChanges[actorId] = change;
             await ValueTask.CompletedTask;
             return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(change.State)));
         }
@@ -114,6 +114,16 @@ internal sealed class ConversationSpot(
             conversation.ConversationId,
             actor.ParticipantId,
             actor.Role);
+    }
+
+    public ValueTask OnLeaveActorAsync(
+        SupportUserActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _pendingJoinChanges.Remove(actor.ActorId);
+        _actors.Remove(actor.ParticipantId);
+        return ValueTask.CompletedTask;
     }
 
     // Reserves a capacity-available agent for this conversation and notifies its roster

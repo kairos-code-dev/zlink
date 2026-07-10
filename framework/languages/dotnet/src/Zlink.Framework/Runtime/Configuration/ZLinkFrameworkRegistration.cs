@@ -78,7 +78,7 @@ internal sealed class ZLinkFrameworkRegistration
             foreach (var transfer in spotNode.ActorTransfers.Values)
             {
                 assemblies.Add(transfer.ActorType.Assembly);
-                if (transfer.AdapterType is not null) assemblies.Add(transfer.AdapterType.Assembly);
+                assemblies.Add(transfer.AdapterType.Assembly);
             }
         }
 
@@ -254,8 +254,7 @@ internal sealed class ZLinkSpotNodeRegistration
 
 internal sealed record ZLinkActorTransferRegistration(
     Type ActorType,
-    Type? AdapterType,
-    bool Stateless);
+    Type AdapterType);
 
 internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
 {

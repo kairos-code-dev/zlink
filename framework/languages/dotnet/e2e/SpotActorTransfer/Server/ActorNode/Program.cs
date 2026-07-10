@@ -8,6 +8,7 @@ using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Locations.Redis;
 
 var options = ServerOptions.Parse(args, "actor-node");
@@ -22,9 +23,9 @@ builder.Logging.AddSimpleConsole(console =>
 });
 builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
 builder.Services.AddSingleton<JoinedGateStore>();
 builder.Services.AddSingleton<TransferGateStore>();
-builder.Services.AddTransient<TransferActorAdapter>();
 builder.Services.AddZLinkFramework(framework =>
 {
     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -43,8 +44,8 @@ builder.Services.AddZLinkFramework(framework =>
         .AddEntrySpot<TransferEntrySpot>()
         .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeStateful)
         .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeStateful)
-        .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeStateless)
-        .AddStatelessActorTransfer<TransferActor>(SpotActorTransferNames.ActorTypeStateless)
+        .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeEmptyState)
+        .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeEmptyState)
         .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeNoAdapter)
         .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeFailLeave)
         .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeFailLeave)
@@ -53,6 +54,9 @@ builder.Services.AddZLinkFramework(framework =>
         .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeFailTransferIn)
         .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeFailTransferIn)
         .AddSpotFactory<TransferUserSpot>();
+    framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
+        .Bind(options.StreamEndpoint)
+        .RegisterSession<TransferSession>();
 });
 
 var app = builder.Build();
@@ -182,6 +186,21 @@ app.MapPost("/actors/{actorId}/probe", async (
         .Async<ProbeRes>(cancellationToken);
     return Results.Ok(response);
 });
+app.MapPost("/actors/{actorId}/bound-push", async (
+    string actorId,
+    BoundPushReq request,
+    IZLinkActorManager actors,
+    IZLinkActorClient actorClient,
+    CancellationToken cancellationToken) =>
+{
+    var actor = await actors.FindAsync(actorId, cancellationToken)
+                ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
+    var response = await actorClient.RequestToActor(actor, request)
+        .PacketName(nameof(BoundPushReq))
+        .Timeout(TimeSpan.FromSeconds(10))
+        .Async<BoundPushRes>(cancellationToken);
+    return Results.Ok(response);
+});
 app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
 {
     lifetime.StopApplication();
@@ -207,7 +226,7 @@ namespace SpotActorTransfer.ActorNode
         public IZLinkActorContext Context { get; } = context;
     }
 
-    internal sealed class TransferActorFactory : IZLinkActorFactory
+    internal sealed class TransferActorFactory(EvidenceStore evidence) : IZLinkActorFactory
     {
         public ValueTask<IZLinkActor> CreateAsync(
             string actorId,
@@ -215,6 +234,9 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (evidence.NodeRid == "actor-b"
+                && actorId.StartsWith("actor-no-adapter-", StringComparison.Ordinal))
+                evidence.Add("transfer", actorId, "transfer_in_empty_default", "actor-factory");
             return ValueTask.FromResult<IZLinkActor>(new TransferActor(actorId, context));
         }
     }
@@ -235,6 +257,12 @@ namespace SpotActorTransfer.ActorNode
                 throw new InvalidOperationException("injected transfer out failure");
             }
 
+            if (actor.ActorType == SpotActorTransferNames.ActorTypeEmptyState)
+            {
+                evidence.Add("transfer", actor.ActorId, "transfer_out_empty", "custom-adapter");
+                return ZLinkMessage.Empty;
+            }
+
             evidence.Add("transfer", actor.ActorId, "transfer_out", actor.StateVersion.ToString());
             if (actor.ActorId.StartsWith("actor-source-down-before-commit-", StringComparison.Ordinal))
             {
@@ -253,6 +281,15 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (state.IsEmpty)
+            {
+                evidence.Add("transfer", actorId, "transfer_in_empty", "custom-adapter");
+                return ValueTask.FromResult(new TransferActor(actorId, context)
+                {
+                    ActorType = SpotActorTransferNames.ActorTypeEmptyState
+                });
+            }
+
             var dto = state.Decode<TransferStateDto>();
             if (actorId.StartsWith("actor-fail-transfer-in-", StringComparison.Ordinal))
             {
@@ -272,7 +309,8 @@ namespace SpotActorTransfer.ActorNode
 
     internal sealed class TransferEntrySpot(
         IZLinkEntrySpotContext context,
-        EvidenceStore evidence) : IZLinkEntrySpot<TransferActor>
+        EvidenceStore evidence,
+        DomainStateStore domainState) : IZLinkEntrySpot<TransferActor>
     {
         public IZLinkEntrySpotContext Context { get; } = context;
 
@@ -287,6 +325,8 @@ namespace SpotActorTransfer.ActorNode
                 var request = createRequest.Decode<ActorCreateReq>();
                 actor.ActorType = request.ActorType;
                 actor.StateVersion = request.StateVersion;
+                if (actor.ActorType == SpotActorTransferNames.ActorTypeEmptyState)
+                    domainState.Save(actor.ActorId, actor.StateVersion);
             }
 
             evidence.Add("create", actor.ActorId, "create", $"{actor.ActorType}:{actor.StateVersion}");
@@ -294,12 +334,12 @@ namespace SpotActorTransfer.ActorNode
         }
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            ZLinkActorJoinAdmission admission,
+            string actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            evidence.Add("local", admission.ActorId, "admission", admission.ActorType.Name);
+            evidence.Add("local", actorId, "admission", "actor-id-only");
             return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
         }
 
@@ -317,6 +357,8 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (actor.ActorType == SpotActorTransferNames.ActorTypeNoAdapter)
+                evidence.Add("transfer", actor.ActorId, "transfer_out_empty_default", "no-adapter");
             if (actor.ActorType == SpotActorTransferNames.ActorTypeFailLeave)
             {
                 evidence.Add("ST-C3", actor.ActorId, "leave_failed", actor.StateVersion.ToString());
@@ -331,7 +373,8 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class TransferUserSpot(
         IZLinkSpotContext context,
         EvidenceStore evidence,
-        JoinedGateStore joinedGates) : IZLinkSpot<TransferActor>
+        JoinedGateStore joinedGates,
+        DomainStateStore domainState) : IZLinkSpot<TransferActor>
     {
         private string _mode = "accept";
         private readonly Dictionary<string, string> _joinScenarios = new(StringComparer.Ordinal);
@@ -349,28 +392,28 @@ namespace SpotActorTransfer.ActorNode
         }
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            ZLinkActorJoinAdmission admission,
+            string actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var join = request.Decode<JoinTargetReq>();
-            _joinScenarios[admission.ActorId] = join.Scenario;
-            evidence.Add(join.Scenario, admission.ActorId, "admission", $"spot={Context.SpotRid}|mode={_mode}");
+            _joinScenarios[actorId] = join.Scenario;
+            evidence.Add(join.Scenario, actorId, "admission", $"spot={Context.SpotRid}|mode={_mode}|input=actor-id-only");
             if (string.Equals(_mode, "reject", StringComparison.Ordinal)
                 || string.Equals(join.ExpectedMode, "reject", StringComparison.Ordinal))
                 return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject(new JoinTargetRes(
                     join.Scenario,
-                    admission.ActorId,
+                    actorId,
                     false,
-                    admission.SourceNodeRid.ToString(),
+                    string.Empty,
                     Context.SpotRid.ToString(),
                     0)));
             return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(new JoinTargetRes(
                 join.Scenario,
-                admission.ActorId,
+                actorId,
                 true,
-                admission.SourceNodeRid.ToString(),
+                string.Empty,
                 Context.SpotRid.ToString(),
                 0)));
         }
@@ -394,8 +437,11 @@ namespace SpotActorTransfer.ActorNode
             }
 
             evidence.Add("transfer", actor.ActorId, "joined", $"{Context.SpotRid}:{actor.StateVersion}");
-            if (actor.StateVersion == 0)
+            if (actor.ActorType == SpotActorTransferNames.ActorTypeEmptyState)
+            {
+                actor.StateVersion = domainState.Load(actor.ActorId);
                 evidence.Add("transfer", actor.ActorId, "domain_state_loaded", actor.ActorId);
+            }
             return ValueTask.CompletedTask;
         }
 
@@ -417,6 +463,91 @@ namespace SpotActorTransfer.ActorNode
             cancellationToken.ThrowIfCancellationRequested();
             evidence.Add("transfer", actor.ActorId, "target_leave", Context.SpotRid.ToString());
             return ValueTask.CompletedTask;
+        }
+    }
+
+    internal sealed class TransferSession(
+        IZLinkSessionContext context,
+        EvidenceStore evidence) : IZLinkSession
+    {
+        public IZLinkSessionContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.Handlers.AddHandler<BindActorSessionHandler>();
+        }
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add("session", Context.SessionId, "connected", Context.RoutingId?.ToString() ?? "");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add("session", Context.SessionId, "disconnected", Context.RoutingId?.ToString() ?? "");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add("session", Context.SessionId, "error", error.ToString());
+            return ValueTask.CompletedTask;
+        }
+
+        public async ValueTask OnDispatchAsync(
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload,
+            CancellationToken cancellationToken)
+        {
+            if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken)
+                    .ConfigureAwait(false))
+                return;
+
+            var actor = Context.Actors.Bound.SingleOrDefault()
+                        ?? throw new InvalidOperationException("No actor is bound.");
+            await actor.RelayAsync(payload, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    internal sealed class BindActorSessionHandler(
+        IZLinkActorManager actors,
+        EvidenceStore evidence) : IZLinkSessionPacketHandler<IZLinkSessionContext, BindActorSessionReq>
+    {
+        public async ValueTask HandleAsync(
+            IZLinkSessionContext context,
+            ZLinkSessionDispatchContext dispatch,
+            BindActorSessionReq request,
+            CancellationToken cancellationToken)
+        {
+            _ = dispatch;
+            var actorRef = await actors.FindAsync(request.ActorId, cancellationToken);
+            ActorRef resolvedActorRef;
+            if (actorRef is null)
+            {
+                if (string.IsNullOrWhiteSpace(request.NodeRid) || request.Generation is null)
+                    throw new InvalidOperationException($"Actor '{request.ActorId}' was not found.");
+                resolvedActorRef = new ActorRef(
+                    RoutingId.From(request.NodeRid),
+                    request.ActorId,
+                    checked((ulong)request.Generation.Value));
+            }
+            else
+            {
+                resolvedActorRef = actorRef.Value;
+            }
+
+            await context.Actors.BindAsync(resolvedActorRef, cancellationToken).ConfigureAwait(false);
+            evidence.Add(request.Scenario, request.ActorId, "session_bound", context.SessionId);
+            context.Client.Reply(new BindActorSessionRes(
+                    request.Scenario,
+                    resolvedActorRef.ActorId,
+                    resolvedActorRef.NodeRid.ToString(),
+                    checked((long)resolvedActorRef.Generation)))
+                .Submit(cancellationToken);
         }
     }
 
@@ -467,6 +598,72 @@ namespace SpotActorTransfer.ActorNode
                 spot.Context.NodeRid.ToString(),
                 actor.StateVersion,
                 request.Marker));
+        }
+    }
+
+    [ZLinkSpotActorRequestHandler(nameof(BoundPushReq))]
+    internal sealed class EntryBoundPushHandler(EvidenceStore evidence)
+        : IZLinkEntrySpotActorRequestHandler<TransferEntrySpot, TransferActor, BoundPushReq, BoundPushRes>
+    {
+        public ValueTask<BoundPushRes> HandleAsync(
+            TransferEntrySpot entrySpot,
+            TransferActor actor,
+            ZLinkSpotActorRequestContext context,
+            BoundPushReq request,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            actor.Context.BoundSession.Send(new BoundPushNotify(
+                    request.Scenario,
+                    actor.ActorId,
+                    entrySpot.Context.SpotRid.ToString(),
+                    entrySpot.Context.NodeRid.ToString(),
+                    request.Marker,
+                    actor.StateVersion))
+                .PacketName(nameof(BoundPushNotify))
+                .Submit(cancellationToken);
+            evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
+            return ValueTask.FromResult(new BoundPushRes(
+                request.Scenario,
+                actor.ActorId,
+                entrySpot.Context.SpotRid.ToString(),
+                entrySpot.Context.NodeRid.ToString(),
+                request.Marker,
+                actor.StateVersion));
+        }
+    }
+
+    [ZLinkSpotActorRequestHandler(nameof(BoundPushReq))]
+    internal sealed class BoundPushHandler(EvidenceStore evidence)
+        : IZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, BoundPushReq, BoundPushRes>
+    {
+        public ValueTask<BoundPushRes> HandleAsync(
+            TransferUserSpot spot,
+            TransferActor actor,
+            ZLinkSpotActorRequestContext context,
+            BoundPushReq request,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            actor.Context.BoundSession.Send(new BoundPushNotify(
+                    request.Scenario,
+                    actor.ActorId,
+                    spot.Context.SpotRid.ToString(),
+                    spot.Context.NodeRid.ToString(),
+                    request.Marker,
+                    actor.StateVersion))
+                .PacketName(nameof(BoundPushNotify))
+                .Submit(cancellationToken);
+            evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
+            return ValueTask.FromResult(new BoundPushRes(
+                request.Scenario,
+                actor.ActorId,
+                spot.Context.SpotRid.ToString(),
+                spot.Context.NodeRid.ToString(),
+                request.Marker,
+                actor.StateVersion));
         }
     }
 }

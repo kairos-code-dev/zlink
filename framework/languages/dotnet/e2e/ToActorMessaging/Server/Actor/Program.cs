@@ -25,8 +25,7 @@ builder.Services.AddZLinkFramework(framework =>
         .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
         .EnablePubSub(options.PubSubEndpoint)
         .AddEntrySpot<TestEntrySpot>()
-        .AddActorFactory<TestActorFactory>("test-actor")
-        .AddStatelessActorTransfer<TestActor>("test-actor");
+        .AddActorFactory<TestActorFactory>("test-actor");
 });
 
 var app = builder.Build();
@@ -90,13 +89,19 @@ namespace ToActorMessaging.Actor
         }
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            ZLinkActorJoinAdmission admission,
+            string actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
-            evidence.Append(new ActorEvidence("join", admission.ActorId, "join", "joined"));
+            evidence.Append(new ActorEvidence("join", actorId, "join", "joined"));
             return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
         }
+
+        public ValueTask OnJoinedActorAsync(TestActor actor, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask OnLeaveActorAsync(TestActor actor, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
     }
 
     internal sealed class NotifyHandler(EvidenceStore evidence)

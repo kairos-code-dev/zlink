@@ -55,7 +55,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 .ConnectPeerPub(settings.PeerSpotPubEndpoint)
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
-                .AddStatelessActorTransfer<PlayActor>(SampleTypes.PlayerActor)
+                .AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>(SampleTypes.PlayerActor)
                 .AddSpotFactory<TicTacToeGame>();
         });
 

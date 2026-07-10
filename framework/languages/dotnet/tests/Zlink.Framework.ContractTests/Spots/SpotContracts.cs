@@ -7,6 +7,26 @@ namespace Zlink.Framework.ContractTests.Spots;
 public sealed class SpotContracts
 {
     [Fact]
+    public void Actor_join_and_transfer_public_contract_matches_common_spec()
+    {
+        var lifecycle = typeof(IZLinkSpotActorLifecycle<>).MakeGenericType(typeof(PlayerActor));
+        var join = lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnActorJoinAsync));
+        Assert.NotNull(join);
+        Assert.True(join.IsAbstract);
+        Assert.Collection(
+            join.GetParameters(),
+            actorId => Assert.Equal(typeof(string), actorId.ParameterType),
+            request => Assert.Equal(typeof(ZLinkMessage), request.ParameterType),
+            cancellation => Assert.Equal(typeof(CancellationToken), cancellation.ParameterType));
+
+        Assert.True(lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnJoinedActorAsync))!.IsAbstract);
+        Assert.True(lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnLeaveActorAsync))!.IsAbstract);
+        Assert.Null(typeof(IZLinkSpot).Assembly.GetType("Zlink.Framework.Contracts.Spots.ZLinkActorJoinAdmission"));
+        Assert.Null(typeof(IZLinkSpotNodeBuilder).GetMethod("AddStatelessActorTransfer"));
+        Assert.NotNull(typeof(IZLinkSpotNodeBuilder).GetMethod("AddActorTransferAdapter"));
+    }
+
+    [Fact]
     [ContractExample(
         typeof(IZLinkSpot),
         typeof(IZLinkSpot<>),
@@ -296,18 +316,7 @@ public sealed class SpotContracts
             0);
     }
 
-    private static ZLinkActorJoinAdmission Admission(PlayerActor actor)
-    {
-        var spotRid = RoutingId.From("room-1");
-        var nodeRid = RoutingId.From("node-1");
-        return new ZLinkActorJoinAdmission(
-            actor.ActorId,
-            typeof(PlayerActor),
-            spotRid,
-            spotRid,
-            nodeRid,
-            nodeRid);
-    }
+    private static string Admission(PlayerActor actor) => actor.ActorId;
 
     private sealed record JoinRoom(string RoomId);
 
@@ -320,11 +329,11 @@ public sealed class SpotContracts
         public IZLinkSpotContext Context { get; } = context;
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            ZLinkActorJoinAdmission admission,
+            string actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
-            _ = admission;
+            _ = actorId;
             _ = cancellationToken;
             var join = request.Decode<JoinRoom>();
             return ValueTask.FromResult(
@@ -364,11 +373,11 @@ public sealed class SpotContracts
         public IZLinkEntrySpotContext Context { get; } = context;
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            ZLinkActorJoinAdmission admission,
+            string actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {
-            _ = admission;
+            _ = actorId;
             _ = cancellationToken;
             return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
         }

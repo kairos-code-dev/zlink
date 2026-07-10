@@ -61,7 +61,7 @@ public static class PlayServerHostFactory
                 .ConnectPeerPub(node.PeerSpotPubEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
-                .AddStatelessActorTransfer<PlayerActor>(SampleNames.PlayerActorType)
+                .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType)
                 .AddSpotFactory<BingoRoom>();
         });
 

@@ -5,6 +5,20 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void Bingo_Registers_Stateful_Actor_Transfer_Adapter()
+    {
+        var sampleRoot = ResolveSampleRoot("Bingo");
+        var host = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "PlayServerHostFactory.cs"));
+        var adapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure", "ZLink",
+            "Actors", "PlayerActorTransferAdapter.cs"));
+
+        Assert.Contains("AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>", host,
+            StringComparison.Ordinal);
+        Assert.Contains("IZLinkActorTransferAdapter<PlayerActor>", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddStatelessActorTransfer", host, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bingo_Uses_Framework_Defaults_Without_Sample_Metadata_Store()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");

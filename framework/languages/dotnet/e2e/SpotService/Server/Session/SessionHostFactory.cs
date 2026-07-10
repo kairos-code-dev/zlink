@@ -60,8 +60,7 @@ internal static class SessionHostFactory
                                 .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<ScenarioEntrySpot>()
-                .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
-                .AddStatelessActorTransfer<ScenarioActor>(SpotServiceNames.ActorType);
+                .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
             framework.AddStreamNode(SpotServiceNames.StreamNode)
                 .Bind(Require(options.StreamEndpoint, "--stream-endpoint"))
                 .RegisterSession<ScenarioSession>();

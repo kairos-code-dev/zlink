@@ -153,9 +153,6 @@ public interface IZLinkSpotNodeBuilder
     IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    IZLinkSpotNodeBuilder AddStatelessActorTransfer<TActor>(string actorType)
-        where TActor : IZLinkActor;
-
     IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
         where TActor : IZLinkActor
         where TAdapter : class, IZLinkActorTransferAdapter<TActor>;

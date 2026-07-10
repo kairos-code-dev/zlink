@@ -5,6 +5,20 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void SupportChat_Registers_Stateful_Actor_Transfer_Adapter()
+    {
+        var sampleRoot = ResolveSampleRoot("SupportChat");
+        var host = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "SupportServerHostFactory.cs"));
+        var adapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure", "ZLink",
+            "Actors", "SupportUserActorTransferAdapter.cs"));
+
+        Assert.Contains("AddActorTransferAdapter<SupportUserActor, SupportUserActorTransferAdapter>", host,
+            StringComparison.Ordinal);
+        Assert.Contains("IZLinkActorTransferAdapter<SupportUserActor>", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddStatelessActorTransfer", host, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SupportChat_Runner_Uses_Isolated_Docker_Redis_And_Location_Store()
     {
         var sampleRoot = ResolveSampleRoot("SupportChat");

@@ -26,6 +26,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         if (context.RoutingId is not { } sessionRid)
             throw new InvalidOperationException("Actor session binding requires a stream routing id.");
 
+        ZLinkSessionActorBinding[] replacedBindings;
         var binding = new ZLinkSessionActorBinding(
             actorId,
             sessionRid,
@@ -36,18 +37,30 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             binding.SessionRid,
             binding.BindingToken);
 
-        runtime.BindSessionActor(actorId, context, binding.BindingToken, actorRef);
-        runtime.BindActorSession(
-            actorId,
-            sessionRid,
-            binding.SessionRid,
-            binding.BindingToken);
-
         lock (_bindings)
         {
+            replacedBindings = _bindings.Values
+                .Where(current => string.Equals(current.ActorId, actorId, StringComparison.Ordinal))
+                .ToArray();
+            foreach (var replaced in replacedBindings)
+                _bindings.Remove(BuildBindingKey(replaced.ActorId, replaced.BindingToken));
+
             _bindings[BuildBindingKey(actorId, binding.BindingToken)] = binding;
             _actorsById[actorId] = actorRef;
         }
+
+        foreach (var replaced in replacedBindings)
+        {
+            runtime.UnbindSessionActor(replaced.ActorId, context, replaced.BindingToken);
+            runtime.UnbindActorSession(replaced.ActorId, replaced.BindingToken);
+        }
+
+        runtime.BindSessionActor(actorId, context, binding.BindingToken, actorRef);
+        runtime.BindActorSession(
+            actorId,
+            runtime.GetActorSpotNode()?.RoutingId ?? sessionRid,
+            binding.SessionRid,
+            binding.BindingToken);
 
         return ValueTask.FromResult<IZLinkSessionActor>(actorRef);
     }

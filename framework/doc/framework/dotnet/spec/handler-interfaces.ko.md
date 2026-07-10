@@ -69,7 +69,7 @@ Spot Actor Join / Transfer 관련 interface 는
 | value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 metadata snapshot | 4.4.2 |
 | policy | `IZLinkMessageMetadataPolicy` | metadata forwarding 허용 여부 | 4.4.2 |
 | factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
-| lifecycle | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user Spot에 actor가 join할 때 호출되는 admission callback. actor instance가 아니라 `ZLinkActorJoinAdmission`을 받는다 | 4.4.1 |
+| lifecycle | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user Spot에 actor가 join할 때 호출되는 admission callback. actor instance가 아니라 actor id를 받는다 | 4.4.1 |
 | lifecycle | `IZLinkActorTransferAdapter<TActor>` | remote actor transfer에서 actor state를 선택적으로 `ZLinkMessage`로 전달하고 target actor를 materialize하는 actor type별 adapter | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkBoundSession` | 현재 actor -> 현재 client session 호출 | 5.6 |
@@ -325,35 +325,18 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
     where TActor : IZLinkActor
 {
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
-    }
+        CancellationToken cancellationToken);
 
     ValueTask OnJoinedActorAsync(
         TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
+        CancellationToken cancellationToken);
 
     ValueTask OnLeaveActorAsync(
         TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
+        CancellationToken cancellationToken);
 }
-
-public sealed record ZLinkActorJoinAdmission(
-    string ActorId,
-    Type ActorType,
-    RoutingId SourceSpotRid,
-    RoutingId TargetSpotRid,
-    RoutingId SourceNodeRid,
-    RoutingId TargetNodeRid);
 
 public interface IZLinkActorTransferAdapter<TActor>
     where TActor : IZLinkActor
@@ -602,10 +585,9 @@ public readonly record struct ZLinkSpotActorJoinResult(
 }
 ```
 
-`IZLinkActorTransferAdapter<TActor>` 등록은 remote transfer 지원 여부를 나타낸다. 등록이 없으면
-framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
-stateless transfer adapter 등록 API를 사용한다. 이 기본 adapter는 source에서 빈 `ZLinkMessage`를 보내고,
-target에서 기존 actor factory 또는 public actor 생성 경로로 `TActor` instance를 만든다.
+`IZLinkActorTransferAdapter<TActor>` 등록은 remote transfer에서 직접 옮길 actor state가 있음을 나타낸다.
+등록이 없으면 framework는 빈 `ZLinkMessage`를 보내고, target에서 기존 actor factory 또는 public actor
+생성 경로로 `TActor` instance를 만든다.
 custom adapter의 target method는 actor를 만들 때 사용할 `IZLinkActorContext`를 받는다. `.NET` actor는
 factory가 받은 context를 그대로 노출해야 하므로, transfer adapter가 새 actor instance를 반환하는
 경우에도 framework가 넘긴 context를 actor 생성자에 전달해야 한다.
@@ -843,11 +825,11 @@ public sealed class PlaceMarkHandler
 #### 4.3.1.3 actor join/leave lifecycle callback
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후의 후속
-처리는 Spot 멤버 callback 으로 선언한다. Entry Spot 과 user Spot 모두
-`OnJoinedActorAsync(...)` 와 `OnLeaveActorAsync(...)` 를 기본 구현으로 가진다.
-필요한 Spot 만 actor 타입을 구체화한 public instance method 를 직접 선언한다.
-framework 는 Spot descriptor 를 바인딩할 때 이 method 를 찾아 callback 으로
-사용한다.
+처리는 Spot 멤버 callback 으로 선언한다. `OnJoinedActorAsync(...)` 와
+`OnLeaveActorAsync(...)` 는 기본 no-op 구현을 공개 계약으로 제공하지 않는다.
+필요한 Spot 은 actor 타입을 구체화한 public instance method 를 직접 선언한다.
+framework 는 Spot descriptor 를 바인딩할 때 이 method 를 찾아 callback 으로 사용한다.
+기존 `return ValueTask.CompletedTask;` 형태의 기본 구현 API는 삭제 대상이다.
 
 user Spot 에 actor 가 들어올 수 있는지를 판단하는 admission 처리는
 `OnActorJoinAsync(...)` 로 선언한다. 이름을 분리해서 join 요청 처리와 join commit
@@ -1515,7 +1497,8 @@ actor packet 실행 계약은 다음과 같이 둔다.
   과 user Spot 에 각각 별도로 선언할 수 있어야 한다. `OnActorJoinAsync(...)`
   는 join admission 요청 처리이고, `OnJoinedActorAsync(...)` /
   `OnLeaveActorAsync(...)` 는 commit 이후의 lifecycle callback 이라는 점에
-  주의한다.
+  주의한다. framework public interface는 이 lifecycle callback에 기본 no-op 구현을
+  제공하지 않는다.
 - `JoinSpot(...)` 이 actor 의 현재 `Spot` 을 바꾸는 경우가 있다. 이때
   framework 는 actor session state 갱신과 이후 dispatch 선택이 서로
   경합하지 않도록 보장해야 한다. `OnActorJoinAsync(...)` 는 admission 만
@@ -1727,9 +1710,8 @@ public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotO
 ```
 
 actor join admission 은 user Spot 멤버 method 로 선언한다. framework 는
-`IZLinkSpot<TActor>` 의 actor 타입만 계약으로 사용한다. admission callback 은 actor instance 를
-받지 않고 `ZLinkActorJoinAdmission` 을 받는다. request 와 reply 는 codec-neutral `ZLinkMessage` 로
-고정한다.
+`IZLinkSpot<TActor>` 의 actor 타입을 내부 routing 계약으로 사용하지만 admission callback 에는
+actor id만 넘긴다. request 와 reply 는 codec-neutral `ZLinkMessage` 로 고정한다.
 
 ```csharp
 public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>
@@ -1737,7 +1719,7 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
     public IZLinkSpotContext Context { get; } = context;
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -2679,9 +2661,6 @@ public interface IZLinkFrameworkOptions
 
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
-
-    void AddStatelessActorTransfer<TActor>(string actorType)
-        where TActor : IZLinkActor;
 
     void AddActorTransferAdapter<TActor, TAdapter>(string actorType)
         where TActor : IZLinkActor

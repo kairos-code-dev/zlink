@@ -4,7 +4,7 @@ public static class SpotActorTransferNames
 {
     public const string Mesh = "spot-actor-transfer";
     public const string ActorTypeStateful = "transfer-stateful";
-    public const string ActorTypeStateless = "transfer-stateless";
+    public const string ActorTypeEmptyState = "transfer-empty-state";
     public const string ActorTypeNoAdapter = "transfer-no-adapter";
     public const string ActorTypeFailTransferOut = "transfer-fail-out";
     public const string ActorTypeFailLeave = "transfer-fail-leave";
@@ -60,6 +60,38 @@ public sealed record ProbeRes(
     string NodeRid,
     int StateVersion,
     string Marker);
+
+public sealed record BindActorSessionReq(
+    string Scenario,
+    string ActorId,
+    string? NodeRid = null,
+    long? Generation = null);
+
+public sealed record BindActorSessionRes(
+    string Scenario,
+    string ActorId,
+    string NodeRid,
+    long Generation);
+
+public sealed record BoundPushReq(
+    string Scenario,
+    string Marker);
+
+public sealed record BoundPushRes(
+    string Scenario,
+    string ActorId,
+    string SpotRid,
+    string NodeRid,
+    string Marker,
+    int StateVersion);
+
+public sealed record BoundPushNotify(
+    string Scenario,
+    string ActorId,
+    string SpotRid,
+    string NodeRid,
+    string Marker,
+    int StateVersion);
 
 public sealed record EvidenceWaitReq(
     string[] ContainsAll,

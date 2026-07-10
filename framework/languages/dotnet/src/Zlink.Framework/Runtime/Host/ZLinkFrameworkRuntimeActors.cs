@@ -93,10 +93,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                              .ConfigureAwait(false)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        if (!ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer))
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor type '{request.ActorType}' is not registered for remote actor transfer.");
+        ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer);
 
         // Hosting handoff: the source node still owns the location row, so
         // the local claim may fence it out with Takeover. This path does not
@@ -117,7 +114,13 @@ internal sealed partial class ZLinkFrameworkRuntime
                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
                            $"Actor '{actorId}' does not have a native Actor ref.");
         var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
-        BindRemoteBoundSessionRoute(actorId, actorRef, boundRoute.NodeRid, boundRoute.SessionRid);
+        await BindRemoteBoundSessionRouteAsync(
+                actorId,
+                actorRef,
+                boundRoute.NodeRid,
+                boundRoute.SessionRid,
+                cancellationToken)
+            .ConfigureAwait(false);
 
         await activation.CommitTransferredActorJoinAsync(
                 creation.Actor,
@@ -140,16 +143,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                              .ConfigureAwait(false)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        if (!ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer))
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor type '{request.ActorType}' is not registered for remote actor transfer.");
-
         var result = await activation.AdmitRemoteActorJoinAsync(
                 request.ActorId,
-                transfer.ActorType,
-                RoutingId.From(request.SourceSpotRid),
-                RoutingId.From(request.SourceNodeRid),
                 ZLinkRemoteActorJoinPackets.DecodeAdmissionRequestPayload(
                     request,
                     Registration.Codecs),
@@ -162,15 +157,26 @@ internal sealed partial class ZLinkFrameworkRuntime
             Registration.Codecs);
     }
 
-    private void BindRemoteBoundSessionRoute(
+    private async ValueTask BindRemoteBoundSessionRouteAsync(
         string actorId,
         ZLinkBackendActorRef actorRef,
         RoutingId? boundSessionNodeRid,
-        RoutingId? boundSessionRid)
+        RoutingId? boundSessionRid,
+        CancellationToken cancellationToken)
     {
         if (boundSessionNodeRid is not { } sourceNodeRid
             || boundSessionRid is not { } sourceSessionRid)
             return;
+
+        if (TryGetSessionActorContext(actorId, out var context))
+        {
+            await context.ActorCoordinator.BindActorAsync(
+                    context,
+                    actorRef.ToNative(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
 
         BindActorSession(
             actorId,

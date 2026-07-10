@@ -90,11 +90,11 @@ internal sealed class BingoRoom(
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var reply = await JoinAsync(admission.ActorId, request.Decode<BingoRoomJoinReq>(), cancellationToken);
+        var reply = await JoinAsync(actorId, request.Decode<BingoRoomJoinReq>(), cancellationToken);
         return ZLinkSpotActorJoinResult.Accept(reply);
     }
 

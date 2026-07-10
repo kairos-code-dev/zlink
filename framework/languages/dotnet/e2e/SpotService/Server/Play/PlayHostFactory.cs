@@ -77,7 +77,6 @@ internal static class PlayHostFactory
                 .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
-                .AddStatelessActorTransfer<ScenarioActor>(SpotServiceNames.ActorType)
                 .AddSpotFactory<ScenarioUserSpot>()
                 .AddSpotFactory<ScenarioAlternateSpot>();
             if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))

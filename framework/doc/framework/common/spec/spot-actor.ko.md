@@ -27,7 +27,7 @@
 | source node | 이동 전 actor instance를 소유한 SpotNode다. |
 | target node | target Spot을 소유한 SpotNode다. 같은 node 이동이면 source node와 같다. |
 | admission | target Spot이 actor identity와 request를 보고 받을 수 있는지 확인하는 단계다. 이 단계의 callback은 `OnActorJoin` 계열이다. |
-| actor transfer adapter | node 간 transfer에서 source actor의 이동 state를 `ZLinkMessage`로 만들고, target node에서 actor 객체를 materialize하는 actor type별 hook이다. |
+| actor transfer adapter | node 간 transfer에서 source actor의 이동 state를 `ZLinkMessage`로 만들고, target node에서 actor 객체를 materialize하는 actor type별 hook이다. 등록하지 않으면 framework는 빈 state transfer를 기본으로 사용한다. |
 | commit | actor membership을 실제로 target Spot으로 바꾸는 단계다. commit 뒤에만 target Spot은 actor가 들어왔다고 볼 수 있다. |
 | joined callback | commit 완료를 application에 알리는 callback이다. 이름은 언어별로 다르지만 의미는 `OnJoinedActor` 계열이다. |
 | left callback | source Spot membership에서 actor가 빠졌음을 알리는 callback이다. 이름은 언어별로 다르지만 의미는 `OnLeaveActor` 계열이다. |
@@ -45,13 +45,14 @@ actor가 target Spot에 들어온 것은 아니다. application은 `OnActorJoin`
 game participant list, broadcast 대상 목록처럼 "actor가 들어왔다"는 사실을 확정하는 상태를
 바꾸지 않아야 한다.
 
-`OnActorJoin` 입력에는 actor instance를 전달하지 않는다. admission 단계에서 필요한 값은 actor type,
-actor id, source Spot, request payload, 필요한 경우 source node 같은 identity와 metadata다.
+`OnActorJoin` 입력에는 actor instance를 전달하지 않는다. admission 단계에서 public callback이 받는
+identity는 actor id뿐이다. actor type, source/target Spot, source/target node 같은 값은 framework가
+내부 routing과 검증에 사용하지만 application admission 표면으로 넘기지 않는다.
 
 `OnActorJoin`에서 해도 되는 일:
 
 - request payload 검증
-- actor type, actor id, 권한, room 상태 확인
+- actor id, 권한, room 상태 확인
 - join reply payload 계산
 - admission 실패 사유 기록
 
@@ -64,10 +65,10 @@ actor id, source Spot, request payload, 필요한 경우 source node 같은 iden
 - actor packet을 target Spot handler로 dispatch 가능하다고 간주
 
 actor instance를 application에 처음 노출하는 lifecycle은 target `OnJoinedActor`다. remote transfer에서
-target node는 `OnActorJoin` accept만으로 target actor instance를 만들지 않는다. source node가 actor
-transfer adapter로 만든 state message를 commit 요청에 싣고, target node는 actor transfer adapter로
-target actor instance를 materialize한다. target `OnJoinedActor`에는 이 actor를
-전달한다.
+target node는 `OnActorJoin` accept만으로 target actor instance를 만들지 않는다. source node는 custom
+adapter 또는 framework 기본 빈 state transfer로 만든 state message를 commit 요청에 싣고, target node는
+custom adapter 또는 actor factory 생성 경로로 target actor instance를 materialize한다. target
+`OnJoinedActor`에는 이 actor를 전달한다.
 
 ### 3.2 `OnJoinedActor`가 join 완료 신호다
 
@@ -178,11 +179,11 @@ location row는 만들지 않는다. target actor instance는 source node의 com
 state를 `TransferIn`으로 복원한 뒤 materialize하고, target `OnJoinedActor`에서 처음 application에
 전달한다.
 
-actor transfer adapter는 domain actor materialization만 담당한다. `TransferOut(actor)`는 source actor의
-이동 state를 `ZLinkMessage`로 만들고, `TransferIn(actorId, state)`는 그 message와 actor id로 target actor
-instance를 만든다. 이동 state는 비어 있을 수 있다. 이 경우 target actor는 actor id와 actor factory 같은
-언어별 actor 생성 경로로 만들어지고, 필요한 domain state는 target `OnJoinedActor`나 actor의 lazy-load
-정책에서 별도로 읽어 올 수 있다.
+actor transfer adapter는 domain actor materialization만 담당한다. adapter가 등록된 actor type에서는
+`TransferOut(actor)`가 source actor의 이동 state를 `ZLinkMessage`로 만들고, `TransferIn(actorId, state)`가
+그 message와 actor id로 target actor instance를 만든다. adapter가 등록되지 않은 actor type은 framework가
+빈 `ZLinkMessage`를 transfer state로 사용하고, target actor를 actor factory 같은 언어별 actor 생성 경로로
+만든다. 필요한 domain state는 target `OnJoinedActor`나 actor의 lazy-load 정책에서 별도로 읽어 올 수 있다.
 입장 가능 여부, actor id/type 일치성, source/target route 일치성, transfer deadline 같은 검사는
 framework와 `OnActorJoin` 책임이다. transfer adapter는 이런 검사를 반복하지 않는다.
 
@@ -192,10 +193,10 @@ remote transfer는 아래 조건을 모두 만족해야 성공이다.
 
 1. target node가 actor identity와 request로 admission을 준비했다.
 2. target `OnActorJoin`이 `Accept`를 반환했다.
-3. source node가 actor transfer adapter로 transfer state `ZLinkMessage`를 만들었다.
+3. source node가 custom adapter 또는 framework 기본 빈 state transfer로 transfer state `ZLinkMessage`를 만들었다.
 4. source node가 source `OnLeaveActor`를 정상 완료했다.
 5. source node가 transfer state를 포함한 commit 요청을 target node에 보냈다.
-6. target node가 actor transfer adapter로 target actor instance를 materialize했다.
+6. target node가 custom adapter 또는 actor factory 생성 경로로 target actor instance를 materialize했다.
 7. target node가 actor membership을 target user Spot으로 commit했다.
 8. target `OnJoinedActor`가 정상 완료됐다.
 9. actor location row가 target user Spot을 가리키는 committed 상태로 관찰된다.
@@ -256,9 +257,10 @@ sequenceDiagram
 
 ## 6. actor transfer adapter
 
-remote transfer는 actor 객체를 transport로 직접 보내지 않는다. source node는 actor type별 transfer
-adapter로 이동 state를 `ZLinkMessage`로 만들고, target node는 같은 actor type의 transfer adapter로
-target actor instance를 만든다.
+remote transfer는 actor 객체를 transport로 직접 보내지 않는다. source node는 custom transfer adapter가
+있으면 그 adapter로 이동 state를 `ZLinkMessage`로 만들고, 없으면 framework 기본 빈 state transfer를
+사용한다. target node도 같은 기준으로 custom adapter 또는 actor factory 생성 경로를 사용해 target actor
+instance를 만든다.
 
 모든 framework 언어는 같은 public contract를 제공해야 한다. 실제 interface 이름, async 반환형,
 cancellation 표현, 등록 API는 언어별 spec에서 고정한다. 특정 언어가 아래 의미의 surface를 제공하지
@@ -266,20 +268,20 @@ cancellation 표현, 등록 API는 언어별 spec에서 고정한다. 특정 언
 
 | 항목 | 공통 계약 |
 | --- | --- |
-| 등록 단위 | actor type별 하나의 transfer adapter |
+| 등록 단위 | state 이동이 필요한 actor type별 하나의 transfer adapter |
 | custom 등록 | actor type과 adapter type을 함께 등록한다. |
-| stateless 등록 | actor type만 등록해 framework 기본 stateless adapter를 사용한다. |
+| 기본 빈 state transfer | adapter가 없으면 framework가 빈 state transfer와 actor factory 생성 경로를 사용한다. 별도 stateless 등록 API를 요구하지 않는다. |
 | source method | `TransferOut(actor, cancellation)` |
 | source 반환 | `ZLinkMessage` 또는 그 언어의 framework message type |
 | target method | `TransferIn(actorId, state, cancellation)`. actor 생성에 별도 runtime context가 필요한 언어는 언어별 spec에서 해당 context 인자를 추가로 고정한다. |
 | target 반환 | target node에서 사용할 actor instance |
-| 미등록 정책 | remote transfer 시작 전 실패. source `OnLeaveActor`를 호출하지 않는다. |
-| 빈 state 정책 | adapter가 등록되어 있으면 `TransferOut`이 빈 `ZLinkMessage`를 반환해도 정상 transfer로 처리할 수 있다. |
+| 미등록 정책 | 실패가 아니다. framework 기본 빈 state transfer로 처리한다. |
+| 빈 state 정책 | adapter가 등록되어 있거나 기본 빈 state transfer를 사용하면 빈 `ZLinkMessage`를 정상 transfer로 처리한다. |
 | 같은 node join | transfer adapter를 호출하지 않고 기존 actor instance를 그대로 이동한다. |
 
 `TransferOut`은 source node의 실제 actor instance를 받는다. actor id는 actor 객체가 이미 알고
 있으므로 별도 context로 다시 넘기지 않는다. 이 method는 actor의 이동 가능한 상태만 message로 만든다.
-이동 state가 필요 없는 actor type은 빈 `ZLinkMessage`를 반환할 수 있다.
+adapter가 등록되어 있더라도 이동 state가 필요 없으면 빈 `ZLinkMessage`를 반환할 수 있다.
 
 `TransferIn`은 target node에서 아직 actor instance가 없을 때 호출된다. framework는 복원할
 `actorId`와 source가 보낸 state message를 넘긴다. 이 method는 target node에서 사용할 actor instance를
@@ -287,17 +289,13 @@ cancellation 표현, 등록 API는 언어별 spec에서 고정한다. 특정 언
 그 context 인자를 함께 정의한다. 이 context는 검증이나 admission 판단을 위한 값이 아니라 actor instance가
 기존 actor factory 계약과 같은 runtime context를 노출하게 하려는 생성 인자다.
 
-state가 비어 있으면 adapter는 actor id와 언어별 actor factory 또는 public actor 생성 경로를 사용해
-actor instance를 만들 수 있다. 필요한 domain state는 target `OnJoinedActor` 이후 별도 저장소에서 읽어
-올 수 있다.
+state가 비어 있으면 adapter 또는 framework 기본 빈 state transfer는 actor id와 언어별 actor factory
+또는 public actor 생성 경로를 사용해 actor instance를 만들 수 있다. 필요한 domain state는 target
+`OnJoinedActor` 이후 별도 저장소에서 읽어 올 수 있다.
 
-framework는 transfer adapter 미등록과 빈 state transfer를 구분해야 한다. adapter가 없으면 remote
-transfer를 시작하지 않고 실패한다. adapter가 등록되어 있고 빈 `ZLinkMessage`를 반환하면 이는 명시적인
-stateless transfer로 본다.
-
-각 언어 framework는 actor type별 stateless transfer adapter를 쉽게 등록할 수 있는 기본 등록 API를
-제공해야 한다. 이 기본 adapter는 `TransferOut`에서 빈 `ZLinkMessage`를 만들고, `TransferIn`에서 해당
-언어의 public actor 생성 경로로 actor instance를 만든다.
+framework는 transfer adapter 미등록을 실패로 보지 않는다. adapter가 없으면 source `OnLeaveActor` 전에
+빈 `ZLinkMessage`를 준비하고, target commit에서 actor factory/public 생성 경로로 actor를 materialize한다.
+adapter가 등록되어 있고 빈 `ZLinkMessage`를 반환하는 경우도 같은 빈 state transfer로 처리한다.
 
 transfer adapter가 담당하지 않는 일:
 
@@ -312,29 +310,19 @@ transfer adapter가 담당하지 않는 일:
 변환 책임과 join 정책 책임이 섞인다.
 
 transfer adapter 등록은 actor type별로 하나만 허용한다. remote transfer 대상 actor type에 transfer
-adapter가 없으면 framework는 remote transfer를 시작하지 않고 실패를 반환해야 한다. 같은 node join은
-actor instance를 그대로 이동하므로 transfer adapter를 사용하지 않는다.
+adapter가 없으면 framework 기본 빈 state transfer를 사용한다. 같은 node join은 actor instance를
+그대로 이동하므로 transfer adapter와 기본 빈 state transfer를 사용하지 않는다.
 
 transfer state의 content type, codec, version은 `ZLinkMessage`의 envelope에 담는다. framework는 state
 message를 transport payload로 전달하지만, 그 내부 domain schema는 해석하지 않는다.
 
 actor transfer와 함께 `OnActorJoin`도 모든 언어에서 같은 의미의 admission surface를 가져야 한다.
-`OnActorJoin`은 actor instance를 받지 않고, actor identity와 request만 받아야 한다. 실제 method
-signature는 언어별 spec에서 고정한다.
+`OnActorJoin`은 actor instance를 받지 않고, actor id와 request만 받아야 한다. 실제 method signature는
+언어별 spec에서 고정한다.
 
-`ZLinkActorJoinAdmission`은 actor instance가 아니라 identity와 route metadata만 담는다.
-
-| 필드 | 의미 |
-| --- | --- |
-| `ActorId` | join하려는 actor id |
-| `ActorType` | join하려는 actor type |
-| `SourceSpotRid` | actor가 떠나려는 source Spot |
-| `TargetSpotRid` | actor가 들어가려는 target Spot |
-| `SourceNodeRid` | remote transfer일 때 source node |
-| `TargetNodeRid` | target Spot을 소유한 node |
-
-언어별 framework는 위 필드를 다른 이름의 low-level header나 raw message로 application에 노출하면 안
-된다. application이 admission에서 보는 입력은 actor identity, source/target, request payload로 제한한다.
+언어별 framework는 actor type, source/target Spot, source/target node 값을 다른 이름의 low-level header나
+raw message로 application admission callback에 노출하면 안 된다. application이 admission에서 보는 입력은
+actor id와 request payload로 제한한다.
 
 ## 7. Entry Spot lifecycle와 user Spot transfer
 
@@ -417,8 +405,10 @@ runtime error event와 reconcile 대상으로 기록해야 한다.
 
 - 같은 node join에서 callback 순서가 `OnActorJoin`, `OnLeaveActor`, `OnJoinedActor` 순서인지
 - remote transfer에서 admission과 commit이 분리되어 있는지
-- remote transfer에서 actor type별 transfer adapter를 통해 state message를 전달하거나 빈 state transfer를 명시적으로 처리하는지
-- transfer adapter 미등록 actor type의 remote transfer를 명시적으로 실패시키는지
+- `OnActorJoin` public callback이 actor id와 request만 받고 actor instance나 route metadata를 받지 않는지
+- remote transfer에서 actor type별 transfer adapter를 통해 state message를 전달하는지
+- remote transfer에서 adapter 미등록 actor type을 기본 빈 state transfer로 처리하는지
+- `OnJoinedActor`와 `OnLeaveActor` callback의 기본 no-op 구현을 public contract로 제공하지 않는지
 - target commit ack 이후 source cleanup 실패를 join 실패로 되돌리지 않고 멱등 정리 대상으로 남기는지
 - source node down signal 없이도 accept / before commit 상태의 pending admission을 deadline으로 정리하는지
 - target `OnJoinedActor` 완료 전 caller에게 success를 반환하지 않는지
@@ -439,8 +429,8 @@ runtime error event와 reconcile 대상으로 기록해야 한다.
 | local join reject no side effect | reject 시 source left, target joined, location update가 없다. |
 | remote join success order | target admission, source left, target joined, commit ack와 success reply 순서가 증거로 남는다. source cleanup은 성공 뒤 멱등 정리 evidence로 분리한다. |
 | remote transfer state | source transfer out state가 target transfer in으로 전달되고 복원된 actor가 target joined에 전달된다. |
-| remote transfer empty state | 등록된 stateless transfer adapter가 빈 state로 target actor를 만들고, target joined 이후 domain state를 별도로 읽어 올 수 있다. |
-| missing transfer adapter | remote transfer 대상 actor type에 transfer adapter가 없으면 source left 없이 실패한다. |
+| remote transfer empty state | 등록된 custom adapter가 빈 state를 반환해도 target actor를 만들고, target joined 이후 domain state를 별도로 읽어 올 수 있다. |
+| missing transfer adapter | remote transfer 대상 actor type에 transfer adapter가 없으면 기본 빈 state transfer로 성공한다. |
 | source down before commit | target admission accept 뒤 commit이 오지 않으면 target joined가 호출되지 않고 pending admission이 deadline으로 정리된다. |
 | source down after commit | target joined 완료 뒤 source cleanup이 실패해도 target ownership이 유지된다. |
 | joined callback failure | target joined callback 실패 시 caller가 success를 받지 않는다. |

@@ -27,14 +27,6 @@ public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, ZLinkMessa
     }
 }
 
-public sealed record ZLinkActorJoinAdmission(
-    string ActorId,
-    Type ActorType,
-    RoutingId SourceSpotRid,
-    RoutingId TargetSpotRid,
-    RoutingId SourceNodeRid,
-    RoutingId TargetNodeRid);
-
 public interface IZLinkActorTransferAdapter<TActor>
     where TActor : IZLinkActor
 {
@@ -144,26 +136,17 @@ public interface IZLinkSpotActorLifecycle<TActor>
     where TActor : IZLinkActor
 {
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
-    }
+        CancellationToken cancellationToken);
 
     ValueTask OnJoinedActorAsync(
         TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
+        CancellationToken cancellationToken);
 
     ValueTask OnLeaveActorAsync(
         TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
+        CancellationToken cancellationToken);
 
     ValueTask OnDisconnectActorAsync(
         TActor actor,

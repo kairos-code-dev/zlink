@@ -5,6 +5,20 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void TicTacToe_Registers_Stateful_Actor_Transfer_Adapter()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var host = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "PlayServer.cs"));
+        var adapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure", "ZLink",
+            "Actors", "PlayActorTransferAdapter.cs"));
+
+        Assert.Contains("AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>", host,
+            StringComparison.Ordinal);
+        Assert.Contains("IZLinkActorTransferAdapter<PlayActor>", adapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddStatelessActorTransfer", host, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TicTacToe_Runner_Uses_Isolated_Docker_Redis()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");

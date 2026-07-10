@@ -80,17 +80,17 @@ internal sealed class TicTacToeGame(
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var joinRequest = request.Decode<TicTacToeGameJoinReq>();
-        var reply = await JoinPlayerAsync(admission.ActorId, joinRequest.RoomId, joinRequest.Player, cancellationToken);
+        var reply = await JoinPlayerAsync(actorId, joinRequest.RoomId, joinRequest.Player, cancellationToken);
         logger.LogInformation(
             "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",
-            admission.ActorId,
+            actorId,
             joinRequest.RoomId,
-            reply.State.XActorId == admission.ActorId ? TicTacToeMarks.X : TicTacToeMarks.O);
+            reply.State.XActorId == actorId ? TicTacToeMarks.X : TicTacToeMarks.O);
 
         return ZLinkSpotActorJoinResult.Accept(reply);
     }

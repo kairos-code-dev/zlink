@@ -322,6 +322,21 @@ public abstract class RegistrationValidationSupport
         }
     }
 
+    protected sealed class TestActorTransferAdapter : IZLinkActorTransferAdapter<TestActor>
+    {
+        public ValueTask<ZLinkMessage> TransferOutAsync(
+            TestActor actor,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(ZLinkMessage.Empty);
+
+        public ValueTask<TestActor> TransferInAsync(
+            string actorId,
+            IZLinkActorContext context,
+            ZLinkMessage state,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new TestActor(actorId, context));
+    }
+
     protected sealed class TestSpotRouteRefResolver : IZLinkSpotRouteRefResolver
     {
         public ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(

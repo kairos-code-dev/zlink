@@ -1,4 +1,5 @@
 using SpotActorTransfer.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
@@ -11,12 +12,16 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["ST-A2"] = RunLocalRejectAsync,
     ["ST-A3"] = RunLocalMovingDispatchBlockedAsync,
     ["ST-B1"] = RunRemoteStatefulTransferAsync,
+    ["ST-B2"] = RunSourceCleanupFailureAfterSuccessAsync,
     ["ST-B3"] = RunRemoteMissingAdapterAsync,
-    ["ST-B4"] = RunRemoteStatelessTransferAsync,
+    ["ST-B4"] = RunRemoteEmptyStateTransferAsync,
     ["ST-D1"] = RunLocationCommitTimingAsync,
+    ["ST-D2"] = RunStaleSourceReleaseFencingAsync,
     ["ST-C3"] = RunCallbackFailureClassificationAsync,
     ["ST-C2"] = RunSourceDownAfterTargetCommitAsync,
-    ["ST-C1"] = RunSourceDownBeforeCommitAsync
+    ["ST-C1"] = RunSourceDownBeforeCommitAsync,
+    ["ST-E1"] = RunBoundSessionPushAfterRemoteTransferAsync,
+    ["ST-E2"] = RunBoundSessionRebindIsolationAsync
 };
 
 foreach (var name in SelectedScenarioNames(options.Scenario, scenarios.Keys))
@@ -134,6 +139,30 @@ async Task RunRemoteStatefulTransferAsync()
     ]);
 }
 
+async Task RunSourceCleanupFailureAfterSuccessAsync()
+{
+    var actorId = $"actor-cleanup-after-success-{Guid.NewGuid():N}";
+    var spotRid = $"spot-cleanup-after-success-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 22);
+
+    var join = await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-B2", spotRid));
+    Require(join.Accepted, "ST-B2 join was rejected.");
+    var beforeShutdown = await ProbeAsync(nodeB, actorId, new ProbeReq("ST-B2", "before-source-cleanup-loss"));
+    Require(beforeShutdown.NodeRid == "actor-b", $"ST-B2 probe expected actor-b, got {beforeShutdown.NodeRid}.");
+
+    await ShutdownAsync(nodeA);
+    await Task.Delay(TimeSpan.FromSeconds(2));
+
+    var afterShutdown = await ProbeAsync(nodeB, actorId, new ProbeReq("ST-B2", "after-source-cleanup-loss"));
+    Require(afterShutdown.NodeRid == "actor-b", $"ST-B2 target ownership was lost after source shutdown: {afterShutdown.NodeRid}.");
+    Require(afterShutdown.StateVersion == 22, $"ST-B2 state changed after source cleanup loss: {afterShutdown.StateVersion}.");
+    await WaitEvidenceAsync(nodeB, [
+        $"transfer|{actorId}|joined|{spotRid}:22",
+        $"ST-B2|{actorId}|packet_handler|after-source-cleanup-loss"
+    ]);
+}
+
 async Task RunRemoteMissingAdapterAsync()
 {
     var actorId = $"actor-no-adapter-{Guid.NewGuid():N}";
@@ -141,34 +170,46 @@ async Task RunRemoteMissingAdapterAsync()
     await CreateSpotAsync(nodeB, spotRid);
     await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeNoAdapter, 31);
 
-    var response = await JoinRawAsync(nodeA, actorId, new JoinTargetReq("ST-B3", spotRid));
-    Require(!response.Accepted, "ST-B3 join should have failed.");
-    Require(response.ErrorKind is not null, "ST-B3 expected explicit error kind.");
+    var join = await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-B3", spotRid));
+    Require(join.Accepted, "ST-B3 join was rejected.");
 
-    var evidence = await WaitEvidenceAsync(nodeA, [
-        $"ST-B3|{actorId}|join_failed|{response.ErrorKind}"
+    var probe = await ProbeAsync(nodeB, actorId, new ProbeReq("ST-B3", "after-default-empty-transfer"));
+    Require(probe.NodeRid == "actor-b", $"ST-B3 probe expected actor-b, got {probe.NodeRid}.");
+    Require(probe.StateVersion == 0, $"ST-B3 default empty target state expected 0, got {probe.StateVersion}.");
+    await WaitEvidenceAsync(nodeA, [
+        $"transfer|{actorId}|transfer_out_empty_default|no-adapter",
+        $"transfer|{actorId}|leave|31"
     ]);
-    RequireNoContains(evidence, $"transfer|{actorId}|leave|31", "ST-B3 source leave should not run.");
+    await WaitEvidenceAsync(nodeB, [
+        $"transfer|{actorId}|transfer_in_empty_default|actor-factory",
+        $"transfer|{actorId}|joined|{spotRid}:0",
+        $"ST-B3|{actorId}|packet_handler|after-default-empty-transfer"
+    ]);
 }
 
-async Task RunRemoteStatelessTransferAsync()
+async Task RunRemoteEmptyStateTransferAsync()
 {
     var actorId = $"actor-empty-state-{Guid.NewGuid():N}";
     var spotRid = $"spot-empty-state-{Guid.NewGuid():N}";
     await CreateSpotAsync(nodeB, spotRid);
-    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateless, 41);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeEmptyState, 41);
 
     var join = await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-B4", spotRid));
     Require(join.Accepted, "ST-B4 join was rejected.");
 
-    var probe = await ProbeAsync(nodeB, actorId, new ProbeReq("ST-B4", "after-stateless-transfer"));
+    var probe = await ProbeAsync(nodeB, actorId, new ProbeReq("ST-B4", "after-empty-state-transfer"));
     Require(probe.NodeRid == "actor-b", $"ST-B4 probe expected actor-b, got {probe.NodeRid}.");
-    Require(probe.StateVersion == 0, $"ST-B4 stateless target state expected 0, got {probe.StateVersion}.");
+    Require(probe.StateVersion == 41, $"ST-B4 loaded target state expected 41, got {probe.StateVersion}.");
 
+    await WaitEvidenceAsync(nodeA, [
+        $"transfer|{actorId}|transfer_out_empty|custom-adapter",
+        $"transfer|{actorId}|leave|41"
+    ]);
     await WaitEvidenceAsync(nodeB, [
+        $"transfer|{actorId}|transfer_in_empty|custom-adapter",
         $"transfer|{actorId}|joined|{spotRid}:0",
         $"transfer|{actorId}|domain_state_loaded|{actorId}",
-        $"ST-B4|{actorId}|packet_handler|after-stateless-transfer"
+        $"ST-B4|{actorId}|packet_handler|after-empty-state-transfer"
     ]);
 }
 
@@ -184,6 +225,14 @@ async Task RunSourceDownAfterTargetCommitAsync()
     var spotRid = $"spot-source-down-after-commit-{Guid.NewGuid():N}";
     await CreateSpotAsync(nodeB, spotRid);
     await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 61);
+    var sourceRef = await GetActorRefAsync(nodeA, actorId);
+    await using var bound = await ConnectAndBindAsync(options.NodeBStreamEndpoint, "ST-C2", sourceRef);
+    var beforeTransferPush = WaitBoundPushAsync(bound, "bound-before-transfer");
+    var beforeTransferReply = await bound.Request(new BoundPushReq("ST-C2", "bound-before-transfer"))
+        .PacketName(nameof(BoundPushReq))
+        .Async<BoundPushRes>();
+    Require(beforeTransferReply.NodeRid == "actor-a", $"ST-C2 pre-transfer bound push expected actor-a, got {beforeTransferReply.NodeRid}.");
+    await beforeTransferPush;
 
     var join = await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-C2", spotRid));
     Require(join.Accepted, "ST-C2 join was rejected.");
@@ -206,8 +255,15 @@ async Task RunSourceDownAfterTargetCommitAsync()
     var probe = await ProbeAsync(nodeB, actorId, new ProbeReq("ST-C2", "after-source-down"));
     Require(probe.NodeRid == "actor-b", $"ST-C2 probe expected actor-b, got {probe.NodeRid}.");
     Require(probe.SpotRid == spotRid, "ST-C2 probe did not reach target spot after source shutdown.");
+    var pushed = WaitBoundPushAsync(bound, "bound-after-source-down");
+    var pushReply = await BoundPushAsync(nodeB, actorId, new BoundPushReq("ST-C2", "bound-after-source-down"));
+    var notify = await pushed;
+    Require(pushReply.NodeRid == "actor-b", $"ST-C2 bound push reply expected actor-b, got {pushReply.NodeRid}.");
+    Require(notify.Payload.NodeRid == "actor-b", $"ST-C2 bound push notify expected actor-b, got {notify.Payload.NodeRid}.");
+    Require(notify.Payload.Marker == "bound-after-source-down", "ST-C2 bound push notify marker mismatch.");
     await WaitEvidenceAsync(nodeB, [
-        $"ST-C2|{actorId}|packet_handler|after-source-down"
+        $"ST-C2|{actorId}|packet_handler|after-source-down",
+        $"ST-C2|{actorId}|bound_push|bound-after-source-down"
     ]);
 }
 
@@ -251,6 +307,76 @@ async Task RunCallbackFailureClassificationAsync()
     await RunSourceLeaveFailureAsync();
     await RunTransferInFailureAsync();
     await RunJoinedFailureAsync();
+}
+
+async Task RunStaleSourceReleaseFencingAsync()
+{
+    var actorId = $"actor-stale-release-{Guid.NewGuid():N}";
+    var spotRid = $"spot-stale-release-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 81);
+
+    var join = await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-D2", spotRid));
+    Require(join.Accepted, "ST-D2 join was rejected.");
+    var before = await GetActorRefAsync(nodeB, actorId);
+    Require(before.NodeRid == "actor-b", $"ST-D2 target ref expected actor-b, got {before.NodeRid}.");
+
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    var after = await GetActorRefAsync(nodeB, actorId);
+    Require(after.NodeRid == "actor-b", $"ST-D2 target ref changed after delayed cleanup: {after.NodeRid}.");
+    Require(after.Generation == before.Generation,
+        $"ST-D2 generation changed after delayed cleanup. before={before.Generation}, after={after.Generation}");
+    var probe = await ProbeAsync(nodeB, actorId, new ProbeReq("ST-D2", "after-stale-cleanup-window"));
+    Require(probe.NodeRid == "actor-b", $"ST-D2 probe expected actor-b, got {probe.NodeRid}.");
+}
+
+async Task RunBoundSessionPushAfterRemoteTransferAsync()
+{
+    var actorId = $"actor-bound-session-{Guid.NewGuid():N}";
+    var spotRid = $"spot-bound-session-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 91);
+    var sourceRef = await GetActorRefAsync(nodeA, actorId);
+    await using var bound = await ConnectAndBindAsync(options.NodeAStreamEndpoint, "ST-E1", sourceRef);
+    var beforeTransferPush = WaitBoundPushAsync(bound, "before-transfer");
+    await BoundPushAsync(nodeA, actorId, new BoundPushReq("ST-E1", "before-transfer"));
+    await beforeTransferPush;
+
+    var join = await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-E1", spotRid));
+    Require(join.Accepted, "ST-E1 join was rejected.");
+    var pushed = WaitBoundPushAsync(bound, "after-remote-transfer");
+    var pushReply = await BoundPushAsync(nodeB, actorId, new BoundPushReq("ST-E1", "after-remote-transfer"));
+    var notify = await pushed;
+    Require(pushReply.NodeRid == "actor-b", $"ST-E1 bound push reply expected actor-b, got {pushReply.NodeRid}.");
+    Require(notify.Payload.NodeRid == "actor-b", $"ST-E1 bound push notify expected actor-b, got {notify.Payload.NodeRid}.");
+    Require(notify.Payload.StateVersion == 91, $"ST-E1 bound push state expected 91, got {notify.Payload.StateVersion}.");
+}
+
+async Task RunBoundSessionRebindIsolationAsync()
+{
+    var actorId = $"actor-bound-session-rebind-{Guid.NewGuid():N}";
+    var spotRid = $"spot-bound-session-rebind-{Guid.NewGuid():N}";
+    await CreateSpotAsync(nodeB, spotRid);
+    await CreateActorAsync(nodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 92);
+    var sourceRef = await GetActorRefAsync(nodeA, actorId);
+    await using var oldSession = await ConnectAndBindAsync(options.NodeAStreamEndpoint, "ST-E2", sourceRef);
+    var beforeTransferPush = WaitBoundPushAsync(oldSession, "before-rebind-transfer");
+    await BoundPushAsync(nodeA, actorId, new BoundPushReq("ST-E2", "before-rebind-transfer"));
+    await beforeTransferPush;
+
+    var join = await JoinAsync(nodeA, actorId, new JoinTargetReq("ST-E2", spotRid));
+    Require(join.Accepted, "ST-E2 join was rejected.");
+    var targetRef = await GetActorRefAsync(nodeB, actorId);
+    await using var newSession = await ConnectAndBindAsync(options.NodeBStreamEndpoint, "ST-E2", targetRef);
+
+    var oldPush = WaitBoundPushAsync(oldSession, "after-rebind");
+    var newPush = WaitBoundPushAsync(newSession, "after-rebind");
+    var pushReply = await BoundPushAsync(nodeB, actorId, new BoundPushReq("ST-E2", "after-rebind"));
+    var notify = await newPush;
+    Require(pushReply.NodeRid == "actor-b", $"ST-E2 bound push reply expected actor-b, got {pushReply.NodeRid}.");
+    Require(notify.Payload.Marker == "after-rebind", "ST-E2 new bound session notify marker mismatch.");
+    await Task.Delay(500);
+    Require(!oldPush.IsCompleted, "ST-E2 old bound session received push after rebind.");
 }
 
 async Task RunTransferOutFailureAsync()
@@ -456,6 +582,49 @@ async Task<ProbeRes> ProbeAsync(ZLinkHttpClient client, string actorId, ProbeReq
            ?? throw new InvalidOperationException("Probe response was null.");
 }
 
+async Task<BoundPushRes> BoundPushAsync(ZLinkHttpClient client, string actorId, BoundPushReq request)
+{
+    return (await client.Post($"/actors/{actorId}/bound-push").Body(request).SubmitAsync<BoundPushRes>()).Body
+           ?? throw new InvalidOperationException("Bound push response was null.");
+}
+
+Task<ZlinkStreamMessage<BoundPushNotify>> WaitBoundPushAsync(
+    IZlinkStreamConnector stream,
+    string marker)
+{
+    return stream.WaitFor<BoundPushNotify>()
+        .Where(message => message.Payload.Marker == marker)
+        .Timeout(TimeSpan.FromSeconds(10))
+        .Async()
+        .AsTask();
+}
+
+async Task<IZlinkStreamConnector> ConnectAndBindAsync(
+    string endpoint,
+    string scenario,
+    ActorRefSnapshotRes actor)
+{
+    var stream = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+    {
+        Endpoint = new Uri(endpoint),
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        RequestTimeout = TimeSpan.FromSeconds(10),
+        Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+        DispatchMode = ZlinkStreamDispatchMode.Immediate,
+        MaxReceivedMessages = 1024
+    });
+    await stream.Connect.Async();
+    var bound = await stream.Request(new BindActorSessionReq(
+            scenario,
+            actor.ActorId,
+            actor.NodeRid,
+            actor.Generation))
+        .PacketName(nameof(BindActorSessionReq))
+        .Async<BindActorSessionRes>();
+    Require(bound.ActorId == actor.ActorId, $"{scenario} session bind actor mismatch.");
+    return stream;
+}
+
 async Task<IReadOnlyList<ActorEvidence>> WaitEvidenceAsync(ZLinkHttpClient client, string[] containsAll)
 {
     var evidence = (await client.Post("/evidence/wait").Body(new EvidenceWaitReq(containsAll))
@@ -495,7 +664,12 @@ static IEnumerable<string> SelectedScenarioNames(string selector, IEnumerable<st
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
-internal sealed record ClientOptions(string NodeAUrl, string NodeBUrl, string Scenario)
+internal sealed record ClientOptions(
+    string NodeAUrl,
+    string NodeBUrl,
+    string NodeAStreamEndpoint,
+    string NodeBStreamEndpoint,
+    string Scenario)
 {
     public static ClientOptions Parse(string[] args)
     {
@@ -510,6 +684,8 @@ internal sealed record ClientOptions(string NodeAUrl, string NodeBUrl, string Sc
         return new ClientOptions(
             values["node-a-url"],
             values["node-b-url"],
+            values["node-a-stream-endpoint"],
+            values["node-b-stream-endpoint"],
             values.TryGetValue("scenario", out var scenario) ? scenario : "all");
     }
 }

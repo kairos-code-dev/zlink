@@ -200,6 +200,11 @@ internal static class ZLinkFrameworkServiceRegistrar
                      .SelectMany(static spotNode => spotNode.ActorFactories.Values))
             services.TryAddScoped(actorFactoryType);
 
+        foreach (var adapterType in registration.SpotNodes.Values
+                     .SelectMany(static spotNode => spotNode.ActorTransfers.Values)
+                     .Select(static transfer => transfer.AdapterType))
+            services.TryAddScoped(adapterType);
+
         foreach (var spotType in registration.SpotNodes.Values
                      .SelectMany(static spotNode => spotNode.SpotFactories))
             services.TryAddScoped(spotType);

@@ -43,78 +43,18 @@ public sealed class SpotHandlerInvokerTests
         Assert.False(descriptor.PassSpotArgument);
     }
 
-    [Fact]
-    public async Task InvokeActorJoinAsync_Uses_Default_Interface_Hook_WhenSpotDoesNotDeclareOne()
-    {
-        var spot = new DefaultHookSpot();
-        var actor = new MemberLifecycleActor("player-1");
-        var descriptor = ZLinkSpotDescriptorFactory
-            .CreateSpotActorJoinDescriptors(typeof(DefaultHookSpot))
-            .Single();
-        var request = ZLinkMessage.From("join");
-
-        var invoker = new ZLinkSpotHandlerInvoker(
-            new ServiceCollection().BuildServiceProvider(),
-            spot,
-            new ZLinkCodecRegistryBuilder(),
-            ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec());
-
-        var reply = await invoker.InvokeActorJoinAsync(
-            descriptor,
-            new ZLinkActorJoinAdmission(
-                actor.ActorId,
-                typeof(MemberLifecycleActor),
-                RoutingId.From("room-1"),
-                RoutingId.From("room-1"),
-                RoutingId.From("node-1"),
-                RoutingId.From("node-1")),
-            request,
-            CancellationToken.None);
-
-        Assert.False(reply.Accepted);
-        Assert.Equal(typeof(DefaultHookSpot), descriptor.HandlerType);
-        Assert.Equal(typeof(MemberLifecycleActor), descriptor.ActorType);
-        Assert.False(descriptor.PassSpotArgument);
-    }
-
-    [Fact]
-    public void CreateSpotLifecycleDescriptors_Uses_Default_Interface_Hooks_WhenSpotDoesNotDeclareThem()
-    {
-        var descriptors = ZLinkSpotActorAttributedDescriptorFactory
-            .CreateSpotLifecycleDescriptors(ZLinkSpotActorHandlerSurface.UserSpot, typeof(DefaultHookSpot))
-            .ToArray();
-
-        var joined = descriptors.Single(item => item.Joined is not null).Joined!;
-        var left = descriptors.Single(item => item.Left is not null).Left!;
-
-        Assert.Equal(typeof(DefaultHookSpot), joined.HandlerType);
-        Assert.Equal(typeof(MemberLifecycleActor), joined.ActorType);
-        Assert.False(joined.PassSpotArgument);
-        Assert.Equal(typeof(DefaultHookSpot), left.HandlerType);
-        Assert.Equal(typeof(MemberLifecycleActor), left.ActorType);
-        Assert.False(left.PassSpotArgument);
-    }
-
-    [Fact]
-    public void CreateSpotLifecycleDescriptors_Uses_Default_Interface_Hook_ForOnlyMissingLifecycleMethod()
-    {
-        var descriptors = ZLinkSpotActorAttributedDescriptorFactory
-            .CreateSpotLifecycleDescriptors(ZLinkSpotActorHandlerSurface.UserSpot, typeof(PartialLifecycleSpot))
-            .ToArray();
-
-        var joined = descriptors.Single(item => item.Joined is not null).Joined!;
-        var left = descriptors.Single(item => item.Left is not null).Left!;
-
-        Assert.Equal(typeof(PartialLifecycleSpot), joined.HandlerType);
-        Assert.Equal(typeof(PartialLifecycleSpot), left.HandlerType);
-        Assert.Equal(typeof(MemberLifecycleActor), left.ActorType);
-        Assert.False(left.PassSpotArgument);
-    }
-
     private sealed class MemberLifecycleSpot : IZLinkSpot<MemberLifecycleActor>
     {
         public string? JoinedActorId { get; private set; }
         public IZLinkSpotContext Context => throw new NotSupportedException();
+
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            string actorId,
+            ZLinkMessage request,
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
+        }
 
         public ValueTask OnJoinedActorAsync(
             MemberLifecycleActor actor,
@@ -126,25 +66,6 @@ public sealed class SpotHandlerInvokerTests
         }
 
         public ValueTask OnLeaveActorAsync(
-            MemberLifecycleActor actor,
-            CancellationToken cancellationToken)
-        {
-            _ = actor;
-            _ = cancellationToken;
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    private sealed class DefaultHookSpot : IZLinkSpot<MemberLifecycleActor>
-    {
-        public IZLinkSpotContext Context => throw new NotSupportedException();
-    }
-
-    private sealed class PartialLifecycleSpot : IZLinkSpot<MemberLifecycleActor>
-    {
-        public IZLinkSpotContext Context => throw new NotSupportedException();
-
-        public ValueTask OnJoinedActorAsync(
             MemberLifecycleActor actor,
             CancellationToken cancellationToken)
         {

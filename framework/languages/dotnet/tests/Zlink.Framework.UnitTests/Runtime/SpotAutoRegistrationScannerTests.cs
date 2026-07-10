@@ -58,7 +58,7 @@ public sealed class SpotAutoRegistrationScannerTests
         public IZLinkEntrySpotContext Context => throw new NotSupportedException();
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-            ZLinkActorJoinAdmission admission,
+            string actorId,
             ZLinkMessage request,
             CancellationToken cancellationToken)
         {

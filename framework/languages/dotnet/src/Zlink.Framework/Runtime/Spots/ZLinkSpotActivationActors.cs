@@ -92,9 +92,6 @@ internal sealed partial class ZLinkSpotActivation
 
     public async ValueTask<ZLinkSpotActorJoinResult> AdmitRemoteActorJoinAsync(
         string actorId,
-        Type actorType,
-        RoutingId sourceSpotRid,
-        RoutingId sourceNodeRid,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -105,20 +102,12 @@ internal sealed partial class ZLinkSpotActivation
             throw new InvalidOperationException(
                 $"SPOT '{Spot.GetType()}' does not declare an actor join callback.");
 
-        var admission = new ZLinkActorJoinAdmission(
-            actorId,
-            actorType,
-            sourceSpotRid,
-            SpotRid,
-            sourceNodeRid,
-            NodeRid);
-
-        var state = new ActorJoinAdmissionCallState(admission, request, descriptor);
+        var state = new ActorJoinAdmissionCallState(actorId, request, descriptor);
         if (ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this))
         {
             state.Result = await HandlerInvoker.InvokeActorJoinAsync(
                     state.Descriptor,
-                    state.Admission,
+                    state.ActorId,
                     state.Request,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -130,7 +119,7 @@ internal sealed partial class ZLinkSpotActivation
             {
                 state.Result = await activation.HandlerInvoker.InvokeActorJoinAsync(
                     state.Descriptor,
-                    state.Admission,
+                    state.ActorId,
                     state.Request,
                     ct);
             },
@@ -304,24 +293,8 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var admission = CreateActorJoinAdmission(actor, descriptor.ActorType);
-        return await HandlerInvoker.InvokeActorJoinAsync(descriptor, admission, request, cancellationToken)
+        return await HandlerInvoker.InvokeActorJoinAsync(descriptor, actor.ActorId, request, cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private ZLinkActorJoinAdmission CreateActorJoinAdmission(
-        IZLinkActor actor,
-        Type actorType)
-    {
-        var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
-        var source = actorState.LiveActivation;
-        return new ZLinkActorJoinAdmission(
-            actor.ActorId,
-            actorType,
-            source?.SpotRid ?? SpotRid,
-            SpotRid,
-            source?.NodeRid ?? NodeRid,
-            NodeRid);
     }
 
     private sealed class ActorJoinCallState(
@@ -339,11 +312,11 @@ internal sealed partial class ZLinkSpotActivation
     }
 
     private sealed class ActorJoinAdmissionCallState(
-        ZLinkActorJoinAdmission admission,
+        string actorId,
         ZLinkMessage request,
         ZLinkSpotActorJoinDescriptor descriptor)
     {
-        public ZLinkActorJoinAdmission Admission { get; } = admission;
+        public string ActorId { get; } = actorId;
 
         public ZLinkMessage Request { get; } = request;
 

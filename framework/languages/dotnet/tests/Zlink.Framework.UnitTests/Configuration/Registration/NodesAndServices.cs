@@ -284,6 +284,24 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddActorTransferAdapter_Registers_Adapter_As_Scoped_Service()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotMesh("actor-node")
+                .EnableRouter("tcp://127.0.0.1:6202")
+                .AddActorFactory<TestActorFactory>("warrior")
+                .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior");
+        });
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        Assert.NotNull(scope.ServiceProvider.GetService<TestActorTransferAdapter>());
+    }
+
+    [Fact]
     public void SessionActorDispatch_Registers_Stream_Node_Without_Explicit_Relay_Target()
     {
         var services = new ServiceCollection();

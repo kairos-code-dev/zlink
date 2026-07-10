@@ -57,7 +57,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorRuntimeState state,
         string actorId,
         string actorType,
-        ZLinkActorTransferRegistration transfer,
+        ZLinkActorTransferRegistration? transfer,
         ZLinkMessage transferState,
         ZLinkActorClaimMode claimMode,
         CancellationToken cancellationToken)
@@ -93,12 +93,12 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorRuntimeState state,
         string actorId,
         string actorType,
-        ZLinkActorTransferRegistration transfer,
+        ZLinkActorTransferRegistration? transfer,
         ZLinkMessage transferState,
         ZLinkActorClaimMode claimMode,
         CancellationToken cancellationToken)
     {
-        if (transfer.Stateless)
+        if (transfer is null)
         {
             var factoryType = ResolveActorFactory(actorType);
 

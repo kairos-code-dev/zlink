@@ -118,22 +118,13 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkSpotNodeBuilder AddStatelessActorTransfer<TActor>(string actorType)
-        where TActor : IZLinkActor
-    {
-        AddActorTransfer(
-            actorType,
-            new ZLinkActorTransferRegistration(typeof(TActor), null, Stateless: true));
-        return this;
-    }
-
     public IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
         where TActor : IZLinkActor
         where TAdapter : class, IZLinkActorTransferAdapter<TActor>
     {
         AddActorTransfer(
             actorType,
-            new ZLinkActorTransferRegistration(typeof(TActor), typeof(TAdapter), Stateless: false));
+            new ZLinkActorTransferRegistration(typeof(TActor), typeof(TAdapter)));
         return this;
     }
 

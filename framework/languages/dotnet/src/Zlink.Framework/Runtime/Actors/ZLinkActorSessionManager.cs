@@ -73,7 +73,7 @@ internal sealed partial class ZLinkActorSessionManager(
     internal async ValueTask<CreateActorResult> TransferAndBindActorAsync(
         string actorId,
         string actorType,
-        ZLinkActorTransferRegistration transfer,
+        ZLinkActorTransferRegistration? transfer,
         ZLinkMessage transferState,
         ZLinkActorClaimMode claimMode,
         CancellationToken cancellationToken = default)

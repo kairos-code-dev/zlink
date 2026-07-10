@@ -150,9 +150,9 @@ internal static class ZLinkSpotDescriptorFactory
             method,
             3,
             "SPOT actor join hook");
-        if (parameters[0].ParameterType != typeof(ZLinkActorJoinAdmission))
+        if (parameters[0].ParameterType != typeof(string))
             throw new InvalidOperationException(
-                $"SPOT actor join hook '{spotType}' method '{method.Name}' must use {nameof(ZLinkActorJoinAdmission)} as the first parameter.");
+                $"SPOT actor join hook '{spotType}' method '{method.Name}' must use string actorId as the first parameter.");
 
         if (parameters[1].ParameterType != typeof(ZLinkMessage))
             throw new InvalidOperationException(

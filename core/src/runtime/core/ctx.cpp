@@ -322,6 +322,21 @@ void zlink::ctx_t::connect_pending (const char *addr_, zlink::socket_base_t *bin
     _inproc_registry.connect_pending (addr_, bind_socket_);
 }
 
+int zlink::ctx_t::materialize_pending_inproc (const std::string &addr_,
+                                              socket_base_t *connect_socket_)
+{
+    if (!_inproc_registry.has_pending_for_socket (addr_, connect_socket_))
+        return 0;
+
+    socket_base_t *bind_socket = create_socket (ZLINK_CORE_SOCKET_PAIR);
+    if (!bind_socket)
+        return -1;
+
+    (void) _inproc_registry.materialize_pending_for_socket (addr_, connect_socket_, bind_socket);
+    bind_socket->close ();
+    return 0;
+}
+
 //  The last used socket ID, or 0 if no socket was used so far. Note that this
 //  is a global variable. Thus, even sockets created in different contexts have
 //  unique IDs.

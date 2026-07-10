@@ -9,6 +9,7 @@ SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
+REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -116,34 +117,55 @@ HTTP_MULTI_B=$HTTP_MULTI_B
 EOF
 
 REDIS_CONTAINER=""
+REDIS_CONTAINER_OWNED=0
 REDIS_KEY_PREFIX="zlink:e2e:cfg2:$(date +%s)-$$"
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+  echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
+elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  echo "External Redis endpoint is not supported by the C++ SpotService e2e runner." >&2
+  exit 2
 else
-  read -r REDIS_CONTAINER redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-e2e-spotservice" "redis:7-alpine"
-  )
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-cpp-e2e-spotservice" "redis:7-alpine"
+  REDIS_CONTAINER_OWNED=1
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
 REDIS_HOST="${REDIS_ENDPOINT%:*}"
 REDIS_TCP_PORT="${REDIS_ENDPOINT##*:}"
-python3 - "$REDIS_HOST" "$REDIS_TCP_PORT" <<'PY'
+if ! zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"; then
+  if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    REDIS_CONTAINER=""
+  fi
+  exit 1
+fi
+if ! python3 - "$REDIS_HOST" "$REDIS_TCP_PORT" "$REDIS_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import socket
 import sys
 import time
 
 host, port = sys.argv[1], int(sys.argv[2])
-deadline = time.monotonic() + 30
+timeout = float(sys.argv[3])
+poll = float(sys.argv[4])
+deadline = time.monotonic() + timeout
 while time.monotonic() < deadline:
     try:
         with socket.create_connection((host, port), timeout=1):
             raise SystemExit(0)
     except OSError:
-        time.sleep(0.2)
-raise SystemExit(f"Timed out waiting 30s for Redis at {host}:{port}")
+        time.sleep(poll)
+raise SystemExit(f"Timed out waiting {timeout:g}s for Redis at {host}:{port}")
 PY
+then
+  if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    REDIS_CONTAINER=""
+  fi
+  exit 1
+fi
 echo "redis key prefix=$REDIS_KEY_PREFIX"
 
 declare -A PORT_GUARDS=()
@@ -271,6 +293,20 @@ run_server_binary() {
   exec "$binary"
 }
 
+run_foreground_binary() {
+  local role="$1"
+  local binary="$2"
+  if role_uses_gdb "$role"; then
+    gdb --batch -q \
+      -ex "set pagination off" \
+      -ex "run" \
+      -ex "thread apply all bt full" \
+      --args "$binary"
+    return $?
+  fi
+  "$binary"
+}
+
 record_server_pid() {
   local role="$1"
   local pid="$2"
@@ -294,6 +330,40 @@ is_process_alive() {
   [[ "$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')" != Z* ]]
 }
 
+status_allowed() {
+  local status="$1"
+  shift
+  local allowed
+  for allowed in "$@"; do
+    if [[ "$status" -eq "$allowed" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+wait_pid_status() {
+  local pid="$1"
+  local label="$2"
+  shift 2
+  local status
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  set +e
+  wait "$pid"
+  status=$?
+  set -e
+  if [[ "$status" -eq 127 ]]; then
+    return 0
+  fi
+  if status_allowed "$status" "$@"; then
+    return 0
+  fi
+  echo "$label exited unexpectedly with status $status" >&2
+  return 1
+}
+
 dump_server_logs() {
   local role="$1"
   local stdout_log="$LOG_DIR/$role.stdout.log"
@@ -308,7 +378,92 @@ dump_server_logs() {
   fi
 }
 
+role_for_pid() {
+  local target_pid="$1"
+  local role
+  for role in "${!ROLE_PIDS[@]}"; do
+    if [[ "${ROLE_PIDS[$role]}" == "$target_pid" ]]; then
+      echo "$role"
+      return 0
+    fi
+  done
+  echo "pid-$target_pid"
+}
+
+forget_server_pid() {
+  local target_pid="$1"
+  local retained=()
+  local pid
+  local role
+  for pid in "${PIDS[@]:-}"; do
+    if [[ "$pid" != "$target_pid" ]]; then
+      retained+=("$pid")
+    fi
+  done
+  PIDS=("${retained[@]}")
+  for role in "${!ROLE_PIDS[@]}"; do
+    if [[ "${ROLE_PIDS[$role]}" == "$target_pid" ]]; then
+      unset 'ROLE_PIDS[$role]'
+    fi
+  done
+  if [[ "${PLAY_A_PID:-}" == "$target_pid" ]]; then
+    PLAY_A_PID=""
+  fi
+  if [[ "${PLAY_B_PID:-}" == "$target_pid" ]]; then
+    PLAY_B_PID=""
+  fi
+  if [[ "${SESSION_A_PID:-}" == "$target_pid" ]]; then
+    SESSION_A_PID=""
+  fi
+  if [[ "${GATEWAY_PID:-}" == "$target_pid" ]]; then
+    GATEWAY_PID=""
+  fi
+}
+
+dump_process_backtrace() {
+  local pid="$1"
+  local role
+  role="$(role_for_pid "$pid")"
+  local threads_log="$LOG_DIR/$role.cleanup-threads.log"
+  if [[ -d "/proc/$pid/task" ]]; then
+    {
+      for task in /proc/"$pid"/task/*; do
+        [[ -d "$task" ]] || continue
+        local tid
+        tid="${task##*/}"
+        printf 'tid=%s comm=%s state=%s wchan=%s syscall=%s\n' \
+          "$tid" \
+          "$(cat "$task/comm" 2>/dev/null || true)" \
+          "$(awk '/^State:/ {print $2}' "$task/status" 2>/dev/null || true)" \
+          "$(cat "$task/wchan" 2>/dev/null || true)" \
+          "$(cat "$task/syscall" 2>/dev/null || true)"
+      done
+    } >"$threads_log" 2>&1 || true
+    echo "cleanup threads for $role pid $pid: $threads_log" >&2
+  fi
+  if ! command -v gdb >/dev/null 2>&1; then
+    echo "gdb not found; cannot dump backtrace for $role pid $pid" >&2
+    return 0
+  fi
+  local bt_log="$LOG_DIR/$role.cleanup-backtrace.log"
+  gdb --batch -q \
+    -ex "set pagination off" \
+    -ex "thread apply all bt full" \
+    -p "$pid" >"$bt_log" 2>&1 || true
+  if grep -q "ptrace:" "$bt_log" \
+    && command -v sudo >/dev/null 2>&1 \
+    && sudo -n true >/dev/null 2>&1; then
+    sudo -n gdb --batch -q \
+      -ex "set pagination off" \
+      -ex "thread apply all bt full" \
+      -p "$pid" >"$bt_log" 2>&1 || true
+  fi
+  echo "cleanup backtrace for $role pid $pid: $bt_log" >&2
+}
+
 stop_all_processes() {
+  local cleanup_failed=0
+  local state
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
@@ -319,14 +474,24 @@ stop_all_processes() {
       if ! kill -0 "$pid" >/dev/null 2>&1; then
         break
       fi
-      if [[ "$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')" == Z* ]]; then
+      state="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')"
+      if [[ "$state" == Z* ]]; then
         break
       fi
       sleep "$PROCESS_SHUTDOWN_POLL_SECONDS"
     done
     if kill -0 "$pid" >/dev/null 2>&1 \
       && [[ "$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')" != Z* ]]; then
+      dump_process_backtrace "$pid"
       kill -9 "$pid" >/dev/null 2>&1 || true
+      if ! wait_pid_status "$pid" "forced cleanup process $pid" 137; then
+        cleanup_failed=1
+      else
+        echo "forced cleanup process $pid exited with status 137" >&2
+        cleanup_failed=1
+      fi
+    elif ! wait_pid_status "$pid" "cleanup process $pid" 0 130 143; then
+      cleanup_failed=1
     fi
   done
   for pid in "${PORT_GUARDS[@]:-}"; do
@@ -341,19 +506,23 @@ stop_all_processes() {
   PLAY_B_PID=""
   SESSION_A_PID=""
   GATEWAY_PID=""
+  return "$cleanup_failed"
 }
 
 cleanup() {
   local code=$?
-  stop_all_processes
-  if [[ -n "$REDIS_CONTAINER" ]]; then
+  local cleanup_failed=0
+  if ! stop_all_processes; then
+    cleanup_failed=1
+  fi
+  if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-  elif command -v redis-cli >/dev/null 2>&1; then
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
-      | xargs -r redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" DEL >/dev/null 2>&1 || true
   fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+  elif [[ $cleanup_failed -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    code=1
   fi
   exit "$code"
 }
@@ -764,9 +933,19 @@ wait_named_server() {
       ;;
     multi-a)
       wait_http_health multi-a "$HTTP_MULTI_A" "$(server_pid_for_role multi-a)"
+      if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "sm-f6" ]]; then
+        wait_port multi-a-route "$MULTI_ROUTE_A"
+      fi
+      wait_port multi-a-spot-router "$MULTI_SPOT_A"
+      wait_port multi-a-pubsub "$MULTI_PUB_A"
       ;;
     multi-b)
       wait_http_health multi-b "$HTTP_MULTI_B" "$(server_pid_for_role multi-b)"
+      if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "sm-f6" ]]; then
+        wait_port multi-b-route "$MULTI_ROUTE_B"
+      fi
+      wait_port multi-b-spot-router "$MULTI_SPOT_B"
+      wait_port multi-b-pubsub "$MULTI_PUB_B"
       ;;
     multi-a-requester)
       wait_http_health multi-a-requester "$HTTP_A" "$(server_pid_for_role multi-a-requester)"
@@ -912,6 +1091,7 @@ run_base_client() {
   ZLINK_CPP_E2E_MULTI_A_REQUEST_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_MULTI_B_REQUEST_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-$mode" \
+  ZLINK_CPP_E2E_RUN_ID="$RUN_ID" \
   ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
   ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -1045,10 +1225,14 @@ if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "sm-f6" ]]; then
     esac
   done
   wait_http_health multi-a "$HTTP_MULTI_A" "$(server_pid_for_role multi-a)"
+  wait_port multi-a-spot-router "$MULTI_SPOT_A"
+  wait_port multi-a-pubsub "$MULTI_PUB_A"
   wait_http_health multi-b "$HTTP_MULTI_B" "$(server_pid_for_role multi-b)"
+  wait_port multi-b-spot-router "$MULTI_SPOT_B"
+  wait_port multi-b-pubsub "$MULTI_PUB_B"
   sleep "$ROUTE_SETTLE_SECONDS"
   run_base_client sm-f6 client-sm-f6
-  python3 - "$HTTP_MULTI_B/evidence" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+  python3 - "$HTTP_MULTI_B/evidence" "$HTTP_PROBE_TIMEOUT_SECONDS" "$RUN_ID" <<'PY'
 import json
 import sys
 import time
@@ -1056,14 +1240,17 @@ import urllib.request
 
 url = sys.argv[1]
 timeout_seconds = float(sys.argv[2])
+run_id = sys.argv[3]
+target_spot = f"spot-sm-f6-target-cpp-{run_id}"
+expected_value = f"sm-f6-send-sm-f6-cpp-{run_id}"
 deadline = time.monotonic() + 15.0
 last = None
 while time.monotonic() < deadline:
     with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
         last = json.loads(response.read().decode("utf-8"))
     if any(item["marker"] == "SpotStateCommand"
-           and item["spot_rid"] == "spot-sm-f6-target-cpp"
-           and item["value"] == "sm-f6-send-sm-f6-cpp"
+           and item["spot_rid"] == target_spot
+           and item["value"] == expected_value
            for item in last["entries"]):
         break
     time.sleep(0.1)
@@ -1071,13 +1258,15 @@ else:
     raise AssertionError(last)
 PY
   fetch_evidence multi-b-sm-f6 "$HTTP_MULTI_B"
-  python3 - "$LOG_DIR/multi-b-sm-f6-evidence.json" <<'PY'
+  python3 - "$LOG_DIR/multi-b-sm-f6-evidence.json" "$RUN_ID" <<'PY'
 import json
 import sys
 
 multi_b = json.load(open(sys.argv[1], encoding="utf-8"))
-spot = "spot-sm-f6-target-cpp"
-actor = "actor-sm-f6-cpp"
+run_id = sys.argv[2]
+spot = f"spot-sm-f6-target-cpp-{run_id}"
+actor = f"actor-sm-f6-cpp-{run_id}"
+send_value = f"sm-f6-send-sm-f6-cpp-{run_id}"
 
 def has(marker, value=None, actor_id=None):
     return any(item["marker"] == marker
@@ -1087,7 +1276,7 @@ def has(marker, value=None, actor_id=None):
                for item in multi_b["entries"])
 
 assert has("MultiStateRequest", "7")
-assert has("SpotStateCommand", "sm-f6-send-sm-f6-cpp")
+assert has("SpotStateCommand", send_value)
 assert has("SpotActorJoined", None, actor)
 print("scenario SM-F6 evidence passed")
 PY
@@ -1131,18 +1320,38 @@ wait_stream_route_ready() {
 run_focused_from_all() {
   local scenario="$1"
   local scenario_index="$2"
-  local child_output="$LOG_DIR/child-$scenario.output.log"
-  ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" \
-  ZLINK_CPP_E2E_SKIP_BUILD=1 \
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" \
-    "$0" "$scenario" | tee "$child_output"
+  local attempt
+  local child_output
+  local child_status
   local child_log_dir
-  child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
-  if [[ -z "$child_log_dir" || ! -d "$child_log_dir" ]]; then
-    echo "missing child log directory for $scenario" >&2
-    exit 1
-  fi
-  echo "$scenario $child_log_dir" >>"$LOG_DIR/child-runs.log"
+  for attempt in 1 2; do
+    child_output="$LOG_DIR/child-$scenario-attempt-$attempt.output.log"
+    set +e
+    ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" \
+    ZLINK_CPP_E2E_SKIP_BUILD=1 \
+    ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" \
+    ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" \
+      "$0" "$scenario" 2>&1 | tee "$child_output"
+    child_status="${PIPESTATUS[0]}"
+    set -e
+    child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
+    if [[ -n "$child_log_dir" && -d "$child_log_dir" ]]; then
+      echo "$scenario $child_log_dir" >>"$LOG_DIR/child-runs.log"
+    fi
+    if [[ "$child_status" -eq 0 ]]; then
+      return 0
+    fi
+    if [[ "$attempt" -eq 1 ]] \
+      && grep -Eqi 'errno=98|address already in use|Address already in use|EADDRINUSE' \
+        "$child_output" "$child_log_dir"/*.stderr.log 2>/dev/null; then
+      echo "scenario $scenario retrying after transient bind/address-in-use failure" >&2
+      continue
+    fi
+    if [[ -z "$child_log_dir" || ! -d "$child_log_dir" ]]; then
+      echo "missing child log directory for $scenario" >&2
+    fi
+    exit "$child_status"
+  done
 }
 
 if [[ "$SCENARIO" == "SM-A1" || "$SCENARIO" == "sm-a1" ]]; then
@@ -2239,6 +2448,7 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   wait_file "SM-G1 ready" "$CRASH_READY"
   kill -9 "$PLAY_A_PID" >/dev/null 2>&1 || true
   wait "$PLAY_A_PID" >/dev/null 2>&1 || true
+  forget_server_pid "$PLAY_A_PID"
   touch "$CRASH_GO"
   wait_file "SM-G1 crash observed" "$CRASH_OBSERVED"
   wait "$CRASH_CLIENT_PID"
@@ -3097,7 +3307,7 @@ if [[ "$SCENARIO" == "SM-D14" || "$SCENARIO" == "sm-d14" ]]; then
   ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
   ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    run_server_binary client-sm-d14 "$CLIENT" >"$LOG_DIR/client-sm-d14.stdout.log" 2>"$LOG_DIR/client-sm-d14.stderr.log"
+    run_foreground_binary client-sm-d14 "$CLIENT" >"$LOG_DIR/client-sm-d14.stdout.log" 2>"$LOG_DIR/client-sm-d14.stderr.log"
   cat "$LOG_DIR/client-sm-d14.stdout.log"
   fetch_evidence play-a-sm-d14 "$HTTP_A"
   fetch_evidence session-a-sm-d14 "$HTTP_SESSION_A"

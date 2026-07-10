@@ -40,7 +40,7 @@ class commerce_api_handlers_t
     {
     }
 
-    start_order_res_t start_order (const start_order_req_t &request)
+    task_t<start_order_res_t> start_order (const start_order_req_t &request)
     {
         auto command = _store.update ([&] (nlohmann::json &state) {
             auto &mappings = state["idempotency"];
@@ -84,8 +84,9 @@ class commerce_api_handlers_t
         });
 
         const auto owner = _topology.for_order_id (command.order_id);
-        auto state = request_workflow<start_order_workflow_res_t> (owner.instance_id, command).state;
-        (void) request_workflow<continue_order_workflow_res_t> (
+        auto state =
+          (co_await request_workflow<start_order_workflow_res_t> (owner.instance_id, command)).state;
+        (void) co_await request_workflow<continue_order_workflow_res_t> (
           owner.instance_id, continue_order_workflow_req_t{state.order_id});
         state = _store.read ([&] (const nlohmann::json &saved) {
             return saved["readModels"][command.order_id].get<order_state_t> ();
@@ -94,7 +95,7 @@ class commerce_api_handlers_t
                     "action=start-order order=" + state.order_id + " owner=" + owner.instance_id);
         std::cerr << "shoppingmall api: start order=" << state.order_id
                   << " status=" << state.status << "\n";
-        return {state.order_id, state.status};
+        co_return start_order_res_t{state.order_id, state.status};
     }
 
     get_order_state_res_t get_order (const get_order_state_req_t &request)
@@ -116,9 +117,9 @@ class commerce_api_handlers_t
         return {};
     }
 
-    start_order_res_t prepare_inventory_reserved (const start_order_req_t &request)
+    task_t<start_order_res_t> prepare_inventory_reserved (const start_order_req_t &request)
     {
-        auto response = start_order (request);
+        auto response = co_await start_order (request);
         _store.update ([&] (nlohmann::json &state) {
             auto current = state["readModels"][response.order_id].get<order_state_t> ();
             current.status = order_status_t::inventory_reserved;
@@ -128,13 +129,14 @@ class commerce_api_handlers_t
             while (events.size () > 2) events.erase (events.end () - 1);
             return true;
         });
-        return {response.order_id, order_status_t::inventory_reserved};
+        co_return start_order_res_t{response.order_id, order_status_t::inventory_reserved};
     }
 
-    continue_order_workflow_res_t continue_order (const continue_order_workflow_req_t &request)
+    task_t<continue_order_workflow_res_t> continue_order (const continue_order_workflow_req_t &request)
     {
         const auto owner = _topology.for_order_id (request.order_id);
-        return request_workflow<continue_order_workflow_res_t> (owner.instance_id, request);
+        co_return co_await request_workflow<continue_order_workflow_res_t> (owner.instance_id,
+                                                                            request);
     }
 
     ok_res_t delete_projection (const delete_projection_req_t &request)
@@ -146,10 +148,12 @@ class commerce_api_handlers_t
         return {};
     }
 
-    rebuild_order_projection_res_t rebuild_projection_req (const rebuild_order_projection_req_t &request)
+    task_t<rebuild_order_projection_res_t>
+    rebuild_projection_req (const rebuild_order_projection_req_t &request)
     {
         const auto owner = _topology.for_order_id (request.order_id);
-        return request_workflow<rebuild_order_projection_res_t> (owner.instance_id, request);
+        co_return co_await request_workflow<rebuild_order_projection_res_t> (owner.instance_id,
+                                                                             request);
     }
 
     server_assertion_res_t assert_server (const server_assertion_req_t &request)
@@ -214,40 +218,32 @@ class commerce_api_handlers_t
 
   private:
     template <typename TReply, typename TRequest>
-    TReply request_workflow (const std::string &owner_instance_id, const TRequest &request)
+    task_t<TReply> request_workflow (const std::string &owner_instance_id, const TRequest &request)
     {
         const auto owner = _topology.for_workflow_instance (owner_instance_id);
-        auto ensured = _routes
-                       .request_to_node (order_workflow_channel_for (owner.instance_id),
-                                         owner.route_rid,
-                                         ensure_order_workflow_spot_req_t{request.order_id})
-                       .packet_name (ensure_order_workflow_spot_req_t::packet_name)
-                       .timeout (std::chrono::milliseconds (5000))
-                       .template async<ok_res_t> ()
-                       .result ();
-        if (!ensured || !ensured.value ().ok) {
-            throw framework_exception_t (
-              ensured.error_kind (),
-              ensured.error () ? ensured.error ()->what () : "ShoppingMall workflow spot ensure failed");
+        auto ensured =
+          co_await _routes
+            .request_to_node (order_workflow_channel_for (owner.instance_id),
+                              owner.route_rid,
+                              ensure_order_workflow_spot_req_t{request.order_id})
+            .packet_name (ensure_order_workflow_spot_req_t::packet_name)
+            .timeout (std::chrono::milliseconds (5000))
+            .template async<ok_res_t> ();
+        if (!ensured.ok) {
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "ShoppingMall workflow spot ensure failed");
         }
 
-        auto reply = _routes
-                       .request_to_node (order_workflow_spot_route_channel_for (owner.instance_id),
-                                         spot_ref_t{
-                                           .mesh_name = sample_names_t::order_spot_discovery,
-                                           .node_rid = owner.spot_rid,
-                                           .spot_rid = routing_id_t::from (request.order_id)},
-                                         request)
-                       .packet_name (TRequest::packet_name)
-                       .timeout (std::chrono::milliseconds (5000))
-                       .template async<TReply> ()
-                       .result ();
-        if (!reply) {
-            throw framework_exception_t (
-              reply.error_kind (),
-              reply.error () ? reply.error ()->what () : "ShoppingMall workflow route failed");
-        }
-        return reply.value ();
+        co_return co_await _routes
+          .request_to_node (order_workflow_spot_route_channel_for (owner.instance_id),
+                            spot_ref_t{
+                              .mesh_name = sample_names_t::order_spot_discovery,
+                              .node_rid = owner.spot_rid,
+                              .spot_rid = routing_id_t::from (request.order_id)},
+                            request)
+          .packet_name (TRequest::packet_name)
+          .timeout (std::chrono::milliseconds (5000))
+          .template async<TReply> ();
     }
 
     sample_topology_t &_topology;
@@ -264,7 +260,7 @@ class start_order_handler_t
     using dependency_types = dependency_list_t<commerce_api_handlers_t>;
     static constexpr const char *topic_name = "StartOrderReq";
     explicit start_order_handler_t (commerce_api_handlers_t &handlers) : _handlers (handlers) {}
-    reply_type handle (const request_type &request)
+    auto handle (const request_type &request)
     {
         try {
             return _handlers.start_order (request);
@@ -283,7 +279,7 @@ class start_order_handler_t
 class name { public: using request_type = req; using reply_type = res; \
 using dependency_types = dependency_list_t<commerce_api_handlers_t>; \
 static constexpr const char *topic_name = #req; explicit name (commerce_api_handlers_t &h): _h(h) {} \
-reply_type handle (const request_type &r) { try { return _h.method (r); } \
+    auto handle (const request_type &r) { try { return _h.method (r); } \
 catch (const std::exception &error) { std::cerr << "shoppingmall api handler failed: packet=" #req \
 << " error=" << error.what () << "\n"; throw; } } private: commerce_api_handlers_t &_h; };
 

@@ -131,6 +131,19 @@ int main ()
     using zlink::framework::detail::stream_header_flags_t;
     using zlink::framework::detail::stream_message_kind_t;
 
+    struct stream_dispatch_executor_guard_t
+    {
+        stream_dispatch_executor_guard_t ()
+        {
+            zlink::framework::detail::configure_stream_dispatch_executor ();
+        }
+
+        ~stream_dispatch_executor_guard_t ()
+        {
+            zlink::framework::detail::shutdown_stream_dispatch_executor ();
+        }
+    } stream_dispatch_executor_guard;
+
     zlink::framework::zlink_builder_t zlink;
     zlink.stream ("client-stream")
       .bind ("tcp://0.0.0.0:9200")

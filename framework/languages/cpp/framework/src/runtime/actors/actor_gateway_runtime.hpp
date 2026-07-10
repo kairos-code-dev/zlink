@@ -20,6 +20,12 @@ void enter_stream_relay_dispatch (const stream_header_t &header);
 void exit_stream_relay_dispatch () noexcept;
 std::optional<stream_header_t> current_stream_relay_dispatch ();
 
+struct actor_bound_session_route_t
+{
+    zlink::routing_id_t node_rid;
+    zlink::routing_id_t session_rid;
+};
+
 struct actor_record_t
 {
     actor_ref_t ref;
@@ -28,6 +34,7 @@ struct actor_record_t
     stream_codec_t bound_session_codec = stream_codec_t::message_pack;
     bool bound_session_stream_sink = false;
     std::optional<zlink::message_t> create_payload;
+    std::optional<actor_bound_session_route_t> bound_session_route;
 };
 
 struct relayed_frame_t
@@ -72,6 +79,8 @@ class actor_gateway_runtime_t
     actor_gateway_t gateway () const;
     std::vector<relayed_frame_t> relayed_frames () const;
     std::vector<relayed_frame_t> bound_session_pushes () const;
+    std::optional<actor_bound_session_route_t>
+    bound_session_route (const actor_ref_t &actor_ref) const;
     bool actor_bound (std::string actor_id) const;
     bool actor_disconnected (std::string actor_id) const;
     actor_context_t actor_context (const actor_ref_t &actor_ref) const;
@@ -86,11 +95,14 @@ class actor_gateway_runtime_t
                              zlink::routing_id_t target_node_rid,
                              stream_codec_t codec = stream_codec_t::message_pack,
                              bool replace_existing = true);
-    void bind_session_sink (
-      actor_ref_t actor_ref,
-      std::function<task_t<void> (std::string, const zlink::message_t &)> sink,
-      stream_codec_t codec = stream_codec_t::message_pack,
-      bool replace_existing = true);
+    void
+    bind_session_sink (actor_ref_t actor_ref,
+                       std::function<task_t<void> (std::string, const zlink::message_t &)> sink,
+                       stream_codec_t codec = stream_codec_t::message_pack,
+                       bool replace_existing = true);
+    void record_bound_session_route (const actor_ref_t &actor_ref,
+                                     zlink::routing_id_t node_rid,
+                                     zlink::routing_id_t session_rid);
     void unbind_session_stream (std::string actor_id);
     result_t<void> dispatch_bound_session_send (const actor_ref_t &actor_ref,
                                                 std::string packet_name,

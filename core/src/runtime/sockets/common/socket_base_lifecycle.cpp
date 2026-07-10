@@ -36,11 +36,11 @@ void zlink::socket_base_t::async_mailbox_pre_post (void *arg_)
 
 void zlink::socket_base_t::start_reaping (poller_t *poller_)
 {
-    //  Safety net: if the async mailbox handler is still running
-    //  (e.g. close() was bypassed or quiesce timed out), wait here
-    //  before the reaper touches socket internal state.
+    //  The mailbox must have exactly one executor owner. A close initiated by
+    //  its own callback cannot wait for that callback here, so the reaper is
+    //  the ownership boundary that waits until the old executor has detached.
     if (lifecycle_coordinator ().is_async_quiesce_pending ())
-        wait_async_quiesced (1000);
+        wait_async_quiesced (-1);
 
     //  Plug the socket to the reaper thread.
     lifecycle_coordinator ().set_reaper_poller (poller_);
@@ -219,6 +219,12 @@ void zlink::socket_base_t::process_async_mailbox ()
     do {
         process_commands (0, false);
         if (lifecycle_coordinator ().is_destroyed ()) {
+            if (!lifecycle_coordinator ().is_async_mailbox_active ()) {
+                mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
+                if (!mailbox->detach_io_context_if_idle ())
+                    continue;
+                lifecycle_coordinator ().mark_async_processing_stopped (mailbox);
+            }
             check_destroy ();
             return;
         }
@@ -226,7 +232,8 @@ void zlink::socket_base_t::process_async_mailbox ()
             xdispatch_io ();
         if (!lifecycle_coordinator ().is_async_mailbox_active ()) {
             mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
-            mailbox->reschedule_if_needed ();
+            if (!mailbox->detach_io_context_if_idle ())
+                continue;
             //  Signal quiesce completion to waiting close()/start_reaping().
             lifecycle_coordinator ().mark_async_processing_stopped (mailbox);
             return;

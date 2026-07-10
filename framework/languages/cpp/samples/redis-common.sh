@@ -62,3 +62,20 @@ zlink_redis_start_scoped() {
 
   printf '%s %s\n' "$container_id" "$host_port"
 }
+
+zlink_redis_start_scoped_assign() {
+  local container_var="$1"
+  local port_var="$2"
+  shift 2
+
+  local output container_id host_port
+  output="$(zlink_redis_start_scoped "$@")" || return $?
+  read -r container_id host_port <<<"$output"
+  if [[ -z "$container_id" || -z "$host_port" ]]; then
+    printf 'Redis helper did not return container id and host port.\n' >&2
+    return 1
+  fi
+
+  printf -v "$container_var" '%s' "$container_id"
+  printf -v "$port_var" '%s' "$host_port"
+}

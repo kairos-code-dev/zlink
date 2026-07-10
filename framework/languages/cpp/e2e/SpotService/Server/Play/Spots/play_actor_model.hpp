@@ -73,8 +73,8 @@ struct scenario_actor_t
     }
 
     std::string actor_id;
-    std::string display_name;
-    int level = 0;
+    mutable std::string display_name;
+    mutable int level = 0;
     int ping_seen = 0;
     zlink::framework::actor_ref_t actor_ref;
     zlink::framework::actor_context_t context;
@@ -169,53 +169,62 @@ class user_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (scenario_actor_t &actor, const zlink::framework::message_t &request_message)
+    on_actor_join (std::string_view actor_id,
+                   const zlink::framework::message_t &request_message)
     {
         try {
             const auto request = request_message.decode<e2e::join_admitted_user_spot_actor_req_t> ();
             if (!request.allow) {
-                _state.record ("SpotActorJoinRejected", actor.actor_id,
+                _state.record ("SpotActorJoinRejected", std::string (actor_id),
                                std::string (_context.spot_rid ().value ()), request.reason);
                 return zlink::framework::spot_actor_join_response_t::reject (
                   e2e::join_admitted_user_spot_actor_res_t{
                     .spot_rid = std::string (_context.spot_rid ().value ()),
-                    .actor_id = actor.actor_id,
+                    .actor_id = std::string (actor_id),
                     .accepted = false,
                     .generation = 0,
                     .error_kind = "ActorJoinRejected"});
             }
-            _state.record ("SpotActorJoinAdmitted", actor.actor_id,
+            _state.record ("SpotActorJoinAdmitted", std::string (actor_id),
                            std::string (_context.spot_rid ().value ()), request.reason);
-            _state.record ("SpotActorJoined", actor.actor_id,
+            _state.record ("SpotActorJoined", std::string (actor_id),
                            std::string (_context.spot_rid ().value ()));
             return zlink::framework::spot_actor_join_response_t::accept (
               e2e::join_admitted_user_spot_actor_res_t{
                 .spot_rid = std::string (_context.spot_rid ().value ()),
-                .actor_id = actor.actor_id,
+                .actor_id = std::string (actor_id),
                 .accepted = true,
-                .generation = actor.actor_ref.generation (),
+                .generation = 0,
                 .error_kind = ""});
         }
         catch (const std::exception &) {
         }
 
         const auto request = request_message.decode<e2e::join_req_t> ();
-        actor.display_name = request.display_name;
-        actor.level = request.level;
-        _state.record ("ActorJoined", actor.actor_id, std::string (_context.spot_rid ().value ()),
-                       request.key);
+        _pending_joins[std::string (actor_id)] = request;
         return zlink::framework::spot_actor_join_response_t::accept (
           e2e::join_res_t{.spot_rid = std::string (_context.spot_rid ().value ()),
                           .owner_node_rid = _state.node_rid,
-                          .actor_id = actor.actor_id,
-                          .display_name = actor.display_name,
-                          .level = actor.level,
+                          .actor_id = std::string (actor_id),
+                          .display_name = request.display_name,
+                          .level = request.level,
                           .tags = request.tags,
-                          .actor = from_actor_ref (actor.actor_ref)});
+                          .actor = {.node_rid = _state.node_rid,
+                                    .actor_type = e2e::actor_type,
+                                    .actor_id = std::string (actor_id),
+                                    .generation = 0}});
     }
 
     void on_actor_joined (const scenario_actor_t &actor)
     {
+        const auto pending = _pending_joins.find (actor.actor_id);
+        if (pending != _pending_joins.end ()) {
+            actor.display_name = pending->second.display_name;
+            actor.level = pending->second.level;
+            _state.record ("ActorJoined", actor.actor_id,
+                           std::string (_context.spot_rid ().value ()), pending->second.key);
+            _pending_joins.erase (pending);
+        }
         _state.record ("ActorJoinedCallback", actor.actor_id,
                        std::string (_context.spot_rid ().value ()));
     }
@@ -781,6 +790,7 @@ class user_spot_t : public zlink::framework::spot_t
     int _timer_ticks = 0;
     int _overrun_ticks = 0;
     int _stage_timer_ticks = 0;
+    std::map<std::string, e2e::join_req_t> _pending_joins;
 
     static zlink::framework::timer_overrun_policy_t
     overrun_policy_from_name (const std::string &policy)

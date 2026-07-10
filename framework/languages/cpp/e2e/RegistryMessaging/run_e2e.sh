@@ -7,12 +7,23 @@ source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=15
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS=30
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+PROCESS_SHUTDOWN_ATTEMPTS="$(
+  python3 - "$PROCESS_SHUTDOWN_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
 import sys
 
@@ -74,14 +85,19 @@ PY
 }
 
 REDIS_CONTAINER=""
+REDIS_CONTAINER_OWNED=0
 REDIS_KEY_PREFIX="zlink:e2e:cfg1:$(date +%s)-$$"
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+  echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
+elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  echo "External Redis endpoint is not supported by the C++ RegistryMessaging e2e runner." >&2
+  exit 2
 else
-  read -r REDIS_CONTAINER redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-e2e-registrymessaging" "redis:7-alpine"
-  )
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-cpp-e2e-registrymessaging" "redis:7-alpine"
+  REDIS_CONTAINER_OWNED=1
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
@@ -135,7 +151,7 @@ terminate_pid() {
     return $?
   fi
   kill "$pid" >/dev/null 2>&1 || true
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
     state="$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print $1}')"
     if [[ -z "$state" || "$state" == Z* ]]; then
       wait_pid_status "$pid" "$label"
@@ -158,11 +174,8 @@ cleanup() {
       cleanup_failed=1
     fi
   done
-  if [[ -n "$REDIS_CONTAINER" ]]; then
+  if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-  elif command -v redis-cli >/dev/null 2>&1; then
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
-      | xargs -r redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" DEL >/dev/null 2>&1 || true
   fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
@@ -337,6 +350,7 @@ if [[ "$SCENARIO" == "all" ]]; then
     child_output="$LOG_DIR/child-$scenario.output.log"
     ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" \
       ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" \
+      ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" \
       "$0" "$scenario" | tee "$child_output"
     child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
     if [[ -z "$child_log_dir" || ! -d "$child_log_dir" ]]; then

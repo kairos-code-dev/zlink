@@ -3,7 +3,22 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
+#include "core/ctx.hpp"
+
 #include <unity.h>
+
+namespace zlink
+{
+class ctx_termination_test_access_t
+{
+  public:
+    static void set_terminating (ctx_t *ctx_, bool terminating_)
+    {
+        scoped_lock_t lock (ctx_->_slot_sync);
+        ctx_->_terminating = terminating_;
+    }
+};
+}
 
 void setUp ()
 {
@@ -104,24 +119,61 @@ void test_ctx_shutdown_only_socket_opened_after ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_ctx_term_rearms_reaper_when_last_socket_closes_during_restart ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (socket);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+
+    zlink::ctx_t *internal_ctx = static_cast<zlink::ctx_t *> (ctx);
+    zlink::ctx_termination_test_access_t::set_terminating (internal_ctx, false);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket));
+    TEST_ASSERT_SUCCESS_ERRNO (internal_ctx->wait_for_socket_count_at_most (0, 5000));
+
+    // Reproduce the state restored by flush_pending_inproc_locked(): shutdown
+    // has started, the registry is empty, but no stop reached the reaper.
+    zlink::ctx_termination_test_access_t::set_terminating (internal_ctx, true);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_pending_inproc_disconnect_releases_socket_before_context_term ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *socket = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (socket);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (socket, "inproc://pending-disconnect"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_disconnect (socket, "inproc://pending-disconnect"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket));
+
+    zlink::ctx_t *internal_ctx = static_cast<zlink::ctx_t *> (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (internal_ctx->wait_for_socket_count_at_most (0, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_zlink_ctx_term_null_fails ()
 {
     int rc = zlink_ctx_term (NULL);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_term_null_fails ()
 {
     int rc = zlink_ctx_term (NULL);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_ctx_shutdown_null_fails ()
 {
     int rc = zlink_ctx_shutdown (NULL);
-    TEST_ASSERT_EQUAL_INT (-1, rc);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_INVALID_HANDLE, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
@@ -134,6 +186,8 @@ int main (void)
     RUN_TEST (test_ctx_shutdown);
     RUN_TEST (test_ctx_shutdown_socket_opened_after);
     RUN_TEST (test_ctx_shutdown_only_socket_opened_after);
+    RUN_TEST (test_ctx_term_rearms_reaper_when_last_socket_closes_during_restart);
+    RUN_TEST (test_pending_inproc_disconnect_releases_socket_before_context_term);
     RUN_TEST (test_zlink_ctx_term_null_fails);
     RUN_TEST (test_zlink_term_null_fails);
     RUN_TEST (test_zlink_ctx_shutdown_null_fails);

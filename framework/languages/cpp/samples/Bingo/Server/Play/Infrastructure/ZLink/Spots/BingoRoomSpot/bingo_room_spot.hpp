@@ -45,28 +45,28 @@ class bingo_room_spot_t : public spot_t
         return spot_create_response_t::accept ();
     }
 
-    spot_actor_join_response_t on_actor_join (const player_actor_t &actor,
+    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
                                               const message_t &request_message)
     {
         auto request = request_message.decode<bingo_room_join_req_t> ();
-        const auto actor_id =
-          actor.actor.actor_id.empty () ? request.actor_id : actor.actor.actor_id;
-        const auto display_name =
-          actor.display_name.empty () ? request.display_name : actor.display_name;
-        _game.set_room_id_if_empty (request.room_id);
+        const auto joined_actor_id =
+          actor_id.empty () ? request.actor_id : std::string (actor_id);
         if (request.observe_only) {
             if (!_is_observer || request.room_id != _observed_room_id) {
                 throw std::runtime_error ("observe-only actor can join only its observer room");
             }
-            observers[actor_id] = const_cast<player_actor_t *> (&actor);
+            _pending_joins[joined_actor_id] = request;
             return spot_actor_join_response_t::accept (bingo_room_join_res_t{
               bingo_room_state_t{request.room_id, bingo_room_status_t::running}});
         }
         if (_is_observer) {
             throw std::runtime_error ("player actor cannot join an observer room");
         }
-        _game.join (actor_id, display_name);
-        return spot_actor_join_response_t::accept (bingo_room_join_res_t{snapshot ()});
+        auto projected = _game;
+        projected.set_room_id_if_empty (request.room_id);
+        projected.join (joined_actor_id, request.display_name);
+        _pending_joins[joined_actor_id] = request;
+        return spot_actor_join_response_t::accept (bingo_room_join_res_t{projected.snapshot ()});
     }
 
     observe_bingo_events_res_t observe_events (const player_actor_t &actor,
@@ -89,9 +89,9 @@ class bingo_room_spot_t : public spot_t
         return {true, std::string (actor.actor.node_rid.value ())};
     }
 
-    submit_bingo_card_res_t submit_card (const player_actor_t &actor,
-                                         const spot_actor_request_context_t &context,
-                                         const submit_bingo_card_req_t &request)
+    task_t<submit_bingo_card_res_t> submit_card (const player_actor_t &actor,
+                                                 const spot_actor_request_context_t &context,
+                                                 const submit_bingo_card_req_t &request)
     {
         if (context.packet_name.empty ()) {
             throw std::runtime_error ("packet name is required");
@@ -104,16 +104,30 @@ class bingo_room_spot_t : public spot_t
                     const auto ended_notify = game_ended_notify_t{drawn->state};
                     send_to_players (ended_notify);
                     publish_reward (*drawn);
-                    leave_finished_actors ();
+                    co_await leave_finished_actors ();
                     break;
                 }
             }
         }
-        return submit_bingo_card_res_t{snapshot ()};
+        co_return submit_bingo_card_res_t{snapshot ()};
     }
 
     void on_actor_joined (const player_actor_t &actor)
     {
+        const auto pending = _pending_joins.find (actor.actor.actor_id);
+        if (pending == _pending_joins.end ()) {
+            throw std::runtime_error ("accepted bingo actor admission is missing");
+        }
+        const auto request = pending->second;
+        _pending_joins.erase (pending);
+        _game.set_room_id_if_empty (request.room_id);
+        if (request.observe_only) {
+            observers[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
+        } else {
+            const auto display_name = actor.display_name.empty () ? request.display_name
+                                                                  : actor.display_name;
+            _game.join (actor.actor.actor_id, display_name);
+        }
         actors[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
         const auto &state = snapshot ();
         auto joined = std::find_if (state.players.begin (), state.players.end (),
@@ -171,14 +185,14 @@ class bingo_room_spot_t : public spot_t
         }
     }
 
-    void on_reward_acquired (const bingo_reward_acquired_msg_t &event)
+    task_t<void> on_reward_acquired (const bingo_reward_acquired_msg_t &event)
     {
         if (!_is_observer && event.room_id == snapshot ().room_id) {
-            leave_finished_actors ();
-            return;
+            co_await leave_finished_actors ();
+            co_return;
         }
         if (!_is_observer || event.room_id != _observed_room_id) {
-            return;
+            co_return;
         }
         for (auto &[_, actor] : observers) {
             const auto notify = bingo_reward_announced_notify_t{
@@ -192,12 +206,13 @@ class bingo_room_spot_t : public spot_t
             };
             actor->push (notify);
         }
+        co_return;
     }
 
-    void leave_finished_actors ()
+    task_t<void> leave_finished_actors ()
     {
         if (cleanup_started || snapshot ().winners.empty ()) {
-            return;
+            co_return;
         }
         cleanup_started = true;
         std::vector<player_actor_t *> leaving;
@@ -207,12 +222,9 @@ class bingo_room_spot_t : public spot_t
         for (auto *actor : leaving) {
             actor->mark_for_destroy_after_room_leave ();
             const auto before = actor_ref_for (*actor);
-            auto left = _context.leave_actor (before, *actor).result ();
-            if (!left) {
-                throw std::runtime_error (left.error () ? left.error ()->what ()
-                                                        : "finished actor leave failed");
-            }
+            (void) co_await _context.leave_actor (before, *actor);
         }
+        co_return;
     }
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)
@@ -226,6 +238,7 @@ class bingo_room_spot_t : public spot_t
     bingo_room_game_t _game;
     std::map<std::string, player_actor_t *> actors;
     std::map<std::string, player_actor_t *> observers;
+    std::map<std::string, bingo_room_join_req_t> _pending_joins;
     bool _is_observer = false;
     std::string _observed_room_id;
     bool cleanup_started = false;

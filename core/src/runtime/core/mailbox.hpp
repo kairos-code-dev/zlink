@@ -48,6 +48,7 @@ class mailbox_t ZLINK_FINAL : public i_mailbox
                          mailbox_pre_post_t pre_post_ = NULL);
     void schedule_if_needed ();
     bool reschedule_if_needed ();
+    bool detach_io_context_if_idle ();
 
     // Signaler support for ZLINK_INTERNAL_OPT_FD
     void add_signaler (signaler_t *signaler_);

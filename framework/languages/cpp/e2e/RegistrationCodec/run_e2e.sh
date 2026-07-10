@@ -4,6 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+SCENARIO="${1:-all}"
+SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
+case "$SCENARIO_LOWER" in
+  all|rc-a[1-6]|rc-b[1-5]|b5) ;;
+  *)
+    echo "Unsupported RegistrationCodec scenario: $SCENARIO" >&2
+    exit 2
+    ;;
+esac
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -20,24 +29,22 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 
-read -r API ROUTE HTTP CLIENT_ROUTE JSON_ONLY_API JSON_ONLY_HTTP INVALID REQUESTER_HTTP <<<"$(python3 - <<'PY'
+read -r API HTTP JSON_ONLY_API JSON_ONLY_HTTP INVALID REQUESTER_HTTP <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(8):
+for _ in range(6):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
 print(f"tcp://127.0.0.1:{ports[0]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[1]}", end=" ")
-print(f"http://127.0.0.1:{ports[2]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[3]}", end=" ")
+print(f"http://127.0.0.1:{ports[1]}", end=" ")
+print(f"tcp://127.0.0.1:{ports[2]}", end=" ")
+print(f"http://127.0.0.1:{ports[3]}", end=" ")
 print(f"tcp://127.0.0.1:{ports[4]}", end=" ")
-print(f"http://127.0.0.1:{ports[5]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[6]}", end=" ")
-print(f"http://127.0.0.1:{ports[7]}")
+print(f"http://127.0.0.1:{ports[5]}")
 for s in sockets:
     s.close()
 PY
@@ -65,14 +72,28 @@ PIDS=()
 
 cleanup() {
   local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done
-  wait >/dev/null 2>&1 || true
+  for pid in "${PIDS[@]:-}"; do
+    set +e
+    wait "$pid" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process $pid exited unexpectedly with status $status" >&2
+      cleanup_failed=1
+    fi
+  done
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+  elif [[ "$cleanup_failed" -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    code=1
   fi
   exit "$code"
 }
@@ -118,17 +139,14 @@ run_invalid() {
 }
 
 ZLINK_CPP_E2E_API_ENDPOINT="$API" \
-ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$SERVER" >"$LOG_DIR/server.stdout.log" 2>"$LOG_DIR/server.stderr.log" &
 PIDS+=("$!")
 wait_port api "$API"
-wait_port route "$ROUTE"
 wait_port http "$HTTP"
 
 ZLINK_CPP_E2E_API_ENDPOINT="$JSON_ONLY_API" \
-ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$JSON_ONLY_HTTP" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$JSON_ONLY_SERVER" >"$LOG_DIR/json-only.stdout.log" 2>"$LOG_DIR/json-only.stderr.log" &
@@ -145,25 +163,28 @@ wait_port codec-requester-http "$REQUESTER_HTTP"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-ZLINK_CPP_E2E_API_ENDPOINT="$API" \
-ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
-ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == rc-a* || "$SCENARIO_LOWER" == rc-b[1-4] ]]; then
+  ZLINK_CPP_E2E_SCENARIO="$SCENARIO_LOWER" \
+  ZLINK_CPP_E2E_API_ENDPOINT="$API" \
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
-cat "$LOG_DIR/client.stdout.log"
+    "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+  cat "$LOG_DIR/client.stdout.log"
+fi
 
-ZLINK_CPP_E2E_SCENARIO=b5 \
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "rc-b5" || "$SCENARIO_LOWER" == "b5" ]]; then
+  ZLINK_CPP_E2E_SCENARIO="rc-b5" \
 ZLINK_CPP_E2E_API_ENDPOINT="$JSON_ONLY_API" \
-ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
-ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$REQUESTER_HTTP" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$CLIENT" >"$LOG_DIR/client-b5.stdout.log" 2>"$LOG_DIR/client-b5.stderr.log"
-cat "$LOG_DIR/client-b5.stdout.log"
+    "$CLIENT" >"$LOG_DIR/client-b5.stdout.log" 2>"$LOG_DIR/client-b5.stderr.log"
+  cat "$LOG_DIR/client-b5.stdout.log"
+fi
 
-run_invalid duplicate "duplicate handler registration"
-run_invalid wrong-group "maps handler group 'registration-codec' with an incompatible handler kind"
-run_invalid unsupported-channel "server must map a request or send handler group"
-echo "scenario RC-A6 passed"
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "rc-a6" ]]; then
+  run_invalid duplicate "duplicate handler registration"
+  run_invalid wrong-group "maps handler group 'registration-codec' with an incompatible handler kind"
+  run_invalid unsupported-channel "server must map a request or send handler group"
+  echo "scenario RC-A6 passed"
+fi
 echo "registration-codec e2e result=passed"

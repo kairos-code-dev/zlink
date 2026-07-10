@@ -4,6 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
+SCENARIO="${*:-all}"
+SCENARIO="${SCENARIO// /,}"
+case "$SCENARIO" in
+  all|DD-A1|dd-a1|DeliveryDispatch|deliverydispatch) ;;
+  *)
+    echo "Unsupported DeliveryDispatch scenario: $SCENARIO" >&2
+    exit 2
+    ;;
+esac
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
 mkdir -p "$DELIVERYDISPATCH_LOG_DIR"
 rm -f "$DELIVERYDISPATCH_LOG_DIR"/*.log
@@ -20,6 +29,7 @@ HTTP_PROBE_TIMEOUT_SECONDS=3
 PROCESS_SHUTDOWN_TIMEOUT_SECONDS=2
 PROCESS_SHUTDOWN_POLL_SECONDS=0.05
 REDIS_CONTAINER_NAME=""
+REDIS_CONTAINER_OWNED=0
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -46,6 +56,9 @@ LOG_DIR="$DELIVERYDISPATCH_LOG_DIR/last-run"
 rm -rf "$LOG_DIR"
 mkdir -p "$LOG_DIR"
 cleanup() {
+  local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
@@ -56,14 +69,27 @@ cleanup() {
         sleep "$PROCESS_SHUTDOWN_POLL_SECONDS"
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
+        echo "forced cleanup process ${pid}" >&2
         kill -9 "${pid}" >/dev/null 2>&1 || true
+        cleanup_failed=1
       fi
     fi
-    wait "${pid}" 2>/dev/null || true
+    set +e
+    wait "${pid}" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process ${pid} exited unexpectedly with status ${status}" >&2
+      cleanup_failed=1
+    fi
   done
-  if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
+  if [[ -n "$REDIS_CONTAINER_NAME" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
+  if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
+    code=1
+  fi
+  exit "$code"
 }
 trap cleanup EXIT
 
@@ -111,10 +137,16 @@ for sock in sockets:
     sock.close()
 PY
 )"
-if [[ -z "${ZLINK_CPP_E2E_REDIS_ENDPOINT:-}" ]]; then
-  read -r REDIS_CONTAINER_NAME redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-e2e-deliverydispatch" "redis:7-alpine"
-  )
+if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_CPP_E2E_REDIS_ENDPOINT:-}" ]]; then
+  REDIS_CONTAINER_NAME="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+  echo "redis endpoint=$ZLINK_CPP_E2E_REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER_NAME)"
+elif [[ -n "${ZLINK_CPP_E2E_REDIS_ENDPOINT:-}" ]]; then
+  echo "External Redis endpoint is not supported by the C++ DeliveryDispatch e2e runner." >&2
+  exit 2
+else
+  zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
+    "zlink-redis-cpp-e2e-deliverydispatch" "redis:7-alpine"
+  REDIS_CONTAINER_OWNED=1
   export ZLINK_CPP_E2E_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 fi
 export ZLINK_CPP_E2E_REDIS_KEY_PREFIX="${ZLINK_CPP_E2E_REDIS_KEY_PREFIX:-deliverydispatch:$$:}"

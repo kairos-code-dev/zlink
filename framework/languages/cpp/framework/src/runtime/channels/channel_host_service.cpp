@@ -553,19 +553,24 @@ void channel_host_service_t::start (service_provider_t &services)
     }
 }
 
-void channel_host_service_t::stop () noexcept
+void channel_host_service_t::request_stop () noexcept
 {
     _stop.store (true, std::memory_order_release);
-    for (auto &thread : _threads) {
-        if (thread.joinable ()) {
-            thread.join ();
-        }
-    }
+}
+
+void channel_host_service_t::stop () noexcept
+{
+    request_stop ();
     for (auto &loop : _loops) {
         loop->stop ();
     }
     for (auto &loop : _subscriber_loops) {
         loop->stop ();
+    }
+    for (auto &thread : _threads) {
+        if (thread.joinable ()) {
+            thread.join ();
+        }
     }
     _threads.clear ();
     _loops.clear ();

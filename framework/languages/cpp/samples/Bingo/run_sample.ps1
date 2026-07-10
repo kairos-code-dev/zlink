@@ -46,22 +46,33 @@ function Print-Logs([int]$Status) {
 }
 
 function Cleanup([int]$Status) {
-    Print-Logs $Status
     for ($i = $Processes.Count - 1; $i -ge 0; $i--) {
         $process = $Processes[$i]
+        if ($process.HasExited -and $process.ExitCode -ne 0) {
+            Write-Host "cleanup process $($process.Id) exited unexpectedly with status $($process.ExitCode)"
+            $Status = 1
+            continue
+        }
         if (-not $process.HasExited) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         }
     }
     foreach ($process in $Processes) {
         try {
-            $process.WaitForExit(1000) | Out-Null
+            if (-not $process.WaitForExit(1000)) {
+                Write-Host "cleanup process $($process.Id) did not exit after stop"
+                $Status = 1
+            }
         } catch {
+            Write-Host "cleanup process $($process.Id) wait failed: $($_.Exception.Message)"
+            $Status = 1
         }
     }
     if ($RedisContainer) {
         & docker rm -f $RedisContainer 2>$null | Out-Null
     }
+    Print-Logs $Status
+    return $Status
 }
 
 function Reserve-Endpoints([int]$Count) {
@@ -194,21 +205,17 @@ try {
     $sessionAPlayRouteEndpoint = if ($env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT) { $env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[19])" }
     $sessionBPlayRouteEndpoint = if ($env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT) { $env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[20])" }
 
-    if ($env:BINGO_REDIS_ENDPOINT) {
-        $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
-    } else {
-        $docker = Get-Command docker -ErrorAction SilentlyContinue
-        if ($null -eq $docker) {
-            throw "Docker is required to run the Bingo sample when BINGO_REDIS_ENDPOINT is not set."
-        }
-        $RedisContainer = "bingo-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start Redis container."
-        }
-        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-        $redisEndpoint = "127.0.0.1:$redisPort"
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if ($null -eq $docker) {
+        throw "Docker is required to run the Bingo sample."
     }
+    $RedisContainer = "bingo-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+    & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to start Redis container."
+    }
+    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+    $redisEndpoint = "127.0.0.1:$redisPort"
     Wait-Endpoint "redis" "tcp://$redisEndpoint"
 
     $topologyArgs = @(
@@ -318,7 +325,10 @@ try {
 
     $Status = 0
 } finally {
-    Cleanup $Status
+    $Status = Cleanup $Status
 }
 
+if ($Status -ne 0) {
+    exit $Status
+}
 Write-Host "bingo full client/server self-check completed"

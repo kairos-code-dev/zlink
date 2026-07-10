@@ -85,6 +85,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
   ${INTEGRATION_TEST_ROOT}/test_capabilities
+  ${INTEGRATION_TEST_ROOT}/test_ctx_destroy
   ${INTEGRATION_TEST_ROOT}/test_ctx_options
   ${INTEGRATION_TEST_ROOT}/test_socket_null
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
@@ -1060,7 +1061,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_ipc_wildcard
     test_last_endpoint
     test_many_sockets
-    test_ctx_destroy
     test_disconnect_inproc
     test_asio_ssl
     test_abstract_ipc

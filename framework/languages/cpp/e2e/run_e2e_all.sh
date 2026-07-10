@@ -35,23 +35,12 @@ START_ORDER_VARIANTS=(
 
 cleanup_done=0
 
-cleanup_e2e_processes() {
-  local config_regex pattern
-  config_regex="$(IFS='|'; echo "${CONFIGS[*]}")"
-  pattern="${SCRIPT_DIR}/(${config_regex})/"
-
-  pkill -TERM -f "${pattern}" >/dev/null 2>&1 || true
-  sleep 0.5
-  pkill -KILL -f "${pattern}" >/dev/null 2>&1 || true
-}
-
 cleanup_resources() {
   if [[ "${cleanup_done}" == "1" ]]; then
     return
   fi
   cleanup_done=1
 
-  cleanup_e2e_processes
   zlink_redis_cleanup_scope "${REDIS_SCOPE}"
 }
 
@@ -62,7 +51,7 @@ on_exit() {
 }
 
 on_interrupt() {
-  echo "[cpp-e2e] interrupted; cleaning up C++ processes and Redis..." >&2
+  echo "[cpp-e2e] interrupted; cleaning up runner-scoped Redis..." >&2
   exit 130
 }
 

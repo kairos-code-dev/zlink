@@ -36,10 +36,14 @@ enum pipe_write_status_t
 //  terminates straight away.
 //  If conflate is true, only the most recently arrived message could be
 //  read (older messages are discarded)
+//  If session_pipe is true the ypipes use the smaller
+//  session_pipe_granularity chunk (per-connection pipes); otherwise the
+//  default message_pipe_granularity is used.
 int pipepair (zlink::object_t *parents_[2],
               zlink::pipe_t *pipes_[2],
               const int hwms_[2],
-              const bool conflate_[2]);
+              const bool conflate_[2],
+              bool session_pipe_ = false);
 
 struct i_pipe_events
 {
@@ -67,7 +71,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     friend int pipepair (zlink::object_t *parents_[2],
                          zlink::pipe_t *pipes_[2],
                          const int hwms_[2],
-                         const bool conflate_[2]);
+                         const bool conflate_[2],
+                         bool session_pipe_);
 
   public:
     typedef pipe_stream_packet_state_t stream_packet_state_t;

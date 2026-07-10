@@ -8,6 +8,7 @@
 #include <zlink/framework/contracts/channels/pending_operation.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/app.hpp>
+#include <zlink/framework/contracts/cancellation.hpp>
 #include <zlink/framework/contracts/configuration/configuration.hpp>
 #include <zlink/framework/contracts/configuration/detail/framework_options_state.hpp>
 #include <zlink/framework/contracts/configuration/detail/framework_options_validation.hpp>
@@ -36,6 +37,7 @@
 #include <zlink/framework/contracts/locations/resolvers.hpp>
 #include <zlink/framework/contracts/locations/rows.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
+#include <zlink/framework/contracts/locations/spot_ref.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
 #include <zlink/framework/contracts/locations/watch.hpp>
@@ -515,6 +517,24 @@ struct contract_actor_t
 {
 };
 
+struct contract_actor_transfer_t
+    : zlink::framework::actor_transfer_adapter_t<contract_actor_t>
+{
+    zlink::framework::task_t<zlink::framework::message_t>
+    transfer_out (const contract_actor_t &) override
+    {
+        return zlink::framework::task_t<zlink::framework::message_t> (
+          zlink::framework::result_t<zlink::framework::message_t>::success ({}));
+    }
+
+    zlink::framework::task_t<contract_actor_t>
+    transfer_in (std::string, zlink::framework::message_t) override
+    {
+        return zlink::framework::task_t<contract_actor_t> (
+          zlink::framework::result_t<contract_actor_t>::success ({}));
+    }
+};
+
 struct contract_create_request_t
 {
     int value{};
@@ -522,8 +542,8 @@ struct contract_create_request_t
 
 struct contract_spot_t : public zlink::framework::spot_t
 {
-    zlink::framework::spot_actor_join_response_t on_actor_join (contract_actor_t &,
-                                                                const zlink::framework::message_t &)
+    zlink::framework::spot_actor_join_response_t on_actor_join (
+      std::string_view, zlink::framework::message_t)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -858,9 +878,16 @@ static_assert (
 static_assert (std::has_virtual_destructor_v<zlink::framework::spot_t>);
 static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
 static_assert (std::is_base_of_v<zlink::framework::spot_t, zlink::framework::entry_spot_t>);
+static_assert (std::has_virtual_destructor_v<
+               zlink::framework::actor_transfer_adapter_t<contract_actor_t>>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::framework::spot_node_builder_t &> ()
+                           .add_actor_transfer_adapter<contract_actor_t,
+                                                       contract_actor_transfer_t> ("contract")),
+               zlink::framework::spot_node_builder_t &>);
 static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
-                                std::declval<contract_actor_t &> (),
-                                std::declval<const zlink::framework::message_t &> ())),
+                                std::declval<std::string_view> (),
+                                std::declval<zlink::framework::message_t> ())),
                               zlink::framework::spot_actor_join_response_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
@@ -1023,6 +1050,12 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
                              .connect_peer_pub ("tcp://127.0.0.1:5504")),
                  zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                           .add_actor_transfer_adapter<contract_actor_t,
+                                                       contract_actor_transfer_t> ("contract")),
+               zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
   !has_spot_node_use_registry_spot_resolver<zlink::framework::spot_node_options_builder_t>);

@@ -10,7 +10,6 @@ namespace zlink::framework::e2e::registration_codec
 {
 
 inline constexpr const char *api_channel = "registration.codec.api";
-inline constexpr const char *route_channel = "registration.codec.route";
 inline constexpr const char *handler_group = "registration-codec";
 
 struct echo_auto_req_t

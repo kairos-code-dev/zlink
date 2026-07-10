@@ -32,13 +32,19 @@ set(required_labels
   framework-sample-courier
   framework-sample-deliverydispatch
   framework-sample-dispatch
+  framework-sample-gamequest
+  framework-sample-mission
   framework-sample-play
   framework-sample-probe
   framework-sample-registry
   framework-sample-session
   framework-sample-smoke
+  framework-sample-shoppingmall
+  framework-sample-support
+  framework-sample-supportchat
   framework-sample-tictactoe
   framework-sample-tracking
+  framework-sample-workflow
   http-client-contract
   http-client-unit
   http-client-e2e

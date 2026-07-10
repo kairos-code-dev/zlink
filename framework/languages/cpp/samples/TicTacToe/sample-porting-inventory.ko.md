@@ -50,8 +50,7 @@ raw frame 조작, 샘플 전용 route helper로 공통 계약을 우회하지 �
 | `common: client는 API 응답의 Play stream endpoint를 사용` | `Client/tictactoe_client_scenario.hpp`; `Server/Api/Handlers/create_game_http_handler.hpp` | client-flow | done | client는 API HTTP endpoint만 입력으로 받고 Play stream endpoint는 `CreateGameHttpRes`에서 읽는다. |
 | `common: JSON payload` | `Shared/Contracts/messages.hpp`; `Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp` | codec | done | stream, channel, actor, Spot payload는 typed JSON message 경로를 사용한다. |
 | `common: Redis room route store` | `Server/Configuration/redis_room_route_store.hpp`; `run_sample.sh`; `run_sample.ps1` | external-adapter | done | Redis는 room owner SpotNode route 저장과 public resolver 의미에만 사용된다. |
-| `common: 외부 Redis endpoint가 있으면 사용` | `run_sample.sh`; `run_sample.ps1` | runner | done | `TICTACTOE_CPP_REDIS_ENDPOINT`가 있으면 readiness 확인 후 사용한다. |
-| `common: Redis endpoint가 없으면 runner가 Docker Redis 준비` | `run_sample.sh`; `run_sample.ps1` | runner | done | 전용 Redis container를 만들고 cleanup에서 제거한다. |
+| `common: runner가 Docker Redis 준비` | `run_sample.sh`; `run_sample.ps1` | runner | done | 전용 Redis container를 만들고 cleanup에서 제거한다. 외부 Redis endpoint를 받아 로컬 Redis나 공유 Redis를 건드리지 않는다. |
 | `common: Redis key prefix 격리` | `run_sample.sh`; `run_sample.ps1`; `Server/Configuration/sample_topology.hpp` | runner | done | 실행마다 고유한 `TICTACTOE_CPP_REDIS_KEY_PREFIX` 기본값을 전달한다. |
 | `common: remote Spot join은 public resolver 사용` | `Server/Configuration/redis_room_route_store.hpp`; `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp` | message-flow | done | room owner가 다른 Play node일 때 Redis-backed resolver와 public actor/Spot join 경로를 사용한다. |
 | `common: Spot pub/sub milestone fan-out` | `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp`; `Client/tictactoe_client_scenario.hpp` | message-flow | done | room Spot publish와 Entry Spot subscribe handler로 observer milestone push를 검증한다. |

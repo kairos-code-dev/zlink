@@ -12,6 +12,8 @@
 #include "Scenarios/rc_b4_codec_coexistence_scenario.hpp"
 
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 namespace rc = zlink::framework::e2e::registration_codec;
 namespace rc_client = zlink::framework::e2e::registration_codec::client;
@@ -23,20 +25,56 @@ int main (int argc, char **argv)
 
     try {
         const auto scenario = rc_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "all");
-        if (scenario == "b5") {
+        if (scenario == "b5" || scenario == "rc-b5") {
             rc_client::run_codec_mismatch_scenario ();
         } else {
-            rc_client::run_auto_registration_scenario ();
-            rc_client::run_attribute_registration_scenario ();
-            rc_client::run_manual_registration_scenario ();
-            rc_client::run_di_lifecycle_scenario ();
-            rc_client::run_filter_ordering_scenario ();
-            const auto roundtrip = rc_client::post_empty<rc::codec_roundtrip_scenario_res_t> (
-              rc_client::env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "/codec/roundtrip");
-            rc_client::run_json_codec_scenario (roundtrip);
-            rc_client::run_protobuf_codec_scenario (roundtrip);
-            rc_client::run_messagepack_codec_scenario (roundtrip);
-            rc_client::run_codec_coexistence_scenario ();
+            bool ran = false;
+            auto wants = [&scenario] (const char *id) {
+                return scenario == "all" || scenario == id;
+            };
+            if (wants ("rc-a1")) {
+                ran = true;
+                rc_client::run_auto_registration_scenario ();
+            }
+            if (wants ("rc-a2")) {
+                ran = true;
+                rc_client::run_attribute_registration_scenario ();
+            }
+            if (wants ("rc-a3")) {
+                ran = true;
+                rc_client::run_manual_registration_scenario ();
+            }
+            if (wants ("rc-a4")) {
+                ran = true;
+                rc_client::run_di_lifecycle_scenario ();
+            }
+            if (wants ("rc-a5")) {
+                ran = true;
+                rc_client::run_filter_ordering_scenario ();
+            }
+            if (wants ("rc-b1") || wants ("rc-b2") || wants ("rc-b3")) {
+                const auto roundtrip = rc_client::post_empty<rc::codec_roundtrip_scenario_res_t> (
+                  rc_client::env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "/codec/roundtrip");
+                if (wants ("rc-b1")) {
+                    ran = true;
+                    rc_client::run_json_codec_scenario (roundtrip);
+                }
+                if (wants ("rc-b2")) {
+                    ran = true;
+                    rc_client::run_protobuf_codec_scenario (roundtrip);
+                }
+                if (wants ("rc-b3")) {
+                    ran = true;
+                    rc_client::run_messagepack_codec_scenario (roundtrip);
+                }
+            }
+            if (wants ("rc-b4")) {
+                ran = true;
+                rc_client::run_codec_coexistence_scenario ();
+            }
+            if (!ran) {
+                throw std::runtime_error ("unknown RegistrationCodec scenario: " + scenario);
+            }
         }
     }
     catch (const std::exception &error) {

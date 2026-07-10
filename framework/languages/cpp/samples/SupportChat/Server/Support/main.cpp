@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -53,9 +54,64 @@ class support_user_actor_t
     actor_context_t context;
 };
 
+struct support_user_actor_transfer_state_t
+{
+    std::string display_name;
+    std::string role;
+    std::string participant_id;
+};
+
+inline void to_json (nlohmann::json &json, const support_user_actor_transfer_state_t &value)
+{
+    json = {{"displayName", value.display_name},
+            {"role", value.role},
+            {"participantId", value.participant_id}};
+}
+
+inline void from_json (const nlohmann::json &json, support_user_actor_transfer_state_t &value)
+{
+    value.display_name = json.value ("displayName", std::string{});
+    value.role = json.value ("role", std::string{});
+    value.participant_id = json.value ("participantId", std::string{});
+}
+
+class support_user_actor_transfer_adapter_t final
+    : public actor_transfer_adapter_t<support_user_actor_t>
+{
+  public:
+    task_t<zlink::framework::message_t>
+    transfer_out (const support_user_actor_t &actor) override
+    {
+        return task_t<zlink::framework::message_t> (
+          result_t<zlink::framework::message_t>::success (zlink::framework::message_t::from (
+            support_user_actor_transfer_state_t{actor.display_name, actor.role,
+                                                actor.participant_id})));
+    }
+
+    task_t<support_user_actor_t>
+    transfer_in (std::string actor_id, zlink::framework::message_t state) override
+    {
+        auto transferred = state.decode<support_user_actor_transfer_state_t> ();
+        support_user_actor_t actor (std::move (actor_id));
+        actor.display_name = std::move (transferred.display_name);
+        actor.role = std::move (transferred.role);
+        actor.participant_id = std::move (transferred.participant_id);
+        return task_t<support_user_actor_t> (
+          result_t<support_user_actor_t>::success (std::move (actor)));
+    }
+};
+
 class supportchat_conversation_runtime_t
 {
   public:
+    struct actor_profile_t
+    {
+        std::string actor_id;
+        std::string display_name;
+        std::string role;
+        std::string participant_id;
+    };
+
     void remember_actor (const std::string &actor_id,
                          const std::string &display_name,
                          const std::string &role,
@@ -86,6 +142,17 @@ class supportchat_conversation_runtime_t
     {
         std::lock_guard lock (_mutex);
         return _available_agent;
+    }
+
+    std::optional<actor_profile_t> actor_profile (const std::string &actor_id) const
+    {
+        std::lock_guard lock (_mutex);
+        const auto found = _actors.find (actor_id);
+        if (found == _actors.end ()) {
+            return std::nullopt;
+        }
+        return actor_profile_t{found->second.actor_id, found->second.display_name,
+                               found->second.role, found->second.participant_id};
     }
 
     std::optional<support_user_actor_t *> actor_for (const std::string &participant_id) const
@@ -197,11 +264,30 @@ class conversation_spot_t : public spot_t
         return spot_create_response_t::accept ();
     }
 
-    spot_actor_join_response_t on_actor_join (support_user_actor_t &actor,
+    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
                                               const zlink::framework::message_t &)
     {
-        auto joined = join_actor (actor);
-        return spot_actor_join_response_t::accept (joined);
+        const auto profile = _runtime.actor_profile (std::string (actor_id));
+        if (!profile) {
+            return spot_actor_join_response_t::reject ();
+        }
+        auto projected = require_conversation ();
+        const auto participant_id = profile->participant_id.empty () ? profile->actor_id
+                                                                      : profile->participant_id;
+        const auto joined = profile->role == role_t::agent
+                              ? projected.join_agent (participant_id, profile->display_name)
+                              : projected.join_customer (participant_id, profile->display_name);
+        _pending_actor_joins.insert (std::string (actor_id));
+        return spot_actor_join_response_t::accept (join_conversation_res_t{joined.state});
+    }
+
+    void on_actor_joined (support_user_actor_t &actor)
+    {
+        if (_pending_actor_joins.erase (actor.actor_id) == 0) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "accepted support actor admission is missing");
+        }
+        (void) join_actor (actor);
     }
 
     join_conversation_res_t join (support_user_actor_t &actor,
@@ -334,6 +420,7 @@ class conversation_spot_t : public spot_t
     supportchat_conversation_runtime_t &_runtime;
     spot_context_t _context;
     std::optional<conversation_t> _conversation;
+    std::set<std::string> _pending_actor_joins;
 };
 
 struct support_user_actor_factory_t
@@ -368,21 +455,30 @@ class support_entry_spot_t : public entry_spot_t
         configure (entry_context);
     }
 
-    spot_actor_join_response_t on_actor_join (support_user_actor_t &actor,
+    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
                                               const zlink::message_t &request)
     {
         auto join = request.parse_json<ensure_support_user_actor_req_t> ();
-        actor.display_name = join.display_name;
-        actor.role = join.role;
-        actor.participant_id = join.participant_id;
-        if (actor.participant_id.empty ()) {
-            actor.participant_id = actor.actor_id;
-        }
-        _actors[actor.actor_id] = &actor;
-        _runtime.remember_actor (actor.actor_id, actor.display_name, actor.role,
-                                 actor.participant_id);
-        _runtime.remember_live_actor (actor);
+        _pending_profiles[std::string (actor_id)] = std::move (join);
         return spot_actor_join_response_t::accept ();
+    }
+
+    void onCreateActor (support_user_actor_t &actor, const zlink::framework::message_t &request)
+    {
+        apply_actor_profile (actor, request.decode<ensure_support_user_actor_req_t> ());
+    }
+
+    void on_actor_joined (support_user_actor_t &actor)
+    {
+        const auto pending = _pending_profiles.find (actor.actor_id);
+        if (pending != _pending_profiles.end ()) {
+            auto profile = std::move (pending->second);
+            _pending_profiles.erase (pending);
+            apply_actor_profile (actor, std::move (profile));
+        } else {
+            _actors[actor.actor_id] = &actor;
+            _runtime.remember_live_actor (actor);
+        }
     }
 
     set_agent_available_res_t set_available (support_user_actor_t &actor,
@@ -412,6 +508,21 @@ class support_entry_spot_t : public entry_spot_t
     }
 
   private:
+    void apply_actor_profile (support_user_actor_t &actor,
+                              ensure_support_user_actor_req_t profile)
+    {
+        actor.display_name = std::move (profile.display_name);
+        actor.role = std::move (profile.role);
+        actor.participant_id = std::move (profile.participant_id);
+        if (actor.participant_id.empty ()) {
+            actor.participant_id = actor.actor_id;
+        }
+        _actors[actor.actor_id] = &actor;
+        _runtime.remember_actor (actor.actor_id, actor.display_name, actor.role,
+                                 actor.participant_id);
+        _runtime.remember_live_actor (actor);
+    }
+
     template <typename TMessage>
     void send_to_actor (const std::string &actor_id, const TMessage &message, const char *packet_name)
     {
@@ -429,6 +540,7 @@ class support_entry_spot_t : public entry_spot_t
     supportchat_conversation_runtime_t &_runtime;
     entry_spot_context_t _context;
     std::map<std::string, support_user_actor_t *> _actors;
+    std::map<std::string, ensure_support_user_actor_req_t> _pending_profiles;
 };
 
 class ensure_support_user_actor_handler_t
@@ -692,7 +804,10 @@ int main (int argc, char **argv)
           .add_spot<conversation_spot_t> (
             support_conversation_spot,
             [runtime_ptr] { return std::make_shared<conversation_spot_t> (*runtime_ptr); })
-          .add_actor_factory<support_user_actor_factory_t> (support_user_actor_type);
+          .add_actor_factory<support_user_actor_factory_t> (support_user_actor_type)
+          .add_actor_transfer_adapter<support_user_actor_t,
+                                      support_user_actor_transfer_adapter_t> (
+            support_user_actor_type);
     });
     return app.run (argc, argv);
 }

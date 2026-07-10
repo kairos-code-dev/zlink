@@ -21,4 +21,5 @@
 
 `run_e2e.sh`는 Redis를 준비한 뒤 actor owner 서버와 caller 서버를 모두 시작하고, 두 서버 health를
 기다린 다음 client runner를 실행한다. `E2E_START_ORDER=reverse`에서도 같은 순서 독립성을 검증한다.
-실행 환경에서 Docker를 쓸 수 없으면 `ZLINK_REDIS_E2E_ENDPOINT=host:port`로 외부 Redis를 지정한다.
+현재 C++ runner는 전용 Docker Redis를 직접 띄우며, 사용자 환경에서 넘긴 외부 Redis endpoint를
+공유 Redis로 재사용하지 않는다.

@@ -17,15 +17,7 @@ source를 확인하고, 구형 `on_actor_join(actor, message_t)` 또는 adapter 
 public source interface, contract test expectation, 샘플 compile break를 함께 고친다.
 
 ```cpp
-// admission — actor instance가 아니라 identity만 받는다
-struct actor_join_admission_t {
-    std::string actor_id;
-    std::string actor_type;
-    spot_rid_t  source_spot_rid;
-    spot_rid_t  target_spot_rid;
-    node_rid_t  source_node_rid;   // remote route metadata (non-optional)
-    node_rid_t  target_node_rid;
-};
+// admission — actor instance도 route metadata도 받지 않는다
 struct spot_actor_join_response_t {
     bool accepted;
     std::optional<zlink::framework::message_t> reply;
@@ -33,7 +25,7 @@ struct spot_actor_join_response_t {
 
 // user Spot / Entry Spot(재진입) admission member callback
 spot_actor_join_response_t on_actor_join(
-    const zlink::framework::actor_join_admission_t &admission,
+    std::string_view actor_id,
     const zlink::framework::message_t &request);
 void on_actor_joined(const TActor &actor);   // join 완료 신호
 void onLeaveActor(const TActor &actor);
@@ -47,9 +39,7 @@ public:
                                        zlink::framework::message_t state) = 0;
 };
 
-// mesh options 등록: stateless(기본 adapter) / custom
-template <typename TActor>
-spot_node_builder_t &add_stateless_actor_transfer(std::string actor_type);   // 빈 state 기본 adapter
+// mesh options 등록: state 이동이 필요한 actor type만 custom adapter 등록
 template <typename TActor, typename TAdapter>
 spot_node_builder_t &add_actor_transfer_adapter(std::string actor_type);     // custom adapter type
 ```
@@ -71,26 +61,26 @@ spot_node_builder_t &add_actor_transfer_adapter(std::string actor_type);     // 
 
 코드로 확인하고 [README 마스터표](README.ko.md#3-마스터-체크-표--config-10-시나리오--언어) C++ 열에 반영.
 
-- [ ] SPOT dispatch가 `on_actor_join`을 **admission(`actor_join_admission_t`)** 으로 호출하는지, 아직
-      actor instance를 넘기는지(예: `contracts/spots/spot.hpp` 등 dispatch 지점 확인).
-- [ ] `actor_transfer_adapter_t` / `add_stateless_actor_transfer` / `add_actor_transfer_adapter`가
+- [ ] SPOT dispatch가 `on_actor_join`을 actor id로 호출하는지, 아직 actor instance나
+      `actor_join_admission_t`를 넘기는지(예: `contracts/spots/spot.hpp` 등 dispatch 지점 확인).
+- [ ] `actor_transfer_adapter_t` / `add_actor_transfer_adapter`가
       runtime에 구현·등록·조회되는지(없으면 grep 무결과 → 미구현으로 기록).
-- [ ] local join이 `on_actor_join → onLeaveActor → on_actor_joined` 순서이고 success가
+- [x] local join이 `on_actor_join → onLeaveActor → on_actor_joined` 순서이고 success가
       `on_actor_joined` 완료 뒤에 나가는지.
-- [ ] remote 이동이 admission/commit 분리 + adapter `transfer_out`/`transfer_in` 호출로 되는지.
-- [ ] moving dispatch 차단, pending/committed location, generation fencing, pending admission
+- [x] remote 이동이 admission/commit 분리 + adapter `transfer_out`/`transfer_in` 호출로 되는지.
+- [x] moving dispatch 차단, pending/committed location, generation fencing, pending admission
       deadline, 멱등 source cleanup, bound session A→B transfer.
 - audit 결과를 이 문서 하단 `## 현황`으로 추가하고 각 P를 gap 중심으로 좁힌다.
 
 ## P1. Interface / 문서 정렬
 
 - [ ] `cpp/spec/handler-interfaces.ko.md`를 정본(`cpp-framework-interfaces.ko.md`)에 맞춰 정리:
-  `on_actor_join`을 admission identity 기반으로, transfer adapter surface 반영. (계약은 정본이 소유
+  `on_actor_join`을 actor id 기반으로, transfer adapter surface 반영. (계약은 정본이 소유
   하므로 이 문서는 서술만 정합.)
 - [ ] 실제 C++ public source interface와 contract test expectation을 목표 정본으로 변경.
 - [ ] 기존 샘플/e2e compile break를 정본 시그니처로 변경.
-- [ ] admission callback이 **actor instance를 받지도 저장하지도 않는다**(정본 §3.1 금지 목록) 확인.
-- [ ] 저수준 header/raw message로 admission 필드를 노출하지 않는지(정본 §6 마지막 문단).
+- [ ] admission callback이 **actor instance와 route metadata를 받지도 저장하지도 않는다**(정본 §3.1 금지 목록) 확인.
+- [x] 저수준 header/raw message로 admission 필드를 노출하지 않는지(정본 §6 마지막 문단).
 
 ## P2. Framework runtime 구현
 
@@ -98,8 +88,8 @@ spot_node_builder_t &add_actor_transfer_adapter(std::string actor_type);     // 
 | --- | --- |
 | 같은 node join | `on_actor_join`(admission) accept → moving 표시 → source `onLeaveActor` → membership commit → target `on_actor_joined` → committed location → success reply. reject면 leave/joined/location 모두 없음. adapter 미사용. |
 | remote transfer | admission/commit 분리. target은 admission에서 instance·membership·public location을 만들지 않음. source `transfer_out` → source `onLeaveActor` → commit(state) → target `transfer_in` materialize → membership commit → `on_actor_joined` → committed location → commit ack → success. remote materialize에서 Entry Spot create callback 호출 안 함. |
-| transfer adapter 미등록 | remote transfer 시작 전 실패(source leave 없음). |
-| **stateless adapter** | `add_stateless_actor_transfer(type)`로 등록한 type은 `transfer_out`이 **빈 `message_t`**, `transfer_in`이 actor factory/public 생성 경로로 instance 생성. 빈 state transfer와 미등록 실패를 **구분**(정본 §6). |
+| transfer adapter 미등록 | 실패가 아니다. source는 빈 `message_t`로 이동하고 target은 actor factory/public 생성 경로로 materialize한다. |
+| custom adapter 빈 state | `add_actor_transfer_adapter`가 등록되어 있고 `transfer_out`이 빈 `message_t`를 반환해도 정상 transfer다. |
 | moving dispatch 차단 | moving 구간에 source·target user Spot handler가 같은 actor packet을 동시 처리하지 않음. dispatch가 actor 현재 위치 재조회 후 큐 atomic 선택(정본 §3.4). |
 | pending admission deadline | admission accepted 응답에 deadline, commit 미도착 시 target이 스스로 정리. source down signal 대기 안 함(정본 §5.2). |
 | 멱등 source cleanup | commit ack 이후 source 실패/종료가 성공 rollback 아님. stale owner release 멱등(정본 §5.1). |
@@ -115,9 +105,9 @@ spot_node_builder_t &add_actor_transfer_adapter(std::string actor_type);     // 
   (admission → `on_actor_joined` 완료 후 push/location)로 동작하는지 맞춘다. admission에서 room
   membership 확정 코드가 있으면 `on_actor_joined`로 옮긴다.
 - **remote transfer**: 다중 node 샘플(`framework/languages/cpp/samples/DeliveryDispatch`의 CourierActorNode/
-  CustomerGateway, 필요 시 `framework/languages/cpp/samples/SupportChat` Session/Support)에 actor type별 **transfer adapter
-  등록**(state 옮기는 type은 `add_actor_transfer_adapter`, 안 옮기면 `add_stateless_actor_transfer`)을
-  추가하고 node 간 이동이 정본 순서로 흐르는지 확인.
+  CustomerGateway, 필요 시 `framework/languages/cpp/samples/SupportChat` Session/Support)에 actor type별
+  `actor_transfer_adapter_t` 구현 + `add_actor_transfer_adapter` 등록을 추가한다. 옮길 domain state가
+  없는 actor는 기본 빈 state transfer를 사용한다.
 - C++ sample 전체 runner를 실행해 actor/spot 변경이 다른 샘플을 깨지 않는지 확인.
 
 ## P4. e2e config-10 구현
@@ -130,8 +120,8 @@ spot_node_builder_t &add_actor_transfer_adapter(std::string actor_type);     // 
 - `run_e2e.sh`: Redis → actor 노드 → session gateway → transfer controller 순 기동, 시나리오별
   독립 actor/spot id, process 중단/복구.
 - 시나리오(P1은 ST-C3·ST-D2뿐, 나머지 전부 P0): ST-A1/A2/A3, ST-B1/B2/B3/**B4**, ST-C1/C2/C3, ST-D1/D2, ST-E1/E2.
-  - ST-B3 = adapter 미등록 실패, ST-B4 = **stateless adapter 등록 + 빈 state transfer 성공**(둘을
-    혼동하지 않게 별도 actor type: `actor-no-adapter` vs `actor-empty-state`).
+  - ST-B3 = adapter 미등록 actor type의 기본 빈 state transfer 성공.
+  - ST-B4 = custom adapter가 빈 state를 반환해도 성공(`actor-empty-state`, target joined 이후 별도 store에서 domain state 로드 marker).
 - evidence: callback order marker(`admission, transfer_out(_empty), leave, commit_request,
   transfer_in(_empty), joined, domain_state_loaded, location_committed, commit_ack, source_cleanup`),
   admission input snapshot(instance 없음), transfer state marker, packet handler marker, bound session
@@ -155,20 +145,22 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 ### 계약 항목(§11)
 - [ ] 1. 같은 node join 순서 `on_actor_join→onLeaveActor→on_actor_joined`
 - [ ] 2. remote admission/commit 분리
-- [ ] 3. transfer adapter로 state 전달 **또는 빈 state transfer 명시 처리**
-- [ ] 4. transfer adapter 미등록 시 명시 실패(source leave 없음)
-- [ ] 5. source cleanup 실패 → 멱등 정리(성공 유지)
-- [ ] 6. source down signal 없이 pending admission deadline 정리
-- [ ] 7. `on_actor_joined` 완료 전 caller success 없음
-- [ ] 8. `on_actor_joined` 완료 전 packet dispatch 차단
-- [ ] 9. location pending/committed 구분
-- [ ] 10. bound session transfer commit 전 성공 노출 없음
+- [ ] 3. `on_actor_join` public callback은 actor id와 request만 받음
+- [ ] 4. transfer adapter로 state 전달 **또는 빈 state transfer 명시 처리**
+- [ ] 5. transfer adapter 미등록 시 기본 빈 state transfer
+- [ ] 6. lifecycle callback 기본 no-op public API 없음
+- [ ] 7. source cleanup 실패 → 멱등 정리(성공 유지)
+- [ ] 8. source down signal 없이 pending admission deadline 정리
+- [ ] 9. `on_actor_joined` 완료 전 caller success 없음
+- [ ] 10. `on_actor_joined` 완료 전 packet dispatch 차단
+- [ ] 11. location pending/committed 구분
+- [ ] 12. bound session transfer commit 전 성공 노출 없음
 
 ### interface/문서
-- [ ] 정렬용 `handler-interfaces.ko.md`를 정본 admission/adapter 모델로 정리
+- [ ] 정렬용 `handler-interfaces.ko.md`를 정본 actor id admission/adapter 모델로 정리
 - [ ] 실제 public source interface와 contract test expectation을 목표 정본으로 변경
 - [ ] 기존 샘플/e2e compile break 정리
-- [ ] runtime dispatch가 `on_actor_join(admission,...)` + adapter 호출로 동작
+- [ ] runtime dispatch가 `on_actor_join(actor_id,...)` + adapter/default 빈 state transfer로 동작
 
 ### 샘플
 - [ ] Bingo/TicTacToe local join 순서 정합
@@ -189,10 +181,43 @@ config-10 P0 전부 + §12 contract 테스트(README §3.1 매핑)가 그린이 
 ## 함정 (C++)
 
 - 목표 interface 이름은 정본에 있다 — `actor_transfer_t`/`add_actor_transfer` 같은 **새 이름을 만들지 말고**
-  `actor_transfer_adapter_t` / `add_stateless_actor_transfer` / `add_actor_transfer_adapter` /
-  `spot_actor_join_response_t` / `actor_join_admission_t`를 그대로 쓴다.
-- admission은 절대 instance를 잡지 않는다 — 다른 언어가 미러링하는 레퍼런스 계약이다.
-- **미등록 adapter 실패(ST-B3)와 빈 state transfer(ST-B4)는 다른 결과다.** 구분 못 하면 둘 다 깨진다.
+  `actor_transfer_adapter_t` / `add_actor_transfer_adapter` / `spot_actor_join_response_t`를 그대로 쓴다.
+- admission은 절대 instance나 route metadata를 잡지 않는다 — 다른 언어가 미러링하는 레퍼런스 계약이다.
+- adapter 미등록은 실패가 아니라 기본 빈 state transfer다.
 - 같은 node join에서 adapter를 호출하면 안 된다(인스턴스 그대로 이동).
 - moving 중 dispatch는 "현재 위치 재조회 후 atomic 큐 선택"으로 막는다.
 - Track D·E는 실제 location store/stream connector로 관찰(내부 store key 직접 읽어 판정 금지).
+
+## 현황
+
+2026-07-10 P0 audit 결과 C++ 구현은 목표 계약 적용 전 상태다.
+
+- `spot_actor_admission_callbacks_t::join`과 template dispatch는 actor instance를 넘기며,
+  `on_actor_join(actor, request)`를 호출한다. P1에서 actor id만 전달하도록 public interface,
+  erased callback, contract test와 기존 호출부를 함께 바꿔야 한다.
+- framework source 전체에서 `actor_transfer_adapter_t`, `add_actor_transfer_adapter` 구현과 등록·조회
+  경로가 발견되지 않았다. remote join은 optional actor
+  snapshot과 actor factory를 사용해 target instance를 만드는 기존 경로다.
+- local join은 admission accept 뒤 source leave와 target joined를 호출하지만, target route와 location을
+  `on_actor_joined`보다 먼저 기록한다. 따라서 joined 완료 전 public location 비노출 계약을 만족하지
+  않는다.
+- remote join은 admission과 commit이 분리되지 않았고 transfer adapter의 `transfer_out`/`transfer_in`,
+  pending admission deadline, commit ack 이후 멱등 source cleanup을 제공하지 않는다.
+- generation 값 검사는 일부 기존 leave·dispatch 경로에 있으나, 이동 전체를 소유하는 moving 상태와
+  pending/committed location 전환은 없다. bound session route를 commit에 포함해 A에서 B로 옮기는
+  경로도 없다.
+- P1은 public interface와 compile contract 정렬에 한정한다. P2는 admission/commit 상태와 adapter
+  registry를 한 소유자 아래 구현한 뒤 local commit 순서, remote transfer, moving dispatch,
+  location·session commit 순으로 검증한다.
+
+2026-07-10 P1 완료 및 P2 진행 상태:
+
+- 이 진행 기록은 이전 스펙 기준이다. 새 스펙에서는 actor id admission, `add_stateless_actor_transfer`
+  제거, adapter 미등록 기본 빈 state transfer로 다시 보정해야 한다.
+- source runtime의 adapter 미등록 사전 거부는 제거하고, 기본 빈 state transfer로 연결해야 한다.
+- location은 target joined 전 source 위치를 유지한 takeover claim을 사용하고, joined 완료 뒤 target
+  위치로 갱신하도록 구현 중이다. 실제 location store 조회와 stale source release fencing 검증은 아직
+  완료되지 않았다.
+- pending admission은 host receive loop에서 deadline cleanup을 수행하지만 timeout evidence와 source
+  down 통합 검증이 남아 있다. bound session route의 commit 전달·target bind·source cleanup, callback
+  실패별 reconcile, local join moving latch 검증도 남아 있다.

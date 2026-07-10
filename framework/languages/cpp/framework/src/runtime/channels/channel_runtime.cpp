@@ -15,6 +15,7 @@
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/spots/spot_runtime.hpp"
+#include "runtime/spots/spot_route_packets.hpp"
 
 #include <algorithm>
 #include <exception>
@@ -26,6 +27,19 @@
 namespace zlink::framework::detail
 {
 
+namespace
+{
+
+bool is_internal_spot_route_packet (std::string_view packet_name)
+{
+    return packet_name == spot_actor_join_route_request_t::packet_name
+           || packet_name == spot_actor_packet_route_request_t::packet_name
+           || packet_name == spot_actor_disconnect_route_request_t::packet_name
+           || packet_name == actor_bound_session_route_request_t::packet_name;
+}
+
+} // namespace
+
 route_client_state_t::route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime,
                                             serializer_registry_t &serializers) :
     runtime (std::move (runtime)), serializers (&serializers)
@@ -33,7 +47,19 @@ route_client_state_t::route_client_state_t (std::shared_ptr<channel_runtime_stat
     const auto hardware_workers =
       static_cast<std::size_t> (std::max (1u, std::thread::hardware_concurrency ()));
     executor = std::make_shared<zlink::framework::runtime::offload_executor_t> (
-      0, hardware_workers, 1024, std::chrono::seconds (30));
+      0, hardware_workers, 1024, std::chrono::milliseconds (100), "zlink-route-cli");
+    {
+        std::lock_guard lock (this->runtime->mutex);
+        this->runtime->route_client_executors.push_back (executor);
+    }
+}
+
+route_client_state_t::~route_client_state_t ()
+{
+    if (executor) {
+        executor->drain ();
+        executor.reset ();
+    }
 }
 
 channel_capability_snapshot_t &select_capability (channel_builder_state_t &state,
@@ -271,8 +297,31 @@ channel_runtime_t::channel_runtime_t (std::shared_ptr<channel_runtime_state_t> s
 namespace
 {
 
+void drain_route_client_executors (channel_runtime_state_t &state) noexcept
+{
+    std::vector<std::shared_ptr<runtime::offload_executor_t>> route_client_executors;
+    {
+        std::lock_guard lock (state.mutex);
+        for (auto it = state.route_client_executors.begin ();
+             it != state.route_client_executors.end ();) {
+            if (auto executor = it->lock ()) {
+                route_client_executors.push_back (std::move (executor));
+                ++it;
+            } else {
+                it = state.route_client_executors.erase (it);
+            }
+        }
+    }
+    for (auto &executor : route_client_executors) {
+        executor->drain ();
+    }
+}
+
 void drain_zlink_builder_state_runtime (zlink_builder_state_t &state) noexcept
 {
+    if (state.runtime) {
+        drain_route_client_executors (*state.runtime);
+    }
     state.stream_runtime.reset ();
     state.route_channels.clear ();
     for (auto &[_, spot_node] : state.spot_nodes) {
@@ -464,6 +513,7 @@ void channel_runtime_t::shutdown () noexcept
         route_channel->stop ();
     }
     close_native_channel_transports (_state);
+    drain_route_client_executors (*_state);
     drain ();
 }
 
@@ -1457,8 +1507,12 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                   detail::channel_runtime_manager_t manager (runtime_state);
                   auto &runtime = manager.get_route_channel (router_channel_id);
                   runtime::messaging::envelope_codec_t envelope;
-                  auto reply = runtime.request_reply_spot_parts (
-                    target_node_rid, spot_rid, std::move (parts), effective_timeout);
+                  auto reply =
+                    detail::is_internal_spot_route_packet (packet_name)
+                      ? runtime.request_reply_parts (target_node_rid, std::move (parts),
+                                                     effective_timeout)
+                      : runtime.request_reply_spot_parts (
+                          target_node_rid, spot_rid, std::move (parts), effective_timeout);
                   if (!reply) {
                       source->complete (result_t<zlink::message_t>::failure (
                         reply.error_kind (),

@@ -13,7 +13,12 @@
 #include <chrono>
 #include <cstddef>
 #include <limits>
+#include <cstdlib>
+#include <iostream>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -27,12 +32,32 @@ using detail::stream_message_kind_t;
 namespace detail
 {
 
-runtime::offload_executor_t &stream_dispatch_executor ()
+std::mutex &stream_dispatch_executor_mutex ()
 {
-    static runtime::offload_executor_t executor (
-      0, std::max<std::size_t> (1, std::thread::hardware_concurrency ()), 4096,
-      std::chrono::seconds (30));
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::shared_ptr<runtime::offload_executor_t> &stream_dispatch_executor_ref ()
+{
+    static std::shared_ptr<runtime::offload_executor_t> executor;
     return executor;
+}
+
+std::shared_ptr<runtime::offload_executor_t> stream_dispatch_executor ()
+{
+    std::lock_guard lock (stream_dispatch_executor_mutex ());
+    return stream_dispatch_executor_ref ();
+}
+
+void ensure_stream_dispatch_executor ()
+{
+    std::lock_guard lock (stream_dispatch_executor_mutex ());
+    if (!stream_dispatch_executor_ref ()) {
+        stream_dispatch_executor_ref () = std::make_shared<runtime::offload_executor_t> (
+          0, std::max<std::size_t> (1, std::thread::hardware_concurrency ()), 4096,
+          std::chrono::milliseconds (100), "zlink-stream-ex");
+    }
 }
 
 class stream_write_call_state_t
@@ -122,32 +147,41 @@ class stream_session_dispatcher_t
         record_operation (std::move (operation));
         task_completion_source_t<void> completion;
         auto task = completion.task ();
+        auto executor = stream_dispatch_executor ();
+        if (!executor) {
+            return result_t<void>::failure (framework_error_kind_t::shutdown,
+                                            "stream dispatch executor is not running");
+        }
+        auto shared_completion =
+          std::make_shared<detail::task_completion_source_t<void>> (std::move (completion));
         try {
-            stream_dispatch_executor ().submit ([callback = std::move (callback),
-                                                 completion = std::move (completion)] () mutable {
-              try {
-                  auto callback_task = callback ();
-                  callback_task.result ().value ();
-                  completion.complete (result_t<void>::success ());
-              }
-              catch (const framework_exception_t &error) {
-                  completion.complete (
-                    result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
-              }
-              catch (...) {
-                  completion.complete (result_t<void>::failure (
-                    framework_error_kind_t::request_failed,
-                    "stream session callback threw an exception"));
-              }
+            executor->submit ([callback = std::move (callback), shared_completion] () mutable {
+                try {
+                    auto callback_task = callback ();
+                    detail::observe_task_completion (
+                      callback_task,
+                      [shared_completion] (const result_t<void> &result) mutable {
+                          shared_completion->complete (result);
+                      });
+                }
+                catch (const framework_exception_t &error) {
+                    shared_completion->complete (result_t<void>::failure (
+                      error.kind (), error.what (), error.is_retriable ()));
+                }
+                catch (...) {
+                    shared_completion->complete (result_t<void>::failure (
+                      framework_error_kind_t::request_failed,
+                      "stream session callback threw an exception"));
+                }
             });
         }
         catch (const std::exception &error) {
-            completion.complete (
+            shared_completion->complete (
               result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
         }
         catch (...) {
-            completion.complete (result_t<void>::failure (
-              framework_error_kind_t::request_failed, "stream dispatch executor rejected work"));
+            shared_completion->complete (result_t<void>::failure (
+                framework_error_kind_t::request_failed, "stream dispatch executor rejected work"));
         }
         return task.result ();
     }
@@ -161,6 +195,33 @@ class stream_session_dispatcher_t
 
     stream_state_t &_stream;
 };
+
+void configure_stream_dispatch_executor ()
+{
+    ensure_stream_dispatch_executor ();
+    const char *trace_value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+    if (trace_value != nullptr && std::string_view (trace_value) != "0"
+        && std::string_view (trace_value) != "") {
+        std::cerr << "zlink-cpp-host-stop stage=configure-stream-executor" << std::endl;
+    }
+}
+
+void shutdown_stream_dispatch_executor () noexcept
+{
+    std::shared_ptr<runtime::offload_executor_t> executor;
+    {
+        std::lock_guard lock (stream_dispatch_executor_mutex ());
+        executor = std::move (stream_dispatch_executor_ref ());
+    }
+    const char *trace_value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+    if (trace_value != nullptr && std::string_view (trace_value) != "0"
+        && std::string_view (trace_value) != "") {
+        std::cerr << "zlink-cpp-host-stop stage=shutdown-stream-executor" << std::endl;
+    }
+    if (executor) {
+        executor->drain ();
+    }
+}
 
 } // namespace detail
 
@@ -399,9 +460,18 @@ stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t 
               return result_t<void>::failure (framework_error_kind_t::disconnected,
                                               "STREAM session is disconnected");
           }
-          if (state->transport_writer) {
+          {
               const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
-              return state->transport_writer (submitted_header, submitted_payload);
+              if (state->closed.load (std::memory_order_acquire)) {
+                  return result_t<void>::failure (framework_error_kind_t::disconnected,
+                                                  "STREAM session is disconnected");
+              }
+              if (state->transport_writer)
+                  return state->transport_writer (submitted_header, submitted_payload);
+          }
+          if (state->closed.load (std::memory_order_acquire)) {
+              return result_t<void>::failure (framework_error_kind_t::disconnected,
+                                              "STREAM session is disconnected");
           }
           const std::lock_guard<std::mutex> lock (state->state_mutex);
           state->written_headers.push_back (submitted_header);
@@ -947,6 +1017,13 @@ result_t<void> stream_runtime_t::dispatch_disconnected (packet_stream_session_t 
     stream._state->closed.store (true, std::memory_order_release);
     return dispatch_serial (stream, "disconnected",
                             [&] { return session.on_disconnected (stream); });
+}
+
+void stream_runtime_t::mark_disconnected (stream_t &stream) const
+{
+    stream._state->closed.store (true, std::memory_order_release);
+    const std::lock_guard<std::mutex> lock (stream._state->transport_writer_mutex);
+    stream._state->transport_writer = {};
 }
 
 result_t<void> stream_runtime_t::dispatch_error (packet_stream_session_t &session,

@@ -117,7 +117,8 @@ class customer_entry_spot_t : public entry_spot_t
         configure (entry_context);
     }
 
-    spot_actor_join_response_t on_actor_join (customer_actor_t &, const zlink::message_t &)
+    spot_actor_join_response_t on_actor_join (std::string_view,
+                                              const zlink::message_t &)
     {
         return spot_actor_join_response_t::accept ();
     }

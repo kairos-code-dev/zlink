@@ -39,6 +39,7 @@ class route_channel_host_service_t final : public hosted_service_t
     ~route_channel_host_service_t () override;
 
     void start (service_provider_t &services) override;
+    void request_stop () noexcept override;
     void stop () noexcept override;
 
   private:

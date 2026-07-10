@@ -65,7 +65,11 @@ int main ()
             yd_client::run_shutdown_recovery_scenario (client_options);
             return 0;
         }
-        ensure (scenario == "full", "unknown YieldDispatch client scenario: " + scenario);
+        auto wants = [&scenario] (const char *id) {
+            return scenario == "all" || scenario == "full" || scenario == id;
+        };
+        ensure (scenario == "all" || scenario == "full" || scenario.rfind ("yd-", 0) == 0,
+                "unknown YieldDispatch client scenario: " + scenario);
 
         auto options = yd_client::make_connector_options (client_options);
         auto client = zlink::stream_connector::connector_factory_t::create (options);
@@ -103,14 +107,28 @@ int main ()
             .submit<yd::bind_yield_actors_res_t> ();
         ensure (static_cast<bool> (observer_bound_actors),
                 "YD-B observer bind actors failed");
-        yd_client::run_yd_a1_basic_terminator_scenario (client, spot_rid);
-        yd_client::run_yd_a2_yield_terminator_scenario (client, observer, spot_rid);
-        yd_client::run_yd_a3_continuation_context_scenario (client, observer, spot_rid);
-        yd_client::run_yd_a4_worker_yield_scenario (client, observer, spot_rid);
+        if (wants ("yd-a1")) {
+            yd_client::run_yd_a1_basic_terminator_scenario (client, spot_rid);
+        }
+        if (wants ("yd-a2")) {
+            yd_client::run_yd_a2_yield_terminator_scenario (client, observer, spot_rid);
+        }
+        if (wants ("yd-a3")) {
+            yd_client::run_yd_a3_continuation_context_scenario (client, observer, spot_rid);
+        }
+        if (wants ("yd-a4")) {
+            yd_client::run_yd_a4_worker_yield_scenario (client, observer, spot_rid);
+        }
 
-        yd_client::run_yd_b1_other_actor_progress_scenario (client, actors);
-        yd_client::run_yd_b2_same_actor_reentry_scenario (client, observer, actors);
-        yd_client::run_yd_b3_actor_join_yield_scenario (client, actors);
+        if (wants ("yd-b1")) {
+            yd_client::run_yd_b1_other_actor_progress_scenario (client, actors);
+        }
+        if (wants ("yd-b2")) {
+            yd_client::run_yd_b2_same_actor_reentry_scenario (client, observer, actors);
+        }
+        if (wants ("yd-b3")) {
+            yd_client::run_yd_b3_actor_join_yield_scenario (client, actors);
+        }
         auto rebound_actors =
           client.request (yd::bind_yield_actors_req_t{.spot_rid = actors.spot_rid,
                                                       .actor_ids = {actors.actor_a, actors.actor_b}})
@@ -129,17 +147,33 @@ int main ()
         ensure (timer_spot.value ().spot_rid == timer_spot_rid,
                 "YD-C ensure timer spot reply mismatch");
 
-        yd_client::run_yd_c1_timer_isolation_scenario (client, observer, timer_spot_rid);
-        yd_client::run_yd_c2_timer_reentry_scenario (client, observer, timer_spot_rid);
-        yd_client::run_yd_c3_actor_timer_isolation_scenario (client, actors);
+        if (wants ("yd-c1")) {
+            yd_client::run_yd_c1_timer_isolation_scenario (client, observer, timer_spot_rid);
+        }
+        if (wants ("yd-c2")) {
+            yd_client::run_yd_c2_timer_reentry_scenario (client, observer, timer_spot_rid);
+        }
+        if (wants ("yd-c3")) {
+            yd_client::run_yd_c3_actor_timer_isolation_scenario (client, actors);
+        }
 
-        yd_client::run_yd_d2_remote_spot_yield_scenario (client);
-        yd_client::run_yd_d3_route_bridge_yield_scenario (client);
-        yd_client::run_yd_d4_session_relay_actor_yield_scenario (
-          client, client_options.session_b_stream_endpoint, actors);
+        if (wants ("yd-d2")) {
+            yd_client::run_yd_d2_remote_spot_yield_scenario (client);
+        }
+        if (wants ("yd-d3")) {
+            yd_client::run_yd_d3_route_bridge_yield_scenario (client);
+        }
+        if (wants ("yd-d4")) {
+            yd_client::run_yd_d4_session_relay_actor_yield_scenario (
+              client, client_options.session_b_stream_endpoint, actors);
+        }
 
-        yd_client::run_yd_e1_timeout_scenario (client);
-        yd_client::run_yd_e2_cancellation_scenario (client);
+        if (wants ("yd-e1")) {
+            yd_client::run_yd_e1_timeout_scenario (client);
+        }
+        if (wants ("yd-e2")) {
+            yd_client::run_yd_e2_cancellation_scenario (client);
+        }
 
         (void) observer.close ();
         (void) client.close ();

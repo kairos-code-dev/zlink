@@ -57,8 +57,15 @@ bool zlink::ctx_t::begin_shutdown_locked (bool allow_fork_cleanup_)
 
     const bool restarted = _terminating;
     _terminating = true;
-    if (restarted)
+    if (restarted) {
+        //  flush_pending_inproc_locked() temporarily clears _terminating while
+        //  the slot lock is released. The last socket can disappear in that
+        //  window without stopping the reaper, so re-arm it after the state is
+        //  restored.
+        if (_socket_registry.empty ())
+            _runtime_resources.stop_reaper ();
         return true;
+    }
 
     debug_dump_sockets_locked ("terminate-before-stop");
     std::vector<socket_base_t *> sockets;

@@ -2,6 +2,8 @@
 
 #include "runtime/channels/route_handler_invoker.hpp"
 
+#include "runtime/dispatch/coroutine_executor.hpp"
+
 namespace zlink::framework::detail
 {
 
@@ -14,28 +16,32 @@ route_handler_invoker_t::invoke_send (const route_handler_registry_t &handlers,
                                       const zlink::message_t &message,
                                       const framework::route_handler_context_t &context) const
 {
-    try {
-        auto invocation_scope = services.create_scope (service_scope_kind_t::handler_invocation);
-        auto &invocation_services = invocation_scope.provider ();
-        auto route_task = handlers.invoke_async (
-          router_channel_id, runtime::messaging::message_kind_t::command, packet_name,
-          invocation_services, serializers, message, context);
-        auto result = route_task.result ();
-        if (!result) {
-            return task_t<void> (result_t<void>::failure (
-              result.error_kind (),
-              result.error () ? result.error ()->what () : "routed send handler failed"));
-        }
-        return task_t<void> (result_t<void>::success ());
-    }
-    catch (const framework_exception_t &error) {
-        return task_t<void> (
-          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
-    }
-    catch (...) {
-        return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::request_failed, "routed send handler threw an exception"));
-    }
+    return runtime::handler_coroutine_executor ().submit<void> (
+      [&handlers, router_channel_id = std::string (router_channel_id),
+       packet_name = std::string (packet_name), &services, &serializers, message,
+       context] () mutable -> boost::asio::awaitable<result_t<void>> {
+          try {
+              auto invocation_scope = services.create_scope (service_scope_kind_t::handler_invocation);
+              auto &invocation_services = invocation_scope.provider ();
+              auto result = co_await runtime::await_task_result (handlers.invoke_async (
+                router_channel_id, runtime::messaging::message_kind_t::command, packet_name,
+                invocation_services, serializers, message, context));
+              if (!result) {
+                  co_return result_t<void>::failure (
+                    result.error_kind (),
+                    result.error () ? result.error ()->what () : "routed send handler failed");
+              }
+              co_return result_t<void>::success ();
+          }
+          catch (const framework_exception_t &error) {
+              co_return result_t<void>::failure (error.kind (), error.what (),
+                                                error.is_retriable ());
+          }
+          catch (...) {
+              co_return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                "routed send handler threw an exception");
+          }
+      });
 }
 
 task_t<zlink::message_t>
@@ -47,22 +53,26 @@ route_handler_invoker_t::invoke_request (const route_handler_registry_t &handler
                                          const zlink::message_t &message,
                                          const framework::route_handler_context_t &context) const
 {
-    try {
-        auto invocation_scope = services.create_scope (service_scope_kind_t::handler_invocation);
-        auto &invocation_services = invocation_scope.provider ();
-        auto handler_task = handlers.invoke_async (
-          router_channel_id, runtime::messaging::message_kind_t::request, packet_name,
-          invocation_services, serializers, message, context);
-        return task_t<zlink::message_t> (handler_task.result ());
-    }
-    catch (const framework_exception_t &error) {
-        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          error.kind (), error.what (), error.is_retriable ()));
-    }
-    catch (...) {
-        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-          framework_error_kind_t::request_failed, "routed request handler threw an exception"));
-    }
+    return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+      [&handlers, router_channel_id = std::string (router_channel_id),
+       packet_name = std::string (packet_name), &services, &serializers, message,
+       context] () mutable -> boost::asio::awaitable<result_t<zlink::message_t>> {
+          try {
+              auto invocation_scope = services.create_scope (service_scope_kind_t::handler_invocation);
+              auto &invocation_services = invocation_scope.provider ();
+              co_return co_await runtime::await_task_result (handlers.invoke_async (
+                router_channel_id, runtime::messaging::message_kind_t::request, packet_name,
+                invocation_services, serializers, message, context));
+          }
+          catch (const framework_exception_t &error) {
+              co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
+                                                            error.is_retriable ());
+          }
+          catch (...) {
+              co_return result_t<zlink::message_t>::failure (
+                framework_error_kind_t::request_failed, "routed request handler threw an exception");
+          }
+      });
 }
 
 } // namespace zlink::framework::detail

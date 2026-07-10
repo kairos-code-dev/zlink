@@ -35,16 +35,17 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (yield_actor_t &actor, const zlink::framework::message_t &request_message)
+    on_actor_join (std::string_view actor_id,
+                   const zlink::framework::message_t &request_message)
     {
         const auto request = request_message.decode<yd::delay_req_t> ();
         const auto spot_rid = std::string (_context.spot_rid ().value ());
         _evidence.add ("actor-join-target-started|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|request="
+                       + spot_rid + "|actor=" + std::string (actor_id) + "|request="
                        + request.request_id + "|handler=entry");
         std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
         _evidence.add ("actor-join-target-completed|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|request="
+                       + spot_rid + "|actor=" + std::string (actor_id) + "|request="
                        + request.request_id + "|handler=entry");
         return zlink::framework::spot_actor_join_response_t::accept (
           yd::delay_res_t{.request_id = request.request_id,

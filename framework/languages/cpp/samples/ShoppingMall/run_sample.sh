@@ -21,6 +21,9 @@ rm -f "$SHOPPINGMALL_LOG_DIR"/*.log
 PIDS=()
 REDIS_CONTAINER_NAME=""
 cleanup() {
+  local code=$?
+  local cleanup_failed=0
+  local status
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "$pid" >/dev/null 2>&1; then
@@ -28,7 +31,14 @@ cleanup() {
     fi
   done
   for pid in "${PIDS[@]}"; do
-    wait "$pid" 2>/dev/null || true
+    set +e
+    wait "$pid" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process $pid exited unexpectedly with status $status" >&2
+      cleanup_failed=1
+    fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -38,8 +48,12 @@ cleanup() {
   else
     [[ -z "${SHOPPINGMALL_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
+  if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
+    code=1
+  fi
+  return "$code"
 }
-trap cleanup EXIT
+trap 'cleanup; status=$?; exit "$status"' EXIT
 
 PORT_ALLOCATION_OUTPUT="$(python3 - <<'PY'
 import socket
@@ -73,12 +87,9 @@ if [[ "$PORT_ALLOCATION_OUTPUT" == SOCKETLESS* ]]; then
 fi
 read -r SHOPPINGMALL_RESERVED_PORT SHOPPINGMALL_API_A_PORT SHOPPINGMALL_API_B_PORT SHOPPINGMALL_API_A_ROUTE SHOPPINGMALL_API_B_ROUTE SHOPPINGMALL_WORKFLOW_A_PORT SHOPPINGMALL_WORKFLOW_B_PORT SHOPPINGMALL_WORKFLOW_A_ROUTE SHOPPINGMALL_WORKFLOW_B_ROUTE SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE SHOPPINGMALL_WORKFLOW_A_SPOT SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER SHOPPINGMALL_WORKFLOW_B_SPOT SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER SHOPPINGMALL_API_A_SPOT_ROUTER SHOPPINGMALL_API_B_SPOT_ROUTER <<<"$PORT_ALLOCATION_OUTPUT"
 
-if [[ -z "${SHOPPINGMALL_REDIS_ENDPOINT:-}" ]]; then
-  read -r REDIS_CONTAINER_NAME redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-sample-shoppingmall" "redis:7-alpine"
-  )
-  export SHOPPINGMALL_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
-fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
+  "zlink-redis-cpp-sample-shoppingmall" "redis:7-alpine"
+export SHOPPINGMALL_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 export SHOPPINGMALL_REDIS_KEY_PREFIX="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:cpp:${RUN_ID}:}"
 export SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_A_PORT}"
 export SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_B_PORT}"

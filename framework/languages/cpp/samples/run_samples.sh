@@ -6,6 +6,7 @@ source "$SCRIPT_DIR/redis-common.sh"
 
 REDIS_SCOPE="zlink-redis-cpp-sample"
 MAX_ATTEMPTS="${ZLINK_SAMPLE_RETRY_ATTEMPTS:-3}"
+BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|errno=98"
 
 SAMPLE_RUNNERS=(
   TicTacToe/run_sample.sh
@@ -15,6 +16,28 @@ SAMPLE_RUNNERS=(
   GameQuest/run_sample.sh
   ShoppingMall/run_sample.sh
 )
+
+SELECTED_RUNNERS=()
+
+if [[ "$#" -eq 0 ]]; then
+  SELECTED_RUNNERS=("${SAMPLE_RUNNERS[@]}")
+else
+  for selector in "$@"; do
+    matched=0
+    for runner in "${SAMPLE_RUNNERS[@]}"; do
+      sample_dir="$(basename "$(dirname "$runner")")"
+      runner_key="${runner%/run_sample.sh}"
+      if [[ "$selector" == "$runner" || "$selector" == "$runner_key" || "$selector" == "$sample_dir" ]]; then
+        SELECTED_RUNNERS+=("$runner")
+        matched=1
+      fi
+    done
+    if [[ "$matched" == "0" ]]; then
+      echo "Unknown sample selector '${selector}'." >&2
+      exit 2
+    fi
+  done
+fi
 
 zlink_redis_cleanup_scope "$REDIS_SCOPE"
 
@@ -35,7 +58,7 @@ run_sample_with_retry() {
       return 0
     fi
 
-    if ! grep -Eq "ZlinkBindException|BindException|Address already in use" "$output"; then
+    if ! grep -Eq "$BIND_RETRY_PATTERN" "$output"; then
       rm -f "$output"
       return "$status"
     fi
@@ -50,7 +73,7 @@ run_sample_with_retry() {
   done
 }
 
-for runner in "${SAMPLE_RUNNERS[@]}"; do
+for runner in "${SELECTED_RUNNERS[@]}"; do
   run_sample_with_retry "$runner"
 done
 

@@ -22,6 +22,9 @@ REDIS_CONTAINER_NAME=""
 mkdir -p "$LOG_DIR"
 
 cleanup() {
+  local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
@@ -32,10 +35,19 @@ cleanup() {
         sleep 0.05
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
+        echo "forced cleanup process ${pid}" >&2
         kill -9 "${pid}" >/dev/null 2>&1 || true
+        cleanup_failed=1
       fi
     fi
-    wait "${pid}" 2>/dev/null || true
+    set +e
+    wait "${pid}" 2>/dev/null
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process ${pid} exited unexpectedly with status ${status}" >&2
+      cleanup_failed=1
+    fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -45,8 +57,12 @@ cleanup() {
   else
     [[ -z "${GAMEQUEST_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
+  if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
+    code=1
+  fi
+  return "$code"
 }
-trap cleanup EXIT
+trap 'cleanup; status=$?; exit "$status"' EXIT
 
 if [[ -n "${GAMEQUEST_CPP_BASE_PORT:-}" ]]; then
   GAMEQUEST_RESERVED_PORT="$((GAMEQUEST_CPP_BASE_PORT + 1))"
@@ -94,12 +110,9 @@ if [[ -z "$GAMEQUEST_RESERVED_PORT" || -z "$GAMEQUEST_API_B_SPOT_ROUTER_PORT" ]]
   exit 1
 fi
 
-if [[ -z "${GAMEQUEST_REDIS_ENDPOINT:-}" ]]; then
-  read -r REDIS_CONTAINER_NAME redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-sample-gamequest" "redis:7-alpine"
-  )
-  export GAMEQUEST_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
-fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
+  "zlink-redis-cpp-sample-gamequest" "redis:7-alpine"
+export GAMEQUEST_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 GAMEQUEST_REDIS_KEY_PREFIX_BASE="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:cpp:}"
 export GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX_BASE%:}:${RUN_ID}:"
 export GAMEQUEST_API_A_STREAM_ENDPOINT="tcp://127.0.0.1:${GAMEQUEST_API_A_STREAM_PORT}"

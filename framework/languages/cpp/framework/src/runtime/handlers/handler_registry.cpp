@@ -3,6 +3,7 @@
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
 
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -21,12 +23,32 @@ namespace zlink::framework
 namespace
 {
 
-runtime::offload_executor_t &handler_invocation_executor ()
+std::mutex &handler_invocation_executor_mutex ()
 {
-    static runtime::offload_executor_t executor (
-      0, std::max<std::size_t> (1, std::thread::hardware_concurrency ()), 4096,
-      std::chrono::seconds (30));
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::shared_ptr<runtime::offload_executor_t> &handler_invocation_executor_ref ()
+{
+    static std::shared_ptr<runtime::offload_executor_t> executor;
     return executor;
+}
+
+std::shared_ptr<runtime::offload_executor_t> handler_invocation_executor ()
+{
+    std::lock_guard lock (handler_invocation_executor_mutex ());
+    if (!handler_invocation_executor_ref ()) {
+        handler_invocation_executor_ref () = std::make_shared<runtime::offload_executor_t> (
+          0, std::max<std::size_t> (1, std::thread::hardware_concurrency ()), 4096,
+          std::chrono::milliseconds (100), "zlink-handler");
+    }
+    return handler_invocation_executor_ref ();
+}
+
+void ensure_handler_invocation_executor ()
+{
+    (void) handler_invocation_executor ();
 }
 
 } // namespace
@@ -86,6 +108,23 @@ class handler_registry_state_t
     std::vector<handler_registry_t::filter_invoker_t> filters;
     handler_registry_t::failure_observer_t failure_observer;
 };
+
+void configure_handler_invocation_executor ()
+{
+    ensure_handler_invocation_executor ();
+}
+
+void shutdown_handler_invocation_executor () noexcept
+{
+    std::shared_ptr<runtime::offload_executor_t> executor;
+    {
+        std::lock_guard lock (handler_invocation_executor_mutex ());
+        executor = std::move (handler_invocation_executor_ref ());
+    }
+    if (executor) {
+        executor->drain ();
+    }
+}
 
 } // namespace detail
 
@@ -181,9 +220,80 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
                                                        const zlink::message_t &message,
                                                        std::string_view content_type) const
 {
-    return invoke_async (channel_name, topic, packet_name, services, serializers, message,
-                         content_type)
-      .result ();
+    const auto found =
+      _state->handlers.find (detail::make_handler_key (channel_name, topic, packet_name));
+    const detail::handler_entry_t *entry = nullptr;
+    if (found != _state->handlers.end ()) {
+        entry = &found->second;
+    } else if (topic.empty ()) {
+        entry = detail::find_by_channel_packet (_state->handlers, channel_name, packet_name);
+    }
+    if (entry == nullptr) {
+        return result_t<zlink::message_t>::failure (framework_error_kind_t::handler_not_found,
+                                                    "handler is not registered");
+    }
+
+    auto invoke_body = [this, entry, filters = _state->filters, &services, &serializers,
+                        owned_message = std::make_shared<zlink::message_t> (message),
+                        owned_content_type = std::string (content_type)] () mutable {
+        result_t<zlink::message_t> result =
+          result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                               "handler failed");
+        try {
+            handler_invocation_context_t context{
+              entry->descriptor, make_handler_context<handler_context_t> (entry->descriptor),
+              owned_message};
+            context.context.content_type = owned_content_type;
+            using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
+            auto chain = std::make_shared<chain_t> ();
+            *chain = [&services, &serializers, &context, &filters, entry, owned_message,
+                      &owned_content_type, chain] (std::size_t index) -> task_t<zlink::message_t> {
+                if (index >= filters.size ()) {
+                    return entry->invoker (services, serializers, *owned_message,
+                                           owned_content_type);
+                }
+                return filters[index](
+                  services, serializers, context,
+                  [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
+            };
+            result = (*chain) (0).result ();
+        }
+        catch (const framework_exception_t &error) {
+            result = result_t<zlink::message_t>::failure (error.kind (), error.what (),
+                                                          error.is_retriable ());
+        }
+        catch (...) {
+            result = result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                                          "handler threw an exception");
+        }
+        if (!result && result.error () != nullptr) {
+            emit_failure (entry->descriptor, *result.error ());
+        }
+        return result;
+    };
+
+    detail::task_completion_source_t<zlink::message_t> completion;
+    auto task = completion.task ();
+    try {
+        auto executor = handler_invocation_executor ();
+        if (!executor) {
+            return result_t<zlink::message_t>::failure (
+              framework_error_kind_t::shutdown, "handler invocation executor is not running");
+        }
+        executor->submit (
+          [completion = std::move (completion), invoke_body = std::move (invoke_body)] () mutable {
+              completion.complete (invoke_body ());
+          });
+    }
+    catch (const std::exception &error) {
+        completion.complete (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_failed, error.what ()));
+    }
+    catch (...) {
+        completion.complete (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_failed, "handler executor rejected invocation"));
+    }
+    return task.result ();
 }
 
 task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view channel_name,
@@ -222,7 +332,9 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
     auto filters = _state->filters;
     auto invoke_body = [this, entry, filters = std::move (filters), &services, &serializers,
                         owned_message = std::move (owned_message),
-                        owned_content_type = std::move (owned_content_type)] () mutable {
+                        owned_content_type = std::move (
+                          owned_content_type)] () mutable -> boost::asio::awaitable<
+      result_t<zlink::message_t>> {
         result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_failed, "handler failed");
         try {
@@ -242,8 +354,7 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
                   services, serializers, context,
                   [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
             };
-            auto handler_task = (*chain) (0);
-            result = handler_task.result ();
+            result = co_await runtime::await_task_result ((*chain) (0));
         }
         catch (const framework_exception_t &error) {
             result = result_t<zlink::message_t>::failure (error.kind (), error.what (),
@@ -256,30 +367,21 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
         if (!result && result.error () != nullptr) {
             emit_failure (entry->descriptor, *result.error ());
         }
-        return result;
+        co_return result;
     };
 
-    if (detail::current_stream_relay_dispatch ()) {
-        return task_t<zlink::message_t> (invoke_body ());
-    }
-
-    detail::task_completion_source_t<zlink::message_t> completion;
-    auto task = completion.task ();
     try {
-        handler_invocation_executor ().submit (
-          [completion = std::move (completion), invoke_body = std::move (invoke_body)] () mutable {
-              completion.complete (invoke_body ());
-          });
+        return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+          std::move (invoke_body));
     }
     catch (const std::exception &error) {
-        completion.complete (result_t<zlink::message_t>::failure (
+        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_failed, error.what ()));
     }
     catch (...) {
-        completion.complete (result_t<zlink::message_t>::failure (
+        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_failed, "handler executor rejected invocation"));
     }
-    return task;
 }
 
 handler_registry_t &handler_registry_t::add_handler (handler_descriptor_t descriptor,

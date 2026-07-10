@@ -2,6 +2,7 @@
 
 #include "runtime/http/http_request_pipeline.hpp"
 
+#include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
@@ -38,32 +39,23 @@ class http_route_invoker_access_t
                                            const http_request_t &request,
                                            const std::string &body)
     {
-        auto owned_body = body;
-        auto owned_request = request;
-        detail::task_completion_source_t<http_response_t> completion;
-        auto task = completion.task ();
-        handler_executor.submit (
-          [&route, &services, &context, completion = std::move (completion),
-           owned_request = std::move (owned_request), owned_body = std::move (owned_body)] () mutable {
-              result_t<http_response_t> result =
-                result_t<http_response_t>::failure (framework_error_kind_t::request_failed,
-                                                    "HTTP route handler failed");
+        (void) handler_executor;
+        return handler_coroutine_executor ().submit<http_response_t> (
+          [&route, &services, &context, owned_request = request,
+           owned_body = body] () mutable -> boost::asio::awaitable<result_t<http_response_t>> {
               try {
-                  auto route_task = route.invoke (services, context, owned_request, owned_body);
-                  result = route_task.result ();
+                  co_return co_await await_task_result (
+                    route.invoke (services, context, owned_request, owned_body));
               }
               catch (const framework_exception_t &error) {
-                  result = result_t<http_response_t>::failure (error.kind (), error.what (),
+                  co_return result_t<http_response_t>::failure (error.kind (), error.what (),
                                                                error.is_retriable ());
               }
               catch (...) {
-                  result = result_t<http_response_t>::failure (
-                    framework_error_kind_t::request_failed,
-                    "HTTP route handler threw an exception");
+                  co_return result_t<http_response_t>::failure (
+                    framework_error_kind_t::request_failed, "HTTP route handler threw an exception");
               }
-              completion.complete (std::move (result));
           });
-        return task;
     }
 };
 

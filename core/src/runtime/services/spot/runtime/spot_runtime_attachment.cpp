@@ -176,13 +176,6 @@ int spot_runtime_t::close_runtime_socket_async (socket_base_t *&socket_, int tim
 {
     if (!socket_)
         return 0;
-    if (owner && spot_node_access_t::is_shutting_down (owner)) {
-        spot_node_access_t::untrack_owned_socket (owner, socket_);
-        socket_->stop ();
-        socket_->close ();
-        socket_ = NULL;
-        return 0;
-    }
     if (spot_node_access_t::ctx (owner))
         return spot_node_access_t::close_owned_socket (owner, socket_, timeout_ms_);
 

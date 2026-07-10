@@ -66,7 +66,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         return spot_create_response_t::accept ();
     }
 
-    spot_actor_join_response_t on_actor_join (const player_actor_t &actor,
+    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
                                               const message_t &request_message)
     {
         auto request = request_message.decode<tictactoe_game_join_req_t> ();
@@ -74,10 +74,12 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             || request.player.level < sample_names_t::required_level) {
             return spot_actor_join_response_t::reject ();
         }
-        players[actor.actor_id] = request.player;
-        actor.apply_player (request.player);
+        auto projected = static_cast<const tictactoe_match_t &> (*this);
+        auto response = projected.join (
+          std::string (actor_id), join_game_req_t{request.room_id, request.player});
+        _pending_joins[std::string (actor_id)] = request;
         return spot_actor_join_response_t::accept (
-          join (actor.actor_id, join_game_req_t{request.room_id, request.player}));
+          std::move (response));
     }
 
     place_mark_res_t place_mark (const player_actor_t &actor,
@@ -119,6 +121,15 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
 
     void on_actor_joined (const player_actor_t &actor)
     {
+        const auto pending = _pending_joins.find (actor.actor_id);
+        if (pending == _pending_joins.end ()) {
+            throw std::runtime_error ("accepted tic-tac-toe actor admission is missing");
+        }
+        const auto request = pending->second;
+        _pending_joins.erase (pending);
+        players[actor.actor_id] = request.player;
+        actor.apply_player (request.player);
+        (void) join (actor.actor_id, join_game_req_t{request.room_id, request.player});
         actors[actor.actor_id] = const_cast<player_actor_t *> (&actor);
         const auto &state = snapshot ();
         player_joined_notify_t notify{
@@ -210,6 +221,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     spot_context_t _context;
     std::map<std::string, player_actor_t *> actors;
     std::map<std::string, player_info_t> players;
+    std::map<std::string, tictactoe_game_join_req_t> _pending_joins;
 };
 
 } // namespace zlink::samples::tictactoe

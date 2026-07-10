@@ -56,6 +56,7 @@ void test_spot_node_direct_local_and_child_interop ()
     TEST_ASSERT_FALSE (wait_for_spot_recv_message (sub, "mix:visibility", "after-unsub", 11, 200));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "mix:visibility"));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_subjects (sub_node, 2, 3000));
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_publish, pub, "mix:visibility", "after-resub", 0));
     TEST_ASSERT_TRUE (wait_for_spot_recv_message (sub, "mix:visibility", "after-resub", 11, 3000));

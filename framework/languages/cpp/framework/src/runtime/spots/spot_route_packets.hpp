@@ -14,6 +14,41 @@
 namespace zlink::framework::detail
 {
 
+struct spot_actor_admission_route_request_t
+{
+    static constexpr const char *packet_name = "__zlink.spot.actor.join.admission";
+
+    std::string transfer_id;
+    std::string actor_node_rid;
+    std::string actor_type;
+    std::string actor_id;
+    std::uint64_t actor_generation = 0;
+    std::string source_spot_rid;
+    std::string target_spot_rid;
+    std::vector<std::uint8_t> payload;
+};
+
+struct spot_actor_admission_route_reply_t
+{
+    bool accepted = false;
+    std::vector<std::uint8_t> payload;
+};
+
+struct spot_actor_commit_route_request_t
+{
+    static constexpr const char *packet_name = "__zlink.spot.actor.join.commit";
+
+    std::string transfer_id;
+    std::string actor_node_rid;
+    std::string actor_type;
+    std::string actor_id;
+    std::uint64_t actor_generation = 0;
+    std::string target_spot_rid;
+    std::string bound_session_node_rid;
+    std::string bound_session_rid;
+    std::vector<std::uint8_t> transfer_state;
+};
+
 struct spot_actor_join_route_request_t
 {
     static constexpr const char *packet_name = "__zlink.spot.actor.join";
@@ -101,6 +136,9 @@ spot_actor_join_route_request_t make_spot_actor_join_route_request (
   spot_rid_t spot_rid,
   const zlink::message_t &payload,
   const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
+
+actor_ref_t actor_ref_from_spot_route (const spot_actor_admission_route_request_t &request);
+actor_ref_t actor_ref_from_spot_route (const spot_actor_commit_route_request_t &request);
 
 actor_ref_t actor_ref_from_spot_route (const spot_actor_join_route_request_t &request);
 

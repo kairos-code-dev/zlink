@@ -39,7 +39,7 @@ set(ZLINK_FRAMEWORK_CPP_REPO_ROOT "${ZLINK_FRAMEWORK_CPP_DIR}/../../.." CACHE PA
   "Path to the zlink repository root")
 set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACHE PATH
   "Root directory containing local package outputs")
-set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "8.6.3" CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "8.6.4" CACHE STRING
   "Exact local zlink_cpp package version consumed by the C++ framework")
 if(NOT ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT)
   if(WIN32 AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}")
@@ -124,6 +124,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/messaging/request_failure_mapper.cpp
   framework/src/runtime/messaging/submit_queue.cpp
   framework/src/runtime/spots/spot_node_host_service.cpp
+  framework/src/runtime/spots/actor_transfer_coordinator.cpp
   framework/src/runtime/spots/spot_route_internal_dispatcher.cpp
   framework/src/runtime/spots/spot_route_packets.cpp
   framework/src/runtime/spots/spot_runtime.cpp
@@ -589,6 +590,13 @@ if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)
     EXPORT zlink_stream_connector_cppTargets)
 endif()
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
+  install(DIRECTORY "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/include/"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+  install(FILES "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/lib/libzlink_cpp.a"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(DIRECTORY "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}/lib/cmake/zlink_cpp"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
   install(DIRECTORY framework/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp")

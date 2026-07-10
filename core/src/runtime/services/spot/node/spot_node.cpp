@@ -95,6 +95,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_, zlink_spot_node_mode_t mode_) :
 
 spot_node_t::~spot_node_t ()
 {
+    if (_runtime && _runtime->execution.data_plane_running)
+        (void) _runtime->abortive_stop ();
     _tag = 0xdeadbeef;
     delete _runtime;
     _runtime = NULL;

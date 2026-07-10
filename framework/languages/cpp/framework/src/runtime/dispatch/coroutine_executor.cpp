@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 
 namespace zlink::framework::runtime
@@ -69,6 +70,11 @@ coroutine_executor_t::~coroutine_executor_t ()
 
 void coroutine_executor_t::drain ()
 {
+    std::lock_guard lock (_mutex);
+    if (_drained) {
+        return;
+    }
+    _drained = true;
     _pool.stop ();
     _pool.join ();
 }
@@ -82,6 +88,9 @@ coroutine_executor_t &handler_coroutine_executor ()
     std::lock_guard lock (executor_mutex ());
     auto &executor = executor_instance ();
     if (!executor) {
+        if (executor_shutdown_requested ()) {
+            throw std::runtime_error ("handler coroutine executor is shut down");
+        }
         const auto workers =
           configured_worker_count () == 0 ? default_worker_count () : configured_worker_count ();
         executor = std::make_unique<coroutine_executor_t> (workers);
@@ -95,9 +104,14 @@ void configure_handler_coroutine_executor (std::size_t worker_count)
     if (worker_count == 0) {
         worker_count = default_worker_count ();
     }
+    std::unique_ptr<coroutine_executor_t> stopped_executor;
     std::lock_guard lock (executor_mutex ());
     ++executor_owner_count ();
     auto &executor = executor_instance ();
+    if (executor_shutdown_requested () && executor) {
+        executor_fast_path ().store (nullptr, std::memory_order_release);
+        stopped_executor = std::move (executor);
+    }
     if (executor) {
         return;
     }
@@ -107,12 +121,23 @@ void configure_handler_coroutine_executor (std::size_t worker_count)
 
 void shutdown_handler_coroutine_executor () noexcept
 {
-    std::lock_guard lock (executor_mutex ());
-    auto &owners = executor_owner_count ();
-    if (owners > 0) {
-        --owners;
+    std::unique_ptr<coroutine_executor_t> executor;
+    {
+        std::lock_guard lock (executor_mutex ());
+        auto &owners = executor_owner_count ();
+        if (owners > 0) {
+            --owners;
+        }
+        if (owners != 0) {
+            return;
+        }
+        executor_shutdown_requested () = true;
+        executor_fast_path ().store (nullptr, std::memory_order_release);
+        executor = std::move (executor_instance ());
     }
-    executor_shutdown_requested () = owners == 0;
+    if (executor) {
+        executor->drain ();
+    }
 }
 
 } // namespace zlink::framework::runtime

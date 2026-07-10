@@ -30,6 +30,7 @@ class socket_base_t;
 class reaper_t;
 class pipe_t;
 class service_control_runtime_t;
+class ctx_termination_test_access_t;
 
 //  Context object encapsulates all the global state associated with
 //  the library.
@@ -95,6 +96,7 @@ class ctx_t ZLINK_FINAL
     endpoint_t find_endpoint (const char *addr_);
     bool pend_connection (const std::string &addr_, const endpoint_t &endpoint_, pipe_t **pipes_);
     void connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_);
+    int materialize_pending_inproc (const std::string &addr_, socket_base_t *connect_socket_);
 
 
     enum
@@ -117,6 +119,8 @@ class ctx_t ZLINK_FINAL
     int auto_hwm_msg_unit_bytes () const;
 
   private:
+    friend class ctx_termination_test_access_t;
+
     bool start ();
     bool start_runtime_locked ();
     service_control_runtime_t *ensure_service_runtime ();

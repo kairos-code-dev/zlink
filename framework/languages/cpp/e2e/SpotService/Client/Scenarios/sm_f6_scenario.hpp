@@ -5,11 +5,26 @@
 
 #include <zlink/http_client.hpp>
 
+#include <chrono>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
+namespace
+{
+inline std::string sm_f6_run_suffix ()
+{
+    if (const auto *value = std::getenv ("ZLINK_CPP_E2E_RUN_ID")) {
+        if (*value != '\0') {
+            return value;
+        }
+    }
+    return std::to_string (
+      std::chrono::steady_clock::now ().time_since_epoch ().count ());
+}
+} // namespace
 
 inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
                                 const std::string &multi_b_http_endpoint)
@@ -18,14 +33,21 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
         throw std::runtime_error ("SM-F6 requires multi-node HTTP endpoints");
     }
     auto multi_a =
-      zlink::http_client::client_t::create ().base_url (multi_a_http_endpoint).build ();
+      zlink::http_client::client_t::create ()
+        .base_url (multi_a_http_endpoint)
+        .timeout (std::chrono::seconds (45))
+        .build ();
     auto multi_b =
-      zlink::http_client::client_t::create ().base_url (multi_b_http_endpoint).build ();
+      zlink::http_client::client_t::create ()
+        .base_url (multi_b_http_endpoint)
+        .timeout (std::chrono::seconds (45))
+        .build ();
 
-    constexpr auto source_spot_rid = "spot-sm-f6-source-cpp";
-    constexpr auto target_spot_rid = "spot-sm-f6-target-cpp";
-    constexpr auto actor_id = "actor-sm-f6-cpp";
-    constexpr auto marker = "sm-f6-cpp";
+    const auto suffix = sm_f6_run_suffix ();
+    const auto source_spot_rid = "spot-sm-f6-source-cpp-" + suffix;
+    const auto target_spot_rid = "spot-sm-f6-target-cpp-" + suffix;
+    const auto actor_id = "actor-sm-f6-cpp-" + suffix;
+    const auto marker = "sm-f6-cpp-" + suffix;
 
     auto target =
       multi_b.post ("/spot/create-user-local")
@@ -67,7 +89,11 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
         .submit_raw ()
         .result ();
     if (!join || join.value ().status >= 400) {
-        throw std::runtime_error ("SM-F6 spot-only actor join HTTP failed");
+        throw std::runtime_error (
+          "SM-F6 spot-only actor join failed: "
+          + (join ? "status=" + std::to_string (join.value ().status)
+                      + " body=" + join.value ().body
+                  : (join.error () ? join.error ()->what () : "HTTP failed")));
     }
     const auto joined = nlohmann::json::parse (join.value ().body).get<spot_only_join_res_t> ();
     if (!joined.accepted || joined.actor_id != actor_id) {

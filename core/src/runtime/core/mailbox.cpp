@@ -107,38 +107,63 @@ void zlink::mailbox_t::set_io_context (boost::asio::io_context *io_context_,
                                        void *handler_arg_,
                                        mailbox_pre_post_t pre_post_)
 {
+    _sync.lock ();
     _io_context = io_context_;
     _handler = handler_;
     _handler_arg = handler_arg_;
     _pre_post = pre_post_;
+    _sync.unlock ();
 }
 
 void zlink::mailbox_t::schedule_if_needed ()
 {
-    if (!_io_context || !_handler)
+    _sync.lock ();
+    if (!_io_context || !_handler) {
+        _sync.unlock ();
         return;
+    }
 
     if (!_scheduled.exchange (true, std::memory_order_acquire)) {
-        if (_pre_post)
-            _pre_post (_handler_arg);
-        boost::asio::post (*_io_context, [this] () {
-            if (_handler)
-                _handler (_handler_arg);
-        });
+        boost::asio::io_context *io_context = _io_context;
+        const mailbox_handler_t handler = _handler;
+        void *const handler_arg = _handler_arg;
+        const mailbox_pre_post_t pre_post = _pre_post;
+        if (pre_post)
+            pre_post (handler_arg);
+        boost::asio::post (*io_context, [handler, handler_arg] () { handler (handler_arg); });
     }
+    _sync.unlock ();
 }
 
 bool zlink::mailbox_t::reschedule_if_needed ()
 {
-    _scheduled.store (false, std::memory_order_release);
     _sync.lock ();
+    _scheduled.store (false, std::memory_order_release);
     const bool has_data = _cpipe.check_read ();
+    if (!has_data) {
+        _sync.unlock ();
+        return false;
+    }
+    _scheduled.store (true, std::memory_order_release);
     _sync.unlock ();
+    return true;
+}
 
-    if (!has_data)
+bool zlink::mailbox_t::detach_io_context_if_idle ()
+{
+    _sync.lock ();
+    _scheduled.store (false, std::memory_order_release);
+    if (_cpipe.check_read ()) {
+        _scheduled.store (true, std::memory_order_release);
+        _sync.unlock ();
         return false;
-    if (_scheduled.exchange (true, std::memory_order_acquire))
-        return false;
+    }
+
+    _io_context = NULL;
+    _handler = NULL;
+    _handler_arg = NULL;
+    _pre_post = NULL;
+    _sync.unlock ();
     return true;
 }
 

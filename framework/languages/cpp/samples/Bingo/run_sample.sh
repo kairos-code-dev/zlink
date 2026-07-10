@@ -160,7 +160,10 @@ BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:cpp:${RANDOM}:$$:}"
 export ZLINK_CPP_AUTO_CONNECT_TRACE="${ZLINK_CPP_AUTO_CONNECT_TRACE-1}"
 
 cleanup() {
+  local code=$?
   set +e
+  local cleanup_failed=0
+  local status
   if [[ "$cleanup_done" == true ]]; then
     return
   fi
@@ -185,11 +188,20 @@ cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "$pid" 2>/dev/null; then
+      echo "forced cleanup process $pid" >&2
       kill -9 "$pid" 2>/dev/null || true
+      cleanup_failed=1
     fi
   done
   for pid in "${PIDS[@]}"; do
-    wait "$pid" 2>/dev/null || true
+    set +e
+    wait "$pid" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process $pid exited unexpectedly with status $status" >&2
+      cleanup_failed=1
+    fi
   done
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
@@ -199,22 +211,21 @@ cleanup() {
   else
     [[ -z "${BINGO_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
-}
-trap cleanup EXIT
-
-if [[ -n "${BINGO_REDIS_ENDPOINT:-}" ]]; then
-  wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
-else
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required to run the Bingo sample when BINGO_REDIS_ENDPOINT is not set." >&2
-    exit 1
+  if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
+    code=1
   fi
-  read -r REDIS_CONTAINER redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-sample-bingo" "redis:7.2-alpine"
-  )
-  BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
-  wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
+  return "$code"
+}
+trap 'cleanup; status=$?; exit "$status"' EXIT
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the Bingo sample." >&2
+  exit 1
 fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+  "zlink-redis-cpp-sample-bingo" "redis:7.2-alpine"
+BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
+wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
 topology_args=(
   "--sample.topology.apiChannelEndpoint=$API_A_CHANNEL_ENDPOINT"

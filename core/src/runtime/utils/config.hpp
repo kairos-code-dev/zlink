@@ -14,6 +14,13 @@ enum
     //  memory allocation by approximately 99.6%
     message_pipe_granularity = 256,
 
+    //  Chunk granularity for session<->socket pipes, i.e. the pipes that
+    //  back one transport connection. Servers hold thousands of these and
+    //  auto-HWM caps their depth at high connection counts, so a smaller
+    //  chunk (64 x 64 B msg_t ~= one page) cuts the fixed per-connection
+    //  cost; inproc pipes keep message_pipe_granularity.
+    session_pipe_granularity = 64,
+
     //  Commands in pipe per allocation event.
     command_pipe_granularity = 16,
 

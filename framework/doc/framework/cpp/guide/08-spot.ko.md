@@ -170,15 +170,21 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 
     // 입장 수락/거부
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (const player_actor_t &actor, const zlink::framework::message_t &request)
+    on_actor_join (std::string_view actor_id,
+                   const zlink::framework::message_t &request)
     {
         auto join_request = request.decode<bingo_room_join_req_t> ();
-        join (actor.actor.actor_id, join_request.display_name);
-        return zlink::framework::spot_actor_join_response_t::accept (
-          bingo_room_join_res_t{snapshot ()});
+        // admission에서는 actor instance나 membership을 만들지 않고 요청만 검증한다.
+        return actor_id.empty () || join_request.display_name.empty ()
+                 ? zlink::framework::spot_actor_join_response_t::reject ()
+                 : zlink::framework::spot_actor_join_response_t::accept ();
     }
 
-    void on_actor_joined (const player_actor_t &actor) { /* 입장 완료 후 알림 */ }
+    void on_actor_joined (const player_actor_t &actor)
+    {
+        // actor membership과 입장 알림은 commit 이후 callback에서 확정한다.
+        join (actor.actor.actor_id, actor.display_name);
+    }
     void onLeaveActor (const player_actor_t &actor) { leave (actor.actor.actor_id); }
 };
 ```
@@ -188,7 +194,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 | 훅 | 시점 |
 |----|------|
 | `configure(context)` | spot 생성 시 — 핸들러/타이머 등록 |
-| `on_actor_join(actor, msg)` | 입장 요청 — `accept(reply)`/`reject(reply)` 반환 |
+| `on_actor_join(actor_id, msg)` | actor instance 없는 입장 요청 검증. `accept(reply)` 또는 `reject(reply)`를 반환한다. |
 | `on_actor_joined(actor)` | 입장 확정 후 |
 | `onLeaveActor(actor)` | 퇴장 |
 

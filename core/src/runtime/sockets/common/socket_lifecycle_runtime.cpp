@@ -274,8 +274,9 @@ void zlink::socket_lifecycle_coordinator_t::wait_async_quiesced (int timeout_ms_
         return;
 
     scoped_lock_t lock (async_done_mu);
+    const int wait_timeout_ms = timeout_ms_ < 0 ? -1 : timeout_ms_ > 0 ? timeout_ms_ : 2000;
     while (!async_processing_done.load (std::memory_order_acquire)) {
-        const int rc = async_done_cv.wait (&async_done_mu, timeout_ms_ > 0 ? timeout_ms_ : 2000);
+        const int rc = async_done_cv.wait (&async_done_mu, wait_timeout_ms);
         if (rc != 0)
             break;
     }

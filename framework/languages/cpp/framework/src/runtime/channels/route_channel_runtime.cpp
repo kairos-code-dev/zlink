@@ -434,11 +434,16 @@ result_t<void> route_channel_runtime_t::wait_until_peer_ready (
       timeout > std::chrono::milliseconds::zero ()
         ? std::chrono::steady_clock::now () + timeout
         : std::chrono::steady_clock::time_point{};
-    result_t<void> last = result_t<void>::success ();
+    result_t<void> last = result_t<void>::failure (
+      framework_error_kind_t::route_not_connected,
+      "route channel peer '" + target_node_rid.to_string () + "' is not ready");
     for (;;) {
         {
             std::lock_guard lock (_mutex);
             const auto targets = _connections.targets ();
+            if (!_running) {
+                return last;
+            }
             const bool has_ready_peer =
               _ready_peer_rids.contains (target_node_rid.to_string ());
             if (has_ready_peer) {
@@ -459,9 +464,6 @@ result_t<void> route_channel_runtime_t::wait_until_peer_ready (
                 && (_bind_endpoint.empty () || target_is_self || has_unknown_remote_endpoint)) {
                 return result_t<void>::success ();
             }
-            last = result_t<void>::failure (
-              framework_error_kind_t::route_not_connected,
-              "route channel peer '" + target_node_rid.to_string () + "' is not ready");
         }
         if (timeout <= std::chrono::milliseconds::zero ()
             || std::chrono::steady_clock::now () >= deadline) {

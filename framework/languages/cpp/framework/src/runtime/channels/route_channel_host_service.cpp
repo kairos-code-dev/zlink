@@ -17,6 +17,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -29,7 +30,11 @@ namespace
 bool route_channel_trace_enabled ()
 {
     const char *value = std::getenv ("ZLINK_CPP_CHANNEL_TRACE");
-    return value != nullptr && *value != '\0';
+    if (value != nullptr && *value != '\0') {
+        return true;
+    }
+    value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+    return value != nullptr && *value != '\0' && std::string_view (value) != "0";
 }
 
 void trace_route_channel (const std::string &message)
@@ -73,6 +78,7 @@ class route_channel_host_service_t::route_loop_t
     {
         _router->options ().handover (true);
         _router->options ().mandatory (true);
+        _router->options ().linger (std::chrono::milliseconds (0));
         _router->options ().heartbeat_interval (std::chrono::milliseconds (250));
         _router->options ().heartbeat_timeout (std::chrono::milliseconds (1000));
         _router->options ().reconnect_interval (std::chrono::milliseconds (50));
@@ -101,6 +107,7 @@ class route_channel_host_service_t::route_loop_t
             try {
                 std::lock_guard route_lock (_backend->router_mutex ());
                 _router->connect (endpoint);
+                _connected_endpoints.insert (endpoint);
                 trace_route_channel ("manual-connect channel=" + _route_channel_id
                                      + " endpoint=" + endpoint);
             }
@@ -119,6 +126,7 @@ class route_channel_host_service_t::route_loop_t
 
     void run ()
     {
+        trace_route_channel ("loop-run-begin channel=" + _route_channel_id);
         while (!_stop->load (std::memory_order_acquire)) {
             drain_monitor_events ();
             sync_runtime_connections ();
@@ -159,18 +167,66 @@ class route_channel_host_service_t::route_loop_t
 
             dispatch_async (std::move (received), std::move (copied));
         }
-        flush_replies ();
+        if (_stop->load (std::memory_order_acquire)) {
+            clear_replies ();
+        } else {
+            flush_replies ();
+        }
         drain_monitor_events ();
+        trace_route_channel ("loop-run-end channel=" + _route_channel_id);
     }
 
     void stop () noexcept
     {
-        if (_backend) {
-            _backend->close ();
+        trace_route_channel ("loop-stop-begin channel=" + _route_channel_id);
+        request_stop ();
+        trace_route_channel ("loop-stop-router-linger-begin channel=" + _route_channel_id);
+        if (_router) {
+            try {
+                _router->options ().linger (std::chrono::milliseconds (0));
+            }
+            catch (...) {
+            }
         }
+        if (_backend) {
+            trace_route_channel ("loop-stop-backend-close-begin channel=" + _route_channel_id);
+            _backend->close ();
+            trace_route_channel ("loop-stop-backend-close-end channel=" + _route_channel_id);
+        }
+        trace_route_channel ("loop-stop-join-workers-begin channel=" + _route_channel_id);
+        join_workers ();
+        trace_route_channel ("loop-stop-end channel=" + _route_channel_id);
+    }
+
+    void request_stop () noexcept
+    {
+        trace_route_channel ("loop-request-stop channel=" + _route_channel_id);
+        if (_runtime)
+            _runtime->stop ();
+    }
+
+    void term () noexcept
+    {
+        trace_route_channel ("loop-term-begin channel=" + _route_channel_id);
+        clear_replies ();
+        if (_router) {
+            try {
+                _router->options ().linger (std::chrono::milliseconds (0));
+            }
+            catch (...) {
+            }
+        }
+        if (_backend) {
+            trace_route_channel ("loop-term-backend-close-begin channel=" + _route_channel_id);
+            _backend->close ();
+            trace_route_channel ("loop-term-backend-close-end channel=" + _route_channel_id);
+        }
+        disconnect_router_endpoints ();
         if (_monitor.valid ()) {
             try {
+                trace_route_channel ("loop-term-monitor-close-begin channel=" + _route_channel_id);
                 _monitor.close ();
+                trace_route_channel ("loop-term-monitor-close-end channel=" + _route_channel_id);
             }
             catch (...) {
             }
@@ -179,30 +235,26 @@ class route_channel_host_service_t::route_loop_t
             try {
                 if (_backend) {
                     std::lock_guard route_lock (_backend->router_mutex ());
+                    trace_route_channel ("loop-term-router-close-begin channel=" + _route_channel_id);
                     _router->close ();
+                    trace_route_channel ("loop-term-router-close-end channel=" + _route_channel_id);
                 } else {
+                    trace_route_channel ("loop-term-router-close-begin channel=" + _route_channel_id);
                     _router->close ();
+                    trace_route_channel ("loop-term-router-close-end channel=" + _route_channel_id);
                 }
             }
+            catch (const std::exception &error) {
+                trace_route_channel ("loop-term-router-close-failed channel=" + _route_channel_id
+                                     + " error=" + error.what ());
+            }
             catch (...) {
+                trace_route_channel ("loop-term-router-close-failed channel=" + _route_channel_id
+                                     + " error=unknown");
             }
         }
-        join_workers ();
-    }
-
-    void term () noexcept
-    {
-        clear_replies ();
         if (_backend) {
-            _backend->close ();
             _backend.reset ();
-        }
-        if (_monitor.valid ()) {
-            try {
-                _monitor.close ();
-            }
-            catch (...) {
-            }
         }
         _router.reset ();
         if (_context) {
@@ -212,17 +264,15 @@ class route_channel_host_service_t::route_loop_t
             catch (...) {
             }
             try {
-                _context->shutdown ();
-            }
-            catch (...) {
-            }
-            try {
+                trace_route_channel ("loop-term-context-term-begin channel=" + _route_channel_id);
                 _context->term ();
+                trace_route_channel ("loop-term-context-term-end channel=" + _route_channel_id);
             }
             catch (...) {
             }
             _context.reset ();
         }
+        trace_route_channel ("loop-term-end channel=" + _route_channel_id);
     }
 
   private:
@@ -233,6 +283,68 @@ class route_channel_host_service_t::route_loop_t
         std::uint64_t request_seq = 0;
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
+
+    void disconnect_router_endpoints () noexcept
+    {
+        if (!_router) {
+            return;
+        }
+
+        std::set<std::string> endpoints = _connected_endpoints;
+        for (const auto &endpoint : _runtime->manual_connections ()) {
+            if (!endpoint.empty ()) {
+                endpoints.insert (endpoint);
+            }
+        }
+        for (const auto &target : _runtime->list_connection_targets ()) {
+            if (!target.endpoint.empty () && target.endpoint != _runtime->bind_endpoint ()) {
+                endpoints.insert (target.endpoint);
+            }
+        }
+
+        auto disconnect_all = [this, &endpoints] {
+            for (const auto &endpoint : endpoints) {
+                try {
+                    trace_route_channel ("loop-term-disconnect channel=" + _route_channel_id
+                                         + " endpoint=" + endpoint);
+                    _router->disconnect (endpoint);
+                }
+                catch (const std::exception &error) {
+                    trace_route_channel ("loop-term-disconnect-failed channel=" + _route_channel_id
+                                         + " endpoint=" + endpoint + " error=" + error.what ());
+                }
+                catch (...) {
+                    trace_route_channel ("loop-term-disconnect-failed channel=" + _route_channel_id
+                                         + " endpoint=" + endpoint + " error=unknown");
+                }
+            }
+
+            const auto bind_endpoint = _runtime->bind_endpoint ();
+            if (!bind_endpoint.empty ()) {
+                try {
+                    trace_route_channel ("loop-term-unbind channel=" + _route_channel_id
+                                         + " endpoint=" + bind_endpoint);
+                    _router->unbind (bind_endpoint);
+                }
+                catch (const std::exception &error) {
+                    trace_route_channel ("loop-term-unbind-failed channel=" + _route_channel_id
+                                         + " endpoint=" + bind_endpoint + " error=" + error.what ());
+                }
+                catch (...) {
+                    trace_route_channel ("loop-term-unbind-failed channel=" + _route_channel_id
+                                         + " endpoint=" + bind_endpoint + " error=unknown");
+                }
+            }
+        };
+
+        if (_backend) {
+            std::lock_guard route_lock (_backend->router_mutex ());
+            disconnect_all ();
+        } else {
+            disconnect_all ();
+        }
+        _connected_endpoints.clear ();
+    }
 
     void sync_runtime_connections ()
     {
@@ -405,6 +517,9 @@ class route_channel_host_service_t::route_loop_t
 
     void reply (const completed_reply_t &completed)
     {
+        if (_stop->load (std::memory_order_acquire)) {
+            return;
+        }
         const auto &parts = completed.parts;
         if (parts.size () == 0 || completed.request_seq == 0 || !completed.target_rid) {
             return;
@@ -493,6 +608,10 @@ class route_channel_host_service_t::route_loop_t
 
     void flush_replies ()
     {
+        if (_stop->load (std::memory_order_acquire)) {
+            clear_replies ();
+            return;
+        }
         for (;;) {
             completed_reply_t completed;
             {
@@ -524,6 +643,7 @@ class route_channel_host_service_t::route_loop_t
 
     void join_workers () noexcept
     {
+        trace_route_channel ("loop-join-workers-begin channel=" + _route_channel_id);
         std::lock_guard<std::mutex> lock (_workers_mutex);
         for (auto &worker : _workers) {
             if (worker.joinable ()) {
@@ -531,6 +651,7 @@ class route_channel_host_service_t::route_loop_t
             }
         }
         _workers.clear ();
+        trace_route_channel ("loop-join-workers-end channel=" + _route_channel_id);
     }
 
     void clear_replies () noexcept
@@ -603,23 +724,41 @@ void route_channel_host_service_t::start (service_provider_t &services)
     }
 }
 
-void route_channel_host_service_t::stop () noexcept
+void route_channel_host_service_t::request_stop () noexcept
 {
+    trace_route_channel ("host-request-stop-begin");
     _stop.store (true, std::memory_order_release);
     for (auto &loop : _loops) {
-        loop->stop ();
+        loop->request_stop ();
     }
+    trace_route_channel ("host-request-stop-end");
+}
+
+void route_channel_host_service_t::stop () noexcept
+{
+    trace_route_channel ("host-stop-begin");
+    request_stop ();
+    trace_route_channel ("host-stop-join-route-threads-begin");
     for (auto &thread : _threads) {
         if (thread.joinable ()) {
             thread.join ();
         }
     }
+    trace_route_channel ("host-stop-join-route-threads-end");
+    trace_route_channel ("host-stop-loop-stop-begin");
+    for (auto &loop : _loops) {
+        loop->stop ();
+    }
+    trace_route_channel ("host-stop-loop-stop-end");
+    trace_route_channel ("host-stop-loop-term-begin");
     for (auto &loop : _loops) {
         loop->term ();
     }
+    trace_route_channel ("host-stop-loop-term-end");
     _threads.clear ();
     _loops.clear ();
     _services = nullptr;
+    trace_route_channel ("host-stop-end");
 }
 
 } // namespace zlink::framework::runtime

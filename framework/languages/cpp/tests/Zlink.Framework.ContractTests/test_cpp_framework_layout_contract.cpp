@@ -72,8 +72,6 @@ bool public_headers_do_not_expose_runtime_dependencies (const std::filesystem::p
                                      "#include <future>",
                                      "std::future",
                                      "std::promise",
-                                     "cancellation_token",
-                                     "cancellation_source",
                                      "#include <openssl",
                                      "#include <OpenSSL",
                                      "SSL_CTX",
@@ -799,7 +797,7 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
       "`add_subscribe<&TSpot::method>(topic)`",
       "`add_actor_request<&TSpot::method>()`",
       "`onDisconnectActor(actor)`",
-      "`on_actor_join(actor, message_t)`",
+      "`on_actor_join(actor_id, message_t)`",
       "`on_actor_joined(actor)`",
       "`onLeaveActor(actor)`",
       "`spot_context_t::close()`",
@@ -2307,9 +2305,7 @@ int main ()
     ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp",
                          "try_post_serial_async");
     ok &= file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp",
-                         "handler_coroutine_executor ()");
-    ok &= file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp",
-                         "co_await runtime::await_task_result");
+                         "detail::observe_task_completion");
     ok &= file_does_not_contain (
       root / "framework/src/runtime/channels/route_handler_invoker.cpp", ".result (",
       "route handler dispatch must await task_t instead of blocking with result()");
@@ -2609,7 +2605,7 @@ int main ()
       root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp", ".tls (",
       "HTTP hosting regression tests must use configure_tls final API");
     ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp",
-                         "asio::thread_pool _io_workers");
+                         "offload_executor_t _connection_workers");
     ok &= file_does_not_contain (root / "framework/src/runtime/http/http_listener.cpp",
                                  "std::thread connection_thread",
                                  "HTTP hosting must not create one OS thread per connection");

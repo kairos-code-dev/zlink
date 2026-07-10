@@ -851,12 +851,6 @@ class spot_node_options_builder_t
         _router_manual_connections.clear ();
         _options->spot_nodes_with_router.insert (_spot_node_name);
         _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
-        if (_accepted_route_channels.empty () && _options->route_mesh_channels.empty ()) {
-            _options->implicit_spot_route_channels.insert (_spot_node_name);
-            _options->accepted_spot_route_channels.insert (_spot_node_name);
-            _options->accepted_spot_route_channels_by_node[_spot_node_name].insert (
-              _spot_node_name);
-        }
         apply ();
         return *this;
     }
@@ -989,6 +983,18 @@ class spot_node_options_builder_t
         return *this;
     }
 
+    template <typename TActor, typename TAdapter>
+    spot_node_options_builder_t &add_actor_transfer_adapter (std::string actor_type)
+    {
+        detail::require_non_blank (actor_type, "actor transfer name is required");
+        _actions.push_back (
+          [actor_type = std::move (actor_type)] (spot_node_builder_t &spot_node) mutable {
+              spot_node.add_actor_transfer_adapter<TActor, TAdapter> (std::move (actor_type));
+          });
+        apply ();
+        return *this;
+    }
+
     spot_node_options_builder_t &
     add_spot_resolver (std::string name,
                        std::function<std::optional<spot_route_t> (spot_rid_t)> resolver)
@@ -1021,18 +1027,10 @@ class spot_node_options_builder_t
         const auto options = _options;
         auto spot_route_channel_name = _spot_route_channel_name;
         std::vector<std::string> effective_accepted_route_channels = accepted_route_channels;
-        if (effective_accepted_route_channels.empty () && options->route_mesh_channels.empty ()
-            && !router_endpoint.empty ()) {
-            effective_accepted_route_channels.push_back (spot_node_name);
-            spot_route_channel_name = spot_node_name;
-        }
         if (!spot_route_channel_name && accepted_route_channels.empty ()
             && options->route_mesh_channels.size () == 1) {
             spot_route_channel_name = *options->route_mesh_channels.begin ();
         }
-        const auto uses_implicit_spot_route_channel =
-          accepted_route_channels.empty () && options->route_mesh_channels.empty ()
-          && !router_endpoint.empty ();
         const auto actions = _actions;
         auto configure = [=] (spot_node_builder_t &spot_node) {
             if (!endpoint.empty ()) {
@@ -1073,27 +1071,9 @@ class spot_node_options_builder_t
             }
         };
         _options->spot_node_appliers[spot_node_name] = [options = _options, spot_node_name,
-                                                        routing_id,
-                                                        uses_implicit_spot_route_channel,
-                                                        router_endpoint,
-                                                        router_manual_connections,
-                                                        router_manual_rid_connections,
                                                         configure] {
             if (options->active_zlink == nullptr) {
                 return;
-            }
-            if (uses_implicit_spot_route_channel) {
-                auto route_channel = options->active_zlink->route_channel (spot_node_name);
-                route_channel.set_routing_id (
-                  routing_id.value_or (zlink::routing_id_t::from (spot_node_name)));
-                route_channel.bind (router_endpoint);
-                for (const auto &endpoint : router_manual_connections) {
-                    route_channel.connect (endpoint);
-                }
-                for (const auto &connection : router_manual_rid_connections) {
-                    detail::connect_route_channel_peer (route_channel, connection.first,
-                                                        connection.second);
-                }
             }
             auto spot_node = options->active_zlink->add_spot_node (spot_node_name);
             configure (spot_node);

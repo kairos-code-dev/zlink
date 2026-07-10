@@ -5,6 +5,42 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+SCENARIO="${*:-all}"
+SCENARIO="${SCENARIO// /,}"
+
+should_run() {
+  local scenario
+  local candidate
+  IFS=',' read -ra SELECTED_SCENARIOS <<<"$SCENARIO"
+  for scenario in "${SELECTED_SCENARIOS[@]}"; do
+    if [[ "$scenario" == "all" ]]; then
+      return 0
+    fi
+    for candidate in "$@"; do
+      if [[ "$scenario" == "$candidate" ]]; then
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+validate_selector() {
+  local scenario
+  IFS=',' read -ra SELECTED_SCENARIOS <<<"$SCENARIO"
+  for scenario in "${SELECTED_SCENARIOS[@]}"; do
+    case "$scenario" in
+      all|RL-consumer|rl-consumer|RL-A[1-5]|rl-a[1-5]|RL-B[1-6]|rl-b[1-6]|RL-C[1-4]|rl-c[1-4]|RL-D[1-5]|rl-d[1-5])
+        ;;
+      *)
+        echo "Unsupported ResilienceLifecycle scenario: $scenario" >&2
+        exit 2
+        ;;
+    esac
+  done
+}
+
+validate_selector
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -73,6 +109,10 @@ CONSUMER="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_consumer"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_client"
 PIDS=()
 LAST_PID=""
+API_A_PID=""
+API_B_PID=""
+API_B_GREEN_PID=""
+CONSUMER_PID=""
 
 status_allowed() {
   local status="$1"
@@ -728,20 +768,19 @@ PY
 
 if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
-  REDIS_OWNED=1
+  REDIS_OWNED=0
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
   echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
 elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+  echo "External Redis endpoint is not supported by the C++ ResilienceLifecycle e2e runner." >&2
+  exit 2
 else
   if ! command -v docker >/dev/null 2>&1; then
     echo "Docker is required to run ResilienceLifecycle E2E without ZLINK_REDIS_E2E_ENDPOINT." >&2
     exit 1
   fi
-  read -r REDIS_CONTAINER redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-e2e-resiliencelifecycle" "redis:7-alpine"
-  )
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-cpp-e2e-resiliencelifecycle" "redis:7-alpine"
   REDIS_OWNED=1
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
@@ -759,265 +798,338 @@ start_consumer
 CONSUMER_PID="$LAST_PID"
 wait_location_topology api-a Ready 1
 wait_location_topology api-b Ready 1
-post_consumer_profile "rl-consumer-smoke"
-grep -q "message flow" "$LOG_DIR/consumer-flow.log"
-echo "scenario RL-consumer passed"
-post_consumer_new_client_profile "rl-c1-new-client"
-grep -q "message flow" "$LOG_DIR/storm-rl-c1-new-client-flow.log"
-echo "scenario RL-C1 consumer passed"
-post_consumer_timeout_request "slow"
-post_consumer_profile "rl-b1-follow-up"
-echo "scenario RL-B1 passed"
-post_consumer_missing_request "rl-d3-missing"
-grep -Eq "reason=handler_missing.*action=reply_error.*packet=MissingProfileReq" \
-  "$LOG_DIR/api-a-flow.log" "$LOG_DIR/api-b-flow.log"
-echo "scenario RL-D3 passed"
-run_client observer-fault rl-d2 env
-grep -q "scenario RL-D2 passed" "$LOG_DIR/client-rl-d2.stdout.log"
-echo "scenario RL-D2 passed"
-stop_pid "$API_B_PID"
-wait_location_topology api-b Ready 0
-sleep "$ROUTE_SETTLE_SECONDS"
+if should_run RL-consumer rl-consumer; then
+  post_consumer_profile "rl-consumer-smoke"
+  grep -q "message flow" "$LOG_DIR/consumer-flow.log"
+  echo "scenario RL-consumer passed"
+fi
+if should_run RL-C1 rl-c1; then
+  post_consumer_new_client_profile "rl-c1-new-client"
+  grep -q "message flow" "$LOG_DIR/storm-rl-c1-new-client-flow.log"
+  echo "scenario RL-C1 consumer passed"
+fi
+if should_run RL-B1 rl-b1; then
+  post_consumer_timeout_request "slow"
+  post_consumer_profile "rl-b1-follow-up"
+  echo "scenario RL-B1 passed"
+fi
+if should_run RL-D3 rl-d3; then
+  post_consumer_missing_request "rl-d3-missing"
+  grep -Eq "reason=handler_missing.*action=reply_error.*packet=MissingProfileReq" \
+    "$LOG_DIR/api-a-flow.log" "$LOG_DIR/api-b-flow.log"
+  echo "scenario RL-D3 passed"
+fi
+if should_run RL-D2 rl-d2; then
+  run_client observer-fault rl-d2 env
+  grep -q "scenario RL-D2 passed" "$LOG_DIR/client-rl-d2.stdout.log"
+  echo "scenario RL-D2 passed"
+fi
 
-READY="$LOG_DIR/rl-a1-ready"
-CONTINUE="$LOG_DIR/rl-a1-continue"
-run_client rl-a1 rl-a1 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
-A1_CLIENT_PID="$!"
-wait_marker "$READY"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-b-v2
-API_B_PID="$LAST_PID"
-wait_location_topology api-b Ready 1
-sleep "$ROUTE_SETTLE_SECONDS"
-touch "$CONTINUE"
-wait "$A1_CLIENT_PID"
-grep -q "scenario RL-A1 client passed" "$LOG_DIR/client-rl-a1.stdout.log"
-echo "scenario RL-A1 passed"
-stop_pid "$API_B_PID"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v1
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B_GREEN" "$ROUTE_B_GREEN" "" "$HTTP_B_GREEN" api-b-remap
-API_B_GREEN_PID="$LAST_PID"
-wait_location_topology api-b Ready 1
-READY="$LOG_DIR/rl-a2-ready"
-CONTINUE="$LOG_DIR/rl-a2-continue"
-run_client rl-a2 rl-a2 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
-A2_CLIENT_PID="$!"
-wait_marker "$READY"
-stop_pid "$API_B_GREEN_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-b-restored
-API_B_PID="$LAST_PID"
-wait_location_topology api-b Ready 1
-sleep "$ROUTE_SETTLE_SECONDS"
-touch "$CONTINUE"
-wait "$A2_CLIENT_PID"
-grep -q "scenario RL-A2 client passed" "$LOG_DIR/client-rl-a2.stdout.log"
-echo "scenario RL-A2 passed"
-wait_location_topology api-a Ready 1
-wait_location_topology api-b Ready 1
-wait_consumer_profile_ready rl-b3-channel-ready 2
-READY="$LOG_DIR/rl-b3-ready"
-CONTINUE="$LOG_DIR/rl-b3-continue"
-run_client rl-b3 rl-b3 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
-B3_CLIENT_PID="$!"
-wait_marker "$READY"
-stop_pid "$API_B_PID"
-wait_location_topology api-b Ready 0
-touch "$CONTINUE"
-wait "$B3_CLIENT_PID"
-grep -q "scenario RL-B3 client passed" "$LOG_DIR/client-rl-b3.stdout.log"
-echo "scenario RL-B3 passed"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-wait_location_topology api-a Ready 1
-wait_location_topology api-b Ready 1
-READY="$LOG_DIR/rl-b2-ready"
-CONTINUE="$LOG_DIR/rl-b2-continue"
-DRAINED="$LOG_DIR/rl-b2-after-crash"
-RESTORE="$LOG_DIR/rl-b2-restart"
-run_client inflight-crash rl-b2 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
-  ZLINK_CPP_E2E_DRAINED_FILE="$DRAINED" \
-  ZLINK_CPP_E2E_RESTORE_FILE="$RESTORE" &
-B2_CLIENT_PID="$!"
-wait_marker "$READY"
-kill_pid "$API_B_PID"
-touch "$CONTINUE"
-wait_marker "$DRAINED"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-touch "$RESTORE"
-wait "$B2_CLIENT_PID"
-grep -q "scenario RL-B2 passed" "$LOG_DIR/client-rl-b2.stdout.log"
-echo "scenario RL-B2 passed"
-crash_provider "$HTTP_B" "$API_B_PID"
-wait_location_topology "api-b" "Ready" 0
-post_consumer_new_client_burst "fast" "rl-c2-after-crash-" 8 "api-a"
-wait_provider_evidence_value_prefix "rl-c2-after-crash-" "api-a"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-wait_location_topology "api-b" "Ready" 1
-post_consumer_profile_burst "fast" "rl-c2-restored-" 40
-wait_provider_evidence_value_prefix "rl-c2-restored-" "api-b"
-echo "scenario RL-C2 passed"
-stop_pid "$API_B_PID"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-READY="$LOG_DIR/rl-a4-ready"
-CONTINUE="$LOG_DIR/rl-a4-green-ready"
-DRAINED="$LOG_DIR/rl-a4-green-stopped"
-RESTORE="$LOG_DIR/rl-a4-restored"
-run_client rl-a4 rl-a4 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
-  ZLINK_CPP_E2E_DRAINED_FILE="$DRAINED" \
-  ZLINK_CPP_E2E_RESTORE_FILE="$RESTORE" &
-A4_CLIENT_PID="$!"
-wait_marker "$READY"
-start_provider api-b "$API_B_GREEN" "$ROUTE_B_GREEN" "" "$HTTP_B_GREEN" "api-b-green"
-API_B_GREEN_PID="$LAST_PID"
-sleep "$ROUTE_SETTLE_SECONDS"
-stop_pid "$API_B_PID"
-touch "$CONTINUE"
-wait_marker "$DRAINED"
-stop_pid "$API_B_GREEN_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-touch "$RESTORE"
-wait "$A4_CLIENT_PID"
-grep -q "scenario RL-A4 passed" "$LOG_DIR/client-rl-a4.stdout.log"
-echo "scenario RL-A4 passed"
-stop_pid "$API_B_PID"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-run_client rl-b4 rl-b4 env
-grep -q "scenario RL-B4 passed" "$LOG_DIR/client-rl-b4.stdout.log"
-echo "scenario RL-B4 passed"
-run_client rl-b5 rl-b5 env
-grep -q "scenario RL-B5 passed" "$LOG_DIR/client-rl-b5.stdout.log"
-echo "scenario RL-B5 passed"
-run_client rl-b6 rl-b6 env
-grep -q "scenario RL-B6 passed" "$LOG_DIR/client-rl-b6.stdout.log"
-echo "scenario RL-B6 passed"
-stop_pid "$API_B_PID"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-wait_location_topology api-b Ready 1
-run_client rl-a3 rl-a3 env
-grep -q "scenario RL-A3 passed" "$LOG_DIR/client-rl-a3.stdout.log"
-echo "scenario RL-A3 passed"
-run_client rl-c1 rl-c1 env
-grep -q "scenario RL-C1 passed" "$LOG_DIR/client-rl-c1.stdout.log"
-echo "scenario RL-C1 passed"
-for index in 1 2 3; do
+if should_run RL-A1 rl-a1; then
   stop_pid "$API_B_PID"
   wait_location_topology api-b Ready 0
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rl-a5 "rl-a5-down-$index" env \
-    ZLINK_CPP_E2E_FLAP_PHASE=down \
-    ZLINK_CPP_E2E_FLAP_CYCLE="$index"
-  grep -q "scenario RL-A5 down passed" "$LOG_DIR/client-rl-a5-down-$index.stdout.log"
+  READY="$LOG_DIR/rl-a1-ready"
+  CONTINUE="$LOG_DIR/rl-a1-continue"
+  run_client rl-a1 rl-a1 env \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  A1_CLIENT_PID="$!"
+  wait_marker "$READY"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-b-v2
+  API_B_PID="$LAST_PID"
+  wait_location_topology api-b Ready 1
+  sleep "$ROUTE_SETTLE_SECONDS"
+  touch "$CONTINUE"
+  wait "$A1_CLIENT_PID"
+  grep -q "scenario RL-A1 client passed" "$LOG_DIR/client-rl-a1.stdout.log"
+  echo "scenario RL-A1 passed"
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+fi
+
+if should_run RL-A2 rl-a2; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v1
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B_GREEN" "$ROUTE_B_GREEN" "" "$HTTP_B_GREEN" api-b-remap
+  API_B_GREEN_PID="$LAST_PID"
+  wait_location_topology api-b Ready 1
+  READY="$LOG_DIR/rl-a2-ready"
+  CONTINUE="$LOG_DIR/rl-a2-continue"
+  run_client rl-a2 rl-a2 env \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  A2_CLIENT_PID="$!"
+  wait_marker "$READY"
+  stop_pid "$API_B_GREEN_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-b-restored
+  API_B_PID="$LAST_PID"
+  wait_location_topology api-b Ready 1
+  sleep "$ROUTE_SETTLE_SECONDS"
+  touch "$CONTINUE"
+  wait "$A2_CLIENT_PID"
+  grep -q "scenario RL-A2 client passed" "$LOG_DIR/client-rl-a2.stdout.log"
+  echo "scenario RL-A2 passed"
+fi
+
+if should_run RL-B3 rl-b3; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  wait_location_topology api-a Ready 1
+  wait_location_topology api-b Ready 1
+  wait_consumer_profile_ready rl-b3-channel-ready 2
+  READY="$LOG_DIR/rl-b3-ready"
+  CONTINUE="$LOG_DIR/rl-b3-continue"
+  run_client rl-b3 rl-b3 env \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  B3_CLIENT_PID="$!"
+  wait_marker "$READY"
+  stop_pid "$API_B_PID"
+  wait_location_topology api-b Ready 0
+  touch "$CONTINUE"
+  wait "$B3_CLIENT_PID"
+  grep -q "scenario RL-B3 client passed" "$LOG_DIR/client-rl-b3.stdout.log"
+  echo "scenario RL-B3 passed"
+  stop_pid "$API_A_PID"
+fi
+
+if should_run RL-B2 rl-b2 RL-C2 rl-c2; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  wait_location_topology api-a Ready 1
+  wait_location_topology api-b Ready 1
+  if should_run RL-B2 rl-b2; then
+    READY="$LOG_DIR/rl-b2-ready"
+    CONTINUE="$LOG_DIR/rl-b2-continue"
+    DRAINED="$LOG_DIR/rl-b2-after-crash"
+    RESTORE="$LOG_DIR/rl-b2-restart"
+    run_client inflight-crash rl-b2 env \
+      ZLINK_CPP_E2E_READY_FILE="$READY" \
+      ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
+      ZLINK_CPP_E2E_DRAINED_FILE="$DRAINED" \
+      ZLINK_CPP_E2E_RESTORE_FILE="$RESTORE" &
+    B2_CLIENT_PID="$!"
+    wait_marker "$READY"
+    kill_pid "$API_B_PID"
+    touch "$CONTINUE"
+    wait_marker "$DRAINED"
+    start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+    API_B_PID="$LAST_PID"
+    touch "$RESTORE"
+    wait "$B2_CLIENT_PID"
+    grep -q "scenario RL-B2 passed" "$LOG_DIR/client-rl-b2.stdout.log"
+    echo "scenario RL-B2 passed"
+  fi
+  if should_run RL-C2 rl-c2; then
+    crash_provider "$HTTP_B" "$API_B_PID"
+    wait_location_topology "api-b" "Ready" 0
+    post_consumer_new_client_burst "fast" "rl-c2-after-crash-" 8 "api-a"
+    wait_provider_evidence_value_prefix "rl-c2-after-crash-" "api-a"
+    start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+    API_B_PID="$LAST_PID"
+    wait_location_topology "api-b" "Ready" 1
+    post_consumer_profile_burst "fast" "rl-c2-restored-" 40
+    wait_provider_evidence_value_prefix "rl-c2-restored-" "api-b"
+    echo "scenario RL-C2 passed"
+  fi
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+fi
+
+if should_run RL-A4 rl-a4; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  READY="$LOG_DIR/rl-a4-ready"
+  CONTINUE="$LOG_DIR/rl-a4-green-ready"
+  DRAINED="$LOG_DIR/rl-a4-green-stopped"
+  RESTORE="$LOG_DIR/rl-a4-restored"
+  run_client rl-a4 rl-a4 env \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
+    ZLINK_CPP_E2E_DRAINED_FILE="$DRAINED" \
+    ZLINK_CPP_E2E_RESTORE_FILE="$RESTORE" &
+  A4_CLIENT_PID="$!"
+  wait_marker "$READY"
+  start_provider api-b "$API_B_GREEN" "$ROUTE_B_GREEN" "" "$HTTP_B_GREEN" "api-b-green"
+  API_B_GREEN_PID="$LAST_PID"
+  sleep "$ROUTE_SETTLE_SECONDS"
+  stop_pid "$API_B_PID"
+  touch "$CONTINUE"
+  wait_marker "$DRAINED"
+  stop_pid "$API_B_GREEN_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  touch "$RESTORE"
+  wait "$A4_CLIENT_PID"
+  grep -q "scenario RL-A4 passed" "$LOG_DIR/client-rl-a4.stdout.log"
+  echo "scenario RL-A4 passed"
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+fi
+
+if should_run RL-B4 rl-b4 RL-B5 rl-b5 RL-B6 rl-b6; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  if should_run RL-B4 rl-b4; then
+    run_client rl-b4 rl-b4 env
+    grep -q "scenario RL-B4 passed" "$LOG_DIR/client-rl-b4.stdout.log"
+    echo "scenario RL-B4 passed"
+  fi
+  if should_run RL-B5 rl-b5; then
+    run_client rl-b5 rl-b5 env
+    grep -q "scenario RL-B5 passed" "$LOG_DIR/client-rl-b5.stdout.log"
+    echo "scenario RL-B5 passed"
+  fi
+  if should_run RL-B6 rl-b6; then
+    run_client rl-b6 rl-b6 env
+    grep -q "scenario RL-B6 passed" "$LOG_DIR/client-rl-b6.stdout.log"
+    echo "scenario RL-B6 passed"
+  fi
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+fi
+
+if should_run RL-A3 rl-a3 RL-C1 rl-c1 RL-A5 rl-a5 RL-C3 rl-c3; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
   wait_location_topology api-b Ready 1
-  run_client rl-a5 "rl-a5-up-$index" env \
-    ZLINK_CPP_E2E_FLAP_PHASE=up \
-    ZLINK_CPP_E2E_FLAP_CYCLE="$index"
-  grep -q "scenario RL-A5 up passed" "$LOG_DIR/client-rl-a5-up-$index.stdout.log"
-done
-echo "scenario RL-A5 passed"
-READY="$LOG_DIR/rl-c3-ready"
-CONTINUE="$LOG_DIR/rl-c3-continue"
-run_client rl-c3 rl-c3 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
-C3_CLIENT_PID="$!"
-wait_marker "$READY"
-wait "$API_B_PID" >/dev/null 2>&1 || true
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-touch "$CONTINUE"
-wait "$C3_CLIENT_PID"
-grep -q "scenario RL-C3 passed" "$LOG_DIR/client-rl-c3.stdout.log"
-echo "scenario RL-C3 passed"
-stop_pid "$API_B_PID"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-READY="$LOG_DIR/rl-c4-ready"
-CONTINUE="$LOG_DIR/rl-c4-continue"
-OUTAGE_VERIFIED="$LOG_DIR/rl-c4-outage-verified"
-run_client location-store-outage rl-c4 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
-  ZLINK_CPP_E2E_DRAINED_FILE="$OUTAGE_VERIFIED" &
-C4_CLIENT_PID="$!"
-wait_marker "$READY"
-if [[ "$REDIS_OWNED" != "1" ]]; then
-  echo "RL-C4 requires the runner-owned Redis container; unset ZLINK_REDIS_E2E_ENDPOINT." >&2
-  exit 1
+  if should_run RL-A3 rl-a3; then
+    run_client rl-a3 rl-a3 env
+    grep -q "scenario RL-A3 passed" "$LOG_DIR/client-rl-a3.stdout.log"
+    echo "scenario RL-A3 passed"
+  fi
+  if should_run RL-C1 rl-c1; then
+    run_client rl-c1 rl-c1 env
+    grep -q "scenario RL-C1 passed" "$LOG_DIR/client-rl-c1.stdout.log"
+    echo "scenario RL-C1 passed"
+  fi
+  if should_run RL-A5 rl-a5; then
+    for index in 1 2 3; do
+      stop_pid "$API_B_PID"
+      wait_location_topology api-b Ready 0
+      sleep "$ROUTE_SETTLE_SECONDS"
+      run_client rl-a5 "rl-a5-down-$index" env \
+        ZLINK_CPP_E2E_FLAP_PHASE=down \
+        ZLINK_CPP_E2E_FLAP_CYCLE="$index"
+      grep -q "scenario RL-A5 down passed" "$LOG_DIR/client-rl-a5-down-$index.stdout.log"
+      start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+      API_B_PID="$LAST_PID"
+      wait_location_topology api-b Ready 1
+      run_client rl-a5 "rl-a5-up-$index" env \
+        ZLINK_CPP_E2E_FLAP_PHASE=up \
+        ZLINK_CPP_E2E_FLAP_CYCLE="$index"
+      grep -q "scenario RL-A5 up passed" "$LOG_DIR/client-rl-a5-up-$index.stdout.log"
+    done
+    echo "scenario RL-A5 passed"
+  fi
+  if should_run RL-C3 rl-c3; then
+    READY="$LOG_DIR/rl-c3-ready"
+    CONTINUE="$LOG_DIR/rl-c3-continue"
+    run_client rl-c3 rl-c3 env \
+      ZLINK_CPP_E2E_READY_FILE="$READY" \
+      ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+    C3_CLIENT_PID="$!"
+    wait_marker "$READY"
+    wait "$API_B_PID" >/dev/null 2>&1 || true
+    start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+    API_B_PID="$LAST_PID"
+    touch "$CONTINUE"
+    wait "$C3_CLIENT_PID"
+    grep -q "scenario RL-C3 passed" "$LOG_DIR/client-rl-c3.stdout.log"
+    echo "scenario RL-C3 passed"
+  fi
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
 fi
-docker pause "$REDIS_CONTAINER" >/dev/null
-sleep "$ROUTE_SETTLE_SECONDS"
-touch "$CONTINUE"
-wait_marker "$OUTAGE_VERIFIED"
-docker unpause "$REDIS_CONTAINER" >/dev/null
-wait_tcp "$REDIS_HOST" "$REDIS_TCP_PORT" redis
-sleep "$ROUTE_SETTLE_SECONDS"
-wait "$C4_CLIENT_PID"
-grep -q "scenario RL-C4 passed" "$LOG_DIR/client-rl-c4.stdout.log"
-stop_pid "$API_A_PID"
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-sleep "$ROUTE_SETTLE_SECONDS"
-run_client location-store-recovered rl-c4-recovered env
-grep -q "scenario RL-C4 recovery passed" "$LOG_DIR/client-rl-c4-recovered.stdout.log"
-echo "scenario RL-C4 passed"
-stop_pid "$API_B_PID"
-stop_pid "$API_A_PID"
 
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-sleep "$ROUTE_SETTLE_SECONDS"
-post_consumer_profile_burst "fast" "rl-d1-" 120
-wait_provider_evidence_value_prefix "rl-d1-"
-echo "scenario RL-D1 passed"
-run_client rl-d4 rl-d4 env
-grep -q "scenario RL-D4 passed" "$LOG_DIR/client-rl-d4.stdout.log"
-echo "scenario RL-D4 passed"
-run_client rl-d5 rl-d5 env
-grep -q "scenario RL-D5 passed" "$LOG_DIR/client-rl-d5.stdout.log"
-echo "scenario RL-D5 passed"
-stop_pid "$API_B_PID"
-stop_pid "$API_A_PID"
+if should_run RL-C4 rl-c4; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  READY="$LOG_DIR/rl-c4-ready"
+  CONTINUE="$LOG_DIR/rl-c4-continue"
+  OUTAGE_VERIFIED="$LOG_DIR/rl-c4-outage-verified"
+  run_client location-store-outage rl-c4 env \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
+    ZLINK_CPP_E2E_DRAINED_FILE="$OUTAGE_VERIFIED" &
+  C4_CLIENT_PID="$!"
+  wait_marker "$READY"
+  if [[ "$REDIS_OWNED" != "1" ]]; then
+    echo "RL-C4 requires the runner-owned Redis container; unset ZLINK_REDIS_E2E_ENDPOINT." >&2
+    exit 1
+  fi
+  docker pause "$REDIS_CONTAINER" >/dev/null
+  sleep "$ROUTE_SETTLE_SECONDS"
+  touch "$CONTINUE"
+  wait_marker "$OUTAGE_VERIFIED"
+  docker unpause "$REDIS_CONTAINER" >/dev/null
+  wait_tcp "$REDIS_HOST" "$REDIS_TCP_PORT" redis
+  sleep "$ROUTE_SETTLE_SECONDS"
+  wait "$C4_CLIENT_PID"
+  grep -q "scenario RL-C4 passed" "$LOG_DIR/client-rl-c4.stdout.log"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  sleep "$ROUTE_SETTLE_SECONDS"
+  run_client location-store-recovered rl-c4-recovered env
+  grep -q "scenario RL-C4 recovery passed" "$LOG_DIR/client-rl-c4-recovered.stdout.log"
+  echo "scenario RL-C4 passed"
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+fi
+
+if should_run RL-D1 rl-d1 RL-D4 rl-d4 RL-D5 rl-d5; then
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+  start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  sleep "$ROUTE_SETTLE_SECONDS"
+  if should_run RL-D1 rl-d1; then
+    post_consumer_profile_burst "fast" "rl-d1-" 120
+    wait_provider_evidence_value_prefix "rl-d1-"
+    echo "scenario RL-D1 passed"
+  fi
+  if should_run RL-D4 rl-d4; then
+    run_client rl-d4 rl-d4 env
+    grep -q "scenario RL-D4 passed" "$LOG_DIR/client-rl-d4.stdout.log"
+    echo "scenario RL-D4 passed"
+  fi
+  if should_run RL-D5 rl-d5; then
+    run_client rl-d5 rl-d5 env
+    grep -q "scenario RL-D5 passed" "$LOG_DIR/client-rl-d5.stdout.log"
+    echo "scenario RL-D5 passed"
+  fi
+  stop_pid "$API_B_PID"
+  stop_pid "$API_A_PID"
+fi
 
 echo "resilience-lifecycle e2e result=passed"

@@ -20,6 +20,9 @@ LOG_DIR="$RUN_DIR/logs"
 REDIS_CONTAINER_NAME=""
 mkdir -p "$LOG_DIR"
 cleanup() {
+  local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
@@ -30,10 +33,19 @@ cleanup() {
         sleep 0.1
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
+        echo "forced cleanup process ${pid}" >&2
         kill -9 "${pid}" >/dev/null 2>&1 || true
+        cleanup_failed=1
       fi
     fi
-    wait "${pid}" 2>/dev/null || true
+    set +e
+    wait "${pid}" 2>/dev/null
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process ${pid} exited unexpectedly with status ${status}" >&2
+      cleanup_failed=1
+    fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -43,8 +55,12 @@ cleanup() {
   else
     [[ -z "${SUPPORTCHAT_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
+  if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
+    code=1
+  fi
+  return "$code"
 }
-trap cleanup EXIT
+trap 'cleanup; status=$?; exit "$status"' EXIT
 
 PORT_ALLOCATION_OUTPUT="$(python3 - <<'PY'
 import socket
@@ -96,15 +112,12 @@ else
     exit 1
   fi
 fi
-if [[ -z "${SUPPORTCHAT_REDIS_ENDPOINT:-}" ]]; then
-  if [[ -z "$SUPPORTCHAT_RESERVED_PORT" ]]; then
-    export SUPPORTCHAT_REDIS_ENDPOINT="socketless://supportchat-redis"
-  else
-    read -r REDIS_CONTAINER_NAME redis_port < <(
-      zlink_redis_start_scoped "zlink-redis-cpp-sample-supportchat" "redis:7-alpine"
-    )
-    export SUPPORTCHAT_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
-  fi
+if [[ -z "$SUPPORTCHAT_RESERVED_PORT" ]]; then
+  export SUPPORTCHAT_REDIS_ENDPOINT="socketless://supportchat-redis"
+else
+  zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
+    "zlink-redis-cpp-sample-supportchat" "redis:7-alpine"
+  export SUPPORTCHAT_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 fi
 export SUPPORTCHAT_REDIS_KEY_PREFIX="${SUPPORTCHAT_REDIS_KEY_PREFIX:-supportchat:$$:}"
 export SUPPORTCHAT_API_ROUTE

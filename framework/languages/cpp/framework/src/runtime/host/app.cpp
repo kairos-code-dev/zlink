@@ -28,13 +28,23 @@
 #include <atomic>
 #include <csignal>
 #include <chrono>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <typeindex>
+#include <typeinfo>
 #include <utility>
 #include <vector>
+
+namespace zlink::framework::detail
+{
+void configure_handler_invocation_executor ();
+void shutdown_handler_invocation_executor () noexcept;
+} // namespace zlink::framework::detail
 
 namespace zlink::framework::detail
 {
@@ -160,7 +170,21 @@ class app_state_t
 {
   public:
     app_state_t () : metrics (monitoring) {}
-    ~app_state_t () { hosted_services.clear (); }
+    ~app_state_t ()
+    {
+        const char *trace_value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+        const bool trace_enabled = trace_value != nullptr && std::string_view (trace_value) != "0"
+                                   && std::string_view (trace_value) != "";
+        if (trace_enabled) {
+            std::cerr << "zlink-cpp-host-stop stage=before-app-state-destroy-services"
+                      << std::endl;
+        }
+        hosted_services.clear ();
+        if (trace_enabled) {
+            std::cerr << "zlink-cpp-host-stop stage=after-app-state-destroy-services"
+                      << std::endl;
+        }
+    }
 
     void start_hosted_services (service_provider_t &provider,
                                 std::vector<hosted_service_t *> &started)
@@ -173,9 +197,74 @@ class app_state_t
 
     void stop_hosted_services (const std::vector<hosted_service_t *> &started) noexcept
     {
-        channel_runtime_t::from (zlink.message_bus ()).shutdown ();
+        const char *trace_value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+        const bool trace_enabled = trace_value != nullptr && std::string_view (trace_value) != "0"
+                                   && std::string_view (trace_value) != "";
+        auto stop_service = [trace_enabled] (hosted_service_t *service) {
+            if (trace_enabled) {
+                std::cerr << "zlink-cpp-host-stop stage=before service="
+                          << typeid (*service).name () << std::endl;
+            }
+            service->stop ();
+            if (trace_enabled) {
+                std::cerr << "zlink-cpp-host-stop stage=after service="
+                          << typeid (*service).name () << std::endl;
+            }
+        };
+        std::vector<hosted_service_t *> stream_services;
+        stream_services.reserve (started.size ());
+        std::vector<hosted_service_t *> http_services;
+        http_services.reserve (started.size ());
+        std::vector<hosted_service_t *> spot_services;
+        spot_services.reserve (started.size ());
+        std::vector<hosted_service_t *> route_services;
+        route_services.reserve (started.size ());
         for (auto it = started.rbegin (); it != started.rend (); ++it) {
-            (*it)->stop ();
+            if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
+                stream_services.push_back (*it);
+            } else if (dynamic_cast<runtime::http_host_service_t *> (*it) != nullptr) {
+                http_services.push_back (*it);
+            } else if (dynamic_cast<runtime::spot_node_host_service_t *> (*it) != nullptr) {
+                spot_services.push_back (*it);
+            } else if (dynamic_cast<runtime::route_channel_host_service_t *> (*it) != nullptr) {
+                route_services.push_back (*it);
+            }
+        }
+        for (auto *service : stream_services) {
+            service->request_stop ();
+        }
+        for (auto it = started.rbegin (); it != started.rend (); ++it) {
+            if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
+                continue;
+            }
+            (*it)->request_stop ();
+        }
+        for (auto *service : http_services) {
+            stop_service (service);
+        }
+        for (auto *service : stream_services) {
+            stop_service (service);
+        }
+        for (auto *service : spot_services) {
+            stop_service (service);
+        }
+        for (auto *service : route_services) {
+            stop_service (service);
+        }
+        for (auto it = started.rbegin (); it != started.rend (); ++it) {
+            if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
+                continue;
+            }
+            if (dynamic_cast<runtime::http_host_service_t *> (*it) != nullptr) {
+                continue;
+            }
+            if (dynamic_cast<runtime::spot_node_host_service_t *> (*it) != nullptr) {
+                continue;
+            }
+            if (dynamic_cast<runtime::route_channel_host_service_t *> (*it) != nullptr) {
+                continue;
+            }
+            stop_service (*it);
         }
     }
 
@@ -208,6 +297,12 @@ volatile std::sig_atomic_t g_stop_signal_requested = 0;
 void handle_process_signal (int) noexcept
 {
     g_stop_signal_requested = 1;
+}
+
+bool host_stop_trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+    return value != nullptr && std::string_view (value) != "0" && std::string_view (value) != "";
 }
 
 } // namespace
@@ -511,12 +606,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         add_hosted_service (
           std::make_unique<runtime::location_monitoring_host_service_t> (monitoring_state));
     }
-    add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
-      _state->zlink.message_bus (), channel_snapshot, options.route_mesh_client_channels ()));
-    if (detail::has_inbound_channel (channel_snapshot)) {
-        add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
-          _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));
-    }
     const auto stream_snapshot = _state->zlink.streams ();
     detail::validate_monitoring_sources (_state->monitoring, channel_snapshot, spot_node_snapshot);
     std::vector<runtime::spot_node_host_service_t::node_runtime_t> spot_node_runtimes;
@@ -532,6 +621,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         }
         add_hosted_service (
           std::make_unique<runtime::spot_node_host_service_t> (spot_node_runtimes));
+    }
+    add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
+      _state->zlink.message_bus (), channel_snapshot, options.route_mesh_client_channels ()));
+    if (detail::has_inbound_channel (channel_snapshot)) {
+        add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
+          _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));
     }
     if (!_state->services.contains (std::type_index (typeid (actor_client_t)))) {
         std::vector<detail::spot_node_runtime_t> actor_client_spot_nodes;
@@ -581,6 +676,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           service_lifetime_t::singleton);
     }
     if (!stream_snapshot.empty ()) {
+        detail::configure_stream_dispatch_executor ();
         add_hosted_service (std::make_unique<runtime::stream_host_service_t> (
           detail::stream_runtime_t::from (_state->zlink), stream_snapshot,
           options.stream_session_factories ()));
@@ -590,6 +686,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           http_snapshot, _state->health, options.handler_coroutine_workers ()));
     }
     runtime::configure_handler_coroutine_executor (options.handler_coroutine_workers ());
+    detail::configure_handler_invocation_executor ();
     return *this;
 }
 
@@ -634,15 +731,51 @@ int app_t::run (int argc, char **argv)
     }
     catch (...) {
         _state->stop_hosted_services (started);
+        detail::channel_runtime_t::from (_state->zlink.message_bus ()).shutdown ();
         detail::drain_zlink_builder_runtime (_state->zlink);
+        runtime::shutdown_handler_coroutine_executor ();
+        detail::shutdown_stream_dispatch_executor ();
+        detail::shutdown_handler_invocation_executor ();
         provider.close ();
         throw;
     }
 
+    const bool trace_enabled = host_stop_trace_enabled ();
     _state->stop_hosted_services (started);
+    if (trace_enabled) {
+        std::cerr << "zlink-cpp-host-stop stage=before-channel-runtime-shutdown" << std::endl;
+    }
+    detail::channel_runtime_t::from (_state->zlink.message_bus ()).shutdown ();
+    if (trace_enabled) {
+        std::cerr << "zlink-cpp-host-stop stage=after-channel-runtime-shutdown" << std::endl;
+        std::cerr << "zlink-cpp-host-stop stage=before-drain-runtime" << std::endl;
+    }
     detail::drain_zlink_builder_runtime (_state->zlink);
-    provider.close ();
+    if (trace_enabled) {
+        std::cerr << "zlink-cpp-host-stop stage=after-drain-runtime" << std::endl;
+        std::cerr << "zlink-cpp-host-stop stage=before-coroutine-executor-shutdown" << std::endl;
+    }
     runtime::shutdown_handler_coroutine_executor ();
+    if (trace_enabled) {
+        std::cerr << "zlink-cpp-host-stop stage=after-coroutine-executor-shutdown" << std::endl;
+        std::cerr << "zlink-cpp-host-stop stage=before-stream-executor-shutdown" << std::endl;
+    }
+    detail::shutdown_stream_dispatch_executor ();
+    if (trace_enabled) {
+        std::cerr << "zlink-cpp-host-stop stage=after-stream-executor-shutdown" << std::endl;
+        std::cerr << "zlink-cpp-host-stop stage=before-handler-invocation-executor-shutdown"
+                  << std::endl;
+    }
+    detail::shutdown_handler_invocation_executor ();
+    if (trace_enabled) {
+        std::cerr << "zlink-cpp-host-stop stage=after-handler-invocation-executor-shutdown"
+                  << std::endl;
+        std::cerr << "zlink-cpp-host-stop stage=before-provider-close" << std::endl;
+    }
+    provider.close ();
+    if (trace_enabled) {
+        std::cerr << "zlink-cpp-host-stop stage=after-provider-close" << std::endl;
+    }
     return _state->stop_requested.load (std::memory_order_acquire) ? 0 : _state->exit_code;
 }
 

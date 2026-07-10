@@ -16,6 +16,8 @@
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
+#include <iostream>
+
 #include <nlohmann/json.hpp>
 
 #include <chrono>
@@ -98,13 +100,13 @@ struct bridge_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (bridge_actor_t &actor, const zlink::framework::message_t &request)
+    on_actor_join (std::string_view actor_id,
+                   const zlink::framework::message_t &request)
     {
         const auto decoded = request.decode<bridge_request_t> ();
         join_value = decoded.value;
-        actor.joined_value = decoded.value;
         return zlink::framework::spot_actor_join_response_t::accept (
-          zlink::framework::message_t::from (bridge_reply_t{"joined:" + actor.actor_id}));
+          zlink::framework::message_t::from (bridge_reply_t{"joined:" + std::string (actor_id)}));
     }
 
     void on_actor_joined (bridge_actor_t &) { ++joined_count; }
@@ -731,6 +733,16 @@ int main ()
         || bound.value ().ref ().generation () != 8) {
         return 84;
     }
+    auto rebound_from_stale_ref = manager.bind_or_get (remote_ref).async ().result ();
+    if (!rebound_from_stale_ref || rebound_from_stale_ref.value ().ref ().generation () != 8) {
+        return 87;
+    }
+    relay_dispatch_seen = false;
+    auto relay_after_stale_rebind =
+      relay_request_with_header (rebound_from_stale_ref.value (), payload);
+    if (!relay_after_stale_rebind || !relay_dispatch_seen || relay_dispatch_generation != 8) {
+        return 88;
+    }
 
     zlink::framework::session_actor_t unbound;
     auto unbound_relay_request = unbound.relay_request ("move", payload).async ().result ();
@@ -1211,9 +1223,23 @@ int main ()
                          .join_spot (bridge_room.spot_rid, bridge_request_t{17})
                          .async<bridge_reply_t> ()
                          .result ();
-    if (!bridge_join || bridge_join.value ().reply.value != "joined:carol"
-        || bridge_spot->join_value != 17 || bridge_spot->joined_count != 1
+    if (!bridge_join) {
+        std::cerr << "bridge join failed: "
+                  << (bridge_join.error () ? bridge_join.error ()->what () : "unknown") << '\n';
+        return 37;
+    }
+    if (bridge_join.value ().reply.value != "joined:carol" || bridge_spot->join_value != 17
+        || bridge_spot->joined_count != 1 || !bridge_join.value ().actor
         || bridge_join.value ().actor->node_rid ().empty ()) {
+        std::cerr << "bridge join mismatch: reply=" << bridge_join.value ().reply.value
+                  << " join_value=" << bridge_spot->join_value
+                  << " joined_count=" << bridge_spot->joined_count
+                  << " actor=" << (bridge_join.value ().actor ? "present" : "missing")
+                  << " node="
+                  << (bridge_join.value ().actor
+                        ? std::string (bridge_join.value ().actor->node_rid ().value ())
+                        : std::string{})
+                  << '\n';
         return 37;
     }
     auto joined_bridge_actor =

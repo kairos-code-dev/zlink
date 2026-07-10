@@ -316,30 +316,39 @@ class multi_node_spot_only_join_handler_t
               bound.error_kind (),
               bound.error () ? bound.error ()->what () : "spot-only actor bind failed");
         }
-        auto joined =
+        auto entry_joined =
           bound.value ()
             .context ()
-            .join_spot (zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
-                        zlink::framework::message_t {})
+            .join_entry_spot (zlink::framework::node_rid_t::from_string (_state.node_rid),
+                              zlink::framework::message_t {})
             .async ()
             .result ();
-        if (!joined) {
+        if (!entry_joined) {
             throw zlink::framework::framework_exception_t (
-              joined.error_kind (),
-              joined.error () ? joined.error ()->what () : "spot-only target join failed");
+              entry_joined.error_kind (),
+              entry_joined.error () ? entry_joined.error ()->what ()
+                                    : "spot-only entry SPOT join failed");
+        }
+        auto current = _actors.find (request.actor_id);
+        if (!current) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "spot-only joined actor route was not found");
+        }
+        auto reply = current
+                       ->relay_request ("SpotOnlyJoinReq",
+                                        zlink::message_t::from_json (request))
+                       .async ()
+                       .result ();
+        if (!reply) {
+            throw zlink::framework::framework_exception_t (
+              reply.error_kind (),
+              reply.error () ? reply.error ()->what () : "spot-only target join failed");
         }
 
         zlink::framework::http_response_t response;
-        const auto accepted = joined.value ().result_code == 0 && joined.value ().actor;
-        _state.record ("SpotOnlyActorJoin", request.actor_id, request.target_spot_rid,
-                       "accepted=" + std::string (accepted ? "true" : "false")
-                         + "|marker=" + request.marker);
-        response.body = nlohmann::json (e2e::spot_only_join_res_t{
-                          .target_spot_rid = request.target_spot_rid,
-                          .actor_id = request.actor_id,
-                          .accepted = accepted,
-                          .marker = request.marker})
-                          .dump ();
+        response.body =
+          nlohmann::json (reply.value ().parse_json<e2e::spot_only_join_res_t> ()).dump ();
         return response;
     }
 

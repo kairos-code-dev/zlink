@@ -42,6 +42,7 @@ namespace detail
 {
 class spot_node_builder_state_t;
 void drain_spot_node_executors (spot_node_builder_state_t &node);
+void cancel_spot_node_dispatch_queues (spot_node_builder_state_t &node);
 } // namespace detail
 
 class actor_context_t;
@@ -132,6 +133,14 @@ struct spot_actor_join_response_t
     {
         return reject (message_t::from (std::move (reply)));
     }
+};
+
+template <typename TActor> class actor_transfer_adapter_t
+{
+  public:
+    virtual ~actor_transfer_adapter_t () = default;
+    virtual task_t<message_t> transfer_out (const TActor &actor) = 0;
+    virtual task_t<TActor> transfer_in (std::string actor_id, message_t state) = 0;
 };
 
 enum class spot_create_state_t
@@ -292,7 +301,7 @@ class spot_node_runtime_t;
 struct spot_actor_admission_callbacks_t
 {
     std::function<spot_actor_join_response_t (
-      void *, void *, const zlink::message_t &, serializer_registry_t &)>
+      void *, std::string_view, const zlink::message_t &, serializer_registry_t &)>
       join;
     std::function<void (void *, void *)> on_actor_joined;
     std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>
@@ -803,6 +812,8 @@ class spot_context_t
     task_t<bool> close_erased ();
 
     friend void detail::drain_spot_node_executors (detail::spot_node_builder_state_t &node);
+    friend void detail::cancel_spot_node_dispatch_queues (
+      detail::spot_node_builder_state_t &node);
 
     std::shared_ptr<detail::spot_context_state_t> _state;
     std::shared_ptr<detail::worker_scheduler_t> _worker_scheduler;
@@ -1001,15 +1012,15 @@ class spot_handler_registry_t
     {
         detail::spot_actor_admission_callbacks_t callbacks;
         callbacks.entry_spot = std::is_base_of_v<entry_spot_t, TSpot>;
-        callbacks.join = [] (void *spot, void *actor, const zlink::message_t &request,
+        callbacks.join = [] (void *spot, std::string_view actor_id,
+                             const zlink::message_t &request,
                              serializer_registry_t &serializers) {
             auto &typed_spot = *static_cast<TSpot *> (spot);
-            auto &typed_actor = *static_cast<TActor *> (actor);
-            if constexpr (requires { typed_spot.on_actor_join (typed_actor, message_t{}); }) {
-                return typed_spot.on_actor_join (typed_actor,
+            if constexpr (requires { typed_spot.on_actor_join (actor_id, message_t{}); }) {
+                return typed_spot.on_actor_join (actor_id,
                                                  message_t::from_raw (request, &serializers));
-            } else if constexpr (requires { typed_spot.on_actor_join (typed_actor, request); }) {
-                return typed_spot.on_actor_join (typed_actor, request);
+            } else if constexpr (requires { typed_spot.on_actor_join (actor_id, request); }) {
+                return typed_spot.on_actor_join (actor_id, request);
             } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
                 return spot_actor_join_response_t::accept ();
             } else {
@@ -1248,7 +1259,7 @@ struct spot_lifecycle_callbacks_t
     std::function<std::shared_ptr<void> ()> create_instance;
     std::function<void (void *, spot_context_t &)> configure;
     std::function<void (void *, entry_spot_context_t &)> configure_entry;
-    std::function<spot_create_response_t (
+    std::function<task_t<spot_create_response_t> (
       void *, const zlink::message_t &, serializer_registry_t &)>
       on_create;
     std::function<void (void *)> on_initialize;
@@ -1273,6 +1284,14 @@ concept has_framework_create_callback = requires (TSpot & spot, const message_t 
     {
         spot.on_create (request)
     } -> std::same_as<spot_create_response_t>;
+};
+
+template <typename TSpot>
+concept has_async_framework_create_callback = requires (TSpot & spot, const message_t &request)
+{
+    {
+        spot.on_create (request)
+    } -> std::same_as<task_t<spot_create_response_t>>;
 };
 
 template <typename TSpot> concept has_initialize_callback = requires (TSpot & spot)
@@ -1476,6 +1495,33 @@ class spot_node_builder_t
         }
     }
 
+    template <typename TActor, typename TAdapter>
+    spot_node_builder_t &add_actor_transfer_adapter (std::string actor_type)
+    {
+        static_assert (std::is_base_of_v<actor_transfer_adapter_t<TActor>, TAdapter>,
+                       "Actor transfer adapter must implement actor_transfer_adapter_t<TActor>");
+        static_assert (std::is_default_constructible_v<TAdapter>,
+                       "C++ actor transfer adapters must be default constructible");
+        return add_actor_transfer_erased (
+          std::move (actor_type), std::type_index (typeid (TActor)),
+          [] (const void *actor) {
+              TAdapter adapter;
+              return adapter.transfer_out (*static_cast<const TActor *> (actor)).result ();
+          },
+          [] (std::string actor_id, message_t state) -> result_t<std::shared_ptr<void>> {
+              TAdapter adapter;
+              auto transferred = adapter.transfer_in (std::move (actor_id), std::move (state)).result ();
+              if (!transferred) {
+                  return result_t<std::shared_ptr<void>>::failure (
+                    transferred.error_kind (),
+                    transferred.error () ? transferred.error ()->what () : "actor transfer failed");
+              }
+              return result_t<std::shared_ptr<void>>::success (
+                std::static_pointer_cast<void> (
+                  std::make_shared<TActor> (std::move (transferred).value ())));
+          });
+    }
+
     spot_node_builder_t &
     add_spot_resolver (std::string name,
                        std::function<std::optional<spot_route_t> (spot_rid_t)> resolver);
@@ -1515,6 +1561,11 @@ class spot_node_builder_t
         serialize_instance,
       std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
         deserialize_instance);
+    spot_node_builder_t &add_actor_transfer_erased (
+      std::string actor_type,
+      std::type_index actor_instance_type,
+      std::function<result_t<message_t> (const void *)> transfer_out,
+      std::function<result_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in);
 
     template <typename TSpot>
     void register_lifecycle (std::string spot_name,
@@ -1541,10 +1592,17 @@ class spot_node_builder_t
                     static_cast<TSpot *> (spot)->configure (context);
                 };
             }
-            if constexpr (detail::has_framework_create_callback<TSpot>) {
+            if constexpr (detail::has_async_framework_create_callback<TSpot>) {
                 callbacks.on_create = [] (void *spot, const zlink::message_t &request,
                                           serializer_registry_t &serializers) {
                     return static_cast<TSpot *> (spot)->on_create (
+                      message_t::from_raw (request, &serializers));
+                };
+            } else if constexpr (detail::has_framework_create_callback<TSpot>) {
+                callbacks.on_create = [] (void *spot, const zlink::message_t &request,
+                                          serializer_registry_t &serializers)
+                  -> task_t<spot_create_response_t> {
+                    co_return static_cast<TSpot *> (spot)->on_create (
                       message_t::from_raw (request, &serializers));
                 };
             }

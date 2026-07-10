@@ -979,6 +979,27 @@ int main ()
 
     zlink::framework::detail::channel_runtime_t::from (outbound_only.message_bus ())
       .bind_serializers (serializers);
+    zlink::framework::zlink_builder_t shutdown_outbound;
+    auto shutdown_channel = shutdown_outbound.channel ("shutdown-client");
+    shutdown_channel.enable_client ().connect ("tcp://127.0.0.1:1");
+    shutdown_channel.enable_publisher ().connect ("tcp://127.0.0.1:2");
+    auto shutdown_runtime =
+      zlink::framework::detail::channel_runtime_t::from (shutdown_outbound.message_bus ());
+    shutdown_runtime.bind_serializers (serializers);
+    shutdown_runtime.shutdown ();
+    const auto shutdown_send = shutdown_outbound.message_bus ().send ("shutdown-client", event_t{1})
+                                 .packet_name ("event")
+                                 .submit ();
+    const auto shutdown_publish =
+      shutdown_outbound.message_bus ().publish ("shutdown-client", "events", event_t{2})
+        .packet_name ("event")
+        .submit ();
+    if (shutdown_send
+        || shutdown_send.error_kind () != zlink::framework::framework_error_kind_t::shutdown
+        || shutdown_publish
+        || shutdown_publish.error_kind () != zlink::framework::framework_error_kind_t::shutdown) {
+        return 407;
+    }
     auto outbound_only_request =
       outbound_only.message_bus ().request ("client-only", request_t{6}).async<reply_t> ().result ();
     if (outbound_only_request

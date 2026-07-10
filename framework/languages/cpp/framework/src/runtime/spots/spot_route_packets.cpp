@@ -10,6 +10,67 @@
 namespace zlink::framework::detail
 {
 
+void to_json (nlohmann::json &json, const spot_actor_admission_route_request_t &value)
+{
+    json = nlohmann::json{{"transferId", value.transfer_id},
+                          {"actorNodeRid", value.actor_node_rid},
+                          {"actorType", value.actor_type},
+                          {"actorId", value.actor_id},
+                          {"actorGeneration", value.actor_generation},
+                          {"sourceSpotRid", value.source_spot_rid},
+                          {"targetSpotRid", value.target_spot_rid},
+                          {"payload", value.payload}};
+}
+
+void from_json (const nlohmann::json &json, spot_actor_admission_route_request_t &value)
+{
+    value.transfer_id = json.at ("transferId").get<std::string> ();
+    value.actor_node_rid = json.at ("actorNodeRid").get<std::string> ();
+    value.actor_type = json.at ("actorType").get<std::string> ();
+    value.actor_id = json.at ("actorId").get<std::string> ();
+    value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+    value.source_spot_rid = json.at ("sourceSpotRid").get<std::string> ();
+    value.target_spot_rid = json.at ("targetSpotRid").get<std::string> ();
+    value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
+}
+
+void to_json (nlohmann::json &json, const spot_actor_admission_route_reply_t &value)
+{
+    json = nlohmann::json{{"accepted", value.accepted}, {"payload", value.payload}};
+}
+
+void from_json (const nlohmann::json &json, spot_actor_admission_route_reply_t &value)
+{
+    value.accepted = json.at ("accepted").get<bool> ();
+    value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
+}
+
+void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &value)
+{
+    json = nlohmann::json{{"transferId", value.transfer_id},
+                          {"actorNodeRid", value.actor_node_rid},
+                          {"actorType", value.actor_type},
+                          {"actorId", value.actor_id},
+                          {"actorGeneration", value.actor_generation},
+                          {"targetSpotRid", value.target_spot_rid},
+                          {"boundSessionNodeRid", value.bound_session_node_rid},
+                          {"boundSessionRid", value.bound_session_rid},
+                          {"transferState", value.transfer_state}};
+}
+
+void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &value)
+{
+    value.transfer_id = json.at ("transferId").get<std::string> ();
+    value.actor_node_rid = json.at ("actorNodeRid").get<std::string> ();
+    value.actor_type = json.at ("actorType").get<std::string> ();
+    value.actor_id = json.at ("actorId").get<std::string> ();
+    value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+    value.target_spot_rid = json.at ("targetSpotRid").get<std::string> ();
+    value.bound_session_node_rid = json.value ("boundSessionNodeRid", "");
+    value.bound_session_rid = json.value ("boundSessionRid", "");
+    value.transfer_state = json.at ("transferState").get<std::vector<std::uint8_t>> ();
+}
+
 void to_json (nlohmann::json &json, const spot_actor_join_route_request_t &value)
 {
     json = nlohmann::json{{"actorNodeRid", value.actor_node_rid},
@@ -186,6 +247,18 @@ actor_ref_t actor_ref_from_spot_route (const spot_actor_join_route_request_t &re
                         request.actor_id, request.actor_generation);
 }
 
+actor_ref_t actor_ref_from_spot_route (const spot_actor_admission_route_request_t &request)
+{
+    return actor_ref_t (node_rid_t::from_string (request.actor_node_rid), request.actor_type,
+                        request.actor_id, request.actor_generation);
+}
+
+actor_ref_t actor_ref_from_spot_route (const spot_actor_commit_route_request_t &request)
+{
+    return actor_ref_t (node_rid_t::from_string (request.actor_node_rid), request.actor_type,
+                        request.actor_id, request.actor_generation);
+}
+
 spot_actor_join_route_reply_t make_spot_actor_join_route_reply (const actor_join_reply_t &reply)
 {
     return spot_actor_join_route_reply_t{.result_code = reply.result_code,
@@ -267,6 +340,36 @@ actor_ref_t actor_ref_from_bound_session_route (const actor_bound_session_route_
 
 void register_spot_route_packet_serializers (serializer_registry_t &serializers)
 {
+    if (!serializers.contains (std::type_index (typeid (spot_actor_admission_route_request_t)))) {
+        serializers.add<spot_actor_admission_route_request_t> (
+          [] (const spot_actor_admission_route_request_t &value) {
+              return encoded_payload_t::from_string (nlohmann::json (value).dump ());
+          },
+          [] (const encoded_payload_t &payload) {
+              return nlohmann::json::parse (payload.to_string ())
+                .get<spot_actor_admission_route_request_t> ();
+          });
+    }
+    if (!serializers.contains (std::type_index (typeid (spot_actor_admission_route_reply_t)))) {
+        serializers.add<spot_actor_admission_route_reply_t> (
+          [] (const spot_actor_admission_route_reply_t &value) {
+              return encoded_payload_t::from_string (nlohmann::json (value).dump ());
+          },
+          [] (const encoded_payload_t &payload) {
+              return nlohmann::json::parse (payload.to_string ())
+                .get<spot_actor_admission_route_reply_t> ();
+          });
+    }
+    if (!serializers.contains (std::type_index (typeid (spot_actor_commit_route_request_t)))) {
+        serializers.add<spot_actor_commit_route_request_t> (
+          [] (const spot_actor_commit_route_request_t &value) {
+              return encoded_payload_t::from_string (nlohmann::json (value).dump ());
+          },
+          [] (const encoded_payload_t &payload) {
+              return nlohmann::json::parse (payload.to_string ())
+                .get<spot_actor_commit_route_request_t> ();
+          });
+    }
     if (!serializers.contains (std::type_index (typeid (spot_actor_join_route_request_t)))) {
         serializers.add<spot_actor_join_route_request_t> (
           [] (const spot_actor_join_route_request_t &value) {

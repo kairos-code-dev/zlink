@@ -85,18 +85,6 @@ class attribute_send_handler_t
     scenario_state_t &_state;
 };
 
-class manual_route_handler_t
-{
-  public:
-    echo_manual_res_t handle (const echo_manual_req_t &request,
-                                const zlink::framework::route_handler_context_t &context)
-    {
-        return {.value = "manual:" + request.value,
-                .packet_name = context.packet_name,
-                .content_type = context.content_type};
-    }
-};
-
 class manual_channel_request_handler_t
 {
   public:

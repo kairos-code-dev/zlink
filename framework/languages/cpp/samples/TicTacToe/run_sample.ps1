@@ -106,6 +106,43 @@ function Print-Logs() {
     }
 }
 
+function Cleanup([int]$Status) {
+    for ($i = $Processes.Count - 1; $i -ge 0; $i--) {
+        $process = $Processes[$i]
+        if ($process.HasExited -and $process.ExitCode -ne 0) {
+            Write-Host "cleanup process $($process.Id) exited unexpectedly with status $($process.ExitCode)"
+            $Status = 1
+            continue
+        }
+        if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($process in $Processes) {
+        try {
+            if (-not $process.WaitForExit(1000)) {
+                Write-Host "cleanup process $($process.Id) did not exit after stop"
+                $Status = 1
+            }
+        } catch {
+            Write-Host "cleanup process $($process.Id) wait failed: $($_.Exception.Message)"
+            $Status = 1
+        }
+    }
+    if ($RedisContainer) {
+        & docker rm -f $RedisContainer 2>$null | Out-Null
+    }
+    if ($Status -ne 0) {
+        Print-Logs
+    }
+    if ($env:TICTACTOE_CPP_KEEP_RUN_DIR -eq "1") {
+        Write-Host "runDir=$LogDir"
+    } else {
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $LogDir
+    }
+    return $Status
+}
+
 & $CTestBin --test-dir $BuildDir `
     -R "test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay|sample_smoke_sample_cpp_framework_tictactoe_(play|api)" `
     --output-on-failure
@@ -134,20 +171,17 @@ $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Proce
 $RedisContainer = $null
 $RedisKeyPrefix = if ($env:TICTACTOE_CPP_REDIS_KEY_PREFIX) { $env:TICTACTOE_CPP_REDIS_KEY_PREFIX } else { "zlink:tictactoe-cpp:${PID}:$([Guid]::NewGuid().ToString('N')):room:" }
 
+$Status = 1
 try {
-    if ($env:TICTACTOE_CPP_REDIS_ENDPOINT) {
-        $RedisEndpoint = $env:TICTACTOE_CPP_REDIS_ENDPOINT
-    } else {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            throw "Docker is required to run the TicTacToe sample when TICTACTOE_CPP_REDIS_ENDPOINT is not set."
-        }
-        $RedisContainer = "zlink-tictactoe-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --name $RedisContainer -p "127.0.0.1:${RedisPort}:6379" redis:7-alpine | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start Redis container."
-        }
-        $RedisEndpoint = "127.0.0.1:$RedisPort"
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker is required to run the TicTacToe sample."
     }
+    $RedisContainer = "zlink-tictactoe-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+    & docker run -d --rm --name $RedisContainer -p "127.0.0.1:${RedisPort}:6379" redis:7-alpine | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to start Redis container."
+    }
+    $RedisEndpoint = "127.0.0.1:$RedisPort"
     Wait-Port "redis" $RedisEndpoint
 
     $topologyArgs = @(
@@ -217,28 +251,13 @@ try {
     if (-not (Select-String -Path (Join-Path $env:TICTACTOE_LOG_DIR "*.log") -Pattern "message flow" -Quiet)) {
         throw "TicTacToe C++ sample logs did not contain message-flow evidence."
     }
+    $Status = 0
 } finally {
-    for ($i = $Processes.Count - 1; $i -ge 0; $i--) {
-        $process = $Processes[$i]
-        if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        }
-    }
-    foreach ($process in $Processes) {
-        try {
-            $process.WaitForExit(1000) | Out-Null
-        } catch {
-        }
-    }
-    if ($RedisContainer) {
-        & docker rm -f $RedisContainer 2>$null | Out-Null
-    }
-    if ($env:TICTACTOE_CPP_KEEP_RUN_DIR -eq "1") {
-        Write-Host "runDir=$LogDir"
-    } else {
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $LogDir
-    }
+    $Status = Cleanup $Status
 }
 
+if ($Status -ne 0) {
+    exit $Status
+}
 Write-Host "PASS TicTacToe.Cpp"
 Write-Host "tictactoe full client/server self-check completed"

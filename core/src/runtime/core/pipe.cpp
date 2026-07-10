@@ -33,17 +33,25 @@ void pipe_debug_log (
 int zlink::pipepair (object_t *parents_[2],
                      pipe_t *pipes_[2],
                      const int hwms_[2],
-                     const bool conflate_[2])
+                     const bool conflate_[2],
+                     bool session_pipe_)
 {
     //   Creates two pipe objects. These objects are connected by two ypipes,
     //   each to pass messages in one direction.
 
+    //  Per-connection (session<->socket) pipes use a smaller chunk: servers
+    //  hold one pipepair per transport connection and auto-HWM keeps their
+    //  depth shallow at scale, so the default 256-slot chunk mostly wastes
+    //  memory there.
     typedef ypipe_t<msg_t, message_pipe_granularity> upipe_normal_t;
+    typedef ypipe_t<msg_t, session_pipe_granularity> upipe_session_t;
     typedef ypipe_conflate_t<msg_t> upipe_conflate_t;
 
     pipe_t::upipe_t *upipe1;
     if (conflate_[0])
         upipe1 = new (std::nothrow) upipe_conflate_t ();
+    else if (session_pipe_)
+        upipe1 = new (std::nothrow) upipe_session_t ();
     else
         upipe1 = new (std::nothrow) upipe_normal_t ();
     alloc_assert (upipe1);
@@ -51,6 +59,8 @@ int zlink::pipepair (object_t *parents_[2],
     pipe_t::upipe_t *upipe2;
     if (conflate_[1])
         upipe2 = new (std::nothrow) upipe_conflate_t ();
+    else if (session_pipe_)
+        upipe2 = new (std::nothrow) upipe_session_t ();
     else
         upipe2 = new (std::nothrow) upipe_normal_t ();
     alloc_assert (upipe2);
@@ -865,6 +875,9 @@ void zlink::pipe_t::process_delimiter ()
     scoped_fast_lock_t lock (_out_sync);
     pipe_debug_log (this, "process_delimiter", _state, _delay,
                     _endpoint_pair.identifier ().c_str ());
+    if (_state == term_req_sent1 || _state == term_req_sent2 || _state == term_ack_sent) {
+        return;
+    }
     zlink_assert (_state == active || _state == waiting_for_delimiter);
 
     if (_state == active)

@@ -9,7 +9,6 @@
 #include <chrono>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 
 namespace e2e = zlink::framework::e2e::spot_service;
@@ -74,7 +73,8 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
         _state.record ("MultiSpotInitialized", {}, std::string (_context.spot_rid ().value ()));
     }
 
-    zlink::framework::spot_create_response_t on_create (const zlink::framework::message_t &request)
+    zlink::framework::task_t<zlink::framework::spot_create_response_t>
+    on_create (const zlink::framework::message_t &request)
     {
         if (!request.empty ()) {
             std::optional<e2e::spot_only_mesh_req_t> command;
@@ -87,40 +87,40 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
                 const auto target_node =
                   std::string (NodeName) == multi_node_a_name ? multi_node_b_name
                                                               : multi_node_a_name;
-                auto context = _context;
-                auto *state = &_state;
-                std::thread (
-                  [context = std::move (context), state, command = *command, target_node] () mutable {
-                      auto reply =
-                        request_target_state_with_retry (context, target_node,
-                                                         command.target_spot_rid);
-                      if (!reply) {
-                          return;
-                      }
-                      context
-                        .send_to (
-                          multi_node_spot_ref (target_node, command.target_spot_rid),
-                          e2e::direct_spot_msg_t{
-                            .source_actor_id = command.source_spot_rid,
-                            .value = "sm-f6-send-" + command.marker})
-                        .packet_name ("StateMsg")
-                        .submit ();
-                      state->record ("SpotOnlyRequest", {},
-                                     std::string (context.spot_rid ().value ()),
-                                     "target=" + command.target_spot_rid + "|value="
-                                       + std::to_string (reply.value ().value)
-                                       + "|marker=" + command.marker);
-                  })
-                  .detach ();
+                auto reply = co_await _context
+                               .request_to<e2e::state_res_t> (
+                                 multi_node_spot_ref (target_node, command->target_spot_rid),
+                                 e2e::state_req_t{.op = "add", .amount = 7})
+                               .packet_name ("StateReq")
+                               .timeout (std::chrono::milliseconds (3000))
+                               .async ();
+                auto sent =
+                  _context
+                    .send_to (
+                      multi_node_spot_ref (target_node, command->target_spot_rid),
+                      e2e::direct_spot_msg_t{.source_actor_id = command->source_spot_rid,
+                                             .value = "sm-f6-send-" + command->marker})
+                    .packet_name ("StateMsg")
+                    .submit ();
+                if (!sent) {
+                    throw zlink::framework::framework_exception_t (
+                      sent.error_kind (),
+                      sent.error () ? sent.error ()->what () : "spot-only StateMsg send failed");
+                }
+                _state.record ("SpotOnlyRequest", {}, std::string (_context.spot_rid ().value ()),
+                               "target=" + command->target_spot_rid + "|value="
+                                 + std::to_string (reply.value)
+                                 + "|marker=" + command->marker);
             }
         }
-        return zlink::framework::spot_create_response_t::accept ();
+        co_return zlink::framework::spot_create_response_t::accept ();
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (multi_node_actor_t &actor, const zlink::framework::message_t &)
+    on_actor_join (std::string_view actor_id,
+                   const zlink::framework::message_t &)
     {
-        _state.record ("SpotActorJoined", actor.actor_id,
+        _state.record ("SpotActorJoined", std::string (actor_id),
                        std::string (_context.spot_rid ().value ()));
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -157,35 +157,6 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
     }
 
   private:
-    static zlink::framework::result_t<e2e::state_res_t>
-    request_target_state_with_retry (zlink::framework::spot_context_t &context,
-                                     const std::string &target_node,
-                                     const std::string &target_spot_rid)
-    {
-        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-        zlink::framework::result_t<e2e::state_res_t> last =
-          zlink::framework::result_t<e2e::state_res_t>::failure (
-            zlink::framework::framework_error_kind_t::request_failed,
-            "spot-only StateReq was not attempted");
-        do {
-            last =
-              context
-                .request_to<e2e::state_res_t> (
-                  multi_node_spot_ref (target_node, target_spot_rid),
-                  e2e::state_req_t{.op = "add", .amount = 7})
-                .packet_name ("StateReq")
-                .timeout (std::chrono::milliseconds (3000))
-                .async ()
-                .result ();
-            if (last) {
-                return last;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        } while (std::chrono::steady_clock::now () < deadline);
-
-        return last;
-    }
-
     scenario_state_t &_state;
     zlink::framework::spot_context_t _context;
     int _value = 0;

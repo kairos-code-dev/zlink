@@ -164,7 +164,9 @@ zlink::asio_engine_t::asio_engine_t (fd_t fd_,
     ENGINE_DBG ("Constructor called, fd=%d", fd_);
 
     _transport_adapter.transport = std::move (transport_);
-    _pipeline.read_buffer.resize (read_buffer_size);
+    //  _pipeline.read_buffer is allocated lazily on the first handshake
+    //  read (see start_async_read/speculative_read). Raw engines create
+    //  their decoder at plug time and never use it.
     _transport_adapter.fd = fd_;
     _connection_facade.callback_guard.reset (new connection_facade_t::callback_guard_t ());
     _pipeline.stream_decoder_read_target_size =
@@ -484,7 +486,9 @@ void zlink::asio_engine_t::start_async_read ()
         }
         _pipeline.last_read_had_partial_prefix = had_partial_prefix;
     } else {
-        //  During handshake, use internal buffer
+        //  During handshake, use internal buffer (allocated on first use).
+        if (_pipeline.read_buffer.empty ())
+            _pipeline.read_buffer.resize (handshake_read_buffer_size);
         _pipeline.read_buffer_ptr = _pipeline.read_buffer.data ();
         read_size = _pipeline.read_buffer.size ();
     }
@@ -553,6 +557,9 @@ bool zlink::asio_engine_t::speculative_read ()
         }
         _pipeline.last_read_had_partial_prefix = had_partial_prefix;
     } else {
+        //  During handshake, use internal buffer (allocated on first use).
+        if (_pipeline.read_buffer.empty ())
+            _pipeline.read_buffer.resize (handshake_read_buffer_size);
         _pipeline.read_buffer_ptr = _pipeline.read_buffer.data ();
         read_size = _pipeline.read_buffer.size ();
     }

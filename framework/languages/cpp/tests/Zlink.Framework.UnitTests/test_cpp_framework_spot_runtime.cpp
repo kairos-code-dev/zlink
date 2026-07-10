@@ -35,9 +35,8 @@ namespace
 
 zlink::framework::spot_ref_t make_spot_ref (std::string node_rid, std::string spot_rid)
 {
-    return zlink::framework::spot_ref_t{
-      .node_rid = zlink::routing_id_t::from (node_rid),
-      .spot_rid = zlink::routing_id_t::from (spot_rid)};
+    return zlink::framework::spot_ref_t{.node_rid = zlink::routing_id_t::from (node_rid),
+                                        .spot_rid = zlink::routing_id_t::from (spot_rid)};
 }
 
 void add_string_serializer (zlink::framework::serializer_registry_t &serializers)
@@ -248,6 +247,204 @@ struct relay_actor_factory_t
     relay_actor_t create (std::string actor_id) const { return {std::move (actor_id)}; }
 };
 
+struct empty_relay_transfer_t : zlink::framework::actor_transfer_adapter_t<relay_actor_t>
+{
+    zlink::framework::task_t<zlink::framework::message_t>
+    transfer_out (const relay_actor_t &) override
+    {
+        ++transfer_out_count;
+        return zlink::framework::task_t<zlink::framework::message_t> (
+          zlink::framework::result_t<zlink::framework::message_t>::success ({}));
+    }
+
+    zlink::framework::task_t<relay_actor_t>
+    transfer_in (std::string actor_id, zlink::framework::message_t state) override
+    {
+        ++transfer_in_count;
+        transfer_in_received_empty = state.empty ();
+        return zlink::framework::task_t<relay_actor_t> (
+          zlink::framework::result_t<relay_actor_t>::success ({std::move (actor_id)}));
+    }
+
+    static inline int transfer_out_count = 0;
+    static inline int transfer_in_count = 0;
+    static inline bool transfer_in_received_empty = false;
+};
+
+struct stateful_relay_actor_t
+{
+    std::string actor_id;
+    std::string state;
+    zlink::framework::actor_context_t context;
+
+    void set_actor_context (zlink::framework::actor_context_t value)
+    {
+        context = std::move (value);
+    }
+};
+
+struct stateful_relay_actor_factory_t
+{
+    stateful_relay_actor_t create (std::string actor_id) const
+    {
+        return {std::move (actor_id), {}};
+    }
+};
+
+struct stateful_relay_transfer_t
+    : zlink::framework::actor_transfer_adapter_t<stateful_relay_actor_t>
+{
+    zlink::framework::task_t<zlink::framework::message_t>
+    transfer_out (const stateful_relay_actor_t &actor) override
+    {
+        return zlink::framework::task_t<zlink::framework::message_t> (
+          zlink::framework::result_t<zlink::framework::message_t>::success (
+            zlink::framework::message_t::from (actor.state)));
+    }
+
+    zlink::framework::task_t<stateful_relay_actor_t>
+    transfer_in (std::string actor_id, zlink::framework::message_t state) override
+    {
+        return zlink::framework::task_t<stateful_relay_actor_t> (
+          zlink::framework::result_t<stateful_relay_actor_t>::success (
+            stateful_relay_actor_t{std::move (actor_id), state.decode<std::string> ()}));
+    }
+};
+
+struct controllable_stateful_transfer_t
+    : zlink::framework::actor_transfer_adapter_t<stateful_relay_actor_t>
+{
+    zlink::framework::task_t<zlink::framework::message_t>
+    transfer_out (const stateful_relay_actor_t &actor) override
+    {
+        if (fail_out) {
+            throw std::runtime_error ("transfer-out-failed");
+        }
+        return zlink::framework::task_t<zlink::framework::message_t> (
+          zlink::framework::result_t<zlink::framework::message_t>::success (
+            zlink::framework::message_t::from (actor.state)));
+    }
+
+    zlink::framework::task_t<stateful_relay_actor_t>
+    transfer_in (std::string actor_id, zlink::framework::message_t state) override
+    {
+        if (fail_in) {
+            throw std::runtime_error ("transfer-in-failed");
+        }
+        return zlink::framework::task_t<stateful_relay_actor_t> (
+          zlink::framework::result_t<stateful_relay_actor_t>::success (
+            stateful_relay_actor_t{std::move (actor_id), state.decode<std::string> ()}));
+    }
+
+    static inline bool fail_out = false;
+    static inline bool fail_in = false;
+};
+
+struct stateful_lifecycle_probe_t
+{
+    void record (std::string event)
+    {
+        std::lock_guard lock (mutex);
+        events.push_back (std::move (event));
+    }
+
+    std::vector<std::string> snapshot () const
+    {
+        std::lock_guard lock (mutex);
+        return events;
+    }
+
+    void clear ()
+    {
+        std::lock_guard lock (mutex);
+        events.clear ();
+    }
+
+    mutable std::mutex mutex;
+    std::vector<std::string> events;
+};
+
+struct stateful_relay_spot_t : zlink::framework::spot_t
+{
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        context.handlers ().add_actor_request<&stateful_relay_spot_t::read> ("state.read");
+    }
+
+    zlink::framework::spot_actor_join_response_t
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &)
+    {
+        if (lifecycle_probe) {
+            lifecycle_probe->record ("admission");
+        }
+        return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    void onLeaveActor (const stateful_relay_actor_t &)
+    {
+        if (fail_leave) {
+            throw std::runtime_error ("leave-failed");
+        }
+        if (lifecycle_probe) {
+            lifecycle_probe->record ("leave");
+        }
+    }
+
+    void on_actor_joined (const stateful_relay_actor_t &actor)
+    {
+        std::unique_lock lock (joined_gate);
+        if (block_joined) {
+            joined_entered = true;
+            joined_changed.notify_all ();
+            joined_changed.wait (lock, [this] { return !block_joined; });
+        }
+        if (fail_joined) {
+            throw std::runtime_error ("joined-failed");
+        }
+        joined_state = actor.state;
+        if (lifecycle_probe) {
+            lifecycle_probe->record ("joined");
+        }
+    }
+
+    void block_next_joined ()
+    {
+        std::lock_guard lock (joined_gate);
+        block_joined = true;
+        joined_entered = false;
+    }
+
+    bool wait_until_joined (std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock (joined_gate);
+        return joined_changed.wait_for (lock, timeout, [this] { return joined_entered; });
+    }
+
+    void release_joined ()
+    {
+        std::lock_guard lock (joined_gate);
+        block_joined = false;
+        joined_changed.notify_all ();
+    }
+
+    relay_reply_t read (const stateful_relay_actor_t &actor,
+                        zlink::framework::spot_actor_request_context_t &,
+                        const relay_request_t &)
+    {
+        return {actor.state};
+    }
+
+    std::string joined_state;
+    std::mutex joined_gate;
+    std::condition_variable joined_changed;
+    bool block_joined = false;
+    bool joined_entered = false;
+    bool fail_leave = false;
+    bool fail_joined = false;
+    std::shared_ptr<stateful_lifecycle_probe_t> lifecycle_probe;
+};
+
 struct relay_entry_spot_t : public zlink::framework::entry_spot_t
 {
     void configure (zlink::framework::entry_spot_context_t &context)
@@ -288,13 +485,16 @@ struct relay_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_request<&relay_spot_t::on_relay> ("relay.request");
     }
 
-    zlink::framework::spot_actor_join_response_t on_actor_join (relay_actor_t &,
-                                                                const zlink::framework::message_t &)
+    zlink::framework::spot_actor_join_response_t
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
     void onLeaveActor (relay_actor_t &) { left_count++; }
+
+    void on_actor_joined (relay_actor_t &) { joined_count++; }
 
     void onDisconnectActor (relay_actor_t &) { disconnected_count++; }
 
@@ -307,6 +507,7 @@ struct relay_spot_t : public zlink::framework::spot_t
 
     static inline int left_count{};
     static inline int disconnected_count{};
+    static inline int joined_count{};
 };
 
 struct entry_dispatch_probe_actor_t
@@ -453,10 +654,10 @@ struct stage_spot_t : public zlink::framework::spot_t
     void on_initialize () { ++initialize_count; }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (player_actor_factory_t &actor, const zlink::framework::message_t &request)
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &request)
     {
         join_seen = std::stoi (request.decode<std::string> ());
-        actor.joined_value = join_seen;
         if (!accept_join) {
             return zlink::framework::spot_actor_join_response_t::reject (
               zlink::framework::message_t::from (std::string ("rejected")));
@@ -525,8 +726,8 @@ struct erased_disconnect_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_send<&erased_disconnect_spot_t::on_move> ("move");
     }
 
-    zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &,
-                                                                const zlink::message_t &)
+    zlink::framework::spot_actor_join_response_t
+    on_actor_join (std::string_view, const zlink::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -878,8 +1079,9 @@ struct actor_packet_self_leave_spot_t : public zlink::framework::spot_t
           "self.leave");
     }
 
-    zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &,
-                                                                const zlink::framework::message_t &)
+    zlink::framework::spot_actor_join_response_t
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -917,8 +1119,7 @@ int main ()
       .bind ("tcp://0.0.0.0:9000")
       .enable_router ("tcp://0.0.0.0:9002")
       .connect_router ("tcp://127.0.0.1:9003")
-      .connect_router (zlink::routing_id_t::from ("stage-peer"),
-                       "tcp://127.0.0.1:9006")
+      .connect_router (zlink::routing_id_t::from ("stage-peer"), "tcp://127.0.0.1:9006")
       .enable_pub_sub ("tcp://0.0.0.0:9004")
       .connect_pub_sub ("tcp://127.0.0.1:9005")
       .add_entry_spot<entry_spot_t> ()
@@ -949,6 +1150,20 @@ int main ()
     zlink::framework::zlink_builder_t manual_host;
     zlink::framework::serializer_registry_t manual_serializers;
     add_string_serializer (manual_serializers);
+    manual_serializers.add<relay_request_t> (
+      [] (const relay_request_t &value) {
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_request_t{std::stoi (payload.to_string ())};
+      });
+    manual_serializers.add<relay_reply_t> (
+      [] (const relay_reply_t &value) {
+          return zlink::framework::encoded_payload_t::from_string (value.value);
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_reply_t{payload.to_string ()};
+      });
     manual_serializers.add<state_update_t> (
       [] (const state_update_t &value) {
           return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
@@ -1051,13 +1266,11 @@ int main ()
         || !empty_manager.list_spots ().empty ()) {
         return 136;
     }
-    context
-      .send_to (zlink::framework::spot_ref_t{}, move_request_t{1})
+    context.send_to (zlink::framework::spot_ref_t{}, move_request_t{1})
       .packet_name ("move")
       .submit ();
     const auto empty_spot_route_request =
-      context
-        .request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{1})
+      context.request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{1})
         .packet_name ("move")
         .async ()
         .result ();
@@ -1075,8 +1288,7 @@ int main ()
     auto no_route_context = no_route_spot.context;
     const auto no_route_request =
       no_route_context
-        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"),
-                                   move_request_t{2})
+        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"), move_request_t{2})
         .packet_name ("move")
         .async ()
         .result ();
@@ -1115,7 +1327,7 @@ int main ()
     recording_spot_location_resolver_t location_resolver;
     location_resolver.address =
       zlink::framework::spot_ref_t{"manual-stage", zlink::routing_id_t::from ("location-node"),
-                                       zlink::routing_id_t::from ("location-stage")};
+                                   zlink::routing_id_t::from ("location-stage")};
     auto builder_runtime = zlink::framework::detail::spot_node_runtime_t::from (builder);
     builder_runtime.bind_spot_location_resolver (location_resolver);
     const auto location_resolved_route = builder_runtime.resolve_spot (location_resolved_rid);
@@ -1320,7 +1532,7 @@ int main ()
     if (!lifecycle_join || lifecycle_join.value ().result_code != 0
         || lifecycle_join.value ().reply.decode<std::string> (manual_serializers) != "42"
         || lifecycle_stage_spot->join_seen != 41 || lifecycle_stage_spot->joined_count != 1
-        || lifecycle_actor_state.joined_value != 141) {
+        || lifecycle_actor_state.joined_value != 100) {
         return 59;
     }
     auto stale_disconnect =
@@ -1456,7 +1668,7 @@ int main ()
         || lifecycle_entry_dispatch_payloads[0] != "entry-create-payload"
         || lifecycle_entry_spot->created_payloads.size () != 1
         || lifecycle_entry_spot->created_payloads[0] != "entry-create-payload"
-        || lifecycle_actor_state.joined_value != 152) {
+        || lifecycle_actor_state.joined_value != 111) {
         return 62;
     }
     auto lifecycle_entry_rejoin =
@@ -1906,6 +2118,444 @@ int main ()
         return 89;
     }
 
+    auto stateful_source_spot = std::make_shared<stateful_relay_spot_t> ();
+    auto stateful_target_spot = std::make_shared<stateful_relay_spot_t> ();
+    zlink::framework::runtime::in_memory_location_store_t stateful_location_store;
+    zlink::framework::runtime::location_runtime_t stateful_source_locations (
+      stateful_location_store, {}, "stateful-source-owner");
+    zlink::framework::runtime::location_runtime_t stateful_target_locations (
+      stateful_location_store, {}, "stateful-target-owner");
+    stateful_source_locations.start (zlink::routing_id_t::from ("stateful-source-node"));
+    stateful_target_locations.start (zlink::routing_id_t::from ("stateful-target-node"));
+    zlink::framework::runtime::location_lifecycle_t stateful_source_location_lifecycle (
+      stateful_source_locations);
+    zlink::framework::runtime::location_lifecycle_t stateful_target_location_lifecycle (
+      stateful_target_locations);
+    zlink::framework::zlink_builder_t stateful_source_host;
+    zlink::framework::detail::channel_runtime_t::from (stateful_source_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto stateful_source_builder = stateful_source_host.add_spot_node ("stateful-source-node");
+    stateful_source_builder.add_actor_factory<stateful_relay_actor_factory_t> ("stateful-player")
+      .add_actor_transfer_adapter<stateful_relay_actor_t, stateful_relay_transfer_t> (
+        "stateful-player")
+      .add_spot<stateful_relay_spot_t> ("stateful-source",
+                                        [stateful_source_spot] { return stateful_source_spot; });
+    zlink::framework::zlink_builder_t stateful_target_host;
+    zlink::framework::detail::channel_runtime_t::from (stateful_target_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto stateful_target_builder = stateful_target_host.add_spot_node ("stateful-target-node");
+    stateful_target_builder.add_actor_factory<stateful_relay_actor_factory_t> ("stateful-player")
+      .add_actor_transfer_adapter<stateful_relay_actor_t, stateful_relay_transfer_t> (
+        "stateful-player")
+      .add_spot<stateful_relay_spot_t> ("stateful-target",
+                                        [stateful_target_spot] { return stateful_target_spot; });
+    const auto stateful_source = stateful_source_builder.create_spot ("stateful-source");
+    const auto stateful_target = stateful_target_builder.create_spot ("stateful-target");
+    auto stateful_source_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (stateful_source_builder);
+    auto stateful_target_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (stateful_target_builder);
+    stateful_source_runtime.bind_location_lifecycle (stateful_source_location_lifecycle);
+    stateful_target_runtime.bind_location_lifecycle (stateful_target_location_lifecycle);
+    const auto stateful_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("stateful-source-node"), "stateful-player",
+      "stateful-actor", 1);
+    auto stateful_join = stateful_source_runtime.join_actor_to_spot_erased (
+      stateful_ref, stateful_source.spot_rid, zlink::message_t{});
+    if (!stateful_join) {
+        return 155;
+    }
+    auto stateful_location =
+      stateful_location_store
+        .resolve_actor (zlink::framework::actor_location_key_t{"stateful-actor"})
+        .result ()
+        .value ();
+    if (!stateful_location || !stateful_location->actor_ref
+        || stateful_location->actor_ref->node_rid ().value () != "stateful-source-node"
+        || !stateful_location->spot_rid
+        || stateful_location->spot_rid->to_string () != stateful_source.spot_rid.value ()) {
+        return 162;
+    }
+    auto stateful_instance =
+      stateful_source_runtime.actor_instance<stateful_relay_actor_t> (stateful_join.value ().actor);
+    if (!stateful_instance) {
+        return 155;
+    }
+    stateful_instance->get ().state = "state-v7";
+    auto stateful_admitted = stateful_target_runtime.admit_remote_actor_to_spot (
+      "stateful-transfer-1", stateful_join.value ().actor, stateful_source.spot_rid,
+      stateful_target.spot_rid, zlink::message_t{});
+    auto stateful_transfer =
+      stateful_source_runtime.transfer_actor_out (stateful_join.value ().actor);
+    if (!stateful_transfer || stateful_transfer.value ().state.to_string () != "state-v7") {
+        return 156;
+    }
+    auto stateful_left =
+      stateful_source_runtime.leave_actor_for_remote_transfer (stateful_join.value ().actor);
+    stateful_target_spot->block_next_joined ();
+    auto stateful_commit_future = std::async (
+      std::launch::async, [&stateful_target_runtime, &stateful_join, &stateful_target,
+                           state = std::move (stateful_transfer.value ().state)] () mutable {
+          return stateful_target_runtime.commit_remote_actor_to_spot (
+            "stateful-transfer-1", stateful_join.value ().actor, stateful_target.spot_rid,
+            std::move (state));
+      });
+    if (!stateful_left || !stateful_admitted || !stateful_admitted.value ().accepted
+        || !stateful_target_spot->wait_until_joined (std::chrono::seconds (1))) {
+        stateful_target_spot->release_joined ();
+        (void) stateful_commit_future.get ();
+        return 157;
+    }
+    stateful_location = stateful_location_store
+                          .resolve_actor (zlink::framework::actor_location_key_t{"stateful-actor"})
+                          .result ()
+                          .value ();
+    zlink::framework::service_collection_t stateful_pending_services;
+    auto stateful_pending_provider = stateful_pending_services.build_provider ();
+    auto stateful_pending_packet = stateful_target_runtime.relay_actor_packet (
+      stateful_join.value ().actor, {}, "state.read", zlink::message_t{}, stateful_pending_provider,
+      manual_serializers);
+    if (!stateful_location || !stateful_location->actor_ref
+        || stateful_location->actor_ref->node_rid ().value () != "stateful-source-node"
+        || !stateful_location->spot_rid
+        || stateful_location->spot_rid->to_string () != stateful_source.spot_rid.value ()
+        || stateful_pending_packet
+        || stateful_pending_packet.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected) {
+        stateful_target_spot->release_joined ();
+        (void) stateful_commit_future.get ();
+        return 163;
+    }
+    stateful_target_spot->release_joined ();
+    auto stateful_committed = stateful_commit_future.get ();
+    if (!stateful_committed) {
+        return 157;
+    }
+    stateful_location = stateful_location_store
+                          .resolve_actor (zlink::framework::actor_location_key_t{"stateful-actor"})
+                          .result ()
+                          .value ();
+    if (!stateful_location || !stateful_location->actor_ref
+        || stateful_location->actor_ref->node_rid ().value () != "stateful-target-node"
+        || !stateful_location->spot_rid
+        || stateful_location->spot_rid->to_string () != stateful_target.spot_rid.value ()) {
+        return 164;
+    }
+    const auto target_location_generation = stateful_location->generation;
+    stateful_source_runtime.complete_remote_actor_transfer (
+      stateful_join.value ().actor, stateful_committed.value ().actor,
+      zlink::framework::spot_route_t{stateful_target_runtime.node_rid (), stateful_target.spot_rid,
+                                     "stateful-target"});
+    auto restored_stateful = stateful_target_runtime.actor_instance<stateful_relay_actor_t> (
+      stateful_committed.value ().actor);
+    if (!restored_stateful || restored_stateful->get ().state != "state-v7"
+        || stateful_target_spot->joined_state != "state-v7") {
+        return 157;
+    }
+    stateful_location = stateful_location_store
+                          .resolve_actor (zlink::framework::actor_location_key_t{"stateful-actor"})
+                          .result ()
+                          .value ();
+    if (!stateful_location || stateful_location->generation != target_location_generation
+        || !stateful_location->actor_ref
+        || stateful_location->actor_ref->node_rid ().value () != "stateful-target-node") {
+        return 165;
+    }
+    stateful_source_locations.stop ();
+    stateful_target_locations.stop ();
+
+    auto local_move_probe = std::make_shared<stateful_lifecycle_probe_t> ();
+    auto local_move_source_spot = std::make_shared<stateful_relay_spot_t> ();
+    auto local_move_target_spot = std::make_shared<stateful_relay_spot_t> ();
+    local_move_source_spot->lifecycle_probe = local_move_probe;
+    local_move_target_spot->lifecycle_probe = local_move_probe;
+    zlink::framework::zlink_builder_t local_move_host;
+    zlink::framework::detail::channel_runtime_t::from (local_move_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto local_move_builder = local_move_host.add_spot_node ("local-move-node");
+    local_move_builder.add_actor_factory<stateful_relay_actor_factory_t> ("stateful-player")
+      .add_spot<stateful_relay_spot_t> ("local-source",
+                                        [local_move_source_spot] { return local_move_source_spot; })
+      .add_spot<stateful_relay_spot_t> (
+        "local-target", [local_move_target_spot] { return local_move_target_spot; });
+    const auto local_source = local_move_builder.create_spot ("local-source");
+    const auto local_target = local_move_builder.create_spot ("local-target");
+    auto local_move_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (local_move_builder);
+    const auto local_actor_ref =
+      zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("local-move-node"),
+                                     "stateful-player", "local-moving-actor", 1);
+    auto local_initial_join = local_move_runtime.join_actor_to_spot_erased (
+      local_actor_ref, local_source.spot_rid, zlink::message_t{});
+    if (!local_initial_join) {
+        return 166;
+    }
+    auto local_actor =
+      local_move_runtime.actor_instance<stateful_relay_actor_t> (local_initial_join.value ().actor);
+    if (!local_actor) {
+        return 166;
+    }
+    local_actor->get ().state = "local-state";
+    local_move_probe->clear ();
+    local_move_target_spot->block_next_joined ();
+    auto local_join_future =
+      std::async (std::launch::async, [&local_move_runtime, &local_initial_join, &local_target] {
+          return local_move_runtime.join_actor_to_spot_erased (
+            local_initial_join.value ().actor, local_target.spot_rid, zlink::message_t{});
+      });
+    if (!local_move_target_spot->wait_until_joined (std::chrono::seconds (1))) {
+        local_move_target_spot->release_joined ();
+        (void) local_join_future.get ();
+        return 167;
+    }
+    zlink::framework::service_collection_t local_move_services;
+    auto local_move_provider = local_move_services.build_provider ();
+    auto source_packet_during_move = local_move_runtime.relay_actor_packet (
+      local_initial_join.value ().actor, {}, "state.read", zlink::message_t::from ("1"),
+      local_move_provider, manual_serializers);
+    const auto prospective_local_actor =
+      zlink::framework::actor_ref_t (local_initial_join.value ().actor.node_rid (),
+                                     std::string (local_initial_join.value ().actor.actor_type ()),
+                                     std::string (local_initial_join.value ().actor.actor_id ()),
+                                     local_initial_join.value ().actor.generation () + 1);
+    auto target_packet_during_move = local_move_runtime.relay_actor_packet (
+      prospective_local_actor, {}, "state.read", zlink::message_t::from ("2"), local_move_provider,
+      manual_serializers);
+    const auto events_during_move = local_move_probe->snapshot ();
+    if (source_packet_during_move || target_packet_during_move
+        || source_packet_during_move.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected
+        || target_packet_during_move.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected
+        || events_during_move != std::vector<std::string> ({"admission", "leave"})) {
+        local_move_target_spot->release_joined ();
+        (void) local_join_future.get ();
+        return 168;
+    }
+    local_move_target_spot->release_joined ();
+    auto local_joined = local_join_future.get ();
+    if (!local_joined) {
+        return 169;
+    }
+    auto local_follow_up = local_move_runtime.relay_actor_packet (
+      local_joined.value ().actor, {}, "state.read", zlink::message_t::from ("3"),
+      local_move_provider, manual_serializers);
+    if (local_move_probe->snapshot () != std::vector<std::string> ({"admission", "leave", "joined"})
+        || !local_follow_up || !local_follow_up.value ()
+        || local_follow_up.value ()->to_string () != "local-state") {
+        return 169;
+    }
+
+    auto failure_source_spot = std::make_shared<stateful_relay_spot_t> ();
+    auto failure_target_spot = std::make_shared<stateful_relay_spot_t> ();
+    zlink::framework::zlink_builder_t failure_source_host;
+    zlink::framework::detail::channel_runtime_t::from (failure_source_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto failure_source_builder = failure_source_host.add_spot_node ("failure-source-node");
+    failure_source_builder.add_actor_factory<stateful_relay_actor_factory_t> ("failure-player")
+      .add_actor_transfer_adapter<stateful_relay_actor_t, controllable_stateful_transfer_t> (
+        "failure-player")
+      .add_spot<stateful_relay_spot_t> ("failure-source",
+                                        [failure_source_spot] { return failure_source_spot; });
+    zlink::framework::zlink_builder_t failure_target_host;
+    zlink::framework::detail::channel_runtime_t::from (failure_target_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    auto failure_target_builder = failure_target_host.add_spot_node ("failure-target-node");
+    failure_target_builder.add_actor_factory<stateful_relay_actor_factory_t> ("failure-player")
+      .add_actor_transfer_adapter<stateful_relay_actor_t, controllable_stateful_transfer_t> (
+        "failure-player")
+      .add_spot<stateful_relay_spot_t> ("failure-target",
+                                        [failure_target_spot] { return failure_target_spot; });
+    const auto failure_source = failure_source_builder.create_spot ("failure-source");
+    const auto failure_target = failure_target_builder.create_spot ("failure-target");
+    auto failure_source_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (failure_source_builder);
+    auto failure_target_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (failure_target_builder);
+    zlink::framework::service_collection_t failure_services;
+    auto failure_provider = failure_services.build_provider ();
+    auto create_failure_actor = [&] (std::string actor_id) {
+        const auto initial = zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string ("failure-source-node"), "failure-player",
+          std::move (actor_id), 1);
+        return failure_source_runtime.join_actor_to_spot_erased (initial, failure_source.spot_rid,
+                                                                 zlink::message_t{});
+    };
+    auto admit_failure_actor = [&] (std::string transfer_id,
+                                    const zlink::framework::actor_ref_t &actor) {
+        return failure_target_runtime.admit_remote_actor_to_spot (
+          std::move (transfer_id), actor, failure_source.spot_rid, failure_target.spot_rid,
+          zlink::message_t{});
+    };
+    auto source_packet = [&] (const zlink::framework::actor_ref_t &actor) {
+        return failure_source_runtime.relay_actor_packet (
+          actor, {}, "state.read", zlink::message_t::from (std::string ("1")), failure_provider,
+          manual_serializers);
+    };
+
+    auto transfer_out_actor = create_failure_actor ("fail-transfer-out");
+    if (!transfer_out_actor) {
+        return 170;
+    }
+    auto transfer_out_admission =
+      admit_failure_actor ("fail-transfer-out", transfer_out_actor.value ().actor);
+    if (!transfer_out_admission) {
+        return 170;
+    }
+    controllable_stateful_transfer_t::fail_out = true;
+    auto transfer_out_failure =
+      failure_source_runtime.transfer_actor_out (transfer_out_actor.value ().actor);
+    controllable_stateful_transfer_t::fail_out = false;
+    auto transfer_out_source_packet = source_packet (transfer_out_actor.value ().actor);
+    if (transfer_out_failure
+        || !failure_source_runtime.actor_spot (transfer_out_actor.value ().actor)
+        || !transfer_out_source_packet) {
+        return 170;
+    }
+
+    auto leave_failure_actor = create_failure_actor ("fail-leave");
+    if (!leave_failure_actor) {
+        return 171;
+    }
+    auto leave_failure_admission =
+      admit_failure_actor ("fail-leave", leave_failure_actor.value ().actor);
+    if (!leave_failure_admission) {
+        return 171;
+    }
+    auto leave_failure_state =
+      failure_source_runtime.transfer_actor_out (leave_failure_actor.value ().actor);
+    if (!leave_failure_state) {
+        return 171;
+    }
+    failure_source_spot->fail_leave = true;
+    auto leave_failure =
+      failure_source_runtime.leave_actor_for_remote_transfer (leave_failure_actor.value ().actor);
+    failure_source_spot->fail_leave = false;
+    auto leave_failure_source_packet = source_packet (leave_failure_actor.value ().actor);
+    if (leave_failure || !failure_source_runtime.actor_spot (leave_failure_actor.value ().actor)
+        || !leave_failure_source_packet) {
+        return 171;
+    }
+
+    auto transfer_in_actor = create_failure_actor ("fail-transfer-in");
+    if (!transfer_in_actor) {
+        return 172;
+    }
+    auto transfer_in_admission =
+      admit_failure_actor ("fail-transfer-in", transfer_in_actor.value ().actor);
+    if (!transfer_in_admission) {
+        return 172;
+    }
+    auto transfer_in_state =
+      failure_source_runtime.transfer_actor_out (transfer_in_actor.value ().actor);
+    if (!transfer_in_state) {
+        return 172;
+    }
+    auto transfer_in_left =
+      failure_source_runtime.leave_actor_for_remote_transfer (transfer_in_actor.value ().actor);
+    controllable_stateful_transfer_t::fail_in = true;
+    auto transfer_in_failure = failure_target_runtime.commit_remote_actor_to_spot (
+      "fail-transfer-in", transfer_in_actor.value ().actor, failure_target.spot_rid,
+      std::move (transfer_in_state.value ().state));
+    controllable_stateful_transfer_t::fail_in = false;
+    failure_source_runtime.fail_remote_actor_transfer (transfer_in_actor.value ().actor, true);
+    auto transfer_in_source_packet = source_packet (transfer_in_actor.value ().actor);
+    if (!transfer_in_left || transfer_in_failure || transfer_in_source_packet
+        || transfer_in_source_packet.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected
+        || failure_target_runtime.actor_instance<stateful_relay_actor_t> (
+          transfer_in_actor.value ().actor)) {
+        return 172;
+    }
+
+    auto joined_failure_actor = create_failure_actor ("fail-joined");
+    if (!joined_failure_actor) {
+        return 173;
+    }
+    auto joined_failure_admission =
+      admit_failure_actor ("fail-joined", joined_failure_actor.value ().actor);
+    if (!joined_failure_admission) {
+        return 173;
+    }
+    auto joined_failure_state =
+      failure_source_runtime.transfer_actor_out (joined_failure_actor.value ().actor);
+    if (!joined_failure_state) {
+        return 173;
+    }
+    auto joined_failure_left =
+      failure_source_runtime.leave_actor_for_remote_transfer (joined_failure_actor.value ().actor);
+    failure_target_spot->fail_joined = true;
+    auto joined_failure = failure_target_runtime.commit_remote_actor_to_spot (
+      "fail-joined", joined_failure_actor.value ().actor, failure_target.spot_rid,
+      std::move (joined_failure_state.value ().state));
+    failure_target_spot->fail_joined = false;
+    failure_source_runtime.fail_remote_actor_transfer (joined_failure_actor.value ().actor, true);
+    auto joined_failure_source_packet = source_packet (joined_failure_actor.value ().actor);
+    auto joined_failure_target_packet = failure_target_runtime.relay_actor_packet (
+      joined_failure_actor.value ().actor, {}, "state.read",
+      zlink::message_t::from (std::string ("1")), failure_provider, manual_serializers);
+    if (!joined_failure_left || joined_failure || joined_failure_source_packet
+        || joined_failure_target_packet
+        || joined_failure_source_packet.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected
+        || joined_failure_target_packet.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected
+        || !failure_target_runtime.actor_instance<stateful_relay_actor_t> (
+          joined_failure_actor.value ().actor)) {
+        return 173;
+    }
+
+    empty_relay_transfer_t::transfer_out_count = 0;
+    empty_relay_transfer_t::transfer_in_count = 0;
+    empty_relay_transfer_t::transfer_in_received_empty = false;
+    zlink::framework::zlink_builder_t empty_transfer_source_host;
+    auto empty_transfer_source_builder =
+      empty_transfer_source_host.add_spot_node ("empty-transfer-source");
+    empty_transfer_source_builder.add_actor_factory<relay_actor_factory_t> ("empty-player")
+      .add_actor_transfer_adapter<relay_actor_t, empty_relay_transfer_t> ("empty-player")
+      .add_spot<relay_spot_t> ("empty-source-room");
+    zlink::framework::zlink_builder_t empty_transfer_target_host;
+    auto empty_transfer_target_builder =
+      empty_transfer_target_host.add_spot_node ("empty-transfer-target");
+    empty_transfer_target_builder.add_actor_factory<relay_actor_factory_t> ("empty-player")
+      .add_actor_transfer_adapter<relay_actor_t, empty_relay_transfer_t> ("empty-player")
+      .add_spot<relay_spot_t> ("empty-target-room");
+    const auto empty_source_spot =
+      empty_transfer_source_builder.create_spot ("empty-source-room");
+    const auto empty_target_spot =
+      empty_transfer_target_builder.create_spot ("empty-target-room");
+    auto empty_source_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (empty_transfer_source_builder);
+    auto empty_target_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (empty_transfer_target_builder);
+    const auto empty_source_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("empty-transfer-source"), "empty-player",
+      "empty-state-actor", 1);
+    auto empty_source_join = empty_source_runtime.join_actor_to_spot_erased (
+      empty_source_ref, empty_source_spot.spot_rid, zlink::message_t{});
+    if (!empty_source_join) {
+        return 180;
+    }
+    auto empty_admission = empty_target_runtime.admit_remote_actor_to_spot (
+      "empty-transfer-1", empty_source_join.value ().actor, empty_source_spot.spot_rid,
+      empty_target_spot.spot_rid, zlink::message_t{});
+    auto empty_state = empty_source_runtime.transfer_actor_out (empty_source_join.value ().actor);
+    auto empty_left =
+      empty_source_runtime.leave_actor_for_remote_transfer (empty_source_join.value ().actor);
+    if (!empty_admission || !empty_admission.value ().accepted || !empty_state
+        || !empty_state.value ().state.is_empty () || !empty_left) {
+        return 180;
+    }
+    auto empty_committed = empty_target_runtime.commit_remote_actor_to_spot (
+      "empty-transfer-1", empty_source_join.value ().actor, empty_target_spot.spot_rid,
+      std::move (empty_state.value ().state));
+    if (!empty_committed || empty_relay_transfer_t::transfer_out_count != 1
+        || empty_relay_transfer_t::transfer_in_count != 1
+        || !empty_relay_transfer_t::transfer_in_received_empty
+        || !empty_target_runtime.actor_instance<relay_actor_t> (empty_committed.value ().actor)) {
+        return 180;
+    }
+
     zlink::framework::spot_node_builder_t relay_builder;
     zlink::framework::zlink_builder_t relay_host;
     relay_builder = relay_host.add_spot_node ("relay-stage");
@@ -1921,6 +2571,74 @@ int main ()
       zlink::framework::node_rid_t::from_string ("play-a"), "relay-player", "routed-actor", 9);
     relay_spot_t::left_count = 0;
     relay_spot_t::disconnected_count = 0;
+    relay_spot_t::joined_count = 0;
+    const auto transfer_source_ref =
+      zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("play-source"),
+                                     "relay-player", "transferred-actor", 4);
+    auto admitted = relay_runtime.admit_remote_actor_to_spot (
+      "transfer-runtime-1", transfer_source_ref,
+      zlink::framework::spot_rid_t::from_string ("source-room"), relay_spot.spot_rid,
+      zlink::message_t{});
+    if (!admitted || !admitted.value ().accepted
+        || relay_runtime.actor_instance<relay_actor_t> (transfer_source_ref)) {
+        return 144;
+    }
+    auto committed = relay_runtime.commit_remote_actor_to_spot (
+      "transfer-runtime-1", transfer_source_ref, relay_spot.spot_rid, zlink::message_t{});
+    const auto transferred_instance =
+      relay_runtime.actor_instance<relay_actor_t> (transfer_source_ref);
+    if (!committed || committed.value ().actor.generation () != 5
+        || committed.value ().actor.node_rid ().value () != "relay-stage" || !transferred_instance
+        || transferred_instance->get ().actor_id != "transferred-actor"
+        || relay_spot_t::joined_count != 1) {
+        return 145;
+    }
+    auto duplicate_commit = relay_runtime.commit_remote_actor_to_spot (
+      "transfer-runtime-1", transfer_source_ref, relay_spot.spot_rid, zlink::message_t{});
+    if (duplicate_commit
+        || duplicate_commit.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+        return 146;
+    }
+
+    zlink::framework::zlink_builder_t expiring_admission_host;
+    expiring_admission_host.default_request_timeout (std::chrono::milliseconds (5));
+    auto expiring_admission_builder =
+      expiring_admission_host.add_spot_node ("expiring-admission-node");
+    expiring_admission_builder.add_actor_factory<relay_actor_factory_t> ("relay-player")
+      .add_spot<relay_spot_t> ("expiring-room");
+    const auto expiring_spot = expiring_admission_builder.create_spot ("expiring-room");
+    auto expiring_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (expiring_admission_builder);
+    const auto expiring_actor =
+      zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("expired-source"),
+                                     "relay-player", "expired-actor", 9);
+    auto expiring_admitted = expiring_runtime.admit_remote_actor_to_spot (
+      "expiring-transfer", expiring_actor,
+      zlink::framework::spot_rid_t::from_string ("expired-source-spot"), expiring_spot.spot_rid,
+      zlink::message_t{});
+    zlink::framework::service_collection_t expiring_services;
+    auto expiring_provider = expiring_services.build_provider ();
+    zlink::framework::serializer_registry_t expiring_serializers;
+    auto packet_during_pending =
+      expiring_runtime.relay_actor_packet (expiring_actor, {}, "relay.request", zlink::message_t{},
+                                           expiring_provider, expiring_serializers);
+    if (!expiring_admitted || !expiring_admitted.value ().accepted || packet_during_pending
+        || packet_during_pending.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected) {
+        return 159;
+    }
+    std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    if (expiring_runtime.cleanup_expired_actor_admissions () != 1) {
+        return 160;
+    }
+    auto expired_commit = expiring_runtime.commit_remote_actor_to_spot (
+      "expiring-transfer", expiring_actor, expiring_spot.spot_rid, zlink::message_t{});
+    if (expired_commit
+        || expired_commit.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+        return 161;
+    }
     auto routed_join = relay_runtime.join_remote_actor_to_spot_erased (
       routed_actor_ref, relay_spot.spot_rid, zlink::message_t{});
     if (!routed_join || routed_join.value ().result_code != 0
@@ -1940,8 +2658,90 @@ int main ()
         || relay_runtime.actor_spot (routed_actor_ref) || relay_spot_t::left_count == 0) {
         return 82;
     }
+    const auto source_transfer_ref =
+      zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("relay-stage"),
+                                     "relay-player", "source-transfer-actor", 1);
+    auto source_transfer_join = relay_runtime.join_actor_to_spot_erased (
+      source_transfer_ref, relay_spot.spot_rid, zlink::message_t{});
+    auto source_transfer = relay_runtime.transfer_actor_out (source_transfer_join.value ().actor);
+    if (!source_transfer || !source_transfer.value ().state.is_empty ()
+        || source_transfer.value ().source_spot_rid.value () != relay_spot.spot_rid.value ()) {
+        return 151;
+    }
+    auto source_left =
+      relay_runtime.leave_actor_for_remote_transfer (source_transfer_join.value ().actor);
+    if (!source_left || relay_runtime.actor_spot (source_transfer_join.value ().actor)) {
+        return 152;
+    }
+    zlink::framework::service_collection_t moving_services;
+    auto moving_provider = moving_services.build_provider ();
+    zlink::framework::serializer_registry_t moving_serializers;
+    auto moving_packet =
+      relay_runtime.relay_actor_packet (source_transfer_join.value ().actor, {}, "relay.request",
+                                        zlink::message_t{}, moving_provider, moving_serializers);
+    if (moving_packet
+        || moving_packet.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected) {
+        return 153;
+    }
+    const auto target_transfer_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("relay-target"), "relay-player",
+      "source-transfer-actor", source_transfer_join.value ().actor.generation () + 1);
+    relay_runtime.complete_remote_actor_transfer (
+      source_transfer_join.value ().actor, target_transfer_ref,
+      zlink::framework::spot_route_t{zlink::framework::node_rid_t::from_string ("relay-target"),
+                                     zlink::framework::spot_rid_t::from_string ("target-room"),
+                                     "target"});
+    if (relay_runtime.actor_instance<relay_actor_t> (source_transfer_join.value ().actor)
+        || !relay_runtime.actor_route (target_transfer_ref)
+        || relay_runtime.actor_route (target_transfer_ref)->node_rid.value () != "relay-target") {
+        return 154;
+    }
     zlink::framework::serializer_registry_t route_join_serializers;
     zlink::framework::detail::register_spot_route_packet_serializers (route_join_serializers);
+    const auto admission_packet = zlink::framework::detail::spot_actor_admission_route_request_t{
+      .transfer_id = "transfer-1",
+      .actor_node_rid = "play-a",
+      .actor_type = "relay-player",
+      .actor_id = "actor-1",
+      .actor_generation = 7,
+      .source_spot_rid = "source-spot",
+      .target_spot_rid = "target-spot",
+      .payload = {1, 2, 3}};
+    const auto admission_encoded =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_admission_route_request_t> ()
+        .serialize (admission_packet);
+    const auto admission_decoded =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_admission_route_request_t> ()
+        .deserialize (admission_encoded);
+    if (admission_decoded.transfer_id != "transfer-1"
+        || admission_decoded.source_spot_rid != "source-spot"
+        || admission_decoded.target_spot_rid != "target-spot"
+        || admission_decoded.payload != std::vector<std::uint8_t> ({1, 2, 3})) {
+        return 142;
+    }
+    const auto commit_packet = zlink::framework::detail::spot_actor_commit_route_request_t{
+      .transfer_id = "transfer-1",
+      .actor_node_rid = "play-a",
+      .actor_type = "relay-player",
+      .actor_id = "actor-1",
+      .actor_generation = 7,
+      .target_spot_rid = "target-spot",
+      .bound_session_node_rid = "session-a",
+      .bound_session_rid = "session-1",
+      .transfer_state = {4, 5, 6}};
+    const auto commit_encoded =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_commit_route_request_t> ()
+        .serialize (commit_packet);
+    const auto commit_decoded =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_commit_route_request_t> ()
+        .deserialize (commit_encoded);
+    if (commit_decoded.transfer_id != "transfer-1"
+        || commit_decoded.bound_session_node_rid != "session-a"
+        || commit_decoded.bound_session_rid != "session-1"
+        || commit_decoded.transfer_state != std::vector<std::uint8_t> ({4, 5, 6})) {
+        return 143;
+    }
     route_join_serializers.add<relay_request_t> (
       [] (const relay_request_t &value) {
           return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
@@ -1970,6 +2770,78 @@ int main ()
     zlink::framework::runtime::messaging::envelope_header_t route_join_header;
     route_join_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
     route_join_header.channel_name = "relay.route";
+    route_join_header.message_name =
+      zlink::framework::detail::spot_actor_admission_route_request_t::packet_name;
+    const auto routed_admission = zlink::framework::detail::spot_actor_admission_route_request_t{
+      .transfer_id = "routed-transfer-1",
+      .actor_node_rid = "play-source",
+      .actor_type = "relay-player",
+      .actor_id = "routed-transferred-actor",
+      .actor_generation = 2,
+      .source_spot_rid = "source-room",
+      .target_spot_rid = std::string (relay_spot.spot_rid.value ()),
+      .payload = {}};
+    auto routed_admission_parts = route_join_envelope.encode_parts (
+      route_join_header,
+      std::type_index (typeid (zlink::framework::detail::spot_actor_admission_route_request_t)),
+      &routed_admission, route_join_serializers);
+    auto routed_admission_dispatch =
+      route_join_dispatcher.dispatch (zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("play-source")), 88, routed_admission_parts});
+    if (!routed_admission_dispatch || !routed_admission_dispatch.value ()) {
+        return 147;
+    }
+    auto routed_admission_body =
+      route_join_envelope.decode_body (routed_admission_dispatch.value ()->parts);
+    const auto routed_admission_reply =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_admission_route_reply_t> ()
+        .deserialize (
+          zlink::framework::detail::encoded_payload_from_raw (routed_admission_body.value ()));
+    if (!routed_admission_reply.accepted) {
+        return 148;
+    }
+    route_join_header.message_name =
+      zlink::framework::detail::spot_actor_commit_route_request_t::packet_name;
+    const auto routed_commit = zlink::framework::detail::spot_actor_commit_route_request_t{
+      .transfer_id = "routed-transfer-1",
+      .actor_node_rid = "play-source",
+      .actor_type = "relay-player",
+      .actor_id = "routed-transferred-actor",
+      .actor_generation = 2,
+      .target_spot_rid = std::string (relay_spot.spot_rid.value ()),
+      .bound_session_node_rid = "session-node",
+      .bound_session_rid = "session-rid",
+      .transfer_state = {}};
+    auto routed_commit_parts = route_join_envelope.encode_parts (
+      route_join_header,
+      std::type_index (typeid (zlink::framework::detail::spot_actor_commit_route_request_t)),
+      &routed_commit, route_join_serializers);
+    auto routed_commit_dispatch =
+      route_join_dispatcher.dispatch (zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("play-source")), 89, routed_commit_parts});
+    if (!routed_commit_dispatch || !routed_commit_dispatch.value ()) {
+        return 149;
+    }
+    auto routed_commit_body =
+      route_join_envelope.decode_body (routed_commit_dispatch.value ()->parts);
+    const auto routed_commit_reply =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_join_route_reply_t> ()
+        .deserialize (
+          zlink::framework::detail::encoded_payload_from_raw (routed_commit_body.value ()));
+    if (routed_commit_reply.result_code != 0 || routed_commit_reply.actor_generation != 3
+        || routed_commit_reply.actor_node_rid != "relay-stage") {
+        return 150;
+    }
+    const auto transferred_session_route =
+      route_join_actor_gateway.bound_session_route (zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t::from_string (routed_commit_reply.actor_node_rid),
+        routed_commit_reply.actor_type, routed_commit_reply.actor_id,
+        routed_commit_reply.actor_generation));
+    if (!transferred_session_route
+        || transferred_session_route->node_rid.to_string () != "session-node"
+        || transferred_session_route->session_rid.to_string () != "session-rid") {
+        return 158;
+    }
     route_join_header.message_name =
       zlink::framework::detail::spot_actor_join_route_request_t::packet_name;
     const auto route_join_request = zlink::framework::detail::make_spot_actor_join_route_request (
@@ -2430,8 +3302,7 @@ int main ()
     }
     auto empty_context_request =
       empty_context
-        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"),
-                                   move_request_t{1})
+        .request_to<move_reply_t> (make_spot_ref ("remote-node", "remote-spot"), move_request_t{1})
         .async ()
         .result ();
     if (empty_context_request
@@ -2508,19 +3379,21 @@ int main ()
     }
 
     const auto join_dispatch =
-      stage_spot.on_actor_join (actor, zlink::framework::message_t::from (std::string ("41")));
+      stage_spot.on_actor_join ("player-1",
+                                zlink::framework::message_t::from (std::string ("41")));
     if (!join_dispatch.accepted || !join_dispatch.reply
         || join_dispatch.reply->decode<std::string> (spot_serializers) != "42"
-        || actor.joined_value != 41 || stage_spot.join_seen != 41) {
+        || actor.joined_value != 0 || stage_spot.join_seen != 41) {
         return 23;
     }
     stage_spot.on_actor_joined (actor);
-    if (stage_spot.joined_count != 1 || actor.joined_value != 141) {
+    if (stage_spot.joined_count != 1 || actor.joined_value != 100) {
         return 25;
     }
     stage_spot.accept_join = false;
     const auto rejected_join =
-      stage_spot.on_actor_join (actor, zlink::framework::message_t::from (std::string ("50")));
+      stage_spot.on_actor_join ("player-1",
+                                zlink::framework::message_t::from (std::string ("50")));
     if (rejected_join.accepted || !rejected_join.reply
         || rejected_join.reply->decode<std::string> (spot_serializers) != "rejected") {
         return 47;
@@ -2899,20 +3772,19 @@ int main ()
                 state_update_t{2})
       .submit ();
 
-    auto request_result = context
-                            .request_to<move_reply_t> (
-                              make_spot_ref (std::string (remote_route->node_rid.value ()),
-                                             std::string (remote_route->spot_rid.value ())),
-                              move_request_t{3})
-                            .async ()
-                            .result ();
+    auto request_result =
+      context
+        .request_to<move_reply_t> (make_spot_ref (std::string (remote_route->node_rid.value ()),
+                                                  std::string (remote_route->spot_rid.value ())),
+                                   move_request_t{3})
+        .async ()
+        .result ();
     if (request_result || request_result.error_kind () != framework_error_kind_t::timeout) {
         return 16;
     }
 
     auto missing_route_result =
-      context
-        .request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{4})
+      context.request_to<move_reply_t> (zlink::framework::spot_ref_t{}, move_request_t{4})
         .async ()
         .result ();
     if (missing_route_result

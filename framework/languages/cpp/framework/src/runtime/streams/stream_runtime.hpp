@@ -71,6 +71,7 @@ class stream_runtime_t
                                     const stream_header_t &header,
                                     const zlink::message_t &payload) const;
     result_t<void> dispatch_disconnected (packet_stream_session_t &session, stream_t &stream) const;
+    void mark_disconnected (stream_t &stream) const;
     result_t<void> dispatch_error (packet_stream_session_t &session,
                                    stream_t &stream,
                                    const stream_error_t &error) const;
@@ -90,5 +91,8 @@ class stream_runtime_t
 
     std::shared_ptr<stream_runtime_state_t> _state;
 };
+
+void configure_stream_dispatch_executor ();
+void shutdown_stream_dispatch_executor () noexcept;
 
 } // namespace zlink::framework::detail

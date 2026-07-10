@@ -197,12 +197,14 @@ class http_host_service_t::listener_t
             1, handler_worker_count == 0 ? std::thread::hardware_concurrency ()
                                          : handler_worker_count),
           1024,
-          std::chrono::seconds (30)),
+          std::chrono::seconds (30),
+          "zlink-http-hdl"),
         _connection_workers (
           0,
           std::max<std::size_t> (2, std::thread::hardware_concurrency ()),
           1024,
-          std::chrono::seconds (30))
+          std::chrono::seconds (30),
+          "zlink-http-conn")
     {
     }
 
@@ -261,6 +263,11 @@ class http_host_service_t::listener_t
     void stop () noexcept
     {
         wake_acceptor ();
+        close_open_connections ();
+    }
+
+    void stop_after_accept_loop () noexcept
+    {
         (void) wait_for_active_requests (_options->server.graceful_shutdown_timeout);
         close_open_connections ();
         wait_for_workers ();
@@ -281,10 +288,12 @@ class http_host_service_t::listener_t
         }
 
         int listen_fd = -1;
+        int last_errno = 0;
         for (addrinfo *address = addresses; address != nullptr; address = address->ai_next) {
             listen_fd =
               ::socket (address->ai_family, address->ai_socktype, address->ai_protocol);
             if (listen_fd < 0) {
+                last_errno = errno;
                 continue;
             }
             const int reuse = 1;
@@ -293,12 +302,15 @@ class http_host_service_t::listener_t
                 && ::listen (listen_fd, SOMAXCONN) == 0) {
                 break;
             }
+            last_errno = errno;
             (void) ::close (listen_fd);
             listen_fd = -1;
         }
         ::freeaddrinfo (addresses);
         if (listen_fd < 0) {
-            throw std::runtime_error ("HTTP endpoint bind failed");
+            throw std::runtime_error ("HTTP endpoint bind failed errno="
+                                      + std::to_string (last_errno) + " "
+                                      + std::strerror (last_errno));
         }
         return listen_fd;
     }
@@ -590,16 +602,24 @@ void http_host_service_t::start (service_provider_t &services)
     }
 }
 
-void http_host_service_t::stop () noexcept
+void http_host_service_t::request_stop () noexcept
 {
     _stop.store (true, std::memory_order_release);
     for (auto &listener : _listeners) {
         listener->stop ();
     }
+}
+
+void http_host_service_t::stop () noexcept
+{
+    request_stop ();
     for (auto &thread : _threads) {
         if (thread.joinable ()) {
             thread.join ();
         }
+    }
+    for (auto &listener : _listeners) {
+        listener->stop_after_accept_loop ();
     }
     _threads.clear ();
     _listeners.clear ();

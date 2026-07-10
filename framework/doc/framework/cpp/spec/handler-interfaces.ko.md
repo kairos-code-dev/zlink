@@ -55,16 +55,22 @@ Spot은 상태와 동작을 함께 감싸는 단위이므로 handler class를 �
 `add_entry_spot<TEntrySpot>()` 호출과 기반 타입으로 역할을 확인한다.
 
 actor lifecycle은 handler registry 등록 대상이 아니다. user Spot의 join admission은
-`on_actor_join(actor, zlink::framework::message_t)` member callback이 처리하고, 반환값은 accepted 여부와
+`on_actor_join(std::string_view actor_id, zlink::framework::message_t)` member callback이 처리한다.
+admission에는 actor id만 넘기고 actor instance는 없다. 반환값은 accepted 여부와
 optional reply `zlink::framework::message_t`를 담는다. accepted가 `true`일 때만 actor 위치를 user Spot으로
 commit하고 `on_actor_joined(actor)`를 호출한다. accepted가 `false`이면 위치를 바꾸지
 않고 post-joined callback도 호출하지 않는다. Entry Spot도 명시적 재진입
-(`join_entry_spot(node_rid, request)`)에 대해 같은 `on_actor_join(actor, zlink::framework::message_t)`
+(`join_entry_spot(node_rid, request)`)에 대해 같은 `on_actor_join(actor_id, zlink::framework::message_t)`
 admission을 선택적으로 둘 수 있고, 선언하지 않으면 재진입은 그대로 accept된다. actor
 최초 생성 직후 첫 Entry Spot 배치는 admission이 아니라
 `onCreateActor(actor, createRequest)`로 처리하며,
 commit 이후 `on_actor_joined(actor)`와 `onLeaveActor(actor)`를 둔다.
 payload가 필요 없는 Entry Spot은 기존처럼 `onCreateActor(actor)`만 선언할 수 있다.
+
+remote transfer에서 상태를 옮길 actor type은 Spot node 구성에서
+`add_actor_transfer_adapter<TActor, TAdapter>(actorType)`을 사용한다. 등록되지 않은 actor type의
+remote transfer는 실패가 아니라 framework 기본 빈 state transfer로 처리한다. 이 기본 경로는 source에서
+빈 `message_t`를 보내고 target에서 actor factory 또는 public actor 생성 경로로 actor를 만든다.
 
 create callback도 request를 단일 `zlink::framework::message_t`로 받는다. create result는 `existing`,
 `created`, `rejected` state와 optional reply `zlink::framework::message_t`를 담는다. `spot_context_t::close()`는

@@ -301,6 +301,14 @@ void zlink::router_t::xdispatch_io ()
 
 bool zlink::router_t::xhas_in ()
 {
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
+    if (socket_msg_dispatch_active ()) {
+        zlink::drain_socket_dispatch_loop (
+          [this] (msg_t *msg_, pipe_t **pipe_out_) { return _fq.recvpipe (msg_, pipe_out_); },
+          [this] (msg_t *msg_, pipe_t *pipe_) { return xsocket_msg_dispatch (msg_, pipe_); });
+        return false;
+    }
+
     if (_more_in)
         return true;
 

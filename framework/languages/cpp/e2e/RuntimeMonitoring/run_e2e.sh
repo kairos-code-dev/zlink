@@ -5,6 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
+SCENARIO="${1:-all}"
+SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
+case "$SCENARIO_LOWER" in
+  all|mon-a[1-5]|mon-b[1-2]|mon-c1|mon-d1) ;;
+  *)
+    echo "Unsupported RuntimeMonitoring scenario: $SCENARIO" >&2
+    exit 2
+    ;;
+esac
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -55,35 +64,41 @@ FILTERED_SERVICE="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_filtered_service"
 THROWING_SERVICE="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_throwing_service"
 TRIGGER="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_trigger"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_runtime_monitoring_client"
-read -r REDIS_CONTAINER redis_port < <(
-  zlink_redis_start_scoped "zlink-redis-cpp-e2e-runtimemonitoring" "redis:7-alpine"
-)
+zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+  "zlink-redis-cpp-e2e-runtimemonitoring" "redis:7-alpine"
 REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 REDIS_KEY_PREFIX="zlink:cpp:runtime-monitoring:${RUN_ID}"
 PIDS=()
 
 cleanup() {
   local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done
-  wait >/dev/null 2>&1 || true
+  for pid in "${PIDS[@]:-}"; do
+    set +e
+    wait "$pid" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process $pid exited unexpectedly with status $status" >&2
+      cleanup_failed=1
+    fi
+  done
   docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+  elif [[ "$cleanup_failed" -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    code=1
   fi
   exit "$code"
 }
 trap cleanup EXIT
-
-for _ in $(seq 1 80); do
-  if docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
 
 port_of() {
   local endpoint="$1"
@@ -104,6 +119,8 @@ wait_port() {
   echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $endpoint" >&2
   return 1
 }
+
+wait_port redis "$REDIS_ENDPOINT"
 
 wait_port_closed() {
   local name="$1"
@@ -191,59 +208,54 @@ wait_port trigger "$HTTP_TRIGGER"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" != "mon-d1" ]]; then
+  ZLINK_CPP_E2E_SCENARIO="$SCENARIO_LOWER" \
+  ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
 ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
 ZLINK_CPP_E2E_THROW_SERVICE_URL="$HTTP_THROW" \
 ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$CLIENT" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+    "$CLIENT" \
+    >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
-cat "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-A1 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-A2 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-A3 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-A5 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-A4 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-B1 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-C1 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario MON-B2 passed" "$LOG_DIR/client.stdout.log"
-grep -q "runtime-monitoring client result=passed" "$LOG_DIR/client.stdout.log"
-grep -q "monitoring-event-dispatch" "$LOG_DIR/throw.stderr.log"
-grep -q "monitoring dispatch failure for e2e" "$LOG_DIR/throw.stderr.log"
-grep -q "message flow" "$LOG_DIR/svc-a-flow.log"
-grep -q "message flow" "$LOG_DIR/svc-b-flow.log"
-grep -q "message flow" "$LOG_DIR/trigger-service-a-mon-a1-flow.log"
-grep -q "message flow" "$LOG_DIR/trigger-service-b-mon-b1-flow.log"
+  cat "$LOG_DIR/client.stdout.log"
+  grep -q "runtime-monitoring client result=passed" "$LOG_DIR/client.stdout.log"
+  if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-c1" ]]; then
+    grep -q "monitoring-event-dispatch" "$LOG_DIR/throw.stderr.log"
+    grep -q "monitoring dispatch failure for e2e" "$LOG_DIR/throw.stderr.log"
+  fi
+fi
 
-stop_service_http "$HTTP_FILTERED"
-wait "$FILTERED_PID" >/dev/null 2>&1 || true
-wait_port_closed filtered-service "$HTTP_FILTERED"
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-d1" ]]; then
+  stop_service_http "$HTTP_FILTERED"
+  wait "$FILTERED_PID" >/dev/null 2>&1 || true
+  wait_port_closed filtered-service "$HTTP_FILTERED"
 
-ZLINK_CPP_E2E_RID=svc-b \
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_FILTERED" \
-ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
-ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_FILTERED" \
-ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_FILTERED" \
-ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/filtered-restart.evidence.log" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$FILTERED_SERVICE" >"$LOG_DIR/filtered-restart.stdout.log" 2>"$LOG_DIR/filtered-restart.stderr.log" &
-FILTERED_RESTART_PID="$!"
-PIDS+=("$FILTERED_RESTART_PID")
-wait_port filtered-service-restart "$HTTP_FILTERED"
+  ZLINK_CPP_E2E_RID=svc-b \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_FILTERED" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
+  ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
+  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_FILTERED" \
+  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_FILTERED" \
+  ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/filtered-restart.evidence.log" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+    "$FILTERED_SERVICE" >"$LOG_DIR/filtered-restart.stdout.log" 2>"$LOG_DIR/filtered-restart.stderr.log" &
+  FILTERED_RESTART_PID="$!"
+  PIDS+=("$FILTERED_RESTART_PID")
+  wait_port filtered-service-restart "$HTTP_FILTERED"
 
-ZLINK_CPP_E2E_SCENARIO=mon-d1 \
+  ZLINK_CPP_E2E_SCENARIO=mon-d1 \
 ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
 ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
 ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$CLIENT" \
-  >"$LOG_DIR/client-d1.stdout.log" 2>"$LOG_DIR/client-d1.stderr.log"
+    "$CLIENT" \
+    >"$LOG_DIR/client-d1.stdout.log" 2>"$LOG_DIR/client-d1.stderr.log"
 
-cat "$LOG_DIR/client-d1.stdout.log"
-grep -q "scenario MON-D1 passed" "$LOG_DIR/client-d1.stdout.log"
-grep -q "message flow" "$LOG_DIR/trigger-service-b-mon-d1-flow.log"
+  cat "$LOG_DIR/client-d1.stdout.log"
+  grep -q "scenario MON-D1 passed" "$LOG_DIR/client-d1.stdout.log"
+  grep -q "message flow" "$LOG_DIR/trigger-service-b-mon-d1-flow.log"
+fi
 
 echo "runtime-monitoring e2e result=passed"

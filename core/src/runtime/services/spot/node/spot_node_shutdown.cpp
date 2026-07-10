@@ -160,7 +160,6 @@ int spot_node_t::destroy ()
     _lifecycle.transition_to (service_state_stopping);
     std::vector<std::string> active_peer_endpoints;
     std::string bound_endpoint;
-    std::string router_bind_endpoint;
     int first_error = 0;
     int graceful_error = 0;
     int final_error = 0;
@@ -171,7 +170,7 @@ int spot_node_t::destroy ()
                               static_cast<int> (_lifecycle.state ()),
                               _lifecycle.owned_socket_count ());
     spot_shutdown_logf_local (false, "step=detach_phase_begin node=%p", static_cast<void *> (this));
-    begin_destroy_detach_phase (&active_peer_endpoints, &bound_endpoint, &router_bind_endpoint);
+    begin_destroy_detach_phase (&active_peer_endpoints, &bound_endpoint, NULL);
     spot_shutdown_logf_local (false, "step=detach_phase_complete node=%p peers=%zu",
                               static_cast<void *> (this), active_peer_endpoints.size ());
     for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
@@ -208,12 +207,6 @@ int spot_node_t::destroy ()
     spot_shutdown_logf_local (false, "step=handles_destroyed node=%p error=%d tracked=%zu",
                               static_cast<void *> (this), first_error,
                               _lifecycle.owned_socket_count ());
-    if (first_error == 0 && _runtime && _runtime->attachment_count () == 0
-        && _runtime->live_socket_slot_count () == 0 && _lifecycle.owned_socket_count () != 0) {
-        spot_shutdown_logf_local (false, "step=clear_tracked_sockets node=%p tracked=%zu",
-                                  static_cast<void *> (this), _lifecycle.owned_socket_count ());
-        _lifecycle.clear_tracked_sockets ();
-    }
     preserve_first_error (wait_owned_socket_removals (10000), &first_error);
     graceful_error = first_error;
     final_error = graceful_error;
@@ -225,12 +218,6 @@ int spot_node_t::destroy ()
         const size_t live_slots = _runtime->live_socket_slot_count ();
         const size_t live_attachments = _runtime->attachment_count ();
         const size_t tracked_sockets = _lifecycle.owned_socket_count ();
-        size_t ctx_socket_baseline = 0;
-        if (_ctx) {
-            const size_t ctx_socket_count = _ctx->socket_count ();
-            ctx_socket_baseline =
-              ctx_socket_count > tracked_sockets ? ctx_socket_count - tracked_sockets : 0;
-        }
         used_abortive = true;
         spot_shutdown_logf_local (true,
                                   "service=spot node=%p shutdown=abortive reason=%d live_slots=%zu "
@@ -241,14 +228,7 @@ int spot_node_t::destroy ()
         preserve_first_error (_lifecycle.force_wait_remaining (5000), &final_error);
         preserve_first_error (wait_owned_socket_removals (5000), &final_error);
         if (_runtime->live_socket_slot_count () == 0 && _runtime->attachment_count () == 0) {
-            if (_lifecycle.owned_socket_count () != 0)
-                _lifecycle.clear_tracked_sockets ();
-
             if (_lifecycle.owned_socket_count () == 0) {
-                final_error = 0;
-            } else if (_ctx
-                       && _ctx->wait_for_socket_count_at_most (ctx_socket_baseline, 5000) == 0) {
-                _lifecycle.clear_tracked_sockets ();
                 final_error = 0;
             } else if (_ctx && _ctx->socket_count () == 0) {
                 _lifecycle.clear_tracked_sockets ();

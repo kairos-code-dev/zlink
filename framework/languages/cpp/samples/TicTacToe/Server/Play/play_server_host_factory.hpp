@@ -12,6 +12,7 @@
 #include "Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "Infrastructure/ZLink/Handlers/create_game_handler.hpp"
 #include "Infrastructure/ZLink/Sessions/play_session.hpp"
+#include "Infrastructure/ZLink/Actors/player_actor_transfer_adapter.hpp"
 #include "Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
 #include "Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
 #include "Application/GameCreation/tictactoe_game_creator.hpp"
@@ -66,6 +67,8 @@ class play_server_host_factory_t
               .add_entry_spot<tictactoe_entry_spot_t> ()
               .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type)
+              .add_actor_transfer_adapter<player_actor_t, player_actor_transfer_adapter_t> (
+                sample_names_t::actor_type)
               .add_spot_resolver (
                 "redis-room-route",
                 [topology] (spot_rid_t spot_rid) -> std::optional<spot_route_t> {

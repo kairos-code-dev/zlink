@@ -7,6 +7,7 @@
 #include <functional>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -16,11 +17,14 @@ namespace zlink::framework::runtime
 class offload_executor_t
 {
   public:
-    explicit offload_executor_t (std::size_t worker_count = 1, std::size_t max_queue_length = 0);
+    explicit offload_executor_t (std::size_t worker_count = 1,
+                                 std::size_t max_queue_length = 0,
+                                 std::string thread_name = "zlink-offload");
     offload_executor_t (std::size_t min_worker_count,
                         std::size_t max_worker_count,
                         std::size_t max_queue_length,
-                        std::chrono::milliseconds idle_timeout);
+                        std::chrono::milliseconds idle_timeout,
+                        std::string thread_name = "zlink-offload");
     ~offload_executor_t ();
 
     offload_executor_t (const offload_executor_t &) = delete;
@@ -45,6 +49,7 @@ class offload_executor_t
     std::size_t _max_worker_count = 1;
     std::size_t _max_queue_length = 0;
     std::chrono::milliseconds _idle_timeout{0};
+    std::string _thread_name;
     bool _stopping = false;
     std::size_t _active = 0;
     std::size_t _live_workers = 0;

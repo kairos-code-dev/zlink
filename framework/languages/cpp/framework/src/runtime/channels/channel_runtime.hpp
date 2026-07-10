@@ -78,6 +78,7 @@ class route_client_state_t
   public:
     route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime,
                           serializer_registry_t &serializers);
+    ~route_client_state_t ();
 
     std::shared_ptr<channel_runtime_state_t> runtime;
     serializer_registry_t *serializers;
@@ -110,6 +111,7 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_native_client_t>> native_clients;
     std::map<std::string, std::shared_ptr<channel_native_publisher_t>> native_publishers;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
+    std::vector<std::weak_ptr<runtime::offload_executor_t>> route_client_executors;
     std::map<std::string, route_handler_registry_t> route_handlers;
     std::map<std::string, zlink::peer_weight_t> server_peer_weight_overrides;
     std::map<std::string, std::uint64_t> weighted_discovery_cursors;

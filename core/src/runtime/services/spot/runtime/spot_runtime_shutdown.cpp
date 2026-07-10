@@ -150,6 +150,7 @@ int spot_runtime_t::stop_and_join ()
 {
     spot_runtime_shutdown_logf_local ("stop_and_join begin runtime=%p", static_cast<void *> (this));
     begin_shutdown ();
+    int first_error = 0;
     bool terminate_sent = false;
     if (data_ctrl_front) {
         spot_runtime_shutdown_logf_local ("send terminate runtime=%p", static_cast<void *> (this));
@@ -157,10 +158,8 @@ int spot_runtime_t::stop_and_join ()
         if (send_ascii_frame (data_ctrl_front, spot_control_protocol::cmd_terminate, 0) != 0) {
             const int err = errno != 0 ? errno : EIO;
             if (err != EAGAIN && err != ETIMEDOUT && err != EFSM && err != ETERM && err != EPIPE
-                && err != ENOTSOCK) {
-                errno = err;
-                return -1;
-            }
+                && err != ENOTSOCK)
+                preserve_first_error (err, &first_error);
         } else
             terminate_sent = true;
     }
@@ -202,11 +201,15 @@ int spot_runtime_t::stop_and_join ()
         if (!socket)
             continue;
         socket->set_all_pipes_nodelay ();
-        preserve_first_error (close_runtime_socket (socket, 1000), NULL);
+        preserve_first_error (close_runtime_socket (socket, 1000), &first_error);
     }
     advance_shutdown_phase (spot_shutdown_phase_close_transports);
     advance_shutdown_phase (spot_shutdown_phase_drain_state);
     advance_shutdown_phase (spot_shutdown_phase_cleanup);
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
     return 0;
 }
 

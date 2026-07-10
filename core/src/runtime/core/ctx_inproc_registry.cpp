@@ -130,6 +130,49 @@ void zlink::ctx_inproc_registry_t::connect_pending (const char *addr_, socket_ba
     _pending_connections.erase (pending.first, pending.second);
 }
 
+bool zlink::ctx_inproc_registry_t::has_pending_for_socket (
+  const std::string &addr_, const socket_base_t *socket_) const
+{
+    if (!socket_)
+        return false;
+
+    scoped_lock_t locker (_sync);
+    const std::pair<pending_connections_t::const_iterator, pending_connections_t::const_iterator>
+      pending = _pending_connections.equal_range (addr_);
+    for (pending_connections_t::const_iterator it = pending.first; it != pending.second; ++it) {
+        if (it->second.endpoint.socket == socket_)
+            return true;
+    }
+    return false;
+}
+
+size_t zlink::ctx_inproc_registry_t::materialize_pending_for_socket (
+  const std::string &addr_, const socket_base_t *socket_, socket_base_t *bind_socket_)
+{
+    if (!socket_ || !bind_socket_)
+        return 0;
+
+    options_t bind_options;
+    bind_options.type = ZLINK_CORE_SOCKET_PAIR;
+
+    size_t count = 0;
+    scoped_lock_t locker (_sync);
+    const std::pair<pending_connections_t::iterator, pending_connections_t::iterator> pending =
+      _pending_connections.equal_range (addr_);
+    pending_connections_t::iterator it = pending.first;
+    while (it != pending.second) {
+        if (it->second.endpoint.socket != socket_) {
+            ++it;
+            continue;
+        }
+
+        connect_inproc_sockets (bind_socket_, bind_options, it->second, bind_side);
+        it = _pending_connections.erase (it);
+        ++count;
+    }
+    return count;
+}
+
 void zlink::ctx_inproc_registry_t::collect_pending_addresses (std::vector<std::string> *out_) const
 {
     if (!out_)

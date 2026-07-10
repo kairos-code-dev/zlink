@@ -5,6 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
+SCENARIO="${1:-all}"
+SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
+case "$SCENARIO_LOWER" in
+  all|full|yd-a[1-4]|yd-b[1-3]|yd-c[1-3]|yd-d[1-4]|yd-e[1-3]) ;;
+  *)
+    echo "Unsupported YieldDispatch scenario: $SCENARIO" >&2
+    exit 2
+    ;;
+esac
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -154,6 +163,8 @@ print_failure_logs() {
 
 cleanup() {
   local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
@@ -172,14 +183,29 @@ cleanup() {
   done
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
+      echo "forced cleanup process $pid" >&2
       kill -9 "$pid" >/dev/null 2>&1 || true
+      cleanup_failed=1
     fi
   done
-  wait >/dev/null 2>&1 || true
+  for pid in "${PIDS[@]:-}"; do
+    set +e
+    wait "$pid" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process $pid exited unexpectedly with status $status" >&2
+      cleanup_failed=1
+    fi
+  done
   docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
     print_failure_logs
+  elif [[ "$cleanup_failed" -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    print_failure_logs
+    code=1
   fi
   exit "$code"
 }
@@ -259,17 +285,10 @@ static_checks() {
 
 static_checks
 
-read -r REDIS_CONTAINER redis_port < <(
-  zlink_redis_start_scoped "zlink-redis-cpp-e2e-yielddispatch" "redis:7-alpine"
-)
+zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+  "zlink-redis-cpp-e2e-yielddispatch" "redis:7-alpine"
 REDIS_ENDPOINT="127.0.0.1:${redis_port}"
-
-for _ in $(seq 1 80); do
-  if docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
+wait_port redis "$REDIS_ENDPOINT"
 
 wait_file_contains() {
   local file="$1"
@@ -310,6 +329,7 @@ terminate_gracefully() {
     sleep "$PROCESS_SHUTDOWN_POLL_SECONDS"
   done
   echo "$name did not exit after SIGTERM" >&2
+  echo "forced cleanup process $pid" >&2
   kill -9 "$pid" >/dev/null 2>&1 || true
   wait "$pid" >/dev/null 2>&1 || true
   return 1
@@ -392,67 +412,80 @@ start_play_role play-b "$PLAY_B_HTTP" "$PLAY_B_CONTROL" "$PLAY_B_SPOT_ROUTE" "$P
 start_session_role session-a "$SESSION_A_HTTP" "$SESSION_A_STREAM" "$PLAY_A_CONTROL" "$PLAY_B_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTE" "$SESSION_A_SPOT_ROUTER" "$SESSION_A_SPOT_PUB"
 start_session_role session-b "$SESSION_B_HTTP" "$SESSION_B_STREAM" "$PLAY_B_CONTROL" "$PLAY_A_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTE" "$SESSION_B_SPOT_ROUTER" "$SESSION_B_SPOT_PUB"
 
-ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == yd-[a-d]* || "$SCENARIO_LOWER" == "yd-e1" || "$SCENARIO_LOWER" == "yd-e2" ]]; then
+  CLIENT_SCENARIO="$SCENARIO_LOWER"
+  if [[ "$CLIENT_SCENARIO" == "yd-d1" ]]; then
+    CLIENT_SCENARIO="full"
+  fi
+  ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
 ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
-ZLINK_CPP_E2E_SCENARIO="full" \
-  "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
-grep -q "scenario YD-A1 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-A2 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-A3 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-A4 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-B1 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-B2 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-B3 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-C1 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-C2 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-C3 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-D2 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-D3 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-D4 passed" "$LOG_DIR/client.stdout.log"
-grep -q "scenario YD-E1 passed" "$LOG_DIR/client.stdout.log"
-grep -q "yield-dispatch track-a-e1 result=passed" "$LOG_DIR/client.stdout.log"
-grep -q "^hold-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
-grep -q "^yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
-grep -q "^worker-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
-grep -q "^actor-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
-grep -q "^timer-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
-grep -q "^timeout-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
-echo "scenario YD-D1 passed"
+ZLINK_CPP_E2E_SCENARIO="$CLIENT_SCENARIO" \
+    "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+  if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == "yd-d1" ]]; then
+    grep -q "scenario YD-A1 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-A2 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-A3 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-A4 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-B1 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-B2 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-B3 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-C1 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-C2 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-C3 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-D2 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-D3 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-D4 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario YD-E1 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "yield-dispatch track-a-e1 result=passed" "$LOG_DIR/client.stdout.log"
+    grep -q "^hold-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+    grep -q "^yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+    grep -q "^worker-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+    grep -q "^actor-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+    grep -q "^timer-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+    grep -q "^timeout-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+    echo "scenario YD-D1 passed"
+  else
+    EXPECTED_ID="$(printf '%s' "$SCENARIO_LOWER" | tr '[:lower:]' '[:upper:]')"
+    grep -q "scenario ${EXPECTED_ID} passed" "$LOG_DIR/client.stdout.log"
+  fi
+fi
 
 SHUTDOWN_ID="YD-E3-$RUN_ID"
 SHUTDOWN_SPOT="yield-shutdown-${RUN_ID//[^a-zA-Z0-9]/}"
-ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == "yd-e3" ]]; then
+  ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
 ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
 ZLINK_CPP_E2E_SCENARIO="shutdown-wait" \
 ZLINK_CPP_E2E_REQUEST_ID="$SHUTDOWN_ID" \
 ZLINK_CPP_E2E_SPOT_RID="$SHUTDOWN_SPOT" \
-  "$CLIENT" >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
-SHUTDOWN_CLIENT_PID=$!
-wait_file_contains \
-  "$LOG_DIR/play-a.evidence.log" \
-  "yield-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
-  "YD-E3 pending yield marker was not observed before shutdown." \
-  "$SHUTDOWN_CLIENT_PID"
-kill "$PLAY_A_PID" >/dev/null 2>&1 || true
-wait_file_contains \
-  "$LOG_DIR/client-shutdown-wait.stdout.log" \
-  "yield-dispatch shutdown wait result=passed" \
-  "YD-E3 shutdown client did not observe the public closed/cancelled error." \
-  "$SHUTDOWN_CLIENT_PID"
-terminate_gracefully play-a "$PLAY_A_PID"
-wait "$SHUTDOWN_CLIENT_PID"
+    "$CLIENT" >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
+  SHUTDOWN_CLIENT_PID=$!
+  wait_file_contains \
+    "$LOG_DIR/play-a.evidence.log" \
+    "yield-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
+    "YD-E3 pending yield marker was not observed before shutdown." \
+    "$SHUTDOWN_CLIENT_PID"
+  kill "$PLAY_A_PID" >/dev/null 2>&1 || true
+  wait_file_contains \
+    "$LOG_DIR/client-shutdown-wait.stdout.log" \
+    "yield-dispatch shutdown wait result=passed" \
+    "YD-E3 shutdown client did not observe the public closed/cancelled error." \
+    "$SHUTDOWN_CLIENT_PID"
+  terminate_gracefully play-a "$PLAY_A_PID"
+  wait "$SHUTDOWN_CLIENT_PID"
 
-start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
-PLAY_A_PID="${PIDS[-1]}"
+  start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
+  PLAY_A_PID="${PIDS[-1]}"
   sleep "$SCENARIO_SETTLE_SECONDS"
 
-ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
+  ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
 ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
 ZLINK_CPP_E2E_SCENARIO="shutdown-recovery" \
 ZLINK_CPP_E2E_REQUEST_ID="$SHUTDOWN_ID-recovery" \
 ZLINK_CPP_E2E_SPOT_RID="$SHUTDOWN_SPOT" \
-  "$CLIENT" >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
-grep -q "yield-dispatch shutdown recovery result=passed" "$LOG_DIR/client-shutdown-recovery.stdout.log"
+    "$CLIENT" >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
+  grep -q "yield-dispatch shutdown recovery result=passed" "$LOG_DIR/client-shutdown-recovery.stdout.log"
+fi
 
 python3 - "$LOG_DIR/yield-dispatch-report.json" <<'PY'
 import json

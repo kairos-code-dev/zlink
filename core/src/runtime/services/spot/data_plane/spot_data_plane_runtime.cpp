@@ -40,6 +40,16 @@ static void spot_data_plane_debug_logf (const char *fmt_, ...)
     std::fflush (stderr);
 }
 
+static void close_monitor_socket (const char *label_, socket_base_t *&socket_)
+{
+    if (!socket_)
+        return;
+
+    spot_data_plane_debug_logf ("close %s begin sid=%d\n", label_, socket_->socket_id ());
+    (void) socket_close_ops_t::request_close (socket_, 0);
+    spot_data_plane_debug_logf ("close %s end\n", label_);
+}
+
 static void close_mesh_peer_observer (spot_node_t *node_, spot_data_plane_runtime_state_t *state_)
 {
     if (!state_)
@@ -63,30 +73,15 @@ static void close_mesh_peer_observer (spot_node_t *node_, spot_data_plane_runtim
         spot_data_plane_debug_logf ("mesh_xsub stop monitor end\n");
     }
     if (pub_monitor) {
-        spot_data_plane_debug_logf ("close pub_monitor begin sid=%d\n", pub_monitor->socket_id ());
         spot_node_access_t::untrack_owned_socket (node_, pub_monitor);
-        (void) socket_close_ops_t::request_close (pub_monitor, 0);
-        spot_data_plane_debug_logf ("close pub_monitor end\n");
+        close_monitor_socket ("pub_monitor", pub_monitor);
     }
     if (xsub_monitor) {
-        spot_data_plane_debug_logf ("close xsub_monitor begin sid=%d\n",
-                                    xsub_monitor->socket_id ());
         spot_node_access_t::untrack_owned_socket (node_, xsub_monitor);
-        (void) socket_close_ops_t::request_close (xsub_monitor, 0);
-        spot_data_plane_debug_logf ("close xsub_monitor end\n");
+        close_monitor_socket ("xsub_monitor", xsub_monitor);
     }
-    if (pub_source_monitor) {
-        spot_data_plane_debug_logf ("close pub_source_monitor begin sid=%d\n",
-                                    pub_source_monitor->socket_id ());
-        (void) socket_close_ops_t::request_close (pub_source_monitor, 0);
-        spot_data_plane_debug_logf ("close pub_source_monitor end\n");
-    }
-    if (xsub_source_monitor) {
-        spot_data_plane_debug_logf ("close xsub_source_monitor begin sid=%d\n",
-                                    xsub_source_monitor->socket_id ());
-        (void) socket_close_ops_t::request_close (xsub_source_monitor, 0);
-        spot_data_plane_debug_logf ("close xsub_source_monitor end\n");
-    }
+    close_monitor_socket ("pub_source_monitor", pub_source_monitor);
+    close_monitor_socket ("xsub_source_monitor", xsub_source_monitor);
 }
 
 static int open_mesh_peer_observer (spot_data_plane_runtime_state_t *state_)

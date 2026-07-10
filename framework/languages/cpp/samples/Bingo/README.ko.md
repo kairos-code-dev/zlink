@@ -84,9 +84,7 @@ script 는 CTest sample parity와 actor lifecycle runtime gate를 먼저 실행�
 API, Play, Session 서버 실행 파일을 계속 실행 모드로 띄우고 public client
 실행 파일로 full client/server self-check 를 수행한다.
 
-`BINGO_REDIS_ENDPOINT`가 있으면 script 는 그 Redis를 사용한다. 값이 없으면 전용 Redis
-Docker container를 Docker가 배정한 loopback port로 띄우고 self-check 가 끝나면 정상/실패와
-관계없이 그 container를 정리한다. 따라서 기본 실행의 room 할당 상태는 격리되어 개발자의
-로컬 Redis를 건드리지 않는다. Docker를 사용할 수 없는 환경에서는 `BINGO_REDIS_ENDPOINT`를
-명시해야 한다. script 는 실행마다 고유한 `BINGO_REDIS_KEY_PREFIX`도 전달하므로 같은 Redis를
-쓰는 다른 테스트의 match queue key와 섞이지 않는다.
+script 는 전용 Redis Docker container를 Docker가 배정한 loopback port로 띄우고 self-check 가
+끝나면 정상/실패와 관계없이 그 container를 정리한다. 따라서 room 할당 상태는 격리되어 개발자의
+로컬 Redis를 건드리지 않는다. script 는 실행마다 고유한 `BINGO_REDIS_KEY_PREFIX`도 전달하므로
+같은 Redis를 쓰는 다른 테스트의 match queue key와 섞이지 않는다.

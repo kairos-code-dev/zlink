@@ -147,18 +147,21 @@
       `framework/languages/cpp/e2e/SpotService/logs/20260708-092831-812430`,
       `framework/languages/cpp/e2e/SpotService/logs/20260708-092903-814770`
     - 비고: focused 기본 run에서도 startup crash는 재현되지 않았다.
-  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_REDIS_E2E_ENDPOINT=127.0.0.1:59043 timeout 2400s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+  - 과거 실패 기록. 이 실행은 현재 runner 정책에서 허용하지 않는 외부 Redis endpoint 재사용 명령으로
+    수행했으므로, 재실행용 명령으로 싣지 않는다.
     - 결과: failed
     - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-093553-835429`
     - 통과 child: `SM-B1`, `SM-B2`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-B9`,
       `SM-D1`, `SM-D6`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D7`, `SM-D8`, `SM-D9`,
       `SM-D11`, `SM-D13`, `SM-D10`, `SM-D12`, `SM-D14`
     - 실패 child: `SM-D15`
-    - 비고: runner 내부 Docker 지연을 피하려고 별도 Redis 컨테이너를 먼저 띄운 뒤 external
-      Redis endpoint로 full sweep을 실행했다. `SM-D15`에서 `play-b`가 health 응답 전 startup 중
+    - 비고: 당시에는 runner 내부 Docker 지연을 피하려고 별도 Redis 컨테이너를 먼저 띄운 뒤 external
+      Redis endpoint로 full sweep을 실행했다. 현재 C++ runner 정책은 사용자 환경에서 넘긴 외부
+      Redis endpoint 재사용을 허용하지 않는다. `SM-D15`에서 `play-b`가 health 응답 전 startup 중
       segmentation fault로 종료되어 실패했다. 이는 framework-level retry/reconnect로 가릴 대상이
       아니며, startup crash backtrace 확보가 필요하다.
-  - `nice -n 10 env ZLINK_CPP_E2E_SKIP_BUILD=1 ZLINK_CPP_E2E_GDB_ROLES=play-b ZLINK_REDIS_E2E_ENDPOINT=127.0.0.1:20369 timeout 420s ./framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D15`
+  - 과거 진단 기록. 이 실행은 현재 runner 정책에서 허용하지 않는 외부 Redis endpoint 재사용 명령으로
+    수행했으므로, 재실행용 명령으로 싣지 않는다.
     - 결과: passed
     - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260708-094407-852559`
     - 비고: gdb wrapper를 켠 focused run에서는 startup crash가 재현되지 않아 backtrace를 얻지

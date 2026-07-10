@@ -43,7 +43,7 @@
   observer fault state, admin weight state는 전용 factory/handler/infrastructure 파일로 분리했다.
 - `.NET`의 `ResilienceProcessManager`가 담당하는 provider process 시작, health 대기, 종료,
   stdout/stderr 로그 저장 책임은 C++ `run_e2e.sh`가 담당한다. Redis는 runner가 loopback container로
-  시작하며, 외부 Redis를 지정하면 RL-C4 outage 검증은 실행하지 않는다.
+  시작하며, 사용자 환경에서 넘긴 외부 Redis endpoint를 공유 Redis로 재사용하지 않는다.
 - Consumer host가 Redis location store를 조회해 topology endpoint를 제공한다. 별도 registry host,
   registry evidence store, registry fault state, registry handler는 현재 C++ 경로에서 제거했다.
   Profile request/reply/send DTO는 `.NET`식 marker 필드를 지원하며, marker가 비어 있는 기존 scenario는

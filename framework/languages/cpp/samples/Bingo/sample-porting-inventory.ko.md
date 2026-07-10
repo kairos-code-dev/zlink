@@ -72,8 +72,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | `common: `bingo=completed` marker` | `Client/main.cpp`, `run_sample.sh` | validation | done | runner가 client log marker를 검사한다. |
 | `common: stream-inbound marker와 Notify marker` | `Client/main.cpp`, `run_sample.sh` | validation | done | inbound observer log와 notify 수신 marker를 검사한다. |
 | `common: message-flow server evidence` | `Server/sample_log_dir.hpp`, `run_sample.sh`, `run_sample.ps1` | validation | done | runner가 sample log directory에서 message-flow log를 검사하고 player actor destroy 완료와 observer 미-destroy 조건을 확인한다. |
-| `common: 외부 Redis endpoint가 있으면 사용` | `run_sample.sh` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker를 띄우지 않고 해당 endpoint를 readiness 확인 후 사용한다. |
-| `common: Redis endpoint가 없으면 runner가 Docker Redis 준비` | `run_sample.sh` | runner | done | 전용 Redis container를 만들고 cleanup에서 제거한다. |
+| `common: runner가 Docker Redis 준비` | `run_sample.sh` | runner | done | 전용 Redis container를 만들고 cleanup에서 제거한다. 외부 Redis endpoint를 받아 로컬 Redis나 공유 Redis를 건드리지 않는다. |
 | `common: Redis key prefix 격리` | `run_sample.sh`, `Server/Configuration/sample_topology.hpp` | runner | done | 실행마다 고유한 `BINGO_REDIS_KEY_PREFIX`를 전달한다. |
 | `common: compact 구현 금지` | `Server/Api`, `Server/Session`, `Server/Play` | structure | done | 단일 `--role` 실행 파일이 아니라 역할별 실행 파일로 분리되어 있다. |
 | `common: Domain은 framework 타입을 모름` | `Server/Play/Domain/Bingo/*.hpp` | layering | done | card, game, room rule 타입을 Play domain 아래에 둔다. |

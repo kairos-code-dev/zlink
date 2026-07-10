@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <mutex>
 #include <utility>
 
 #include <boost/asio/awaitable.hpp>
@@ -87,6 +88,8 @@ class coroutine_executor_t
     void drain ();
 
   private:
+    std::mutex _mutex;
+    bool _drained = false;
     boost::asio::thread_pool _pool;
 };
 

@@ -20,6 +20,9 @@ LOG_DIR="$RUN_DIR/logs"
 REDIS_CONTAINER_NAME=""
 mkdir -p "$LOG_DIR"
 cleanup() {
+  local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
@@ -30,10 +33,19 @@ cleanup() {
         sleep 0.05
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
+        echo "forced cleanup process ${pid}" >&2
         kill -9 "${pid}" >/dev/null 2>&1 || true
+        cleanup_failed=1
       fi
     fi
-    wait "${pid}" 2>/dev/null || true
+    set +e
+    wait "${pid}" 2>/dev/null
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process ${pid} exited unexpectedly with status ${status}" >&2
+      cleanup_failed=1
+    fi
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -43,8 +55,12 @@ cleanup() {
   else
     [[ -z "${DELIVERYDISPATCH_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
+  if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
+    code=1
+  fi
+  return "$code"
 }
-trap cleanup EXIT
+trap 'cleanup; status=$?; exit "$status"' EXIT
 
 read -r DELIVERYDISPATCH_RESERVED_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_TRACKING_SPOT_ROUTER DELIVERYDISPATCH_TRACKING_SPOT DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
 import socket
@@ -92,12 +108,9 @@ if [[ -z "$DELIVERYDISPATCH_RESERVED_PORT" || -z "$DELIVERYDISPATCH_COURIER_ACTO
   echo "This environment may block local socket creation." >&2
   exit 1
 fi
-if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
-  read -r REDIS_CONTAINER_NAME redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-sample-deliverydispatch" "redis:7-alpine"
-  )
-  export DELIVERYDISPATCH_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
-fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
+  "zlink-redis-cpp-sample-deliverydispatch" "redis:7-alpine"
+export DELIVERYDISPATCH_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
 export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:$$:}"
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${DELIVERYDISPATCH_API_HTTP_PORT}"
 export DELIVERYDISPATCH_CENTER_ROUTE
@@ -146,6 +159,19 @@ wait_port() {
 }
 
 wait_port redis "$(port_of "$DELIVERYDISPATCH_REDIS_ENDPOINT")"
+
+wait_framework_probe() {
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+    if "$BIN_DIR/sample_cpp_framework_deliverydispatch_probe" >"$LOG_DIR/probe.log" 2>&1; then
+      grep -q "topology=ready" "$LOG_DIR/probe.log"
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for DeliveryDispatch sample probe" >&2
+  dump_logs
+  return 1
+}
 
 start_role() {
   local name="$1"
@@ -202,14 +228,7 @@ wait_port courier-actor-node-2-spot "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_
 wait_port courier-gateway "$(port_of "$DELIVERYDISPATCH_COURIER_ROUTE")"
 wait_port dispatch-center "$(port_of "$DELIVERYDISPATCH_CENTER_ROUTE")"
 wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
-
-sleep 5
-
-"$BIN_DIR/sample_cpp_framework_deliverydispatch_probe" >"$LOG_DIR/probe.log" 2>&1 || {
-  dump_logs
-  exit 1
-}
-grep -q "topology=ready" "$LOG_DIR/probe.log"
+wait_framework_probe
 
 "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" \
   --api-url "$DELIVERYDISPATCH_API_HTTP" \

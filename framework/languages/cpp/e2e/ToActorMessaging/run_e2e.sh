@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/../redis-common.sh"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-${ZLINK_CPP_BUILD_DIR:-$SCRIPT_DIR/../../build}}"
+SCENARIO="${*:-all}"
+SCENARIO="${SCENARIO// /,}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
@@ -12,8 +14,19 @@ LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 pids=()
 REDIS_CONTAINER=""
+REDIS_CONTAINER_OWNED=0
 
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
@@ -85,16 +98,26 @@ PY
   return 1
 }
 
-if [[ -n "${ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
+if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT"
-  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+  echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
+elif [[ -n "${ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT:-}" ]]; then
+  echo "External Redis endpoint is not supported by the C++ ToActorMessaging e2e runner." >&2
+  exit 2
 elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+  if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" ]]; then
+    REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
+    REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+    echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
+  else
+    echo "External Redis endpoint is not supported by the C++ ToActorMessaging e2e runner." >&2
+    exit 2
+  fi
 else
-  read -r REDIS_CONTAINER redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-e2e-toactormessaging" "redis:7-alpine"
-  )
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-cpp-e2e-toactormessaging" "redis:7-alpine"
+  REDIS_CONTAINER_OWNED=1
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
@@ -118,15 +141,27 @@ print_logs() {
 
 cleanup() {
   local status="$?"
+  local cleanup_failed=0
+  local wait_status
   set +e
   print_logs "$status"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     kill "${pids[$i]}" >/dev/null 2>&1 || true
   done
-  if [[ -n "$REDIS_CONTAINER" ]]; then
+  for pid in "${pids[@]:-}"; do
+    wait "$pid" >/dev/null 2>&1
+    wait_status=$?
+    if [[ "$wait_status" != "0" && "$wait_status" != "127" && "$wait_status" != "130" && "$wait_status" != "143" ]]; then
+      echo "cleanup process $pid exited unexpectedly with status $wait_status" >&2
+      cleanup_failed=1
+    fi
+  done
+  if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
-  wait >/dev/null 2>&1 || true
+  if [[ "$cleanup_failed" -ne 0 && "$status" -eq 0 ]]; then
+    status=1
+  fi
   exit "$status"
 }
 trap cleanup EXIT
@@ -156,19 +191,19 @@ PY
 
 wait_http() {
   local endpoint="$1"
-  for _ in $(seq 1 300); do
-    if python3 - "${endpoint}/health" >/dev/null 2>&1 <<'PY'
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
+    if python3 - "${endpoint}/health" "$HTTP_PROBE_TIMEOUT_SECONDS" >/dev/null 2>&1 <<'PY'
 import sys
 import urllib.request
-with urllib.request.urlopen(sys.argv[1], timeout=1) as response:
+with urllib.request.urlopen(sys.argv[1], timeout=float(sys.argv[2])) as response:
     response.read()
 PY
     then
       return 0
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $endpoint" >&2
   return 1
 }
 
@@ -202,4 +237,5 @@ for role in actor caller; do
   wait_role "$role"
 done
 
-"$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_client" > >(tee "$LOG_DIR/client.log") 2>"$LOG_DIR/client.stderr.log"
+ZLINK_CPP_E2E_SCENARIO="$SCENARIO" \
+  "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_client" > >(tee "$LOG_DIR/client.log") 2>"$LOG_DIR/client.stderr.log"

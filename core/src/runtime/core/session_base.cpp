@@ -253,7 +253,9 @@ void zlink::session_base_t::engine_ready ()
 
         int hwms[2] = {conflate ? -1 : options.rcvhwm, conflate ? -1 : options.sndhwm};
         bool conflates[2] = {conflate, conflate};
-        const int rc = pipepair (parents, pipes, hwms, conflates);
+        //  Session<->socket pipes back one transport connection; use the
+        //  small per-connection chunk granularity.
+        const int rc = pipepair (parents, pipes, hwms, conflates, true);
         errno_assert (rc == 0);
 
         //  Plug the local end of the pipe.

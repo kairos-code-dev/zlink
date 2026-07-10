@@ -262,7 +262,9 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         const bool conflate = get_effective_conflate_option (options);
         int hwms[2] = {conflate ? -1 : options.sndhwm, conflate ? -1 : options.rcvhwm};
         bool conflates[2] = {conflate, conflate};
-        rc = pipepair (parents, new_pipes, hwms, conflates);
+        //  Socket<->session pipes back one transport connection; use the
+        //  small per-connection chunk granularity.
+        rc = pipepair (parents, new_pipes, hwms, conflates, true);
         errno_assert (rc == 0);
 
         attach_pipe (new_pipes[0], subscribe_to_all, true);

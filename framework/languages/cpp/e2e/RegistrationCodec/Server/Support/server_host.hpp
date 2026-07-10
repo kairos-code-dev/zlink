@@ -137,7 +137,6 @@ inline void configure_services (zlink::framework::service_collection_t &services
     services.add_singleton<singleton_dependency_t> ();
     services.add_singleton<filter_order_state_t> ();
     services.add_scoped<scoped_dependency_t> ();
-    services.add_transient<manual_route_handler_t> ();
 }
 
 inline void configure_codecs (zlink::framework::codec_options_builder_t codecs,
@@ -156,14 +155,6 @@ inline void configure_channels (zlink::framework::zlink_framework_options_t &opt
       .enable_server (server.api_endpoint)
       .enable_client (server.api_endpoint)
       .use_handler_group (handler_group);
-    if (server.server_mode != "json-only-peer") {
-        options.add_route_mesh_channel (route_channel)
-          .enable_server (server.route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from ("rc-server"))
-          .enable_client (server.route_endpoint)
-          .add_request_handler<manual_route_handler_t, echo_manual_req_t, echo_manual_res_t> (
-            "EchoManual", &manual_route_handler_t::handle);
-    }
 }
 
 inline void configure_http (zlink::framework::http_options_builder_t &http,

@@ -59,6 +59,7 @@ PIDS=()
 LAST_PID=""
 PUBLISHER_PID=""
 REDIS_CONTAINER=""
+REDIS_CONTAINER_OWNED=0
 
 wait_tcp() {
   local host="$1"
@@ -87,13 +88,17 @@ PY
 }
 
 REDIS_KEY_PREFIX="zlink:e2e:cfg3:$(date +%s)-$$"
-if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
   REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+  echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
+elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  echo "External Redis endpoint is not supported by the C++ PubSub e2e runner." >&2
+  exit 2
 else
-  read -r REDIS_CONTAINER redis_port < <(
-    zlink_redis_start_scoped "zlink-redis-cpp-e2e-pubsub" "redis:7-alpine"
-  )
+  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+    "zlink-redis-cpp-e2e-pubsub" "redis:7-alpine"
+  REDIS_CONTAINER_OWNED=1
   REDIS_ENDPOINT="127.0.0.1:${redis_port}"
   echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 fi
@@ -104,20 +109,31 @@ echo "redis key prefix=$REDIS_KEY_PREFIX"
 
 cleanup() {
   local code=$?
+  local cleanup_failed=0
+  local status
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done
-  wait >/dev/null 2>&1 || true
-  if [[ -n "$REDIS_CONTAINER" ]]; then
+  for pid in "${PIDS[@]:-}"; do
+    set +e
+    wait "$pid" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "cleanup process $pid exited unexpectedly with status $status" >&2
+      cleanup_failed=1
+    fi
+  done
+  if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-  elif command -v redis-cli >/dev/null 2>&1; then
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
-      | xargs -r redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" DEL >/dev/null 2>&1 || true
   fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+  elif [[ "$cleanup_failed" -ne 0 ]]; then
+    echo "E2E cleanup failed. Logs: $LOG_DIR" >&2
+    code=1
   fi
   exit "$code"
 }
@@ -263,9 +279,17 @@ start_subscriber() {
 
 stop_pid() {
   local pid="$1"
+  local status
   if kill -0 "$pid" >/dev/null 2>&1; then
     kill "$pid" >/dev/null 2>&1 || true
-    wait "$pid" >/dev/null 2>&1 || true
+    set +e
+    wait "$pid" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+      echo "stopped process $pid exited unexpectedly with status $status" >&2
+      return 1
+    fi
   fi
 }
 
@@ -283,10 +307,18 @@ remember_pid_file() {
 }
 
 stop_all_subscribers() {
+  local status
   for pid in "${SUB_PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
-      wait "$pid" >/dev/null 2>&1 || true
+      set +e
+      wait "$pid" >/dev/null 2>&1
+      status=$?
+      set -e
+      if [[ "$status" != "0" && "$status" != "127" && "$status" != "130" && "$status" != "143" ]]; then
+        echo "stopped subscriber process $pid exited unexpectedly with status $status" >&2
+        return 1
+      fi
     fi
   done
   SUB_PIDS=()

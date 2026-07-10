@@ -250,6 +250,13 @@ class asio_engine_t : public i_engine
     void maybe_schedule_stream_encoder_growth (size_t filled_out_batch_);
 
     static const size_t read_buffer_size = 8192;
+
+    //  Handshake-phase reads (no decoder yet) use a small dedicated buffer.
+    //  The largest frame parsed from it is the ZMP HELLO (<= ~272 bytes,
+    //  received incrementally); once the decoder exists every new read
+    //  targets the decoder buffer instead, so sizing this at 8 KB only
+    //  wasted committed pages on every connection.
+    static const size_t handshake_read_buffer_size = 512;
     enum
     {
         pending_buffer_pool_max = 4

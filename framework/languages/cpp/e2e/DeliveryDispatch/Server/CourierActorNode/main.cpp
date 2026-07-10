@@ -127,7 +127,7 @@ class courier_entry_spot_t : public entry_spot_t
     }
 
     spot_actor_join_response_t
-    on_actor_join (courier_actor_t &, const zlink::message_t &)
+    on_actor_join (std::string_view, const zlink::message_t &)
     {
         return spot_actor_join_response_t::accept ();
     }

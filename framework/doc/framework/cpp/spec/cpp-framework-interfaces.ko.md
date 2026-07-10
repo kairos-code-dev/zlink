@@ -1246,9 +1246,6 @@ public:
     template <typename TActorFactory>
     spot_node_builder_t &add_actor_factory(std::string actor_type);
 
-    template <typename TActor>
-    spot_node_builder_t &add_stateless_actor_transfer(std::string actor_type);
-
     template <typename TActor, typename TAdapter>
     spot_node_builder_t &add_actor_transfer_adapter(std::string actor_type);
 };
@@ -1282,15 +1279,6 @@ public:
 struct spot_actor_join_response_t {
     bool accepted;
     std::optional<zlink::framework::message_t> reply;
-};
-
-struct actor_join_admission_t {
-    std::string actor_id;
-    std::string actor_type;
-    spot_rid_t source_spot_rid;
-    spot_rid_t target_spot_rid;
-    node_rid_t source_node_rid;
-    node_rid_t target_node_rid;
 };
 
 template <typename TActor>
@@ -1433,17 +1421,16 @@ Spot Actor Join / Transfer 관련 interface 는
 현재 C++ 구현이나 contract test가 이 표면과 다르면 구현 완료가 아니라 public contract parity
 gap으로 기록하고, 구현 작업에서 이 문서에 맞춘다.
 
-`actor_transfer_adapter_t<TActor>` 등록은 remote transfer 지원 여부를 나타낸다. 등록이 없으면
-framework는 remote transfer를 시작하지 않고 실패해야 한다. state 이동이 필요 없는 actor type은
-`add_stateless_actor_transfer<TActor>(...)`로 framework 기본 adapter를 등록한다. custom state를
-전달해야 하는 actor type은 `add_actor_transfer_adapter<TActor, TAdapter>(...)`로 adapter type을
-등록한다.
+`actor_transfer_adapter_t<TActor>`는 remote transfer에서 domain state를 옮겨야 하는 actor type에만
+등록한다. 등록이 없으면 framework는 빈 `message_t`를 전송하고 target의 actor factory로 actor를
+만드는 기본 경로를 사용한다. custom state를 전달해야 하는 actor type은
+`add_actor_transfer_adapter<TActor, TAdapter>(...)`로 adapter type을 등록한다.
 
 `.NET`의 일반 packet handler registry와 같은 역할은 C++에서 `spot_context_t::handlers()`가
 맡는다. 다만 actor lifecycle은 registry 등록 표면이 아니다. user Spot은
-`on_actor_join(admission, zlink::framework::message_t)`, `on_actor_joined(actor)`, `onLeaveActor(actor)`
+`on_actor_join(actor_id, zlink::framework::message_t)`, `on_actor_joined(actor)`, `onLeaveActor(actor)`
 member callback을 직접 제공한다. Entry Spot도 user Spot에서 Entry Spot으로 돌아오는
-명시적 join을 `on_actor_join(admission, zlink::framework::message_t)`에서 accept/reject하고, commit 이후
+명시적 join을 `on_actor_join(actor_id, zlink::framework::message_t)`에서 accept/reject하고, commit 이후
 callback인 `on_actor_joined(actor)`와 `onLeaveActor(actor)`를 제공한다.
 일반 Spot 타입은 `zlink::framework::spot_t`를 상속해야 하고, Entry Spot 타입은
 `zlink::framework::entry_spot_t`를 상속해야 한다. 이름이나 파일 위치로 역할을 추론하지 않는다.
@@ -1454,7 +1441,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
                           public bingo_room_t {
 public:
     zlink::framework::spot_actor_join_response_t on_actor_join(
-      const zlink::framework::actor_join_admission_t &admission,
+      std::string_view actor_id,
       const zlink::framework::message_t &request);
 
     start_bingo_game_res_t start_game(const player_actor_t &actor,
@@ -1479,9 +1466,9 @@ public:
 ```
 
 일반 Spot packet member와 subscription member는 payload 하나를 받는다.
-actor join admission을 처리하는 member는 `actor_join_admission_t`와
-`zlink::framework::message_t` request를 받으며, `spot_actor_join_response_t`로 accepted 여부와
-optional reply `zlink::framework::message_t`를 돌려준다.
+actor join admission을 처리하는 member는 actor id와 `zlink::framework::message_t` request만 받으며,
+`spot_actor_join_response_t`로 accepted 여부와 optional reply `zlink::framework::message_t`를 돌려준다.
+actor type과 source/target Spot 및 node 정보는 framework 내부 routing과 검증에만 사용한다.
 accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
 `on_actor_joined(actor)`를 호출한다. accepted가 `false`이면 actor 위치를 바꾸지 않고
 post-joined callback도 호출하지 않는다. 예전 change-result 값 객체와 change kind는

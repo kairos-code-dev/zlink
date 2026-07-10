@@ -4,6 +4,8 @@
 
 #include <zlink.hpp>
 
+#include <chrono>
+
 namespace zlink::framework::runtime
 {
 
@@ -56,6 +58,35 @@ zlink::service::spot_node_t &framework_runtime_t::add_spot_node ()
 
 void framework_runtime_t::drain ()
 {
+    if (_context) {
+        try {
+            _context->options ().blocky (false);
+        }
+        catch (...) {
+        }
+    }
+    if (_router) {
+        try {
+            _router->options ().linger (std::chrono::milliseconds (0));
+        }
+        catch (...) {
+        }
+    }
+    if (_dealer) {
+        try {
+            _dealer->options ().linger (std::chrono::milliseconds (0));
+        }
+        catch (...) {
+        }
+    }
+    if (_stream) {
+        try {
+            _stream->options ().linger (std::chrono::milliseconds (0));
+        }
+        catch (...) {
+        }
+    }
+    _offload.drain ();
     _spot_node.reset ();
     _stream.reset ();
     _dealer.reset ();
@@ -65,7 +96,6 @@ void framework_runtime_t::drain ()
         _context->term ();
         _context.reset ();
     }
-    _offload.drain ();
 }
 
 offload_executor_t &framework_runtime_t::offload_executor () noexcept

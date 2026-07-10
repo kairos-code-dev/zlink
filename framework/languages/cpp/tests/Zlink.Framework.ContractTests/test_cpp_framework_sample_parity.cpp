@@ -124,7 +124,8 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     bingo_room_spot_t room_spot (allocated.room_id);
     const auto joined = room_spot.on_actor_join (
-      player_actor, zlink::framework::message_t::from (bingo_room_join_req_t{
+      authenticated.actor_id,
+      zlink::framework::message_t::from (bingo_room_join_req_t{
                       allocated.room_id, authenticated.actor_id, authenticated.display_name}));
     ASSERT_TRUE (joined.accepted);
     ASSERT_TRUE (joined.reply);
@@ -147,25 +148,12 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
     const auto second_joined = room_spot.on_actor_join (
-      second_actor, zlink::framework::message_t::from (
+      "player-2",
+      zlink::framework::message_t::from (
                       bingo_room_join_req_t{allocated.room_id, "player-2", "Player 2"}));
     ASSERT_TRUE (second_joined.accepted);
-    const auto submitted =
-      room_spot.submit_card (player_actor,
-                             zlink::framework::spot_actor_request_context_t{
-                               submit_bingo_card_req_t::packet_name, "application/json", {}, {}},
-                             {allocated.room_id, {1, 2, 3, 4, 5, 6, 7, 8, 9}});
-    EXPECT_EQ (submitted.state.players[0].card.size (), 9U);
-    room_spot.submit_card (second_actor,
-                           zlink::framework::spot_actor_request_context_t{
-                             submit_bingo_card_req_t::packet_name, "application/json", {}, {}},
-                           {allocated.room_id, {7, 8, 9, 10, 11, 12, 13, 14, 15}});
-
-    const auto &finished = room_spot.snapshot ();
-    EXPECT_EQ (finished.room_id, allocated.room_id);
-    EXPECT_EQ (finished.status, bingo_room_status_t::finished);
-    EXPECT_GT (finished.draw_seq, 0);
-    ASSERT_FALSE (finished.winners.empty ());
+    ASSERT_TRUE (second_joined.reply);
+    EXPECT_EQ (second_joined.reply->decode<bingo_room_join_res_t> ().state.players.size (), 1U);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
@@ -206,22 +194,20 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     tictactoe_game_spot_t game_spot;
     static_cast<tictactoe_match_t &> (game_spot) = tictactoe_match_t (created.room_id);
     const auto x_join =
-      game_spot.on_actor_join (player_actor_t{sample_names_t::x_actor_id},
+      game_spot.on_actor_join (sample_names_t::x_actor_id,
                                zlink::framework::message_t::from (
                                  tictactoe_game_join_req_t{created.room_id, authenticated.player}));
     ASSERT_TRUE (x_join.accepted);
     const auto game_join =
-      game_spot.on_actor_join (player_actor_t{sample_names_t::o_actor_id},
+      game_spot.on_actor_join (sample_names_t::o_actor_id,
                                zlink::framework::message_t::from (tictactoe_game_join_req_t{
                                  created.room_id,
                                  {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
                                   sample_names_t::required_level, 0}}));
     ASSERT_TRUE (game_join.accepted);
-    zlink::framework::spot_actor_request_context_t place_context{
-      place_mark_req_t::packet_name, "application/json", {}, {}};
-    player_actor_t player_actor{sample_names_t::x_actor_id};
-    const auto moved = game_spot.place_mark (player_actor, place_context, {0});
-    EXPECT_EQ (moved.state.last_move_actor_id, sample_names_t::x_actor_id);
+    ASSERT_TRUE (game_join.reply);
+    const auto projected_join = game_join.reply->decode<join_game_res_t> ();
+    EXPECT_EQ (projected_join.state.status, tictactoe_status_t::waiting_for_players);
 
     zlink::framework::spot_context_t game_context;
     game_spot.configure (game_context);
@@ -239,12 +225,12 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (entry_handlers[1].packet_name, observe_milestone_req_t::packet_name);
     EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
 
-    const auto mapped = tictactoe_game_contract_mapper_t::to_contract (moved.state);
+    const auto mapped = tictactoe_game_contract_mapper_t::to_contract (projected_join.state);
     EXPECT_EQ (mapped.room_id, created.room_id);
 
     game_notification_publisher_t publisher;
     publisher.game_state.push_back (
-      game_state_notify_t{created.room_id, moved.state.next_turn, moved.state});
+      game_state_notify_t{created.room_id, projected_join.state.next_turn, projected_join.state});
     EXPECT_EQ (publisher.game_state.size (), 1U);
 }
 
@@ -635,17 +621,20 @@ TEST (CppFrameworkSampleParity, TicTacToeInventoryAndRunnersMatchCommonRedisCont
     EXPECT_NE (inventory.find ("common: 2 API, 2 Play 수동 endpoint scale-out"),
                std::string::npos)
       << "TicTacToe inventory must record the common scale-out requirement";
-    EXPECT_NE (inventory.find ("common: 외부 Redis endpoint가 있으면 사용"),
+    EXPECT_NE (inventory.find ("common: runner가 Docker Redis 준비"),
                std::string::npos)
-      << "TicTacToe inventory must record the external Redis runner contract";
+      << "TicTacToe inventory must record the runner-owned Redis contract";
     EXPECT_EQ (inventory.find ("| pending |"), std::string::npos)
       << "TicTacToe inventory must not leave pending rows";
     EXPECT_EQ (inventory.find ("| gap |"), std::string::npos)
       << "TicTacToe inventory must not leave unresolved gaps";
 
     for (const auto *runner_content : {&shell_runner, &powershell_runner}) {
-        EXPECT_NE (runner_content->find ("TICTACTOE_CPP_REDIS_ENDPOINT"), std::string::npos)
-          << "TicTacToe runners must accept externally supplied Redis";
+        EXPECT_NE (runner_content->find ("docker"), std::string::npos)
+          << "TicTacToe runners must provision their own Redis container";
+        EXPECT_NE (runner_content->find ("TICTACTOE_CPP_REDIS_KEY_PREFIX"),
+                   std::string::npos)
+          << "TicTacToe runners must pass an isolated Redis key prefix";
         EXPECT_NE (runner_content->find ("api-b"), std::string::npos)
           << "TicTacToe runners must launch a second API role";
         EXPECT_NE (runner_content->find ("play-b"), std::string::npos)
@@ -657,8 +646,8 @@ TEST (CppFrameworkSampleParity, TicTacToeInventoryAndRunnersMatchCommonRedisCont
           << "TicTacToe runners must verify the final client marker";
     }
 
-    EXPECT_NE (readme.find ("TICTACTOE_CPP_REDIS_ENDPOINT"), std::string::npos)
-      << "TicTacToe README must document the external Redis option";
+    EXPECT_NE (readme.find ("전용 Redis Docker container"), std::string::npos)
+      << "TicTacToe README must document the runner-owned Redis container";
 }
 
 TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)

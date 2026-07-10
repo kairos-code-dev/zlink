@@ -13,6 +13,7 @@
 #include "Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "Infrastructure/ZLink/Matchmaking/redis_bingo_match_queue.hpp"
 #include "Infrastructure/ZLink/Actors/player_actor_factory.hpp"
+#include "Infrastructure/ZLink/Actors/player_actor_transfer_adapter.hpp"
 #include "Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
 #include "Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
 #include "Application/RoomAllocation/bingo_room_allocator.hpp"
@@ -65,7 +66,9 @@ class play_server_host_factory_t
               .connect_peer_pub (topology.peer_play_spot_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> ()
               .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
-              .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type);
+              .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type)
+              .add_actor_transfer_adapter<player_actor_t, player_actor_transfer_adapter_t> (
+                sample_names_t::player_actor_type);
             options.handlers ()
               .group ("play")
               .add<allocate_bingo_room_handler_t> ()

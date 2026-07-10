@@ -118,6 +118,23 @@ bool can_wait_for_client_endpoint (const std::shared_ptr<channel_runtime_state_t
     return state->auto_connect_active;
 }
 
+bool channel_runtime_accepts_outbound_locked (const channel_runtime_state_t &state) noexcept
+{
+    return !state.shutdown && !state.closed;
+}
+
+framework_error_kind_t channel_runtime_outbound_error_kind_locked (
+  const channel_runtime_state_t &state) noexcept
+{
+    return state.shutdown ? framework_error_kind_t::shutdown : framework_error_kind_t::closed;
+}
+
+const char *channel_runtime_outbound_error_message_locked (
+  const channel_runtime_state_t &state) noexcept
+{
+    return state.shutdown ? "channel runtime is shutting down" : "channel runtime is closed";
+}
+
 runtime::messaging::message_parts_t
 encode_channel_payload_parts (runtime::messaging::envelope_header_t header,
                               std::type_index payload_type,
@@ -879,6 +896,11 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
     const auto call_packet_name = std::move (packet_name);
     {
         std::lock_guard lock (_state->mutex);
+        if (!channel_runtime_accepts_outbound_locked (*_state)) {
+            return result_t<void>::failure (
+              channel_runtime_outbound_error_kind_locked (*_state),
+              channel_runtime_outbound_error_message_locked (*_state));
+        }
         _state->outbound_calls.push_back (
           {"send", channel_name, "", call_packet_name, timeout, metadata});
     }
@@ -917,6 +939,11 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
             std::shared_ptr<channel_native_client_t> native_client;
             {
                 std::lock_guard lock (_state->mutex);
+                if (!channel_runtime_accepts_outbound_locked (*_state)) {
+                    return result_t<void>::failure (
+                      channel_runtime_outbound_error_kind_locked (*_state),
+                      channel_runtime_outbound_error_message_locked (*_state));
+                }
                 auto &slot = _state->native_clients[channel_name];
                 if (!slot) {
                     slot = std::make_shared<channel_native_client_t> (channel_name, *client);
@@ -954,6 +981,11 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
     const auto call_packet_name = std::move (packet_name);
     {
         std::lock_guard lock (_state->mutex);
+        if (!channel_runtime_accepts_outbound_locked (*_state)) {
+            return result_t<void>::failure (
+              channel_runtime_outbound_error_kind_locked (*_state),
+              channel_runtime_outbound_error_message_locked (*_state));
+        }
         _state->outbound_calls.push_back (
           {"publish", channel_name, topic, call_packet_name, timeout, metadata});
     }
@@ -993,6 +1025,11 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
             std::shared_ptr<detail::channel_native_publisher_t> native_publisher;
             {
                 std::lock_guard lock (_state->mutex);
+                if (!channel_runtime_accepts_outbound_locked (*_state)) {
+                    return result_t<void>::failure (
+                      channel_runtime_outbound_error_kind_locked (*_state),
+                      channel_runtime_outbound_error_message_locked (*_state));
+                }
                 auto &stored = _state->native_publishers[channel_name];
                 if (!stored) {
                     stored = std::make_shared<detail::channel_native_publisher_t> (*publisher);

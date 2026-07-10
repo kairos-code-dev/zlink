@@ -23,6 +23,15 @@ namespace zlink::framework::runtime
 namespace
 {
 
+void trace_spot_node_stop (std::string_view stage)
+{
+    const char *value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+    if (value == nullptr || std::string_view (value) == "0" || std::string_view (value) == "") {
+        return;
+    }
+    std::cerr << "zlink-cpp-host-stop stage=spot-node-" << stage << std::endl;
+}
+
 zlink::routing_id_t derive_routing_id (const zlink::routing_id_t &base, std::string_view suffix)
 {
     auto bytes = base.to_bytes ();
@@ -45,6 +54,7 @@ struct spot_node_host_service_t::native_node_t
     std::optional<peer_location_t> local_peer;
     std::int64_t local_generation = 0;
     bool local_published = false;
+    bool node_close_failed = false;
     std::map<std::string, peer_location_t> active_peers;
 
     native_node_t (detail::spot_node_runtime_t runtime_, zlink::spot_node_mode_t mode_) :
@@ -442,6 +452,7 @@ void spot_node_host_service_t::start (service_provider_t &services)
                 catch (...) {
                 }
                 native->runtime.publish_peer_snapshot_if_changed ();
+                dispatched += native->runtime.cleanup_expired_actor_admissions ();
                 dispatched += native->runtime.drain_actor_packets (services, serializers);
                 dispatched += native->runtime.drain_routed_packets (services, serializers);
                 dispatched += native->runtime.drain_subscriptions (services, serializers);
@@ -453,21 +464,39 @@ void spot_node_host_service_t::start (service_provider_t &services)
     });
 }
 
-void spot_node_host_service_t::stop () noexcept
+void spot_node_host_service_t::request_stop () noexcept
 {
     _running.store (false, std::memory_order_release);
     for (auto &native : _nodes) {
         if (native) {
-            native->runtime.cancel_pending_work ();
+            native->runtime.request_stop ();
+            native->runtime.cancel_timers ();
+            native->runtime.cancel_pending_dispatch ();
         }
     }
+}
+
+void spot_node_host_service_t::stop () noexcept
+{
+    trace_spot_node_stop ("stop-begin");
+    request_stop ();
     if (_receive_thread.joinable ()) {
         try {
+            trace_spot_node_stop ("join-receive-begin");
             _receive_thread.join ();
+            trace_spot_node_stop ("join-receive-end");
         }
         catch (...) {
         }
     }
+    trace_spot_node_stop ("cancel-timers-begin");
+    for (auto &native : _nodes) {
+        if (native) {
+            native->runtime.cancel_timers ();
+        }
+    }
+    trace_spot_node_stop ("cancel-timers-end");
+    trace_spot_node_stop ("remove-peers-begin");
     for (auto &native : _nodes) {
         if (!native) {
             continue;
@@ -478,45 +507,81 @@ void spot_node_host_service_t::stop () noexcept
                                                        native->local_generation);
                 native->local_published = false;
             }
-            for (const auto &[_, peer] : native->active_peers) {
-                const auto configured = std::find_if (
-                  _spot_nodes.begin (), _spot_nodes.end (), [&] (const auto &candidate) {
-                      return candidate.runtime.node_rid ().value ()
-                             == native->runtime.node_rid ().value ();
-                  });
-                if (configured != _spot_nodes.end ()) {
-                    disconnect_spot_peer (configured->snapshot, *native->node, peer);
-                }
-            }
+            // Shutdown must not wait for data-plane replies from workers or peers that are
+            // being stopped concurrently. Native node close below owns the socket teardown.
             native->active_peers.clear ();
         }
         catch (...) {
         }
-        try {
-            native->runtime.detach_native_node ();
+    }
+    trace_spot_node_stop ("remove-peers-end");
+    trace_spot_node_stop ("cancel-pending-begin");
+    for (auto &native : _nodes) {
+        if (native) {
+            native->runtime.cancel_pending_work ();
         }
-        catch (...) {
+    }
+    trace_spot_node_stop ("cancel-pending-end");
+    trace_spot_node_stop ("close-nodes-begin");
+    for (auto &native : _nodes) {
+        if (native) {
+            try {
+                trace_spot_node_stop ("detach-native-node");
+                native->runtime.detach_native_node ();
+            }
+            catch (...) {
+                native->node_close_failed = true;
+            }
+            try {
+                trace_spot_node_stop ("node-close");
+                native->node->close ();
+            }
+            catch (const std::exception &error) {
+                native->node_close_failed = true;
+                std::cerr << "zlink framework spot node close failed: " << error.what () << '\n';
+            }
+            catch (...) {
+                native->node_close_failed = true;
+                std::cerr << "zlink framework spot node close failed\n";
+            }
+        }
+    }
+    trace_spot_node_stop ("close-nodes-end");
+    trace_spot_node_stop ("context-close-begin");
+    for (auto &native : _nodes) {
+        if (!native) {
+            continue;
         }
         try {
-            native->node->close ();
+            trace_spot_node_stop ("node-reset");
             native->node.reset ();
         }
         catch (...) {
         }
         try {
+            trace_spot_node_stop ("context-blocky-false");
             native->context.options ().blocky (false);
         }
         catch (...) {
         }
         try {
+            trace_spot_node_stop ("context-shutdown");
+            native->context.shutdown ();
+        }
+        catch (...) {
+        }
+        try {
+            trace_spot_node_stop ("context-term");
             native->context.term ();
         }
         catch (...) {
         }
     }
+    trace_spot_node_stop ("context-close-end");
     _nodes.clear ();
     _location_runtime = nullptr;
     _location_store = nullptr;
+    trace_spot_node_stop ("stop-end");
 }
 
 } // namespace zlink::framework::runtime

@@ -218,7 +218,8 @@ class pipe_t ZLINK_FINAL : public object_t,
             upipe_t *outpipe_,
             int inhwm_,
             int outhwm_,
-            bool conflate_);
+            bool conflate_,
+            bool session_pipe_);
 
     //  Pipepair uses this function to let us know about
     //  the peer pipe object.
@@ -312,6 +313,10 @@ class pipe_t ZLINK_FINAL : public object_t,
     bool check_hwm_unlocked () const;
 
     const bool _conflate;
+
+    //  True for session<->socket pipes; hiccup() recreates the inpipe with
+    //  the matching (smaller) chunk granularity.
+    const bool _session_pipe;
 
     // The endpoints of this pipe.
     endpoint_uri_pair_t _endpoint_pair;

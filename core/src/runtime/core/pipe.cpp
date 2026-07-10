@@ -65,11 +65,11 @@ int zlink::pipepair (object_t *parents_[2],
         upipe2 = new (std::nothrow) upipe_normal_t ();
     alloc_assert (upipe2);
 
-    pipes_[0] =
-      new (std::nothrow) pipe_t (parents_[0], upipe1, upipe2, hwms_[1], hwms_[0], conflate_[0]);
+    pipes_[0] = new (std::nothrow)
+      pipe_t (parents_[0], upipe1, upipe2, hwms_[1], hwms_[0], conflate_[0], session_pipe_);
     alloc_assert (pipes_[0]);
-    pipes_[1] =
-      new (std::nothrow) pipe_t (parents_[1], upipe2, upipe1, hwms_[0], hwms_[1], conflate_[1]);
+    pipes_[1] = new (std::nothrow)
+      pipe_t (parents_[1], upipe2, upipe1, hwms_[0], hwms_[1], conflate_[1], session_pipe_);
     alloc_assert (pipes_[1]);
 
     pipes_[0]->set_peer (pipes_[1]);
@@ -148,8 +148,13 @@ void zlink::pipe_stream_packet_state_t::reset ()
     memset (prefix, 0, sizeof (prefix));
 }
 
-zlink::pipe_t::pipe_t (
-  object_t *parent_, upipe_t *inpipe_, upipe_t *outpipe_, int inhwm_, int outhwm_, bool conflate_) :
+zlink::pipe_t::pipe_t (object_t *parent_,
+                       upipe_t *inpipe_,
+                       upipe_t *outpipe_,
+                       int inhwm_,
+                       int outhwm_,
+                       bool conflate_,
+                       bool session_pipe_) :
     object_t (parent_),
     _in_pipe (inpipe_),
     _out_pipe (outpipe_),
@@ -174,7 +179,8 @@ zlink::pipe_t::pipe_t (
     _connection_ready_event_emitted (false),
     _command_refs (0),
     _release_after_command_refs (false),
-    _conflate (conflate_)
+    _conflate (conflate_),
+    _session_pipe (session_pipe_)
 {
     _disconnect_msg.init ();
 }
@@ -899,9 +905,14 @@ void zlink::pipe_t::hiccup ()
     //  We'll drop the pointer to the inpipe. From now on, the peer is
     //  responsible for deallocating it.
 
-    //  Create new inpipe.
-    _in_pipe = _conflate ? static_cast<upipe_t *> (new (std::nothrow) ypipe_conflate_t<msg_t> ())
-                         : new (std::nothrow) ypipe_t<msg_t, message_pipe_granularity> ();
+    //  Create new inpipe, keeping the chunk granularity this pipe was
+    //  created with (session pipes use the smaller per-connection chunk).
+    if (_conflate)
+        _in_pipe = new (std::nothrow) ypipe_conflate_t<msg_t> ();
+    else if (_session_pipe)
+        _in_pipe = new (std::nothrow) ypipe_t<msg_t, session_pipe_granularity> ();
+    else
+        _in_pipe = new (std::nothrow) ypipe_t<msg_t, message_pipe_granularity> ();
 
     alloc_assert (_in_pipe);
     _in_active = true;

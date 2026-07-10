@@ -428,6 +428,15 @@ bool zlink::asio_engine_t::build_gather_header (const msg_t &msg_,
     return false;
 }
 
+size_t zlink::asio_engine_t::select_handshake_read_buffer ()
+{
+    //  During handshake, use the internal buffer (allocated on first use).
+    if (_pipeline.read_buffer.empty ())
+        _pipeline.read_buffer.resize (handshake_read_buffer_size);
+    _pipeline.read_buffer_ptr = _pipeline.read_buffer.data ();
+    return _pipeline.read_buffer.size ();
+}
+
 void zlink::asio_engine_t::start_async_read ()
 {
     //  For non-stream sockets keep classic flow-control semantics:
@@ -486,11 +495,7 @@ void zlink::asio_engine_t::start_async_read ()
         }
         _pipeline.last_read_had_partial_prefix = had_partial_prefix;
     } else {
-        //  During handshake, use internal buffer (allocated on first use).
-        if (_pipeline.read_buffer.empty ())
-            _pipeline.read_buffer.resize (handshake_read_buffer_size);
-        _pipeline.read_buffer_ptr = _pipeline.read_buffer.data ();
-        read_size = _pipeline.read_buffer.size ();
+        read_size = select_handshake_read_buffer ();
     }
 
     _pipeline.last_read_request_size = read_size;
@@ -557,11 +562,7 @@ bool zlink::asio_engine_t::speculative_read ()
         }
         _pipeline.last_read_had_partial_prefix = had_partial_prefix;
     } else {
-        //  During handshake, use internal buffer (allocated on first use).
-        if (_pipeline.read_buffer.empty ())
-            _pipeline.read_buffer.resize (handshake_read_buffer_size);
-        _pipeline.read_buffer_ptr = _pipeline.read_buffer.data ();
-        read_size = _pipeline.read_buffer.size ();
+        read_size = select_handshake_read_buffer ();
     }
 
     if (read_size == 0)

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "core/address.hpp"
+#include "core/ctx.hpp"
 #include "core/ctx_inproc_registry.hpp"
 #include "core/io_thread.hpp"
 #include "core/pipe.hpp"
@@ -369,6 +370,15 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
 
     const std::string endpoint_uri_str = std::string (endpoint_uri_);
     if (uri_protocol == protocol_name::inproc) {
+        //  A connect that is still pending (no binder yet) parks its peer
+        //  pipe in the context registry where no socket ever runs the pipe
+        //  termination handshake. Materialize it into a short-lived PAIR
+        //  socket first so both pipe halves can terminate and this socket
+        //  can be reaped before ctx term. Best effort: if the context cannot
+        //  supply the helper socket (socket limit reached or termination
+        //  already started), keep the previous disconnect semantics and fall
+        //  through to the local cleanup.
+        (void) get_ctx ()->materialize_pending_inproc (endpoint_uri_str, this);
         const int inproc_rc = unregister_endpoint (endpoint_uri_str, this) == 0
                                 ? 0
                                 : endpoint_runtime ().inprocs.erase_pipes (endpoint_uri_str);

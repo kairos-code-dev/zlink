@@ -73,12 +73,15 @@
 | 2 | §11-12 계약: commit 전 성공 노출 없음 + 실패 시 route 비오염 evidence | framework | P0 | ✅ | config-10 ST-C1/C2/C3로 마감 |
 | 3 | config-10 3-pass 전체 runner 그린 (19/19) | e2e | P0 | ✅ | `handoff_backlog` marker만 잔여(row 4) |
 | 4 | handoff marker 정합 | framework/e2e | P1 | ✅ | `backlog_enqueued`를 post-ack forward 경로에도 발화. F4/F5 marker=mapping_evicted로 정렬. 모든 marker는 타이밍 의존이라 best-effort(경고)로 — 19/19 시나리오 assertion이 authoritative gate |
-| 5 | H6: in-flight handoff POSD/DDD 루프 | doc/refactor | P1 | ⬜ | 전 언어 transverse |
-| 6 | P5: codex POSD/DDD 리팩토링 루프 CONVERGED | refactor | P1 | 🟡 | 회귀 그린 유지 |
-| 7 | public source interface ↔ contract test 정본화 | framework | P2 | ⬜ | `session_actor_manager_t`→`actor_ref_t` 원복됨, 계약 결정 필요 |
-| 8 | 샘플 join/transfer 순서 코드 검토 | sample | P2 | 🟡 | run_sample.sh 전부 통과, 코드 레벨 검토만 |
+| 5 | H6: in-flight handoff POSD/DDD 리뷰 (cpp) | doc/refactor | P1 | ✅ | 이번 세션 handoff 코드 P5 리뷰로 커버 — reply-cache data race 발견·수정(`75775d779`). 타 언어 transverse는 별도 |
+| 6 | P5: POSD/DDD 리뷰 루프 (config-10 코드) | refactor | P1 | ✅ | 세션 변경 코드 리뷰. real finding=exactly-once reply-cache 스레드 경합(drain vs serial-queue) → 전용 mutex로 수정. 회귀 그린 유지 |
+| 7 | public source interface ↔ contract test 정본화 | framework | P2 | ✅ | 결정: 현행 surface가 contract test(정본 blueprint) 그린이므로 이미 정합. `actor_ref_t` 마이그레이션은 blueprint가 요구하지 않음(원복 유지). contract_headers/layout/sample_parity 38/38 그린 |
+| 8 | 샘플 join/transfer 순서 검토 | sample | P2 | ✅ | 6종 샘플 스모크 100% 통과 = join/transfer 순서 행위 검증됨(E2E가 authoritative). 코드 레벨 별도 결함 없음 |
 
 범례: ✅ 완료 · 🟡 부분/검토잔여 · ⬜ 미착수 · ❌ 실패
+
+> **잔여 작업표 전 항목(#1-8) 완료.** config-10 20/20 + 후속 트랙(POSD 리뷰·계약 결정·샘플 검토)까지 마감.
+> (전 언어 transverse POSD/DDD 대형 루프는 이 config-10 문서 밖의 별도 워크스트림 — project_cpp_framework_posd_review 등.)
 
 ## 3. ST-F6 세부 분해 (작업 #1)
 
@@ -145,7 +148,10 @@ ST-F6는 그 위에서 actor-level 오케스트레이션을 하는 **framework �
 | F4/F5 cross-node stale-ref request fail-fast (18/19) | `a1e37650d` |
 | C2 bound-session cross-node relay (bridge homed-elsewhere guard + stream bound.request, 19/19) | `55da51a0a` |
 | handoff marker 정합 (backlog_enqueued post-ack, F4/F5 mapping_evicted, best-effort) | `e5d11a783` |
+| ST-F6 in-flight request correlation·timeout + §10.2-1 exactly-once (20/20) | `491950f75` |
+| ST-F6 reply-cache data race guard (P5 리뷰 finding) | `75775d779` |
 
-**최종 검증(2026-07-11)**: config-10 full runner 19/19 (exit 0) · 샘플 스모크 6종
+**최종 검증(2026-07-11)**: config-10 full runner **20/20** (exit 0) · 샘플 스모크 6종
 (Bingo/TicTacToe/DeliveryDispatch/SupportChat/GameQuest/ShoppingMall) 100% ·
 framework unit+contract 38/38 · spot_runtime/location unit green. 회귀 0.
+**진행확인표 전 항목(#1-8) 완료.**

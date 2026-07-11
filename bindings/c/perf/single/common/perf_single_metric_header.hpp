@@ -35,8 +35,9 @@ inline size_t header_size ()
 
 inline uint64_t now_ns ()
 {
+    // Single sender and receiver share a process, so elapsed latency uses monotonic time.
     return static_cast<uint64_t> (std::chrono::duration_cast<std::chrono::nanoseconds> (
-                                    std::chrono::system_clock::now ().time_since_epoch ())
+                                    std::chrono::steady_clock::now ().time_since_epoch ())
                                     .count ());
 }
 

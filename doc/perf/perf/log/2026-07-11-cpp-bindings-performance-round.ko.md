@@ -154,6 +154,24 @@ timeout은 200ms로 일치한다.
 29.227~42.666ms로 변동 폭 33.6%였다. C 기준이 먼저 변동 gate를 넘지 못했으므로
 이 직후 C++ 측정은 실행하지 않았다.
 
+추가로 active deadline은 `steady_clock`, payload latency timestamp는 `system_clock`을
+사용해 한 측정 안에서 시간 기준이 나뉜 문제를 확인했다. Single은 송신과 수신을 같은
+process에서 실행하므로 조정 가능한 epoch 시간이 필요하지 않다. system clock 변화를
+후처리로 제외하는 방안은 실제 outlier를 숨기므로 폐기하고, C와 C++ Single header를
+단조 시계인 `steady_clock`으로 통일했다. 이 변경은 시간 책임을 공통 header에 유지하고
+public API나 pattern별 예외를 추가하지 않는다.
+
+C 64B CPU 고정 5회 후보 report
+`perf_c_single_linux_20260711_144139_core_9_0_cpp_pubsub_tcp64_steady_clock_probe_20260711.txt`는
+complete였지만 p99 변동 폭은 37.4%로 gate를 통과하지 못했다. 따라서 이 결과로 tcp를
+통과 처리하지 않는다. C++ 64B 1초 제한 smoke
+`perf_cpp_single_linux_20260711_144240_core_9_0_cpp_pubsub_steady_clock_smoke_20260711.txt`는
+complete였고, C runner policy test 16개도 통과했다.
+
+receiver가 recv 진입 준비를 알린 뒤 sender를 만드는 별도 동기화 후보도 시험했으나 C 64B
+p99 변동 폭이 33.8%였고 처리량이 낮아졌다. 이 방식은 효과 없이 perf 상태만 늘리므로
+최종 코드에 남기지 않았다.
+
 ### 현재 판정
 
 - Single `PUBSUB`: 진행 중

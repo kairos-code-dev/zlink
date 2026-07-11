@@ -63,8 +63,9 @@ inline void store_u64_le (unsigned char *dst, uint64_t value)
 
 inline int64_t now_ns ()
 {
+    // Single sender and receiver share a process, so elapsed latency uses monotonic time.
     return static_cast<int64_t> (std::chrono::duration_cast<std::chrono::nanoseconds> (
-                                   std::chrono::system_clock::now ().time_since_epoch ())
+                                   std::chrono::steady_clock::now ().time_since_epoch ())
                                    .count ());
 }
 

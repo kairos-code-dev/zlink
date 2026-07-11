@@ -212,7 +212,10 @@ TCP/WS 연결은 이동할 수 없다. 세션의 재접속은 **클라이언트�
 재접속 로직은 **앱/connector의 몫**으로 둔다. 이 사유 코드는 **connector 측에서 disconnect 시 읽을 수
 있어야** 하므로, connector의 disconnect 이벤트/오류 표면에 `closeReason`(닫힌 enum, [runtime-metrics
 §4.1](runtime-metrics.ko.md)의 `close_reason`과 정합)을 노출한다. 클라이언트는 이 값을 보고 재접속·백오프를
-결정한다. reconnect 안내 control packet(서버가 대체 endpoint를 지정)은 별도 후속 스펙으로 분리하며,
+결정한다. 언어별 projection은 각 connector 문서가 소유한다(예:
+[Java `ZLinkStreamCloseReason`](languages/java/stream-connector.ko.md),
+[Node `closeReason` union](languages/node/stream-connector.ko.md)); .NET/C++/Kotlin connector도 같은
+닫힌 enum을 언어 케이싱으로 노출한다. reconnect 안내 control packet(서버가 대체 endpoint를 지정)은 별도 후속 스펙으로 분리하며,
 채택 시 이 절을 MFT §9 형식의 와이어 레이아웃 절로 확장한다.
 
 ## 8. 배포 자동화 연동 (개념 예시)

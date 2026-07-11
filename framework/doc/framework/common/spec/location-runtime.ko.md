@@ -78,8 +78,20 @@ location row, Redis row JSON, 운영 조회가 쓰는 enum 값은 언어별 ordi
 
 자동 연결에 필요한 node endpoint 정보. `AutoConnectType`(route mesh, client/server, dealer
 mesh, fanout, spot mesh), `MeshName`, `NodeRid`, `Role`(router/dealer/pub/sub/spot),
-`Endpoint`, `Weight`(0..100), `Value`, `Metadata`, `Capabilities`, `OwnerId`, `Generation`,
-`UpdatedAt`. node lifecycle과 heartbeat가 자동 갱신한다.
+`Endpoint`, `Weight`(0..100), `Draining`(bool, 기본 false), `Value`, `Metadata`, `Capabilities`,
+`OwnerId`, `Generation`, `UpdatedAt`. node lifecycle과 heartbeat가 자동 갱신한다.
+
+**`Draining` 마커.** node가 우아한 종료(graceful drain)에 들어가면 자기 peer row의 `Draining`을
+true로 갱신한다. 이 마커는 **"신규 배치 제외"와 "기존 연결 유지"를 분리**하기 위한 것이다 — peer row를
+삭제하면 §6의 자동 연결 diff가 기존 연결을 끊어 in-flight reply·actor 핸드오프가 깨지므로, 삭제 대신
+마커를 쓴다. 마커의 소비 규칙:
+
+- **배치 결정(spot `GetOrCreate` 노드 선택, actor join target, Entry Spot 배정, owner routing)**은
+  `Draining=true` peer를 후보에서 제외한다.
+- **자동 연결(§6)**은 마커만으로 disconnect하지 않는다 — draining peer로의 기존 연결을 유지한다.
+
+`Draining`은 additive optional 필드다(기본 false, 구버전 row와 하위호환). 전체 drain 수명주기 계약은
+[Graceful Drain & Handoff](graceful-drain-handoff.ko.md) §3이 소유한다.
 
 ### 2.2 spot location
 
@@ -217,7 +229,8 @@ mesh별 reconcile 루프를 돌린다.
 2. **desired set**: role 허용/target 매칭으로 dial 대상을 계산한다. endpoint가 없는 dial-only
    구성원은 pairwise initiator 순서와 무관하게 항상 dial한다. pairwise initiator 규칙에 따라
    상대가 나를 dial하는 peer는 desired set에 없어도 **mesh 구성원**이다(fail-fast 분류는
-   desired set이 아니라 구성원 snapshot 기준).
+   desired set이 아니라 구성원 snapshot 기준). peer의 `Draining=true`(§2.1)는 desired set에서
+   **제외하지 않는다** — 연결은 유지하고, 신규 배치 결정(spot/actor placement)만 그 peer를 제외한다.
 3. **diff 적용**: 새 target은 connect, desired set에서 빠진 target은 disconnect. 같은 peer
    key의 endpoint 또는 **owner 변경**은 handover다 — 재시작한 peer가 같은 endpoint로 떠도 새
    dial이 필요하므로 disconnect 후 connect한다.

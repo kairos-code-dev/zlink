@@ -327,3 +327,114 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - C++ binding 변경: 없음
 - 완료 커밋: `3643bf345`
 - 다음 pattern: Single `DEALER_ROUTER_REQREP`
+
+## Single DEALER_ROUTER_REQREP
+
+### 최초 실패와 perf 의미 수정
+
+- source: `7af46da58`
+- message size: 64, 256, 1024, 65536, 131072, 262144 bytes
+- transport: tcp, tls, ws, wss, inproc, ipc
+- duration: 5초
+- 최종 판정: 5회 중앙값
+- CPU pin: 사용하지 않음
+- 공식 perf process: 한 번에 하나만 실행
+
+최초 C 대형 메시지 측정은 요청을 제한 없이 제출해 timeout이 발생했고 일부 report가
+partial로 끝났다. 완료 poller를 replier thread보다 먼저 해제하거나 replier가 종료되기 전에
+종료 메시지를 보내지 못하는 수명 주기 문제도 있었다. 요청 수만 고정하는 방식은 전체
+payload 양을 제한하지 못했고, 고정 pipeline 16개는 131072B의 auto-HWM 8개를 넘었다.
+고정 pipeline 4개는 timeout을 없앴지만 작은 메시지까지 처리량을 제한했다.
+
+최종 perf는 최대 64개 요청과 768KiB payload 중 먼저 도달하는 한도로 요청을 유지한다.
+호출자는 replier thread를 종료한 뒤 완료 poller를 해제한다. 이 순서를 나중에 바꾸지 않도록
+C와 C++의 측정 요청 hot path와 C의 poller 수명 주기에 근거 주석을 남겼다.
+
+추가 대조에서 C replier만 수신 payload와 같은 크기의 메시지를 다시 할당하고 전체 payload를
+복사한 뒤 응답하고 있었다. C++은 수신 메시지의 소유권을 응답으로 넘겼고, C multi
+request/reply도 같은 공개 C API 사용 방식을 사용했다. C++에 전체 복사를 추가하는 방안은
+바인딩에 없는 비용을 새로 넣으므로 제외했다. C single replier가 수신 메시지를 공개
+`zlink_router_reply_part()`에 직접 넘기도록 수정해 C와 C++의 echo 의미를 맞췄다. 응답 API가
+메시지 소유권을 소비한다는 결정과 이 구간이 측정 대상이라는 점을 hot path 주석으로 남겼다.
+
+### POSD 대안 검토
+
+위험 신호는 종료 순서를 requester helper 안에 숨기면 helper가 replier thread의 존재를 알아야
+하고, C에만 있는 payload 복사를 기준으로 삼으면 같은 echo 동작의 비용 지식이 두 perf에
+다르게 퍼진다는 점이었다.
+
+1. requester helper가 replier 종료 callback을 받는 방안은 helper 인터페이스에 server 수명
+   주기를 노출하고 실행 순서 결합을 늘린다.
+2. replier thread를 이미 소유한 pattern 호출자가 완료 poller도 마지막에 해제하면 수명 주기
+   책임이 한곳에 유지된다.
+3. C++ replier에도 새 메시지 할당과 전체 복사를 추가하면 코드 모양은 같아지지만 공개 API의
+   소유권 전달을 사용하지 않고 C++ 측정값에 불필요한 비용을 더한다.
+4. C replier가 수신 메시지 소유권을 바로 응답에 넘기면 기존 C multi perf와 C++ binding의
+   공개 사용 방식이 같아지고 추가 allocation과 copy가 사라진다.
+
+두 번째와 네 번째 방안을 선택했다. 새 public API, perf 전용 binding 경로, private API,
+timeout이나 sleep 증가는 추가하지 않았다.
+
+### C 대비 최종 throughput
+
+아래 표는 C++ throughput을 가까운 시점의 C throughput으로 나눈 값이다. 평균 latency만
+latency gate로 사용했고 p95와 p99는 진단 자료로 보존했다.
+
+| Transport | 64 | 256 | 1024 | 65536 | 131072 | 262144 |
+|-----------|----|-----|------|-------|--------|--------|
+| tcp | 96.7% | 96.5% | 97.2% | 95.2% | 101.0% | 123.7% |
+| tls | 97.7% | 97.5% | 98.1% | 96.3% | 99.2% | 99.3% |
+| ws | 98.8% | 99.5% | 99.3% | 90.8% | 99.2% | 100.7% |
+| wss | 96.3% | 96.4% | 98.4% | 94.7% | 98.0% | 103.1% |
+| inproc | 97.5% | 95.6% | 95.9% | 145.7% | 206.3% | 88.7% |
+| ipc | 97.8% | 98.0% | 99.1% | 97.6% | 98.5% | 120.2% |
+
+36개 throughput 셀이 socket request/reply의 C++ 최소 목표 65%를 모두 만족했다. 평균
+latency의 transport별 최대 비율은 tcp 1.04배, tls 1.05배, ws 1.09배, wss 1.05배,
+inproc 1.02배, ipc 1.02배로 모두 상한 2배 이내였다.
+
+### 변동성 조사
+
+tcp, tls, ws, ipc는 최종 5회에서 안정적이었다. wss 131072B와 inproc 대형 셀은 측정 중
+지속적인 고부하 process가 없고 load average가 약 0.24~1.10인 상태에서도 변동이 반복됐다.
+대상 셀만 CPU pin 없이 다시 측정한 결과는 다음과 같다.
+
+- wss 131072B: C throughput 변동 6.1%, C++ 21.1%; C++ 평균 latency 변동 25.7%
+- inproc 65536B: C throughput 변동 49.5%, C++ 15.0%
+- inproc 131072B: C throughput 변동 143.4%, C++ 10.6%
+- inproc 262144B: C throughput 변동 6.6%, C++ 6.1%
+
+1초 실제 workload warmup과 15초 duration은 앞선 진단에서 변동을 줄이지 못해 최종 코드에
+넣지 않았다. pipeline을 balanced auto-HWM의 1MiB 예산과 같게 만드는 대안도 C inproc
+131072B에서 49.29~129.21 Kops/s로 변동이 커져 폐기하고 768KiB로 되돌렸다. CPU pin은
+사용하지 않았고 유리한 실행 결과만 골라내지 않았다. 현재 host가 서로 다른 종류의 CPU
+core를 제공하므로 실행 배치가 후보가 될 수 있지만 실행별 core를 기록하지 않아 원인으로
+단정하지 않는다. 저부하 확인, 동일 셀 재측정, perf 의미와 pipeline 대안 검토를 마친 뒤 5회
+중앙값으로 상대 throughput과 평균 latency를 판정했다.
+
+### 최종 report와 회귀 확인
+
+report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
+`bindings/cpp/perf/results/single/report/`다.
+
+- tcp: `perf_c_single_linux_20260711_210316_core_9_0_cpp_dealer_router_reqrep_tcp_direct_reply_final_20260711.txt`, `perf_cpp_single_linux_20260711_210542_core_9_0_cpp_dealer_router_reqrep_tcp_direct_reply_final_20260711.txt`
+- tls: `perf_c_single_linux_20260711_210818_core_9_0_cpp_dealer_router_reqrep_tls_direct_reply_final_20260711.txt`, `perf_cpp_single_linux_20260711_211045_core_9_0_cpp_dealer_router_reqrep_tls_direct_reply_final_20260711.txt`
+- ws: `perf_c_single_linux_20260711_211321_core_9_0_cpp_dealer_router_reqrep_ws_direct_reply_final_20260711.txt`, `perf_cpp_single_linux_20260711_211544_core_9_0_cpp_dealer_router_reqrep_ws_direct_reply_final_20260711.txt`
+- wss: `perf_c_single_linux_20260711_211815_core_9_0_cpp_dealer_router_reqrep_wss_direct_reply_final_20260711.txt`, `perf_cpp_single_linux_20260711_212040_core_9_0_cpp_dealer_router_reqrep_wss_direct_reply_final_20260711.txt`
+- wss 131072B 재측정: `perf_c_single_linux_20260711_213242_core_9_0_cpp_dealer_router_reqrep_wss131_direct_reply_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_213316_core_9_0_cpp_dealer_router_reqrep_wss131_direct_reply_stability2_20260711.txt`
+- inproc small: `perf_c_single_linux_20260711_205751_core_9_0_cpp_dealer_router_reqrep_inproc_direct_reply_20260711.txt`, `perf_cpp_single_linux_20260711_205423_core_9_0_cpp_dealer_router_reqrep_inproc_budget768_rerun_20260711.txt`
+- inproc 대형 재측정: `perf_c_single_linux_20260711_212814_core_9_0_cpp_dealer_router_reqrep_inproc_large_direct_reply_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_212930_core_9_0_cpp_dealer_router_reqrep_inproc_large_direct_reply_stability2_20260711.txt`
+- ipc: `perf_c_single_linux_20260711_212314_core_9_0_cpp_dealer_router_reqrep_ipc_direct_reply_final_20260711.txt`, `perf_cpp_single_linux_20260711_212539_core_9_0_cpp_dealer_router_reqrep_ipc_direct_reply_final_20260711.txt`
+
+최종 코드로 C의 `perf_dealer_router_reqrep`, `perf_router_router_reqrep`와 C++의 대응 target을
+다시 빌드했다. C `ROUTER_ROUTER_REQREP` 64B/tcp 회귀 스모크는
+`perf_c_single_linux_20260711_213452_core_9_0_c_reqrep_direct_reply_regression_smoke_20260711.txt`에서
+complete다. `test_cpp_contract_message`, `test_cpp_contract_socket`,
+`test_cpp_contract_behavior`도 모두 통과했다.
+
+### 판정
+
+- Single `DEALER_ROUTER_REQREP`: 완료
+- C perf 변경: request/reply 수명 주기 수정과 C/C++ echo 소유권 전달 의미 정합화
+- C++ binding 변경: 없음
+- 다음 pattern: Single `ROUTER_ROUTER`

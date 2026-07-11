@@ -366,32 +366,12 @@ inline void run_router_replier (void *router_, reply_state_t *state_)
             continue;
         }
 
-        zlink_msg_t reply;
-        if (zlink_msg_init_size (&reply, zlink_msg_size (&request)) != 0) {
-            zlink_msg_close (&request);
-            state_->fatal.store (true, std::memory_order_release);
-            return;
-        }
-        std::memcpy (zlink_msg_data (&reply), zlink_msg_data (&request), zlink_msg_size (&request));
-        zlink_msg_close (&request);
-        bool replied = false;
-        for (int attempt = 0; attempt < 100; ++attempt) {
-            if (zlink_router_reply_part (router_, &source_rid, request_seq, &reply,
-                                         ZLINK_PART_FINAL)
-                == ZLINK_SUBMIT_OK) {
-                replied = true;
-                break;
-            }
-            const int err = zlink_errno ();
-            if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR && err != ETIMEDOUT) {
-                zlink_msg_close (&reply);
-                state_->fatal.store (true, std::memory_order_release);
-                return;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        }
-        if (!replied) {
-            zlink_msg_close (&reply);
+        // This is the measured reply hot path. The reply API consumes the
+        // received message, matching the C++ binding's ownership transfer and
+        // avoiding a C-only allocation and full-payload copy.
+        if (zlink_router_reply_part (router_, &source_rid, request_seq, &request,
+                                     ZLINK_PART_FINAL)
+            != ZLINK_SUBMIT_OK) {
             state_->fatal.store (true, std::memory_order_release);
             return;
         }

@@ -2112,7 +2112,17 @@ void test_stream_packet_disconnect_rid_closes_client ()
         memcpy (rid.data, &probe.records[0].source_rid[0], stream_routing_id_size);
     }
 
+    const unsigned char closing[] = "session-closing";
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (closing) - 1),
+      TEST_ASSERT_SUCCESS_ERRNO (
+        test_stream_send_bytes (server, &rid, closing, sizeof (closing) - 1, 0)));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_disconnect_rid (server, &rid));
+    unsigned char observed_closing[sizeof (closing) - 1];
+    TEST_ASSERT_EQUAL_INT (
+      0, recv_exact (client_fd, observed_closing, sizeof (observed_closing)));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      closing, observed_closing, static_cast<unsigned int> (sizeof (observed_closing)));
     TEST_ASSERT_TRUE (wait_raw_fd_closed (client_fd));
 
     close_raw_fd (client_fd);

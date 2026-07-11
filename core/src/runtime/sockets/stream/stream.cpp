@@ -210,7 +210,11 @@ int zlink::stream_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
         scoped_fast_lock_t shard_lock (shard.sync);
         route_shard_t::routes_t::iterator it = shard.routes.find (routing_id);
         if (it != shard.routes.end () && it->second) {
-            it->second->terminate (false);
+            // STREAM close must preserve frames that were accepted before
+            // the disconnect request. The peer receives the pipe delimiter
+            // only after those frames, which enables protocol-level closing
+            // notifications without a timing workaround.
+            it->second->terminate (true);
             return 0;
         }
     }

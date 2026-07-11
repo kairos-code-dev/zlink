@@ -228,7 +228,9 @@ STREAM 외 공통 소켓 기본값은
 
 STREAM의 public routing id는 서버가 연결별로 부여한 4바이트 connection id다.
 `zlink_disconnect_rid()`는 이 id를 `uint32_t`로 해석해 STREAM 라우팅 맵에서
-pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된 인자로 실패한다.
+pipe를 찾고 지연 종료 요청을 넣는다. 종료 요청 전에 pipe가 수용한 완전한 메시지를
+먼저 내보낸 뒤 delimiter를 처리하므로, 마지막 제어 메시지가 연결 종료보다 앞선다.
+4바이트가 아닌 rid는 잘못된 인자로 실패한다.
 
 ## 9. Session Actor relay (ActorGateway attach)
 

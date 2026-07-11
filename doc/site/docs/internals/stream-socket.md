@@ -239,7 +239,9 @@ These values are fixed as internal constants and not controlled by STREAM env kn
 STREAM's public routing id is the 4-byte connection id assigned by the server
 for each connection. `zlink_disconnect_rid()` interprets that id as a
 `uint32_t`, looks up the pipe in the STREAM route map, and requests
-termination. Any rid that is not 4 bytes fails as an invalid argument.
+delayed termination. Complete messages accepted by the pipe before the
+request are emitted before its delimiter, so a final control message precedes
+connection close. Any rid that is not 4 bytes fails as an invalid argument.
 
 ## 9. Session Actor Relay (ActorGateway attach)
 

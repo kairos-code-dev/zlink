@@ -729,6 +729,10 @@ ROUTER와 STREAM은 routing map을 사용해 대상을 찾습니다. STREAM에�
 `peer_rid_`가 반드시 4바이트 연결 routing id여야 합니다. 그 외 socket은
 현재 연결된 pipe의 source routing id snapshot에서 일치하는 peer를 찾습니다.
 동일한 routing id가 둘 이상이면 대상을 확정할 수 없으므로 실패합니다.
+STREAM은 이 호출 전에 send가 성공한 완전한 메시지를 먼저 전송한 뒤 연결 종료
+delimiter를 처리합니다. 따라서 종료 사유 같은 마지막 protocol 메시지를 보낸 뒤
+같은 routing id를 종료할 수 있습니다. 성공 반환은 여전히 remote peer가 그 메시지나
+종료 이벤트를 이미 처리했다는 뜻은 아닙니다.
 
 **반환값:** 성공 시 `ZLINK_CONNECT_OK`. 대상 없음은
 `ZLINK_CONNECT_NOT_FOUND`, 중복 routing id는 `ZLINK_CONNECT_CONFLICT`,

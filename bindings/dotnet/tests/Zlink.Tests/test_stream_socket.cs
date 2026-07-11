@@ -379,7 +379,10 @@ public sealed class test_stream_socket
         Assert.True(receivedSignal.Wait(5000));
         Assert.False(observedRid.IsEmpty);
 
+        using (Message closing = Message.From("session-closing"u8))
+            stream.Send(observedRid).Message(closing).Submit();
         stream.DisconnectRid(observedRid);
+        Assert.Equal("session-closing"u8.ToArray(), ReceiveExact(ns, "session-closing"u8.Length));
         Assert.True(WaitForRawClientClose(ns, 3000),
             "stream DisconnectRid(rid) did not close the raw TCP client.");
 

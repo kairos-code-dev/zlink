@@ -739,6 +739,11 @@ ROUTER and STREAM use their routing maps for lookup. For STREAM,
 `peer_rid_` must be the 4-byte connection routing id. Other socket types scan
 the current connected-pipe source routing id snapshot. If more than one pipe
 has the same routing id, the target is ambiguous and the call fails.
+For STREAM, complete messages accepted by send before this call are emitted
+before the connection-termination delimiter. This permits a final protocol
+message, such as a close reason, to precede disconnect. A successful return
+still does not mean the remote peer has processed that message or the
+termination event.
 
 **Returns:** `ZLINK_CONNECT_OK` on success. Missing target maps to
 `ZLINK_CONNECT_NOT_FOUND`, duplicate routing id maps to

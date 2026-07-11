@@ -276,3 +276,6 @@ doc/site/site/
 .codex/skills/.system/**
 !.codex/prompts/
 !.codex/prompts/**
+
+# clangd index cache (machine-generated, must not be tracked)
+framework/languages/cpp/.cache/

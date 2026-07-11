@@ -1,0 +1,19 @@
+package Zlink.Framework
+entry Zlink.Framework.nuspec
+entry [Content_Types].xml
+entry _rels/.rels
+entry lib/net8.0/Zlink.Framework.dll
+entry lib/net8.0/Zlink.Framework.xml
+entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
+content-sha256 lib/net8.0/Zlink.Framework.xml=b21b36688ce7afb6dd715a1d38133c65bbbb431d301bf92d83a37744e865c73b
+metadata authors=Zlink.Framework
+metadata description=ZLink framework core abstractions and runtime for .NET.
+metadata id=Zlink.Framework
+metadata version={VERSION}
+metadata repository commit={COMMIT} type=git
+dependency-group targetFramework=net8.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=K4os.Compression.LZ4 version=1.3.8
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.DependencyInjection.Abstractions version=8.0.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Logging.Abstractions version=8.0.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=8.6.5
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version={VERSION}

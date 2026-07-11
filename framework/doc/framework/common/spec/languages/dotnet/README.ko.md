@@ -7,6 +7,12 @@
 [handler-interfaces](handler-interfaces.ko.md)다. 기능별 계약은 같은 디렉토리의
 ASP.NET Core, actor, stream, location과 monitoring 문서에서 설명한다.
 
+[`public-contract.ko.md`](public-contract.ko.md)는 사람이 읽는 계약 문서와 실제 assembly·NuGet
+산출물 사이의 exact 검증 절차를 정의한다. `public-contract/api/`는 모든 public type과 member의
+기계 판독 가능한 정식 서명 부속 명세이고, `public-contract/packages/`는 package archive와
+metadata의 정식 부속 명세다. 구현에서 자동으로 최신 상태를 받아들이는 파일이 아니며, 공개 계약
+리뷰를 마친 변경에서만 함께 갱신한다.
+
 ## 취소 표현
 
 `.NET` 비동기 작업의 명시적 취소는 해당 정식 시그니처에 있는

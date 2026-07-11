@@ -35,7 +35,8 @@ public sealed class EntrySpotActorDispatchTests
             registration,
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
-        var sessions = new ZLinkActorSessionManager(runtime, services, () => node, null);
+        var sessions = new ZLinkActorSessionManager(
+            runtime, services, () => node, null, new ZLinkBoundSessionService(runtime));
         using var cancelledWaiter = new CancellationTokenSource();
 
         var first = sessions.CreateAndBindActorAsync(
@@ -91,7 +92,8 @@ public sealed class EntrySpotActorDispatchTests
         node.BeforeDestroy = _ => teardownEvents.Add("native-destroy");
         lifecycle.BeforeRelease = () => teardownEvents.Add("ownership-release");
         var state = new ZLinkActorRuntimeState("actor-create-fail");
-        ZLinkActorContext EnsureContext() => state.GetOrCreateContext(() => new ZLinkActorContext(runtime, state));
+        ZLinkActorContext EnsureContext() => state.GetOrCreateContext(
+            () => new ZLinkActorContext(runtime, state, new ZLinkBoundSessionService(runtime)));
         var coordinator = new ZLinkActorCreationCoordinator(
             runtime,
             services,
@@ -177,9 +179,11 @@ public sealed class EntrySpotActorDispatchTests
             registration,
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
-        var sessions = new ZLinkActorSessionManager(runtime, services, () => node, lifecycle);
+        var sessions = new ZLinkActorSessionManager(
+            runtime, services, () => node, lifecycle, new ZLinkBoundSessionService(runtime));
         var state = sessions.GetOrCreateState("actor-destroy-not-found");
-        var context = state.GetOrCreateContext(() => new ZLinkActorContext(runtime, state));
+        var context = state.GetOrCreateContext(
+            () => new ZLinkActorContext(runtime, state, new ZLinkBoundSessionService(runtime)));
         var actor = new CreationProbeActor(state.ActorId, context);
         state.BindActorInstance(actor);
         state.BindNativeActorRef(new ZLinkBackendActorRef(node.RoutingId, state.ActorId, 1));
@@ -231,9 +235,11 @@ public sealed class EntrySpotActorDispatchTests
             registration,
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
-        var sessions = new ZLinkActorSessionManager(runtime, services, () => node, lifecycle);
+        var sessions = new ZLinkActorSessionManager(
+            runtime, services, () => node, lifecycle, new ZLinkBoundSessionService(runtime));
         var state = sessions.GetOrCreateState("actor-destroy-native-retry");
-        var context = state.GetOrCreateContext(() => new ZLinkActorContext(runtime, state));
+        var context = state.GetOrCreateContext(
+            () => new ZLinkActorContext(runtime, state, new ZLinkBoundSessionService(runtime)));
         var actor = new CreationProbeActor(state.ActorId, context);
         var nativeActor = new ZLinkBackendActorRef(node.RoutingId, state.ActorId, 1);
         state.BindActorInstance(actor);
@@ -322,9 +328,11 @@ public sealed class EntrySpotActorDispatchTests
             registration,
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
-        var sessions = new ZLinkActorSessionManager(runtime, services, () => node, lifecycle);
+        var sessions = new ZLinkActorSessionManager(
+            runtime, services, () => node, lifecycle, new ZLinkBoundSessionService(runtime));
         var state = sessions.GetOrCreateState("actor-ownership-loss-retry");
-        var context = state.GetOrCreateContext(() => new ZLinkActorContext(runtime, state));
+        var context = state.GetOrCreateContext(
+            () => new ZLinkActorContext(runtime, state, new ZLinkBoundSessionService(runtime)));
         var actor = new CreationProbeActor(state.ActorId, context);
         var nativeActor = new ZLinkBackendActorRef(node.RoutingId, state.ActorId, 1);
         state.BindActorInstance(actor);
@@ -386,9 +394,11 @@ public sealed class EntrySpotActorDispatchTests
             registration,
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
-        var sessions = new ZLinkActorSessionManager(runtime, services, () => node, lifecycle);
+        var sessions = new ZLinkActorSessionManager(
+            runtime, services, () => node, lifecycle, new ZLinkBoundSessionService(runtime));
         var state = sessions.GetOrCreateState("actor-destroy-retry");
-        var context = state.GetOrCreateContext(() => new ZLinkActorContext(runtime, state));
+        var context = state.GetOrCreateContext(
+            () => new ZLinkActorContext(runtime, state, new ZLinkBoundSessionService(runtime)));
         var actor = new CreationProbeActor(state.ActorId, context);
         state.BindActorInstance(actor);
         state.BindNativeActorRef(new ZLinkBackendActorRef(node.RoutingId, state.ActorId, 1));
@@ -433,9 +443,11 @@ public sealed class EntrySpotActorDispatchTests
             registration,
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
-        var sessions = new ZLinkActorSessionManager(runtime, services, () => node, null);
+        var sessions = new ZLinkActorSessionManager(
+            runtime, services, () => node, null, new ZLinkBoundSessionService(runtime));
         var state = sessions.GetOrCreateState("actor-destroy-concurrent");
-        var context = state.GetOrCreateContext(() => new ZLinkActorContext(runtime, state));
+        var context = state.GetOrCreateContext(
+            () => new ZLinkActorContext(runtime, state, new ZLinkBoundSessionService(runtime)));
         var actor = new CreationProbeActor(state.ActorId, context);
         state.BindActorInstance(actor);
         state.BindNativeActorRef(new ZLinkBackendActorRef(node.RoutingId, state.ActorId, 1));

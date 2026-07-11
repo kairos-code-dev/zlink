@@ -11,7 +11,8 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
     ZLinkSpotActorMembership actors,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
     ILogger<ZLinkSpotActorJoinDispatcher>? logger = null,
-    Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null)
+    Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null,
+    ZLinkDispatchErrorReporter? dispatchErrors = null)
 {
     private readonly ILogger<ZLinkSpotActorJoinDispatcher> _logger =
         logger ?? NullLogger<ZLinkSpotActorJoinDispatcher>.Instance;
@@ -207,7 +208,8 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             "EntrySpot",
             "Request",
             exception,
-            actorType?.Name);
+            actorType?.Name,
+            dispatchErrors?.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error) ?? true);
         using var emptyReply = Message.From(ReadOnlySpan<byte>.Empty);
         nativeSpot.ReplyActorJoin(joinRequest, 1, emptyReply);
     }

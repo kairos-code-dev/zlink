@@ -265,6 +265,7 @@ backend gate 와 별도로 유지한다.
 
 - `README.ko.md`
 - `handler-interfaces.ko.md`
+- `public-contract.ko.md`
 - `aspnet-core-channel-messaging.ko.md`
 - `aspnet-core-spot.ko.md`
 - `stage-wrapper-on-spot.ko.md`

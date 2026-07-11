@@ -4417,6 +4417,19 @@ message가 30초 동안 없으면 `IdleTimeout`으로 session을 종료한다. c
 시간을 갱신하지 않는다. 서버 값은 언어 간 같은 동작을 위한 내부 고정 정책이며
 `IZLinkStreamNodeBuilder`에 별도 설정을 추가하지 않는다.
 
+host가 framework runtime을 종료할 때는 session callback과 정상 정리를 전체 STREAM node 기준으로
+최대 1초 기다린다. 이 상한을 넘으면 남은 session의 transport close를 시작하고 node 종료를 계속한다.
+비협조 callback이 process 종료를 무한히 지연시키지 않게 하는 내부 고정 정책이며 public 설정은
+추가하지 않는다. 정상 `CloseAsync()`는 이 강제 종료 경로와 달리 현재 peer의 transport close가
+끝난 뒤 완료된다.
+
+상한이 끝나면 실행 중 callback에 전달한 cancellation token을 취소한다. callback이 취소를 무시하면
+framework는 해당 application callback을 더 기다리지 않으며, callback이 접근할 수 있는 session
+context와 dependency injection scope도 동시에 dispose하지 않는다. 이 자원은 ForceStopping으로
+종료되는 process와 함께 회수된다. framework transport close와 session table 제거는 callback과
+분리해서 끝내므로, framework 소유 cleanup task가 application callback 뒤에 남아 process 종료 순서를
+바꾸지 않는다.
+
 typed helper는 별도 codec 등록 없이 JSON을 기본으로 사용한다. builder constructor는 public이 아니며
 아래 extension에서만 얻는다.
 

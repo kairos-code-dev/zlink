@@ -2,7 +2,8 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorContext(
     ZLinkFrameworkRuntime runtime,
-    ZLinkActorRuntimeState state) : IZLinkActorContext
+    ZLinkActorRuntimeState state,
+    IZLinkBoundSessionFactory boundSessionFactory) : IZLinkActorContext
 {
     private IZLinkActor CurrentActor
         => state.Actor ?? throw new InvalidOperationException(
@@ -15,9 +16,7 @@ internal sealed class ZLinkActorContext(
         get
         {
             state.EnsureContextValid();
-            return ((IZLinkBoundSessionFactory?)runtime.Services.GetService(typeof(IZLinkBoundSessionFactory))
-                    ?? throw new InvalidOperationException("Bound session factory is not registered."))
-                .Create(state.ActorId);
+            return boundSessionFactory.Create(state.ActorId);
         }
     }
 

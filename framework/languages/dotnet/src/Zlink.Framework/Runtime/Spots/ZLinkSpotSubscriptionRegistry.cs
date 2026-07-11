@@ -106,13 +106,6 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             return;
         }
 
-        if (!_descriptorsByTopic.TryGetValue(message.Topic, out var descriptors))
-        {
-            CreateScope("<unknown>", message.Topic)
-                .Dropped(logger, dispatchErrors, LogLevel.Debug);
-            return;
-        }
-
         ZLinkEnvelopeHeader header;
         try
         {
@@ -146,6 +139,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             header.FlowOrigin,
             dispatchErrors.Flow.GenerationEnabled,
             ZLinkFlowOrigin.Inbound);
+
         ZLinkRuntimeMetrics.RecordFanoutReceived(message.Topic);
         var scope = CreateScope(
             header.MessageName,
@@ -155,6 +149,12 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             header.Source);
 
         scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
+
+        if (!_descriptorsByTopic.TryGetValue(message.Topic, out var descriptors))
+        {
+            scope.Dropped(logger, dispatchErrors, LogLevel.Debug);
+            return;
+        }
 
         var dispatched = false;
         foreach (var descriptor in descriptors)

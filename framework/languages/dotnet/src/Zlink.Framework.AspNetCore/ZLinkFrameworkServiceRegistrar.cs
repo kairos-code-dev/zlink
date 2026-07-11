@@ -165,9 +165,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<ZLinkFrameworkRuntime>()));
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
-        services.AddSingleton<ZLinkBoundSessionService>();
-        services.AddSingleton<IZLinkBoundSessionFactory>(provider =>
-            provider.GetRequiredService<ZLinkBoundSessionService>());
         services.AddSingleton<ZLinkFanoutClient>();
         services.AddSingleton<IZLinkFanoutClient>(static provider => provider.GetRequiredService<ZLinkFanoutClient>());
 

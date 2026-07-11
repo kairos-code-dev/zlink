@@ -622,7 +622,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         });
 
         using var provider = services.BuildServiceProvider();
-        Assert.NotNull(provider.GetService<IZLinkBoundSessionFactory>());
     }
 
     [Fact]

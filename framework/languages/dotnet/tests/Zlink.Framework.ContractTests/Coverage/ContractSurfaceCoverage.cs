@@ -129,7 +129,7 @@ public sealed class ContractSurfaceCoverage
     }
 
     [Fact]
-    public void Canonical_interface_documents_cover_every_exported_contract_type()
+    public void Fixed_spec_snapshot_matches_every_exported_contract_signature()
     {
         var repositoryRoot = FindRepositoryRoot();
         var specRoot = Path.Combine(
@@ -141,14 +141,7 @@ public sealed class ContractSurfaceCoverage
             "spec",
             "languages",
             "dotnet");
-        var documents = Directory.GetFiles(specRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
-            .Where(path => !path.EndsWith("stage-wrapper-on-spot.ko.md", StringComparison.Ordinal))
-            .Select(File.ReadAllText)
-            .ToArray();
-        Assert.NotEmpty(documents);
-        var canonicalText = string.Join(Environment.NewLine, documents);
-
-        var exportedContracts = new[]
+        var assemblies = new[]
             {
                 typeof(IZLinkFrameworkOptions).Assembly,
                 typeof(ServiceCollectionExtensions).Assembly,
@@ -158,21 +151,19 @@ public sealed class ContractSurfaceCoverage
                 typeof(IZlinkStreamConnector).Assembly
             }
             .Distinct()
-            .SelectMany(static assembly => assembly.GetExportedTypes())
-            .OrderBy(static type => type.FullName, StringComparer.Ordinal)
             .ToArray();
+        var snapshotRoot = Path.Combine(specRoot, "public-contract", "api");
+        var expected = string.Concat(assemblies
+            .Select(static assembly => assembly.GetName().Name!)
+            .Order(StringComparer.Ordinal)
+            .Select(name => File.ReadAllText(Path.Combine(snapshotRoot, $"{name}.api.txt"))));
+        var actual = PublicContractSnapshot.Render(assemblies);
 
-        var missing = exportedContracts
-            .Where(type => !canonicalText.Contains(
-                type.Name.Split('`')[0],
-                StringComparison.Ordinal))
-            .Select(static type => type.FullName)
-            .ToArray();
-
-        Assert.True(
-            missing.Length == 0,
-            $"Canonical .NET interface documents are missing exported contract types:{Environment.NewLine}{string.Join(Environment.NewLine, missing)}");
+        Assert.Equal(NormalizeLines(expected), NormalizeLines(actual));
     }
+
+    private static string NormalizeLines(string value) =>
+        value.Replace("\r\n", "\n", StringComparison.Ordinal);
 
     private static string FindRepositoryRoot()
     {

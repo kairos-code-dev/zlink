@@ -68,6 +68,7 @@
         <Compile Include="Runtime/LocationRuntimeTests.cs"/>
         <Compile Include="Runtime/OwnerLeaseTrackerTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
+        <Compile Include="Runtime/PublicContractSnapshotTests.cs"/>
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
         <Compile Include="Runtime/StreamWireInteropTests.cs"/>
         <Compile Include="Runtime/StreamSessionLivenessTests.cs"/>
@@ -81,5 +82,6 @@
         <Compile Include="Runtime/ZLinkAsyncSubmitterTests.cs"/>
         <Compile Include="../Common/FrameworkGlobalUsings.cs" Link="GlobalUsings.cs"/>
         <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs"/>
+        <Compile Include="../../scripts/PublicContractSnapshot.cs" Link="Runtime/PublicContractSnapshot.cs"/>
     </ItemGroup>
 </Project>

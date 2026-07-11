@@ -41,12 +41,12 @@ internal sealed class ZLinkMessageFlowTracer
     // after this returns true.
     public bool Enabled(ZLinkMessageFlowOutcome outcome)
     {
-        return LogEnabled(outcome) || ObserverEnabled;
+        return ShouldLog(outcome) || ObserverEnabled;
     }
 
     public void Trace(ZLinkMessageFlowEvent flow)
     {
-        var logEnabled = LogEnabled(flow.Outcome);
+        var logEnabled = ShouldLog(flow.Outcome);
         var observerEnabled = ObserverEnabled;
         if (!logEnabled && !observerEnabled) return;
 
@@ -90,7 +90,7 @@ internal sealed class ZLinkMessageFlowTracer
     private bool ObserverEnabled =>
         _options.MessageFlowObserver is not null || _options.MessageFlowObserverType is not null;
 
-    private bool LogEnabled(ZLinkMessageFlowOutcome outcome) =>
+    internal bool ShouldLog(ZLinkMessageFlowOutcome outcome) =>
         (int)_options.Diagnostics.EffectiveMessageFlow >= (int)RequiredMode(outcome);
 
     private static ZLinkMessageFlowLogMode RequiredMode(ZLinkMessageFlowOutcome outcome)

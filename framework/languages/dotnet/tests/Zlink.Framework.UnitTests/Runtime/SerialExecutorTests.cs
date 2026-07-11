@@ -32,6 +32,62 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task SerialExecutionQueue_FinalTurn_BypassesCapacity_AndSealsAdmission()
+    {
+        await using var queue = CreateQueue(CancellationToken.None, capacity: 1);
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finalRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(queue.TryPost(
+            async _ =>
+            {
+                firstStarted.TrySetResult();
+                await releaseFirst.Task.ConfigureAwait(false);
+            },
+            out _));
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(queue.TryPost(static _ => ValueTask.CompletedTask, out _));
+        Assert.True(queue.TryPostFinal(
+            _ =>
+            {
+                finalRan.TrySetResult();
+                return ValueTask.CompletedTask;
+            },
+            out _));
+        Assert.False(queue.TryPost(static _ => ValueTask.CompletedTask, out _));
+        Assert.False(queue.TryPostFinal(static _ => ValueTask.CompletedTask, out _));
+
+        releaseFirst.TrySetResult();
+        await finalRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_Cancellation_Detaches_NonCooperative_Callback()
+    {
+        using var stop = new CancellationTokenSource();
+        await using var queue = CreateQueue(stop.Token);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(queue.TryPost(
+            async _ =>
+            {
+                started.TrySetResult();
+                await release.Task.ConfigureAwait(false);
+            },
+            out _));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        stop.Cancel();
+        queue.Complete();
+        await queue.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+
+        release.TrySetResult();
+    }
+
+    [Fact]
     public async Task SpotSerialExecutor_Continues_After_Queued_Work_Exception()
     {
         var exceptions = new ConcurrentQueue<Exception>();

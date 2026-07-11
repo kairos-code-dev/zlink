@@ -177,31 +177,7 @@ internal sealed class ZLinkActorRuntimeState(
 
     public ZLinkActorBoundSession? ClearAfterDestroy()
     {
-        ZLinkActorBoundSession? boundSession;
-        lock (_sessionGate)
-        {
-            boundSession = _boundSession;
-            _boundSession = null;
-        }
-
-        SessionId = null;
-        Stream = null;
-        NativeActorRef = null;
-        RetiredLocalActorRef = null;
-        Activation = null;
-        CurrentDispatch = null;
-        Context = null;
-        Actor = null;
-        ClearActorMetric();
-        ActorType = null;
-        IsConfigured = false;
-        _destroyPhase = ZLinkActorDestroyPhase.None;
-        _teardownPending = false;
-        _teardownAttempt = null;
-        ContextInvalidated = true;
-        _actorCreationTask = null;
-        Handoff.Reset();
-        return boundSession;
+        return TransitionLocalInstance(ZLinkActorTerminalTransition.Destroyed, null);
     }
 
     public void InvalidateRuntimeGeneration()
@@ -216,6 +192,23 @@ internal sealed class ZLinkActorRuntimeState(
 
     public void RetireMigratedActorInstance(ZLinkBackendActorRef sourceActor)
     {
+        _ = TransitionLocalInstance(
+            ZLinkActorTerminalTransition.Migrated,
+            sourceActor);
+    }
+
+    private ZLinkActorBoundSession? TransitionLocalInstance(
+        ZLinkActorTerminalTransition transition,
+        ZLinkBackendActorRef? retiredLocalActor)
+    {
+        ZLinkActorBoundSession? releasedBoundSession = null;
+        if (transition == ZLinkActorTerminalTransition.Destroyed)
+            lock (_sessionGate)
+            {
+                releasedBoundSession = _boundSession;
+                _boundSession = null;
+            }
+
         SessionId = null;
         Stream = null;
         Activation = null;
@@ -227,14 +220,39 @@ internal sealed class ZLinkActorRuntimeState(
         IsConfigured = false;
         ContextInvalidated = true;
         _actorCreationTask = null;
-        RetiredLocalActorRef = sourceActor;
-        Handoff.CompleteSourceMigration();
+
+        switch (transition)
+        {
+            case ZLinkActorTerminalTransition.Destroyed:
+                NativeActorRef = null;
+                RetiredLocalActorRef = null;
+                _destroyPhase = ZLinkActorDestroyPhase.None;
+                _teardownPending = false;
+                _teardownAttempt = null;
+                Handoff.Reset();
+                break;
+            case ZLinkActorTerminalTransition.Migrated:
+                RetiredLocalActorRef = retiredLocalActor
+                    ?? throw new ArgumentNullException(nameof(retiredLocalActor));
+                Handoff.CompleteSourceMigration();
+                break;
+            default:
+                throw new InvalidOperationException("Unknown actor terminal transition.");
+        }
+
+        return releasedBoundSession;
     }
 
     private void ClearActorMetric()
     {
         if (Interlocked.Exchange(ref _actorMetricActive, 0) != 0)
             ZLinkRuntimeMetrics.RecordActorClosed();
+    }
+
+    private enum ZLinkActorTerminalTransition
+    {
+        Destroyed,
+        Migrated
     }
 
     public void PrepareForTransferredActivation()

@@ -90,9 +90,51 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         Func<CancellationToken, ValueTask> callback,
         out ZLinkSerialWorkItem item)
     {
+        return TryPost(callback, enforceCapacity: true, out item);
+    }
+
+    public bool TryPostFinal(
+        Func<CancellationToken, ValueTask> callback,
+        out ZLinkSerialWorkItem item)
+    {
         lock (_admissionGate)
         {
-            if (Volatile.Read(ref _completed) != 0 || !TryReserveSlot())
+            if (Volatile.Read(ref _completed) != 0 || !TryReserveEssentialSlot())
+            {
+                item = null!;
+                return false;
+            }
+
+            Volatile.Write(ref _completed, 1);
+            var metricTimestamp = _spotMetricKind is null
+                ? 0
+                : ZLinkRuntimeMetrics.RecordSpotQueueEnqueued(_spotMetricKind);
+            item = new ZLinkSerialWorkItem(callback, metricTimestamp);
+            if (!_queue.Writer.TryWrite(item))
+            {
+                if (_spotMetricKind is not null)
+                    ZLinkRuntimeMetrics.RecordSpotQueueRemoved(_spotMetricKind);
+                CompletePendingItem();
+                item = null!;
+                _queue.Writer.TryComplete();
+                return false;
+            }
+
+            _queue.Writer.TryComplete();
+            ScheduleDrain();
+            return true;
+        }
+    }
+
+    private bool TryPost(
+        Func<CancellationToken, ValueTask> callback,
+        bool enforceCapacity,
+        out ZLinkSerialWorkItem item)
+    {
+        lock (_admissionGate)
+        {
+            if (Volatile.Read(ref _completed) != 0
+                || (enforceCapacity ? !TryReserveSlot() : !TryReserveEssentialSlot()))
             {
                 item = null!;
                 return false;
@@ -121,6 +163,17 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         {
             var current = Volatile.Read(ref _pendingCount);
             if (current >= _capacity) return false;
+
+            if (Interlocked.CompareExchange(ref _pendingCount, current + 1, current) == current) return true;
+        }
+    }
+
+    private bool TryReserveEssentialSlot()
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _pendingCount);
+            if (current == int.MaxValue) return false;
 
             if (Interlocked.CompareExchange(ref _pendingCount, current + 1, current) == current) return true;
         }

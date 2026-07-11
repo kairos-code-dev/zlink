@@ -53,7 +53,8 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             runtime,
             services,
             getActorSpotNode,
-            locationLifecycle);
+            locationLifecycle,
+            new ZLinkBoundSessionService(runtime));
         var actors = new ZLinkFrameworkActorFacade(
             runtime,
             registration,

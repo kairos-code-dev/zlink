@@ -4,6 +4,8 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
 {
     private readonly ZLinkSerialExecutionQueue _queue;
     private readonly CancellationTokenSource _stopSource = new();
+    private readonly object _stopGate = new();
+    private bool _stopSourceDisposed;
 
     public ZLinkStreamSessionSerialExecutor(object executionOwner)
     {
@@ -18,17 +20,40 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
     {
         RequestStop();
         await _queue.DisposeAsync().ConfigureAwait(false);
-        _stopSource.Dispose();
+        lock (_stopGate)
+        {
+            if (_stopSourceDisposed) return;
+            _stopSource.Dispose();
+            _stopSourceDisposed = true;
+        }
     }
 
     public void RequestStop()
     {
         _queue.Complete();
-        _stopSource.Cancel();
+    }
+
+    public void ForceStop()
+    {
+        _queue.Complete();
+        lock (_stopGate)
+        {
+            if (!_stopSourceDisposed) _stopSource.Cancel();
+        }
     }
 
     public bool Enqueue(Func<ValueTask> work)
     {
         return _queue.TryPost(_ => work(), out _);
+    }
+
+    public bool Enqueue(Func<CancellationToken, ValueTask> work)
+    {
+        return _queue.TryPost(work, out _);
+    }
+
+    public bool EnqueueFinal(Func<ValueTask> work)
+    {
+        return _queue.TryPostFinal(_ => work(), out _);
     }
 }

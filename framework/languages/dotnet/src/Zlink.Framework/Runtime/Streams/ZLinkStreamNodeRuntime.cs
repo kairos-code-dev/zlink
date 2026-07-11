@@ -1,10 +1,13 @@
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 {
+    internal static readonly TimeSpan SessionShutdownUpperBound = TimeSpan.FromMilliseconds(900);
+    internal static readonly TimeSpan SessionForceCleanupUpperBound = TimeSpan.FromMilliseconds(100);
     private readonly ZLinkStreamSessionTable _sessions;
     private readonly ZLinkStreamSessionSerialExecutor _sessionIngress;
     private readonly CancellationTokenSource _stopSource = new();
@@ -99,10 +102,20 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                 failures.Add(exception);
             }
 
-        foreach (var session in sessions)
-            await CaptureAsync(session.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(() => DisposeSessionsAsync(sessions)).ConfigureAwait(false);
 
-        await CaptureAsync(Socket.DisposeAsync).ConfigureAwait(false);
+        var socketDisposed = false;
+        try
+        {
+            await Socket.DisposeAsync().ConfigureAwait(false);
+            socketDisposed = true;
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
+        if (socketDisposed)
+            foreach (var session in sessions) session.ConfirmNodeTransportDisposed();
         Capture(_stopSource.Dispose);
         if (failures.Count == 1)
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
@@ -131,6 +144,45 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             {
                 failures.Add(exception);
             }
+        }
+    }
+
+    private static async ValueTask DisposeSessionsAsync(
+        IReadOnlyCollection<ZLinkStreamSessionRuntime> sessions)
+    {
+        if (sessions.Count == 0) return;
+
+        var disposals = sessions.Select(static session => session.DisposeAsync().AsTask()).ToArray();
+        try
+        {
+            await Task.WhenAll(disposals)
+                .WaitAsync(SessionShutdownUpperBound)
+                .ConfigureAwait(false);
+            return;
+        }
+        catch (TimeoutException)
+        {
+        }
+
+        var forcedCloses = sessions
+            .Select(static session => session.ForceCloseForShutdownAsync().AsTask())
+            .ToArray();
+        try
+        {
+            await Task.WhenAll(disposals.Concat(forcedCloses))
+                .WaitAsync(SessionForceCleanupUpperBound)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            for (var index = 0; index < disposals.Length; index++)
+                ZLinkUnawaitedSubmit.Observe(
+                    new ValueTask(disposals[index]),
+                    $"stream-session-late-dispose:{index}");
+            for (var index = 0; index < forcedCloses.Length; index++)
+                ZLinkUnawaitedSubmit.Observe(
+                    new ValueTask(forcedCloses[index]),
+                    $"stream-session-late-force-close:{index}");
         }
     }
 

@@ -17,7 +17,8 @@ internal static class ZLinkMessageFlowLogger
         string reason,
         string surfaceName,
         string kindName,
-        string? actorType = null)
+        string? actorType = null,
+        bool writeLog = true)
     {
         ZLinkTelemetry.RecordHandlerMissing(surfaceName, kindName, action, reason);
         ZLinkTelemetry.TraceFlowEvent(
@@ -29,7 +30,7 @@ internal static class ZLinkMessageFlowLogger
             kindName,
             actorType);
 
-        if (!logger.IsEnabled(level)) return;
+        if (!writeLog || !logger.IsEnabled(level)) return;
 
         logger.Log(
             level,
@@ -55,7 +56,8 @@ internal static class ZLinkMessageFlowLogger
         Exception exception,
         string surfaceName,
         string kindName,
-        string? actorType = null)
+        string? actorType = null,
+        bool writeLog = true)
     {
         if (string.Equals(action, "reply-error", StringComparison.Ordinal))
             ZLinkTelemetry.RecordReplyError(surfaceName, kindName, reason);
@@ -68,7 +70,7 @@ internal static class ZLinkMessageFlowLogger
             kindName,
             actorType);
 
-        if (!logger.IsEnabled(LogLevel.Warning)) return;
+        if (!writeLog || !logger.IsEnabled(LogLevel.Warning)) return;
 
         logger.LogWarning(
             PayloadDecodeFailedEvent,
@@ -93,7 +95,8 @@ internal static class ZLinkMessageFlowLogger
         string reason,
         string surfaceName,
         string kindName,
-        string? actorType = null)
+        string? actorType = null,
+        bool writeLog = true)
     {
         ZLinkTelemetry.RecordDropped(surfaceName, kindName, reason);
         ZLinkTelemetry.TraceFlowEvent(
@@ -105,7 +108,7 @@ internal static class ZLinkMessageFlowLogger
             kindName,
             actorType);
 
-        if (!logger.IsEnabled(level)) return;
+        if (!writeLog || !logger.IsEnabled(level)) return;
 
         logger.Log(
             level,
@@ -131,7 +134,8 @@ internal static class ZLinkMessageFlowLogger
         string surfaceName,
         string kindName,
         Exception? exception = null,
-        string? actorType = null)
+        string? actorType = null,
+        bool writeLog = true)
     {
         if (string.Equals(reason, "no-join-handler", StringComparison.Ordinal))
             ZLinkTelemetry.RecordHandlerMissing(surfaceName, kindName, "rejected", reason);
@@ -144,7 +148,7 @@ internal static class ZLinkMessageFlowLogger
             kindName,
             actorType);
 
-        if (!logger.IsEnabled(level)) return;
+        if (!writeLog || !logger.IsEnabled(level)) return;
 
         logger.Log(
             level,

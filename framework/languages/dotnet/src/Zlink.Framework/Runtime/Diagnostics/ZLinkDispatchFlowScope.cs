@@ -72,7 +72,8 @@ internal readonly struct ZLinkDispatchFlowScope(
             "no-handler",
             surfaceName,
             kindName,
-            actorType);
+            actorType,
+            dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error));
         Report(
             dispatchErrors,
             ZLinkDispatchErrorReason.HandlerMissing,
@@ -94,7 +95,8 @@ internal readonly struct ZLinkDispatchFlowScope(
             reasonName,
             surfaceName,
             kindName,
-            actorType);
+            actorType,
+            dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Dropped));
         Report(
             dispatchErrors,
             reason,
@@ -116,7 +118,8 @@ internal readonly struct ZLinkDispatchFlowScope(
             exception,
             surfaceName,
             kindName,
-            actorType);
+            actorType,
+            dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error));
         Report(
             dispatchErrors,
             ZLinkDispatchErrorReason.PayloadDecodeFailed,
@@ -140,7 +143,8 @@ internal readonly struct ZLinkDispatchFlowScope(
                 surfaceName,
                 kindName,
                 exception,
-                actorType);
+                actorType,
+                dispatchErrors.Flow.ShouldLog(ZLinkMessageFlowOutcome.Error));
 
         Report(
             dispatchErrors,

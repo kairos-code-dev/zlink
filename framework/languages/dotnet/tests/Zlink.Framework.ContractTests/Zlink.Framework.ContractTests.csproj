@@ -53,6 +53,7 @@
         <Compile Include="Support/ContractExampleAttribute.cs"/>
         <Compile Include="Timers/TimerContracts.cs"/>
         <Compile Include="GlobalUsings.cs"/>
+        <Compile Include="../../scripts/PublicContractSnapshot.cs" Link="Support/PublicContractSnapshot.cs"/>
     </ItemGroup>
 
 </Project>

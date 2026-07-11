@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +13,113 @@ namespace Zlink.Framework.UnitTests;
 
 public sealed class UnhandledDispatchPolicyTests
 {
+    [Fact]
+    public async Task SpotSubscription_MalformedUnknownTopic_ReportsInvalidFrameBeforeTopicLookup()
+    {
+        var result = await ObserveUnknownSpotSubscriptionAsync(malformed: true);
+
+        Assert.Equal(ZLinkMessageFlowOutcome.Error, result.Error.Outcome);
+        Assert.Equal(ZLinkDispatchErrorSurface.SpotSubscription, result.Error.Surface);
+        Assert.Equal(ZLinkDispatchErrorReason.InvalidFrame, result.Error.ErrorReason);
+        Assert.Equal(ZLinkDispatchErrorAction.Drop, result.Error.ErrorAction);
+        Assert.Equal(TestFlowId, result.Error.FlowId);
+        Assert.Equal(ZLinkFlowOrigin.Application, result.Error.FlowOrigin);
+        Assert.Equal(nameof(TestSubscriptionEvent), result.Error.PacketName);
+        Assert.Equal("events.child", result.Error.Topic);
+        Assert.Equal("subscription-correlation", result.Error.CorrelationId);
+        Assert.Equal("source-rid", result.Error.SourceRid);
+        Assert.Equal(0, result.DispatchCount);
+        Assert.Equal(0, result.FanoutReceived);
+        Assert.Empty(result.LogMessages);
+    }
+
+    [Fact]
+    public async Task SpotSubscription_OffModeUnknownTopic_PreservesHeaderAndInboundFlow()
+    {
+        var result = await ObserveUnknownSpotSubscriptionAsync(malformed: false);
+
+        Assert.Equal(ZLinkMessageFlowOutcome.Received, result.Received!.Outcome);
+        Assert.Equal(TestFlowId, result.Received.FlowId);
+        Assert.Equal(ZLinkFlowOrigin.Application, result.Received.FlowOrigin);
+        Assert.Equal(nameof(TestSubscriptionEvent), result.Received.PacketName);
+        Assert.Equal("events.child", result.Received.Topic);
+        Assert.Equal("subscription-correlation", result.Received.CorrelationId);
+        Assert.Equal("source-rid", result.Received.SourceRid);
+
+        Assert.Equal(ZLinkDispatchErrorReason.HandlerMissing, result.Error.ErrorReason);
+        Assert.Equal(ZLinkDispatchErrorAction.Drop, result.Error.ErrorAction);
+        Assert.Equal(TestFlowId, result.Error.FlowId);
+        Assert.Equal(ZLinkFlowOrigin.Application, result.Error.FlowOrigin);
+        Assert.Equal(nameof(TestSubscriptionEvent), result.Error.PacketName);
+        Assert.Equal("events.child", result.Error.Topic);
+        Assert.Equal("subscription-correlation", result.Error.CorrelationId);
+        Assert.Equal("source-rid", result.Error.SourceRid);
+        Assert.Equal(0, result.DispatchCount);
+        Assert.True(result.FanoutReceived > 0);
+        Assert.Empty(result.LogMessages);
+    }
+
+    [Fact]
+    public async Task ActorJoinMissingHandler_OffMode_KeepsTelemetryButSuppressesLog()
+    {
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded
+        };
+        var activities = new List<Activity>();
+        listener.ActivityStopped = activities.Add;
+        ActivitySource.AddActivityListener(listener);
+        var options = new ZLinkDispatchOptionsModel();
+        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        var nativeSpot = new CapturingSpot();
+        var logger = new CapturingLogger<ZLinkSpotActorJoinDispatcher>();
+        var dispatcher = new ZLinkSpotActorJoinDispatcher(
+            null!,
+            nativeSpot,
+            "entry",
+            new ZLinkSpotActorJoinRegistry(),
+            new ZLinkSpotActorMembership(),
+            static () => throw new InvalidOperationException("Handler invoker should not be used."),
+            logger,
+            dispatchErrors: new ZLinkDispatchErrorReporter(options));
+        var parts = ZLinkEnvelopeCodec.EncodeParts(
+            new ZLinkEnvelopeHeader(
+                ZLinkMessageKind.Request,
+                "entry",
+                "JoinReq",
+                ZLinkEnvelopeCodec.DefaultContentType,
+                null,
+                null,
+                null,
+                null,
+                null),
+            new { Value = "join" },
+            typeof(object),
+            null);
+        var request = new ZLinkBackendActorJoinRequest(
+            new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
+            new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
+            RoutingId.From("source-node"),
+            RoutingId.From("target-spot"),
+            1,
+            parts[0],
+            parts);
+
+        try
+        {
+            await dispatcher.DispatchAsync(request, CancellationToken.None);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+
+        Assert.Equal(1, nativeSpot.LastJoinResultCode);
+        Assert.Empty(logger.Messages);
+        Assert.Contains(activities, activity => activity.OperationName == "zlink.actor.dispatch");
+    }
+
     [Fact]
     public async Task ActorJoinMissingHandler_RepliesRejected_AndLogsReason()
     {
@@ -501,6 +610,132 @@ public sealed class UnhandledDispatchPolicyTests
         throw new TimeoutException("Timed out waiting for router request.");
     }
 
+    private const string TestFlowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d";
+
+    private static async Task<SpotSubscriptionObservation> ObserveUnknownSpotSubscriptionAsync(
+        bool malformed)
+    {
+        var observer = new CapturingMessageFlowObserver();
+        var options = new ZLinkDispatchOptionsModel();
+        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        options.SetMessageFlowObserver(observer);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
+        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
+        var reporter = new ZLinkDispatchErrorReporter(options, observerPump: observerPump);
+        var logger = new CapturingLogger<ZLinkSpotSubscriptionRegistry>();
+        var registry = new ZLinkSpotSubscriptionRegistry();
+        var nativeSpot = new CapturingSpot();
+        registry.Add("events", typeof(TestSubscriptionHandler));
+        registry.Bind(new TestSubscriptionSpot(), nativeSpot);
+
+        var backendFactory = new ZLinkDotNetBackendAdapterFactory();
+        var channelAdapter = backendFactory.CreateChannelAdapter();
+        await using var context = channelAdapter.CreateContext();
+        await using var publisher = channelAdapter.CreatePublisherSocket(context);
+        await using var subscriber = channelAdapter.CreateSubscriberSocket(context);
+        var endpoint = GetTcpEndpoint();
+        publisher.Bind(endpoint);
+        subscriber.Connect(endpoint);
+        subscriber.SetSubscription("events");
+        nativeSpot.SubscribeHandler = subscriber.Subscribe;
+        long fanoutReceived = 0;
+        using var meterListener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name == "zlink.fanout.received")
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        meterListener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            if (instrument.Name != "zlink.fanout.received") return;
+            foreach (var tag in tags)
+                if (tag.Key == "topic" && Equals(tag.Value, "events.child"))
+                    Interlocked.Add(ref fanoutReceived, value);
+        });
+        meterListener.Start();
+
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Publish,
+            "play",
+            nameof(TestSubscriptionEvent),
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "subscription-correlation",
+            null,
+            "events.child",
+            null,
+            null,
+            "source-rid")
+        {
+            FlowId = TestFlowId,
+            FlowOrigin = ZLinkFlowOrigin.Application
+        };
+        IReadOnlyList<Message> CreateParts()
+        {
+            if (!malformed)
+                return ZLinkEnvelopeCodec.EncodeParts(
+                    header,
+                    new TestSubscriptionEvent("payload"),
+                    typeof(TestSubscriptionEvent),
+                    null);
+
+            return
+            [
+                Message.From(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                    header,
+                    ZLinkJsonSerializerOptions.Default)),
+                Message.From("{}")
+            ];
+        }
+
+        var dispatchCount = 0;
+        try
+        {
+            for (var attempt = 0; attempt < 100 && !observer.HasError; attempt++)
+            {
+                var parts = CreateParts();
+                try
+                {
+                    publisher.Publish("events.child", parts, SendFlags.None);
+                }
+                finally
+                {
+                    ZLinkMessageParts.DisposeAll(parts);
+                }
+
+                await Task.Delay(5);
+                await registry.DrainAsync(
+                    nativeSpot,
+                    null,
+                    reporter,
+                    logger,
+                    (_, _, _) =>
+                    {
+                        dispatchCount++;
+                        return ValueTask.CompletedTask;
+                    },
+                    CancellationToken.None);
+            }
+
+            var error = await observer.WaitAsync(TimeSpan.FromSeconds(2));
+            var received = observer.Events.FirstOrDefault(
+                static flow => flow.Outcome == ZLinkMessageFlowOutcome.Received);
+            return new SpotSubscriptionObservation(
+                received,
+                error,
+                dispatchCount,
+                Interlocked.Read(ref fanoutReceived),
+                logger.Messages.ToArray());
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
     private static string GetTcpEndpoint()
     {
         using var listener = new TcpListener(
@@ -518,6 +753,29 @@ public sealed class UnhandledDispatchPolicyTests
     private sealed record TestReply(string Value);
 
     private sealed record TestPublishedEvent(string Value);
+
+    private sealed record TestSubscriptionEvent(string Value);
+
+    private sealed class TestSubscriptionSpot : IZLinkSpot
+    {
+        public IZLinkSpotContext Context => null!;
+    }
+
+    private sealed class TestSubscriptionHandler
+        : IZLinkSpotSubscriptionHandler<TestSubscriptionSpot, TestSubscriptionEvent>
+    {
+        public ValueTask HandleAsync(
+            TestSubscriptionSpot spot,
+            TestSubscriptionEvent message,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed record SpotSubscriptionObservation(
+        ZLinkMessageFlowEvent? Received,
+        ZLinkMessageFlowEvent Error,
+        int DispatchCount,
+        long FanoutReceived,
+        IReadOnlyList<string> LogMessages);
 
     private sealed class PublishProbe
     {
@@ -543,13 +801,19 @@ public sealed class UnhandledDispatchPolicyTests
 
     private sealed class CapturingMessageFlowObserver : IZLinkMessageFlowObserver
     {
+        private readonly ConcurrentQueue<ZLinkMessageFlowEvent> _events = new();
         private readonly TaskCompletionSource<ZLinkMessageFlowEvent> _observed =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IReadOnlyCollection<ZLinkMessageFlowEvent> Events => _events.ToArray();
+
+        public bool HasError => _observed.Task.IsCompleted;
 
         public ValueTask OnMessageFlowAsync(
             ZLinkMessageFlowEvent flow,
             CancellationToken cancellationToken)
         {
+            _events.Enqueue(flow);
             if (flow.Outcome == ZLinkMessageFlowOutcome.Error) _observed.TrySetResult(flow);
             return ValueTask.CompletedTask;
         }
@@ -587,6 +851,8 @@ public sealed class UnhandledDispatchPolicyTests
 
     private sealed class CapturingSpot : IZLinkBackendSpot
     {
+        public Func<TopicMessage, RecvFlags, bool>? SubscribeHandler { get; set; }
+
         public int? LastJoinResultCode { get; private set; }
 
         public object NativeInstance => this;
@@ -608,7 +874,7 @@ public sealed class UnhandledDispatchPolicyTests
 
         public bool Subscribe(TopicMessage result, RecvFlags flags)
         {
-            return false;
+            return SubscribeHandler?.Invoke(result, flags) ?? false;
         }
 
         public bool RecvRoute(Received result, RecvFlags flags)

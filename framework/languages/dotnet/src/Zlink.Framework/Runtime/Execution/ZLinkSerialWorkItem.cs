@@ -24,6 +24,7 @@ internal sealed class ZLinkSerialWorkItem
         CancellationToken cancellationToken,
         ZLinkSerialTurn turn)
     {
+        Task? callbackTask = null;
         try
         {
             using var turnScope = ZLinkSerialTurn.Push(turn);
@@ -34,21 +35,27 @@ internal sealed class ZLinkSerialWorkItem
                 return ZLinkSerialWorkItemResult.Completed;
             }
 
-            var task = operation.AsTask();
-            turn.BindOwnerTask(task);
-            var completed = await Task.WhenAny(task, turn.Suspended).ConfigureAwait(false);
+            callbackTask = operation.AsTask();
+            turn.BindOwnerTask(callbackTask);
+            var bounded = callbackTask.WaitAsync(cancellationToken);
+            var completed = await Task.WhenAny(bounded, turn.Suspended).ConfigureAwait(false);
             if (ReferenceEquals(completed, turn.Suspended))
             {
-                _ = CompleteAfterSuspensionAsync(task, onUnhandledException);
+                _ = CompleteAfterSuspensionAsync(
+                    bounded,
+                    callbackTask,
+                    onUnhandledException);
                 return ZLinkSerialWorkItemResult.Suspended;
             }
 
-            await task.ConfigureAwait(false);
+            await bounded.ConfigureAwait(false);
             _completion.TrySetResult();
             return ZLinkSerialWorkItemResult.Completed;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            if (callbackTask is not null)
+                _ = ObserveAfterCancellationAsync(callbackTask, onUnhandledException);
             _completion.TrySetCanceled(cancellationToken);
             return ZLinkSerialWorkItemResult.Completed;
         }
@@ -61,14 +68,38 @@ internal sealed class ZLinkSerialWorkItem
         }
     }
 
-    private async Task CompleteAfterSuspensionAsync(
-        Task task,
+    private static async Task ObserveAfterCancellationAsync(
+        Task callbackTask,
         Action<Exception> onUnhandledException)
     {
         try
         {
-            await task.ConfigureAwait(false);
+            await callbackTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            onUnhandledException(exception);
+        }
+    }
+
+    private async Task CompleteAfterSuspensionAsync(
+        Task boundedTask,
+        Task callbackTask,
+        Action<Exception> onUnhandledException)
+    {
+        try
+        {
+            await boundedTask.ConfigureAwait(false);
             _completion.TrySetResult();
+        }
+        catch (OperationCanceledException cancellation)
+        {
+            _completion.TrySetException(cancellation);
+            _ = _completion.Task.Exception;
+            _ = ObserveAfterCancellationAsync(callbackTask, onUnhandledException);
         }
         catch (Exception ex)
         {

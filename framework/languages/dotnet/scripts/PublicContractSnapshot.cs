@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 internal static class PublicContractSnapshot
 {
@@ -13,11 +15,23 @@ internal static class PublicContractSnapshot
                      .OrderBy(static item => item.GetName().Name, StringComparer.Ordinal))
         {
             lines.Add($"assembly {assembly.GetName().Name}");
+            foreach (var forwarded in assembly.GetForwardedTypes()
+                         .OrderBy(static item => item.FullName, StringComparer.Ordinal))
+                lines.Add($"  forward {FormatType(forwarded)}");
             foreach (var type in assembly.GetExportedTypes()
                          .OrderBy(static item => item.FullName, StringComparer.Ordinal))
                 RenderType(type, nullability, lines);
         }
 
+        return string.Join('\n', lines) + "\n";
+    }
+
+    internal static string RenderTypes(IEnumerable<Type> types)
+    {
+        var lines = new List<string>();
+        var nullability = new NullabilityInfoContext();
+        foreach (var type in types.OrderBy(static item => item.FullName, StringComparer.Ordinal))
+            RenderType(type, nullability, lines);
         return string.Join('\n', lines) + "\n";
     }
 
@@ -39,11 +53,20 @@ internal static class PublicContractSnapshot
                             : type.IsSealed
                                 ? "sealed-class"
                                 : "class";
+        if (type.IsValueType && type.IsByRefLike) kind = $"ref-{kind}";
+        if (type.IsValueType && HasAttribute(type, typeof(IsReadOnlyAttribute).FullName!))
+            kind = $"readonly-{kind}";
+        var required = HasAttribute(type, "System.Runtime.CompilerServices.RequiredMemberAttribute")
+            ? " required-members"
+            : string.Empty;
         var bases = new List<string>();
         if (type.BaseType is { } baseType && baseType != typeof(object) && baseType != typeof(ValueType))
             bases.Add(FormatType(baseType));
         bases.AddRange(type.GetInterfaces().Select(static item => FormatType(item)).Order(StringComparer.Ordinal));
-        lines.Add($"  type {kind} {FormatType(type)}{FormatBases(bases)}");
+        lines.Add($"  type {kind} {FormatType(type)}{FormatBases(bases)}{required}");
+        if (type.GetCustomAttribute<AttributeUsageAttribute>() is { } usage)
+            lines.Add(
+                $"    attribute-usage targets={usage.ValidOn} allow-multiple={FormatValue(usage.AllowMultiple)} inherited={FormatValue(usage.Inherited)}");
         RenderGenericConstraints(type.GetGenericArguments(), "    ", lines);
 
         foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance |
@@ -57,7 +80,12 @@ internal static class PublicContractSnapshot
                     ? field.IsInitOnly ? "static readonly " : "static "
                     : field.IsInitOnly ? "readonly " : string.Empty;
             var value = field.IsLiteral ? $" = {FormatValue(field.GetRawConstantValue())}" : string.Empty;
-            lines.Add($"    field {modifiers}{FormatType(field.FieldType)} {field.Name}{value}");
+            var fieldNullability = TryCreate(nullability, field);
+            var requiredField = HasAttribute(field, "System.Runtime.CompilerServices.RequiredMemberAttribute")
+                ? "required "
+                : string.Empty;
+            lines.Add(
+                $"    field {requiredField}{modifiers}{FormatType(field.FieldType, fieldNullability)} {field.Name}{value}{FormatNullability(fieldNullability)}");
         }
 
         foreach (var constructor in type.GetConstructors(BindingFlags.Public | BindingFlags.Instance |
@@ -72,12 +100,18 @@ internal static class PublicContractSnapshot
             var accessor = property.GetMethod ?? property.SetMethod;
             var staticText = accessor?.IsStatic == true ? "static " : string.Empty;
             var propertyNullability = TryCreate(nullability, property);
-            var accessors = $"{{ {(property.GetMethod?.IsPublic == true ? "get; " : string.Empty)}" +
-                            $"{(property.SetMethod?.IsPublic == true ? "set; " : string.Empty)}}}";
+            var setter = property.SetMethod?.IsPublic == true
+                ? IsInitOnly(property.SetMethod) ? "init; " : "set; "
+                : string.Empty;
+            var accessors = $"{{ {(property.GetMethod?.IsPublic == true ? "get; " : string.Empty)}{setter}}}";
             var index = property.GetIndexParameters().Length == 0
                 ? property.Name
                 : $"this[{FormatParameters(property.GetIndexParameters(), nullability)}]";
-            lines.Add($"    property {staticText}{FormatType(property.PropertyType, propertyNullability)} {index} {accessors}");
+            var requiredProperty = HasAttribute(property, "System.Runtime.CompilerServices.RequiredMemberAttribute")
+                ? "required "
+                : string.Empty;
+            lines.Add(
+                $"    property {requiredProperty}{staticText}{FormatType(property.PropertyType, propertyNullability)} {index} {accessors}{FormatNullability(propertyNullability)}");
         }
 
         foreach (var @event in type.GetEvents(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance |
@@ -85,7 +119,9 @@ internal static class PublicContractSnapshot
                      .OrderBy(static item => item.Name, StringComparer.Ordinal))
         {
             var staticText = @event.AddMethod?.IsStatic == true ? "static " : string.Empty;
-            lines.Add($"    event {staticText}{FormatType(@event.EventHandlerType!)} {@event.Name}");
+            var eventNullability = TryCreate(nullability, @event);
+            lines.Add(
+                $"    event {staticText}{FormatType(@event.EventHandlerType!, eventNullability)} {@event.Name}{FormatNullability(eventNullability)}");
         }
 
         foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance |
@@ -95,26 +131,34 @@ internal static class PublicContractSnapshot
         {
             var modifiers = method.IsStatic ? "static " : string.Empty;
             if (method.IsAbstract) modifiers += "abstract ";
-            else if (method.IsVirtual && method.GetBaseDefinition() == method) modifiers += "virtual ";
+            else if (method.GetBaseDefinition() != method)
+                modifiers += method.IsFinal ? "sealed-override " : "override ";
+            else if (method.IsVirtual) modifiers += "virtual ";
             var generic = method.IsGenericMethodDefinition
                 ? $"<{string.Join(", ", method.GetGenericArguments().Select(static argument => argument.Name))}>"
                 : string.Empty;
             var returnNullability = TryCreate(nullability, method.ReturnParameter);
             lines.Add(
-                $"    method {modifiers}{FormatType(method.ReturnType, returnNullability)} {method.Name}{generic}({FormatParameters(method, nullability)})");
+                $"    method {modifiers}{FormatReturn(method, returnNullability)} {method.Name}{generic}({FormatParameters(method, nullability)}){FormatNullability(returnNullability, "return")}{FormatCustomModifiers(method.ReturnParameter)}");
             RenderGenericConstraints(method.GetGenericArguments(), "      ", lines);
         }
     }
 
     private static string FormatParameters(MethodBase method, NullabilityInfoContext nullability) =>
-        FormatParameters(method.GetParameters(), nullability);
+        FormatParameters(
+            method.GetParameters(),
+            nullability,
+            method.IsDefined(typeof(ExtensionAttribute), inherit: false));
 
     private static string FormatParameters(
         IReadOnlyList<ParameterInfo> parameters,
-        NullabilityInfoContext nullability) =>
-        string.Join(", ", parameters.Select(parameter =>
+        NullabilityInfoContext nullability,
+        bool extensionMethod = false) =>
+        string.Join(", ", parameters.Select((parameter, index) =>
         {
-            var modifier = parameter.GetCustomAttribute<ParamArrayAttribute>() is not null
+            var modifier = extensionMethod && index == 0
+                ? "this "
+                : parameter.GetCustomAttribute<ParamArrayAttribute>() is not null
                 ? "params "
                 : parameter.IsOut
                     ? "out "
@@ -122,10 +166,25 @@ internal static class PublicContractSnapshot
                         ? parameter.IsIn ? "in " : "ref "
                         : string.Empty;
             var defaultValue = parameter.HasDefaultValue
-                ? $" = {FormatValue(parameter.DefaultValue)}"
+                ? $" = {FormatDefaultValue(parameter)}"
                 : string.Empty;
-            return $"{modifier}{FormatType(parameter.ParameterType, TryCreate(nullability, parameter))} {parameter.Name}{defaultValue}";
+            var parameterNullability = TryCreate(nullability, parameter);
+            return $"{modifier}{FormatType(parameter.ParameterType, parameterNullability)} {parameter.Name}{defaultValue}{FormatNullability(parameterNullability)}{FormatCustomModifiers(parameter)}";
         }));
+
+    private static string FormatDefaultValue(ParameterInfo parameter)
+    {
+        if (parameter.DefaultValue is null)
+        {
+            var parameterType = parameter.ParameterType.IsByRef
+                ? parameter.ParameterType.GetElementType()!
+                : parameter.ParameterType;
+            if (parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) is null)
+                return "default";
+        }
+
+        return FormatValue(parameter.DefaultValue);
+    }
 
     private static void RenderGenericConstraints(
         IEnumerable<Type> arguments,
@@ -136,12 +195,32 @@ internal static class PublicContractSnapshot
         {
             var constraints = new List<string>();
             var attributes = argument.GenericParameterAttributes;
-            if ((attributes & GenericParameterAttributes.ReferenceTypeConstraint) != 0) constraints.Add("class");
-            if ((attributes & GenericParameterAttributes.NotNullableValueTypeConstraint) != 0) constraints.Add("struct");
+            var variance = (attributes & GenericParameterAttributes.VarianceMask) switch
+            {
+                GenericParameterAttributes.Covariant => "out",
+                GenericParameterAttributes.Contravariant => "in",
+                _ => "invariant"
+            };
+            var nullableFlag = GenericNullableFlag(argument);
+            lines.Add($"{indent}generic {argument.Name} variance={variance} nullable={FormatNullableFlag(nullableFlag)}");
+            var unmanaged = HasAttribute(argument, "System.Runtime.CompilerServices.IsUnmanagedAttribute");
+            if ((attributes & GenericParameterAttributes.ReferenceTypeConstraint) != 0)
+                constraints.Add(nullableFlag == 2 ? "class?" : "class");
+            if (unmanaged)
+                constraints.Add("unmanaged");
+            else if ((attributes & GenericParameterAttributes.NotNullableValueTypeConstraint) != 0)
+                constraints.Add("struct");
+            else if ((attributes & (GenericParameterAttributes.ReferenceTypeConstraint |
+                                    GenericParameterAttributes.NotNullableValueTypeConstraint)) == 0
+                     && nullableFlag == 1)
+                constraints.Add("notnull");
             if ((attributes & GenericParameterAttributes.DefaultConstructorConstraint) != 0
-                && !constraints.Contains("struct", StringComparer.Ordinal))
+                && !constraints.Contains("struct", StringComparer.Ordinal)
+                && !constraints.Contains("unmanaged", StringComparer.Ordinal))
                 constraints.Add("new()");
-            constraints.AddRange(argument.GetGenericParameterConstraints().Select(static item => FormatType(item)));
+            constraints.AddRange(argument.GetGenericParameterConstraints()
+                .Where(item => !unmanaged || item != typeof(ValueType))
+                .Select(static item => FormatType(item)));
             if (constraints.Count > 0)
                 lines.Add($"{indent}where {argument.Name} : {string.Join(", ", constraints)}");
         }
@@ -149,7 +228,7 @@ internal static class PublicContractSnapshot
 
     private static string FormatType(Type type, NullabilityInfo? nullability = null)
     {
-        if (type.IsByRef) return FormatType(type.GetElementType()!, nullability);
+        if (type.IsByRef) return FormatType(type.GetElementType()!, nullability?.ElementType ?? nullability);
         if (type.IsArray)
             return $"{FormatType(type.GetElementType()!, nullability?.ElementType)}[{new string(',', type.GetArrayRank() - 1)}]{NullableSuffix(type, nullability)}";
         if (type.IsPointer) return $"{FormatType(type.GetElementType()!)}*";
@@ -157,8 +236,10 @@ internal static class PublicContractSnapshot
         if (!type.IsGenericType) return (type.FullName ?? type.Name).Replace('+', '.') + NullableSuffix(type, nullability);
 
         var definition = type.GetGenericTypeDefinition();
-        var name = (definition.FullName ?? definition.Name).Replace('+', '.');
-        name = name[..name.IndexOf('`')];
+        var name = Regex.Replace(
+            (definition.FullName ?? definition.Name).Replace('+', '.'),
+            "`[0-9]+",
+            string.Empty);
         var arguments = type.GetGenericArguments();
         var nullableArguments = nullability?.GenericTypeArguments ?? [];
         var rendered = arguments.Select((argument, index) =>
@@ -174,6 +255,85 @@ internal static class PublicContractSnapshot
         try { return context.Create(property); }
         catch { return null; }
     }
+
+    private static NullabilityInfo? TryCreate(NullabilityInfoContext context, FieldInfo field)
+    {
+        try { return context.Create(field); }
+        catch { return null; }
+    }
+
+    private static NullabilityInfo? TryCreate(NullabilityInfoContext context, EventInfo @event)
+    {
+        try { return context.Create(@event); }
+        catch { return null; }
+    }
+
+    private static string FormatReturn(MethodInfo method, NullabilityInfo? nullability)
+    {
+        if (!method.ReturnType.IsByRef) return FormatType(method.ReturnType, nullability);
+        var readOnly = method.ReturnParameter.GetRequiredCustomModifiers()
+            .Any(static modifier => modifier.FullName is "System.Runtime.CompilerServices.IsReadOnlyAttribute"
+                                                   or "System.Runtime.InteropServices.InAttribute");
+        return $"ref{(readOnly ? " readonly" : string.Empty)} {FormatType(method.ReturnType, nullability)}";
+    }
+
+    private static string FormatNullability(NullabilityInfo? nullability, string prefix = "nullability")
+    {
+        if (nullability is null) return $" [{prefix}=unknown]";
+        return $" [{prefix}=read:{FormatNullabilityState(nullability.ReadState)},write:{FormatNullabilityState(nullability.WriteState)}]";
+    }
+
+    private static string FormatNullabilityState(NullabilityState state) => state switch
+    {
+        NullabilityState.NotNull => "not-null",
+        NullabilityState.Nullable => "nullable",
+        _ => "unknown"
+    };
+
+    private static string FormatCustomModifiers(ParameterInfo parameter)
+    {
+        var required = parameter.GetRequiredCustomModifiers()
+            .Select(static modifier => modifier.FullName ?? modifier.Name)
+            .Order(StringComparer.Ordinal);
+        var optional = parameter.GetOptionalCustomModifiers()
+            .Select(static modifier => modifier.FullName ?? modifier.Name)
+            .Order(StringComparer.Ordinal);
+        var requiredText = string.Join(",", required);
+        var optionalText = string.Join(",", optional);
+        if (requiredText.Length == 0 && optionalText.Length == 0) return string.Empty;
+        return $" [modreq={requiredText};modopt={optionalText}]";
+    }
+
+    private static bool IsInitOnly(MethodInfo setter) =>
+        setter.ReturnParameter.GetRequiredCustomModifiers().Any(
+            static modifier => modifier.FullName == "System.Runtime.CompilerServices.IsExternalInit");
+
+    private static bool HasAttribute(MemberInfo member, string attributeFullName) =>
+        member.CustomAttributes.Any(attribute => attribute.AttributeType.FullName == attributeFullName);
+
+    private static bool HasAttribute(Type type, string attributeFullName) =>
+        type.CustomAttributes.Any(attribute => attribute.AttributeType.FullName == attributeFullName);
+
+    private static int? GenericNullableFlag(Type argument)
+    {
+        var attribute = argument.CustomAttributes.FirstOrDefault(
+            static item => item.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
+        if (attribute is null || attribute.ConstructorArguments.Count == 0) return null;
+        var value = attribute.ConstructorArguments[0];
+        if (value.Value is byte flag) return flag;
+        if (value.Value is IReadOnlyCollection<CustomAttributeTypedArgument> flags
+            && flags.FirstOrDefault().Value is byte first)
+            return first;
+        return null;
+    }
+
+    private static string FormatNullableFlag(int? flag) => flag switch
+    {
+        1 => "not-null",
+        2 => "nullable",
+        0 => "oblivious",
+        _ => "unspecified"
+    };
 
     private static NullabilityInfo? TryCreate(NullabilityInfoContext context, ParameterInfo parameter)
     {

@@ -172,6 +172,18 @@ receiver가 recv 진입 준비를 알린 뒤 sender를 만드는 별도 동기�
 p99 변동 폭이 33.8%였고 처리량이 낮아졌다. 이 방식은 효과 없이 perf 상태만 늘리므로
 최종 코드에 남기지 않았다.
 
+세 번째 goal turn의 공식 blocked audit report
+`perf_c_single_linux_20260711_144433_core_9_0_cpp_pubsub_tcp64_blocked_audit_20260711.txt`도
+complete였다. throughput은 1,114.50~1,117.71 Kmsg/s로 변동 폭이 약 0.3%였지만,
+p99는 24.176~40.062ms로 변동 폭이 63.1%였다. 처리량은 안정적인데 latency tail만
+반복해서 gate를 넘으므로 C++을 이어 측정하지 않았다.
+
+같은 blocker가 세 번의 연속 goal turn에서 반복됐고 안전한 측정 조건 후보도 모두 실패했다.
+현재 WSL host의 scheduling 조건이 달라지거나, 간섭이 통제된 native Linux 환경에서 같은
+C 64B 공식 5회 측정이 p99 변동 폭 20% 이하를 먼저 만족해야 작업을 재개할 수 있다.
+재개할 때는 이 C 셀을 다시 측정한 직후 C++ 64B를 같은 조건으로 측정한다. 다른 transport,
+pattern, 언어를 먼저 측정하지 않는다.
+
 ### 현재 판정
 
 - Single `PUBSUB`: 진행 중
@@ -180,4 +192,5 @@ p99 변동 폭이 33.8%였고 처리량이 낮아졌다. 이 방식은 효과 �
 - C++ binding 변경: 없음
 - 기준 측정 수정 커밋: `77d180588` (`main` push 완료)
 - Single monotonic clock 수정 커밋: `64f3e7834` (`main` push 완료)
-- 다음 측정: host p99가 안정된 시점에 tcp 64B를 C와 C++ 순서로 다시 측정
+- 현재 상태: 환경 변화 대기
+- 재개 측정: C tcp 64B 공식 5회가 p99 변동 폭 20% 이하일 때 바로 C++ 64B 측정

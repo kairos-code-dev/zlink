@@ -427,8 +427,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 - perf 경로: `bindings/cpp/perf`
 - Single 상태: `PAIR 완료, PUBSUB 진행 중, 나머지 pattern 미측정`
 - Multi 상태: `누락 구현 완료, pattern별 미측정`
-- 다음 작업: Single `PUBSUB` tcp의 p99 변동성을 다시 확인한다. 이 셀이 안정되기 전에는
-  다른 transport나 pattern을 측정하지 않는다.
+- 다음 작업: 간섭이 통제된 환경에서 Single `PUBSUB` C tcp 64B를 공식 조건으로 다시
+  측정한다. p99 변동 폭이 20% 이하일 때만 바로 C++ 64B를 측정한다. 그전에는 다른
+  transport나 pattern을 측정하지 않는다.
 
 #### 9.1.1 Single suite
 
@@ -1178,16 +1179,16 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
-| 현재 pattern | Single `PUBSUB` 진행 중 | tcp 64/1024/65536B의 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘었다. |
+| 현재 pattern | Single `PUBSUB` 환경 대기 | tcp 64/1024/65536B의 처리량과 latency 비율은 목표를 만족했지만 C 64B p99 변동 기준을 반복해서 넘었다. |
 | paired C | PUBSUB tcp 일부 측정 | C PUBSUB의 잘못된 `DONTWAIT`를 blocking publish로 고친 뒤 C와 C++을 CPU 고정 5회로 측정했다. |
-| 개선 반복 | 측정 조건 조사 중 | CPU 집합, CPU 고정 해제, receiver 시작 동기화 후보는 p99 변동을 없애지 못해 폐기했다. Single latency clock은 단조 시계로 바로잡았지만 C 64B p99 변동 폭은 37.4%여서 tcp를 통과 처리하지 않았다. |
+| 개선 반복 | 환경 변화 대기 | CPU 집합, CPU 고정 해제, receiver 시작 동기화 후보는 p99 변동을 없애지 못해 폐기했다. Single latency clock을 바로잡은 뒤 세 번째 공식 audit도 C 64B p99 변동 폭 63.1%로 실패했다. |
 | 커밋과 푸시 | 완료 | C PUBSUB 기준 측정 수정 `77d180588`과 Single monotonic clock 수정 `64f3e7834`를 근거와 함께 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
-| 1 | C++ | `PAIR` 완료, `PUBSUB` 진행 중, 나머지 미측정 | 누락 구현 완료, pattern별 미측정 | Single `PUBSUB` tcp의 p99 변동성을 다시 확인한다. |
+| 1 | C++ | `PAIR` 완료, `PUBSUB` 환경 대기, 나머지 미측정 | 누락 구현 완료, pattern별 미측정 | 간섭이 통제된 환경에서 C `PUBSUB` tcp 64B부터 다시 측정한다. |
 | 2 | .NET | 미측정 | 미측정 | runner option gate 통과 뒤 시작한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |

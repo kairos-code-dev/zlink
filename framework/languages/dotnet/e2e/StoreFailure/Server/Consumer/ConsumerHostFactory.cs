@@ -113,7 +113,6 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(StoreFailureNames.Channel, request)
-                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -130,7 +129,6 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(StoreFailureNames.Channel, request)
-                    .PacketName("MissingProfileReq")
                     .Timeout(TimeSpan.FromSeconds(3))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -144,8 +142,7 @@ internal static class ConsumerHostFactory
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            channel.SendToChannel(StoreFailureNames.Channel, command)
-                .PacketName("ProfileMsg").Submit();
+            channel.SendToChannel(StoreFailureNames.Channel, command).Submit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
@@ -215,7 +212,6 @@ internal static class ConsumerHostFactory
             try
             {
                 return await channel.RequestToChannel(StoreFailureNames.Channel, request)
-                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<ProfileRes>();
             }

@@ -145,7 +145,13 @@ internal sealed partial class ZLinkFrameworkRuntime
                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                $"Actor '{actorId}' does not have a native Actor ref.");
             var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
-            actorState.Handoff.SetPendingBoundSessionRoute(boundRoute);
+            await BindRemoteBoundSessionRouteAsync(
+                    actorId,
+                    actorRef,
+                    boundRoute.NodeRid,
+                    boundRoute.SessionRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
             await activation.PrepareTransferredActorJoinAndReplayAsync(
                     creation.Actor,
                     actorState,
@@ -225,7 +231,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                              ?? throw new ZLinkFrameworkException(
                                  ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                  $"Actor '{request.ActorId}' is not hosted by an active Spot during handoff completion.");
-            var boundRoute = actorState.Handoff.GetPendingBoundSessionRoute();
             var actorRef = actorState.NativeActorRef
                            ?? throw new ZLinkFrameworkException(
                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -233,13 +238,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             await activation.ReplayTransferredActorHandoffAsync(
                     actorState,
                     request.Frames,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            await BindRemoteBoundSessionRouteAsync(
-                    request.ActorId,
-                    actorRef,
-                    boundRoute.NodeRid,
-                    boundRoute.SessionRid,
                     cancellationToken)
                 .ConfigureAwait(false);
             await PublishTransferredActorLocationAsync(actorState, activation, cancellationToken)

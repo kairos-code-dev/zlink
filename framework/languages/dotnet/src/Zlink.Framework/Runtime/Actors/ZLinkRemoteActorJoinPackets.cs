@@ -175,15 +175,11 @@ internal static class ZLinkRemoteActorJoinPackets
         bool accepted,
         ZLinkBackendActorRef actorRef)
     {
-        // These two wire fields remain empty for rolling compatibility with
-        // peers that still deserialize the previous reply contract.
         return new ZLinkRemoteActorJoinReply(
             accepted,
             actorRef.NodeRid.ToBytes().ToArray(),
             actorRef.ActorId,
-            actorRef.Generation,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Array.Empty<byte>());
+            actorRef.Generation);
     }
 
     public static ZLinkRemoteActorAdmissionReply CreateAdmissionReply(
@@ -312,9 +308,7 @@ internal sealed record ZLinkRemoteActorJoinReply(
     bool Accepted,
     byte[] ActorNodeRid,
     string ActorId,
-    ulong ActorGeneration,
-    string ReplyContentType,
-    byte[] Reply);
+    ulong ActorGeneration);
 
 internal sealed record ZLinkRemoteActorHandoffCompletionRequest(
     string ActorId,

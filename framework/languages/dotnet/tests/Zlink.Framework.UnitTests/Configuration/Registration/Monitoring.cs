@@ -72,11 +72,6 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             options.DefaultRequestTimeout = TimeSpan.FromSeconds(5);
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseFilter<TestFilter>();
-            options.AddSpotRouteRefResolver<TestSpotRouteRefResolver>();
-            {
-                var dispatch = options.ConfigureDispatch();
-                dispatch.SpotDispatchMode = ZLinkDispatchMode.Dynamic;
-            }
             options.UseInMemoryLocationStores();
 
             {
@@ -120,12 +115,9 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         var filter = provider.GetRequiredService<TestFilter>();
 
         Assert.NotNull(filter);
-        Assert.IsType<TestSpotRouteRefResolver>(
-            provider.GetRequiredService<IZLinkSpotRouteRefResolver>());
         Assert.Equal(TimeSpan.FromSeconds(5), registration.DefaultRequestTimeout);
         Assert.Equal(TimeSpan.FromMilliseconds(1000), registration.DefaultSocketSendTimeout);
         Assert.Contains("application/x-protobuf", registration.Codecs.Serializers.Keys);
-        Assert.Equal(ZLinkDispatchMode.Dynamic, registration.DispatchOptions.SpotDispatchMode);
         Assert.True(registration.Locations.Enabled);
         Assert.NotNull(registration.SpotDiscovery);
         Assert.Contains("profile", registration.Channels.Keys);

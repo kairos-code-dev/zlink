@@ -163,10 +163,10 @@ actor 안에서의 spot join 과 현재 상태 조회는 주입된 `IZLinkActorC
 
 | `IZLinkActorContext` 멤버 | 용도 |
 |---------------------------|------|
-| `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
+| `SpotRid?` | 현재 Spot join 상태 조회. `null`이면 어느 Spot에도 참여하지 않은 상태다. |
 | `BoundSession` | 자기 client 로 push ([07-actor-session §3](07-actor-session.ko.md)) |
-| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. 기본은 `.Async(ct)` 로 종결한다. user Spot handler 처럼 Spot 실행 줄을 반납해야 하는 제한된 흐름에서는 `.Yield(ct)` 또는 `.Yield<TReply>(ct)` 를 쓸 수 있지만, Entry Spot actor handler 안에서는 사용하지 않는다 |
-| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 기본은 `.Async(ct)` 이며, `Yield(...)` 의 제한은 `JoinSpot(...)` 과 같다 |
+| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join하며 `.Async(ct)` 로 종결한다. framework가 대기 중인 실행 turn을 관리한다. |
+| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동하며 `.Async(ct)` 로 종결한다. |
 
 `JoinSpot`/`JoinEntrySpot` 도 `Request` 처럼 reply 대기 `Timeout(...)` override 를 받는다. 생략하면
 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).

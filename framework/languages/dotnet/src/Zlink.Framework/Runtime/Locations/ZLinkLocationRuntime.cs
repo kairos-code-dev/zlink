@@ -266,7 +266,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
                     cancellationToken),
                 ZLinkLocationKind.Spot,
                 ZLinkLocationKeyCodec.EncodeSpotKey(key),
-                _ => _events.SpotRowRemovedAsync(key, cancellationToken))
+                result => _events.SpotRowRemovedAsync(key, result.Generation, cancellationToken))
             .ConfigureAwait(false);
     }
 
@@ -282,7 +282,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
                     cancellationToken),
                 ZLinkLocationKind.Actor,
                 ZLinkLocationKeyCodec.EncodeActorKey(key),
-                _ => _events.ActorRowRemovedAsync(key, cancellationToken))
+                result => _events.ActorRowRemovedAsync(key, result.Generation, cancellationToken))
             .ConfigureAwait(false);
     }
 
@@ -298,7 +298,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
                     cancellationToken),
                 ZLinkLocationKind.Peer,
                 ZLinkLocationKeyCodec.EncodePeerKey(key),
-                _ => _events.PeerRowRemovedAsync(key, cancellationToken))
+                result => _events.PeerRowRemovedAsync(key, result.Generation, cancellationToken))
             .ConfigureAwait(false);
     }
 
@@ -314,7 +314,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
                     cancellationToken),
                 ZLinkLocationKind.Route,
                 ZLinkLocationKeyCodec.EncodeRouteKey(key),
-                _ => _events.RouteRowRemovedAsync(key, cancellationToken))
+                result => _events.RouteRowRemovedAsync(key, result.Generation, cancellationToken))
             .ConfigureAwait(false);
     }
 

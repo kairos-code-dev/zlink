@@ -9,6 +9,41 @@ namespace Zlink.Framework.UnitTests;
 public sealed class NodesAndServicesTests : RegistrationValidationSupport
 {
     [Fact]
+    public void AddZLinkFramework_Rejects_Duplicate_Registration()
+    {
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(_ => { });
+
+        var error = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(_ => { }));
+
+        Assert.Contains("already configured", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Spot_Connection_Role_Names_Expose_The_Documented_Capability_State()
+    {
+        var services = new ServiceCollection();
+        IZLinkEndpointConnections? router = null;
+        IZLinkEndpointConnections? channelClient = null;
+        IZLinkEndpointConnections? pubSub = null;
+        IZLinkEndpointConnections? publisher = null;
+        services.AddZLinkFramework(options =>
+        {
+            var spot = options.AddSpotMesh("play");
+            spot.EnableRouter("tcp://127.0.0.1:0");
+            spot.EnablePubSub("tcp://127.0.0.1:0");
+            router = spot.RouterConnections;
+            channelClient = spot.ChannelClientConnections;
+            pubSub = spot.PubSubConnections;
+            publisher = spot.PublisherConnections;
+        });
+
+        Assert.Same(router, channelClient);
+        Assert.Same(pubSub, publisher);
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions()
     {
         var services = new ServiceCollection();
@@ -368,9 +403,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Registers_Option_Types_And_Enumerable_Dependencies()
+    public void AddZLinkFramework_Uses_Standard_DI_For_Application_Dependencies()
     {
         var services = new ServiceCollection();
+        services.AddScoped<ITestSessionDependencyHandler, TestSessionDependencyHandler>();
 
         services.AddZLinkFramework(options =>
         {
@@ -398,7 +434,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Contains(services, static service => service.ServiceType == typeof(TestEntrySpot));
 
         using var provider = services.BuildServiceProvider();
-        Assert.NotEmpty(provider.GetServices<ITestSessionDependencyHandler>());
+        Assert.IsType<TestSessionDependencyHandler>(
+            Assert.Single(provider.GetServices<ITestSessionDependencyHandler>()));
     }
 
     [Fact]
@@ -443,6 +480,26 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         Assert.True(handled);
         Assert.Equal(1, context.HandledCount);
+    }
+
+    [Fact]
+    public async Task SessionHandlerRegistry_Invokes_Attributed_Method_On_Active_Session()
+    {
+        using var provider = new ServiceCollection().BuildServiceProvider();
+        var context = new TestSessionPacketContext();
+        var session = new TestHeaderSession(context);
+        var registry = new ZLinkSessionHandlerRegistry(provider);
+        registry.BindContext(context);
+        registry.BindSession(session);
+        registry.AddScannedHandlers([typeof(TestHeaderSession).Assembly]);
+        registry.Bind();
+
+        var handled = await registry.TryHandleAsync(
+            new ZLinkSessionDispatchContext(nameof(AttributedSessionPacketMessage)),
+            ZLinkMessage.From(new AttributedSessionPacketMessage()));
+
+        Assert.True(handled);
+        Assert.Equal(1, session.AttributedHandledCount);
     }
 
     [Fact]
@@ -566,34 +623,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         using var provider = services.BuildServiceProvider();
         Assert.NotNull(provider.GetService<IZLinkBoundSessionFactory>());
-    }
-
-    [Fact]
-    public void AddZLinkFramework_Allows_SpotRouteRefResolver_Without_SpotNode()
-    {
-        var services = new ServiceCollection();
-
-        services.AddZLinkFramework(options =>
-        {
-            options.AddSpotRouteRefResolver<TestSpotRouteRefResolver>();
-        });
-
-        using var provider = services.BuildServiceProvider();
-        Assert.IsType<TestSpotRouteRefResolver>(provider.GetRequiredService<IZLinkSpotRouteRefResolver>());
-    }
-
-    [Fact]
-    public void AddZLinkFramework_DoesNot_Register_SpotOutbound_With_Resolver_Only()
-    {
-        var services = new ServiceCollection();
-
-        services.AddZLinkFramework(options =>
-        {
-            options.AddSpotRouteRefResolver<TestSpotRouteRefResolver>();
-        });
-
-        using var provider = services.BuildServiceProvider();
-        Assert.Null(provider.GetService<IZLinkSpotOutbound>());
     }
 
     [Fact]

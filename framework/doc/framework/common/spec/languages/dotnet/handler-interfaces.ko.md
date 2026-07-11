@@ -69,7 +69,6 @@ Spot Actor Join / Transfer 관련 interface도 이 문서에 기록된 정식 �
 | factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
 | lifecycle | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user Spot에 actor가 join할 때 호출되는 admission callback. actor instance가 아니라 actor id를 받는다 | 4.4.1 |
 | lifecycle | `IZLinkActorTransferAdapter<TActor>` | remote actor transfer에서 actor state를 선택적으로 `ZLinkMessage`로 전달하고 target actor를 materialize하는 actor type별 adapter | 4.4.1 |
-| internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkBoundSession` | 현재 actor -> 현재 client session 호출 | 5.6 |
 | resolver | `IZLinkSpotHandleResolver` | spot rid에서 메시징 handle 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
@@ -1922,7 +1921,9 @@ client
 - spot rid 기반의 routed spot send/request
 
 Spot 대상 호출은 `IZLinkSpotHandleResolver`가 반환한 `SpotHandle`을 사용한다. handle이
-내부 주소 snapshot과 안전한 1회 갱신을 소유하고 route transport가 실제 전송을 담당한다.
+내부 주소 snapshot과 location event 갱신을 소유하고 route transport가 실제 전송을 담당한다.
+request는 handler가 실행되지 않았음이 확정된 target-not-found에서만 주소를 한 번 갱신해
+한 번 다시 전송한다. one-way send는 최신 snapshot으로 한 번만 제출한다.
 
 application 이 `targetRid + spotRid` 를 직접 넘기는 일은 없다.
 
@@ -2097,60 +2098,6 @@ public client 는 두지 않는다.
 remote actor 위치는 session 이 직접 계산하지 않는다. session 은 actor id/type 으로
 local actor handle 을 만들거나, actor 생성 또는 join 결과의 `ActorRef` 로
 remote actor handle 을 만들고, core SessionRelay 가 그 actor ref 를 기준으로 relay 한다.
-
-### 5.5.1 route transport helper
-
-route transport helper 는 application 의 public API 표면이 아니다.
-internal transport helper 다.
-
-사용처는 다음과 같다. routed channel (`AddRouteMeshChannel`) 을 통해 특정 노드의 `RoutingId` 로 direct
-send/request 를 보내야 하는 framework backend, 또는 별도의 adapter
-package 가 사용한다.
-
-일반 application 코드는 `RoutingId` 를 직접 넘기지 않는다. 대신 actor id
-또는 spot key 기반 client 를 사용한다.
-
-이 helper 의 내부 wire 형식은 공통 message model 의 multipart
-`header + payload` 계약을 따른다.
-
-typed `message` 나 `request` 인자를 받더라도, runtime 은 route header 와
-payload 를 하나의 `Message` 로 합쳐서 직렬화하지 않는다. 대신 part 를 분리해
-둔다.
-
-- framework header 는 첫 번째 part 에 둔다.
-- codec 이 생성한 payload bytes 는 별도의 part 에 둔다.
-- actor dispatch 나 bound session 처럼 내부 metadata 가 추가로 필요한
-  경로에서는, payload 앞에 metadata part 를 더 붙일 수 있다.
-
-```csharp
-// 공개 진입점은 5.2.1에서 고정한 IZLinkRouteClient다.
-
-// part 를 분리해 보내는 internal multipart helper.
-internal interface IZLinkMultipartRouteClient : IZLinkRouteClient
-{
-    ValueTask SendPartsTo(
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        string packetName,
-        IReadOnlyList<Message> payloadParts,
-        CancellationToken cancellationToken);
-
-    ValueTask<TReply> RequestPartsTo<TReply>(
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        string packetName,
-        IReadOnlyList<Message> payloadParts,
-        TimeSpan timeout,
-        CancellationToken cancellationToken);
-}
-```
-
-기본 application 표면에서는 session relay, actor context, spot outbound 같은
-도메인 표면을 권장한다. actor runtime 으로 직접 보내는 범용 public client 는
-두지 않는다.
-
-direct target helper 는 transport 위치값을 이미 알고 있는 framework 내부
-경로에 한해서만 둔다.
 
 ### 5.6 IZLinkBoundSession
 
@@ -2769,6 +2716,14 @@ public interface IZLinkEntrySpotOptions
 ```
 
 각 함수의 의미는 아래와 같다.
+
+connection handle 네 이름이 네 개의 독립 socket을 뜻하지는 않는다.
+`ChannelClientConnections`는 `RouterConnections`와 동일한 router capability 및 동일한
+connection state를 나타내는 역할 중심 이름이다. `PublisherConnections`도
+`PubSubConnections`와 동일한 peer publisher endpoint state를 나타낸다. 어느 한 이름으로
+endpoint를 변경하면 짝이 되는 다른 이름에서도 같은 변경을 관찰한다. 이 별칭은 공통
+framework builder의 역할별 사용성을 유지하기 위한 것이며, 별도 channel client나 publisher
+socket을 추가하지 않는다.
 
 - `EnableRouter(...)`
   - spot-to-spot routed packet을 처리할 local router 역할을 켠다.
@@ -3507,6 +3462,15 @@ public sealed class ZLinkSpotSubscriptionAttribute : Attribute
 }
 ```
 
+두 attribute는 별도 DI handler가 아니라 실제로 만들어진 concrete `IZLinkSpot`
+instance의 public instance method에만 붙인다. request method는 decoded request를 첫 번째
+인자로 받고, 선택적으로 마지막에 `CancellationToken`을 받으며 `Task<TReply>` 또는
+`ValueTask<TReply>`를 반환한다. subscription method도 decoded event를 첫 번째 인자로 받고
+선택적으로 마지막에 `CancellationToken`을 받지만 반환형은 `Task` 또는 `ValueTask`다.
+subscription은 생성자에 적은 Spot node에서만 등록한다. packet 이름을 생략한 request와
+subscription event의 packet 이름은 payload 타입에서 결정한다. static, open generic,
+`ref`/`in`/`out` 인자, 같은 packet 또는 같은 topic과 packet 조합의 중복 등록은 시작 검증 오류다.
+
 ### 11.5 stream
 
 ```csharp
@@ -3517,6 +3481,12 @@ public sealed class ZLinkStreamPacketAttribute : Attribute
 }
 
 ```
+
+이 attribute는 실제로 만들어진 concrete `IZLinkSession` instance의 public instance
+method에 붙인다. 첫 번째 인자는 decoded payload다. 그 뒤에는
+`ZLinkSessionDispatchContext`, `CancellationToken`을 이 순서로 선택해서 받을 수 있다.
+반환형은 `Task` 또는 `ValueTask`다. packet 이름은 payload 타입에서 결정한다. static,
+open generic, `ref`/`in`/`out` 인자와 같은 packet의 중복 등록은 시작 검증 오류다.
 
 stream 은 dispatch context 기반의 packet session 을 하나의 축으로 본다.
 recv 방식은 이 공개 계약에 포함하지 않는다.
@@ -4135,10 +4105,10 @@ interface가 그 동작을 보장하도록 한다.
 | channel topology와 수동 endpoint | channel builder의 `EnableClient(endpoint)`, `EnableServer(endpoint)`와 역할별 routing config | 명시됨 | 구현됨 |
 | one-way 완료 객체 비노출 | send, publish, session send/reply의 `Submit(...) : void` | 명시됨 | 구현됨 |
 | Spot 생성, 조회, 종료 | `IZLinkSpotManager`, `IZLinkSpot`, `IZLinkSpotContext` | 명시됨 | 구현됨 |
-| SpotHandle 기반 메시징 | `IZLinkSpotHandleResolver`, `IZLinkActorSpotHandleResolver`, `IZLinkSpotOutbound`, `SpotHandle` | 명시됨 | 구현 gap |
+| SpotHandle 기반 메시징 | `IZLinkSpotHandleResolver`, `IZLinkActorSpotHandleResolver`, `IZLinkSpotOutbound`, `SpotHandle` | 명시됨 | 구현됨 |
 | actor 생성과 위치 조회 | `IZLinkActorManager`, `IZLinkActorDirectory`, resolver와 location store | 이 절에서 inventory 보완 | 구현됨 |
 | actor 직접 send/request | `IZLinkActorClient`, actor send/request call | 이 절에서 시그니처 보완 | 구현됨 |
-| actor join | `IZLinkActorJoinCall`, join Spot/Entry Spot call | 이 절에서 시그니처 보완 | 구현 gap |
+| actor join | `IZLinkActorJoinCall`, join Spot/Entry Spot call | 이 절에서 시그니처 보완 | 구현됨 |
 | Spot actor lifecycle | `IZLinkSpotActorLifecycle<TActor>` | 이 절에서 시그니처 보완 | 구현됨 |
 | remote actor state transfer | `IZLinkActorTransferAdapter<TActor>` | 명시됨 | 구현됨 |
 | 이동 중 packet handoff와 generation fencing | 기존 actor join/transfer interface의 관찰 가능한 동작 | 동작은 Spot Actor 공통 스펙 참조 | public helper 없이 runtime이 구현 |
@@ -4149,7 +4119,7 @@ interface가 그 동작을 보장하도록 한다.
 | location store 역할과 owner lease | location store interface 8종 | inventory 보완 | 구현됨 |
 | 공식 Redis location extension | `IZLinkLocationStore` 구현과 `IZLinkFrameworkOptions.AddLocationStore(...)` | core interface 명시됨 | extension package에서 구현 |
 | location readiness와 운영 조회 | `IZLinkLocationReadiness`, `IZLinkLocationRuntimeQuery` | inventory 보완 | 구현됨 |
-| dispatch와 unhandled 정책 | `IZLinkDispatchOptions`, `IZLinkUnhandledDispatchOptions`; 최적화 mode는 내부 정책 | inventory 보완 | mode 제거 gap |
+| dispatch와 unhandled 정책 | `IZLinkDispatchOptions`, `IZLinkUnhandledDispatchOptions`; 최적화 mode는 내부 정책 | inventory 보완 | 구현됨 |
 | message-flow tracing과 runtime toggle | `IZLinkDiagnosticsOptions`, `IZLinkMessageFlowObserver`, `IZLinkMessageFlowControl` | 명시됨 | 구현됨 |
 | runtime monitoring event | monitoring options, event, handler, publisher interface | 명시됨 | 구현됨 |
 | runtime channel option | `IZLinkChannelRuntimeOptions`, client-server/route-mesh option interface | inventory 보완 | 구현됨 |
@@ -4165,19 +4135,19 @@ interface가 그 동작을 보장하도록 한다.
 
 | 확인 항목 | 목표 계약 | 현재 구현 | 후속 작업 |
 |-----------|-----------|-----------|-----------|
-| 공개 interface inventory | 이 문서의 시그니처 | `Contracts/*`와 Stream Connector contracts에 선언됨 | overload, generic 제약과 default parameter를 contract test로 비교한다. |
-| request/join/worker 완료 | 완료 terminator 하나, 실행 줄 관리는 framework 내부 | `IZLinkYieldRequestCall`, `IZLinkActorYieldJoinCall`, worker `Yield`와 callback `Submit`이 public | gap. yield 타입과 종결자를 제거하고 기존 async 완료 경로로 통일한다. |
-| Spot 메시징 대상 | 불투명한 `SpotHandle`; 내부 주소 갱신 1회 | `SpotRef`와 ref resolver를 public 전송 표면에 노출 | gap. handle resolver와 handle 기반 outbound로 교체한다. |
-| custom Spot route resolver | 정식 location store와 handle resolver만 public | `AddSpotRouteRefResolver`와 `IZLinkSpotRouteRefResolver` 공개 | gap. transport route extension을 내부로 이동한다. |
-| dispatch 최적화 | registration 시 최적화하며 public mode 없음 | `ZLinkDispatchMode`, `SpotDispatchMode`, `StreamDispatchMode` 공개 | gap. 구현 전략 option을 제거한다. |
-| typed packet name | registration descriptor가 한 번 결정 | 여러 call interface가 `PacketName(...)` override 제공 | gap. typed call override를 제거하고 raw extension만 명시 이름을 받는다. |
-| actor Spot 접근 | generic actor context에는 Spot instance getter 없음 | `GetSpot()`과 `GetSpot<TSpot>()` 공개 | gap. 두 getter를 제거하고 Spot handler 인자를 사용한다. |
-| actor membership | nullable `SpotRid`가 join 상태의 단일 기준 | nullable `SpotRid`와 `IsJoined`를 함께 공개 | gap. 중복 boolean을 제거한다. |
-| actor join 결과 | 승인/거절 sealed record이며 승인 결과만 필수 actor ref를 가짐 | `Accepted`, nullable `Actor`, `Reply`를 독립 필드로 공개 | gap. 모순 상태를 만들 수 없는 sealed 결과로 교체한다. |
-| manual connection | capability별 `IZLinkEndpointConnections` runtime handle | startup endpoint 설정만 공개 | gap. client/subscriber/Spot capability accessor와 runtime handle을 추가한다. |
-| monitoring event 상태 | kind별 sealed record | kind와 여러 nullable payload를 독립 필드로 공개 | gap. 유효한 payload 조합만 만들 수 있는 sealed event로 교체한다. |
+| 공개 interface inventory | 이 문서의 시그니처 | `Contracts/*`와 Stream Connector contracts에 선언됨 | 일치. exported type coverage와 실제 package consumer로 검증한다. |
+| request/join/worker 완료 | 완료 terminator 하나, 실행 줄 관리는 framework 내부 | yield 전용 타입 없이 `Async(...)` 하나를 제공 | 일치. 자동 turn dispatch E2E로 검증한다. |
+| Spot 메시징 대상 | 불투명한 `SpotHandle`; 내부 주소 갱신 1회 | handle resolver와 handle 기반 outbound를 제공 | 일치. stale route에서 안전한 1회 refresh를 unit test로 검증한다. |
+| custom Spot route resolver | 정식 location store와 handle resolver만 public | transport route lookup은 runtime 내부에만 존재 | 일치. package reflection에서 public type 부재를 검증한다. |
+| dispatch 최적화 | registration 시 최적화하며 public mode 없음 | public mode type과 property 없음 | 일치. contract test로 검증한다. |
+| typed packet name | registration descriptor가 한 번 결정 | typed framework call에 `PacketName(...)` 없음 | 일치. Stream Connector의 명시적 packet identity는 별도 계약으로 유지한다. |
+| actor Spot 접근 | generic actor context에는 Spot instance getter 없음 | getter 없음 | 일치. Spot handler 인자를 사용한다. |
+| actor membership | nullable `SpotRid`가 join 상태의 단일 기준 | `SpotRid`만 제공 | 일치. contract test로 검증한다. |
+| actor join 결과 | 승인/거절 sealed record이며 승인 결과만 필수 actor ref를 가짐 | sealed `Accepted`/`Rejected` 결과 | 일치. contract test로 검증한다. |
+| manual connection | capability별 `IZLinkEndpointConnections` runtime handle | builder capability별 runtime handle 제공 | 일치. 연결 추가/제거와 runtime 재시작 replay를 unit test로 검증한다. |
+| monitoring event 상태 | kind별 sealed record | kind별 sealed event | 일치. contract/unit test로 검증한다. |
 | channel, publish, session과 connector one-way call | `Submit(...)`이 `void` 반환 | 일치 | 내부 비동기 queue를 public completion으로 노출하지 않는다. |
-| `IZLinkActorSendCall` | `Submit(CancellationToken): void` | `Async(CancellationToken): ValueTask` | gap. actor send도 다른 one-way call과 같은 terminator로 바꾼다. |
+| `IZLinkActorSendCall` | `Submit(CancellationToken): void` | 일치 | local queue 수락 뒤 오류는 runtime 관측 경로로 보낸다. |
 | cancellation | 취소 가능한 `.NET` call과 callback에 `CancellationToken` 사용 | 일치 | 이 인자 모양은 다른 언어에 그대로 강제하지 않는다. |
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.

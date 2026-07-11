@@ -92,7 +92,6 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
-                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -108,8 +107,9 @@ internal static class ConsumerHostFactory
         {
             try
             {
-                var reply = await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
-                    .PacketName("MissingProfileReq")
+                var reply = await channel.RequestToChannel(
+                        ResilienceLifecycleNames.Channel,
+                        new MissingProfileReq(request.Value, request.Marker))
                     .Timeout(TimeSpan.FromSeconds(3))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -119,12 +119,11 @@ internal static class ConsumerHostFactory
                 return Results.Problem(ex.Message);
             }
         });
-        app.MapPost("/profile/command", async (
+        app.MapPost("/profile/command", (
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            channel.SendToChannel(ResilienceLifecycleNames.Channel, command)
-                .PacketName("ProfileMsg").Submit();
+            channel.SendToChannel(ResilienceLifecycleNames.Channel, command).Submit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
@@ -189,7 +188,6 @@ internal static class ConsumerHostFactory
             try
             {
                 return await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
-                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<ProfileRes>();
             }

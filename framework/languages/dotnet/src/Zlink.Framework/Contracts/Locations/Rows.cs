@@ -73,11 +73,3 @@ public sealed record ZLinkOwnerLease(
 public sealed record ZLinkOwnerLeaseSnapshot(
     IReadOnlyList<ZLinkOwnerLease> Leases,
     DateTimeOffset StoreNow);
-
-/// <summary>
-/// Logical messaging address of one spot in a mesh. Callers may hold the
-/// address and re-resolve after send failure; send paths do not resolve.
-/// </summary>
-public readonly record struct SpotRef(
-    RoutingId NodeRid,
-    RoutingId SpotRid);

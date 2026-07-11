@@ -200,12 +200,12 @@ public sealed class CoverageCriticalRuntimeTests
             new ApplicationException("stop"),
             true);
 
-        Assert.Equal(ZLinkSpotEventKind.TimerHandlerFailed, continuing.Event);
-        Assert.Equal(ZLinkSpotEventKind.TimerStoppedAfterUnhandledException, stopped.Event);
-        Assert.Equal("tick", continuing.TimerDiagnostic!.Value.TimerName);
-        Assert.Equal(2UL, continuing.TimerDiagnostic!.Value.DeliveryIndex);
-        Assert.Contains("InvalidOperationException", continuing.TimerDiagnostic!.Value.ExceptionType);
-        Assert.Equal("stop", stopped.TimerDiagnostic!.Value.ExceptionMessage);
+        var continuingFailure = Assert.IsType<ZLinkSpotEvent.TimerHandlerFailed>(continuing);
+        var stoppedFailure = Assert.IsType<ZLinkSpotEvent.TimerStoppedAfterUnhandledException>(stopped);
+        Assert.Equal("tick", continuingFailure.Diagnostic.TimerName);
+        Assert.Equal(2UL, continuingFailure.Diagnostic.DeliveryIndex);
+        Assert.Contains("InvalidOperationException", continuingFailure.Diagnostic.ExceptionType);
+        Assert.Equal("stop", stoppedFailure.Diagnostic.ExceptionMessage);
     }
 
     private static int FindFreeTcpPort()

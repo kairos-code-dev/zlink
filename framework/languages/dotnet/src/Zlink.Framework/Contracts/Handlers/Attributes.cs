@@ -138,8 +138,3 @@ public sealed class ZLinkSpotTimerHandlerAttribute(string name, double periodMil
 public sealed class ZLinkStreamPacketAttribute : Attribute
 {
 }
-
-[AttributeUsage(AttributeTargets.Method)]
-public sealed class ZLinkStreamRawAttribute : Attribute
-{
-}

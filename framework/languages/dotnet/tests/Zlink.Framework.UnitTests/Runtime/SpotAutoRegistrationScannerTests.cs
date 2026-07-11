@@ -46,11 +46,30 @@ public sealed class SpotAutoRegistrationScannerTests
             && handler.SpotType == typeof(AutoRoomSpot)
             && handler.TimerName == "room.tick"
             && handler.TimerPeriod == TimeSpan.FromMilliseconds(250));
+        Assert.Contains(handlers, static handler =>
+            handler.Kind == ZLinkScannedSpotHandlerKind.Packet
+            && handler.HandlerType == typeof(AutoRoomSpot)
+            && handler.Method?.Name == nameof(AutoRoomSpot.RequestAsync)
+            && handler.PacketName == "room.attribute.request");
+        Assert.Contains(handlers, static handler =>
+            handler.Kind == ZLinkScannedSpotHandlerKind.Subscription
+            && handler.HandlerType == typeof(AutoRoomSpot)
+            && handler.Method?.Name == nameof(AutoRoomSpot.OnEventAsync)
+            && handler.SpotNodeName == "room-node"
+            && handler.Topic == "room.attribute.events");
     }
 
     private sealed class AutoRoomSpot : IZLinkSpot<AutoActor>
     {
         public IZLinkSpotContext Context => throw new NotSupportedException();
+
+        [ZLinkSpotRequest(PacketName = "room.attribute.request")]
+        public ValueTask<AutoActorReply> RequestAsync(
+            AutoActorRequest request,
+            CancellationToken cancellationToken) => ValueTask.FromResult(new AutoActorReply());
+
+        [ZLinkSpotSubscription("room-node", "room.attribute.events")]
+        public ValueTask OnEventAsync(AutoRoomEvent message) => ValueTask.CompletedTask;
     }
 
     private sealed class AutoEntrySpot : IZLinkEntrySpot<AutoActor>

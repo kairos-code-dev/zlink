@@ -169,12 +169,30 @@ public sealed class RouteCodecTests
         var connections = new ZLinkRouteConnectionSet(router);
         var peerRid = RoutingId.From("route-peer");
 
-        connections.Connect(peerRid, "inproc://route-peer");
+        connections.ConnectManual(peerRid, "inproc://route-peer");
 
         Assert.Equal(peerRid, router.ConnectRoutingId);
         Assert.True(router.ProbeEnabled);
         Assert.Equal(["connect-rid", "probe", "connect"], router.Events);
         Assert.Equal("inproc://route-peer", Assert.Single(router.Connected));
+    }
+
+    [Fact]
+    public void RouteConnectionSet_Keeps_Physical_Link_Until_Manual_And_Auto_Owners_Release_It()
+    {
+        var router = new RecordingConnectRouter();
+        var connections = new ZLinkRouteConnectionSet(router);
+        const string endpoint = "inproc://shared-route-peer";
+
+        Assert.True(connections.ConnectAuto(RoutingId.From("peer"), endpoint));
+        connections.ConnectManual(endpoint);
+        connections.DisconnectManual(endpoint);
+
+        Assert.Single(router.Connected);
+        Assert.Empty(router.Disconnected);
+
+        Assert.True(connections.DisconnectAuto(endpoint));
+        Assert.Equal([endpoint], router.Disconnected);
     }
 
     [Fact]
@@ -499,6 +517,8 @@ public sealed class RouteCodecTests
 
         public List<string> Connected { get; } = [];
 
+        public List<string> Disconnected { get; } = [];
+
         public RoutingId? ConnectRoutingId { get; private set; }
 
         public bool ProbeEnabled { get; private set; }
@@ -533,7 +553,7 @@ public sealed class RouteCodecTests
 
         public void Disconnect(string endpoint)
         {
-            throw new NotSupportedException();
+            Disconnected.Add(endpoint);
         }
 
         public void SetPeerWeight(int weight)

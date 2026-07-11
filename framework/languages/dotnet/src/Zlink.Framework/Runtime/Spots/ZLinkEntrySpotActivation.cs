@@ -180,11 +180,25 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     public RoutingId NodeRid { get; }
 
-    public async ValueTask DestroyActorAsync(
+    public ValueTask DestroyActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (ZLinkBoundSessionDispatchScope.TryDefer(
+                actor.ActorId,
+                ct => DestroyActorCoreAsync(actor, ct)))
+            return ValueTask.CompletedTask;
+
+        return DestroyActorCoreAsync(actor, cancellationToken);
+    }
+
+    private async ValueTask DestroyActorCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
         await _runtime.DestroyActorAsync(
                 NodeRid,
                 actor,
@@ -199,8 +213,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         ArgumentNullException.ThrowIfNull(work);
         return new ZLinkWorkerCall<TResult>(
             _runtime.WorkerPool,
-            work,
-            callback => QueueSerialized((_, ct) => callback(ct)));
+            work);
     }
 
     public void Configure()

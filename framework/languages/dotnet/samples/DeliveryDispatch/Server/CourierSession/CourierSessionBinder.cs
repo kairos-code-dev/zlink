@@ -13,6 +13,7 @@ namespace DeliveryDispatch.Server.CourierSession;
 internal sealed class CourierSessionBinder(
     SampleTopology topology,
     IZLinkRouteClient routes,
+    IZLinkSpotHandleResolver spots,
     ILogger<CourierSessionBinder> logger)
 {
     public async ValueTask<BindCourierSessionRes> BindAsync(
@@ -47,23 +48,19 @@ internal sealed class CourierSessionBinder(
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var address = new SpotRef(placement.NodeRid, placement.NodeRid);
-        var found = await routes.RequestToSpot(
-                SampleNames.CourierActorDiscovery,
-                address,
+        var address = await spots.ResolveSpotHandleAsync(placement.NodeRid, cancellationToken)
+                      ?? throw new InvalidOperationException(
+                          $"Courier placement spot '{placement.NodeRid}' was not found.");
+        var found = await routes.RequestToSpot(address,
                 new FindCourierActorReq(courierId))
-            .PacketName(nameof(FindCourierActorReq))
             .Async<FindCourierActorRes>(cancellationToken);
         if (found.Actor is { } existing)
         {
             return existing;
         }
 
-        var ensured = await routes.RequestToSpot(
-                SampleNames.CourierActorDiscovery,
-                address,
+        var ensured = await routes.RequestToSpot(address,
                 new EnsureCourierActorReq(courierId))
-            .PacketName(nameof(EnsureCourierActorReq))
             .Async<EnsureCourierActorRes>(cancellationToken);
         return ensured.Actor;
     }

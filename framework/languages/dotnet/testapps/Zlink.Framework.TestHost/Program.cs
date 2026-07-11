@@ -84,7 +84,6 @@ internal sealed class ChannelClientStartupRequestHostedService(
     {
         var reply = await client
             .RequestToChannel(channelName, new TestHostProfileRequest(value))
-            .PacketName("TestHostProfileRequest")
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<TestHostProfileReply>(cancellationToken);
         sink.Append($"channel-client|{reply.Value}");
@@ -262,7 +261,6 @@ internal sealed class StreamClientStartupRequestHostedService(
             .Request(new ZlinkStreamEncodedPayload(
                 ZlinkStreamCodec.Json,
                 Encoding.UTF8.GetBytes($"\"{value}\"")))
-            .PacketName("RawPing")
             .Compress()
             .Timeout(TimeSpan.FromSeconds(5))
             .Async(cancellationToken);

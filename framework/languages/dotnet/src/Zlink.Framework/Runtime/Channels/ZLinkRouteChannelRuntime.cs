@@ -180,22 +180,28 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             ct => new ValueTask(_receivePump.RunAsync(ct)));
     }
 
-    public void Connect(string endpoint)
+    public void ConnectManual(string endpoint)
     {
-        _connections.Connect(endpoint);
+        _connections.ConnectManual(endpoint);
     }
 
     /// <summary>Connect to a route mesh peer advertised with a routing id;
     /// the rid is assigned to the dial so rid-addressed requests reach it.</summary>
-    public void Connect(RoutingId peerRid, string endpoint)
+    public void ConnectManual(RoutingId peerRid, string endpoint)
     {
-        _connections.Connect(peerRid, endpoint);
+        _connections.ConnectManual(peerRid, endpoint);
     }
 
-    public void Disconnect(string endpoint)
+    public void DisconnectManual(string endpoint)
     {
-        _connections.Disconnect(endpoint);
+        _connections.DisconnectManual(endpoint);
     }
+
+    public bool ConnectAuto(RoutingId? peerRid, string endpoint)
+        => _connections.ConnectAuto(peerRid, endpoint);
+
+    public bool DisconnectAuto(string endpoint)
+        => _connections.DisconnectAuto(endpoint);
 
     public IReadOnlyList<string> ListConnections()
     {

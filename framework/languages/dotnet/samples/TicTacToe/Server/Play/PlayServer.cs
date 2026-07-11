@@ -9,6 +9,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Samples.Logging;
 
 namespace TicTacToe.Server.Play;
@@ -21,18 +22,19 @@ internal sealed class PlayServer(SampleSettings settings)
         SampleLogging.Configure(builder.Logging, settings.LogDirectory, "play");
 
         builder.Services.AddSingleton(settings);
-        builder.Services.AddSingleton<IRoomRouteStore, RedisRoomRouteStore>();
         builder.Services.AddSingleton<ITicTacToeGameRoomProvisioner, TicTacToeGameRoomProvisioner>();
         builder.Services.AddSingleton<TicTacToeGameCreator>();
 
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                .SetConnectionString(settings.RedisEndpoint)
+                .SetKeyPrefix(settings.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
-            options.AddSpotRouteRefResolver<RedisSpotRouteRefResolver>();
 
             options.AddClientServerChannel(SampleChannels.Api)
                 .EnableClient(settings.ApiChannelEndpoints[0])

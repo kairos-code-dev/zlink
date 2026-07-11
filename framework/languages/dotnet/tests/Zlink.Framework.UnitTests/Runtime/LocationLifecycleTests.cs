@@ -472,7 +472,7 @@ public sealed class LocationLifecycleTests
     }
 
     [Fact]
-    public async Task Spot_Remote_Address_Resolver_Uses_The_Row_And_Misses_When_The_Lease_Expires()
+    public async Task Spot_Handle_Resolver_Uses_The_Row_And_Misses_When_The_Lease_Expires()
     {
         var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
@@ -481,8 +481,11 @@ public sealed class LocationLifecycleTests
         var registration = new ZLinkFrameworkRegistration();
         registration.SpotMeshChannels.Add(
             "mesh", new ZLinkSpotMeshChannelRegistration { ChannelName = "mesh" });
-        var resolver = new ZLinkLocationSpotRouteRefResolver(
-            new ZLinkSpotMeshLocationResolver(registration, node.Resolvers));
+        var spots = new ZLinkSpotMeshLocationResolver(registration, node.Resolvers);
+        var resolver = new ZLinkLocationAddressResolvers(
+            node.Resolvers,
+            spots,
+            new ZLinkSpotHandleRegistry());
 
         var status = await node.SpotLocations.ClaimAsync(
             "mesh",
@@ -494,19 +497,17 @@ public sealed class LocationLifecycleTests
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
 
-        var address = await resolver.ResolveSpotRouteRefAsync(spotRid, CancellationToken.None);
-        Assert.Equal("mesh", address.RouterChannelId);
-        Assert.Equal(RoutingId.From("node-a"), address.TargetNodeRid);
-        Assert.Equal(spotRid, address.SpotRid);
-        Assert.Equal(ZLinkSpotKind.User, address.SpotKind);
+        var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
+            await resolver.ResolveSpotHandleAsync(spotRid, CancellationToken.None));
+        Assert.Equal("mesh", handle.Snapshot.RouterChannelId);
+        Assert.Equal(RoutingId.From("node-a"), handle.Snapshot.NodeRid);
+        Assert.Equal(spotRid, handle.SpotRid);
 
         // No heartbeat: once the owner lease expires the row is stale and
         // the resolver reports a clean miss instead of a wrong node.
         fixture.Time.Advance(fixture.Options.OwnerLeaseTtl + TimeSpan.FromSeconds(1));
 
-        var miss = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
-            await resolver.ResolveSpotRouteRefAsync(spotRid, CancellationToken.None));
-        Assert.Equal(ZLinkFrameworkErrorKind.SpotRouteNotFound, miss.Kind);
+        Assert.Null(await resolver.ResolveSpotHandleAsync(spotRid, CancellationToken.None));
     }
 
     [Fact]

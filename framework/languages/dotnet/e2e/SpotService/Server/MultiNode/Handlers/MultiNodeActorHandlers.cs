@@ -1,6 +1,7 @@
 using SpotService.Server.MultiNode.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
@@ -30,11 +31,11 @@ internal sealed class SpotOnlyJoinHandler(EvidenceStore evidence)
             .ConfigureAwait(false);
         evidence.Add(
             $"spot-only-actor-join|rid={evidence.Rid}|actor={actor.ActorId}"
-            + $"|target={request.TargetSpotRid}|accepted={joined.Accepted}|marker={request.Marker}");
+            + $"|target={request.TargetSpotRid}|accepted={joined is ZLinkActorJoinResult.Accepted}|marker={request.Marker}");
         return new SpotOnlyJoinRes(
             request.TargetSpotRid,
             actor.ActorId,
-            joined.Accepted,
+            joined is ZLinkActorJoinResult.Accepted,
             request.Marker);
     }
 }

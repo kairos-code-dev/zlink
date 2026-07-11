@@ -93,16 +93,20 @@ internal static class Program
             StartOrderWorkflowReq request,
             IZLinkSpotManager spots,
             IZLinkRouteClient routes,
-            WorkflowInstanceTopology instance,
+            IZLinkSpotHandleResolver spotHandles,
             CancellationToken cancellationToken) =>
         {
             await spots.GetOrCreateAsync<OrderWorkflowSpot, OrderWorkflowSpotCreateReq>(
                 RoutingId.From(request.OrderId),
                 new OrderWorkflowSpotCreateReq(request.OrderId),
                 cancellationToken);
-            var address = new SpotRef(instance.SpotRid, RoutingId.From(request.OrderId));
+            var address = await spotHandles.ResolveSpotHandleAsync(
+                              RoutingId.From(request.OrderId),
+                              cancellationToken)
+                          ?? throw new InvalidOperationException(
+                              $"Order workflow spot '{request.OrderId}' was not found.");
             var response = await routes
-                .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, new PrepareInventoryReservedCheckpointReq(request))
+                .RequestToSpot(address, new PrepareInventoryReservedCheckpointReq(request))
                 .Async<StartOrderWorkflowRes>(cancellationToken);
             return Results.Ok(response);
         });

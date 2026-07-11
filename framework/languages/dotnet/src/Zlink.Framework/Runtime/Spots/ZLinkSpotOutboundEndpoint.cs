@@ -5,14 +5,14 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     ZLinkSpotOutboundTransport outbound,
     ZLinkFrameworkRuntime runtime) : IZLinkSpotOutbound
 {
-    public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message)
     {
-        return new ZLinkRoutedSpotSendCall<TMessage>(activation, address, message);
+        return new ZLinkRoutedSpotSendCall<TMessage>(activation, RequireResolvedHandle(target), message);
     }
 
-    public IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request)
+    public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request)
     {
-        return new ZLinkRoutedSpotRequestCall<TRequest>(activation, address, request);
+        return new ZLinkRoutedSpotRequestCall<TRequest>(activation, RequireResolvedHandle(target), request);
     }
 
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
@@ -25,9 +25,15 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return new ZLinkCurrentSpotSendCall<TMessage>(activation, channelName, message);
     }
 
-    public IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+    public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
     {
         return new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request);
+    }
+
+    private static ZLinkResolvedSpotHandle RequireResolvedHandle(SpotHandle target)
+    {
+        return target as ZLinkResolvedSpotHandle
+               ?? throw new ArgumentException("Spot handle was not created by this framework runtime.", nameof(target));
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(

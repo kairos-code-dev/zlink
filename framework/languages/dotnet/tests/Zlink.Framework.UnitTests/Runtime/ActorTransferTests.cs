@@ -103,20 +103,7 @@ public sealed class ActorTransferTests
     {
         public RoutingId? SpotRid => null;
 
-        public bool IsJoined => false;
-
         public IZLinkBoundSession BoundSession => throw new NotSupportedException();
-
-        public IZLinkSpot GetSpot()
-        {
-            throw new NotSupportedException();
-        }
-
-        public TSpot GetSpot<TSpot>()
-            where TSpot : IZLinkSpot
-        {
-            throw new NotSupportedException();
-        }
 
         public IZLinkActorJoinSpotCall JoinSpot(
             RoutingId spotRid,

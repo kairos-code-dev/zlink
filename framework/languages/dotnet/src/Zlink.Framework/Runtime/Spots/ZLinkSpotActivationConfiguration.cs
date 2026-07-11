@@ -90,12 +90,20 @@ internal sealed partial class ZLinkSpotActivation
         switch (handler.Kind)
         {
             case ZLinkScannedSpotHandlerKind.Packet:
-                _packets.Add(handler.HandlerType, handler.PacketName);
+                if (handler.Method is { } packetMethod)
+                    _packets.Add(handler.HandlerType, packetMethod, handler.PacketName);
+                else
+                    _packets.Add(handler.HandlerType, handler.PacketName);
                 return;
             case ZLinkScannedSpotHandlerKind.Subscription:
-                _subscriptions.Add(
-                    handler.Topic ?? throw new InvalidOperationException("Scanned SPOT subscription requires a topic."),
-                    handler.HandlerType);
+                if (handler.SpotNodeName is not null
+                    && !string.Equals(handler.SpotNodeName, SpotNodeName, StringComparison.Ordinal)) return;
+                var topic = handler.Topic
+                            ?? throw new InvalidOperationException("Scanned SPOT subscription requires a topic.");
+                if (handler.Method is { } subscriptionMethod)
+                    _subscriptions.Add(topic, handler.HandlerType, subscriptionMethod);
+                else
+                    _subscriptions.Add(topic, handler.HandlerType);
                 return;
             case ZLinkScannedSpotHandlerKind.ActorSend:
             case ZLinkScannedSpotHandlerKind.ActorRequest:

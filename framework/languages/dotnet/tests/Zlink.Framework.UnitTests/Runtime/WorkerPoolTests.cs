@@ -17,38 +17,6 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_Submit_Posts_Completion_To_Dispatcher_Not_Worker_Thread()
-    {
-        using var pool = CreatePool(2);
-        await using var queue = CreateQueue();
-        var completed = new TaskCompletionSource<int>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var workerThreadId = 0;
-
-        var call = CreateCall(
-            pool,
-            _ =>
-            {
-                workerThreadId = Environment.CurrentManagedThreadId;
-                return 42;
-            },
-            queue);
-        call.Submit((result, _) =>
-        {
-            // The callback must run inside a dispatcher queue item, not
-            // directly on the pool thread that produced the result.
-            completed.TrySetResult(
-                Environment.CurrentManagedThreadId == workerThreadId
-                    ? -1
-                    : result);
-            return ValueTask.CompletedTask;
-        });
-
-        var observed = await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(42, observed);
-    }
-
-    [Fact]
     public async Task RunWorker_Queue_Full_Fails_Fast_With_WorkerQueueFull()
     {
         using var pool = CreatePool(1, 1);
@@ -91,10 +59,6 @@ public sealed class WorkerPoolTests
         using var pool = CreatePool(2);
         await using var queue = CreateQueue();
         using var releaseWork = new ManualResetEventSlim(false);
-        var callbacks = new ConcurrentQueue<string>();
-        var failed = new TaskCompletionSource<Exception>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
         var call = CreateCall(
             pool,
             _ =>
@@ -104,29 +68,18 @@ public sealed class WorkerPoolTests
             },
             queue);
         call.Timeout(TimeSpan.FromMilliseconds(100));
-        call.Submit(
-            (result, _) =>
-            {
-                callbacks.Enqueue($"completed:{result}");
-                return ValueTask.CompletedTask;
-            },
-            (error, _) =>
-            {
-                callbacks.Enqueue($"error:{((ZLinkFrameworkException)error).Kind}");
-                failed.TrySetResult(error);
-                return ValueTask.CompletedTask;
-            });
-
-        var observed = await failed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var pending = call.Async().AsTask();
+        var observed = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
+            pending.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(
             ZLinkFrameworkErrorKind.WorkerTimedOut,
-            ((ZLinkFrameworkException)observed).Kind);
+            observed.Kind);
 
-        // Let the abandoned work finish; its late completion must be dropped.
+        // Let the abandoned work finish; its late completion must not change
+        // the already completed timeout result.
         releaseWork.Set();
         await Task.Delay(300);
-        Assert.DoesNotContain(callbacks, c => c.StartsWith("completed:", StringComparison.Ordinal));
-        Assert.Single(callbacks);
+        Assert.True(pending.IsFaulted);
     }
 
     [Fact]
@@ -144,124 +97,6 @@ public sealed class WorkerPoolTests
 
         await WaitForAsync(() => pool.ThreadCount == 0);
         Assert.Equal(0, pool.ThreadCount);
-    }
-
-    [Fact]
-    public async Task RunWorker_Detached_Callback_Observes_State_Mutated_While_Waiting()
-    {
-        using var pool = CreatePool(2);
-        await using var queue = CreateQueue();
-        using var releaseWork = new ManualResetEventSlim(false);
-        var observed = new TaskCompletionSource<string>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // Spot-owned state that another serial-line callback mutates while
-        // the worker job is still running.
-        var spotState = "initial";
-
-        var call = CreateCall(
-            pool,
-            _ =>
-            {
-                releaseWork.Wait();
-                return 1;
-            },
-            queue);
-        call.Submit((_, _) =>
-        {
-            // Detached completion is explicit interleaving opt-in: the state
-            // it sees may differ from the state at submit time.
-            observed.TrySetResult(spotState);
-            return ValueTask.CompletedTask;
-        });
-
-        Assert.True(queue.TryPost(
-            _ =>
-            {
-                spotState = "mutated";
-                return ValueTask.CompletedTask;
-            },
-            out _));
-        await WaitForAsync(() => spotState == "mutated");
-        releaseWork.Set();
-
-        Assert.Equal("mutated", await observed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
-    }
-
-    [Fact]
-    public async Task RunWorker_Yield_Allows_Dispatcher_Work_While_Worker_Runs()
-    {
-        using var pool = CreatePool(2);
-        await using var queue = CreateQueue();
-        using var releaseWork = new ManualResetEventSlim(false);
-        var workerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var firstResumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFirstResume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thirdRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var order = new ConcurrentQueue<string>();
-
-        var first = queue.RunAsync(
-            async ct =>
-            {
-                order.Enqueue("first-start");
-                var call = CreateCall(
-                    pool,
-                    _ =>
-                    {
-                        workerStarted.SetResult();
-                        releaseWork.Wait();
-                        return 42;
-                    },
-                    queue);
-                var result = await call.Yield(ct).ConfigureAwait(false);
-                order.Enqueue($"first-resumed:{result}");
-                firstResumed.SetResult();
-                await releaseFirstResume.Task.ConfigureAwait(false);
-            },
-            CancellationToken.None).AsTask();
-
-        await workerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        await queue.RunAsync(
-            _ =>
-            {
-                order.Enqueue("second");
-                return ValueTask.CompletedTask;
-            },
-            CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(new[] { "first-start", "second" }, order.ToArray());
-
-        releaseWork.Set();
-        await firstResumed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        var third = queue.RunAsync(
-            _ =>
-            {
-                order.Enqueue("third");
-                thirdRan.SetResult();
-                return ValueTask.CompletedTask;
-            },
-            CancellationToken.None).AsTask();
-
-        await Task.Delay(100);
-        Assert.False(thirdRan.Task.IsCompleted);
-
-        releaseFirstResume.SetResult();
-        await Task.WhenAll(first, third).WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(new[] { "first-start", "second", "first-resumed:42", "third" }, order.ToArray());
-    }
-
-    [Fact]
-    public async Task RunWorker_Yield_Requires_Captured_Turn()
-    {
-        using var pool = CreatePool(2);
-        await using var queue = CreateQueue();
-        var call = CreateCall(pool, _ => 1, queue);
-
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => call.Yield().AsTask());
-
-        Assert.Contains("captured", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -290,7 +125,7 @@ public sealed class WorkerPoolTests
 
         var call = CreateCall(pool, _ => 1, queue);
         _ = call.Async();
-        Assert.Throws<InvalidOperationException>(() => call.Submit((_, _) => ValueTask.CompletedTask));
+        Assert.Throws<InvalidOperationException>(() => call.Async());
     }
 
     [Fact]
@@ -356,10 +191,8 @@ public sealed class WorkerPoolTests
         Func<CancellationToken, TResult> work,
         ZLinkSerialExecutionQueue dispatcherQueue)
     {
-        return new ZLinkWorkerCall<TResult>(
-            pool,
-            work,
-            callback => dispatcherQueue.TryPost(callback, out _));
+        _ = dispatcherQueue;
+        return new ZLinkWorkerCall<TResult>(pool, work);
     }
 
     private static ZLinkSerialExecutionQueue CreateQueue()

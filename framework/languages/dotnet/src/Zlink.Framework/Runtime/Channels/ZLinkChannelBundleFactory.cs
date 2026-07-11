@@ -40,7 +40,10 @@ internal sealed class ZLinkChannelBundleFactory(
                 localRid: localRid,
                 socketRole: "dealer");
 
-            AttachManualConnections(bundle, dealer, channel.Client.ManualConnections);
+            if (channel.Client.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual)
+                channel.Client.ManualConnections.Attach(
+                    endpoint => bundle.ConnectManual(dealer, endpoint),
+                    endpoint => bundle.DisconnectManual(dealer, endpoint));
 
             return bundle;
         }
@@ -108,7 +111,10 @@ internal sealed class ZLinkChannelBundleFactory(
             subscriber.SetSubscription(string.Empty);
             bundle = new ZLinkChannelRuntimeBundle(subscriber, localRid: localRid, socketRole: "sub");
 
-            AttachManualConnections(bundle, subscriber, channel.Subscriber.ManualConnections);
+            if (channel.Subscriber.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual)
+                channel.Subscriber.ManualConnections.Attach(
+                    endpoint => bundle.ConnectManual(subscriber, endpoint),
+                    endpoint => bundle.DisconnectManual(subscriber, endpoint));
 
             return bundle;
         }
@@ -168,18 +174,6 @@ internal sealed class ZLinkChannelBundleFactory(
         if (config.SendHighWaterMark > 0) socket.SetSendHighWaterMark(config.SendHighWaterMark);
 
         if (config.ReceiveHighWaterMark > 0) socket.SetReceiveHighWaterMark(config.ReceiveHighWaterMark);
-    }
-
-    private static void AttachManualConnections(
-        ZLinkChannelRuntimeBundle bundle,
-        IZLinkBackendConnectableSocket socket,
-        IReadOnlyList<string> endpoints)
-    {
-        foreach (var endpoint in endpoints)
-        {
-            socket.Connect(endpoint);
-            _ = bundle.TryAddManualConnection(endpoint);
-        }
     }
 
     private static async ValueTask ThrowAfterCleanupAsync(

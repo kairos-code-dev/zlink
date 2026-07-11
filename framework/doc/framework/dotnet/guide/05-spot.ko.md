@@ -15,17 +15,17 @@
 
 외부(다른 프로세스·다른 channel)에서 특정 Spot 에 메시지를 보내는 방법은 두 가지다.
 
-- **send/request** — `IZLinkRouteClient` 로 spot 전송 대상(`SpotRef`)에 보낸다. `SpotRef` 는
-  `IZLinkSpotRefResolver` 로 spot rid 를 한 번 resolve 해서 들고 있다가, 보낼 때마다 그 값을
-  그대로 재사용한다 — 보내는 순간에는 위치 조회가 일어나지 않으므로, spot 이 어느 SpotNode 에
-  있든 `SpotRef` 만 맞으면 도달한다. `SpotRef` 가 낡으면(spot 이 이동·소멸) 전송이 명확한 오류로
-  실패하고, 그때 다시 resolve 한다 — 예제는 §5 에서 본다.
+- **send/request** — `IZLinkRouteClient` 로 spot 전송 대상(`SpotHandle`)에 보낸다. `SpotHandle` 는
+  `IZLinkSpotHandleResolver` 로 spot rid 를 한 번 resolve 해서 들고 있다가, 보낼 때마다 그 값을
+  그대로 재사용한다. framework는 위치 event와 주기적 조회로 handle의 내부 주소를 갱신한다.
+  request 도중 주소가 무효화되면 안전한 경우에 한해 주소를 다시 조회하고 한 번 재전송한다.
+  send는 이미 전달되었을 가능성이 있으므로 자동으로 다시 전송하지 않는다. 예제는 §5 에서 본다.
 - **publish** — `IZLinkSpotPublisherClient` 를 주입해 `PublishSpot(...)` 으로 topic 을 보낸다. 같은
-  SpotMesh 에 속해 있기만 하면 자동으로 연결되므로 `SpotRef` 가 따로 필요 없다.
+  SpotMesh 에 속해 있기만 하면 자동으로 연결되므로 `SpotHandle` 가 따로 필요 없다.
 
 두 경우 모두 RouteMesh channel(또는 SpotMesh)과 `SpotNode` 를 같은 프로세스에 두기만 하면 framework 가
-자동으로 연결해 준다. 호출자가 직접 신경 쓸 부분은 **`SpotRef` 관리**(언제 resolve 하고 언제 다시
-resolve 하는지) 뿐이다.
+자동으로 연결해 준다. 호출자는 논리적 대상을 나타내는 `SpotHandle`만 보관하고 내부 주소와 갱신
+정책은 framework에 맡긴다.
 
 ## 1. SPOT 이란
 
@@ -761,13 +761,13 @@ lock 없이 안전하게 만드는 게 핵심 전제이므로, 참조를 얻어 
 (`SendToSpot`/`RequestToSpot`, §5)으로 보낸다 — 같은 프로세스 대상도 예외가 아니다.
 
 ```csharp
-// 생성을 보장한 뒤, SpotRef 를 resolve 해서 spot packet 으로 보낸다 — 인스턴스를 직접 들고 오지 않는다.
+// 생성을 보장한 뒤, SpotHandle 를 resolve 해서 spot packet 으로 보낸다 — 인스턴스를 직접 들고 오지 않는다.
 await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
     RoutingId.From(request.DeliveryId), new DeliverySpotCreate(request.DeliveryId), ct);
 
-var spotRef = await spotRefs.ResolveSpotRefAsync(RoutingId.From(request.DeliveryId), ct)
+var spotHandle = await spotHandles.ResolveSpotHandleAsync(RoutingId.From(request.DeliveryId), ct)
               ?? throw new InvalidOperationException("delivery tracking spot 이 아직 없다");
-await routes.SendToSpot("api", spotRef, new RecordDeliveryEvent(request)).Submit(ct);
+routes.SendToSpot(spotHandle, new RecordDeliveryEvent(request)).Submit(ct);
 ```
 
 spot 쪽은 이 packet 을 `AddPacket<T>` 로 등록한 handler(§5)로 받아, 자기 직렬 실행 큐 안에서
@@ -780,7 +780,7 @@ handler 가 짝이고, spot **안**(callback)에서 부르는 함수와 **밖**(
 background)에서 부르는 함수가 다를 뿐 결국 같은 handler 로 들어간다. 종류는 넷이다.
 
 - **topic** — channel topic 으로 publish/subscribe
-- **spot packet** — spot 전송 대상(`SpotRef`)으로 보내는 send/request
+- **spot packet** — spot 전송 대상(`SpotHandle`)으로 보내는 send/request
 - **actor packet** — session 에 bind 된 actor 로 들어가는 메시지
 - **일반 channel** — spot 이 다른 (비-spot) channel service 를 호출
 
@@ -839,8 +839,8 @@ public sealed class StageNoticeHandler
             .RequestToChannel("orders", new GetOrderStateRequest())
             .Async<GetOrderStateReply>(ct);
 
-        // spot packet — 다른 Spot 으로. SpotRef 는 미리 resolve 해서 들고 있는 값이다(§5 아래).
-        outbound.SendToSpot(peerRef, new StageNoticeEvent(request.Text)).Submit(ct);
+        // spot packet — 다른 Spot 으로. SpotHandle 는 미리 resolve 해서 들고 있는 값이다(§5 아래).
+        outbound.SendToSpot(peerHandle, new StageNoticeEvent(request.Text)).Submit(ct);
 
         return new BroadcastReply(state.Count);
     }
@@ -907,42 +907,41 @@ public sealed class GetStageStateHandler
 }
 ```
 
-spot **안**(spot↔spot)에서는 `RequestToSpot(spotRef, …)`. 같은 mesh 라 연결이 자동이다.
+spot **안**(spot↔spot)에서는 `RequestToSpot(spotHandle, …)`. 같은 mesh 라 연결이 자동이다.
 
-대상 spot 의 **`SpotRef` 는 한 번만 조회해서 들고 있는다.** `IZLinkSpotRefResolver` 로
-spot rid 를 `SpotRef`(소유 SpotNode rid + spot rid)로 바꾸고, 그 값을
-상태에 보관했다가 보낼 때마다 재사용한다. 보내는 순간에는 어떤 조회도 일어나지 않는다.
-`SpotRef` 가 낡으면(spot 이 이동·소멸) 전송이 명확한 오류로 실패하고, 그때 다시 resolve 한다
+대상 spot 의 **`SpotHandle` 는 한 번 조회해서 보관한다.** `IZLinkSpotHandleResolver` 로
+spot rid 를 논리적 handle로 바꾸면 framework가 내부 주소를 갱신한다. request 중 주소가
+무효화되면 안전한 경우에 한해 한 번 갱신하고 재전송하며, send는 중복 전달을 피하려고 재전송하지 않는다
 ([공통 스펙: spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md)).
 
 ```csharp
-// ① 상호작용을 시작할 때 한 번 — spot rid 로 SpotRef 조회
-var peerRef = await spotRefs.ResolveSpotRefAsync(peerStageRid, ct)
+// ① 상호작용을 시작할 때 한 번 — spot rid 로 SpotHandle 조회
+var peerHandle = await spotHandles.ResolveSpotHandleAsync(peerStageRid, ct)
               ?? throw new InvalidOperationException("peer stage 가 아직 없다");
 
-// ② 이후에는 보관한 SpotRef 로 바로 요청 — 조회 없음
+// ② 이후에는 보관한 SpotHandle 로 요청 — 내부 주소 갱신은 framework가 담당
 var peer = await spot.Context.Outbound
-    .RequestToSpot(peerRef, new GetStageStateRequest())
+    .RequestToSpot(peerHandle, new GetStageStateRequest())
     .Async<GetStageStateReply>(ct);
 ```
 
-spot **밖**(외부 코드)에서는 `IZLinkRouteClient` 로 **RouteMesh channel 이름 + `SpotRef`**에
-보낸다. `SpotRef` 는 spot 안에서와 똑같이 resolve 한 번으로 얻어 보관한다.
+spot **밖**(외부 코드)에서는 `IZLinkRouteClient` 로 **RouteMesh channel 이름 + `SpotHandle`**에
+보낸다. `SpotHandle` 는 spot 안에서와 똑같이 resolve 한 번으로 얻어 보관한다.
 
 ```csharp
-// 일반 코드(spot 아님) — route client 로 SpotRef 에 request
+// 일반 코드(spot 아님) — route client 로 SpotHandle 에 request
 public sealed class StageQueryAdapter(
     IZLinkRouteClient routes,
-    IZLinkSpotRefResolver spotRefs)
+    IZLinkSpotHandleResolver spotHandles)
 {
-    private SpotRef? _stageRef;   // 한 번 resolve 해서 보관
+    private SpotHandle? _stageHandle;   // 논리적 대상을 나타내는 handle을 보관
 
     public async ValueTask<GetStageStateReply> GetAsync(RoutingId spotRid, CancellationToken ct)
     {
-        _stageRef ??= await spotRefs.ResolveSpotRefAsync(spotRid, ct)
+        _stageHandle ??= await spotHandles.ResolveSpotHandleAsync(spotRid, ct)
                       ?? throw new InvalidOperationException("stage 가 아직 없다");
         return await routes
-            .RequestToSpot("api", _stageRef.Value, new GetStageStateRequest())   // "api" = RouteMesh channel 이름
+            .RequestToSpot(_stageHandle, new GetStageStateRequest())
             .Async<GetStageStateReply>(ct);
     }
 }
@@ -950,9 +949,8 @@ public sealed class StageQueryAdapter(
 
 연결은 **자동**이다. 받는 쪽은 `AddRouteMesh("api")` 를 `SpotNode` 와 같은 프로세스에 두기만 하면,
 런타임이 그 RouteMesh ROUTER 에 route bridge 를 붙여 inbound relay 를 spot 에 넘긴다. 보내는 쪽은
-`AddRouteMesh("api").EnableClient(...)` 만 하면 된다. **보내는 순간 위치를 찾지 않는다** — `SpotRef`
-안에 이미 소유 SpotNode 가 들어 있으므로 런타임은 그 SpotNode 로 전달만 한다. spot 이 다른 SpotNode 로
-이동했다면 요청이 `SpotRouteNotFound` 로 실패하고, 호출자가 다시 resolve 해서 재시도한다.
+`AddRouteMeshChannel("api").EnableClient(...)` 만 하면 된다. `SpotHandle`의 내부 주소는 framework가
+갱신한다. request가 무효화된 주소에서 실패하면 안전한 경우에만 한 번 갱신해 재전송한다.
 request 면 spot 의 reply 가 같은 길로 돌아온다.
 
 ```mermaid
@@ -966,7 +964,7 @@ flowchart LR
   subgraph sn["SpotNode + AddRouteMesh(&quot;api&quot;).EnableServer (같은 프로세스 → 자동 bridge)"]
     sp["Spot<br/>AddPacket&lt;GetStageStateHandler&gt;"]
   end
-  c ==>|"① request (target=보관한 SpotRef 의 소유 SpotNode)"| sp
+  c ==>|"① request (target=보관한 SpotHandle 의 소유 SpotNode)"| sp
   sp -.->|"② reply"| h
   classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
   classDef extNode fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
@@ -1058,7 +1056,7 @@ builder.Services.AddZLinkFramework(options =>
 builder.Services.AddZLinkFramework(options =>
 {
 
-    // spot packet — RouteMesh "api" 로 routeClient.Request. target 은 spotRid 로 resolve 한 SpotRef
+    // spot packet — RouteMesh "api" 로 routeClient.Request. target 은 spotRid 로 resolve 한 SpotHandle
     options.AddRouteMesh("api").EnableClient("tcp://play-node-1:9201");
 
     // topic publish — game.stage SpotMesh 에 붙으면 PublishSpot 이 자동 연결
@@ -1091,8 +1089,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 - **`Publish` 가 안 된다** → `SpotNode` 에 `EnablePubSub(endpoint)` 가 없다.
 - **외부→spot route 가 안 닿는다** → 세 가지를 확인한다. (1) 받는 프로세스에서 `AddRouteMesh(name)` 가
   `SpotNode` 와 같은 프로세스에 있는지(자동 bridge 조건), (2) 보내는 쪽이 같은 RouteMesh channel
-  이름으로 `EnableClient(...)` 했는지, (3) 보내는 `SpotRef` 가 최신인지 — spot 이 이동·소멸했으면
-  `SpotRouteNotFound` 로 실패하므로 다시 resolve 해서 재시도한다.
+  이름으로 `EnableClient(...)` 했는지, (3) location store와 handle 갱신 경로가 정상인지 확인한다.
 - **Spot factory 타입 중복** → 같은 `SpotNode` 안에서 같은 타입을 두 번 등록하면 시작 예외.
 - **`AddSpotMesh` 가 시작 예외** → 같은 channel 이름으로 두 번 등록했다. 한 프로세스에 여러
   SpotNode 를 둘 수 있지만 이름은 SpotNode 마다 달라야 한다.

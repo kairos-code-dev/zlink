@@ -1,6 +1,7 @@
 using Systems.Zlink;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
@@ -26,7 +27,13 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
                 new TicTacToeGameJoinReq(message.RoomId, actor.RequirePlayer()))
             .Async(cancellationToken);
 
-        var joinReply = joined.Reply.Decode<TicTacToeGameJoinRes>();
+        var joinMessage = joined switch
+        {
+            ZLinkActorJoinResult.Accepted accepted => accepted.Reply,
+            ZLinkActorJoinResult.Rejected rejected => rejected.Reply,
+            _ => throw new InvalidOperationException("Unknown actor join result.")
+        };
+        var joinReply = joinMessage.Decode<TicTacToeGameJoinRes>();
         var reply = new JoinGameRes(joinReply.State);
         logger.LogInformation(
             "actor -> client: JoinGameRes returned. actor={ActorId}, roomId={RoomId}, mark={Mark}",

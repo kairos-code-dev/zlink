@@ -112,28 +112,40 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         Func<IReadOnlyList<Message>, bool> trySubmit,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        _stopToken.ThrowIfCancellationRequested();
-
-        if (TrySubmitNow(parts, trySubmit, out var submitFailure))
+        var ownsParts = true;
+        try
         {
-            ZLinkMessageParts.DisposeAll(parts);
-            return ValueTask.CompletedTask;
-        }
+            cancellationToken.ThrowIfCancellationRequested();
+            _stopToken.ThrowIfCancellationRequested();
 
-        if (submitFailure is ZlinkSubmitException submitError && !IsRetryableSubmitFailure(submitError))
+            if (TrySubmitNow(parts, trySubmit, out var submitFailure))
+            {
+                ownsParts = false;
+                ZLinkMessageParts.DisposeAll(parts);
+                return ValueTask.CompletedTask;
+            }
+
+            if (submitFailure is ZlinkSubmitException submitError && !IsRetryableSubmitFailure(submitError))
+            {
+                ownsParts = false;
+                ZLinkMessageParts.DisposeAll(parts);
+                return ValueTask.FromException(ZLinkRequestFailureMapper.CreateSubmitException(
+                    submitError,
+                    "ZLink command submit"));
+            }
+
+            var pending = _operationFactory.CreateCommand(parts, trySubmit);
+            if (submitFailure is not null) pending.RecordSubmitFailure(submitFailure);
+
+            ownsParts = false;
+            EnqueuePending(pending, cancellationToken);
+            return new ValueTask(pending.Task);
+        }
+        catch
         {
-            ZLinkMessageParts.DisposeAll(parts);
-            return ValueTask.FromException(ZLinkRequestFailureMapper.CreateSubmitException(
-                submitError,
-                "ZLink command submit"));
+            if (ownsParts) ZLinkMessageParts.DisposeAll(parts);
+            throw;
         }
-
-        var pending = _operationFactory.CreateCommand(parts, trySubmit);
-        if (submitFailure is not null) pending.RecordSubmitFailure(submitFailure);
-
-        EnqueuePending(pending, cancellationToken);
-        return new ValueTask(pending.Task);
     }
 
     private ValueTask<T> SubmitRequestCoreAsync<T>(
@@ -141,40 +153,52 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         Func<IReadOnlyList<Message>, Action<T>, Action<Exception>, bool> trySubmit,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        _stopToken.ThrowIfCancellationRequested();
-
-        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        bool Submit(IReadOnlyList<Message> pending)
+        var ownsParts = true;
+        try
         {
-            return trySubmit(
-                pending,
-                result => completion.TrySetResult(result),
-                exception => completion.TrySetException(exception));
-        }
+            cancellationToken.ThrowIfCancellationRequested();
+            _stopToken.ThrowIfCancellationRequested();
 
-        if (TrySubmitNow(parts, Submit, out var retryableFailure))
-        {
-            ZLinkMessageParts.DisposeAll(parts);
+            var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            bool Submit(IReadOnlyList<Message> pending)
+            {
+                return trySubmit(
+                    pending,
+                    result => completion.TrySetResult(result),
+                    exception => completion.TrySetException(exception));
+            }
+
+            if (TrySubmitNow(parts, Submit, out var retryableFailure))
+            {
+                ownsParts = false;
+                ZLinkMessageParts.DisposeAll(parts);
+                return new ValueTask<T>(completion.Task);
+            }
+
+            if (retryableFailure is ZlinkSubmitException submitError
+                && !IsRetryableSubmitFailure(submitError))
+            {
+                ownsParts = false;
+                ZLinkMessageParts.DisposeAll(parts);
+                completion.TrySetException(ZLinkRequestFailureMapper.CreateSubmitException(
+                    submitError,
+                    "ZLink request submit"));
+                return new ValueTask<T>(completion.Task);
+            }
+
+            var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
+            if (retryableFailure is not null) pendingSubmit.RecordSubmitFailure(retryableFailure);
+
+            ownsParts = false;
+            EnqueuePending(pendingSubmit, cancellationToken);
             return new ValueTask<T>(completion.Task);
         }
-
-        if (retryableFailure is ZlinkSubmitException submitError
-            && !IsRetryableSubmitFailure(submitError))
+        catch
         {
-            ZLinkMessageParts.DisposeAll(parts);
-            completion.TrySetException(ZLinkRequestFailureMapper.CreateSubmitException(
-                submitError,
-                "ZLink request submit"));
-            return new ValueTask<T>(completion.Task);
+            if (ownsParts) ZLinkMessageParts.DisposeAll(parts);
+            throw;
         }
-
-        var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
-        if (retryableFailure is not null) pendingSubmit.RecordSubmitFailure(retryableFailure);
-
-        EnqueuePending(pendingSubmit, cancellationToken);
-        return new ValueTask<T>(completion.Task);
     }
 
     private void OnSendReady()

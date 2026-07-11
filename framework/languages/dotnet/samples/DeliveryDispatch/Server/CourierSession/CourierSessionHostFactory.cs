@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
-using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
 

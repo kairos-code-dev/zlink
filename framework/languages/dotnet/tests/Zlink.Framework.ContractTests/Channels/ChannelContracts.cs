@@ -9,23 +9,20 @@ public sealed class ChannelContracts
         typeof(IZLinkChannelClient),
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall),
-        typeof(IZLinkYieldRequestCall))]
+        typeof(IZLinkRequestCall))]
     public async Task Channel_client_sends_and_requests_by_channel_name()
     {
         var client = new ExampleClient();
 
         client.SendToChannel("api", new AuthenticateRequest("player-1"))
-            .PacketName("authenticate")
             .Submit();
 
         var reply = await client
             .RequestToChannel("api", new AuthenticateRequest("player-1"))
-            .PacketName("authenticate")
             .Timeout(TimeSpan.FromSeconds(3))
             .Async<AuthenticateReply>();
 
         Assert.Equal("api", client.LastChannelName);
-        Assert.Equal("authenticate", client.LastPacketName);
         Assert.Equal("player-1", reply.PlayerId);
     }
 
@@ -42,12 +39,10 @@ public sealed class ChannelContracts
         var target = RoutingId.From("play-node-1");
 
         client.SendToNode("play-router", target, new RoomEvent("opened"))
-            .PacketName("room.event")
             .Submit();
 
         var room = await client
             .RequestToNode("play-router", target, new AllocateRoom("alice"))
-            .PacketName("room.allocate")
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<RoomAllocated>();
 
@@ -75,10 +70,9 @@ public sealed class ChannelContracts
         var publisher = new ExampleFanoutPublisher();
 
         publisher.Publish("events", "room.opened", new RoomEvent("opened"))
-            .PacketName("room.event")
             .Submit();
 
-        Assert.Equal(("events", "room.opened", "room.event"), publisher.LastPublish);
+        Assert.Equal(("events", "room.opened"), publisher.LastPublish);
     }
 
     [Fact]
@@ -98,24 +92,21 @@ public sealed class ChannelContracts
         // gRPC unary RPC -> request/response on a logical channel name.
         var placed = await orders
             .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
-            .PacketName("orders.place")
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
         orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
-            .PacketName("inventory.reserve")
             .Submit();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
         events.Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
-            .PacketName("order.status-changed")
             .Submit();
 
         Assert.Equal("order-1042", placed.OrderId); // unary RPC reply correlated by type
         Assert.Equal("inventory", orders.LastChannelName); // last one-way send routed by channel name
         Assert.Equal(
-            ("order.events", "order.status", "order.status-changed"),
+            ("order.events", "order.status"),
             events.LastPublish);
     }
 
@@ -141,15 +132,13 @@ public sealed class ChannelContracts
     {
         public string? LastChannelName { get; private set; }
 
-        public string? LastPacketName { get; private set; }
-
         public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
         {
             LastChannelName = channelName;
-            return new ExampleSendCall(packetName => LastPacketName = packetName);
+            return new ExampleSendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
+        public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
         {
             LastChannelName = channelName;
             object? reply = request switch
@@ -158,7 +147,7 @@ public sealed class ChannelContracts
                 PlaceOrder order => new OrderPlaced(order.OrderId),
                 _ => null
             };
-            return new ExampleRequestCall(packetName => LastPacketName = packetName, reply);
+            return new ExampleRequestCall(reply);
         }
     }
 
@@ -179,22 +168,16 @@ public sealed class ChannelContracts
         }
 
         public IZLinkSendCall SendToSpot<TMessage>(
-            string routerChannelId,
-            SpotRef address,
+            SpotHandle target,
             TMessage message)
         {
-            RouterChannelId = routerChannelId;
-            TargetNodeRid = address.NodeRid;
             return new ExampleRouteSendCall();
         }
 
         public IZLinkRequestCall RequestToSpot<TRequest>(
-            string routerChannelId,
-            SpotRef address,
+            SpotHandle target,
             TRequest request)
         {
-            RouterChannelId = routerChannelId;
-            TargetNodeRid = address.NodeRid;
             return new ExampleRouteRequestCall(new object());
         }
 
@@ -211,48 +194,30 @@ public sealed class ChannelContracts
 
     private sealed class ExampleFanoutPublisher : IZLinkFanoutClient
     {
-        public (string ChannelName, string Topic, string? PacketName) LastPublish { get; private set; }
+        public (string ChannelName, string Topic) LastPublish { get; private set; }
 
         public IZLinkPublishCall Publish<TEvent>(
             string channelName,
             string topic,
             TEvent message)
         {
-            LastPublish = (channelName, topic, null);
-            return new ExamplePublishCall(packetName =>
-                LastPublish = (LastPublish.ChannelName, LastPublish.Topic, packetName));
+            LastPublish = (channelName, topic);
+            return new ExamplePublishCall();
         }
     }
 
-    private class ExampleSendCall(Action<string> setPacketName) : IZLinkSendCall
+    private class ExampleSendCall : IZLinkSendCall
     {
-        public IZLinkSendCall PacketName(string messageName)
-        {
-            setPacketName(messageName);
-            return this;
-        }
-
         public void Submit(CancellationToken cancellationToken = default)
         {
         }
     }
 
-    private class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkYieldRequestCall
+    private class ExampleRequestCall(object? reply) : IZLinkRequestCall
     {
-        public IZLinkYieldRequestCall PacketName(string messageName)
-        {
-            setPacketName(messageName);
-            return this;
-        }
-
-        public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
+        public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;
-        }
-
-        IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
-        {
-            return PacketName(messageName);
         }
 
         IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
@@ -265,20 +230,10 @@ public sealed class ChannelContracts
             return ValueTask.FromResult((TReply)reply!);
         }
 
-        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
-        {
-            return Async<TReply>(cancellationToken);
-        }
     }
 
-    private sealed class ExamplePublishCall(Action<string> setPacketName) : IZLinkPublishCall
+    private sealed class ExamplePublishCall : IZLinkPublishCall
     {
-        public IZLinkPublishCall PacketName(string messageName)
-        {
-            setPacketName(messageName);
-            return this;
-        }
-
         public void Submit(CancellationToken cancellationToken = default)
         {
         }
@@ -286,18 +241,10 @@ public sealed class ChannelContracts
 
     private sealed class ExampleRouteSendCall : ExampleSendCall
     {
-        public ExampleRouteSendCall() : base(_ => { })
-        {
-        }
     }
 
     private sealed class ExampleRouteRequestCall(object reply) : IZLinkRequestCall
     {
-        public IZLinkRequestCall PacketName(string messageName)
-        {
-            return this;
-        }
-
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;

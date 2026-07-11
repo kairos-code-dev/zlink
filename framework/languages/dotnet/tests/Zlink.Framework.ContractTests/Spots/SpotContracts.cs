@@ -63,8 +63,8 @@ public sealed class SpotContracts
         await context.LeaveActorAsync(actor);
         await entryContext.DestroyActorAsync(actor);
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        context.Outbound.SendToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("opened")).Submit();
-        await context.Outbound.RequestToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
+        context.Outbound.SendToSpot(null!, new RoomEvent("opened")).Submit();
+        await context.Outbound.RequestToSpot(null!, new JoinRoom("room-2")).Async<JoinedRoom>();
         context.Outbound.Publish("room.events", new RoomEvent("opened")).Submit();
         context.Outbound.SendToChannel("api", new RoomEvent("opened")).Submit();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
@@ -107,14 +107,14 @@ public sealed class SpotContracts
         IZLinkSpotOutbound spotOutbound = new SpotContext(RoutingId.From("room-1"));
         IZLinkSpotOutbound entryOutbound = new EntrySpotContext(RoutingId.From("entry"));
 
-        spotOutbound.SendToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("spot-send")).Submit();
-        await spotOutbound.RequestToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
+        spotOutbound.SendToSpot(null!, new RoomEvent("spot-send")).Submit();
+        await spotOutbound.RequestToSpot(null!, new JoinRoom("room-2")).Async<JoinedRoom>();
         spotOutbound.Publish("room.events", new RoomEvent("spot-publish")).Submit();
         spotOutbound.SendToChannel("api", new RoomEvent("spot-channel-send")).Submit();
         await spotOutbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
 
-        entryOutbound.SendToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new RoomEvent("entry-send")).Submit();
-        await entryOutbound.RequestToSpot(new SpotRef(RoutingId.From("node-1"), RoutingId.From("room-2")), new JoinRoom("room-2")).Async<JoinedRoom>();
+        entryOutbound.SendToSpot(null!, new RoomEvent("entry-send")).Submit();
+        await entryOutbound.RequestToSpot(null!, new JoinRoom("room-2")).Async<JoinedRoom>();
         entryOutbound.Publish("room.events", new RoomEvent("entry-publish")).Submit();
         entryOutbound.SendToChannel("api", new RoomEvent("entry-channel-send")).Submit();
         await entryOutbound.RequestToChannel("api", new JoinRoom("entry")).Async<JoinedRoom>();
@@ -124,26 +124,21 @@ public sealed class SpotContracts
     [ContractExample(
         typeof(IZLinkSpotManager),
         typeof(IZLinkSpotOutbound),
-        typeof(IZLinkSpotPublisherClient),
-        typeof(IZLinkSpotRouteRefResolver))]
+        typeof(IZLinkSpotPublisherClient))]
     public async Task Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels()
     {
         var manager = new SpotManager();
         var created = await manager.GetOrCreateAsync<RoomSpot>(
             RoutingId.From("room-1"),
             ZLinkMessage.Empty);
-        var routeResolver = new SpotRouteRefResolver(created.SpotRid);
-        var route = await routeResolver.ResolveSpotRouteRefAsync(created.SpotRid, CancellationToken.None);
-
         var localClient = new SpotOutbound();
-        localClient.SendToSpot(new SpotRef(RoutingId.From("node-1"), created.SpotRid), new RoomEvent("opened")).Submit();
-        var reply = await localClient.RequestToSpot(new SpotRef(RoutingId.From("node-1"), created.SpotRid), new JoinRoom("room-1")).Async<JoinedRoom>();
+        localClient.SendToSpot(null!, new RoomEvent("opened")).Submit();
+        var reply = await localClient.RequestToSpot(null!, new JoinRoom("room-1")).Async<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
         publisher.Publish("play-events", "room.events", new RoomEvent("opened")).Submit();
 
         Assert.Equal(ZLinkSpotCreateState.Created, created.State);
-        Assert.Equal("play-router", route.RouterChannelId);
         Assert.Equal("room-1", reply.RoomId);
     }
 
@@ -497,12 +492,12 @@ public sealed class SpotContracts
         {
         }
 
-        public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
+        public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
         {
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request)
+        public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle address, TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -517,7 +512,7 @@ public sealed class SpotContracts
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+        public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -593,12 +588,12 @@ public sealed class SpotContracts
         {
         }
 
-        public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
+        public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
         {
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToSpot<TRequest>(SpotRef address, TRequest request)
+        public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle address, TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -613,7 +608,7 @@ public sealed class SpotContracts
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+        public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -631,25 +626,6 @@ public sealed class SpotContracts
             return ValueTask.FromResult(work(cancellationToken));
         }
 
-        public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
-        {
-            return Async(cancellationToken);
-        }
-
-        public void Submit(
-            Func<TResult, CancellationToken, ValueTask> onCompleted,
-            Func<Exception, CancellationToken, ValueTask>? onError = null,
-            CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                _ = onCompleted(work(cancellationToken), cancellationToken);
-            }
-            catch (Exception ex) when (onError is not null)
-            {
-                _ = onError(ex, cancellationToken);
-            }
-        }
     }
 
     private sealed class SpotManager : IZLinkSpotManager
@@ -717,28 +693,14 @@ public sealed class SpotContracts
         }
     }
 
-    private sealed class SpotRouteRefResolver(RoutingId configuredSpotRid) : IZLinkSpotRouteRefResolver
-    {
-        public ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
-            RoutingId spotRid,
-            CancellationToken cancellationToken)
-        {
-            return ValueTask.FromResult(new ZLinkSpotRouteRef(
-                "play-router",
-                RoutingId.From("spot-node"),
-                spotRid,
-                configuredSpotRid == spotRid ? ZLinkSpotKind.User : ZLinkSpotKind.Invalid));
-        }
-    }
-
     private sealed class SpotOutbound : IZLinkSpotOutbound
     {
-        public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
+        public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
         {
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToSpot<TMessage>(SpotRef address, TMessage request)
+        public IZLinkRequestCall RequestToSpot<TMessage>(SpotHandle address, TMessage request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -753,7 +715,7 @@ public sealed class SpotContracts
             return new SendCall();
         }
 
-        public IZLinkYieldRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
+        public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -772,31 +734,16 @@ public sealed class SpotContracts
 
     private sealed class SendCall : IZLinkSendCall
     {
-        public IZLinkSendCall PacketName(string messageName)
-        {
-            return this;
-        }
-
         public void Submit(CancellationToken cancellationToken = default)
         {
         }
     }
 
-    private sealed class RequestCall(object reply) : IZLinkYieldRequestCall
+    private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
-        public IZLinkYieldRequestCall PacketName(string messageName)
+        public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;
-        }
-
-        public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
-        {
-            return this;
-        }
-
-        IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
-        {
-            return PacketName(messageName);
         }
 
         IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
@@ -809,19 +756,10 @@ public sealed class SpotContracts
             return ValueTask.FromResult((TReply)reply);
         }
 
-        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
-        {
-            return Async<TReply>(cancellationToken);
-        }
     }
 
     private sealed class PublishCall : IZLinkPublishCall
     {
-        public IZLinkPublishCall PacketName(string messageName)
-        {
-            return this;
-        }
-
         public void Submit(CancellationToken cancellationToken = default)
         {
         }

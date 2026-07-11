@@ -4,19 +4,19 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundService : IZLinkSpotOutbound
 {
-    public IZLinkSendCall SendToSpot<TMessage>(SpotRef address, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message)
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
-            address,
+            RequireResolvedHandle(target),
             message);
     }
 
-    public IZLinkYieldRequestCall RequestToSpot<TMessage>(SpotRef address, TMessage request)
+    public IZLinkRequestCall RequestToSpot<TMessage>(SpotHandle target, TMessage request)
     {
         return new ZLinkRoutedSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
-            address,
+            RequireResolvedHandle(target),
             request);
     }
 
@@ -30,26 +30,24 @@ internal sealed class ZLinkSpotOutboundService : IZLinkSpotOutbound
         return ZLinkSpotAmbientContext.RequireCurrent().Outbound.SendToChannel(channelName, message);
     }
 
-    public IZLinkYieldRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
+    public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
     {
         return ZLinkSpotAmbientContext.RequireCurrent().Outbound.RequestToChannel(channelName, request);
+    }
+
+    private static ZLinkResolvedSpotHandle RequireResolvedHandle(SpotHandle target)
+    {
+        return target as ZLinkResolvedSpotHandle
+               ?? throw new ArgumentException("Spot handle was not created by this framework runtime.", nameof(target));
     }
 
 }
 
 internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     IZLinkCurrentSpotActivation activation,
-    SpotRef address,
+    ZLinkResolvedSpotHandle target,
     TMessage message) : IZLinkSendCall
 {
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-
-    public IZLinkSendCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        return this;
-    }
-
     public void Submit(CancellationToken cancellationToken = default)
     {
         ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "spot client submit");
@@ -58,69 +56,72 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        // The address was resolved once by the caller; the send path does
-        // no lookup. The activation's own channel is the egress context.
+        // One-way sends use the current snapshot once and never retry; a
+        // retry could duplicate a packet that was already delivered.
+        var snapshot = target.Snapshot;
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             activation.ChannelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."));
+            ZLinkMessageNameResolver.ResolveFromMessage(message));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
         await activation.OutboundEndpoint.SendToSpotAsync(
-            activation.ChannelName,
-            address.NodeRid,
-            address.SpotRid,
-            parts,
-            cancellationToken).ConfigureAwait(false);
+                snapshot.RouterChannelId,
+                snapshot.NodeRid,
+                snapshot.SpotRid,
+                parts,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 }
 
 internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     IZLinkCurrentSpotActivation activation,
-    SpotRef address,
-    TRequest request) : IZLinkYieldRequestCall
+    ZLinkResolvedSpotHandle target,
+    TRequest request) : IZLinkRequestCall
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkYieldRequestCall PacketName(string messageName)
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
     {
-        _messageName = messageName;
-        return this;
-    }
-
-    public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
-    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
         _timeout = timeout;
         return this;
     }
 
-    IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        return PacketName(messageName);
+        return _turn is null
+            ? ExecuteAsync<TReply>(cancellationToken)
+            : _turn.AwaitFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
     }
 
-    IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
-    {
-        return Timeout(timeout);
-    }
-
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
     {
         var timeout = _timeout ?? activation.DefaultRequestTimeout;
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Request,
-            activation.ChannelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
-            timeout);
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, activation.Codecs);
-        var reply = await activation.OutboundEndpoint.RequestToSpotAsync(
-            activation.ChannelName,
-            address.NodeRid,
-            address.SpotRid,
-            parts,
-            timeout,
-            cancellationToken).ConfigureAwait(false);
+        var reply = await ZLinkSpotHandleRequestExecution.ExecuteAsync(
+                target,
+                snapshot =>
+                {
+                    var header = ZLinkClientCallCodec.CreateEnvelope(
+                        ZLinkMessageKind.Request,
+                        activation.ChannelName,
+                        ZLinkMessageNameResolver.ResolveFromMessage(request),
+                        timeout);
+                    var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+                        header,
+                        request,
+                        activation.Codecs);
+                    return activation.OutboundEndpoint.RequestToSpotAsync(
+                        snapshot.RouterChannelId,
+                        snapshot.NodeRid,
+                        snapshot.SpotRid,
+                        parts,
+                        timeout,
+                        cancellationToken);
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
             reply,
             "SPOT request reply is empty.",
@@ -128,17 +129,6 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             activation.Codecs);
     }
 
-    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
-    {
-        return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
-    }
-
-    private ZLinkSerialTurn RequireTurn()
-    {
-        return _turn
-               ?? throw new InvalidOperationException(
-                   "Yield requires a framework Spot handler turn captured when the call object was created.");
-    }
 }
 
 internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
@@ -146,21 +136,13 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
     string channelName,
     TMessage message) : IZLinkSendCall
 {
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-
-    public IZLinkSendCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        return this;
-    }
-
     public void Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."));
+            ZLinkMessageNameResolver.ResolveFromMessage(message));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
         ZLinkUnawaitedSubmit.Observe(
             activation.OutboundEndpoint.SendToChannelAsync(channelName, parts, cancellationToken),
@@ -171,41 +153,32 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
 internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     IZLinkCurrentSpotActivation activation,
     string channelName,
-    TMessage request) : IZLinkYieldRequestCall
+    TMessage request) : IZLinkRequestCall
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkYieldRequestCall PacketName(string messageName)
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
     {
-        _messageName = messageName;
-        return this;
-    }
-
-    public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
-    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
         _timeout = timeout;
         return this;
     }
 
-    IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        return PacketName(messageName);
+        return _turn is null
+            ? ExecuteAsync<TReply>(cancellationToken)
+            : _turn.AwaitFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
     }
 
-    IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
-    {
-        return Timeout(timeout);
-    }
-
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
     {
         var timeout = _timeout ?? activation.DefaultRequestTimeout;
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
+            ZLinkMessageNameResolver.ResolveFromMessage(request),
             timeout);
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, activation.Codecs);
         var reply = await activation.OutboundEndpoint.RequestToChannelAsync(
@@ -220,15 +193,4 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             activation.Codecs);
     }
 
-    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
-    {
-        return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
-    }
-
-    private ZLinkSerialTurn RequireTurn()
-    {
-        return _turn
-               ?? throw new InvalidOperationException(
-                   "Yield requires a framework Spot handler turn captured when the call object was created.");
-    }
 }

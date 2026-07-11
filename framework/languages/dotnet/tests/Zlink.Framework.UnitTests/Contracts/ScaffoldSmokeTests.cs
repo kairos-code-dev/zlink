@@ -1,6 +1,5 @@
 using System.Reflection;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Assembly;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -56,8 +55,8 @@ public sealed class ScaffoldSmokeTests
     [Fact]
     public void PublicSurface_DoesNotExpose_BackendConcreteTypes()
     {
-        AssertBackendLeakageFree(typeof(ZLinkFrameworkAssemblyMarker).Assembly);
-        AssertBackendLeakageFree(typeof(ZLinkAspNetCoreAssemblyMarker).Assembly);
+        AssertBackendLeakageFree(typeof(IZLinkActor).Assembly);
+        AssertBackendLeakageFree(typeof(ServiceCollectionExtensions).Assembly);
     }
 
     [Fact]
@@ -69,10 +68,10 @@ public sealed class ScaffoldSmokeTests
         AssertMissingMethod(typeof(IZLinkSpotOutbound), "RequestTo");
         Assert.Null(typeof(IZLinkFrameworkOptions).GetMethod("AddActorFactory"));
         Assert.NotNull(typeof(IZLinkSpotNodeBuilder).GetMethod("AddActorFactory"));
-        Assert.Contains(typeof(IZLinkActor), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
-        Assert.Contains(typeof(IZLinkActorManager), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
-        Assert.Contains(typeof(IZLinkSession), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
-        Assert.Contains(typeof(IZLinkSessionContext), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
+        Assert.Contains(typeof(IZLinkActor), typeof(IZLinkActor).Assembly.GetExportedTypes());
+        Assert.Contains(typeof(IZLinkActorManager), typeof(IZLinkActor).Assembly.GetExportedTypes());
+        Assert.Contains(typeof(IZLinkSession), typeof(IZLinkActor).Assembly.GetExportedTypes());
+        Assert.Contains(typeof(IZLinkSessionContext), typeof(IZLinkActor).Assembly.GetExportedTypes());
     }
 
     [Fact]
@@ -80,7 +79,7 @@ public sealed class ScaffoldSmokeTests
     {
         AssertMissingMethod(typeof(IZLinkActorContext), "Reply");
         Assert.DoesNotContain(
-            typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes(),
+            typeof(IZLinkActor).Assembly.GetExportedTypes(),
             static type => type.FullName == "Zlink.Framework.Contracts.Actors.IZLinkActorReplyCall"
                            || type.FullName == "Zlink.Framework.Contracts.Actors.IZLinkActorStreamClient");
     }
@@ -124,7 +123,7 @@ public sealed class ScaffoldSmokeTests
     [Fact]
     public void FrameworkExportedTypes_UseContractsNamespace()
     {
-        var violations = typeof(ZLinkFrameworkAssemblyMarker).Assembly
+        var violations = typeof(IZLinkActor).Assembly
             .GetExportedTypes()
             .Where(static type => type.Namespace is null
                                   || (!type.Namespace.Equals("Zlink.Framework.Contracts", StringComparison.Ordinal)

@@ -43,7 +43,7 @@ internal sealed class PlayActor(
 
     public string RequireJoinedRoom()
     {
-        if (!Context.IsJoined || string.IsNullOrEmpty(RoomId))
+        if (Context.SpotRid is null || string.IsNullOrEmpty(RoomId))
             throw new InvalidOperationException("Actor has not joined a room.");
 
         return RoomId;

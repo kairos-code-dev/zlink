@@ -341,14 +341,14 @@ sequenceDiagram
 `CustomerEntrySpot`과 `CourierEntrySpot`은 actor가 생성되고 들어오는 공용 입구다.
 Entry spot으로 들어오는 메시지는 framework codec을 거쳐 직렬화되며, handler는
 기본적으로 serial turn 안에서 실행된다. 따라서 entry spot handler에서 다른 channel,
-spot, actor, session으로 request를 보낸 뒤 I/O 응답을 기다려야 하면 `.Async(...)`로
-turn을 붙잡지 말고 `.Yield(...)`를 사용해야 한다. `.Yield(...)`는 응답을 기다리는
-동안 현재 turn을 반납하므로, 다른 actor 생성이나 join 메시지가 뒤에서 막히는 일을
-줄인다.
+spot, actor, session으로 request를 보낸 뒤 I/O 응답을 기다릴 때는 `.Async(...)`를
+호출한다. framework는 응답을 기다리는 동안 현재 serial turn을 자동으로 반납하고,
+완료 뒤 같은 실행 문맥에서 handler를 계속 실행한다. 따라서 다른 actor 생성이나 join
+메시지도 대기 중에 처리될 수 있다.
 
-단, `.Yield(...)` 전후로 같은 mutable state를 그대로 이어서 판단하면 안 된다. yield
-중에 다른 메시지가 먼저 처리될 수 있으므로, yield 이후에는 필요한 상태를 다시 확인하거나
-yield 전에 상태 변경을 확정하지 않는 방식으로 작성한다. 이 샘플에서 entry spot은
+`await` 전후로 같은 mutable state를 그대로 이어서 판단하면 안 된다. 대기 중에 다른
+메시지가 먼저 처리될 수 있으므로, 완료 뒤에는 필요한 상태를 다시 확인하거나 대기 전에
+상태 변경을 확정하지 않는 방식으로 작성한다. 이 샘플에서 entry spot은
 배송 상태 저장소가 아니라 actor 위치와 session route처럼 push할 수 있는 연결을
 관리하는 입구로만 사용한다.
 

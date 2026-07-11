@@ -52,8 +52,6 @@ internal sealed class ZLinkActorRuntimeState(
 
     public RoutingId? SpotRid => LiveActivation?.SpotRid;
 
-    public bool IsJoined => LiveActivation is not null;
-
     public void AttachStream(IZLinkStream stream)
     {
         SessionId = stream.SessionId;
@@ -313,13 +311,6 @@ internal sealed class ZLinkActorRuntimeState(
         if (_teardownAttempt is null || !ReferenceEquals(_teardownAttempt.Task, operation.Completion))
             throw new InvalidOperationException(
                 $"Actor '{ActorId}' teardown operation is no longer current.");
-    }
-
-    public IZLinkSpot GetJoinedSpot()
-    {
-        EnsureContextValid();
-        return LiveActivation?.Spot
-               ?? throw new InvalidOperationException("Actor has not joined a SPOT.");
     }
 
     public void EnsureContextValid()

@@ -143,7 +143,6 @@ app.MapPost("/actors/{actorId}/join", async (
     try
     {
         var result = await actorClient.RequestToActor(actor, request)
-            .PacketName(nameof(JoinTargetReq))
             .Timeout(TimeSpan.FromSeconds(10))
             .Async<JoinTargetRes>(cancellationToken);
         evidence.Add(request.Scenario, actorId, result.Accepted ? "success_reply" : "reject_reply", request.TargetSpotRid);
@@ -182,7 +181,6 @@ app.MapPost("/actors/{actorId}/probe", async (
     var actor = await actors.FindAsync(actorId, cancellationToken)
                 ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
     var response = await actorClient.RequestToActor(actor, request)
-        .PacketName(nameof(ProbeReq))
         .Timeout(TimeSpan.FromSeconds(10))
         .Async<ProbeRes>(cancellationToken);
     return Results.Ok(response);
@@ -202,7 +200,6 @@ app.MapPost("/actors/{actorId}/probe-ref", async (
         var response = await actorClient.RequestToActor(
                 actor,
                 new ProbeReq(request.Scenario, request.Marker))
-            .PacketName(nameof(ProbeReq))
             .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
             .Async<ProbeRes>(cancellationToken);
         return Results.Ok(new ActorRefProbeRes(true, response, null));
@@ -216,7 +213,7 @@ app.MapPost("/actors/{actorId}/probe-ref", async (
         return Results.Ok(new ActorRefProbeRes(false, null, ex.GetType().Name));
     }
 });
-app.MapPost("/actors/{actorId}/send-ref", async (
+app.MapPost("/actors/{actorId}/send-ref", (
     string actorId,
     ActorRefProbeReq request,
     IZLinkActorClient actorClient,
@@ -226,11 +223,10 @@ app.MapPost("/actors/{actorId}/send-ref", async (
         RoutingId.From(request.NodeRid),
         actorId,
         checked((ulong)request.Generation));
-    await actorClient.SendToActor(
+    actorClient.SendToActor(
             actor,
             new HandoffPacket(request.Scenario, request.Marker))
-        .PacketName(nameof(HandoffPacket))
-        .Async(cancellationToken);
+        .Submit(cancellationToken);
     return Results.Ok();
 });
 app.MapPost("/actors/{actorId}/bound-push", async (
@@ -243,7 +239,6 @@ app.MapPost("/actors/{actorId}/bound-push", async (
     var actor = await actors.FindAsync(actorId, cancellationToken)
                 ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
     var response = await actorClient.RequestToActor(actor, request)
-        .PacketName(nameof(BoundPushReq))
         .Timeout(TimeSpan.FromSeconds(10))
         .Async<BoundPushRes>(cancellationToken);
     return Results.Ok(response);
@@ -617,7 +612,7 @@ namespace SpotActorTransfer.ActorNode
             return new JoinTargetRes(
                 request.Scenario,
                 actor.ActorId,
-                joined.Accepted,
+                joined is ZLinkActorJoinResult<JoinTargetRes>.Accepted,
                 evidence.NodeRid,
                 request.TargetSpotRid,
                 actor.StateVersion);
@@ -644,7 +639,7 @@ namespace SpotActorTransfer.ActorNode
             return new JoinTargetRes(
                 request.Scenario,
                 actor.ActorId,
-                joined.Accepted,
+                joined is ZLinkActorJoinResult<JoinTargetRes>.Accepted,
                 evidence.NodeRid,
                 request.TargetSpotRid,
                 actor.StateVersion);
@@ -719,7 +714,6 @@ namespace SpotActorTransfer.ActorNode
                     entrySpot.Context.NodeRid.ToString(),
                     request.Marker,
                     actor.StateVersion))
-                .PacketName(nameof(BoundPushNotify))
                 .Submit(cancellationToken);
             evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
             return ValueTask.FromResult(new BoundPushRes(
@@ -752,7 +746,6 @@ namespace SpotActorTransfer.ActorNode
                     spot.Context.NodeRid.ToString(),
                     request.Marker,
                     actor.StateVersion))
-                .PacketName(nameof(BoundPushNotify))
                 .Submit(cancellationToken);
             evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
             return ValueTask.FromResult(new BoundPushRes(

@@ -41,9 +41,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 actor,
                 actorRef,
                 actorSessionManager.GetOrCreateState(actor.ActorId),
-                remoteAddress.TargetNodeRid,
-                remoteAddress.SpotRid,
-                remoteAddress.RouterChannelId,
+                remoteAddress,
                 request,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -53,9 +51,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         IZLinkActor actor,
         ZLinkBackendActorRef actorRef,
         ZLinkActorRuntimeState actorState,
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        string routerChannelId,
+        ZLinkResolvedSpotHandle target,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -71,9 +67,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 actor,
                 actorRef,
                 actorState,
-                targetNodeRid,
-                targetSpotRid,
-                routerChannelId,
+                target,
                 request,
                 actorType,
                 handoffId,
@@ -86,9 +80,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         IZLinkActor actor,
         ZLinkBackendActorRef actorRef,
         ZLinkActorRuntimeState actorState,
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        string routerChannelId,
+        ZLinkResolvedSpotHandle target,
         ZLinkMessage request,
         string actorType,
         string handoffId,
@@ -105,9 +97,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     actor,
                     actorRef,
                     actorState,
-                    targetNodeRid,
-                    targetSpotRid,
-                    routerChannelId,
+                    target,
                     request,
                     actorType,
                     handoffId,
@@ -117,7 +107,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     () => sourceLeft = true,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (!result.Accepted)
+            if (result is not ZLinkActorJoinResult.Accepted)
             {
                 await RollbackSourceHandoffAsync(
                         actor,
@@ -196,9 +186,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         IZLinkActor actor,
         ZLinkBackendActorRef actorRef,
         ZLinkActorRuntimeState actorState,
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        string routerChannelId,
+        ZLinkResolvedSpotHandle target,
         ZLinkMessage request,
         string actorType,
         string handoffId,
@@ -210,40 +198,52 @@ internal sealed class ZLinkActorRemoteJoiner(
     {
         var sourceSpotRid = ResolveSourceSpotRid(actorState);
 
-        var admissionHeader = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Request,
-            routerChannelId,
-            ZLinkRemoteActorJoinPackets.AdmissionPacketName,
-            registration.DefaultRequestTimeout);
         var admissionDeadline = DateTimeOffset.UtcNow + registration.DefaultRequestTimeout;
-        var admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
-            admissionHeader,
-            actor.ActorId,
-            actorType,
-            handoffId,
-            admissionDeadline,
-            sourceSpotRid,
-            actorRef.NodeRid,
-            request,
-            registration.Codecs);
-        var admissionReplyParts = await runtime.RequestToSpotViaRouterChannelAsync(
-                routerChannelId,
-                targetNodeRid,
-                targetSpotRid,
-                admissionParts,
-                registration.DefaultRequestTimeout,
+        var admission = await ZLinkSpotHandleRequestExecution.ExecuteAsync(
+                target,
+                async snapshot =>
+                {
+                    var admissionHeader = ZLinkClientCallCodec.CreateEnvelope(
+                        ZLinkMessageKind.Request,
+                        snapshot.RouterChannelId,
+                        ZLinkRemoteActorJoinPackets.AdmissionPacketName,
+                        registration.DefaultRequestTimeout);
+                    var admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
+                        admissionHeader,
+                        actor.ActorId,
+                        actorType,
+                        handoffId,
+                        admissionDeadline,
+                        sourceSpotRid,
+                        actorRef.NodeRid,
+                        request,
+                        registration.Codecs);
+                    var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                            snapshot.RouterChannelId,
+                            snapshot.NodeRid,
+                            snapshot.SpotRid,
+                            admissionParts,
+                            registration.DefaultRequestTimeout,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    var reply = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyAndDispose(
+                        replyParts,
+                        actor.ActorId,
+                        snapshot.SpotRid);
+                    return (Snapshot: snapshot, Reply: reply);
+                },
                 cancellationToken)
             .ConfigureAwait(false);
-        var admissionReply = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyAndDispose(
-            admissionReplyParts,
-            actor.ActorId,
-            targetSpotRid);
+        var targetNodeRid = admission.Snapshot.NodeRid;
+        var targetSpotRid = admission.Snapshot.SpotRid;
+        var routerChannelId = admission.Snapshot.RouterChannelId;
+        var admissionReply = admission.Reply;
         var admissionReplyMessage = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyPayload(
             admissionReply,
             registration.Codecs);
         if (!admissionReply.Accepted)
         {
-            return new ZLinkActorJoinResult(false, null, admissionReplyMessage);
+            return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
         }
 
         await actorState.BeginHandoffCaptureAsync(cancellationToken).ConfigureAwait(false);
@@ -290,7 +290,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     registration.Codecs))
             .ConfigureAwait(false);
         if (!reply.Accepted)
-            return new ZLinkActorJoinResult(false, null, admissionReplyMessage);
+            return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
 
         var resultActorRef = ZLinkRemoteActorJoinPackets.ToActorRef(reply);
         var trailingFrames = actorState.Handoff.CutoverCaptureToForwarding(
@@ -317,8 +317,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 actorRef,
                 resultActorRef,
                 ct));
-        return new ZLinkActorJoinResult(
-            true,
+        return new ZLinkActorJoinResult.Accepted(
             resultActorRef.ToNative(),
             admissionReplyMessage);
     }
@@ -606,16 +605,21 @@ internal sealed class ZLinkActorRemoteJoiner(
         }
     }
 
-    private async ValueTask<ZLinkSpotRouteRef> ResolveRemoteActorJoinTargetAsync(
+    private async ValueTask<ZLinkResolvedSpotHandle> ResolveRemoteActorJoinTargetAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        var resolver = services.GetService(typeof(IZLinkSpotRouteRefResolver))
-            as IZLinkSpotRouteRefResolver;
+        var resolver = services.GetService(typeof(IZLinkSpotHandleResolver))
+            as IZLinkSpotHandleResolver;
         if (resolver is null) throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        return await resolver.ResolveSpotRouteRefAsync(spotRid, cancellationToken)
-            .ConfigureAwait(false);
+        var handle = await resolver.ResolveSpotHandleAsync(spotRid, cancellationToken)
+            .ConfigureAwait(false) as ZLinkResolvedSpotHandle;
+        if (handle is null)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                $"SPOT '{spotRid}' has no live location row.");
+        return handle;
     }
 
     private async ValueTask<ZLinkActorJoinResult> SubmitNativeJoinActorAsync(
@@ -701,10 +705,9 @@ internal sealed class ZLinkActorRemoteJoiner(
             if (joinResult.Actor.NodeRid != actorRef.NodeRid) actorState.InvalidateContext();
         }
 
-        return new ZLinkActorJoinResult(
-            accepted,
-            accepted ? joinResult.Actor.ToNative() : null,
-            reply);
+        return accepted
+            ? new ZLinkActorJoinResult.Accepted(joinResult.Actor.ToNative(), reply)
+            : new ZLinkActorJoinResult.Rejected(reply);
     }
 
     private async ValueTask RebindRemoteSessionActorAsync(

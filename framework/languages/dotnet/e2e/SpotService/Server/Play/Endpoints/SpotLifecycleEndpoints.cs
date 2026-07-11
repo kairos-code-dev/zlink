@@ -82,7 +82,7 @@ internal static class SpotLifecycleEndpoints
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotRefResolver locator,
+            IZLinkSpotHandleResolver locator,
             NodeOptions node,
             SpotStateRouteReq request) =>
         {
@@ -100,7 +100,7 @@ internal static class SpotLifecycleEndpoints
         });
         app.MapPost("/spot/state/command", async (
             IZLinkRouteClient routes,
-            IZLinkSpotRefResolver locator,
+            IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotStateCommandReq request) =>

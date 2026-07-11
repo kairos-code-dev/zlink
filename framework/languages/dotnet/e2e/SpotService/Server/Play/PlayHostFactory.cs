@@ -113,7 +113,7 @@ internal static class PlayHostFactory
 
     internal static async Task<StateRes> RequestSpotStateWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotRefResolver locator,
+        IZLinkSpotHandleResolver locator,
         string targetSpotRid,
         StateReq request,
         string failureMessage,
@@ -124,11 +124,8 @@ internal static class PlayHostFactory
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                return await routes.RequestToSpot(
-                        channelName,
-                        await locator.ResolveRequiredAsync(targetSpotRid),
+                return await routes.RequestToSpot(await locator.ResolveRequiredAsync(targetSpotRid),
                         request)
-                    .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(1))
                     .Async<StateRes>();
             }
@@ -144,7 +141,7 @@ internal static class PlayHostFactory
 
     internal static async Task SendSpotCommandWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotRefResolver locator,
+        IZLinkSpotHandleResolver locator,
         string channelName,
         string targetSpotRid,
         object command,
@@ -156,8 +153,7 @@ internal static class PlayHostFactory
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                routes.SendToSpot(channelName, await locator.ResolveRequiredAsync(targetSpotRid), command)
-                    .PacketName(packetName).Submit();
+                routes.SendToSpot(await locator.ResolveRequiredAsync(targetSpotRid), command).Submit();
                 return;
             }
             catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
@@ -172,7 +168,7 @@ internal static class PlayHostFactory
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotRefResolver locator,
+        IZLinkSpotHandleResolver locator,
         string sourceSpotRid,
         SpotToSpotReq request,
         string failureMessage)
@@ -183,11 +179,8 @@ internal static class PlayHostFactory
         {
             try
             {
-                return await routes.RequestToSpot(
-                        SpotServiceNames.ExternalSpotChannel,
-                        await locator.ResolveRequiredAsync(sourceSpotRid),
+                return await routes.RequestToSpot(await locator.ResolveRequiredAsync(sourceSpotRid),
                         request)
-                    .PacketName("SpotToSpotReq")
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<SpotToSpotRes>();
             }

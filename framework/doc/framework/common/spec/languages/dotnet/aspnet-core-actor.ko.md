@@ -1077,8 +1077,9 @@ actor-session binding 은 framework / core runtime 내부에서 관리한다. �
 
 이 절은 앞서 본 actor 관련 host 등록 표면을 한곳에서 다시 본다.
 
-actor 생성과 transfer 등록은 `IZLinkSpotNodeBuilder`가 소유한다. location store와 route resolver는
-최상위 `IZLinkFrameworkOptions`에서 등록한다.
+actor 생성과 transfer 등록은 `IZLinkSpotNodeBuilder`가 소유한다. location store는
+최상위 `IZLinkFrameworkOptions`에서 등록하며, Spot route 조회는 framework가 location store
+뒤에 숨긴다.
 
 ```csharp
 public interface IZLinkSpotNodeBuilder
@@ -1094,10 +1095,6 @@ public interface IZLinkSpotNodeBuilder
 public interface IZLinkFrameworkOptions
 {
     void AddLocationStore(IZLinkLocationStore store);
-
-    void AddSpotRouteRefResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRouteRefResolver;
-
 }
 ```
 
@@ -1108,7 +1105,6 @@ public interface IZLinkFrameworkOptions
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
 | `AddActorTransferAdapter<TActor, TAdapter>(type)` | remote transfer에서 domain actor state를 직접 옮기는 SPOT host | source state를 message로 만들고 target actor를 materialize하는 adapter를 actorType에 매핑 |
 | `AddLocationStore(store)` | 여러 프로세스가 spot/actor 위치를 공유하는 서버 | location store 를 통해 `SpotHandle` 와 actor 위치를 조회 |
-| `AddSpotRouteRefResolver<>()` | location store 없이 actor `JoinSpot(spotRid, ...)` route 를 직접 제공하는 advanced 구성 | spot rid → route channel 과 target spot ref |
 | `AddSpotMesh(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `AddSpotMesh(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 

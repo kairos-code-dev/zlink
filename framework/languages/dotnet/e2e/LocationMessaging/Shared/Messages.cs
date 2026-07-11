@@ -6,6 +6,10 @@ public sealed record ProfileRes(string Value, string ProviderRid);
 
 public sealed record ProfileMsg(string CommandId);
 
+public sealed record MissingProfileReq(string Value);
+
+public sealed record MissingProfileMsg(string CommandId);
+
 public sealed record PeerLocationRow(
     string MeshName,
     string? NodeRid,

@@ -207,11 +207,14 @@ inline bool run_requester (void *requester_,
                            std::vector<char> *payload_,
                            int duration_s_,
                            SubmitFn submit_fn_,
+                           void **completion_poller_out_,
                            unsigned long long *completed_out_,
                            latency_stats_t *latency_out_)
 {
-    if (!requester_ || !state_ || !payload_ || !completed_out_ || !latency_out_)
+    if (!requester_ || !state_ || !payload_ || !completion_poller_out_ || !completed_out_
+        || !latency_out_)
         return false;
+    *completion_poller_out_ = NULL;
 
     void *poller = zlink_poller_new ();
     if (!poller)
@@ -221,8 +224,6 @@ inline bool run_requester (void *requester_,
         return false;
     }
 
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (std::max (1, duration_s_));
     state_->completed.store (0, std::memory_order_release);
     state_->in_flight.store (0, std::memory_order_release);
     state_->next_seq.store (1, std::memory_order_release);
@@ -231,11 +232,20 @@ inline bool run_requester (void *requester_,
 
     const uint32_t timeout_ms = resolve_request_timeout_ms ();
     const int drain_timeout_ms = resolve_completion_drain_timeout_ms ();
+    constexpr size_t pipeline_budget_bytes = 768u * 1024u;
+    const size_t message_bytes = std::max<size_t> (1, state_->msg_size);
+    const int max_in_flight = static_cast<int> (std::max<size_t> (
+      1, std::min<size_t> (64, pipeline_budget_bytes / message_bytes)));
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::seconds (std::max (1, duration_s_));
     while (std::chrono::steady_clock::now () < deadline
            && !state_->fatal.load (std::memory_order_acquire)) {
         bool submitted_any = false;
         unsigned int submitted_since_progress = 0;
-        while (std::chrono::steady_clock::now () < deadline) {
+        // This is the measured request hot path. Bound both request count and
+        // payload bytes below the balanced HWM budget.
+        while (state_->in_flight.load (std::memory_order_acquire) < max_in_flight
+               && std::chrono::steady_clock::now () < deadline) {
             const submit_step_t step = submit_request (state_, payload_, submit_fn_, timeout_ms);
             if (step == submit_step_submitted) {
                 submitted_any = true;
@@ -256,21 +266,18 @@ inline bool run_requester (void *requester_,
         }
         if (state_->fatal.load (std::memory_order_acquire))
             break;
-
         if (!submitted_any && state_->in_flight.load (std::memory_order_acquire) == 0) {
             (void) perf_socket_poll (NULL, 0, 1);
             continue;
         }
-
         if (!poll_completion_once (poller, 50)) {
             state_->fatal.store (true, std::memory_order_release);
             break;
         }
     }
 
-    const auto drain_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (drain_timeout_ms);
+    const auto drain_deadline = std::chrono::steady_clock::now ()
+                                + std::chrono::milliseconds (drain_timeout_ms);
     while (state_->in_flight.load (std::memory_order_acquire) > 0
            && std::chrono::steady_clock::now () < drain_deadline) {
         if (!poll_completion_once (poller, 50)) {
@@ -279,7 +286,10 @@ inline bool run_requester (void *requester_,
         }
     }
 
-    (void) zlink_poller_destroy (&poller);
+    // The caller owns the replier thread, so it closes this poller after the
+    // replier has stopped. Destroying a completion poller while the peer can
+    // still publish replies can stall the measured shutdown path.
+    *completion_poller_out_ = poller;
     if (state_->fatal.load (std::memory_order_acquire))
         return false;
     if (state_->in_flight.load (std::memory_order_acquire) != 0)

@@ -42,6 +42,8 @@ public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteMeshChannelOptions
 
     IZLinkRouteMeshChannelBuilder EnableClient(string endpoint);
 
+    IZLinkEndpointConnections ClientConnections { get; }
+
     IZLinkRouteMeshChannelBuilder SetRoutingId(RoutingId routingId);
 
     IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
@@ -80,6 +82,8 @@ public interface IZLinkClientServerChannelBuilder : IZLinkClientServerChannelOpt
 
     IZLinkClientServerChannelBuilder EnableClient(string endpoint);
 
+    IZLinkEndpointConnections ClientConnections { get; }
+
     IZLinkClientServerChannelBuilder SetRoutingId(RoutingId routingId);
 
     IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
@@ -106,6 +110,8 @@ public interface IZLinkFanoutChannelBuilder
     IZLinkFanoutChannelBuilder EnableSubscriber();
 
     IZLinkFanoutChannelBuilder EnableSubscriber(string endpoint);
+
+    IZLinkEndpointConnections SubscriberConnections { get; }
 
     IZLinkFanoutChannelBuilder SetRoutingId(RoutingId routingId);
 
@@ -135,6 +141,24 @@ public interface IZLinkSpotNodeBuilder
     IZLinkSpotNodeBuilder EnablePubSub(string endpoint);
 
     IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
+
+    IZLinkEndpointConnections RouterConnections { get; }
+
+    IZLinkEndpointConnections PubSubConnections { get; }
+
+    /// <summary>
+    /// Role-oriented name for <see cref="RouterConnections"/>. Both
+    /// properties expose the same router capability and connection state;
+    /// this does not create a separate channel-client socket.
+    /// </summary>
+    IZLinkEndpointConnections ChannelClientConnections { get; }
+
+    /// <summary>
+    /// Role-oriented name for <see cref="PubSubConnections"/>. Both
+    /// properties expose the same peer-publisher endpoint state; this does
+    /// not create a separate publisher socket.
+    /// </summary>
+    IZLinkEndpointConnections PublisherConnections { get; }
 
     IZLinkSpotPublisherConfig ConfigurePubSubPublisher();
 
@@ -188,9 +212,6 @@ public interface IZLinkFrameworkOptions
 
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
 
-    void AddSpotRouteRefResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRouteRefResolver;
-
     IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName);
 
     IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName);
@@ -206,7 +227,7 @@ public interface IZLinkFrameworkOptions
 
     /// <summary>
     /// Registers one physical location store instance for every store role
-    /// (draft 20.2), the way codecs register serializer instances. The
+    /// location store role, the way codecs register serializer instances. The
     /// instance may additionally implement the optional change stamp and
     /// watch contracts; they are picked up automatically. Mutually
     /// exclusive with UseInMemoryLocationStores.

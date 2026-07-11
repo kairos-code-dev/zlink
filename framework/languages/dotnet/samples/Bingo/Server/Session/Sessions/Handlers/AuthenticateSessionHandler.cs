@@ -12,6 +12,7 @@ namespace Bingo.Server.Session.Sessions.Handlers;
 internal sealed class AuthenticateBingoSessionHandler(
     IZLinkChannelClient channels,
     IZLinkRouteClient routes,
+    IZLinkSpotHandleResolver spots,
     SampleSessionNode session,
     ILogger<AuthenticateBingoSessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>
@@ -32,10 +33,12 @@ internal sealed class AuthenticateBingoSessionHandler(
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
 
-        var playEntrySpot = new SpotRef(session.PreferredPlayNodeRid, session.PreferredPlayNodeRid);
-        var ensured = await routes.RequestToSpot(
-                SampleNames.RoomSpotDiscovery,
-                playEntrySpot,
+        var playEntrySpot = await spots.ResolveSpotHandleAsync(
+                                session.PreferredPlayNodeRid,
+                                cancellationToken)
+                            ?? throw new InvalidOperationException(
+                                $"Play entry spot '{session.PreferredPlayNodeRid}' was not found.");
+        var ensured = await routes.RequestToSpot(playEntrySpot,
                 new EnsurePlayerActorReq
                 {
                     ActorId = authenticated.ActorId,

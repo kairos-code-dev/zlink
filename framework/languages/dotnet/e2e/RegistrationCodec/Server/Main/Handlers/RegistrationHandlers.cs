@@ -34,7 +34,7 @@ internal sealed class EchoAutoCommandHandler(EvidenceStore evidence)
 internal sealed class AttributeHandlers(EvidenceStore evidence)
 {
     [ZLinkRequest(PacketName = "EchoAttr")]
-    public EchoRes Request(EchoReq request, ZLinkRequestContext context, CancellationToken cancellationToken)
+    public EchoRes Request(EchoAttrReq request, ZLinkRequestContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"echo-request|variant=attr|value={request.Value}|content={context.ContentType}");
@@ -42,7 +42,7 @@ internal sealed class AttributeHandlers(EvidenceStore evidence)
     }
 
     [ZLinkSend(PacketName = "EchoAttrMsg")]
-    public ValueTask Send(EchoMsg message, ZLinkSendContext context, CancellationToken cancellationToken)
+    public ValueTask Send(EchoAttrMsg message, ZLinkSendContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(

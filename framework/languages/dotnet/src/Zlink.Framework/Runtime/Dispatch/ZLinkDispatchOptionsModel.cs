@@ -11,10 +11,6 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
     public Type? MessageFlowObserverType { get; private set; }
 
     public IZLinkMessageFlowObserver? MessageFlowObserver { get; private set; }
-    public ZLinkDispatchMode SpotDispatchMode { get; set; } = ZLinkDispatchMode.Compiled;
-
-    public ZLinkDispatchMode StreamDispatchMode { get; set; } = ZLinkDispatchMode.Compiled;
-
     IZLinkUnhandledDispatchOptions IZLinkDispatchOptions.Unhandled => Unhandled;
 
     IZLinkDiagnosticsOptions IZLinkDispatchOptions.Diagnostics => Diagnostics;

@@ -297,15 +297,13 @@ public ValueTask OnDisconnectedAsync(CancellationToken ct)
 > appId(playerId 등)로 찾고 싶으면 directory 를 `Dictionary<appId, IZLinkSessionContext>` 로 두고,
 > 인증 packet handler 에서 appId→`Context` 를 등록한다. 정리는 `OnDisconnectedAsync` 에서 한다.
 
-**(2) directory 로 찾아 `Context.Client.Send(...)` 로 push** — `Reply(...)` 가 아니라 `Send(...)` 다
-(요청에 대한 응답이 아니라 server 가 먼저 보내는 단방향 push). packet 이름은 `.PacketName(...)` 으로
-명시한다.
+**(2) directory 로 찾아 `Context.Client.Send(...)` 로 push** — `Reply(...)` 가 아니라 `Send(...)` 다.
+요청에 대한 응답이 아니라 server 가 먼저 보내는 단방향 push이며 packet 이름은 메시지 타입에서 정해진다.
 
 ```csharp
 if (sessions.TryGet(playerId, out var session))
 {
-    session.Client.Send(new QuestProgressNotify(playerId, progress))
-        .PacketName("QuestProgress")    // client 가 이 이름으로 받는다
+    session.Client.Send(new QuestProgressNotify(playerId, progress))    // client 가 이 이름으로 받는다
         .Submit();
 }
 ```
@@ -339,9 +337,9 @@ public sealed class DeliveryStatusFanoutHandler(CustomerSessionDirectory session
 ## 4. resolver — 위치 조회는 주소 하나로
 
 session relay 는 actor id/type logical handle 과 core SessionRelay 를 사용한다. actor 가 어느
-spot 에 있는지 조회하고 싶으면 `IZLinkActorAddressResolver.ResolveActorSpotRefAsync(
-actorId)` 를 쓴다 — location store 를 읽어 actor 가 위치한 spot 의 주소
-(`SpotRef`)를 돌려준다(재연결 시 "있으면 re-bind, 없으면 생성" 판단이 대표 사용처,
+spot 에 있는지 조회하고 싶으면 `IZLinkActorSpotHandleResolver.ResolveActorSpotHandleAsync(
+actorId)` 를 쓴다. location store 를 읽어 actor가 존재하는 spot의 논리적
+`SpotHandle`을 돌려준다(재연결 시 "있으면 re-bind, 없으면 생성" 판단이 대표 사용처,
 [09-location §4](09-location.ko.md)). 반면 **actor↔session binding 은 framework 내부 상태**라
 조회용 public 표면이 없다 — actor 가 client 로 push 할 때는 `Context.BoundSession` 을 쓰면 된다.
 

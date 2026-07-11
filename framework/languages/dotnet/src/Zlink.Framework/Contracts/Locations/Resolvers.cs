@@ -13,27 +13,37 @@ public interface IZLinkPeerLocationResolver
 }
 
 /// <summary>
-/// Messaging lookup: spot rid to its full address. Callers resolve once,
-/// hold the address for the spot's lifecycle, and re-resolve on failure.
-/// Lifecycle flows that need generations read location rows through the
-/// store/runtime surfaces instead.
+/// Messaging lookup handle for a spot. Callers resolve once and keep this
+/// opaque handle. The framework updates its internal address from location
+/// changes; a request refreshes and retries once only when the target is
+/// known not to have handled the first attempt. One-way sends are never
+/// retried. Lifecycle flows that need generations read location rows through
+/// the store/runtime surfaces instead.
 /// </summary>
-public interface IZLinkSpotRefResolver
+public abstract class SpotHandle
 {
-    /// <summary>Null when no live row exists (unknown spot or expired owner lease).</summary>
-    ValueTask<SpotRef?> ResolveSpotRefAsync(
+    internal SpotHandle()
+    {
+    }
+
+    public abstract RoutingId SpotRid { get; }
+}
+
+public interface IZLinkSpotHandleResolver
+{
+    ValueTask<SpotHandle?> ResolveSpotHandleAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Messaging lookup: actor id to the full address of the spot it lives on
+/// Messaging lookup: actor id to the full address of the spot that contains it
 /// (the entry spot address for ENTRY_SPOT actors, the user spot address for
 /// USER_SPOT actors).
 /// </summary>
-public interface IZLinkActorAddressResolver
+public interface IZLinkActorSpotHandleResolver
 {
-    ValueTask<SpotRef?> ResolveActorSpotRefAsync(
+    ValueTask<SpotHandle?> ResolveActorSpotHandleAsync(
         string actorId,
         CancellationToken cancellationToken = default);
 }

@@ -98,7 +98,6 @@ internal static class SessionHostFactory
                     SpotServiceNames.ControlChannel,
                     RoutingId.From(targetRid),
                     request)
-                .PacketName("ControlPingReq")
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ControlPingRes>();
             return Results.Ok(reply);

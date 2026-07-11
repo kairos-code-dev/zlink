@@ -167,7 +167,7 @@ internal sealed class ScenarioAlternateSpot(
 internal sealed class SpotOnlyUserSpot(
     IZLinkSpotContext context,
     EvidenceStore evidence,
-    IZLinkSpotRefResolver spots) : IZLinkSpot<ScenarioActor>
+    IZLinkSpotHandleResolver spots) : IZLinkSpot<ScenarioActor>
 {
     private int _value;
 
@@ -214,17 +214,15 @@ internal sealed class SpotOnlyUserSpot(
         if (!request.IsEmpty)
         {
             var command = request.Decode<SpotOnlyMeshReq>();
-            var target = await spots.ResolveSpotRefAsync(
+            var target = await spots.ResolveSpotHandleAsync(
                              RoutingId.From(command.TargetSpotRid),
                              cancellationToken)
                          ?? throw new InvalidOperationException(
                              $"Target spot '{command.TargetSpotRid}' has no live address.");
             var reply = await Context.Outbound
                 .RequestToSpot(target, new StateReq("add", 7))
-                .PacketName("StateReq")
                 .Async<StateRes>(cancellationToken);
             Context.Outbound.SendToSpot(target, new StateMsg($"sm-f6-send-{command.Marker}"))
-                .PacketName("StateMsg")
                 .Submit(cancellationToken);
             evidence.Add(
                 $"spot-only-request|rid={evidence.Rid}|source={Context.SpotRid}"

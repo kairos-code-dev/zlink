@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
-using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
 

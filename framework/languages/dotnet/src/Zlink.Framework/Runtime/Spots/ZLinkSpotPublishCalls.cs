@@ -7,20 +7,14 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
     string topic,
     TEvent message) : IZLinkPublishCall
 {
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-
-    public IZLinkPublishCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        return this;
-    }
+    private readonly string _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
 
     public void Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             activation.ChannelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
+            _messageName,
             topic,
             message,
             activation.Codecs);
@@ -45,13 +39,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     string topic,
     TEvent message) : IZLinkPublishCall
 {
-    private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-
-    public IZLinkPublishCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        return this;
-    }
+    private readonly string _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
 
     public void Submit(CancellationToken cancellationToken = default)
     {
@@ -65,7 +53,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         using var operation = runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
-        var packetName = _messageName ?? throw new InvalidOperationException("Message name is required.");
+        var packetName = _messageName;
         var correlationId = Guid.NewGuid().ToString("N");
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             channelName,

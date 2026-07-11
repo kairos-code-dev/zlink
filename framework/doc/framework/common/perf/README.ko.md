@@ -776,7 +776,7 @@ client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runWorker
 `spot-worker-offload-async-echo`와 같은 worker 작업을 쓰지만, Spot handler가 `runWorker(...)`
 완료를 `Yield` terminator로 기다린다. `Yield`는 대기 중 같은 Spot의 다른 job이 진행될 수 있게
 하므로, 이 시나리오는 처리량뿐 아니라 queue 진행성과 worker 완료 후 resume latency를 함께 본다.
-`config-8-yield-dispatch.ko.md`의 YD-A4(worker offload yield)가 검증하는 기능을 같은 조건에서
+`config-8-automatic-turn-dispatch.ko.md`의 YD-A4(worker offload yield)가 검증하는 기능을 같은 조건에서
 perf로 재는 것이며, e2e가 이미 확인한 기능(순서 보장 등)을 다시 단언하지 않는다.
 
 | 항목 | 값 |

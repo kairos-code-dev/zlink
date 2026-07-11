@@ -11,20 +11,12 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
     private bool _compress;
     private int _executed;
 
-    private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
+    private readonly string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
     private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
 
     public void AddMetadata(string key, string value)
     {
         _metadata = _metadata.With(key, value);
-    }
-
-    public void SetPacketName(string messageName)
-    {
-        if (string.IsNullOrWhiteSpace(messageName))
-            throw new InvalidOperationException("Stream packet name must not be empty.");
-
-        _messageName = messageName;
     }
 
     public void EnableCompression()

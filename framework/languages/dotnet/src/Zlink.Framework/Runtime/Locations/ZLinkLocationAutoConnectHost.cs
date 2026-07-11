@@ -61,7 +61,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         {
             if (!state.RouteChannels.TryGetValue(name, out var runtime)) continue;
 
-            var manual = new HashSet<string>(route.ManualConnections, StringComparer.Ordinal);
             AddLoop(
                 ZLinkLocationAutoConnectType.RouteMesh,
                 route.RouterChannelId,
@@ -69,7 +68,9 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 RidOrNull(route.RoutingId),
                 route.BindEndpoint ?? string.Empty,
                 (uint)route.SocketConfig.Weight,
-                new RouteChannelExecutor(runtime, manual));
+                route.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect
+                    ? new RouteChannelExecutor(runtime)
+                    : NullExecutor.Instance);
         }
 
         foreach (var (name, channel) in registration.Channels)
@@ -101,7 +102,9 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                             BundleRid(clientBundle.LocalRid, channel.RoutingId),
                             client.BindEndpoint ?? string.Empty,
                             (uint)client.SocketConfig.Weight,
-                            new ConnectableSocketExecutor(dealerSocket, clientBundle));
+                            client.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect
+                                ? new ConnectableSocketExecutor(dealerSocket, clientBundle)
+                                : NullExecutor.Instance);
                     }
 
                     break;
@@ -131,7 +134,9 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                             BundleRid(subscriberBundle.LocalRid, channel.RoutingId),
                             string.Empty,
                             (uint)subscriber.SocketConfig.Weight,
-                            new ConnectableSocketExecutor(subscriberSocket, subscriberBundle));
+                            subscriber.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect
+                                ? new ConnectableSocketExecutor(subscriberSocket, subscriberBundle)
+                                : NullExecutor.Instance);
                     }
 
                     break;
@@ -144,9 +149,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
 
             var meshName = spot.SpotMeshChannelName ?? spot.SpotNodeName;
             var endpoint = spot.Router.BindEndpoint ?? node.Node.Status().LocalEndpoint;
-            var manual = new HashSet<string>(
-                spot.Router.ManualConnections.Select(static connection => connection.Endpoint),
-                StringComparer.Ordinal);
             // The row advertises the pub/sub plane endpoint so peers can
             // wire both planes from one row (draft 6.1 metadata).
             var metadata = spot.PubSub?.BindEndpoint is { Length: > 0 } pubEndpoint
@@ -159,7 +161,10 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 RidOrNull(spot.RoutingId),
                 endpoint ?? string.Empty,
                 (uint)spot.Router.SocketConfig.Weight,
-                new SpotNodeExecutor(node.Node, manual),
+                new SpotNodeExecutor(
+                    node,
+                    spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect,
+                    spot.PubSub?.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect),
                 metadata);
         }
 
@@ -292,105 +297,51 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     {
         internal static readonly NullExecutor Instance = new();
 
-        public void Connect(ZLinkAutoConnectTarget target)
-        {
-        }
+        public bool Connect(ZLinkAutoConnectTarget target) => true;
 
-        public void Disconnect(ZLinkAutoConnectTarget target)
-        {
-        }
+        public bool Disconnect(ZLinkAutoConnectTarget target) => true;
     }
 
-    private sealed class RouteChannelExecutor(
-        ZLinkRouteChannelRuntime runtime,
-        HashSet<string> manualEndpoints) : IZLinkAutoConnectExecutor
+    private sealed class RouteChannelExecutor(ZLinkRouteChannelRuntime runtime) : IZLinkAutoConnectExecutor
     {
-        public void Connect(ZLinkAutoConnectTarget target) =>
-            Guard(() =>
-            {
-                // Route mesh rows always carry the peer's routing id; the
-                // rid-aware dial makes rid-addressed requests routable.
-                if (target.NodeRid is { Size: > 0 } rid)
-                {
-                    runtime.Connect(rid, target.Endpoint);
-                    return;
-                }
+        public bool Connect(ZLinkAutoConnectTarget target)
+            => runtime.ConnectAuto(target.NodeRid, target.Endpoint);
 
-                runtime.Connect(target.Endpoint);
-            });
-
-        public void Disconnect(ZLinkAutoConnectTarget target)
-        {
-            // Manual connections always win: auto reconcile never cuts an
-            // endpoint the user configured explicitly.
-            if (manualEndpoints.Contains(target.Endpoint)) return;
-
-            Guard(() => runtime.Disconnect(target.Endpoint));
-        }
+        public bool Disconnect(ZLinkAutoConnectTarget target)
+            => runtime.DisconnectAuto(target.Endpoint);
     }
 
     private sealed class ConnectableSocketExecutor(
         IZLinkBackendConnectableSocket socket,
         ZLinkChannelRuntimeBundle bundle) : IZLinkAutoConnectExecutor
     {
-        public void Connect(ZLinkAutoConnectTarget target)
-        {
-            if (bundle.ContainsManualConnection(target.Endpoint)) return;
+        public bool Connect(ZLinkAutoConnectTarget target)
+            => bundle.ConnectAuto(socket, target.Endpoint);
 
-            Guard(() => socket.Connect(target.Endpoint));
-        }
-
-        public void Disconnect(ZLinkAutoConnectTarget target)
-        {
-            if (bundle.ContainsManualConnection(target.Endpoint)) return;
-
-            Guard(() => socket.Disconnect(target.Endpoint));
-        }
+        public bool Disconnect(ZLinkAutoConnectTarget target)
+            => bundle.DisconnectAuto(socket, target.Endpoint);
     }
 
     private sealed class SpotNodeExecutor(
-        IZLinkBackendSpotNode node,
-        HashSet<string> manualEndpoints) : IZLinkAutoConnectExecutor
+        ZLinkSpotNodeRuntime node,
+        bool connectRouter,
+        bool connectPubSub) : IZLinkAutoConnectExecutor
     {
-        public void Connect(ZLinkAutoConnectTarget target)
+        public bool Connect(ZLinkAutoConnectTarget target)
         {
-            if (manualEndpoints.Contains(target.Endpoint)) return;
-
-            Guard(() =>
-            {
-                if (target.NodeRid is { Size: > 0 } rid)
-                {
-                    // Core connect_peer_rid sends the router probe that lets the
-                    // non-initiator route replies over the inbound identity.
-                    node.ConnectPeer(rid, target.Endpoint);
-                }
-                else
-                {
-                    node.ConnectPeer(target.Endpoint);
-                }
-
-                // The pub/sub plane is a second link the row advertises in
-                // metadata; without it cross-node spot publishes never
-                // arrive.
-                if (PubEndpointOf(target) is { } pubEndpoint)
-                {
-                    node.ConnectPeer(pubEndpoint);
-                }
-            });
+            if (connectRouter && !node.ConnectRouterAuto(target.NodeRid, target.Endpoint)) return false;
+            if (!connectPubSub || PubEndpointOf(target) is not { } pubEndpoint) return true;
+            if (node.ConnectPubSubAuto(pubEndpoint)) return true;
+            if (connectRouter) _ = node.DisconnectRouterAuto(target.Endpoint);
+            return false;
         }
 
-        public void Disconnect(ZLinkAutoConnectTarget target)
+        public bool Disconnect(ZLinkAutoConnectTarget target)
         {
-            if (manualEndpoints.Contains(target.Endpoint)) return;
-
-            Guard(() =>
-            {
-                node.DisconnectPeer(target.Endpoint);
-                if (PubEndpointOf(target) is { } pubEndpoint)
-                {
-                    node.DisconnectPeer(pubEndpoint);
-                }
-            });
+            var router = !connectRouter || node.DisconnectRouterAuto(target.Endpoint);
+            var pubSub = !connectPubSub || PubEndpointOf(target) is not { } pubEndpoint
+                         || node.DisconnectPubSubAuto(pubEndpoint);
+            return router && pubSub;
         }
 
         private static string? PubEndpointOf(ZLinkAutoConnectTarget target) =>
@@ -401,17 +352,4 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 : null;
     }
 
-    /// <summary>Connect failures never abort a reconcile tick and never
-    /// remove a location row; the next tick retries naturally.</summary>
-    private static void Guard(Action action)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception exception)
-        {
-            ZLinkFrameworkDebugLog.SpotDiscovery($"auto-connect executor error: {exception.Message}");
-        }
-    }
 }

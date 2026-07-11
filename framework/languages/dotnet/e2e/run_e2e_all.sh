@@ -19,7 +19,7 @@ CONFIGS=(
   SpotActorTransfer
   StoreFailure
   ToActorMessaging
-  YieldDispatch
+  AutomaticTurnDispatch
 )
 
 cleanup_done=0

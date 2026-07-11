@@ -123,7 +123,8 @@ public sealed partial class RegressionTests
         Assert.Contains("PrepareInventoryReservedCheckpointReq", workflowSpot, StringComparison.Ordinal);
         Assert.Contains("ContinueUntilInventoryReservedAsync(command.OrderId, cancellationToken)", workflowSelfCheck,
             StringComparison.Ordinal);
-        Assert.Contains("RequestToSpot(SampleNames.OrderWorkflowRouteChannel", routeHandlers, StringComparison.Ordinal);
+        Assert.Contains("ResolveSpotHandleAsync", routeHandlers, StringComparison.Ordinal);
+        Assert.Contains("RequestToSpot(address", routeHandlers, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow.StartAsync(request", routeHandlers, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow.ContinueAsync(request", routeHandlers, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow.RebuildProjectionAsync", routeHandlers, StringComparison.Ordinal);

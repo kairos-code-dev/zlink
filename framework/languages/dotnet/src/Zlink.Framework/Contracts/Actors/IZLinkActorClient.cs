@@ -13,15 +13,11 @@ public interface IZLinkActorClient
 
 public interface IZLinkActorSendCall
 {
-    IZLinkActorSendCall PacketName(string packetName);
-
-    ValueTask Async(CancellationToken cancellationToken = default);
+    void Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorRequestCall
 {
-    IZLinkActorRequestCall PacketName(string packetName);
-
     IZLinkActorRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);

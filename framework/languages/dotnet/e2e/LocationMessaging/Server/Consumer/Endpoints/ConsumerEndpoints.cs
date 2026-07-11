@@ -43,15 +43,18 @@ internal static class ConsumerEndpoints
             ProfileReq request,
             IZLinkChannelClient channel) =>
         {
-            var result = await RequestMissingProfileAsync(channel, request);
+            var result = await RequestMissingProfileAsync(
+                channel,
+                new MissingProfileReq(request.Value));
             return Results.Ok(result);
         });
         app.MapPost("/profile/missing-command", (
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            channel.SendToChannel("profile", command)
-                .PacketName("MissingProfileMsg").Submit();
+            channel.SendToChannel(
+                "profile",
+                new MissingProfileMsg(command.CommandId)).Submit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/payload", async (
@@ -95,7 +98,6 @@ internal static class ConsumerEndpoints
             try
             {
                 return await channel.RequestToChannel("profile", request)
-                    .PacketName("ProfileReq")
                     .Timeout(timeout)
                     .Async<ProfileRes>();
             }
@@ -120,7 +122,6 @@ internal static class ConsumerEndpoints
             try
             {
                 return await channel.RequestToChannel("profile", request)
-                    .PacketName("PayloadReq")
                     .Timeout(TimeSpan.FromSeconds(10))
                     .Async<PayloadRes>();
             }
@@ -141,7 +142,6 @@ internal static class ConsumerEndpoints
         try
         {
             await channel.RequestToChannel("profile", request)
-                .PacketName("PayloadReq")
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<PayloadRes>();
             return new RequestFailureRes(false, "");
@@ -173,12 +173,11 @@ internal static class ConsumerEndpoints
 
     static async Task<RequestFailureRes> RequestMissingProfileAsync(
         IZLinkChannelClient channel,
-        ProfileReq request)
+        MissingProfileReq request)
     {
         try
         {
             await channel.RequestToChannel("profile", request)
-                .PacketName("MissingProfileReq")
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ProfileRes>();
             return new RequestFailureRes(false, "");
@@ -193,8 +192,7 @@ internal static class ConsumerEndpoints
         IZLinkChannelClient channel,
         ProfileMsg command)
     {
-        channel.SendToChannel("profile", command)
-            .PacketName("ProfileMsg").Submit();
+        channel.SendToChannel("profile", command).Submit();
         return "Submitted";
     }
 

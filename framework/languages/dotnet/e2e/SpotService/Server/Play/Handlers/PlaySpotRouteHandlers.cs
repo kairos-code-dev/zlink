@@ -10,7 +10,7 @@ namespace SpotService.Server.Play.Handlers;
 [ZLinkSpotRequestHandler("SpotToSpotReq")]
 internal sealed class SpotToSpotHandler(
     EvidenceStore evidence,
-    IZLinkSpotRefResolver spots)
+    IZLinkSpotHandleResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotRes>
 {
     public async ValueTask<SpotToSpotRes> HandleAsync(
@@ -20,19 +20,16 @@ internal sealed class SpotToSpotHandler(
     {
         // Resolve once, hold the address for the interaction (spot-address
         // messaging draft §6).
-        var target = await spots.ResolveSpotRefAsync(
+        var target = await spots.ResolveSpotHandleAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live address.");
         var reply = await spot.Context.Outbound
             .RequestToSpot(target, new StateReq("add", 3))
-            .PacketName("StateReq")
             .Async<StateRes>(cancellationToken);
         spot.Context.Outbound.SendToSpot(target, new StateMsg($"sm-c3-send-{request.Marker}"))
-            .PacketName("StateMsg")
             .Submit(cancellationToken);
         spot.Context.Outbound.Publish(SpotServiceNames.SpotMsgTopic, new SpotMsg($"sm-c3-publish-{request.Marker}"))
-            .PacketName("SpotMsg")
             .Submit(cancellationToken);
         evidence.Add(
             $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotRid}"
@@ -47,7 +44,7 @@ internal sealed class SpotToSpotHandler(
 [ZLinkSpotRequestHandler("SpotToSpotTimeoutReq")]
 internal sealed class SpotToSpotTimeoutHandler(
     EvidenceStore evidence,
-    IZLinkSpotRefResolver spots)
+    IZLinkSpotHandleResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutRes>
 {
     public async ValueTask<SpotToSpotTimeoutRes> HandleAsync(
@@ -58,13 +55,12 @@ internal sealed class SpotToSpotTimeoutHandler(
         var failed = false;
         try
         {
-            var target = await spots.ResolveSpotRefAsync(
+            var target = await spots.ResolveSpotHandleAsync(
                              RoutingId.From(request.TargetSpotRid), cancellationToken)
                          ?? throw new InvalidOperationException(
                              $"Target spot '{request.TargetSpotRid}' has no live address.");
             await spot.Context.Outbound
                 .RequestToSpot(target, new SlowSpotReq(request.Marker, 1500))
-                .PacketName("SlowSpotReq")
                 .Timeout(TimeSpan.FromMilliseconds(100))
                 .Async<SlowSpotRes>(cancellationToken);
         }
@@ -86,7 +82,7 @@ internal sealed class SpotToSpotTimeoutHandler(
 [ZLinkSpotRequestHandler("SpotToSpotNegativeReq")]
 internal sealed class SpotToSpotNegativeHandler(
     EvidenceStore evidence,
-    IZLinkSpotRefResolver spots)
+    IZLinkSpotHandleResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeRes>
 {
     public async ValueTask<SpotToSpotNegativeRes> HandleAsync(
@@ -97,7 +93,7 @@ internal sealed class SpotToSpotNegativeHandler(
         // The negative here is the missing HANDLER on a live target spot:
         // the address resolves, the request reply-errors, and the
         // best-effort send is dropped at the target with evidence.
-        var target = await spots.ResolveSpotRefAsync(
+        var target = await spots.ResolveSpotHandleAsync(
                          RoutingId.From(request.TargetSpotRid), cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live address.");
@@ -105,8 +101,7 @@ internal sealed class SpotToSpotNegativeHandler(
         try
         {
             await spot.Context.Outbound
-                .RequestToSpot(target, new StateReq("noop", 0))
-                .PacketName("MissingSpotReq")
+                .RequestToSpot(target, new MissingSpotReq("noop"))
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async<StateRes>(cancellationToken);
         }
@@ -115,8 +110,7 @@ internal sealed class SpotToSpotNegativeHandler(
             requestFailed = true;
         }
 
-        spot.Context.Outbound.SendToSpot(target, new StateMsg($"missing-{request.Marker}"))
-            .PacketName("MissingSpotMsg")
+        spot.Context.Outbound.SendToSpot(target, new MissingSpotMsg($"missing-{request.Marker}"))
             .Submit(cancellationToken);
 
         evidence.Add(
@@ -142,18 +136,15 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
             .RequestToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelEchoReq(request.Marker))
-            .PacketName("ChannelEchoReq")
             .Async<ChannelEchoRes>(cancellationToken);
         var notifyMarker = $"notify-{request.Marker}";
         spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelNotify(notifyMarker))
-            .PacketName("ChannelNotify")
             .Submit(cancellationToken);
         spot.Context.Outbound.Publish(
                 SpotServiceNames.SpotMsgTopic,
                 new SpotMsg("sm-c2-publish"))
-            .PacketName("SpotMsg")
             .Submit(cancellationToken);
         evidence.Add(
             $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
@@ -176,8 +167,7 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
             await spot.Context.Outbound
                 .RequestToChannel(
                     SpotServiceNames.ExternalClientChannel,
-                    new ChannelEchoReq(request.Marker))
-                .PacketName("MissingChannelReq")
+                    new MissingChannelReq(request.Marker))
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async<ChannelEchoRes>(cancellationToken);
         }
@@ -188,8 +178,7 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
 
         spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
-                new ChannelNotify($"missing-{request.Marker}"))
-            .PacketName("MissingChannelNotify")
+                new MissingChannelNotify($"missing-{request.Marker}"))
             .Submit(cancellationToken);
         evidence.Add(
             $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotRid}"

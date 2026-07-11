@@ -7,9 +7,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _spots.GetPublisherBundle(GetOrStartState(), channelName);
     }
 
-    internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync<TSpot>(
+    public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot
+    {
+        return CreateAsync<TSpot>(ZLinkMessage.Empty, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
         ZLinkMessage request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
         using var operation = EnterOperation();
@@ -17,10 +24,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask<ZLinkSpotCreateResult> GetOrCreateSpotAsync<TSpot>(
+    public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
         ZLinkMessage request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
         using var operation = EnterOperation();
@@ -29,9 +36,17 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask<ZLinkSpotInfo?> GetSpotAsync(
+    public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot
+    {
+        return GetOrCreateAsync<TSpot>(spotRid, ZLinkMessage.Empty, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkSpotInfo?> FindAsync(
+        RoutingId spotRid,
+        CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
         return await _spots.GetAsync(GetOrStartState(), spotRid, cancellationToken)
@@ -48,16 +63,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _spots.GetActivationBySpotRid(state, spotRid);
     }
 
-    internal async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListSpotsAsync(
-        CancellationToken cancellationToken)
+    public async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
+        CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
         return await _spots.ListAsync(GetOrStartState(), cancellationToken).ConfigureAwait(false);
     }
 
-    internal async ValueTask<bool> CloseSpotAsync(
+    public async ValueTask<bool> CloseAsync(
         RoutingId spotRid,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
         return await _spots.CloseAsync(GetOrStartState(), spotRid, cancellationToken)

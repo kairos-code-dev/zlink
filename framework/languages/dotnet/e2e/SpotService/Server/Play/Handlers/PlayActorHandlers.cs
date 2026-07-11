@@ -1,6 +1,7 @@
 using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
@@ -163,14 +164,14 @@ internal sealed class EntryUserSpotActorJoinHandler
                 ZLinkMessage.Empty)
             .Async(cancellationToken)
             .ConfigureAwait(false);
-        if (!joined.Accepted || joined.Actor is not { } joinedActor)
+        if (joined is not ZLinkActorJoinResult.Accepted joinedActorResult)
             return new JoinUserSpotActorRes(request.SpotRid, request.ActorId, false, 0);
 
         return new JoinUserSpotActorRes(
             request.SpotRid,
-            joinedActor.ActorId,
-            joined.Accepted,
-            joinedActor.Generation);
+            joinedActorResult.Actor.ActorId,
+            true,
+            joinedActorResult.Actor.Generation);
     }
 }
 
@@ -196,7 +197,7 @@ internal sealed class EntryAdmittedUserSpotActorJoinHandler
                 ZLinkMessage.From(request))
             .Async(cancellationToken)
             .ConfigureAwait(false);
-        if (!joined.Accepted || joined.Actor is not { } joinedActor)
+        if (joined is not ZLinkActorJoinResult.Accepted joinedActorResult)
             return new JoinAdmittedUserSpotActorRes(
                 request.SpotRid,
                 request.ActorId,
@@ -206,9 +207,9 @@ internal sealed class EntryAdmittedUserSpotActorJoinHandler
 
         return new JoinAdmittedUserSpotActorRes(
             request.SpotRid,
-            joinedActor.ActorId,
+            joinedActorResult.Actor.ActorId,
             true,
-            joinedActor.Generation,
+            joinedActorResult.Actor.Generation,
             string.Empty);
     }
 }
@@ -280,7 +281,7 @@ internal sealed class EntryActorSnapshotHandler
 internal sealed class EntryActorDestroyHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, DestroyActorReq, DestroyActorRes>
 {
-    public ValueTask<DestroyActorRes> HandleAsync(
+    public async ValueTask<DestroyActorRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -291,22 +292,10 @@ internal sealed class EntryActorDestroyHandler(EvidenceStore evidence)
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
             throw new InvalidOperationException("Destroy request actor does not match dispatched actor.");
 
-        entrySpot.Context.RunWorker(_ => true).Submit(
-            async (_, ct) =>
-            {
-                try
-                {
-                    await entrySpot.Context.DestroyActorAsync(actor, ct);
-                    evidence.Add($"actor-destroyed|rid={evidence.Rid}|actor={actor.ActorId}");
-                }
-                catch (Exception ex)
-                {
-                    evidence.Add(
-                        $"actor-destroy-failed|rid={evidence.Rid}|actor={actor.ActorId}|error={ex.GetType().Name}");
-                }
-            },
-            cancellationToken: cancellationToken);
-        return ValueTask.FromResult(new DestroyActorRes(actor.ActorId, true));
+        await entrySpot.Context.RunWorker(_ => true).Async(cancellationToken);
+        await entrySpot.Context.DestroyActorAsync(actor, cancellationToken);
+        evidence.Add($"actor-destroyed|rid={evidence.Rid}|actor={actor.ActorId}");
+        return new DestroyActorRes(actor.ActorId, true);
     }
 }
 
@@ -332,8 +321,7 @@ internal sealed class ActorPushHandler
         Evidence.Add(
             $"actor-push|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
             + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
-        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .PacketName("ActorPushNotify").Submit();
+        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen)).Submit();
         return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
@@ -357,8 +345,7 @@ internal sealed class EntryUserActorPushHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         actor.Seen++;
-        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .PacketName("ActorPushNotify").Submit();
+        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen)).Submit();
         return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
@@ -381,8 +368,7 @@ internal sealed class UserActorPushHandler
     {
         _ = context;
         actor.Seen++;
-        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .PacketName("ActorPushNotify").Submit();
+        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen)).Submit();
         return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             spot.Context.NodeRid.ToString(),

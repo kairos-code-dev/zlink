@@ -100,6 +100,7 @@ void run_dealer_router_reqrep (const std::string &transport,
     request_state.latency_sample_cap = perf_single_reqrep::resolve_latency_sample_cap ();
 
     const int duration_s = std::max (1, resolve_single_duration_seconds ());
+    void *completion_poller = NULL;
     unsigned long long completed = 0;
     latency_stats_t latency;
     const bool ok = perf_single_reqrep::run_requester (
@@ -109,12 +110,21 @@ void run_dealer_router_reqrep (const std::string &transport,
           return zlink_dealer_request_part (requester.get (), part_, ZLINK_DONTWAIT,
                                             ZLINK_PART_FINAL, timeout_ms_, handler_, userdata_);
       },
-      &completed, &latency);
+      &completion_poller, &completed, &latency);
 
-    reply_state.stop.store (true, std::memory_order_release);
-    (void) perf_single_reqrep::send_stop_to_router (requester.get ());
+    const bool stop_ok = perf_single_reqrep::send_stop_to_router (requester.get ());
+    if (!stop_ok)
+        reply_state.stop.store (true, std::memory_order_release);
     replier_thread.join ();
-    if (!ok || reply_state.fatal.load (std::memory_order_acquire)) {
+    const bool poller_ok = completion_poller
+                             && zlink_poller_destroy (&completion_poller) == ZLINK_CLOSE_OK;
+    if (!ok || !stop_ok || !poller_ok
+        || reply_state.fatal.load (std::memory_order_acquire)) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] shutdown failed requester=" << ok
+                      << " stop=" << stop_ok << " poller=" << poller_ok
+                      << " replier_fatal="
+                      << reply_state.fatal.load (std::memory_order_acquire) << std::endl;
         print_fail ();
         fflush (NULL);
         std::_Exit (1);

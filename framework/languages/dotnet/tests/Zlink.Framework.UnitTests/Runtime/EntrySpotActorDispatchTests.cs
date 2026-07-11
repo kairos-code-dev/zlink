@@ -451,6 +451,70 @@ public sealed class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task ActorDestroy_DuringBoundRequest_IsDeferredUntilReplyFinalization()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, _) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var actorRef = new ZLinkBackendActorRef(
+                RoutingId.From("entry-node"),
+                "actor-destroy-after-reply",
+                1);
+            var actor = RegisterProbeActor(runtime, actorRef);
+            node.BeforeNoBindReply = _ => node.LifecycleEvents.Enqueue("reply");
+            node.BeforeDestroy = _ => node.LifecycleEvents.Enqueue("destroy");
+            var parts = CreateActorRequestParts(
+                actorRef,
+                "destroy-request",
+                "destroy",
+                requestId: 81,
+                flags: 1);
+
+            await DispatchEntryActorPartsAsync(runtime, parts, CancellationToken.None);
+
+            Assert.Single(node.DestroyedActors);
+            Assert.Null(await runtime.FindActorAsync(actor.ActorId));
+            Assert.Equal(new[] { "reply", "destroy" }, node.LifecycleEvents.ToArray());
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task ActorDestroy_DuringBoundRequest_RejectsPreCancelledCall()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, _) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var actorRef = new ZLinkBackendActorRef(
+                RoutingId.From("entry-node"),
+                "actor-destroy-cancelled",
+                1);
+            var actor = RegisterProbeActor(runtime, actorRef);
+            var activation = runtime.GetSpotNodeRuntime("entry").EntrySpotActivation
+                             ?? throw new InvalidOperationException("Entry Spot activation was not created.");
+            await using var dispatch = ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await activation.DestroyActorAsync(actor, cancelled.Token));
+            await dispatch.DrainAsync(CancellationToken.None);
+
+            Assert.Empty(node.DestroyedActors);
+            Assert.Same(actor, await runtime.FindActorAsync(actor.ActorId));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task StragglerForwarder_StopsFinalPartRetryWhenTheForwardingWindowCloses()
     {
         var node = new CapturingSpotNode();
@@ -689,30 +753,6 @@ public sealed class EntrySpotActorDispatchTests
                 "actor-a:second:start"
             },
             probe.Events.ToArray());
-    }
-
-    [Fact]
-    public async Task EntrySpotActorDispatch_YieldCall_Throws_WhenCreatedInsideActorHandler()
-    {
-        var services = new ServiceCollection()
-            .AddTransient<ProbeActorYieldHandler>()
-            .BuildServiceProvider();
-        var activation = CreateActivation(services);
-        await using var _ = activation.ConfigureAwait(false);
-        activation.Configure();
-
-        Assert.True(activation.TryResolveActorPacket(
-            typeof(ProbeActor),
-            CreateHeader("yield"),
-            out var descriptor));
-        Assert.NotNull(descriptor);
-
-        var actor = new ProbeActor("actor-yield");
-        var state = new ZLinkActorRuntimeState(actor.ActorId);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DispatchAsync(activation, descriptor, state, actor, "yield"));
-
-        Assert.Contains("Yield requires a framework Spot handler turn", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1009,6 +1049,7 @@ public sealed class EntrySpotActorDispatchTests
     {
         var services = new ServiceCollection()
             .AddTransient<ProbeActorRequestHandler>()
+            .AddTransient<ProbeActorDestroyRequestHandler>()
             .AddTransient<ProbeActorThrowingRequestHandler>()
             .BuildServiceProvider();
         var registration = new ZLinkFrameworkRegistration
@@ -1345,8 +1386,8 @@ public sealed class EntrySpotActorDispatchTests
             Context.Handlers.AddPacket<ProbeRouteHandler>();
             Context.Handlers.AddHandler<ProbeActorSendHandler>("first");
             Context.Handlers.AddHandler<ProbeActorSendHandler>("second");
-            Context.Handlers.AddHandler<ProbeActorYieldHandler>("yield");
             Context.Handlers.AddHandler<ProbeActorRequestHandler>("request");
+            Context.Handlers.AddHandler<ProbeActorDestroyRequestHandler>("destroy-request");
             Context.Handlers.AddHandler<ProbeActorThrowingRequestHandler>("throw");
         }
     }
@@ -1406,26 +1447,6 @@ public sealed class EntrySpotActorDispatchTests
         }
     }
 
-    private sealed class ProbeActorYieldHandler
-        : IZLinkEntrySpotActorSendHandler<ProbeEntrySpot, ProbeActor, string>
-    {
-        public async ValueTask HandleAsync(
-            ProbeEntrySpot entrySpot,
-            ProbeActor actor,
-            ZLinkSpotActorSendContext context,
-            string request,
-            CancellationToken cancellationToken)
-        {
-            _ = actor;
-            _ = context;
-            await entrySpot.Context.Outbound.RequestToChannel(
-                    "unused",
-                    request)
-                .PacketName("unused")
-                .Yield<string>(cancellationToken);
-        }
-    }
-
     private sealed class ProbeActorRequestHandler
         : IZLinkEntrySpotActorRequestHandler<ProbeEntrySpot, ProbeActor, string, ProbeReply>
     {
@@ -1440,6 +1461,22 @@ public sealed class EntrySpotActorDispatchTests
             _ = context;
             _ = cancellationToken;
             return ValueTask.FromResult(new ProbeReply($"{request}:{actor.ActorId}"));
+        }
+    }
+
+    private sealed class ProbeActorDestroyRequestHandler
+        : IZLinkEntrySpotActorRequestHandler<ProbeEntrySpot, ProbeActor, string, ProbeReply>
+    {
+        public async ValueTask<ProbeReply> HandleAsync(
+            ProbeEntrySpot entrySpot,
+            ProbeActor actor,
+            ZLinkSpotActorRequestContext context,
+            string request,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            await entrySpot.Context.DestroyActorAsync(actor, cancellationToken);
+            return new ProbeReply($"{request}:{actor.ActorId}");
         }
     }
 
@@ -1587,9 +1624,13 @@ public sealed class EntrySpotActorDispatchTests
 
         public List<ZLinkBackendActorRef> DestroyedActors { get; } = [];
 
+        public ConcurrentQueue<string> LifecycleEvents { get; } = new();
+
         public List<ZLinkBackendActorRef> CreatedActors { get; } = [];
 
         public Action<ZLinkBackendActorRef>? BeforeDestroy { get; set; }
+
+        public Action<ZLinkBackendActorRef>? BeforeNoBindReply { get; set; }
 
         public Exception? DestroyFailure { get; set; }
 
@@ -1735,6 +1776,7 @@ public sealed class EntrySpotActorDispatchTests
             uint flags,
             IReadOnlyList<Message> parts)
         {
+            BeforeNoBindReply?.Invoke(actor);
             NoBindReplies.Add(new CapturedActorReply(
                 actor,
                 sourceNodeRid,

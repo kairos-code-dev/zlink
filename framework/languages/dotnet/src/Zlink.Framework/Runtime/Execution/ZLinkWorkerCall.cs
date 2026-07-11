@@ -1,16 +1,14 @@
 namespace Zlink.Framework.Runtime.Execution;
 
 /// <summary>
-///     Fluent worker offload call. The work delegate runs on a pool thread; the
-///     terminator decides how completion is observed. <c>Async()</c> is the gated
-///     awaitable path; <c>Submit(...)</c> always posts completion and error
-///     callbacks back to the owning spot serial line. A late completion after a
-///     timeout is dropped without invoking user callbacks.
+///     Fluent worker offload call. The work delegate runs on a pool thread. The
+///     single <c>Async()</c> terminator automatically releases and resumes the
+///     current framework turn when the call was created inside one. A late
+///     completion after a timeout is dropped.
 /// </summary>
 internal sealed class ZLinkWorkerCall<TResult>(
     ZLinkWorkerPool pool,
-    Func<CancellationToken, TResult> work,
-    Action<Func<CancellationToken, ValueTask>> postToDispatcher) : IZLinkWorkerCall<TResult>
+    Func<CancellationToken, TResult> work) : IZLinkWorkerCall<TResult>
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private int _terminated;
@@ -18,7 +16,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
 
     public IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout)
     {
-        if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
 
         _timeout = timeout;
         return this;
@@ -27,6 +25,13 @@ internal sealed class ZLinkWorkerCall<TResult>(
     public ValueTask<TResult> Async(CancellationToken cancellationToken = default)
     {
         EnsureSingleTerminator();
+        return _turn is null
+            ? ExecuteAsync(cancellationToken)
+            : _turn.AwaitFrameworkCallAsync(ExecuteAsync, cancellationToken);
+    }
+
+    private ValueTask<TResult> ExecuteAsync(CancellationToken cancellationToken)
+    {
         var completion = new TaskCompletionSource<TResult>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         Start(
@@ -34,31 +39,6 @@ internal sealed class ZLinkWorkerCall<TResult>(
             error => completion.TrySetException(error),
             cancellationToken);
         return new ValueTask<TResult>(completion.Task);
-    }
-
-    public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
-    {
-        return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
-    }
-
-    public void Submit(
-        Func<TResult, CancellationToken, ValueTask> onCompleted,
-        Func<Exception, CancellationToken, ValueTask>? onError = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(onCompleted);
-        EnsureSingleTerminator();
-        Start(
-            result => postToDispatcher(ct => onCompleted(result, ct)),
-            error => postToDispatcher(ct =>
-            {
-                if (onError is null)
-                    // Surfaces through the serial line's runtime error sink.
-                    throw error;
-
-                return onError(error, ct);
-            }),
-            cancellationToken);
     }
 
     private void Start(
@@ -88,14 +68,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
     {
         if (Interlocked.Exchange(ref _terminated, 1) != 0)
             throw new InvalidOperationException(
-                "RunWorker call already has a terminator. Call Async or Submit once.");
-    }
-
-    private ZLinkSerialTurn RequireTurn()
-    {
-        return _turn
-               ?? throw new InvalidOperationException(
-                   "Yield requires a framework Spot handler turn captured when the call object was created.");
+                "RunWorker call already has a terminator. Call Async once.");
     }
 
     private sealed class Execution(

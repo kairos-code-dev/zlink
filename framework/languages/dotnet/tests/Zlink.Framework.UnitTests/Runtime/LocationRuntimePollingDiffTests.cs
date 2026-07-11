@@ -14,15 +14,15 @@ public sealed class LocationRuntimePollingDiffTests
 
         Assert.Equal(
             [
-                ZLinkLocationRuntimeEventKind.StatusChanged,
-                ZLinkLocationRuntimeEventKind.TopologyChanged,
-                ZLinkLocationRuntimeEventKind.ServiceSummaryChanged
+                typeof(ZLinkLocationRuntimeEvent.StatusChanged),
+                typeof(ZLinkLocationRuntimeEvent.TopologyChanged),
+                typeof(ZLinkLocationRuntimeEvent.ServiceSummaryChanged)
             ],
-            events.Select(static @event => @event.Event).ToArray());
+            events.Select(static @event => @event.GetType()).ToArray());
         Assert.All(events, static @event => Assert.Equal("locations", @event.SourceName));
-        Assert.NotNull(events[0].Status);
-        Assert.NotNull(events[1].Topology);
-        Assert.NotNull(events[2].ServiceSummary);
+        Assert.IsType<ZLinkLocationRuntimeEvent.StatusChanged>(events[0]);
+        Assert.IsType<ZLinkLocationRuntimeEvent.TopologyChanged>(events[1]);
+        Assert.IsType<ZLinkLocationRuntimeEvent.ServiceSummaryChanged>(events[2]);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class LocationRuntimePollingDiffTests
 
         // A topology endpoint changes while status and summaries stay put.
         diff.DispatchChanges(Snapshot(storeHealthy: true, "tcp://127.0.0.1:9001"), Timestamp, events.Add);
-        Assert.Equal(ZLinkLocationRuntimeEventKind.TopologyChanged, Assert.Single(events).Event);
+        Assert.IsType<ZLinkLocationRuntimeEvent.TopologyChanged>(Assert.Single(events));
     }
 
     [Fact]
@@ -64,10 +64,10 @@ public sealed class LocationRuntimePollingDiffTests
         diff.DispatchChanges(Snapshot(storeHealthy: false, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
         Assert.Equal(
             [
-                ZLinkLocationRuntimeEventKind.StatusChanged,
-                ZLinkLocationRuntimeEventKind.StoreFailure
+                typeof(ZLinkLocationRuntimeEvent.StatusChanged),
+                typeof(ZLinkLocationRuntimeEvent.StoreFailure)
             ],
-            events.Select(static @event => @event.Event).ToArray());
+            events.Select(static @event => @event.GetType()).ToArray());
         events.Clear();
 
         // Still down: no repeated transition event.
@@ -78,10 +78,10 @@ public sealed class LocationRuntimePollingDiffTests
         diff.DispatchChanges(Snapshot(storeHealthy: true, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
         Assert.Equal(
             [
-                ZLinkLocationRuntimeEventKind.StatusChanged,
-                ZLinkLocationRuntimeEventKind.StoreRecovered
+                typeof(ZLinkLocationRuntimeEvent.StatusChanged),
+                typeof(ZLinkLocationRuntimeEvent.StoreRecovered)
             ],
-            events.Select(static @event => @event.Event).ToArray());
+            events.Select(static @event => @event.GetType()).ToArray());
     }
 
     [Fact]
@@ -92,9 +92,7 @@ public sealed class LocationRuntimePollingDiffTests
 
         diff.DispatchChanges(Snapshot(storeHealthy: false, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
 
-        Assert.Contains(
-            ZLinkLocationRuntimeEventKind.StoreFailure,
-            events.Select(static @event => @event.Event));
+        Assert.Contains(events, static @event => @event is ZLinkLocationRuntimeEvent.StoreFailure);
     }
 
     private static readonly DateTimeOffset Timestamp = new(2026, 7, 2, 0, 0, 0, TimeSpan.Zero);

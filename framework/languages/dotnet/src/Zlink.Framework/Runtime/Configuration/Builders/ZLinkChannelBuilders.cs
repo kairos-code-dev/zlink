@@ -3,6 +3,9 @@ namespace Zlink.Framework.Runtime.Configuration.Builders;
 internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkClientServerChannelBuilder
 {
+    public IZLinkEndpointConnections ClientConnections
+        => (registration.Client ??= new ZLinkChannelClientCapabilityRegistration()).ManualConnections;
+
     public IZLinkClientServerChannelBuilder EnableServer(string endpoint)
     {
         registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
@@ -109,6 +112,9 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkFanoutChannelBuilder
 {
+    public IZLinkEndpointConnections SubscriberConnections
+        => (registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration()).ManualConnections;
+
     public IZLinkFanoutChannelBuilder EnablePublisher(string endpoint)
     {
         registration.Publisher ??= new ZLinkChannelPublisherCapabilityRegistration();
@@ -166,13 +172,13 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
 internal static class ZLinkChannelEndpointBuilderSupport
 {
     public static void AddManualConnection(
-        ICollection<string> endpoints,
+        ZLinkEndpointConnections endpoints,
         string endpoint,
         string errorMessage)
     {
         if (string.IsNullOrWhiteSpace(endpoint)) throw new ZLinkConfigurationException(errorMessage);
 
-        endpoints.Add(endpoint);
+        endpoints.Connect(endpoint);
     }
 }
 

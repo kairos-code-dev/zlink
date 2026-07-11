@@ -57,7 +57,6 @@ internal static class WorkflowEndpoints
             try
             {
                 return await channel.RequestToChannel("workflow", request)
-                    .PacketName("WorkflowReq")
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<WorkflowRes>();
             }

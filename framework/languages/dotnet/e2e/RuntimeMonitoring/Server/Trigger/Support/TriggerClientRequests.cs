@@ -24,7 +24,6 @@ internal static class TriggerClientRequests
         {
             var channel = host.Services.GetRequiredService<IZLinkChannelClient>();
             return await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
-                .PacketName("ProfileReq")
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async<ProfileRes>();
         }

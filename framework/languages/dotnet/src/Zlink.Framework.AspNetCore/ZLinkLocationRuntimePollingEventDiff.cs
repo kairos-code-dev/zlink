@@ -23,13 +23,7 @@ internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
         _captureFailed = true;
         if (!wasHealthy) return;
 
-        dispatch(new ZLinkLocationRuntimeEvent(
-            sourceName,
-            timestamp,
-            ZLinkLocationRuntimeEventKind.StoreFailure,
-            _previous?.Status,
-            null,
-            null));
+        dispatch(new ZLinkLocationRuntimeEvent.StoreFailure(sourceName, timestamp));
     }
 
     public void DispatchChanges(
@@ -38,51 +32,24 @@ internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
         Action<ZLinkLocationRuntimeEvent> dispatch)
     {
         if (_previous is null || _previous.Status != current.Status)
-            dispatch(new ZLinkLocationRuntimeEvent(
-                sourceName,
-                timestamp,
-                ZLinkLocationRuntimeEventKind.StatusChanged,
-                current.Status,
-                null,
-                null));
+            dispatch(new ZLinkLocationRuntimeEvent.StatusChanged(sourceName, timestamp, current.Status));
 
         // A healthy store is the baseline: the first snapshot only reports
         // an outage, and later snapshots report health transitions.
         var previousHealthy = !_captureFailed && (_previous?.Status.StoreHealthy ?? true);
         _captureFailed = false;
         if (previousHealthy && !current.Status.StoreHealthy)
-            dispatch(new ZLinkLocationRuntimeEvent(
-                sourceName,
-                timestamp,
-                ZLinkLocationRuntimeEventKind.StoreFailure,
-                current.Status,
-                null,
-                null));
+            dispatch(new ZLinkLocationRuntimeEvent.StoreFailure(sourceName, timestamp));
         else if (!previousHealthy && current.Status.StoreHealthy)
-            dispatch(new ZLinkLocationRuntimeEvent(
-                sourceName,
-                timestamp,
-                ZLinkLocationRuntimeEventKind.StoreRecovered,
-                current.Status,
-                null,
-                null));
+            dispatch(new ZLinkLocationRuntimeEvent.StoreRecovered(sourceName, timestamp));
 
         if (_previous is null || !_previous.Topology.SequenceEqual(current.Topology))
-            dispatch(new ZLinkLocationRuntimeEvent(
-                sourceName,
-                timestamp,
-                ZLinkLocationRuntimeEventKind.TopologyChanged,
-                null,
-                current.Topology,
-                null));
+            dispatch(new ZLinkLocationRuntimeEvent.TopologyChanged(sourceName, timestamp, current.Topology));
 
         if (_previous is null || !_previous.ServiceSummary.SequenceEqual(current.ServiceSummary))
-            dispatch(new ZLinkLocationRuntimeEvent(
+            dispatch(new ZLinkLocationRuntimeEvent.ServiceSummaryChanged(
                 sourceName,
                 timestamp,
-                ZLinkLocationRuntimeEventKind.ServiceSummaryChanged,
-                null,
-                null,
                 current.ServiceSummary));
 
         _previous = current;

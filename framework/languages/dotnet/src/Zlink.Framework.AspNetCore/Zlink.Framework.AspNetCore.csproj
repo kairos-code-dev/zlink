@@ -1,5 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <IsPackable>true</IsPackable>
         <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
         <AssemblyName>Zlink.Framework.AspNetCore</AssemblyName>
         <RootNamespace>Zlink.Framework.AspNetCore</RootNamespace>

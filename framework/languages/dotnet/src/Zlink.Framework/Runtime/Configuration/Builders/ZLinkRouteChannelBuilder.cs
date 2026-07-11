@@ -3,6 +3,8 @@ namespace Zlink.Framework.Runtime.Configuration.Builders;
 internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration registration)
     : IZLinkRouteMeshChannelBuilder
 {
+    public IZLinkEndpointConnections ClientConnections => registration.ManualConnections;
+
     public IZLinkRouteMeshChannelBuilder EnableServer(string endpoint)
     {
         new ZLinkRouteMeshChannelServerCapabilityBuilder(registration).Bind(endpoint);

@@ -142,7 +142,9 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
                     ? 0
                     : await _leaseTracker.GetLiveOwnerSetVersionAsync(cancellationToken)
                         .ConfigureAwait(false);
-                if (_lastStamp == stamp && _lastLiveOwnerSetVersion == liveOwners)
+                if (_lastStamp == stamp
+                    && _lastLiveOwnerSetVersion == liveOwners
+                    && !_reconciler.HasPendingTargets)
                 {
                     return;
                 }
@@ -155,6 +157,10 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
                 }
 
                 return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception)
             {

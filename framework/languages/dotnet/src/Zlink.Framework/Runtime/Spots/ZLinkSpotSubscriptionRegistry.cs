@@ -17,14 +17,22 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         _registrations.Add(new ZLinkSpotSubscriptionRegistration(topic, handlerType));
     }
 
+    public void Add(string topic, Type spotType, System.Reflection.MethodInfo method)
+    {
+        if (string.IsNullOrWhiteSpace(topic))
+            throw new ZLinkConfigurationException("SPOT subscription topic must not be empty.");
+        _registrations.Add(new ZLinkSpotSubscriptionRegistration(topic, spotType, method));
+    }
+
     public void Bind(object spot, IZLinkBackendSpot nativeSpot)
     {
         foreach (var subscription in _registrations)
         {
-            var descriptor = ZLinkSpotDescriptorFactory.CreateSubscriptionDescriptor(
-                subscription.Topic,
-                subscription.HandlerType,
-                spot.GetType());
+            var descriptor = subscription.Method is { } method
+                ? ZLinkSpotDescriptorFactory.CreateAttributedSubscriptionDescriptor(
+                    subscription.Topic, subscription.HandlerType, method)
+                : ZLinkSpotDescriptorFactory.CreateSubscriptionDescriptor(
+                    subscription.Topic, subscription.HandlerType, spot.GetType());
 
             if (!_descriptorsByTopic.TryGetValue(subscription.Topic, out var handlers))
             {
@@ -32,6 +40,12 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 _descriptorsByTopic.Add(subscription.Topic, handlers);
             }
 
+            if (handlers.Any(existing => string.Equals(
+                    existing.MessageName,
+                    descriptor.MessageName,
+                    StringComparison.Ordinal)))
+                throw new ZLinkConfigurationException(
+                    $"SPOT subscription handler for topic '{subscription.Topic}' and packet '{descriptor.MessageName}' is already registered.");
             handlers.Add(descriptor);
             nativeSpot.SetSubscription(subscription.Topic);
         }

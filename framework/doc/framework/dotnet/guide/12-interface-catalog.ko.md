@@ -46,12 +46,10 @@
 // IZLinkChannelClient 를 주입받아 channel 이름으로 send/request 한다.
 client
     .SendToChannel("api", new AuthenticateRequest("player-1"))   // IZLinkSendCall
-    .PacketName("authenticate")
     .Submit();
 
 var reply = await client
     .RequestToChannel("api", new AuthenticateRequest("player-1")) // IZLinkRequestCall
-    .PacketName("authenticate")
     .Timeout(TimeSpan.FromSeconds(3))     // request 만 가진 종결자 — reply 대기 상한(send 엔 없다)
     .Async<AuthenticateReply>();          // reply 타입은 호출이 아니라 종결자에서 지정
 ```
@@ -71,21 +69,19 @@ var target = RoutingId.From("play-node-1");   // router channel 너머 최종 �
 
 client
     .SendToNode("play-router", target, new RoomEvent("opened")) // 인자 = (router channel, target node, payload)
-    .PacketName("room.event")
     .Submit();
 
 var room = await client
     .RequestToNode("play-router", target, new AllocateRoom("alice")) // IZLinkRequestCall
-    .PacketName("room.allocate")
     .Timeout(TimeSpan.FromSeconds(2))
     .Async<RoomAllocated>();
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkRouteClient` | router channel 이름 + target 으로 노드/spot 을 직접 지정하는 client. 노드는 `SendToNode(channel, nodeRid, …)`/`RequestToNode(channel, nodeRid, …)`, spot 은 `SendToSpot(channel, SpotRef, …)`/`RequestToSpot(channel, SpotRef, …)`(§3.2) |
-| `IZLinkSendCall` | route send 종결자(`PacketName` → `Submit(ct)`) |
-| `IZLinkRouteRequestCall` | route request 종결자(`PacketName` · `Timeout` → `Async<TReply>`) |
+| `IZLinkRouteClient` | router channel 이름과 target node로 보내거나, 논리적 `SpotHandle` 대상으로 보내는 client. 노드는 `SendToNode(channel, nodeRid, …)`/`RequestToNode(channel, nodeRid, …)`, spot 은 `SendToSpot(handle, …)`/`RequestToSpot(handle, …)`을 쓴다(§3.2). |
+| `IZLinkSendCall` | route send 종결자(`Submit(ct)`) |
+| `IZLinkRequestCall` | route request 종결자(`Timeout` · `Async<TReply>`) |
 | `IZLinkRouteSendHandler<TMessage>` | route mesh channel 의 단방향 수신 handler. `HandleAsync(msg, ZLinkRouteSendContext, ct)` |
 | `IZLinkRouteRequestHandler<TRequest, TReply>` | route mesh channel 의 요청 수신 handler. `HandleAsync(req, ZLinkRouteRequestContext, ct) → ValueTask<TReply>` |
 
@@ -96,7 +92,6 @@ var room = await client
 ```csharp
 publisher
     .Publish("events", "room.opened", new RoomEvent("opened")) // 인자 = (channel, topic, message). topic 이 fan-out 라우팅 키.
-    .PacketName("room.event")
     .Submit();
 ```
 
@@ -169,20 +164,17 @@ codecs.Use(ZLinkProtobufCodec.Default);
 // gRPC unary RPC -> request/response
 var placed = await orders
     .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
-    .PacketName("orders.place")
     .Timeout(TimeSpan.FromSeconds(2))
     .Async<OrderPlaced>();
 
 // gRPC unary returning Empty -> one-way send (응답 안 기다림)
 await orders
     .SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
-    .PacketName("inventory.reserve")
     .Async();
 
 // gRPC server-streaming / 상태 피드 -> pub/sub fan-out
 await events
     .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
-    .PacketName("order.status-changed")
     .Async();
 ```
 
@@ -409,8 +401,8 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
     {
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
 
-        // 다른 spot 으로 보내려면 SpotRef 가 필요하다 — resolve 한 번으로 얻어 보관해 두고 쓴다(§3.2).
-        if (await spots.ResolveSpotRefAsync(RoutingId.From("room-2"), ct) is { } room2)
+        // 다른 spot 으로 보내려면 SpotHandle 가 필요하다 — resolve 한 번으로 얻어 보관해 두고 쓴다(§3.2).
+        if (await spots.ResolveSpotHandleAsync(RoutingId.From("room-2"), ct) is { } room2)
         {
             Context.Outbound.SendToSpot(room2, new RoomEvent("opened")).Submit(ct);                    // send: reply 없음
             await Context.Outbound.RequestToSpot(room2, new JoinRoom("room-2")).Async<JoinedRoom>(ct); // request: reply 대기
@@ -433,7 +425,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `DestroyActorAsync` + `AddTimer` + `RunWorker` |
 | `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe(`AddPacket`, `AddSubscribe`) |
-| `IZLinkSpotOutbound` | spot 안 outbound. `SendToSpot(SpotRef, msg)`/`RequestToSpot(SpotRef, req)`(§3.2) + `Publish(topic, msg)`/`SendToChannel`/`RequestToChannel` |
+| `IZLinkSpotOutbound` | spot 안 outbound. `SendToSpot(SpotHandle, msg)`/`RequestToSpot(SpotHandle, req)`(§3.2) + `Publish(topic, msg)`/`SendToChannel`/`RequestToChannel` |
 | `IZLinkTimer` | 등록된 timer 핸들. `CancelAsync()` / `DisposeAsync()` (§8 도 참조) |
 
 검증: `SpotContracts.Spot_context_registers_handlers_timers_actor_lifecycle_and_outbound_messages`.
@@ -441,34 +433,35 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 ### 3.2 spot outbound — local · routed · publisher
 
 ```csharp
-// ① SpotRef 를 한 번 resolve 해서 보관 — 보내는 순간에는 조회가 없다
-SpotRef room1 = await spots.ResolveSpotRefAsync(RoutingId.From("room-1"))
+// ① SpotHandle 를 한 번 resolve 해서 보관 — 내부 주소 갱신은 framework가 담당
+SpotHandle room1 = await spots.ResolveSpotHandleAsync(RoutingId.From("room-1"))
                          ?? throw new InvalidOperationException("room-1 이 아직 없다");
 
-// ② current Spot callback 안에서 — 보관한 SpotRef 로 send/request (IZLinkSpotOutbound)
+// ② current Spot callback 안에서 — 보관한 SpotHandle 로 send/request (IZLinkSpotOutbound)
 spot.Context.Outbound.SendToSpot(room1, new RoomEvent("opened")).Submit();
 var reply = await spot.Context.Outbound
     .RequestToSpot(room1, new JoinRoom("room-1"))
     .Async<JoinedRoom>();
 
-// ③ spot 밖(일반 코드)에서 — route mesh channel 이름 + SpotRef (IZLinkRouteClient)
-await routes.RequestToSpot("api", room1, new JoinRoom("room-1")).Async<JoinedRoom>();
+// ③ spot 밖(일반 코드)에서 — route mesh channel 이름 + SpotHandle (IZLinkRouteClient)
+await routes.RequestToSpot(room1, new JoinRoom("room-1")).Async<JoinedRoom>();
 
-// local spot 없는 프로세스에서 publish (topic 은 SpotRef 가 필요 없다)
+// local spot 없는 프로세스에서 publish (topic 은 SpotHandle 가 필요 없다)
 publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit(); // IZLinkSpotPublisherClient
 ```
 
-`SpotRef` 가 낡으면(spot 이동·소멸) request 는 `SpotRouteNotFound` 로 실패한다 — 그때 다시
-resolve 해서 재시도한다. send 는 best-effort 라 조용히 버려진다
+framework는 위치 event와 주기적 조회로 `SpotHandle`의 내부 주소를 갱신한다. request 도중
+주소가 무효화되면 안전한 경우에 한해 한 번 갱신하고 재전송한다. send는 중복 전달 가능성 때문에
+자동 재전송하지 않으며, local 제출 실패는 monitoring 오류 경로에서 관측한다
 ([공통 스펙: spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md)).
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkSpotManager` | spot 인스턴스 생성/조회/종료(`CreateAsync`, `GetOrCreateAsync`, `FindAsync`, `ListAsync`, `CloseAsync`) |
-| `IZLinkSpotOutbound` | current Spot callback 안에서의 outbound(`SendToSpot(SpotRef, …)`/`RequestToSpot(SpotRef, …)`/`SendToChannel`/`RequestToChannel`/`Publish`) |
+| `IZLinkSpotOutbound` | current Spot callback 안에서의 outbound(`SendToSpot(SpotHandle, …)`/`RequestToSpot(SpotHandle, …)`/`SendToChannel`/`RequestToChannel`/`Publish`) |
 | `IZLinkSpotPublisherClient` | local spot 없는 프로세스의 spot channel publish(`PublishSpot(channelName, topic, msg)`) |
-| `IZLinkSpotRefResolver` | spot rid → `SpotRef` 조회(`ResolveSpotRefAsync`) — location store 를 읽는 기본 메시징 조회 |
-| `IZLinkActorAddressResolver` | actor id → actor 가 있는 spot 의 `SpotRef` 조회(`ResolveActorSpotRefAsync`) |
+| `IZLinkSpotHandleResolver` | spot rid → `SpotHandle` 조회(`ResolveSpotHandleAsync`) — location store 를 읽는 기본 메시징 조회 |
+| `IZLinkActorSpotHandleResolver` | actor id → actor 가 있는 spot 의 `SpotHandle` 조회(`ResolveActorSpotHandleAsync`) |
 
 검증: `SpotContracts.Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels`.
 
@@ -522,9 +515,9 @@ ActorRef actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLink
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context` |
-| `IZLinkActorContext` | actor 의 상태/동작 표면. `SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
-| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`/`Yield`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
-| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`/`Yield`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
+| `IZLinkActorContext` | actor 의 상태와 동작 표면. `SpotRid?`, `BoundSession`, `JoinSpot`, `JoinEntrySpot`을 제공한다. |
+| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 승인 또는 거절 variant와 reply `ZLinkMessage`를 제공한다. |
+| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 승인 또는 거절 variant와 reply `ZLinkMessage`를 제공한다. |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorTransferAdapter<TActor>` | remote transfer에서 선택적으로 actor state를 `ZLinkMessage`로 만들고 target actor를 materialize한다. 미등록이면 기본 빈 state transfer를 사용한다 |
 | `IZLinkActorManager` | actor ref 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
@@ -589,8 +582,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
             await boundActor.RelayAsync(payload, ct);   // framework ZLinkMessage 를 그대로 넘긴다
         }
 
-        context.Client.Send(new PlayerJoined("player-1"))            // IZLinkSessionSendCall: 단방향 push
-            .PacketName("player.joined").Metadata("trace-id", "abc").Compress().Submit();
+        context.Client.Send(new PlayerJoined("player-1"))            // IZLinkSessionSendCall: 단방향 push.Metadata("trace-id", "abc").Compress().Submit();
         context.Client.Reply(new AuthenticateReply("player-1")) // IZLinkSessionReplyCall
             .Metadata("trace-id", "abc").Compress().Submit();
         await context.CloseAsync();                             // Lifecycle
@@ -631,8 +623,7 @@ framework 는 `TMessage` 를 decode 해서 넘긴다. 미등록 packet 을 actor
 
 ```csharp
 // bound session 은 단방향 push 만 한다(request 표면 없음 → reply 를 받지 않는다).
-boundSession.Send(new PlayerJoined("player-1"))          // IZLinkBoundSessionSendCall: 단방향 push
-    .PacketName("player.joined").Metadata("trace-id", "abc").Submit();
+boundSession.Send(new PlayerJoined("player-1"))          // IZLinkBoundSessionSendCall: 단방향 push.Metadata("trace-id", "abc").Submit();
 await boundSession.DisconnectAsync();
 
 // 전달 가능한 metadata key 정책 — 허용된 key 만 다운스트림으로 전파한다.
@@ -706,9 +697,9 @@ options.AddLocationStore(new ZLinkRedisLocationStore(r => r
 var loc = options.ConfigureLocations();
 loc.OwnerLeaseTtl = TimeSpan.FromSeconds(15);
 
-// 메시징 조회 — SpotRef 를 한 번 받아 보관한다 (DI 주입)
-SpotRef? spot = await spots.ResolveSpotRefAsync(spotRid, ct);          // IZLinkSpotRefResolver
-SpotRef? actorSpot = await actors.ResolveActorSpotRefAsync("p-1", ct); // IZLinkActorAddressResolver
+// 메시징 조회 — SpotHandle 를 한 번 받아 보관한다 (DI 주입)
+SpotHandle? spot = await spots.ResolveSpotHandleAsync(spotRid, ct);          // IZLinkSpotHandleResolver
+SpotHandle? actorSpot = await actors.ResolveActorSpotHandleAsync("p-1", ct); // IZLinkActorSpotHandleResolver
 
 // 운영 조회 — 활성 raw row 와 상태 (DI 주입)
 var status = await query.GetStatusAsync(ct);                                        // IZLinkLocationRuntimeQuery
@@ -723,8 +714,8 @@ var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), ct
 | `IZLinkLocationChangeStampStore` | (선택) kind/mesh 별 change stamp — 변경 번호만 읽어 변경 유무를 싸게 감지하는 최적화 |
 | `IZLinkLocationWatchStore` | (선택) 변경 이벤트 stream — 자동 연결 재계산을 깨우는 최적화. 없으면 polling, 즉 주기적 store 재조회가 기본 경로 |
 | `IZLinkPeerLocationResolver` | 자동 연결이 쓰는 live peer row 목록 조회(`ListLivePeersAsync(filter)`) |
-| `IZLinkSpotRefResolver` | spot rid → `SpotRef` 메시징 조회 |
-| `IZLinkActorAddressResolver` | actor id → 그 actor 가 있는 spot 의 `SpotRef` |
+| `IZLinkSpotHandleResolver` | spot rid → `SpotHandle` 메시징 조회 |
+| `IZLinkActorSpotHandleResolver` | actor id → 그 actor 가 있는 spot 의 `SpotHandle` |
 | route 단건 조회 | public resolver가 아니라 store SPI/운영 조회 경로에서 처리 |
 | `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 — 활성 원시 row, runtime이 합성한 topology 보기, store 상태 |
 

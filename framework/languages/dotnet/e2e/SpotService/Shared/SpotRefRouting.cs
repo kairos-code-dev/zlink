@@ -12,12 +12,12 @@ namespace SpotService.Shared;
 /// </summary>
 public static class SpotAddressRouting
 {
-    public static async ValueTask<SpotRef> ResolveRequiredAsync(
-        this IZLinkSpotRefResolver locator,
+    public static async ValueTask<SpotHandle> ResolveRequiredAsync(
+        this IZLinkSpotHandleResolver locator,
         string spotRid,
         CancellationToken cancellationToken = default)
     {
-        return await locator.ResolveSpotRefAsync(RoutingId.From(spotRid), cancellationToken)
+        return await locator.ResolveSpotHandleAsync(RoutingId.From(spotRid), cancellationToken)
                ?? throw new ZLinkFrameworkException(
                    ZLinkFrameworkErrorKind.SpotRouteNotFound,
                    $"Spot '{spotRid}' has no live address.");

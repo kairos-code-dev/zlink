@@ -99,15 +99,48 @@ public sealed class AutoConnectLoopTests
         Assert.Equal("tcp://r:1", Assert.Single(executor.Disconnected).Endpoint);
     }
 
+    [Fact]
+    public async Task Pending_Connect_Retries_When_The_Change_Stamp_Is_Unchanged()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        await runtime.RenewOwnerLeaseOnceAsync();
+        await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("r1"), TimeSpan.FromMinutes(1));
+        await store.UpdatePeerAsync(
+            new ZLinkPeerLocation(
+                ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
+                ZLinkLocationRole.Router, "tcp://r:1", 100, 0, null, null, "peer-owner", 0, default),
+            ZLinkLocationWriteIntent.NewClaim);
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+        var executor = new RetryExecutor();
+        var local = new ZLinkAutoConnectLocal(
+            ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
+            NodeRid: null, Endpoint: string.Empty);
+        var reconciler = new ZLinkAutoConnectReconciler(
+            local, null, runtime, resolvers, executor, options, time);
+        var loop = new ZLinkAutoConnectLoop(
+            reconciler, local, options, stampStore: store, timeProvider: time, leaseTracker: tracker);
+
+        await loop.TickAsync();
+        await loop.TickAsync();
+
+        Assert.Equal(2, executor.ConnectCalls);
+        Assert.Single(reconciler.ActiveTargets);
+    }
+
     private sealed class RecordingExecutor : IZLinkAutoConnectExecutor
     {
         public List<ZLinkAutoConnectTarget> Connected { get; } = [];
 
         public List<ZLinkAutoConnectTarget> Disconnected { get; } = [];
 
-        public void Connect(ZLinkAutoConnectTarget target) => Connected.Add(target);
+        public bool Connect(ZLinkAutoConnectTarget target) { Connected.Add(target); return true; }
 
-        public void Disconnect(ZLinkAutoConnectTarget target) => Disconnected.Add(target);
+        public bool Disconnect(ZLinkAutoConnectTarget target) { Disconnected.Add(target); return true; }
     }
 
     private sealed class CountingPeerResolver(IZLinkPeerLocationResolver inner) : IZLinkPeerLocationResolver
@@ -125,12 +158,17 @@ public sealed class AutoConnectLoopTests
 
     private sealed class NullExecutor : IZLinkAutoConnectExecutor
     {
-        public void Connect(ZLinkAutoConnectTarget target)
-        {
-        }
+        public bool Connect(ZLinkAutoConnectTarget target) => true;
 
-        public void Disconnect(ZLinkAutoConnectTarget target)
-        {
-        }
+        public bool Disconnect(ZLinkAutoConnectTarget target) => true;
+    }
+
+    private sealed class RetryExecutor : IZLinkAutoConnectExecutor
+    {
+        public int ConnectCalls { get; private set; }
+
+        public bool Connect(ZLinkAutoConnectTarget target) => ++ConnectCalls >= 2;
+
+        public bool Disconnect(ZLinkAutoConnectTarget target) => true;
     }
 }

@@ -15,7 +15,7 @@ internal sealed class ZLinkLocationEventEmitter
 {
     /// <summary>Emitter used when monitoring is not configured; every
     /// method is a no-op.</summary>
-    internal static readonly ZLinkLocationEventEmitter Disabled = new(null, null);
+    internal static readonly ZLinkLocationEventEmitter Disabled = new(null, null, null, null);
 
     private readonly IZLinkRuntimeEventPublisher? _publisher;
     private readonly IReadOnlyCollection<string> _runtimeSources;
@@ -23,12 +23,18 @@ internal sealed class ZLinkLocationEventEmitter
     private readonly IReadOnlyCollection<string> _spotSources;
     private readonly IReadOnlyCollection<string> _actorSources;
     private readonly IReadOnlyCollection<string> _routeSources;
+    private readonly ZLinkSpotHandleRegistry? _handles;
+    private readonly ZLinkObservedLocationGenerations? _observed;
 
     internal ZLinkLocationEventEmitter(
         ZLinkMonitoringRegistration? registration,
-        IZLinkRuntimeEventPublisher? publisher)
+        IZLinkRuntimeEventPublisher? publisher,
+        ZLinkSpotHandleRegistry? handles,
+        ZLinkObservedLocationGenerations? observed = null)
     {
         _publisher = publisher;
+        _handles = handles;
+        _observed = observed;
         _runtimeSources = registration is null
             ? Array.Empty<string>()
             : registration.LocationRuntimeSources.Keys;
@@ -38,63 +44,101 @@ internal sealed class ZLinkLocationEventEmitter
         _routeSources = registration?.LocationRouteSources ?? (IReadOnlyCollection<string>)Array.Empty<string>();
     }
 
-    internal ValueTask PeerRowUpdatedAsync(ZLinkPeerLocation peer, CancellationToken ct) =>
-        EmitAsync(_peerSources, source => new ZLinkLocationPeerEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationPeerEventKind.RowUpdated,
+    internal ValueTask PeerRowUpdatedAsync(ZLinkPeerLocation peer, CancellationToken ct)
+    {
+        _observed?.ObservePeer(peer);
+        return EmitAsync(_peerSources, source => new ZLinkLocationPeerEvent.RowUpdated(
+            source, DateTimeOffset.UtcNow,
             new ZLinkPeerLocationKey(
                 peer.AutoConnectType, peer.MeshName, peer.Role, peer.NodeRid, peer.Endpoint),
-            peer, null), ct);
+            peer), ct);
+    }
 
-    internal ValueTask PeerRowRemovedAsync(ZLinkPeerLocationKey key, CancellationToken ct) =>
-        EmitAsync(_peerSources, source => new ZLinkLocationPeerEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationPeerEventKind.RowRemoved,
-            key, null, null), ct);
+    internal ValueTask PeerRowRemovedAsync(
+        ZLinkPeerLocationKey key,
+        long generation,
+        CancellationToken ct)
+    {
+        _observed?.ObservePeer(key, generation);
+        return EmitAsync(_peerSources, source => new ZLinkLocationPeerEvent.RowRemoved(
+            source, DateTimeOffset.UtcNow, key), ct);
+    }
 
     internal ValueTask DesiredSetChangedAsync(
         ZLinkAutoConnectDesiredSetChange change,
         CancellationToken ct) =>
-        EmitAsync(_peerSources, source => new ZLinkLocationPeerEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationPeerEventKind.DesiredSetChanged,
-            null, null, change), ct);
+        EmitAsync(_peerSources, source => new ZLinkLocationPeerEvent.DesiredSetChanged(
+            source, DateTimeOffset.UtcNow, change), ct);
 
-    internal ValueTask SpotRowUpdatedAsync(ZLinkSpotLocation spot, CancellationToken ct) =>
-        EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationSpotEventKind.RowUpdated,
+    internal ValueTask SpotRowUpdatedAsync(ZLinkSpotLocation spot, CancellationToken ct)
+    {
+        _observed?.ObserveSpot(spot);
+        _handles?.UpdateSpot(spot);
+        return EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent.RowUpdated(
+            source, DateTimeOffset.UtcNow,
             new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid), spot), ct);
+    }
 
-    internal ValueTask SpotRowRemovedAsync(ZLinkSpotLocationKey key, CancellationToken ct) =>
-        EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationSpotEventKind.RowRemoved, key, null), ct);
+    internal ValueTask SpotRowRemovedAsync(
+        ZLinkSpotLocationKey key,
+        long generation,
+        CancellationToken ct)
+    {
+        _observed?.ObserveSpot(key, generation);
+        _handles?.RemoveSpot(key, generation);
+        return EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent.RowRemoved(
+            source, DateTimeOffset.UtcNow, key), ct);
+    }
 
     internal ValueTask SpotResolveMissAsync(ZLinkSpotLocationKey key, CancellationToken ct) =>
-        EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationSpotEventKind.ResolveMiss, key, null), ct);
+        EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent.ResolveMiss(
+            source, DateTimeOffset.UtcNow, key), ct);
 
-    internal ValueTask ActorRowUpdatedAsync(ZLinkActorLocation actor, CancellationToken ct) =>
-        EmitAsync(_actorSources, source => new ZLinkLocationActorEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationActorEventKind.RowUpdated,
+    internal ValueTask ActorRowUpdatedAsync(ZLinkActorLocation actor, CancellationToken ct)
+    {
+        _observed?.ObserveActor(actor);
+        _handles?.UpdateActor(actor);
+        return EmitAsync(_actorSources, source => new ZLinkLocationActorEvent.RowUpdated(
+            source, DateTimeOffset.UtcNow,
             new ZLinkActorLocationKey(actor.ActorId), actor), ct);
+    }
 
-    internal ValueTask ActorRowRemovedAsync(ZLinkActorLocationKey key, CancellationToken ct) =>
-        EmitAsync(_actorSources, source => new ZLinkLocationActorEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationActorEventKind.RowRemoved, key, null), ct);
+    internal ValueTask ActorRowRemovedAsync(
+        ZLinkActorLocationKey key,
+        long generation,
+        CancellationToken ct)
+    {
+        _observed?.ObserveActor(key, generation);
+        _handles?.RemoveActor(key, generation);
+        return EmitAsync(_actorSources, source => new ZLinkLocationActorEvent.RowRemoved(
+            source, DateTimeOffset.UtcNow, key), ct);
+    }
 
     internal ValueTask ActorResolveMissAsync(ZLinkActorLocationKey key, CancellationToken ct) =>
-        EmitAsync(_actorSources, source => new ZLinkLocationActorEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationActorEventKind.ResolveMiss, key, null), ct);
+        EmitAsync(_actorSources, source => new ZLinkLocationActorEvent.ResolveMiss(
+            source, DateTimeOffset.UtcNow, key), ct);
 
-    internal ValueTask RouteRowUpdatedAsync(ZLinkRouteLocation route, CancellationToken ct) =>
-        EmitAsync(_routeSources, source => new ZLinkLocationRouteEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationRouteEventKind.RowUpdated,
+    internal ValueTask RouteRowUpdatedAsync(ZLinkRouteLocation route, CancellationToken ct)
+    {
+        _observed?.ObserveRoute(route);
+        return EmitAsync(_routeSources, source => new ZLinkLocationRouteEvent.RowUpdated(
+            source, DateTimeOffset.UtcNow,
             new ZLinkRouteLocationKey(route.RouteKind, route.RouteKey), route), ct);
+    }
 
-    internal ValueTask RouteRowRemovedAsync(ZLinkRouteLocationKey key, CancellationToken ct) =>
-        EmitAsync(_routeSources, source => new ZLinkLocationRouteEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationRouteEventKind.RowRemoved, key, null), ct);
+    internal ValueTask RouteRowRemovedAsync(
+        ZLinkRouteLocationKey key,
+        long generation,
+        CancellationToken ct)
+    {
+        _observed?.ObserveRoute(key, generation);
+        return EmitAsync(_routeSources, source => new ZLinkLocationRouteEvent.RowRemoved(
+            source, DateTimeOffset.UtcNow, key), ct);
+    }
 
     internal ValueTask RouteResolveMissAsync(ZLinkRouteLocationKey key, CancellationToken ct) =>
-        EmitAsync(_routeSources, source => new ZLinkLocationRouteEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationRouteEventKind.ResolveMiss, key, null), ct);
+        EmitAsync(_routeSources, source => new ZLinkLocationRouteEvent.ResolveMiss(
+            source, DateTimeOffset.UtcNow, key), ct);
 
     private async ValueTask EmitAsync<TEvent>(
         IReadOnlyCollection<string> sources,

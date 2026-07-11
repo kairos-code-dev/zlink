@@ -28,9 +28,8 @@ internal sealed class DeliveryStatusChangedHandler(
             request.OccurredAt);
         var actor = await actorDirectory.FindAsync(request.CustomerId, cancellationToken)
                     ?? throw new InvalidOperationException($"Customer actor '{request.CustomerId}' was not found.");
-        await actors.SendToActor(actor, updated)
-            .PacketName(nameof(DeliveryStatusUpdatedMsg))
-            .Async(cancellationToken);
+        actors.SendToActor(actor, updated)
+            .Submit(cancellationToken);
         logger.LogInformation(
             "deliverydispatch tracking: status delivery={DeliveryId} status={Status} courier={CourierId}",
             request.DeliveryId,

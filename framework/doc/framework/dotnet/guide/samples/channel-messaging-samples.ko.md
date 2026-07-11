@@ -812,9 +812,8 @@ app.MapPost("/profiles/get", async (
     있으면 즉시 실패시키는 단계다. 런타임에서 늦게 드러나는 실패를 막는다.
 
 [^packetname]: **packet name** 은 메시지 종류를 가리키는 문자열 키다. 기본값은 payload
-    타입 이름이고, payload 타입에 `[ZLinkPacket("...")]` 를 붙이거나 outbound 호출에서
-    `.PacketName("...")` 로 override 한다. handler 쪽 method 는 `[ZLinkRequest(PacketName = "...")]`
-    로 받을 packet 이름을 지정한다.
+    타입 이름이며, 다른 이름이 필요하면 payload 타입에 `[ZLinkPacket("...")]` 를 붙인다.
+    handler method attribute의 packet 이름도 이 descriptor와 일치해야 한다.
 
 [^fanout]: **fan-out** 은 하나의 publish 가 여러 구독자에게 동시에 퍼져 나가는 흐름을
     가리킨다.

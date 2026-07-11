@@ -242,7 +242,6 @@ internal sealed class TicTacToeGame(
         Context.Outbound.Publish(
                 SampleTopics.PlayerMilestone,
                 new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
-            .PacketName(nameof(PlayerWinMilestoneEvent))
                 .Submit(cancellationToken);
         return ValueTask.CompletedTask;
     }

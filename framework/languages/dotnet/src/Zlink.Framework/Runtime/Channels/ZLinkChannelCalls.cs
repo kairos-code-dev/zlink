@@ -8,7 +8,6 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
     private readonly object? _message;
     private readonly ZLinkFrameworkRegistration _registration;
     private readonly ZLinkFrameworkRuntime _runtime;
-    private string? _messageName;
 
     public ZLinkSendCall(
         ZLinkFrameworkRuntime runtime,
@@ -20,12 +19,6 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         _registration = registration;
         _channelName = channelName;
         _message = message;
-    }
-
-    public IZLinkSendCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        return this;
     }
 
     public void Submit(CancellationToken cancellationToken = default)
@@ -45,7 +38,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             _channelName,
-            _messageName ?? ZLinkMessageNameResolver.ResolveFromMessage(_message),
+            ZLinkMessageNameResolver.ResolveFromMessage(_message),
             includeCorrelationId: traceSent,
             includeDeadline: false);
 
@@ -76,32 +69,15 @@ internal sealed class ZLinkRequestCall<TMessage>(
     ZLinkFrameworkRegistration registration,
     string channelName,
     TMessage request)
-    : IZLinkYieldRequestCall
+    : IZLinkRequestCall
 {
-    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
-    private string? _messageName;
     private TimeSpan? _timeout;
 
-    public IZLinkYieldRequestCall PacketName(string messageName)
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
     {
-        _messageName = messageName;
-        return this;
-    }
-
-    public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
-    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
         _timeout = timeout;
         return this;
-    }
-
-    IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
-    {
-        return PacketName(messageName);
-    }
-
-    IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
-    {
-        return Timeout(timeout);
     }
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
@@ -115,7 +91,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,
-            _messageName ?? ZLinkMessageNameResolver.ResolveFromMessage(request),
+            ZLinkMessageNameResolver.ResolveFromMessage(request),
             timeout,
             includeCorrelationId: traceSent || traceReply,
             includeDeadline: false);
@@ -176,17 +152,6 @@ internal sealed class ZLinkRequestCall<TMessage>(
         return result;
     }
 
-    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
-    {
-        return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
-    }
-
-    private ZLinkSerialTurn RequireTurn()
-    {
-        return _turn
-               ?? throw new InvalidOperationException(
-                   "Yield requires a framework Spot handler turn captured when the call object was created.");
-    }
 }
 
 internal sealed class ZLinkPublishCall(
@@ -197,14 +162,6 @@ internal sealed class ZLinkPublishCall(
     object? message)
     : IZLinkPublishCall
 {
-    private string? _messageName;
-
-    public IZLinkPublishCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        return this;
-    }
-
     public void Submit(CancellationToken cancellationToken = default)
     {
         using (var operation = runtime.EnterOperation())
@@ -222,7 +179,7 @@ internal sealed class ZLinkPublishCall(
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Publish,
             channelName,
-            _messageName ?? ZLinkMessageNameResolver.ResolveFromMessage(message),
+            ZLinkMessageNameResolver.ResolveFromMessage(message),
             topic: topic,
             source: channelName,
             includeCorrelationId: traceSent,

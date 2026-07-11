@@ -22,15 +22,12 @@ public sealed class LocationEventEmitterTests
         await fixture.Runtime.RemoveActorAsync(
             new ZLinkActorLocationKey("actor-1"), claimed.Generation);
 
-        var updated = Assert.IsType<ZLinkLocationActorEvent>(fixture.Publisher.Events[0]);
+        var updated = Assert.IsType<ZLinkLocationActorEvent.RowUpdated>(fixture.Publisher.Events[0]);
         Assert.Equal("actors", updated.SourceName);
-        Assert.Equal(ZLinkLocationActorEventKind.RowUpdated, updated.Event);
-        Assert.Equal(claimed.Generation, updated.Actor!.Generation);
+        Assert.Equal(claimed.Generation, updated.Actor.Generation);
 
-        var removed = Assert.IsType<ZLinkLocationActorEvent>(fixture.Publisher.Events[1]);
-        Assert.Equal(ZLinkLocationActorEventKind.RowRemoved, removed.Event);
+        var removed = Assert.IsType<ZLinkLocationActorEvent.RowRemoved>(fixture.Publisher.Events[1]);
         Assert.Equal("actor-1", removed.Key.ActorId);
-        Assert.Null(removed.Actor);
     }
 
     [Fact]
@@ -54,8 +51,7 @@ public sealed class LocationEventEmitterTests
 
         Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("ghost")));
 
-        var miss = Assert.Single(fixture.Publisher.Events.OfType<ZLinkLocationActorEvent>());
-        Assert.Equal(ZLinkLocationActorEventKind.ResolveMiss, miss.Event);
+        var miss = Assert.Single(fixture.Publisher.Events.OfType<ZLinkLocationActorEvent.ResolveMiss>());
         Assert.Equal("ghost", miss.Key.ActorId);
     }
 
@@ -73,16 +69,14 @@ public sealed class LocationEventEmitterTests
         await fixture.Reconciler.TickAsync();
 
         var change = Assert.Single(
-            fixture.Publisher.Events.OfType<ZLinkLocationPeerEvent>(),
-            static @event => @event.Event == ZLinkLocationPeerEventKind.DesiredSetChanged);
+            fixture.Publisher.Events.OfType<ZLinkLocationPeerEvent.DesiredSetChanged>());
         Assert.Equal("peers", change.SourceName);
-        Assert.Equal(["tcp://r:1"], change.DesiredSetChange!.Value.ConnectedEndpoints);
-        Assert.Empty(change.DesiredSetChange!.Value.DisconnectedEndpoints);
+        Assert.Equal(["tcp://r:1"], change.Change.ConnectedEndpoints);
+        Assert.Empty(change.Change.DisconnectedEndpoints);
 
         // The local row publish also flows through the peer source.
-        Assert.Contains(
-            fixture.Publisher.Events.OfType<ZLinkLocationPeerEvent>(),
-            static @event => @event.Event == ZLinkLocationPeerEventKind.RowUpdated);
+        Assert.NotEmpty(
+            fixture.Publisher.Events.OfType<ZLinkLocationPeerEvent.RowUpdated>());
     }
 
     [Fact]
@@ -96,6 +90,27 @@ public sealed class LocationEventEmitterTests
         await fixture.Reconciler.TickAsync();
 
         Assert.Empty(fixture.Publisher.Events);
+    }
+
+    [Fact]
+    public async Task Mutation_Events_Advance_The_Shared_Generation_Guard()
+    {
+        var observed = new ZLinkObservedLocationGenerations();
+        var emitter = new ZLinkLocationEventEmitter(null, null, null, observed);
+        var spot = InMemoryLocationStoreTests.Spot("owner", "spot-1") with { Generation = 2 };
+        var actor = InMemoryLocationStoreTests.Actor("owner", 2) with { Generation = 2 };
+        var peer = InMemoryLocationStoreTests.Peer("owner") with { Generation = 2 };
+        var route = InMemoryLocationStoreTests.Route("owner") with { Generation = 2 };
+
+        await emitter.SpotRowUpdatedAsync(spot, CancellationToken.None);
+        await emitter.ActorRowUpdatedAsync(actor, CancellationToken.None);
+        await emitter.PeerRowUpdatedAsync(peer, CancellationToken.None);
+        await emitter.RouteRowUpdatedAsync(route, CancellationToken.None);
+
+        Assert.False(observed.AcceptSpot(spot with { Generation = 1 }));
+        Assert.False(observed.AcceptActor(actor with { Generation = 1 }));
+        Assert.False(observed.AcceptPeer(peer with { Generation = 1 }));
+        Assert.False(observed.AcceptRoute(route with { Generation = 1 }));
     }
 
     private static async Task<EmitterFixture> FixtureAsync(bool registerSources = true)
@@ -121,7 +136,7 @@ public sealed class LocationEventEmitterTests
         }
 
         var publisher = new RecordingPublisher();
-        var emitter = new ZLinkLocationEventEmitter(registration, publisher);
+        var emitter = new ZLinkLocationEventEmitter(registration, publisher, new ZLinkSpotHandleRegistry());
 
         var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time, emitter);
         await runtime.RenewOwnerLeaseOnceAsync();
@@ -171,12 +186,8 @@ public sealed class LocationEventEmitterTests
 
     private sealed class NullExecutor : IZLinkAutoConnectExecutor
     {
-        public void Connect(ZLinkAutoConnectTarget target)
-        {
-        }
+        public bool Connect(ZLinkAutoConnectTarget target) => true;
 
-        public void Disconnect(ZLinkAutoConnectTarget target)
-        {
-        }
+        public bool Disconnect(ZLinkAutoConnectTarget target) => true;
     }
 }

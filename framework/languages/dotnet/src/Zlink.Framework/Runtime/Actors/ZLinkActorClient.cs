@@ -247,21 +247,15 @@ internal sealed class ZLinkActorClient(
         ActorRef actor,
         TMessage message) : IZLinkActorSendCall
     {
-        private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-
-        public IZLinkActorSendCall PacketName(string packetName)
+        public void Submit(CancellationToken cancellationToken = default)
         {
-            _packetName = packetName;
-            return this;
-        }
-
-        public ValueTask Async(CancellationToken cancellationToken = default)
-        {
-            return client.SendAsync(
-                actor,
-                _packetName ?? throw new InvalidOperationException("Packet name is required."),
-                message,
-                cancellationToken);
+            ZLinkUnawaitedSubmit.Observe(
+                client.SendAsync(
+                    actor,
+                    ZLinkMessageNameResolver.ResolveFromMessage(message),
+                    message,
+                    cancellationToken),
+                "actor submit");
         }
     }
 
@@ -270,17 +264,11 @@ internal sealed class ZLinkActorClient(
         ActorRef actor,
         TRequest request) : IZLinkActorRequestCall
     {
-        private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
         private TimeSpan? _timeout;
-
-        public IZLinkActorRequestCall PacketName(string packetName)
-        {
-            _packetName = packetName;
-            return this;
-        }
 
         public IZLinkActorRequestCall Timeout(TimeSpan timeout)
         {
+            ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
             _timeout = timeout;
             return this;
         }
@@ -289,7 +277,7 @@ internal sealed class ZLinkActorClient(
         {
             return client.RequestAsync<TRequest, TReply>(
                 actor,
-                _packetName ?? throw new InvalidOperationException("Packet name is required."),
+                ZLinkMessageNameResolver.ResolveFromMessage(request),
                 request,
                 _timeout,
                 cancellationToken);

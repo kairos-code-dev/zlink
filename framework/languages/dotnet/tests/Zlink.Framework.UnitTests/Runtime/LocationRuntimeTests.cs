@@ -150,8 +150,8 @@ public sealed class LocationRuntimeTests
         using var provider = services.BuildServiceProvider();
 
         Assert.NotNull(provider.GetRequiredService<IZLinkPeerLocationResolver>());
-        Assert.NotNull(provider.GetRequiredService<IZLinkSpotRefResolver>());
-        Assert.NotNull(provider.GetRequiredService<IZLinkActorAddressResolver>());
+        Assert.NotNull(provider.GetRequiredService<IZLinkSpotHandleResolver>());
+        Assert.NotNull(provider.GetRequiredService<IZLinkActorSpotHandleResolver>());
         Assert.NotNull(provider.GetRequiredService<IZLinkLocationRuntimeQuery>());
 
         // The five store roles must share one physical store: in-memory

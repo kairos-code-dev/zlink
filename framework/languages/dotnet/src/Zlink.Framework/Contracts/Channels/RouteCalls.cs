@@ -13,23 +13,21 @@ public interface IZLinkRouteClient
         TRequest request);
 
     /// <summary>
-    /// Sends to a spot full address over the channel's spot route plane.
-    /// The caller resolved the address once and holds it; best-effort like
-    /// every spot send (spot-address messaging draft §6, §7).
+    /// Sends through the current address held by the spot handle. The framework
+    /// refreshes the handle from location updates, but does not retry a one-way
+    /// send because delivery may already have occurred.
     /// </summary>
     IZLinkSendCall SendToSpot<TMessage>(
-        string routerChannelId,
-        SpotRef address,
+        SpotHandle target,
         TMessage message);
 
     /// <summary>
-    /// Requests against a spot full address over the channel's spot route
-    /// plane. A stale address fails with SpotRouteNotFound; re-resolve and
-    /// retry per the caller's policy.
+    /// Requests through the current address held by the spot handle. If the
+    /// address is invalidated during the request, the framework refreshes the
+    /// handle and retries once when doing so cannot duplicate a completed call.
     /// </summary>
     IZLinkRequestCall RequestToSpot<TRequest>(
-        string routerChannelId,
-        SpotRef address,
+        SpotHandle target,
         TRequest request);
 }
 

@@ -441,7 +441,6 @@ public sealed class PriceService(IZLinkChannelClient client)
 ```csharp
 await client
     .RequestToChannel("price", new PriceRequest(symbol))
-    .PacketName("price.v2")            // packet 이름이 payload 타입 이름과 다를 때만 지정
     .Timeout(TimeSpan.FromSeconds(5))  // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정
     .Async<PriceReply>(ct);
 // reply 대기 상한 결정 순서(앞이 우선):

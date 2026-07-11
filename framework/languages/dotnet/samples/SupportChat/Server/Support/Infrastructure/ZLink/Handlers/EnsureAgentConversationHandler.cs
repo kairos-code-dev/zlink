@@ -45,7 +45,13 @@ internal sealed class EnsureAgentConversationHandler(
                     conversationActor.Actor.Role,
                     conversationActor.Actor.DisplayName))
             .Async(cancellationToken);
-        var state = joined.Reply.Decode<JoinConversationRes>().State;
+        var reply = joined switch
+        {
+            ZLinkActorJoinResult.Accepted accepted => accepted.Reply,
+            ZLinkActorJoinResult.Rejected rejected => rejected.Reply,
+            _ => throw new InvalidOperationException("Unknown actor join result.")
+        };
+        var state = reply.Decode<JoinConversationRes>().State;
 
         logger.LogInformation(
             "support agent conversation: joined. conversation={ConversationId}, roster={RosterActorId}",

@@ -3,9 +3,9 @@ namespace Zlink.Framework.Contracts.Locations;
 /// <summary>
 /// Location runtime policy options. Store implementations never read these;
 /// the framework applies heartbeat and polling policy on top of the
-/// registered stores. Defaults follow the draft contract candidates.
-/// Resolvers have no cache: every resolve reads the store, and callers hold
-/// resolved spot addresses themselves (spot-address messaging draft).
+/// registered stores. Resolvers have no cache: every resolve reads the
+/// store. A resolved spot handle retains its logical key and the framework
+/// refreshes its address according to the spot-address messaging contract.
 /// </summary>
 public sealed class ZLinkLocationOptions
 {

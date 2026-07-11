@@ -11,6 +11,7 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
 
     private bool _bound;
     private IZLinkSessionContext? _context;
+    private IZLinkSession? _session;
 
     public void AddHandler<THandler>()
         where THandler : class
@@ -39,7 +40,13 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
         var context = _context
                       ?? throw new InvalidOperationException("Session handler registry is not bound to a session.");
 
-        await handler.HandleAsync(services, context, dispatch, payload, cancellationToken)
+        await handler.HandleAsync(
+                services,
+                _session,
+                context,
+                dispatch,
+                payload,
+                cancellationToken)
             .ConfigureAwait(false);
         return true;
     }
@@ -49,6 +56,12 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
         if (_context is not null) throw new InvalidOperationException("Session handler registry is already bound.");
 
         _context = context;
+    }
+
+    internal void BindSession(IZLinkSession session)
+    {
+        if (_session is not null) throw new InvalidOperationException("Session handler owner is already bound.");
+        _session = session;
     }
 
     internal void Bind()
@@ -67,6 +80,11 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
         {
             if (handlerType.IsAbstract || handlerType.IsInterface) continue;
 
+            if (handlerType == _session?.GetType())
+                foreach (var method in handlerType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
+                    if (method.GetCustomAttribute<ZLinkStreamPacketAttribute>() is not null)
+                        AddAttributedHandler(handlerType, method);
+
             if (!ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType)
                     .Any(contract => contract.Definition == typeof(IZLinkSessionPacketHandler<,>)
                                      && contract.Arguments[0].IsAssignableFrom(contextType)))
@@ -74,6 +92,12 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
 
             AddHandler(handlerType, null);
         }
+    }
+
+    private void AddAttributedHandler(Type sessionType, MethodInfo method)
+    {
+        var descriptor = ZLinkSessionPacketHandlerDescriptorFactory.CreateAttributed(sessionType, method);
+        AddDescriptor(descriptor);
     }
 
     private void AddHandler(Type handlerType, string? packetName)
@@ -86,6 +110,11 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
             context.GetType(),
             packetName);
 
+        AddDescriptor(descriptor);
+    }
+
+    private void AddDescriptor(ZLinkSessionPacketHandlerDescriptor descriptor)
+    {
         if (_handlers.TryGetValue(descriptor.PacketName, out var existing)
             && existing.HandlerType == descriptor.HandlerType
             && existing.MessageType == descriptor.MessageType)
@@ -106,6 +135,43 @@ internal sealed class ZLinkSessionHandlerRegistry(IServiceProvider services)
     }
 }
 
+internal sealed class ZLinkAttributedSessionPacketHandlerDescriptor<TMessage>(
+    Type sessionType,
+    string packetName,
+    ZLinkHandlerMethodInvoker invoker,
+    bool passDispatch,
+    bool passCancellationToken)
+    : ZLinkSessionPacketHandlerDescriptor(sessionType, typeof(TMessage), packetName)
+{
+    public override async ValueTask HandleAsync(
+        IServiceProvider services,
+        IZLinkSession? session,
+        IZLinkSessionContext context,
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload,
+        CancellationToken cancellationToken)
+    {
+        if (session is null || !HandlerType.IsInstanceOfType(session))
+            throw new InvalidOperationException(
+                $"Active session owner '{HandlerType.FullName}' is not available for attributed packet dispatch.");
+
+        var message = payload.Decode<TMessage>();
+        var argumentCount = 1 + (passDispatch ? 1 : 0) + (passCancellationToken ? 1 : 0);
+        await ZLinkHandlerInvocationEngine.InvokeAsync(
+                session,
+                invoker,
+                argumentCount,
+                arguments =>
+                {
+                    var index = 0;
+                    arguments[index++] = message;
+                    if (passDispatch) arguments[index++] = dispatch;
+                    if (passCancellationToken) arguments[index] = cancellationToken;
+                })
+            .ConfigureAwait(false);
+    }
+}
+
 internal abstract class ZLinkSessionPacketHandlerDescriptor(
     Type handlerType,
     Type messageType,
@@ -119,6 +185,7 @@ internal abstract class ZLinkSessionPacketHandlerDescriptor(
 
     public abstract ValueTask HandleAsync(
         IServiceProvider services,
+        IZLinkSession? session,
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
@@ -136,6 +203,7 @@ internal sealed class ZLinkSessionPacketHandlerDescriptor<TSessionContext, TMess
 
     public override async ValueTask HandleAsync(
         IServiceProvider services,
+        IZLinkSession? session,
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
@@ -153,6 +221,45 @@ internal sealed class ZLinkSessionPacketHandlerDescriptor<TSessionContext, TMess
 
 internal static class ZLinkSessionPacketHandlerDescriptorFactory
 {
+    public static ZLinkSessionPacketHandlerDescriptor CreateAttributed(Type sessionType, MethodInfo method)
+    {
+        if (!typeof(IZLinkSession).IsAssignableFrom(sessionType)
+            || method.DeclaringType != sessionType
+            || method.IsStatic
+            || method.IsGenericMethodDefinition)
+            throw new ZLinkConfigurationException(
+                $"Stream packet method '{method.DeclaringType?.FullName}.{method.Name}' must be a non-generic instance method on the concrete IZLinkSession type.");
+
+        var parameters = method.GetParameters();
+        if (parameters.Length is < 1 or > 3)
+            throw InvalidShape(sessionType, method);
+        var messageType = parameters[0].ParameterType;
+        var passDispatch = parameters.Length >= 2
+                           && parameters[1].ParameterType == typeof(ZLinkSessionDispatchContext);
+        var cancellationIndex = passDispatch ? 2 : 1;
+        var passCancellationToken = parameters.Length > cancellationIndex
+                                    && parameters[cancellationIndex].ParameterType == typeof(CancellationToken);
+        if (parameters.Length != 1 + (passDispatch ? 1 : 0) + (passCancellationToken ? 1 : 0)
+            || messageType.IsByRef
+            || method.ReturnType != typeof(Task)
+            && method.ReturnType != typeof(ValueTask))
+            throw InvalidShape(sessionType, method);
+
+        return (ZLinkSessionPacketHandlerDescriptor)Activator.CreateInstance(
+            typeof(ZLinkAttributedSessionPacketHandlerDescriptor<>).MakeGenericType(messageType),
+            sessionType,
+            ZLinkMessageNameResolver.ResolveFromType(messageType),
+            ZLinkHandlerMethodInvokerFactory.Create(method),
+            passDispatch,
+            passCancellationToken)!;
+    }
+
+    private static ZLinkConfigurationException InvalidShape(Type sessionType, MethodInfo method)
+    {
+        return new ZLinkConfigurationException(
+            $"Stream packet method '{sessionType.FullName}.{method.Name}' must accept payload, optional ZLinkSessionDispatchContext, optional CancellationToken and return Task or ValueTask.");
+    }
+
     public static ZLinkSessionPacketHandlerDescriptor Create(
         Type handlerType,
         Type sessionContextType,

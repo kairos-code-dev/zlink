@@ -31,9 +31,15 @@ internal sealed class LocationRuntimeEventRecorder(EvidenceStore evidence)
     public ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var topologyCount = @event is ZLinkLocationRuntimeEvent.TopologyChanged topology
+            ? topology.Topology.Count
+            : -1;
+        var summaryCount = @event is ZLinkLocationRuntimeEvent.ServiceSummaryChanged summary
+            ? summary.ServiceSummary.Count
+            : -1;
         evidence.Add(
-            $"monitor-location-runtime|source={@event.SourceName}|kind={@event.Event}"
-            + $"|topology={@event.Topology?.Count ?? -1}|summary={@event.ServiceSummary?.Count ?? -1}");
+            $"monitor-location-runtime|source={@event.SourceName}|kind={@event.GetType().Name}"
+            + $"|topology={topologyCount}|summary={summaryCount}");
         return ValueTask.CompletedTask;
     }
 }
@@ -43,10 +49,18 @@ internal sealed class SpotEventRecorder(EvidenceStore evidence) : IZLinkRuntimeE
     public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var peerCount = @event is ZLinkSpotEvent.PeersChanged peers ? peers.Peers.Count : -1;
+        var subjectCount = @event is ZLinkSpotEvent.SubjectsChanged subjects ? subjects.Subjects.Count : -1;
+        var timerName = @event switch
+        {
+            ZLinkSpotEvent.TimerHandlerFailed failed => failed.Diagnostic.TimerName,
+            ZLinkSpotEvent.TimerStoppedAfterUnhandledException stopped => stopped.Diagnostic.TimerName,
+            _ => "<null>"
+        };
         evidence.Add(
-            $"monitor-spot|source={@event.SourceName}|kind={@event.Event}"
-            + $"|peers={@event.Peers?.Count ?? -1}|subjects={@event.Subjects?.Count ?? -1}"
-            + $"|timer={@event.TimerDiagnostic?.TimerName ?? "<null>"}");
+            $"monitor-spot|source={@event.SourceName}|kind={@event.GetType().Name}"
+            + $"|peers={peerCount}|subjects={subjectCount}"
+            + $"|timer={timerName}");
         return ValueTask.CompletedTask;
     }
 }

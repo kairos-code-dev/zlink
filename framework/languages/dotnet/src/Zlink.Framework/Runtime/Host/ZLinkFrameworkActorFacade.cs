@@ -58,10 +58,10 @@ internal sealed class ZLinkFrameworkActorFacade(
                 actor,
                 request,
                 cancellationToken).ConfigureAwait(false);
-        return new ZLinkActorJoinResult(
-            joinResult.Accepted,
-            joinResult.Accepted ? ToActorRef(actorState) : null,
-            joinResult.Reply ?? ZLinkMessage.Empty);
+        var reply = joinResult.Reply ?? ZLinkMessage.Empty;
+        return joinResult.Accepted
+            ? new ZLinkActorJoinResult.Accepted(ToActorRef(actorState), reply)
+            : new ZLinkActorJoinResult.Rejected(reply);
     }
 
     public async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(

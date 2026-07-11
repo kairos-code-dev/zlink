@@ -30,8 +30,6 @@ internal sealed class ZLinkFrameworkRegistration
 
     public bool ImplicitHandlerAutoRegistrationEnabled { get; set; } = true;
 
-    public Type? SpotRouteRefResolverType { get; set; }
-
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkRouteChannelRegistration> RouteChannels { get; } = new(StringComparer.Ordinal);
@@ -158,13 +156,15 @@ internal sealed class ZLinkChannelServerCapabilityRegistration
 
 internal sealed class ZLinkChannelClientCapabilityRegistration
 {
+    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
+
     public string? BindEndpoint { get; set; }
 
     public ZLinkSocketConfig SocketConfig { get; } = new();
 
     public ZLinkOutboundRouteConfig RoutingConfig { get; } = new();
 
-    public List<string> ManualConnections { get; } = [];
+    public ZLinkEndpointConnections ManualConnections { get; } = new();
 }
 
 internal sealed class ZLinkChannelPublisherCapabilityRegistration
@@ -176,9 +176,11 @@ internal sealed class ZLinkChannelPublisherCapabilityRegistration
 
 internal sealed class ZLinkChannelSubscriberCapabilityRegistration
 {
+    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
+
     public ZLinkSocketConfig SocketConfig { get; } = new();
 
-    public List<string> ManualConnections { get; } = [];
+    public ZLinkEndpointConnections ManualConnections { get; } = new();
 }
 
 internal sealed class ZLinkStreamNodeRegistration
@@ -199,6 +201,8 @@ internal sealed record ZLinkStreamTlsServerRegistration(
 
 internal sealed class ZLinkRouteChannelRegistration
 {
+    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
+
     public required string RouterChannelId { get; init; }
 
     public TimeSpan? DefaultRequestTimeout { get; set; }
@@ -213,7 +217,7 @@ internal sealed class ZLinkRouteChannelRegistration
 
     public RoutingId RoutingId { get; set; }
 
-    public List<string> ManualConnections { get; } = [];
+    public ZLinkEndpointConnections ManualConnections { get; } = new();
 
     public List<ZLinkRouteHandlerRegistration> SendHandlers { get; } = [];
 
@@ -315,26 +319,28 @@ internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
 
 internal sealed class ZLinkSpotRouterCapabilityRegistration
 {
+    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
+
     public string? BindEndpoint { get; set; }
 
     public ZLinkSocketConfig SocketConfig { get; } = new();
 
     public ZLinkRouteConfig RoutingConfig { get; } = new();
 
-    public List<ZLinkSpotRouterManualConnectionRegistration> ManualConnections { get; } = [];
-}
+    public ZLinkEndpointConnections ManualConnections { get; } = new();
 
-internal sealed record ZLinkSpotRouterManualConnectionRegistration(
-    string Endpoint,
-    RoutingId? PeerRid);
+    public Dictionary<string, RoutingId> PeerRoutingIds { get; } = new(StringComparer.Ordinal);
+}
 
 internal sealed class ZLinkSpotPubSubCapabilityRegistration
 {
+    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
+
     public string? BindEndpoint { get; set; }
 
     public ZLinkSpotPublisherConfig PublisherConfig { get; } = new();
 
     public ZLinkSpotSubscriberConfig SubscriberConfig { get; } = new();
 
-    public List<string> ManualConnections { get; } = [];
+    public ZLinkEndpointConnections ManualConnections { get; } = new();
 }

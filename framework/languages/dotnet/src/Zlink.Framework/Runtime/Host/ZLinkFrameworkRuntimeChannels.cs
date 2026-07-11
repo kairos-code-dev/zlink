@@ -108,22 +108,26 @@ internal sealed partial class ZLinkFrameworkRuntime
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        using var operation = EnterOperation();
-        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
+        try
         {
-            ZLinkMessageParts.DisposeAll(parts);
-            throw CreateUnknownRouteTargetException(
+            using var operation = EnterOperation();
+            if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
+                throw CreateUnknownRouteTargetException(
+                    routerChannelId,
+                    targetNodeRid,
+                    $"SPOT '{targetSpotRid}'");
+
+            await _spotRouteRouter.SendAsync(
                 routerChannelId,
                 targetNodeRid,
-                $"SPOT '{targetSpotRid}'");
+                targetSpotRid,
+                parts,
+                cancellationToken).ConfigureAwait(false);
         }
-
-        await _spotRouteRouter.SendAsync(
-            routerChannelId,
-            targetNodeRid,
-            targetSpotRid,
-            parts,
-            cancellationToken).ConfigureAwait(false);
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
     }
 
     internal RoutingId ResolveAcceptedSpotRouteNodeRid(string targetSpotNodeChannelName)
@@ -139,24 +143,28 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        using var operation = EnterOperation();
-        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
+        try
         {
-            ZLinkMessageParts.DisposeAll(parts);
-            throw CreateUnknownRouteTargetException(
-                routerChannelId,
-                targetNodeRid,
-                $"SPOT '{targetSpotRid}'");
-        }
+            using var operation = EnterOperation();
+            if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
+                throw CreateUnknownRouteTargetException(
+                    routerChannelId,
+                    targetNodeRid,
+                    $"SPOT '{targetSpotRid}'");
 
-        return await _spotRouteRouter.RequestAsync(
+            return await _spotRouteRouter.RequestAsync(
                 routerChannelId,
                 targetNodeRid,
                 targetSpotRid,
                 parts,
                 timeout,
                 cancellationToken)
-            .ConfigureAwait(false);
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
     }
 
     private static ZLinkFrameworkException CreateUnknownRouteTargetException(

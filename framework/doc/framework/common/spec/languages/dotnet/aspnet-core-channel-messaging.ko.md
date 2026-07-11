@@ -711,7 +711,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 같다.
 
 - 호출 chain 의 끝에서, `.Async(...)` 또는 `.Async<TReply>(...)` 로 마무리한다.
-- `PacketName`, `Timeout` 같은 변형은, 그 사이에 이어 붙인다.
+- request timeout을 바꿔야 할 때만 `Timeout(...)`을 중간에 이어 붙인다. typed call의
+  packet 이름은 message 타입에서 정하므로 호출별 override는 제공하지 않는다.
 
 두 인터페이스의 전체 정의는, [handler-interfaces.ko.md](handler-interfaces.ko.md) 의
 §5 에 모여 있다.

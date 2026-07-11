@@ -50,7 +50,7 @@ internal sealed class ZLinkSerialTurn
         return new Scope(previous);
     }
 
-    public async ValueTask<T> YieldFrameworkCallAsync<T>(
+    public async ValueTask<T> AwaitFrameworkCallAsync<T>(
         Func<CancellationToken, ValueTask<T>> submit,
         CancellationToken cancellationToken)
     {
@@ -69,7 +69,7 @@ internal sealed class ZLinkSerialTurn
         }
     }
 
-    public async ValueTask YieldFrameworkCallAsync(
+    public async ValueTask AwaitFrameworkCallAsync(
         Func<CancellationToken, ValueTask> submit,
         CancellationToken cancellationToken)
     {

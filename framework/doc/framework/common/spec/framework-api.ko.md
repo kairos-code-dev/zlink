@@ -483,7 +483,7 @@ public void Configure()
     Context.Handlers.AddHandler<DomainEventHandler>();  // subscription topic은 handler metadata에서 읽는다
 }
 
-[ZLinkSpotSubscription("domain.events")]
+[ZLinkSpotSubscriptionHandler("domain.events")]
 public sealed class DomainEventHandler :
     IZLinkSpotSubscriptionHandler<DomainSpot, DomainEvent>
 {

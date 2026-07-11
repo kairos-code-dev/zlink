@@ -215,7 +215,7 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
-    public async Task SerialExecutionQueue_YieldTurn_Allows_Later_Work_Then_Resumes_On_Line()
+    public async Task SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line()
     {
         await using var queue = CreateQueue(CancellationToken.None);
         var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -231,7 +231,7 @@ public sealed class SerialExecutorTests
                 order.Enqueue("first-start");
                 var turn = ZLinkSerialTurn.Current
                            ?? throw new InvalidOperationException("serial turn was not available");
-                await turn.YieldFrameworkCallAsync(
+                await turn.AwaitFrameworkCallAsync(
                     async _ =>
                     {
                         ioStarted.SetResult();
@@ -277,7 +277,7 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
-    public async Task SerialExecutionQueue_YieldTurn_Fault_Cleans_Pending_Turn()
+    public async Task SerialExecutionQueue_AutomaticTurn_Fault_Cleans_Pending_Turn()
     {
         var exceptions = new ConcurrentQueue<Exception>();
         ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
@@ -294,7 +294,7 @@ public sealed class SerialExecutorTests
                 {
                     var turn = ZLinkSerialTurn.Current
                                ?? throw new InvalidOperationException("serial turn was not available");
-                    await turn.YieldFrameworkCallAsync(
+                    await turn.AwaitFrameworkCallAsync(
                         async _ =>
                         {
                             ioStarted.SetResult();
@@ -339,7 +339,7 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
-    public async Task SerialExecutionQueue_YieldTurn_Cancellation_Cleans_Pending_Turn()
+    public async Task SerialExecutionQueue_AutomaticTurn_Cancellation_Cleans_Pending_Turn()
     {
         var exceptions = new ConcurrentQueue<Exception>();
         ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
@@ -356,7 +356,7 @@ public sealed class SerialExecutorTests
                 {
                     var turn = ZLinkSerialTurn.Current
                                ?? throw new InvalidOperationException("serial turn was not available");
-                    await turn.YieldFrameworkCallAsync(
+                    await turn.AwaitFrameworkCallAsync(
                         async _ =>
                         {
                             ioStarted.SetResult();
@@ -399,10 +399,10 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
-    public async Task SerialExecutionQueue_YieldTurn_Caller_Cancellation_Allows_Later_Work_Before_Operation_Completes()
+    public async Task SerialExecutionQueue_AutomaticTurn_Caller_Cancellation_Allows_Later_Work_Before_Operation_Completes()
     {
         await using var queue = CreateQueue(CancellationToken.None);
-        using var cancelYield = new CancellationTokenSource();
+        using var cancelWait = new CancellationTokenSource();
         var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var completeIo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -416,13 +416,13 @@ public sealed class SerialExecutorTests
                            ?? throw new InvalidOperationException("serial turn was not available");
                 try
                 {
-                    await turn.YieldFrameworkCallAsync(
+                    await turn.AwaitFrameworkCallAsync(
                         async _ =>
                         {
                             ioStarted.SetResult();
                             await completeIo.Task.ConfigureAwait(false);
                         },
-                        cancelYield.Token).ConfigureAwait(false);
+                        cancelWait.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -442,7 +442,7 @@ public sealed class SerialExecutorTests
             },
             CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 
-        await cancelYield.CancelAsync();
+        await cancelWait.CancelAsync();
         await first.WaitAsync(TimeSpan.FromSeconds(5));
 
         await queue.RunAsync(

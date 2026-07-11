@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <IsPackable>true</IsPackable>
         <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
         <AssemblyName>Zlink.Framework.Locations.Redis</AssemblyName>
         <RootNamespace>Zlink.Framework.Locations.Redis</RootNamespace>

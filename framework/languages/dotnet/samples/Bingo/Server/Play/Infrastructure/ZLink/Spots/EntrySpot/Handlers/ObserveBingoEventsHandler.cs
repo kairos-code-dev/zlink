@@ -3,6 +3,7 @@ using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
 using Systems.Zlink;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
@@ -36,7 +37,7 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
                 })
             .Async<BingoRoomJoinRes>(cancellationToken);
 
-        if (!joined.Accepted)
+        if (joined is not ZLinkActorJoinResult<BingoRoomJoinRes>.Accepted)
             return new ObserveBingoEventsRes
             {
                 Subscribed = false,

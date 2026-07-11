@@ -37,9 +37,8 @@ app.MapPost("/send", async (
                     ?? throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Actor route '{request.ActorId}' was not found.");
-        await actors.SendToActor(actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
-            .PacketName(nameof(ActorNotify))
-            .Async(ct);
+        actors.SendToActor(actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
+            .Submit(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "sent"));
     }
     catch (ZLinkFrameworkException error)
@@ -60,7 +59,6 @@ app.MapPost("/request", async (
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Actor route '{request.ActorId}' was not found.");
         var reply = await actors.RequestToActor(actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
-            .PacketName(nameof(ActorAsk))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ActorReply>(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, reply.Value));

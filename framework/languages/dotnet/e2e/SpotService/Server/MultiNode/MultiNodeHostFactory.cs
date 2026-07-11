@@ -189,7 +189,6 @@ internal static class MultiNodeHostFactory
             var result = await actorClient.RequestToActor(
                     actor,
                     request)
-                .PacketName("SpotOnlyJoinReq")
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async<SpotOnlyJoinRes>(cancellationToken);
             await evidence.WaitUntilAsync(
@@ -204,7 +203,7 @@ internal static class MultiNodeHostFactory
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotRefResolver locator,
+            IZLinkSpotHandleResolver locator,
             NodeOptions node,
             MultiNodeStateRouteReq request,
             CancellationToken cancellationToken) =>

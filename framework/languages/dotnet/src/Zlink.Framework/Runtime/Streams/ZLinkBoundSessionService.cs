@@ -166,14 +166,6 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
     TMessage message) : IZLinkBoundSessionSendCall
 {
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
-    private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-
-    public IZLinkBoundSessionSendCall PacketName(string packetName)
-    {
-        _packetName = packetName;
-        return this;
-    }
-
     public IZLinkBoundSessionSendCall Metadata(
         string key,
         string value)
@@ -191,7 +183,7 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
     {
         await service.SendBoundSessionAsync(
                 actorId,
-                _packetName,
+                ZLinkMessageNameResolver.ResolveFromMessage(message),
                 _metadata,
                 message,
                 cancellationToken)

@@ -132,7 +132,9 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("ValueTask EnsureAsync", questProcessor, StringComparison.Ordinal);
         Assert.DoesNotContain("public async ValueTask EnsureAsync", playerQuestProvisioner,
             StringComparison.Ordinal);
-        Assert.Contains("RequestToSpot(SampleNames.QuestSpotDiscovery", playerQuestProvisioner,
+        Assert.Contains("ResolveSpotHandleAsync", playerQuestProvisioner,
+            StringComparison.Ordinal);
+        Assert.Contains("RequestToSpot(address", playerQuestProvisioner,
             StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotRequestHandler<PlayerQuestSpot, ApplyGameplayEventReq, ApplyGameplayEventRes>",
             playerQuestSpot, StringComparison.Ordinal);

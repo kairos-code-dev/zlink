@@ -17,15 +17,23 @@ internal sealed class ZLinkSpotPacketRegistry
         _registrations.Add(new ZLinkSpotPacketRegistration(handlerType, packetName));
     }
 
+    public void Add(Type spotType, System.Reflection.MethodInfo method, string? packetName)
+    {
+        _registrations.Add(new ZLinkSpotPacketRegistration(spotType, packetName, method));
+    }
+
     public void Bind(object spot)
     {
         foreach (var packet in _registrations)
         {
-            var descriptor = ZLinkSpotDescriptorFactory.CreatePacketDescriptor(
-                packet.HandlerType,
-                spot.GetType(),
-                packet.PacketName);
-            _descriptorsByName.Add(descriptor.MessageName, descriptor);
+            var descriptor = packet.Method is { } method
+                ? ZLinkSpotDescriptorFactory.CreateAttributedRequestDescriptor(
+                    packet.HandlerType, method, packet.PacketName)
+                : ZLinkSpotDescriptorFactory.CreatePacketDescriptor(
+                    packet.HandlerType, spot.GetType(), packet.PacketName);
+            if (!_descriptorsByName.TryAdd(descriptor.MessageName, descriptor))
+                throw new ZLinkConfigurationException(
+                    $"SPOT packet handler '{descriptor.MessageName}' is already registered.");
         }
     }
 

@@ -1805,8 +1805,9 @@ dispatch key 로 등록한다.
 - attach된 다른 channel로 request packet을 보내고 싶다
   - `RequestToChannel(...).Timeout(...).Async<TReply>(...)`
   - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
-  - SPOT callback 안에서는 `Context.Outbound.SendToSpot(...)` /
-    `Context.Outbound.RequestToSpot(...)`처럼 `RoutingId`를 받는 표면을 사용한다.
+  - SPOT callback 안에서는 `IZLinkSpotHandleResolver`로 대상을 한 번 조회한 뒤,
+    `Context.Outbound.SendToSpot(...)` / `Context.Outbound.RequestToSpot(...)`에
+    반환된 `SpotHandle`을 전달한다.
   - SPOT callback 밖에서는 actor 생성 또는 Entry Spot join 으로 `ActorRef` 를 얻은 뒤
     session actor handle 로 bind 한다.
 - 현재 spot 자신의 id를 알고 싶다

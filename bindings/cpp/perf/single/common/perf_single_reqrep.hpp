@@ -133,12 +133,21 @@ inline bool run_reqrep_pattern (const reqrep_config_t &config_,
 
     zlink::poller_t poller;
     client.sock ().poller_add (poller, zlink::poll_event_flag_t::pollcompletion);
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
+    constexpr size_t pipeline_budget_bytes = 768u * 1024u;
+    const size_t message_bytes = std::max<size_t> (1, msg_size_);
+    const unsigned long long max_in_flight = std::max<size_t> (
+      1, std::min<size_t> (64, pipeline_budget_bytes / message_bytes));
     uint64_t seq = 1;
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
     while (std::chrono::steady_clock::now () < deadline
            && !state.fatal.load (std::memory_order_acquire)) {
         bool submitted = false;
-        for (unsigned int burst = 0; burst < 64 && std::chrono::steady_clock::now () < deadline;
+        // This is the measured request hot path. Match the C reference's
+        // count-and-byte bound so expired requests cannot accumulate in queues.
+        for (unsigned int burst = 0;
+             burst < max_in_flight
+             && state.in_flight.load (std::memory_order_acquire) < max_in_flight
+             && std::chrono::steady_clock::now () < deadline;
              ++burst) {
             std::vector<char> payload (payload_size, 'r');
             if (!perf_single_metric::stamp_payload (payload.data (), payload.size (), state.run_id,

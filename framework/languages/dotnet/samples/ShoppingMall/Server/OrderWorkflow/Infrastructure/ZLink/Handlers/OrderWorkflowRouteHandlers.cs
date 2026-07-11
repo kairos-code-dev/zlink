@@ -13,7 +13,7 @@ namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Handlers;
 internal sealed class StartOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    WorkflowInstanceTopology instance,
+    IZLinkSpotHandleResolver spotHandles,
     ILogger<StartOrderWorkflowRouteHandler> logger)
     : IZLinkRequestHandler<StartOrderWorkflowReq, StartOrderWorkflowRes>
 {
@@ -25,9 +25,9 @@ internal sealed class StartOrderWorkflowRouteHandler(
         logger.LogInformation(
             "shoppingmall workflow route: StartOrderWorkflowReq order={OrderId}",
             request.OrderId);
-        var address = await EnsureSpotAsync(spots, instance, request.OrderId, cancellationToken);
+        var address = await EnsureSpotAsync(spots, spotHandles, request.OrderId, cancellationToken);
         var response = await routes
-            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
+            .RequestToSpot(address, request)
             .Async<StartOrderWorkflowRes>(cancellationToken);
         logger.LogInformation(
             "shoppingmall workflow route: delivered StartOrderWorkflowReq to spot owner. order={OrderId}, status={Status}",
@@ -40,9 +40,9 @@ internal sealed class StartOrderWorkflowRouteHandler(
         return response;
     }
 
-    internal static async ValueTask<SpotRef> EnsureSpotAsync(
+    internal static async ValueTask<SpotHandle> EnsureSpotAsync(
         IZLinkSpotManager spots,
-        WorkflowInstanceTopology instance,
+        IZLinkSpotHandleResolver spotHandles,
         string orderId,
         CancellationToken cancellationToken)
     {
@@ -50,14 +50,15 @@ internal sealed class StartOrderWorkflowRouteHandler(
             RoutingId.From(orderId),
             new OrderWorkflowSpotCreateReq(orderId),
             cancellationToken);
-        return new SpotRef(instance.SpotRid, RoutingId.From(orderId));
+        return await spotHandles.ResolveSpotHandleAsync(RoutingId.From(orderId), cancellationToken)
+               ?? throw new InvalidOperationException($"Order workflow spot '{orderId}' was not found.");
     }
 }
 
 internal sealed class ContinueOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    WorkflowInstanceTopology instance)
+    IZLinkSpotHandleResolver spotHandles)
     : IZLinkRequestHandler<ContinueOrderWorkflowReq, ContinueOrderWorkflowRes>
 {
     public async ValueTask<ContinueOrderWorkflowRes> HandleAsync(
@@ -67,11 +68,11 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
     {
         var address = await StartOrderWorkflowRouteHandler.EnsureSpotAsync(
             spots,
-            instance,
+            spotHandles,
             request.OrderId,
             cancellationToken);
         return await routes
-            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
+            .RequestToSpot(address, request)
             .Async<ContinueOrderWorkflowRes>(cancellationToken);
     }
 }
@@ -79,7 +80,7 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
 internal sealed class RebuildOrderProjectionRouteHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    WorkflowInstanceTopology instance,
+    IZLinkSpotHandleResolver spotHandles,
     ILogger<RebuildOrderProjectionRouteHandler> logger)
     : IZLinkRequestHandler<RebuildOrderProjectionReq, RebuildOrderProjectionRes>
 {
@@ -90,11 +91,11 @@ internal sealed class RebuildOrderProjectionRouteHandler(
     {
         var address = await StartOrderWorkflowRouteHandler.EnsureSpotAsync(
             spots,
-            instance,
+            spotHandles,
             request.OrderId,
             cancellationToken);
         var response = await routes
-            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
+            .RequestToSpot(address, request)
             .Async<RebuildOrderProjectionRes>(cancellationToken);
         logger.LogInformation(
             "shoppingmall order: projection rebuilt order={OrderId} status={Status}",

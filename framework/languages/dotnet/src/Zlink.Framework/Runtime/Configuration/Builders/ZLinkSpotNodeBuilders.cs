@@ -4,6 +4,14 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     : IZLinkSpotNodeBuilder,
         IZLinkSpotMeshBuilder
 {
+    public IZLinkEndpointConnections RouterConnections => EnsureRouter().ManualConnections;
+
+    public IZLinkEndpointConnections PubSubConnections => EnsurePubSub().ManualConnections;
+
+    public IZLinkEndpointConnections ChannelClientConnections => RouterConnections;
+
+    public IZLinkEndpointConnections PublisherConnections => PubSubConnections;
+
     public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
     {
         var router = EnsureRouter();
@@ -151,7 +159,9 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         if (string.IsNullOrWhiteSpace(endpoint))
             throw new ZLinkConfigurationException("Manual SPOT router endpoint must not be empty.");
 
-        EnsureRouter().ManualConnections.Add(new ZLinkSpotRouterManualConnectionRegistration(endpoint, peerRid));
+        var router = EnsureRouter();
+        router.ManualConnections.Connect(endpoint);
+        if (peerRid is { } routingId) router.PeerRoutingIds[endpoint] = routingId;
     }
 
     private ZLinkSpotPubSubCapabilityRegistration EnsurePubSub()

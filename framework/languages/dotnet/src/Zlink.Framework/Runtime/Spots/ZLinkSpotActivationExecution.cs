@@ -95,13 +95,12 @@ internal sealed partial class ZLinkSpotActivation
         ArgumentNullException.ThrowIfNull(work);
         return new ZLinkWorkerCall<TResult>(
             _runtime.WorkerPool,
-            work,
-            callback => QueueSerialized((_, ct) => callback(ct)));
+            work);
     }
 
     ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
     {
-        return _runtime.CloseSpotAsync(SpotRid, cancellationToken);
+        return _runtime.CloseAsync(SpotRid, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(

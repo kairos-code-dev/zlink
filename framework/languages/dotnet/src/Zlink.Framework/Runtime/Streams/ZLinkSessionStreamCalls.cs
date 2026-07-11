@@ -15,12 +15,6 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         return this;
     }
 
-    public ZLinkSessionStreamCallBase<TMessage> PacketName(string messageName)
-    {
-        _builder.SetPacketName(messageName);
-        return this;
-    }
-
     public ZLinkSessionStreamCallBase<TMessage> Compress()
     {
         _builder.EnableCompression();
@@ -59,11 +53,6 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
     IZLinkSessionSendCall IZLinkSessionSendCall.Metadata(string key, string value)
     {
         return (IZLinkSessionSendCall)Metadata(key, value);
-    }
-
-    IZLinkSessionSendCall IZLinkSessionSendCall.PacketName(string messageName)
-    {
-        return (IZLinkSessionSendCall)PacketName(messageName);
     }
 
     IZLinkSessionSendCall IZLinkSessionSendCall.Compress()

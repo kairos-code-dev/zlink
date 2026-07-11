@@ -13,7 +13,12 @@ internal sealed class ZLinkSpotHandlerInvoker(
         object? message,
         CancellationToken cancellationToken)
     {
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken)
+        var invocation = descriptor.IsAttributed
+            ? descriptor.PassCancellationToken
+                ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
+                : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
+            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
+        await invocation
             .ConfigureAwait(false);
     }
 
@@ -22,7 +27,12 @@ internal sealed class ZLinkSpotHandlerInvoker(
         object? message,
         CancellationToken cancellationToken)
     {
-        return await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken)
+        var invocation = descriptor.IsAttributed
+            ? descriptor.PassCancellationToken
+                ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
+                : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
+            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
+        return await invocation
             .ConfigureAwait(false);
     }
 
@@ -31,7 +41,12 @@ internal sealed class ZLinkSpotHandlerInvoker(
         object? message,
         CancellationToken cancellationToken)
     {
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken)
+        var invocation = descriptor.IsAttributed
+            ? descriptor.PassCancellationToken
+                ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
+                : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
+            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
+        await invocation
             .ConfigureAwait(false);
     }
 
@@ -235,6 +250,19 @@ internal sealed class ZLinkSpotHandlerInvoker(
 
         throw new InvalidOperationException(
             $"{handlerKind} '{handlerType}' expects actor '{expectedActorType}', but received '{actor.GetType()}'.");
+    }
+
+    private ValueTask<object?> InvokeAsync(
+        Type handlerType,
+        ZLinkHandlerMethodInvoker invoker,
+        object? arg0)
+    {
+        var handler = ResolveHandler(handlerType);
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            handler,
+            invoker,
+            1,
+            arguments => arguments[0] = arg0);
     }
 
     private ValueTask<object?> InvokeAsync(

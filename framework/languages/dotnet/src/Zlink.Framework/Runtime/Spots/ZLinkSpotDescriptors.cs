@@ -14,6 +14,10 @@ internal sealed class ZLinkSpotDescriptor
 
     public Type? ReplyType { get; init; }
 
+    public bool IsAttributed { get; init; }
+
+    public bool PassCancellationToken { get; init; }
+
     public bool IsRequest => ReplyType is not null;
 }
 
@@ -30,6 +34,10 @@ internal sealed class ZLinkSpotSubscriptionDescriptor
     public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required string MessageName { get; init; }
+
+    public bool IsAttributed { get; init; }
+
+    public bool PassCancellationToken { get; init; }
 }
 
 internal sealed class ZLinkSpotTimerDescriptor

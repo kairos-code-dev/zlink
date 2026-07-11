@@ -114,10 +114,9 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             }
         }
 
-        return new ZLinkActorJoinResult(
-            accepted,
-            accepted ? result.Actor.ToNative() : null,
-            reply);
+        return accepted
+            ? new ZLinkActorJoinResult.Accepted(result.Actor.ToNative(), reply)
+            : new ZLinkActorJoinResult.Rejected(reply);
     }
 
     private async ValueTask<ZLinkActorJoinResult> JoinRemoteAsync(
@@ -167,10 +166,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             reply,
             registration.Codecs);
         if (!reply.Accepted)
-            return new ZLinkActorJoinResult(
-                false,
-                null,
-                replyMessage);
+            return new ZLinkActorJoinResult.Rejected(replyMessage);
 
         var targetRef = ZLinkActorEntrySpotRoutePackets.ToActorRef(reply);
         actorState.BindNativeActorRef(targetRef);
@@ -188,10 +184,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 .ConfigureAwait(false);
         }
 
-        return new ZLinkActorJoinResult(
-            true,
-            targetRef.ToNative(),
-            replyMessage);
+        return new ZLinkActorJoinResult.Accepted(targetRef.ToNative(), replyMessage);
     }
 
     private async ValueTask<ZLinkActorJoinResult> JoinLocalEntrySpotAsync(
@@ -225,10 +218,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             : ZLinkSpotActorJoinResult.Reject();
         var reply = CopyReply(admission.Reply);
         if (!admission.Accepted)
-            return new ZLinkActorJoinResult(
-                false,
-                null,
-                reply);
+            return new ZLinkActorJoinResult.Rejected(reply);
 
         actorState.BindNativeActorRef(targetRef);
         await NotifyManagedEntrySpotJoinLifecycleAsync(
@@ -249,10 +239,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 .ConfigureAwait(false);
         }
 
-        return new ZLinkActorJoinResult(
-            true,
-            targetRef.ToNative(),
-            reply);
+        return new ZLinkActorJoinResult.Accepted(targetRef.ToNative(), reply);
     }
 
     private async ValueTask NotifyManagedEntrySpotJoinLifecycleAsync(

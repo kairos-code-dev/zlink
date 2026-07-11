@@ -166,16 +166,15 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void TicTacToe_RoomRouteStore_Uses_Prefixed_Redis_Routes()
+    public void TicTacToe_Framework_LocationStore_Uses_The_Sample_Redis_Prefix()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");
         var settings = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleSettings.cs"));
-        var routeStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "RedisRoomRouteStore.cs"));
+        var playServer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "PlayServer.cs"));
 
         Assert.Contains("string RedisKeyPrefix", settings, StringComparison.Ordinal);
         Assert.Contains("case \"--redis-key-prefix\"", settings, StringComparison.Ordinal);
-        Assert.Contains("settings.RedisKeyPrefix", routeStore, StringComparison.Ordinal);
-        Assert.Contains("return $\"{_keyPrefix}rooms:{roomId}\"", routeStore, StringComparison.Ordinal);
+        Assert.Contains("SetKeyPrefix(settings.RedisKeyPrefix)", playServer, StringComparison.Ordinal);
     }
 
     [Fact]

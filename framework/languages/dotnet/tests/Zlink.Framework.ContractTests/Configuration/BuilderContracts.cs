@@ -11,7 +11,8 @@ public sealed class BuilderContracts
     [ContractExample(
         typeof(IZLinkFrameworkOptions),
         typeof(IZLinkMetadataPolicyBuilder),
-        typeof(IZLinkStreamCompressionBuilder))]
+        typeof(IZLinkStreamCompressionBuilder),
+        typeof(IZLinkEndpointConnections))]
     public void Framework_options_register_the_top_level_runtime_surface()
     {
         var options = new FrameworkOptions();
@@ -21,9 +22,8 @@ public sealed class BuilderContracts
         options.AddHandlersFromAssemblyOf<BuilderContracts>();
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
         options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");
-        options.AddSpotRouteRefResolver<SpotRouteRefResolver>();
         options.UseFilter<HandlerFilter>();
-        options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
+        options.ConfigureDispatch().MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly);
 
         Assert.Contains("trace-id", options.Metadata.ForwardedKeys);
         Assert.Equal(TimeSpan.FromSeconds(1), options.DefaultSocketSendTimeout);
@@ -214,11 +214,6 @@ public sealed class BuilderContracts
             return Metadata;
         }
 
-        public void AddSpotRouteRefResolver<TResolver>()
-            where TResolver : class, IZLinkSpotRouteRefResolver
-        {
-        }
-
         public IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName)
         {
             Channels.Add(channelName);
@@ -355,6 +350,8 @@ public sealed class BuilderContracts
         private readonly ConnectionAndConfigContracts.RouteConfig _serverRoute = new();
         private readonly ConnectionAndConfigContracts.SocketConfig _serverSocket = new();
 
+        public IZLinkEndpointConnections ClientConnections { get; } = new EndpointConnections();
+
         public IZLinkClientServerChannelBuilder EnableServer(string endpoint)
         {
             return this;
@@ -432,6 +429,8 @@ public sealed class BuilderContracts
 
     private sealed class FanoutChannelBuilder : IZLinkFanoutChannelBuilder
     {
+        public IZLinkEndpointConnections SubscriberConnections { get; } = new EndpointConnections();
+
         public IZLinkFanoutChannelBuilder EnablePublisher(string endpoint)
         {
             return this;
@@ -473,6 +472,8 @@ public sealed class BuilderContracts
     private sealed class RouteMeshChannelBuilder : IZLinkRouteMeshChannelBuilder
     {
         private readonly ConnectionAndConfigContracts.SocketConfig _socket = new();
+
+        public IZLinkEndpointConnections ClientConnections { get; } = new EndpointConnections();
 
         public IZLinkRouteMeshChannelBuilder EnableServer(string endpoint)
         {
@@ -555,6 +556,14 @@ public sealed class BuilderContracts
 
     private class SpotNodeBuilder : IZLinkSpotNodeBuilder
     {
+        public IZLinkEndpointConnections RouterConnections { get; } = new EndpointConnections();
+
+        public IZLinkEndpointConnections PubSubConnections { get; } = new EndpointConnections();
+
+        public IZLinkEndpointConnections ChannelClientConnections { get; } = new EndpointConnections();
+
+        public IZLinkEndpointConnections PublisherConnections { get; } = new EndpointConnections();
+
         public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
         {
             return this;
@@ -656,18 +665,18 @@ public sealed class BuilderContracts
         }
     }
 
-    private sealed class SpotRouteRefResolver : IZLinkSpotRouteRefResolver
+    private sealed class EndpointConnections : IZLinkEndpointConnections
     {
-        public ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
-            RoutingId spotRid,
-            CancellationToken cancellationToken)
+        private readonly List<string> _endpoints = [];
+
+        public void Connect(string endpoint)
         {
-            return ValueTask.FromResult(new ZLinkSpotRouteRef(
-                "play-router",
-                RoutingId.From("node"),
-                spotRid,
-                ZLinkSpotKind.User));
+            if (!_endpoints.Contains(endpoint, StringComparer.Ordinal)) _endpoints.Add(endpoint);
         }
+
+        public void Disconnect(string endpoint) => _endpoints.Remove(endpoint);
+
+        public IReadOnlyList<string> ListConnections() => _endpoints;
     }
 
     private sealed class HandlerFilter : IZLinkHandlerFilter

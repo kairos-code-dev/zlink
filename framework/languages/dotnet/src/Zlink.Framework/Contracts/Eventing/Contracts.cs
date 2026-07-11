@@ -12,29 +12,29 @@ public interface IZLinkMonitoringOptions
 
     /// <summary>Polls the location runtime query surface and publishes
     /// <see cref="ZLinkLocationRuntimeEvent"/> diffs. Requires location
-    /// stores to be registered (draft 20.5).</summary>
+    /// stores to be registered.</summary>
     void AddLocationRuntimeEvents(
         string sourceName,
         TimeSpan interval);
 
     /// <summary>Publishes <see cref="ZLinkLocationPeerEvent"/>s when this
     /// runtime writes or removes a peer row and when an auto-connect
-    /// desired target set changes. Requires location stores (draft 20.5).</summary>
+    /// desired target set changes. Requires location stores.</summary>
     void AddLocationPeerEvents(string sourceName);
 
     /// <summary>Publishes <see cref="ZLinkLocationSpotEvent"/>s when this
     /// runtime writes or removes a spot row and when a spot resolve
-    /// misses. Requires location stores (draft 20.5).</summary>
+    /// misses. Requires location stores.</summary>
     void AddLocationSpotEvents(string sourceName);
 
     /// <summary>Publishes <see cref="ZLinkLocationActorEvent"/>s when this
     /// runtime writes or removes an actor row and when an actor resolve
-    /// misses. Requires location stores (draft 20.5).</summary>
+    /// misses. Requires location stores.</summary>
     void AddLocationActorEvents(string sourceName);
 
     /// <summary>Publishes <see cref="ZLinkLocationRouteEvent"/>s when this
     /// runtime writes or removes a route row and when a route resolve
-    /// misses. Requires location stores (draft 20.5).</summary>
+    /// misses. Requires location stores.</summary>
     void AddLocationRouteEvents(string sourceName);
 }
 
@@ -105,28 +105,30 @@ public readonly record struct ZLinkSocketEvent(
     string RemoteAddr,
     ZLinkSocketDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
 
-public enum ZLinkLocationRuntimeEventKind
-{
-    StatusChanged = 0,
-    TopologyChanged = 1,
-    ServiceSummaryChanged = 2,
-    StoreFailure = 3,
-    StoreRecovered = 4
-}
-
-public readonly record struct ZLinkLocationRuntimeEvent(
+public abstract record ZLinkLocationRuntimeEvent(
     string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkLocationRuntimeEventKind Event,
-    ZLinkLocationRuntimeStatus? Status,
-    IReadOnlyList<ZLinkLocationTopologyEntry>? Topology,
-    IReadOnlyList<ZLinkLocationServiceSummary>? ServiceSummary) : IZLinkRuntimeEvent;
-
-public enum ZLinkLocationPeerEventKind
+    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
 {
-    RowUpdated = 0,
-    RowRemoved = 1,
-    DesiredSetChanged = 2
+    public sealed record StatusChanged(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkLocationRuntimeStatus Status) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
+
+    public sealed record TopologyChanged(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        IReadOnlyList<ZLinkLocationTopologyEntry> Topology) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
+
+    public sealed record ServiceSummaryChanged(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        IReadOnlyList<ZLinkLocationServiceSummary> ServiceSummary) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
+
+    public sealed record StoreFailure(string SourceName, DateTimeOffset Timestamp)
+        : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
+
+    public sealed record StoreRecovered(string SourceName, DateTimeOffset Timestamp)
+        : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
 }
 
 /// <summary>Connect/disconnect diff one reconcile tick applied to an
@@ -137,63 +139,88 @@ public readonly record struct ZLinkAutoConnectDesiredSetChange(
     IReadOnlyList<string> ConnectedEndpoints,
     IReadOnlyList<string> DisconnectedEndpoints);
 
-public readonly record struct ZLinkLocationPeerEvent(
+public abstract record ZLinkLocationPeerEvent(
     string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkLocationPeerEventKind Event,
-    ZLinkPeerLocationKey? Key,
-    ZLinkPeerLocation? Peer,
-    ZLinkAutoConnectDesiredSetChange? DesiredSetChange) : IZLinkRuntimeEvent;
-
-public enum ZLinkLocationSpotEventKind
+    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
 {
-    RowUpdated = 0,
-    RowRemoved = 1,
-    ResolveMiss = 2
+    public sealed record RowUpdated(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkPeerLocationKey Key,
+        ZLinkPeerLocation Peer) : ZLinkLocationPeerEvent(SourceName, Timestamp);
+
+    public sealed record RowRemoved(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkPeerLocationKey Key) : ZLinkLocationPeerEvent(SourceName, Timestamp);
+
+    public sealed record DesiredSetChanged(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkAutoConnectDesiredSetChange Change) : ZLinkLocationPeerEvent(SourceName, Timestamp);
 }
 
-public readonly record struct ZLinkLocationSpotEvent(
+public abstract record ZLinkLocationSpotEvent(
     string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkLocationSpotEventKind Event,
-    ZLinkSpotLocationKey Key,
-    ZLinkSpotLocation? Spot) : IZLinkRuntimeEvent;
-
-public enum ZLinkLocationActorEventKind
+    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
 {
-    RowUpdated = 0,
-    RowRemoved = 1,
-    ResolveMiss = 2
+    public sealed record RowUpdated(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkSpotLocationKey Key,
+        ZLinkSpotLocation Spot) : ZLinkLocationSpotEvent(SourceName, Timestamp);
+
+    public sealed record RowRemoved(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkSpotLocationKey Key) : ZLinkLocationSpotEvent(SourceName, Timestamp);
+
+    public sealed record ResolveMiss(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkSpotLocationKey Key) : ZLinkLocationSpotEvent(SourceName, Timestamp);
 }
 
-public readonly record struct ZLinkLocationActorEvent(
+public abstract record ZLinkLocationActorEvent(
     string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkLocationActorEventKind Event,
-    ZLinkActorLocationKey Key,
-    ZLinkActorLocation? Actor) : IZLinkRuntimeEvent;
-
-public enum ZLinkLocationRouteEventKind
+    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
 {
-    RowUpdated = 0,
-    RowRemoved = 1,
-    ResolveMiss = 2
+    public sealed record RowUpdated(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkActorLocationKey Key,
+        ZLinkActorLocation Actor) : ZLinkLocationActorEvent(SourceName, Timestamp);
+
+    public sealed record RowRemoved(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkActorLocationKey Key) : ZLinkLocationActorEvent(SourceName, Timestamp);
+
+    public sealed record ResolveMiss(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkActorLocationKey Key) : ZLinkLocationActorEvent(SourceName, Timestamp);
 }
 
-public readonly record struct ZLinkLocationRouteEvent(
+public abstract record ZLinkLocationRouteEvent(
     string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkLocationRouteEventKind Event,
-    ZLinkRouteLocationKey Key,
-    ZLinkRouteLocation? Route) : IZLinkRuntimeEvent;
-
-public enum ZLinkSpotEventKind
+    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
 {
-    StatusChanged = 0,
-    PeersChanged = 1,
-    SubjectsChanged = 2,
-    TimerHandlerFailed = 3,
-    TimerStoppedAfterUnhandledException = 4
+    public sealed record RowUpdated(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkRouteLocationKey Key,
+        ZLinkRouteLocation Route) : ZLinkLocationRouteEvent(SourceName, Timestamp);
+
+    public sealed record RowRemoved(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkRouteLocationKey Key) : ZLinkLocationRouteEvent(SourceName, Timestamp);
+
+    public sealed record ResolveMiss(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkRouteLocationKey Key) : ZLinkLocationRouteEvent(SourceName, Timestamp);
 }
 
 public readonly record struct ZLinkSpotTimerDiagnostic(
@@ -206,11 +233,32 @@ public readonly record struct ZLinkSpotTimerDiagnostic(
     string ExceptionType,
     string ExceptionMessage);
 
-public readonly record struct ZLinkSpotEvent(
+public abstract record ZLinkSpotEvent(
     string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkSpotEventKind Event,
-    ZLinkSpotNodeStatus? Status,
-    IReadOnlyList<ZLinkSpotNodePeerEntry>? Peers,
-    IReadOnlyList<ZLinkSpotNodeSubjectEntry>? Subjects,
-    ZLinkSpotTimerDiagnostic? TimerDiagnostic = null) : IZLinkRuntimeEvent;
+    DateTimeOffset Timestamp) : IZLinkRuntimeEvent
+{
+    public sealed record StatusChanged(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkSpotNodeStatus Status) : ZLinkSpotEvent(SourceName, Timestamp);
+
+    public sealed record PeersChanged(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        IReadOnlyList<ZLinkSpotNodePeerEntry> Peers) : ZLinkSpotEvent(SourceName, Timestamp);
+
+    public sealed record SubjectsChanged(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects) : ZLinkSpotEvent(SourceName, Timestamp);
+
+    public sealed record TimerHandlerFailed(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkSpotTimerDiagnostic Diagnostic) : ZLinkSpotEvent(SourceName, Timestamp);
+
+    public sealed record TimerStoppedAfterUnhandledException(
+        string SourceName,
+        DateTimeOffset Timestamp,
+        ZLinkSpotTimerDiagnostic Diagnostic) : ZLinkSpotEvent(SourceName, Timestamp);
+}

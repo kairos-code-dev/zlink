@@ -19,7 +19,9 @@ internal sealed record ZLinkScannedSpotHandler(
     string? PacketName = null,
     string? Topic = null,
     string? TimerName = null,
-    TimeSpan TimerPeriod = default);
+    TimeSpan TimerPeriod = default,
+    MethodInfo? Method = null,
+    string? SpotNodeName = null);
 
 internal static class ZLinkScannedSpotHandlerScanner
 {
@@ -38,6 +40,26 @@ internal static class ZLinkScannedSpotHandlerScanner
 
     private static IEnumerable<ZLinkScannedSpotHandler> ScanType(Type handlerType)
     {
+        foreach (var method in handlerType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
+        {
+            if (method.GetCustomAttribute<ZLinkSpotRequestAttribute>() is { } request)
+                yield return new ZLinkScannedSpotHandler(
+                    ZLinkScannedSpotHandlerKind.Packet,
+                    handlerType,
+                    handlerType,
+                    PacketName: request.PacketName,
+                    Method: method);
+
+            if (method.GetCustomAttribute<ZLinkSpotSubscriptionAttribute>() is { } subscription)
+                yield return new ZLinkScannedSpotHandler(
+                    ZLinkScannedSpotHandlerKind.Subscription,
+                    handlerType,
+                    handlerType,
+                    Topic: subscription.Topic,
+                    Method: method,
+                    SpotNodeName: subscription.SpotNodeName);
+        }
+
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
             if (definition == typeof(IZLinkSpotPacketHandler<,>)
                 || definition == typeof(IZLinkSpotRequestHandler<,,>))

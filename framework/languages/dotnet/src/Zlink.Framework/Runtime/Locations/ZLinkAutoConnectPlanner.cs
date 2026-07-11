@@ -21,6 +21,7 @@ internal sealed record ZLinkAutoConnectTarget(
     RoutingId? NodeRid,
     ZLinkLocationRole Role,
     string Endpoint,
+    string? ConnectionFingerprint = null,
     IReadOnlyDictionary<string, string>? Metadata = null,
     string? OwnerId = null);
 
@@ -67,12 +68,23 @@ internal static class ZLinkAutoConnectPlanner
             }
 
             var target = new ZLinkAutoConnectTarget(
-                TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint, peer.Metadata,
+                TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint,
+                ConnectionFingerprintOf(peer), peer.Metadata,
                 peer.OwnerId);
             desired[target.TargetKey] = target;
         }
 
         return desired;
+    }
+
+    private static string? ConnectionFingerprintOf(ZLinkPeerLocation peer)
+    {
+        if (peer.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh
+            || peer.Metadata is null
+            || !peer.Metadata.TryGetValue(
+                ZLinkLocationAutoConnectHost.SpotPubEndpointMetadataKey,
+                out var endpoint)) return null;
+        return endpoint;
     }
 
     internal static string TargetKeyOf(ZLinkPeerLocation peer)

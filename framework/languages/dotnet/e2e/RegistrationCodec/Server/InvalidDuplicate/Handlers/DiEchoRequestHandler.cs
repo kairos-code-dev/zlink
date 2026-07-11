@@ -8,9 +8,9 @@ internal sealed class DiEchoRequestHandler(
     EvidenceStore evidence,
     SingletonProbe singleton,
     ScopedProbe scoped)
-    : IZLinkRequestHandler<EchoReq, EchoRes>
+    : IZLinkRequestHandler<EchoDiReq, EchoRes>
 {
-    public ValueTask<EchoRes> HandleAsync(EchoReq request, ZLinkRequestContext context,
+    public ValueTask<EchoRes> HandleAsync(EchoDiReq request, ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

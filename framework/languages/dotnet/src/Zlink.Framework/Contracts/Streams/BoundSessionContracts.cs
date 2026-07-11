@@ -11,8 +11,6 @@ public interface IZLinkBoundSession
 
 public interface IZLinkBoundSessionSendCall
 {
-    IZLinkBoundSessionSendCall PacketName(string packetName);
-
     IZLinkBoundSessionSendCall Metadata(
         string key,
         string value);

@@ -28,7 +28,6 @@ internal sealed class ConversationNotificationPublisher
         var state = ConversationContracts.ToState(snapshot);
         roster.Context.BoundSession
             .Send(new ConversationAssignedNotify(state.ConversationId, state))
-            .PacketName(SampleNames.ConversationAssignedPacket)
             .Submit(cancellationToken);
         return ValueTask.CompletedTask;
     }
@@ -55,7 +54,6 @@ internal sealed class ConversationNotificationPublisher
                     actors,
                     actor => actor.Context.BoundSession
                         .Send(new ConversationIdleNotify(state.ConversationId, state))
-                        .PacketName(SampleNames.ConversationIdlePacket)
                         .Submit(cancellationToken));
                 break;
             case ConversationEventKind.Closed:
@@ -69,7 +67,6 @@ internal sealed class ConversationNotificationPublisher
                         : Exclude(actors, conversationEvent.ActorId),
                     actor => actor.Context.BoundSession
                         .Send(new ConversationClosedNotify(state.ConversationId, state))
-                        .PacketName(SampleNames.ConversationClosedPacket)
                         .Submit(cancellationToken));
                 break;
             default:
@@ -95,7 +92,6 @@ internal sealed class ConversationNotificationPublisher
                     conversationEvent.ActorId,
                     ConversationContracts.ToRole(conversationEvent.Role.Value),
                     state))
-                .PacketName(SampleNames.ParticipantJoinedPacket)
                 .Submit(cancellationToken);
         return ValueTask.CompletedTask;
     }
@@ -113,7 +109,6 @@ internal sealed class ConversationNotificationPublisher
             Exclude(actors, message.SenderActorId),
             actor => actor.Context.BoundSession
                 .Send(new ChatMessageNotify(state.ConversationId, chatMessage, state))
-                .PacketName(SampleNames.ChatMessagePacket)
                 .Submit(cancellationToken));
     }
 
@@ -134,7 +129,6 @@ internal sealed class ConversationNotificationPublisher
                     conversationEvent.ActorId,
                     conversationEvent.IsTyping.Value,
                     state))
-                .PacketName(SampleNames.TypingChangedPacket)
                 .Submit(cancellationToken));
     }
 

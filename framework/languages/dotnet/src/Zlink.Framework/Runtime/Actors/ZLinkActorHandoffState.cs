@@ -17,7 +17,6 @@ internal sealed class ZLinkActorHandoffState(
     private long _arrivalIndex;
     private int _importedFrameCount;
     private bool _sourceTrailingImported;
-    private ZLinkRemoteActorBoundSessionRoute _pendingBoundSessionRoute;
     private TaskCompletionSource<ZLinkRemoteActorJoinReply>? _preparation;
 
     public void BeginCapture()
@@ -38,7 +37,6 @@ internal sealed class ZLinkActorHandoffState(
             _preparation = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
             _sourceTrailingImported = false;
-            _pendingBoundSessionRoute = default;
             _sourcePhase = ZLinkActorSourceHandoffPhase.Capturing;
             _frames.Clear();
             _arrivalIndex = 0;
@@ -217,7 +215,6 @@ internal sealed class ZLinkActorHandoffState(
             _handoffId = null;
             _joinRequest = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.RolledBack;
-            _pendingBoundSessionRoute = default;
             _preparation = null;
         }
     }
@@ -235,7 +232,6 @@ internal sealed class ZLinkActorHandoffState(
                     $"Actor '{actorId}' cannot complete before target replay drains.");
             _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
             _sourceTrailingImported = false;
-            _pendingBoundSessionRoute = default;
         }
     }
 
@@ -355,30 +351,6 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
-    public void SetPendingBoundSessionRoute(ZLinkRemoteActorBoundSessionRoute route)
-    {
-        lock (_gate)
-        {
-            if (_targetPhase != ZLinkActorTargetHandoffPhase.Importing)
-                throw new InvalidOperationException(
-                    $"Actor '{actorId}' cannot set a route outside target import.");
-            _pendingBoundSessionRoute = route;
-        }
-    }
-
-    public ZLinkRemoteActorBoundSessionRoute GetPendingBoundSessionRoute()
-    {
-        lock (_gate)
-        {
-            if (_targetPhase is not (ZLinkActorTargetHandoffPhase.Importing
-                or ZLinkActorTargetHandoffPhase.Replaying))
-                throw new InvalidOperationException(
-                    $"Actor '{actorId}' does not have a pending target route.");
-            return _pendingBoundSessionRoute;
-        }
-    }
-
-
     public IReadOnlyList<ZLinkActorHandoffFrame> AbortCapture()
     {
         lock (_forwardGate)
@@ -444,7 +416,6 @@ internal sealed class ZLinkActorHandoffState(
                 _sourceTrailingImported = false;
                 _handoffId = null;
                 _joinRequest = null;
-                _pendingBoundSessionRoute = default;
                 _preparation = null;
                 _staleSourceActor = null;
                 ClearForwardingMappingLocked();
@@ -468,7 +439,6 @@ internal sealed class ZLinkActorHandoffState(
                 _sourceTrailingImported = false;
                 _handoffId = null;
                 _joinRequest = null;
-                _pendingBoundSessionRoute = default;
                 _preparation = null;
                 _staleSourceActor = null;
                 ClearForwardingMappingLocked();

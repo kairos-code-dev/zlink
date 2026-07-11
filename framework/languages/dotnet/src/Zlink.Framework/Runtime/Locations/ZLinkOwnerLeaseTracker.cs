@@ -12,6 +12,7 @@ internal sealed class ZLinkOwnerLeaseTracker
     private readonly IZLinkOwnerLeaseStore _store;
     private readonly ZLinkLocationOptions _options;
     private readonly TimeProvider _time;
+    private readonly ZLinkLocationStoreHealth? _health;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly object _liveSetGate = new();
     private volatile Snapshot? _snapshot;
@@ -21,11 +22,13 @@ internal sealed class ZLinkOwnerLeaseTracker
     internal ZLinkOwnerLeaseTracker(
         IZLinkOwnerLeaseStore store,
         ZLinkLocationOptions options,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ZLinkLocationStoreHealth? health = null)
     {
         _store = store;
         _options = options;
         _time = timeProvider ?? TimeProvider.System;
+        _health = health;
     }
 
     internal async ValueTask<bool> IsOwnerLiveAsync(
@@ -92,7 +95,12 @@ internal sealed class ZLinkOwnerLeaseTracker
             }
 
             var fetchedAt = _time.GetTimestamp();
-            var listed = await _store.ListOwnerLeasesAsync(cancellationToken).ConfigureAwait(false);
+            var listed = await ZLinkLocationStoreRead.ExecuteAsync(
+                    _health,
+                    "owner-lease-read",
+                    cancellationToken,
+                    () => _store.ListOwnerLeasesAsync(cancellationToken))
+                .ConfigureAwait(false);
             var byOwner = listed.Leases.ToDictionary(lease => lease.OwnerId, StringComparer.Ordinal);
             var refreshed = new Snapshot(byOwner, listed.StoreNow, fetchedAt);
             _snapshot = refreshed;

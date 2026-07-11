@@ -1,0 +1,273 @@
+using Systems.Zlink;
+using AutomaticTurnDispatch.Shared;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Streams;
+
+using Zlink.Framework.Contracts.Locations;
+
+namespace AutomaticTurnDispatch.Server.Session.Support;
+
+internal sealed partial class AwaitSession(
+    IZLinkSessionContext context,
+    IZLinkRouteClient routes,
+    IZLinkSpotHandleResolver spots,
+    EvidenceStore evidence) : IZLinkSession
+{
+    public IZLinkSessionContext Context { get; } = context;
+
+    public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"session-connected|rid={evidence.Rid}|session={Context.SessionId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"session-disconnected|rid={evidence.Rid}|session={Context.SessionId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"session-error|rid={evidence.Rid}|session={Context.SessionId}|error={error.Error}");
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask OnDispatchAsync(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload,
+        CancellationToken cancellationToken)
+    {
+        switch (dispatch.PacketName)
+        {
+            case "BindAwaitActorsReq":
+            {
+                var request = payload.Decode<BindAwaitActorsReq>();
+                evidence.Add(
+                    $"session-bind-actors|rid={evidence.Rid}|session={Context.SessionId}|spot={request.SpotRid}");
+                var result = await RequestPlayControlWithRetryAsync<BindAwaitActorsRes>(
+                    routes,
+                    request,
+                    "BindAwaitActorsReq",
+                    cancellationToken);
+                foreach (var actor in result.Actors)
+                {
+                    await Context.Actors.BindAsync(
+                        new ActorRef(
+                            RoutingId.From(actor.NodeRid),
+                            actor.ActorId,
+                            actor.Generation),
+                        cancellationToken);
+                    evidence.Add(
+                        $"session-bound-actor|rid={evidence.Rid}|session={Context.SessionId}"
+                        + $"|actor={actor.ActorId}|node={actor.NodeRid}");
+                }
+
+                Context.Client.Reply(result).Submit();
+                return;
+            }
+            case "AwaitShutdownScenarioReq":
+            {
+                var request = payload.Decode<AwaitShutdownScenarioReq>();
+                evidence.Add(
+                    $"session-shutdown|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
+                var result = await RunShutdownThroughSpotRouteAsync(
+                    routes,
+                    spots,
+                    request,
+                    cancellationToken);
+                Context.Client.Reply(result).Submit();
+                return;
+            }
+            case "AwaitShutdownRecoveryReq":
+            {
+                var request = payload.Decode<AwaitShutdownRecoveryReq>();
+                evidence.Add(
+                    $"session-shutdown-recovery|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
+                var result = await RunShutdownRecoveryThroughSpotRouteAsync(
+                    routes,
+                    spots,
+                    request,
+                    cancellationToken);
+                Context.Client.Reply(result).Submit();
+                return;
+            }
+            case "AwaitEvidenceReq":
+            {
+                var request = payload.Decode<AwaitEvidenceReq>();
+                var result = await RequestPlayControlWithRetryAsync<AwaitEvidenceRes>(
+                    routes,
+                    request,
+                    "AwaitEvidenceReq",
+                    TargetOrDefault(dispatch),
+                    cancellationToken);
+                Context.Client.Reply(result).Submit();
+                return;
+            }
+            case "AwaitEvidenceWaitReq":
+            {
+                var request = payload.Decode<AwaitEvidenceWaitReq>();
+                var result = await RequestPlayControlWithRetryAsync<AwaitEvidenceRes>(
+                    routes,
+                    request,
+                    "AwaitEvidenceWaitReq",
+                    TargetOrDefault(dispatch),
+                    cancellationToken);
+                Context.Client.Reply(result).Submit();
+                return;
+            }
+            case "EnsureSpotReq":
+            {
+                var request = payload.Decode<EnsureSpotReq>();
+                var result = await RequestPlayControlWithRetryAsync<EnsureSpotRes>(
+                    routes,
+                    request,
+                    "EnsureSpotReq",
+                    TargetOrDefault(dispatch),
+                    cancellationToken);
+                Context.Client.Reply(result).Submit();
+                return;
+            }
+            case "HoldReq":
+            {
+                await ReplySpotRequestAsync<HoldReq, AutomaticTurnDispatchRes>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "AwaitReq":
+            {
+                await ReplySpotRequestAsync<AwaitReq, AutomaticTurnDispatchRes>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "WorkerAwaitReq":
+            {
+                await ReplySpotRequestAsync<WorkerAwaitReq, AutomaticTurnDispatchRes>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "RemoteSpotAwaitReq":
+            {
+                await ReplySpotRequestAsync<RemoteSpotAwaitReq, AutomaticTurnDispatchRes>(dispatch, payload,
+                    cancellationToken);
+                return;
+            }
+            case "ProbeReq":
+            {
+                await ReplySpotRequestAsync<ProbeReq, AutomaticTurnDispatchRes>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "HoldMsg":
+            {
+                await RelaySpotCommandAsync<HoldMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "AwaitMsg":
+            {
+                await RelaySpotCommandAsync<AwaitMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "WorkerAwaitMsg":
+            {
+                await RelaySpotCommandAsync<WorkerAwaitMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "RemoteSpotAwaitMsg":
+            {
+                await RelaySpotCommandAsync<RemoteSpotAwaitMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "ProbeMsg":
+            {
+                await RelaySpotCommandAsync<ProbeMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "AwaitTimeoutMsg":
+            {
+                await RelaySpotCommandAsync<AwaitTimeoutMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "AwaitCancelMsg":
+            {
+                await RelaySpotCommandAsync<AwaitCancelMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "TimerStartMsg":
+            {
+                await RelaySpotCommandAsync<TimerStartMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            case "TimerStopMsg":
+            {
+                await RelaySpotCommandAsync<TimerStopMsg>(dispatch, payload, cancellationToken);
+                return;
+            }
+            default:
+            {
+                var actorId = dispatch.Metadata.Find(AutomaticTurnDispatchNames.ActorIdMetadata);
+                var actor = string.IsNullOrWhiteSpace(actorId)
+                    ? RequireSingleBoundActor()
+                    : Context.Actors.Find(actorId);
+                if (actor is null)
+                {
+                    throw new InvalidOperationException($"Actor route not found: {actorId}");
+                }
+
+                await actor.RelayAsync(payload, cancellationToken);
+                return;
+            }
+        }
+    }
+
+    private IZLinkSessionActor RequireSingleBoundActor()
+    {
+        return Context.Actors.Bound.Count switch
+        {
+            1 => Context.Actors.Bound.Single(),
+            0 => throw new InvalidOperationException("No actor is bound."),
+            _ => throw new InvalidOperationException("actor-id metadata is required.")
+        };
+    }
+
+    private async Task ReplySpotRequestAsync<TReq, TRes>(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload,
+        CancellationToken cancellationToken)
+    {
+        var spotRid = dispatch.Metadata.Find(AutomaticTurnDispatchNames.SpotRidMetadata);
+        if (string.IsNullOrWhiteSpace(spotRid))
+            throw new InvalidOperationException($"{AutomaticTurnDispatchNames.SpotRidMetadata} metadata is required.");
+
+        var request = payload.Decode<TReq>()
+                      ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
+        var result = await RequestSpotWithRetryAsync<TRes>(
+            routes,
+            spots,
+            spotRid,
+            request,
+            dispatch.PacketName,
+            cancellationToken);
+        Context.Client.Reply(result).Submit();
+    }
+
+    private async Task RelaySpotCommandAsync<TMsg>(
+        ZLinkSessionDispatchContext dispatch,
+        ZLinkMessage payload,
+        CancellationToken cancellationToken)
+    {
+        var spotRid = dispatch.Metadata.Find(AutomaticTurnDispatchNames.SpotRidMetadata);
+        if (string.IsNullOrWhiteSpace(spotRid))
+            throw new InvalidOperationException($"{AutomaticTurnDispatchNames.SpotRidMetadata} metadata is required.");
+
+        var command = payload.Decode<TMsg>()
+                      ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
+        await SendSpotWithRetryAsync(
+            routes,
+            spots,
+            spotRid,
+            command,
+            dispatch.PacketName,
+            cancellationToken);
+    }
+}

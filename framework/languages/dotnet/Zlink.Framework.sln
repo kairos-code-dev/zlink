@@ -237,29 +237,29 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotService.Session", "e2e\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotService.MultiNode", "e2e\SpotService\Server\MultiNode\SpotService.MultiNode.csproj", "{80853E08-5D98-4370-838B-76A696C72A3A}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "YieldDispatch", "YieldDispatch", "{5C37A569-0072-B08C-5EED-5AC75C1805E4}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "AutomaticTurnDispatch", "AutomaticTurnDispatch", "{5C37A569-0072-B08C-5EED-5AC75C1805E4}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{1D99F301-F836-DE4A-F6E3-A1D0776D33E0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YieldDispatch.Shared", "e2e\YieldDispatch\Shared\YieldDispatch.Shared.csproj", "{0464B323-5CCC-4BA9-982E-2D051EBB7BFE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutomaticTurnDispatch.Shared", "e2e\AutomaticTurnDispatch\Shared\AutomaticTurnDispatch.Shared.csproj", "{0464B323-5CCC-4BA9-982E-2D051EBB7BFE}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Server", "Server", "{B910DB0D-929F-A5B9-27D7-C8D1CC0B5E30}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Delay", "Delay", "{7BA9E031-1868-FF6E-1721-0BAFB89CC03D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YieldDispatch.Delay", "e2e\YieldDispatch\Server\Delay\YieldDispatch.Delay.csproj", "{D2F4595A-1677-4355-BEFE-5E00BEA8F4E7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutomaticTurnDispatch.Delay", "e2e\AutomaticTurnDispatch\Server\Delay\AutomaticTurnDispatch.Delay.csproj", "{D2F4595A-1677-4355-BEFE-5E00BEA8F4E7}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Play", "Play", "{2F2EC4DC-985C-584C-2E23-CE13E22F0B9B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YieldDispatch.Play", "e2e\YieldDispatch\Server\Play\YieldDispatch.Play.csproj", "{4DE88966-F3F7-434F-A21A-A719540E5BEB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutomaticTurnDispatch.Play", "e2e\AutomaticTurnDispatch\Server\Play\AutomaticTurnDispatch.Play.csproj", "{4DE88966-F3F7-434F-A21A-A719540E5BEB}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Session", "Session", "{594C4534-6BE0-5093-61BA-3C5FE5C70D51}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YieldDispatch.Session", "e2e\YieldDispatch\Server\Session\YieldDispatch.Session.csproj", "{8862A9CD-D5E4-4893-8788-AFF749409080}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutomaticTurnDispatch.Session", "e2e\AutomaticTurnDispatch\Server\Session\AutomaticTurnDispatch.Session.csproj", "{8862A9CD-D5E4-4893-8788-AFF749409080}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Client", "Client", "{68847451-6079-68F6-F1ED-C20A704612D3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YieldDispatch.Client", "e2e\YieldDispatch\Client\YieldDispatch.Client.csproj", "{021E76EB-2D4A-4D91-8561-60F5BA3ABE37}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutomaticTurnDispatch.Client", "e2e\AutomaticTurnDispatch\Client\AutomaticTurnDispatch.Client.csproj", "{021E76EB-2D4A-4D91-8561-60F5BA3ABE37}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Dispatch", "Dispatch", "{2185BB60-1733-487E-F98D-1C1AE1D7CFF7}"
 EndProject

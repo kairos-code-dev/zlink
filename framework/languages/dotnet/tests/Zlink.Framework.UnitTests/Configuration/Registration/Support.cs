@@ -1,4 +1,5 @@
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Handlers;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -123,6 +124,21 @@ public abstract class RegistrationValidationSupport
 
         public IZLinkSessionContext Context { get; }
 
+        public int AttributedHandledCount { get; private set; }
+
+        [ZLinkStreamPacket]
+        public ValueTask HandleAttributedAsync(
+            AttributedSessionPacketMessage message,
+            ZLinkSessionDispatchContext dispatch,
+            CancellationToken cancellationToken)
+        {
+            _ = message;
+            _ = dispatch;
+            cancellationToken.ThrowIfCancellationRequested();
+            AttributedHandledCount++;
+            return ValueTask.CompletedTask;
+        }
+
         public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         {
             return ValueTask.CompletedTask;
@@ -187,6 +203,8 @@ public abstract class RegistrationValidationSupport
     }
 
     protected sealed record TestSessionPacketMessage;
+
+    protected sealed record AttributedSessionPacketMessage;
 
     protected class TestSessionPacketContext : IZLinkSessionContext
     {
@@ -335,21 +353,6 @@ public abstract class RegistrationValidationSupport
             ZLinkMessage state,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new TestActor(actorId, context));
-    }
-
-    protected sealed class TestSpotRouteRefResolver : IZLinkSpotRouteRefResolver
-    {
-        public ValueTask<ZLinkSpotRouteRef> ResolveSpotRouteRefAsync(
-            RoutingId spotRid,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new ZLinkSpotRouteRef(
-                "spots",
-                RoutingId.From("03"),
-                spotRid,
-                ZLinkSpotKind.User));
-        }
     }
 
     protected sealed class TestActor(

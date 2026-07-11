@@ -48,7 +48,8 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         var route = Assert.Single(registration.RouteChannels.Values);
-        Assert.Equal(["tcp://127.0.0.1:7102"], route.ManualConnections);
+        Assert.Equal(["tcp://127.0.0.1:7102"], route.ManualConnections.ListConnections());
+        Assert.Equal(ZLinkPeerAcquisitionMode.Manual, route.AcquisitionMode);
     }
 
     [Fact]
@@ -138,6 +139,29 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
             options.UseInMemoryLocationStores();
         });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        Assert.Equal(
+            ZLinkPeerAcquisitionMode.Manual,
+            Assert.Single(registration.Channels.Values).Client!.AcquisitionMode);
+    }
+
+    [Fact]
+    public void AutoConnect_Role_Rejects_Runtime_Manual_Connection_Mutations()
+    {
+        var services = new ServiceCollection();
+        IZLinkEndpointConnections? connections = null;
+        services.AddZLinkFramework(options =>
+        {
+            options.UseInMemoryLocationStores();
+            connections = options.AddClientServerChannel("profile")
+                .EnableClient()
+                .ClientConnections;
+        });
+
+        Assert.NotNull(connections);
+        Assert.Throws<InvalidOperationException>(() =>
+            connections.Connect("tcp://127.0.0.1:7101"));
     }
 
     [Fact]
@@ -172,6 +196,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var route = Assert.Single(registration.RouteChannels.Values);
         Assert.Null(route.BindEndpoint);
         Assert.True(route.ClientEnabled);
+        Assert.Equal(ZLinkPeerAcquisitionMode.AutoConnect, route.AcquisitionMode);
     }
 
     [Fact]
@@ -189,7 +214,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var route = Assert.Single(registration.RouteChannels.Values);
         Assert.Null(route.BindEndpoint);
         Assert.True(route.ClientEnabled);
-        Assert.Equal(["tcp://127.0.0.1:7202"], route.ManualConnections);
+        Assert.Equal(["tcp://127.0.0.1:7202"], route.ManualConnections.ListConnections());
     }
 
     [Fact]

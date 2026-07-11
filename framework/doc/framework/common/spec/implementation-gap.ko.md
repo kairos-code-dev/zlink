@@ -27,16 +27,16 @@
 
 | 영역 | `.NET` | Java/Kotlin | Node.js | C++ |
 |------|--------|-------------|---------|-----|
-| request와 one-way send/publish | actor send만 `ValueTask Async`를 반환 | `ZLinkSendCall` 계열이 `ZLinkSubmitStage`를 반환 | actor send와 bound session send가 `Promise<void>`를 반환 | 일반 send는 `result_t<void>`, actor send는 `task_t<void>`를 반환 |
+| request와 one-way send/publish | 충족 | `ZLinkSendCall` 계열이 `ZLinkSubmitStage`를 반환 | actor send와 bound session send가 `Promise<void>`를 반환 | 일반 send는 `result_t<void>`, actor send는 `task_t<void>`를 반환 |
 | handler 비동기 완료 | 충족 | blocking bridge 차이 | 충족 | blocking bridge 차이 |
 | Spot actor lifecycle | 충족 | callback은 있으나 동기 실행 | 충족 | callback 이름과 실행 방식 차이 |
 | typed stream session handler | 충족 | 불완전한 raw bridge | raw handler만 제공 | raw message handler만 제공 |
-| dispatch options와 diagnostics | 최적화 mode 제거 필요 | handler 완료형, token과 mode 제거 필요 | public mode 제거와 message-kind별 policy·진단 필드 보완 필요 | message-flow 진단 필드와 typed event 계약 누락 |
+| dispatch options와 diagnostics | 충족 | handler 완료형, token과 mode 제거 필요 | public mode 제거와 message-kind별 policy·진단 필드 보완 필요 | message-flow 진단 필드와 typed event 계약 누락 |
 | public export 경계 | 계약과 일치 | `ZLinkBackend*`, `*BackendAdapter`가 public 선언 | registration record와 normalizer가 package root에 노출 | 설치 header에 `*_state_t`와 runtime helper 노출 |
 | 오류 kind | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 밖 값 노출 |
 | route-mesh runtime options | 충족 | 없음 | 충족 | 없음 |
-| actor membership 상태 | `SpotRid`와 `IsJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
-| actor join 결과 | 승인 boolean, nullable actor와 reply가 독립 필드 | result code, actor와 reply가 독립 필드 | 승인 boolean, optional actor/reply가 독립 필드 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
+| actor membership 상태 | 충족 | `spotRid`와 `isJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
+| actor join 결과 | 충족 | result code, actor와 reply가 독립 필드 | 승인 boolean, optional actor/reply가 독립 필드 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
 
 ## 3. Java/Kotlin
 
@@ -281,12 +281,11 @@ call을 반환한다. 다른 언어와 같은 오류 관찰 의미를 위해 rel
 `std::optional<spot_rid_t> spot_rid()`를 단일 상태 값으로 제공한다. join 결과는
 `std::variant`의 승인/거절 값으로 바꾸고 승인 값만 actor ref를 갖게 한다.
 
-## 6. `.NET` 문서 완전성
+## 6. `.NET` 구현 상태
 
-현재 actor context는 nullable `SpotRid`와 `IsJoined`를 중복 노출하고, actor join 결과는
-승인 boolean과 nullable actor를 독립 필드로 제공한다. 목표 계약은 `SpotRid`만 join
-상태의 기준으로 사용하며, join 결과를 승인/거절 sealed record로 바꿔 승인 결과에만
-필수 actor ref가 존재하게 한다.
+`.NET` public declaration과 package는 이 문서에서 추적하던 계약 차이를 해소했다.
+actor membership은 nullable `SpotRid`만 상태 기준으로 사용하고, join 결과는 승인/거절
+sealed record로 유효한 상태만 표현한다.
 
 다음 타입은 기존 interface catalog에서 이름이나 전체 시그니처를 찾기 어려웠다.
 현재 `.NET` interface 문서의 전체 inventory, 보완 시그니처와 공통 기능 커버리지 표에
@@ -317,12 +316,11 @@ IZLinkWorkerCall
 IZLinkWorkerOptions
 ```
 
-request, actor join과 worker의 yield 전용 타입은 목표 계약에서 제거한다. 이 항목의
-남은 작업은 구현과 contract test를 단일 완료 terminator에 맞추는 것이다.
-
-`IZLinkActorSendCall`은 현재 `ValueTask Async(CancellationToken)`을 제공한다. 정식
-one-way 계약은 `void Submit(CancellationToken)`이므로 구현과 contract test에서 이
-terminator를 다른 one-way call과 같게 바꿔야 한다.
+request, actor join과 worker의 yield 전용 타입은 source와 package에서 제거했으며 단일
+완료 terminator가 자동으로 turn을 관리한다. `IZLinkActorSendCall`도 다른 one-way call과
+같은 `void Submit(CancellationToken)` 계약을 제공한다. `SpotHandle`, capability별
+`IZLinkEndpointConnections`, sealed monitoring event와 typed packet identity 단일 소유도
+contract/unit/E2E 및 실제 package consumer로 검증한다.
 
 ## 7. 문서 및 계약 검증 차이
 

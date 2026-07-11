@@ -33,7 +33,6 @@ public sealed class StreamContracts
         await actorRef.NotifyDisconnectedAsync();
 
         context.Client.Send(new PlayerJoined("player-1"))
-            .PacketName("player.joined")
             .Metadata("trace-id", "abc")
             .Compress()
             .Submit();
@@ -91,12 +90,10 @@ public sealed class StreamContracts
         var boundSession = new ExampleBoundSession();
 
         boundSession.Send(new PlayerJoined("player-1"))
-            .PacketName("player.joined")
             .Metadata("trace-id", "abc")
             .Submit();
 
         boundSession.Send(new PlayerJoined("player-2"))
-            .PacketName("player.joined")
             .Submit();
 
         await boundSession.DisconnectAsync();
@@ -342,11 +339,6 @@ public sealed class StreamContracts
 
     private sealed class SendCall : IZLinkSendCall
     {
-        public IZLinkSendCall PacketName(string messageName)
-        {
-            return this;
-        }
-
         public void Submit(CancellationToken cancellationToken = default)
         {
         }
@@ -354,11 +346,6 @@ public sealed class StreamContracts
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
-        public IZLinkRequestCall PacketName(string messageName)
-        {
-            return this;
-        }
-
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;
@@ -373,11 +360,6 @@ public sealed class StreamContracts
     private sealed class SessionSendCall : IZLinkSessionSendCall
     {
         public IZLinkSessionSendCall Metadata(string key, string value)
-        {
-            return this;
-        }
-
-        public IZLinkSessionSendCall PacketName(string messageName)
         {
             return this;
         }
@@ -411,11 +393,6 @@ public sealed class StreamContracts
 
     private sealed class BoundSessionSendCall : IZLinkBoundSessionSendCall
     {
-        public IZLinkBoundSessionSendCall PacketName(string packetName)
-        {
-            return this;
-        }
-
         public IZLinkBoundSessionSendCall Metadata(string key, string value)
         {
             return this;

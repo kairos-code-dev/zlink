@@ -14,10 +14,16 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"Route channel '{routed.RouterChannelId}' must enable server or client capability.");
 
         if (routed.ClientEnabled)
+        {
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"Route channel '{routed.RouterChannelId}'",
                 autoConnectConfigured,
                 routed.ManualConnections);
+            routed.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
+                autoConnectConfigured,
+                routed.ManualConnections);
+            routed.ManualConnections.Freeze(routed.AcquisitionMode);
+        }
 
         ValidateRouteMappedGroups(routed, handlerGroups);
         ValidateUniqueRouteHandlers(

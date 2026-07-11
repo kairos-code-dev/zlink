@@ -52,7 +52,7 @@ spec과 application 예제는 이러한 타입 이름을 사용하지 않고 다
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SerialExecutorTests.SerialExecutionQueue_YieldTurn_Allows_Later_Work_Then_Resumes_On_Line` | yield 중에도 단일 실행 줄의 순서와 재개 위치를 유지한다. |
+| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line` | framework 비동기 호출을 기다리는 동안에도 단일 실행 줄의 순서와 재개 위치를 유지한다. |
 | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot 전체를 하나의 queue로 묶지 않고 actor별 mailbox를 사용한다. |
 | `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 기다리는 호출이 취소돼도 이미 등록한 작업을 임의로 제거하지 않는다. |
 | `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session 작업 오류를 관찰하고 다음 작업을 계속 실행한다. |

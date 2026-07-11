@@ -1,4 +1,0 @@
-using YieldDispatch.Server.Play;
-
-var app = PlayHostFactory.Create(args);
-await app.RunAsync();

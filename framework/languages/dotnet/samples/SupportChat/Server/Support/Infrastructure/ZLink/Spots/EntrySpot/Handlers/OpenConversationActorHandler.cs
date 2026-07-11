@@ -3,6 +3,7 @@ using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Shared.Contracts;
 using Systems.Zlink;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Spots;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
@@ -41,7 +42,13 @@ internal sealed class OpenConversationActorHandler(
                 RoutingId.From(opened.ConversationId),
                 new JoinConversationReq(actor.ParticipantId, actor.Role, actor.DisplayName))
             .Async(cancellationToken);
-        var state = joined.Reply.Decode<JoinConversationRes>().State;
+        var reply = joined switch
+        {
+            ZLinkActorJoinResult.Accepted accepted => accepted.Reply,
+            ZLinkActorJoinResult.Rejected rejected => rejected.Reply,
+            _ => throw new InvalidOperationException("Unknown actor join result.")
+        };
+        var state = reply.Decode<JoinConversationRes>().State;
 
         logger.LogInformation(
             "support entry open: completed conversation={ConversationId} status={Status}",

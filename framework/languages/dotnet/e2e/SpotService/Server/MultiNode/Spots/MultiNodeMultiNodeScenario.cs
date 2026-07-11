@@ -11,7 +11,7 @@ namespace SpotService.Server.MultiNode.Spots;
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    IZLinkSpotRefResolver locator,
+    IZLinkSpotHandleResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -44,7 +44,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
 internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    IZLinkSpotRefResolver locator,
+    IZLinkSpotHandleResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -78,7 +78,7 @@ internal static class MultiNodeScenario
 {
     public static async Task<StateRes> RequestStateWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotRefResolver locator,
+        IZLinkSpotHandleResolver locator,
         string channelName,
         string spotRid,
         int delta,
@@ -90,11 +90,8 @@ internal static class MultiNodeScenario
         {
             try
             {
-                return await routes.RequestToSpot(
-                        channelName,
-                        await locator.ResolveRequiredAsync(spotRid, cancellationToken),
+                return await routes.RequestToSpot(await locator.ResolveRequiredAsync(spotRid, cancellationToken),
                         new StateReq("add", delta))
-                    .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StateRes>(cancellationToken);
             }

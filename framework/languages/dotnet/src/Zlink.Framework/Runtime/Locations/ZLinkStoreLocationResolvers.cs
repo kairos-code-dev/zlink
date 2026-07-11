@@ -18,6 +18,7 @@ internal sealed class ZLinkStoreLocationResolvers :
     private readonly ZLinkLocationEventEmitter _events;
     private readonly ZLinkObservedLocationGenerations _observed;
     private readonly ZLinkLiveLocationRows _liveRows;
+    private readonly ZLinkLocationStoreHealth? _health;
 
     internal ZLinkStoreLocationResolvers(
         IZLinkPeerLocationStore peerStore,
@@ -26,7 +27,8 @@ internal sealed class ZLinkStoreLocationResolvers :
         IZLinkRouteLocationStore routeStore,
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkObservedLocationGenerations observed,
-        ZLinkLocationEventEmitter? events = null)
+        ZLinkLocationEventEmitter? events = null,
+        ZLinkLocationStoreHealth? health = null)
     {
         _peerStore = peerStore;
         _spotStore = spotStore;
@@ -34,6 +36,7 @@ internal sealed class ZLinkStoreLocationResolvers :
         _routeStore = routeStore;
         _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _observed = observed;
+        _health = health;
         _liveRows = new ZLinkLiveLocationRows(leaseTracker);
     }
 
@@ -41,7 +44,11 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _peerStore.ListPeersAsync(filter, cancellationToken).ConfigureAwait(false);
+        var rows = await ZLinkLocationStoreRead.ExecuteAsync(
+            _health,
+            "peer-resolver-read",
+            cancellationToken,
+            () => _peerStore.ListPeersAsync(filter, cancellationToken)).ConfigureAwait(false);
 
         // Drop rows older than a generation this runtime already observed
         // for the same key: a lagging store replica must never roll the
@@ -143,10 +150,15 @@ internal sealed class ZLinkStoreLocationResolvers :
         where TRow : class
     {
         return await _liveRows.ResolveAsync(
-                await resolve(store, key, cancellationToken).ConfigureAwait(false),
+                await ZLinkLocationStoreRead.ExecuteAsync(
+                    _health,
+                    $"{typeof(TRow).Name}-resolver-read",
+                    cancellationToken,
+                    () => resolve(store, key, cancellationToken)).ConfigureAwait(false),
                 ownerOf,
                 acceptObserved,
                 cancellationToken)
             .ConfigureAwait(false);
     }
+
 }

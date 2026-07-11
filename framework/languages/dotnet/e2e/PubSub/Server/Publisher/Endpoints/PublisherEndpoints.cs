@@ -19,7 +19,6 @@ internal static class PublisherEndpoints
                     PubSubNames.Channel,
                     topic,
                     new EventMsg(runId, sequence, value))
-                .PacketName("EventMsg")
                 .Submit(cancellationToken);
             return Results.Ok(new { status = "published", topic, runId, sequence });
         });
@@ -35,7 +34,6 @@ internal static class PublisherEndpoints
                     PubSubNames.Channel,
                     topic,
                     new MissingEventMsg(runId, sequence, value))
-                .PacketName("MissingEventMsg")
                 .Submit(cancellationToken);
             return Results.Ok(new { status = "published", topic, runId, sequence });
         });

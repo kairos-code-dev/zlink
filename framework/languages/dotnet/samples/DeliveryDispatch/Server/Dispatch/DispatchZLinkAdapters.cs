@@ -8,7 +8,8 @@ namespace DeliveryDispatch.Server.Dispatch;
 
 internal sealed class CourierOfferPort(
     SampleTopology topology,
-    IZLinkRouteClient routes)
+    IZLinkRouteClient routes,
+    IZLinkSpotHandleResolver spots)
 {
     public async ValueTask<DispatchOfferAttempt> OfferAsync(
         AssignDeliveryMsg delivery,
@@ -16,10 +17,11 @@ internal sealed class CourierOfferPort(
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var address = new SpotRef(placement.NodeRid, placement.NodeRid);
+        var address = await spots.ResolveSpotHandleAsync(placement.NodeRid, cancellationToken)
+                      ?? throw new InvalidOperationException(
+                          $"Courier placement spot '{placement.NodeRid}' was not found.");
         var found = await DispatchRouteClient.RequestAsync<FindCourierActorReq, FindCourierActorRes>(
             routes,
-            SampleNames.CourierActorDiscovery,
             address,
             new FindCourierActorReq(courierId),
             cancellationToken);
@@ -28,10 +30,12 @@ internal sealed class CourierOfferPort(
             return DispatchOfferAttempt.NotDelivered(delivery.DeliveryId, courierId, "courier is not bound");
         }
 
+        var actorSpot = await spots.ResolveSpotHandleAsync(found.Actor.NodeRid, cancellationToken)
+                        ?? throw new InvalidOperationException(
+                            $"Courier actor spot '{found.Actor.NodeRid}' was not found.");
         var response = await DispatchRouteClient.RequestAsync<OfferDeliveryReq, OfferDeliveryRes>(
             routes,
-            SampleNames.CourierActorDiscovery,
-            new SpotRef(found.Actor.NodeRid, found.Actor.NodeRid),
+            actorSpot,
             new OfferDeliveryReq(courierId, delivery.DeliveryId, delivery.PickupAddress, delivery.DropoffAddress),
             cancellationToken,
             SampleTimings.OfferRequestTimeout);
@@ -83,14 +87,12 @@ internal static class DispatchRouteClient
 {
     public static async ValueTask<TRes> RequestAsync<TReq, TRes>(
         IZLinkRouteClient routes,
-        string routeChannelName,
-        SpotRef address,
+        SpotHandle address,
         TReq request,
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
-        var call = routes.RequestToSpot(routeChannelName, address, request)
-            .PacketName(typeof(TReq).Name);
+        var call = routes.RequestToSpot(address, request);
         if (timeout is { } value)
         {
             call = call.Timeout(value);

@@ -8,9 +8,9 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal interface IZLinkAutoConnectExecutor
 {
-    void Connect(ZLinkAutoConnectTarget target);
+    bool Connect(ZLinkAutoConnectTarget target);
 
-    void Disconnect(ZLinkAutoConnectTarget target);
+    bool Disconnect(ZLinkAutoConnectTarget target);
 }
 
 /// <summary>
@@ -32,10 +32,12 @@ internal sealed class ZLinkAutoConnectReconciler
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
+    private Dictionary<string, ZLinkAutoConnectTarget> _lastDesired = new(StringComparer.Ordinal);
     private volatile HashSet<string>? _meshMemberRids;
     private long _localGeneration;
     private bool _localPublished;
     private bool _storeFailed;
+    private long? _storeFailureStartedAt;
     private long _recoveryDeferUntil;
 
     /// <summary>
@@ -82,21 +84,35 @@ internal sealed class ZLinkAutoConnectReconciler
     /// must not let a change stamp skip ticks in this state.</summary>
     internal bool StoreFailed => _storeFailed;
 
+    internal bool HasPendingTargets
+    {
+        get
+        {
+            foreach (var (key, desired) in _lastDesired)
+                if (!_active.TryGetValue(key, out var active)
+                    || RequiresHandover(active, desired)) return true;
+            return false;
+        }
+    }
+
     internal async ValueTask TickAsync(CancellationToken cancellationToken = default)
     {
         // Publish (or re-publish after recovery) the local row before
         // reading the list, so peers observing the store during our
         // recovery window can already see us.
-        await PublishLocalAsync(cancellationToken).ConfigureAwait(false);
-
         IReadOnlyList<ZLinkPeerLocation> rows;
         try
         {
+            await PublishLocalAsync(cancellationToken).ConfigureAwait(false);
             rows = await _peers.ListLivePeersAsync(
                 new ZLinkPeerLocationFilter(
                     AutoConnectType: _local.AutoConnectType,
                     MeshName: _local.MeshName),
                 cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception)
         {
@@ -104,8 +120,10 @@ internal sealed class ZLinkAutoConnectReconciler
             // keep already-ready connections alive. While the store is
             // unreachable the loop cannot accept expanded desired sets, so
             // no new outbound connects are started after the failure.
+            _storeFailureStartedAt ??= _time.GetTimestamp();
             _storeFailed = true;
             _localPublished = false;
+            RetryPendingTargetsWithinStoreFailureGrace();
             return;
         }
 
@@ -114,11 +132,13 @@ internal sealed class ZLinkAutoConnectReconciler
             // First successful read after an outage: defer disconnects for
             // one heartbeat interval so other nodes get time to re-register.
             _storeFailed = false;
+            _storeFailureStartedAt = null;
             _recoveryDeferUntil = _time.GetTimestamp()
                 + (long)(_options.HeartbeatInterval.TotalSeconds * _time.TimestampFrequency);
         }
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(_local, rows);
+        _lastDesired = new Dictionary<string, ZLinkAutoConnectTarget>(desired, StringComparer.Ordinal);
         // Membership snapshot for fail-fast target classification on the
         // send path (known peer vs unknown node). This is the full mesh
         // view, NOT the desired dial set: the pairwise initiator keeps
@@ -139,23 +159,27 @@ internal sealed class ZLinkAutoConnectReconciler
         {
             if (!_active.TryGetValue(key, out var current))
             {
-                _executor.Connect(target);
-                _active[key] = target;
-                connected.Add(target.Endpoint);
+                if (_executor.Connect(target))
+                {
+                    _active[key] = target;
+                    connected.Add(target.Endpoint);
+                }
                 continue;
             }
 
-            if (!string.Equals(current.Endpoint, target.Endpoint, StringComparison.Ordinal)
-                || !string.Equals(current.OwnerId, target.OwnerId, StringComparison.Ordinal))
+            if (RequiresHandover(current, target))
             {
                 // Same peer key with a new endpoint or a new owner is a
                 // handover: a restarted peer re-claims its row under a new
                 // owner and needs a fresh dial even at the old endpoint.
-                _executor.Disconnect(current);
-                _executor.Connect(target);
-                _active[key] = target;
+                if (!_executor.Disconnect(current)) continue;
                 disconnected.Add(current.Endpoint);
-                connected.Add(target.Endpoint);
+                _active.Remove(key);
+                if (_executor.Connect(target))
+                {
+                    _active[key] = target;
+                    connected.Add(target.Endpoint);
+                }
             }
         }
 
@@ -164,9 +188,11 @@ internal sealed class ZLinkAutoConnectReconciler
             var toRemove = _active.Keys.Where(key => !desired.ContainsKey(key)).ToArray();
             foreach (var key in toRemove)
             {
-                _executor.Disconnect(_active[key]);
-                disconnected.Add(_active[key].Endpoint);
-                _active.Remove(key);
+                if (_executor.Disconnect(_active[key]))
+                {
+                    disconnected.Add(_active[key].Endpoint);
+                    _active.Remove(key);
+                }
             }
         }
 
@@ -176,6 +202,30 @@ internal sealed class ZLinkAutoConnectReconciler
                 new ZLinkAutoConnectDesiredSetChange(
                     _local.AutoConnectType, _local.MeshName, connected, disconnected),
                 cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static bool RequiresHandover(
+        ZLinkAutoConnectTarget current,
+        ZLinkAutoConnectTarget target) =>
+        !string.Equals(current.Endpoint, target.Endpoint, StringComparison.Ordinal)
+        || !string.Equals(current.OwnerId, target.OwnerId, StringComparison.Ordinal)
+        || !string.Equals(
+            current.ConnectionFingerprint,
+            target.ConnectionFingerprint,
+            StringComparison.Ordinal);
+
+    private void RetryPendingTargetsWithinStoreFailureGrace()
+    {
+        if (_storeFailureStartedAt is not { } started
+            || _options.StoreFailureGrace <= TimeSpan.Zero
+            || _time.GetElapsedTime(started, _time.GetTimestamp()) > _options.StoreFailureGrace)
+            return;
+
+        foreach (var (key, target) in _lastDesired)
+        {
+            if (_active.ContainsKey(key)) continue;
+            if (_executor.Connect(target)) _active[key] = target;
         }
     }
 
@@ -190,7 +240,7 @@ internal sealed class ZLinkAutoConnectReconciler
 
         foreach (var target in _active.Values)
         {
-            _executor.Disconnect(target);
+            _ = _executor.Disconnect(target);
         }
 
         _active.Clear();

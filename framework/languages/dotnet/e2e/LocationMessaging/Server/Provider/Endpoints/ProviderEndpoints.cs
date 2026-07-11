@@ -83,7 +83,6 @@ internal static class ProviderEndpoints
             try
             {
                 await route.RequestToNode("profile.route", RoutingId.From("missing-rid"), request)
-                    .PacketName("ScenarioRoutePing")
                     .Timeout(TimeSpan.FromMilliseconds(300))
                     .Async<ScenarioRoutePong>();
             }
@@ -129,7 +128,6 @@ internal static class ProviderEndpoints
             try
             {
                 return await channel.RequestToChannel(channelName, request)
-                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<ProfileRes>();
             }
@@ -152,8 +150,7 @@ internal static class ProviderEndpoints
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                channel.SendToChannel(channelName, command)
-                    .PacketName("ProfileMsg").Submit();
+                channel.SendToChannel(channelName, command).Submit();
                 return;
             }
             catch (ZLinkFrameworkException ex) when (IsRetriableRequestStartupFailure(ex))
@@ -196,7 +193,6 @@ internal static class ProviderEndpoints
             try
             {
                 return await route.RequestToNode("profile.route", target, request)
-                    .PacketName("ScenarioRoutePing")
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<ScenarioRoutePong>();
             }

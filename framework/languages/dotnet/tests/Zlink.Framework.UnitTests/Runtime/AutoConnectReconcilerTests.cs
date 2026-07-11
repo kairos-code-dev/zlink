@@ -106,6 +106,43 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public async Task Failed_Connect_Is_Not_Marked_Active_And_Retries_On_The_Next_Tick()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        fixture.Executor.ConnectSucceeds = false;
+
+        await fixture.Reconciler.TickAsync();
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Equal(2, fixture.Executor.Connected.Count);
+        Assert.Empty(fixture.Reconciler.ActiveTargets);
+
+        fixture.Executor.ConnectSucceeds = true;
+        await fixture.Reconciler.TickAsync();
+        Assert.Single(fixture.Reconciler.ActiveTargets);
+    }
+
+    [Fact]
+    public async Task Store_Failure_Retries_The_Last_Desired_Target_Only_Within_Grace()
+    {
+        var fixture = await FixtureAsync(options =>
+            options.StoreFailureGrace = TimeSpan.FromSeconds(3));
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        fixture.Executor.ConnectSucceeds = false;
+        await fixture.Reconciler.TickAsync();
+        Assert.Single(fixture.Executor.Connected);
+
+        fixture.PeerResolver.Fail = true;
+        await fixture.Reconciler.TickAsync();
+        Assert.Equal(2, fixture.Executor.Connected.Count);
+
+        fixture.Time.Advance(TimeSpan.FromSeconds(4));
+        await fixture.Reconciler.TickAsync();
+        Assert.Equal(2, fixture.Executor.Connected.Count);
+    }
+
+    [Fact]
     public async Task Endpoint_Change_For_The_Same_Peer_Key_Is_A_Handover()
     {
         var fixture = await FixtureAsync();
@@ -253,6 +290,19 @@ public sealed class AutoConnectReconcilerTests
         fixture.Time.Advance(TimeSpan.FromSeconds(6));
         await fixture.Reconciler.TickAsync();
         Assert.Single(fixture.Executor.Disconnected);
+    }
+
+    [Fact]
+    public async Task Requested_Cancellation_Is_Not_Classified_As_A_Store_Outage()
+    {
+        var fixture = await FixtureAsync();
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await fixture.Reconciler.TickAsync(cancellation.Token));
+
+        Assert.False(fixture.Reconciler.StoreFailed);
     }
 
     [Fact]
@@ -450,8 +500,12 @@ public sealed class AutoConnectReconcilerTests
 
         public List<ZLinkAutoConnectTarget> Disconnected { get; } = [];
 
-        public void Connect(ZLinkAutoConnectTarget target) => Connected.Add(target);
+        public bool ConnectSucceeds { get; set; } = true;
 
-        public void Disconnect(ZLinkAutoConnectTarget target) => Disconnected.Add(target);
+        public bool DisconnectSucceeds { get; set; } = true;
+
+        public bool Connect(ZLinkAutoConnectTarget target) { Connected.Add(target); return ConnectSucceeds; }
+
+        public bool Disconnect(ZLinkAutoConnectTarget target) { Disconnected.Add(target); return DisconnectSucceeds; }
     }
 }

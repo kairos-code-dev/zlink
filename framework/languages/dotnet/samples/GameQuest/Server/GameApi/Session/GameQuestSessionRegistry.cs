@@ -54,7 +54,6 @@ internal sealed class GameQuestSessionRegistry
 
         foreach (var progress in request.Projection)
             session.Client.Send(new QuestProgressNotify(request.PlayerId, session.SessionId, progress))
-                .PacketName(SampleNames.ProgressPacket)
                 .Submit();
 
         if (!string.IsNullOrWhiteSpace(request.CompletedQuestId))
@@ -62,7 +61,6 @@ internal sealed class GameQuestSessionRegistry
             var completed = request.Projection.First(progress => progress.QuestId == request.CompletedQuestId);
             session.Client
                 .Send(new QuestCompletedNotify(request.PlayerId, session.SessionId, completed, true))
-                .PacketName(SampleNames.CompletedPacket)
                 .Submit();
         }
 

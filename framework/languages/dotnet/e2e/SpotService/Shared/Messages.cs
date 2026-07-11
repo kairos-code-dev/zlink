@@ -86,6 +86,10 @@ public sealed record ChannelEchoRes(string Value);
 
 public sealed record ChannelNotify(string Marker);
 
+public sealed record MissingChannelReq(string Value);
+
+public sealed record MissingChannelNotify(string Marker);
+
 public sealed record CreateSpotReq(string SpotRid);
 
 public sealed record CreateSpotRes(string SpotRid, string NodeRid, string State);
@@ -217,6 +221,10 @@ public sealed record SpotToSpotNegativeReq(string TargetSpotRid, string Marker);
 public sealed record SpotToSpotNegativeRes(string SourceSpotRid, string TargetSpotRid, bool RequestFailed);
 
 public sealed record SpotToSpotNegativeRouteReq(string SourceSpotRid, string TargetSpotRid, string Marker);
+
+public sealed record MissingSpotReq(string Value);
+
+public sealed record MissingSpotMsg(string Marker);
 
 public sealed record MultiNodeCreateSpotReq(string SpotRid, int Delta);
 

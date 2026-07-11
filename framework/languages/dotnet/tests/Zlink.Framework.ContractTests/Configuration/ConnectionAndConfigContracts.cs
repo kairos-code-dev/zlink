@@ -68,11 +68,7 @@ public sealed class ConnectionAndConfigContracts
             RoutingId = RoutingId.From("entry")
         };
 
-        var dispatch = new DispatchOptions
-        {
-            SpotDispatchMode = ZLinkDispatchMode.Compiled,
-            StreamDispatchMode = ZLinkDispatchMode.Dynamic
-        };
+        var dispatch = new DispatchOptions();
 
         Assert.True(socket.Immediate);
         Assert.True(route.RequireKnownPeer);
@@ -85,7 +81,7 @@ public sealed class ConnectionAndConfigContracts
         Assert.Equal(TimeSpan.FromMilliseconds(30), subscriber.ReceiveTimeout);
         Assert.Equal(TimeSpan.Zero, subscriber.Linger);
         Assert.Equal(RoutingId.From("entry"), entrySpot.RoutingId);
-        Assert.Equal(ZLinkDispatchMode.Compiled, dispatch.SpotDispatchMode);
+        Assert.NotNull(dispatch.Unhandled);
     }
 
     internal sealed class SocketConfig : IZLinkSocketConfig
@@ -162,10 +158,6 @@ public sealed class ConnectionAndConfigContracts
 
     internal sealed class DispatchOptions : IZLinkDispatchOptions
     {
-        public ZLinkDispatchMode SpotDispatchMode { get; set; }
-
-        public ZLinkDispatchMode StreamDispatchMode { get; set; }
-
         public IZLinkUnhandledDispatchOptions Unhandled { get; } = new UnhandledDispatchOptions();
 
         public IZLinkDiagnosticsOptions Diagnostics { get; } = new DiagnosticsOptions();

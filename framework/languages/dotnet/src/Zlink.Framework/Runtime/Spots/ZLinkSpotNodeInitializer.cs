@@ -115,13 +115,20 @@ internal sealed class ZLinkSpotNodeInitializer(
         ZLinkSpotNodeRegistration registration,
         ZLinkSpotNodeRuntime nodeRuntime)
     {
-        foreach (var connection in registration.Router?.ManualConnections ?? [])
-            _ = connection.PeerRid is { } peerRid
-                ? nodeRuntime.ConnectRouterAsync(peerRid, connection.Endpoint, CancellationToken.None)
-                : nodeRuntime.ConnectRouterAsync(connection.Endpoint, CancellationToken.None);
+        if (registration.Router is { AcquisitionMode: ZLinkPeerAcquisitionMode.Manual } router)
+            router.ManualConnections.Attach(
+            endpoint =>
+            {
+                _ = router.PeerRoutingIds.TryGetValue(endpoint, out var peerRid)
+                    ? nodeRuntime.ConnectRouterAsync(peerRid, endpoint, CancellationToken.None)
+                    : nodeRuntime.ConnectRouterAsync(endpoint, CancellationToken.None);
+            },
+            nodeRuntime.DisconnectRouterManual);
 
-        foreach (var endpoint in registration.PubSub?.ManualConnections ?? [])
-            _ = nodeRuntime.ConnectPubSubAsync(endpoint, CancellationToken.None);
+        if (registration.PubSub is { AcquisitionMode: ZLinkPeerAcquisitionMode.Manual } pubSub)
+            pubSub.ManualConnections.Attach(
+                endpoint => _ = nodeRuntime.ConnectPubSubAsync(endpoint, CancellationToken.None),
+                nodeRuntime.DisconnectPubSubManual);
     }
 
     private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)

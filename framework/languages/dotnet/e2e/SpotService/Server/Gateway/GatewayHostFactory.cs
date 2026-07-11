@@ -84,7 +84,7 @@ internal static class GatewayHostFactory
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
                     new SpotMsg(request.Marker))
-                .PacketName("SpotMsg").Submit();
+                .Submit();
             evidence.Add($"spot-publish|rid={options.Rid}|spot={request.SpotRid}|marker={request.Marker}");
             return Results.Ok(new SpotPublishRes(
                 "spot.sm-c4-publish",
@@ -110,7 +110,6 @@ internal static class GatewayHostFactory
                 var reply = await actors.RequestToActor(
                         actor,
                         new ActorPushReq(request.Value))
-                    .PacketName("ActorPushReq")
                     .Timeout(TimeSpan.FromSeconds(10))
                     .Async<ActorPingRes>(cancellationToken);
                 evidence.Add(

@@ -24,6 +24,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"channel '{channel.ChannelName}' client",
                 autoConnectConfigured,
                 channel.Client.ManualConnections);
+            channel.Client.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
+                autoConnectConfigured,
+                channel.Client.ManualConnections);
+            channel.Client.ManualConnections.Freeze(channel.Client.AcquisitionMode);
         }
 
         if (channel.Publisher is not null && string.IsNullOrWhiteSpace(channel.Publisher.BindEndpoint))
@@ -31,10 +35,16 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"channel '{channel.ChannelName}' publisher must define a bind endpoint.");
 
         if (channel.Subscriber is not null)
+        {
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"channel '{channel.ChannelName}' subscriber",
                 autoConnectConfigured,
                 channel.Subscriber.ManualConnections);
+            channel.Subscriber.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
+                autoConnectConfigured,
+                channel.Subscriber.ManualConnections);
+            channel.Subscriber.ManualConnections.Freeze(channel.Subscriber.AcquisitionMode);
+        }
 
         ValidateChannelHandlerExposure(channel, handlerGroups, scannedEndpoints);
     }

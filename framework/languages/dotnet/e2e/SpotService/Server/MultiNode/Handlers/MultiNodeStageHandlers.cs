@@ -165,32 +165,26 @@ internal sealed class SlowSpotHandler(EvidenceStore evidence)
 internal sealed class WorkerStartHandler(EvidenceStore evidence)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, WorkerStartReq, WorkerStartRes>
 {
-    public ValueTask<WorkerStartRes> HandleAsync(
+    public async ValueTask<WorkerStartRes> HandleAsync(
         ScenarioUserSpot spot,
         WorkerStartReq request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"worker-start|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={request.Marker}");
-        spot.Context.RunWorker(ct =>
+        var marker = await spot.Context.RunWorker(ct =>
             {
                 ct.ThrowIfCancellationRequested();
                 Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));
                 return request.Marker;
             })
-            .Submit(
-                (marker, ct) =>
-                {
-                    ct.ThrowIfCancellationRequested();
-                    spot.Add(100);
-                    evidence.Add($"worker-complete|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={marker}");
-                    return ValueTask.CompletedTask;
-                },
-                cancellationToken: cancellationToken);
-        return ValueTask.FromResult(new WorkerStartRes(
+            .Async(cancellationToken);
+        spot.Add(100);
+        evidence.Add($"worker-complete|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={marker}");
+        return new WorkerStartRes(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
-            request.Marker));
+            request.Marker);
     }
 }
 

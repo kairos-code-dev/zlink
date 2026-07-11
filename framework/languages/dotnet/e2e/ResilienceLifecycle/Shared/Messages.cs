@@ -7,6 +7,8 @@ public static class ResilienceLifecycleNames
 
 public sealed record ProfileReq(string Value, string Marker);
 
+public sealed record MissingProfileReq(string Value, string Marker);
+
 public sealed record ProfileRes(string Value, string ProviderRid, string Marker);
 
 public sealed record ProfileMsg(string Marker);

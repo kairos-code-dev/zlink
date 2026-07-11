@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <IsPackable>true</IsPackable>
         <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
         <AssemblyName>Systems.Zlink.Stream.Connector</AssemblyName>
         <RootNamespace>Systems.Zlink.Stream.Connector</RootNamespace>

@@ -22,6 +22,21 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 $"SPOT node '{spotNode.SpotNodeName}' must enable router or pub/sub capability.");
 
+        if (spotNode.Router is { } router)
+        {
+            router.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
+                registration.Locations.Enabled,
+                router.ManualConnections);
+            router.ManualConnections.Freeze(router.AcquisitionMode);
+        }
+        if (spotNode.PubSub is { } pubSub)
+        {
+            pubSub.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
+                registration.Locations.Enabled,
+                pubSub.ManualConnections);
+            pubSub.ManualConnections.Freeze(pubSub.AcquisitionMode);
+        }
+
         ValidateUniqueSpotFactories(spotNode, globalSpotFactories);
     }
 

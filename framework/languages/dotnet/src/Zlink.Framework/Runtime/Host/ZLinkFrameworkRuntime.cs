@@ -8,7 +8,7 @@ internal readonly record struct CreateActorResult(
     bool Created,
     ZLinkMessage CreateRequest);
 
-internal sealed partial class ZLinkFrameworkRuntime
+internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 {
     private static readonly AsyncLocal<ZLinkRuntimeOperationOwnership?> AmbientOperation = new();
     private readonly ZLinkFrameworkActorFacade _actors;

@@ -4,14 +4,7 @@ public interface IZLinkActorContext
 {
     RoutingId? SpotRid { get; }
 
-    bool IsJoined { get; }
-
     IZLinkBoundSession BoundSession { get; }
-
-    IZLinkSpot GetSpot();
-
-    TSpot GetSpot<TSpot>()
-        where TSpot : IZLinkSpot;
 
     IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
@@ -36,15 +29,27 @@ public interface IZLinkActorContext
     }
 }
 
-public sealed record ZLinkActorJoinResult(
-    bool Accepted,
-    ActorRef? Actor,
-    ZLinkMessage Reply);
+public abstract record ZLinkActorJoinResult
+{
+    private protected ZLinkActorJoinResult()
+    {
+    }
 
-public sealed record ZLinkActorJoinResult<TReply>(
-    bool Accepted,
-    ActorRef? Actor,
-    TReply Reply);
+    public sealed record Accepted(ActorRef Actor, ZLinkMessage Reply) : ZLinkActorJoinResult;
+
+    public sealed record Rejected(ZLinkMessage Reply) : ZLinkActorJoinResult;
+}
+
+public abstract record ZLinkActorJoinResult<TReply>
+{
+    private protected ZLinkActorJoinResult()
+    {
+    }
+
+    public sealed record Accepted(ActorRef Actor, TReply Reply) : ZLinkActorJoinResult<TReply>;
+
+    public sealed record Rejected(TReply Reply) : ZLinkActorJoinResult<TReply>;
+}
 
 public interface IZLinkActorJoinCall
 {
@@ -60,35 +65,25 @@ public interface IZLinkActorJoinCall
         CancellationToken cancellationToken = default)
     {
         var result = await Async(cancellationToken).ConfigureAwait(false);
-        return new ZLinkActorJoinResult<TReply>(
-            result.Accepted,
-            result.Actor,
-            result.Reply.Decode<TReply>());
+        return result switch
+        {
+            ZLinkActorJoinResult.Accepted accepted =>
+                new ZLinkActorJoinResult<TReply>.Accepted(
+                    accepted.Actor,
+                    accepted.Reply.Decode<TReply>()),
+            ZLinkActorJoinResult.Rejected rejected =>
+                new ZLinkActorJoinResult<TReply>.Rejected(rejected.Reply.Decode<TReply>()),
+            _ => throw new InvalidOperationException("Unknown actor join result.")
+        };
     }
 }
 
-public interface IZLinkActorYieldJoinCall : IZLinkActorJoinCall
-{
-    ValueTask<ZLinkActorJoinResult> Yield(
-        CancellationToken cancellationToken = default);
-
-    async ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
-        CancellationToken cancellationToken = default)
-    {
-        var result = await Yield(cancellationToken).ConfigureAwait(false);
-        return new ZLinkActorJoinResult<TReply>(
-            result.Accepted,
-            result.Actor,
-            result.Reply.Decode<TReply>());
-    }
-}
-
-public interface IZLinkActorJoinSpotCall : IZLinkActorYieldJoinCall
+public interface IZLinkActorJoinSpotCall : IZLinkActorJoinCall
 {
     IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 }
 
-public interface IZLinkActorJoinEntrySpotCall : IZLinkActorYieldJoinCall
+public interface IZLinkActorJoinEntrySpotCall : IZLinkActorJoinCall
 {
     IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
 }

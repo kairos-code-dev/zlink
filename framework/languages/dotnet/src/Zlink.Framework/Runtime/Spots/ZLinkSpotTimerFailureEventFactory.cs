@@ -11,16 +11,7 @@ internal static class ZLinkSpotTimerFailureEventFactory
         Exception exception,
         bool stopped)
     {
-        return new ZLinkSpotEvent(
-            sourceName,
-            DateTimeOffset.UtcNow,
-            stopped
-                ? ZLinkSpotEventKind.TimerStoppedAfterUnhandledException
-                : ZLinkSpotEventKind.TimerHandlerFailed,
-            null,
-            null,
-            null,
-            new ZLinkSpotTimerDiagnostic(
+        var diagnostic = new ZLinkSpotTimerDiagnostic(
                 spotRid,
                 isEntrySpot,
                 descriptor.Name,
@@ -28,6 +19,15 @@ internal static class ZLinkSpotTimerFailureEventFactory
                 tick.DeliveryIndex,
                 tick.ScheduledIndex,
                 exception.GetType().FullName ?? exception.GetType().Name,
-                exception.Message));
+                exception.Message);
+        return stopped
+            ? new ZLinkSpotEvent.TimerStoppedAfterUnhandledException(
+                sourceName,
+                DateTimeOffset.UtcNow,
+                diagnostic)
+            : new ZLinkSpotEvent.TimerHandlerFailed(
+                sourceName,
+                DateTimeOffset.UtcNow,
+                diagnostic);
     }
 }

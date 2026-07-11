@@ -4,7 +4,9 @@ namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 {
-    private readonly ZLinkSortedConnectionSet _manualConnections = new();
+    private readonly HashSet<string> _autoConnections = new(StringComparer.Ordinal);
+    private readonly object _connectionGate = new();
+    private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
     private int _disposed;
 
     public ZLinkChannelRuntimeBundle(
@@ -48,19 +50,65 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
         failures.ThrowIfAny();
     }
 
-    public bool TryAddManualConnection(string endpoint)
+    public void ConnectManual(IZLinkBackendConnectableSocket socket, string endpoint)
     {
-        lock (_manualConnections)
+        lock (_connectionGate) Acquire(_manualConnections, endpoint, () => socket.Connect(endpoint), true);
+    }
+
+    public void DisconnectManual(IZLinkBackendConnectableSocket socket, string endpoint)
+    {
+        lock (_connectionGate) Release(_manualConnections, endpoint, () => socket.Disconnect(endpoint), true);
+    }
+
+    public bool ConnectAuto(IZLinkBackendConnectableSocket socket, string endpoint)
+    {
+        lock (_connectionGate) return Acquire(_autoConnections, endpoint, () => socket.Connect(endpoint), false);
+    }
+
+    public bool DisconnectAuto(IZLinkBackendConnectableSocket socket, string endpoint)
+    {
+        lock (_connectionGate) return Release(_autoConnections, endpoint, () => socket.Disconnect(endpoint), false);
+    }
+
+    private bool Acquire(HashSet<string> source, string endpoint, Action connect, bool throwOnFailure)
+    {
+        var alreadyOwned = _manualConnections.Contains(endpoint) || _autoConnections.Contains(endpoint);
+        if (!source.Add(endpoint) || alreadyOwned) return true;
+        try
         {
-            return _manualConnections.Add(endpoint);
+            connect();
+            return true;
+        }
+        catch when (!throwOnFailure)
+        {
+            source.Remove(endpoint);
+            return false;
+        }
+        catch
+        {
+            source.Remove(endpoint);
+            throw;
         }
     }
 
-    public bool ContainsManualConnection(string endpoint)
+    private bool Release(HashSet<string> source, string endpoint, Action disconnect, bool throwOnFailure)
     {
-        lock (_manualConnections)
+        if (!source.Remove(endpoint)) return true;
+        if (_manualConnections.Contains(endpoint) || _autoConnections.Contains(endpoint)) return true;
+        try
         {
-            return _manualConnections.Contains(endpoint);
+            disconnect();
+            return true;
+        }
+        catch when (!throwOnFailure)
+        {
+            source.Add(endpoint);
+            return false;
+        }
+        catch
+        {
+            source.Add(endpoint);
+            throw;
         }
     }
 

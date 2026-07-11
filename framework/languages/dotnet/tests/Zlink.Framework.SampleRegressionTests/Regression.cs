@@ -7,12 +7,6 @@ public sealed partial class RegressionTests
     [Fact]
     public void Samples_Do_Not_Use_Location_Stores_Or_Resolvers_As_Business_Dependencies()
     {
-        // TODO(Q1): remove this exception when the actor client replaces the
-        // resolve-then-send flow in DeliveryDispatch Tracking.
-        var allowedActorAddressResolverFiles = new HashSet<string>(StringComparer.Ordinal)
-        {
-            NormalizeRelativePath(Path.Combine("DeliveryDispatch", "Server", "Tracking", "Handlers.cs"))
-        };
         var forbidden = new[]
         {
             "ZLinkActorLocation",
@@ -26,13 +20,8 @@ public sealed partial class RegressionTests
         };
 
         var offenders = EnumerateSourceFiles(ResolveSamplesRoot())
-            .Where(static file => !IsAllowedSampleLocationStoreException(file))
             .SelectMany(file => forbidden
                 .Where(token => File.ReadAllText(file).Contains(token, StringComparison.Ordinal))
-                .Where(token => !IsAllowedActorAddressResolverException(
-                    file,
-                    token,
-                    allowedActorAddressResolverFiles))
                 .Select(token => $"{Path.GetRelativePath(ResolveSamplesRoot(), file)}:{token}"))
             .ToArray();
 
@@ -51,7 +40,7 @@ public sealed partial class RegressionTests
             NormalizeRelativePath(Path.Combine("e2e", "SpotService", "Server", "Play", "Handlers", "PlaySessionHandlers.cs")),
             NormalizeRelativePath(Path.Combine("e2e", "SpotService", "Server", "Session", "Handlers", "SessionSessionHandlers.cs")),
             NormalizeRelativePath(Path.Combine("e2e", "SpotActorTransfer", "Server", "ActorNode", "Program.cs")),
-            NormalizeRelativePath(Path.Combine("e2e", "YieldDispatch", "Server", "Session", "Support", "YieldSession.cs"))
+            NormalizeRelativePath(Path.Combine("e2e", "AutomaticTurnDispatch", "Server", "Session", "Support", "AwaitSession.cs"))
         };
         var sampleSessionFiles = new[] { "Bingo", "DeliveryDispatch", "SupportChat", "TicTacToe" }
             .Select(ResolveSampleRoot)
@@ -134,10 +123,12 @@ public sealed partial class RegressionTests
     public void DotNet_Docs_Keep_Actor_Destroy_Entry_Owned()
     {
         var dotnetRoot = ResolveDotnetRoot();
-        var docs = EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide"))
-            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec")))
-            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet",
-                "internals")))
+        var frameworkDocRoot = Path.GetFullPath(Path.Combine(dotnetRoot, "..", "..", "doc", "framework"));
+        var dotnetDocRoot = Path.Combine(frameworkDocRoot, "dotnet");
+        var dotnetContractRoot = Path.Combine(frameworkDocRoot, "common", "spec", "languages", "dotnet");
+        var docs = EnumerateMarkdownFiles(Path.Combine(dotnetDocRoot, "guide"))
+            .Concat(EnumerateMarkdownFiles(dotnetContractRoot))
+            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetDocRoot, "internals")))
             .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.md",
                 SearchOption.AllDirectories))
             .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.ko.md",
@@ -167,10 +158,8 @@ public sealed partial class RegressionTests
                     offenders.Add($"{Path.GetRelativePath(dotnetRoot, file)}: {reason}");
         }
 
-        var actorSpec = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec",
-            "aspnet-core-actor.ko.md"));
-        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide",
-            "06-actor-spot.ko.md"));
+        var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "aspnet-core-actor.ko.md"));
+        var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "06-actor-spot.ko.md"));
         Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
         Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
@@ -554,24 +543,6 @@ public sealed partial class RegressionTests
             "ZLink",
             "Sessions");
         if (Directory.Exists(infrastructureSessionsRoot)) yield return infrastructureSessionsRoot;
-    }
-
-    private static bool IsAllowedSampleLocationStoreException(string file)
-    {
-        return Path.GetFileName(file).Equals("RedisRoomRouteStore.cs", StringComparison.Ordinal)
-               && file.Contains(
-                   $"{Path.DirectorySeparatorChar}TicTacToe{Path.DirectorySeparatorChar}",
-                   StringComparison.Ordinal);
-    }
-
-    private static bool IsAllowedActorAddressResolverException(
-        string file,
-        string token,
-        ISet<string> allowedRelativeFiles)
-    {
-        return string.Equals(token, "IZLinkActorAddressResolver", StringComparison.Ordinal)
-               && allowedRelativeFiles.Contains(
-                   NormalizeRelativePath(Path.GetRelativePath(ResolveSamplesRoot(), file)));
     }
 
     private static string ResolveSampleRoot(string sampleName)

@@ -51,7 +51,6 @@ internal static class CodecRequesterHostFactory
                 var reply = await channel.RequestToChannel(
                         RegistrationCodecNames.Channel,
                         new StringValue { Value = "rc-b5" })
-                    .PacketName("EchoProtobuf")
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StringValue>(cancellationToken);
                 return Results.Ok(new CodecMismatchProbeRes(false, null, reply.Value));
@@ -68,7 +67,6 @@ internal static class CodecRequesterHostFactory
             var reply = await channel.RequestToChannel(
                     RegistrationCodecNames.Channel,
                     new JsonEchoReq("rc-b5-json"))
-                .PacketName("EchoJson")
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<EchoRes>(cancellationToken);
             return Results.Ok(reply);

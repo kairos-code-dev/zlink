@@ -16,7 +16,8 @@ internal sealed class ZLinkRouteChannelInitializer(
             state.RouteChannels.Add(routedRegistration.RouterChannelId, runtime);
             try
             {
-                foreach (var endpoint in ResolveManualConnections(routedRegistration)) runtime.Connect(endpoint);
+                if (routedRegistration.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual)
+                    routedRegistration.ManualConnections.Attach(runtime.ConnectManual, runtime.DisconnectManual);
 
                 runtime.Start();
             }
@@ -29,12 +30,6 @@ internal sealed class ZLinkRouteChannelInitializer(
                 throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
             }
         }
-    }
-
-    private IEnumerable<string> ResolveManualConnections(
-        ZLinkRouteChannelRegistration routedRegistration)
-    {
-        foreach (var endpoint in routedRegistration.ManualConnections) yield return endpoint;
     }
 
     private async ValueTask<ZLinkRouteChannelRuntime> CreateRuntimeAsync(

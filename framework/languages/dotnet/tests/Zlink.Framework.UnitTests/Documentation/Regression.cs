@@ -82,6 +82,7 @@ public sealed class RegressionTests
     public void DotNetContractDocuments_AllExposeRegressionTestSection()
     {
         var directory = GetDotNetDocRoot();
+        var contractDirectory = GetDotNetContractDocRoot();
         // Narrative guide docs are onboarding prose, not contract docs, so they
         // are exempt from the regression-section requirement.
         // Samples remain contract-bound and stay in the strict set.
@@ -89,6 +90,12 @@ public sealed class RegressionTests
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
             .Where(path => !IsUnderDirectory(path, guideRoot, true))
+            .Concat(Directory
+                .EnumerateFiles(contractDirectory, "*.ko.md", SearchOption.TopDirectoryOnly)
+                .Where(path => !string.Equals(
+                    Path.GetFileName(path),
+                    "README.ko.md",
+                    StringComparison.Ordinal)))
             .Select(Path.GetFileName)
             .OfType<string>()
             .Order(StringComparer.Ordinal)
@@ -196,6 +203,29 @@ public sealed class RegressionTests
     }
 
     [Fact]
+    public void DotNetDocs_DoNotDocument_Replaced_Spot_Address_Contracts()
+    {
+        var roots = new[] { GetDotNetDocRoot(), GetDotNetContractDocRoot() };
+        var forbidden = new[]
+        {
+            "SpotRef",
+            "IZLinkSpotRefResolver",
+            "ResolveSpotRefAsync",
+            "IZLinkActorAddressResolver",
+            "ResolveActorSpotRefAsync",
+            "IZLinkSpotLocationResolver"
+        };
+
+        foreach (var path in roots.SelectMany(root =>
+                     Directory.EnumerateFiles(root, "*.ko.md", SearchOption.AllDirectories)))
+        {
+            var text = File.ReadAllText(path);
+            foreach (var symbol in forbidden)
+                Assert.DoesNotContain(symbol, text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void DotNetDocs_DoNotDocumentNestedFrameworkConfigurationCallbacks()
     {
         var docRoot = GetDotNetDocRoot();
@@ -296,18 +326,46 @@ public sealed class RegressionTests
             "Could not find framework/doc/framework/dotnet from test runtime.");
     }
 
+    private static string GetDotNetContractDocRoot()
+    {
+        var dotnetDocRoot = GetDotNetDocRoot();
+        var contractRoot = Path.GetFullPath(Path.Combine(
+            dotnetDocRoot,
+            "..",
+            "common",
+            "spec",
+            "languages",
+            "dotnet"));
+
+        return Directory.Exists(contractRoot)
+            ? contractRoot
+            : throw new DirectoryNotFoundException(
+                "Could not find framework/doc/framework/common/spec/languages/dotnet from test runtime.");
+    }
+
     private static string ResolveDoc(string fileName)
     {
-        var matches = Directory.EnumerateFiles(
-            GetDotNetDocRoot(),
-            fileName,
-            SearchOption.AllDirectories).ToArray();
+        var matches = Directory
+            .EnumerateFiles(GetDotNetDocRoot(), fileName, SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(
+                GetDotNetContractDocRoot(),
+                fileName,
+                SearchOption.TopDirectoryOnly))
+            .Where(path => !string.Equals(
+                Path.GetFileName(path),
+                "README.ko.md",
+                StringComparison.Ordinal)
+                || string.Equals(
+                    Path.GetDirectoryName(path),
+                    GetDotNetDocRoot(),
+                    StringComparison.Ordinal))
+            .ToArray();
 
         return matches.Length switch
         {
             1 => matches[0],
             0 => throw new FileNotFoundException(
-                $"Could not find '{fileName}' under framework/doc/framework/dotnet."),
+                $"Could not find .NET document '{fileName}'."),
             _ => throw new InvalidOperationException(
                 $"Ambiguous document '{fileName}': {string.Join(", ", matches)}")
         };

@@ -4,10 +4,6 @@ namespace Zlink.Framework.Contracts.Dispatch;
 
 public interface IZLinkDispatchOptions
 {
-    ZLinkDispatchMode SpotDispatchMode { get; set; }
-
-    ZLinkDispatchMode StreamDispatchMode { get; set; }
-
     IZLinkUnhandledDispatchOptions Unhandled { get; }
 
     IZLinkDiagnosticsOptions Diagnostics { get; }

@@ -671,8 +671,10 @@ reply `ZLinkMessage`로 호출자에게 전달한다.
 - `SendToChannel(...)` / `RequestToChannel(...)` 는 route bridge channel socket을
   사용한다.
 - `SendToSpot(...)` / `RequestToSpot(...)` 는 호출자가 resolve 해서 보관한
-  `SpotHandle` 를 받는다. 전송 경로는 위치를 조회하지 않으며, 주소가 낡으면
-  요청이 `SpotRouteNotFound` 류의 오류로 실패해 재resolve 를 유도한다
+  `SpotHandle` 를 받는다. framework는 위치 변경 event와 주기적 조회 결과로 handle의
+  주소를 갱신한다. 요청 도중 주소가 무효화되면 안전한 경우에 한해 내부에서 주소를
+  다시 조회하고 한 번 재전송한다. one-way send는 이미 전달되었을 가능성이 있으므로
+  자동으로 다시 전송하지 않는다
   ([공통 spot 주소 메시징 스펙](../../spot-address-messaging.ko.md)).
 - `targetRid + spotRid` 를 낱개로 받는 raw 호출은 하부 바인딩에 남아 있더라도,
   application guide 의 기본 API 로는 문서화하지 않는다.
@@ -690,17 +692,17 @@ registration 표면으로 두는 쪽이 더 자연스럽다.
 현재 `.NET` framework 표면은 channel 이름 기준 호출과 spot 주소 기반 호출을
 구분한다. `targetRid + spotRid` 를 낱개로 받는 raw route 함수가 하부 바인딩에 있어도,
 framework application 문서에서는 backend / internal transport helper 로만 다룬다.
-일반 application 은 주소를 `IZLinkSpotLocationResolver` 로 얻고, 주소 안의 위치값을
+일반 application 은 handle을 `IZLinkSpotHandleResolver` 로 얻고, handle 안의 위치값을
 낱개로 풀어 쓰지 않는다.
 
 예를 들면 다음과 같이 사용할 수 있다.
 
 ```csharp
-await spot.Context.Outbound
+spot.Context.Outbound
     .SendToChannel(
         "orders",
         new RoomNoticeMessage())
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 
 var reply = await spot.Context.Outbound
     .RequestToChannel(
@@ -708,10 +710,10 @@ var reply = await spot.Context.Outbound
         new GetStageStateRequest())
     .Async<GetStageStateReply>(cancellationToken);
 
-// stageAddress 는 IZLinkSpotLocationResolver 로 한 번 조회해 보관한 값이다.
+// stageHandle은 IZLinkSpotHandleResolver로 한 번 조회해 보관한 논리적 대상이다.
 spot.Context.Outbound
     .SendToSpot(
-        stageAddress,
+        stageHandle,
         new StageNoticeMessage())
     .Submit(cancellationToken);
 ```
@@ -769,18 +771,18 @@ var reply = await spot.Context.Outbound
         new GetStageStateRequest())
     .Async<GetStageStateReply>(cancellationToken);
 
-// stageAddress 는 IZLinkSpotLocationResolver 로 한 번 조회해 보관한 값이다.
+// stageHandle은 IZLinkSpotHandleResolver로 한 번 조회해 보관한 논리적 대상이다.
 spot.Context.Outbound
     .SendToSpot(
-        stageAddress,
+        stageHandle,
         new StageNoticeMessage())
     .Submit(cancellationToken);
 
-await spot.Context.Outbound
+spot.Context.Outbound
     .Publish(
         "stage.state.updated",
         new StageStateUpdatedEvent())
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 계층이 별도의 directory 나 lookup 을 얹는 것은

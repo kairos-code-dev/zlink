@@ -34,7 +34,6 @@ internal static class TriggerEndpoints
             IZLinkChannelClient channel) =>
         {
             var reply = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
-                .PacketName("ProfileReq")
                 .Timeout(TimeSpan.FromSeconds(3))
                 .Async<ProfileRes>();
             return Results.Ok(reply);

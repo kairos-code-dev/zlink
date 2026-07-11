@@ -10,8 +10,6 @@ internal sealed class ZLinkActorContext(
 
     public RoutingId? SpotRid => state.SpotRid;
 
-    public bool IsJoined => state.IsJoined;
-
     public IZLinkBoundSession BoundSession
     {
         get
@@ -21,24 +19,6 @@ internal sealed class ZLinkActorContext(
                     ?? throw new InvalidOperationException("Bound session factory is not registered."))
                 .Create(state.ActorId);
         }
-    }
-
-    public IZLinkSpot GetSpot()
-    {
-        state.EnsureContextValid();
-        return state.GetJoinedSpot();
-    }
-
-    public TSpot GetSpot<TSpot>()
-        where TSpot : IZLinkSpot
-    {
-        state.EnsureContextValid();
-        var spot = GetSpot();
-        if (spot is not TSpot typed)
-            throw new InvalidOperationException(
-                $"Actor joined SPOT '{spot.GetType()}', not '{typeof(TSpot)}'.");
-
-        return typed;
     }
 
     public IZLinkActorJoinSpotCall JoinSpot(
@@ -77,12 +57,19 @@ internal sealed class ZLinkActorJoinSpotCall(
 
     public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout)
     {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
         _timeout = timeout;
         return this;
     }
 
-    public async ValueTask<ZLinkActorJoinResult> Async(
-        CancellationToken cancellationToken = default)
+    public ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
+    {
+        return _turn is null
+            ? ExecuteAsync(cancellationToken)
+            : _turn.AwaitFrameworkCallAsync(ExecuteAsync, cancellationToken);
+    }
+
+    private async ValueTask<ZLinkActorJoinResult> ExecuteAsync(CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
         var timeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
@@ -104,17 +91,6 @@ internal sealed class ZLinkActorJoinSpotCall(
         }
     }
 
-    public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
-    {
-        return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
-    }
-
-    private ZLinkSerialTurn RequireTurn()
-    {
-        return _turn
-               ?? throw new InvalidOperationException(
-                   "Yield requires a framework Spot handler turn captured when the call object was created.");
-    }
 }
 
 internal sealed class ZLinkActorJoinEntrySpotCall(
@@ -128,11 +104,19 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
 
     public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout)
     {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
         _timeout = timeout;
         return this;
     }
 
-    public async ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
+    public ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
+    {
+        return _turn is null
+            ? ExecuteAsync(cancellationToken)
+            : _turn.AwaitFrameworkCallAsync(ExecuteAsync, cancellationToken);
+    }
+
+    private async ValueTask<ZLinkActorJoinResult> ExecuteAsync(CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
         var timeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
@@ -154,15 +138,4 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
         }
     }
 
-    public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
-    {
-        return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
-    }
-
-    private ZLinkSerialTurn RequireTurn()
-    {
-        return _turn
-               ?? throw new InvalidOperationException(
-                   "Yield requires a framework Spot handler turn captured when the call object was created.");
-    }
 }

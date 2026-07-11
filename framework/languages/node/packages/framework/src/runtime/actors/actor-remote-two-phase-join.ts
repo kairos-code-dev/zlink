@@ -21,6 +21,7 @@ import type { ZLinkLocationLifecycle } from '../locations';
 import { throwIfAborted } from '../abort';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
+import { requestRoutedJsonReply } from './actor-routed-json-request';
 import type { ZLinkActorSourceTransfer } from './actor-source-transfer';
 import { ZLinkActorRuntimeState } from './actor-runtime-state';
 import {
@@ -238,10 +239,13 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       });
     }
     if (transport.requestRawToSpot !== undefined) {
-      const request = BindingMessage.from(Buffer.from(JSON.stringify(payload)));
-      try {
-        const parts = await transport.requestRawToSpot(target, request, { timeoutMs, signal });
-        try {
+      return await requestRoutedJsonReply(
+        transport,
+        target,
+        payload,
+        { timeoutMs, signal },
+        'Remote actor transfer raw request transport is not available.',
+        (parts) => {
           if (parts.length === 0) {
             throw new ZLinkFrameworkException(
               ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -249,12 +253,8 @@ export class ZLinkRemoteTwoPhaseActorJoin {
             );
           }
           return JSON.parse(parts[0].getString('utf8')) as TReply;
-        } finally {
-          disposeParts(parts);
         }
-      } finally {
-        request.close();
-      }
+      );
     }
     return await transport.request<TReply>(
       target.routerChannelId,
@@ -292,10 +292,4 @@ function actorRefFromReply(reply: ZLinkRemoteActorJoinReply): ActorRef {
     actorId: reply.actorId,
     generation: BigInt(reply.actorGeneration)
   } as ActorRef;
-}
-
-function disposeParts(parts: readonly Message[]): void {
-  for (const part of parts) {
-    part.close();
-  }
 }

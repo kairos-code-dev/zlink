@@ -18,6 +18,8 @@ import {
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import type { ZLinkActorRuntimeState } from '../actors/actor-runtime-state';
+import { ZLinkActorRetryDelay } from '../actors/actor-retry-delay';
+import { encodeRemoteBoundSessionOwnershipPayload } from '../actors/bound-session-wire';
 import type { ZLinkLocationLifecycle } from '../locations';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { DefaultZLinkSpotManager } from '../spots';
@@ -50,6 +52,7 @@ export interface ZLinkActorTransferRuntimeOptions {
   readonly actorManager: () => ZLinkActorTransferRuntimeActorManager | undefined;
   readonly primarySpotNode: () => ZLinkBackendSpotNode;
   readonly notifyEntrySpotActorLeft: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
+  readonly restoreEntrySpotActorJoined: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
@@ -63,7 +66,7 @@ export class ZLinkActorTransferRuntime {
 
   constructor(private readonly options: ZLinkActorTransferRuntimeOptions) {}
 
-  private async notifySourceActorLeft(
+  private async prepareSourceActorLeave(
     actor: ZLinkActor,
     sourceSpotRid: RoutingId | undefined,
     signal?: AbortSignal
@@ -71,11 +74,26 @@ export class ZLinkActorTransferRuntime {
     if (sourceSpotRid !== undefined) {
       const manager = this.options.spotManager();
       if (manager !== undefined) {
-        await manager.notifyActorLeftAfterTransfer(sourceSpotRid, actor, signal);
+        await manager.prepareActorLeaveForTransfer(sourceSpotRid, actor, signal);
         return;
       }
     }
     await this.options.notifyEntrySpotActorLeft(actor, signal);
+  }
+
+  private async restoreSourceActor(
+    actor: ZLinkActor,
+    sourceSpotRid: RoutingId | undefined,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (sourceSpotRid !== undefined) {
+      const manager = this.options.spotManager();
+      if (manager !== undefined) {
+        await manager.restoreActorAfterFailedTransfer(sourceSpotRid, actor, signal);
+        return;
+      }
+    }
+    await this.options.restoreEntrySpotActorJoined(actor, signal);
   }
 
   private async beginSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
@@ -109,9 +127,12 @@ export class ZLinkActorTransferRuntime {
     signal?: AbortSignal
   ) {
     await this.beginSourceActorMove(actor, state);
+    const sourceSpotRid = state.spotRid;
+    let sourceLeaveStarted = false;
     try {
       const transfer = await this.options.actorTransferRegistry.transferOut(actor, signal);
-      const sourceSpotRid = state.spotRid;
+      sourceLeaveStarted = true;
+      await this.prepareSourceActorLeave(actor, sourceSpotRid, signal);
       let phase: 'prepared' | 'committed' | 'rolledBack' = 'prepared';
       return {
         ...transfer,
@@ -134,10 +155,16 @@ export class ZLinkActorTransferRuntime {
           if (phase !== 'prepared') return;
           phase = 'rolledBack';
           await this.cancelSourceActorMove(actor, state);
+          await this.restoreSourceActor(actor, sourceSpotRid);
         }
       };
     } catch (error) {
-      await this.cancelSourceActorMove(actor, state);
+      try {
+        await this.cancelSourceActorMove(actor, state);
+        if (sourceLeaveStarted) await this.restoreSourceActor(actor, sourceSpotRid);
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], 'Actor source leave and rollback both failed.');
+      }
       throw error;
     }
   }
@@ -150,15 +177,16 @@ export class ZLinkActorTransferRuntime {
   }
 
   private async finishSourceDeparture(actor: ZLinkActor, sourceSpotRid: RoutingId | undefined): Promise<void> {
-    let delayMs = 25;
+    const retry = new ZLinkActorRetryDelay();
     while (this.options.shutdownSignal?.()?.aborted !== true) {
       try {
-        await this.notifySourceActorLeft(actor, sourceSpotRid);
+        if (sourceSpotRid !== undefined) {
+          await this.options.spotManager()?.commitActorLeaveAfterTransfer(sourceSpotRid, actor.actorId);
+        }
         return;
       } catch (error) {
         this.options.reportPostCommitError?.(error);
-        if (!await delayUnlessAborted(delayMs, this.options.shutdownSignal?.())) return;
-        delayMs = Math.min(delayMs * 2, 1_000);
+        if (!await retry.wait(this.options.shutdownSignal?.())) return;
       }
     }
   }
@@ -377,13 +405,13 @@ export class ZLinkActorTransferRuntime {
           spotRid: target.spotRid,
           spotKind: ZLinkSpotKind.Entry
         },
-        {
+        encodeRemoteBoundSessionOwnershipPayload({
           actorId,
           actorNodeRid: String(actorRef.nodeRid),
           actorNodeRidHex: (actorRef.nodeRid as { toHex?: () => string }).toHex?.(),
           actorGeneration: actorRef.generation.toString(),
           actorOwnershipGeneration: ownershipGeneration.toString()
-        },
+        }),
         { packetName: ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET }
       );
     } catch (error) {
@@ -394,20 +422,4 @@ export class ZLinkActorTransferRuntime {
       );
     }
   }
-}
-
-function delayUnlessAborted(delayMs: number, signal: AbortSignal | undefined): Promise<boolean> {
-  if (signal?.aborted === true) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const deadline = setTimeout(() => {
-      signal?.removeEventListener('abort', aborted);
-      resolve(true);
-    }, delayMs);
-    deadline.unref();
-    const aborted = (): void => {
-      clearTimeout(deadline);
-      resolve(false);
-    };
-    signal?.addEventListener('abort', aborted, { once: true });
-  });
 }

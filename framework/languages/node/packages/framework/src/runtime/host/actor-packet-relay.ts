@@ -17,12 +17,18 @@ import {
 import type { DefaultZLinkActorManager } from '../actors';
 import {
   decodeRemoteActorPacketRelayPayload,
+  encodeRemoteActorPacketRelayPayload,
   encodeRemoteActorPacketTarget
 } from '../actors/actor-packet-relay-wire';
+import { requestRoutedJsonReply } from '../actors/actor-routed-json-request';
 import { streamMetadataMap } from '../actors/bound-session-wire';
 import { normalizeRoutingId, routingIdsEqual } from '../routing-id';
 import type { DefaultZLinkSpotManager, ZLinkSpotNodeRuntimeManager } from '../spots';
-import type { ZLinkBoundSessionResponseTarget, ZLinkStreamBindingRuntime } from '../streams';
+import type { ZLinkBoundSessionResponseTarget } from '../streams';
+import type {
+  ZLinkBoundSessionResponsePort,
+  ZLinkStreamActorLookupPort
+} from '../streams/stream-binding-runtime-ports';
 import {
   decodeStreamHeader,
   encodeStreamHeader,
@@ -38,7 +44,7 @@ import { ZLinkRemoteActorPacketTargetStore } from './remote-actor-packet-target-
 export interface ZLinkActorPacketRelayOptions {
   readonly requestTimeoutMs?: number;
   readonly routeTransport: ZLinkActorRoutedJoinTransport;
-  readonly streamBindingRuntime: () => ZLinkStreamBindingRuntime;
+  readonly streamBindingRuntime: () => ZLinkBoundSessionResponsePort & ZLinkStreamActorLookupPort;
   readonly meshRouters: MeshRouterResolver;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
@@ -256,15 +262,14 @@ export class ZLinkActorPacketRelay {
       return false;
     }
     const localNodeRid = this.options.spotNodeRuntime()?.primaryNode?.routingId as RoutingId | undefined;
-    const request = {
-      packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+    const request = encodeRemoteActorPacketRelayPayload({
       actorId: actor.actorId,
       routerChannelId: remoteTarget.routerChannelId,
       boundSessionTargetNodeRid: localNodeRid === undefined ? undefined : String(localNodeRid),
       boundSessionSpotRid: localNodeRid === undefined ? undefined : String(localNodeRid),
-      header: Buffer.from(encodeStreamHeader(frameHeader)).toString('base64'),
-      payload: Buffer.from(messageToBytes(payload)).toString('base64')
-    };
+      header: encodeStreamHeader(frameHeader),
+      payload: messageToBytes(payload)
+    });
     const remoteAddress = {
       routerChannelId: remoteTarget.routerChannelId,
       targetNodeRid: remoteTarget.targetNodeRid,
@@ -285,26 +290,22 @@ export class ZLinkActorPacketRelay {
       readonly deferredResponse?: boolean;
       readonly actorPacketTarget?: unknown;
     };
-    const requestPayload = BindingMessage.from(Buffer.from(JSON.stringify(request)));
-    try {
-      const parts = await this.options.routeTransport.requestRawToSpot?.(remoteAddress, requestPayload, {
+    reply = await requestRoutedJsonReply(
+      this.options.routeTransport,
+      remoteAddress,
+      request,
+      {
         timeoutMs: this.options.requestTimeoutMs,
         signal
-      });
-      if (parts === undefined) {
-        throw new Error(`Remote actor packet relay raw request is not available for '${actor.actorId}'.`);
-      }
-      try {
+      },
+      `Remote actor packet relay raw request is not available for '${actor.actorId}'.`,
+      (parts) => {
         if (parts.length === 0) {
           throw new Error(`Remote actor packet relay reply was empty for '${actor.actorId}'.`);
         }
-        reply = JSON.parse(parts[0].getString('utf8')) as typeof reply;
-      } finally {
-        parts.forEach((part) => part.close());
+        return JSON.parse(parts[0].getString('utf8')) as typeof reply;
       }
-    } finally {
-      requestPayload.close();
-    }
+    );
     const actorPacketTarget = this.targets.decodeFromWire(reply.actorPacketTarget);
     if (
       actorPacketTarget !== undefined &&
@@ -359,13 +360,12 @@ export class ZLinkActorPacketRelay {
       name: ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
       metadata: new Map()
     };
-    const payload = {
-      packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+    const payload = encodeRemoteActorPacketRelayPayload({
       actorId,
       routerChannelId: remoteTarget.routerChannelId,
-      header: Buffer.from(encodeStreamHeader(header)).toString('base64'),
-      payload: Buffer.alloc(0).toString('base64')
-    };
+      header: encodeStreamHeader(header),
+      payload: Buffer.alloc(0)
+    });
     await this.options.routeTransport.sendToSpot(
       {
         routerChannelId: remoteTarget.routerChannelId,

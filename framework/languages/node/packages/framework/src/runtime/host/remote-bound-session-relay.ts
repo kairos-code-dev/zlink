@@ -1,30 +1,31 @@
-import { Message as BindingMessage } from '@zlink-systems/zlink';
 import type { ActorRef, RoutingId, ZLinkActor } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import type { ZLinkBackendSpotNode } from '../backend';
 import {
-  ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
-  ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
   type ZLinkActorRoutedJoinTransport,
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import type { DefaultZLinkActorManager } from '../actors';
-import type { ZLinkStreamBindingRuntime } from '../streams';
+import type { ZLinkRemoteBoundSessionPort } from '../streams/stream-binding-runtime-ports';
 import type { ZLinkActorResponseOptions } from '../spots/spot-actor-packet-dispatch';
 import {
   decodeRemoteBoundSessionErrorPayload,
+  decodeRemoteBoundSessionOwnershipPayload,
   decodeRemoteBoundSessionResponsePayload,
-  decodeRemoteBoundSessionSendPayload
+  decodeRemoteBoundSessionSendPayload,
+  encodeRemoteBoundSessionErrorPayload,
+  encodeRemoteBoundSessionResponsePayload
 } from '../actors/bound-session-wire';
 import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
+import { requestRoutedJson } from '../actors/actor-routed-json-request';
 import { decodeRoutingId as decodeWireRoutingId } from '../routing-id';
 import type { MeshRouterResolver } from './mesh-router-resolver';
 
 export interface ZLinkRemoteBoundSessionRelayOptions {
   readonly requestTimeoutMs?: number;
   readonly routeTransport: ZLinkActorRoutedJoinTransport;
-  readonly streamBindingRuntime: () => ZLinkStreamBindingRuntime;
+  readonly streamBindingRuntime: () => ZLinkRemoteBoundSessionPort;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly meshRouters: MeshRouterResolver;
   readonly primarySpotNode: () => ZLinkBackendSpotNode;
@@ -170,18 +171,7 @@ export class ZLinkRemoteBoundSessionRelay {
   }
 
   async receiveRemoteBoundSessionOwnership(payload: unknown): Promise<void> {
-    if (typeof payload !== 'object' || payload === null) {
-      throw new Error('Bound session ownership update payload must be an object.');
-    }
-    const value = payload as Record<string, unknown>;
-    if (
-      typeof value.actorId !== 'string' ||
-      typeof value.actorNodeRid !== 'string' ||
-      typeof value.actorGeneration !== 'string' ||
-      typeof value.actorOwnershipGeneration !== 'string'
-    ) {
-      throw new Error('Bound session ownership update is missing actor identity or generation.');
-    }
+    const value = decodeRemoteBoundSessionOwnershipPayload(payload);
     const actorRef = {
       nodeRid: decodeWireRoutingId(value.actorNodeRid, value.actorNodeRidHex),
       actorId: value.actorId,
@@ -322,16 +312,15 @@ export class ZLinkRemoteBoundSessionRelay {
     const actorPacketTarget = encodeRemoteActorPacketTarget(
       this.options.actorPacketTargetForState(actorId, target.routerChannelId)
     );
-    await this.sendRemoteBoundSessionControl(target, {
-      packetName: ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
+    await this.sendRemoteBoundSessionControl(target, encodeRemoteBoundSessionResponsePayload({
       actorId,
       boundPacketName: packetName,
-      requestSeq: requestSeq.toString(),
+      requestSeq,
       message,
-      metadata: Object.fromEntries(replyOptions.metadata),
+      metadata: replyOptions.metadata,
       compressPayload: replyOptions.compressPayload,
       actorPacketTarget
-    }, signal);
+    }), signal);
   }
 
   private async sendRemoteBoundSessionError(
@@ -343,19 +332,16 @@ export class ZLinkRemoteBoundSessionRelay {
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
   ): Promise<void> {
-    await this.sendRemoteBoundSessionControl(target, {
-      packetName: ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
+    await this.sendRemoteBoundSessionControl(target, encodeRemoteBoundSessionErrorPayload({
       actorId,
       boundPacketName: packetName,
-      requestSeq: requestSeq.toString(),
-      error: error instanceof Error
-        ? { code: error.constructor.name, message: error.message }
-        : error,
-      metadata: Object.fromEntries(metadata),
+      requestSeq,
+      error,
+      metadata,
       actorPacketTarget: encodeRemoteActorPacketTarget(
         this.options.actorPacketTargetForState(actorId, target.routerChannelId)
       )
-    }, signal);
+    }), signal);
   }
 
   private async sendRemoteBoundSessionControl(
@@ -363,29 +349,17 @@ export class ZLinkRemoteBoundSessionRelay {
     payload: Record<string, unknown>,
     signal?: AbortSignal
   ): Promise<void> {
-    const rawPayload = BindingMessage.from(Buffer.from(JSON.stringify(payload)));
-    try {
-      const replyParts = await this.options.routeTransport.requestRawToSpot?.(
-        {
-          routerChannelId: target.routerChannelId,
-          targetNodeRid: target.targetNodeRid,
-          spotRid: target.spotRid,
-          spotKind: ZLinkSpotKind.Entry
-        },
-        rawPayload,
-        {
-          timeoutMs: this.options.requestTimeoutMs,
-          signal
-        }
-      );
-      if (replyParts === undefined) {
-        throw new Error('Remote bound session raw request transport is not available.');
-      }
-      for (const part of replyParts) {
-        part.close();
-      }
-    } finally {
-      rawPayload.close();
-    }
+    await requestRoutedJson(
+      this.options.routeTransport,
+      {
+        routerChannelId: target.routerChannelId,
+        targetNodeRid: target.targetNodeRid,
+        spotRid: target.spotRid,
+        spotKind: ZLinkSpotKind.Entry
+      },
+      payload,
+      { timeoutMs: this.options.requestTimeoutMs, signal },
+      'Remote bound session raw request transport is not available.'
+    );
   }
 }

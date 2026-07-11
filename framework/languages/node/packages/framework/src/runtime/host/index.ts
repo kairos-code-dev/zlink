@@ -228,6 +228,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       primarySpotNode: () => this.requirePrimarySpotNode(),
       notifyEntrySpotActorLeft: (actor, signal) =>
         this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve(),
+      restoreEntrySpotActorJoined: (actor, signal) =>
+        this.spotNodeRuntime?.notifyPrimaryEntrySpotActorJoined(actor, signal) ?? Promise.resolve(),
       locationLifecycle: () => this.locationOwner.currentLifecycle,
       actorHandoff: this.actorHandoff,
       actorTransferRegistry: this.actorTransferRegistry,

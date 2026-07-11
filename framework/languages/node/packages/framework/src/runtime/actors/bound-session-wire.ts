@@ -3,8 +3,103 @@ export const ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET = '__zlink.actor.bound_s
 export const ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET = '__zlink.actor.bound_session.error';
 export const ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET = '__zlink.actor.bound_session.ownership';
 
+export interface ZLinkRemoteBoundSessionOwnershipPayload {
+  readonly actorId: string;
+  readonly actorNodeRid: string;
+  readonly actorNodeRidHex?: string;
+  readonly actorGeneration: string;
+  readonly actorOwnershipGeneration: string;
+}
+
+export function encodeRemoteBoundSessionOwnershipPayload(
+  input: ZLinkRemoteBoundSessionOwnershipPayload
+): Record<string, unknown> {
+  return { packetName: ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET, ...input };
+}
+
+export function decodeRemoteBoundSessionOwnershipPayload(
+  payload: unknown
+): ZLinkRemoteBoundSessionOwnershipPayload {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    ((payload as { packetName?: unknown }).packetName !== undefined &&
+      (payload as { packetName?: unknown }).packetName !== ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET) ||
+    typeof (payload as { actorId?: unknown }).actorId !== 'string' ||
+    typeof (payload as { actorNodeRid?: unknown }).actorNodeRid !== 'string' ||
+    typeof (payload as { actorGeneration?: unknown }).actorGeneration !== 'string' ||
+    typeof (payload as { actorOwnershipGeneration?: unknown }).actorOwnershipGeneration !== 'string'
+  ) {
+    throw new Error('Remote bound session ownership payload is invalid.');
+  }
+  return {
+    actorId: (payload as { actorId: string }).actorId,
+    actorNodeRid: (payload as { actorNodeRid: string }).actorNodeRid,
+    actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
+    actorGeneration: (payload as { actorGeneration: string }).actorGeneration,
+    actorOwnershipGeneration: (payload as { actorOwnershipGeneration: string }).actorOwnershipGeneration
+  };
+}
+
+export function encodeRemoteBoundSessionSendPayload(input: {
+  readonly actorId: string;
+  readonly actorNodeRid?: string;
+  readonly actorNodeRidHex?: string;
+  readonly actorGeneration?: string;
+  readonly actorOwnershipGeneration?: string;
+  readonly message: unknown;
+  readonly boundPacketName?: string;
+  readonly metadata: ReadonlyMap<string, string>;
+}): Record<string, unknown> {
+  return {
+    packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
+    ...input,
+    metadata: Object.fromEntries(input.metadata)
+  };
+}
+
+export function encodeRemoteBoundSessionResponsePayload(input: {
+  readonly actorId: string;
+  readonly boundPacketName: string;
+  readonly requestSeq: bigint;
+  readonly message: unknown;
+  readonly metadata: ReadonlyMap<string, string>;
+  readonly compressPayload: boolean;
+  readonly actorPacketTarget?: unknown;
+}): Record<string, unknown> {
+  return {
+    packetName: ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
+    ...input,
+    requestSeq: input.requestSeq.toString(),
+    metadata: Object.fromEntries(input.metadata)
+  };
+}
+
+export function encodeRemoteBoundSessionErrorPayload(input: {
+  readonly actorId: string;
+  readonly boundPacketName: string;
+  readonly requestSeq: bigint;
+  readonly error: unknown;
+  readonly metadata: ReadonlyMap<string, string>;
+  readonly actorPacketTarget?: unknown;
+}): Record<string, unknown> {
+  return {
+    packetName: ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
+    ...input,
+    requestSeq: input.requestSeq.toString(),
+    error: input.error instanceof Error
+      ? { code: input.error.constructor.name, message: input.error.message }
+      : input.error,
+    metadata: Object.fromEntries(input.metadata)
+  };
+}
+
 export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
   readonly actorId: string;
+  readonly actorNodeRid?: string;
+  readonly actorNodeRidHex?: string;
+  readonly actorGeneration?: string;
+  readonly actorOwnershipGeneration?: string;
   readonly message: unknown;
   readonly boundPacketName?: string;
   readonly metadata?: Record<string, string>;
@@ -19,6 +114,10 @@ export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
   }
   return {
     actorId: (payload as { actorId: string }).actorId,
+    actorNodeRid: optionalString(payload, 'actorNodeRid'),
+    actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
+    actorGeneration: optionalString(payload, 'actorGeneration'),
+    actorOwnershipGeneration: optionalString(payload, 'actorOwnershipGeneration'),
     message: (payload as { message?: unknown }).message,
     boundPacketName: optionalString(payload, 'boundPacketName'),
     metadata: metadataRecordOf((payload as { metadata?: unknown }).metadata)

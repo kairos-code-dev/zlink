@@ -50,11 +50,12 @@ export class ZLinkManagedStream implements ZLinkStream {
   }
 
   write(payload: ZLinkMessage, flags?: ZLinkBackendSendFlags): boolean {
-    return this.socket.send(
-      this.backendRoutingId(),
-      encodeFrameworkPayloadMessage(payload, this.messageSerializers),
-      flags ?? 0
-    );
+    const message = encodeFrameworkPayloadMessage(payload, this.messageSerializers);
+    try {
+      return this.socket.send(this.backendRoutingId(), message, flags ?? 0);
+    } finally {
+      message.close();
+    }
   }
 
   writeRaw(payload: Message, flags?: ZLinkBackendSendFlags): boolean {

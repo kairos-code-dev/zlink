@@ -23,25 +23,18 @@ import {
   WRITE_SCRIPT
 } from './redis-scripts';
 import {
-  asArray,
-  asString,
-  fromUnixMs,
-  intentName,
   kindActor,
   kindPeer,
   kindRoute,
   kindSpot,
   kindTagOf,
-  matchesActor,
-  matchesPeer,
-  matchesRoute,
-  matchesSpot,
   materialize,
   ridOf,
-  toNumber,
-  toWriteResult,
   type LocationKind
 } from './redis-row-codec';
+import { matchesActor, matchesPeer, matchesRoute, matchesSpot } from './location-filter-predicates';
+import { asArray, asString, toNumber } from './redis-values';
+import { fromUnixMs, intentName, toWriteResult } from './redis-write-result';
 import {
   ZLinkLocationWriteIntent,
   type IZLinkLocationChangeStampStore,

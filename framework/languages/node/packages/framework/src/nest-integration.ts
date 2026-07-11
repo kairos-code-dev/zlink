@@ -6,7 +6,10 @@ export {
   hasSpotPublisherClient
 } from './contracts/Configuration/Registration';
 export {
+  registerActorFactory,
   registerActorTransferAdapter,
+  registerEntrySpot,
+  registerSpotFactory,
   validateActorTransferForwardWindow
 } from './contracts/Configuration/RegistrationBuilderPolicy';
 

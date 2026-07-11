@@ -2,21 +2,11 @@ import type { DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
   ZLinkChannelOptions,
-  ZLinkEntrySpotActorRequestHandlerRegistration,
-  ZLinkEntrySpotActorSendHandlerRegistration,
-  ZLinkEntrySpotPacketHandlerRegistration,
-  ZLinkEntrySpotSubscriptionHandlerRegistration,
   ZLinkFrameworkRegistrationOptions,
   ZLinkRouteChannelOptions,
-  ZLinkSpotActorRequestHandlerRegistration,
-  ZLinkSpotActorSendHandlerRegistration,
-  ZLinkSpotNodeOptions,
-  ZLinkSpotPacketHandlerRegistration,
-  ZLinkSpotSubscriptionHandlerRegistration
 } from '@zlink-systems/framework';
 import {
   ZLINK_MODULE_OPTIONS_BRAND,
-  type Mutable,
   type ZLinkModuleOptions,
   type ZLinkNestModuleRegistrationOptions,
   type ZLinkNestTypeResolver
@@ -42,6 +32,7 @@ import {
 } from './handler-adapters';
 import { framework } from './framework-loader';
 import { copyRouteInternalState } from './options-builder';
+import { SpotNodeHandlerRegistry } from './spot-node-handler-registry';
 
 
 export function hasNestHandlerDiscovery(options: ZLinkNestModuleRegistrationOptions): boolean {
@@ -200,229 +191,156 @@ function createDiscoveredSpotNodeOptions(
   if (refs.length === 0 && spotRefs.length === 0 && timerRefs.length === 0) {
     return value;
   }
-  const spotNodes = toMutableSpotNodeRecord(value);
-  const spotNodeEntries = Object.entries(spotNodes);
-  if (spotNodeEntries.length === 0) {
+  const registry = SpotNodeHandlerRegistry.from(value);
+  if (registry.isEmpty) {
     throw new framework.ZLinkConfigurationException('ZLink SPOT actor handlers require a registered SpotNode.');
   }
 
-  addDiscoveredSpotTimers(spotNodeEntries, timerRefs);
-  addDiscoveredSpotHandlers(spotNodeEntries, spotRefs);
-  addDiscoveredSpotActorHandlers(spotNodeEntries, refs);
-  return spotNodes;
+  addDiscoveredSpotTimers(registry, timerRefs);
+  addDiscoveredSpotHandlers(registry, spotRefs);
+  addDiscoveredSpotActorHandlers(registry, refs);
+  return registry.toOptions();
 }
 
-type MutableSpotNodeEntry = [string, Mutable<ZLinkSpotNodeOptions>];
-
 function addDiscoveredSpotTimers(
-  spotNodeEntries: readonly MutableSpotNodeEntry[],
+  registry: SpotNodeHandlerRegistry,
   timerRefs: readonly DiscoveredNestSpotTimerProvider[]
 ): void {
   for (const ref of timerRefs) {
     if (ref.metadata.entrySpot !== undefined) {
       const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
-      const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
-      if (matches.length === 0) {
-        throw new framework.ZLinkConfigurationException(
-          `ZLink Entry Spot timer handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
-        );
-      }
-      for (const [, spotNode] of matches) {
-        spotNode.entrySpotTimerHandlers = [
-          ...(spotNode.entrySpotTimerHandlers ?? []),
-          {
-            entrySpotType,
-            handlerType: ref.handlerKey,
-            name: ref.metadata.name,
-            options: ref.metadata.options,
-            periodMs: ref.metadata.periodMs
-          }
-        ];
+      const targets = registry.entrySpotTargets(
+        entrySpotType,
+        `ZLink Entry Spot timer handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
+      );
+      for (const spotNode of targets) {
+        registry.addEntrySpotTimer(spotNode, {
+          entrySpotType,
+          handlerType: ref.handlerKey,
+          name: ref.metadata.name,
+          options: ref.metadata.options,
+          periodMs: ref.metadata.periodMs
+        });
       }
       continue;
     }
     const spotType = resolveNestType(ref.metadata.spot, 'spot');
-    const matches = spotNodeEntries.filter(([, spotNode]) => (spotNode.spotFactories ?? []).includes(spotType));
-    if (matches.length === 0) {
-      throw new framework.ZLinkConfigurationException(
-        `ZLink SPOT timer handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
-      );
-    }
-    for (const [, spotNode] of matches) {
-      spotNode.spotTimerHandlers = [
-        ...(spotNode.spotTimerHandlers ?? []),
-        {
-          handlerType: ref.handlerKey,
-          name: ref.metadata.name,
-          options: ref.metadata.options,
-          periodMs: ref.metadata.periodMs,
-          spotType
-        }
-      ];
+    const targets = registry.spotTargets(
+      spotType,
+      `ZLink SPOT timer handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
+    );
+    for (const spotNode of targets) {
+      registry.addSpotTimer(spotNode, {
+        handlerType: ref.handlerKey,
+        name: ref.metadata.name,
+        options: ref.metadata.options,
+        periodMs: ref.metadata.periodMs,
+        spotType
+      });
     }
   }
 }
 
 function addDiscoveredSpotHandlers(
-  spotNodeEntries: readonly MutableSpotNodeEntry[],
+  registry: SpotNodeHandlerRegistry,
   spotRefs: readonly DiscoveredNestSpotProvider[]
 ): void {
   for (const ref of spotRefs) {
     if (ref.metadata.kind === 'entrySpotPacket' || ref.metadata.kind === 'entrySpotSubscription') {
       const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
-      const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
-      if (matches.length === 0) {
-        throw new framework.ZLinkConfigurationException(
-          `ZLink Entry Spot handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
-        );
-      }
-      for (const [, spotNode] of matches) {
+      const targets = registry.entrySpotTargets(
+        entrySpotType,
+        `ZLink Entry Spot handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
+      );
+      for (const spotNode of targets) {
         if (ref.metadata.kind === 'entrySpotPacket') {
-          const next = {
+          registry.addEntrySpotPacket(spotNode, {
             entrySpotType,
             handlerType: ref.handlerKey,
             packetName: ref.metadata.packetName
-          };
-          assertUniqueEntrySpotPacketHandler(spotNode.entrySpotPacketHandlers, next);
-          spotNode.entrySpotPacketHandlers = [
-            ...(spotNode.entrySpotPacketHandlers ?? []),
-            next
-          ];
+          });
         } else {
-          const next = {
+          registry.addEntrySpotSubscription(spotNode, {
             entrySpotType,
             handlerType: ref.handlerKey,
             topic: requireSpotSubscriptionTopic(ref)
-          };
-          assertUniqueEntrySpotSubscriptionHandler(spotNode.entrySpotSubscriptionHandlers, next);
-          spotNode.entrySpotSubscriptionHandlers = [
-            ...(spotNode.entrySpotSubscriptionHandlers ?? []),
-            next
-          ];
+          });
         }
       }
       continue;
     }
 
     const spotType = resolveNestType(ref.metadata.spot, 'spot');
-    const matches = spotNodeEntries.filter(([, spotNode]) => (spotNode.spotFactories ?? []).includes(spotType));
-    if (matches.length === 0) {
-      throw new framework.ZLinkConfigurationException(
-        `ZLink SPOT handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
-      );
-    }
-    for (const [, spotNode] of matches) {
+    const targets = registry.spotTargets(
+      spotType,
+      `ZLink SPOT handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
+    );
+    for (const spotNode of targets) {
       if (ref.metadata.kind === 'spotPacket') {
-        const next = {
+        registry.addSpotPacket(spotNode, {
           handlerType: ref.handlerKey,
           packetName: ref.metadata.packetName,
           spotType
-        };
-        assertUniqueSpotPacketHandler(spotNode.spotPacketHandlers, next);
-        spotNode.spotPacketHandlers = [
-          ...(spotNode.spotPacketHandlers ?? []),
-          next
-        ];
+        });
       } else {
-        const next = {
+        registry.addSpotSubscription(spotNode, {
           handlerType: ref.handlerKey,
           spotType,
           topic: requireSpotSubscriptionTopic(ref)
-        };
-        assertUniqueSpotSubscriptionHandler(spotNode.spotSubscriptionHandlers, next);
-        spotNode.spotSubscriptionHandlers = [
-          ...(spotNode.spotSubscriptionHandlers ?? []),
-          next
-        ];
+        });
       }
     }
   }
 }
 
 function addDiscoveredSpotActorHandlers(
-  spotNodeEntries: readonly MutableSpotNodeEntry[],
+  registry: SpotNodeHandlerRegistry,
   refs: readonly DiscoveredNestSpotActorProvider[]
 ): void {
   for (const ref of refs) {
     if (ref.metadata.kind === 'entrySpotActorSend' || ref.metadata.kind === 'entrySpotActorRequest') {
       const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
       const actorType = resolveNestType(ref.metadata.actor, 'actor');
-      const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
-      if (matches.length === 0) {
-        throw new framework.ZLinkConfigurationException(
-          `ZLink Entry Spot actor handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
-        );
-      }
-      for (const [, spotNode] of matches) {
+      const targets = registry.entrySpotTargets(
+        entrySpotType,
+        `ZLink Entry Spot actor handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
+      );
+      for (const spotNode of targets) {
         const next = {
           actorType,
           entrySpotType,
           handlerType: ref.handlerKey,
           packetName: ref.metadata.packetName
         };
-        if (ref.metadata.kind === 'entrySpotActorSend') {
-          assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorSendHandlers, next);
-          spotNode.entrySpotActorSendHandlers = [
-            ...(spotNode.entrySpotActorSendHandlers ?? []),
-            next
-          ];
-        } else {
-          assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorRequestHandlers, next);
-          spotNode.entrySpotActorRequestHandlers = [
-            ...(spotNode.entrySpotActorRequestHandlers ?? []),
-            next
-          ];
-        }
+        registry.addEntrySpotActor(
+          spotNode,
+          ref.metadata.kind === 'entrySpotActorSend' ? 'send' : 'request',
+          next
+        );
       }
       continue;
     }
 
     const spotType = resolveNestType(ref.metadata.spot, 'spot');
     const actorType = resolveNestType(ref.metadata.actor, 'actor');
-    const matches = spotNodeEntries.filter(([, spotNode]) => (spotNode.spotFactories ?? []).includes(spotType));
-    if (matches.length === 0) {
-      throw new framework.ZLinkConfigurationException(
-        `ZLink SPOT actor handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
-      );
-    }
-    for (const [, spotNode] of matches) {
+    const targets = registry.spotTargets(
+      spotType,
+      `ZLink SPOT actor handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
+    );
+    for (const spotNode of targets) {
       const next = {
         actorType,
         handlerType: ref.handlerKey,
         packetName: ref.metadata.packetName,
         spotType
       };
-      if (ref.metadata.kind === 'spotActorSend') {
-        assertUniqueSpotActorHandler(spotNode.spotActorSendHandlers, next);
-        spotNode.spotActorSendHandlers = [
-          ...(spotNode.spotActorSendHandlers ?? []),
-          next
-        ];
-      } else {
-        assertUniqueSpotActorHandler(spotNode.spotActorRequestHandlers, next);
-        spotNode.spotActorRequestHandlers = [
-          ...(spotNode.spotActorRequestHandlers ?? []),
-          next
-        ];
-      }
+      registry.addSpotActor(
+        spotNode,
+        ref.metadata.kind === 'spotActorSend' ? 'send' : 'request',
+        next
+      );
     }
   }
-}
-
-function toMutableSpotNodeRecord(value: ZLinkFrameworkRegistrationOptions['spotNodes']): Record<string, Mutable<ZLinkSpotNodeOptions>> {
-  if (value === undefined) {
-    return {};
-  }
-  if (!Array.isArray(value)) {
-    return Object.fromEntries(Object.entries(value).map(([name, spotNode]) => [name, { ...spotNode }]));
-  }
-  return Object.fromEntries(value.map((spotNode) => {
-    if (typeof spotNode === 'string') {
-      return [spotNode, {}];
-    }
-    const { name, ...options } = spotNode;
-    return [name, { ...options }];
-  }));
 }
 
 function resolveNestType<T>(resolver: ZLinkNestTypeResolver<T> | undefined, name: string): Type<T> {
@@ -443,102 +361,6 @@ function isClassType(value: unknown): value is Type {
   return typeof value === 'function' && /^class\s/.test(Function.prototype.toString.call(value));
 }
 
-function assertUniqueEntrySpotActorHandler(
-  existing: readonly (ZLinkEntrySpotActorSendHandlerRegistration | ZLinkEntrySpotActorRequestHandlerRegistration)[] | undefined,
-  next: ZLinkEntrySpotActorSendHandlerRegistration | ZLinkEntrySpotActorRequestHandlerRegistration
-): void {
-  assertUniqueRegistration(
-    existing,
-    next,
-    (handler) =>
-      handler.entrySpotType === next.entrySpotType &&
-      handler.actorType === next.actorType &&
-      handler.packetName === next.packetName,
-    `Duplicate Entry Spot actor handler '${next.entrySpotType.name}:${next.actorType.name}:${next.packetName}'.`
-  );
-}
-
-function assertUniqueSpotActorHandler(
-  existing: readonly (ZLinkSpotActorSendHandlerRegistration | ZLinkSpotActorRequestHandlerRegistration)[] | undefined,
-  next: ZLinkSpotActorSendHandlerRegistration | ZLinkSpotActorRequestHandlerRegistration
-): void {
-  assertUniqueRegistration(
-    existing,
-    next,
-    (handler) =>
-      handler.spotType === next.spotType &&
-      handler.actorType === next.actorType &&
-      handler.packetName === next.packetName,
-    `Duplicate SPOT actor handler '${next.spotType.name}:${next.actorType.name}:${next.packetName}'.`
-  );
-}
-
-function assertUniqueEntrySpotPacketHandler(
-  existing: readonly ZLinkEntrySpotPacketHandlerRegistration[] | undefined,
-  next: ZLinkEntrySpotPacketHandlerRegistration
-): void {
-  assertUniqueRegistration(
-    existing,
-    next,
-    (handler) =>
-      handler.entrySpotType === next.entrySpotType &&
-      (handler.packetName ?? handler.handlerType.name) === (next.packetName ?? next.handlerType.name),
-    `Duplicate Entry Spot packet handler '${next.entrySpotType.name}:${next.packetName ?? next.handlerType.name}'.`
-  );
-}
-
-function assertUniqueEntrySpotSubscriptionHandler(
-  existing: readonly ZLinkEntrySpotSubscriptionHandlerRegistration[] | undefined,
-  next: ZLinkEntrySpotSubscriptionHandlerRegistration
-): void {
-  assertUniqueRegistration(
-    existing,
-    next,
-    (handler) =>
-      handler.entrySpotType === next.entrySpotType &&
-      handler.topic === next.topic,
-    `Duplicate Entry Spot subscription handler '${next.entrySpotType.name}:${next.topic}'.`
-  );
-}
-
-function assertUniqueSpotPacketHandler(
-  existing: readonly ZLinkSpotPacketHandlerRegistration[] | undefined,
-  next: ZLinkSpotPacketHandlerRegistration
-): void {
-  assertUniqueRegistration(
-    existing,
-    next,
-    (handler) =>
-      handler.spotType === next.spotType &&
-      (handler.packetName ?? handler.handlerType.name) === (next.packetName ?? next.handlerType.name),
-    `Duplicate SPOT packet handler '${next.spotType.name}:${next.packetName ?? next.handlerType.name}'.`
-  );
-}
-
-function assertUniqueSpotSubscriptionHandler(
-  existing: readonly ZLinkSpotSubscriptionHandlerRegistration[] | undefined,
-  next: ZLinkSpotSubscriptionHandlerRegistration
-): void {
-  assertUniqueRegistration(
-    existing,
-    next,
-    (handler) =>
-      handler.spotType === next.spotType &&
-      handler.topic === next.topic,
-    `Duplicate SPOT subscription handler '${next.spotType.name}:${next.topic}'.`
-  );
-}
-
-function assertUniqueRegistration<TRegistration>(
-  existing: readonly TRegistration[] | undefined,
-  _next: TRegistration,
-  isDuplicate: (handler: TRegistration) => boolean,
-  duplicateMessage: string
-): void {
-  if ((existing ?? []).some(isDuplicate)) {
-    throw new framework.ZLinkConfigurationException(duplicateMessage);
-  }
-}
 
 function requireSpotSubscriptionTopic(ref: DiscoveredNestSpotProvider): string {
   const topic = ref.metadata.topic;

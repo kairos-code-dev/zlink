@@ -5,14 +5,14 @@ import type { DefaultZLinkActorManager, ZLinkRemoteBoundSessionTarget } from '..
 import { ZLinkPostCommitActorBinder } from '../actors/post-commit-actor-binder';
 import type { DefaultZLinkSpotManager, ZLinkSpotNodeRuntimeManager } from '../spots';
 import type { ZLinkEntryActorRuntime } from '../spots/spot-runtime-ports';
-import type { ZLinkStreamBindingRuntime } from '../streams';
+import type { ZLinkStreamActorLifecyclePort } from '../streams/stream-binding-runtime-ports';
 import type { ZLinkBoundSessionRelay } from './bound-session-relay';
 
 export interface ZLinkEntryActorRuntimeOptions {
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
   readonly spotNodeRuntime: () => ZLinkSpotNodeRuntimeManager | undefined;
-  readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
+  readonly streamBindingRuntime: Pick<ZLinkStreamActorLifecyclePort, 'refreshActor'>;
   readonly boundSessionRelay: ZLinkBoundSessionRelay;
   readonly reportPostCommitError?: (error: unknown) => void;
   readonly shutdownSignal?: () => AbortSignal | undefined;

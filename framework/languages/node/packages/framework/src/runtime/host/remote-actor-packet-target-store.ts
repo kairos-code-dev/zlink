@@ -8,7 +8,7 @@ import type {
   DefaultZLinkActorManager,
   ZLinkRemoteActorPacketTarget
 } from '../actors';
-import type { ZLinkStreamBindingRuntime } from '../streams';
+import type { ZLinkStreamActorLookupPort } from '../streams/stream-binding-runtime-ports';
 import {
   decodeRemoteActorPacketTarget,
   sessionActorPacketTargetKey
@@ -19,7 +19,7 @@ import { routingIdsEqual } from '../routing-id';
 
 export interface ZLinkRemoteActorPacketTargetStoreOptions {
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
-  readonly streamBindingRuntime: () => ZLinkStreamBindingRuntime;
+  readonly streamBindingRuntime: () => ZLinkStreamActorLookupPort;
   readonly meshRouters: MeshRouterResolver;
   readonly primaryNodeRid: () => RoutingId | undefined;
 }

@@ -6,6 +6,7 @@
     "outDir": "dist",
     "rootDir": "..",
     "strict": false,
+    "noUnusedLocals": false,
     "paths": {
       "@zlink-systems/framework": [
         "../../../packages/framework/dist"

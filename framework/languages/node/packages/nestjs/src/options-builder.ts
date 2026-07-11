@@ -40,40 +40,58 @@ import {
 import { framework } from './framework-loader';
 
 
-class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptionsBuilder {
-  private additionalOptions: ZLinkNestFrameworkAdditionalOptions = {};
-  private readonly clientServerChannels: Record<string, InternalZLinkNestClientServerChannelOptions> = {};
-  private readonly fanoutChannels: Record<string, InternalZLinkNestFanoutChannelOptions> = {};
-  private readonly routerMeshes: Record<string, InternalZLinkNestRouterMeshOptions> = {};
-  private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
-  private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
-  private readonly codecOptions: MutableCodecRegistryOptions = { serializers: [], streamCodecs: [] };
-  private readonly codecRegistry = framework.createIntegrationCodecRegistryBuilder(this.codecOptions);
+interface ZLinkNestBuilderState {
+  additionalOptions: ZLinkNestFrameworkAdditionalOptions;
+  readonly clientServerChannels: Record<string, InternalZLinkNestClientServerChannelOptions>;
+  readonly fanoutChannels: Record<string, InternalZLinkNestFanoutChannelOptions>;
+  readonly routerMeshes: Record<string, InternalZLinkNestRouterMeshOptions>;
+  readonly streams: Record<string, ZLinkStreamNodeOptions>;
+  readonly spotNodes: Record<string, ZLinkSpotNodeOptions>;
+  readonly codecOptions: MutableCodecRegistryOptions;
+  readonly codecRegistry: ReturnType<typeof framework.createIntegrationCodecRegistryBuilder>;
+}
+
+function createBuilderState(): ZLinkNestBuilderState {
+  const codecOptions: MutableCodecRegistryOptions = { serializers: [], streamCodecs: [] };
+  return {
+    additionalOptions: {},
+    clientServerChannels: {},
+    fanoutChannels: {},
+    routerMeshes: {},
+    streams: {},
+    spotNodes: {},
+    codecOptions,
+    codecRegistry: framework.createIntegrationCodecRegistryBuilder(codecOptions)
+  };
+}
+
+abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuilder {
+  protected constructor(protected readonly state: ZLinkNestBuilderState) {}
 
   options(options: ZLinkNestFrameworkAdditionalOptions): this {
-    this.additionalOptions = { ...this.additionalOptions, ...options };
+    this.state.additionalOptions = { ...this.state.additionalOptions, ...options };
     return this;
   }
 
   codecs(): ZLinkNestCodecRegistryBuilder {
-    return new DefaultZLinkNestCodecRegistryBuilder(this);
+    return new DefaultZLinkNestCodecRegistryBuilder(this.state);
   }
 
   configureDispatch(): ZLinkDispatchOptionsBuilder {
-    this.additionalOptions = {
-      ...this.additionalOptions,
-      dispatch: this.additionalOptions.dispatch ?? {}
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      dispatch: this.state.additionalOptions.dispatch ?? {}
     };
     return framework.createIntegrationDispatchOptionsBuilder(
-      this.additionalOptions.dispatch as NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>
+      this.state.additionalOptions.dispatch as NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>
     );
   }
 
   useInMemoryLocationStores(): this {
-    this.additionalOptions = {
-      ...this.additionalOptions,
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
       locations: {
-        ...(this.additionalOptions.locations ?? {}),
+        ...(this.state.additionalOptions.locations ?? {}),
         useInMemoryStores: true
       }
     };
@@ -81,10 +99,10 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   }
 
   addLocationStore(store: IZLinkLocationStore): this {
-    this.additionalOptions = {
-      ...this.additionalOptions,
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
       locations: {
-        ...(this.additionalOptions.locations ?? {}),
+        ...(this.state.additionalOptions.locations ?? {}),
         storeInstance: store
       }
     };
@@ -95,173 +113,107 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): this {
-    const adapters = new Map(this.additionalOptions.actorTransferAdapters);
+    const adapters = new Map(this.state.additionalOptions.actorTransferAdapters);
     framework.registerActorTransferAdapter(adapters, actorType, adapterType);
-    this.additionalOptions = {
-      ...this.additionalOptions,
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
       actorTransferAdapters: adapters
     };
     return this;
   }
 
   setActorTransferForwardWindow(timeoutMs: number): this {
-    this.additionalOptions = {
-      ...this.additionalOptions,
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
       actorTransferForwardWindowMs: framework.validateActorTransferForwardWindow(timeoutMs)
     };
     return this;
   }
 
   configureStreamCompression(): ZLinkStreamCompressionBuilder {
-    const compression = { ...(this.additionalOptions.streamCompression ?? {}) };
-    this.additionalOptions = { ...this.additionalOptions, streamCompression: compression };
+    const compression = { ...(this.state.additionalOptions.streamCompression ?? {}) };
+    this.state.additionalOptions = { ...this.state.additionalOptions, streamCompression: compression };
     return framework.createIntegrationStreamCompressionBuilder(compression);
   }
 
   configureLocations(): ZLinkLocationOptions {
-    this.additionalOptions = {
-      ...this.additionalOptions,
-      locations: this.additionalOptions.locations ?? { options: {} }
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      locations: this.state.additionalOptions.locations ?? { options: {} }
     };
-    const locations = this.additionalOptions.locations as NonNullable<ZLinkFrameworkRegistrationOptions['locations']>;
+    const locations = this.state.additionalOptions.locations as NonNullable<ZLinkFrameworkRegistrationOptions['locations']>;
     (locations as { options?: ZLinkLocationOptions }).options ??= {};
     return locations.options as ZLinkLocationOptions;
   }
 
-  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
-    this.codecRegistry.addSerializer(contentType, serializer);
+  protected addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
+    this.state.codecRegistry.addSerializer(contentType, serializer);
   }
 
-  addStreamCodec(contentType: string, codec: unknown): void {
-    this.codecRegistry.addStreamCodec(contentType, codec);
+  protected addStreamCodec(contentType: string, codec: unknown): void {
+    this.state.codecRegistry.addStreamCodec(contentType, codec);
   }
 
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
-    this.clientServerChannels[name] ??= {};
-    return new DefaultZLinkNestClientServerChannelBuilder(this, this.clientServerChannels[name]);
+    this.state.clientServerChannels[name] ??= {};
+    return new DefaultZLinkNestClientServerChannelBuilder(this.state, this.state.clientServerChannels[name]);
   }
 
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
-    this.fanoutChannels[name] ??= {};
-    return new DefaultZLinkNestFanoutChannelBuilder(this, this.fanoutChannels[name]);
+    this.state.fanoutChannels[name] ??= {};
+    return new DefaultZLinkNestFanoutChannelBuilder(this.state, this.state.fanoutChannels[name]);
   }
 
   addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
-    this.routerMeshes[name] ??= {};
-    markRouteTransportDeclared(this.routerMeshes[name]);
-    return new DefaultZLinkNestRouterMeshBuilder(this, this.routerMeshes[name]);
+    this.state.routerMeshes[name] ??= {};
+    markRouteTransportDeclared(this.state.routerMeshes[name]);
+    return new DefaultZLinkNestRouterMeshBuilder(this.state, this.state.routerMeshes[name]);
   }
 
   addSpotMesh(name: string): ZLinkNestSpotNodeBuilder {
-    this.spotNodes[name] ??= {};
-    return new DefaultZLinkNestSpotNodeBuilder(this, this.spotNodes[name]);
+    this.state.spotNodes[name] ??= {};
+    return new DefaultZLinkNestSpotNodeBuilder(this.state, this.state.spotNodes[name]);
   }
 
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
-    this.streams[name] ??= {};
-    return new DefaultZLinkNestStreamNodeBuilder(this, this.streams[name]);
+    this.state.streams[name] ??= {};
+    return new DefaultZLinkNestStreamNodeBuilder(this.state, this.state.streams[name]);
   }
 
   build(): ZLinkModuleOptions {
     const options: ZLinkNestModuleRegistrationOptions = {
       [ZLINK_MODULE_OPTIONS_BRAND]: true,
-      ...this.additionalOptions,
-      clientServerChannels: { ...this.clientServerChannels },
-      fanoutChannels: { ...this.fanoutChannels },
-      routerMeshes: { ...this.routerMeshes },
-      streams: { ...this.streams },
-      spotNodes: { ...this.spotNodes },
-      codecs: this.codecOptions.serializers.length === 0 &&
-          this.codecOptions.streamCodecs.length === 0
+      ...this.state.additionalOptions,
+      clientServerChannels: { ...this.state.clientServerChannels },
+      fanoutChannels: { ...this.state.fanoutChannels },
+      routerMeshes: { ...this.state.routerMeshes },
+      streams: { ...this.state.streams },
+      spotNodes: { ...this.state.spotNodes },
+      codecs: this.state.codecOptions.serializers.length === 0 &&
+          this.state.codecOptions.streamCodecs.length === 0
         ? undefined
         : {
-            serializers: [...this.codecOptions.serializers],
-            streamCodecs: [...this.codecOptions.streamCodecs]
+            serializers: [...this.state.codecOptions.serializers],
+            streamCodecs: [...this.state.codecOptions.streamCodecs]
           }
     };
     return options;
   }
 }
 
-abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder {
-  protected constructor(protected readonly root: DefaultZLinkNestFrameworkOptionsBuilder) {}
-
-  options(options: ZLinkNestFrameworkAdditionalOptions): this {
-    this.root.options(options);
-    return this;
-  }
-
-  codecs(): ZLinkNestCodecRegistryBuilder {
-    return this.root.codecs();
-  }
-
-  configureDispatch(): ZLinkDispatchOptionsBuilder {
-    return this.root.configureDispatch();
-  }
-
-  useInMemoryLocationStores(): this {
-    this.root.useInMemoryLocationStores();
-    return this;
-  }
-
-  addLocationStore(store: IZLinkLocationStore): this {
-    this.root.addLocationStore(store);
-    return this;
-  }
-
-  addActorTransferAdapter<TActor extends ZLinkActor>(
-    actorType: Type<TActor>,
-    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
-  ): this {
-    this.root.addActorTransferAdapter(actorType, adapterType);
-    return this;
-  }
-
-  setActorTransferForwardWindow(timeoutMs: number): this {
-    this.root.setActorTransferForwardWindow(timeoutMs);
-    return this;
-  }
-
-  configureStreamCompression(): ZLinkStreamCompressionBuilder {
-    return this.root.configureStreamCompression();
-  }
-
-  configureLocations(): ZLinkLocationOptions {
-    return this.root.configureLocations();
-  }
-
-  addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
-    return this.root.addClientServerChannel(name);
-  }
-
-  addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
-    return this.root.addFanoutChannel(name);
-  }
-
-  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
-    return this.root.addRouteMeshChannel(name);
-  }
-
-  addSpotMesh(name: string): ZLinkNestSpotNodeBuilder {
-    return this.root.addSpotMesh(name);
-  }
-
-  addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
-    return this.root.addStreamNode(name);
-  }
-
-  build(): ZLinkModuleOptions {
-    return this.root.build();
+class DefaultZLinkNestFrameworkOptionsBuilder extends ZLinkNestOptionsBuilder {
+  constructor() {
+    super(createBuilderState());
   }
 }
 
-class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder implements ZLinkNestCodecRegistryBuilder, ZLinkCodecRegistrar {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder) {
-    super(root);
+class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestCodecRegistryBuilder, ZLinkCodecRegistrar {
+  constructor(state: ZLinkNestBuilderState) {
+    super(state);
   }
 
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this {
-    this.root.addSerializer(contentType, serializer);
+    super.addSerializer(contentType, serializer);
     return this;
   }
 
@@ -269,7 +221,7 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder impleme
     if (contentType.trim().length === 0) {
       throw new Error('Codec content type must not be empty.');
     }
-    this.root.addStreamCodec(contentType, codec);
+    super.addStreamCodec(contentType, codec);
     return this;
   }
 
@@ -280,9 +232,9 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder impleme
 
 }
 
-class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestChildBuilder implements ZLinkNestClientServerChannelBuilder {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly channelOptions: Mutable<InternalZLinkNestClientServerChannelOptions>) {
-    super(root);
+class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestClientServerChannelBuilder {
+  constructor(state: ZLinkNestBuilderState, private readonly channelOptions: Mutable<InternalZLinkNestClientServerChannelOptions>) {
+    super(state);
   }
 
   enableServer(bind: string | undefined): this {
@@ -332,9 +284,9 @@ class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestChildBuilder i
   }
 }
 
-class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestChildBuilder implements ZLinkNestFanoutChannelBuilder {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly channelOptions: Mutable<InternalZLinkNestFanoutChannelOptions>) {
-    super(root);
+class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestFanoutChannelBuilder {
+  constructor(state: ZLinkNestBuilderState, private readonly channelOptions: Mutable<InternalZLinkNestFanoutChannelOptions>) {
+    super(state);
   }
 
   enablePublisher(bind: string | undefined): this {
@@ -358,9 +310,9 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestChildBuilder impleme
   }
 }
 
-class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestChildBuilder implements ZLinkNestRouterMeshBuilder {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly routeOptions: Mutable<InternalZLinkNestRouterMeshOptions>) {
-    super(root);
+class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestRouterMeshBuilder {
+  constructor(state: ZLinkNestBuilderState, private readonly routeOptions: Mutable<InternalZLinkNestRouterMeshOptions>) {
+    super(state);
   }
 
   enableRouter(endpoint: string | undefined): this {
@@ -399,9 +351,9 @@ class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestChildBuilder implements
   }
 }
 
-class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestChildBuilder implements ZLinkNestStreamNodeBuilder {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly streamOptions: Mutable<ZLinkStreamNodeOptions>) {
-    super(root);
+class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestStreamNodeBuilder {
+  constructor(state: ZLinkNestBuilderState, private readonly streamOptions: Mutable<ZLinkStreamNodeOptions>) {
+    super(state);
   }
 
   bind(endpoint: string | undefined): this {
@@ -428,9 +380,9 @@ class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestChildBuilder implements
 
 }
 
-class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements ZLinkNestSpotNodeBuilder {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly spotOptions: Mutable<ZLinkSpotNodeOptions>) {
-    super(root);
+class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestSpotNodeBuilder {
+  constructor(state: ZLinkNestBuilderState, private readonly spotOptions: Mutable<ZLinkSpotNodeOptions>) {
+    super(state);
   }
 
   routingId(routingId: string | undefined): this {
@@ -499,20 +451,21 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
   }
 
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
-    this.spotOptions.entrySpotType = entrySpotType;
+    framework.registerEntrySpot(this.spotOptions, entrySpotType);
     return this;
   }
 
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
-    this.spotOptions.spotFactories = [...(this.spotOptions.spotFactories ?? []), spotType];
+    const spotFactories = [...(this.spotOptions.spotFactories ?? [])];
+    framework.registerSpotFactory({ spotFactories }, spotType);
+    this.spotOptions.spotFactories = spotFactories;
     return this;
   }
 
   actorFactory(actorType: string, factoryType: Type): this {
-    this.spotOptions.actorFactories = {
-      ...(this.spotOptions.actorFactories as Record<string, Type> | undefined),
-      [actorType]: factoryType
-    };
+    const actorFactories = { ...(this.spotOptions.actorFactories as Record<string, Type> | undefined) };
+    framework.registerActorFactory({ actorFactories }, actorType, factoryType);
+    this.spotOptions.actorFactories = actorFactories;
     return this;
   }
 }

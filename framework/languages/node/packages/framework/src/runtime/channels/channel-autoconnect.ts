@@ -167,6 +167,9 @@ export function buildChannelAutoConnectCapabilities(
 }
 
 class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
+  private readonly recentlyDisconnected = new Set<string>();
+  private readonly pendingReconnects = new Map<string, NodeJS.Immediate>();
+
   constructor(
     private readonly socket: ZLinkBackendConnectableSocket,
     private readonly manualEndpoints: ReadonlySet<string>,
@@ -180,6 +183,14 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
     if (this.options.routerInitiatorDial === true) {
       configureRouterInitiatorDial(this.socket, target);
     }
+    if (this.recentlyDisconnected.delete(target.endpoint)) {
+      const pending = setImmediate(() => {
+        this.pendingReconnects.delete(target.endpoint);
+        this.socket.connect(target.endpoint);
+      });
+      this.pendingReconnects.set(target.endpoint, pending);
+      return true;
+    }
     this.socket.connect(target.endpoint);
     return true;
   }
@@ -188,7 +199,15 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
     if (this.manualEndpoints.has(target.endpoint)) {
       return;
     }
-    this.socket.disconnect(target.endpoint);
+    const pending = this.pendingReconnects.get(target.endpoint);
+    if (pending !== undefined) {
+      clearImmediate(pending);
+      this.pendingReconnects.delete(target.endpoint);
+    } else {
+      this.socket.disconnect(target.endpoint);
+    }
+    this.recentlyDisconnected.add(target.endpoint);
+    setImmediate(() => this.recentlyDisconnected.delete(target.endpoint));
   }
 }
 

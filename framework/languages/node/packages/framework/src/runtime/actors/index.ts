@@ -76,6 +76,7 @@ export type {
   ZLinkActorManagerOptions
 } from './actor-runtime-contracts';
 import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
+import { ZLinkTransferredActorRollbackCoordinator } from './transferred-actor-rollback';
 export {
   ZLinkActorTransferRegistry,
   type ZLinkActorTransferState
@@ -96,11 +97,12 @@ export {
 
 export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDirectory {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
-  private readonly transferredActorRollbackTasks = new Map<string, Promise<void>>();
   private readonly creation: ZLinkActorCreationCoordinator;
+  private readonly transferredActorRollback: ZLinkTransferredActorRollbackCoordinator;
 
   constructor(private readonly options: ZLinkActorManagerOptions) {
     this.creation = new ZLinkActorCreationCoordinator(options);
+    this.transferredActorRollback = new ZLinkTransferredActorRollbackCoordinator(this.states, options);
   }
 
   async create(actorId: string, actorType: string, signalOrRequest?: AbortSignal | unknown, signal?: AbortSignal): Promise<ActorRef> {
@@ -163,69 +165,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   }
 
   async rollbackTransferredActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
-    const state = this.states.get(actor.actorId);
-    if (state?.actor !== actor) {
-      return;
-    }
-    state.clearJoinedSpot();
-    if (!state.isMoving) {
-      state.beginMove();
-    }
-    const actorRef = state.nativeActorRef;
-    const node = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
-    try {
-      if (actorRef !== undefined && node !== undefined) {
-        await node.destroyActor(actorRef, 0, signal);
-      }
-    } catch (error) {
-      this.scheduleTransferredActorRollback(actor, state, node, actorRef);
-      throw error;
-    }
-    this.completeTransferredActorRollback(actor, state);
-  }
-
-  private scheduleTransferredActorRollback(
-    actor: ZLinkActor,
-    state: ZLinkActorRuntimeState,
-    node: ZLinkBackendSpotNode | undefined,
-    actorRef: ZLinkBackendActorRef | undefined
-  ): void {
-    if (this.transferredActorRollbackTasks.has(actor.actorId)) {
-      return;
-    }
-    const task = this.retryTransferredActorRollback(actor, state, node, actorRef)
-      .finally(() => this.transferredActorRollbackTasks.delete(actor.actorId));
-    this.transferredActorRollbackTasks.set(actor.actorId, task);
-  }
-
-  private async retryTransferredActorRollback(
-    actor: ZLinkActor,
-    state: ZLinkActorRuntimeState,
-    node: ZLinkBackendSpotNode | undefined,
-    actorRef: ZLinkBackendActorRef | undefined
-  ): Promise<void> {
-    let retryDelayMs = 25;
-    while (this.states.get(actor.actorId) === state && this.options.shutdownSignal?.aborted !== true) {
-      if (!await delayUnlessAborted(retryDelayMs, this.options.shutdownSignal)) return;
-      try {
-        if (node !== undefined && actorRef !== undefined) {
-          await node.destroyActor(actorRef, 0);
-        }
-        this.completeTransferredActorRollback(actor, state);
-        return;
-      } catch {
-        retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
-      }
-    }
-  }
-
-  private completeTransferredActorRollback(actor: ZLinkActor, state: ZLinkActorRuntimeState): void {
-    if (this.states.get(actor.actorId) !== state) {
-      return;
-    }
-    this.options.actorDestroyedCleanup?.(actor.actorId);
-    state.clearAfterDestroy();
-    this.states.delete(actor.actorId);
+    await this.transferredActorRollback.rollback(actor, signal);
   }
 
   async ensure(
@@ -405,23 +345,6 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   }
 
 }
-
-function delayUnlessAborted(delayMs: number, signal: AbortSignal | undefined): Promise<boolean> {
-  if (signal?.aborted === true) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const deadline = setTimeout(() => {
-      signal?.removeEventListener('abort', aborted);
-      resolve(true);
-    }, delayMs);
-    deadline.unref();
-    const aborted = (): void => {
-      clearTimeout(deadline);
-      resolve(false);
-    };
-    signal?.addEventListener('abort', aborted, { once: true });
-  });
-}
-
 
 function normalizeCreateRequestArgs(
   signalOrRequest: AbortSignal | unknown,

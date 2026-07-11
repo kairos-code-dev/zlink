@@ -27,7 +27,12 @@ import {
   type ZLinkSpotLocationKey
 } from '../../contracts/Locations';
 import { ZLinkLocationKeyCodec } from './key-codec';
-import { routingIdsEqual } from '../routing-id';
+import {
+  matchesActorLocation,
+  matchesPeerLocation,
+  matchesRouteLocation,
+  matchesSpotLocation
+} from '../../location-store-integration';
 
 export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLocationChangeStampStore {
   private readonly leases = new Map<string, ZLinkOwnerLease>();
@@ -77,7 +82,7 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
   }
 
   async listPeers(filter: ZLinkPeerLocationFilter): Promise<readonly ZLinkPeerLocation[]> {
-    return [...this.peers.rows.values()].filter((row) => matchesPeer(row, filter));
+    return [...this.peers.rows.values()].filter((row) => matchesPeerLocation(row, filter));
   }
 
   async updateSpot(
@@ -119,7 +124,7 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
     filter: ZLinkSpotLocationFilter,
     page: ZLinkPageRequest = {}
   ): Promise<ZLinkLocationPage<ZLinkSpotLocation>> {
-    return pageRows(this.spots, (row) => matchesSpot(row, filter), page);
+    return pageRows(this.spots, (row) => matchesSpotLocation(row, filter), page);
   }
 
   async updateActor(
@@ -161,7 +166,7 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
     filter: ZLinkActorLocationFilter,
     page: ZLinkPageRequest = {}
   ): Promise<ZLinkLocationPage<ZLinkActorLocation>> {
-    return pageRows(this.actors, (row) => matchesActor(row, filter), page);
+    return pageRows(this.actors, (row) => matchesActorLocation(row, filter), page);
   }
 
   async updateRoute(
@@ -203,7 +208,7 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
     filter: ZLinkRouteLocationFilter,
     page: ZLinkPageRequest = {}
   ): Promise<ZLinkLocationPage<ZLinkRouteLocation>> {
-    return pageRows(this.routes, (row) => matchesRoute(row, filter), page);
+    return pageRows(this.routes, (row) => matchesRouteLocation(row, filter), page);
   }
 
   async renewOwnerLease(
@@ -372,34 +377,6 @@ function parseContinuationToken(token: string | undefined): number {
   }
   const parsed = Number.parseInt(token, 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
-
-function matchesPeer(row: ZLinkPeerLocation, filter: ZLinkPeerLocationFilter): boolean {
-  return (filter.autoConnectType === undefined || row.autoConnectType === filter.autoConnectType)
-    && (filter.meshName === undefined || row.meshName === filter.meshName)
-    && (filter.role === undefined || row.role === filter.role)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
-    && (filter.endpoint === undefined || row.endpoint === filter.endpoint);
-}
-
-function matchesSpot(row: ZLinkSpotLocation, filter: ZLinkSpotLocationFilter): boolean {
-  return (filter.meshName === undefined || row.meshName === filter.meshName)
-    && (filter.spotType === undefined || row.spotType === filter.spotType)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
-    && (filter.spotKind === undefined || row.spotKind === filter.spotKind);
-}
-
-function matchesActor(row: ZLinkActorLocation, filter: ZLinkActorLocationFilter): boolean {
-  return (filter.actorType === undefined || row.actorType === filter.actorType)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
-    && (filter.spotRid === undefined || routingIdsEqual(row.spotRid, filter.spotRid))
-    && (filter.locationKind === undefined || row.locationKind === filter.locationKind);
-}
-
-function matchesRoute(row: ZLinkRouteLocation, filter: ZLinkRouteLocationFilter): boolean {
-  return (filter.routeKind === undefined || row.routeKind === filter.routeKind)
-    && (filter.ownerNodeRid === undefined || routingIdsEqual(row.ownerNodeRid, filter.ownerNodeRid))
-    && (filter.ownerId === undefined || row.ownerId === filter.ownerId);
 }
 
 function stampKey(scope: ZLinkLocationChangeStampScope): string {

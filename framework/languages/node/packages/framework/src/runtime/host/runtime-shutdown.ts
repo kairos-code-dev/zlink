@@ -39,17 +39,42 @@ export async function rollbackRuntimeStart(parts: ZLinkRuntimeStartRollbackParts
 export async function stopRuntimeParts(parts: ZLinkRuntimeStopParts): Promise<void> {
   const state = parts.state;
   state.abortController.abort();
-  await parts.monitoringRuntime?.dispose();
-  await parts.streamRuntime?.dispose();
-  await parts.spotNodeRuntime?.dispose(state.abortController.signal);
-  await parts.channelRuntime?.dispose(state.abortController.signal);
-  parts.locationSnapshot.lifecycle?.dispose();
-  await parts.locationSnapshot.runtime?.stop();
+  const errors: unknown[] = [];
+  await runShutdownStep(errors, () => parts.monitoringRuntime?.dispose());
+  await runShutdownStep(errors, () => parts.streamRuntime?.dispose());
+  await runShutdownStep(errors, () => parts.spotNodeRuntime?.dispose());
+  await runShutdownStep(errors, () => parts.channelRuntime?.dispose());
+  await runShutdownStep(errors, () => parts.locationSnapshot.lifecycle?.dispose());
+  await runShutdownStep(errors, () => parts.locationSnapshot.runtime?.stop());
   await Promise.allSettled(state.listenerTasks);
-  (state.context as unknown as { shutdown(): void }).shutdown();
+  await runShutdownStep(errors, () =>
+    (state.context as unknown as { shutdown(): void }).shutdown()
+  );
   await nextRuntimeShutdownTurn();
-  await state.dispose();
+  await runShutdownStep(errors, () => state.dispose());
   await nextRuntimeShutdownTurn();
+  const failures = errors.filter((error) => !isAbortError(error));
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, 'Framework runtime shutdown failed.');
+  }
+}
+
+async function runShutdownStep(
+  errors: unknown[],
+  step: () => Promise<unknown> | unknown
+): Promise<void> {
+  try {
+    await step();
+  } catch (error) {
+    errors.push(error);
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof Error && error.name === 'AbortError') return true;
+  return error instanceof AggregateError
+    && error.errors.every((nested) => isAbortError(nested));
 }
 
 function nextRuntimeShutdownTurn(): Promise<void> {

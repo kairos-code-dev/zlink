@@ -9,8 +9,12 @@ import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import { decodeStreamHeader } from '../streams/protocol';
 import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
+import { requestRoutedJsonReply } from './actor-routed-json-request';
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
-import { ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET } from './actor-packet-relay-wire';
+import {
+  encodeForwardedRemoteActorPacketRelayPayload,
+  ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET
+} from './actor-packet-relay-wire';
 
 export const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 5_000;
 
@@ -286,8 +290,7 @@ export class ZLinkActorHandoffCoordinator {
     targetActorRef: ActorRef,
     packet: ZLinkActorHandoffPacket
   ): Promise<unknown> {
-    const payload = {
-      packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+    const payload = encodeForwardedRemoteActorPacketRelayPayload({
       actorId,
       routerChannelId: packet.remoteBoundSessionTarget?.routerChannelId,
       boundSessionTargetNodeRid: packet.remoteBoundSessionTarget?.targetNodeRid,
@@ -297,7 +300,7 @@ export class ZLinkActorHandoffCoordinator {
       actorNodeRid: String(targetActorRef.nodeRid),
       actorGeneration: targetActorRef.generation.toString(),
       handoffTargetSpotRid: String(target.spotRid)
-    };
+    });
     if (!packet.returnResponse) {
       await this.options.routedTransport.sendToSpot(target, payload, {
         packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET
@@ -312,14 +315,13 @@ export class ZLinkActorHandoffCoordinator {
       if (reply.ok === false) throw new Error(String(reply.error ?? 'Actor packet forwarding failed.'));
       return reply.response;
     }
-    const request = BindingMessage.from(Buffer.from(JSON.stringify(payload)));
-    try {
-      const parts = await this.options.routedTransport.requestRawToSpot(
-        target,
-        request,
-        { timeoutMs: this.options.requestTimeoutMs }
-      );
-      try {
+    return await requestRoutedJsonReply(
+      this.options.routedTransport,
+      target,
+      payload,
+      { timeoutMs: this.options.requestTimeoutMs },
+      `Actor packet forwarding raw request is not available for '${actorId}'.`,
+      (parts) => {
         if (parts.length === 0) throw new Error(`Actor packet forwarding reply was empty for '${actorId}'.`);
         const reply = JSON.parse(parts[0].getString('utf8')) as {
           readonly ok?: boolean;
@@ -328,12 +330,8 @@ export class ZLinkActorHandoffCoordinator {
         };
         if (reply.ok === false) throw new Error(String(reply.error ?? 'Actor packet forwarding failed.'));
         return reply.response;
-      } finally {
-        parts.forEach((part) => part.close());
       }
-    } finally {
-      request.close();
-    }
+    );
   }
 }
 

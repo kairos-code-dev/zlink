@@ -139,6 +139,34 @@ export class ZLinkSpotActorMembership {
     });
   }
 
+  async prepareActorLeaveForTransfer(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const activation = this.requireActivation(spotRid);
+    await activation.serial.execute(() => activation.spot.onLeaveActor?.(actor, signal));
+  }
+
+  async commitActorLeaveAfterTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
+    const activation = this.requireActivation(spotRid);
+    await activation.serial.execute(() => activation.commitActorDeparture(actorId));
+  }
+
+  async restoreActorAfterFailedTransfer(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const activation = this.requireActivation(spotRid);
+    await activation.serial.execute(async () => {
+      activation.cancelActorTransfer(actor.actorId);
+      await activation.spot.onJoinedActor?.(actor, signal);
+    });
+  }
+
   async beginActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(() => {

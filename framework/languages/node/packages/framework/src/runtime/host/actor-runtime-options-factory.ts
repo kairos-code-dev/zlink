@@ -20,14 +20,17 @@ import type { ZLinkActorHandoffCoordinator } from '../actors';
 import { type ZLinkActorRoutedJoinTransport } from '../actors';
 import { ZLinkLocalFirstActorJoinCoordinator } from '../actors/local-first-actor-join-coordinator';
 import type { ZLinkLocationLifecycle, ZLinkStoreLocationResolvers } from '../locations';
-import type { ZLinkStreamBindingRuntime } from '../streams';
+import type {
+  ZLinkNativeFallbackBoundSessionPort,
+  ZLinkStreamActorLifecyclePort
+} from '../streams/stream-binding-runtime-ports';
 import { ZLinkNativeFallbackBoundSession } from '../streams/native-fallback-bound-session';
 import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
 
 export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly routeTransport: ZLinkActorRoutedJoinTransport;
-  readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
+  readonly streamBindingRuntime: ZLinkStreamActorLifecyclePort & ZLinkNativeFallbackBoundSessionPort;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;

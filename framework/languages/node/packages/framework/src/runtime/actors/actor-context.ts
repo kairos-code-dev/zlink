@@ -16,7 +16,7 @@ import {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
-import { isZLinkMessage, ZLinkMessage, type ZLinkMessageSerializer } from '../../contracts';
+import { type ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 import {
@@ -131,7 +131,6 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     const requestMessage = this.request === undefined
       ? BindingMessage.from(Buffer.alloc(0))
       : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
-    const ownsRequest = ownsFrameworkPayloadMessage(this.request);
     try {
       const result = await this.coordinator.joinSpot(
         this.actor,
@@ -143,14 +142,10 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
       );
       return {
         ...result,
-        reply: result.reply === undefined
-          ? undefined
-          : decodeFrameworkPayloadMessage<TReply>(result.reply, this.messageSerializers)
+        reply: decodeJoinReply<TReply>(result.reply, this.messageSerializers)
       };
     } finally {
-      if (ownsRequest) {
-        requestMessage.close();
-      }
+      requestMessage.close();
     }
   }
 
@@ -186,7 +181,6 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
 
   async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     const requestMessage = encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
-    const ownsRequest = ownsFrameworkPayloadMessage(this.request);
     try {
       const result = await this.coordinator.joinEntrySpot(
         this.actor,
@@ -198,14 +192,10 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
       );
       return {
         ...result,
-        reply: result.reply === undefined
-          ? undefined
-          : decodeFrameworkPayloadMessage<TReply>(result.reply, this.messageSerializers)
+        reply: decodeJoinReply<TReply>(result.reply, this.messageSerializers)
       };
     } finally {
-      if (ownsRequest) {
-        requestMessage.close();
-      }
+      requestMessage.close();
     }
   }
 
@@ -237,15 +227,14 @@ class UnboundZLinkSession implements ZLinkBoundSession {
   }
 }
 
-function isMessage(value: unknown): value is Message {
-  if (value instanceof ZLinkMessage) {
-    return false;
+function decodeJoinReply<TReply>(
+  reply: Message | undefined,
+  serializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
+): TReply | undefined {
+  if (reply === undefined) return undefined;
+  try {
+    return decodeFrameworkPayloadMessage<TReply>(reply, serializers);
+  } finally {
+    reply.close();
   }
-  return typeof value === 'object'
-    && value !== null
-    && typeof (value as { data?: unknown }).data === 'function';
-}
-
-function ownsFrameworkPayloadMessage(value: unknown): boolean {
-  return value === undefined || !(isMessage(value) || (isZLinkMessage(value) && value.isEncoded()));
 }

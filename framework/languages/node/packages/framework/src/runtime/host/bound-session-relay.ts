@@ -5,7 +5,11 @@ import {
 } from '../actors';
 import type { DefaultZLinkActorManager } from '../actors';
 import type { DefaultZLinkSpotManager, ZLinkSpotNodeRuntimeManager } from '../spots';
-import type { ZLinkStreamBindingRuntime } from '../streams';
+import type {
+  ZLinkBoundSessionResponsePort,
+  ZLinkRemoteBoundSessionPort,
+  ZLinkStreamActorLookupPort
+} from '../streams/stream-binding-runtime-ports';
 import type { MeshRouterResolver } from './mesh-router-resolver';
 import { ZLinkRemoteBoundSessionRelay } from './remote-bound-session-relay';
 import { ZLinkActorPacketRelay } from './actor-packet-relay';
@@ -14,7 +18,8 @@ import { ZLinkRemoteActorJoinReceiver } from './remote-actor-join-receiver';
 export interface ZLinkBoundSessionRelayOptions {
   readonly requestTimeoutMs?: number;
   readonly routeTransport: ZLinkActorRoutedJoinTransport;
-  readonly streamBindingRuntime: () => ZLinkStreamBindingRuntime;
+  readonly streamBindingRuntime: () =>
+    ZLinkBoundSessionResponsePort & ZLinkRemoteBoundSessionPort & ZLinkStreamActorLookupPort;
   readonly meshRouters: MeshRouterResolver;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;

@@ -5,7 +5,8 @@
     "declaration": false,
     "outDir": "dist",
     "rootDir": "..",
-    "strict": false
+    "strict": false,
+    "noUnusedLocals": false
   },
   "include": [
     "../Shared/**/*.ts",

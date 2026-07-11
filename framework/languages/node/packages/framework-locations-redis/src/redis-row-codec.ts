@@ -1,19 +1,12 @@
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
   ZLinkLocationKind,
-  ZLinkLocationWriteIntent,
-  ZLinkLocationWriteStatus,
   ZLinkSpotKind,
   type RoutingId,
   type ZLinkActorLocation,
-  type ZLinkActorLocationFilter,
-  type ZLinkLocationWriteResult,
   type ZLinkPeerLocation,
-  type ZLinkPeerLocationFilter,
   type ZLinkRouteLocation,
-  type ZLinkRouteLocationFilter,
-  type ZLinkSpotLocation,
-  type ZLinkSpotLocationFilter
+  type ZLinkSpotLocation
 } from '@zlink-systems/framework';
 import {
   encodeActorKey,
@@ -22,6 +15,8 @@ import {
   encodeSpotKey,
   routingIdHex
 } from './redis-row-keys';
+import { asString, toNumber } from './redis-values';
+import { fromUnixMs } from './redis-write-result';
 
 export interface LocationKind<TRow> {
   readonly tag: string;
@@ -264,46 +259,6 @@ export function materialize<TRow>(
   );
 }
 
-export function intentName(intent: ZLinkLocationWriteIntent): string {
-  switch (intent) {
-    case ZLinkLocationWriteIntent.NewClaim:
-      return 'new';
-    case ZLinkLocationWriteIntent.Renew:
-      return 'renew';
-    case ZLinkLocationWriteIntent.Takeover:
-      return 'takeover';
-    default:
-      throw new RangeError(`Unknown location write intent: ${intent}`);
-  }
-}
-
-export function toWriteResult(result: readonly unknown[]): ZLinkLocationWriteResult {
-  const status = asString(result[0]);
-  if (status === 'stored') {
-    return stored(BigInt(asString(result[1])), fromUnixMs(toNumber(result[2])));
-  }
-  if (status === 'conflict') {
-    return rejectedConflict();
-  }
-  return ignoredStale();
-}
-
-function stored(generation: bigint, updatedAt: Date): ZLinkLocationWriteResult {
-  return { status: ZLinkLocationWriteStatus.Stored, generation, updatedAt };
-}
-
-function ignoredStale(): ZLinkLocationWriteResult {
-  return { status: ZLinkLocationWriteStatus.IgnoredStale, generation: 0n, updatedAt: new Date(0) };
-}
-
-function rejectedConflict(): ZLinkLocationWriteResult {
-  return { status: ZLinkLocationWriteStatus.RejectedConflict, generation: 0n, updatedAt: new Date(0) };
-}
-
-export function fromUnixMs(value: number): Date {
-  return new Date(value);
-}
-
 export function ridOf(value: unknown): RoutingId {
   return BindingRoutingId.fromHex(stringOf(value)) as unknown as RoutingId;
 }
@@ -325,41 +280,6 @@ function actorRefOf(value: unknown): ZLinkActorLocation['actorRef'] {
   };
 }
 
-export function matchesPeer(row: ZLinkPeerLocation, filter: ZLinkPeerLocationFilter): boolean {
-  return (filter.autoConnectType === undefined || row.autoConnectType === filter.autoConnectType)
-    && (filter.meshName === undefined || row.meshName === filter.meshName)
-    && (filter.role === undefined || row.role === filter.role)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
-    && (filter.endpoint === undefined || row.endpoint === filter.endpoint);
-}
-
-export function matchesSpot(row: ZLinkSpotLocation, filter: ZLinkSpotLocationFilter): boolean {
-  return (filter.meshName === undefined || row.meshName === filter.meshName)
-    && (filter.spotType === undefined || row.spotType === filter.spotType)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
-    && (filter.spotKind === undefined || row.spotKind === filter.spotKind);
-}
-
-export function matchesActor(row: ZLinkActorLocation, filter: ZLinkActorLocationFilter): boolean {
-  return (filter.actorType === undefined || row.actorType === filter.actorType)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
-    && (filter.spotRid === undefined || routingIdsEqual(row.spotRid, filter.spotRid))
-    && (filter.locationKind === undefined || row.locationKind === filter.locationKind);
-}
-
-export function matchesRoute(row: ZLinkRouteLocation, filter: ZLinkRouteLocationFilter): boolean {
-  return (filter.routeKind === undefined || row.routeKind === filter.routeKind)
-    && (filter.ownerNodeRid === undefined || routingIdsEqual(row.ownerNodeRid, filter.ownerNodeRid))
-    && (filter.ownerId === undefined || row.ownerId === filter.ownerId);
-}
-
-function routingIdsEqual(left: RoutingId | undefined, right: RoutingId | undefined): boolean {
-  if (left === undefined || right === undefined) {
-    return left === right;
-  }
-  return routingIdHex(left) === routingIdHex(right);
-}
-
 export function kindTagOf(kind: ZLinkLocationKind): string {
   switch (kind) {
     case ZLinkLocationKind.Peer:
@@ -373,30 +293,6 @@ export function kindTagOf(kind: ZLinkLocationKind): string {
     default:
       throw new RangeError(`Unknown location kind: ${kind}`);
   }
-}
-
-export function asArray(value: unknown): readonly unknown[] {
-  if (!Array.isArray(value)) {
-    throw new TypeError('Redis command returned a non-array value.');
-  }
-  return value;
-}
-
-export function asString(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (Buffer.isBuffer(value)) {
-    return value.toString();
-  }
-  if (typeof value === 'number' || typeof value === 'bigint') {
-    return String(value);
-  }
-  throw new TypeError('Redis command returned a non-string value.');
-}
-
-export function toNumber(value: unknown): number {
-  return Number(asString(value));
 }
 
 function objectOf(value: unknown): Record<string, unknown> {

@@ -74,6 +74,8 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
         throw actorLocationStale(actor.actorId, error);
       }
       throw error;
+    } finally {
+      closeMessages(parts);
     }
   }
 
@@ -94,6 +96,8 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
         throw actorLocationStale(actor.actorId, error);
       }
       throw error;
+    } finally {
+      closeMessages(parts);
     }
   }
 
@@ -145,10 +149,12 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
           parts,
           (result, replyParts) => {
             if (signal?.aborted === true) {
+              closeMessages(replyParts);
               reject(createAbortError());
               return;
             }
             if (result !== RequestResult.Ok) {
+              closeMessages(replyParts);
               reject(mapRequestResult(result, 'Actor request'));
               return;
             }
@@ -245,25 +251,34 @@ function decodeActorReply<TReply>(
   reply: readonly Message[],
   serializers?: ReadonlyMap<string, ZLinkMessageSerializer>
 ): TReply {
-  if (reply.length === 1) {
-    const frame = tryDecodeStreamFrame(reply[0].data());
-    if (frame !== undefined) {
-      const header = decodeStreamHeader(frame.header);
-      return decodeActorReplyPayload<TReply>(
-        header.kind,
-        BindingMessage.from(frame.payload) as Message,
-        serializers
-      );
+  try {
+    if (reply.length === 1) {
+      const frame = tryDecodeStreamFrame(reply[0].data());
+      if (frame !== undefined) {
+        const header = decodeStreamHeader(frame.header);
+        const payload = BindingMessage.from(frame.payload) as Message;
+        try {
+          return decodeActorReplyPayload<TReply>(header.kind, payload, serializers);
+        } finally {
+          payload.close();
+        }
+      }
     }
+    if (reply.length >= 2) {
+      const header = decodeStreamHeader(reply[0].data());
+      return decodeActorReplyPayload<TReply>(header.kind, reply[1], serializers);
+    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.RequestProtocolError,
+      'Actor request reply is empty.'
+    );
+  } finally {
+    closeMessages(reply);
   }
-  if (reply.length >= 2) {
-    const header = decodeStreamHeader(reply[0].data());
-    return decodeActorReplyPayload<TReply>(header.kind, reply[1], serializers);
-  }
-  throw new ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind.RequestProtocolError,
-    'Actor request reply is empty.'
-  );
+}
+
+function closeMessages(parts: readonly Message[]): void {
+  for (const part of parts) part.close();
 }
 
 function decodeActorReplyPayload<TReply>(

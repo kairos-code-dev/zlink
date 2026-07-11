@@ -24,7 +24,6 @@ import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import {
   ZLinkMessage,
-  isZLinkMessage,
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
 import {
@@ -219,9 +218,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     try {
       return await this.createActivation(spotType, spotRid, ownedRequest, args.signal);
     } finally {
-      if (ownsFrameworkPayloadMessage(args.request)) {
-        ownedRequest.close();
-      }
+      ownedRequest.close();
     }
   }
 
@@ -256,9 +253,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       try {
         return await this.createActivation(spotType, spotRid, ownedRequest, args.signal);
       } finally {
-        if (ownsFrameworkPayloadMessage(args.request)) {
-          ownedRequest.close();
-        }
+        ownedRequest.close();
       }
     });
     return await operation.ready;
@@ -343,6 +338,26 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<void> {
     await this.actorMembership.notifyActorLeftAfterTransfer(spotRid, actor, signal);
+  }
+
+  async prepareActorLeaveForTransfer(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.actorMembership.prepareActorLeaveForTransfer(spotRid, actor, signal);
+  }
+
+  async commitActorLeaveAfterTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
+    await this.actorMembership.commitActorLeaveAfterTransfer(spotRid, actorId);
+  }
+
+  async restoreActorAfterFailedTransfer(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.actorMembership.restoreActorAfterFailedTransfer(spotRid, actor, signal);
   }
 
   async beginActorTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
@@ -445,14 +460,4 @@ function isAbortSignal(value: unknown): value is AbortSignal {
     && value !== null
     && typeof (value as { aborted?: unknown }).aborted === 'boolean'
     && typeof (value as { addEventListener?: unknown }).addEventListener === 'function';
-}
-
-function isMessage(value: unknown): value is Message {
-  return typeof value === 'object'
-    && value !== null
-    && typeof (value as { data?: unknown }).data === 'function';
-}
-
-function ownsFrameworkPayloadMessage(value: unknown): boolean {
-  return value === undefined || !(isMessage(value) || (isZLinkMessage(value) && value.isEncoded()));
 }

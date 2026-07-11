@@ -1,5 +1,6 @@
 import type { RoutingId } from '../../contracts';
 import type { ZLinkLocationLifecycle } from '../locations';
+import { ZLinkActorRetryDelay } from './actor-retry-delay';
 
 export interface ZLinkPostCommitActorLocationOptions {
   readonly lifecycle: ZLinkLocationLifecycle;
@@ -38,7 +39,7 @@ export class ZLinkPostCommitActorLocation {
   }
 
   private async run(actorId: string): Promise<void> {
-    let retryDelayMs = 25;
+    const retryDelay = new ZLinkActorRetryDelay();
     while (this.options.signal?.aborted !== true) {
       const operation = this.queues.get(actorId)?.[0];
       if (operation === undefined) {
@@ -48,30 +49,13 @@ export class ZLinkPostCommitActorLocation {
       try {
         await operation();
         this.queues.get(actorId)?.shift();
-        retryDelayMs = 25;
+        retryDelay.reset();
       } catch (error) {
         this.options.reportError?.(error);
-        if (!await delayUnlessAborted(retryDelayMs, this.options.signal)) {
+        if (!await retryDelay.wait(this.options.signal)) {
           return;
         }
-        retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
       }
     }
   }
-}
-
-function delayUnlessAborted(delayMs: number, signal: AbortSignal | undefined): Promise<boolean> {
-  if (signal?.aborted === true) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const deadline = setTimeout(() => {
-      signal?.removeEventListener('abort', aborted);
-      resolve(true);
-    }, delayMs);
-    deadline.unref();
-    const aborted = (): void => {
-      clearTimeout(deadline);
-      resolve(false);
-    };
-    signal?.addEventListener('abort', aborted, { once: true });
-  });
 }

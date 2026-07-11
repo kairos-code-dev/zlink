@@ -57,6 +57,9 @@ import type {
 } from './RegistrationTypes';
 import {
   registerActorTransferAdapter,
+  registerActorFactory,
+  registerEntrySpot,
+  registerSpotFactory,
   validateActorTransferForwardWindow
 } from './RegistrationBuilderPolicy';
 
@@ -448,33 +451,18 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
   }
 
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
-    if (this.spotNode.entrySpotType !== undefined) {
-      throw new ZLinkConfigurationException('Duplicate Entry Spot registration on SpotNode.');
-    }
-    this.spotNode.entrySpotType = entrySpotType;
+    registerEntrySpot(this.spotNode, entrySpotType);
     return this;
   }
 
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
-    this.spotNode.spotFactories ??= [];
-    if (this.spotNode.spotFactories.includes(spotType)) {
-      throw new ZLinkConfigurationException('Duplicate SPOT factory registration on SpotNode.');
-    }
-    this.spotNode.spotFactories.push(spotType);
+    registerSpotFactory(this.spotNode, spotType);
     return this;
   }
 
   actorFactory(actorType: string, factoryType: Type): this {
-    const type = actorType.trim();
-    if (type.length === 0 || type !== actorType) {
-      throw new ZLinkConfigurationException('Actor factory type must not be empty or padded.');
-    }
-    const actorFactories = typeMapToRecord(this.spotNode.actorFactories);
-    if (Object.hasOwn(actorFactories, type)) {
-      throw new ZLinkConfigurationException(`Duplicate actor factory '${type}' on SpotNode.`);
-    }
-    actorFactories[type] = factoryType;
-    this.spotNode.actorFactories = actorFactories;
+    this.spotNode.actorFactories = typeMapToRecord(this.spotNode.actorFactories);
+    registerActorFactory(this.spotNode, actorType, factoryType);
     return this;
   }
 }

@@ -1,4 +1,5 @@
 import type { ActorRef } from '../../contracts';
+import { ZLinkActorRetryDelay } from './actor-retry-delay';
 
 export interface ZLinkPostCommitActorBinderOptions {
   readonly bind: (actorRef: ActorRef, force: boolean) => Promise<void>;
@@ -23,7 +24,7 @@ export class ZLinkPostCommitActorBinder {
   }
 
   private async run(actorId: string): Promise<void> {
-    let retryDelayMs = 25;
+    const retryDelay = new ZLinkActorRetryDelay();
     for (;;) {
       const signal = this.signal();
       if (signal?.aborted === true) return;
@@ -37,11 +38,10 @@ export class ZLinkPostCommitActorBinder {
           this.desiredRefs.delete(actorId);
           return;
         }
-        retryDelayMs = 25;
+        retryDelay.reset();
       } catch (error) {
         this.options.reportError?.(error);
-        if (!await delayUnlessAborted(retryDelayMs, signal)) return;
-        retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
+        if (!await retryDelay.wait(signal)) return;
       }
     }
   }
@@ -51,20 +51,4 @@ export class ZLinkPostCommitActorBinder {
       ? this.options.signal()
       : this.options.signal;
   }
-}
-
-function delayUnlessAborted(delayMs: number, signal: AbortSignal | undefined): Promise<boolean> {
-  if (signal?.aborted === true) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const deadline = setTimeout(() => {
-      signal?.removeEventListener('abort', aborted);
-      resolve(true);
-    }, delayMs);
-    deadline.unref();
-    const aborted = (): void => {
-      clearTimeout(deadline);
-      resolve(false);
-    };
-    signal?.addEventListener('abort', aborted, { once: true });
-  });
 }

@@ -1264,6 +1264,25 @@ test('zlinkFramework preserves actor transfer adapters in the runtime registrati
   assert.equal(registration.actorTransferAdapters.get(PlayerActor), PlayerActorTransferAdapter);
 });
 
+test('zlinkFramework applies core SPOT registration policy before duplicate state is lost', () => {
+  class EntrySpot {}
+  class Spot {}
+  class ActorFactory {}
+
+  const entryNode = nestjs.zlinkFramework().addSpotMesh('entry');
+  entryNode.addEntrySpot(EntrySpot);
+  assert.throws(() => entryNode.addEntrySpot(EntrySpot), /Duplicate Entry Spot registration/);
+
+  const factoryNode = nestjs.zlinkFramework().addSpotMesh('factory');
+  factoryNode.addSpotFactory(Spot);
+  assert.throws(() => factoryNode.addSpotFactory(Spot), /Duplicate SPOT factory registration/);
+
+  const actorNode = nestjs.zlinkFramework().addSpotMesh('actor');
+  actorNode.actorFactory('player', ActorFactory);
+  assert.throws(() => actorNode.actorFactory('player', ActorFactory), /Duplicate actor factory 'player'/);
+  assert.throws(() => actorNode.actorFactory(' player ', ActorFactory), /must not be empty or padded/);
+});
+
 test('framework options builder maps dotnet-shaped registration flow into options', () => {
   class GatewaySession {}
   class StageSpot {

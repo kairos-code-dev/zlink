@@ -6,6 +6,39 @@ import type { ZLinkRemoteActorPacketTarget } from './actor-runtime-state';
 export const ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET = '__zlink.actor.packet.relay';
 export const ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET = 'zlink.framework.actor.session_disconnected';
 
+export function encodeRemoteActorPacketRelayPayload(input: {
+  readonly actorId: string;
+  readonly routerChannelId?: string;
+  readonly boundSessionTargetNodeRid?: string;
+  readonly boundSessionSpotRid?: string;
+  readonly header: Uint8Array;
+  readonly payload: Uint8Array;
+}): Record<string, unknown> {
+  return {
+    packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+    actorId: input.actorId,
+    routerChannelId: input.routerChannelId,
+    boundSessionTargetNodeRid: input.boundSessionTargetNodeRid,
+    boundSessionSpotRid: input.boundSessionSpotRid,
+    header: Buffer.from(input.header).toString('base64'),
+    payload: Buffer.from(input.payload).toString('base64')
+  };
+}
+
+export function encodeForwardedRemoteActorPacketRelayPayload(input: {
+  readonly actorId: string;
+  readonly routerChannelId?: string;
+  readonly boundSessionTargetNodeRid?: string;
+  readonly boundSessionSpotRid?: string;
+  readonly header: string;
+  readonly payload: string;
+  readonly actorNodeRid: string;
+  readonly actorGeneration: string;
+  readonly handoffTargetSpotRid: string;
+}): Record<string, unknown> {
+  return { packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET, ...input };
+}
+
 export interface ZLinkRemoteActorPacketTargetWire {
   readonly routerChannelId: string;
   readonly targetNodeRid: string;
@@ -68,6 +101,10 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly boundSessionSpotRid?: string;
   readonly header: string;
   readonly payload: string;
+  readonly actorNodeRid?: string;
+  readonly actorNodeRidHex?: string;
+  readonly actorGeneration?: string;
+  readonly handoffTargetSpotRid?: string;
 } {
   if (
     typeof payload !== 'object' ||
@@ -85,7 +122,11 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     boundSessionTargetNodeRid: optionalString(payload, 'boundSessionTargetNodeRid'),
     boundSessionSpotRid: optionalString(payload, 'boundSessionSpotRid'),
     header: (payload as { header: string }).header,
-    payload: (payload as { payload: string }).payload
+    payload: (payload as { payload: string }).payload,
+    actorNodeRid: optionalString(payload, 'actorNodeRid'),
+    actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
+    actorGeneration: optionalString(payload, 'actorGeneration'),
+    handoffTargetSpotRid: optionalString(payload, 'handoffTargetSpotRid')
   };
 }
 

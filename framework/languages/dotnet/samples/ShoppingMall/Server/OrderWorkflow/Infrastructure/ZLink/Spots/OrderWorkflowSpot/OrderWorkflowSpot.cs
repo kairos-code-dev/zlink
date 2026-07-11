@@ -1,3 +1,4 @@
+using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
 using ShoppingMall.Server.OrderWorkflow.Application.SelfCheck;
 using ShoppingMall.Shared.Contracts;
@@ -8,6 +9,7 @@ namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWork
 
 internal sealed class OrderWorkflowSpot(
     IZLinkSpotContext context,
+    WorkflowInstanceTopology instance,
     OrderWorkflowService workflow,
     OrderWorkflowSelfCheckService selfChecks,
     ILogger<OrderWorkflowSpot> logger) : IZLinkSpot
@@ -63,6 +65,13 @@ internal sealed class OrderWorkflowSpot(
             "shoppingmall order: inventory reserved. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
+        Context.Outbound.Publish(
+                SampleNames.OrderProjectionTopic,
+                new OrderProjectionUpdatedEvent(
+                    state.OrderId,
+                    state.Status,
+                    instance.InstanceId))
+            .Submit(cancellationToken);
         return new StartOrderWorkflowRes(state);
     }
 

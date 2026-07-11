@@ -228,13 +228,6 @@ internal static class ZLinkRuntimeMetrics
 
     public static void RecordLocationWriteConflict() => SafeAdd(LocationWriteConflicts, 1);
 
-    public static long ScheduleOwnerLeaseRenew(TimeProvider timeProvider, TimeSpan interval)
-    {
-        if (!LocationOwnerLeaseRenewLateness.Enabled) return 0;
-        return timeProvider.GetTimestamp()
-               + (long)(interval.TotalSeconds * timeProvider.TimestampFrequency);
-    }
-
     public static void RecordOwnerLeaseRenewAttempt(TimeProvider timeProvider, long scheduledTimestamp)
     {
         if (scheduledTimestamp == 0 || !LocationOwnerLeaseRenewLateness.Enabled) return;

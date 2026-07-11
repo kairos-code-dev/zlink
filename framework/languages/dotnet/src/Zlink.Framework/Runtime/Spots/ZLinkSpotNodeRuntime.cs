@@ -227,6 +227,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     internal ValueTask<bool> TryDrainSpotsAsync(CancellationToken cancellationToken) =>
         _spots.TryDrainAsync(Registration.DrainPolicy, cancellationToken);
 
+    internal void BeginDrain() => _spots.BeginDrain(Registration.DrainPolicy);
+
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
     {
         return _peerConnector.ConnectRouterAsync(endpoint, cancellationToken);

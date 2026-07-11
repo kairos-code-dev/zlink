@@ -14,6 +14,8 @@
     <ProjectReference Include="../../../samples/Bingo/Server/Api/Bingo.Server.Api.csproj" />
     <ProjectReference Include="../../../samples/Bingo/Server/Play/Bingo.Server.Play.csproj" />
     <ProjectReference Include="../../../samples/Bingo/Server/Session/Bingo.Server.Session.csproj" />
+    <ProjectReference Include="../../../samples/ShoppingMall/Server/Configuration/ShoppingMall.Server.Configuration.csproj" />
+    <ProjectReference Include="../../../samples/ShoppingMall/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" />
     <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj" />
     <ProjectReference Include="../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
   </ItemGroup>

@@ -12,11 +12,12 @@ public static class ApiServerHostFactory
 {
     public static IHost Build(SampleTopology topology, SampleApiNode node)
     {
+        var traceLabel = $"api-{node.RouteRid}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
             SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
-            "api");
+            traceLabel);
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -24,8 +25,8 @@ public static class ApiServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("api"))
-                .TraceLabel("api");
+                .TraceLogFile(SampleFlowLog.Path(traceLabel))
+                .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.AddClientServerChannel(SampleNames.ApiChannel)

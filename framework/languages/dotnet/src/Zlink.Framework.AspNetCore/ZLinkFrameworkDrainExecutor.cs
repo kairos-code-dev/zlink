@@ -31,6 +31,7 @@ internal sealed class ZLinkFrameworkDrainExecutor(
             : Task.Delay(propagationDelay, deadlineToken);
         await propagation.ConfigureAwait(false);
         runtime.SealRequestAdmissionsForDrain();
+        runtime.BeginSpotDrain();
         await runtime.WaitForAcceptedActorHandoffsAsync(deadlineToken).ConfigureAwait(false);
 
         var actorsDrained = false;

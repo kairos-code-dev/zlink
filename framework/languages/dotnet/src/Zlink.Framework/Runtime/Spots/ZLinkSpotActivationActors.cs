@@ -56,6 +56,7 @@ internal sealed partial class ZLinkSpotActivation
             throw new InvalidOperationException(
                 $"SPOT '{Spot.GetType()}' does not declare an actor join callback.");
 
+        TraceActorJoin(ZLinkMessageFlowOutcome.Received, actor.ActorId);
         var state = new ActorJoinCallState(actor, request, descriptor);
         if (ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this))
         {
@@ -69,6 +70,7 @@ internal sealed partial class ZLinkSpotActivation
                 await CommitActorJoinCoreAsync(state.Actor, cancellationToken)
                     .ConfigureAwait(false);
 
+            TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.ActorId);
             return state.Result;
         }
 
@@ -87,7 +89,22 @@ internal sealed partial class ZLinkSpotActivation
             state,
             cancellationToken);
 
+        TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.ActorId);
         return state.Result;
+    }
+
+    private void TraceActorJoin(ZLinkMessageFlowOutcome outcome, string actorId)
+    {
+        if (!_runtime.Flow.Enabled(outcome)) return;
+
+        _runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+            outcome,
+            ZLinkDispatchErrorSurface.SpotActor,
+            ZLinkDispatchMessageKind.ActorRequest,
+            "JoinSpot",
+            ChannelName,
+            ActorId: actorId,
+            SpotRid: SpotRid.ToString()));
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> AdmitRemoteActorJoinAsync(

@@ -3,25 +3,36 @@ using Bingo.Server.Api;
 using Bingo.Server.Configuration;
 using Bingo.Server.Play;
 using Bingo.Server.Session;
+using ShoppingMall.Server.OrderWorkflow;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Locations;
 
 var options = ServerOptions.Parse(args);
 var topology = SampleTopology.Create();
-using var metrics = new MetricEvidenceCollector();
+var workflowTopology = ShoppingMall.Server.Configuration.SampleTopology.Create();
+using var metrics = options.MetricsEnabled ? new MetricEvidenceCollector() : null;
 using var host = options.Role switch
 {
     "api-a" => ApiServerHostFactory.Build(topology, topology.ApiA),
     "api-b" => ApiServerHostFactory.Build(topology, topology.ApiB),
-    "play-a" => PlayServerHostFactory.Build(topology, topology.PlayA),
-    "play-b" => PlayServerHostFactory.Build(topology, topology.PlayB),
+    "play-a" => PlayServerHostFactory.Build(topology, topology.PlayA, options.MetricsEnabled),
+    "play-b" => PlayServerHostFactory.Build(topology, topology.PlayB, options.MetricsEnabled),
     "session-a" => SessionServerHostFactory.Build(topology, topology.SessionA),
     "session-b" => SessionServerHostFactory.Build(topology, topology.SessionB),
+    "workflow-a" => OrderWorkflowServerHostFactory.Build(
+        workflowTopology,
+        workflowTopology.ForWorkflowInstance("workflow-a")),
+    "workflow-b" => OrderWorkflowServerHostFactory.Build(
+        workflowTopology,
+        workflowTopology.ForWorkflowInstance("workflow-b")),
     _ => throw new ArgumentException($"Unknown role '{options.Role}'.")
 };
 
@@ -40,20 +51,24 @@ finally
     await host.StopAsync(CancellationToken.None);
 }
 
-internal sealed record ServerOptions(string Role, string HttpUrl)
+internal sealed record ServerOptions(string Role, string HttpUrl, bool MetricsEnabled)
 {
     public static ServerOptions Parse(string[] args)
     {
         string? role = null;
         string? httpUrl = null;
+        var metricsEnabled = true;
         for (var index = 0; index < args.Length; index++)
         {
             if (args[index] == "--role" && index + 1 < args.Length) role = args[++index];
             else if (args[index] == "--http-url" && index + 1 < args.Length) httpUrl = args[++index];
+            else if (args[index] == "--metrics" && index + 1 < args.Length)
+                metricsEnabled = !string.Equals(args[++index], "off", StringComparison.OrdinalIgnoreCase);
         }
         return new ServerOptions(
             role ?? throw new ArgumentException("--role is required."),
-            httpUrl ?? throw new ArgumentException("--http-url is required."));
+            httpUrl ?? throw new ArgumentException("--http-url is required."),
+            metricsEnabled);
     }
 }
 
@@ -62,7 +77,7 @@ internal static class EvidenceServer
     public static async Task RunAsync(
         ServerOptions options,
         IServiceProvider services,
-        MetricEvidenceCollector metrics,
+        MetricEvidenceCollector? metrics,
         CancellationToken stopping)
     {
         var builder = WebApplication.CreateSlimBuilder();
@@ -71,8 +86,18 @@ internal static class EvidenceServer
         app.MapGet("/health", () => new { status = "ready", role = options.Role });
         app.MapGet("/evidence", () => CreateEvidenceAsync(options, services, metrics));
         app.MapGet("/drain", (int? deadlineMs) => DrainAsync(deadlineMs, services));
+        app.MapPost("/message-flow/off", () =>
+        {
+            services.GetRequiredService<IZLinkMessageFlowControl>()
+                .SetMessageFlowMode(ZLinkMessageFlowLogMode.Off);
+            return new { mode = "off" };
+        });
         await app.StartAsync(stopping);
-        Console.WriteLine($"observability-ops ready role={options.Role} url={options.HttpUrl}");
+        var boundUrl = app.Services.GetRequiredService<IServer>()
+                           .Features.Get<IServerAddressesFeature>()?.Addresses.SingleOrDefault()
+                       ?? throw new InvalidOperationException(
+                           "Evidence server did not publish one bound address.");
+        Console.WriteLine($"observability-ops ready role={options.Role} url={boundUrl}");
         try
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, stopping);
@@ -86,9 +111,9 @@ internal static class EvidenceServer
     private static async Task<object> CreateEvidenceAsync(
         ServerOptions options,
         IServiceProvider services,
-        MetricEvidenceCollector metrics)
+        MetricEvidenceCollector? metrics)
     {
-        metrics.RecordObservableInstruments();
+        metrics?.RecordObservableInstruments();
         var rows = services.GetService<IZLinkLocationRuntimeQuery>() is { } locations
             ? await locations.ListPeerLocationsAsync(new ZLinkPeerLocationFilter())
             : [];
@@ -99,11 +124,13 @@ internal static class EvidenceServer
             ? (await spotLocations.ListSpotLocationsAsync(new ZLinkSpotLocationFilter())).Items
             : [];
         var ready = services.GetRequiredService<IZLinkDrainControl>().IsReady;
+        var metricSnapshot = metrics?.Snapshot() ?? [];
         return new
         {
             role = options.Role,
             ready,
-            metrics = metrics.Snapshot(),
+            metrics = metricSnapshot,
+            metricSeriesStored = metricSnapshot.Length,
             peerRows = rows.Select(static row => new
             {
                 nodeRid = row.NodeRid?.ToString(),

@@ -89,6 +89,13 @@ internal sealed class ZLinkActorInboundPipeline(
         bool allowCapture,
         Action? acknowledgeHandledFrame = null)
     {
+        using var flow = ZLinkFlowContext.Enter(
+            frame.Header.FlowId,
+            frame.Header.FlowOrigin is { } streamOrigin
+                ? (ZLinkFlowOrigin)(byte)streamOrigin
+                : null,
+            runtime.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
         var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
         if (allowCapture && state.Handoff.TryCapture(frame)) return;
         if (state.IsDispatchBlocked)

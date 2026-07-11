@@ -114,6 +114,13 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return drained;
     }
 
+    internal void BeginSpotDrain()
+    {
+        var state = _state;
+        if (state is null) return;
+        foreach (var spotNode in state.SpotNodes.Values) spotNode.BeginDrain();
+    }
+
     internal void SealRequestAdmissionsForDrain()
     {
         lock (_operationGate) _drainAdmission.Seal();

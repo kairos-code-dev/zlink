@@ -25,15 +25,16 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
 
+    internal void BeginDrain(ZLinkSpotDrainPolicy policy)
+    {
+        Volatile.Write(ref _activeDrainMetricPolicy, MetricPolicy(policy));
+    }
+
     internal async ValueTask<bool> TryDrainAsync(
         ZLinkSpotDrainPolicy policy,
         CancellationToken cancellationToken)
     {
-        Volatile.Write(
-            ref _activeDrainMetricPolicy,
-            policy == ZLinkSpotDrainPolicy.DrainNatural
-                ? "drain_natural"
-                : "release_and_recreate");
+        BeginDrain(policy);
         if (policy == ZLinkSpotDrainPolicy.ReleaseAndRecreate)
         {
             var activations = SnapshotActivations();
@@ -43,6 +44,13 @@ internal sealed class ZLinkSpotNodeCatalog(
 
         lock (_gate) return _spots.Count == 0;
     }
+
+    private static string MetricPolicy(ZLinkSpotDrainPolicy policy) => policy switch
+    {
+        ZLinkSpotDrainPolicy.DrainNatural => "drain_natural",
+        ZLinkSpotDrainPolicy.ReleaseAndRecreate => "release_and_recreate",
+        _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, "Unknown SPOT drain policy.")
+    };
 
     internal void RequestStop()
     {

@@ -19,13 +19,17 @@ namespace Bingo.Server.Play;
 
 public static class PlayServerHostFactory
 {
-    public static IHost Build(SampleTopology topology, SamplePlayNode node)
+    public static IHost Build(
+        SampleTopology topology,
+        SamplePlayNode node,
+        bool enableMetrics = true)
     {
+        var traceLabel = $"play-{node.NodeRid}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
             SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
-            "play");
+            traceLabel);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(node);
         builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
@@ -34,7 +38,7 @@ public static class PlayServerHostFactory
         builder.Services.AddSingleton<BingoRoomAllocator>();
         builder.Services.AddSingleton<BingoRoomEventMapper>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();
-        builder.Services.AddBingoMetrics();
+        if (enableMetrics) builder.Services.AddBingoMetrics();
 
         builder.Services.AddZLinkFramework(options =>
         {
@@ -43,8 +47,8 @@ public static class PlayServerHostFactory
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path("play"))
-                .TraceLabel("play");
+                .TraceLogFile(SampleFlowLog.Path(traceLabel))
+                .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.AddClientServerChannel(SampleNames.ApiChannel)

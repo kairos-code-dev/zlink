@@ -414,15 +414,19 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
 
     private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
     {
+        var intervalTicks = (long)(_options.HeartbeatInterval.TotalSeconds * _time.TimestampFrequency);
+        var scheduledRenew = _time.GetTimestamp() + intervalTicks;
         while (!cancellationToken.IsCancellationRequested)
         {
-            var scheduledRenew = ZLinkRuntimeMetrics.ScheduleOwnerLeaseRenew(
-                _time,
-                _options.HeartbeatInterval);
+            var remainingTicks = scheduledRenew - _time.GetTimestamp();
             try
             {
-                await Task.Delay(_options.HeartbeatInterval, _time, cancellationToken)
-                    .ConfigureAwait(false);
+                if (remainingTicks > 0)
+                    await Task.Delay(
+                            TimeSpan.FromSeconds(remainingTicks / (double)_time.TimestampFrequency),
+                            _time,
+                            cancellationToken)
+                        .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -431,6 +435,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
 
             ZLinkRuntimeMetrics.RecordOwnerLeaseRenewAttempt(_time, scheduledRenew);
             await RenewOwnerLeaseOnceAsync(cancellationToken).ConfigureAwait(false);
+            scheduledRenew += intervalTicks;
         }
     }
 

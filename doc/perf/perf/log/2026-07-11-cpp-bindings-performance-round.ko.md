@@ -1504,3 +1504,84 @@ latency 최대 비율은 1.09배였다. 모든 셀이 목표를 만족해 코드
 - public API 변경: 없음
 - perf 변경: 없음
 - 다음 pattern: Multi `MULTI_SPOT_SENDSEND`
+
+## Multi MULTI_SPOT_SENDSEND
+
+### tcp
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. C 2회차의 대형 셀이 동시에
+낮아졌지만 나머지 네 회차와 5회 중앙값은 안정적이었다. 두 report는 같은
+`449a93888`과 core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_063300_core_9_0_cpp_multi_spot_sendsend_tcp_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_063649_core_9_0_cpp_multi_spot_sendsend_tcp_nopin_paired_20260712.txt`
+
+처리량 비율은 121.4%, 122.4%, 130.3%, 114.9%, 94.0%, 86.9%였고 평균
+latency 최대 비율은 1.03배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_SPOT_SENDSEND / tcp`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: ws
+
+### ws
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_064045_core_9_0_cpp_multi_spot_sendsend_ws_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_064439_core_9_0_cpp_multi_spot_sendsend_ws_nopin_paired_20260712.txt`
+
+최초 처리량 비율은 107.9%, 102.6%, 93.3%, 102.9%, 92.7%, 76.3%였고 평균
+latency 최대 비율은 1.30배였다. 131072B만 SPOT 계열 최소 목표 85%에 미달해
+CPU idle 99% 상태에서 해당 셀만 C 직후 C++ 순서로 다시 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_064812_core_9_0_cpp_multi_spot_sendsend_ws131072_nopin_recheck_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_064903_core_9_0_cpp_multi_spot_sendsend_ws131072_nopin_recheck_20260712.txt`
+
+재측정 중앙값은 C 21.318 Kops/s와 0.199ms, C++ 20.295 Kops/s와 0.197ms다.
+처리량 비율은 95.2%, 평균 latency 비율은 0.99배로 통과했다.
+
+- `MULTI_SPOT_SENDSEND / ws`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: wss
+
+### wss
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. 두 report는 같은 `449a93888`과
+core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_065020_core_9_0_cpp_multi_spot_sendsend_wss_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_065412_core_9_0_cpp_multi_spot_sendsend_wss_nopin_paired_20260712.txt`
+
+처리량 비율은 122.2%, 107.6%, 123.3%, 114.3%, 110.4%, 103.7%였고 평균
+latency 최대 비율은 1.02배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_SPOT_SENDSEND / wss`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: tls
+
+### tls
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. C++ incremental build에서 WSL 파일
+시각이 약 1~2초 앞서 있다는 clock-skew 경고가 출력됐지만 모든 target이 성공적으로
+빌드됐고 benchmark도 정상 완료됐다. 두 report는 같은 `449a93888`과 core runtime을
+사용했다.
+
+- C: `perf_c_multi_linux_20260712_065832_core_9_0_cpp_multi_spot_sendsend_tls_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_070219_core_9_0_cpp_multi_spot_sendsend_tls_nopin_paired_20260712.txt`
+
+처리량 비율은 124.0%, 125.8%, 126.2%, 101.3%, 95.6%, 104.1%였고 평균
+latency 최대 비율은 1.02배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+### pattern 판정
+
+- `MULTI_SPOT_SENDSEND / tcp`: 완료
+- `MULTI_SPOT_SENDSEND / ws`: 완료
+- `MULTI_SPOT_SENDSEND / wss`: 완료
+- `MULTI_SPOT_SENDSEND / tls`: 완료
+- C++ binding 변경: 없음
+- public API 변경: 없음
+- perf 변경: 없음
+- 다음 pattern: Multi `MULTI_STREAM`

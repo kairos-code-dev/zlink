@@ -692,5 +692,5 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - C++ Single 전체 pattern: 완료
 - C++ binding 변경: 없음
 - C++ perf 컴파일 수정: `3506ba1c7`
-- 완료 문서 커밋: 진행 중
+- 완료 문서 커밋: `28ff6ca99`
 - 다음 pattern: Multi `MULTI_DEALER_DEALER`

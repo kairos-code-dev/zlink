@@ -1200,7 +1200,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Single `SPOT` 완료 | 공식 tcp, ws, wss, tls의 24개 size가 throughput 및 평균 latency 목표를 통과했다. |
 | paired C | Single 전체 완료 | 각 transport에서 C 5회 직후 C++ 5회를 CPU pin 없이 측정했다. 다음에는 Multi `MULTI_DEALER_DEALER`의 tcp만 측정한다. |
 | 개선 반복 | `SPOT` binding 변경 불필요 | 경계 셀과 다중 처리량 모드는 같은 transport와 size만 다시 paired 측정해 목표 충족을 확인했다. |
-| 커밋과 푸시 | 진행 중 | SPOT perf enum 컴파일 버그는 `3506ba1c7`로 푸시했다. 전체 pattern 측정 근거 문서는 별도 커밋한다. |
+| 커밋과 푸시 | 완료 | SPOT perf enum 컴파일 버그는 `3506ba1c7`, 전체 pattern 측정 근거는 `28ff6ca99`로 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
@@ -1241,7 +1241,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | C++ | Single `DEALER_ROUTER_REQREP` | core_9_0_cpp_dealer_router_reqrep_*_direct_reply_*_20260711 | C request/reply의 queue 수명 주기와 C에만 있던 응답 payload 전체 복사를 바로잡고 C++과 같은 echo 의미로 측정했다. CPU pin 없이 transport별 C와 C++을 5회 paired 측정했으며 36개 처리량과 평균 latency 셀이 목표를 통과했다. 저부하에서도 반복된 inproc과 wss 일부 셀의 변동은 범위와 runner 대안 검토를 라운드 로그에 남겼다. | pattern 완료, `f951e7baa` 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-11 | C++ | Single `ROUTER_ROUTER` | core_9_0_cpp_router_router_*_nopin_paired_20260711 | tcp, ws, wss, tls, inproc, ipc를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 36개 처리량과 평균 latency 셀이 목표를 통과했다. ipc 65536B는 저부하 상태에서 해당 셀만 다시 paired 측정했다. | pattern 완료, 코드 변경 없음, `46be5a62c` 문서 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-11 | C++ | Single `ROUTER_ROUTER_REQREP` | core_9_0_cpp_router_router_reqrep_*_nopin_paired_20260711 | transport를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 36개 처리량과 평균 latency 셀이 목표를 통과했고 ws 65536B는 해당 셀만 다시 paired 측정했다. | pattern 완료, 코드 변경 없음, `f1916050c` 문서 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
-| 2026-07-11 | C++ | Single `SPOT` | core_9_0_cpp_spot_*_nopin_paired_20260711 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 경계 셀과 다중 처리량 모드는 해당 셀만 다시 측정했다. | 24개 셀 완료, binding 변경 없음, perf enum 수정 `3506ba1c7` 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-11 | C++ | Single `SPOT` | core_9_0_cpp_spot_*_nopin_paired_20260711 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 경계 셀과 다중 처리량 모드는 해당 셀만 다시 측정했다. | 24개 셀 완료, perf enum 수정 `3506ba1c7`, 문서 `28ff6ca99` 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

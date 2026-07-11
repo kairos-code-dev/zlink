@@ -312,26 +312,34 @@ sleep 증가, 유리한 실행 결과만 선택하는 방식은 사용하지 않
 3. C++, .NET, Java, Node, Go, Rust, Python 순서로 진행한다.
 4. 현재 언어에서 진행할 pattern 하나를 선택한다. C 전체 pattern이나 다음 언어를 미리
    측정하지 않는다.
-5. 선택한 C pattern만 smoke하고, 바로 같은 binding pattern을 같은 조건으로 smoke한다.
-6. 같은 pattern의 C를 측정한 직후 binding before를 측정해 최초 paired 결과를 만든다.
-7. C 대비 throughput, latency, 변동성을 비교하고 목표 미달 셀을 확인한다.
-8. 미달 셀은 profiler, allocation 자료, copy 수, callback/dispatch 및 native 경계
+5. 현재 pattern에서 진행할 transport 하나를 선택한다. Single은 tcp, ws, wss, tls,
+   inproc, ipc 순서로 진행하고, runner가 지원하지 않는 transport는 건너뛴다.
+6. 선택한 transport의 C pattern만 smoke하고, 바로 같은 binding pattern을 같은 조건으로
+   smoke한다.
+7. 선택한 pattern과 transport의 모든 message size를 C에서 측정한 직후 binding before를
+   측정해 최초 paired 결과를 만든다.
+8. C 대비 throughput, latency, 변동성을 비교하고 현재 transport의 목표 미달 셀을 확인한다.
+9. 미달 셀은 profiler, allocation 자료, copy 수, callback/dispatch 및 native 경계
    자료로 비용 위치를 확인한다.
-9. 의미를 보존하는 개선안을 두 가지 이상 설계하고, 예상 영향 셀과 폐기 기준을 적은 뒤
+10. 의미를 보존하는 개선안을 두 가지 이상 설계하고, 예상 영향 셀과 폐기 기준을 적은 뒤
    public interface가 더 단순하고 책임 경계가 분명한 방안을 선택한다. 두 방안이 모두
    계약과 POSD gate를 만족하면 예상 성능 효과가 큰 방안을 우선한다.
-10. 제한 사전 점검을 통과한 뒤 후보 after를 3회 측정한다. 비교 환경이 달라졌으면 같은
-    C pattern도 다시 3회 측정한다.
-11. 목표 경계나 변동이 큰 셀은 같은 pattern의 C와 binding을 5회, CPU pin 없이
+11. 제한 사전 점검을 통과한 뒤 현재 transport의 후보 after를 3회 측정한다. 비교 환경이
+    달라졌으면 같은 C pattern과 transport도 다시 3회 측정한다.
+12. 목표 경계나 변동이 큰 셀은 같은 pattern과 transport의 C와 binding을 5회, CPU pin 없이
     다시 측정한다.
-12. 기능 테스트와 같은 pattern 안의 대상이 아닌 대표 셀에 대한 회귀 gate를 통과시킨다.
-13. tcp가 안정되면 tls, ws, wss 순서로 같은 pattern의 모든 대상 size를 확대한다.
-14. 선택한 pattern의 모든 대상 transport와 size가 목표를 만족하면 pattern 완료를 기록한다.
-15. 성능 개선 코드를 채택했다면 검증된 변경과 측정 근거만 커밋하고 원격에 푸시한다.
-16. 커밋과 푸시가 끝난 뒤에만 같은 언어의 다음 pattern을 선택한다.
-17. 현재 언어의 Single과 Multi 모든 pattern이 완료된 뒤 pattern별 최종 report와 표를
+13. 기능 테스트와 같은 pattern 안의 대상이 아닌 대표 셀에 대한 회귀 gate를 통과시킨다.
+14. 현재 transport의 모든 message size가 목표를 만족하면 transport 완료를 기록한다.
+    성능 개선 코드를 채택했다면 검증된 변경과 측정 근거만 커밋하고 원격에 푸시한 뒤 다음
+    transport로 이동한다.
+15. 코드 변경이 없으면 현재 transport의 결과를 작업 로그에 기록한 뒤 다음 transport로
+    이동한다. 다른 transport의 C 결과를 미리 측정하지 않는다.
+16. 선택한 pattern의 모든 공식 transport와 message size가 목표를 만족하면 pattern 완료를
+    기록하고 관련 문서를 커밋해 원격에 푸시한다.
+17. pattern 커밋과 푸시가 끝난 뒤에만 같은 언어의 다음 pattern을 선택한다.
+18. 현재 언어의 Single과 Multi 모든 pattern이 완료된 뒤 pattern별 최종 report와 표를
     다시 대조한다. 미측정, 미달, 측정 gap, 보류가 하나라도 있으면 다음 언어로 이동하지 않는다.
-18. 현재 언어가 모두 완료된 뒤에만 다음 언어로 이동한다.
+19. 현재 언어가 모두 완료된 뒤에만 다음 언어로 이동한다.
 
 한 번에 하나의 언어만 측정한다. C와 binding을 paired 제한 측정할 때도 공식 perf
 프로세스는 순차 실행해 서로 CPU와 memory에 영향을 주지 않게 한다.
@@ -1225,6 +1233,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | Node | single request/reply inventory 보완 | core_9_0_reqrep_inventory_gate_v2 | `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_REQREP`을 추가했다. 이 과정에서 공개 `RouterSocket.recv(Received)`가 reply context를 materializer에 전달하지 않던 runtime 결함을 고쳐 기존 `Received.reply()` 계약을 직접 사용했다. | build, typecheck, 64B/tcp 제한 report complete | `bindings/node/perf/results/single/report/perf_node_single_linux_20260711_114301_core_9_0_reqrep_inventory_gate_v2.txt` |
 | 2026-07-11 | 전체 | throughput 목표 재산정 | - | 이전 라운드의 완료된 최종 측정값에서 언어·pattern 그룹별 p10과 하위 25% 경계값을 계산했다. 과거 실측이 기존 목표를 넘은 구간만 최소 기준과 안정권 기준을 상향했다. | C++/Rust, .NET/Java, Go 목표 상향 | `doc/perf/perf/log/2026-05-18-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-01-node-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-01-go-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-02-rust-bindings-performance-round.ko.md` |
 | 2026-07-11 | 전체 | 실행 순서 명확화 | - | C 전체 baseline을 미리 측정하지 않고 현재 언어의 pattern 하나만 C와 binding으로 paired 측정한다. 비교, 개선, 재측정, 목표 확인, 커밋과 푸시를 마친 뒤 다음 pattern으로 이동한다. | pattern과 언어 전환 gate 갱신 | 이 문서 7장과 10장 |
+| 2026-07-11 | 전체 | transport 단위 실행 순서 | - | 현재 pattern에서도 transport 하나의 모든 message size만 C와 binding으로 paired 측정한다. 비교와 개선, 재측정, 필요한 커밋과 푸시를 마친 뒤 다음 transport로 이동한다. | transport 완료 gate 갱신 | 이 문서 7.4절 |
 | 2026-07-11 | 전체 | POSD gate 추가 | - | 성능 목표를 우선하되 구현 전 위험 신호와 두 가지 설계를 비교하고, 측정 효과와 정보 은닉, 책임 경계를 함께 확인한다. | 개선 설계와 커밋 gate 갱신 | 이 문서 5장과 7.7장 |
 | 2026-07-11 | C++ | Single `PAIR` | core_9_0_cpp_pair_*_20260711 | transport별로 C 3회 측정 직후 C++ 3회를 측정했다. secure transport와 변동 셀은 CPU 고정 5회로 보강했다. 모든 셀이 throughput, latency, 변동성 gate를 통과했고 코드 변경은 필요하지 않았다. | pattern 완료, 커밋 해당 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-11 | C++ | Single `PUBSUB` | core_9_0_cpp_pubsub_*_20260711 | C perf를 blocking send 정책에 맞췄다. C++ 대형 메시지 할당 병목은 128KiB~1MiB exact-size storage를 총 8MiB까지만 재사용해 제거했다. 모든 측정은 CPU pin 없이 한 process씩 실행했고 전체 transport와 size가 throughput 및 평균 latency gate를 통과했다. | pattern 완료, 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |

@@ -1202,7 +1202,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Single `PAIR` 진행 중 | active send를 정책의 blocking 의미로 정합화했다. 기존 tcp 완료 근거를 다시 열고 tcp부터 재측정한다. ws 256B는 처리량 63.7%로 미달이다. |
 | paired C | tcp 재측정 필요, ws 256B 완료 | ws 256B blocking 5회 C 기준은 1.649Mmsg/s와 41.411ms다. tcp의 기존 report는 `DONTWAIT` 의미이므로 새 근거가 될 수 없다. |
 | 개선 반복 | 진행 중 | 64바이트 opaque `ZlinkMsg` local의 중복 초기화를 제거해 ws 256B .NET 처리량을 1.016M에서 1.050Mmsg/s로 3.42% 높였다. 평균 latency는 4.84% 낮아졌다. |
-| 커밋과 푸시 | 코드 커밋 완료 | 검증된 `SkipInit` 개선과 blocking perf 정합화를 `f1440eb18`에 분리했다. 측정 문서 커밋과 함께 푸시한 뒤 tcp paired 재측정을 시작한다. |
+| 커밋과 푸시 | 완료 | 검증된 `SkipInit` 개선과 blocking perf 정합화는 `f1440eb18`, 측정 근거는 `867aa137b`로 분리해 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 

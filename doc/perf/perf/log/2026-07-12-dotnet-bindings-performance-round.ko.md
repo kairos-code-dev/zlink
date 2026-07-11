@@ -157,7 +157,7 @@ sampling trace에서 `PerfSocketIo.Send` 48.21%, `SinglePartSubmit.Submit` 23.69
 - C `perf_pair` build와 C/.NET blocking smoke: 통과
 
 검증된 코드와 perf 정합화는 `f1440eb18` (`perf(dotnet): align pair send and skip native clears`)
-커밋으로 분리했다.
+커밋으로 분리했고, 측정 근거 커밋 `867aa137b`와 함께 원격 `main`에 푸시했다.
 
 다음 작업은 blocking 의미로 PAIR tcp 전체 size를 C와 .NET 순서로 다시 paired 측정하고,
 tcp 완료 상태를 복구한 뒤 ws 256B의 남은 처리량 미달을 계속 개선하는 것이다.

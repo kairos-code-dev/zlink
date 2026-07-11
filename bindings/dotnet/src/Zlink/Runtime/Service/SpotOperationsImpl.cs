@@ -55,7 +55,7 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReadyToSubmit();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _kind switch
         {
             SpotOperationKind.Publish => _parts.IsSingle
@@ -156,7 +156,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _kind switch
         {
             SpotOperationKind.RequestToChannel => _spot.RequestToChannelAsync(
@@ -173,7 +173,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
     public bool Submit(RequestCallback callback)
     {
         EnsureReadyToSubmit();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _kind switch
         {
             SpotOperationKind.RequestToChannel => _spot.RequestToChannel(
@@ -241,7 +241,7 @@ internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
     public void Submit()
     {
         EnsureReadyToSubmit();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         switch (_kind)
         {
             case SpotOperationKind.ReplyToSpot:

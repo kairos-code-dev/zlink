@@ -18,7 +18,7 @@ internal abstract class RouterReplyOperation : ReplyOperation,
     public void Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         SubmitCore(_parts.Parts);
     }
 
@@ -106,7 +106,7 @@ internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     public void Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         _received.ReplyCore(_parts.Parts);
     }
 

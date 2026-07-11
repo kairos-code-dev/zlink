@@ -13,9 +13,10 @@ internal struct OperationSubmissionGuard
                 ZlinkConfigException.ErrorCode.InvalidState);
     }
 
-    internal void MarkSubmitted()
+    // HOT PATH: operation readiness validation includes the submission-state
+    // check before this transition, so the transition does not repeat it.
+    internal void MarkSubmittedAfterValidation()
     {
-        EnsureNotSubmitted();
         _submitted = true;
     }
 }

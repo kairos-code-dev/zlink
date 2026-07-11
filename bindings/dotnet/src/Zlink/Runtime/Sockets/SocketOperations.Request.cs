@@ -68,7 +68,7 @@ internal sealed class DealerRequestOperation : RequestOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _socket.RequestCore(_parts.Parts, _timeout, ct);
     }
 
@@ -77,7 +77,7 @@ internal sealed class DealerRequestOperation : RequestOperation,
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _socket.RequestCallbackCore(_parts.Parts, callback, _flags,
             _timeout);
     }
@@ -160,7 +160,7 @@ internal abstract class RouterRequestOperation : RequestOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return AsyncCore(_parts.Parts, _timeout, ct);
     }
 
@@ -169,7 +169,7 @@ internal abstract class RouterRequestOperation : RequestOperation,
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return SubmitCore(_parts.Parts, callback, _flags, _timeout);
     }
 

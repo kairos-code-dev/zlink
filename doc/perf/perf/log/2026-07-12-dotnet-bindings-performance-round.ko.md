@@ -203,3 +203,25 @@ sampling trace에서 송신 스레드의 5초 중 대부분은 native blocking �
 system 비용보다 관리 힙 누적과 관리 경계의 user CPU 차이가 크지만 builder 하나만으로는
 목표 차이를 설명하지 못한다. tcp 256B는 계속 `미달`로 유지하고 다음 binding 내부 후보를
 조사한다.
+
+### submission 상태 검증 POSD 개선
+
+모든 operation submit 경로는 message 존재 여부와 callback stage 같은 준비 상태를 확인하면서
+submission 상태도 검사한 뒤, `OperationSubmissionGuard.MarkSubmitted()` 안에서 같은 상태를
+다시 검사했다. 첫 번째 설계는 guard가 검증과 상태 전이를 모두 맡게 두는 방식이고, 두 번째
+설계는 operation의 준비 검증과 guard의 상태 전이를 분리하는 방식이다. 모든 호출부가 이미
+준비 검증을 수행하므로 두 번째 설계를 선택하고 메서드 이름을
+`MarkSubmittedAfterValidation()`으로 바꿔 사전 조건을 드러냈다.
+
+35개 호출부가 상태 전이 전에 검증하는 것을 확인했으며, 같은 operation을 두 번 submit하면
+계속 `ZlinkConfigException`이 발생하는 회귀 테스트를 추가했다. tcp 256B 3회 제한 측정은
+1,171,729.4msg/s와 평균 latency 0.181ms였다.
+
+- report: `perf_dotnet_single_linux_20260712_085521_core_9_0_dotnet_pair_tcp256_submission_guard_posd_candidate_20260712.txt`
+- 직전 기준 대비 throughput: -0.76%
+- 직전 기준 대비 평균 latency: -2.2%
+- single/multi Release build: 경고 0, 오류 0
+- `Zlink.Tests`: 178개 통과
+
+처리량과 평균 latency 회귀 gate 안이고 중복 책임을 제거했으므로 성능 목표 통과와는 별개인
+POSD 개선으로 채택한다. tcp 256B 처리량 상태는 계속 `미달`이다.

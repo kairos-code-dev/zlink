@@ -81,7 +81,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.JoinActorAsync(_node, _actor, _destNodeRid,
             _destSpotRid, _parts.Parts, _timeout, _flags, ct);
     }
@@ -91,7 +91,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.JoinActorCallback(_node, _actor, _destNodeRid,
             _destSpotRid, _parts.Parts, _timeout, _flags, callback);
     }
@@ -147,7 +147,7 @@ internal sealed class ActorSendToActorOperation : SendOperation,
     {
         EnsureNotSubmitted();
         _parts.EnsureNotEmpty();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _node.SendToActor(_actor, _parts.Parts, _flags);
     }
 
@@ -225,7 +225,7 @@ internal sealed class ActorRequestToActorOperation : RequestOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _node.RequestToActorAsync(_actor, _parts.Parts, _timeout,
             _flags, ct);
     }
@@ -235,7 +235,7 @@ internal sealed class ActorRequestToActorOperation : RequestOperation,
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureReadyToSubmit();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         try
         {
             ActorInterop.AttachPartsCallback(
@@ -316,7 +316,7 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
     {
         EnsureNotSubmitted();
         _parts.EnsureNotEmpty();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.JoinActorEntrySpotAsync(_node, _actor,
             _destNodeRid, _parts.Parts, _timeout, _flags, ct);
     }
@@ -327,7 +327,7 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
         _parts.EnsureNotEmpty();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.JoinActorEntrySpotCallback(_node, _actor,
             _destNodeRid, _parts.Parts, _timeout, _flags, callback);
     }
@@ -364,7 +364,7 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
     public void Submit()
     {
         _submission.EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         _spot.ReplyActorJoinInternal(_request, _joinResultCode,
             _parts.PartsOrEmpty);
     }
@@ -397,7 +397,7 @@ internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.LeaveActorAsync(_node, _actor, _currentSpotRid,
             _timeout, ct);
     }
@@ -407,7 +407,7 @@ internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.LeaveActorCallback(_node, _actor, _currentSpotRid,
             _timeout, callback);
     }
@@ -442,7 +442,7 @@ internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.DestroyActorAsync(_node, _actor, _timeout, ct);
     }
 
@@ -451,7 +451,7 @@ internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.DestroyActorCallback(_node, _actor, _timeout,
             callback);
     }
@@ -488,7 +488,7 @@ internal sealed class ActorLookupOperationImpl : ActorLookupOperation
     public Task<ActorLookupResult> Async(CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.RemoteActorGetRefAsync(_node, _targetNodeRid,
             _actorId, _timeout, ct);
     }
@@ -498,7 +498,7 @@ internal sealed class ActorLookupOperationImpl : ActorLookupOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.RemoteActorGetRefCallback(_node, _targetNodeRid,
             _actorId, _timeout, callback);
     }
@@ -536,7 +536,7 @@ internal sealed class ActorBindOperationImpl : ActorBindOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.BindActorAsync(_stream, _sessionRid, _actor,
             _timeout, ct);
     }
@@ -546,7 +546,7 @@ internal sealed class ActorBindOperationImpl : ActorBindOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.BindActorCallback(_stream, _sessionRid, _actor,
             _timeout, callback);
     }
@@ -584,7 +584,7 @@ internal sealed class ActorUnbindOperationImpl : ActorUnbindOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.UnbindActorAsync(_stream, _sessionRid, _actorId,
             _timeout, ct);
     }
@@ -594,7 +594,7 @@ internal sealed class ActorUnbindOperationImpl : ActorUnbindOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return ActorInterop.UnbindActorCallback(_stream, _sessionRid, _actorId,
             _timeout, callback);
     }

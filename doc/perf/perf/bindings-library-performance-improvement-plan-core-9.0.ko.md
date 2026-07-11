@@ -1204,7 +1204,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 언어 | .NET | .NET의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
 | 현재 pattern | Single `PAIR` 진행 중 | blocking send 기준 tcp 256B와 ws 256B 처리량이 각각 63.7%로 미달이다. tcp부터 개선한다. |
 | paired C | tcp와 ws 완료 | tcp 전 크기와 256B 독립 재측정을 C 직후 .NET으로 실행했다. ws 256B blocking 5회 C 기준은 1.649Mmsg/s와 41.411ms다. |
-| 개선 반복 | 진행 중 | `SkipInit` 개선은 유지한다. tcp 256B의 직접 native handle submit과 builder 완전 우회 진단은 각각 +0.75%, +2.4%에 그쳐 제거했다. |
+| 개선 반복 | 진행 중 | `SkipInit` 개선은 유지한다. tcp 256B의 직접 native handle submit과 builder 완전 우회 진단은 각각 +0.75%, +2.4%에 그쳐 제거했다. 중복 submission 검증 제거는 처리량 -0.76%, 평균 latency -2.2%로 회귀 gate 안이며 POSD 개선으로 채택했다. |
 | 커밋과 푸시 | 완료 | 검증된 `SkipInit` 개선과 blocking perf 정합화는 `f1440eb18`, 측정 근거는 `867aa137b`로 분리해 원격 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태

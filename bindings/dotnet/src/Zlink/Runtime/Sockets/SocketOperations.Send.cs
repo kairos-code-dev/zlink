@@ -37,7 +37,7 @@ internal sealed class MessageSocketSendOperation : SendOperation,
     public bool Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _parts.IsSingle
             ? _socket.SendCore(_parts.Single, _flags)
             : _socket.SendCore(_parts.Parts, _flags);
@@ -89,7 +89,7 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
     public bool Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _parts.IsSingle
             ? _socket.PublishCore(_topic, _parts.Single, _flags)
             : _socket.PublishCore(_topic, _parts.Parts, _flags);
@@ -139,7 +139,7 @@ internal sealed class RoutedSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _parts.IsSingle
             ? _socket.SendRoutedCore(_routingId, _parts.Single, _flags)
             : _socket.SendRoutedCore(_routingId, _parts.Parts, _flags);
@@ -191,7 +191,7 @@ internal sealed class RouterSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _socket.SendToSpotCore(_destNodeRid, _destSpotRid, _parts.Parts,
             _flags);
     }
@@ -249,7 +249,7 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         if (_actorId != null)
             return _socket.SendBoundActorCore(_sessionRid!.Value, _actorId,
                 _parts.Parts, _flags);
@@ -302,7 +302,7 @@ internal sealed class ActorSendBoundSessionOperation : SendOperation,
     public bool Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return Actor.SendBoundSessionCore(_node, _actor, _parts.Parts, _flags);
     }
 
@@ -348,7 +348,7 @@ internal sealed class ReceivedSendOperationImpl : SendOperation,
     public bool Submit()
     {
         EnsureReady();
-        _submission.MarkSubmitted();
+        _submission.MarkSubmittedAfterValidation();
         return _parts.IsSingle
             ? _received.SendCore(_parts.Single, _flags)
             : _received.SendCore(_parts.Parts, _flags);

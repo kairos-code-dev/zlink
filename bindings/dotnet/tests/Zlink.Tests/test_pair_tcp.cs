@@ -510,6 +510,28 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
+    public void send_operation_rejects_second_submit_after_state_transition()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-send-once");
+
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        using Message payload = Message.From("once");
+        SendSubmitOperation operation = sender.Send().Message(payload);
+        Assert.True(operation.Submit());
+        Assert.Throws<ZlinkConfigException>(() => operation.Submit());
+    }
+
+    [Fact]
     public void from_bytes_nonblocking_send_completes_borrowed_lifetime()
     {
         if (!CoreTestSupport.IsNativeAvailable())

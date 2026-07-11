@@ -4,7 +4,7 @@
 
 # 10. Monitoring — runtime 이벤트 관찰
 
-> 정식 계약은 [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)가
+> 정식 계약은 [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md)가
 > 다룬다.
 
 handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결 상태를 runtime이
@@ -23,7 +23,7 @@ handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconne
 | location | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 (`location-runtime` source, [09-location](09-location.ko.md)) |
 | spot | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 + timer 실패는 즉시 |
 
-공통 규칙: event kind 는 `enum`, payload 는 `record struct`, 응용은
+공통 규칙: event kind 는 `enum`, payload 는 `record struct`, 어플리케이션은
 `IZLinkRuntimeEventHandler<TEvent>` 를 DI 에 등록해 수신한다.
 
 흐름은 단순하다 — **source 에서 변화가 나면 framework 가 typed handler 로 전달**하고,
@@ -124,7 +124,7 @@ socket event 만 native monitor event/value 를 진단 정보로 함께 노출�
 ### location
 
 location store 를 등록한 배포([09-location](09-location.ko.md))에서, 자기 노드의 위치와 연결 상태
-보기(살아 있는 peer, 연결 상태, store 건강)가 바뀔 때 이벤트가 온다.
+보기(활성 peer, 연결 상태, store 상태)가 바뀔 때 이벤트가 온다.
 
 ```csharp
 public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
@@ -135,7 +135,7 @@ public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
         switch (@event.Event)
         {
             case ZLinkLocationRuntimeEventKind.TopologyChanged:
-                // 서버가 추가/제거되어 살아 있는 peer 구성이 바뀌었다
+                // 서버가 추가/제거되어 활성 peer 구성이 바뀌었다
                 logger.LogInformation("topology: {Count} entries", @event.Topology?.Count ?? 0);
                 break;
             case ZLinkLocationRuntimeEventKind.StoreFailure:
@@ -214,7 +214,7 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
   send/publish/subscription/actor send 실패는 drop 되지만 로그, metric, observer event 로 남는다.
   observer 는 관측용이므로 callback 이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
 - **handler payload 의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
-  [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md) 참고.
+  [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md) 참고.
 
 ## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
 
@@ -243,7 +243,7 @@ builder.Services.AddZLinkFramework(options =>
 - 콜렉터/OTel 연동: `IZLinkMessageFlowObserver` 를 등록해 구조화 이벤트를 받는다(앱 레이어).
   framework 는 OTel 에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다
   (작성법은 바로 아래 "observer 로 흐름 이벤트 받기").
-- 정식 계약은 [spec/aspnet-core-monitoring §9](../spec/aspnet-core-monitoring.ko.md), 공통 의미는
+- 정식 계약은 [spec/aspnet-core-monitoring §9](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md), 공통 의미는
   [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md) 참고.
 
 ### observer 로 흐름 이벤트 받기
@@ -307,7 +307,7 @@ public sealed class MetricFlowObserver(IMetricSink metrics) : IZLinkMessageFlowO
 ## 6. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [12-interface-catalog](12-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
-- 정식 계약: [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)
+- 정식 계약: [spec/aspnet-core-monitoring](../../common/spec/languages/dotnet/aspnet-core-monitoring.ko.md)
 - location 운영 조회: [09-location](09-location.ko.md)
 
 ---

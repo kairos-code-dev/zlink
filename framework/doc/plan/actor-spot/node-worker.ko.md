@@ -3,7 +3,7 @@
 > 이 문서 하나로 Node(NestJS) framework의 Spot actor join/transfer 적용을 끝낼 수 있게 썼다.
 > 계약 정본은 [common/spec/spot-actor.ko.md](../../framework/common/spec/spot-actor.ko.md),
 > 검증 정본은 [common/e2e/config-10-spot-actor-transfer.ko.md](../../framework/common/e2e/config-10-spot-actor-transfer.ko.md),
-> Node interface 정본은 [node/spec/handler-interfaces.ko.md](../../framework/node/spec/handler-interfaces.ko.md)다.
+> Node interface 정본은 [node/spec/handler-interfaces.ko.md](../../framework/common/spec/languages/node/handler-interfaces.ko.md)다.
 > 전 언어 현황은 [README.ko.md](README.ko.md).
 
 ## 0. Node 시작 상태 (문서 정본은 정렬됨, source는 P0에서 확인)

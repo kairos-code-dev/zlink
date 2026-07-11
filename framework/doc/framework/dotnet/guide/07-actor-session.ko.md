@@ -4,8 +4,8 @@
 
 # 7. Session Actor Dispatch
 
-> 정식 계약은 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와
-> [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)가 다룬다.
+> 정식 계약은 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)와
+> [spec/session-actor-dispatch](../../common/spec/languages/dotnet/session-actor-dispatch.ko.md)가 다룬다.
 > 이 챕터는 actor 의 **binding 축** — STREAM session 에 bound 된 actor 로 client packet 을
 > relay 하고, actor 가 자기 client 로 push 하는 면 — 을 다룬다. actor 모델과 spot 호스팅(location
 > 축)은 [06-actor-spot](06-actor-spot.ko.md)을 먼저 본다.
@@ -267,7 +267,7 @@ public sealed class PlayerNotifyHandler
 - `IZLinkBoundSession` 의 표면은 **`Send<TMessage>(message)`** 와 **`DisconnectAsync(...)`** 둘뿐이다.
   client 로의 push 는 단방향이며 별도의 `Request` 표면은 없다. `Send(...).Submit(...)` 은
   호출자가 응답이나 송신 수락 완료를 기다리지 않는 push 호출이다.
-- `DisconnectAsync(...)` 는 응용이 거는 것이라 session 의 `OnDisconnectedAsync` 를 다시 일으키지
+- `DisconnectAsync(...)` 는 어플리케이션이 거는 것이라 session 의 `OnDisconnectedAsync` 를 다시 일으키지
   않는다(stream 만 닫고 binding 정리).
 
 ## 3.5 세션 directory — actor 밖에서 특정 client 로 push
@@ -413,14 +413,14 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> SpotNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와 샘플 코드를
+> SpotNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)와 샘플 코드를
 > 기준으로 확인한다.
 
 ## 7. 더 보기
 
 - actor 모델·spot 호스팅 콜백(location 축): [06-actor-spot](06-actor-spot.ko.md)
 - bound session push 계약: [12-interface-catalog](12-interface-catalog.ko.md) §5.2 — 검증 클래스 `StreamContracts`
-- 정식 계약: [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md), [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)
+- 정식 계약: [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md), [spec/session-actor-dispatch](../../common/spec/languages/dotnet/session-actor-dispatch.ko.md)
 - 전체 예제: [tictactoe 샘플](samples/tictactoe-game-sample.ko.md), [bingo 샘플](samples/bingo-game-sample.ko.md)
 - 외부 client 를 STREAM 으로 받는 법: [08-stream](08-stream.ko.md)
 

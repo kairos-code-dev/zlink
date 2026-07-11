@@ -263,7 +263,7 @@ remote transfer는 actor 객체를 transport로 직접 보내지 않는다. sour
 instance를 만든다.
 
 모든 framework 언어는 같은 public contract를 제공해야 한다. 실제 interface 이름, async 반환형,
-cancellation 표현, 등록 API는 언어별 spec에서 고정한다. 특정 언어가 아래 의미의 surface를 제공하지
+취소 지원 여부와 등록 API는 언어별 spec에서 고정한다. 특정 언어가 아래 의미의 surface를 제공하지
 못하면 구현 완료가 아니라 public contract parity gap으로 기록한다.
 
 | 항목 | 공통 계약 |
@@ -271,9 +271,9 @@ cancellation 표현, 등록 API는 언어별 spec에서 고정한다. 특정 언
 | 등록 단위 | state 이동이 필요한 actor type별 하나의 transfer adapter |
 | custom 등록 | actor type과 adapter type을 함께 등록한다. |
 | 기본 빈 state transfer | adapter가 없으면 framework가 빈 state transfer와 actor factory 생성 경로를 사용한다. 별도 stateless 등록 API를 요구하지 않는다. |
-| source method | `TransferOut(actor, cancellation)` |
+| source method | `TransferOut(actor)`. 취소를 제공하는 언어는 언어별 취소 인자를 추가할 수 있다. |
 | source 반환 | `ZLinkMessage` 또는 그 언어의 framework message type |
-| target method | `TransferIn(actorId, state, cancellation)`. actor 생성에 별도 runtime context가 필요한 언어는 언어별 spec에서 해당 context 인자를 추가로 고정한다. |
+| target method | `TransferIn(actorId, state)`. actor 생성에 별도 runtime context가 필요한 언어는 해당 context를, 취소를 제공하는 언어는 언어별 취소 인자를 추가로 고정할 수 있다. |
 | target 반환 | target node에서 사용할 actor instance |
 | 미등록 정책 | 실패가 아니다. framework 기본 빈 state transfer로 처리한다. |
 | 빈 state 정책 | adapter가 등록되어 있거나 기본 빈 state transfer를 사용하면 빈 `ZLinkMessage`를 정상 transfer로 처리한다. |

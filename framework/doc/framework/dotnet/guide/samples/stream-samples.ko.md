@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../common/README.ko.md)
 
-[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [인터페이스](../../../common/spec/languages/dotnet/handler-interfaces.ko.md)
 
 # ZLink Framework .NET STREAM Samples
 
@@ -32,7 +32,7 @@ recv 방식을 사용하는 샘플은 이 문서에 포함하지 않는다.
 
 `STREAM` 샘플이 전제로 삼는 최소 인터페이스는 대략 아래와 같다.
 
-> **주의**: 아래 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md)의
+> **주의**: 아래 정의는 [handler-interfaces.ko.md](../../../common/spec/languages/dotnet/handler-interfaces.ko.md)의
 > 해당 섹션과 같다. 인터페이스가 바뀌면 두 문서를 반드시 함께 갱신해야 한다.
 > 최신 계약의 기준은 언제나 `handler-interfaces.ko.md`다.
 

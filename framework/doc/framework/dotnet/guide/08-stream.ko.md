@@ -4,7 +4,7 @@
 
 # 8. STREAM — 외부 client 받기
 
-> 서버 측 정식 계약은 [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md),
+> 서버 측 정식 계약은 [spec/aspnet-core-stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md),
 > client connector 는 [samples/streaming-client](samples/streaming-client.ko.md)와
 > [Unity 가이드](../../../../../core/doc/guide/unity-stream-connector.ko.md)가 다룬다.
 >
@@ -46,14 +46,14 @@ builder.Services.AddZLinkFramework(options =>
   뜻이 아니다. send/reply call 에서 `.Compress()` 를 호출한 frame 만 압축된다.
 - compressed frame 을 주고받는 connector 와 server 는 같은 compression codec 을 설정해야 한다.
 - packet 의 header binary 포맷은 framework 와 connector 가 공유하는 **고정 내부
-  프로토콜**이다. 응용이 framing 을 바꿀 설정은 없다.
+  프로토콜**이다. 어플리케이션이 framing 을 바꿀 설정은 없다.
 - 한 stream node 에 header session 을 둘 이상 등록하면 시작 단계 예외다.
 - attribute 기반 등록은 없다(명시 등록만).
 
 ### session 작성
 
 session 은 `IZLinkSession` 을 구현한다. framework 가 frame 을 디코드해
-`ZLinkSessionDispatchContext dispatch` + `ZLinkMessage payload` 두 부분으로 콜백한다. 응용은
+`ZLinkSessionDispatchContext dispatch` + `ZLinkMessage payload` 두 부분으로 콜백한다. 어플리케이션은
 `dispatch.PacketName` 으로 분기하고 `payload.Decode<T>()` 로 DTO를 얻는다.
 `ZLinkMessage` 는 framework runtime 이 등록된 codec registry와 함께 소유하는 payload
 표면이다. session callback은 필요한 packet만 decode하고, actor relay처럼 decode를 미룰 수
@@ -127,14 +127,14 @@ public sealed class ClientHeaderSession(
 - application handler 예외는 `OnErrorAsync` 로 올라오지 않는다.
 
 > **recv 루프는 노출하지 않는다.** 서버 측은 application 이 recv 루프를 직접
-> 돌리지 않는다. framework 가 수신 dispatch 를 소유하고 응용은 handler 만
+> 돌리지 않는다. framework 가 수신 dispatch 를 소유하고 어플리케이션은 handler 만
 > 구현한다(DI/filter/logging 을 일관되게 엮기 위해).
 
 ### 보내기와 직렬화
 
 - `IZLinkStream.Send(ZLinkMessage)` 와 `IZLinkStream.Reply(ZLinkMessage)` 는 send/reply call을
-  돌려준다. 응용은 call에서 packet name, metadata, compression을 지정하고 `Submit()`으로 제출한다.
-- session dispatch payload 는 `ZLinkMessage` 로 들어온다. 응용 코드는
+  돌려준다. 어플리케이션은 call에서 packet name, metadata, compression을 지정하고 `Submit()`으로 제출한다.
+- session dispatch payload 는 `ZLinkMessage` 로 들어온다. 어플리케이션 코드는
   `payload.Decode<T>()` 로 DTO를 얻고, framework runtime 이 등록된 codec registry 로
   JSON, MessagePack, Protobuf, custom codec 을 고른다. codec 을 바꿔도 session handler
   코드는 바꾸지 않는다.
@@ -186,7 +186,7 @@ while (running)
 ```
 
 - URI scheme 으로 transport 가 추론된다: `tcp://`, `tls://`, `ws://`, `wss://`.
-- `ZlinkStreamDispatchMode.Manual`(기본)은 수신/재연결/콜백을 큐에 쌓아 두고, 응용이
+- `ZlinkStreamDispatchMode.Manual`(기본)은 수신/재연결/콜백을 큐에 쌓아 두고, 어플리케이션이
   `Dispatch.Async()` 를 부른 스레드에서 실행한다. UI 스레드/게임 루프가 있는 client
   는 반드시 `Manual` 을 쓴다. `Immediate` 는 내부 worker 에서 바로 실행한다.
 - `Manual` 모드에서는 네트워크 수신 루프가 느린 콜백에 막히지 않는다. 패킷을 읽어
@@ -295,7 +295,7 @@ backoff 2.0, 최대 3회)가 켜져 있다.
 
 - reconnect 중 submit 은 큐에 쌓이지 않고 `Disconnected` 로 실패한다.
 - disconnect 시 대기 중인 모든 request 가 실패하고 reconnect 후 자동 재전송되지
-  않는다. 재전송은 응용 책임이다.
+  않는다. 재전송은 어플리케이션 책임이다.
 
 ### TLS
 
@@ -347,7 +347,7 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 ## 5. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [12-interface-catalog](12-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
-- 서버 정식 계약: [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md)
+- 서버 정식 계약: [spec/aspnet-core-stream](../../common/spec/languages/dotnet/aspnet-core-stream.ko.md)
 - 전체 예제: [STREAM 샘플](samples/stream-samples.ko.md), [Stream Connector 가이드](samples/streaming-client.ko.md)
 
 ---

@@ -4,12 +4,12 @@
 
 [스펙 목차](../../../common/README.ko.md)
 
-[C++ 묶음](../../README.ko.md) | [Framework 인터페이스](../../spec/cpp-framework-interfaces.ko.md) | [STREAM](../../spec/cpp-stream.ko.md)
+[C++ 묶음](../../README.ko.md) | [Framework 인터페이스](../../../common/spec/languages/cpp/cpp-framework-interfaces.ko.md) | [STREAM](../../../common/spec/languages/cpp/cpp-stream.ko.md)
 
 # ZLink Framework C++ STREAM Samples
 
 이 문서는 현재 C++ public API를 사용하는 stream session 등록과 connector 예제를
-설명한다. 공개 계약은 [stream spec](../../spec/cpp-stream.ko.md)이 소유한다.
+설명한다. 공개 계약은 [stream spec](../../../common/spec/languages/cpp/cpp-stream.ko.md)이 소유한다.
 
 ## 1. Packet session 등록
 

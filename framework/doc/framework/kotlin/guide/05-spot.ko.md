@@ -38,9 +38,11 @@ node.addSpotFactory(GameRoomSpot::class.java)
 
 ## 3. Spot 작성 — `ZLinkSuspendingSpot`
 
-Spot 베이스 클래스는 `ZLinkSuspendingSpot<TActor>`다. lifecycle 콜백을 `suspend`로
-override한다(`onCreateSuspending`, `onInitializeSuspending`, `onClosingSuspending`,
-`onActorJoinSuspending`). 기본 구현을 그대로 두면 Java 베이스와 같은 의미다.
+user Spot의 베이스 클래스는 `ZLinkSuspendingSpot<TActor>`다. Entry Spot에서 같은 coroutine
+표면이 필요하면 `ZLinkSuspendingEntrySpot<TActor>`를 사용한다. 생성과 초기화 콜백 외에도 actor
+admission, joined, leave 콜백을 `suspend`로 override한다. admission은 actor instance가 아니라 actor id와
+request만 받는다. accepted join의 membership 처리는 joined 콜백에서 하고, leave 콜백과 함께 두 콜백은
+반드시 구현해야 한다.
 
 ```kotlin
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
@@ -60,6 +62,31 @@ class GameRoomSpot(
 
     override suspend fun onInitializeSuspending() {
         round = 1
+    }
+
+    override suspend fun onActorJoinSuspending(
+        actorId: String,
+        request: ZLinkMessage,
+        cancellationToken: CancellationToken,
+    ): ZLinkSpotActorJoinResponse {
+        // Admission에서는 actor id와 request만 검증하고 membership은 아직 바꾸지 않는다.
+        return ZLinkSpotActorJoinResponse.accept()
+    }
+
+    override suspend fun onJoinedActorSuspending(
+        actor: PlayerActor,
+        cancellationToken: CancellationToken,
+    ) {
+        // 이동이 commit된 뒤에만 이 Spot의 membership을 확정한다.
+        players.add(actor.actorId())
+    }
+
+    override suspend fun onLeaveActorSuspending(
+        actor: PlayerActor,
+        cancellationToken: CancellationToken,
+    ) {
+        // 다음 Spot의 joined 콜백보다 먼저 기존 membership을 제거한다.
+        players.remove(actor.actorId())
     }
 }
 ```

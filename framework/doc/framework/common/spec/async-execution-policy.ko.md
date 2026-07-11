@@ -97,6 +97,44 @@ serial executor, microtask/task runner, 또는 bounded queue 로 분리한다. b
 queue overflow 때 아직 전달하지 않은 새 event 를 drop 하고 overflow counter 를 올린다. shutdown 은
 짧은 drain 기회를 줄 수 있지만 observer 때문에 무기한 대기하지 않는다.
 
+### 2.1 취소 계약
+
+취소는 비동기 작업을 반드시 즉시 멈추는 명령이 아니라, 더 이상 그 작업의 완료를
+기다리지 않거나 계속 진행할 필요가 없음을 framework에 전달하는 협력적 요청이다.
+취소를 지원하는 작업과 취소 전달 인자는 언어별 정식 public contract에 명시한다.
+caller가 public method와 callback에 전달하는 `CancellationToken` 타입은 `.NET`
+framework의 언어별 계약이다. 다른 framework 언어에는 이 타입을 복제하지 않는다.
+취소가 필요한 작업은 해당 언어의 표준 async와 lifecycle 관례로 표현한다.
+
+공통 취소 의미는 다음과 같다.
+
+- 취소 요청 전에 완료된 결과는 취소로 바꾸지 않는다.
+- 취소는 이미 수락되거나 전송된 one-way 메시지를 되돌리지 않으며, 상대에게 메시지가
+  전달되지 않았음을 보장하지 않는다.
+- reply 대기 취소는 호출자의 대기를 끝내고 관련 waiter와 callback registration을
+  정리한다. 이미 전송된 request의 원격 처리를 rollback한다는 뜻은 아니다.
+- connect, close, dispatch와 worker 작업은 각 언어별 정식 스펙이 취소 대상으로
+  명시한 범위에서만 취소 요청을 관찰한다.
+- timeout은 framework가 정한 제한 시간이 지난 결과이고, cancellation은 호출자 또는
+  상위 lifecycle이 요청한 결과다. 언어별 오류 표현이 다르더라도 두 원인을 구분한다.
+- 취소를 관찰한 framework는 더 이상 필요하지 않은 timer, waiter, callback과
+  registration을 정리해야 한다.
+
+공통 계약은 모든 언어에 같은 cancellation 타입이나 인자 위치를 요구하지 않는다.
+
+| 언어 | public cancellation 인자 계약 |
+|------|------------------------------|
+| `.NET` | 취소를 지원하는 메서드의 `CancellationToken` |
+| Java | handler token 없음. 호출 결과와 host lifecycle은 `CompletionStage`, timeout과 Spring lifecycle로 관리한다. |
+| Kotlin | 별도 token 인자 없음. `suspend` 함수는 coroutine lifecycle을 따른다. |
+| Node.js / TypeScript | 취소가 필요한 장기 작업은 optional `AbortSignal`을 사용할 수 있다. 일반 handler에는 자동으로 추가하지 않는다. |
+| C++ | 취소가 필요한 장기 작업은 C++ 표준 중단과 수명 관례를 사용할 수 있다. custom token을 기본 callback 인자로 복제하지 않는다. |
+
+특정 언어에 명시적 취소 인자가 없는 것은 그 자체로 parity gap이 아니다. 반대로
+언어 관례상 취소가 자연스러운 장기 작업은 해당 언어별 spec에서 정확한 표면을
+정의할 수 있다. timeout, host shutdown, connection close와 resource cleanup은 취소
+인자와 별개의 공통 계약으로 유지한다.
+
 ## 3. 서버와 클라이언트 표면 구분
 
 언어별 framework 문서에서는 서버 framework 표면과 client connector 표면을 구분해서
@@ -113,12 +151,11 @@ queue overflow 때 아직 전달하지 않은 새 event 를 drop 하고 overflow
 제공하더라도, one-way send/publish/push/reply 계열에는 이 표면을 붙이지 않는다. client
 connector의 callback completion도 request/wait/lifecycle처럼 완료 의미가 있는 호출에만 둔다.
 
-## 4. 언어별 네이밍과 인터페이스 투영
+## 4. 비규범 부록: 언어별 투영 찾아보기
 
-이 절은 언어별 문서에 흩어진 비동기 표면 정책을 모아 둔 기준이다. 서버 framework와
-client connector의 async 의미, terminator 이름, coroutine adapter 경계는 이 절을
-기준으로 맞춘다. 언어별 문서는 이 절을 다시 정의하지 않고, 실제 사용 예시나 구현 진행
-상태만 보충한다.
+이 절은 언어별 정식 스펙을 찾기 위한 요약이며 공통 계약을 추가하지 않는다. 정확한
+타입, terminator 이름, overload와 취소 인자는 `languages/<lang>/` 문서가 소유한다.
+이 부록과 언어별 정식 스펙이 다르면 언어별 정식 스펙을 따른다.
 
 ### 4.1 .NET
 
@@ -133,11 +170,12 @@ client connector의 async 의미, terminator 이름, coroutine adapter 경계는
 
 | 영역 | 인터페이스 / 메서드 | 비동기 표면 |
 |------|--------------------|-------------|
-| channel send | `IZLinkSendCall` | `Async(CancellationToken)` |
+| channel send | `IZLinkSendCall` | `Submit(CancellationToken)`; 완료 객체를 반환하지 않음 |
 | channel request | `IZLinkRequestCall` | `Async<TReply>(CancellationToken)` |
-| fanout publish | `IZLinkPublishCall` | `Async(CancellationToken)` |
-| session push/reply | `IZLinkSessionSendCall`, `IZLinkSessionReplyCall` | `Async()` |
-| bound session push | `IZLinkBoundSessionSendCall` | `Async(CancellationToken)` |
+| fanout publish | `IZLinkPublishCall` | `Submit(CancellationToken)`; 완료 객체를 반환하지 않음 |
+| session push/reply | `IZLinkSessionSendCall`, `IZLinkSessionReplyCall` | `Submit(CancellationToken)`; 완료 객체를 반환하지 않음 |
+| bound session push | `IZLinkBoundSessionSendCall` | `Submit(CancellationToken)`; 완료 객체를 반환하지 않음 |
+| actor send | `IZLinkActorSendCall` | `Submit(CancellationToken)`; 완료 객체를 반환하지 않음 |
 | handler | `IZLinkRequestHandler<TReq,TReply>`, `IZLinkSendHandler<T>` | `ValueTask<TReply>` / `ValueTask` 반환 |
 
 client connector 표면:
@@ -145,7 +183,7 @@ client connector 표면:
 | 영역 | 인터페이스 / 메서드 | 비동기 표면 |
 |------|--------------------|-------------|
 | lifecycle | `IZlinkStreamConnector` | `Connect.Async(...)`, `Close.Async(...)`, `Dispatch.Async(...)` |
-| send | `IZlinkStreamSendCall` | `Async(CancellationToken)` |
+| send | `IZlinkStreamSendCall` | `Submit(CancellationToken)`; 완료 객체를 반환하지 않음 |
 | request | `IZlinkStreamRequestCall` | `Async(CancellationToken)` 또는 `Submit(callback)` |
 | wait | `IZlinkStreamWaitCall` | `Where(...)`, `Timeout(...)`, `Async(CancellationToken)` |
 
@@ -163,7 +201,7 @@ Java framework는 `CompletionStage<T>`를 공식 async 결과로 사용한다. p
 | 영역 | 인터페이스 / 메서드 | 비동기 표면 |
 |------|--------------------|-------------|
 | handler | `ZLinkRequestHandler`, `ZLinkSendHandler`, `ZLinkPublishHandler` | `CompletionStage<TReply>` / `CompletionStage<Void>` 반환 |
-| channel outbound | `ZLinkClient`, `ZLinkRouteClient`, `ZLinkFanoutClient` | call builder가 `submit(...)`으로 `CompletionStage` 반환 |
+| channel outbound | `ZLinkClient`, `ZLinkRouteClient`, `ZLinkFanoutClient` | one-way call의 `submit()`은 완료 객체를 반환하지 않고 request call만 `CompletionStage<TReply>`를 반환 |
 | Spot / actor / session | `ZLinkSpot`, `ZLinkActorContext`, `ZLinkSessionContext` | lifecycle, join, bind, relay가 `CompletionStage` 반환 |
 | manual connection | `ZLinkEndpointConnections` 계열 | `connect(endpoint)`, `disconnect(endpoint)` 같은 제어 표면. 연결 단위는 `channel + capability` 또는 `spot node + capability` |
 
@@ -188,12 +226,12 @@ interface, decorator, enum 타입은 `PascalCase`를 쓴다.
 
 서버 framework 표면:
 
-| 영역 | Node 표면 | .NET 기준과의 대응 |
-|------|-----------|-------------------|
-| handler | `handle()` | `.NET` `HandleAsync` 의미. 반환은 `Promise<T>` 또는 `Promise<void>` |
-| channel outbound | `sendToChannel(...).submit()`, `requestToChannel(...).submit<T>()` | `.NET` fluent `Async` 의미 |
-| lifecycle | `start()`, `stop()`, NestJS lifecycle hook | `.NET` `StartAsync`, `StopAsync` 의미 |
-| DI | `ZLINK_CHANNEL_CLIENT`, `ZLINK_FANOUT_CLIENT`, `ZLINK_SPOT_MANAGER` 같은 provider token | `.NET` DI 주입 표면 대응 |
+| 영역 | Node 표면 | 공통 의미 |
+|------|-----------|-----------|
+| handler | `handle()` | 반환은 `Promise<T>` 또는 `Promise<void>`이며 완료까지 callback 실행이 끝나지 않는다. |
+| channel outbound | `sendToChannel(...).submit()`, `requestToChannel(...).submit<T>()` | fluent call에서 선택한 operation을 실행한다. |
+| lifecycle | `start()`, `stop()`, NestJS lifecycle hook | host 시작과 종료에 framework 수명을 연결한다. |
+| DI | `ZLINK_CHANNEL_CLIENT`, `ZLINK_FANOUT_CLIENT`, `ZLINK_SPOT_MANAGER` 같은 provider token | NestJS provider 주입 표면이다. |
 
 client connector 표면:
 
@@ -201,7 +239,6 @@ client connector 표면:
 |------|-----------|------|
 | lifecycle | `connect()`, `close()`, `dispatch()` | `Promise<void>` 반환 |
 | send/request/wait | `send(...).submit()`, `request(...).submit<T>()`, `waitFor(...).where(...).submit()` | `send`는 완료값을 반환하지 않는다. `request`와 `waitFor`는 응답을 기다리므로 `Promise<T>`를 반환한다. `Async` suffix를 붙이지 않는다. |
-| cancellation | `signal?: AbortSignal` | `.NET` `CancellationToken`의 Node 투영 |
 
 codec 변환, packet name 계산, 값 객체 생성처럼 network I/O를 하지 않는 순수 helper는
 동기 함수일 수 있다. 이 구분은 함수 이름이 아니라 반환 타입과 역할로 판단한다.

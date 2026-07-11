@@ -4,7 +4,7 @@
 
 # SupportChat Sample
 
-[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Actor](../../spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../../spec/session-actor-dispatch.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [SPOT](../../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [Actor](../../../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../../../common/spec/languages/dotnet/session-actor-dispatch.ko.md)
 
 > 이 문서는 실행 가능한 SupportChat sample의 DTO, 서버 구조, 실행 흐름을 설명한다.
 > 언어 중립 공통 시나리오는

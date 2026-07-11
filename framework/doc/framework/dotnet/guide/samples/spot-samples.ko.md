@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../common/README.ko.md)
 
-[.NET 묶음](../../README.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Stage wrapper](../../spec/stage-wrapper-on-spot.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md)
+[.NET 묶음](../../README.ko.md) | [인터페이스](../../../common/spec/languages/dotnet/handler-interfaces.ko.md) | [SPOT](../../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [Stage wrapper](../../../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md) | [channel](../../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)
 
 # ZLink Framework .NET SPOT Samples
 
@@ -45,7 +45,7 @@
 이 절은 샘플이 전제로 삼는 인터페이스를 한 자리에 모아 둔다. 아래는
 샘플 구현이 의존하는 최소한의 표면 정의다.
 
-> **주의**: 아래 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md)의
+> **주의**: 아래 정의는 [handler-interfaces.ko.md](../../../common/spec/languages/dotnet/handler-interfaces.ko.md)의
 > 해당 섹션과 동일하다. 인터페이스가 바뀌면 두 문서를 함께 갱신해야 하며,
 > 최신 계약은 언제나 `handler-interfaces.ko.md`를 기준으로 본다.
 

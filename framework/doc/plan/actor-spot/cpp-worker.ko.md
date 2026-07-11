@@ -3,7 +3,7 @@
 > 이 문서 하나로 C++ framework의 Spot actor join/transfer 적용을 끝낼 수 있게 썼다.
 > 계약 정본은 [common/spec/spot-actor.ko.md](../../framework/common/spec/spot-actor.ko.md),
 > 검증 정본은 [common/e2e/config-10-spot-actor-transfer.ko.md](../../framework/common/e2e/config-10-spot-actor-transfer.ko.md),
-> **C++ interface 정본은 [cpp/spec/cpp-framework-interfaces.ko.md](../../framework/cpp/spec/cpp-framework-interfaces.ko.md)**다
+> **C++ interface 정본은 [cpp/spec/cpp-framework-interfaces.ko.md](../../framework/common/spec/languages/cpp/cpp-framework-interfaces.ko.md)**다
 > (`cpp/spec/handler-interfaces.ko.md`는 정렬용 문서로 아직 stale). 전 언어 현황은 [README.ko.md](README.ko.md).
 
 C++ 목표 interface 문서는 가장 먼저 정리되어 있으므로, C++ 구현이 완료되면 다른 언어가 참고할

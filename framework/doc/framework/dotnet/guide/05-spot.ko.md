@@ -4,8 +4,8 @@
 
 # 5. SPOT — room · stage · zone
 
-> 정식 계약은 [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md),
-> [spec/spot-node](../spec/spot-node.ko.md), [spec/stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md)가
+> 정식 계약은 [spec/aspnet-core-spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md),
+> [spec/spot-node](../../common/spec/languages/dotnet/spot-node.ko.md), [spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md)가
 > 다룬다. 이 챕터는 SPOT 을 등록하고 다루는 사용법 중심이다.
 >
 > 🔰 SPOT·actor·Entry Spot 등 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)의
@@ -21,7 +21,7 @@
   있든 `SpotRef` 만 맞으면 도달한다. `SpotRef` 가 낡으면(spot 이 이동·소멸) 전송이 명확한 오류로
   실패하고, 그때 다시 resolve 한다 — 예제는 §5 에서 본다.
 - **publish** — `IZLinkSpotPublisherClient` 를 주입해 `PublishSpot(...)` 으로 topic 을 보낸다. 같은
-  SpotMesh 에 붙어 있기만 하면 자동으로 연결되므로 `SpotRef` 가 따로 필요 없다.
+  SpotMesh 에 속해 있기만 하면 자동으로 연결되므로 `SpotRef` 가 따로 필요 없다.
 
 두 경우 모두 RouteMesh channel(또는 SpotMesh)과 `SpotNode` 를 같은 프로세스에 두기만 하면 framework 가
 자동으로 연결해 준다. 호출자가 직접 신경 쓸 부분은 **`SpotRef` 관리**(언제 resolve 하고 언제 다시
@@ -69,8 +69,8 @@ flowchart LR
   style nB stroke:#1565c0,stroke-width:3px
 ```
 
-- **Spot 은 `SpotNode` 안에 산다.** 특정 service 에 매달리는 게 아니라, 자신을
-  호스팅하는 노드(컨테이너)에 매인다. 그림의 Spot 들이 노드 박스 안에 들어 있는 모습.
+- **Spot 은 `SpotNode` 안에 존재한다.** 특정 service 에 종속되는 게 아니라, 자신을
+  호스팅하는 노드(컨테이너)에 속한다. 그림의 Spot 들이 노드 박스 안에 들어 있는 모습.
 - **같은 channel 노드끼리는 알아서 연결된다.** 같은 channel 의 SpotNode 끼리는
   router·pub/sub mesh 가 자동으로 이어진다(굵은 화살표). 다른 channel 로 나가는 연결은
   별도 함수가 필요하고, 아래 §2 그림에서 본다.
@@ -125,7 +125,7 @@ node 역할은 서로 독립이다.
 | `EnableRouter(endpoint)` | 이 노드의 router 소켓을 열어 **같은 channel 의 다른 SpotNode 와 spot↔spot routed send/request**(mesh) |
 | `EnablePubSub(endpoint)` | 이 노드의 pub/sub 소켓을 열어 **같은 channel topic publish/subscribe**(mesh). local spot 의 `Publish`/구독에 필요(없으면 불가) |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
-| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
+| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)) |
 
 위 표는 **SpotNode 자체 설정**이다 — 자기 소켓(`EnableRouter`·`EnablePubSub`)과 만들 spot 타입
 (`AddSpotFactory`·`AddEntrySpot`)만 다룬다. 같은 spot mesh(§1 에서 말한 channel, 예: `game.stage`)
@@ -1084,7 +1084,7 @@ send/request, timer, 같은 Spot 직렬 실행)을 제공하고, wrapper 는 그
 membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회를 얹는다.
 
 자세한 추가 요건(실행 컨텍스트 계약, 생성 시 초기 메타데이터, directory)은
-[spec/stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md)가 다룬다.
+[spec/stage-wrapper-on-spot](../../common/spec/languages/dotnet/stage-wrapper-on-spot.ko.md)가 다룬다.
 
 ## 7. 자주 막히는 곳
 
@@ -1103,7 +1103,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 
 - 이 챕터 계약의 실행 검증 예문(spot/context/client/handler): [12-interface-catalog](12-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
 - 노드/채널 builder 계약: [12-interface-catalog](12-interface-catalog.ko.md) §2.3 — 검증 클래스 `BuilderContracts`
-- 정식 계약: [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md), [spec/spot-node](../spec/spot-node.ko.md)
+- 정식 계약: [spec/aspnet-core-spot](../../common/spec/languages/dotnet/aspnet-core-spot.ko.md), [spec/spot-node](../../common/spec/languages/dotnet/spot-node.ko.md)
 - 실행 가능한 전체 예제(room/stage/zone): [guide/samples/spot-samples](samples/spot-samples.ko.md)
 - spot 안의 참가자별 상태/세션이 필요하면: [06-actor-spot](06-actor-spot.ko.md)
 

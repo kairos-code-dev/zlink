@@ -5,25 +5,25 @@
 | 분류 | 위치 | 내용 |
 |------|------|------|
 | **사용자 가이드** | [guide/](guide/README.ko.md) | 이 프레임워크로 시스템을 작성하는 방법. 이것부터 읽는다. |
-| **spec (상세 계약)** | [spec/](spec) | 기능별 상세 계약. 가이드와 어긋나면 spec과 코드가 정답이다. |
+| **spec (상세 계약)** | [중앙 C++ spec](../common/spec/languages/cpp/README.ko.md) | 기능별 상세 계약. 가이드와 코드가 어긋나면 계약 불일치로 처리한다. |
 | **internals** | [internals/](internals) | 설계 정책·구현 계획·리팩토링 기록. 프레임워크를 고치는 사람용. |
 
 ## spec 목록
 
 | 문서 | 계약 |
 |------|------|
-| [cpp-application-framework](spec/cpp-application-framework.ko.md) | application host, DI, configuration, handler 모델 |
-| [cpp-framework-interfaces](spec/cpp-framework-interfaces.ko.md) | 공개 인터페이스 표면 |
-| [handler-interfaces](spec/handler-interfaces.ko.md) | 핸들러 계약 |
-| [cpp-channel-messaging](spec/cpp-channel-messaging.ko.md) | 채널 메시징 |
-| [cpp-spot](spec/cpp-spot.ko.md) | SPOT |
-| [stage-wrapper-on-spot](spec/stage-wrapper-on-spot.ko.md) | stage wrapper |
-| [actor-gateway-session-relay](spec/actor-gateway-session-relay.ko.md) | actor gateway / session relay |
-| [cpp-stream](spec/cpp-stream.ko.md) | stream |
-| [cpp-http-hosting](spec/cpp-http-hosting.ko.md) | HTTP hosting |
-| [cpp-embedded-http-server](spec/cpp-embedded-http-server.ko.md) | embedded HTTP server |
-| [cpp-registry](spec/cpp-registry.ko.md) | registry |
-| [cpp-monitoring](spec/cpp-monitoring.ko.md) | monitoring |
+| [cpp-application-framework](../common/spec/languages/cpp/cpp-application-framework.ko.md) | application host, DI, configuration, handler 모델 |
+| [cpp-framework-interfaces](../common/spec/languages/cpp/cpp-framework-interfaces.ko.md) | 공개 인터페이스 표면 |
+| [handler-interfaces](../common/spec/languages/cpp/handler-interfaces.ko.md) | 핸들러 계약 |
+| [cpp-channel-messaging](../common/spec/languages/cpp/cpp-channel-messaging.ko.md) | 채널 메시징 |
+| [cpp-spot](../common/spec/languages/cpp/cpp-spot.ko.md) | SPOT |
+| [stage-wrapper-on-spot](../common/spec/languages/cpp/stage-wrapper-on-spot.ko.md) | stage wrapper |
+| [actor-gateway-session-relay](../common/spec/languages/cpp/actor-gateway-session-relay.ko.md) | actor gateway / session relay |
+| [cpp-stream](../common/spec/languages/cpp/cpp-stream.ko.md) | stream |
+| [cpp-http-hosting](../common/spec/languages/cpp/cpp-http-hosting.ko.md) | HTTP hosting |
+| [cpp-embedded-http-server](../common/spec/languages/cpp/cpp-embedded-http-server.ko.md) | embedded HTTP server |
+| [cpp-registry](../common/spec/languages/cpp/cpp-registry.ko.md) | registry |
+| [cpp-monitoring](../common/spec/languages/cpp/cpp-monitoring.ko.md) | monitoring |
 
 ## 별도 산출물 문서
 

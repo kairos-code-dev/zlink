@@ -433,10 +433,10 @@ To-Be:
 | `framework/doc/framework/common/spec/actor-model.ko.md` | actor 객체는 Spot 내부 소유이고, 외부 public API는 actor ref만 사용한다는 공통 원칙 추가 |
 | `framework/doc/framework/common/spec/session-actor-dispatch.ko.md` | session bind 표준 입력을 actor ref로 고정 |
 | `framework/doc/framework/common/spec/framework-api.ko.md` | actor manager 반환 타입과 생성 payload 공통 정책 추가 |
-| `framework/doc/framework/dotnet/spec/aspnet-core-actor.ko.md` | `.NET` actor manager와 `OnCreateActorAsync` 계약 갱신 |
-| `framework/doc/framework/java/spec/spring-boot-actor-session.ko.md` | Java/Kotlin actor manager와 `onCreateActor` 계약 갱신 |
-| `framework/doc/framework/node/spec/nestjs-actor.ko.md` | Node actor manager와 `onCreateActor` 계약 갱신 |
-| `framework/doc/framework/cpp/spec/actor-gateway-session-relay.ko.md` | C++ `session_actor_manager_t` 반환 정책과 생성 payload 계약 갱신 |
+| `framework/doc/framework/common/spec/languages/dotnet/aspnet-core-actor.ko.md` | `.NET` actor manager와 `OnCreateActorAsync` 계약 갱신 |
+| `framework/doc/framework/common/spec/languages/java/spring-boot-actor-session.ko.md` | Java/Kotlin actor manager와 `onCreateActor` 계약 갱신 |
+| `framework/doc/framework/common/spec/languages/node/nestjs-actor.ko.md` | Node actor manager와 `onCreateActor` 계약 갱신 |
+| `framework/doc/framework/common/spec/languages/cpp/actor-gateway-session-relay.ko.md` | C++ `session_actor_manager_t` 반환 정책과 생성 payload 계약 갱신 |
 | 언어별 guide `06-actor-session.ko.md` / C++ `09-actor-session.ko.md` | 샘플 코드에서 actor 객체 직접 접근 제거 |
 | 언어별 interface catalog | 반환 타입, 생성 payload overload, 제거된 overload 반영 |
 | `framework/doc/framework/common/sample/bingo/README.ko.md` | Bingo ensure actor와 actor 생성 payload 흐름을 actor ref 기준으로 수정 |

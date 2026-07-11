@@ -156,10 +156,10 @@ public class RegistryConfig {
 
 ## 8. 다음 단계
 
-- pub/sub는 [channel messaging](../spec/spring-boot-channel-messaging.ko.md)을 본다.
-- room/stage/zone은 [Spot](../spec/spring-boot-spot.ko.md)을 본다.
-- 외부 client는 [STREAM](../spec/spring-boot-stream.ko.md)과
-  [Stream Connector](../spec/stream-connector.ko.md)를 본다.
+- pub/sub는 [channel messaging](../../common/spec/languages/java/spring-boot-channel-messaging.ko.md)을 본다.
+- room/stage/zone은 [Spot](../../common/spec/languages/java/spring-boot-spot.ko.md)을 본다.
+- 외부 client는 [STREAM](../../common/spec/languages/java/spring-boot-stream.ko.md)과
+  [Stream Connector](../../common/spec/languages/java/stream-connector.ko.md)를 본다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -60,7 +60,7 @@ blocking이 불가피하면 `withContext(Dispatchers.IO)`로 옮긴다. 공통 �
 Spring bean 주입은 역할 가능성을 암시해야 한다. SpotNode가 없으면
 `ZLinkSpotManager`를 등록하지 않고, actor factory가 없으면 `ZLinkActorManager`를
 등록하지 않는다. 자세한 기준은
-[handler interface spec](../../java/spec/handler-interfaces.ko.md)이 소유한다.
+[handler interface spec](../../common/spec/languages/java/handler-interfaces.ko.md)이 소유한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

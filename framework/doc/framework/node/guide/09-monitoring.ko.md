@@ -44,7 +44,7 @@ builder.configureDispatch()
   트레이서가 이벤트를 만들지 않아(제로-alloc) 운영 성능에 영향이 없다.
 - 운영 중 켜고 끄기: host 의 `setMessageFlowMode(...)`(공유 live cell, 재시작 불필요).
 - 콜렉터/OTel 연동: `setMessageFlowObserver(ObserverType)`로 구조화 이벤트를 받는다(앱 레이어).
-- 정식 계약: [nestjs-monitoring §9](../spec/nestjs-monitoring.ko.md), 공통 의미:
+- 정식 계약: [nestjs-monitoring §9](../../common/spec/languages/node/nestjs-monitoring.ko.md), 공통 의미:
   [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md).
 
 ## 회귀 테스트

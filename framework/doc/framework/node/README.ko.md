@@ -1,9 +1,10 @@
 # ZLink Framework for Node.js -- 문서
 
-> 이 묶음은 `Node.js`, `NestJS`용 ZLink Framework 정식 문서다. 문서는
-> `guide/`(사용법·sample), `spec/`(공개 계약), `internals/`(구현·검증 기준)로
-> 나뉜다. 공통 의미는 [공통 스펙](../common/README.ko.md)을 따르며, 여기서는
-> 그 의미를 Node.js와 NestJS 표면으로만 구체화한다. 공개 계약은 이 디렉토리의
+> 이 묶음은 `Node.js`, `NestJS`용 ZLink Framework 정식 문서다. 이 디렉토리에는
+> `guide/`(사용법·sample)와 `internals/`(구현·검증 기준)를 두고, 공개 계약은
+> [중앙 Node.js spec](../common/spec/languages/node/README.ko.md)에 둔다. 공통 의미는
+> [공통 스펙](../common/README.ko.md)을 따르며, 여기서는
+> 그 의미를 Node.js와 NestJS 표면으로만 구체화한다. 공개 계약은 중앙 언어별
 > spec과 공통 framework spec이 소유하며, 다른 언어 구현은 계약 해석을 비교하는
 > 참고 자료로만 사용한다.
 
@@ -43,17 +44,17 @@ API만 설명한다.
 
 | 문서 | 범위 |
 |------|------|
-| [handler-interfaces](spec/handler-interfaces.ko.md) | 모든 interface·decorator·context·options 카탈로그 |
-| [nestjs-overview](spec/nestjs-overview.ko.md) | module bootstrap, DI, lifecycle, backend 어댑터 |
-| [nestjs-channel-messaging](spec/nestjs-channel-messaging.ko.md) | channel 등록, outbound client, dispatch, filter |
-| [nestjs-spot](spec/nestjs-spot.ko.md) | SPOT lifecycle, publish/subscribe, channel attach |
-| [nestjs-actor](spec/nestjs-actor.ko.md) | actor factory, Entry Spot, bound session |
-| [nestjs-stream](spec/nestjs-stream.ko.md) | header session, single `onDispatch`, registration, lifecycle |
-| [nestjs-registry](spec/nestjs-registry.ko.md) | registry startup, query, topology |
-| [nestjs-monitoring](spec/nestjs-monitoring.ko.md) | runtime 이벤트 등록, typed event |
-| [session-actor-dispatch](spec/session-actor-dispatch.ko.md) | session → actor relay dispatch 정식 정의 |
-| [spot-node](spec/spot-node.ko.md) | SpotNode 등록·관리 표면 |
-| [stage-wrapper-on-spot](spec/stage-wrapper-on-spot.ko.md) | stage 상위 모델을 SPOT 위에 감싸는 조건 |
+| [handler-interfaces](../common/spec/languages/node/handler-interfaces.ko.md) | 모든 interface·decorator·context·options 카탈로그 |
+| [nestjs-overview](../common/spec/languages/node/nestjs-overview.ko.md) | module bootstrap, DI, lifecycle, backend 어댑터 |
+| [nestjs-channel-messaging](../common/spec/languages/node/nestjs-channel-messaging.ko.md) | channel 등록, outbound client, dispatch, filter |
+| [nestjs-spot](../common/spec/languages/node/nestjs-spot.ko.md) | SPOT lifecycle, publish/subscribe, channel attach |
+| [nestjs-actor](../common/spec/languages/node/nestjs-actor.ko.md) | actor factory, Entry Spot, bound session |
+| [nestjs-stream](../common/spec/languages/node/nestjs-stream.ko.md) | header session, single `onDispatch`, registration, lifecycle |
+| [nestjs-registry](../common/spec/languages/node/nestjs-registry.ko.md) | registry startup, query, topology |
+| [nestjs-monitoring](../common/spec/languages/node/nestjs-monitoring.ko.md) | runtime 이벤트 등록, typed event |
+| [session-actor-dispatch](../common/spec/languages/node/session-actor-dispatch.ko.md) | session → actor relay dispatch 정식 정의 |
+| [spot-node](../common/spec/languages/node/spot-node.ko.md) | SpotNode 등록·관리 표면 |
+| [stage-wrapper-on-spot](../common/spec/languages/node/stage-wrapper-on-spot.ko.md) | stage 상위 모델을 SPOT 위에 감싸는 조건 |
 
 ## 3. 내부 기준 (`internals/`)
 

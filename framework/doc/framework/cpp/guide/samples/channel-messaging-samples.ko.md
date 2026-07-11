@@ -1,15 +1,15 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: C++ Guide](../README.ko.md) | [다음: C++ Channel Messaging Spec](../../spec/cpp-channel-messaging.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: C++ Guide](../README.ko.md) | [다음: C++ Channel Messaging Spec](../../../common/spec/languages/cpp/cpp-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../common/README.ko.md)
 
-[C++ 묶음](../../README.ko.md) | [Framework 인터페이스](../../spec/cpp-framework-interfaces.ko.md) | [channel](../../spec/cpp-channel-messaging.ko.md)
+[C++ 묶음](../../README.ko.md) | [Framework 인터페이스](../../../common/spec/languages/cpp/cpp-framework-interfaces.ko.md) | [channel](../../../common/spec/languages/cpp/cpp-channel-messaging.ko.md)
 
 # ZLink Framework C++ Channel Messaging Samples
 
 이 문서는 현재 C++ public API를 사용하는 channel 등록, handler와 outbound 호출
-예제를 설명한다. 공개 계약은 [channel spec](../../spec/cpp-channel-messaging.ko.md)이
+예제를 설명한다. 공개 계약은 [channel spec](../../../common/spec/languages/cpp/cpp-channel-messaging.ko.md)이
 소유한다.
 
 ## 1. Host 와 handler
@@ -96,5 +96,5 @@ publisher.publish(
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: C++ Guide](../README.ko.md) | [다음: C++ Channel Messaging Spec](../../spec/cpp-channel-messaging.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: C++ Guide](../README.ko.md) | [다음: C++ Channel Messaging Spec](../../../common/spec/languages/cpp/cpp-channel-messaging.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

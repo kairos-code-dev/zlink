@@ -6,8 +6,8 @@
 
 > ZLink 은 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
 > 수명, 동적 상태 단위(SPOT), pub/sub, 위치 기반 자동 연결을 한 framework 안에서 묶어 주는
-> 서버 간·실시간 메시징 계층**이다. 특히 "서비스가 어디 떠 있는지", "client 가
-> 어디 붙어 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
+> 서버 간·실시간 메시징 계층**이다. 특히 "서비스가 어디 있는지", "client 가
+> 어디에 연결돼 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
 > **반복 문제로 나올 때** 효과가 크다.
 >
 > 이 챕터는 그 판단을 돕는 도입 판단 문서다. 실행 가능한 업무 흐름은 §5의 정본
@@ -33,7 +33,7 @@
 ## 2. 무엇을 덜 고민하게 되나 — 개발 모델
 
 ZLink 의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가 덜 고민한다"** 에 있다.
-응용은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework 가 가져간다.
+어플리케이션은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework 가 가져간다.
 
 - **channel name 만 알고 호출한다** — 대상 host/port/stub 를 모른다.
 - **service location 과 peer 분배**는 location store 기반 자동 연결이 맡는다([09-location](09-location.ko.md)).
@@ -44,7 +44,7 @@ ZLink 의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가
 - **handler/filter/DI 모델**이 `ASP.NET Core` 방식과 맞아 익숙하게 쓴다.
 
 > ZLink 은 이 문제들을 **없애는 게 아니라 호출자 밖으로 밀어낸다.** 위치·연결·
-> correlation·dispatch 직렬성을 framework 가 가져가므로, 응용 코드가 transport
+> correlation·dispatch 직렬성을 framework 가 가져가므로, 어플리케이션 코드가 transport
 > 설정이 아니라 **업무 흐름처럼** 보인다.
 
 ### 2.1 여러 언어가 한 channel 위에서 (cross-language)
@@ -73,7 +73,7 @@ channel/spot 계약으로 메시징할 수 있다.
 - 서비스마다 gRPC stub·channel factory·deadline·서비스 위치 조회 설정이 반복된다.
 - Kubernetes L4 LB 로 gRPC 부하가 고르게 안 퍼져 mesh 를 고민한다.
 - 게임 room·채팅 room·ride zone 처럼 상태 단위를 lock 으로 보호하고 있다.
-- 재접속 때 client 가 어느 서버에 붙어 있었는지 Redis 로 따로 관리한다.
+- 재접속 때 client 가 어느 서버에 연결돼 있었는지 Redis 로 따로 관리한다.
 - 실시간 이벤트 fan-out 때문에 Kafka 를 쓰는데, 실제로는 replay 가 필요 없다.
 - 외부 client 연결·내부 서비스 호출·room 상태 처리가 서로 다른 framework 로 흩어져
   있다.
@@ -92,7 +92,7 @@ channel/spot 계약으로 메시징할 수 있다.
 
 요지: ZLink 은 transport·dispatch 계층이지 **datastore·durable log·HFT 버스가
 아니다.** 분산 데이터 일관성(saga·outbox·idempotency)·영속·중복 제어 같은
-도메인 난제는 그대로 응용과 인프라가 책임진다.
+도메인 난제는 그대로 어플리케이션과 인프라가 책임진다.
 
 ## 5. 정본 sample로 확인하기
 

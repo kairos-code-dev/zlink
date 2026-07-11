@@ -73,9 +73,9 @@
 location transparency를 얻을 수 있는지는 [overview.ko.md](overview.ko.md)의
 section 3을 참고한다.
 
-## 3. 상호작용 모델과 topology 매핑 초안
+## 3. 상호작용 모델과 topology 매핑
 
-| 공용 모델 | 내부 기본 매핑 초안 |
+| 공용 모델 | 내부 기본 매핑 |
 |-----------|---------------------|
 | `request-response` | `DEALER(client) -> ROUTER(server)` channel 단위 요청 |
 | `command` | `DEALER(client) -> ROUTER(server)` channel 단위 send |
@@ -266,7 +266,7 @@ monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대�
 - `ROUTER -> DEALER` 임의 push를 channel messaging 공용 API로 노출하는 일
 - raw multipart header를 application handler 인자로 직접 노출하는 일
 
-이 둘은 필요해지면 고급 문서에서 다루되, 현재 `ZLink Framework` 초안의 중심에는 두지
+이 둘은 필요해지면 고급 문서에서 다루되, 현재 `ZLink Framework` 공통 계약의 중심에는 두지
 않는다.
 
 ---

@@ -78,7 +78,7 @@ locations.StoreFailureGrace = TimeSpan.FromSeconds(30);
 
 ## 3. 운영 조회
 
-`IZLinkLocationRuntimeQuery` 를 주입받으면 현재 store 상태와 살아 있는 peer row 를
+`IZLinkLocationRuntimeQuery` 를 주입받으면 현재 store 상태와 활성 peer row 를
 읽을 수 있다. 관리 endpoint, 헬스 체크, E2E 검증에서 쓴다.
 
 ```csharp
@@ -96,7 +96,7 @@ app.MapGet("/ops/locations", async (IZLinkLocationRuntimeQuery query) =>
 ```
 
 - `GetStatusAsync()` — store health, 마지막 오류, owner lease 갱신 상태.
-- `ListPeerLocationsAsync(filter)` — 살아 있는(lease 유효) peer row 만 반환한다. 죽은 서버의
+- `ListPeerLocationsAsync(filter)` — 활성(lease 유효) peer row 만 반환한다. 비활성 서버의
   row 는 lease 만료 후 자동으로 제외된다.
 - runtime이 합성한 topology 보기, service summary 조회, location 이벤트 관측은
   [10-monitoring](10-monitoring.ko.md) 의 `location-runtime` source 와 함께 쓴다.

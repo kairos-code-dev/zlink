@@ -66,8 +66,50 @@ handler에서 받은 spot context로 호출한다.
 > **join이 성공하면 그 `actor` 객체를 더 접근하지 않는다.** join이 끝나면 actor는 이 Spot을 떠났고,
 > **대상 Spot이 다른 노드면 이 노드의 actor 인스턴스는 retire**된다(접근하면 stale). 호출한 handler는
 > join reply 결과만 쓰고 반환한다. join 직후의 client push 같은 후처리는 actor가 실제로 사는 **대상
-> user Spot**(이동 후 그 Spot의 joined 콜백/handler)에서 한다. (`onLeaveActor`는 actor 객체가 아니라
-> actor가 떠난 **Spot**에게 알리는 콜백이다 — 객체 무효화가 아니라 membership 통지.)
+> user Spot**(이동 후 그 Spot의 joined 콜백/handler)에서 한다. `onLeaveActor`는 source Spot에 actor가
+> 떠났음을 알리는 membership 콜백이며, remote 이동에서는 이 콜백이 끝난 source actor instance를 더
+> 사용하지 않는다.
+
+remote 이동에서 함께 옮길 domain state가 있으면 actor type마다 `ZLinkActorTransferAdapter<TActor>`를
+하나 등록한다. source adapter는 state를 `ZLinkMessage`로 만들고, target adapter는 framework가 준비한
+`ZLinkActorContext`로 새 actor를 만든다. adapter가 없는 actor type도 실패하지 않으며 framework가 빈
+state와 등록된 actor factory를 사용한다.
+
+```java
+public final class PlayerTransferAdapter
+    implements ZLinkActorTransferAdapter<PlayerActor> {
+    @Override
+    public ZLinkMessage transferOut(PlayerActor actor, CancellationToken cancellationToken) {
+        return ZLinkMessage.of(actor.snapshot()); // 이동할 domain state만 담는다.
+    }
+
+    @Override
+    public PlayerActor transferIn(
+        String actorId,
+        ZLinkActorContext context,
+        ZLinkMessage state,
+        CancellationToken cancellationToken) {
+        return new PlayerActor(
+            actorId,
+            context,
+            state.decode(PlayerSnapshot.class)); // target actor를 framework context로 복원한다.
+    }
+}
+
+var node = options.addSpotMesh("game");
+node.addActorFactory("player", PlayerActorFactory.class);
+node.addActorTransferAdapter("player", PlayerTransferAdapter.class);
+```
+
+이동이 commit된 직후에도 이전 generation의 actor ref를 가진 packet이 source node에 늦게 도착할 수
+있다. framework는 기본 5초 동안 이 packet을 새 위치로 전달한 뒤 이전 ref를 제거한다. 배포 환경의
+최대 지연이 더 짧거나 길면 framework 전체 옵션에서 이 시간을 조정한다. `Duration.ZERO`는 commit 뒤
+이전 ref를 바로 제거해야 하는 환경에서만 사용한다.
+
+```java
+options.setActorTransferForwardWindow(
+    Duration.ofSeconds(5)); // 늦게 도착한 이전 actor ref packet을 받아 줄 시간을 정한다.
+```
 
 actor 객체를 끝내려면 actor가 Entry Spot에 있는 상태에서
 `ZLinkEntrySpotContext.destroyActor(actor)`를 호출한다. 이 호출은 lifecycle callback을
@@ -242,7 +284,7 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
   `addEntrySpot(...)`, `addSpotFactory(...)`를 등록한다.
 
 전체 등록 시그니처와 sample 흐름은
-[spring-boot-actor-session](../spec/spring-boot-actor-session.ko.md)과
+[spring-boot-actor-session](../../common/spec/languages/java/spring-boot-actor-session.ko.md)과
 [stream 샘플](samples/stream-samples.ko.md)이 소유한다.
 
 ## 6. Reconnect와 gotcha
@@ -260,7 +302,7 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
 - SPOT 기반: [06-spot](05-spot.ko.md)
 - STREAM session 작성: [08-stream](07-stream.ko.md)
 - actor 런타임 오류 관찰: [10-monitoring](09-monitoring.ko.md)
-- 전체 계약: [spring-boot-actor-session](../spec/spring-boot-actor-session.ko.md)
+- 전체 계약: [spring-boot-actor-session](../../common/spec/languages/java/spring-boot-actor-session.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

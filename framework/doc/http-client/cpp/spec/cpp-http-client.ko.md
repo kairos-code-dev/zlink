@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [다음: Spec -- ZLink Framework C++ HTTP Hosting](../../../framework/cpp/spec/cpp-http-hosting.ko.md)
+[문서 목록](../../../README.ko.md) | [다음: Spec -- ZLink Framework C++ HTTP Hosting](../../../framework/common/spec/languages/cpp/cpp-http-hosting.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../framework/common/README.ko.md)
 
-[C++ 묶음](../../../framework/cpp/README.ko.md) | [Runtime Architecture](../../../framework/cpp/internals/runtime-architecture.ko.md) | [Application Framework](../../../framework/cpp/spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../../../framework/cpp/spec/cpp-framework-interfaces.ko.md) | [HTTP Hosting](../../../framework/cpp/spec/cpp-http-hosting.ko.md)
+[C++ 묶음](../../../framework/cpp/README.ko.md) | [Runtime Architecture](../../../framework/cpp/internals/runtime-architecture.ko.md) | [Application Framework](../../../framework/common/spec/languages/cpp/cpp-application-framework.ko.md) | [Framework 인터페이스](../../../framework/common/spec/languages/cpp/cpp-framework-interfaces.ko.md) | [HTTP Hosting](../../../framework/common/spec/languages/cpp/cpp-http-hosting.ko.md)
 
 # Spec -- ZLink HTTP Client For C++
 
@@ -329,5 +329,5 @@ ctest --test-dir framework/languages/cpp/build -L http-client-regression
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [다음: Spec -- ZLink Framework C++ HTTP Hosting](../../../framework/cpp/spec/cpp-http-hosting.ko.md)
+[문서 목록](../../../README.ko.md) | [다음: Spec -- ZLink Framework C++ HTTP Hosting](../../../framework/common/spec/languages/cpp/cpp-http-hosting.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

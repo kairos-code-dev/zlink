@@ -1,8 +1,8 @@
 # ZLink Framework for Java/Kotlin -- 문서
 
-> 이 묶음은 `Java`, `Kotlin`, `Spring Boot`용 ZLink Framework 문서다. 문서는
-> `guide/`(사용법·sample), `spec/`(공개 계약), `internals/`(구현·검증 기준)로
-> 나뉜다. 공통 의미는
+> 이 묶음은 `Java`, `Kotlin`, `Spring Boot`용 ZLink Framework 문서다. 이
+> 디렉토리에는 `guide/`(사용법·sample)와 `internals/`(구현·검증 기준)를 두고,
+> 공개 계약은 [중앙 Java spec](../common/spec/languages/java/README.ko.md)에 둔다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따르며, 여기서는 그 의미를
 > Java/Kotlin 표면으로 구체화한다.
 
@@ -10,9 +10,10 @@
 [비동기 실행과 coroutine 정책](../common/spec/async-execution-policy.ko.md)을 따른다.
 
 > **Kotlin 사용자**는 [Kotlin 전용 guide](../kotlin/README.ko.md)를 본다.
-> `zlink-framework-kotlin`은 이 런타임을 공유하는 얇은 coroutine idiom 레이어라,
-> `spec/`·`internals/`는 이 문서를 정본으로 공유하고 guide만 `suspend`/`Flow`
-> 표면으로 따로 작성한다. 아래 guide는 Java(blocking/`CompletionStage`) 표면이다.
+> `zlink-framework-kotlin`은 이 런타임을 공유하는 얇은 coroutine idiom 레이어다.
+> Java에서 그대로 사용하는 계약은 Java spec을 따르고, Kotlin 전용 `suspend`/`Flow`
+> 계약은 [Kotlin spec](../common/spec/languages/kotlin/README.ko.md)에 따로 고정한다.
+> 아래 guide는 Java(blocking/`CompletionStage`) 표면이다.
 
 ## 1. 사용자 guide
 
@@ -38,18 +39,19 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 ## 2. 공개 계약 spec
 
 정식 spec은 현재 Java 코드와 regression test에 존재하는 public API만 설명한다.
+모든 framework 언어의 공개 계약은 `common/spec/languages/` 아래에서 함께 관리한다.
 
 | 문서 | 범위 |
 |------|------|
-| [spec 목차](spec/README.ko.md) | Java/Kotlin 공개 계약 문서 목록 |
-| [handler-interfaces](spec/handler-interfaces.ko.md) | interface, annotation, context, options |
-| [spring-boot-channel-messaging](spec/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
-| [spring-boot-spot](spec/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](spec/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
-| [spring-boot-stream](spec/spring-boot-stream.ko.md) | stream node, header session |
-| [stream-connector](spec/stream-connector.ko.md) | Java/Kotlin Stream Connector |
-| [spring-boot-registry](spec/spring-boot-registry.ko.md) | embedded registry, remote query |
-| [spring-boot-monitoring](spec/spring-boot-monitoring.ko.md) | runtime event, typed handler |
+| [spec 목차](../common/spec/languages/java/README.ko.md) | Java/Kotlin 공개 계약 문서 목록 |
+| [handler-interfaces](../common/spec/languages/java/handler-interfaces.ko.md) | interface, annotation, context, options |
+| [spring-boot-channel-messaging](../common/spec/languages/java/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
+| [spring-boot-spot](../common/spec/languages/java/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
+| [spring-boot-actor-session](../common/spec/languages/java/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
+| [spring-boot-stream](../common/spec/languages/java/spring-boot-stream.ko.md) | stream node, header session |
+| [stream-connector](../common/spec/languages/java/stream-connector.ko.md) | Java/Kotlin Stream Connector |
+| [spring-boot-registry](../common/spec/languages/java/spring-boot-registry.ko.md) | embedded registry, remote query |
+| [spring-boot-monitoring](../common/spec/languages/java/spring-boot-monitoring.ko.md) | runtime event, typed handler |
 
 ## 3. 내부 기준
 

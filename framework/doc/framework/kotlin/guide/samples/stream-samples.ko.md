@@ -2,7 +2,7 @@
 [문서 목록](../../README.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Kotlin 묶음](../../README.ko.md) | [STREAM](../../../java/spec/spring-boot-stream.ko.md) | [Actor/session](../../../java/spec/spring-boot-actor-session.ko.md) | [인터페이스](../../../java/spec/handler-interfaces.ko.md)
+[Kotlin 묶음](../../README.ko.md) | [STREAM](../../../common/spec/languages/java/spring-boot-stream.ko.md) | [Actor/session](../../../common/spec/languages/java/spring-boot-actor-session.ko.md) | [인터페이스](../../../common/spec/languages/java/handler-interfaces.ko.md)
 
 # ZLink Framework Kotlin STREAM Samples
 

@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ASP.NET Core Location Integration](../../spec/aspnet-core-location.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ASP.NET Core Location Integration](../../../common/spec/languages/dotnet/aspnet-core-location.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../common/README.ko.md)
 
-[.NET 묶음](../../README.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md)
+[.NET 묶음](../../README.ko.md) | [인터페이스](../../../common/spec/languages/dotnet/handler-interfaces.ko.md) | [channel](../../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) | [SPOT](../../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [STREAM](../../../common/spec/languages/dotnet/aspnet-core-stream.ko.md)
 
 # ZLink Framework .NET Channel Messaging Samples
 
@@ -551,7 +551,7 @@ public sealed class UserCacheRefreshedEvent
 - `IZLinkChannelClient`
 - `IZLinkFanoutClient`
 
-전체 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md) 의 section 5 를
+전체 정의는 [handler-interfaces.ko.md](../../../common/spec/languages/dotnet/handler-interfaces.ko.md) 의 section 5 를
 참고한다. request 의 reply 타입은 메시지 타입에 붙이지 않는다. 대신 `Async<TReply>(...)`
 쪽에서 명시한다.
 
@@ -824,5 +824,5 @@ app.MapPost("/profiles/get", async (
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ASP.NET Core Location Integration](../../spec/aspnet-core-location.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ASP.NET Core Location Integration](../../../common/spec/languages/dotnet/aspnet-core-location.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

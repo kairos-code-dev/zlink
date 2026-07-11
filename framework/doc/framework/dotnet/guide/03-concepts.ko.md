@@ -5,7 +5,7 @@
 # 3. 핵심 개념
 
 > 개념의 정식 의미는 [공통 스펙 목차](../../common/README.ko.md)가,
-> 인터페이스의 정식 정의는 [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가
+> 인터페이스의 정식 정의는 [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가
 > 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
 ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
@@ -53,7 +53,7 @@ endpoint 를 명시하고, client/subscriber 역할은 수동 연결을 쓰거�
 
 | 종류 | 등록 | 연결 패턴 |
 |------|------|-----------|
-| client-server | `AddClientServerChannel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 붙는다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
+| client-server | `AddClientServerChannel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 연결된다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
 | fanout | `AddFanoutChannel` | publisher → 다수 subscriber, topic (PUB / SUB) |
 | route mesh | `AddRouteMesh` | router ↔ router — routing id 로 특정 주소에 라우팅 (`SpotNode` 가 이 route mesh 로 구성된다: [05-spot](05-spot.ko.md)) |
 
@@ -405,7 +405,7 @@ stateDiagram-v2
 ## 7. 더 깊이
 
 - request/send/pub-sub 전체 사용법: [04-channel-messaging](04-channel-messaging.ko.md)
-- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
+- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
 - 기능 선택 기준: [11-feature-map](11-feature-map.ko.md)
 
 ---

@@ -7,7 +7,7 @@
 > 이 챕터는 framework adapter 가 노출하는 **모든 public 계약 인터페이스**를 한곳에
 > 모아, 각 인터페이스가 실제로 어떻게 쓰이는지 코드와 함께 보여 준다. 개념·사용
 > 흐름은 앞 챕터(04~09)가, 언어 중립 정식 정의는
-> [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가 다룬다. 이 문서는
+> [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가 다룬다. 이 문서는
 > 그 둘을 잇는 **실행 검증된 예문 색인**이다.
 
 ## 0. 이 카탈로그를 읽는 법
@@ -229,7 +229,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 |------------|------|
 | `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, location store, filter와 dispatch 설정을 소유 |
 | `IZLinkSpotNodeBuilder` | SpotNode의 Entry Spot, Spot factory, actor factory와 actor transfer adapter 등록을 소유 |
-| `IZLinkMetadataPolicyBuilder` | 응용 metadata 전달 정책(`AddForwardedMetadataKey(key)`) |
+| `IZLinkMetadataPolicyBuilder` | 어플리케이션 metadata 전달 정책(`AddForwardedMetadataKey(key)`) |
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
 
@@ -710,7 +710,7 @@ loc.OwnerLeaseTtl = TimeSpan.FromSeconds(15);
 SpotRef? spot = await spots.ResolveSpotRefAsync(spotRid, ct);          // IZLinkSpotRefResolver
 SpotRef? actorSpot = await actors.ResolveActorSpotRefAsync("p-1", ct); // IZLinkActorAddressResolver
 
-// 운영 조회 — 살아 있는 raw row 와 상태 (DI 주입)
+// 운영 조회 — 활성 raw row 와 상태 (DI 주입)
 var status = await query.GetStatusAsync(ct);                                        // IZLinkLocationRuntimeQuery
 var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), ct);
 ```
@@ -726,9 +726,9 @@ var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), ct
 | `IZLinkSpotRefResolver` | spot rid → `SpotRef` 메시징 조회 |
 | `IZLinkActorAddressResolver` | actor id → 그 actor 가 있는 spot 의 `SpotRef` |
 | route 단건 조회 | public resolver가 아니라 store SPI/운영 조회 경로에서 처리 |
-| `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 — 살아 있는 원시 row, runtime이 합성한 topology 보기, store 상태 |
+| `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 — 활성 원시 row, runtime이 합성한 topology 보기, store 상태 |
 
-모든 조회는 store 에 도달한다(캐시 없음). 죽은 서버의 row 는 owner lease 만료 후
+모든 조회는 store 에 도달한다(캐시 없음). 비활성 서버의 row 는 owner lease 만료 후
 성공 결과에서 자동 제외된다.
 
 검증: `LocationContractTests` (store 계약 — in-memory 와 Redis 가 같은 시나리오를 통과).
@@ -761,7 +761,7 @@ var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), ct
 
 ## 10. 더 보기
 
-- 언어 중립 정식 정의: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
+- 언어 중립 정식 정의: [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
 - 기능 선택 지도: [11-feature-map](11-feature-map.ko.md)
 - 계약 테스트 소스: `framework/languages/dotnet/tests/Zlink.Framework.ContractTests`
 

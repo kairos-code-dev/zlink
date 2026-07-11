@@ -10,7 +10,7 @@
 (peer/spot/actor/route row), owner lease와 generation, store/resolver 계약, 자동 연결 규칙,
 watch/polling, 운영 조회 모델의 의미는 이 문서가 소유한다. 다른 spec 문서는 이 문서를
 링크하고 세부 모델을 반복하지 않는다. 네이밍은 [framework API](framework-api.ko.md)와
-[공통 스펙 README §5.2.1](../README.ko.md#521-네이밍-규칙)의 공통 이름 규칙을 따른다.
+[공개 계약 관리 §4](public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
 
 > core discovery/registry는 framework 표면에서 제거됐다. 위치 정보의 기준 저장소는 사용자가
 > 등록하는 **location store**(공식 Redis extension 또는 사용자 구현체)이며, framework runtime이
@@ -24,9 +24,9 @@ watch/polling, 운영 조회 모델의 의미는 이 문서가 소유한다. 다
 | 용어 | 뜻 |
 |------|----|
 | row | store에 저장된 위치 정보 한 건이다. peer row, actor row처럼 종류별로 나뉜다. |
-| owner lease | row를 쓴 runtime이 아직 살아 있는지 판단하기 위한 임대 기록이다. |
+| owner lease | row를 쓴 runtime이 아직 유효한지 판단하기 위한 임대 기록이다. |
 | generation | 같은 key가 다시 등록될 때 이전 row와 새 row를 구분하는 세대 값이다. |
-| lease join | row의 `OwnerId`와 owner lease 목록을 대조해서 row의 owner가 살아 있는지 확인하는 과정이다. |
+| lease join | row의 `OwnerId`와 owner lease 목록을 대조해서 row의 owner lease가 유효한지 확인하는 과정이다. |
 | generation guard | owner와 generation이 맞을 때만 갱신·삭제를 허용해 오래된 write를 막는 규칙이다. |
 | watch | store가 변경을 알려 주는 방식이다. 지원하지 않는 store도 있을 수 있다. |
 | polling | runtime이 주기적으로 store를 다시 읽어 변경 여부를 확인하는 방식이다. watch가 없어도 동작해야 하는 기본 경로다. |
@@ -116,7 +116,7 @@ write는 runtime instance당 1회이므로 store 부하는 node 수에 비례한
 각 store 역할은 공통으로 다음을 제공한다.
 
 - `Update...(row, intent)` / `Remove...(key, ownerToken)` /
-  `IZLinkLocationStore.RemoveAllByOwnerAsync(ownerId)`
+  owner별 일괄 제거 작업
 - 단건 `Resolve...(key)` (peer 제외) / filter 기반 `List...(filter[, page])`
 - peer list와 owner lease list는 **pagination 없는 단일 snapshot**이다. 자동 연결에서 "연결되어
   있어야 하는 대상 목록"을 계산하려면 한 시점의 전체 목록이 필요하므로 page 간 시점 불일치를
@@ -134,13 +134,13 @@ update/remove는 `ZLinkLocationWriteResult`를 반환한다. 성공 시 store가
 |------|------|
 | `Stored` | 저장 또는 교체 성공 |
 | `IgnoredStale` | 구세대 owner token의 update/remove라 무시. row 불변 |
-| `RejectedConflict` | 살아 있는 row가 있는 key에 대한 new claim 실패(동시 claim 패배) |
+| `RejectedConflict` | 유효한 owner row가 있는 key에 대한 new claim 실패(동시 claim 패배) |
 
 | intent | 성공 조건 | generation |
 |--------|-----------|------------|
 | `NewClaim` | 현재 row가 없거나 row owner의 lease가 만료된 경우에만 | store가 key별로 원자적으로 증가시킨 새 token 발급 |
 | `Renew` | 현재 row와 같은 `OwnerId + Generation` 제시 | 불변 |
-| `Takeover` | 살아 있는 row를 새 owner가 명시적으로 교체(framework가 의도한 이동 전용) | 새 token 원자 발급 |
+| `Takeover` | 유효한 owner row를 새 owner가 명시적으로 교체(framework가 의도한 이동 전용) | 새 token 원자 발급 |
 
 `ZLinkLocationOwnerToken`은 `OwnerId + Generation`이다. read API와 write API는 store 장애를
 infrastructure error로 던진다.
@@ -183,9 +183,9 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 표면 | 용도 |
 |----------|------|------|
-| `IZLinkPeerLocationResolver` | `ListLivePeersAsync(filter)` | 자동 연결의 live peer list 조회 |
-| `ZLinkSpotRefResolver` | `ResolveSpotRefAsync(spotRid)` → `SpotRef?` | 메시징 조회: spot rid → 전송 대상 ref |
-| `ActorSpotRefResolver` | `ResolveActorSpotRefAsync(actorId)` → `SpotRef?` | 메시징 조회: actor → 그 actor가 위치한 spot의 전송 대상 ref |
+| peer location resolver | live peer list 조회 | 자동 연결의 live peer list 조회 |
+| Spot ref resolver | spot rid로 `SpotRef?` 조회 | 메시징 조회: spot rid → 전송 대상 ref |
+| actor Spot ref resolver | actor id로 `SpotRef?` 조회 | 메시징 조회: actor → 그 actor가 위치한 spot의 전송 대상 ref |
 | route 단건 조회 | store SPI/운영 조회 | owner-bound route 단건 조회는 public resolver로 노출하지 않음 |
 
 - 메시징 resolver는 **전송 대상 ref**(`SpotRef` = `NodeRid + SpotRid`; mesh는 전송 문맥이
@@ -231,9 +231,9 @@ manual endpoint 연결(`EnableClient(endpoint)`)은 auto reconcile이 끊지 않
 - 장애 중: fail-static. 기존 연결 유지, diff 계산 중단, `StoreUnavailable` 관측(§9).
   owner lease heartbeat는 backoff로 재시도한다.
 - `store failure grace` 초과: 새 outbound connect만 중단하고, 이미 ready인 연결은 transport가
-  살아 있는 한 유지한다.
+  owner lease가 유효한 동안 유지한다.
 - 복구: 각 노드는 **조회보다 먼저** 자기 owner lease와 local row를 재등록한다. disconnect
-  diff는 heartbeat interval 1회 유예 뒤에 적용한다 — 살아 있는 peer들이 재등록을 마치기 전에
+  diff는 heartbeat interval 1회 유예 뒤에 적용한다. 유효한 peer가 재등록을 마치기 전에
   한꺼번에 끊는 것을 막는다.
 
 ## 7. 운영 조회 (runtime query)
@@ -243,11 +243,11 @@ manual endpoint 연결(`EnableClient(endpoint)`)은 auto reconcile이 끊지 않
 
 | API | 반환 |
 |-----|------|
-| `GetStatusAsync()` | `ZLinkLocationRuntimeStatus` — store health, watch enabled, polling interval, last refresh, last error, owner lease 갱신 상태 |
-| `ListPeerLocationsAsync(filter)` | 살아 있는 raw peer row (snapshot) |
-| `ListSpotLocationsAsync/ListActorLocationsAsync/ListRouteLocationsAsync(filter, page)` | 살아 있는 raw row (paged) |
-| `ListTopologyAsync(filter, page)` | `ZLinkLocationTopologyEntry` projection — location row + connection state + lease + generation을 runtime이 합성 |
-| `ListServiceSummariesAsync(filter)` | mesh/type/role별 count summary |
+| runtime 상태 조회 | store health, watch enabled, polling interval, last refresh, last error, owner lease 갱신 상태 |
+| peer location 목록 조회 | owner lease가 유효한 raw peer row snapshot |
+| Spot/actor/route location 목록 조회 | owner lease가 유효한 raw row page |
+| topology 조회 | location row + connection state + lease + generation을 runtime이 합성한 projection |
+| service summary 조회 | mesh/type/role별 count summary |
 
 topology/summary는 store가 아니라 **관찰 host 자신의 location runtime projection**이다. store가
 topology 의미를 결정하지 않는다.
@@ -255,6 +255,9 @@ topology 의미를 결정하지 않는다.
 ## 8. 등록 API와 option
 
 ### 8.1 등록
+
+아래 코드는 등록 의미를 보여 주는 비규범 `.NET` 투영 예시다. 정확한 이름과 타입은
+언어별 스펙에서 고정한다.
 
 ```csharp
 // extension 또는 사용자 구현체 통합 등록.

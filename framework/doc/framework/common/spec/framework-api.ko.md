@@ -14,6 +14,10 @@
 `FastAPI`, C++ zlink framework host 사용자가 기대하는 표면은 조금씩
 다르다. 이 문서는 각 환경에서 "어떤 식으로 보이면 자연스러운가"를 정리한다.
 
+2절과 8절은 공통 규범 계약이다. 3절부터 7절까지의 언어별 예시와 host mapping은
+비규범 설명이며 정확한 public interface를 정의하지 않는다. 언어별 타입과
+시그니처는 `languages/<lang>/`의 정식 interface 문서가 소유한다.
+
 핵심 원칙은 단순하다.
 
 - 프레임워크 사용자가 익숙한 등록 방식에 맞춘다.
@@ -172,7 +176,7 @@ framework가 직접 통합할 transport 축은 [overview.ko.md](overview.ko.md)�
 section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `STREAM`
 세 축을 중심으로 보되, 공통 API 원칙과 lifecycle 경계에 직접 영향을 주는
 `SPOT` 표면도 함께 다룬다. `SPOT`의 자세한 계약과 샘플은
-[.NET SPOT 문서](../../dotnet/spec/aspnet-core-spot.ko.md) 등 별도
+[.NET SPOT 문서](languages/dotnet/aspnet-core-spot.ko.md) 등 별도
 문서에서 따로 다룬다.
 
 핵심은 transport 축은 명확히 두되, 프레임워크 사용자가 보는 이름은 socket
@@ -278,8 +282,7 @@ observer 등록 여부와 관계없이 기본 로그와 metric/counter 는 남�
 
 ### 2.5 public contract와 runtime 구현의 분리 기준
 
-이 기준은 `.NET` framework adapter만을 위한 규칙이 아니다. Java, Node.js,
-Python, C++, Go, Rust 같은 다른 framework adapter도 같은 정책을 따른다. 언어마다
+이 기준은 모든 framework 언어에 적용한다. 언어마다
 package, module, namespace, file layout 관례는 다를 수 있지만, 사용자에게 보이는
 public 계약과 내부 runtime 구현을 분리한다는 원칙은 동일하다.
 
@@ -341,7 +344,7 @@ runtime 객체를 직접 만들 수는 있지만, guide와 public entrypoint에�
 
 따라서 application 예제와 샘플은 항상 host framework의 시작점을 사용한다. Java 샘플은
 Spring Boot application context, Node.js 샘플은 NestJS application context, `.NET`
-샘플은 ASP.NET Core host, C++ 샘플은 zlink framework `app_t` host를 기준으로 작성한다.
+샘플은 해당 언어의 표준 host와 lifecycle 관례를 기준으로 작성한다.
 
 public 타입을 interface로 둘지 concrete 값 객체로 둘지는 타입이 가진 도메인 의미를
 기준으로 판단한다. 필드 수가 적다는 이유만으로 값 객체로 보고, 구현 클래스가 있다는
@@ -595,7 +598,7 @@ row가 추가되었거나 제거되었을 때, 또는 사용자가 수동 연결
 따라서 연결 수렴이 늦거나 첫 요청이 실패하는 문제를 framework-level retry, sleep, 또는
 재접속 loop로 가리지 않는다. 자동 연결이면 location runtime이 desired set을 갱신하고,
 수동 연결이면 사용자가 설정한 endpoint 집합을 유지한다. 둘 다 같은 endpoint에 대해
-framework가 임의로 연결을 끊었다 다시 붙이는 방식으로 복구를 시도하면 안 된다. 연결이
+framework가 임의로 연결을 끊은 뒤 다시 연결하는 방식으로 복구를 시도하면 안 된다. 연결이
 없거나 아직 수렴하지 않았을 때의 오류는 정해진 public error로 드러나야 하며, 실제 transport
 재접속은 zlink socket의 책임이다.
 
@@ -622,9 +625,10 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 정해진 batch budget 안에서 queue를 drain한다. 이렇게 해야 thread blocking 없이도
 높은 처리량을 유지할 수 있다.
 
-보다 자세한 `.NET` 초안은 [.NET 문서](../../dotnet/README.ko.md)를 참고한다.
+보다 자세한 `.NET` public contract는
+[.NET 언어별 스펙](languages/dotnet/README.ko.md)을 참고한다.
 
-### 3.3 ASP.NET Core의 SPOT 방향
+### 3.4 ASP.NET Core의 SPOT 방향
 
 `SPOT`은 일반 channel messaging보다 instance lifecycle과 실행 문맥이 더 먼저
 보이는 표면이다. 공통 정책 차원에서는 아래 정도만 고정한다.
@@ -670,43 +674,27 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
   Entry Spot destroy 경로에서만 application이 명시적으로 선택한다.
 
 자세한 contract와 샘플은
-[.NET SPOT 문서](../../dotnet/spec/aspnet-core-spot.ko.md)
+[.NET SPOT 문서](languages/dotnet/aspnet-core-spot.ko.md)
 같은 binding 문서를 기준으로 본다.
 
-#### 3.3.1 Actor lifecycle — zlink 라이브러리 위임
+#### 3.4.1 Actor lifecycle과 core 위임
 
-zlink 라이브러리에 native Actor API가 추가됨에 따라, framework는 actor lifecycle를
-자체 구현 대신 라이브러리의 native API로 위임한다. 이 정책의 핵심은 아래와 같다.
+framework는 actor 생성, Spot 입장, 이탈과 actor 메시지 수신을 core actor 기능에
+위임해야 한다. 별도의 actor registry나 wire protocol을 공개 계약으로 중복 구현해서는
+안 된다.
 
-##### Actor 생성 및 입장 흐름
+입장 요청을 받으면 framework는 요청을 application join handler에 전달하고, handler의
+허용 또는 거부 결과와 선택적 reply를 core 응답으로 변환한다. 입장이 완료된 actor의
+메시지는 해당 Spot의 직렬 실행 문맥에서 dispatch한다. actor join 요청과 actor 메시지
+수신 준비는 등록된 handler 유무와 관계없이 Spot 초기화 때 설정해야 한다.
 
-1. `SpotNode.EntrySpot()` — framework가 입장 수신용 `Spot`을 얻는다.
-2. `Spot.RecvActorJoin(RecvFlags)` — actor join request를 수신한다.
-3. framework가 join 요청 메시지를 ZMP 포맷으로 해석해 등록된 actor join handler를 호출한다.
-4. `Spot.ReplyActorJoin(request, joinResultCode, replyMessage)` — join 결과를 응답한다.
-   `0`은 허용이고, 0이 아닌 값은 application 이 정의한 거부 코드다.
+actor 생성, 입장과 이탈의 정확한 함수 이름, timeout 표현과 취소 인자는 언어별 스펙이
+고정한다. 공통 계약은 다음 관찰 가능한 결과를 요구한다.
 
-##### Actor 생성 (SpotNode 측)
-
-- `SpotNode.CreateActor(string actorId)` — actor node에서 actor를 생성한다.
-- `Actor.Join(Spot spot, Message request, TimeSpan timeout, CancellationToken)` — actor가 특정 spot에 join을 요청한다.
-- `Actor.Leave(Spot spot, TimeSpan timeout)` — actor가 spot에서 나간다.
-
-##### Actor 메시지 수신
-
-zlink 라이브러리의 `SpotDispatchEvent` 중 두 가지가 actor lifecycle과 관련된다.
-
-| 이벤트 | 값 | 의미 |
-| ------ | -- | ---- |
-| `ActorJoinReadable` | 6 | 새 actor join 요청이 도착했음 |
-| `ActorReadable` | 5 | join된 actor의 STREAM 메시지가 도착했음 |
-
-framework는 이 두 이벤트를 아래와 같이 처리한다.
-
-- `ActorJoinReadable` → `Spot.RecvActorJoin(DontWait)` 루프로 모든 요청을 drain한 뒤 application join handler를 호출하고 `ReplyActorJoin`으로 결과를 반환한다. join handler에는 join 요청의 `TargetActor`(해당 spot에 이미 등록된 로컬 actor)와 요청 메시지를 전달한다.
-- `ActorReadable` → 백엔드가 미리 drain한 `ActorPart` 목록을 받아 STREAM 메시지 단위로 묶어서 actor dispatch를 수행한다. 각 메시지는 header part (More=true) + payload part (More=false) 구조다.
-
-`OnDispatchEvent` 핸들러는 spot 초기화 시 항상 등록한다. 패킷 handler나 actor join handler가 없는 spot도 런타임에 actor가 join될 수 있으므로 `ActorReadable` 이벤트를 받을 준비가 되어 있어야 한다.
+- 같은 actor id를 중복 생성할 때의 결과가 언어별 오류 계약과 일치한다.
+- join handler가 완료되기 전에 actor가 해당 Spot의 메시지를 처리하지 않는다.
+- leave가 완료된 뒤에는 이전 Spot 실행 문맥에서 새 actor 메시지를 처리하지 않는다.
+- actor 제거는 Entry Spot의 명시적 destroy 경로에서만 수행한다.
 
 ##### 실행 문맥 보장
 
@@ -721,7 +709,9 @@ user Spot queue 에서 처리한다.
 
 ##### framework가 직접 관리하지 않는 것
 
-framework는 `Actor` 객체 자체의 네트워크 수명이 아니라, application actor 객체의 lifecycle과 dispatch routing만 관리한다. native `Actor`의 send/recv 루프는 라이브러리가 담당하며, framework는 dispatch event를 통해 통보를 받는다.
+framework는 core actor 객체의 네트워크 수명을 관리하지 않는다. framework는 application
+actor 객체의 lifecycle과 dispatch routing만 관리하고, core의 수신 알림을 언어별
+handler 실행 문맥으로 연결한다.
 
 ## 4. Spring Boot 방향
 

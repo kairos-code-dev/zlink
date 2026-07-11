@@ -28,7 +28,7 @@ serializer/codec registry에 둔다. application의 기본 업무 API는 `Messag
 serializer 구현처럼 byte payload 경계를 직접 다루는 곳에서만 사용한다. 수신 payload는
 등록된 handler metadata로 typed handler 인자로 decode한다.
 
-## 2. 기본 구조 초안
+## 2. 기본 구조
 
 현재 스펙은 서버 간 framework message의 내부 wire 수준에서 기본적으로 2개 part를
 전제로 한다.
@@ -104,7 +104,7 @@ transport, session request sequence가 같은 frame을 기준으로 맞물린다
 framework route는 이미 zlink multipart message를 기본 단위로 다루므로 header와 payload를
 별도 part로 유지해야 한다.
 
-## 3. header가 담아야 할 정보 초안
+## 3. header가 담아야 할 정보
 
 | 필드 | 용도 |
 |------|------|
@@ -121,11 +121,14 @@ framework route는 이미 zlink multipart message를 기본 단위로 다루므�
 | `trace-id` | 여러 단계 호출을 잇는 추적 정보 |
 | `causation-id` | 어떤 이전 메시지에서 파생됐는지 식별 |
 
-이 중 무엇을 필수로 할지는 구현 전에 더 줄여야 한다.
-지금 단계에서는 "어떤 종류의 정보가 필요한가"를 먼저 정리한다.
+모든 framework message는 `message-kind`, `packet-name`과 `content-type`을 포함한다.
+channel 경로는 `channel`을 포함하고, request와 response는 같은 `correlation-id`를
+포함한다. response는 `status`를 포함하며 실패 response는 `error-code`도 포함한다.
+route가 대상을 명시해야 하는 경로만 `source`와 `target`을 포함한다. deadline,
+trace-id와 causation-id는 해당 기능을 사용한 경우에만 포함한다.
 
 Spot worker offload에서 생긴 실패도 `error-code`에 보존한다. queue가 가득 찬 경우,
-timeout이 난 경우, worker 함수가 예외를 낸 경우는 같은 `request_failed`로 뭉개지 않고
+timeout이 난 경우, worker 함수가 예외를 낸 경우는 같은 `RequestFailed`로 뭉개지 않고
 언어별 public 오류 분류로 전달되어야 한다. 이 구분이 있어야 caller가 재시도, 사용자
 응답, 별도 service 위임 같은 후속 처리를 선택할 수 있다.
 
@@ -206,7 +209,7 @@ core protocol API만 제공한다.
 별도 context와 handler 계약을 둘 가능성이 높다.
 
 여기서 중요한 점은 `STREAM`이 공용 `message-kind`에 새 값을 추가하지 않는다는
-점이다. 이 정책 초안의 공용 `message-kind`는 `request`, `response`, `command`,
+점이다. 이 계약의 공용 `message-kind`는 `request`, `response`, `command`,
 `event` 네 가지로 고정하고, `STREAM`은 별도 session contract로 설명한다.
 
 ## 8. 이 문서의 범위

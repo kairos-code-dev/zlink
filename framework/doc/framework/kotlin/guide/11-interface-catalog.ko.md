@@ -18,9 +18,11 @@ inbound handler는 Kotlin coroutine interface(`ZLinkSuspending*`)를, outbound·
 | send handler | `ZLinkSuspendingSendHandler<TMessage>` |
 | publish handler | `ZLinkSuspendingPublishHandler<TEvent>` |
 | Spot 베이스 | `ZLinkSuspendingSpot<TActor>` |
+| Entry Spot 베이스 | `ZLinkSuspendingEntrySpot<TActor>` |
 | Spot actor handler | `ZLinkSuspendingSpotActorRequestHandler` / `...SendHandler` |
 | Spot timer | `ZLinkSuspendingSpotTimerHandler<TSpot>` |
 | actor factory | `ZLinkSuspendingActorFactory` |
+| actor remote state 이동 | `ZLinkSuspendingActorTransferAdapter<TActor>` |
 | Spot 관리 | `ZLinkSpotManager` |
 | actor 관리 | `ZLinkActorManager` |
 | session | `ZLinkSuspendingSession` |
@@ -35,7 +37,7 @@ Kotlin 표면은 Java framework 위의 thin coroutine 레이어다. Java와 다�
 buffering, error 의미를 **만들지 않는다.** `ZLinkSuspending*` 베이스/interface는
 내부에서 Java 콜백을 coroutine으로 잇기만 하고, 등록 표면(`addClientServerChannel`,
 `addSpotMesh`, `addStreamNode` 등)과 관리 bean(`ZLinkClient`, `ZLinkSpotManager`,
-spec [handler-interfaces](../../java/spec/handler-interfaces.ko.md)를 본다.
+spec [handler-interfaces](../../common/spec/languages/java/handler-interfaces.ko.md)를 본다.
 
 Java 표면 ↔ Kotlin 표면 1:1 대응표는
 [kotlin README §0](../README.ko.md#0-kotlin-표면-한눈에)에 있다.

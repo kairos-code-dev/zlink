@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../common/README.ko.md)
 
-[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [STREAM 샘플](stream-samples.ko.md) | [Unity 가이드](../../../../../../core/doc/guide/unity-stream-connector.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [STREAM 샘플](stream-samples.ko.md) | [Unity 가이드](../../../../../../core/doc/guide/unity-stream-connector.ko.md)
 
 # ZLink Stream Connector For .NET
 

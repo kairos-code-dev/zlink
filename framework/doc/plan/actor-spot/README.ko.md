@@ -16,7 +16,7 @@
 | [common/e2e/config-10-spot-actor-transfer.ko.md](../../framework/common/e2e/config-10-spot-actor-transfer.ko.md) | **검증 정본**. 실제 배포형 서버 위에서 계약을 확인하는 e2e 시나리오(Track A~E, ST-A1~ST-E2). |
 | [common/spec/actor-model.ko.md](../../framework/common/spec/actor-model.ko.md) | actor 개념·lifecycle 전체 배경. |
 | `framework/<언어>/spec/handler-interfaces.ko.md` | **언어별 목표 interface 정본**(java/node/dotnet). 실제 source public API가 아직 이 문서와 다르면 P1에서 source interface를 함께 바꾼다. |
-| [cpp/spec/cpp-framework-interfaces.ko.md](../../framework/cpp/spec/cpp-framework-interfaces.ko.md) | **C++ 목표 interface 정본**. admission/adapter 모델이 여기에 확정되어 있다(cpp의 `handler-interfaces.ko.md`와 runtime/contract test는 P1/P2에서 맞춘다). |
+| [cpp/spec/cpp-framework-interfaces.ko.md](../../framework/common/spec/languages/cpp/cpp-framework-interfaces.ko.md) | **C++ 목표 interface 정본**. admission/adapter 모델이 여기에 확정되어 있다(cpp의 `handler-interfaces.ko.md`와 runtime/contract test는 P1/P2에서 맞춘다). |
 
 worker 문서:
 
@@ -109,11 +109,15 @@ worker 문서:
 | ST-F3 | bound session cross-move order | P0 | ⬜ | ✅ | ✅ | ✅ | ✅ |
 | ST-F4 | straggler forward then fail-fast | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
 | ST-F5 | forwarding mapping eviction | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
-| ST-F6 | in-flight request reply correlation·timeout | P1 | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| ST-F6 | in-flight request reply correlation·timeout | P1 | ⬜ | ✅ | ✅ | ✅ | 🚫 |
 
 > Track F(ST-F1~F6)는 `spot-actor.ko.md §10`(source queue handoff) 신설 계약이다. ST-F1~F5는 Node·.NET·
 > Java/Kotlin이 구현·배포형 검증 완료(C++만 구현 중). ST-F6(§10.5 request reply correlation·timeout)은
-> Node, .NET, Java/Kotlin이 배포형 검증을 완료했다. C++는 handoff frame의 request id·flags 보존과
+> Node와 Java/Kotlin이 배포형 검증을 완료했다. .NET framework는 reply route를 보존하고
+> target에서 직접 응답하지만, 현재 고정한 `Systems.Zlink 8.6.4`의 runtime은 이동 전 actor
+> 좌표로 등록한 request를 target node의 응답과 연결하지 못한다. 이 패키지 gap은 이동한
+> actor의 응답 연결을 지원하는 새 bindings 패키지를 배포하고 중앙 버전을 갱신한 뒤 닫는다.
+> C++는 handoff frame의 request id·flags 보존과
 > reply correlation·caller timeout·late reply 처리를 검증하는 테스트를 추가해야 한다.
 > 구현 런북은 [in-flight-handoff/README.ko.md](in-flight-handoff/README.ko.md)를 따른다.
 >

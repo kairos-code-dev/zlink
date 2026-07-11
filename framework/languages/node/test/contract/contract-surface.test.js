@@ -5,7 +5,15 @@ const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const nodeDocRoot = path.resolve(workspaceRoot, '..', '..', 'doc', 'framework', 'node');
-const specPath = path.join(nodeDocRoot, 'spec', 'handler-interfaces.ko.md');
+const specPath = path.join(
+  nodeDocRoot,
+  '..',
+  'common',
+  'spec',
+  'languages',
+  'node',
+  'handler-interfaces.ko.md'
+);
 const declarationsRoot = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts');
 const internalLocationCodecHelpers = new Set([
   'tryParseZLinkLocationAutoConnectType',

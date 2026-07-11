@@ -10,7 +10,7 @@
 공통 스펙이다. 공통 의미(로그 모드, 이벤트, 옵저버 계약, 성능 계약, 출력 라우팅, 길목,
 스트림 correlation_id 와이어 포맷)는 이 문서가 소유하며, 언어별 문서는 여기서 정한 의미를
 자기 언어의 관용구와 표면으로만 구체화한다. 네이밍은 [framework API](framework-api.ko.md)와
-[공통 스펙 README §5.2.1](../README.ko.md#521-네이밍-규칙)의 공통 이름 규칙을 따른다.
+[공개 계약 관리 §4](public-contract-governance.ko.md#4-언어별-표현-원칙)의 언어별 표현 원칙을 따른다.
 
 > 실패 관측(dispatch error reporter)은 같은 어휘(`surface`/`kind`/`correlation_id`)와 같은
 > fan-out 패턴(표준 로거 라우팅 + offload observer)을 공유한다. 이 문서는 **정상 흐름**을,
@@ -241,9 +241,10 @@ echo, route 전파. 두 노드 로그를 한 corr로 잇고 싶으면 이 전파
 - control 패킷은 flag 불가(기존 규칙 유지), send/request/response/error는 허용.
 - flag 미set이면 필드 없음 = 하위호환(코덱을 공유하는 엔진은 decode 자동 호환).
 
-> 보류: 스트림 **메타데이터** 인코딩은 connector(`u16 길이+blob`)와 framework(`count+inline`)가
-> 아직 불일치해 메타데이터 없는 프레임만 호환된다. 메타데이터 사용/타 언어 미러링 전에 한쪽으로
-> 통일한다. `source_rid`/`target_rid` 분리도 의도된 보류다(현재 `src=` 한 필드에 방향별 의미).
+스트림 메타데이터 인코딩 통일과 `source_rid`/`target_rid` 분리는 이 계약의 범위에
+포함하지 않는다. 이 계약을 구현하는 동안에는 메타데이터 없는 프레임의 호환성만
+검증하며, `src=` 필드의 기존 방향별 의미를 유지한다. 두 기능을 공개 계약으로
+추가하려면 별도 스펙 변경 절차를 거친다.
 
 ## 10. 회귀 테스트 매트릭스 (MFLOW)
 
@@ -265,30 +266,15 @@ echo, route 전파. 두 노드 로그를 한 corr로 잇고 싶으면 이 전파
 
 ## 11. 언어별 투영과 구현 상태
 
-C++를 레퍼런스로 미러링한다. 각 언어는 success-path 트레이서를 기존 dispatch error 관측 인프라
-옆에 추가하는 형태가 된다. 언어별 문서는 이 의미를 다시 정의하지 않고, 실제 시그니처·등록 코드·
-샘플과 구현 진행만 보충한다(언어별 `guide/09-monitoring` 계열).
+각 언어는 이 문서의 관찰 결과를 해당 언어의 관례에 맞는 public 표면으로 제공한다.
+언어별 문서는 의미를 다시 정의하지 않고 실제 시그니처, 등록 코드와 sample을 보충한다.
+특정 구현의 내부 tracer 구조와 파일 배치는 공통 공개 계약에 포함되지 않는다.
 
-구현체(C++ 레퍼런스): `src/runtime/diagnostics/message_flow_tracer.hpp`(header-only), `enum_name`은
-`src/runtime/diagnostics/dispatch_diagnostics_names.hpp`로 분리해 error reporter와 공유. 옵저버
-fan-out은 error reporter와 동일한 전용 offload executor로 핫패스에서 분리한다.
-
-| 축 | 상태 |
-|------|------|
-| C++ 레퍼런스 (계약·트레이서·전 surface 인/아웃 배선·런타임 토글·stream corr 와이어·구조화 필드) | 완료 |
-| `.NET` parity | 완료 (codex 반복 리뷰 이슈0) |
-| `Java` parity | 완료 (codex 반복 리뷰 이슈0) |
-| `Kotlin` parity | 완료 (Java 런타임 상속 + DSL 에르고노믹스만 추가) |
-| `Node` parity | 완료 (자체 dispatch 런타임, MFLOW 회귀 그린) |
-| stream correlation_id 전체 적용(타 언어 바인딩/엔진) | 후속 검토 |
-| observer를 통한 콜렉터/OTel 어댑터 | 앱 책임 — framework는 훅만 제공 |
-
-> 이 문서는 구현·문서화 결과를 정본 기능 스펙으로 고정한 것이다. 구현 진행 이력은 git 커밋
-> 히스토리를 참고한다.
+이 문서는 언어별 구현 진행률을 기록하지 않는다. 각 언어의 현재 차이는
+[구현 차이 문서](implementation-gap.ko.md)에 기록하며, observer를 외부 수집기나
+OpenTelemetry adapter에 연결하는 일은 application 또는 별도 extension이 담당한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: Location Runtime](location-runtime.ko.md)
 <!-- framework-adapter-nav:bottom:end -->
-</content>
-</invoke>

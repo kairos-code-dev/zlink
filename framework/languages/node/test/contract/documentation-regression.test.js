@@ -5,6 +5,17 @@ const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const docRoot = path.join(workspaceRoot, '..', '..', 'doc', 'framework', 'node');
+const specRoot = path.join(
+  workspaceRoot,
+  '..',
+  '..',
+  'doc',
+  'framework',
+  'common',
+  'spec',
+  'languages',
+  'node'
+);
 const samplesRoot = path.join(workspaceRoot, 'samples');
 
 const guideFiles = [
@@ -68,7 +79,7 @@ test('node documentation relative markdown links resolve', () => {
 
 test('node spec and internals documentation do not depend on legacy draft links', () => {
   const checkedRoots = [
-    path.join(docRoot, 'spec'),
+    specRoot,
     path.join(docRoot, 'internals')
   ];
   const offenders = [];
@@ -90,7 +101,7 @@ test('node spec and internals documentation do not depend on legacy draft links'
 test('node implementation reference docs declare regression coverage sections', () => {
   const required = [
     path.join(docRoot, 'README.ko.md'),
-    ...allMarkdownFiles(path.join(docRoot, 'spec')),
+    ...allMarkdownFiles(specRoot).filter((file) => path.basename(file) !== 'README.ko.md'),
     ...allMarkdownFiles(path.join(docRoot, 'internals'))
   ];
   const missing = [];
@@ -107,8 +118,8 @@ test('node implementation reference docs declare regression coverage sections', 
 
 test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
   const files = [
-    path.join(docRoot, 'spec', 'nestjs-channel-messaging.ko.md'),
-    path.join(docRoot, 'spec', 'handler-interfaces.ko.md')
+    path.join(specRoot, 'nestjs-channel-messaging.ko.md'),
+    path.join(specRoot, 'handler-interfaces.ko.md')
   ];
   const offenders = [];
 
@@ -132,7 +143,7 @@ test('node documentation keeps fanout and route client public surface aligned wi
 test('node framework docs do not describe removed nested configuration callbacks', () => {
   const checkedRoots = [
     path.join(docRoot, 'guide'),
-    path.join(docRoot, 'spec'),
+    specRoot,
     path.join(docRoot, 'internals')
   ];
   const offenders = [];
@@ -203,7 +214,7 @@ test('node actor destroy docs keep Entry Spot ownership and disconnect isolation
     }
   }
 
-  const actorSpec = fs.readFileSync(path.join(docRoot, 'spec', 'nestjs-actor.ko.md'), 'utf8');
+  const actorSpec = fs.readFileSync(path.join(specRoot, 'nestjs-actor.ko.md'), 'utf8');
   assert.equal(actorSpec.includes('Entry Spot context 는 `destroyActor(actor, signal?)` 를 제공한다'), true);
   assert.equal(actorSpec.includes('user Spot context 에는'), true);
   assert.equal(actorSpec.includes('destroy 나 user Spot leave 를 자동으로 만들지 않는다'), true);
@@ -265,7 +276,7 @@ test('node interface catalog names resolve in public package declarations', () =
 function actorDestroyDocumentationFiles() {
   const officialDocs = [
     ...allMarkdownFiles(path.join(docRoot, 'guide')),
-    ...allMarkdownFiles(path.join(docRoot, 'spec')),
+    ...allMarkdownFiles(specRoot),
     ...allMarkdownFiles(path.join(docRoot, 'internals')),
     path.join(docRoot, 'README.ko.md')
   ];

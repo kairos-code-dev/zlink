@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Java Interface Catalog](../../spec/handler-interfaces.ko.md) | [다음: ZLink Framework Spring Boot Channel Messaging](../../spec/spring-boot-channel-messaging.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework Java Interface Catalog](../../../common/spec/languages/java/handler-interfaces.ko.md) | [다음: ZLink Framework Spring Boot Channel Messaging](../../../common/spec/languages/java/spring-boot-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java 문서](../../README.ko.md)
 
-[Java 묶음](../../README.ko.md) | [SPOT](../../spec/spring-boot-spot.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md)
+[Java 묶음](../../README.ko.md) | [SPOT](../../../common/spec/languages/java/spring-boot-spot.ko.md) | [인터페이스](../../../common/spec/languages/java/handler-interfaces.ko.md)
 
 # ZLink Framework Java SPOT Samples
 
@@ -138,5 +138,5 @@ public final class StagePublishController {
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Java Interface Catalog](../../spec/handler-interfaces.ko.md) | [다음: ZLink Framework Spring Boot Channel Messaging](../../spec/spring-boot-channel-messaging.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework Java Interface Catalog](../../../common/spec/languages/java/handler-interfaces.ko.md) | [다음: ZLink Framework Spring Boot Channel Messaging](../../../common/spec/languages/java/spring-boot-channel-messaging.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -22,7 +22,7 @@
 - 상태를 구독하기
 - stream session 또는 packet을 처리하기
 
-## 2. 제안하는 공용 상호작용 모델
+## 2. 공용 상호작용 모델
 
 | 모델 | 설명 | 현재 비중 |
 |------|------|-----------|
@@ -41,7 +41,7 @@
 - 호출자는 응답을 기다린다.
 - timeout, correlation, deadline이 중요하다.
 - HTTP 호출이나 gRPC unary와 가장 비슷한 경험을 제공한다.
-- 현재 framework 초안의 기본 channel 요청 토대는
+- framework의 기본 channel 요청 토대는
   `DEALER(client) -> ROUTER(server)`다.
 - 일반 handler dispatch는 local `ROUTER(server)`가 받은 request를 기준으로
   설명한다.
@@ -55,7 +55,7 @@
 
 - 호출자는 성공적으로 전송됐는지만 확인하거나, 그마저도 느슨하게 다룰 수 있다.
 - 작업 위임, 후처리 트리거, 간단한 signal에 적합하다.
-- 현재 framework 초안의 기본 channel send 토대는
+- framework의 기본 channel send 토대는
   `DEALER(client) -> ROUTER(server)`다.
 - 다른 channel에 접근할 때는 그 channel에 붙은 `DEALER(client)`를 통해 보내는
   구조를 기본으로 본다.
@@ -101,7 +101,9 @@
   transport 오류를 session 단위로 다시 올리는 축으로 제한한다.
 - 이 session error는 raw monitor event를 그대로 노출하지 않고, error kind enum과
   native detail을 함께 가진 구조화된 값으로 다시 올린다.
-- packet framing 규약을 framework가 얼마나 감출지는 별도 설계가 필요하다.
+- application handler에는 packet framing을 노출하지 않는다. framing은 connector와
+  transport adapter 내부에서 처리하며, low-level encoded payload extension만 명시적으로
+  frame bytes를 다룰 수 있다.
 - session callback은 transport callback 안에서 직접 실행하지 않는다. framework는
   수신 이벤트를 비동기 실행 단위로 넘긴 뒤 application callback을 호출한다.
 - 같은 session 안에서는 packet callback과 lifecycle callback이 직렬로 실행된다.
@@ -135,8 +137,8 @@ actor 코드는 framework outbound client를 직접 고르지 않는다. actor�
 경로를 선택한다. actor가 아직 `Spot`에 join되지 않았으면 context의 channel
 request는 일반 framework channel client 경로로 나간다. actor가 `Spot`에 join된
 뒤에는 같은 호출이 현재 `Spot`에 route bridge channel socket 경로로 나간다. 이 규칙은
-사용자가 join 전후에 `IZLinkClient`와 `IZLinkSpotClient` 중 무엇을 써야 하는지
-판단하지 않게 하려는 것이다.
+사용자가 join 전후에 일반 channel client 역할과 Spot outbound 역할 중 무엇을
+골라야 하는지 판단하지 않게 하려는 것이다.
 
 actor 또는 `Spot` callback 안에서 task 기반 request를 `await`하면 현재 callback은
 응답 또는 timeout 전까지 끝나지 않는다. thread를 점유한다는 뜻은 아니지만, 같은

@@ -3,7 +3,7 @@
 > 이 문서 하나로 Java framework와 Kotlin surface의 Spot actor join/transfer 적용을 끝낼 수 있게 썼다.
 > 계약 정본은 [common/spec/spot-actor.ko.md](../../framework/common/spec/spot-actor.ko.md),
 > 검증 정본은 [common/e2e/config-10-spot-actor-transfer.ko.md](../../framework/common/e2e/config-10-spot-actor-transfer.ko.md),
-> Java interface 정본은 [java/spec/handler-interfaces.ko.md](../../framework/java/spec/handler-interfaces.ko.md)
+> Java interface 정본은 [java/spec/handler-interfaces.ko.md](../../framework/common/spec/languages/java/handler-interfaces.ko.md)
 > (Kotlin은 java surface 공유 + suspend/Flow idiom)다. 전 언어 현황은 [README.ko.md](README.ko.md).
 
 Kotlin은 Java 런타임을 공유하므로 **런타임 구현은 Java 한 벌**, Kotlin은 surface 미러 + suspend/Flow

@@ -17,6 +17,9 @@
 
 ## 1. 등록과 설정
 
+아래 코드는 등록 의미를 보여 주는 비규범 `.NET` 투영 예시다. 정확한 이름과 타입은
+언어별 스펙에서 고정한다.
+
 ```csharp
 options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
     .SetConnectionString("redis-host:6379")
@@ -59,15 +62,16 @@ fixture와 같은 key 문자열, hash field, row JSON을 만들어야 한다. fi
 `owner`, `gen`, `json`, `updatedAtMs`이고, row JSON은 PascalCase public field 이름을 유지한다.
 `RoutingId` 값은 소문자 hex 문자열로 저장하고, route `Value`는 base64 문자열로 저장한다.
 
-**POSD 재설계 반영(2026-07-04, cross-language row/key 형식 변경)**:
+actor row와 key 형식은 다음 규칙으로 고정한다.
 
-- actor row key는 **actor id 단독**이다 — actor id 전역 unique 계약에 따라 `ActorType`은 key
-  구성에서 제거됐다(type은 row의 nullable 진단 필드로만 남는다).
+- actor row key는 **actor id 단독**이다. actor id 전역 unique 계약에 따라 `ActorType`은 key
+  구성에 포함하지 않으며, row의 nullable 진단 필드로만 둔다.
 - row `json`의 actor ref는 문자열 포맷이 아니라 **typed 객체 `{ nodeRid, actorId, generation }`**
   로 직렬화한다. 이 객체의 field 이름은 camelCase이고, `nodeRid`는 routing id hex 문자열이다.
   actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
-- actor row의 중복 `SpotKind` 필드는 제거됐다 — actor가 사는 spot 종류는 `LocationKind` 단독이다.
-- 이 세 가지는 4언어 extension이 동일하게 따라야 하는 저장 형식 변경이다.
+- actor row에는 중복 `SpotKind` 필드를 두지 않는다. actor가 존재하는 spot 종류는
+  `LocationKind` 단독으로 표현한다.
+- 네 언어 extension은 이 row와 key 형식을 동일하게 사용한다.
 
 ## 3. 원자성 — write는 전부 Lua script
 

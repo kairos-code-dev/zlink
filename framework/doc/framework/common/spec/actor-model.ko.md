@@ -159,7 +159,7 @@ None
 | leaveActor | user Spot → Entry Spot 이동, source Spot `onLeaveActor`와 target Entry Spot `onJoinedActor` 호출 |
 | destroyActor | Entry Spot actor 정리, 내부 actor-session binding 해제, native actor ref 제거. `onLeaveActor`를 호출하지 않는다 |
 | disconnect | current stream binding 해제와 `onDisconnectActor` 호출. leave나 destroy를 자동 실행하지 않는다 |
-| session-bound actor 등록 | session-bound 경로에서는 local `SpotNode` actor runtime의 actor 생성 또는 handle 준비와 session bind를 `CreateAndBindActorAsync(...)` / `BindActorHandleAsync(...)`로 묶는다. session 표면은 remote node를 직접 지정하는 actor 생성 API를 제공하지 않는다. |
+| session-bound actor 등록 | session-bound 경로에서는 local Spot node actor runtime의 actor 생성 또는 handle 준비와 session bind를 하나의 생성·bind 작업으로 묶는다. session 표면은 remote node를 직접 지정하는 actor 생성 API를 제공하지 않는다. |
 
 application은 위 시점에 다음만 책임진다: factory 코드, actor 클래스의
 `Configure()` / handler 코드, actor/spot route resolver 구현, 그리고 actor 안에서 호출하는
@@ -242,28 +242,26 @@ timer에서 room, stage, match 상태를 직접 바꿔야 한다면 그 상태�
 
 ### 5.3 lifecycle callback 공개 방식
 
-actor join/leave lifecycle은 Spot method override가 아니라 registry 등록으로
-표현한다. 즉 `OnJoinedActor`, `OnLeaveActor` 같은 이름의 method를 framework public
-계약으로 요구하지 않는다. 각 언어가 관례상 callback 이름을 다르게 정할 수는 있지만,
-다음 의미는 유지해야 한다.
+actor join/leave lifecycle은 Spot lifecycle callback으로 제공한다. 각 언어는 같은
+callback을 interface method, overridable method, function object 등 해당 언어에
+자연스러운 형태로 제공할 수 있다. 다음 의미는 모든 언어에서 유지해야 한다.
 
-- lifecycle handler는 Entry Spot 또는 user Spot의 registry에 명시 등록된다.
-- 같은 registry 안에서 같은 actor type의 joined handler는 하나만 허용한다.
-- 같은 registry 안에서 같은 actor type의 left handler는 하나만 허용한다.
+- target Spot은 actor 입장 허용 여부를 결정하는 join callback을 제공한다.
+- source Spot은 membership을 제거한 뒤 leave callback을 호출한다.
+- target Spot은 membership commit 뒤 joined callback을 호출한다.
 - callback은 join/leave commit 이후 같은 실행 문맥에서 호출된다.
-- callback은 admission을 결정하는 hook이 아니다. 입장 허용 여부는 join request
-  handler나 별도 admission handler가 결정한다.
+- joined와 leave callback은 admission을 결정하지 않는다. 입장 허용 여부는 join
+  callback의 accept/reject 결과가 결정한다.
 
-이 규칙을 두는 이유는 actor packet handler와 lifecycle handler의 소유권을 같은
-registry에 두기 위해서다. Entry 단계와 user Spot 단계를 하나의 actor class callback에
-섞으면, handler가 현재 위치를 직접 분기해야 하고 binding마다 다른 lifecycle 모양이
-생긴다.
+언어별 public method 이름과 async 반환형은 언어별 스펙에서 고정한다. callback을
+registry에 등록하는 언어도 위 세 lifecycle 시점과 결과를 동일하게 제공해야 하며,
+registry 등록 방식 자체를 다른 언어에 강제하지 않는다.
 
 ## 6. Outbound: actor를 부르는 쪽
 
 다른 application 코드가 특정 actor를 부르기 시작할 때는 domain key인 actor id만 알 수 있다.
 호출자는 location resolver나 actor manager로 메시징 대상 값인 `ActorRef`를 얻은 뒤 actor client에
-넘긴다. actor가 어느 노드 어느 spot에 사는지 직접 조합하거나 별도 routing id를 전달하지 않는다.
+넘긴다. actor가 어느 노드 어느 Spot에 존재하는지 직접 조합하거나 별도 routing id를 전달하지 않는다.
 
 actor 안에서 user Spot에 join할 때도 같은 규칙이다. actor context의 `JoinSpot(...)`
 public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표면에는
@@ -348,12 +346,12 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 
 각 binding에서 본 모델을 어떻게 노출하는지는 해당 디렉토리에서 다룬다.
 
-- `.NET`: [aspnet-core-actor.ko.md](../../dotnet/spec/aspnet-core-actor.ko.md)
+- `.NET`: [aspnet-core-actor.ko.md](languages/dotnet/aspnet-core-actor.ko.md)
   -- `IZLinkActor`, `IZLinkActorContext`, `IZLinkActorFactory`, typed handler
   인터페이스, `IZLinkActorManager`, `IZLinkBoundSession`, 등록 API
 - `Java`, `Node`, `Python`, `Go`, `Rust`, `C++` 등 다른 binding은 각자 디렉토리
-  안에 같은 의미의 표면을 같은 cross-language 네이밍 규칙으로 적는다 (자세한
-  규칙은 [README.ko.md §5.2.1](../README.ko.md) 참고).
+  안에 같은 의미의 표면을 각 언어의 관례에 맞춰 적는다 (자세한 규칙은
+  [공개 계약 관리 §4](public-contract-governance.ko.md#4-언어별-표현-원칙) 참고).
 
 ## 10. 결정된 기준
 
@@ -372,8 +370,8 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
   인터페이스만 제공한다.
 - server → client push는 반드시 session proxy를 통한다. actor가 stream socket을
   직접 들고 있지 않다.
-- session-bound actor의 local 생성 또는 handle 준비 + bind는 `CreateAndBindActorAsync(...)`와
-  `BindActorHandleAsync(...)`가 묶는다. 두 API 모두 local `SpotNode` actor runtime을
+- session-bound actor의 local 생성 또는 handle 준비와 bind는 언어별 생성·bind 작업이
+  하나로 묶는다. 이 작업은 local Spot node actor runtime을
   대상으로 하며 remote node를 직접 지정하지 않는다.
 
 ---

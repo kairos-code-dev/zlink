@@ -2,7 +2,7 @@
 [문서 목록](../../README.ko.md) | [이전: TicTacToe Game Sample](tictactoe-game-sample.ko.md) | [다음: DeliveryDispatch Sample](deliverydispatch-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Kotlin 묶음](../../README.ko.md) | [SPOT](../../../java/spec/spring-boot-spot.ko.md) | [Actor/Session](../../../java/spec/spring-boot-actor-session.ko.md) | [STREAM](../../../java/spec/spring-boot-stream.ko.md)
+[Kotlin 묶음](../../README.ko.md) | [SPOT](../../../common/spec/languages/java/spring-boot-spot.ko.md) | [Actor/Session](../../../common/spec/languages/java/spring-boot-actor-session.ko.md) | [STREAM](../../../common/spec/languages/java/spring-boot-stream.ko.md)
 
 # SupportChat Sample (Kotlin)
 

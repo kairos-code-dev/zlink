@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework For Java](../../README.ko.md) | [다음: ZLink Framework Java Interface Catalog](../../spec/handler-interfaces.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework For Java](../../README.ko.md) | [다음: ZLink Framework Java Interface Catalog](../../../common/spec/languages/java/handler-interfaces.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java 문서](../../README.ko.md)
 
-[Java 묶음](../../README.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md) | [channel](../../spec/spring-boot-channel-messaging.ko.md)
+[Java 묶음](../../README.ko.md) | [인터페이스](../../../common/spec/languages/java/handler-interfaces.ko.md) | [channel](../../../common/spec/languages/java/spring-boot-channel-messaging.ko.md)
 
 # ZLink Framework Java Channel Messaging Samples
 
@@ -144,5 +144,5 @@ dispatch는 이 샘플 경로가 아니라 `STREAM`의 session relay 경로를 �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework For Java](../../README.ko.md) | [다음: ZLink Framework Java Interface Catalog](../../spec/handler-interfaces.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework For Java](../../README.ko.md) | [다음: ZLink Framework Java Interface Catalog](../../../common/spec/languages/java/handler-interfaces.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

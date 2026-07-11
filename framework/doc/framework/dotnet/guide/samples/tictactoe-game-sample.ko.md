@@ -4,7 +4,7 @@
 
 # TicTacToe Game Sample
 
-[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [SPOT](../../../common/spec/languages/dotnet/aspnet-core-spot.ko.md)
 
 > 이 문서는 실행 가능한 TicTacToe sample의 등록 코드, DTO, 실행 흐름을 설명한다.
 > 언어 중립 업무 시나리오는

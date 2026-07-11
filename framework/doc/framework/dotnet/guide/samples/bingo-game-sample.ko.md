@@ -4,7 +4,7 @@
 
 # Matching Room Game Sample: Bingo
 
-[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Actor](../../spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../../spec/session-actor-dispatch.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../../common/spec/languages/dotnet/aspnet-core-stream.ko.md) | [SPOT](../../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [Actor](../../../common/spec/languages/dotnet/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../../../common/spec/languages/dotnet/session-actor-dispatch.ko.md)
 
 > 이 문서는 Bingo sample의 `.NET` 설계와 실행 흐름을 정리한다. 언어 중립 업무
 > 시나리오는 [공통 Bingo sample](../../../common/sample/bingo/README.ko.md)이 소유한다.

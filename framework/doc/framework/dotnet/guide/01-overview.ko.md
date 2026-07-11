@@ -8,7 +8,7 @@
 > ZLink Framework의 기능을 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을
 > 직접 설명한다. 개념의 **언어 중립 정식 정의**는 [공통 스펙
 > 개요](../../common/spec/overview.ko.md)가, `.NET` public API의 **정식 계약**은
-> [spec/](../spec/handler-interfaces.ko.md) 문서가 다룬다. 두 표기가 어긋나면
+> [spec/](../../common/spec/languages/dotnet/handler-interfaces.ko.md) 문서가 다룬다. 두 표기가 어긋나면
 > spec이 우선이다.
 
 ## 1. 한 줄 정의
@@ -56,7 +56,7 @@ application에서는 "`order` channel로 요청을 보낸다"처럼 사용하면
 | 로깅·검증·권한 확인 같은 공통 처리 반복 | HTTP route는 middleware, ZLink handler는 `IZLinkHandlerFilter`로 분리 |
 | 동시 요청의 상태 보호 | SPOT의 직렬 실행으로 lock 없이 상태 관리 |
 | 서비스 생성·의존성 관리 | ASP.NET Core DI에서 handler, client, filter를 생성 |
-| 서버 주소 관리·연결 결정 | location store를 통해 현재 살아 있는 endpoint 추적 |
+| 서버 주소 관리·연결 결정 | location store를 통해 현재 활성 endpoint 추적 |
 | 설정·로그·모니터링 | ASP.NET Core 설정·logging·hosted service와 통합 |
 
 ### 기존 방식 대비 (체감 난이도)
@@ -165,7 +165,7 @@ runtime이 처리한다.
 
 채널 패턴은 다음과 같다.
 
-- **client/server** — ROUTER 서버에 DEALER 클라이언트가 붙는 request-reply 또는 단방향 send.
+- **client/server** — ROUTER 서버에 DEALER 클라이언트가 연결되는 request-reply 또는 단방향 send.
 - **fanout (pub/sub)** — publisher가 보내면 여러 subscriber에게 전달.
 - **route mesh** — ROUTER끼리 연결하고, routing id로 특정 서버나 상태 단위에 고정 라우팅한다.
 
@@ -223,7 +223,7 @@ Stream Connector가 담당한다.
 
 서버가 여러 인스턴스로 확장될 때 어느 주소로 연결할지를 코드에 하드코딩하지 않는다.
 location store가 등록된 서버 목록을 관리하고, client 역할의 서버가 store에서 현재
-살아 있는 서버의 위치 정보를 읽어 동적으로 연결한다.
+활성 서버의 위치 정보를 읽어 동적으로 연결한다.
 
 [9장 →](09-location.ko.md)
 
@@ -337,7 +337,7 @@ request / response, HTTP handler 안에서의 outbound 호출, publish / subscri
 비목표도 분명하다. ZLink Framework는 새 transport나 새 socket 의미를 만드는 계층이
 아니다. 기존 `.NET` 바인딩(`DealerSocket`, `SpotNode` 등)을 그대로 쓰되, application
 개발자가 DI, hosted service, handler, location store 모델로 다룰 수 있게 감싼다. 정식
-public API 계약을 검토하는 사람은 [spec/](../spec/handler-interfaces.ko.md)을, runtime
+public API 계약을 검토하는 사람은 [spec/](../../common/spec/languages/dotnet/handler-interfaces.ko.md)을, runtime
 내부 구조를 고치는 사람은 [internals/](../internals/backend-dependency-policy.ko.md)를
 같이 봐야 한다.
 
@@ -367,7 +367,7 @@ registration이 정한다. 자세한 규칙은 [04-channel-messaging](04-channel
 
 ## 7. 현재 상태
 
-이 가이드가 설명하는 public API는 [spec/](../spec/handler-interfaces.ko.md)의 계약
+이 가이드가 설명하는 public API는 [spec/](../../common/spec/languages/dotnet/handler-interfaces.ko.md)의 계약
 카탈로그를 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`Request`,
 `Submit`, `Bind`, `AddHandlerGroup` 등)는 spec 문서를 기준으로 확인한다. 세부
 필드까지 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
@@ -387,7 +387,7 @@ registration이 정한다. 자세한 규칙은 [04-channel-messaging](04-channel
 11. [12-interface-catalog](12-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
 12. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink을 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
 13. [guide/samples](samples/channel-messaging-samples.ko.md) — 정본 업무 시나리오의 등록 코드와 실행 흐름
-14. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
+14. [spec/](../../common/spec/languages/dotnet/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -4,8 +4,8 @@
 
 # 4. Channel Messaging — request · send · pub/sub
 
-> 정식 계약은 [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)와
-> [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가 다룬다. 이
+> 정식 계약은 [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)와
+> [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
 channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호작용을 다룬다.
@@ -16,7 +16,7 @@ channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호�
 
 > 🔰 용어(channel·handler·client·codec 등)가 낯설면
 > [03-concepts §0](03-concepts.ko.md)의 한 줄 풀이를 먼저 본다.
-> 괄호 안 `DEALER → ROUTER`·`PUB / SUB` 는 하부 소켓 종류로, **응용이 직접 다루지
+> 괄호 안 `DEALER → ROUTER`·`PUB / SUB` 는 하부 소켓 종류로, **어플리케이션이 직접 다루지
 > 않는다**(framework 가 channel 종류에 따라 자동 매핑).
 
 세 상호작용을 그림으로 먼저 잡으면 이렇다.
@@ -339,7 +339,7 @@ framework 는 발견한 handler 를 모든 channel 에 자동으로 열지 않�
 
 > **등록은 자동이 기본, 수동도 된다.** `[ZLinkHandlerGroup]` +
 > `AddHandlersFromAssemblyOf<...>` 로 **자동**(attribute scan) 등록하는 것이 기본이고 가장
-> 편하다(방법 A). 어떤 handler 가 붙는지 구성 코드에서 명시적으로 통제하고 싶으면
+> 편하다(방법 A). 어떤 handler 가 매핑되는지 구성 코드에서 명시적으로 통제하고 싶으면
 > `AddRequestHandler<T>()` 등으로 **수동** 등록한다(방법 B). 둘 다 같은 dispatcher 로
 > 들어간다.
 
@@ -359,7 +359,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-- `[ZLinkHandlerGroup("api")]` 가 안 붙은 class 는 어느 channel 에도 매핑되지
+- `[ZLinkHandlerGroup("api")]` 가 없는 class 는 어느 channel 에도 매핑되지
   않는다(opt-in 표식).
 - 같은 group 을 여러 channel 에, 한 channel 에 여러 group 을 매핑할 수 있다.
 
@@ -879,8 +879,8 @@ public sealed class UserCacheRefreshedEventHandler
 ## 12. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [12-interface-catalog](12-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
-- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
-- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)
+- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/languages/dotnet/handler-interfaces.ko.md)
+- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md)
 - 실행 가능한 전체 예제: [guide/samples/channel-messaging-samples](samples/channel-messaging-samples.ko.md)
 - 다음 축: [05-spot](05-spot.ko.md)
 

@@ -2,7 +2,7 @@
 [문서 목록](../../README.ko.md) | [이전: STREAM 샘플](stream-samples.ko.md) | [다음: TicTacToe Game Sample](tictactoe-game-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Java 묶음](../../README.ko.md) | [SPOT](../../spec/spring-boot-spot.ko.md) | [Actor/Session](../../spec/spring-boot-actor-session.ko.md) | [STREAM](../../spec/spring-boot-stream.ko.md)
+[Java 묶음](../../README.ko.md) | [SPOT](../../../common/spec/languages/java/spring-boot-spot.ko.md) | [Actor/Session](../../../common/spec/languages/java/spring-boot-actor-session.ko.md) | [STREAM](../../../common/spec/languages/java/spring-boot-stream.ko.md)
 
 # Matching Room Game Sample: Bingo (Java/Kotlin)
 

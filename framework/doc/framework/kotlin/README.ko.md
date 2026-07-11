@@ -2,8 +2,10 @@
 
 > 이 묶음은 `Kotlin`(Spring Boot) 사용자를 위한 ZLink Framework 문서다.
 > `zlink-framework-kotlin`은 Java `zlink-framework` 런타임을 그대로 재사용하는
-> 얇은 coroutine idiom 레이어라, **공개 계약(spec)과 내부 기준(internals)은
-> [Java/Kotlin 문서](../java/README.ko.md)를 정본으로 공유**한다. 반면 `guide/`는
+> 얇은 coroutine idiom 레이어다. Java 표면은
+> [Java spec](../common/spec/languages/java/README.ko.md)을 따르고, Kotlin 전용
+> 공개 계약은 [Kotlin spec](../common/spec/languages/kotlin/README.ko.md)에 고정한다.
+> 내부 기준은 [Java/Kotlin 문서](../java/README.ko.md)를 공유한다. `guide/`는
 > Kotlin 사용자가 `suspend` 함수, coroutine handler, `Flow`만으로 따라 쓸 수 있도록
 > **Kotlin 전용으로** 작성한다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따른다.
@@ -20,7 +22,8 @@
 |-----------|-------------|
 | `ZLinkRequestHandler<T, R>` (plain `TReply` 반환) | `ZLinkSuspendingRequestHandler<T, R>` (`suspend fun handle`) |
 | `ZLinkSendHandler` / `ZLinkPublishHandler` | `ZLinkSuspendingSendHandler` / `ZLinkSuspendingPublishHandler` |
-| `ZLinkSpot<TActor>` (override `onCreate`, `onActorJoin`) | `ZLinkSuspendingSpot<TActor>` (`onCreateSuspending`, `onActorJoinSuspending`) |
+| `ZLinkSpot<TActor>` / `ZLinkEntrySpot<TActor>` | `ZLinkSuspendingSpot<TActor>` / `ZLinkSuspendingEntrySpot<TActor>` (actor admission, joined, leave를 `suspend`로 처리) |
+| `ZLinkActorTransferAdapter<TActor>` | `ZLinkSuspendingActorTransferAdapter<TActor>` (`transferOutSuspending`, `transferInSuspending`) |
 | `ZLinkSession` | `ZLinkSuspendingSession` (`onConnectedSuspending` 등) |
 | `client.requestToChannel(...).submit(R::class.java)` | `client.request<R>(channel, msg)` / `call.awaitReply<R>()` |
 | `connector.on(name) { ... }` callback | `connector.kotlin().messages(name): Flow<...>` |
@@ -49,23 +52,25 @@ Kotlin/Spring Boot 개발자가 읽고 바로 따라 쓸 수 있도록 기능과
 | [11-interface-catalog](guide/11-interface-catalog.ko.md) | 주요 Kotlin public interface |
 | [12-grpc-alternative](guide/12-grpc-alternative.ko.md) | gRPC/HTTP 대비 도입 판단 |
 
-## 2. 공개 계약 spec — Java/Kotlin 공유
+## 2. 공개 계약 spec
 
-Kotlin은 같은 Spring Boot 계약 위에 coroutine 확장만 더하므로, 정식 spec은
-**Java/Kotlin 문서를 그대로 공유**한다. 시그니처는 Java contract를 정본으로 보고,
-Kotlin은 그 위의 `suspend` 표면(아래 §0)을 더한다.
+Kotlin은 같은 Spring Boot runtime 위에 coroutine 확장을 더한다. 그대로 사용하는
+Java 타입은 Java spec을 따르고, Kotlin에서 새로 노출하는 `suspend`, `Flow`, adapter
+시그니처는 Kotlin spec을 따른다.
 
 | 문서 | 범위 |
 |------|------|
-| [spec 목차](../java/spec/README.ko.md) | Java/Kotlin 공개 계약 문서 목록 |
-| [handler-interfaces](../java/spec/handler-interfaces.ko.md) | interface, annotation, context, options |
-| [spring-boot-channel-messaging](../java/spec/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
-| [spring-boot-spot](../java/spec/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](../java/spec/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
-| [spring-boot-stream](../java/spec/spring-boot-stream.ko.md) | stream node, header session |
-| [stream-connector](../java/spec/stream-connector.ko.md) | Java/Kotlin Stream Connector |
-| [spring-boot-registry](../java/spec/spring-boot-registry.ko.md) | embedded registry, remote query |
-| [spring-boot-monitoring](../java/spec/spring-boot-monitoring.ko.md) | runtime event, typed handler |
+| [Kotlin spec 목차](../common/spec/languages/kotlin/README.ko.md) | Kotlin 전용 공개 계약 문서 목록 |
+| [Kotlin handler interfaces](../common/spec/languages/kotlin/handler-interfaces.ko.md) | suspending handler와 lifecycle adapter |
+| [Java spec 목차](../common/spec/languages/java/README.ko.md) | Kotlin이 그대로 사용하는 Java 공개 계약 |
+| [Java handler interfaces](../common/spec/languages/java/handler-interfaces.ko.md) | Java interface, annotation, context, options |
+| [spring-boot-channel-messaging](../common/spec/languages/java/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
+| [spring-boot-spot](../common/spec/languages/java/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
+| [spring-boot-actor-session](../common/spec/languages/java/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
+| [spring-boot-stream](../common/spec/languages/java/spring-boot-stream.ko.md) | stream node, header session |
+| [stream-connector](../common/spec/languages/java/stream-connector.ko.md) | Java/Kotlin Stream Connector |
+| [spring-boot-registry](../common/spec/languages/java/spring-boot-registry.ko.md) | embedded registry, remote query |
+| [spring-boot-monitoring](../common/spec/languages/java/spring-boot-monitoring.ko.md) | runtime event, typed handler |
 
 ## 3. 내부 기준 — Java/Kotlin 공유
 

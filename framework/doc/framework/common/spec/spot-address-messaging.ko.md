@@ -17,20 +17,20 @@
 
 ## 1. SpotRef 모델
 
-```csharp
-/// <summary>mesh 안의 spot 하나를 가리키는 논리 주소. resolve 1회로 얻어
-/// 호출자가 보관하고, 실패 시 재resolve한다.</summary>
-public readonly record struct SpotRef(
-    RoutingId NodeRid,
-    RoutingId SpotRid);
-```
+`SpotRef`는 mesh 안의 spot 하나를 가리키는 불변 값이다. resolve 결과를 호출자가
+보관하고, stale 주소 실패가 발생하면 다시 resolve한다.
+
+| 필드 의미 | 타입 의미 |
+|----------|-----------|
+| owner node rid | 전송 node를 식별하는 routing id |
+| spot rid | node 안의 논리 spot을 식별하는 routing id |
 
 - **owner node rid + spot rid를 담는다.** endpoint metadata는 넣지 않는다 — node로의 물리
   연결은 자동 연결(peer location)의 책임이고, 메시징 주소는 mesh 연결이 있다는 전제 위의
   논리 주소다.
 - **mesh는 주소가 아니라 전송 문맥이 결정한다.** 모든 전송 표면은 이미 mesh가 확정된
-  문맥에서 호출된다 — spot 안의 outbound(`IZLinkSpotOutbound`)는 자기 mesh로 보내고,
-  외부 client(`IZLinkRouteClient`)는 router channel id를 명시한다. 그래서 주소에 mesh를
+  문맥에서 호출된다. Spot 실행 문맥의 outbound 역할은 자신의 mesh로 보내고,
+  외부 route client 역할은 router channel id를 명시한다. 그래서 주소에 mesh를
   중복 보관하지 않으며, 잘못된 mesh로의 오용은 문맥 표면에서 걸러진다.
 - **generation을 넣지 않는다.** generation이 주소에 있으면 node가 바뀌지 않은 generation
   bump에도 보유 주소가 전부 낡아져 재조회만 늘어난다. stale 판정은 owner lease와 수신측
@@ -52,11 +52,11 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 입력 | 반환 |
 |----------|------|------|
-| `ZLinkSpotRefResolver.ResolveSpotRefAsync(spotRid)` | spot rid (이 runtime이 참여한 spot mesh들에서 검색) | `SpotRef?` |
-| `ActorSpotRefResolver.ResolveActorSpotRefAsync(actorId)` | 전역 actor key | actor가 위치한 spot의 `SpotRef?` (ENTRY_SPOT이면 entry spot 주소) |
+| Spot ref resolver | spot rid (이 runtime이 참여한 spot mesh들에서 검색) | `SpotRef?` |
+| actor Spot ref resolver | 전역 actor key | actor가 위치한 spot의 `SpotRef?` (ENTRY_SPOT이면 entry spot 주소) |
 
 - actor 1:1 spot topology에서는 호출자가 아는 것이 transient한 spot rid가 아니라 actor
-  id이므로 `ResolveActorSpotRefAsync`가 1차 조회 표면이다. spot rid 조회는 spot rid를
+  id이므로 actor Spot ref resolver가 1차 조회 표면이다. spot rid 조회는 spot rid를
   도메인 key에서 파생하는 topology(player owner spot 등)에서 쓴다.
 - 재연결·"없으면 생성"·takeover 같은 lifecycle 흐름은 주소가 아니라 generation을 포함한
   location row가 필요하므로 resolver가 아니라 store/runtime 경로를 쓴다.
@@ -64,15 +64,9 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 ## 3. 메시징 표면과 사용 모델
 
-```csharp
-// spot 문맥 안 (mesh = 자기 mesh)
-IZLinkSendCall SendToSpot<TMessage>(SpotRef spot, TMessage message);
-IZLinkRequestCall RequestToSpot<TRequest>(SpotRef spot, TRequest request);
-
-// 외부 connector client (mesh = 명시한 router channel)
-IZLinkSendCall SendToSpot<TMessage>(string routerChannelId, SpotRef spot, TMessage message);
-IZLinkRouteRequestCall RequestToSpot<TRequest>(string routerChannelId, SpotRef spot, TRequest request);
-```
+Spot 실행 문맥의 outbound는 보관한 `SpotRef`와 메시지만 받는다. 외부 connector client는
+router channel 식별자, `SpotRef`와 메시지를 받는다. 정확한 함수 이름과 call 반환 타입은
+언어별 스펙에서 고정한다.
 
 - spot rid만 받고 내부에서 resolve해 주는 overload는 **없다**. 전송 경로의 숨은 store
   I/O를 금지하는 제1원칙 때문이다.
@@ -86,17 +80,11 @@ IZLinkRouteRequestCall RequestToSpot<TRequest>(string routerChannelId, SpotRef s
 
 사용 패턴 — **조회 1회, 로직에서 재사용**:
 
-```csharp
-// bind/route 수립 시점에 1회 조회해서 상태에 보관한다.
-var spot = await spots.ResolveSpotRefAsync(playerQuestSpotRid, ct)
-              ?? /* 미활성이면 도메인 규칙에 따라 placement 경로로 */;
-
-// 이후 이벤트마다 보관한 주소로 전송한다. store 조회 없음.
-await outbound.SendToSpot(spot, new ApplyGameplayEvent(...)).SendAsync(ct);
-```
+bind 또는 route 수립 시점에 resolver로 한 번 조회한 `SpotRef`를 상태에 보관한다. 이후
+이벤트마다 보관한 주소로 전송하며, 전송 경로에서는 store를 다시 조회하지 않는다.
 
 framework 내부 호출자(bound session notify, actor session relay 등)도 같은 규칙을
-따른다. 주소 보유 범위는 대상 spot의 lifecycle에 맞춘다 — 도메인 key에 묶여 오래 사는
+따른다. 주소 보유 범위는 대상 spot의 lifecycle에 맞춘다. 도메인 key에 묶여 장기간 유지되는
 spot은 session 상태에 보관해 재사용하고, actor lifecycle을 따라 생성·소멸하는 1:1 spot은
 상호작용 범위에서만 조회·보관한다.
 
@@ -119,7 +107,7 @@ actor 대상 표면의 실패 분류는 [framework API 오류 계약](framework-
 |------|-----------|------|--------------------|
 | local runtime이 대상 mesh 미참여 | local, 즉시 | 구성 오류 | 재시도 금지 — 코드/구성 수정 |
 | mesh가 모르는 node rid | local, 즉시 | `RequestTargetNotFound` | 재resolve (주소가 근본적으로 낡음) |
-| node는 알지만 미연결 | local, 즉시 | `RouteNotConnected` (`IsRetriable=true`) | 같은 주소로 짧은 backoff 재시도 — mesh 수렴 창일 수 있다. 반복되면 재resolve |
+| node는 알지만 미연결 | local, 즉시 | `RouteNotConnected` (재시도 가능 분류) | 같은 주소로 짧은 backoff 재시도 — mesh 수렴 창일 수 있다. 반복되면 재resolve |
 | node 도달, spot 부재 | 수신측, 오류 reply 1왕복 | `SpotRouteNotFound` | 재resolve 후 재시도 |
 | 전송 후 무응답 | timeout | timeout | 도메인 정책 (중복 실행 위험 감수) |
 
@@ -145,8 +133,9 @@ actor 대상 표면의 실패 분류는 [framework API 오류 계약](framework-
 | 재시도 금지 | 구성 오류 | 몇 번을 불러도 같은 결과 — 코드/구성 수정 대상 |
 | 도메인 판단 | timeout | handler 실행 여부 불확정 — 도메인 idempotency가 있을 때만 재시도 |
 
-`RouteNotConnected`의 `IsRetriable=true`는 "전송 전 실패라 요청 중복 없이 안전하게
-재시도할 수 있다"는 의미다. timeout과의 이 대비가 분류표의 실질 가치다.
+`RouteNotConnected`의 재시도 가능 분류는 "전송 전 실패라 요청 중복 없이 안전하게
+재시도할 수 있다"는 의미다. 언어별 오류 타입은 이 분류를 해당 언어의 관례로 표현한다.
+timeout과의 이 대비가 분류표의 실질 가치다.
 
 전송 계층의 숨은 재시도는 금지한다. rid 지정 router 전송 경로는 NotConnected를 재시도로
 흡수하지 않고 즉시 반환한다. dealer/pub의 connect-창 버퍼링(client/server 채널이 dial

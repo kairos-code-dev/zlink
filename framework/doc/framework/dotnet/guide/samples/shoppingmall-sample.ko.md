@@ -4,7 +4,7 @@
 
 # ShoppingMall Sample
 
-[.NET 묶음](../../README.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Location](../../spec/aspnet-core-location.ko.md)
+[.NET 묶음](../../README.ko.md) | [channel](../../../common/spec/languages/dotnet/aspnet-core-channel-messaging.ko.md) | [SPOT](../../../common/spec/languages/dotnet/aspnet-core-spot.ko.md) | [Location](../../../common/spec/languages/dotnet/aspnet-core-location.ko.md)
 
 > 이 문서는 실행 가능한 ShoppingMall sample의 DTO, 서버 구조, 실행 흐름을 설명한다.
 > 언어 중립 공통 시나리오는

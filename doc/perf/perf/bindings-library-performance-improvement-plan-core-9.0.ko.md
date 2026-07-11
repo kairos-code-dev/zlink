@@ -1180,7 +1180,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
 | 현재 pattern | Single `PUBSUB` 진행 중 | tcp 64/1024/65536B의 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘었다. |
 | paired C | PUBSUB tcp 일부 측정 | C PUBSUB의 잘못된 `DONTWAIT`를 blocking publish로 고친 뒤 C와 C++을 CPU 고정 5회로 측정했다. |
-| 개선 반복 | 측정 조건 조사 중 | CPU 집합 후보는 p99 변동을 없애지 못해 폐기했다. host가 안정된 시점에 같은 tcp 셀만 다시 측정한다. |
+| 개선 반복 | 측정 조건 조사 중 | CPU 집합과 CPU 고정 해제 후보는 p99 변동을 없애지 못해 폐기했다. 최신 C 64B 공식 재시도도 p99 변동 폭 33.6%로 실패했다. |
 | 커밋과 푸시 | 완료 | C PUBSUB 기준 측정 수정과 근거를 `77d180588`로 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태

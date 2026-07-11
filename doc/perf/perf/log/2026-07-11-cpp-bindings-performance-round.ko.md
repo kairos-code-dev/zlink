@@ -144,10 +144,15 @@ runner 후보도 문제를 없애지 못해 채택하지 않았다.
 - C: `perf_c_single_linux_20260711_142234_core_9_0_cpp_pubsub_tcp_blocking_baseline_20260711.txt`
 - C++: `perf_cpp_single_linux_20260711_142406_core_9_0_cpp_pubsub_tcp_blocking_compare_20260711.txt`
 - C 64B 변동 확인: `perf_c_single_linux_20260711_142623_core_9_0_cpp_pubsub_tcp64_stability_20260711.txt`
+- C 64B 두 번째 변동 확인: `perf_c_single_linux_20260711_143556_core_9_0_cpp_pubsub_tcp64_stability_retry2_20260711.txt`
 
-세 report는 모두 `status: complete`이고 runtime은
+네 report는 모두 `status: complete`이고 runtime은
 `core/build/lib/libzlink.so.9.0.0`, auto-HWM profile은 `balanced`, I/O thread는 1,
 timeout은 200ms로 일치한다.
+
+두 번째 64B 공식 재시도도 throughput 변동 폭은 0.3%였지만 p99는
+29.227~42.666ms로 변동 폭 33.6%였다. C 기준이 먼저 변동 gate를 넘지 못했으므로
+이 직후 C++ 측정은 실행하지 않았다.
 
 ### 현재 판정
 

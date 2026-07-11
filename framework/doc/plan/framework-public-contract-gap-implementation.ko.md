@@ -200,6 +200,9 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | `location-runtime.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `location-store-redis.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `message-flow-tracing.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `runtime-metrics.ko.md` (제안) | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `flow-correlation.ko.md` (제안) | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `graceful-drain-handoff.ko.md` (제안) | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `public-contract-governance.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `implementation-gap.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 
@@ -1116,3 +1119,67 @@ Codex 리뷰도 같은 방식으로 기록한다.
 
 완료 선언에는 마지막 commit, 각 언어별 최종 명령의 exit code, Codex clean verdict와
 남은 gap이 없다는 검색 증거를 함께 기록한다.
+
+## 16. 관측·운영 표면 spec 추가 (작업 기록)
+
+이 절은 기존 gap 해소와 별개로, 프로덕션 게임 백엔드에 필요한 **관측·운영 표면 3종**을 공통 spec
+으로 새로 정의하고 언어별 public contract·e2e·샘플까지 문서화한 작업의 기록이다. **문서 작업만
+완료했고 구현은 아직 시작하지 않았다.** 세 spec은 [공개 계약 관리](../framework/common/spec/public-contract-governance.ko.md)
+의 승격 절차를 거치지 않은 **제안(Proposed)** 상태이며, 구현 착수 전 승격 리뷰로 이름·필드·기본값을
+확정한다.
+
+### 16.1 추가한 공통 spec (정본)
+
+| 문서 | 소유 계약 | 상태 |
+|------|-----------|------|
+| `framework/doc/framework/common/spec/runtime-metrics.ko.md` | 계기 카탈로그·종류·라벨·성능·백엔드 경계 | 제안 |
+| `framework/doc/framework/common/spec/flow-correlation.ko.md` | flow_id 상위 키·와이어·홉 커버리지·샘플링 | 제안 |
+| `framework/doc/framework/common/spec/graceful-drain-handoff.ko.md` | drain 수명주기·location 연동·SPOT 정책 | 제안 |
+
+설계 원칙: **framework는 신호·계약을 주고 백엔드·대시보드·배포 스크립트는 앱이 끼운다**(특정
+백엔드 하드 의존 금지). 공개 표면은 최소(깊은 모듈), 공통 케이스는 무설정.
+
+### 16.2 언어별 투영 (기존 문서 확장)
+
+새 spec은 별도 언어 계약 문서를 만들지 않고 기존 monitoring/stream-connector 문서에 절로 투영했다.
+§5.1 coverage ledger의 해당 행이 이 절들을 포함하도록 확장한다.
+
+| 언어 | 확장한 문서 / 절 |
+|------|------------------|
+| `.NET` | `aspnet-core-monitoring.ko.md` §10(metrics)·§11(flow)·§12(drain) |
+| Java | `spring-boot-monitoring.ko.md` §8·§9·§10, `stream-connector.ko.md`(closeReason) |
+| Kotlin | `handler-interfaces.ko.md` §8(Java 재사용 델타) |
+| Node | `nestjs-monitoring.ko.md` §10·§11·§12, `stream-connector.ko.md`(closeReason) |
+| C++ | `cpp-monitoring.ko.md` §8·§9·§10 |
+
+### 16.3 원본 계약 문서 반영 (함축 계약 정식화)
+
+| 문서 | 반영 내용 |
+|------|-----------|
+| `location-runtime.ko.md` §2.1·§6.2 | peer row `Draining` 마커(additive) + 배치 제외/연결 유지 규칙 |
+| `message-flow-tracing.ko.md` §3 | `message_flow_event_t`에 `flow_id`/`flow_origin` additive 필드 |
+| `languages/{java,node}/stream-connector.ko.md` | disconnect 표면 `closeReason`(닫힌 enum, `server_drain`) |
+| `doc/principal/framework-option-builder-naming.ko.md` | `useDrainPolicy(enum)`을 `use*` 패턴으로 승인 |
+
+### 16.4 e2e·샘플
+
+- `framework/doc/framework/common/e2e/config-11-observability-ops.ko.md` — 배포 조건에서 flow 로그·
+  메트릭·drain을 검증. §8.6 G5/G6과 이 config를 연결한다.
+- `framework/doc/framework/common/sample/bingo/README.ko.md` §17 — 기존 Bingo에 "관측·운영 켜기"
+  워크스루 추가(새 샘플 대신 기존 샘플 강화).
+
+### 16.5 구현 시 남는 작업 (이 계획으로의 편입)
+
+- **§6 필수 gap ledger**: 세 spec의 public symbol/동작을 언어별 ledger 행으로 추가한다(승격 후).
+- **회귀 매트릭스**: 스펙이 정의한 `RMETRIC-001~015`, `DRAIN-001~017`, `MFLOW-EXT-001~013`을 언어별
+  실제 테스트로 만든다(누락은 `implementation-gap.ko.md`에 parity gap으로 기록).
+- **§5 coverage matrix**: §16.1 세 행의 셀은 각 언어 구현·테스트 완료 시 체크한다.
+- **와이어/저장 변경**: `flow_id` envelope/헤더(`0x10`), peer row `Draining` 필드(Redis JSON additive),
+  connector `closeReason`은 구현이 문서 계약을 따라야 한다.
+
+### 16.6 리뷰 근거
+
+두 차례 적대적 리뷰(① 공통 spec 정합성 — location-runtime/spot-actor 대조, ② POSD·사용성 — 깊은
+모듈·언어 간 일관성)를 거쳐 P0/P1 결함을 반영했다. 스펙 안의 "정직한 한계"(monotonic flow_id 전역
+비유일성, corr keying 한계, reconnect hint 후속 스펙, room `migrate` 후속 스펙)는 구현에서 과장하지
+않고 그대로 유지한다.

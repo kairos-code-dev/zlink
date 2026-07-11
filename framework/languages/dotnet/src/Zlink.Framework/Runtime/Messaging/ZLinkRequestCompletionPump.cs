@@ -4,8 +4,6 @@ namespace Zlink.Framework.Runtime.Messaging;
 
 internal sealed class ZLinkRequestCompletionPump : IAsyncDisposable
 {
-    private static readonly TimeSpan PollTimeout = TimeSpan.FromMilliseconds(10);
-
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _worker;
     private int _disposed;
@@ -51,7 +49,8 @@ internal sealed class ZLinkRequestCompletionPump : IAsyncDisposable
 
         while (!stopToken.IsCancellationRequested)
         {
-            poller.Wait(events, PollTimeout);
+            if (poller.Wait(events, TimeSpan.Zero) == 0)
+                Thread.Sleep(1);
         }
     }
 }

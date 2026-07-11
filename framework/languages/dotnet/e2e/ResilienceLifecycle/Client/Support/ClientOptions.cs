@@ -10,6 +10,7 @@ internal sealed record ClientOptions(
     string ProviderAEndpoint,
     string ProviderAEvidenceFile,
     string ProviderBUrl,
+    int ProviderBProcessId,
     string ProviderBEndpoint,
     string ProviderBEvidenceFile,
     string ProviderBRemapUrl,
@@ -49,6 +50,9 @@ internal sealed record ClientOptions(
             values.TryGetValue("provider-b-url", out var providerBUrl) && !string.IsNullOrWhiteSpace(providerBUrl)
                 ? providerBUrl
                 : throw new ArgumentException("--provider-b-url is required."),
+            int.TryParse(Require(values, "provider-b-process-id"), out var providerBProcessId)
+                ? providerBProcessId
+                : throw new ArgumentException("--provider-b-process-id must be an integer."),
             Require(values, "provider-b-endpoint"),
             Require(values, "provider-b-evidence-file"),
             Require(values, "provider-b-remap-url"),

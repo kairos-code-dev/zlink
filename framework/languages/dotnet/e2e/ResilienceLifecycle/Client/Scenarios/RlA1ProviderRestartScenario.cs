@@ -30,6 +30,11 @@ internal static class RlA1ProviderRestartScenario
             await Task.Delay(100);
         }
 
+        await processes.WaitInitialProviderBExitedAsync();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryRes[]>();
+
         for (var i = 0; i < 12; i++)
         {
             var marker = $"rl-a1-down-{i}";

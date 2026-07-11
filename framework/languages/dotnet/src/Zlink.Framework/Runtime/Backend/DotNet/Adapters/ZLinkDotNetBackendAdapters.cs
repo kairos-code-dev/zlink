@@ -4,8 +4,17 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 {
     public IZLinkBackendContext CreateContext()
     {
-        return new ZLinkBackendContextWrapper(
-            Systems.Zlink.Zlink.CreateContext());
+        var context = Systems.Zlink.Zlink.CreateContext();
+        try
+        {
+            context.Options.Blocky = false;
+            return new ZLinkBackendContextWrapper(context);
+        }
+        catch
+        {
+            context.Dispose();
+            throw;
+        }
     }
 
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)

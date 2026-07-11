@@ -29,18 +29,24 @@ internal sealed class ZLinkSpotNodeCatalog(
         foreach (var activation in SnapshotActivations()) activation.RequestStop();
     }
 
+    internal void CancelActiveOperations()
+    {
+        foreach (var activation in SnapshotActivations()) activation.CancelActiveOperations();
+    }
+
     internal async ValueTask CloseLifecycleAsync()
     {
         var activations = SnapshotActivations();
         List<Exception>? failures = null;
         foreach (var activation in activations)
         {
+            var spotRid = activation.SpotRid;
             TaskCompletionSource<bool> transaction;
             bool ownsTransaction;
             lock (_gate)
             {
-                if (!_spots.ContainsKey(activation.SpotRid)) continue;
-                if (_closing.TryGetValue(activation.SpotRid, out transaction!))
+                if (!_spots.ContainsKey(spotRid)) continue;
+                if (_closing.TryGetValue(spotRid, out transaction!))
                 {
                     ownsTransaction = false;
                 }
@@ -48,7 +54,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 {
                     transaction = new TaskCompletionSource<bool>(
                         TaskCreationOptions.RunContinuationsAsynchronously);
-                    _closing.Add(activation.SpotRid, transaction);
+                    _closing.Add(spotRid, transaction);
                     ownsTransaction = true;
                 }
             }
@@ -57,7 +63,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 {
                     if (ownsTransaction)
                         _ = await ExecuteCloseTransactionAsync(
-                                activation.SpotRid,
+                                spotRid,
                                 activation,
                                 transaction)
                             .ConfigureAwait(false);
@@ -67,7 +73,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 .ConfigureAwait(false);
 
             bool stillTracked;
-            lock (_gate) stillTracked = _spots.ContainsKey(activation.SpotRid);
+            lock (_gate) stillTracked = _spots.ContainsKey(spotRid);
             if (stillTracked)
                 await CaptureAsync(() => ForceCloseForShutdownAsync(activation)).ConfigureAwait(false);
         }
@@ -103,11 +109,12 @@ internal sealed class ZLinkSpotNodeCatalog(
 
         foreach (var activation in activations)
         {
+            var spotRid = activation.SpotRid;
             await CaptureAsync(activation.DisposeAsync).ConfigureAwait(false);
             lock (_gate)
             {
-                _spots.Remove(activation.SpotRid);
-                _closing.Remove(activation.SpotRid);
+                _spots.Remove(spotRid);
+                _closing.Remove(spotRid);
             }
         }
 

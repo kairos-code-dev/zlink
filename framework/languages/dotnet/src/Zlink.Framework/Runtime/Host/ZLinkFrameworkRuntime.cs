@@ -271,7 +271,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Stopping);
             try
             {
-                await StopAcceptingOperationsAsync().ConfigureAwait(false);
+                var operationsDrained = StopAcceptingOperationsAsync();
+                stateToDispose?.CancelActiveSpotOperations();
+                await operationsDrained.ConfigureAwait(false);
                 var failures = await CleanupRuntimeGenerationAsync(stateToDispose).ConfigureAwait(false);
                 ThrowCleanupFailures(failures);
             }

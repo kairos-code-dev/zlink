@@ -6,6 +6,11 @@ internal sealed partial class ZLinkSpotActivation
 
     public CancellationToken StopToken => _stopSource.Token;
 
+    internal void CancelActiveOperations()
+    {
+        _stopSource.Cancel();
+    }
+
     internal void RequestStop()
     {
         _serial.RequestStop();
@@ -186,7 +191,7 @@ internal sealed partial class ZLinkSpotActivation
 
     public ValueTask CloseAsync(CancellationToken cancellationToken)
     {
-        return ExecuteSerializedAsync(
+        return _serial.ExecuteLifecycleAsync(
             static (activation, ct) => activation.Spot.OnClosingAsync(ct),
             cancellationToken);
     }

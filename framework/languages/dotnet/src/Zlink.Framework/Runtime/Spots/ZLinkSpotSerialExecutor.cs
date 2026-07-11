@@ -43,6 +43,18 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    public async ValueTask ExecuteLifecycleAsync(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        if (_isDisposed()) return;
+
+        await _queue.RunAsync(
+                _ => ExecuteOperationAsync(operation, null, cancellationToken),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask ExecuteAsync<TState>(
         Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
         TState state,

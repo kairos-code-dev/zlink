@@ -146,7 +146,8 @@ if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]
       : >"$child_output"
       set +e
       timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
-        env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0" \
+        env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 \
+        "$SCRIPT_DIR/run_e2e.sh" \
         2>&1 | tee "$child_output"
       child_status="${PIPESTATUS[0]}"
       set -e

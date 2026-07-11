@@ -59,6 +59,24 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         _processes.Remove(process);
     }
 
+    public async Task WaitInitialProviderBExitedAsync()
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(options.ProviderBProcessId);
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        using (process)
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
     public async Task<ProviderStartResult> StartProviderBRemapAsync()
     {
         var process = StartProvider(

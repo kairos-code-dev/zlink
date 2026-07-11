@@ -8,6 +8,7 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
         SemaphoreSlim receiveGate,
         CancellationToken cancellationToken)
     {
+        var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
             Received? received = null;
@@ -16,12 +17,14 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             {
                 await receiveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 gateHeld = true;
-                received = router.Recv();
+                received = router.Recv(RecvFlags.DontWait);
                 if (received is null)
                 {
+                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
+                backoff.Reset();
                 await dispatcher.DispatchServerMessageAsync(channelName, router, received, cancellationToken)
                     .ConfigureAwait(false);
             }

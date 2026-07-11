@@ -187,6 +187,7 @@ start_server api-b "$PROVIDER_PROJECT" \
   --channel-endpoint "$API_B" \
   --evidence-file "$LOG_DIR/api-b.evidence.log" \
   --log-dir "$LOG_DIR"
+API_B_PID="${pids[$((${#pids[@]} - 1))]}"
 wait_health "$API_B_URL" api-b
 
 start_server consumer "$CONSUMER_PROJECT" \
@@ -208,6 +209,7 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --provider-a-endpoint "$API_A" \
   --provider-a-evidence-file "$LOG_DIR/api-a.evidence.log" \
   --provider-b-url "$API_B_URL" \
+  --provider-b-process-id "$API_B_PID" \
   --provider-b-endpoint "$API_B" \
   --provider-b-evidence-file "$LOG_DIR/api-b.evidence.log" \
   --provider-b-remap-url "$API_B_REMAP_URL" \

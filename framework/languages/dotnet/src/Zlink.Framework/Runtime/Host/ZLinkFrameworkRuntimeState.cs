@@ -66,6 +66,11 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         return false;
     }
 
+    public void CancelActiveSpotOperations()
+    {
+        foreach (var node in SpotNodes.Values) node.CancelActiveOperations();
+    }
+
     public async ValueTask DisposeAsync()
     {
         var failures = new List<Exception>();

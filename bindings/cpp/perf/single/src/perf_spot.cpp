@@ -299,9 +299,9 @@ const char *spot_socket_type_name (zlink::spot_node_socket_type_t type_)
 const char *spot_socket_owner_name (zlink::spot_node_socket_owner_t owner_)
 {
     switch (owner_) {
-        case zlink::spot_node_socket_owner::node:
+        case zlink::spot_node_socket_owner_t::node:
             return "node";
-        case zlink::spot_node_socket_owner::spot:
+        case zlink::spot_node_socket_owner_t::spot:
             return "spot";
         default:
             return "unknown";

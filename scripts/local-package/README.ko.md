@@ -34,6 +34,7 @@ scripts/local-package/     local package output policy and commands
 scripts/local-package/
   build-wsl.sh
   build-windows.ps1
+  publish-all-wsl.sh
   native/
     update-zlink-libs.sh
     sync-local-core-libs.sh
@@ -45,6 +46,27 @@ scripts/local-package/
 ```
 
 ## WSL 사용법
+
+core release를 bindings 버전에 반영하고 모든 local package를 한 번에 만든다.
+첫 번째 인자로 release tag 또는 release URL을 넘긴다. 스크립트는 native library와
+bindings version marker를 먼저 맞춘 뒤 .NET, Java/Kotlin, Node.js, C++ package를 차례로 만든다.
+
+```bash
+./scripts/local-package/publish-all-wsl.sh core/v9.0.0
+```
+
+release repository를 명시하거나 기대 버전을 검증하려면 다음처럼 실행한다.
+
+```bash
+./scripts/local-package/publish-all-wsl.sh core/v9.0.0 \
+  --repo kairos-code-dev/zlink \
+  --expect-version 9.0.0
+```
+
+이 명령은 bindings source와 version marker를 변경한다. framework의 bindings 참조 버전은
+변경하지 않으므로, package를 검증한 뒤에는 아래의 중앙 버전 위치를 별도로 갱신해야 한다.
+
+현재 bindings 버전으로 전체 package만 다시 만들 때는 기존 wrapper를 사용한다.
 
 전체 bindings package를 만든다.
 

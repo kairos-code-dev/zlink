@@ -407,8 +407,9 @@ DI, async/await, 빌더 등)이 언어마다 크게 다르다. 이걸 한 문서
    역할이다 — 본문은 core 없이 완결되고, 링크는 옵션이다.
 3. **언어 간 중복은 받아들인다.** 같은 개념을 언어마다 다시 쓰는 비용은 단일 언어
    독자의 완결성을 위해 수용한다. 원칙 1과 정반대 선택이며 의도된 것이다.
-4. **공통 scaffolding만 common으로.** 언어와 무관한 시나리오·use-case·공통 spec은
-   `framework/doc/framework/common/`에 두고 언어 문서가 참조한다. 단 이건 **틀
+4. **공통 scaffolding만 common으로.** 언어와 무관한 정본 sample 시나리오, E2E
+   검증 기준, 공통 spec은 `framework/doc/framework/common/`에 두고 언어 문서가
+   참조한다. 단 이건 **틀
    (scaffolding) 공유**이지 사용 설명까지 공유하는 게 아니다 — "어떻게 쓰나"는 언어별로
    완결한다.
 5. **런타임 공유 언어는 guide만 분리.** Kotlin은 Java 런타임을 공유하므로 **guide만

@@ -29,12 +29,20 @@
 각 언어 디렉토리의 `framework/languages/<lang>/doc/`가 아니라 `framework/doc/` 아래의
 컴포넌트별 위치에서 진행한다.
 
-- framework 문서: `framework/doc/framework/<lang>/`
+- framework 공통 스펙: `framework/doc/framework/common/spec/`
+- framework 언어별 공개 계약: `framework/doc/framework/common/spec/languages/<lang>/`
+- framework 언어별 guide/internals: `framework/doc/framework/<lang>/`
 - HTTP client 문서: `framework/doc/http-client/<lang>/`
 - stream connector 문서: `framework/doc/stream-connector/<lang>/`
 
 새 언어별 문서를 `framework/languages/<lang>/doc/` 아래에 추가하지 않는다. 기존 문서를 수정해야
 하면 `framework/doc/` 아래의 대응 위치로 옮기거나 그 위치에서 갱신한다.
+
+언어별 public interface의 정식 시그니처는
+`framework/doc/framework/common/spec/languages/<lang>/`에서 고정한다. 공통 동작과 언어별 표현,
+정식 계약 변경 절차는
+[`framework/doc/framework/common/spec/public-contract-governance.ko.md`](./framework/doc/framework/common/spec/public-contract-governance.ko.md)를
+따른다.
 
 ### Framework public contract parity
 
@@ -102,6 +110,16 @@ draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로
 - 독자가 처음 읽어도 따라올 수 있게 설명형 문장으로 작성한다.
 - 내부 작성자만 아는 줄임말, 압축 표현, 맥락 없는 단정형 문장을 피한다.
 - 규칙이나 제한 사항은 왜 필요한지 짧게라도 함께 적는다.
+- **객체·연결·상태를 의인화하거나 구어체로 쓰지 않는다.** actor·session·연결 같은 사물을 사람이나
+  생물의 동작(산다/살아 있다/살려 둔다/물려 있다/붙는다/돈다/든다 등)으로 표현하지 말고, 중립적
+  기술 표현으로 쓴다.
+  - actor 가 어느 Spot 에 **사는가** → 어느 Spot 에 **존재하는가**
+  - 연결이 **물려 있는가** → 연결이 **설정되어 있는가**
+  - client 가 **안 붙어도** / 다시 **붙으면** → client 가 **연결되지 않아도** / 다시 **연결하면**
+  - actor 는 **살아 있고** / **살려 둔다** → actor 는 **유지되고** / **유지한다**
+  - 두 가지 모습으로 **돈다** → 두 가지 모습으로 **동작한다**
+  - 이동 후 다시 **살아난다** → 다시 **만들어진다**(또는 **materialize된다**)
+  - STREAM 하나만 **들면 된다** → STREAM 하나만 **사용하면 된다**
 
 ### 4. 압축 영어 표현 금지
 
@@ -113,7 +131,17 @@ draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로
   - 한국어 문서에서는 `호출자가 넘긴 Received 객체에 수신 결과를 채운다.`처럼 쓴다.
 - `canonical`, `storage`, `surface`, `path`, `shape` 같은 단어는 의미가 꼭 필요할 때만 쓰고, 가능하면 무엇을 보장하는지 구체적으로 설명한다.
 
-### 5. 구현 전 spec 초안 작성 규칙
+### 5. 구현 전 spec 작성 규칙
+
+`framework/doc/framework/common/spec/`의 framework public contract는 모든 언어가
+도달해야 하는 목표 계약을 먼저 정식 spec에 고정한다. 각 언어의 정확한 public
+interface도 `framework/doc/framework/common/spec/languages/<lang>/`에 먼저 기록한다.
+현재 구현과 다른 부분은 `implementation-gap.ko.md`와 언어별 interface의 구현 차이
+표에 기록하고, 이후 구현과 contract test를 spec에 맞춘다. 구현이 없다는 이유로
+공통 기능을 현재 언어들의 최소 공통분모로 축소하지 않는다.
+
+이 framework 예외 밖의 core, bindings와 일반 `doc/spec/` 작업은 아래 draft 규칙을
+계속 따른다.
 
 - 아직 구현되지 않은 API 계약이나 동작은 기존 정식 spec 문서에 바로 넣지 않는다.
 - 구현 전 설계는 `doc/spec/draft/` 아래의 **별도 draft 문서**로 작성한다.

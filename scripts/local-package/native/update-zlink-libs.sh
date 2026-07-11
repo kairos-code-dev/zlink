@@ -273,6 +273,7 @@ java_version_test_candidates = [
 node_pkg = repo_root / "bindings/node/package.json"
 node_lock = repo_root / "bindings/node/package-lock.json"
 node_version_test = repo_root / "bindings/node/tests/version.test.js"
+cpp_cmake = repo_root / "bindings/cpp/CMakeLists.txt"
 python_pyproject = repo_root / "bindings/python/pyproject.toml"
 python_pkg_info = repo_root / "bindings/python/src/zlink.egg-info/PKG-INFO"
 python_version_test = repo_root / "bindings/python/tests/test_version.py"
@@ -365,6 +366,10 @@ replace_regex_optional(node_version_test, r"assert\.equal\(v\[1\],\s*\d+\);",
               f"assert.equal(v[1], {minor});")
 replace_regex_optional(node_version_test, r"assert\.equal\(v\[2\],\s*\d+\);",
               f"assert.equal(v[2], {patch});")
+
+replace_regex(cpp_cmake,
+              r"^project\(zlink_cpp VERSION [0-9]+\.[0-9]+\.[0-9]+ LANGUAGES CXX\)$",
+              f"project(zlink_cpp VERSION {expect} LANGUAGES CXX)")
 
 replace_regex(python_pyproject, r'^version\s*=\s*"[^"]+"$',
               f'version = "{expect}"')

@@ -59,6 +59,12 @@ notifications to the bound client sessions. After the game finishes, the server
 self-check also verifies that room actors leave the room Spot, return to Entry
 Spot, and are destroyed from the Entry Spot context.
 
+Session and Play also attach the standard .NET `MeterListener` to
+`ZLinkMeters.Framework`. The runner verifies real STREAM and Spot samples, while
+Play declares `DrainNatural` for its short-lived room mesh. Message-flow logs,
+runtime metrics, and graceful-drain policy therefore use only the public
+framework configuration shown by the common sample specification.
+
 Redis is required for two responsibilities: framework location store data and
 the Bingo match queue. The runner always provisions a dedicated Redis Docker
 container for the current execution, asks Docker to assign a free loopback host

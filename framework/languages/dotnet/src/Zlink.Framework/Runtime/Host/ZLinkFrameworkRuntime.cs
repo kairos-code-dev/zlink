@@ -104,12 +104,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return drained;
     }
 
-    internal async ValueTask DrainSpotsAsync(CancellationToken cancellationToken)
+    internal async ValueTask<bool> TryDrainSpotsAsync(CancellationToken cancellationToken)
     {
         var state = _state;
-        if (state is null) return;
+        if (state is null) return true;
+        var drained = true;
         foreach (var spotNode in state.SpotNodes.Values)
-            await spotNode.DrainSpotsAsync(cancellationToken).ConfigureAwait(false);
+            drained &= await spotNode.TryDrainSpotsAsync(cancellationToken).ConfigureAwait(false);
+        return drained;
     }
 
     internal void SealRequestAdmissionsForDrain()
@@ -119,8 +121,13 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     internal Task StopAndWaitOperationsForDrainAsync() => StopAcceptingOperationsAsync();
 
-    internal Task WaitForAcceptedActorHandoffsAsync(CancellationToken cancellationToken) =>
-        _actorHandoffAdmissions.WaitUntilDrainSafeAsync(cancellationToken);
+    internal async Task WaitForAcceptedActorHandoffsAsync(CancellationToken cancellationToken)
+    {
+        await _drainAdmission.WaitForAcceptedActorAdmissionsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await _actorHandoffAdmissions.WaitUntilDrainSafeAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     internal ZLinkDrainRemainderCounts GetDrainRemainderCounts()
     {

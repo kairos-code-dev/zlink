@@ -29,21 +29,18 @@ internal sealed class ZlinkStreamPendingRequests
             || !_pending.TryRemove(requestSeq.Value, out var pending))
             return false;
 
-        if (header.Kind == ZlinkStreamMessageKind.Error)
-        {
-            pending.Fail(parseError(frame.Payload));
-            return true;
-        }
-
-        pending.Complete(frame);
+        pending.Complete(new ZlinkStreamPendingCompletion(
+            header,
+            frame,
+            header.Kind == ZlinkStreamMessageKind.Error ? parseError(frame.Payload) : null));
         return true;
     }
 
-    public ValueTask<ZlinkStreamFrame> WaitAsync(
+    public ValueTask<ZlinkStreamPendingCompletion> WaitAsync(
         PendingRequest pending,
         CancellationToken cancellationToken)
     {
-        return new ValueTask<ZlinkStreamFrame>(pending.Task.WaitAsync(cancellationToken));
+        return new ValueTask<ZlinkStreamPendingCompletion>(pending.Task.WaitAsync(cancellationToken));
     }
 
     public void Remove(ZlinkStreamRequestSeq requestSeq)
@@ -69,16 +66,16 @@ internal sealed class ZlinkStreamPendingRequests
 
     internal sealed class PendingRequest(ZlinkStreamRequestSeq requestSeq)
     {
-        private readonly TaskCompletionSource<ZlinkStreamFrame> _completion =
+        private readonly TaskCompletionSource<ZlinkStreamPendingCompletion> _completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ZlinkStreamRequestSeq RequestSeq { get; } = requestSeq;
 
-        public Task<ZlinkStreamFrame> Task => _completion.Task;
+        public Task<ZlinkStreamPendingCompletion> Task => _completion.Task;
 
-        public void Complete(ZlinkStreamFrame frame)
+        public void Complete(ZlinkStreamPendingCompletion completion)
         {
-            _completion.TrySetResult(frame);
+            _completion.TrySetResult(completion);
         }
 
         public void Fail(ZlinkStreamError error)
@@ -87,3 +84,8 @@ internal sealed class ZlinkStreamPendingRequests
         }
     }
 }
+
+internal sealed record ZlinkStreamPendingCompletion(
+    ZlinkStreamHeader Header,
+    ZlinkStreamFrame Frame,
+    ZlinkStreamError? Error);

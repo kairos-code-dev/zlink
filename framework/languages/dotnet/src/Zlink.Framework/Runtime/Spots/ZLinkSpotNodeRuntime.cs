@@ -224,8 +224,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return await _spots.CloseAsync(spotRid, cancellationToken);
     }
 
-    internal ValueTask DrainSpotsAsync(CancellationToken cancellationToken) =>
-        _spots.DrainAsync(Registration.DrainPolicy, cancellationToken);
+    internal ValueTask<bool> TryDrainSpotsAsync(CancellationToken cancellationToken) =>
+        _spots.TryDrainAsync(Registration.DrainPolicy, cancellationToken);
 
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
     {

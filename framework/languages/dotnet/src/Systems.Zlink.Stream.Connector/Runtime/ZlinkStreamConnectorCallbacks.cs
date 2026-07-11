@@ -142,7 +142,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
     }
 
     public void QueueRequestCallback<TResult>(
-        Func<ValueTask<ZlinkStreamEncodedPayload>> request,
+        Func<ValueTask<ZlinkStreamRequestCompletion>> request,
         Func<ZlinkStreamEncodedPayload, TResult> success,
         Func<ZlinkStreamError, TResult> failure,
         Action<TResult> callback)
@@ -156,7 +156,10 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                     await DispatchUserCallbackAsync(
                             _ =>
                             {
-                                callback(success(reply));
+                                using var flow = ZlinkStreamFlowContext.Enter(reply.FlowId, reply.FlowOrigin);
+                                callback(reply.Error is { } error
+                                    ? failure(error)
+                                    : success(reply.Payload!));
                                 return ValueTask.CompletedTask;
                             },
                             CancellationToken.None,

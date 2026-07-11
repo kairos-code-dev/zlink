@@ -83,7 +83,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                 _storeHealth,
                 "spot-query-read",
                 cancellationToken,
-                () => _spotStore.ListSpotsAsync(filter, Normalize(page), cancellationToken))
+                storeToken => _spotStore.ListSpotsAsync(filter, Normalize(page), storeToken))
             .ConfigureAwait(false);
         var live = await _liveRows.FilterAsync(
                 raw.Items, static row => row.OwnerId, row => _observed.AcceptSpot(row), cancellationToken)
@@ -100,7 +100,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                 _storeHealth,
                 "actor-query-read",
                 cancellationToken,
-                () => _actorStore.ListActorsAsync(filter, Normalize(page), cancellationToken))
+                storeToken => _actorStore.ListActorsAsync(filter, Normalize(page), storeToken))
             .ConfigureAwait(false);
         var published = raw.Items.Where(static row => row.ActorRef is not null).ToArray();
         var live = await _liveRows.FilterAsync(
@@ -118,7 +118,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                 _storeHealth,
                 "route-query-read",
                 cancellationToken,
-                () => _routeStore.ListRoutesAsync(filter, Normalize(page), cancellationToken))
+                storeToken => _routeStore.ListRoutesAsync(filter, Normalize(page), storeToken))
             .ConfigureAwait(false);
         var live = await _liveRows.FilterAsync(
                 raw.Items, static row => row.OwnerId, row => _observed.AcceptRoute(row), cancellationToken)
@@ -170,10 +170,10 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                         _storeHealth,
                         "spot-topology-read",
                         cancellationToken,
-                        () => _spotStore.ListSpotsAsync(
+                        storeToken => _spotStore.ListSpotsAsync(
                             new ZLinkSpotLocationFilter(MeshName: filter.MeshName, NodeRid: filter.NodeRid),
                             Normalize(page),
-                            cancellationToken))
+                            storeToken))
                     .ConfigureAwait(false);
                 var entries = new List<ZLinkLocationTopologyEntry>(raw.Items.Count);
                 foreach (var row in raw.Items.Where(_observed.AcceptSpot))
@@ -196,10 +196,10 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                         _storeHealth,
                         "actor-topology-read",
                         cancellationToken,
-                        () => _actorStore.ListActorsAsync(
+                        storeToken => _actorStore.ListActorsAsync(
                             new ZLinkActorLocationFilter(NodeRid: filter.NodeRid),
                             Normalize(page),
-                            cancellationToken))
+                            storeToken))
                     .ConfigureAwait(false);
                 var entries = new List<ZLinkLocationTopologyEntry>(raw.Items.Count);
                 foreach (var row in raw.Items.Where(static row => row.ActorRef is not null)
@@ -223,10 +223,10 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                         _storeHealth,
                         "route-topology-read",
                         cancellationToken,
-                        () => _routeStore.ListRoutesAsync(
+                        storeToken => _routeStore.ListRoutesAsync(
                             new ZLinkRouteLocationFilter(OwnerNodeRid: filter.NodeRid),
                             Normalize(page),
-                            cancellationToken))
+                            storeToken))
                     .ConfigureAwait(false);
                 var entries = new List<ZLinkLocationTopologyEntry>(raw.Items.Count);
                 foreach (var row in raw.Items.Where(_observed.AcceptRoute))
@@ -301,7 +301,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             _storeHealth,
             "peer-query-read",
             cancellationToken,
-            () => _peerStore.ListPeersAsync(filter, cancellationToken)).ConfigureAwait(false);
+            storeToken => _peerStore.ListPeersAsync(filter, storeToken)).ConfigureAwait(false);
         return rows.Where(AcceptPeer).ToArray();
     }
 

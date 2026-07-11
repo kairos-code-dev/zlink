@@ -1,12 +1,16 @@
+using Microsoft.Extensions.Logging;
+
 namespace Zlink.Framework.AspNetCore;
 
 internal sealed class ZLinkFrameworkDrainExecutor(
     ZLinkFrameworkRuntime runtime,
-    ZLinkFrameworkRegistration registration,
     ZLinkLocationOptions locationOptions,
     ZLinkLocationAutoConnectHost? autoConnect,
-    ZLinkLocationRuntime? locationRuntime) : IZLinkDrainExecutor
+    ZLinkLocationRuntime? locationRuntime,
+    ILogger<ZLinkFrameworkDrainExecutor>? logger = null) : IZLinkDrainExecutor
 {
+    private static readonly TimeSpan SchedulerJitterBudget = TimeSpan.FromMilliseconds(100);
+
     public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
         TimeSpan deadline,
         CancellationToken deadlineToken)
@@ -14,19 +18,29 @@ internal sealed class ZLinkFrameworkDrainExecutor(
         if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
             return ZLinkDrainForceReason.DrainingStatePublishFailed;
 
+        var propagationDelay = PropagationDelay();
+        if (autoConnect is not null)
+            logger?.LogInformation(
+                "ZLink drain propagation bound polling={PollingInterval} storeReadTimeout={StoreReadTimeout} schedulerJitterBudget={SchedulerJitterBudget} total={PropagationBound}",
+                locationOptions.PollingInterval,
+                ZLinkLocationStoreRead.Timeout,
+                SchedulerJitterBudget,
+                propagationDelay);
         var propagation = autoConnect is null
             ? Task.CompletedTask
-            : Task.Delay(PropagationDelay(), deadlineToken);
+            : Task.Delay(propagationDelay, deadlineToken);
         await propagation.ConfigureAwait(false);
         runtime.SealRequestAdmissionsForDrain();
         await runtime.WaitForAcceptedActorHandoffsAsync(deadlineToken).ConfigureAwait(false);
 
-        var actorsDrained = await runtime.DrainActorsAsync(deadlineToken).ConfigureAwait(false);
-        await runtime.DrainSpotsAsync(deadlineToken).ConfigureAwait(false);
-        while (!actorsDrained)
+        var actorsDrained = false;
+        var spotsDrained = false;
+        while (!actorsDrained || !spotsDrained)
         {
-            await Task.Delay(locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
             actorsDrained = await runtime.DrainActorsAsync(deadlineToken).ConfigureAwait(false);
+            spotsDrained = await runtime.TryDrainSpotsAsync(deadlineToken).ConfigureAwait(false);
+            if (!actorsDrained || !spotsDrained)
+                await Task.Delay(locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
         }
         await runtime.StopAndWaitOperationsForDrainAsync().WaitAsync(deadlineToken)
             .ConfigureAwait(false);
@@ -146,8 +160,8 @@ internal sealed class ZLinkFrameworkDrainExecutor(
 
     private TimeSpan PropagationDelay() =>
         locationOptions.PollingInterval
-        + registration.DefaultRequestTimeout
-        + TimeSpan.FromMilliseconds(100);
+        + ZLinkLocationStoreRead.Timeout
+        + SchedulerJitterBudget;
 
     private static async ValueTask CaptureAsync(
         Func<ValueTask> operation,

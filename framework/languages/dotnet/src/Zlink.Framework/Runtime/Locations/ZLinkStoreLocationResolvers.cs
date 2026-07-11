@@ -48,7 +48,7 @@ internal sealed class ZLinkStoreLocationResolvers :
             _health,
             "peer-resolver-read",
             cancellationToken,
-            () => _peerStore.ListPeersAsync(filter, cancellationToken)).ConfigureAwait(false);
+            storeToken => _peerStore.ListPeersAsync(filter, storeToken)).ConfigureAwait(false);
 
         // Drop rows older than a generation this runtime already observed
         // for the same key: a lagging store replica must never roll the
@@ -106,10 +106,10 @@ internal sealed class ZLinkStoreLocationResolvers :
                     _health,
                     "spot-resolver-list",
                     cancellationToken,
-                    () => _spotStore.ListSpotsAsync(
+                    storeToken => _spotStore.ListSpotsAsync(
                         filter,
                         new ZLinkPageRequest(1000, continuation),
-                        cancellationToken))
+                        storeToken))
                 .ConfigureAwait(false);
             var live = await _liveRows.FilterAsync(
                     page.Items,
@@ -184,7 +184,7 @@ internal sealed class ZLinkStoreLocationResolvers :
                     _health,
                     $"{typeof(TRow).Name}-resolver-read",
                     cancellationToken,
-                    () => resolve(store, key, cancellationToken)).ConfigureAwait(false),
+                    storeToken => resolve(store, key, storeToken)).ConfigureAwait(false),
                 ownerOf,
                 acceptObserved,
                 cancellationToken)

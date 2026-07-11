@@ -99,7 +99,7 @@ internal sealed class ZLinkOwnerLeaseTracker
                     _health,
                     "owner-lease-read",
                     cancellationToken,
-                    () => _store.ListOwnerLeasesAsync(cancellationToken))
+                    storeToken => _store.ListOwnerLeasesAsync(storeToken))
                 .ConfigureAwait(false);
             var byOwner = listed.Leases.ToDictionary(lease => lease.OwnerId, StringComparer.Ordinal);
             var refreshed = new Snapshot(byOwner, listed.StoreNow, fetchedAt);

@@ -103,6 +103,11 @@ peer의 store 관찰은 polling(기본 1s)+k8s probe 주기라, 마커를 세운
 - 원격 관찰 지연은 `polling interval + 한 번의 store read timeout + scheduler jitter`를 상한으로
   계산한다. 구현과 E2E는 실제 설정값으로 이 상한을 출력하며, 의미가 정해지지 않은 `N` 배수를
   사용하지 않는다.
+- public location 옵션을 늘리지 않고 언어 간 같은 동작을 유지하기 위해 store read timeout은
+  **5초**, scheduler jitter budget은 **100ms**인 framework 내부 정책으로 고정한다. 모든 location
+  store read 경계는 5초 cancellation 상한을 적용한다. drain 로그와 E2E evidence는 polling interval,
+  `store_read_timeout=5s`, `scheduler_jitter_budget=100ms`, 합산 전파 상한을 각각 출력한다. application
+  request timeout을 store read timeout으로 대신 사용하지 않는다.
 
 store 장애로 draining 마커를 게시하지 못해도 로컬 `IsReady`와 신규 수용 차단은 즉시 적용한다.
 마커 게시는 deadline까지 재시도하되, 한 번도 성공하지 못한 drain은 안전하게 완료됐다고 볼 수

@@ -220,6 +220,45 @@ public sealed class RuntimeMetricsTests
             samples);
     }
 
+    [Fact]
+    public void Observable_Metrics_Pull_Current_Source_State_After_Listener_Attaches()
+    {
+        long firstPeers = 2;
+        long secondPeers = 3;
+        var drainState = "drained";
+        using var first = ZLinkRuntimeMetrics.RegisterLocationPeers(() => firstPeers);
+        var second = ZLinkRuntimeMetrics.RegisterLocationPeers(() => secondPeers);
+        using var drain = ZLinkRuntimeMetrics.RegisterDrainState(() => drainState);
+        var peerSamples = new List<long>();
+        var drainSamples = new List<string?>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name is "zlink.location.peers" or "zlink.drain.state")
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            if (instrument.Name == "zlink.location.peers") peerSamples.Add(value);
+            if (instrument.Name == "zlink.drain.state") drainSamples.Add(Tag(tags, "state"));
+        });
+        listener.Start();
+
+        listener.RecordObservableInstruments();
+        Assert.Contains(5, peerSamples);
+        Assert.Contains("drained", drainSamples);
+
+        firstPeers = 4;
+        drainState = "force_stopping";
+        second.Dispose();
+        listener.RecordObservableInstruments();
+        Assert.Equal(4, peerSamples[^1]);
+        Assert.Equal("force_stopping", drainSamples[^1]);
+    }
+
     private static string? Tag(ReadOnlySpan<KeyValuePair<string, object?>> tags, string name)
     {
         foreach (var tag in tags)

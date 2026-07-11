@@ -199,7 +199,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        return await RequestEncodedCoreAsync(
+        var completion = await RequestEncodedCoreAsync(
                 name,
                 payload,
                 metadata,
@@ -207,6 +207,8 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
+        if (completion.Error is { } error) throw new ZlinkStreamException(error);
+        return completion.Payload!;
     }
 
     void IZlinkStreamConnectorInternal.RequestEncoded(
@@ -271,7 +273,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         await _callbacks.DispatchAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<ZlinkStreamEncodedPayload> RequestEncodedCoreAsync(
+    private async ValueTask<ZlinkStreamRequestCompletion> RequestEncodedCoreAsync(
         string name,
         ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
@@ -299,10 +301,21 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
                 throw;
             }
 
-            var packet = await _pending.WaitAsync(pending, timeoutCts.Token).ConfigureAwait(false);
-            var replyHeader = _headerCodec.Decode(packet.Header);
-            var replyBody = _frameSender.DecompressIfNeeded(replyHeader, packet.Payload);
-            return new ZlinkStreamEncodedPayload(replyHeader.Codec, replyBody);
+            var pendingCompletion = await _pending.WaitAsync(pending, timeoutCts.Token).ConfigureAwait(false);
+            var replyHeader = pendingCompletion.Header;
+            if (pendingCompletion.Error is { } remoteError)
+                return new ZlinkStreamRequestCompletion(
+                    null,
+                    remoteError,
+                    replyHeader.FlowId,
+                    replyHeader.FlowOrigin);
+
+            var replyBody = _frameSender.DecompressIfNeeded(replyHeader, pendingCompletion.Frame.Payload);
+            return new ZlinkStreamRequestCompletion(
+                new ZlinkStreamEncodedPayload(replyHeader.Codec, replyBody),
+                null,
+                replyHeader.FlowId,
+                replyHeader.FlowOrigin);
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -390,3 +403,9 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return new ZlinkStreamException(new ZlinkStreamError(code, message, exception));
     }
 }
+
+internal sealed record ZlinkStreamRequestCompletion(
+    ZlinkStreamEncodedPayload? Payload,
+    ZlinkStreamError? Error,
+    string? FlowId,
+    ZlinkStreamFlowOrigin? FlowOrigin);

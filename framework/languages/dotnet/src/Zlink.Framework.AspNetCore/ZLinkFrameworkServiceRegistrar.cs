@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Zlink.Framework.AspNetCore;
 
@@ -126,10 +127,10 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.TryAddSingleton<IZLinkDrainExecutor>(provider =>
             new ZLinkFrameworkDrainExecutor(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
-                provider.GetRequiredService<ZLinkFrameworkRegistration>(),
                 registration.Locations.Options,
                 provider.GetService<ZLinkLocationAutoConnectHost>(),
-                provider.GetService<ZLinkLocationRuntime>()));
+                provider.GetService<ZLinkLocationRuntime>(),
+                provider.GetService<ILogger<ZLinkFrameworkDrainExecutor>>()));
         services.TryAddSingleton<ZLinkDrainCoordinator>(static provider =>
             new ZLinkDrainCoordinator(
                 provider.GetRequiredService<ZLinkDrainAdmissionGate>(),

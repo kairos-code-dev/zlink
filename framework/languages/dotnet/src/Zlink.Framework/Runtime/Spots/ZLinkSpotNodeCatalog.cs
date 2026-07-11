@@ -21,12 +21,11 @@ internal sealed class ZLinkSpotNodeCatalog(
     private readonly Dictionary<RoutingId, TaskCompletionSource<bool>> _closing = [];
     private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
     private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
-    private TaskCompletionSource _empty = CompletedSignal();
     private string? _activeDrainMetricPolicy;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
 
-    internal async ValueTask DrainAsync(
+    internal async ValueTask<bool> TryDrainAsync(
         ZLinkSpotDrainPolicy policy,
         CancellationToken cancellationToken)
     {
@@ -37,17 +36,12 @@ internal sealed class ZLinkSpotNodeCatalog(
                 : "release_and_recreate");
         if (policy == ZLinkSpotDrainPolicy.ReleaseAndRecreate)
         {
-            while (true)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var activations = SnapshotActivations();
-                if (activations.Count == 0) break;
-                foreach (var activation in activations)
-                    await CloseAsync(activation.SpotRid, cancellationToken).ConfigureAwait(false);
-            }
+            var activations = SnapshotActivations();
+            foreach (var activation in activations)
+                await CloseAsync(activation.SpotRid, cancellationToken).ConfigureAwait(false);
         }
 
-        await WaitUntilEmptyAsync(cancellationToken).ConfigureAwait(false);
+        lock (_gate) return _spots.Count == 0;
     }
 
     internal void RequestStop()
@@ -200,9 +194,6 @@ internal sealed class ZLinkSpotNodeCatalog(
                 .ConfigureAwait(false);
             lock (_gate)
             {
-                if (_spots.Count == 0)
-                    _empty = new TaskCompletionSource(
-                        TaskCreationOptions.RunContinuationsAsynchronously);
                 _spots.Add(activation.SpotRid, activation);
             }
 
@@ -315,9 +306,6 @@ internal sealed class ZLinkSpotNodeCatalog(
             lock (_gate)
             {
                 _pending.Remove(requestedSpotRid);
-                if (_spots.Count == 0)
-                    _empty = new TaskCompletionSource(
-                        TaskCreationOptions.RunContinuationsAsynchronously);
                 _spots.Add(activation.SpotRid, activation);
                 pending.Complete(result);
             }
@@ -506,7 +494,6 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             _spots.Remove(spotRid);
             _closing.Remove(spotRid);
-            SignalEmptyIfNeededLocked();
         }
         if (Volatile.Read(ref _activeDrainMetricPolicy) is { } policy)
             ZLinkRuntimeMetrics.RecordDrainRoom(policy);
@@ -532,7 +519,6 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             _spots.Remove(activation.SpotRid);
             _closing.Remove(activation.SpotRid);
-            SignalEmptyIfNeededLocked();
         }
         if (Volatile.Read(ref _activeDrainMetricPolicy) is { } policy)
             ZLinkRuntimeMetrics.RecordDrainRoom(policy);
@@ -553,33 +539,6 @@ internal sealed class ZLinkSpotNodeCatalog(
     private void RemoveActivationLocked(ZLinkSpotActivation? activation)
     {
         if (activation is not null) _spots.Remove(activation.SpotRid);
-        SignalEmptyIfNeededLocked();
-    }
-
-    private async ValueTask WaitUntilEmptyAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            Task wait;
-            lock (_gate)
-            {
-                if (_spots.Count == 0) return;
-                wait = _empty.Task;
-            }
-            await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private void SignalEmptyIfNeededLocked()
-    {
-        if (_spots.Count == 0) _empty.TrySetResult();
-    }
-
-    private static TaskCompletionSource CompletedSignal()
-    {
-        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        completed.TrySetResult();
-        return completed;
     }
 
     private static async ValueTask DisposeFailedCreationAsync(ZLinkSpotActivation activation)

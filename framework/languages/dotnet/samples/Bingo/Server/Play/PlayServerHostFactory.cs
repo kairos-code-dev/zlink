@@ -12,6 +12,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Samples.Logging;
 
 namespace Bingo.Server.Play;
@@ -33,6 +34,7 @@ public static class PlayServerHostFactory
         builder.Services.AddSingleton<BingoRoomAllocator>();
         builder.Services.AddSingleton<BingoRoomEventMapper>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();
+        builder.Services.AddBingoMetrics();
 
         builder.Services.AddZLinkFramework(options =>
         {
@@ -54,6 +56,7 @@ public static class PlayServerHostFactory
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+                .UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural)
                 .EnableRouter(node.SpotRouterEndpoint)
                 .SetRoutingId(node.NodeRid)
                 .SetEntrySpotRoutingId(node.NodeRid)

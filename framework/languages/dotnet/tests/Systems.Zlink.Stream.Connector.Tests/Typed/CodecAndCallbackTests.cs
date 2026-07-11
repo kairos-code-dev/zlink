@@ -160,6 +160,87 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task Request_Callback_Reuses_Response_Flow_And_Expires_After_Dispatch()
+    {
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var responseFlow = ZlinkStreamFlowId.Create();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var request = headerCodec.Decode((await ReadPacketAsync(stream)).Header);
+            var response = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Response,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                request.RequestSeq,
+                request.Name,
+                ZlinkStreamMetadata.Empty,
+                request.CorrelationId,
+                responseFlow,
+                ZlinkStreamFlowOrigin.Timer);
+            await WritePacketAsync(stream, headerCodec.Encode(response).ToArray(), Array.Empty<byte>());
+
+            var followup = headerCodec.Decode((await ReadPacketAsync(stream)).Header);
+            Assert.Equal(responseFlow, followup.FlowId);
+            Assert.Equal(ZlinkStreamFlowOrigin.Timer, followup.FlowOrigin);
+
+            var unrelated = headerCodec.Decode((await ReadPacketAsync(stream)).Header);
+            Assert.True(ZlinkStreamFlowId.IsValid(unrelated.FlowId));
+            Assert.NotEqual(responseFlow, unrelated.FlowId);
+            Assert.Equal(ZlinkStreamFlowOrigin.Application, unrelated.FlowOrigin);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            DispatchMode = ZlinkStreamDispatchMode.Manual,
+            Compression = ZlinkStreamCompression.None
+        });
+        await connector.Connect.Async();
+
+        var releaseDetached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<(string FlowId, ZlinkStreamFlowOrigin Origin)?> detached = null!;
+        connector.Request(new ZlinkStreamEncodedPayload(
+                ZlinkStreamCodec.Raw,
+                ReadOnlyMemory<byte>.Empty))
+            .PacketName("flow-request")
+            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
+            {
+                Assert.True(result.IsSuccess);
+                Assert.Equal(
+                    (responseFlow, ZlinkStreamFlowOrigin.Timer),
+                    ZlinkStreamFlowContext.Current);
+                detached = Task.Run(async () =>
+                {
+                    await releaseDetached.Task.ConfigureAwait(false);
+                    return ZlinkStreamFlowContext.Current;
+                });
+                connector.Send(new ZlinkStreamEncodedPayload(
+                        ZlinkStreamCodec.Raw,
+                        ReadOnlyMemory<byte>.Empty))
+                    .PacketName("flow-followup")
+                    .Submit();
+            });
+
+        await WaitUntilAsync(() => connector.PendingDispatchCount > 0, TimeSpan.FromSeconds(5));
+        await connector.Dispatch.Async();
+        releaseDetached.SetResult();
+        Assert.Null(await detached.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        connector.Send(new ZlinkStreamEncodedPayload(
+                ZlinkStreamCodec.Raw,
+                ReadOnlyMemory<byte>.Empty))
+            .PacketName("unrelated")
+            .Submit();
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public void Lz4CodecRejectsDecodedPayloadAboveReceiveLimit()
     {
         var source = Encoding.UTF8.GetBytes(new string('A', 1024));

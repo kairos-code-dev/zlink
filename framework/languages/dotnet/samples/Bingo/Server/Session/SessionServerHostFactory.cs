@@ -23,6 +23,7 @@ public static class SessionServerHostFactory
             "session");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(session);
+        builder.Services.AddBingoMetrics();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis

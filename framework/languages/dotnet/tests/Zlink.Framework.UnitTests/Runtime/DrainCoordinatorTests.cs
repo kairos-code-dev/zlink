@@ -9,12 +9,28 @@ namespace Zlink.Framework.UnitTests;
 public sealed class DrainCoordinatorTests
 {
     [Fact]
+    public async Task Drain_Waits_For_Actor_Admission_Accepted_Before_The_Transition()
+    {
+        var gate = new ZLinkDrainAdmissionGate();
+        Assert.True(gate.TryEnterActorAdmission(out var accepted));
+        Assert.True(gate.BeginDrain());
+        Assert.False(gate.TryEnterActorAdmission(out var rejected));
+        rejected.Dispose();
+
+        var wait = gate.WaitForAcceptedActorAdmissionsAsync(CancellationToken.None);
+        Assert.False(wait.IsCompleted);
+
+        accepted.Dispose();
+        await wait.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
     public async Task Drain_Is_Idempotent_And_First_Deadline_Is_Fixed()
     {
         var executor = new FakeDrainExecutor();
         var admission = new ZLinkDrainAdmissionGate();
         var events = new RecordingEventPublisher();
-        var coordinator = new ZLinkDrainCoordinator(admission, executor, events);
+        using var coordinator = new ZLinkDrainCoordinator(admission, executor, events);
 
         var first = coordinator.DrainAsync(TimeSpan.FromSeconds(3)).AsTask();
         var second = coordinator.DrainAsync(TimeSpan.FromSeconds(30)).AsTask();
@@ -37,7 +53,7 @@ public sealed class DrainCoordinatorTests
     public async Task Waiter_Cancellation_Does_Not_Cancel_Shared_Drain()
     {
         var executor = new FakeDrainExecutor();
-        var coordinator = new ZLinkDrainCoordinator(
+        using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
             executor,
             events: null);
@@ -58,7 +74,7 @@ public sealed class DrainCoordinatorTests
     public async Task Deadline_Validation_Happens_Before_Drain_Starts()
     {
         var executor = new FakeDrainExecutor();
-        var coordinator = new ZLinkDrainCoordinator(
+        using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
             executor,
             events: null);
@@ -74,7 +90,7 @@ public sealed class DrainCoordinatorTests
     public async Task Deadline_Expiry_Force_Stops_With_The_Frozen_Reason()
     {
         var executor = new FakeDrainExecutor { WaitForDeadline = true };
-        var coordinator = new ZLinkDrainCoordinator(
+        using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
             executor,
             events: null);
@@ -93,7 +109,7 @@ public sealed class DrainCoordinatorTests
         {
             ForceFailureReason = ZLinkDrainForceReason.OwnerCleanupFailed
         };
-        var coordinator = new ZLinkDrainCoordinator(
+        using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
             executor,
             events: null);

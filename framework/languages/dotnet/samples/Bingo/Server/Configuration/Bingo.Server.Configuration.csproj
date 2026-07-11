@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <ProjectReference Include="..\..\Shared\Bingo.Shared.csproj" />
     <ProjectReference Include="..\..\..\..\src\Zlink.Framework\Zlink.Framework.csproj" />
   </ItemGroup>

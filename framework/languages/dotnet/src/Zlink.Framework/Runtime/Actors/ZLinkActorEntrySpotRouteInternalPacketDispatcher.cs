@@ -32,10 +32,13 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
         _ = routedHeader;
         var request = ZLinkActorEntrySpotRoutePackets.DecodeJoinRequest(received.Parts);
 
-        // This one-phase Entry Spot join is admitted at dispatch. A drain
-        // that already started rejects it; an admission that won the race
-        // is allowed to finish as an in-flight handoff.
-        runtime.DrainAdmission.RequireActorAdmission();
+        if (!runtime.DrainAdmission.TryEnterActorAdmission(out var admissionLease))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorCreateRejected,
+                "The framework runtime is draining and does not accept new actor assignments.",
+                false);
+        using (admissionLease)
+        {
 
         // Hosting handoff from the source node (see JoinRoutedActorAsync).
         var created = await runtime.CreateLocalActorForHandoffAsync(
@@ -79,6 +82,7 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
             nativeRef,
             admission.Reply,
             runtime.Registration.Codecs);
+        }
     }
 
     private static ZLinkSpotNodeRuntime FindSpotNode(

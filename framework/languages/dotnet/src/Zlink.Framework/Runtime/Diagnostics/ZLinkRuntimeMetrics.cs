@@ -59,11 +59,11 @@ internal static class ZLinkRuntimeMetrics
     private static readonly Counter<long> FanoutReceived =
         Meter.CreateCounter<long>("zlink.fanout.received", "{message}");
 
-    private static readonly ConcurrentDictionary<object, long> LocationPeerContributions = new();
+    private static readonly ConcurrentDictionary<object, Func<long>> LocationPeerProviders = new();
     private static readonly ObservableGauge<long> LocationPeers =
         Meter.CreateObservableGauge(
             "zlink.location.peers",
-            static () => LocationPeerContributions.Values.Sum(),
+            ObserveLocationPeers,
             "{peer}");
     private static readonly Counter<long> LocationStoreErrors =
         Meter.CreateCounter<long>("zlink.location.store.errors", "{error}");
@@ -77,13 +77,11 @@ internal static class ZLinkRuntimeMetrics
     private static readonly Counter<long> ObserverOverflow =
         Meter.CreateCounter<long>("zlink.observability.observer.overflow", "{event}");
 
-    private static string _drainState = "serving";
+    private static readonly ConcurrentDictionary<object, Func<string>> DrainStateProviders = new();
     private static readonly ObservableGauge<long> DrainState =
         Meter.CreateObservableGauge(
             "zlink.drain.state",
-            static () => new Measurement<long>(
-                1,
-                new KeyValuePair<string, object?>("state", Volatile.Read(ref _drainState))));
+            ObserveDrainStates);
     private static readonly Histogram<double> DrainDuration =
         Meter.CreateHistogram<double>("zlink.drain.duration", "s");
     private static readonly Counter<long> DrainActorsHandedOff =
@@ -201,19 +199,21 @@ internal static class ZLinkRuntimeMetrics
     public static void RecordFanoutPublished(string? topic) => RecordTopic(FanoutPublished, topic);
     public static void RecordFanoutReceived(string? topic) => RecordTopic(FanoutReceived, topic);
 
-    public static void SetLocationPeers(object owner, long count)
+    public static IDisposable RegisterLocationPeers(Func<long> snapshot)
     {
-        if (!LocationPeers.Enabled)
-        {
-            LocationPeerContributions.TryRemove(owner, out _);
-            return;
-        }
-
-        LocationPeerContributions[owner] = Math.Max(0, count);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var owner = new object();
+        LocationPeerProviders[owner] = snapshot;
+        return new ProviderRegistration(() => LocationPeerProviders.TryRemove(owner, out _));
     }
 
-    public static void RemoveLocationPeers(object owner) =>
-        LocationPeerContributions.TryRemove(owner, out _);
+    public static IDisposable RegisterDrainState(Func<string> snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var owner = new object();
+        DrainStateProviders[owner] = snapshot;
+        return new ProviderRegistration(() => DrainStateProviders.TryRemove(owner, out _));
+    }
 
     public static void RecordLocationStoreError() => SafeAdd(LocationStoreErrors, 1);
 
@@ -251,8 +251,6 @@ internal static class ZLinkRuntimeMetrics
         SafeAdd(ObserverOverflow, 1, "event", eventName);
     }
 
-    public static void SetDrainState(string state) => Volatile.Write(ref _drainState, state);
-
     public static long StartDrain() => StartTimestamp(DrainDuration);
 
     public static void CompleteDrain(long startedTimestamp, string outcome)
@@ -273,6 +271,46 @@ internal static class ZLinkRuntimeMetrics
     public static void RecordDrainForced(string kind, long count = 1)
     {
         if (count > 0) SafeAdd(DrainForced, count, "kind", kind);
+    }
+
+    private static long ObserveLocationPeers()
+    {
+        long total = 0;
+        foreach (var snapshot in LocationPeerProviders.Values)
+            try
+            {
+                total += Math.Max(0, snapshot());
+            }
+            catch
+            {
+            }
+        return total;
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveDrainStates()
+    {
+        foreach (var snapshot in DrainStateProviders.Values)
+        {
+            string state;
+            try
+            {
+                state = snapshot();
+            }
+            catch
+            {
+                continue;
+            }
+            yield return new Measurement<long>(
+                1,
+                new KeyValuePair<string, object?>("state", state));
+        }
+    }
+
+    private sealed class ProviderRegistration(Action unregister) : IDisposable
+    {
+        private Action? _unregister = unregister;
+
+        public void Dispose() => Interlocked.Exchange(ref _unregister, null)?.Invoke();
     }
 
     private static void RecordTopic(Counter<long> counter, string? topic)

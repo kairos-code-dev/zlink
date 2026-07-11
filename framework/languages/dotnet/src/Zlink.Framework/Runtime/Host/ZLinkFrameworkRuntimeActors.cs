@@ -134,8 +134,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                 {
                     throw;
                 }
-                catch (ZLinkFrameworkException)
+                catch (ZLinkFrameworkException error)
                 {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff rejected actor={actorState.ActorId} target={target} kind={error.Kind} message={error.Message}");
                     // A peer can leave or reject admission after the location
                     // snapshot. Try the remaining compatible entries before
                     // the next bounded drain pass refreshes the store view.
@@ -176,6 +178,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         foreach (var entry in entries)
             if (acceptingNodes.Contains(entry.NodeRid.ToHex()))
                 targets[entry.NodeRid.ToHex()] = entry.NodeRid;
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"drain targets actorType={actorType} mesh={meshName} peers={meshPeers.Count} entries={entries.Count} accepting={targets.Count}");
         return targets.Values.ToArray();
     }
 

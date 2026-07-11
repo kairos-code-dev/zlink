@@ -250,10 +250,19 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         using (payload)
         {
             await EnsureConnectedAsync();
-            var decoded = ZLinkStreamProtocolDefaults.DecodeHeader(header.AsReadOnlyMemory());
-            if (decoded.Kind == ZlinkStreamMessageKind.Control)
+            ZlinkStreamHeader decoded;
+            try
             {
-                ZLinkStreamControlFrames.Dispatch(Stream, decoded, payload.AsReadOnlyMemory());
+                decoded = ZLinkStreamProtocolDefaults.DecodeHeader(header.AsReadOnlyMemory());
+                if (decoded.Kind == ZlinkStreamMessageKind.Control)
+                {
+                    ZLinkStreamControlFrames.Dispatch(Stream, decoded, payload.AsReadOnlyMemory());
+                    return;
+                }
+            }
+            catch (Exception protocolError)
+            {
+                await CloseForProtocolErrorAsync(protocolError).ConfigureAwait(false);
                 return;
             }
 
@@ -329,6 +338,25 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private async ValueTask MarkDisconnectedAsync(ZLinkStreamError error)
     {
         await CompleteSessionAsync(error, true);
+    }
+
+    private async ValueTask CloseForProtocolErrorAsync(Exception error)
+    {
+        Volatile.Write(ref _explicitCloseReason, "protocol_error");
+        if (Interlocked.Exchange(ref _disconnected, 1) != 0) return;
+        try
+        {
+            await Stream.CloseAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+        }
+        await CompleteSessionAsync(
+                new ZLinkStreamError(
+                    ZLinkStreamSessionError.Internal,
+                    new ZLinkStreamDiagnostic(0, error.Message)),
+                notifyDisconnected: true)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask MarkClosedAsync()

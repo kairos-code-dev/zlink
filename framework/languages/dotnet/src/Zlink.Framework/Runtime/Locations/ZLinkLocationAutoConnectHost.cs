@@ -312,6 +312,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
             local, row, _runtime, _peers, executor, _options, _time, _events);
+        reconciler.RegisterPeerMetric();
         _reconcilers.Add(reconciler);
         if (type == ZLinkLocationAutoConnectType.RouteMesh)
             _routeMeshReconcilers[meshName] = reconciler;

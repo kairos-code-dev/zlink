@@ -47,21 +47,34 @@ internal sealed class ZLinkLocationStoreHealth
 
 internal static class ZLinkLocationStoreRead
 {
+    internal static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+
     internal static async ValueTask<T> ExecuteAsync<T>(
         ZLinkLocationStoreHealth? health,
         string source,
         CancellationToken callerToken,
-        Func<ValueTask<T>> read)
+        Func<CancellationToken, ValueTask<T>> read)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+        timeout.CancelAfter(Timeout);
         try
         {
-            var result = await read().ConfigureAwait(false);
+            var result = await read(timeout.Token).ConfigureAwait(false);
             health?.ReportSuccess(source);
             return result;
         }
         catch (OperationCanceledException) when (callerToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException error) when (timeout.IsCancellationRequested)
+        {
+            var failure = new TimeoutException(
+                $"Location store read '{source}' exceeded {Timeout}.",
+                error);
+            health?.ReportFailure(source, failure);
+            ZLinkRuntimeMetrics.RecordLocationStoreError();
+            throw failure;
         }
         catch (Exception error)
         {

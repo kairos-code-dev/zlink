@@ -225,3 +225,5 @@ require_log_count 1 "entry spot: actor destroy completed\\. actor=player-1" "${L
 require_log_count 1 "entry spot: actor destroy completed\\. actor=player-2" "${LOG_DIR}/play-a.log"
 require_log_count 0 "entry spot: actor destroy completed\\. actor=observer" "${LOG_DIR}/play-b.log"
 grep -Rq "message flow" "${BINGO_LOG_DIR}"
+grep -Eq "zlink metric name=zlink\.stream\.connections\.(active|opened)" "${LOG_DIR}/session-a.log"
+grep -Eq "zlink metric name=zlink\.spot\.(count|queue\.depth)" "${LOG_DIR}/play-a.log"

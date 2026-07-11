@@ -222,7 +222,7 @@ public sealed class LocationRuntimeQueryTests
                 callerHealth,
                 "caller",
                 canceled.Token,
-                () => ValueTask.FromException<int>(new OperationCanceledException())));
+                _ => ValueTask.FromException<int>(new OperationCanceledException())));
 
         var internalHealth = new ZLinkLocationStoreHealth();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
@@ -230,7 +230,7 @@ public sealed class LocationRuntimeQueryTests
                 internalHealth,
                 "internal",
                 CancellationToken.None,
-                () => ValueTask.FromException<int>(new OperationCanceledException("store timeout"))));
+                _ => ValueTask.FromException<int>(new OperationCanceledException("store timeout"))));
 
         Assert.True(callerHealth.GetSnapshot().Healthy);
         Assert.False(internalHealth.GetSnapshot().Healthy);

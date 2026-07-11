@@ -22,7 +22,7 @@ internal sealed class ZLinkDrainForceException(
     public ZLinkDrainForceReason Reason { get; } = reason;
 }
 
-internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
+internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
 {
     internal static readonly TimeSpan DefaultDeadline = TimeSpan.FromSeconds(30);
 
@@ -33,6 +33,8 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
     private readonly object _gate = new();
     private readonly TaskCompletionSource<ZLinkDrainResult> _terminal =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly IDisposable _metricRegistration;
+    private string _state = "serving";
     private Task<ZLinkDrainResult>? _operation;
 
     public ZLinkDrainCoordinator(
@@ -45,6 +47,8 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
         _executor = executor;
         _events = events;
         _flowGenerationEnabled = flowGenerationEnabled ?? AlwaysDisabled;
+        _metricRegistration = ZLinkRuntimeMetrics.RegisterDrainState(
+            () => Volatile.Read(ref _state));
     }
 
     public bool IsReady => !_admission.IsDraining;
@@ -69,7 +73,7 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
             if (_operation is null)
             {
                 _admission.BeginDrain();
-                ZLinkRuntimeMetrics.SetDrainState("draining");
+                Volatile.Write(ref _state, "draining");
                 _operation = ExecuteSharedAsync(deadline);
             }
             operation = _operation;
@@ -116,7 +120,7 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
 
         if (result is Drained)
         {
-            ZLinkRuntimeMetrics.SetDrainState("drained");
+            Volatile.Write(ref _state, "drained");
             await PublishStateAsync(ZLinkDrainState.Drained).ConfigureAwait(false);
             ZLinkRuntimeMetrics.CompleteDrain(metricStarted, "drained");
         }
@@ -131,7 +135,7 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
 
     private async ValueTask<ZLinkDrainResult> ForceStopAsync(ZLinkDrainForceReason reason)
     {
-        ZLinkRuntimeMetrics.SetDrainState("force_stopping");
+        Volatile.Write(ref _state, "force_stopping");
         await PublishStateAsync(ZLinkDrainState.ForceStopping).ConfigureAwait(false);
         try
         {
@@ -158,4 +162,6 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
     }
 
     private static bool AlwaysDisabled() => false;
+
+    public void Dispose() => _metricRegistration.Dispose();
 }

@@ -1303,3 +1303,56 @@ path의 상한 의도는 `LARGE_MESSAGE_POOL_HOT_PATH` 주석으로 남겼다. �
 - public API 변경: 없음
 - perf 변경: 없음
 - 다음 transport: wss
+
+### wss
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_035447_core_9_0_cpp_multi_pubsub_wss_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_035805_core_9_0_cpp_multi_pubsub_wss_nopin_paired_20260712.txt`
+
+처리량 비율은 85.9%, 87.7%, 96.7%, 94.5%, 91.7%, 106.1%였고 평균
+latency 최대 비율은 1.15배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_PUBSUB / wss`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: tls
+
+### tls
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. 최초 C 측정 뒤 다른 작업의
+ObservabilityOps 프로세스가 종료되고 CPU idle 92~93%가 된 것을 확인한 다음 C++을
+시작했다.
+
+- C: `perf_c_multi_linux_20260712_040315_core_9_0_cpp_multi_pubsub_tls_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_040801_core_9_0_cpp_multi_pubsub_tls_nopin_paired_20260712.txt`
+
+64, 256, 1024, 4096B 처리량 비율은 93.2%, 91.3%, 86.9%, 90.2%였고 평균
+latency 최대 비율은 1.11배였다. 네 셀은 첫 측정에서 목표를 만족했다. C++ 측정의
+대형 셀은 회차 사이 변동이 커서 65536B와 131072B만 다시 측정했다.
+
+두 크기를 연속으로 실행한 C 재측정은 65536B 첫 회 뒤
+`malloc_consolidate(): unaligned fastbin chunk detected`로 종료됐다. 이 partial report는
+`perf_c_multi_linux_20260712_041112_core_9_0_cpp_multi_pubsub_tls_large_nopin_recheck_20260712.txt`다.
+성능 미달로 판정하지 않고 크기 전환을 제외하기 위해 C의 두 셀을 각각 독립 실행했다.
+
+- C 65536B: `perf_c_multi_linux_20260712_041207_core_9_0_cpp_multi_pubsub_tls65536_nopin_crash_recheck_20260712.txt`
+- C 131072B: `perf_c_multi_linux_20260712_041128_core_9_0_cpp_multi_pubsub_tls131072_nopin_crash_recheck_20260712.txt`
+- C++ 65536,131072B: `perf_cpp_multi_linux_20260712_041250_core_9_0_cpp_multi_pubsub_tls_large_nopin_recheck_20260712.txt`
+
+독립 재측정에서 65536B는 C 92.044 Kmsg/s와 165.020ms, C++ 92.928 Kmsg/s와
+62.944ms로 처리량 101.0%, 평균 latency 0.38배였다. 131072B는 C 45.622 Kmsg/s와
+415.423ms, C++ 41.914 Kmsg/s와 120.809ms로 처리량 91.9%, 평균 latency 0.29배였다.
+두 셀 모두 목표를 만족했다. 측정 의미나 binding 동작을 바꾸는 perf 수정은 하지 않았다.
+
+### pattern 판정
+
+- `MULTI_PUBSUB / tcp`: 완료
+- `MULTI_PUBSUB / ws`: 완료
+- `MULTI_PUBSUB / wss`: 완료
+- `MULTI_PUBSUB / tls`: 완료
+- C++ binding 변경: pooled storage 총량 제한 개선
+- public API 변경: 없음
+- perf 변경: 없음
+- 다음 pattern: Multi `MULTI_SPOT`

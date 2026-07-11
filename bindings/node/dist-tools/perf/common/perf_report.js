@@ -32,8 +32,12 @@ function buildEffectiveOptions(options, extraLines = []) {
     return lines;
 }
 function throughputUnit(pattern) {
-    return pattern === 'MULTI_DEALER_ROUTER'
+    return pattern === 'DEALER_ROUTER_REQREP'
+        || pattern === 'ROUTER_ROUTER_REQREP'
+        || pattern === 'MULTI_DEALER_ROUTER'
+        || pattern === 'MULTI_DEALER_ROUTER_REQREP'
         || pattern === 'MULTI_ROUTER_ROUTER'
+        || pattern === 'MULTI_ROUTER_ROUTER_REQREP'
         || pattern === 'MULTI_STREAM'
         || pattern === 'MULTI_SPOT_REQREP'
         || pattern === 'MULTI_SPOT_SENDSEND'

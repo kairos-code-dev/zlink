@@ -59,9 +59,10 @@ function singleTableSeparatorLine() {
   );
 }
 
-function singleFormatThroughput(throughputPerSec) {
+function singleFormatThroughput(pattern, throughputPerSec) {
   // f"{tp/1e3:6.2f} Kmsg/s"
-  return `${fixed(throughputPerSec / 1e3, 2, 6)} Kmsg/s`;
+  const unit = pattern.endsWith('_REQREP') ? 'Kops/s' : 'Kmsg/s';
+  return `${fixed(throughputPerSec / 1e3, 2, 6)} ${unit}`;
 }
 
 function singleFormatBandwidth(bandwidthMbS) {
@@ -72,7 +73,7 @@ function singleFormatLatencyMs(latencyMs) {
   return `${fixed(latencyMs, 3, 8)} ms`;
 }
 
-function singleTableRowLine(size, status, record, _pattern) {
+function singleTableRowLine(size, status, record, pattern) {
   let tp;
   let bw;
   let lat;
@@ -82,7 +83,7 @@ function singleTableRowLine(size, status, record, _pattern) {
     const [, p95, p99] = resolveLatencyTriplet(
       record.latency, record.latency_p95, record.latency_p99
     );
-    tp = singleFormatThroughput(record.throughput);
+    tp = singleFormatThroughput(pattern, record.throughput);
     bw = singleFormatBandwidth(record.bandwidth);
     lat = singleFormatLatencyMs(record.latency);
     lat95 = singleFormatLatencyMs(p95 !== undefined && p95 !== null ? p95 : 0.0);
@@ -118,7 +119,9 @@ function multiTableSeparatorLine() {
 
 function isEchoPattern(pattern) {
   return pattern === 'MULTI_DEALER_ROUTER'
+    || pattern === 'MULTI_DEALER_ROUTER_REQREP'
     || pattern === 'MULTI_ROUTER_ROUTER'
+    || pattern === 'MULTI_ROUTER_ROUTER_REQREP'
     || pattern === 'MULTI_STREAM'
     || pattern === 'MULTI_SPOT_REQREP'
     || pattern === 'MULTI_SPOT_SENDSEND';

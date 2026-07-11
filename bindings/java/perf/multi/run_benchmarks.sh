@@ -211,7 +211,7 @@ for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS CONNECT_READY_TIMEOUT_MS TRANSPORT_TR
 done
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM"
+  PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_DEALER_ROUTER_REQREP,MULTI_ROUTER_ROUTER,MULTI_ROUTER_ROUTER_REQREP,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM"
 fi
 
 detect_platform() {
@@ -607,7 +607,7 @@ ensure_memory_budget() {
 
 throughput_unit_for_pattern() {
   case "$1" in
-    DEALER_ROUTER|ROUTER_ROUTER|SPOT_REQREP|SPOT_SENDSEND|STREAM) printf 'Kops/s' ;;
+    DEALER_ROUTER|DEALER_ROUTER_REQREP|ROUTER_ROUTER|ROUTER_ROUTER_REQREP|SPOT_REQREP|SPOT_SENDSEND|STREAM) printf 'Kops/s' ;;
     *) printf 'Kmsg/s' ;;
   esac
 }
@@ -623,7 +623,7 @@ import sys
 
 pattern, transport, size, source_file, prefix = sys.argv[1:]
 size = int(size)
-unit = "Kops/s" if pattern in {"DEALER_ROUTER", "ROUTER_ROUTER", "SPOT_REQREP", "SPOT_SENDSEND", "STREAM"} else "Kmsg/s"
+unit = "Kops/s" if pattern in {"DEALER_ROUTER", "DEALER_ROUTER_REQREP", "ROUTER_ROUTER", "ROUTER_ROUTER_REQREP", "SPOT_REQREP", "SPOT_SENDSEND", "STREAM"} else "Kmsg/s"
 metrics = {}
 with open(source_file, encoding="utf-8") as f:
     for line in f:
@@ -662,7 +662,7 @@ from collections import defaultdict
 pattern, transport, size, metrics_file, prefix = sys.argv[1:]
 size = int(size)
 bare = pattern.removeprefix("MULTI_")
-unit = "Kops/s" if pattern in {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND", "MULTI_STREAM"} else "Kmsg/s"
+unit = "Kops/s" if pattern in {"MULTI_DEALER_ROUTER", "MULTI_DEALER_ROUTER_REQREP", "MULTI_ROUTER_ROUTER", "MULTI_ROUTER_ROUTER_REQREP", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND", "MULTI_STREAM"} else "Kmsg/s"
 values = defaultdict(list)
 with open(metrics_file, newline="", encoding="utf-8") as f:
     for row in csv.reader(f):
@@ -1080,7 +1080,9 @@ run_socket_case() {
   append_auto_hwm_details "${client_log}"
 
   if [[ "${bare_pattern}" == "DEALER_ROUTER" \
+     || "${bare_pattern}" == "DEALER_ROUTER_REQREP" \
      || "${bare_pattern}" == "ROUTER_ROUTER" || "${bare_pattern}" == "PUBSUB" \
+     || "${bare_pattern}" == "ROUTER_ROUTER_REQREP" \
      || "${bare_pattern}" == "SPOT_REQREP" \
      || "${bare_pattern}" == "SPOT_SENDSEND" \
      || "${bare_pattern}" == "SPOT" ]]; then
@@ -1411,7 +1413,8 @@ actual_result_lines = int(actual_result_lines)
 all_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 
 ECHO_PATTERNS = {
-    "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_SPOT_REQREP",
+    "MULTI_DEALER_ROUTER", "MULTI_DEALER_ROUTER_REQREP",
+    "MULTI_ROUTER_ROUTER", "MULTI_ROUTER_ROUTER_REQREP", "MULTI_SPOT_REQREP",
     "MULTI_SPOT_SENDSEND", "MULTI_STREAM",
 }
 

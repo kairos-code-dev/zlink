@@ -415,6 +415,47 @@ class socket_t
         });
     }
 
+    bool request (message_t &part_,
+                  std::chrono::milliseconds timeout_,
+                  int flags_,
+                  request_callback_t callback_)
+    {
+        return visit ([&] (auto &socket_) -> bool {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, dealer_socket_t>::value) {
+                return std::move (socket_.request ())
+                  .message (part_)
+                  .timeout (timeout_)
+                  .flags (flags_)
+                  .submit (std::move (callback_));
+            } else {
+                errno = EOPNOTSUPP;
+                return false;
+            }
+        });
+    }
+
+    bool request (const routing_id_t &target_rid_,
+                  message_t &part_,
+                  std::chrono::milliseconds timeout_,
+                  int flags_,
+                  request_callback_t callback_)
+    {
+        return visit ([&] (auto &socket_) -> bool {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, router_socket_t>::value) {
+                return std::move (socket_.request (target_rid_))
+                  .message (part_)
+                  .timeout (timeout_)
+                  .flags (flags_)
+                  .submit (std::move (callback_));
+            } else {
+                errno = EOPNOTSUPP;
+                return false;
+            }
+        });
+    }
+
     int
     try_send_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_)
     {

@@ -64,11 +64,7 @@ SPOT_CONTROL_NON_TCP_TRANSPORTS = {"tls", "ws", "wss"}
 SPOT_CONTROL_CONNECT_READY_TIMEOUT_MS = "30000"
 SPOT_CONTROL_SERVER_READY_TIMEOUT_MS = "30000"
 DEALER_DEALER_SERVER_SHUTDOWN_TIMEOUT_MS = "30000"
-RAW_TRANSPORTS = (
-    ("tcp", "tls", "ws", "wss")
-    if sys.platform.startswith("win")
-    else ("tcp", "tls", "ws", "wss", "ipc")
-)
+RAW_TRANSPORTS = ("tcp", "tls", "ws", "wss")
 POLICY_TRANSPORTS = {
     "DEALER_DEALER": RAW_TRANSPORTS,
     "DEALER_ROUTER": RAW_TRANSPORTS,

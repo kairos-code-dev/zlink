@@ -1080,9 +1080,9 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴군 | 크기 |
 |--------|------|
-| MULTI_DEALER / MULTI_ROUTER / MULTI_PUBSUB | `[64, 256, 1024, 65536, 131072, 262144]` |
+| MULTI_DEALER / MULTI_ROUTER / MULTI_PUBSUB | `[64, 256, 1024, 4096, 65536, 131072]` |
 | MULTI_STREAM | `[64, 256, 1024, 65536]` |
-| MULTI_SPOT / MULTI_SPOT_REQREP / MULTI_SPOT_SENDSEND | `[64, 256, 1024, 65536, 131072, 262144]` |
+| MULTI_SPOT / MULTI_SPOT_REQREP / MULTI_SPOT_SENDSEND | `[64, 256, 1024, 4096, 65536, 131072]` |
 
 - STREAM 계열은 대량 동시 연결 환경에서 테스트하므로 65536B까지만 측정한다.
 
@@ -1131,7 +1131,7 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | `--io-threads N` | 서버/클라이언트 io threads 동시 설정 (레거시 별칭) | — |
 | `--server-io-threads N` | 서버 io threads (Linux sh만 지원) | 4 |
 | `--client-io-threads N` | 클라이언트 io threads (Linux sh만 지원) | 4 |
-| `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 8.2 참조 | `64,256,1024,65536,131072,262144` (STREAM: `64,256,1024,65536`) |
+| `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 8.2 참조 | `64,256,1024,4096,65536,131072` (STREAM: `64,256,1024,65536`) |
 | `--transports LIST` | transport 목록 (쉼표 구분) | `tcp,tls,ws,wss` |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
 | `--results-dir PATH` | 결과 저장 루트 디렉터리 override | `perf/results` |

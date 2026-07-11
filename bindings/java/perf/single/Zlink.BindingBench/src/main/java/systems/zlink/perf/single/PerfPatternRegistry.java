@@ -15,7 +15,9 @@ final class PerfPatternRegistry {
             "PUBSUB", PerfPubSub::run,
             "DEALER_DEALER", PerfDealerDealer::run,
             "DEALER_ROUTER", PerfDealerRouter::run,
+            "DEALER_ROUTER_REQREP", config -> PerfSocketReqRep.run(config, false),
             "ROUTER_ROUTER", PerfRouterRouter::run,
+            "ROUTER_ROUTER_REQREP", config -> PerfSocketReqRep.run(config, true),
             "SPOT", PerfSpot::run
         );
 

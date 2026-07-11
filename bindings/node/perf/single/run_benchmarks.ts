@@ -32,7 +32,9 @@ const PATTERNS = {
   PUBSUB: { script: 'perf_pubsub.js' },
   DEALER_DEALER: { script: 'perf_dealer_dealer.js' },
   DEALER_ROUTER: { script: 'perf_dealer_router.js' },
+  DEALER_ROUTER_REQREP: { script: 'perf_dealer_router_reqrep.js' },
   ROUTER_ROUTER: { script: 'perf_router_router.js' },
+  ROUTER_ROUTER_REQREP: { script: 'perf_router_router_reqrep.js' },
   SPOT: { script: 'perf_spot.js' }
 };
 
@@ -345,7 +347,7 @@ async function main() {
       emit('===============================================================================');
       emit('');
     }
-    emit(`## PATTERN: ${name} (one-way)`);
+    emit(`## PATTERN: ${name} (${name.endsWith('_REQREP') ? 'request/reply' : 'one-way'})`);
     tablesEmitted = true;
 
     if (transports.length === 0) {

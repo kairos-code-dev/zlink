@@ -49,7 +49,9 @@ STREAM_SERVER_BINARY_BY_PATTERN = {
 PATTERN_SUFFIX = {
     "DEALER_DEALER": "dealer_dealer",
     "DEALER_ROUTER": "dealer_router",
+    "DEALER_ROUTER_REQREP": "dealer_router_reqrep",
     "ROUTER_ROUTER": "router_router",
+    "ROUTER_ROUTER_REQREP": "router_router_reqrep",
     "PUBSUB": "pubsub",
     "SPOT": "spot",
     "SPOT_REQREP": "spot_reqrep",
@@ -58,7 +60,9 @@ PATTERN_SUFFIX = {
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
+    "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
+    "ROUTER_ROUTER_REQREP",
     "SPOT_REQREP",
     "SPOT_SENDSEND",
     "STREAM",
@@ -86,7 +90,9 @@ SINGLE_COMPARISONS = [
 MULTI_COMPARISONS = [
     ("cpp_comp_src_dealer_dealer_client", "DEALER_DEALER"),
     ("cpp_comp_src_dealer_router_client", "DEALER_ROUTER"),
+    ("cpp_comp_src_dealer_router_reqrep_client", "DEALER_ROUTER_REQREP"),
     ("cpp_comp_src_router_router_client", "ROUTER_ROUTER"),
+    ("cpp_comp_src_router_router_reqrep_client", "ROUTER_ROUTER_REQREP"),
     ("cpp_comp_src_pubsub_client", "PUBSUB"),
     ("cpp_comp_src_spot_client", "SPOT"),
     ("cpp_comp_src_spot_reqrep_client", "SPOT_REQREP"),
@@ -97,7 +103,9 @@ MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
 SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_DEALER": ("recv",),
     "DEALER_ROUTER": ("recv",),
+    "DEALER_ROUTER_REQREP": ("recv",),
     "ROUTER_ROUTER": ("recv",),
+    "ROUTER_ROUTER_REQREP": ("recv",),
     "PUBSUB": ("recv",),
     "SPOT": ("recv",),
     "SPOT_REQREP": ("recv",),

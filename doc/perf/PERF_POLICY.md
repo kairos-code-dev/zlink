@@ -1347,7 +1347,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads. single 기본값은 모든 패턴에서 1이며, SPOT 계열 예외를 두지 않는다. multi 기본값은 server/client 모두 4다. Python multi는 GIL 기반 callback 경합을 피하기 위해 기본값 1을 사용하되, 이 변수를 설정하면 명시값을 따른다. | suite별 기본값 |
-| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행). single/multi 기본값은 `64,256,1024,65536,131072,262144` 이고, multi STREAM 기본값은 `64,256,1024,65536` | suite/패턴별 기본값 |
+| `PERF_MSG_SIZES` | 테스트 size 목록이며 runner가 size별 case로 나누어 실행한다. single 기본값은 `64,256,1024,65536,131072,262144`, multi 기본값은 `64,256,1024,4096,65536,131072`, multi STREAM 기본값은 `64,256,1024,65536`이다. | suite/패턴별 기본값 |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | suite/패턴별 기본값 |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 | 0 |

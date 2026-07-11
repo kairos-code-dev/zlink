@@ -1,0 +1,1156 @@
+# core 9.0 bindings 라이브러리 성능 개선 계획
+
+> 시작일: 2026-07-11
+>
+> 이 문서는 core 9.0.0을 기준으로 bindings 라이브러리 성능 개선을 처음부터
+> 진행하기 위한 실행 문서다. 이전 계획 문서의 측정값과 완료 판정은 가져오지 않는다.
+> 새 C 기준 결과와 각 binding의 새 결과만 이 문서에 기록한다.
+
+## 1. 기준 버전과 시작 상태
+
+이번 작업의 core 기준 버전은 9.0.0이다. 측정 전에 다음 세 파일의 버전이 모두 같은지
+확인한다.
+
+- `VERSION`: `LIBZLINK_VERSION=9.0.0`
+- `core/CMakeLists.txt`: `project(zlink VERSION 9.0.0 ...)`
+- `core/include/zlink.h`: major 9, minor 0, patch 0
+
+`bindings/tools/local_core_runtime.sh`는 `VERSION`의 값을 이용해 versioned runtime
+경로를 선택한다. 따라서 파일 이름이나 `Perf runtime libzlink: ...` 경로만 보고
+판정하지 않는다. runner 또는 binding의 public version API가 보고한 실제 runtime
+버전도 9.0.0인지 확인한다.
+
+측정을 시작하기 전에 `core/build`를 현재 소스로 다시 빌드한다. `core/src`,
+`core/include`, `VERSION`이 runtime보다 새로우면 측정을 시작하지 않는다. 다른
+버전의 local package나 오래된 runtime을 사용한 결과도 이 문서의 기준값으로 사용하지
+않는다.
+
+모든 성능 셀은 `미측정`에서 시작한다. 다만 공식 C runner에 존재하지만 해당 binding
+runner에서 찾을 수 없는 pattern은 `측정 gap`으로 표시한다. 이전 문서와 이전 report는
+병목 후보를 찾는 참고 자료로만 사용하며, core 9.0.0의 통과 비율이나 완료 근거로
+사용하지 않는다.
+
+## 2. 범위와 목표
+
+개선 대상은 perf 코드가 아니라 다음 bindings 라이브러리다.
+
+| 순서 | 언어 | perf 경로 |
+|------|------|-----------|
+| 1 | C++ | `bindings/cpp/perf` |
+| 2 | .NET | `bindings/dotnet/perf` |
+| 3 | Java | `bindings/java/perf` |
+| 4 | Node | `bindings/node/perf` |
+| 5 | Go | `bindings/go/perf` |
+| 6 | Rust | `bindings/rust/perf` |
+| 7 | Python | `bindings/python/perf` |
+
+비교 기준은 같은 core 9.0.0 runtime으로 실행한 `bindings/c/perf` 결과다. 같은 suite,
+pattern, transport, message size, duration, client 수, metric을 맞춘 뒤 다음 식으로
+비율을 계산한다.
+
+```text
+binding ratio (%) = binding throughput / C throughput * 100
+```
+
+### 2.1 Throughput 목표
+
+아래 표의 왼쪽 값은 최소 통과 기준이고 오른쪽 값은 안정권 기준이다. 큰 메시지는 같은
+pattern 그룹의 낮은 기준을 적용하고, 작은 메시지는 높은 기준에 가까워지는 것을 목표로
+한다.
+
+목표는 `doc/perf/perf/log/`에 기록된 이전 라운드의 최종 채택 측정값으로 상향 조정했다.
+`status=complete`인 결과로 작성한 최종 상태표에서 C 대비 비율을 모아 언어 그룹별 p10과
+하위 25% 경계값을 계산했다. 기존 최소 기준보다 p10이 높으면 p10을 5%p 단위로 내림한
+값까지 최소 기준을 올렸고, 기존 안정권 기준보다 하위 25% 경계값이 높으면 같은 방식으로
+안정권 기준을 올렸다. 일부 느린 셀이나 폐기한 후보의 수치를 이유로 기존 목표를 낮추지는
+않았다.
+
+| 언어 그룹 | Pattern 그룹 | 과거 실측 p10 | 과거 실측 하위 25% 경계값 |
+|-----------|--------------|---------------|----------------------------|
+| C++ / Rust | 단순 one-way | 89.1% | 95.1% |
+| C++ / Rust | routed one-way | 62.5% | 88.2% |
+| C++ / Rust | multi routed echo | 82.6% | 89.5% |
+| C++ / Rust | SPOT 계열 | 85.5% | 92.1% |
+| .NET / Java | 단순 one-way | 74.9% | 87.6% |
+| .NET / Java | routed one-way | 78.1% | 83.6% |
+| .NET / Java | multi routed echo | 54.8% | 57.0% |
+| .NET / Java | SPOT 계열 | 60.8% | 71.2% |
+| Go | 단순 one-way | 59.4% | 68.2% |
+| Go | routed one-way | 50.0% | 55.8% |
+| Go | multi routed echo | 41.3% | 42.4% |
+| Go | SPOT 계열 | 54.4% | 57.2% |
+| Node | 단순 one-way | 33.6% | 36.1% |
+| Node | routed one-way | 33.0% | 39.4% |
+| Node | multi routed echo | 29.9% | 31.1% |
+| Node | SPOT 계열 | 31.9% | 38.6% |
+
+Python의 과거 full matrix는 이후 공개 계약 복구 전 구현으로 측정한 값이므로 목표 상향
+근거에서 제외했다. Node와 Python의 기존 공통 목표는 이번 core 9.0 full matrix가 나올
+때까지 유지한다. socket request/reply도 이전 라운드에 정식 측정 항목이 없었으므로 현재
+값을 잠정 기준으로 유지하고, 이번 라운드의 paired full 측정 뒤 같은 규칙으로 조정한다.
+
+| Pattern 그룹 | 포함 pattern | C++/Rust | .NET/Java | Go | Node/Python |
+|--------------|--------------|----------|-----------|----|-------------|
+| 단순 one-way | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `MULTI_PUBSUB`, `MULTI_STREAM` | 85~95% | 70~85% | 55~65% | 35~43% |
+| routed one-way | `DEALER_ROUTER`, `ROUTER_ROUTER` | 70~85% | 75~80% | 50~57% | 33~40% |
+| socket request/reply | `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_REQREP`, `MULTI_DEALER_ROUTER_REQREP`, `MULTI_ROUTER_ROUTER_REQREP` | 65~77% | 50~63% | 40~53% | 30~37% |
+| multi routed echo | `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER` | 80~85% | 50~63% | 40~53% | 30~37% |
+| SPOT 계열 | `SPOT`, `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_SPOT_SENDSEND` | 85~90% | 60~70% | 50~60% | 33~40% |
+
+`ROUTER_ROUTER` 계열은 절대 기준과 함께 같은 suite와 mode의
+`DEALER_ROUTER` 대비 상대 비율도 확인한다. 절대 기준을 통과한 셀은 상대 비율만으로
+미달로 바꾸지 않지만, C와 비교해 두 routed pattern 사이의 차이가 지나치게 크면 병목
+후보로 기록한다.
+
+### 2.2 Latency 목표
+
+throughput을 통과해도 latency mean, p95, p99 중 하나가 아래 상한을 넘으면
+`미달`로 판정한다. C latency가 0으로 기록된 결과는 유효한 비율을 계산할 수 없으므로
+다시 측정한다.
+
+| 언어 그룹 | mean / p95 / p99의 C 대비 최대 비율 |
+|-----------|--------------------------------------|
+| C++ / Rust | 2.0배 |
+| .NET / Java / Go | 3.0배 |
+| Node / Python | 5.0배 |
+
+목표 경계 셀과 secure transport는 5회 반복 결과로 판정한다. 최적화 전후를 비교할 때
+대상이 아닌 대표 셀의 throughput 중앙값이 5% 넘게 낮아지거나 p99가 10% 넘게
+높아지면 회귀로 판정한다.
+
+## 3. 측정 크기
+
+### 3.1 Single suite
+
+Single 기본 크기는 기존 구성을 유지한다.
+
+| 표시 | bytes |
+|------|-------|
+| 64 B | 64 |
+| 256 B | 256 |
+| 1 KiB | 1024 |
+| 64 KiB | 65536 |
+| 128 KiB | 131072 |
+| 256 KiB | 262144 |
+
+### 3.2 Multi suite
+
+core 9.0.0의 현재 multi runner 기본값을 따른다. 이전 표의 256 KiB는 제거하고
+4 KiB를 추가한다.
+
+| 표시 | bytes | 상태 |
+|------|-------|------|
+| 64 B | 64 | 측정 |
+| 256 B | 256 | 측정 |
+| 1 KiB | 1024 | 측정 |
+| 4 KiB | 4096 | 새로 추가 |
+| 64 KiB | 65536 | 측정 |
+| 128 KiB | 131072 | 측정 |
+
+`MULTI_STREAM`의 현재 기본 크기는 64, 256, 1024, 65536 bytes다. 따라서 상세 표에서
+`MULTI_STREAM`의 4096과 131072 셀은 `해당 없음`으로 시작한다. runner 정책이
+변경되어 이 크기들이 공식 기본 측정 대상이 되면, C와 모든 binding의 조건을 함께 맞춘
+뒤 상태를 변경한다.
+
+## 4. 측정 전 inventory gate
+
+성능 측정 전에 각 공식 runner의 `ALL` 범위를 정적 검사한다. pattern, transport,
+message size, 기본 client 수와 지원 option을 아래 네 곳에서 대조한다.
+
+1. `bindings/c/perf` runner
+2. 각 binding의 공식 runner
+3. `doc/perf` 정책 문서
+4. 이 문서의 상세 표
+
+하나라도 다르면 baseline을 만들지 않는다. 공식 C pattern이 binding에 없으면
+`해당 없음`으로 숨기지 않고 `측정 gap`으로 둔다. 공통 public contract에 근거가
+있으면 binding public API와 perf를 구현한다. 계약 근거가 없으면 공개 API를 바로
+추가하지 않고 spec 또는 draft 검토 항목으로 분리한다.
+
+지원하지 않는 CLI option을 runner가 성공으로 받아들인 뒤 무시해서는 안 된다.
+실제로 적용하거나 명확한 오류로 거부해야 한다. 현재 .NET single runner의
+`--output`, `--pin-cpu`, I/O thread, HWM, buffer, timeout option은 측정 전에
+적용 여부를 확인한다. 조건 정렬에 필요한 option이 무시되면 해당 runner의 측정을
+시작하지 않는다.
+
+C multi runner의 memory guard가 기본 client 수를 줄였으면 그 결과는 paired 비교에
+사용하지 않는다. binding runner에도 같은 종류의 cap이 있으면 동일하게 적용한다. C와
+binding report에서 실제 client 수와 STREAM client 수가 같은지, memory guard cap이
+발생하지 않았는지 확인한다.
+
+## 5. 고정 원칙
+
+- 성능 개선은 각 binding의 public API를 사용하는 일반 경로에서 이루어져야 한다.
+- perf 전용 public API, private API 접근, C API 직접 호출, 특정 입력만 겨냥한 우회는
+  개선으로 인정하지 않는다.
+- perf는 측정 의미가 C와 다르거나, 실제 버그가 있거나, `doc/perf` 정책을 위반한
+  경우에만 수정한다.
+- 새 helper나 공개 API를 만들기 전에 기존 public API와 내부 구현으로 해결할 수 있는지
+  먼저 확인한다.
+- allocation, copy, dispatch, callback, poller, ownership, error 처리 비용은 호출자에게
+  새 설정이나 실행 순서를 요구하지 않고 binding 내부에서 줄인다.
+- timeout 증가, sleep 추가, retry 반복, client 수 축소로 실패를 숨기지 않는다.
+- core 버그이면 회귀 테스트를 먼저 추가하고 core에서 수정한다. 수정 뒤
+  `scripts/local-package/native/sync-local-core-libs.sh`로 local core library를 다시
+  배포한 다음 binding을 검증한다.
+- perf 결과는 report가 `status: complete`일 때만 표에 반영한다. 중단되었거나 일부
+  RESULT만 생성된 report는 근거로 사용하지 않는다.
+- `doc/perf/PERF_POLICY.md`, `doc/perf/PERF_SINGLE_TEST_POLICY.md`,
+  `doc/perf/PERF_MULTI_TEST_POLICY.md`를 따른다.
+
+## 6. 재현 환경 기록
+
+C와 binding을 paired 측정할 때 같은 session tag를 사용하고 다음 정보를 라운드 로그에
+기록한다.
+
+| 항목 | 기록 내용 |
+|------|-----------|
+| source | git commit, dirty 여부, 변경 파일 목록 |
+| core | 버전, runtime 절대 경로, build type, compiler와 linker 버전 |
+| binding | package 버전, compiler 또는 runtime 버전 |
+| host | OS, kernel, CPU model, 논리 CPU 수, memory |
+| CPU 상태 | governor, CPU pinning, 측정 중 다른 고부하 작업 유무 |
+| 명령 | C와 binding에 사용한 전체 명령과 성능 관련 환경 변수 |
+| 조건 | suite, pattern, transport, size, duration, runs, client 수, I/O thread 수 |
+| 결과 | report 경로, `status`, Effective Options, auto-HWM detail |
+| pair | C와 binding에 공통으로 부여한 session tag |
+
+core source, core build, runtime, host boot, CPU governor, client 수, toolchain 또는
+성능 관련 환경 변수가 바뀌면 이전 C 결과와 새 binding 결과를 짝지어 판정하지 않는다.
+binding before와 after 사이에는 검토 중인 변경만 있어야 하며 변경 파일을 manifest에
+기록한다. 그 밖의 조건이 바뀌면 같은 manifest 조건으로 C를 다시 제한 측정한다.
+
+## 7. 실행 절차
+
+공식 entrypoint만 사용한다.
+
+- C single: `bindings/c/perf/run_benchmarks.sh`
+- C multi: `bindings/c/perf/run_benchmarks_multi.sh`
+- binding single: `bindings/<lang>/perf/run_benchmarks.sh`
+- binding multi: `bindings/<lang>/perf/run_benchmarks_multi.sh`
+
+### 7.1 Smoke와 제한 사전 점검
+
+정책 smoke는 전체 pattern과 transport의 64B 경로가 실행되는지 확인한다.
+
+```bash
+PERF_FAIL_FAST=1 <runner> \
+  --pattern ALL \
+  --msg-sizes 64 \
+  --duration 1 \
+  --runs 1
+```
+
+특정 병목을 측정하기 전에는 별도의 제한 사전 점검을 실행한다. 이 명령은 전체 smoke를
+대체하지 않는다.
+
+```bash
+PERF_FAIL_FAST=1 <runner> \
+  --pattern <pattern> \
+  --transports <transport> \
+  --msg-sizes <sizes> \
+  --duration 1 \
+  --runs 1
+```
+
+두 실행 모두 `status: complete` report가 있어야 한다. console 출력만으로 통과로
+판정하지 않는다.
+
+### 7.2 반복 횟수와 변동성
+
+| 단계 | 기본 조건 | 용도 |
+|------|-----------|------|
+| smoke | 1초, 1회 | 실행 경로와 종료 상태 확인 |
+| 탐색 | 기본 duration, 1회 | 병목 후보 선별 |
+| 후보 판정 | 기본 duration, 3회 | before/after와 C 대비 비율 판정 |
+| 최종·경계 판정 | 기본 duration, 5회, CPU 고정 | 목표 기준 ±5%p, secure transport, 고변동 셀, 최종 근거 |
+
+3회 결과에서 throughput의 `(최댓값 - 최솟값) / 중앙값`이 10%를 넘거나 p99의 같은
+비율이 20%를 넘으면 5회와 CPU 고정으로 다시 측정한다. 5회 결과에서도 같은 한계를
+넘으면 `통과`로 판정하지 않고 환경과 runner 조건을 먼저 조사한다.
+
+### 7.3 Paired C 규칙
+
+최초 C full baseline은 전체 상태와 우선순위를 파악하는 기준이다. 언어별 통과 판정과
+before/after 채택은 가까운 시점에 같은 manifest로 실행한 제한 C 결과를 사용한다.
+
+- C와 binding에 같은 session tag를 사용한다.
+- 같은 pattern, transport, size, duration, runs, client 수, I/O thread 수를 사용한다.
+- binding before와 after는 같은 core source/build/runtime과 host session을 사용하고,
+  검토 중인 binding 변경만 다르게 유지한다.
+- core source, build, runtime, host boot 또는 성능 환경이 달라지면 C를 다시 측정한다.
+- 목표 기준 ±5%p 셀은 이전 full baseline만으로 판정하지 않는다.
+- paired report 중 하나라도 `status: complete`가 아니면 표를 갱신하지 않는다.
+
+### 7.4 작업 순서
+
+1. inventory gate를 통과시키고 정책, runner, 상세 표의 측정 범위를 일치시킨다.
+2. core 9.0.0을 빌드하고 재현 환경 manifest를 기록한다.
+3. C single/multi 정책 smoke를 실행한다.
+4. C single/multi full baseline을 새로 측정해 전체 상태를 파악한다.
+5. C++, .NET, Java, Node, Go, Rust, Python 순서로 진행한다.
+6. 각 언어에서 single은 tcp 64/1024/65536, multi는 tcp 64/4096/65536을 먼저
+   측정해 우선 병목을 선별한다.
+7. 미달 셀은 profiler, allocation 자료, copy 수, callback/dispatch 및 native 경계
+   자료로 비용 위치를 확인한다.
+8. 의미를 보존하는 개선안을 두 가지 이상 설계하고, 예상 영향 셀과 폐기 기준을 적은 뒤
+   public interface가 더 단순한 방안을 선택한다.
+9. 제한 사전 점검을 통과한 뒤 binding before, 후보 after, paired C를 3회 측정한다.
+10. 목표 경계나 변동이 큰 셀은 5회와 CPU 고정으로 다시 측정한다.
+11. 기능 테스트와 대상이 아닌 대표 셀의 회귀 gate를 통과시킨다.
+12. tcp가 안정되면 tls, ws, wss 순서로 같은 pattern과 size를 확대한다.
+13. 현재 언어의 모든 size와 pattern을 확인한 뒤 해당 언어 full matrix를 한 번 실행한다.
+14. 모든 언어가 끝나면 core 9.0.0 기준 최종 full matrix를 다시 실행한다.
+
+한 번에 하나의 언어만 측정한다. C와 binding을 paired 제한 측정할 때도 공식 perf
+프로세스는 순차 실행해 서로 CPU와 memory에 영향을 주지 않게 한다.
+
+## 8. 판정과 기록 방법
+
+상태 값은 다음과 같이 사용한다.
+
+- `미측정`: 같은 조건의 core 9.0.0 C 결과와 binding 결과를 아직 비교하지 않았다.
+- `통과(비율%)`: throughput, latency, 변동성, 회귀, Effective Options, auto-HWM,
+  client 수 조건을 모두 만족한다.
+- `미달(비율%)`: 유효한 결과가 있지만 목표에 도달하지 못했고 내부 개선이 필요하다.
+- `측정 gap`: 공식 C 측정 항목이 binding runner 또는 public API에 없다. 완료를 막는
+  상태이며, `해당 없음`으로 바꾸지 않는다.
+- `보류(비율%)`: 내부 개선 후보를 검증했지만 목표에 도달하지 못했으며, 필요한 계약
+  변경과 근거를 별도 항목으로 기록했다.
+- `해당 없음`: 공식 C runner와 binding 정책 모두 측정하지 않는 조합이다.
+
+timeout, no result, runtime mismatch, message size 불일치, client 수 불일치는 통과나
+보류가 아니다. 원인을 수정해 수치가 생성될 때까지 `미달` 또는 `미측정`으로
+유지한다.
+
+각 결과 파일 / 메모 칸에는 최소한 다음 내용을 남긴다.
+
+- paired session tag
+- C report와 binding report 경로
+- 두 report의 runtime 경로와 실제 core 버전
+- throughput 비율과 개별 반복값
+- latency mean, p95, p99 비율과 개별 반복값
+- throughput과 p99 변동 폭
+- Effective Options 일치 여부
+- auto-HWM의 `MsgUnit(B)` 일치 여부
+- 실제 client 수, STREAM client 수, memory guard cap 발생 여부
+- server/client의 CPU 피크와 최대 `nlwp`
+- profiler 또는 allocation/copy/native 경계 근거
+- 검토한 두 가지 개선안, 선택 이유, 예상 영향 셀, 폐기 기준
+- 대상이 아닌 대표 셀의 throughput과 p99 회귀 결과
+- 미달이면 다음 병목 후보, 보류이면 필요한 계약 변경
+
+## 9. 언어별 성능 확인 표
+
+모든 언어는 같은 열과 같은 상태 규칙을 사용한다. 상세 표의 상태가 진행 상태 요약보다
+우선한다. 상세 표에 `미측정`, `미달`, `측정 gap`, `보류`가 하나라도 남아 있으면
+해당 언어는 완료가 아니다.
+
+### 9.1 C++
+
+- perf 경로: `bindings/cpp/perf`
+- Single 상태: `누락 구현 완료, full 미측정`
+- Multi 상태: `누락 구현 완료, full 미측정`
+- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+
+#### 9.1.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
+| `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
+| `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+
+#### 9.1.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|------|-------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 2 clients, 64B 제한 스모크를 통과했다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 2 clients, 64B 제한 스모크를 통과했다. |
+| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
+| `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+
+### 9.2 .NET
+
+- perf 경로: `bindings/dotnet/perf`
+- Single 상태: `미측정`
+- Multi 상태: `미측정`
+- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+
+#### 9.2.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+
+#### 9.2.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|------|-------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+
+### 9.3 Java
+
+- perf 경로: `bindings/java/perf`
+- Single 상태: `누락 구현 완료, full 미측정`
+- Multi 상태: `누락 구현 완료, full 미측정`
+- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+
+#### 9.3.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+
+#### 9.3.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|------|-------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+
+### 9.4 Node
+
+- perf 경로: `bindings/node/perf`
+- Single 상태: `누락 구현 완료, full 미측정`
+- Multi 상태: `측정 gap 확인 필요`
+- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+
+#### 9.4.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+
+#### 9.4.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|------|-------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+
+### 9.5 Go
+
+- perf 경로: `bindings/go/perf`
+- Single 상태: `측정 gap 확인 필요`
+- Multi 상태: `측정 gap 확인 필요`
+- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+
+#### 9.5.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+
+#### 9.5.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|------|-------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+
+### 9.6 Rust
+
+- perf 경로: `bindings/rust/perf`
+- Single 상태: `측정 gap 확인 필요`
+- Multi 상태: `측정 gap 확인 필요`
+- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+
+#### 9.6.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+
+#### 9.6.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|------|-------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+
+### 9.7 Python
+
+- perf 경로: `bindings/python/perf`
+- Single 상태: `측정 gap 확인 필요`
+- Multi 상태: `측정 gap 확인 필요`
+- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+
+#### 9.7.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ipc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
+
+#### 9.7.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|------|-------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `wss` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 측정 gap | 공식 C pattern은 있으나 현재 binding runner inventory에서 미지원. 구현과 public contract를 조사한다. |
+| `tls` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+
+
+## 10. 전체 진행 상태
+
+### 10.1 사전 조건
+
+| 구분 | 상태 | 결과 파일 / 메모 |
+|------|------|------------------|
+| 버전 3곳 일치 | 확인 | `VERSION`, `core/CMakeLists.txt`, `core/include/zlink.h`가 모두 9.0.0이다. |
+| 실제 runtime 버전 | 확인 | `core/build/lib/libzlink.so.9.0.0`을 다시 빌드했고 public `zlink_version()`도 9.0.0을 보고했다. |
+| runner inventory | 보완 중 | C++의 single/multi socket request/reply 4개 pattern을 공개 request/reply API로 구현하고 공식 runner 제한 스모크를 통과했다. Java·Node·Go·Rust·Python의 single/multi 누락은 계속 보완한다. |
+| Multi size 정책 | 정렬 완료 | 4096 추가, 262144 제거를 정책과 runner에 맞췄다. |
+| 무시되는 runner option | 정렬 완료 | .NET single의 pin, I/O thread, timeout, auto-HWM profile은 실제 emitter에 전달한다. output과 HWM/buffer override는 명시적으로 오류를 반환한다. 제한 report에서 Effective Options를 확인했다. |
+| memory guard | 미확인 | paired 측정에서 client cap이 발생하지 않는 환경을 확인한다. |
+| 재현 환경 manifest | 미작성 | 첫 C baseline 전에 작성한다. |
+
+### 10.2 기준 측정
+
+| 구분 | 상태 | 결과 파일 / 메모 |
+|------|------|------------------|
+| C policy smoke | 미측정 | Single과 Multi의 ALL/64B report를 만든다. |
+| C single baseline | 미측정 | 새 full report를 만든다. |
+| C multi baseline | 미측정 | 64, 256, 1024, 4096, 65536, 131072 bytes로 새 full report를 만든다. |
+| C `MULTI_STREAM` baseline | 미측정 | 64, 256, 1024, 65536 bytes를 측정한다. |
+
+### 10.3 언어 진행 상태
+
+| 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
+|------|------|-------------|------------|-----------|
+| 1 | C++ | 누락 구현 완료, full 미측정 | 누락 구현 완료, full 미측정 | C 기준과 같은 전체 matrix를 측정한다. |
+| 2 | .NET | 미측정 | 미측정 | runner option gate 통과 뒤 시작한다. |
+| 3 | Java | 누락 구현 완료, full 미측정 | 누락 구현 완료, full 미측정 | C 기준과 같은 전체 matrix를 측정한다. |
+| 4 | Node | 누락 구현 완료, full 미측정 | 측정 gap 확인 필요 | multi socket request/reply 2개 pattern을 구현한다. |
+| 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
+| 6 | Rust | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
+| 7 | Python | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
+
+## 11. 라운드 기록
+
+측정 또는 구현 변경을 수행할 때마다 아래 표에 한 행을 추가하고, 상세 설명이 길면
+`doc/perf/perf/log/` 아래에 별도 라운드 문서를 작성해 연결한다.
+
+| 날짜 | 언어 | suite / 범위 | pair tag | 변경 또는 측정 | 결과 | report / 로그 |
+|------|------|---------------|----------|----------------|------|---------------|
+| 2026-07-11 | 전체 | 계획 초기화 | - | core 9.0.0 기준으로 모든 상태를 초기화했다. Multi는 4096을 추가하고 262144를 제거했다. | 계획 작성 | 이 문서 |
+| 2026-07-11 | 전체 | 리뷰 반영 | - | Codex와 Claude Fable 리뷰를 반영해 inventory, paired C, 반복·변동성, latency·회귀 gate를 추가했다. | 계획 보완 | 이 문서 |
+| 2026-07-11 | C | 사전 runtime 확인 | - | core를 현재 소스로 다시 빌드하고 버전 세 파일, runtime 경로, public `zlink_version()`을 확인했다. | 9.0.0 일치 | `core/build/lib/libzlink.so.9.0.0` |
+| 2026-07-11 | 전체 | runner inventory | - | C와 7개 binding의 ALL pattern, transport, size, 기본 client 수를 대조했다. 6개 binding의 socket request/reply 누락을 `측정 gap`으로 확인했고 Python multi의 정책 밖 `ipc` 기본값을 제거했다. | inventory gap 확인 | 이 문서 9장 상세 표, `bindings/python/perf/multi/run_benchmarks.py` |
+| 2026-07-11 | .NET | single option gate | core_9_0_option_gate | 무시되던 option을 정리했다. I/O thread 2, send timeout 321ms, receive timeout 322ms, compact auto-HWM이 Effective Options에 반영됐고 output/HWM override는 명시적으로 거부됐다. | 제한 report complete | `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260711_110402_core_9_0_option_gate.txt` |
+| 2026-07-11 | C | single 탐색 진단 | - | 문서 갱신 전 기본 전체 크기 smoke를 두 번 실행했다. 큰 socket request/reply 셀의 간헐 timeout으로 두 report가 partial이므로 policy smoke나 baseline 근거로 사용하지 않는다. | 미측정 유지 | `bindings/c/perf/results/single/report/perf_c_single_linux_20260711_101716_core_9_0_smoke.txt`, `bindings/c/perf/results/single/report/perf_c_single_linux_20260711_102711_core_9_0_smoke_retry1.txt` |
+| 2026-07-11 | C++ | single request/reply inventory 보완 | core_9_0_reqrep_inventory_gate | C++ 공개 request/reply와 completion poller를 사용해 `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_REQREP`을 추가했다. 왕복 payload를 처리량으로 계산하고 bandwidth에는 요청과 응답을 모두 반영한다. | 64B/tcp 제한 report complete | `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260711_112109_core_9_0_reqrep_inventory_gate.txt` |
+| 2026-07-11 | C++ | multi request/reply inventory 보완 | core_9_0_reqrep_inventory_gate | 여러 공개 DEALER/ROUTER socket이 request를 제출하고 completion poller에서 응답을 처리하도록 `MULTI_DEALER_ROUTER_REQREP`, `MULTI_ROUTER_ROUTER_REQREP`을 추가했다. server는 수신 요청의 공개 reply context로 응답한다. | 2 clients, 64B/tcp 제한 report complete | `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260711_112514_core_9_0_reqrep_inventory_gate.txt` |
+| 2026-07-11 | Java | socket request/reply inventory 보완 | core_9_0_reqrep_inventory_gate | Java 공개 callback request와 수신 요청의 reply context로 single/multi 4개 pattern을 추가했다. socket callback은 binding의 request progress pump가 완료를 전달하므로, 여러 socket의 완료 대기는 callback이 해제하는 signal로 처리한다. | single과 2 clients multi 64B/tcp 제한 report complete | `bindings/java/perf/results/single/report/perf_java_single_linux_20260711_113457_core_9_0_reqrep_inventory_gate_v2.txt`, `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260711_113416_core_9_0_reqrep_inventory_gate.txt` |
+| 2026-07-11 | Node | single request/reply inventory 보완 | core_9_0_reqrep_inventory_gate_v2 | `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_REQREP`을 추가했다. 이 과정에서 공개 `RouterSocket.recv(Received)`가 reply context를 materializer에 전달하지 않던 runtime 결함을 고쳐 기존 `Received.reply()` 계약을 직접 사용했다. | build, typecheck, 64B/tcp 제한 report complete | `bindings/node/perf/results/single/report/perf_node_single_linux_20260711_114301_core_9_0_reqrep_inventory_gate_v2.txt` |
+| 2026-07-11 | 전체 | throughput 목표 재산정 | - | 이전 라운드의 완료된 최종 측정값에서 언어·pattern 그룹별 p10과 하위 25% 경계값을 계산했다. 과거 실측이 기존 목표를 넘은 구간만 최소 기준과 안정권 기준을 상향했다. | C++/Rust, .NET/Java, Go 목표 상향 | `doc/perf/perf/log/2026-05-18-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-01-node-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-01-go-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-02-rust-bindings-performance-round.ko.md` |
+
+## 12. 완료 기준
+
+다음 조건을 모두 만족해야 작업을 완료한다.
+
+- runner, 정책, 상세 표의 pattern, transport, size inventory가 일치한다.
+- core 9.0.0으로 만든 C single/multi policy smoke와 full baseline report가 모두
+  `status: complete`다.
+- 모든 binding 상세 표에 `미측정`, `미달`, `측정 gap`, `보류`가 없다.
+- 모든 통과 셀에 paired C와 binding report, manifest, 반복값, 비율, 옵션 일치 근거가
+  기록되어 있다.
+- throughput, latency, 변동성, client 수, auto-HWM, 대상 외 대표 셀 회귀 gate를 모두
+  통과한다.
+- 변경한 binding의 단위 테스트와 통합 테스트가 통과한다.
+- 언어별 full matrix와 마지막 전체 full matrix에서 제한 측정의 개선이 유지된다.
+- perf 전용 우회, private API 접근, 무시되는 필수 option, timeout/sleep 증가가 남아
+  있지 않다.
+- 최종 리뷰에서 public interface가 더 복잡해지지 않았고 비용이 binding 내부에서
+  줄었는지 확인했다.

@@ -169,7 +169,7 @@ for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS TRANSPORT_TRANSITION_MS; do
 done
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERN="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
+  PATTERN="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP,SPOT"
 fi
 
 detect_platform() {
@@ -599,8 +599,9 @@ def emit(line=""):
 
 
 # ---- C: format_throughput / format_bandwidth / format_latency_ms ----
-def fmt_tp(value):
-    return f"{value / 1e3:6.2f} Kmsg/s"
+def fmt_tp(pattern, value):
+    unit = "Kops/s" if pattern.endswith("_REQREP") else "Kmsg/s"
+    return f"{value / 1e3:6.2f} {unit}"
 
 
 def fmt_bw(value):
@@ -625,8 +626,8 @@ def table_separator():
     )
 
 
-def table_row(size, mv):
-    tp_s = fmt_tp(mv["throughput"])
+def table_row(pattern, size, mv):
+    tp_s = fmt_tp(pattern, mv["throughput"])
     bw_s = fmt_bw(mv["bandwidth"])
     lat_s = fmt_lat(mv["latency"])
     lat95_s = fmt_lat(mv["latency_p95"])
@@ -747,7 +748,8 @@ for pattern, transports in plan:
         emit(PATTERN_SEPARATOR)
         emit("")
     first_pattern = False
-    emit(f"## PATTERN: {pattern} (one-way)")
+    direction = "request/reply" if pattern.endswith("_REQREP") else "one-way"
+    emit(f"## PATTERN: {pattern} ({direction})")
     emit(f"  > Benchmarking current for {pattern}...")
     for t_idx, transport in enumerate(transports):
         has_next = (t_idx + 1) < len(transports)
@@ -758,7 +760,7 @@ for pattern, transports in plan:
             mv = combo.get((pattern, transport, size))
             if mv is None:
                 continue
-            emit(f"      {table_row(size, mv)}")
+            emit(f"      {table_row(pattern, size, mv)}")
         emit(f"    Testing {transport}: Done")
         if has_next:
             cooldown_ms = 3000

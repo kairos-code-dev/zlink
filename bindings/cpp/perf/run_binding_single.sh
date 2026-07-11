@@ -46,7 +46,7 @@ esac
 
 BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
 
-STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
+STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP,SPOT"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR="${CPP_PERF_DIR}/results"
@@ -297,8 +297,14 @@ resolve_single_build_targets() {
       DEALER_ROUTER)
         targets+=("cpp_perf_dealer_router")
         ;;
+      DEALER_ROUTER_REQREP)
+        targets+=("cpp_perf_dealer_router_reqrep")
+        ;;
       ROUTER_ROUTER)
         targets+=("cpp_perf_router_router")
+        ;;
+      ROUTER_ROUTER_REQREP)
+        targets+=("cpp_perf_router_router_reqrep")
         ;;
       SPOT)
         targets+=("cpp_perf_spot")

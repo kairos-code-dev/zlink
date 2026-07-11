@@ -22,6 +22,11 @@ TMP_DIR=""
 REUSE_BUILD=0
 CLEAN_BUILD=0
 BUILD_DIR=""
+PIN_CPU=0
+IO_THREADS=""
+SNDTIMEO_MS=""
+RCVTIMEO_MS=""
+AUTO_HWM_PROFILE=""
 SECONDS=0
 SHOW_TOTAL_TIME=0
 
@@ -107,15 +112,15 @@ Options:
   --build-dir PATH      Accepted for policy compatibility.
   --reuse-build         Reuse existing build output.
   --clean-build         Remove project bin/obj before build.
-  --output PATH         Tee report output to PATH.
+  --output PATH         Unsupported; exits with an error instead of ignoring PATH.
   --pin-cpu             Pin benchmark process to CPU 0 on Linux.
   --io-threads N        Context I/O threads.
-  --hwm N               Debug-only manual HWM override.
-  --send-hwm N          Send HWM override.
-  --recv-hwm N          Receive HWM override.
-  --buf SIZE            Send/receive buffer override.
-  --sndbuf SIZE         Send buffer override.
-  --rcvbuf SIZE         Receive buffer override.
+  --hwm N               Unsupported; exits with an error.
+  --send-hwm N          Unsupported; exits with an error.
+  --recv-hwm N          Unsupported; exits with an error.
+  --buf SIZE            Unsupported; exits with an error.
+  --sndbuf SIZE         Unsupported; exits with an error.
+  --rcvbuf SIZE         Unsupported; exits with an error.
   --sndtimeo N          Send timeout ms.
   --rcvtimeo N          Receive timeout ms.
   --send-timeout-ms N   Alias of --sndtimeo.
@@ -484,12 +489,31 @@ while [[ $# -gt 0 ]]; do
       CLEAN_BUILD=1
       ;;
     --output)
-      shift
+      echo "--output is not supported by the dotnet single runner." >&2
+      exit 1
       ;;
     --pin-cpu)
+      PIN_CPU=1
       ;;
-    --io-threads|--hwm|--send-hwm|--recv-hwm|--buf|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--auto-hwm-profile)
+    --io-threads)
+      IO_THREADS="${2:-}"
       shift
+      ;;
+    --sndtimeo|--send-timeout-ms)
+      SNDTIMEO_MS="${2:-}"
+      shift
+      ;;
+    --rcvtimeo|--recv-timeout-ms)
+      RCVTIMEO_MS="${2:-}"
+      shift
+      ;;
+    --auto-hwm-profile)
+      AUTO_HWM_PROFILE="${2:-}"
+      shift
+      ;;
+    --hwm|--send-hwm|--recv-hwm|--buf|--sndbuf|--rcvbuf)
+      echo "$1 is not supported by the dotnet single runner." >&2
+      exit 1
       ;;
     --results-dir)
       RESULTS_ROOT="${2:-}"
@@ -519,6 +543,19 @@ fi
 
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
+if [[ -n "${IO_THREADS}" ]]; then
+  validate_uint "--io-threads" "${IO_THREADS}"
+fi
+if [[ -n "${SNDTIMEO_MS}" ]]; then
+  validate_uint "--sndtimeo" "${SNDTIMEO_MS}"
+fi
+if [[ -n "${RCVTIMEO_MS}" ]]; then
+  validate_uint "--rcvtimeo" "${RCVTIMEO_MS}"
+fi
+if [[ -n "${AUTO_HWM_PROFILE}" && ! "${AUTO_HWM_PROFILE}" =~ ^(compact|low_latency|balanced|throughput)$ ]]; then
+  echo "--auto-hwm-profile must be compact, low_latency, balanced, or throughput." >&2
+  exit 1
+fi
 
 if [[ ! "${MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
   echo "--msg-sizes must be a comma-separated list of positive integers." >&2
@@ -578,6 +615,9 @@ EMIT_ARGS=("${PATTERN}" "--runs" "${RUNS}" "--results-dir" "${RESULTS_ROOT}" "--
 if [[ -n "${RESULTS_TAG}" ]]; then
   EMIT_ARGS+=("--results-tag" "${RESULTS_TAG}")
 fi
+if [[ "${PIN_CPU}" -eq 1 ]]; then
+  EMIT_ARGS+=("--pin-cpu")
+fi
 
 EMIT_ENV=(
   "PERF_SINGLE_DURATION_SECONDS=${DURATION}"
@@ -588,6 +628,18 @@ if [[ -n "${TRANSPORTS}" ]]; then
 fi
 if [[ -n "${MSG_SIZES}" ]]; then
   EMIT_ENV+=("PERF_MSG_SIZES=${MSG_SIZES}")
+fi
+if [[ -n "${IO_THREADS}" ]]; then
+  EMIT_ENV+=("PERF_IO_THREADS=${IO_THREADS}")
+fi
+if [[ -n "${SNDTIMEO_MS}" ]]; then
+  EMIT_ENV+=("PERF_SINGLE_SNDTIMEO_MS=${SNDTIMEO_MS}")
+fi
+if [[ -n "${RCVTIMEO_MS}" ]]; then
+  EMIT_ENV+=("PERF_SINGLE_RCVTIMEO_MS=${RCVTIMEO_MS}")
+fi
+if [[ -n "${AUTO_HWM_PROFILE}" ]]; then
+  EMIT_ENV+=("PERF_CTX_AUTO_HWM_PROFILE=${AUTO_HWM_PROFILE}")
 fi
 
 set +e

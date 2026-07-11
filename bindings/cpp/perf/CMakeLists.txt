@@ -79,8 +79,12 @@ add_cpp_single_bench(cpp_perf_dealer_dealer
   "${PERF_ROOT_DIR}/single/src/perf_dealer_dealer.cpp")
 add_cpp_single_bench(cpp_perf_dealer_router
   "${PERF_ROOT_DIR}/single/src/perf_dealer_router.cpp")
+add_cpp_single_bench(cpp_perf_dealer_router_reqrep
+  "${PERF_ROOT_DIR}/single/src/perf_dealer_router_reqrep.cpp")
 add_cpp_single_bench(cpp_perf_router_router
   "${PERF_ROOT_DIR}/single/src/perf_router_router.cpp")
+add_cpp_single_bench(cpp_perf_router_router_reqrep
+  "${PERF_ROOT_DIR}/single/src/perf_router_router_reqrep.cpp")
 add_cpp_single_bench(cpp_perf_spot
   "${PERF_ROOT_DIR}/single/src/perf_spot.cpp")
 
@@ -89,8 +93,12 @@ add_cpp_multi_server_bench(cpp_comp_src_dealer_dealer_server
   "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_dealer_router_server
   "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_dealer_router_reqrep_server
+  "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_reqrep_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_router_router_server
   "${PERF_ROOT_DIR}/multi/src/perf_router_router_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_router_router_reqrep_server
+  "${PERF_ROOT_DIR}/multi/src/perf_router_router_reqrep_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_pubsub_server
   "${PERF_ROOT_DIR}/multi/src/perf_pubsub_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_spot_server
@@ -108,8 +116,12 @@ add_cpp_multi_client_bench(cpp_comp_src_dealer_dealer_client
   "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_dealer_router_client
   "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_dealer_router_reqrep_client
+  "${PERF_ROOT_DIR}/multi/src/perf_dealer_router_reqrep_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_router_router_client
   "${PERF_ROOT_DIR}/multi/src/perf_router_router_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_router_router_reqrep_client
+  "${PERF_ROOT_DIR}/multi/src/perf_router_router_reqrep_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_pubsub_client
   "${PERF_ROOT_DIR}/multi/src/perf_pubsub_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_spot_client

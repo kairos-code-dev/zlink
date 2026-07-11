@@ -9,7 +9,7 @@ DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/multi/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 DEFAULT_MULTI_MSG_SIZES="64,256,1024,4096,65536,131072"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
@@ -178,7 +178,7 @@ Usage: bindings/cpp/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM
+  DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM
 This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -848,8 +848,12 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       cpp_comp_src_dealer_dealer_client \
       cpp_comp_src_dealer_router_server \
       cpp_comp_src_dealer_router_client \
+      cpp_comp_src_dealer_router_reqrep_server \
+      cpp_comp_src_dealer_router_reqrep_client \
       cpp_comp_src_router_router_server \
       cpp_comp_src_router_router_client \
+      cpp_comp_src_router_router_reqrep_server \
+      cpp_comp_src_router_router_reqrep_client \
       cpp_comp_src_pubsub_server \
       cpp_comp_src_pubsub_client \
       cpp_comp_src_spot_server \
@@ -874,8 +878,12 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       cpp_comp_src_dealer_dealer_client \
       cpp_comp_src_dealer_router_server \
       cpp_comp_src_dealer_router_client \
+      cpp_comp_src_dealer_router_reqrep_server \
+      cpp_comp_src_dealer_router_reqrep_client \
       cpp_comp_src_router_router_server \
       cpp_comp_src_router_router_client \
+      cpp_comp_src_router_router_reqrep_server \
+      cpp_comp_src_router_router_reqrep_client \
       cpp_comp_src_pubsub_server \
       cpp_comp_src_pubsub_client \
       cpp_comp_src_spot_server \

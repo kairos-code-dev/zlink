@@ -5,7 +5,7 @@
 
 #include <zlink/common.h>
 #include <zlink/message/api.h>
-#include <zlink/service_common.h>
+#include <zlink/service/common.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -3279,8 +3279,11 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     const auto found_generation = _state->actor_generations.find (key);
     if (found_generation != _state->actor_generations.end ()
         && found_generation->second != actor_ref.generation ()) {
-        // After the forwarding mapping is evicted (§10.4-3), stale refs fail
-        // fast as retriable so the sender re-resolves the committed location.
+        // The dispatched ref's generation does not match the actor's current
+        // incarnation (§10.4-3). Retriable: for a still-committing local move the
+        // published record lags and re-resolving lands the committed generation
+        // (ST-A3); for a genuinely stale record the client re-resolves the same
+        // answer and eventually surfaces this stale on its own budget timeout.
         emit_actor_handoff_marker ("stale_fail_fast", actor_ref.actor_id (), packet_name);
         return result_t<std::optional<zlink::message_t>>::failure (
           framework_error_kind_t::actor_location_stale,

@@ -159,6 +159,30 @@ class actor_client_impl_t final : public actor_client_t
         bool ref_was_current = false;
         result_t<message_t> last = result_t<message_t>::failure (
           framework_error_kind_t::actor_location_stale, "actor location is stale", true);
+        // The loop only ever retries a "transfer is in progress" stale (the actor
+        // is mid-move and re-resolving will land the committed location). If such
+        // a request never lands within the budget it reports a plain timeout —
+        // the actor was reachable, just still moving (config-10 ST-F6). Any other
+        // stale is terminal and already returned from the loop body below.
+        const auto on_deadline = [] () -> result_t<message_t> {
+            return result_t<message_t>::failure (framework_error_kind_t::timeout,
+                                                 "actor request timed out", true);
+        };
+        // A stale means "retry" only while the actor is moving/committing; a
+        // terminally wrong record (e.g. the generation does not match, config-9
+        // TA-B2) re-resolves to the same answer, so it is returned immediately as
+        // actor_location_stale rather than spun on until the deadline. The moving
+        // stale is the only one whose message says "transfer is in progress" — the
+        // retriable flag does not survive the actor-mesh reply.
+        const auto is_moving_stale = [] (const result_t<message_t> &result) {
+            if (result || !is_stale_actor_error (result.error_kind ())) {
+                return false;
+            }
+            const auto *error = result.error ();
+            return error != nullptr && error->what () != nullptr
+                   && std::string_view (error->what ()).find ("transfer is in progress")
+                        != std::string_view::npos;
+        };
         while (true) {
             auto actor = resolve_actor (actor_id, policy);
             if (actor) {
@@ -187,13 +211,12 @@ class actor_client_impl_t final : public actor_client_t
                 }
                 const auto now = std::chrono::steady_clock::now ();
                 if (now >= deadline) {
-                    co_return result_t<message_t>::failure (
-                      framework_error_kind_t::timeout, "actor request timed out", true);
+                    co_return on_deadline ();
                 }
                 const auto remaining =
                   std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
                 last = submit_request (actor.value (), packet_name, request, remaining, request_id);
-                if (last || !is_stale_actor_error (last.error_kind ())) {
+                if (!is_moving_stale (last)) {
                     co_return last;
                 }
             } else if (!actor.error () || !actor.error ()->is_retriable ()) {
@@ -204,8 +227,7 @@ class actor_client_impl_t final : public actor_client_t
             }
             policy = stale_policy_t::location_stale;
             if (std::chrono::steady_clock::now () + std::chrono::milliseconds (50) >= deadline) {
-                co_return result_t<message_t>::failure (
-                  framework_error_kind_t::timeout, "actor request timed out", true);
+                co_return on_deadline ();
             }
             std::this_thread::sleep_for (std::chrono::milliseconds (50));
         }

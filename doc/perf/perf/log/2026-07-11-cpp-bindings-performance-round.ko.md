@@ -861,3 +861,75 @@ ready event 용량을 맞춘 뒤 처리량은 92.5%, 평균 latency는 2.90배�
 - perf 변경: C 기준과 같은 all-ready-sockets scheduling으로 수정
 - 개선 커밋: `44ba93bdb`
 - 다음 pattern: Multi `MULTI_DEALER_ROUTER`
+
+## Multi MULTI_DEALER_ROUTER
+
+### tcp
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. C runner의 기존 정책 alias에 따라 C report의
+pattern 이름은 `MULTI_DEALER_ROUTER_SENDSEND`이고 C++ report는
+`MULTI_DEALER_ROUTER`다. 양쪽 모두 100-client routed echo와 tcp per-socket payload
+조건을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_002405_core_9_0_cpp_multi_dealer_router_tcp_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_003016_core_9_0_cpp_multi_dealer_router_tcp_nopin_paired_20260712.txt`
+
+64, 256, 1024, 4096, 65536, 131072B 처리량 비율은 90.8%, 90.6%, 90.5%, 91.5%,
+88.8%, 94.9%였다. 평균 latency 최대 비율은 1.62배다. routed one-way 최소 목표와
+latency 상한을 모두 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_DEALER_ROUTER / tcp`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: ws
+
+### ws
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_003342_core_9_0_cpp_multi_dealer_router_ws_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_003854_core_9_0_cpp_multi_dealer_router_ws_nopin_paired_20260712.txt`
+
+처리량 비율은 93.1%, 91.0%, 92.4%, 91.4%, 92.9%, 95.2%였고 평균 latency 최대
+비율은 1.10배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_DEALER_ROUTER / ws`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: wss
+
+### wss
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_004224_core_9_0_cpp_multi_dealer_router_wss_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_004741_core_9_0_cpp_multi_dealer_router_wss_nopin_paired_20260712.txt`
+
+처리량 비율은 96.4%, 95.2%, 97.1%, 96.4%, 97.0%, 100.7%였고 평균 latency 최대
+비율은 1.06배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_DEALER_ROUTER / wss`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: tls
+
+### tls
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_005212_core_9_0_cpp_multi_dealer_router_tls_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_005719_core_9_0_cpp_multi_dealer_router_tls_nopin_paired_20260712.txt`
+
+처리량 비율은 95.7%, 92.7%, 94.8%, 96.2%, 91.6%, 98.1%였고 평균 latency 최대
+비율은 1.12배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+### pattern 판정
+
+- `MULTI_DEALER_ROUTER / tcp`: 완료
+- `MULTI_DEALER_ROUTER / ws`: 완료
+- `MULTI_DEALER_ROUTER / wss`: 완료
+- `MULTI_DEALER_ROUTER / tls`: 완료
+- C++ binding 변경: 없음
+- public API 변경: 없음
+- perf 변경: 없음
+- 다음 pattern: Multi `MULTI_DEALER_ROUTER_REQREP`

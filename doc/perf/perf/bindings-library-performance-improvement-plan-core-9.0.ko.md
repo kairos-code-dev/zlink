@@ -446,8 +446,8 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 
 - perf 경로: `bindings/cpp/perf`
 - Single 상태: `전체 pattern 완료`
-- Multi 상태: `MULTI_DEALER_DEALER 완료, 나머지 pattern 미측정`
-- 다음 작업: Multi `MULTI_DEALER_ROUTER`의 tcp transport를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
+- Multi 상태: `MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER 완료, 나머지 pattern 미측정`
+- 다음 작업: Multi `MULTI_DEALER_ROUTER_REQREP`의 tcp transport를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
 
 #### 9.1.1 Single suite
 
@@ -507,7 +507,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|------|-------|--------|------------------|
 | `tcp` | `MULTI_DEALER_DEALER` | 통과(89.6%) | 통과(99.3%) | 통과(101.0%) | 통과(111.5%) | 통과(102.8%) | 통과(102.3%) | raw send가 사용하지 않은 service state 초기화를 hot path에서 제거했다. 64B는 5회, 전체 회귀는 3회 paired 측정했다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_DEALER_ROUTER` | 통과(90.8%) | 통과(90.6%) | 통과(90.5%) | 통과(91.5%) | 통과(88.8%) | 통과(94.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.62배로 통과했다. |
 | `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 2 clients, 64B 제한 스모크를 통과했다. |
 | `tcp` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 2 clients, 64B 제한 스모크를 통과했다. |
@@ -517,7 +517,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
 | `ws` | `MULTI_DEALER_DEALER` | 통과(88.3%) | 통과(98.8%) | 통과(105.4%) | 통과(125.3%) | 통과(99.7%) | 통과(99.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.13배로 통과했다. |
-| `ws` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_DEALER_ROUTER` | 통과(93.1%) | 통과(91.0%) | 통과(92.4%) | 통과(91.4%) | 통과(92.9%) | 통과(95.2%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.10배로 통과했다. |
 | `ws` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `ws` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -527,7 +527,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
 | `wss` | `MULTI_DEALER_DEALER` | 통과(88.4%) | 통과(100.8%) | 통과(108.3%) | 통과(98.6%) | 통과(96.2%) | 통과(100.6%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.03배로 통과했다. |
-| `wss` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `MULTI_DEALER_ROUTER` | 통과(96.4%) | 통과(95.2%) | 통과(97.1%) | 통과(96.4%) | 통과(97.0%) | 통과(100.7%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.06배로 통과했다. |
 | `wss` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `wss` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -537,7 +537,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
 | `tls` | `MULTI_DEALER_DEALER` | 통과(94.8%) | 통과(98.7%) | 통과(94.0%) | 통과(96.7%) | 통과(95.5%) | 통과(95.9%) | C++ perf의 ready-event 용량을 C와 같은 의미로 수정하고 bindings poller의 관심 이벤트 갱신을 O(1)로 개선했다. 최종 5회 회귀에서 평균 latency 최대 1.70배로 통과했다. |
-| `tls` | `MULTI_DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `MULTI_DEALER_ROUTER` | 통과(95.7%) | 통과(92.7%) | 통과(94.8%) | 통과(96.2%) | 통과(91.6%) | 통과(98.1%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.12배로 통과했다. |
 | `tls` | `MULTI_DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `tls` | `MULTI_ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `MULTI_ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |

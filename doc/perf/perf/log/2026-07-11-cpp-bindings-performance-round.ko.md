@@ -1430,3 +1430,77 @@ latency 최대 비율은 1.03배였다. 모든 셀이 목표를 만족해 코드
 - public API 변경: 없음
 - perf 변경: 없음
 - 다음 pattern: Multi `MULTI_SPOT_REQREP`
+
+## Multi MULTI_SPOT_REQREP
+
+### tcp
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. 두 report는 같은 `373def7d1`과
+core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_055847_core_9_0_cpp_multi_spot_reqrep_tcp_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_060242_core_9_0_cpp_multi_spot_reqrep_tcp_nopin_paired_20260712.txt`
+
+처리량 비율은 100.3%, 104.1%, 96.6%, 101.0%, 107.5%, 118.7%였고 평균
+latency 최대 비율은 1.03배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_SPOT_REQREP / tcp`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: ws
+
+### ws
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. 두 report는 같은 `373def7d1`과
+core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_060702_core_9_0_cpp_multi_spot_reqrep_ws_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_061056_core_9_0_cpp_multi_spot_reqrep_ws_nopin_paired_20260712.txt`
+
+처리량 비율은 95.0%, 90.7%, 97.0%, 98.5%, 107.0%, 98.9%였고 평균
+latency 최대 비율은 1.10배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_SPOT_REQREP / ws`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: wss
+
+### wss
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. C 4회차의 64B와 256B가 동시에
+낮아졌지만 나머지 네 회차와 5회 중앙값은 안정적이었다. 두 report는 같은
+`373def7d1`과 core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_061513_core_9_0_cpp_multi_spot_reqrep_wss_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_061918_core_9_0_cpp_multi_spot_reqrep_wss_nopin_paired_20260712.txt`
+
+처리량 비율은 96.2%, 97.0%, 96.9%, 97.8%, 96.5%, 96.8%였고 평균
+latency 최대 비율은 1.05배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_SPOT_REQREP / wss`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: tls
+
+### tls
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. C 131072B 3회차와 C++ 64B
+2회차에 각각 낮은 outlier가 있었지만 나머지 네 회차와 5회 중앙값은 안정적이었다.
+두 report는 같은 `373def7d1`과 core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_062338_core_9_0_cpp_multi_spot_reqrep_tls_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_062741_core_9_0_cpp_multi_spot_reqrep_tls_nopin_paired_20260712.txt`
+
+처리량 비율은 90.8%, 93.1%, 93.3%, 94.3%, 96.1%, 98.3%였고 평균
+latency 최대 비율은 1.09배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+### pattern 판정
+
+- `MULTI_SPOT_REQREP / tcp`: 완료
+- `MULTI_SPOT_REQREP / ws`: 완료
+- `MULTI_SPOT_REQREP / wss`: 완료
+- `MULTI_SPOT_REQREP / tls`: 완료
+- C++ binding 변경: 없음
+- public API 변경: 없음
+- perf 변경: 없음
+- 다음 pattern: Multi `MULTI_SPOT_SENDSEND`

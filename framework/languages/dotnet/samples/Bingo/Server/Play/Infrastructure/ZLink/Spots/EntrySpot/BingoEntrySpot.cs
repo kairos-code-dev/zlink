@@ -41,6 +41,15 @@ internal sealed class BingoEntrySpot(
         logger.LogInformation(
             "entry spot: actor joined. actor={ActorId}",
             actor.ActorId);
+        if (!string.IsNullOrEmpty(actor.RoomId))
+            actor.Context.BoundSession
+                .Send(new BingoActorEntrySpotNotify
+                {
+                    ActorId = actor.ActorId,
+                    RoomId = actor.RoomId,
+                    TargetNodeRid = Context.NodeRid.ToString()
+                })
+                .Submit(cancellationToken);
         if (!actor.DestroyAfterEntrySpotJoin) return;
 
         logger.LogInformation(

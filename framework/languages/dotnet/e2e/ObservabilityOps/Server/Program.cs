@@ -148,8 +148,11 @@ internal static class EvidenceServer
 internal sealed class MetricEvidenceCollector : IDisposable
 {
     private readonly object _gate = new();
+    private readonly object _scrapeGate = new();
     private readonly MeterListener _listener = new();
-    private readonly Dictionary<string, MetricSample> _latest = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MetricSeriesState> _events = new(StringComparer.Ordinal);
+    private Dictionary<string, MetricSeriesState> _observables = new(StringComparer.Ordinal);
+    private Dictionary<string, MetricSeriesState>? _activeObservableScrape;
 
     public MetricEvidenceCollector()
     {
@@ -163,11 +166,39 @@ internal sealed class MetricEvidenceCollector : IDisposable
         _listener.Start();
     }
 
-    public void RecordObservableInstruments() => _listener.RecordObservableInstruments();
+    public void RecordObservableInstruments()
+    {
+        lock (_scrapeGate)
+        {
+            var scrape = new Dictionary<string, MetricSeriesState>(StringComparer.Ordinal);
+            lock (_gate) _activeObservableScrape = scrape;
+            try
+            {
+                _listener.RecordObservableInstruments();
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    _observables = scrape;
+                    _activeObservableScrape = null;
+                }
+            }
+        }
+    }
 
     public MetricSample[] Snapshot()
     {
-        lock (_gate) return _latest.Values.OrderBy(static sample => sample.Name).ToArray();
+        lock (_gate)
+            return _events.Values
+                .Concat(_observables.Values)
+                .Select(static state => state.Snapshot())
+                .OrderBy(static sample => sample.Name, StringComparer.Ordinal)
+                .ThenBy(static sample => string.Join(
+                    ",",
+                    sample.Tags.OrderBy(static tag => tag.Key)
+                        .Select(static tag => $"{tag.Key}={tag.Value}")), StringComparer.Ordinal)
+                .ToArray();
     }
 
     public void Dispose() => _listener.Dispose();
@@ -176,38 +207,94 @@ internal sealed class MetricEvidenceCollector : IDisposable
         Instrument instrument,
         T value,
         ReadOnlySpan<KeyValuePair<string, object?>> tags,
-        object? state)
+        object? listenerState)
         where T : struct
     {
+        _ = listenerState;
         var attributes = tags.ToArray().ToDictionary(
             static tag => tag.Key,
             static tag => tag.Value?.ToString() ?? string.Empty,
             StringComparer.Ordinal);
-        var key = instrument.Name + "|" + string.Join(
+        var kind = InstrumentKind(instrument);
+        var key = instrument.Name + "|" + kind + "|" + string.Join(
             ",",
             attributes.OrderBy(static pair => pair.Key)
                 .Select(static pair => $"{pair.Key}={pair.Value}"));
         lock (_gate)
-            _latest[key] = new MetricSample(
-                instrument.Name,
-                InstrumentKind(instrument),
-                Convert.ToDouble(value),
-                instrument.Unit,
-                attributes);
+        {
+            var target = kind == "observable" ? _activeObservableScrape : _events;
+            if (target is null) return;
+            if (!target.TryGetValue(key, out var series))
+            {
+                series = new MetricSeriesState(
+                    instrument.Name,
+                    kind,
+                    instrument.Unit,
+                    attributes);
+                target.Add(key, series);
+            }
+            series.Record(Convert.ToDecimal(value, System.Globalization.CultureInfo.InvariantCulture));
+        }
     }
 
     private static string InstrumentKind(Instrument instrument) => instrument switch
     {
         ObservableGauge<long> => "observable",
+        ObservableGauge<double> => "observable",
         UpDownCounter<long> => "updown",
+        UpDownCounter<double> => "updown",
         Histogram<long> or Histogram<double> => "histogram",
         _ => "counter"
     };
 }
 
+internal sealed class MetricSeriesState(
+    string name,
+    string kind,
+    string? unit,
+    IReadOnlyDictionary<string, string> tags)
+{
+    private decimal _value;
+    private decimal _sum;
+    private decimal? _min;
+    private decimal? _max;
+    private long _count;
+
+    internal void Record(decimal measurement)
+    {
+        if (kind == "histogram")
+        {
+            _value = measurement;
+            _sum += measurement;
+            _min = _min is null ? measurement : Math.Min(_min.Value, measurement);
+            _max = _max is null ? measurement : Math.Max(_max.Value, measurement);
+            _count++;
+            return;
+        }
+
+        _value += measurement;
+        _count++;
+    }
+
+    internal MetricSample Snapshot() => new(
+        name,
+        kind,
+        _value,
+        unit,
+        tags,
+        _count,
+        kind == "histogram" ? _sum : null,
+        _min,
+        _max);
+}
+
 internal sealed record MetricSample(
     string Name,
     string Kind,
-    double Value,
+    decimal Value,
     string? Unit,
-    IReadOnlyDictionary<string, string> Tags);
+    IReadOnlyDictionary<string, string> Tags,
+    long Count,
+    decimal? Sum,
+    decimal? Min,
+    decimal? Max);

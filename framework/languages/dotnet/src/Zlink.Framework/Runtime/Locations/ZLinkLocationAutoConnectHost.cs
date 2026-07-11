@@ -155,6 +155,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             var metadata = spot.PubSub?.BindEndpoint is { Length: > 0 } pubEndpoint
                 ? new Dictionary<string, string> { [SpotPubEndpointMetadataKey] = pubEndpoint }
                 : null;
+            var capabilities = ZLinkPeerCapabilities.ActorTypes(spot.ActorFactories.Keys);
             AddLoop(
                 ZLinkLocationAutoConnectType.SpotMesh,
                 meshName,
@@ -166,7 +167,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                     node,
                     spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect,
                     spot.PubSub?.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect),
-                metadata);
+                metadata,
+                capabilities);
         }
 
             try
@@ -293,7 +295,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         string endpoint,
         uint weight,
         IZLinkAutoConnectExecutor executor,
-        IReadOnlyDictionary<string, string>? metadata = null)
+        IReadOnlyDictionary<string, string>? metadata = null,
+        IReadOnlyList<string>? capabilities = null)
     {
         // A capability with neither identity nor endpoint cannot be keyed
         // or advertised. When it also never dials (advertise-only server
@@ -307,7 +310,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         var row = advertisable
             ? new ZLinkPeerLocation(
                 type, meshName, nodeRid, role, endpoint, weight, false, 0,
-                Metadata: metadata, Capabilities: null,
+                Metadata: metadata, Capabilities: capabilities,
                 OwnerId: string.Empty, Generation: 0, UpdatedAt: default)
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(

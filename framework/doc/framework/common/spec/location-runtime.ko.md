@@ -94,6 +94,14 @@ true로 갱신한다. 이 마커는 **"신규 배치 제외"와 "기존 연결 �
 metadata fallback을 두지 않으며 store row schema와 모든 언어 codec을 함께 바꾼다. 전체 drain 수명주기 계약은
 [Graceful Drain & Handoff](graceful-drain-handoff.ko.md) §3이 소유한다.
 
+**actor 배치 capability.** Spot mesh의 Spot 역할 peer row는 그 노드가 actor factory로 수용할 수 있는
+actor type마다 `Capabilities`에 `actor:<actor-type>`을 하나씩 기록한다. 여기서 `<actor-type>`은
+언어 runtime의 클래스 이름이 아니라 `AddActorFactory` 계열 등록에서 application이 지정한 문자열이다.
+framework는 값을 중복 없이 문자열 순서로 기록한다. actor 배치와 drain 핸드오프는 요청 actor type과
+정확히 일치하는 capability가 있고 `Draining=false`인 노드만 대상으로 선택한다. capability가 없으면 해당
+노드의 Entry Spot을 시험 호출해 호환 여부를 추측하지 않는다. 이 값은 framework가 소유하는 예약
+capability이며 application metadata로 대신 기록하지 않는다.
+
 ### 2.2 spot location
 
 `spot rid`가 어느 node에 있는지. `MeshName`, `SpotRid`, `SpotType`(선택), `NodeRid`,

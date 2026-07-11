@@ -76,19 +76,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
         var allMoved = true;
         var nextTarget = -1;
-        const int maximumConcurrency = 8;
-        for (var offset = 0; offset < states.Length; offset += maximumConcurrency)
-        {
-            var count = Math.Min(maximumConcurrency, states.Length - offset);
-            var moves = new Task<bool>[count];
-            for (var index = 0; index < count; index++)
-            {
-                var state = states[offset + index];
-                moves[index] = MoveActorForDrainAsync(state).AsTask();
-            }
-            var results = await Task.WhenAll(moves).ConfigureAwait(false);
-            allMoved &= results.All(static moved => moved);
-        }
+        // One in-flight handoff per runtime is the v1 concurrency bound.
+        // The native Spot request surface rejects overlapping transactions
+        // on the same source Entry Spot, so parallel actor moves would turn
+        // ordinary drain load into submit failures.
+        foreach (var state in states)
+            allMoved &= await MoveActorForDrainAsync(state).ConfigureAwait(false);
         return allMoved;
 
         async ValueTask<bool> MoveActorForDrainAsync(ZLinkActorRuntimeState actorState)
@@ -120,13 +113,23 @@ internal sealed partial class ZLinkFrameworkRuntime
                 var target = eligible[(start + attempt) % eligible.Length];
                 try
                 {
-                    var result = await _actors.JoinActorEntrySpotAsync(
+                    // Drain is a managed actor handoff even though the target
+                    // address is an Entry Spot. The general join path performs
+                    // the admission/commit transaction and materializes the
+                    // actor in the target framework process; the native Entry
+                    // Spot shortcut alone cannot transfer managed state.
+                    var result = await _actors.JoinActorAsync(
                             target,
                             actor,
                             ZLinkMessage.Empty,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    if (result is not ZLinkActorJoinResult.Accepted) continue;
+                    if (result is not ZLinkActorJoinResult.Accepted)
+                    {
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"drain handoff rejected actor={actorState.ActorId} target={target} result=rejected");
+                        continue;
+                    }
                     ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
                     return true;
                 }
@@ -141,6 +144,28 @@ internal sealed partial class ZLinkFrameworkRuntime
                     // A peer can leave or reject admission after the location
                     // snapshot. Try the remaining compatible entries before
                     // the next bounded drain pass refreshes the store view.
+                }
+                catch (ZlinkSubmitException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff submit deferred actor={actorState.ActorId} target={target} message={error.Message}");
+                    // A native route request can be temporarily busy. The
+                    // next bounded drain pass retries with a refreshed view.
+                }
+                catch (TimeoutException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff timed out actor={actorState.ActorId} target={target} message={error.Message}");
+                    // Target availability can change during one request. The
+                    // global drain deadline, not one request timeout, owns the
+                    // terminal DeadlineExceeded decision.
+                }
+                catch (ZLinkActorHandoffRejectedException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff rejected actor={actorState.ActorId} target={target} message={error.Message}");
+                    // A completed rollback leaves the source actor eligible
+                    // for the next bounded target refresh.
                 }
             }
             return false;
@@ -165,7 +190,9 @@ internal sealed partial class ZLinkFrameworkRuntime
                 cancellationToken)
             .ConfigureAwait(false);
         var acceptingNodes = meshPeers
-            .Where(static peer => !peer.Draining && peer.NodeRid is { Size: > 0 })
+            .Where(peer => !peer.Draining
+                           && peer.NodeRid is { Size: > 0 }
+                           && ZLinkPeerCapabilities.SupportsActorType(peer, actorType))
             .Select(static peer => peer.NodeRid!.Value.ToHex())
             .ToHashSet(StringComparer.Ordinal);
         var entries = await locations.ListLiveSpotRowsAsync(
@@ -243,8 +270,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             if (!actorState.Handoff.IsKnown(request.HandoffId))
                 _actorHandoffAdmissions.BeginCommit(request, spotRid);
-            var activation = GetSpotActivationForAcceptedHandoff(spotRid)
-                             ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
+            var target = ResolveActorHandoffTarget(spotRid)
+                         ?? throw new InvalidOperationException(
+                             $"Actor handoff target '{spotRid}' is not active.");
             var import = await actorState.ExecuteHandoffTransitionAsync(
                     () =>
                     {
@@ -288,7 +316,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                     boundRoute.SessionRid,
                     cancellationToken)
                 .ConfigureAwait(false);
-            await activation.PrepareTransferredActorJoinAndReplayAsync(
+            await PrepareTransferredActorTargetAsync(
+                    target,
                     creation.Actor,
                     actorState,
                     cancellationToken)
@@ -363,22 +392,24 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         try
         {
-            var activation = actorState.LiveActivation
-                             ?? throw new ZLinkFrameworkException(
-                                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                                 $"Actor '{request.ActorId}' is not hosted by an active Spot during handoff completion.");
+            var target = ResolveActorHandoffTarget(spotRid)
+                         ?? throw new ZLinkFrameworkException(
+                             ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                             $"Actor '{request.ActorId}' handoff target '{spotRid}' is not active during completion.");
             var actorRef = actorState.NativeActorRef
                            ?? throw new ZLinkFrameworkException(
                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                $"Actor '{request.ActorId}' does not have a native Actor ref during route commit.");
-            await activation.ReplayTransferredActorHandoffAsync(
+            await ReplayTransferredActorHandoffAsync(
+                    target,
                     actorState,
                     request.Frames,
                     cancellationToken)
                 .ConfigureAwait(false);
-            await PublishTransferredActorLocationAsync(actorState, activation, cancellationToken)
+            await PublishTransferredActorLocationAsync(actorState, target, cancellationToken)
                 .ConfigureAwait(false);
-            await activation.ReplayFinalTransferredActorHandoffAsync(
+            await ReplayFinalTransferredActorHandoffAsync(
+                    target,
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -440,12 +471,19 @@ internal sealed partial class ZLinkFrameworkRuntime
         bool startTeardownReconciliation = true)
     {
         Exception? failure = null;
-        if (actorState.Actor is { } actor && actorState.LiveActivation is { } activation)
+        if (actorState.Actor is { } actor)
         {
             try
             {
-                await activation.NotifyActorLeftAfterManagedJoinSpotAsync(actor, cancellationToken)
-                    .ConfigureAwait(false);
+                if (actorState.LiveActivation is { } activation)
+                    await activation.NotifyActorLeftAfterManagedJoinSpotAsync(actor, cancellationToken)
+                        .ConfigureAwait(false);
+                else
+                    await NotifyEntrySpotActorLeftAsync(
+                            actor,
+                            actorState.NativeActorRef?.NodeRid,
+                            cancellationToken)
+                        .ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -479,7 +517,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private async ValueTask PublishTransferredActorLocationAsync(
         ZLinkActorRuntimeState actorState,
-        ZLinkSpotActivation activation,
+        ActorHandoffTarget target,
         CancellationToken cancellationToken)
     {
         if (LocationLifecycle is not { } locations) return;
@@ -488,14 +526,22 @@ internal sealed partial class ZLinkFrameworkRuntime
                        ?? throw new ZLinkFrameworkException(
                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref during location commit.");
-        await locations.ActorOwnership.CommitTransferredActorLocationAsync(
-                actorState.ActorId,
-                actorRef.ToNative(),
-                activation.SpotRid,
-                cancellationToken)
-            .ConfigureAwait(false);
+        if (target.UserSpot is { } userSpot)
+            await locations.ActorOwnership.CommitTransferredActorLocationAsync(
+                    actorState.ActorId,
+                    actorRef.ToNative(),
+                    userSpot.SpotRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        else
+            await locations.ActorOwnership.CommitTransferredActorEntryLocationAsync(
+                    actorState.ActorId,
+                    actorRef.ToNative(),
+                    target.NodeRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
         ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"location_committed actor={actorState.ActorId} spot={activation.SpotRid}");
+            $"location_committed actor={actorState.ActorId} spot={target.TargetRid}");
     }
 
     internal async ValueTask<ZLinkRemoteActorAdmissionReply> AdmitRoutedActorJoinAsync(
@@ -509,22 +555,36 @@ internal sealed partial class ZLinkFrameworkRuntime
                 ZLinkMessage.Empty,
                 Registration.Codecs,
                 request.DeadlineUnixTimeMilliseconds);
-        var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
-                             .ConfigureAwait(false)
-                         ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
+        var target = ResolveActorHandoffTarget(spotRid)
+                     ?? throw new InvalidOperationException(
+                         $"Actor handoff target '{spotRid}' is not active.");
 
         return await _actorHandoffAdmissions.AdmitAsync(
                 request,
                 spotRid,
                 async ct =>
                 {
-                    var result = await activation.AdmitRemoteActorJoinAsync(
-                            request.ActorId,
-                            ZLinkRemoteActorJoinPackets.DecodeAdmissionRequestPayload(
-                                request,
-                                Registration.Codecs),
-                            ct)
-                        .ConfigureAwait(false);
+                    var payload = ZLinkRemoteActorJoinPackets.DecodeAdmissionRequestPayload(
+                        request,
+                        Registration.Codecs);
+                    ZLinkSpotActorJoinResult result;
+                    if (target.UserSpot is { } userSpot)
+                        result = await userSpot.AdmitRemoteActorJoinAsync(
+                                request.ActorId,
+                                payload,
+                                ct)
+                            .ConfigureAwait(false);
+                    else if (target.EntrySpot is { } entrySpot
+                             && entrySpot.TryResolveActorJoin(out var descriptor)
+                             && descriptor is not null)
+                        result = await entrySpot.AdmitActorJoinAsync(
+                                descriptor,
+                                request.ActorId,
+                                payload,
+                                ct)
+                            .ConfigureAwait(false);
+                    else
+                        result = ZLinkSpotActorJoinResult.Reject();
                     return ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
                         result.Accepted,
                         result.Reply,
@@ -534,6 +594,118 @@ internal sealed partial class ZLinkFrameworkRuntime
                 cancellationToken)
             .ConfigureAwait(false);
     }
+
+    private ActorHandoffTarget? ResolveActorHandoffTarget(RoutingId targetRid)
+    {
+        var state = _state
+                    ?? throw new InvalidOperationException(
+                        "ZLink framework runtime is not available for actor handoff.");
+        if (_spots.GetActivationBySpotRid(state, targetRid) is { } userSpot)
+            return new ActorHandoffTarget(
+                targetRid,
+                userSpot.NodeRid,
+                userSpot,
+                null);
+        if (state.TryGetSpotNodeByRoutingId(targetRid, out var node)
+            && node.EntrySpotActivation is { } entrySpot)
+            return new ActorHandoffTarget(
+                targetRid,
+                node.Node.RoutingId,
+                null,
+                entrySpot);
+        return null;
+    }
+
+    private async ValueTask PrepareTransferredActorTargetAsync(
+        ActorHandoffTarget target,
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        if (target.UserSpot is { } userSpot)
+        {
+            await userSpot.PrepareTransferredActorJoinAndReplayAsync(
+                    actor,
+                    actorState,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await NotifyEntrySpotActorJoinedAsync(
+                actor,
+                target.NodeRid,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask ReplayTransferredActorHandoffAsync(
+        ActorHandoffTarget target,
+        ZLinkActorRuntimeState actorState,
+        IReadOnlyList<ZLinkActorHandoffFrame> sourceFrames,
+        CancellationToken cancellationToken)
+    {
+        if (target.UserSpot is { } userSpot)
+        {
+            await userSpot.ReplayTransferredActorHandoffAsync(
+                    actorState,
+                    sourceFrames,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var frames = actorState.Handoff.PrepareImportedReplay(sourceFrames);
+        await ReplayEntrySpotActorFramesAsync(actorState, frames, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask ReplayFinalTransferredActorHandoffAsync(
+        ActorHandoffTarget target,
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        if (target.UserSpot is { } userSpot)
+        {
+            await userSpot.ReplayFinalTransferredActorHandoffAsync(actorState, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        while (true)
+        {
+            var frames = actorState.Handoff.SnapshotFinalReplay();
+            if (frames.Count == 0) return;
+            await ReplayEntrySpotActorFramesAsync(actorState, frames, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask ReplayEntrySpotActorFramesAsync(
+        ZLinkActorRuntimeState actorState,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames,
+        CancellationToken cancellationToken)
+    {
+        if (frames.Count == 0) return;
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorState.ActorId}' does not have a native Actor ref during handoff replay.");
+        var pipeline = new ZLinkActorInboundPipeline(
+            this,
+            new ZLinkEntrySpotActorInboundEndpoint(this));
+        await pipeline.DispatchReplayAsync(
+                ZLinkActorHandoffFrames.Restore(actorRef, frames),
+                actorState.Handoff.AcknowledgeReplayedFrame,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private readonly record struct ActorHandoffTarget(
+        RoutingId TargetRid,
+        RoutingId NodeRid,
+        ZLinkSpotActivation? UserSpot,
+        ZLinkEntrySpotActivation? EntrySpot);
 
     private async ValueTask BindRemoteBoundSessionRouteAsync(
         string actorId,

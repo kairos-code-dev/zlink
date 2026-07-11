@@ -3,6 +3,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -145,6 +146,31 @@ public sealed class DrainCoordinatorTests
             "actor-mesh",
             ZLinkFrameworkRuntime.ResolveActorDrainMeshName(registration, "player"));
         Assert.Null(ZLinkFrameworkRuntime.ResolveActorDrainMeshName(registration, "unknown"));
+    }
+
+    [Fact]
+    public void Actor_Drain_Capability_Matches_Only_The_Exact_Configured_Actor_Type()
+    {
+        var capabilities = ZLinkPeerCapabilities.ActorTypes(["enemy", "player", "player"]);
+        var peer = new ZLinkPeerLocation(
+            ZLinkLocationAutoConnectType.SpotMesh,
+            "rooms",
+            RoutingId.From("2202"),
+            ZLinkLocationRole.Spot,
+            "tcp://127.0.0.1:9000",
+            100,
+            false,
+            0,
+            null,
+            capabilities,
+            "owner",
+            1,
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(new[] { "actor:enemy", "actor:player" }, capabilities);
+        Assert.True(ZLinkPeerCapabilities.SupportsActorType(peer, "player"));
+        Assert.False(ZLinkPeerCapabilities.SupportsActorType(peer, "play"));
+        Assert.False(ZLinkPeerCapabilities.SupportsActorType(peer, "unknown"));
     }
 
     [Fact]

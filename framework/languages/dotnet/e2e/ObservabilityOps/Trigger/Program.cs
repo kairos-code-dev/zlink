@@ -44,8 +44,23 @@ static async Task HoldPlayAsync(string endpointA, string endpointB)
     var second = await player2.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer })
         .Async<MatchBingoRes>();
     if (first.RoomId != second.RoomId) throw new InvalidOperationException("Players did not join one room.");
+
+    var player1Moved = player1.WaitFor<BingoActorEntrySpotNotify>()
+        .Timeout(TimeSpan.FromSeconds(25))
+        .Where(message => message.Payload.ActorId == BingoSamplePlayers.Player1)
+        .Async().AsTask();
+    var player2Moved = player2.WaitFor<BingoActorEntrySpotNotify>()
+        .Timeout(TimeSpan.FromSeconds(25))
+        .Where(message => message.Payload.ActorId == BingoSamplePlayers.Player2)
+        .Async().AsTask();
     Console.WriteLine($"OBS-C1 hold=ready room={first.RoomId} owner={first.RoomOwnerNodeRid}");
-    await Task.Delay(TimeSpan.FromSeconds(20));
+
+    var moved = await Task.WhenAll(player1Moved, player2Moved)
+        .WaitAsync(TimeSpan.FromSeconds(25));
+    if (moved.Any(message => message.Payload.TargetNodeRid != "2202"))
+        throw new InvalidOperationException("Actors did not move to play-b.");
+    Console.WriteLine("OBS-C2 bound_push=continued target=2202");
+
     await player2.Close.Async();
     await player1.Close.Async();
     Console.WriteLine("OBS-C3 hold=released");

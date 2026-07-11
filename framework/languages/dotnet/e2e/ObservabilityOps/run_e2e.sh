@@ -13,13 +13,31 @@ export BINGO_REDIS_KEY_PREFIX="observability-ops:${RUN_ID}:"
 SERVER_PROJECT="$ROOT_DIR/Server/ObservabilityOps.Server.csproj"
 TRIGGER_PROJECT="$ROOT_DIR/Trigger/ObservabilityOps.Trigger.csproj"
 CLIENT_PROJECT="$ROOT_DIR/../../samples/Bingo/Client/Bingo.Client.csproj"
+SERVER_DLL="$ROOT_DIR/Server/bin/Debug/net8.0/ObservabilityOps.Server.dll"
+TRIGGER_DLL="$ROOT_DIR/Trigger/bin/Debug/net8.0/ObservabilityOps.Trigger.dll"
+CLIENT_DLL="$ROOT_DIR/../../samples/Bingo/Client/bin/Debug/net8.0/Bingo.Client.dll"
 PIDS=()
 ROLE_PIDS=()
 
+stop_processes() {
+  local -a processes=("$@")
+  local pid
+  for pid in "${processes[@]}"; do kill -TERM "$pid" >/dev/null 2>&1 || true; done
+  for _ in $(seq 1 150); do
+    local alive=0
+    for pid in "${processes[@]}"; do
+      if kill -0 "$pid" >/dev/null 2>&1; then alive=1; fi
+    done
+    if [[ "$alive" -eq 0 ]]; then break; fi
+    sleep 0.1
+  done
+  for pid in "${processes[@]}"; do kill -KILL "$pid" >/dev/null 2>&1 || true; done
+  for pid in "${processes[@]}"; do wait "$pid" 2>/dev/null || true; done
+}
+
 cleanup() {
   local code=$?
-  for pid in "${PIDS[@]:-}"; do kill -TERM "$pid" >/dev/null 2>&1 || true; done
-  for pid in "${PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+  stop_processes "${PIDS[@]}"
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true; fi
   if [[ "$code" -ne 0 ]]; then echo "ObservabilityOps failed. Logs: $LOG_DIR" >&2; fi
 }
@@ -79,8 +97,8 @@ start_role() {
   local role="$1"
   local http_port="$2"
   ROLE_URL="http://127.0.0.1:${http_port}"
-  setsid env ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 \
-    dotnet run --no-build --project "$SERVER_PROJECT" -- \
+  env ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 \
+    dotnet "$SERVER_DLL" \
     --role "$role" --http-url "$ROLE_URL" \
     >"$LOG_DIR/${role}.stdout.log" 2>"$LOG_DIR/${role}.stderr.log" &
   PIDS+=("$!")
@@ -97,11 +115,11 @@ start_role session-b "${PORTS[19]}"; SESSION_B_URL="$ROLE_URL"
 
 if [[ "$MODE" == "all" ]]; then
 sleep 5
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+dotnet "$CLIENT_DLL" \
   --stream-a-endpoint "$BINGO_SESSION_A_STREAM_ENDPOINT" \
   --stream-b-endpoint "$BINGO_SESSION_B_STREAM_ENDPOINT" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
-dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
+dotnet "$TRIGGER_DLL" \
   error "$BINGO_SESSION_A_STREAM_ENDPOINT" \
   >"$LOG_DIR/trigger.stdout.log" 2>"$LOG_DIR/trigger.stderr.log"
 
@@ -134,8 +152,7 @@ print("OBS-A2 PASS")
 print("OBS-B1/B2 evidence PASS")
 PY
 
-for pid in "${ROLE_PIDS[@]}"; do kill -TERM "$pid" >/dev/null 2>&1 || true; done
-for pid in "${ROLE_PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+stop_processes "${ROLE_PIDS[@]}"
 ROLE_PIDS=()
 start_role api-a "${PORTS[14]}"; API_A_URL="$ROLE_URL"
 start_role api-b "${PORTS[15]}"; API_B_URL="$ROLE_URL"
@@ -148,12 +165,12 @@ else
 sleep 5
 fi
 
-dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
+dotnet "$TRIGGER_DLL" \
   hold-play "$BINGO_SESSION_A_STREAM_ENDPOINT" "$BINGO_SESSION_B_STREAM_ENDPOINT" \
   >"$LOG_DIR/hold-play.stdout.log" 2>"$LOG_DIR/hold-play.stderr.log" &
 hold_play_pid=$!
 PIDS+=("$hold_play_pid")
-for _ in $(seq 1 150); do
+for _ in $(seq 1 200); do
   if grep -q "OBS-C1 hold=ready" "$LOG_DIR/hold-play.stdout.log"; then break; fi
   sleep 0.1
 done
@@ -213,11 +230,12 @@ PY
 wait "$hold_play_pid"
 wait "$play_drain_pid"
 grep -q '"result":"drained"' "$LOG_DIR/play-a.drain.json"
+grep -q "OBS-C2 bound_push=continued target=2202" "$LOG_DIR/hold-play.stdout.log"
 grep -q "OBS-C3 hold=released" "$LOG_DIR/hold-play.stdout.log"
 echo "OBS-C3 drain-natural PASS"
 
-dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
-  hold-session "$BINGO_SESSION_A_STREAM_ENDPOINT" \
+dotnet "$TRIGGER_DLL" \
+  hold-session "$BINGO_SESSION_B_STREAM_ENDPOINT" \
   >"$LOG_DIR/hold-session.stdout.log" 2>"$LOG_DIR/hold-session.stderr.log" &
 hold_session_pid=$!
 PIDS+=("$hold_session_pid")
@@ -226,10 +244,60 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 grep -q "OBS-C4 session=ready" "$LOG_DIR/hold-session.stdout.log"
-curl -fsS "$SESSION_A_URL/drain?deadlineMs=1" >"$LOG_DIR/session-a.force-drain.json"
+curl -fsS "$SESSION_B_URL/drain?deadlineMs=1" >"$LOG_DIR/session-b.force-drain.json"
 wait "$hold_session_pid"
-grep -q '"result":"force_stopped"' "$LOG_DIR/session-a.force-drain.json"
+grep -q '"result":"force_stopped"' "$LOG_DIR/session-b.force-drain.json"
 grep -q "OBS-C4 close_reason=ServerDrain" "$LOG_DIR/hold-session.stdout.log"
 echo "OBS-C4 PASS"
 
-echo "ObservabilityOps partial fixture PASS log_dir=$LOG_DIR"
+stop_processes "${ROLE_PIDS[@]}"
+ROLE_PIDS=()
+export BINGO_REDIS_KEY_PREFIX="observability-ops:${RUN_ID}:c5:"
+start_role api-a "${PORTS[14]}"; API_A_URL="$ROLE_URL"
+start_role api-b "${PORTS[15]}"; API_B_URL="$ROLE_URL"
+start_role play-a "${PORTS[16]}"; PLAY_A_URL="$ROLE_URL"
+start_role play-b "${PORTS[17]}"; PLAY_B_URL="$ROLE_URL"
+start_role session-a "${PORTS[18]}"; SESSION_A_URL="$ROLE_URL"
+start_role session-b "${PORTS[19]}"; SESSION_B_URL="$ROLE_URL"
+sleep 5
+
+dotnet "$TRIGGER_DLL" \
+  hold-play "$BINGO_SESSION_A_STREAM_ENDPOINT" "$BINGO_SESSION_B_STREAM_ENDPOINT" \
+  >"$LOG_DIR/c5-hold-play.stdout.log" 2>"$LOG_DIR/c5-hold-play.stderr.log" &
+c5_hold_pid=$!
+PIDS+=("$c5_hold_pid")
+for _ in $(seq 1 200); do
+  if grep -q "OBS-C1 hold=ready" "$LOG_DIR/c5-hold-play.stdout.log"; then break; fi
+  sleep 0.1
+done
+grep -q "OBS-C1 hold=ready" "$LOG_DIR/c5-hold-play.stdout.log"
+curl -fsS "$PLAY_A_URL/evidence" >"$LOG_DIR/c5-play-a.before-drain.evidence.json"
+curl -fsS "$PLAY_A_URL/drain?deadlineMs=12000" >"$LOG_DIR/c5-play-a.drain.json" &
+c5_play_a_drain_pid=$!
+PIDS+=("$c5_play_a_drain_pid")
+curl -fsS "$PLAY_B_URL/drain?deadlineMs=12000" >"$LOG_DIR/c5-play-b.drain.json" &
+c5_play_b_drain_pid=$!
+PIDS+=("$c5_play_b_drain_pid")
+sleep 7
+curl -fsS "$PLAY_A_URL/evidence" >"$LOG_DIR/c5-play-a.zero-target.evidence.json"
+python3 - "$LOG_DIR/c5-play-a.zero-target.evidence.json" <<'PY'
+import json
+import sys
+evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+actors = {row["actorId"]: row["nodeRid"] for row in evidence["actorRows"]}
+if actors.get("player-1") != "2201" or actors.get("player-2") != "2201":
+    raise SystemExit("OBS-C5: actors did not remain on the source while no target was serving")
+if any(sample["name"] == "zlink.drain.actors.handed_off" for sample in evidence["metrics"]):
+    raise SystemExit("OBS-C5: zero-target drain unexpectedly handed off an actor")
+if evidence["ready"]:
+    raise SystemExit("OBS-C5: source remained ready during simultaneous drain")
+print("OBS-C5 zero-target=held-until-deadline")
+PY
+wait "$c5_play_a_drain_pid"
+wait "$c5_play_b_drain_pid"
+grep -q '"result":"force_stopped","reason":"DeadlineExceeded"' "$LOG_DIR/c5-play-a.drain.json"
+grep -Eq '"result":"(drained|force_stopped)"' "$LOG_DIR/c5-play-b.drain.json"
+stop_processes "$c5_hold_pid"
+echo "OBS-C5 PASS"
+
+echo "ObservabilityOps drain fixture PASS log_dir=$LOG_DIR"

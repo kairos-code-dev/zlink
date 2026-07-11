@@ -62,7 +62,7 @@ internal sealed class BingoRoom(
                 .Submit(cancellationToken);
     }
 
-    public ValueTask OnLeaveActorAsync(
+    public async ValueTask OnLeaveActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -74,7 +74,8 @@ internal sealed class BingoRoom(
             "bingo room: actor left. room={RoomId}, actor={ActorId}",
             Context.SpotRid.ToString(),
             actor.ActorId);
-        return ValueTask.CompletedTask;
+        if (_actors.Count == 0 && _observerActor is null)
+            _ = await Context.CloseAsync(cancellationToken);
     }
 
     public ValueTask OnDisconnectActorAsync(

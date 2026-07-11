@@ -285,7 +285,21 @@ internal sealed partial class ZLinkEntrySpotActivation :
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var call = new ActorJoinCallState(descriptor, actor.ActorId, request);
+        return await AdmitActorJoinAsync(
+                descriptor,
+                actor.ActorId,
+                request,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<ZLinkSpotActorJoinResult> AdmitActorJoinAsync(
+        ZLinkSpotActorJoinDescriptor descriptor,
+        string actorId,
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        var call = new ActorJoinCallState(descriptor, actorId, request);
         await ExecuteAsync(
             static async (activation, state, ct) =>
             {

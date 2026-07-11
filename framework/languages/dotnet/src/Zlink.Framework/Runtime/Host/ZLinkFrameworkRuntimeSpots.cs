@@ -65,14 +65,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _spots.GetActivationBySpotRid(state, spotRid);
     }
 
-    internal ZLinkSpotActivation? GetSpotActivationForAcceptedHandoff(RoutingId spotRid)
-    {
-        var state = _state
-                    ?? throw new InvalidOperationException(
-                        "ZLink framework runtime is not available for an accepted actor handoff.");
-        return _spots.GetActivationBySpotRid(state, spotRid);
-    }
-
     public async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
         CancellationToken cancellationToken = default)
     {

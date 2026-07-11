@@ -236,6 +236,25 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask CommitTransferredActorEntryLocationAsync(
+        string actorId,
+        ActorRef actorRef,
+        RoutingId targetNodeRid,
+        CancellationToken cancellationToken = default)
+    {
+        await RenewOwnedActorAsync(
+                actorId,
+                row => row with
+                {
+                    ActorRef = actorRef,
+                    NodeRid = targetNodeRid,
+                    LocationKind = ZLinkSpotKind.Entry,
+                    SpotRid = null
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal async ValueTask NotifyActorMovedToEntrySpotAsync(
         string actorId,
         RoutingId targetNodeRid,

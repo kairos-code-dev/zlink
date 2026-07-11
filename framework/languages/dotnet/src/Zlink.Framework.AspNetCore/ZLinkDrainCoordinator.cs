@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Host;
 
 namespace Zlink.Framework.AspNetCore;
@@ -30,6 +31,7 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
     private readonly IZLinkDrainExecutor _executor;
     private readonly IZLinkRuntimeEventPublisher? _events;
     private readonly Func<bool> _flowGenerationEnabled;
+    private readonly ILogger<ZLinkDrainCoordinator>? _logger;
     private readonly object _gate = new();
     private readonly TaskCompletionSource<ZLinkDrainResult> _terminal =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -39,14 +41,16 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
 
     public ZLinkDrainCoordinator(
         ZLinkDrainAdmissionGate admission,
-        IZLinkDrainExecutor executor,
-        IZLinkRuntimeEventPublisher? events,
-        Func<bool>? flowGenerationEnabled = null)
+    IZLinkDrainExecutor executor,
+    IZLinkRuntimeEventPublisher? events,
+    Func<bool>? flowGenerationEnabled = null,
+    ILogger<ZLinkDrainCoordinator>? logger = null)
     {
         _admission = admission;
         _executor = executor;
         _events = events;
         _flowGenerationEnabled = flowGenerationEnabled ?? AlwaysDisabled;
+        _logger = logger;
         _metricRegistration = ZLinkRuntimeMetrics.RegisterDrainState(
             () => Volatile.Read(ref _state));
     }
@@ -112,8 +116,9 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
             result = await ForceStopAsync(ZLinkDrainForceReason.DeadlineExceeded)
                 .ConfigureAwait(false);
         }
-        catch
+        catch (Exception error)
         {
+            _logger?.LogError(error, "ZLink drain execution failed before terminal teardown.");
             result = await ForceStopAsync(ZLinkDrainForceReason.TeardownFailed)
                 .ConfigureAwait(false);
         }
@@ -145,8 +150,9 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
         {
             reason = failure.Reason;
         }
-        catch
+        catch (Exception error)
         {
+            _logger?.LogError(error, "ZLink forced drain teardown failed.");
             reason = ZLinkDrainForceReason.TeardownFailed;
         }
         return new ForceStopped(reason);

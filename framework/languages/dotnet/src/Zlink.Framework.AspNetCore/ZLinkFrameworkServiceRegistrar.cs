@@ -138,7 +138,8 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<IZLinkRuntimeEventPublisher>(),
                 () => provider.GetRequiredService<ZLinkFrameworkRegistration>()
                     .DispatchOptions.Diagnostics.EffectiveMessageFlow
-                    != ZLinkMessageFlowLogMode.Off));
+                    != ZLinkMessageFlowLogMode.Off,
+                provider.GetService<ILogger<ZLinkDrainCoordinator>>()));
         services.TryAddSingleton<IZLinkDrainControl>(static provider =>
             provider.GetRequiredService<ZLinkDrainCoordinator>());
         services.AddSingleton<IHostedService>(static provider =>

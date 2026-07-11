@@ -601,3 +601,96 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - C++ perf 변경: 없음
 - 완료 문서 커밋: `f1916050c`
 - 다음 pattern: Single `SPOT`
+
+## Single SPOT
+
+### Transport 단위 측정 조건
+
+- source: `2445892e7`, perf 컴파일 수정 `3506ba1c7`
+- message size: 64, 256, 1024, 65536, 131072, 262144 bytes
+- transport 순서: tcp, ws, wss, tls
+- duration: 5초
+- 반복: transport마다 C 5회 직후 C++ 5회
+- CPU pin: 사용하지 않음
+- 공식 perf process: 한 번에 하나만 실행
+
+SPOT은 정책과 양쪽 runner가 지원하는 tcp, ws, wss, tls만 측정했다. inproc과 ipc는 공식
+측정 대상이 아니다. 최초 C++ 실행 전에 `cpp_perf_spot` binary가 없었고, target을 빌드하자
+perf가 존재하지 않는 `spot_node_socket_owner` enum을 참조하는 컴파일 오류가 드러났다.
+공개 타입 `spot_node_socket_owner_t`와 이미 같은 의미로 구현된 Multi 공통 코드에 맞춰 두
+case의 타입 이름만 수정했다. 측정 의미나 옵션은 바꾸지 않았으며 수정은 `3506ba1c7`로
+커밋하고 푸시했다.
+
+### C 대비 최종 throughput
+
+| Transport | 64 | 256 | 1024 | 65536 | 131072 | 262144 |
+|-----------|----|-----|------|-------|--------|--------|
+| tcp | 98.8% | 97.3% | 97.8% | 85.7% | 87.0% | 98.1% |
+| ws | 97.1% | 98.1% | 97.3% | 88.0% | 89.5% | 95.9% |
+| wss | 98.7% | 95.7% | 102.7% | 95.4% | 96.7% | 85.6% |
+| tls | 109.0% | 99.5% | 99.7% | 97.1% | 102.2% | 99.2% |
+
+24개 throughput 셀이 SPOT 계열 C++ 최소 목표 85%를 만족했다. 평균 latency의 transport별
+최대 비율은 tcp 1.24배, ws 1.22배, wss 1.28배, tls 1.07배로 모두 상한 2배 이내였다.
+p95와 p99는 진단 자료로만 보존했다.
+
+### 경계 셀과 변동성
+
+tcp 65536B 최초 중앙값은 C++/C 83.0%였고 C++ 처리량이
+38.75~47.96 Kmsg/s로 변했다. 같은 셀을 다시 paired 측정한 결과 C 중앙값은
+52.58 Kmsg/s, C++은 45.07 Kmsg/s로 85.7%였고 평균 latency는 1.09배였다. C++ 보강
+측정 한 회차는 거의 전달되지 않은 이상치였으며, 나머지 네 회차는
+44.66~54.23 Kmsg/s였다. 이 범위를 숨기지 않고 5회 중앙값으로 판정했다.
+
+wss는 C와 C++ 모두 같은 message size에서 여러 처리량 모드가 반복돼 최초 중앙값의 모드가
+엇갈렸다. 64B, 256B, 65536B, 131072B만 다시 paired 측정했다. 보강 측정에서 C와 C++의
+처리량 범위는 각각 다음과 같았다.
+
+- 64B: C 284.93~665.62 Kmsg/s, C++ 148.68~677.26 Kmsg/s, 중앙값 비율 98.7%
+- 256B: C 97.94~294.55 Kmsg/s, C++ 97.38~195.07 Kmsg/s, 중앙값 비율 95.7%
+- 65536B: C 2.42~3.06 Kmsg/s, C++ 2.46~3.03 Kmsg/s, 중앙값 비율 95.4%
+- 131072B 최종 단독 측정: C 1.25~7.34 Kmsg/s, C++ 1.55~1.79 Kmsg/s,
+  중앙값 비율 96.7%
+
+CPU pin, timeout·sleep 증가나 유리한 회차 선택은 사용하지 않았다. C와 C++ Effective
+Options와 auto-HWM `MsgUnit(B)`가 일치했고 report는 모두 complete다.
+
+### POSD 판단
+
+tcp 65536B와 wss 일부 최초 중앙값만 보면 C++ single-part publish builder가 병목 후보였다.
+첫 번째 방안은 현재 공개 builder가 내부의 pooled operation state와 direct single-part submit을
+계속 사용하도록 두고 변동 셀을 paired 재확인하는 것이다. 두 번째 방안은 SPOT과 secure
+transport를 위한 별도 fast path를 builder나 perf에 추가하는 것이다.
+
+현재 구현은 operation state를 thread-local pool에서 재사용하고 single-part publish를 native
+경계로 직접 넘긴다. 재측정에서 전체 셀이 목표를 만족했고, secure transport의 다중 모드는
+C에도 같은 형태로 나타났다. 두 번째 방안은 transport 지식을 범용 builder에 노출하고 특수
+코드와 범용 코드를 혼합하는 위험 신호를 만든다. 측정 가능한 지속 병목이 확인되지 않았으므로
+첫 번째 방안을 선택했다. C++ binding과 hot path source comment는 변경하지 않았다.
+
+### 최종 report와 회귀 확인
+
+report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
+`bindings/cpp/perf/results/single/report/`다.
+
+- tcp: `perf_c_single_linux_20260711_225536_core_9_0_cpp_spot_tcp_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_225922_core_9_0_cpp_spot_tcp_nopin_paired_20260711.txt`
+- tcp 65536B 보강: `perf_c_single_linux_20260711_230400_core_9_0_cpp_spot_tcp65536_nopin_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_230435_core_9_0_cpp_spot_tcp65536_nopin_stability2_20260711.txt`
+- ws: `perf_c_single_linux_20260711_230549_core_9_0_cpp_spot_ws_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_230846_core_9_0_cpp_spot_ws_nopin_paired_20260711.txt`
+- wss: `perf_c_single_linux_20260711_231154_core_9_0_cpp_spot_wss_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_231449_core_9_0_cpp_spot_wss_nopin_paired_20260711.txt`
+- wss 선택 셀 보강: `perf_c_single_linux_20260711_231807_core_9_0_cpp_spot_wss_selected_nopin_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_232005_core_9_0_cpp_spot_wss_selected_nopin_stability2_20260711.txt`
+- wss 131072B 최종: `perf_c_single_linux_20260711_232225_core_9_0_cpp_spot_wss131072_nopin_stability3_20260711.txt`, `perf_cpp_single_linux_20260711_232259_core_9_0_cpp_spot_wss131072_nopin_stability3_20260711.txt`
+- tls: `perf_c_single_linux_20260711_232332_core_9_0_cpp_spot_tls_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_232630_core_9_0_cpp_spot_tls_nopin_paired_20260711.txt`
+
+최종 코드로 `perf_spot`, `cpp_perf_spot`, 네 SPOT sample과 네 계약 테스트 target을 다시
+빌드했다. SPOT pubsub, rpc, channel, timer sample smoke와 `message`, `socket`,
+`request_reply`, `behavior` 계약 테스트, Single SPOT runtime smoke까지 총 9개 CTest가
+모두 통과했다.
+
+### 판정
+
+- Single `SPOT`: 완료
+- C++ Single 전체 pattern: 완료
+- C++ binding 변경: 없음
+- C++ perf 컴파일 수정: `3506ba1c7`
+- 완료 문서 커밋: 진행 중
+- 다음 pattern: Multi `MULTI_DEALER_DEALER`

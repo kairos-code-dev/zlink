@@ -188,3 +188,56 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - C perf 변경: Single 정책과 다른 nonblocking send 의미를 blocking send로 정합화
 - C++ binding 변경: 128KiB 이상, 1MiB 이하 owned message storage의 8MiB 제한 재사용
 - 다음 pattern: Single `DEALER_DEALER`
+
+## Single DEALER_DEALER
+
+### 측정 조건과 결과
+
+- source: `99c58f4d0d3e97a1f85b7cbdb6941375be9d53a3`
+- message size: 64, 256, 1024, 65536, 131072, 262144 bytes
+- transport: tcp, tls, ws, wss, inproc, ipc
+- duration: 5초
+- tcp, ws, inproc, ipc: 3회 중앙값
+- tls, wss: 5회 중앙값
+- CPU pin: 사용하지 않음
+
+아래 표는 C++ throughput을 가까운 시점의 C throughput으로 나눈 값이다.
+
+| Transport | 64 | 256 | 1024 | 65536 | 131072 | 262144 |
+|-----------|----|-----|------|-------|--------|--------|
+| tcp | 99.9% | 99.8% | 100.0% | 99.9% | 100.0% | 99.8% |
+| tls | 100.0% | 99.9% | 97.9% | 96.8% | 99.7% | 99.7% |
+| ws | 100.0% | 99.9% | 95.1% | 100.0% | 100.1% | 100.0% |
+| wss | 100.0% | 99.5% | 98.4% | 98.8% | 99.5% | 100.7% |
+| inproc | 89.0% | 100.3% | 90.4% | 99.9% | 100.7% | 100.0% |
+| ipc | 100.1% | 100.1% | 93.5% | 99.9% | 100.1% | 100.0% |
+
+모든 throughput 셀이 단순 one-way 최소 목표 85%를 만족했다. 평균 latency의 transport별
+최대 비율은 tcp 1.22배, tls 1.15배, ws 1.22배, wss 1.01배, inproc 1.06배,
+ipc 1.20배로 모두 C++ 상한 2배 이내였다.
+
+### Report와 회귀 확인
+
+report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
+`bindings/cpp/perf/results/single/report/`다.
+
+- tcp: `perf_c_single_linux_20260711_165321_core_9_0_cpp_dealer_dealer_tcp_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_165452_core_9_0_cpp_dealer_dealer_tcp_nopin_paired_20260711.txt`
+- tls: `perf_c_single_linux_20260711_165709_core_9_0_cpp_dealer_dealer_tls_nopin_final_20260711.txt`, `perf_cpp_single_linux_20260711_165940_core_9_0_cpp_dealer_dealer_tls_nopin_final_20260711.txt`
+- ws: `perf_c_single_linux_20260711_170217_core_9_0_cpp_dealer_dealer_ws_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_170350_core_9_0_cpp_dealer_dealer_ws_nopin_paired_20260711.txt`
+- wss: `perf_c_single_linux_20260711_170553_core_9_0_cpp_dealer_dealer_wss_nopin_final_20260711.txt`, `perf_cpp_single_linux_20260711_170819_core_9_0_cpp_dealer_dealer_wss_nopin_final_20260711.txt`
+- inproc: `perf_c_single_linux_20260711_171107_core_9_0_cpp_dealer_dealer_inproc_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_171251_core_9_0_cpp_dealer_dealer_inproc_nopin_paired_20260711.txt`
+- ipc: `perf_c_single_linux_20260711_171438_core_9_0_cpp_dealer_dealer_ipc_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_171612_core_9_0_cpp_dealer_dealer_ipc_nopin_paired_20260711.txt`
+
+모든 report는 `status: complete`이고 Effective Options와 auto-HWM detail이 C와 C++에서
+일치한다. `test_cpp_contract_message`, `test_cpp_contract_socket`,
+`test_cpp_contract_behavior`도 최종 코드로 다시 실행해 통과했다.
+
+### POSD 판단과 판정
+
+최초 paired 측정에서 모든 셀이 목표를 만족했다. 추가 helper, pattern 전용 분기, public API,
+perf 우회가 필요하지 않았으며 binding 코드를 변경하지 않았다. PUBSUB에서 확정한 대형 메시지
+저장소 hot path 최적화가 다른 one-way pattern에서도 회귀 없이 유지됐다.
+
+- Single `DEALER_DEALER`: 완료
+- 코드 변경: 없음
+- 다음 pattern: Single `DEALER_ROUTER`

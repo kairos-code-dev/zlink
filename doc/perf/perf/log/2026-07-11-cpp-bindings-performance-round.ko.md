@@ -885,6 +885,58 @@ latency 상한을 모두 만족해 코드 변경 없이 완료했다.
 
 ### ws
 
+C와 C++을 CPU pin 없이 각각 5회 측정했다. C 측정 뒤 다른 작업의 ObservabilityOps server가
+CPU를 사용해 C++ 시작을 미뤘고, 해당 작업 종료 후 연속 idle 99.5~99.6%를 확인했다.
+
+- C: `perf_c_multi_linux_20260712_011559_core_9_0_cpp_multi_dealer_router_reqrep_ws_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_012215_core_9_0_cpp_multi_dealer_router_reqrep_ws_nopin_paired_20260712.txt`
+
+처리량 비율은 91.1%, 91.7%, 96.8%, 92.7%, 89.6%, 79.8%였고 평균 latency 최대
+비율은 1.70배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_DEALER_ROUTER_REQREP / ws`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: wss
+
+### wss
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_012540_core_9_0_cpp_multi_dealer_router_reqrep_wss_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_013055_core_9_0_cpp_multi_dealer_router_reqrep_wss_nopin_paired_20260712.txt`
+
+처리량 비율은 92.0%, 95.1%, 99.9%, 94.7%, 91.4%, 95.8%였고 평균 latency 최대
+비율은 1.09배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_DEALER_ROUTER_REQREP / wss`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: tls
+
+### tls
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_013414_core_9_0_cpp_multi_dealer_router_reqrep_tls_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_013933_core_9_0_cpp_multi_dealer_router_reqrep_tls_nopin_paired_20260712.txt`
+
+처리량 비율은 90.9%, 91.5%, 90.9%, 91.6%, 84.5%, 91.5%였고 평균 latency 최대
+비율은 1.18배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+### pattern 판정
+
+- `MULTI_DEALER_ROUTER_REQREP / tcp`: 완료
+- `MULTI_DEALER_ROUTER_REQREP / ws`: 완료
+- `MULTI_DEALER_ROUTER_REQREP / wss`: 완료
+- `MULTI_DEALER_ROUTER_REQREP / tls`: 완료
+- C++ binding 변경: 없음
+- public API 변경: 없음
+- perf 변경: 없음
+- 다음 pattern: Multi `MULTI_ROUTER_ROUTER`
+
+### ws
+
 C와 C++을 CPU pin 없이 각각 5회 측정했다.
 
 - C: `perf_c_multi_linux_20260712_003342_core_9_0_cpp_multi_dealer_router_ws_nopin_paired_20260712.txt`
@@ -933,3 +985,28 @@ C와 C++을 CPU pin 없이 각각 5회 측정했다.
 - public API 변경: 없음
 - perf 변경: 없음
 - 다음 pattern: Multi `MULTI_DEALER_ROUTER_REQREP`
+
+## Multi MULTI_DEALER_ROUTER_REQREP
+
+### tcp
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_010217_core_9_0_cpp_multi_dealer_router_reqrep_tcp_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_010751_core_9_0_cpp_multi_dealer_router_reqrep_tcp_nopin_paired_20260712.txt`
+
+최초 처리량 비율은 88.8%, 92.5%, 90.6%, 90.5%, 71.6%, 70.0%로 socket
+request/reply 최소 목표 65%를 모두 만족했다. 131072B 평균 latency가 최초에는 2.30배여서
+CPU idle 99.4% 이상을 확인한 뒤 해당 셀만 C 직후 C++ 순서로 다시 측정했다.
+
+- C: `perf_c_multi_linux_20260712_011228_core_9_0_cpp_multi_dealer_router_reqrep_tcp131072_nopin_recheck_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_011350_core_9_0_cpp_multi_dealer_router_reqrep_tcp131072_nopin_recheck_20260712.txt`
+
+재측정 중앙값은 C 42.510 Kops/s와 0.729ms, C++ 33.275 Kops/s와 1.417ms다.
+처리량 비율은 78.3%, 평균 latency 비율은 1.94배로 통과했다. C++ 평균 latency 범위는
+1.043~1.715ms였다. 경계 셀의 반복 변동을 기록하고 코드 변경 없이 완료했다.
+
+- `MULTI_DEALER_ROUTER_REQREP / tcp`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: ws

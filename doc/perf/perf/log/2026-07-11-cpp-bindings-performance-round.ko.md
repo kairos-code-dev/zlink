@@ -519,3 +519,85 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - C++ perf 변경: 없음
 - 완료 문서 커밋: `46be5a62c`
 - 다음 pattern: Single `ROUTER_ROUTER_REQREP`
+
+## Single ROUTER_ROUTER_REQREP
+
+### Transport 단위 측정 조건
+
+- source: `089eebeb6`
+- message size: 64, 256, 1024, 65536, 131072, 262144 bytes
+- transport 순서: tcp, ws, wss, tls, inproc, ipc
+- duration: 5초
+- 반복: transport마다 C 5회 직후 C++ 5회
+- CPU pin: 사용하지 않음
+- 공식 perf process: 한 번에 하나만 실행
+
+각 transport의 모든 message size를 C와 C++으로 비교하고 판정한 뒤 다음 transport로
+이동했다. 측정 시작 전에는 현재 CPU 사용률과 남은 perf process를 확인했다. ws 측정 전
+다른 테스트 process의 누적 CPU 수치가 보였을 때는 현재 사용률이 낮아질 때까지 기다린 뒤
+측정을 시작했다.
+
+### C 대비 최종 throughput
+
+아래 표는 C++ throughput을 가까운 시점의 C throughput으로 나눈 값이다. 평균 latency만
+latency gate에 사용했고 p95와 p99는 진단 자료로 보존했다.
+
+| Transport | 64 | 256 | 1024 | 65536 | 131072 | 262144 |
+|-----------|----|-----|------|-------|--------|--------|
+| tcp | 96.4% | 96.7% | 98.7% | 102.8% | 101.3% | 124.4% |
+| ws | 96.3% | 96.3% | 100.5% | 91.9% | 101.3% | 104.6% |
+| wss | 95.0% | 95.5% | 96.9% | 96.0% | 107.5% | 97.9% |
+| tls | 96.3% | 98.0% | 95.0% | 100.9% | 102.1% | 98.3% |
+| inproc | 95.0% | 94.3% | 94.2% | 89.0% | 245.0% | 93.4% |
+| ipc | 95.4% | 96.7% | 95.6% | 94.3% | 96.9% | 114.6% |
+
+36개 throughput 셀이 socket request/reply의 C++ 최소 목표 65%를 만족했다. 평균 latency의
+transport별 최대 비율은 tcp 1.03배, ws 1.09배, wss 1.06배, tls 1.08배, inproc
+1.12배, ipc 1.05배로 모두 상한 2배 이내였다. ws 65536B는 아래의 단독 보강 측정값을
+최종 판정에 사용했다.
+
+### 변동성과 POSD 확인
+
+ws 65536B의 최초 C++ 5회 처리량 변동 폭이 약 26%였으므로 CPU 부하가 낮은 상태에서 그
+transport와 size만 C와 C++ 순서로 다시 측정했다. 보강 측정의 C 처리량은
+21.77~23.14 Kmsg/s, C++은 19.32~22.99 Kmsg/s였고 중앙값 비율은 91.9%, 평균 latency
+비율은 1.09배였다. 변동 범위를 숨기지 않고 중앙값과 함께 기록했다.
+
+inproc C는 65536B에서 73.33~177.73 Kmsg/s, 262144B에서 18.76~46.68 Kmsg/s로 두
+처리량 모드가 반복됐다. 같은 시점의 C++은 각각 108.88~142.89 Kmsg/s와
+39.00~42.97 Kmsg/s였다. C++/C 중앙값 처리량과 평균 latency는 모두 목표를 만족했고,
+기존 request/reply 측정에서도 확인한 inproc 대형 셀의 변동 형태와 같았다. perf 의미나
+runner bug를 나타내는 새 증거가 없어 timeout, sleep, CPU pin 또는 유리한 회차 선택 없이
+범위를 기록하고 중앙값으로 판정했다.
+
+모든 transport가 목표를 만족했으므로 binding hot path에 성능 전용 코드를 넣을 근거가
+없었다. 첫 번째 방안은 공개 request/reply와 reply context의 기존 경로를 유지하는 것이고,
+두 번째 방안은 transport와 message size별 fast path를 추가하는 것이다. 두 번째 방안은
+transport 결정과 측정 조건을 범용 message 모듈에 섞고 특수 코드와 범용 코드를 결합하는
+POSD 위험 신호를 만든다. 목표를 이미 만족한 상태에서는 인터페이스와 정보 은닉을 유지하는
+첫 번째 방안을 선택했다. 따라서 C++ binding, perf와 source comment는 변경하지 않았다.
+
+### 최종 report와 회귀 확인
+
+report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
+`bindings/cpp/perf/results/single/report/`다.
+
+- tcp: `perf_c_single_linux_20260711_221629_core_9_0_cpp_router_router_reqrep_tcp_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_221853_core_9_0_cpp_router_router_reqrep_tcp_nopin_paired_20260711.txt`
+- ws: `perf_c_single_linux_20260711_222242_core_9_0_cpp_router_router_reqrep_ws_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_222509_core_9_0_cpp_router_router_reqrep_ws_nopin_paired_20260711.txt`
+- ws 65536B 보강: `perf_c_single_linux_20260711_222744_core_9_0_cpp_router_router_reqrep_ws65536_nopin_stability2_20260711.txt`, `perf_cpp_single_linux_20260711_222812_core_9_0_cpp_router_router_reqrep_ws65536_nopin_stability2_20260711.txt`
+- wss: `perf_c_single_linux_20260711_222856_core_9_0_cpp_router_router_reqrep_wss_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_223129_core_9_0_cpp_router_router_reqrep_wss_nopin_paired_20260711.txt`
+- tls: `perf_c_single_linux_20260711_223406_core_9_0_cpp_router_router_reqrep_tls_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_223642_core_9_0_cpp_router_router_reqrep_tls_nopin_paired_20260711.txt`
+- inproc: `perf_c_single_linux_20260711_223911_core_9_0_cpp_router_router_reqrep_inproc_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_224256_core_9_0_cpp_router_router_reqrep_inproc_nopin_paired_20260711.txt`
+- ipc: `perf_c_single_linux_20260711_224603_core_9_0_cpp_router_router_reqrep_ipc_nopin_paired_20260711.txt`, `perf_cpp_single_linux_20260711_224826_core_9_0_cpp_router_router_reqrep_ipc_nopin_paired_20260711.txt`
+
+최종 코드로 `perf_router_router_reqrep`, `cpp_perf_router_router_reqrep`,
+`test_cpp_contract_message`, `test_cpp_contract_socket`, `test_cpp_contract_behavior`,
+`test_cpp_contract_request_reply` target을 다시 빌드했다. 네 계약 테스트는 모두 통과했다.
+
+### 판정
+
+- Single `ROUTER_ROUTER_REQREP`: 완료
+- C++ binding 변경: 없음
+- C++ perf 변경: 없음
+- 완료 문서 커밋: 진행 중
+- 다음 pattern: Single `SPOT`

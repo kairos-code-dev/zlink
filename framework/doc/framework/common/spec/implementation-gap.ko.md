@@ -31,10 +31,12 @@
 | handler 비동기 완료 | 충족 | blocking bridge 차이 | 충족 | blocking bridge 차이 |
 | Spot actor lifecycle | 충족 | callback은 있으나 동기 실행 | 충족 | callback 이름과 실행 방식 차이 |
 | typed stream session handler | 충족 | 불완전한 raw bridge | raw handler만 제공 | raw message handler만 제공 |
-| dispatch options와 diagnostics | 계약과 일치 | handler 완료형과 token 인자가 계약과 다름 | `spotDispatchMode`, message-kind별 policy와 진단 필드 누락 | message-flow 진단 필드와 typed event 계약 누락 |
+| dispatch options와 diagnostics | 최적화 mode 제거 필요 | handler 완료형, token과 mode 제거 필요 | public mode 제거와 message-kind별 policy·진단 필드 보완 필요 | message-flow 진단 필드와 typed event 계약 누락 |
 | public export 경계 | 계약과 일치 | `ZLinkBackend*`, `*BackendAdapter`가 public 선언 | registration record와 normalizer가 package root에 노출 | 설치 header에 `*_state_t`와 runtime helper 노출 |
 | 오류 kind | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 충족 | 공통 집합 밖 값 노출 |
 | route-mesh runtime options | 충족 | 없음 | 충족 | 없음 |
+| actor membership 상태 | `SpotRid`와 `IsJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
+| actor join 결과 | 승인 boolean, nullable actor와 reply가 독립 필드 | result code, actor와 reply가 독립 필드 | 승인 boolean, optional actor/reply가 독립 필드 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
 
 ## 3. Java/Kotlin
 
@@ -88,16 +90,15 @@ handler의 등록 경계를 분리해야 한다.
 inventory에 정식 public contract로 반영했다.
 
 ```text
-ActorSpotRefResolver
+ActorSpotHandleResolver
 ManualEndpointListBuilder
-SpotRefResolver
+SpotHandleResolver
 ZLinkActorClient
 ZLinkActorDirectory
 ZLinkActorJoinCall
 ZLinkActorLocationStore
 ZLinkActorRequestCall
 ZLinkActorSendCall
-ZLinkActorYieldJoinCall
 ZLinkChannelRuntimeOptions
 ZLinkClientServerChannelRuntimeOptions
 ZLinkCodecRegistrar
@@ -120,7 +121,6 @@ ZLinkSpotSubscriptionHandler
 ZLinkSpotTimerHandler
 ZLinkStreamCompressionBuilder
 ZLinkTypedSessionPacketHandler
-ZLinkYieldRequestCall
 ```
 
 Kotlin 전용 public type과 top-level extension도 Kotlin interface catalog의 type 및
@@ -142,6 +142,16 @@ messages
 errors
 ```
 
+### 3.6 Actor membership와 join 결과
+
+현재 actor context는 nullable Spot 식별자와 join boolean을 따로 노출한다. 두 값을
+순서대로 읽는 동안 상태가 바뀌거나 구현이 서로 다른 값을 돌려주면 모순이 생긴다.
+목표 계약은 nullable Spot 식별자 하나를 join 상태의 단일 기준으로 사용한다.
+
+현재 join 결과도 result code 또는 승인 여부와 nullable actor를 독립 필드로 제공한다.
+목표 계약은 sealed 승인/거절 결과로 바꾼다. 승인 결과만 필수 actor ref를 가지며 두
+결과 모두 reply를 가진다. Kotlin은 Java sealed 계약을 그대로 사용한다.
+
 location store/query, compression과 connector에 선언된 나머지 public extension은
 Kotlin 문서의 전체 function inventory를 기준으로 검증한다. 이 항목의 남은 작업은
 문서 추가가 아니라 실제 public declaration 및 contract test 정렬이다.
@@ -150,21 +160,19 @@ Kotlin 문서의 전체 function inventory를 기준으로 검증한다. 이 항
 
 ### 4.1 dispatch options
 
-언어별 스펙은 Spot과 Stream dispatch mode, message kind별 unhandled policy, diagnostics와
-message-flow observer를 정의한다. 현재 `ZLinkDispatchOptions`는 단일 `mode`, 단일
-`unhandled.action`과 제한된 diagnostics만 제공한다.
+언어별 스펙은 dispatch 최적화 전략을 runtime 내부에 두고 message kind별 unhandled
+policy, diagnostics와 message-flow observer만 정의한다. 현재 `ZLinkDispatchOptions`는
+단일 `mode`, 단일 `unhandled.action`과 제한된 diagnostics를 제공한다.
 
 현재 구현과 다른 항목:
 
 ```text
-spotDispatchMode
-streamDispatchMode
+public dispatch mode 제거
 request/send/publish별 unhandled policy
 ReplyError
 LogAndDrop
 Drop
 includeNativeDiagnostics
-effective dispatch mode 진단 값
 localRid
 peerRid
 socketRole
@@ -209,6 +217,13 @@ session send는 `Promise<void>`를 반환한다. 같은 one-way 의미는 `void 
 현재 package root에는 내부 registration 타입이 남아 있고, location interface 13개가
 TypeScript 목표 naming과 달리 `I` prefix를 사용한다. 내부 export를 제거하고 location
 interface의 member를 유지한 채 이름을 정렬해야 한다.
+
+### 4.6 Actor membership와 join 결과
+
+현재 `spotRid`, `isJoined`를 함께 노출하고 join 결과의 `accepted`, optional actor와
+optional reply를 독립 필드로 제공한다. 목표 계약은 `spotRid`만 상태 기준으로 사용하고
+join 결과를 `status` discriminated union으로 바꾼다. 승인 variant만 필수 actor ref를
+가지며 두 variant 모두 reply를 가진다.
 
 ## 5. C++
 
@@ -255,7 +270,23 @@ route-mesh runtime options가 없어 channel 역할별 구성 사용성이 다�
 `async_range_t<T>`와 runtime `message_flow_control_t`가 public header에 없으므로 C++
 언어별 interface 계약의 정확한 member를 추가해야 한다.
 
+현재 session actor relay도 one-way call로 끝나며 bound-session disconnect는 일반 send
+call을 반환한다. 다른 언어와 같은 오류 관찰 의미를 위해 relay와 disconnect는
+`task_t<void>` 완료를 반환하고, bound-session send만 one-way `submit()`으로 유지한다.
+
+### 5.6 Actor membership와 join 결과
+
+현재 actor context는 `is_joined()`만 제공해 join 여부는 알 수 있지만 현재 user Spot의
+논리 식별자를 같은 계약으로 얻을 수 없다. 목표 계약은
+`std::optional<spot_rid_t> spot_rid()`를 단일 상태 값으로 제공한다. join 결과는
+`std::variant`의 승인/거절 값으로 바꾸고 승인 값만 actor ref를 갖게 한다.
+
 ## 6. `.NET` 문서 완전성
+
+현재 actor context는 nullable `SpotRid`와 `IsJoined`를 중복 노출하고, actor join 결과는
+승인 boolean과 nullable actor를 독립 필드로 제공한다. 목표 계약은 `SpotRid`만 join
+상태의 기준으로 사용하며, join 결과를 승인/거절 sealed record로 바꿔 승인 결과에만
+필수 actor ref가 존재하게 한다.
 
 다음 타입은 기존 interface catalog에서 이름이나 전체 시그니처를 찾기 어려웠다.
 현재 `.NET` interface 문서의 전체 inventory, 보완 시그니처와 공통 기능 커버리지 표에
@@ -268,7 +299,6 @@ IZLinkActorJoinCall
 IZLinkActorLocationStore
 IZLinkActorRequestCall
 IZLinkActorSendCall
-IZLinkActorYieldJoinCall
 IZLinkChannelRuntimeOptions
 IZLinkClientServerChannelOptions
 IZLinkCodecExtension
@@ -285,12 +315,10 @@ IZLinkStreamCompressionBuilder
 IZLinkUnhandledDispatchOptions
 IZLinkWorkerCall
 IZLinkWorkerOptions
-IZLinkYieldRequestCall
 ```
 
-`IZLinkChannelClient.RequestToChannel(...)`이 반환하는 `IZLinkYieldRequestCall`은
-일반 `IZLinkRequestCall`로 축약하지 않는다. 이 항목의 남은 작업은 문서 추가가 아니라
-contract test가 전체 inventory를 읽도록 고치는 것이다.
+request, actor join과 worker의 yield 전용 타입은 목표 계약에서 제거한다. 이 항목의
+남은 작업은 구현과 contract test를 단일 완료 terminator에 맞추는 것이다.
 
 `IZLinkActorSendCall`은 현재 `ValueTask Async(CancellationToken)`을 제공한다. 정식
 one-way 계약은 `void Submit(CancellationToken)`이므로 구현과 contract test에서 이
@@ -306,7 +334,26 @@ terminator를 다른 one-way call과 같게 바꿔야 한다.
 코드 작업 단계에서 새 경로를 사용하도록 contract test를 수정하고 파일 열기 실패도
 검사 실패로 처리해야 한다.
 
-## 8. 완료 조건
+## 8. POSD public contract 변경 gap
+
+| 변경 | `.NET` | Java/Kotlin | Node.js | C++ |
+|------|--------|-------------|---------|-----|
+| Spot messaging handle | `SpotRef` resolver/outbound를 `SpotHandle`로 교체 | ref resolver와 Kotlin extension을 handle 기반으로 교체 | public structural ref를 branded handle로 교체 | `spot_ref_t` 전송 인자를 opaque `spot_handle_t`로 교체 |
+| 실행 줄 관리 | request/join/worker yield 타입과 worker callback submit 제거 | blocking `await`, yield와 callback submit 제거 | yield call과 worker callback 제거 | yield call과 worker callback 제거 |
+| dispatch 최적화 은닉 | `ZLinkDispatchMode`와 두 mode property 제거 | 같은 mode enum/property 제거 | 현재 `mode` option 제거 | `dispatch_mode_t`와 두 mode property 제거 |
+| packet identity | typed call의 `PacketName` 제거 | typed call과 annotation override 제거 | call/payload instance override 제거 | typed call의 `packet_name` 제거 |
+| actor Spot 접근 | `GetSpot` overload 제거 | Java getter 제거, Kotlin은 Spot handler 인자 사용 | `getSpot` overload 제거 | 목표 contract가 이미 getter를 요구하지 않음 |
+| actor membership | `IsJoined`를 제거하고 nullable `SpotRid`만 사용 | `isJoined`를 제거하고 `Optional<RoutingId>`만 사용 | `isJoined`를 제거하고 optional `spotRid`만 사용 | `is_joined()`를 nullable `spot_rid()`로 교체 |
+| actor join 결과 | boolean과 nullable actor를 승인/거절 sealed record로 교체 | result code와 nullable actor를 sealed interface로 교체 | 독립 필드를 discriminated union으로 교체 | result code 구조체를 승인/거절 `variant`로 교체 |
+| monitoring event 상태 | kind와 nullable payload 독립 필드를 sealed event로 교체 | location/Spot event를 sealed interface로 교체 | event kind별 discriminated union으로 교체 | event payload도 유효 상태만 표현하는 `variant`인지 검증 |
+| manual connection | capability별 `IZLinkEndpointConnections` runtime handle 추가 | 동일한 6개 nominal interface 대신 `ZLinkEndpointConnections` 재사용 | 기존 단일 interface를 builder capability accessor에 연결하고 runtime handle 의미로 정렬 | 역할 builder가 동일 connection 계약을 재사용하도록 검증 |
+
+이 표의 변경은 public contract 변경이므로 compatibility alias를 자동으로 추가하지 않는다.
+alias가 같은 복잡성을 계속 노출하면 POSD 목표를 달성하지 못한다. release 정책상 전환 기간이
+필요하면 deprecated adapter를 별도 compatibility package에 두고 정식 package root에서는
+새 계약만 노출한다.
+
+## 9. 완료 조건
 
 각 항목은 다음 조건을 모두 만족해야 닫을 수 있다.
 

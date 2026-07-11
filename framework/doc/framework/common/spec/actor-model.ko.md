@@ -132,9 +132,16 @@ message handler와 `on_join` / `on_leave` lifecycle callback handler는 applicat
 - **session 초기 상태 설정** -- session metadata, profile lookup 등.
 
 actor 코드 입장에서 entry 단계인지 user Spot 단계인지 구분이 필요하면 actor
-context의 join 상태 (예: `IsJoined` 노출) 로 확인한다. actor handler 표면은 user
-Spot의 논리 주소인 `RoutingId spotRid`까지 받지만, target node routing id 같은 transport
-위치값은 직접 받지 않는다.
+context의 nullable Spot 식별자로 확인한다. 값이 없으면 Entry Spot 단계이고 값이 있으면
+해당 user Spot에 참여한 상태다. 별도 boolean을 함께 제공하면 두 값이 모순될 수 있으므로
+join 상태를 중복해서 노출하지 않는다. actor handler 표면은 user Spot의 논리 주소인
+`RoutingId spotRid`까지 받지만, target node routing id 같은 transport 위치값은 직접 받지
+않는다.
+
+actor join 결과도 승인 boolean과 nullable actor를 독립 필드로 제공하지 않는다. 승인
+결과는 actor ref와 reply를 함께 가진 값이고, 거절 결과는 reply만 가진 값이다. 각 언어는
+sealed hierarchy, tagged union 또는 `variant`로 두 경우만 표현한다. 따라서 승인됐지만
+actor ref가 없거나, 거절됐는데 actor ref가 있는 결과는 만들 수 없다.
 
 ## 4. 라이프사이클 단계
 
@@ -144,6 +151,7 @@ None
         +--(bind session)-> Entry Spot + bound
         |     +--(JoinSpot)-> user Spot + bound
         |           +--(leaveActor)-> Entry Spot + bound
+        |           +--(JoinEntrySpot)-> Entry Spot + bound
         |                 +--(destroyActor)-> None
         +--(disconnect / unbind)-> Entry Spot + unbound
               +--(destroyActor)-> None
@@ -271,12 +279,12 @@ public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표�
 
 위치 조회는 framework의 location resolver가 맡는다
 ([location runtime §5](location-runtime.ko.md)). 기본 구현은 등록된 location store를
-읽고, 결과로 메시징 대상 handle인 `SpotRef`를 돌려준다.
+읽고, 결과로 내부 주소 갱신을 소유하는 `SpotHandle`을 돌려준다.
 
 | resolver | 책임 |
 | --- | --- |
-| actor location resolver | actor(type + id) → 그 actor가 위치한 spot의 `SpotRef` |
-| spot location resolver | spot rid → 그 spot의 `SpotRef` |
+| actor location resolver | actor(type + id) → 그 actor가 위치한 spot의 `SpotHandle` |
+| spot location resolver | spot rid → 그 spot의 `SpotHandle` |
 
 위치의 저장소는 application이 등록한 location store(예: 공식 Redis extension)다.
 framework는 특정 store 제품을 강제하지 않고, row의 등록·갱신은 actor/spot lifecycle이
@@ -290,7 +298,8 @@ send와 request는 모두 `ActorRef`를 대상으로 받으며, actor id만 받�
 이유는 위치 조회, generation 검증, 실제 전송을 한 호출에 숨기지 않고 stale ref를 명시적으로
 판정하기 위해서다.
 
-- send 완료는 대상 actor owner가 메시지를 mailbox에 인계했음을 뜻한다.
+- actor send의 one-way `submit()` 완료는 입력 검증과 local queue 수락을 뜻한다. 대상
+  actor mailbox 인계 이후의 실패는 monitoring/error observer로 관찰한다.
 - request 완료는 같은 인계 뒤 actor handler의 reply가 caller에게 돌아왔음을 뜻한다.
 - 어느 경우에도 이 호출로 actor의 bound session을 만들거나 바꾸지 않는다.
 - 존재하지 않는 actor, stale generation, 끊긴 route는

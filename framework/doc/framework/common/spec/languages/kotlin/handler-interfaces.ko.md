@@ -118,8 +118,6 @@ interface ZLinkSuspendingTypedSessionPacketHandler<
     TSessionContext : ZLinkSessionContext,
     TMessage : Any,
 > {
-    fun packetName(): String
-
     fun messageType(): Class<TMessage>
 
     suspend fun handle(
@@ -143,7 +141,9 @@ abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
     final override fun create(
         actorId: String,
         context: ZLinkActorContext,
-    ): CompletionStage<ZLinkActor>
+    ): CompletionStage<ZLinkActor> = frameworkCoroutineBridge {
+        createActor(actorId, context)
+    }
 
     protected abstract suspend fun createActor(
         actorId: String,
@@ -153,13 +153,16 @@ abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
 
 abstract class ZLinkSuspendingActorTransferAdapter<TActor : ZLinkActor> :
     ZLinkActorTransferAdapter<TActor> {
-    final override fun transferOut(actor: TActor): CompletionStage<ZLinkMessage>
+    final override fun transferOut(actor: TActor): CompletionStage<ZLinkMessage> =
+        frameworkCoroutineBridge { transferOutSuspending(actor) }
 
     final override fun transferIn(
         actorId: String,
         context: ZLinkActorContext,
         state: ZLinkMessage,
-    ): CompletionStage<TActor>
+    ): CompletionStage<TActor> = frameworkCoroutineBridge {
+        transferInSuspending(actorId, context, state)
+    }
 
     protected abstract suspend fun transferOutSuspending(actor: TActor): ZLinkMessage
 
@@ -179,27 +182,35 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
 
     final override fun onCreate(
         request: ZLinkMessage,
-    ): CompletionStage<ZLinkSpotCreateResponse>
-    final override fun onInitialize(): CompletionStage<Void>
-    final override fun onClosing(): CompletionStage<Void>
+    ): CompletionStage<ZLinkSpotCreateResponse> =
+        frameworkCoroutineBridge { onCreateSuspending(request) }
+    final override fun onInitialize(): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onInitializeSuspending() }
+    final override fun onClosing(): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onClosingSuspending() }
 
     final override fun onActorJoin(
         actorId: String,
         request: ZLinkMessage,
-    ): CompletionStage<ZLinkSpotActorJoinResponse>
+    ): CompletionStage<ZLinkSpotActorJoinResponse> = frameworkCoroutineBridge {
+        onActorJoinSuspending(actorId, request)
+    }
 
-    final override fun onJoinedActor(actor: TActor): CompletionStage<Void>
+    final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onJoinedActorSuspending(actor) }
 
-    final override fun onLeaveActor(actor: TActor): CompletionStage<Void>
+    final override fun onLeaveActor(actor: TActor): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onLeaveActorSuspending(actor) }
 
-    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void>
+    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onDisconnectActorSuspending(actor) }
 
-    protected open suspend fun onCreateSuspending(
+    protected abstract suspend fun onCreateSuspending(
         request: ZLinkMessage,
     ): ZLinkSpotCreateResponse
 
-    protected open suspend fun onInitializeSuspending()
-    protected open suspend fun onClosingSuspending()
+    protected open suspend fun onInitializeSuspending() = Unit
+    protected open suspend fun onClosingSuspending() = Unit
 
     protected abstract suspend fun onActorJoinSuspending(
         actorId: String,
@@ -209,34 +220,43 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
 
     protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
-    protected open suspend fun onDisconnectActorSuspending(actor: TActor)
+    protected open suspend fun onDisconnectActorSuspending(actor: TActor) = Unit
 }
 
 abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     ZLinkEntrySpot<TActor> {
     abstract override fun context(): ZLinkEntrySpotContext
 
-    final override fun onInitialize(): CompletionStage<Void>
-    final override fun onClosing(): CompletionStage<Void>
+    final override fun onInitialize(): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onInitializeSuspending() }
+    final override fun onClosing(): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onClosingSuspending() }
 
     final override fun onCreateActor(
         actor: TActor,
         createRequest: ZLinkMessage,
-    ): CompletionStage<Void>
+    ): CompletionStage<Void> = frameworkVoidCoroutineBridge {
+        onCreateActorSuspending(actor, createRequest)
+    }
 
     final override fun onActorJoin(
         actorId: String,
         request: ZLinkMessage,
-    ): CompletionStage<ZLinkSpotActorJoinResponse>
+    ): CompletionStage<ZLinkSpotActorJoinResponse> = frameworkCoroutineBridge {
+        onActorJoinSuspending(actorId, request)
+    }
 
-    final override fun onJoinedActor(actor: TActor): CompletionStage<Void>
+    final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onJoinedActorSuspending(actor) }
 
-    final override fun onLeaveActor(actor: TActor): CompletionStage<Void>
+    final override fun onLeaveActor(actor: TActor): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onLeaveActorSuspending(actor) }
 
-    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void>
+    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onDisconnectActorSuspending(actor) }
 
-    protected open suspend fun onInitializeSuspending()
-    protected open suspend fun onClosingSuspending()
+    protected open suspend fun onInitializeSuspending() = Unit
+    protected open suspend fun onClosingSuspending() = Unit
 
     protected abstract suspend fun onCreateActorSuspending(
         actor: TActor,
@@ -251,7 +271,7 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
 
     protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
-    protected open suspend fun onDisconnectActorSuspending(actor: TActor)
+    protected open suspend fun onDisconnectActorSuspending(actor: TActor) = Unit
 }
 ```
 
@@ -261,23 +281,33 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
 abstract class ZLinkSuspendingSession : ZLinkSession {
     abstract override fun context(): ZLinkSessionContext
 
-    final override fun onConnected(): CompletionStage<Void>
-    final override fun onDisconnected(): CompletionStage<Void>
-    final override fun onError(error: ZLinkStreamError): CompletionStage<Void>
+    final override fun onConnected(): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onConnectedSuspending() }
+    final override fun onDisconnected(): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onDisconnectedSuspending() }
+    final override fun onError(error: ZLinkStreamError): CompletionStage<Void> =
+        frameworkVoidCoroutineBridge { onErrorSuspending(error) }
     final override fun onDispatch(
         dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
-    ): CompletionStage<Void>
+    ): CompletionStage<Void> = frameworkVoidCoroutineBridge {
+        onDispatchSuspending(dispatch, payload)
+    }
 
-    protected open suspend fun onConnectedSuspending()
-    protected open suspend fun onDisconnectedSuspending()
-    protected open suspend fun onErrorSuspending(error: ZLinkStreamError)
+    protected open suspend fun onConnectedSuspending() = Unit
+    protected open suspend fun onDisconnectedSuspending() = Unit
+    protected open suspend fun onErrorSuspending(error: ZLinkStreamError) = Unit
     protected open suspend fun onDispatchSuspending(
         dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
-    )
+    ) = Unit
 }
 ```
+
+`frameworkCoroutineBridge`와 Unit 결과를 `CompletionStage<Void>`로 바꾸는
+`frameworkVoidCoroutineBridge`는 framework 내부 구현이며 public API가 아니다. 위 본문은
+각 Java callback이 대응하는 suspending member를 비차단 방식으로 호출한다는 계약을
+명확히 보이기 위해 함께 적었다.
 
 ## 7. 전체 Kotlin public surface와 구현 차이
 
@@ -348,7 +378,7 @@ class ZLinkKotlinStreamConnector(
     fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall
     fun send(payload: Any): ZLinkKotlinSendCall
     fun request(payload: ZLinkStreamEncodedPayload): ZLinkStreamRequestCall
-    fun request(payload: Any): ZLinkStreamRequestCall
+    fun request(payload: Any): ZLinkTypedStreamRequestCall
     inline fun <reified TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload>
     inline fun <reified TPayload> waitFor(
         name: String,
@@ -378,6 +408,9 @@ class ZLinkStreamTypedWaitCall<TPayload> {
 
 `ZLinkKotlinLifecycleCall.await()`은 coroutine을 중단한 뒤 Java stage 완료로 재개한다.
 `ZLinkKotlinSendCall.submit()`은 one-way 전송 완료 객체를 만들지 않는다.
+raw send의 packet identity는 `ZLinkStreamEncodedPayload`에 이미 포함되어 있고 typed
+send의 identity는 payload type descriptor가 정하므로 Kotlin call wrapper도 이름
+override를 제공하지 않는다.
 
 ```kotlin
 abstract class ZLinkSuspendingLocationStore : ZLinkLocationStore {
@@ -456,12 +489,12 @@ package 구조가 아니라 이 기능 그룹을 기준으로 contract test에�
 | 기능 | extension |
 |------|-----------|
 | stage 대기 | `CompletionStage<T>.await()` |
-| channel/actor call | `awaitReply`, `requestToActorAwait`, `yield` |
+| channel/actor call | `awaitReply`, `requestToActorAwait` |
 | actor directory | `findActor`, `ensureActor`, `snapshot`, `actorRef`, `awaitJoin` |
 | channel send/publish | `ZLinkClient.send`, `ZLinkRouteClient.send`, `publishToTopic` |
 | coroutine 구성 | `useCoroutineHandlers` |
 | location store | `updatePeer`, `removePeer`, `listPeerLocations`, `updateSpot`, `removeSpot`, `resolveSpot`, `listSpotLocations`, `updateActor`, `removeActor`, `resolveActor`, `listActorLocations`, `updateRoute`, `removeRoute`, `resolveRoute`, `listRouteLocations` |
-| owner lease와 resolver | `renewOwnerLease`, `removeOwnerLease`, `removeAllByOwner`, `listOwnerLeases`, `listLivePeers`, `resolveSpotRef`, `resolveActorSpotRef`, `isPeerReady` |
+| owner lease와 resolver | `renewOwnerLease`, `removeOwnerLease`, `removeAllByOwner`, `listOwnerLeases`, `listLivePeers`, `resolveSpotHandle`, `resolveActorSpotHandle`, `isPeerReady` |
 | location query와 Flow | `status`, `listTopology`, `listServiceSummaries`, `locationPages`, `spots`, `actors`, `routes`, `topology`, `changes`, `Publisher.asFlow` |
 | stream connector | `kotlin`, compression 설정 extension, request `await`, `messages`, `errors` |
 | message와 dispatch | `messageOf`, `onMessageFlow` |
@@ -512,10 +545,10 @@ removeSpot
 renewOwnerLease
 requestToActorAwait
 resolveActor
-resolveActorSpotRef
+resolveActorSpotHandle
 resolveRoute
 resolveSpot
-resolveSpotRef
+resolveSpotHandle
 routes
 send
 snapshot
@@ -532,7 +565,6 @@ withDefaultStreamCompression
 withLz4StreamCompression
 withStreamCompression
 withoutStreamCompression
-yield
 ```
 
 아래 코드 블록은 top-level extension의 정식 시그니처 표기다. 함수 body는 framework
@@ -580,33 +612,10 @@ suspend fun ZLinkActorJoinCall.awaitJoin(): ZLinkActorJoinResult<Void>
 suspend fun <TReply> ZLinkActorJoinCall.awaitJoin(
     replyType: Class<TReply>,
 ): ZLinkActorJoinResult<TReply>
-inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoin(): ZLinkActorJoinResult<TReply>
+inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoinReply(): ZLinkActorJoinResult<TReply>
 ```
 
 ```kotlin
-suspend fun <TReply> yield(
-    call: ZLinkYieldRequestCall,
-    replyType: Class<TReply>,
-): TReply
-inline suspend fun <reified TReply> yield(call: ZLinkYieldRequestCall): TReply
-suspend fun yield(call: ZLinkActorJoinSpotCall): ZLinkActorJoinResult<Void>
-suspend fun <TReply> yield(
-    call: ZLinkActorJoinSpotCall,
-    replyType: Class<TReply>,
-): ZLinkActorJoinResult<TReply>
-inline suspend fun <reified TReply> yield(
-    call: ZLinkActorJoinSpotCall,
-): ZLinkActorJoinResult<TReply>
-suspend fun yield(call: ZLinkActorJoinEntrySpotCall): ZLinkActorJoinResult<Void>
-suspend fun <TReply> yield(
-    call: ZLinkActorJoinEntrySpotCall,
-    replyType: Class<TReply>,
-): ZLinkActorJoinResult<TReply>
-inline suspend fun <reified TReply> yield(
-    call: ZLinkActorJoinEntrySpotCall,
-): ZLinkActorJoinResult<TReply>
-suspend fun <T> yield(call: ZLinkWorkerCall<T>): T
-
 fun ZLinkClient.send(channelName: String, message: Message)
 inline suspend fun <reified TReply> ZLinkClient.request(
     channelName: String,
@@ -628,13 +637,11 @@ inline suspend fun <reified TReply> ZLinkRouteClient.request(
     message: Message,
 ): TReply
 fun ZLinkRouteClient.send(
-    channelName: String,
-    spotRef: SpotRef,
+    target: SpotHandle,
     message: Message,
 )
 inline suspend fun <reified TReply> ZLinkRouteClient.request(
-    channelName: String,
-    spotRef: SpotRef,
+    target: SpotHandle,
     message: Message,
 ): TReply
 ```
@@ -745,11 +752,10 @@ suspend fun ZLinkLocationStore.listOwnerLeases(): ZLinkOwnerLeaseSnapshot
 suspend fun ZLinkPeerLocationResolver.listLivePeers(
     filter: ZLinkPeerLocationFilter,
 ): List<ZLinkPeerLocation>
-suspend fun SpotRefResolver.resolveSpotRef(
-    meshName: String,
+suspend fun SpotHandleResolver.resolveSpotHandle(
     spotRid: RoutingId,
-): SpotRef?
-suspend fun ActorSpotRefResolver.resolveActorSpotRef(actorId: String): SpotRef?
+): SpotHandle?
+suspend fun ActorSpotHandleResolver.resolveActorSpotHandle(actorId: String): SpotHandle?
 suspend fun ZLinkLocationRuntimeQuery.status(): ZLinkLocationRuntimeStatus
 suspend fun ZLinkLocationRuntimeQuery.listPeerLocations(
     filter: ZLinkPeerLocationFilter,
@@ -811,8 +817,8 @@ fun ZLinkStreamConnectorOptions.withStreamCompression(
 ): ZLinkStreamConnectorOptions
 fun ZLinkStreamConnectorOptions.withoutStreamCompression(): ZLinkStreamConnectorOptions
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
-inline suspend fun <reified TReply> ZLinkStreamRequestCall.await(): TReply
 inline suspend fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply
+inline suspend fun <reified TReply> ZLinkTypedStreamRequestCall.awaitReply(): TReply
 inline suspend fun <reified TPayload> ZLinkStreamWaitCall.await(): ZLinkStreamMessage<TPayload>
 inline fun <reified TPayload> ZLinkStreamConnector.waitFor(): ZLinkStreamTypedWaitCall<TPayload>
 fun ZLinkStreamConnector.messages(
@@ -836,4 +842,6 @@ fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 | `ZLinkKotlinSendCall.submit` | one-way, 완료 객체 없음 | `inner.submit()` 결과를 반환하지 않음 | 일치 |
 | `ZLinkActorSendCall.awaitSend`, `ZLinkActorClient.sendToActorAwait` | 목표 public 계약에 없음 | 현재 extension으로 공개됨 | gap — Java actor send가 `void submit()`으로 바뀔 때 두 completion 대기 extension을 제거한다. |
 | `ZLinkFanoutClient.publishToTopic` | 일반 `fun`, one-way 완료 객체 없음 | 불필요한 `suspend fun`으로 공개됨 | gap — suspension modifier를 제거하고 내부 `submit()`만 호출한다. |
+| request/join/worker yield extension | 별도 extension 없음. 일반 `await`가 실행 문맥을 보존 | 여러 `yield(...)` top-level extension 공개 | gap — yield extension을 제거하고 Java의 단일 완료 계약을 사용한다. |
+| Spot messaging target | `SpotHandle` extension과 handle resolver | `SpotRef` resolver extension 공개 | gap — 주소 snapshot 대신 불투명 handle을 사용한다. |
 | 이 절의 top-level extension 선언 | receiver, overload, parameter, default와 반환형을 위 시그니처로 고정 | public 함수는 존재하지만 기존 문서는 이름만 나열 | 문서 gap 해소 — contract test가 각 overload의 JVM signature까지 검증해야 한다. |

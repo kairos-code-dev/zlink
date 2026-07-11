@@ -200,7 +200,6 @@ export interface ZLinkSessionActor {
 
 export interface ZLinkSessionSendCall {
   metadata(key: string, value: string): ZLinkSessionSendCall;
-  packetName(messageName: string): ZLinkSessionSendCall;
   compress(): ZLinkSessionSendCall;
   submit(): void;
 }
@@ -244,51 +243,45 @@ application 이 raw frame 을 직접 보내야 할 때만 `Message` 를 `ZLinkSt
 에 넘긴다. 보통의 session 응답은 `context.client.send(...)`,
 `context.client.reply(...)` 같은 typed builder 를 사용한다.
 
-`context.client.send(...)` 와 `ZLinkBoundSession.send(...)` 의 packet name
-해석은 channel client 와 같은 규칙을 따른다. class instance 처럼 런타임 생성자
-이름이 의미 있는 payload 는 기본 packet name 으로 쓸 수 있다. 반대로 plain
-object, primitive, array, `Buffer`, `Uint8Array`, `Date` 처럼 구조적 값이거나
-내장 타입인 payload 는 packet 타입을 나타내지 못하므로 `packetName(...)` 을
-명시해야 한다. 이 제약은 TypeScript interface 가 런타임에 사라지는 언어 특성
-때문에 필요하다.
+`context.client.send(...)` 와 `ZLinkBoundSession.send(...)` 의 packet identity
+해석은 channel client와 같은 규칙을 따른다. typed 표면은 framework가 runtime에서
+식별할 수 있는 class instance를 받으며 이름은 그 타입의 descriptor에서 한 번 정한다.
+plain object, primitive, array, `Buffer`, `Uint8Array`, `Date`처럼 메시지 타입을
+식별할 수 없는 값은 typed 표면에 넘기지 않는다. 이런 값이 꼭 필요한 connector나
+내부 확장은 packet identity를 명시하는 별도 raw 표면을 사용한다.
 
-session 이 일부 packet 만 직접 처리하고 나머지 정책을 스스로 정하고 싶을 때는
-`ZLinkSessionPacketHandler<TSessionContext>` 와
-`ZLinkSessionPacketDispatcher<TSessionContext>` 를 사용할 수 있다.
+session이 일부 packet만 직접 처리하고 나머지 정책을 정하고 싶을 때는 typed
+`ZLinkSessionPacketHandler<TSessionContext, TMessage>`와
+`ZLinkSessionHandlerRegistry`를 사용한다.
 
 ```ts
-export interface ZLinkSessionPacketHandler<TSessionContext> {
-  readonly packetName: string;
-
+export interface ZLinkSessionPacketHandler<TSessionContext, TMessage> {
   handle(
     context: TSessionContext,
     dispatch: ZLinkSessionDispatchContext,
-    payload: ZLinkMessage,
+    message: TMessage,
   ): Promise<void>;
 }
 
-export interface ZLinkSessionPacketDispatcher<TSessionContext> {
+export interface ZLinkSessionHandlerRegistry {
+  addHandler<THandler>(handlerType: Type<THandler>): this;
+
   /**
    * 등록된 packet handler 가 있는 packet 만 dispatch 한다.
    * handler 가 처리하면 true, 없으면 false 를 반환해 session 이 relay/reject/
    * ignore/log 중 무엇을 할지 정하게 한다.
    */
   tryHandle(
-    context: TSessionContext,
     dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
   ): Promise<boolean>;
 }
 ```
 
-dispatcher 는 등록된 handler 의 `packetName` 과 일치하는 packet 만 처리하고,
-처리한 경우 `true` 를 반환한다. 일치하는 handler 가 없으면 `false` 를 반환하며,
-이 뒤에 actor 로 relay 할지, 오류로 거절할지, 로그만 남길지는 session 구현체가
-정한다. framework 는 이 단계에서 자동 relay 나 자동 무시 정책을 적용하지 않는다.
-
-handler 가 받는 `payload` 도 `onDispatch(...)` 와 같은 framework `ZLinkMessage` 다.
-handler 구현은 DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
-context 타입에 맞는 handler 구현을 provider 로 자동 등록한다.
+registry는 message type descriptor로 packet identity를 찾고 payload를 decode한 뒤 typed
+handler를 호출한다. raw `ZLinkMessage`는 `tryHandle(...)`의 framework 경계에만 남는다.
+handler가 있으면 `true`, 없으면 `false`를 반환하며 이후 relay/reject/ignore/log 정책은
+session이 정한다. handler 구현은 DI를 사용할 수 있다.
 
 여기서 기대하는 동작은 다음과 같다.
 

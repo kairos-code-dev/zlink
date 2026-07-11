@@ -20,10 +20,13 @@ publish, request packet submit, connect, close, dispatch 같은 network 또는
 runtime 상태 전이 호출은 기본적으로 비동기 실행 단위다. send는 one-way 호출이며,
 전송 가능 상태와 backpressure 처리는 framework 내부 전송 경로가 맡는다.
 
-send와 publish의 backpressure는 public blocking/nonblocking 옵션으로 나누지 않는다.
-framework는 내부에서 nonblocking send, pending queue, ready notification을 사용해
-전송 가능 상태까지 비동기로 기다린다. blocking send를 `Task.Run`, thread pool worker,
-virtual thread, coroutine worker로 감싸서 async처럼 보이게 만들지 않는다.
+send와 publish의 one-way `submit()`은 입력 검증과 bounded local queue 수락까지만
+동기로 수행하고 완료 객체를 반환하지 않는다. queue가 가득 찼거나 route가 준비되지
+않으면 즉시 언어별 framework 예외를 발생시킨다. 수락 뒤 framework는 nonblocking send,
+pending queue와 ready notification으로 transport를 진행한다. 그 뒤의 실패는
+monitoring/error observer로 전달하며 이미 반환한 호출에 예외를 되돌리지 않는다.
+blocking send를 `Task.Run`, thread pool worker, virtual thread, coroutine worker로 감싸서
+async처럼 보이게 만들지 않는다.
 
 request는 두 단계로 본다.
 
@@ -35,23 +38,20 @@ Spot과 Entry Spot application callback은 Spot 단위 직렬 실행 줄에서 �
 완료 값이 끝날 때까지 같은 Spot의 다음 callback을 시작하지 않는다. callback 안에서
 blocking wait로 완료 값을 기다리는 것은 금지한다.
 
-기본 terminator는 이 직렬 의미를 유지한다. `.NET`의 `Async(...)`, Java의
-`submit(...)`/`await(...)`, Kotlin의 `submit(...).await()`, Node.js의 `submit(...)`,
-C++의 `async()`는 handler가 기다리는 동안 같은 Spot 또는 Entry Spot의 다음 작업을
-시작하지 않는다. 이 기본값은 handler가 await 전후에 Spot 공용 상태를 이어서 읽거나
-바꾸는 일반 코드를 안전하게 유지하기 위한 것이다.
+request, join과 worker에는 완료를 기다리는 terminator를 하나만 제공한다. `.NET`의
+`Async(...)`, Java의 `submit(...)`, Kotlin의 `await()`, Node.js의 `submit(...)`, C++의
+`async()`가 그 terminator다. `Yield(...)`처럼 실행 줄 관리 방식을 호출자가 고르는
+별도 public terminator는 두지 않는다.
 
-Spot/Entry Spot handler가 player 한 명의 admission/preflight처럼 await 전후에 공용
-mutable state를 이어 쓰지 않는 I/O를 기다릴 때는 yield 계열 terminator를 명시적으로
-사용할 수 있다. yield terminator는 현재 mailbox turn을 반납하고, completion 뒤 원래
-mailbox에서 handler continuation을 재개한다. 같은 actor나 같은 timer의 다음 작업은
-continuation 뒤에 실행되지만, 다른 actor나 다른 timer 작업은 그 사이에 실행될 수 있다.
-
-지원 대상은 framework가 reply, timeout, cancellation, cleanup을 관리하는 call object로
-제한한다. channel request, Spot outbound request, actor `JoinSpot`/`JoinEntrySpot`,
-`RunWorker` completion이 대상이다. channel send/publish, bound session send,
-route mesh send, 사용자 코드가 만든 임의 `Task`/`Promise`/`CompletionStage`,
-외부 HTTP client async 호출에는 yield surface를 제공하지 않는다.
+framework는 현재 실행 문맥과 대상 실행 줄을 알고 있으므로, self-deadlock 없이 완료를
+기다리는 방법을 내부에서 선택한다. 같은 Spot이나 actor의 보호 상태는 callback 완료까지
+서로 무관한 callback이 접근하지 못한다. 다만 현재 callback이 시작하고 직접 기다리는
+동일 실행 줄의 후속 작업은 같은 논리적 turn의 일부로 순서대로 실행할 수 있다. 이 인과
+관계가 없는 callback은 그 사이에 끼워 넣지 않는다. 이렇게 하면 보호 상태의 직렬성을
+유지하면서, 현재 callback의 결과를 만들기 위해 같은 실행 줄이 필요한 경우에도 교착하지
+않는다. 독립된 channel, 다른 actor, 다른 Spot과 worker 실행도 진행할 수 있어야 한다.
+continuation은 원래 실행 문맥으로 돌아온 뒤 재개한다. 따라서 호출자는 await 전에 turn을
+반납할지 판단하지 않는다.
 
 짧고 빠른 local 작업을 callback 밖으로 넘겨야 할 때는 언어별 `RunWorker(...)`,
 `runWorker(...)`, `run_worker(...)` 표면을 사용한다. worker 함수는 Spot 상태를 직접
@@ -68,9 +68,9 @@ framework public API는 각 언어의 표준 비동기 표현을 사용하되, f
 - `.NET`은 request, connect, close 같은 awaitable terminator를 `Async(...)`로 둔다.
   `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하지만, `SubmitAsync`처럼
   submit 동사를 반복하지 않는다. 예: `Connect.Async()`, `Request(...).Async<TReply>()`.
-- Java는 `CompletionStage<T>`를 공식 async 결과로 사용한다. 필요한 경우 Java 전용
-  `submit(...)`은 같은 작업의 async 시작, `await(...)`는 같은 async 작업의 완료를
-  현재 thread에서 기다리는 adapter다.
+- Java는 `CompletionStage<T>`를 공식 async 결과로 사용한다. 서버 framework의
+  `submit(...)`은 같은 작업의 async 시작과 완료를 나타내며 blocking `await(...)`를
+  함께 제공하지 않는다.
 - Kotlin은 Java `CompletionStage` 기반 계약 위에 `suspend` / `Flow` wrapper를 얹는다.
   Kotlin wrapper는 새로운 runtime 의미를 만들지 않고 coroutine suspension으로 같은
   작업을 기다린다.
@@ -209,8 +209,8 @@ client connector 표면:
 
 | 영역 | 메서드 | 의미 |
 |------|--------|------|
-| lifecycle | `connect().submit()`, `connect().await()`, `dispatch().submit()`, `dispatch().await()` | `submit()`은 비동기 작업을 시작하고 `CompletionStage`를 반환한다. `await()`는 같은 작업의 완료를 현재 thread에서 기다리는 Java adapter다. |
-| request / wait | `request(...).submit()`, `request(...).await()`, `waitFor(...).submit()`, `waitFor(...).await()` | request timeout은 connector option 기본값을 따르고, 필요할 때만 호출별 timeout을 지정한다. |
+| lifecycle | `connect().submit()`, `dispatch().submit()` | `submit()`은 비동기 작업을 시작하고 `CompletionStage`를 반환한다. blocking `await()` 대안은 제공하지 않는다. |
+| request / wait | `request(...).submit()`, `waitFor(...).submit()` | request timeout은 connector option 기본값을 따르고, 필요할 때만 호출별 timeout을 지정한다. |
 
 Kotlin은 Java 계약 위에 `suspend` / `Flow` wrapper를 얹는다. Kotlin wrapper는
 새 runtime 의미를 만들지 않고, Java `CompletionStage`를 coroutine suspension으로

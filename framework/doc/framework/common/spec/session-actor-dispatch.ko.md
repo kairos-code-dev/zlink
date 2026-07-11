@@ -145,7 +145,7 @@ request sequence 보존과 codec 처리는 framework가 흡수한다. actor 생�
 | 축 | 역할 |
 |----|------|
 | actor/node/spot handlers | relayed message를 실행 문맥 안에서 typed message로 처리한다. |
-| actor/spot location resolvers | actor id 와 spot rid 를 `SpotRef` 로 해석한다. |
+| actor/spot location resolvers | actor id와 spot rid를 `SpotHandle`로 해석한다. |
 | session actor helpers | session server가 선택한 actor create/dispatch를 request sequence 손실 없이 수행한다. |
 
 아래 그림은 책임 경계를 보여 준다.
@@ -352,14 +352,13 @@ metadata나 raw message를 받으면 transport 위치 조회가 작은 dispatche
 ### 9.2 resolver interface
 
 위치 resolver는 framework가 기본 구현을 제공하는 조회 interface다. 기본 구현은
-location store를 읽고 owner lease join으로 유효성을 판정하며, **SpotRef**
-(mesh + node rid + spot rid)를 반환한다
-([location runtime](location-runtime.ko.md) §5). 캐시는 없다 — 호출자가 resolve 결과를
-보관하고 실패 시 재resolve한다. 공개 resolver 축은 두 개로 제한한다.
+location store를 읽고 owner lease join으로 유효성을 판정하며, 내부 주소 갱신을
+소유하는 **SpotHandle**을 반환한다
+([location runtime](location-runtime.ko.md) §5). 공개 resolver 축은 두 개로 제한한다.
 
 - **actor location resolver** -- `actor type + actorId` → "이 actor가 위치한 spot의
-  `SpotRef`".
-- **spot location resolver** -- `spotRid` → "이 spot의 `SpotRef`". actor의
+  `SpotHandle`".
+- **spot location resolver** -- `spotRid` → "이 spot의 `SpotHandle`". actor의
   `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다. 사용자 교체 지점은 location
   store 등록이다.
 
@@ -438,10 +437,9 @@ runtime 내부 상태 갱신 규칙이지 application이 구현하는 resolver �
 framework lifecycle이 수행한다. placement 정책(game room을 어느 node에 만들지)은
 여전히 application의 것이지만, 그 결과는 location row로 기록된다.
 
-위치 cache는 framework와 resolver 어디에도 없다. 모든 resolve가 store에 도달하고,
-위치를 반복 사용하는 호출자가 resolve 결과(주소)를 보관한다. 보관한 주소로의 전송이
-실패하면 framework는 명확한 error로 돌려주고, 자동으로 다른 위치를 다시 찾거나
-retry하지 않는다 — 재resolve는 호출자의 명시적 행동이다
+새 handle을 만드는 resolve는 store에 도달한다. 위치를 반복 사용하는 호출자는
+`SpotHandle`만 보관하고 framework가 내부 주소 snapshot과 안전한 1회 갱신을 관리한다.
+handler 실행 여부가 불확실한 timeout은 자동 재전송하지 않는다
 ([location runtime](location-runtime.ko.md) §1, §5).
 
 ### 9.6 location store 구현 예
@@ -742,9 +740,9 @@ diagnostic helper는 retry helper와 다르다. diagnostic helper는 location ru
 transport 위치 정보를 application 코드에 노출하므로 public contract에 포함하지 않는다.
 
 framework public API 표면은 spot 호출이 node 경계를 넘을 때 spot location
-resolver로 얻은 주소를 사용한다. session-gateway sample에서 game room이 같은 Play
+resolver로 얻은 handle을 사용한다. session-gateway sample에서 game room이 같은 Play
 서버 안에만 있으면 resolve가 드러나지 않을 수 있지만, 문서의 cross-node 계약은
-resolve-보관-재resolve 규칙을 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
+handle 조회와 안전한 내부 갱신 규칙을 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
 Play 서버 안에서는 `IZLinkSpotManager`로 room SPOT을 만든다. client는 match id나 room
 name을 지정하지 않는다. `MatchId`는 생성된 room의 `SpotRid` hex이며, actor가 join한
 room 안에서 `PlaceMarkReq`가 처리된다. location row는 actor play route sample,

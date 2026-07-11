@@ -43,19 +43,14 @@ core는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 �
 이 순서는 Actor가 생성되기 전에 Entry Spot rid가 정해지도록 하기 위한 것이다.
 
 Actor ref publish/sync와 actor remote location은 별도 application public interface를
-추가하지 않는다. 현재 위치는 location store와 `SpotRef`의 `SpotKind`/`SpotRid`로
-표현한다. 구현이 이 계약과 다르면 [구현 차이](../../implementation-gap.ko.md)에
-기록한다.
+추가하지 않는다. location row는 운영 조회에서 Spot kind와 owner를 표현하고,
+application 메시징은 불투명한 `SpotHandle`을 사용한다.
 
 ## Route 의미
 
-framework가 spot location row를 노출할 때 Entry Spot과 user Spot을 구분한다.
-public 표면은 `SpotRef`(`TargetNodeRid`, `SpotRid`, `SpotKind`)다.
-
-- `SpotRef.SpotKind`가 `Entry`이면 `SpotRid`는 Entry Spot rid다.
-- `SpotRef.SpotKind`가 `User`이면 `SpotRid`는 user Spot rid다.
-- Spot ref resolver의 `SpotRef.SpotKind`는 core `ResolveSpot()` 결과를
-  보존한다.
+framework가 운영용 spot location row를 노출할 때 Entry Spot과 user Spot을 구분한다.
+메시징 handle은 `SpotRid`만 공개하며 owner node와 Spot kind는 내부 주소 snapshot에
+보존한다.
 
 Spot RID route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는
 용도로만 사용한다. owner node rid와 Spot kind는 core `ResolveSpot(spotRid)` 결과를

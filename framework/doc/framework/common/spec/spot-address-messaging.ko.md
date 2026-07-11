@@ -4,46 +4,38 @@
 
 [스펙 목차](../README.ko.md)
 
-# SpotRef 기반 메시징
+# SpotHandle 기반 메시징
 
-이 문서는 spot/actor 대상 메시징의 언어 중립 공통 스펙이다. **전송 대상 값
-(`SpotRef`), 조회-보관-재조회 사용 모델, 메시징 표면, stale ref 실패 계약**의
-의미를 소유한다. 위치 저장·resolver·자동 연결의 하부 계약은
+이 문서는 spot/actor 대상 메시징의 언어 중립 공통 스펙이다. **논리 전송 대상
+(`SpotHandle`), 주소 갱신, 메시징 표면과 실패 계약**의 의미를 소유한다.
+위치 저장·resolver·자동 연결의 하부 계약은
 [location runtime](location-runtime.ko.md)이 소유하고 이 문서는 반복하지 않는다.
 
-> 설계의 제1원칙: **전송 경로는 store를 읽지 않는다.** 위치 조회는 명시적 resolve 1회로
-> 끝나고, 호출자가 주소를 보관하며, 실패가 재resolve를 유도한다. resolver·전송 어디에도
-> 캐시가 없다 — "이름 없는 전역 캐시"가 각 보유자의 명시적 상태로 바뀐 모델이다.
+> 설계의 제1원칙: **호출자는 transport 주소의 수명과 재조회 순서를 관리하지 않는다.**
+> resolver가 반환한 handle이 논리 대상과 주소 snapshot을 함께 소유하고, framework가
+> 안전하게 재전송할 수 있는 실패에서만 주소를 한 번 갱신한다.
 
-## 1. SpotRef 모델
+## 1. SpotHandle 모델
 
-`SpotRef`는 mesh 안의 spot 하나를 가리키는 불변 값이다. resolve 결과를 호출자가
-보관하고, stale 주소 실패가 발생하면 다시 resolve한다.
+`SpotHandle`은 mesh 안의 논리 spot 하나를 가리키는 불투명한 capability다. 호출자는
+resolver로 handle을 얻어 보관하고 send/request에 전달한다. handle의 public 정보는
+논리 `SpotRid`뿐이며 owner node, generation, lease와 연결 상태는 framework가 관리한다.
+handle은 특정 activation generation이 아니라 논리 spot identity를 가리킨다. 같은
+`SpotRid`가 정상적으로 다시 활성화되면 갱신된 handle은 새 activation을 대상으로 한다.
+특정 generation에만 유효한 작업은 domain request에 generation이나 idempotency key를
+포함해야 한다.
 
-| 필드 의미 | 타입 의미 |
-|----------|-----------|
-| owner node rid | 전송 node를 식별하는 routing id |
-| spot rid | node 안의 논리 spot을 식별하는 routing id |
+`SpotRef`는 owner node rid와 spot rid를 담는 framework 내부 주소 snapshot이다. location
+store 구현과 runtime 진단에서는 이 값을 사용할 수 있지만 application 메시징 API의
+인자나 resolver 결과로 노출하지 않는다.
 
-- **owner node rid + spot rid를 담는다.** endpoint metadata는 넣지 않는다 — node로의 물리
-  연결은 자동 연결(peer location)의 책임이고, 메시징 주소는 mesh 연결이 있다는 전제 위의
-  논리 주소다.
-- **mesh는 주소가 아니라 전송 문맥이 결정한다.** 모든 전송 표면은 이미 mesh가 확정된
-  문맥에서 호출된다. Spot 실행 문맥의 outbound 역할은 자신의 mesh로 보내고,
-  외부 route client 역할은 router channel id를 명시한다. 그래서 주소에 mesh를
-  중복 보관하지 않으며, 잘못된 mesh로의 오용은 문맥 표면에서 걸러진다.
-- **generation을 넣지 않는다.** generation이 주소에 있으면 node가 바뀌지 않은 generation
-  bump에도 보유 주소가 전부 낡아져 재조회만 늘어난다. stale 판정은 owner lease와 수신측
-  dispatch 실패가 담당한다(§4).
-- **주소는 spot의 현재 활성 생애 동안만 유효하다.** spot은 이동(takeover)하고, 소멸했다
-  재활성되며, actor 1:1 topology처럼 생성·소멸이 잦은 구성도 있다. 주소 보유 기간은 대상
-  spot의 lifecycle에 맞추고, 어긋난 보유는 §4의 실패 계약으로 드러난다.
-- entry spot의 주소는 `NodeRid == SpotRid`다. 별도 특례를 두지 않는다.
-
-같은 `RoutingId` 두 개를 낱개 파라미터(`targetPeerRid`, `targetSpotRid`)로 나란히 받는
-표면은 순서 실수를 컴파일러가 잡지 못하므로 두지 않는다 — 전송 표면은 항상 주소 값 하나를
-받는다. location row(`ZLinkSpotLocation`, `ZLinkActorLocation`)는 운영 조회·lifecycle용
-모델로 유지되며, 주소는 row에서 파생되는 메시징용 값이다.
+- handle은 resolver가 선택한 mesh와 논리 key를 기억한다.
+- handle은 현재 유효한 내부 `SpotRef` snapshot을 원자적으로 교체할 수 있다.
+- application은 owner node rid, generation과 endpoint를 읽거나 바꾸지 않는다.
+- entry spot도 같은 handle 계약을 사용하며 별도 주소 특례를 public API에 두지 않는다.
+- handle은 thread-safe하거나 해당 언어의 동등한 동시 접근 안전성을 제공해야 한다.
+- handle은 caller disposal을 요구하지 않는다. location event subscription은 runtime이
+  공유하며 handle 하나마다 독립 listener나 background task를 만들지 않는다.
 
 ## 2. 조회 표면
 
@@ -52,11 +44,11 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 입력 | 반환 |
 |----------|------|------|
-| Spot ref resolver | spot rid (이 runtime이 참여한 spot mesh들에서 검색) | `SpotRef?` |
-| actor Spot ref resolver | 전역 actor key | actor가 위치한 spot의 `SpotRef?` (ENTRY_SPOT이면 entry spot 주소) |
+| Spot handle resolver | spot rid | `SpotHandle?` |
+| actor Spot handle resolver | 전역 actor key | actor가 위치한 spot의 `SpotHandle?` |
 
 - actor 1:1 spot topology에서는 호출자가 아는 것이 transient한 spot rid가 아니라 actor
-  id이므로 actor Spot ref resolver가 1차 조회 표면이다. spot rid 조회는 spot rid를
+  id이므로 actor Spot handle resolver가 1차 조회 표면이다. spot rid 조회는 spot rid를
   도메인 key에서 파생하는 topology(player owner spot 등)에서 쓴다.
 - 재연결·"없으면 생성"·takeover 같은 lifecycle 흐름은 주소가 아니라 generation을 포함한
   location row가 필요하므로 resolver가 아니라 store/runtime 경로를 쓴다.
@@ -64,52 +56,46 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 ## 3. 메시징 표면과 사용 모델
 
-Spot 실행 문맥의 outbound는 보관한 `SpotRef`와 메시지만 받는다. 외부 connector client는
-router channel 식별자, `SpotRef`와 메시지를 받는다. 정확한 함수 이름과 call 반환 타입은
+Spot 실행 문맥의 outbound와 외부 route client는 `SpotHandle`과 메시지만 받는다. handle이
+전송 mesh를 소유하므로 caller가 route channel을 함께 고르지 않는다. 정확한 함수 이름과 call 반환 타입은
 언어별 스펙에서 고정한다.
 
-- spot rid만 받고 내부에서 resolve해 주는 overload는 **없다**. 전송 경로의 숨은 store
-  I/O를 금지하는 제1원칙 때문이다.
-- egress는 resolve하지 않는다: `address.NodeRid`가 local node면 직접 dispatch, 아니면 그
-  mesh의 route bridge로 전달한다.
+- spot rid와 node rid를 나란히 받는 전송 overload는 없다.
+- 첫 resolve와 이후 주소 갱신은 handle이 소유한다. outbound는 handle의 내부 snapshot을
+  사용하되 application에 조회 순서를 요구하지 않는다.
+- 정상 전송마다 store를 읽지 않는다. handle은 location event로 snapshot을 갱신하고,
+  안전한 stale 실패가 발생한 경우에만 resolver를 한 번 호출한다.
 - **원격 spot 전달의 wire form은 route socket 위의 spot route bridge relay framing
   하나로 고정한다.** 소켓 수준 framing과 혼용하면 수신 pump가 한쪽을 일반 envelope로
   오인해 drop한다. 포팅 언어는 이 framing 하나만 구현한다. 이 고정은 framework node 간
   route channel 평면에 한정하며, 외부 connector client가 spot node router 평면으로 직접
   보내는 inbound는 기존 계약 그대로다.
 
-사용 패턴 — **조회 1회, 로직에서 재사용**:
-
-bind 또는 route 수립 시점에 resolver로 한 번 조회한 `SpotRef`를 상태에 보관한다. 이후
-이벤트마다 보관한 주소로 전송하며, 전송 경로에서는 store를 다시 조회하지 않는다.
-
-framework 내부 호출자(bound session notify, actor session relay 등)도 같은 규칙을
-따른다. 주소 보유 범위는 대상 spot의 lifecycle에 맞춘다. 도메인 key에 묶여 장기간 유지되는
-spot은 session 상태에 보관해 재사용하고, actor lifecycle을 따라 생성·소멸하는 1:1 spot은
-상호작용 범위에서만 조회·보관한다.
+사용 패턴은 **handle 조회 후 재사용**이다. 호출자는 handle만 보관하며 주소 snapshot,
+location event 구독과 stale 갱신 시점은 framework가 관리한다.
 
 ## 4. stale 주소 실패 계약
 
 owner 이동, node 장애, 정상 lifecycle의 spot destroy 후 보유 주소는 낡는다. 그때의
 실패는 **구분 가능**해야 한다 — 이것이 이 설계의 핵심 계약이다.
 
-| 경로 | stale 주소일 때 | 호출자 책임 |
-|------|-----------------|-------------|
-| `RequestToSpot` | 로컬 판정 가능 실패는 대기 없이 즉시 typed error. node 도달 후 spot 부재는 수신측이 `SpotRouteNotFound` 오류 reply. timeout은 "전송했고 응답 없음"에만 남는다 | 아래 분류표(횟수·정책은 호출자 소유) |
-| `SendToSpot` | best-effort. 대상 node에 spot이 없으면 drop, 통지 없음 | 도메인 보정(reconcile) 또는 location event 구독으로 회복 |
+| 경로 | stale 주소일 때 | framework 동작 |
+|------|-----------------|----------------|
+| request | handler 미실행이 확정된 stale 실패이면 handle을 한 번 갱신하고 한 번 재전송한다. 두 번째 실패는 typed error로 반환한다. timeout은 재전송하지 않는다. |
+| send | 최신 handle snapshot으로 best-effort 전송한다. location event가 도착하면 이후 전송에 새 snapshot을 사용한다. 전달 여부를 확인하기 위한 숨은 request는 만들지 않는다. |
 
 ### 4.1 request 실패 분류 — fail-fast
 
 이 spot request 분류는 기존 `ZLinkFrameworkErrorKind`만 쓴다(이 표를 위한 새 종류를 추가하지 않는다).
 actor 대상 표면의 실패 분류는 [framework API 오류 계약](framework-api.ko.md)을 따른다.
 
-| 상태 | 판정 위치 | 오류 | 호출자의 다음 행동 |
-|------|-----------|------|--------------------|
-| local runtime이 대상 mesh 미참여 | local, 즉시 | 구성 오류 | 재시도 금지 — 코드/구성 수정 |
-| mesh가 모르는 node rid | local, 즉시 | `RequestTargetNotFound` | 재resolve (주소가 근본적으로 낡음) |
-| node는 알지만 미연결 | local, 즉시 | `RouteNotConnected` (재시도 가능 분류) | 같은 주소로 짧은 backoff 재시도 — mesh 수렴 창일 수 있다. 반복되면 재resolve |
-| node 도달, spot 부재 | 수신측, 오류 reply 1왕복 | `SpotRouteNotFound` | 재resolve 후 재시도 |
-| 전송 후 무응답 | timeout | timeout | 도메인 정책 (중복 실행 위험 감수) |
+| 상태 | 판정 위치 | framework 동작 | 최종 결과 |
+|------|-----------|----------------|-----------|
+| local runtime이 대상 mesh 미참여 | local | 갱신하지 않음 | 구성 오류 |
+| mesh가 모르는 node rid | local | handle 갱신 후 한 번 재전송 | 다시 실패하면 `RequestTargetNotFound` |
+| node는 알지만 미연결 | local | 기존 send readiness 한계 안에서 연결 수렴을 기다림 | 한계를 넘으면 `RouteNotConnected` |
+| node 도달, spot 부재 | 수신측 | handler 미실행을 확인하고 handle 갱신 후 한 번 재전송 | 다시 실패하면 `SpotRouteNotFound` |
+| 전송 후 무응답 | timeout | 재전송하지 않음 | timeout |
 
 - "모르는 node"와 "미연결"의 로컬 판정은 자동 연결 reconciler의 **mesh 구성원 snapshot**과
   소켓 연결 상태에서만 나온다. 기준은 desired dial set이 아니라 **구성원 전체**다 —
@@ -117,49 +103,33 @@ actor 대상 표면의 실패 분류는 [framework API 오류 계약](framework-
   가능한 도달 대상이다. 이 판정을 위해 전송 경로에서 store를 읽지 않는다.
 - 자동 연결 없이 수동 connect만 쓰는 구성은 snapshot이 없으므로 이 구분 없이 기존
   동작(연결 수렴 대기)을 유지한다.
-- 미연결 즉시 오류는 startup·mesh 수렴 창에서 호출자에게 그대로 드러난다 — 의도된
-  동작이다. 그 창을 넘기는 대기·재시도 편의는 전송 계층이 몰래 하지 않고, 재시도 횟수와
-  backoff가 명시적 파라미터인 helper 경계에서 제공한다.
+- 연결 수렴 대기는 기존 send readiness와 timeout 경계 안에서 framework가 처리한다.
+  application에 별도 warmup, sleep 또는 재시도 helper를 요구하지 않는다.
 
-### 4.2 재시도의 의미
+### 4.2 자동 갱신의 한계
 
-재시도는 framework가 전송 계층에서 몰래 반복하는 것이 아니라, **호출자가 오류를 보고
-같은 API를 다시 부르는 명시적 재호출**이다.
-
-| 재호출 형태 | 트리거 | 안전 근거 |
-|-------------|--------|-----------|
-| 같은 주소 재전송 | `RouteNotConnected` | 전송 전 실패 — handler 미실행 확정, 중복 없음 |
-| 재resolve 후 재전송 | `SpotRouteNotFound`, `RequestTargetNotFound` | 주소가 낡았다. `SpotRouteNotFound`는 node에 도달했어도 spot이 없어 handler 미실행 확정 |
-| 재시도 금지 | 구성 오류 | 몇 번을 불러도 같은 결과 — 코드/구성 수정 대상 |
-| 도메인 판단 | timeout | handler 실행 여부 불확정 — 도메인 idempotency가 있을 때만 재시도 |
-
-`RouteNotConnected`의 재시도 가능 분류는 "전송 전 실패라 요청 중복 없이 안전하게
-재시도할 수 있다"는 의미다. 언어별 오류 타입은 이 분류를 해당 언어의 관례로 표현한다.
-timeout과의 이 대비가 분류표의 실질 가치다.
-
-전송 계층의 숨은 재시도는 금지한다. rid 지정 router 전송 경로는 NotConnected를 재시도로
-흡수하지 않고 즉시 반환한다. dealer/pub의 connect-창 버퍼링(client/server 채널이 dial
-직후 send하는 패턴)은 유지한다. fire-and-forget send의 local submit 실패는 최소
-debug/monitoring event로 관측 가능해야 한다.
+framework의 자동 동작은 **주소 갱신 1회와 안전한 재전송 1회**로 제한한다. handler 실행
+여부가 불확실한 timeout, cancellation과 연결 종료 뒤에는 자동 재전송하지 않는다.
+도메인 idempotency가 필요한 일반 retry는 application 정책이며 handle이 대신하지 않는다.
 
 ### 4.3 경계와 보정
 
-- destroy된 spot의 주소는 재resolve가 null을 반환한다. 재활성(placement)할지 포기할지는
-  도메인 결정이다.
+- destroy된 spot의 handle을 갱신해도 대상이 없으면 target-not-found 오류를 반환한다.
+  재활성(placement)할지 포기할지는 도메인 결정이다.
 - **spot 이동·재활성은 메시지 순서·전달 경계다.** 이동 창에서 이전 주소로의 in-flight
   전송은 drop될 수 있고 새 주소 전송은 도달하므로, 이동을 가로지르는 전달 순서와 전달
   자체를 보장하지 않는다. 순서에 민감한 도메인은 dedupe·reconcile 보정으로 흡수한다.
-- send-only로 오래 보유하는 주소는 stale을 스스로 알 수 없다. 이런 보유자는 spot location
-  event source를 구독해 보유 주소를 무효화하거나, 주기 request를 섞어 stale을 노출시킨다.
-- 재resolve 직후에도 store 반영 지연(lease polling 한 tick) 동안 null이나 이전 주소가
-  나올 수 있다. 호출자 재시도는 bounded backoff를 권장한다.
+- send-only handle도 location event가 도착하면 snapshot을 갱신한다. event가 유실되거나
+  늦게 도착한 구간의 one-way 전달은 보장하지 않는다.
+- handle 갱신 직후에도 store 반영 지연 동안 이전 주소가 나올 수 있다. 자동 갱신은 한
+  번으로 끝나며 같은 호출 안에서 반복 조회하지 않는다.
 
 ## 5. 회귀 기준
 
-- resolver stale 제외·주소 파생은 언어 공통 unit/contract 테스트로,
-- fail-fast 분류(미연결/모르는 node/수신측 spot 부재)와 재resolve 회복은 E2E Config 2
+- resolver stale 제외·handle snapshot 갱신은 언어 공통 unit/contract 테스트로,
+- fail-fast 분류와 안전한 1회 갱신은 E2E Config 2
   (spot service)·Config 1(location messaging)로,
 - 이동·재활성 경계는 spot takeover/재활성 시나리오로 검증한다.
 
-전송 경로에 store 조회를 다시 넣는 변경, spot rid만 받아 내부 resolve하는 편의 overload,
-전송 계층의 숨은 재시도는 이 스펙 위반이다.
+모든 정상 전송에서 store를 읽는 변경, handler 실행 여부가 불확실한 요청을 자동 재전송하는
+변경, 갱신 횟수를 무제한으로 늘리는 변경은 이 스펙 위반이다.

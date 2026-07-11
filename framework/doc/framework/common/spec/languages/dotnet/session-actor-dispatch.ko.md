@@ -280,7 +280,6 @@ public interface IZLinkBoundSession
 
 public interface IZLinkBoundSessionSendCall
 {
-    IZLinkBoundSessionSendCall PacketName(string packetName);
 
     IZLinkBoundSessionSendCall Metadata(
         string key,
@@ -399,25 +398,18 @@ room 에서 leave 시키지 않는다.
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
 
-public interface IZLinkSpotRefResolver
+public interface IZLinkSpotHandleResolver
 {
-    ValueTask<SpotRef> ResolveSpotRefAsync(
+    ValueTask<SpotHandle?> ResolveSpotHandleAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }
 
-public enum ZLinkSpotKind
+public abstract class SpotHandle
 {
-    Invalid = 0,
-    Entry = 1,
-    User = 2,
+    internal SpotHandle() { }
+    public abstract RoutingId SpotRid { get; }
 }
-
-public readonly record struct SpotRef(
-    string RouterChannelId,
-    RoutingId TargetNodeRid,
-    RoutingId SpotRid,
-    ZLinkSpotKind SpotKind);
 ```
 
 DI 등록 (Session 서버):

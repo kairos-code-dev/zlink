@@ -31,7 +31,7 @@ public class StreamConfig {
     ZLinkFrameworkConfigurer streamOptions() {
         return options -> {
             options.useInMemoryLocationStores();
-            ZLinkSpotMeshBuilder node = options.addSpotMesh("game.stage");
+            ZLinkSpotNodeBuilder node = options.addSpotMesh("game.stage");
             node.enableRouter("tcp://0.0.0.0:9001");
             node.addEntrySpot(GameEntrySpot.class);
             node.addSpotFactory(GameRoomSpot.class);

@@ -37,9 +37,9 @@ watch/polling, 운영 조회 모델의 의미는 이 문서가 소유한다. 다
 
 - **store는 저장만, 정책은 runtime이.** store 구현체는 row 저장/조회/원자적 write만 책임진다.
   owner lease join, generation guard, 자동 연결 diff는 framework runtime의 책임이다.
-- **캐시 없음.** resolver와 운영 조회의 모든 읽기는 store에 도달한다. "이 값이 얼마나 최신인가"를
-  나타내는 매개변수나 cache TTL 같은 개념은 계약에 없다. 위치를 반복 사용하는 쪽
-  (메시징 호출자)이 resolve 결과를 보관하고, 실패 시 재resolve한다.
+- **임의 TTL cache 없음.** 새 handle을 만드는 resolver와 운영 조회는 store에 도달한다.
+  메시징 handle의 주소 snapshot은 location event와 안전한 stale 실패에서 framework가
+  갱신하며 application에 cache TTL이나 재조회 순서를 노출하지 않는다.
 - **생존은 owner lease로.** row 자체는 생존을 증명하지 않는다. row owner의 lease가 만료되면
   그 owner의 모든 row는 성공 결과에서 제외된다. 이런 row를 stale row, 즉 더 이상 성공 결과로 쓰면
   안 되는 오래된 row라고 부른다. 물리 삭제는 background cleanup의 책임이고 계약 대상이 아니다.
@@ -178,20 +178,20 @@ snapshot으로 반환한다. 만료 판정은 `LeaseExpiresAt - StoreNow`와 조
 
 ## 5. Resolver 계약
 
-resolver는 runtime과 application-facing client의 읽기 표면이다. 캐시가 없다 — 모든 조회가
+resolver는 runtime과 application-facing client의 읽기 표면이다. 새 handle을 만드는 조회는
 store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 표면 | 용도 |
 |----------|------|------|
 | peer location resolver | live peer list 조회 | 자동 연결의 live peer list 조회 |
-| Spot ref resolver | spot rid로 `SpotRef?` 조회 | 메시징 조회: spot rid → 전송 대상 ref |
-| actor Spot ref resolver | actor id로 `SpotRef?` 조회 | 메시징 조회: actor → 그 actor가 위치한 spot의 전송 대상 ref |
+| Spot handle resolver | spot rid로 `SpotHandle?` 조회 | 메시징 조회: spot rid → 전송 handle |
+| actor Spot handle resolver | actor id로 `SpotHandle?` 조회 | 메시징 조회: actor → 그 actor가 위치한 spot의 전송 handle |
 | route 단건 조회 | store SPI/운영 조회 | owner-bound route 단건 조회는 public resolver로 노출하지 않음 |
 
-- 메시징 resolver는 **전송 대상 ref**(`SpotRef` = `NodeRid + SpotRid`; mesh는 전송 문맥이
-  결정)를 반환한다. 호출자가 ref를 보관하고 전송 실패 시 재resolve한다. 상세는
+- 메시징 resolver는 **전송 handle**을 반환한다. handle이 내부 `SpotRef` snapshot과
+  안전한 1회 갱신을 소유하며 caller는 주소 수명을 관리하지 않는다. 상세는
   [spot 주소 메시징](spot-address-messaging.ko.md)이 정본이다.
-- location store 기반 Spot remote ref resolver는 spot row의 mesh 이름으로 route mesh
+- location store 기반 Spot handle resolver는 spot row의 mesh 이름으로 route mesh
   channel을 고른다. spot mesh 이름과 route mesh channel 이름이 다르면 location option에
   `spot mesh -> route mesh channel` 매핑을 등록해야 한다. 매핑이 없으면 같은 이름을 사용한다.
   이 매핑은 전송 channel 선택만 정하고, store row key나 spot lifecycle mesh 이름을 바꾸지 않는다.

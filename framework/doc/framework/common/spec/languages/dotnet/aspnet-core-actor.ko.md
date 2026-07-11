@@ -417,8 +417,8 @@ Entry Spot 전용 handler 등록 표면을 별도로 둔다. actor 객체는 상
 보관하는 자리고, message 와 lifecycle callback 은 현재 actor 가 어느 실행
 문맥에 있는지에 따라 Entry Spot registry 또는 user Spot registry 가 처리한다.
 
-이 표면의 목적은 application handler 가 `Context.IsJoined` 같은 상태값으로
-entry / user 단계를 직접 분기하지 않도록 막는 것이다. `RoutingId` 같은
+이 표면의 목적은 application handler가 nullable `Context.SpotRid` 하나로
+Entry/user 단계를 구분하게 하는 것이다. `RoutingId` 같은
 transport 위치값도 handler 표면에 노출하지 않는다.
 
 ## 4. Handler 모델
@@ -513,16 +513,14 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
             .JoinSpot(matchSpotRid, request)
             .Async(cancellationToken)
             .ConfigureAwait(false);
-        var reply = result.Reply.Decode<JoinMatchSpotResult>();
-
-        await notifications.PublishAsync(reply.Events, cancellationToken);
-
-        if (!result.Accepted)
+        return result switch
         {
-            return new JoinMatchRes(reply.MatchId, result.Actor.ActorId, ...);
-        }
-
-        return new JoinMatchRes(reply.MatchId, result.Actor.ActorId, ...);
+            // 승인 결과에서만 actor ref를 사용할 수 있다.
+            ZLinkActorJoinResult.Accepted accepted =>
+                BuildAcceptedResponse(accepted.Actor, accepted.Reply),
+            ZLinkActorJoinResult.Rejected rejected =>
+                BuildRejectedResponse(rejected.Reply),
+        };
     }
 }
 ```
@@ -598,13 +596,8 @@ actor 가 다른 user Spot 으로 이동하려면 framework 가 attach 한
 public interface IZLinkActorContext
 {
     RoutingId? SpotRid { get; }
-    bool IsJoined { get; }
 
     IZLinkBoundSession BoundSession { get; }
-
-    IZLinkSpot GetSpot();
-    TSpot GetSpot<TSpot>()
-        where TSpot : IZLinkSpot;
 
     IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
@@ -628,16 +621,13 @@ public interface IZLinkActorContext
 
 | 표면 | 의미 |
 | --- | --- |
-| `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
+| `SpotRid` | user Spot에 join한 경우 그 Spot의 routing id. Entry Spot에 있을 때는 값이 없으며, 이 nullable 값이 join 상태의 단일 기준이다 |
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
-| `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(spotRid, request)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). `Async(...)` 는 기본 serial terminator이고, `Yield(...)` 는 admission 대기 동안 현재 turn을 반납한다. request는 DTO 또는 `ZLinkMessage`이고 reply는 `ZLinkMessage` 또는 typed reply로 돌아온다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
-| `JoinEntrySpot(spotNodeRid, request)` | target SpotNode 의 Entry Spot 으로 이동. `Async(...)` 와 `Yield(...)` 의 serial/yield 의미는 `JoinSpot(...)` 과 같다. 빈 요청은 `ZLinkMessage.Empty` 또는 빈 DTO로 넘기며, 결과는 `Accepted`, `ActorRef`, reply를 담는다 |
+| `JoinSpot(spotRid, request)` | user Spot에 join 요청. `Async(...)` 하나로 완료를 기다리며 framework가 실행 문맥을 관리한다. request는 DTO 또는 `ZLinkMessage`이고 결과는 승인 여부, actor ref와 reply를 담는다. |
+| `JoinEntrySpot(spotNodeRid, request)` | target SpotNode의 Entry Spot으로 이동한다. 완료와 실행 문맥 규칙은 `JoinSpot(...)`과 같다. |
 
-`Yield(...)` 는 Spot 실행 줄을 가진 handler에서만 turn을 반납한다. Entry Spot actor
-handler는 actor별 mailbox에서 실행되므로 반납할 Entry Spot turn이 없다. 이 handler 안에서
-만든 actor join call object에 `Yield(...)` 를 호출하면 framework는 timeout을 기다리지 않고
-즉시 `InvalidOperationException` 계열 계약 오류를 낸다.
+generic actor context는 Spot instance getter를 제공하지 않는다. Spot 상태가 필요한 코드는
+Spot handler가 받은 인자를 사용한다.
 
 `JoinSpot`/`JoinEntrySpot` 도 channel `Request` 처럼 reply 대기 `Timeout(...)` override 를
 갖는다. 생략하면 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은
@@ -742,16 +732,19 @@ var result = await actor.Context
     .JoinSpot(matchSpotRid, new JoinMatchReq(...))
     .Async(cancellationToken);
 
-var reply = result.Reply.Decode<JoinMatchSpotResult>();
+var reply = result switch
+{
+    ZLinkActorJoinResult.Accepted accepted => accepted.Reply.Decode<JoinMatchSpotResult>(),
+    ZLinkActorJoinResult.Rejected rejected => rejected.Reply.Decode<JoinMatchSpotResult>(),
+};
 ```
 
-이 호출은 spot 쪽 join handler 의 결과를 `Reply` 로 돌려주고, application join 결정은
-`Accepted` 로 표현한다. `Accepted == true` 는 join 허용, `false` 는 room full,
-match closed 같은 application 정의 거절이다. 추가 설명이 필요하면 reply `ZLinkMessage`에
-담는다. transport, timeout, protocol failure 는 결과값이 아니라 예외로 처리한다.
+이 호출은 spot 쪽 join handler의 결과를 승인 또는 거절 record로 돌려준다. 승인
+record에만 actor ref가 있고 두 결과 모두 reply를 가진다. room full, match closed 같은
+application 정의 거절 설명은 거절 reply에 담는다. transport, timeout, protocol failure는
+결과값이 아니라 예외로 처리한다.
 성공 시 actor 쪽 상태가 다음과 같이 갱신된다.
 
-- `Context.IsJoined` 가 `true` 가 된다.
 - `Context.SpotRid` 가 채워진다.
 
 이후부터 spot 은 actor 객체에 직접 접근할 수 있다 (spot handler 에서 `actor`
@@ -886,7 +879,7 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
   router-capable SpotNode 를 relay ingress 로 자동 사용한다(별도 지정 없음). 이 연결이 있어야 session 에서
   actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 relay
   상태를 사용한다.
-- **`IZLinkSpotRefResolver`** -- "spot rid → user Spot routing id" 를
+- **`IZLinkSpotHandleResolver`** -- "spot rid → user Spot routing id" 를
   푼다. actor 가 `JoinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
 - **`IZLinkBoundSession`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
@@ -1114,7 +1107,7 @@ public interface IZLinkFrameworkOptions
 | --- | --- | --- |
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
 | `AddActorTransferAdapter<TActor, TAdapter>(type)` | remote transfer에서 domain actor state를 직접 옮기는 SPOT host | source state를 message로 만들고 target actor를 materialize하는 adapter를 actorType에 매핑 |
-| `AddLocationStore(store)` | 여러 프로세스가 spot/actor 위치를 공유하는 서버 | location store 를 통해 `SpotRef` 와 actor 위치를 조회 |
+| `AddLocationStore(store)` | 여러 프로세스가 spot/actor 위치를 공유하는 서버 | location store 를 통해 `SpotHandle` 와 actor 위치를 조회 |
 | `AddSpotRouteRefResolver<>()` | location store 없이 actor `JoinSpot(spotRid, ...)` route 를 직접 제공하는 advanced 구성 | spot rid → route channel 과 target spot ref |
 | `AddSpotMesh(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `AddSpotMesh(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |

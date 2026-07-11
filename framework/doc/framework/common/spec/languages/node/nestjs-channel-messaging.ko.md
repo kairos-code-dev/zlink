@@ -87,9 +87,9 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `channel.EnableSubscriber()` | `.enableSubscriber()` |
 | `channel.EnableSubscriber(...)` | `.enableSubscriber('...')` 또는 `.enableSubscriber([...])` |
 | `channel.AddHandlerGroup("api")` | `.addHandlerGroup('api')` |
-| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkRequestHandler(group, packet)` + `.addHandlerGroup(group)` |
-| `channel.AddSendHandler<H, TMsg>()` | `zlinkSendHandler(group, packet)` + `.addHandlerGroup(group)` |
-| `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group, packet)` + `.addHandlerGroup(group)` |
+| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkRequestHandler(group)` + message descriptor + `.addHandlerGroup(group)` |
+| `channel.AddSendHandler<H, TMsg>()` | `zlinkSendHandler(group)` + message descriptor + `.addHandlerGroup(group)` |
+| `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group)` + message descriptor + `.addHandlerGroup(group)` |
 | `options.RequestTimeout = ...` | `requestTimeoutMs: number` |
 | `options.Codecs.Use(ZLinkProtobufCodec.Default)` | `zlinkFramework().codecs().use(zlinkProtobufCodec())` |
 | `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + handler decorator discovery |
@@ -230,8 +230,8 @@ SPOT으로 들어오는 routed 메시지는 RouteMesh `ROUTER` 역할이 필요�
 `.addRouteMesh(name).enableServer(...)`와 `.addSpotMesh(name)`이 함께 있으면 framework가
 그 RouteMesh socket을 단일 SpotMesh 노드에 자동으로 연결한다. 별도 수락 메서드나 egress
 builder 메서드는 없다. 보내는 쪽은 RouteMesh와 location store를 등록하고,
-`ZLinkSpotRefResolver` 로 얻은 `SpotRef` 를 `outbound.sendToSpot(spotRef, ...)` /
-`outbound.requestToSpot(spotRef, ...)`에 넘긴다.
+`ZLinkSpotHandleResolver` 로 얻은 `SpotHandle` 를 `outbound.sendToSpot(spotHandle, ...)` /
+`outbound.requestToSpot(spotHandle, ...)`에 넘긴다.
 
 `publisher`/`subscriber`(fanout)는 router 역할이 없으므로 SPOT route 수신 대상이
 아니다. client-server channel 의 server `ROUTER`도 SPOT route 수신 대상으로 쓰지 않는다.
@@ -332,9 +332,8 @@ ZLinkModule.forRoot(
 ```
 
 이 호출은 channel 이 어떤 handler group 을 받을지만 정한다. handler class 자체는
-NestJS `providers` 에서 등록하고, ZLink group 소속과 packet 이름은 handler class 의
-`zlinkRequestHandler(...)`, `zlinkSendHandler(...)`, `zlinkPublishHandler(...)`
-decorator 로 지정한다. decorator 는 NestJS injectable metadata 도 함께 붙이므로,
+NestJS `providers`에서 등록한다. ZLink group은 handler class decorator로 지정하고
+packet 이름은 message type descriptor가 제공한다. decorator는 NestJS injectable metadata도 함께 붙이므로,
 handler 가 DI 대상이라는 사실과 zlink packet handler 라는 사실을 한 곳에서 읽을 수
 있다.
 
@@ -355,7 +354,7 @@ handler 가 `requestHandlers` 로 등록된다. route mesh channel 에서는 gro
 - 실제 channel 이름과는 완전히 분리된 namespace 다.
 
 ```ts
-@zlinkRequestHandler('api', 'AuthenticatePlayerReq')
+@zlinkRequestHandler('api')
 export class AuthenticatePlayerHandler {
   handle(
     request: AuthenticatePlayerReq,
@@ -365,7 +364,7 @@ export class AuthenticatePlayerHandler {
   }
 }
 
-@zlinkSendHandler('admin.route', 'AdminCommand')
+@zlinkSendHandler('admin.route')
 export class AdminCommandHandler {
   async handle(
     command: RebootCommand,
@@ -402,7 +401,7 @@ ZLinkModule.forRoot(
 
 `handlerGroups: ['api']` 를 풀어 읽으면 다음과 같다.
 
-> "이 channel 로 들어온 메시지는, `zlinkRequestHandler('api', ...)` 처럼
+> "이 channel로 들어온 메시지는, `zlinkRequestHandler('api')`처럼
 > decorator 로 `api` group 을 선언한 NestJS provider 중에서 packet kind /
 > packet name 이 맞는 handler 를 호출한다."
 
@@ -440,11 +439,10 @@ SPOT/Actor handler 는 이 channel handler group 에 넣지 않는다. actor 대
 대상 Entry Spot 또는 user Spot 타입을 명시한다. Spot 내부 timer 와 일반 Spot handler 는
 해당 `Spot` 또는 `EntrySpot` 이 가진 context 로 등록한다.
 
-`zlinkRequestHandler(groupName, packetName)`, `zlinkSendHandler(...)`,
-`zlinkPublishHandler(...)` 는 handler class decorator 다. decorator 는 handler 가 속한
-논리 group 과 packet name, 호출할 method 이름을 metadata 로 붙인다. packet name 을
-생략하면 class 이름에서 `Handler` 접미사를 뺀 값을 기본값으로 쓴다. handler method
-이름은 기본 `handle` 이며, 예외가 필요할 때만 options 의 `{ methodName }` 을 사용한다.
+`zlinkRequestHandler(groupName)`, `zlinkSendHandler(...)`, `zlinkPublishHandler(...)`는
+handler class decorator다. decorator는 논리 group과 호출할 method 이름만 metadata로
+붙인다. packet name은 handler의 message type descriptor가 결정한다. handler method
+이름은 기본 `handle`이며 예외가 필요할 때만 options의 `{ methodName }`을 사용한다.
 
 handler 인스턴스 생성도 framework 가 직접 `new` 하지 않는다. 대신 NestJS DI 에 맡긴다.
 구체적으로는 다음과 같이 동작한다.
@@ -575,7 +573,7 @@ export class GetUserHandler implements ZLinkRequestHandler<UserRequest, UserRepl
 NestJS module provider 등록 쪽에는 decorated handler class 만 넣는다.
 
 ```ts
-@zlinkRequestHandler('user', 'UserRequest')
+@zlinkRequestHandler('user')
 export class GetUserHandler {}
 
 providers: [GetUserHandler]
@@ -597,7 +595,7 @@ export class CacheInvalidateHandler {
 
 request-response 와 event 는, 서로 별도 표면으로 보이는 편이 자연스럽다.
 fanout subscriber channel 에 `handlerGroups` 로 group 을 노출하고, handler class 에
-`zlinkPublishHandler('cache.events', 'cache.invalidate')` decorator 를 붙이면 runtime 은 publish envelope 의 packet name
+`zlinkPublishHandler('cache.events')` decorator 를 붙이면 runtime 은 publish envelope 의 packet name
 으로 handler 를 선택하고 topic 은 `ZLinkPublishContext` 로 전달한다.
 
 ### 4.3 inbound dispatch 시퀀스
@@ -729,20 +727,20 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 > (`.RequestToChannel(...).Async<T>(ct)`) 을 node 에서도 유지한다.
 > 즉 `client.requestToChannel(...).timeout(...).submit<T>()`,
 > `client.sendToChannel(...).submit()`,
-> `publisher.publish(...).submit()` 형태다. `packetName` /
-> `timeoutMs` 같은 변형은 마지막 options 인자가 아니라 builder chain 에 둔다.
+> `publisher.publish(...).submit()` 형태다. `timeoutMs` 같은 변형은 마지막 options
+> 인자가 아니라 builder chain에 둔다.
 > 그래야 send/request/publish 표면과 dotnet 표면이 같은 사용 흐름을 갖는다.
-> `submit()` 은 `Promise` 를 반환하는 비동기 terminator 다. Node 표면에서는
-> 반환 타입과 `await` 가 비동기 의미를 맡으므로 별도 suffix 를 붙이지 않는다.
-> 구조적 payload 처럼 타입에서 packet 이름을 얻을 수 없는 경우에만
-> `.packetName(...)` override를 추가한다.
+> request의 `submit<T>()`만 `Promise<T>`를 반환하며 reply까지 기다린다. one-way
+> send/publish의 `submit()`은 입력 검증과 bounded local queue 수락 뒤 `void`로
+> 반환한다. 수락 뒤 transport 실패는 monitoring/error observer에서 관찰한다.
+> packet 이름은 runtime identity가 있는 message class의 descriptor가 registration 시
+> 결정한다. 구조적 payload는 typed outbound가 아니라 raw extension에서 처리한다.
 
 | dotnet (fluent) | node (fluent) |
 | --- | --- |
 | `client.RequestToChannel(ch, req).Async<T>(ct)` | `await client.requestToChannel(ch, req).submit<T>()` |
 | `client.RequestToChannel(ch, req).Timeout(t).Async<T>(ct)` | `await client.requestToChannel(ch, req).timeout(timeoutMs).submit<T>()` |
 | `client.SendToChannel(ch, msg).Submit(ct)` | `void client.sendToChannel(ch, msg).submit()` |
-| `client.SendToChannel(ch, msg).PacketName(n).Submit(ct)` | `void client.sendToChannel(ch, msg).packetName(n).submit()` |
 | `publisher.Publish(ch, topic, evt).Submit(ct)` | `publisher.publishToChannel(ch, topic, evt).submit()` |
 
 ### 5.2 ZLinkChannelClient
@@ -844,10 +842,10 @@ ZLinkModule.forRoot(
     .build()
 );
 
-@zlinkRequestHandler('play.route', 'RoutePing')
+@zlinkRequestHandler('play.route')
 export class RoutePingHandler {}
 
-@zlinkSendHandler('play.route', 'RouteNotice')
+@zlinkSendHandler('play.route')
 export class RouteNoticeHandler {}
 
 providers: [RoutePingHandler, RouteNoticeHandler]
@@ -921,7 +919,7 @@ export class ProfileController {
 - 기존 웹 요청을 처리하다가 내부의 다른 서비스를 호출해야 할 때.
 - ZLink handler와 HTTP handler가 같은 outbound 호출 방식을 공유하고 싶을 때.
 - framework 내부 공통 helper에서 호출해야 할 때.
-- 특정 요청에만 별도 timeout이나 packet name override가 필요할 때.
+- 특정 요청에만 기본값과 다른 timeout이 필요할 때.
 
 이 정도 수준의 표면이 자연스럽다.
 
@@ -1196,7 +1194,7 @@ E2E는 HWM 포화 자체가 관찰되어야 완료로 본다. handler가 느린 
     타입(클래스 생성자) 이름이고, handler decorator 의 packet name 이나
     handler options 로 override 할 수 있다.
 
-[^handlergroup]: **handler group** 은 `zlinkRequestHandler("...", "...")` 처럼 NestJS
+[^handlergroup]: **handler group** 은 `zlinkRequestHandler("...")` 처럼 NestJS
     handler class decorator 에서 붙이는 논리적 묶음 이름이다. 실제 channel 이름과는 분리된
     별도 namespace 이며, channel 등록 쪽에서 `handlerGroups: ['...']` 로 끌어다 붙여
     어느 channel 에 노출할지 결정한다.

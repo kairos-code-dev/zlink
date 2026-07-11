@@ -198,7 +198,7 @@ public `route_client_t`, `route_send_call_t`, `route_request_call_t`는 `.NET`�
 대응한다. 사용자는 router channel id, target node routing id, typed payload만 넘기고,
 route channel runtime lookup, envelope 작성, serializer 호출은 runtime owner가 처리한다.
 C++는 낮은 수준 검증을 위해 request sequence submission call도 유지하지만, 일반 사용 표면은
-`request(...).packet_name(...).metadata(...).timeout(...).async<TReply>()`으로
+`request(...).metadata(...).timeout(...).async<TReply>()`으로
 typed reply를 받는다. `.metadata(key, value)`로 넣은 값은 framework envelope header에 보존되며,
 route runtime lookup과 serializer 호출은 사용자에게 드러나지 않는다. typed reply completion은
 route runtime backend seam을 통해 검증되고,
@@ -703,7 +703,6 @@ struct timer_tick_t {
 
 class timer_t;
 class send_call_t;
-class relay_call_t;
 class stream_write_call_t;
 template <typename TReply>
 class actor_join_spot_call_t;
@@ -715,25 +714,43 @@ class task_t;
 template <typename T>
 class result_t;
 
+class endpoint_connections_t {
+public:
+    void connect(std::string endpoint);
+    void disconnect(std::string endpoint);
+    std::vector<std::string> list_connections() const;
+};
 
 class actor_ref_t {
 public:
-    actor_ref_t(zlink::routing_id_t node_rid,
+    actor_ref_t(node_rid_t node_rid,
+      std::string actor_type,
       std::string actor_id,
-      std::uint64_t generation);
+      std::uint64_t generation = 1);
 
-    zlink::routing_id_t node_rid() const;
+    node_rid_t node_rid() const;
+    std::string_view actor_type() const;
     std::string_view actor_id() const;
     std::uint64_t generation() const;
     bool empty() const;
 };
 
 template <typename TReply>
-struct actor_join_result_t {
-    int result_code;
+struct actor_join_accepted_t {
     actor_ref_t actor;
     TReply reply;
 };
+
+template <typename TReply>
+struct actor_join_rejected_t {
+    TReply reply;
+};
+
+template <typename TReply>
+using typed_actor_join_result_t =
+  std::variant<actor_join_accepted_t<TReply>, actor_join_rejected_t<TReply>>;
+
+using actor_join_result_t = typed_actor_join_result_t<message_t>;
 
 enum class framework_error_kind_t {
     actor_route_not_found,
@@ -765,23 +782,14 @@ template <typename TReply>
 class request_call_t {
 public:
     request_call_t &timeout(std::chrono::milliseconds timeout);
-    request_call_t &packet_name(std::string packet_name);
     request_call_t &metadata(std::string key, std::string value);
     task_t<TReply> async();
-    task_t<TReply> yield();
 };
 
 class send_call_t {
 public:
     send_call_t &timeout(std::chrono::milliseconds timeout);
-    send_call_t &packet_name(std::string packet_name);
     send_call_t &metadata(std::string key, std::string value);
-    void submit();
-};
-
-class relay_call_t {
-public:
-    relay_call_t &timeout(std::chrono::milliseconds timeout);
     void submit();
 };
 
@@ -838,7 +846,8 @@ public:
 
 class session_actor_t {
 public:
-    relay_call_t relay(const zlink::message_t &payload);
+    task_t<void> relay(const zlink::message_t &payload);
+    task_t<void> notify_disconnected();
 };
 
 class session_actor_manager_t {
@@ -999,7 +1008,7 @@ stream callback은 framework가 packet을 수신하고 header 검증을 마친 �
 
 request handler 반환값은 `TReply` 또는 `task_t<TReply>`를 허용한다. `task_t<TReply>`를
 반환하는 handler는 `.NET`의 `async Task<TReply>` handler와 같은 의미이며, 내부
-request/relay처럼 결과를 기다려야 하는 호출은 `co_await call.async()` 형태로 사용한다.
+request처럼 결과를 기다려야 하는 호출은 `co_await call.async()` 형태로 사용한다.
 one-way send/push는 `call.submit()`으로 제출하고 handler 흐름에서 송신 수락 완료나
 backpressure 결과를 기다리지 않는다.
 
@@ -1047,8 +1056,8 @@ public:
 class spot_publisher_client_t {
 public:
     template <typename TEvent>
-    task_t<void> publish(std::string channel_name, std::string topic,
-                         const TEvent &event) const;
+    send_call_t publish(std::string channel_name, std::string topic,
+                        const TEvent &event) const;
 };
 
 class request_client_t {
@@ -1085,14 +1094,12 @@ public:
 
 class route_send_call_t {
 public:
-    route_send_call_t &packet_name(std::string packet_name);
     route_send_call_t &metadata(std::string key, std::string value);
     void submit();
 };
 
 class route_request_call_t {
 public:
-    route_request_call_t &packet_name(std::string packet_name);
     route_request_call_t &metadata(std::string key, std::string value);
     route_request_call_t &timeout(std::chrono::milliseconds timeout);
     template <typename TReply>
@@ -1220,7 +1227,7 @@ public:
     spot_node_builder_t &add_actor_transfer_adapter(std::string actor_type);
 };
 
-class spot_context_t {
+class spot_common_context_t {
 public:
     node_rid_t node_rid() const;
     spot_rid_t spot_rid() const;
@@ -1244,6 +1251,22 @@ public:
     timer_t add_timer(std::string name,
       std::chrono::milliseconds period,
       timer_options_t options = {});
+
+    template <typename TResult, typename TWork>
+    worker_call_t<TResult> run_worker(TWork work);
+};
+
+class spot_context_t : public spot_common_context_t {
+public:
+    template <typename TActor>
+    task_t<actor_ref_t> leave_actor(const actor_ref_t &actor_ref, TActor &actor);
+    task_t<bool> close();
+};
+
+class entry_spot_context_t : public spot_common_context_t {
+public:
+    template <typename TActor>
+    task_t<void> destroy_actor(TActor &actor);
 };
 
 struct spot_actor_join_response_t {
@@ -1352,13 +1375,12 @@ public:
     template <typename TMessage>
     send_call_t send(const TMessage &message);
 
-    send_call_t disconnect();
+    task_t<void> disconnect();
 };
 
 class actor_context_t {
 public:
-    const actor_ref_t &actor_ref() const;
-    bool is_joined() const;
+    std::optional<spot_rid_t> spot_rid() const;
     bound_session_t bound_session() const;
 
     actor_join_spot_call_t join_spot(spot_rid_t spot_rid,
@@ -1367,11 +1389,13 @@ public:
     actor_join_entry_spot_call_t join_entry_spot(node_rid_t spot_node_rid,
       const zlink::framework::message_t &request);
 
-    actor_join_spot_call_t join_spot_raw(spot_rid_t spot_rid,
-      const zlink::message_t &request);
+    template <typename TRequest>
+    actor_join_spot_call_t join_spot(spot_rid_t spot_rid,
+      const TRequest &request);
 
-    actor_join_entry_spot_call_t join_entry_spot_raw(node_rid_t spot_node_rid,
-      const zlink::message_t &request);
+    template <typename TRequest>
+    actor_join_entry_spot_call_t join_entry_spot(node_rid_t spot_node_rid,
+      const TRequest &request);
 };
 
 } // namespace zlink::framework
@@ -1480,23 +1504,22 @@ ActorGateway session relay는 `session_actor_manager_t`, `session_actor_t`,
 actor context의 `join_spot(...)` request와 reply는 DTO 또는 `zlink::framework::message_t`다.
 JSON DTO는 기본 serializer를 사용하므로 message type별 codec 설정이 필요 없다. Protobuf,
 MessagePack, custom binary payload처럼 기본 JSON으로 표현할 수 없는 타입만 startup/options 에
-serializer extension을 연결하고 업무 코드는 같은 join 호출을 유지한다. `actor_join_result_t`는 join result code, join 이후 actor ref,
-reply `zlink::framework::message_t`를 함께 담는다. typed reply가 필요하면
+serializer extension을 연결하고 업무 코드는 같은 join 호출을 유지한다. join 결과는
+승인과 거절 `variant`다. 승인 값만 join 이후 actor ref를 가지며 두 값 모두 reply
+`zlink::framework::message_t`를 담는다. typed reply가 필요하면
 `async<TReply>()`가 같은 serializer registry로 decode한다. Entry Spot join도 같은 결과 타입을 돌려준다.
-raw payload를 이미 가진 runtime/harness 경계만 `join_spot_raw(...)`와
-`join_entry_spot_raw(...)`를 사용한다.
+raw payload 처리는 framework 내부 invoker가 맡으며 application public actor context에
+별도 raw join overload를 두지 않는다.
 
 호출 실행 표면은 공통 비동기 call 계약을 C++ coroutine 관례로 표현한다.
 `request(...)`, `send(...)`, `relay(...)`, `join_spot(...)`, `join_entry_spot(...)` 같은
-호출은 즉시 실행하지 않는 call object를 반환하고, 마지막 `async()`가 실제 submit
-지점이다.
-일반 channel `request_call_t`와 `send_call_t`는 `packet_name(...)`, `metadata(...)`,
-`timeout(...)`을 submit 전에 모으고, submit 시점에 framework envelope 정책으로 넘긴다.
-Spot handler처럼 framework turn 안에서 request call object를 기다려야 하면 `yield()`를 쓴다.
-`yield()`는 현재 Spot turn을 반납한 뒤 reply가 오면 같은 실행선에서 continuation을 재개한다.
-이 버전의 C++ public contract는 custom cancellation token이나 `yield(token)` overload를
-제공하지 않는다. 장기 작업 중단 표면이 필요하면 C++ 표준 중단 관례를 사용하는 별도
-정식 시그니처를 먼저 정의해야 한다.
+호출은 call object를 반환한다. one-way call은 `submit()`이 local queue 수락 지점이고,
+request와 join은 `async()`가 reply 완료를 기다리는 지점이다.
+일반 channel `request_call_t`와 `send_call_t`는 metadata와 timeout을 submit 전에 모으고,
+submit 시점에 framework envelope 정책으로 넘긴다. typed packet name은 registration
+descriptor가 결정한다. request, join과 worker는 `async()` 완료 terminator 하나만 제공하고
+framework가 실행 문맥을 관리한다. 장기 작업 중단 표면이 필요하면 C++ 표준 중단 관례를
+사용하는 별도 정식 시그니처를 먼저 정의해야 한다.
 
 ```cpp
 auto reply = co_await client
@@ -1611,10 +1634,7 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
       .enable_client();
 
     auto &dispatch = options.configure_dispatch();
-    dispatch.spot_dispatch_mode =
-      zlink::framework::dispatch_mode_t::compiled;
-    dispatch.stream_dispatch_mode =
-      zlink::framework::dispatch_mode_t::dynamic;
+    // Dispatch 최적화 방식은 runtime이 선택하고 public option으로 노출하지 않는다.
     dispatch.diagnostics.message_flow =
       zlink::framework::message_flow_log_mode_t::errors_only;
 

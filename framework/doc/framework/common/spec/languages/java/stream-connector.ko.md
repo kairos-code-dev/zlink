@@ -45,12 +45,11 @@ public interface ZLinkStreamConnector {
     ZLinkStreamLifecycleCall reconnect();
     ZLinkStreamLifecycleCall close();
     ZLinkStreamLifecycleCall dispatch();
-    <T> T await(CompletionStage<T> stage) throws Exception;
 
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
-    ZLinkStreamSendCall send(Object payload);
-    ZLinkStreamRequestCall request(Object payload);
+    ZLinkTypedStreamSendCall send(Object payload);
+    ZLinkTypedStreamRequestCall request(Object payload);
     ZLinkStreamWaitCall waitFor(String name);
     ZLinkStreamWaitCall waitFor(Class<?> payloadType);
 
@@ -175,11 +174,9 @@ public record ZLinkStreamMessage<TPayload>(
 }
 ```
 
-packet name 해석 순서는 아래와 같다.
-
-1. builder의 `packetName(...)`
-2. payload type의 `@ZLinkStreamPacketName`
-3. payload type의 `SimpleName`
+typed object의 packet identity는 payload type의 `@ZLinkStreamPacketName`을 우선하고,
+없으면 type의 `SimpleName`을 사용한다. 호출별 override는 허용하지 않는다. 이미 encode한
+raw payload의 identity는 `ZLinkStreamEncodedPayload.packetName()`에 명시한다.
 
 metadata는 작은 key-value만 담는다. 큰 업무 데이터는 payload로 보낸다.
 STREAM wire header는 runtime 내부 타입이다. connector 사용자와 server session은 header
@@ -189,7 +186,6 @@ STREAM wire header는 runtime 내부 타입이다. connector 사용자와 server
 
 ```java
 public interface ZLinkStreamSendCall {
-    ZLinkStreamSendCall packetName(String name);
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(Map<String, String> metadata);
     ZLinkStreamSendCall compress();
@@ -197,14 +193,27 @@ public interface ZLinkStreamSendCall {
 }
 
 public interface ZLinkStreamRequestCall {
-    ZLinkStreamRequestCall packetName(String name);
     ZLinkStreamRequestCall metadata(String key, String value);
     ZLinkStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkStreamRequestCall timeout(Duration timeout);
     ZLinkStreamRequestCall compress();
     CompletionStage<ZLinkStreamEncodedPayload> submit();
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
-    <TReply> TReply await(Class<TReply> replyType) throws Exception;
+}
+
+public interface ZLinkTypedStreamSendCall {
+    ZLinkTypedStreamSendCall metadata(String key, String value);
+    ZLinkTypedStreamSendCall metadata(Map<String, String> metadata);
+    ZLinkTypedStreamSendCall compress();
+    void submit();
+}
+
+public interface ZLinkTypedStreamRequestCall {
+    ZLinkTypedStreamRequestCall metadata(String key, String value);
+    ZLinkTypedStreamRequestCall metadata(Map<String, String> metadata);
+    ZLinkTypedStreamRequestCall timeout(Duration timeout);
+    ZLinkTypedStreamRequestCall compress();
+    <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }
 
 public interface ZLinkStreamWaitCall {
@@ -364,10 +373,10 @@ observer callback은 receive 경로에서 직접 실행하지 않는다. callbac
 
 ## 13. Kotlin 표면
 
-Kotlin module은 Java connector 위의 thin wrapper다. Kotlin 사용자 code는 Java `submit()`을
-직접 호출하지 않고 Kotlin wrapper의 suspend `await()`를 사용한다. 이 `await()`는 Java blocking
-`await()`를 호출하지 않고, Java `submit()`이 반환한 `CompletionStage`를 coroutine suspension으로
-기다린다.
+Kotlin module은 Java connector 위의 thin wrapper다. lifecycle과 request처럼 완료값이
+있는 작업은 Kotlin wrapper의 suspend `await()`로 기다린다. 이 `await()`는 Java
+`CompletionStage`를 coroutine suspension으로 기다린다. one-way send는 완료 객체를
+만들지 않고 `submit()`으로 local queue에 맡긴다.
 
 ```kotlin
 fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector
@@ -378,8 +387,10 @@ class ZLinkKotlinStreamConnector {
     fun reconnect(): ZLinkKotlinLifecycleCall
     fun close(): ZLinkKotlinLifecycleCall
     fun dispatch(): ZLinkKotlinLifecycleCall
+    fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall
     fun send(payload: Any): ZLinkKotlinSendCall
-    fun request(payload: Any): ZLinkStreamRequestCall
+    fun request(payload: ZLinkStreamEncodedPayload): ZLinkStreamRequestCall
+    fun request(payload: Any): ZLinkTypedStreamRequestCall
     fun <TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload>
     fun <TPayload> waitFor(name: String): ZLinkStreamTypedWaitCall<TPayload>
     fun messages(packetName: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
@@ -391,11 +402,12 @@ class ZLinkKotlinLifecycleCall {
 }
 
 class ZLinkKotlinSendCall {
-    suspend fun await()
+    fun submit()
 }
 
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
-suspend fun <TReply> ZLinkStreamRequestCall.await(): TReply
+inline suspend fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply
+inline suspend fun <reified TReply> ZLinkTypedStreamRequestCall.awaitReply(): TReply
 
 class ZLinkStreamTypedWaitCall<TPayload> {
     fun timeout(timeout: Duration): ZLinkStreamTypedWaitCall<TPayload>

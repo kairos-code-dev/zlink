@@ -43,7 +43,6 @@ framework core에서 `STREAM`은 packet 방식만 지원한다. 내부 wire head
 namespace zlink::framework {
 
 class actor_ref_t;
-class relay_call_t;
 class stream_write_call_t;
 template <typename T>
 class task_t;
@@ -96,7 +95,8 @@ public:
 
 class session_actor_t {
 public:
-    relay_call_t relay(const zlink::message_t &payload);
+    task_t<void> relay(const zlink::message_t &payload);
+    task_t<void> notify_disconnected();
 };
 
 class session_actor_manager_t {
@@ -202,12 +202,13 @@ write backpressure, session relay 경계를 함께 검증한다.
 - valid packet은 `stream_dispatch_context_t`와 payload로 handler에 전달된다.
 - invalid header, unsupported codec, malformed metadata는 application handler에 전달되지
   않고 error log와 monitoring event를 남긴다.
-- `stream_t::write_packet(...)`은 submit 전에는 실행되지 않고, submit 후 backpressure와
-  completion result를 반환한다. metadata, packet name override, compression flag는 submit
-  시점에 framework header로 반영된다.
-- `stream_t::close()` 후 새 write submit은 `disconnected` 결과를 반환하고, 추가 frame을 쓰지
-  않는다.
-- pending write 중 disconnect가 발생하면 caller는 disconnected 계열 error를 받는다.
+- `stream_t::write_packet(...)`은 submit 전에는 실행되지 않는다. `submit()`은 입력 검증과
+  bounded local queue 수락 뒤 `void`로 반환한다. metadata, packet name과 compression
+  flag는 submit 시점에 framework header로 반영된다.
+- `stream_t::close()` 후 새 write submit은 동기 `disconnected` 예외를 발생시키고 추가
+  frame을 쓰지 않는다.
+- queue 수락 뒤 disconnect가 발생하면 monitoring/error observer에 disconnected 오류를
+  전달한다.
 - session-scoped service는 disconnect cleanup 뒤 해제된다.
 - session callback에서 받은 payload는 relay 후에도 framework ownership 규칙을 깨지 않는다.
   ActorGateway relay 경로를 사용한다.

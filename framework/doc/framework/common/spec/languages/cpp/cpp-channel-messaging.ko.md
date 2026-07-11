@@ -101,8 +101,7 @@ messaging 표면에 넣지 않는다. 그런 흐름은 actor 생성 또는 Entry
 handle을 얻은 뒤 ActorGateway/session actor 경로로 연결한다.
 
 request/send 같은 outbound 호출은 call object를 반환하고, 마지막 submit 단계에서
-실행한다. 반환된 call object에서 `packet_name(...)`, `metadata(key, value)`,
-`timeout(...)`을 설정할 수 있고, 이 값은 submit 시점에 framework envelope 정책으로
+실행한다. 반환된 call object에서 metadata와 timeout을 설정할 수 있고, 이 값은 submit 시점에 framework envelope 정책으로
 넘어간다. 서버 framework public API는 blocking 동기 호출을 제공하지 않으며, handler에서
 request는 `co_await call.async<reply_t>()`, send는 호출자가 완료를 기다리지 않는 submit 경로를 사용한다.
 handler 안에서 blocking wait를 쓰지 않는다.

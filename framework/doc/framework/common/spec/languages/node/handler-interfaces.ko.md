@@ -136,15 +136,13 @@ export interface ActorRef {
 | handler | `ZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | handler | `ZLinkActorTransferAdapter<TActor>` | remote actor transfer에서 actor state를 선택적으로 `ZLinkMessage`로 전달하고 target actor를 materialize하는 actor type별 adapter | 4.4.1 |
 | context | `ZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
-| call | `ZLinkActorJoinSpotCall` | actor → user Spot join 빌더 | 4.4.1 |
-| call | `ZLinkActorJoinEntrySpotCall` | actor → Entry Spot join 빌더 | 4.4.1 |
-| value | `ZLinkActorJoinResult<TReply>` | actor join 결과 (승인 여부 + ref + reply) | 4.4.1 |
+| call | `ZLinkActorJoinCall` | actor → user/Entry Spot join 빌더 | 4.4.1 |
+| value | `ZLinkActorJoinResult<TReply>` | actor join 승인/거절 union. 승인 결과만 actor ref를 포함 | 4.4.1 |
 | factory | `ZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
 | manager | `ZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
 | value | `ZLinkMessageMetadata` | actor/bound session call 의 metadata snapshot | 4.4.2 |
 | policy | `ZLinkMessageMetadataPolicy` | metadata forwarding 허용 여부 | 4.4.2 |
-| value | `ZLinkDispatchMode` | dispatch activation/performance mode enum | 4.4.3 |
-| options | `ZLinkDispatchOptions` | dispatch mode + unhandled + diagnostics 설정 | 4.4.3 |
+| options | `ZLinkDispatchOptions` | unhandled + diagnostics 설정 | 4.4.3 |
 | options | `ZLinkUnhandledDispatchOptions` | 미등록 packet 처리 정책 | 4.4.3 |
 | options | `ZLinkDiagnosticsOptions` | message flow 진단 정책 | 4.4.3 |
 | value | `ZLinkUnhandledDispatchAction` | 미등록 packet 처리 동작 enum | 4.4.3 |
@@ -163,24 +161,21 @@ export interface ActorRef {
 | client | `ZLinkRouteClient` | route mesh channel 로 target node 호출 | 5.2.1 |
 | client | `ZLinkSpotPublisherClient` | spot channel publish client | 5.3 |
 | client | `ZLinkFanoutClient` | pub/sub fanout publish client | 5.4 |
-| client | `ZLinkBoundSessionFactory` | actor id → 현재 client session proxy 생성 | 5.6 |
 | client | `ZLinkBoundSession` | 현재 actor → 현재 client session 호출 | 5.6 |
 | call | `ZLinkBoundSessionSendCall` | bound session send 빌더 | 5.6 |
-| resolver | `ZLinkSpotRefResolver` | spot rid로 메시징 대상 `SpotRef` 조회 | 5.7 |
+| resolver | `ZLinkSpotHandleResolver` | spot rid로 메시징 handle 조회 | 5.7 |
 | value | `ZLinkSpotKind` | spot 종류 enum (Entry/User) | 5.7 |
-| value | `SpotRef` | spot 메시징 대상 handle | 5.7 |
+| value | `SpotHandle` | 내부 주소 갱신을 소유하는 메시징 대상 | 5.7 |
 | manager | `ZLinkSpotManager` | spot 인스턴스 생성/조회/정상 종료 | 6.3 |
 | value | `ZLinkSpotCreateResult` | spot 생성 결과 | 6.3 |
 | value | `ZLinkSpotInfo` | spot 조회 결과 | 6.3 |
 | builder | `ZLinkFrameworkOptions` | framework 등록 루트 builder (= module options) | 6.1 |
 | builder | `ZLinkClientServerChannelBuilder` | client-server channel 등록 builder | 6.1 |
 | builder | `ZLinkFanoutChannelBuilder` | fanout (pub/sub) channel 등록 builder | 6.1 |
-| builder | `ZLinkRouteChannelBuilder` | route channel 등록 builder | 6.1 |
+| builder | `ZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
 | builder | `ZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
 | builder | `ZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `ZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
-| builder | `ZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
-| builder | `ZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
 | builder | `useInMemoryLocationStores()` / `addLocationStore(...)` | location store 등록 | 6.1 |
 | builder | `ZLinkMetadataPolicyBuilder` | metadata forward 정책 builder | 6.1 |
 | options | `ZLinkSocketConfig` | 공통 socket 옵션 | 6.4 |
@@ -191,7 +186,7 @@ export interface ActorRef {
 | options | `ZLinkEntrySpotOptions` | Entry Spot routing id 옵션 | 6.4 |
 | options | `ZLinkLocationOptions` | location store 갱신, lease, watch 설정 | 6.1 |
 | value | `ZLinkLocationChangeType`, `ZLinkLocationWriteStatus` | location 변경과 write 결과 enum | 10 |
-| config | `ZLinkEndpointConnections` | manual 연결 편집 표면 | 6.2 |
+| runtime | `ZLinkEndpointConnections` | capability별 manual 연결 제어 표면 | 6.2 |
 | timer | `ZLinkTimer` | timer handle | 7 |
 | options | `ZLinkTimerOptions` | timer 옵션 | 7 |
 | value | `ZLinkTimerOverrunPolicy` | timer overrun 정책 enum | 7 |
@@ -288,14 +283,14 @@ export interface ZLinkRequestHandler<TRequest, TResponse> {
 - `TResponse` 도 framework 가 encode 할 typed 결과다.
 - raw multipart header 는 인자로 넘기지 않는다.
 - 이 interface 를 구현한 class 는 NestJS provider 로 등록할 수 있다.
-  실제 channel 노출은 `zlinkRequestHandler('group', 'Packet')` decorator 로
-  handler group 과 packet 이름을 class 에 붙이고, channel options 의
+  실제 channel 노출은 `zlinkRequestHandler('group')` decorator와 message
+  descriptor로 정하고, channel options의
   `handlerGroups: ['group']` 로 선택한다.
 
 NestJS provider group 등록 방식:
 
 ```ts
-@zlinkRequestHandler('api', 'GetProfile')
+@zlinkRequestHandler('api')
 export class GetProfileHandler {
   async handle(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
     return { id: request.id };
@@ -367,7 +362,7 @@ export interface ZLinkRouteRequestContext extends ZLinkHandlerContext {
 
 route channel handler 등록은 route channel builder 가 책임진다. `addSendHandler(...)`,
 `addRequestHandler(...)` 처럼 handler 타입만 지정하거나, message/reply 타입을 함께
-지정하는 명시적 오버로드를 통해 등록한다. §6.1 의 `ZLinkRouteChannelBuilder` 참고.
+지정하는 명시적 오버로드를 통해 등록한다. §6.1의 `ZLinkRouteMeshChannelBuilder` 참고.
 
 ### 4.3 publish handler
 
@@ -449,15 +444,9 @@ domain state로 actor를 복원하는 일만 맡고, route나 session, location 
 /** C# IZLinkActorHandlerRegistry 대응. actor handler 등록 표면. */
 export interface ZLinkActorHandlerRegistry {
   addHandler<THandler>(handlerType: Type<THandler>): this;
-  addHandler<THandler>(handlerType: Type<THandler>, packetName: string): this;
   addActorPacket<THandler, TActor extends ZLinkActor>(
     handlerType: Type<THandler>,
     actorType: Type<TActor>,
-  ): this;
-  addActorPacket<THandler, TActor extends ZLinkActor>(
-    handlerType: Type<THandler>,
-    actorType: Type<TActor>,
-    packetName: string,
   ): this;
 }
 
@@ -476,6 +465,8 @@ export interface ZLinkSpotContext {
 
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
+
+  runWorker<TResult>(work: () => TResult | Promise<TResult>): ZLinkWorkerCall<TResult>;
 
   leaveActor(actor: ZLinkActor): Promise<void>;
 
@@ -496,6 +487,8 @@ export interface ZLinkEntrySpotContext {
 
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
+
+  runWorker<TResult>(work: () => TResult | Promise<TResult>): ZLinkWorkerCall<TResult>;
 
   destroyActor(actor: ZLinkActor): Promise<void>;
 
@@ -711,7 +704,7 @@ export class MatchSpot implements ZLinkSpot {
 `ZLinkSpotContext.outbound` 가 노출하는 호출 표면(§5.2 `ZLinkSpotOutbound`):
 
 - `context.outbound.sendToSpot(...)` / `requestToSpot(...)` 은 현재 SPOT 문맥에서 다른
-  SPOT 으로 routed send/request 를 보낸다. target 은 먼저 resolve한 `SpotRef` 로 지정한다.
+  SPOT으로 routed send/request를 보낸다. target은 resolver가 만든 `SpotHandle`로 지정한다.
   전송 API 는 호출 중에 location store 를 다시 조회하지 않는다.
 - `context.outbound.publish(topic, ...)` 는 현재 SPOT 이 속한 active SPOT channel 로
   publish 한다.
@@ -806,7 +799,6 @@ export interface ZLinkSessionContext {
   readonly localAddr?: string;
   readonly remoteAddr?: string;
 
-  readonly stream: ZLinkStream;
   readonly client: ZLinkSessionClient;
   readonly actors: ZLinkSessionActors;
   readonly handlers: ZLinkSessionHandlerRegistry;
@@ -831,7 +823,6 @@ export interface ZLinkSessionActors {
 
 export interface ZLinkSessionSendCall {
   metadata(key: string, value: string): ZLinkSessionSendCall;
-  packetName(messageName: string): ZLinkSessionSendCall;
   compress(): ZLinkSessionSendCall;
   submit(): void;
 }
@@ -886,7 +877,6 @@ export interface ZLinkSessionPacketHandler<TSessionContext, TMessage> {
 
 export interface ZLinkSessionHandlerRegistry {
   addHandler<THandler>(handlerType: Type<THandler>): this;
-  addHandler<THandler>(handlerType: Type<THandler>, packetName: string): this;
 
   /**
    * 등록된 packet handler 가 있는 packet 만 dispatch 한다.
@@ -931,35 +921,22 @@ export interface ZLinkActor {
 
 export interface ZLinkActorContext {
   readonly spotRid?: RoutingId;
-  readonly isJoined: boolean;
 
   readonly boundSession: ZLinkBoundSession;
 
-  getSpot(): ZLinkSpot;
-  getSpot<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
+  joinSpot<TRequest>(spotRid: RoutingId, request: TRequest): ZLinkActorJoinCall;
 
-  joinSpot<TRequest>(spotRid: RoutingId, request: TRequest): ZLinkActorJoinSpotCall;
-
-  joinEntrySpot<TRequest>(spotNodeRid: RoutingId, request: TRequest): ZLinkActorJoinEntrySpotCall;
+  joinEntrySpot<TRequest>(spotNodeRid: RoutingId, request: TRequest): ZLinkActorJoinCall;
 }
 
-/** actor join의 승인 여부, 승인된 actor ref와 reply를 함께 보존한다. */
-export interface ZLinkActorJoinResult<TReply> {
-  readonly accepted: boolean;
-  readonly actor?: ActorRef;
-  readonly reply: TReply;
-}
+/** 승인 결과에는 actor ref가 항상 있고, 거절 결과에는 actor ref가 없다. */
+export type ZLinkActorJoinResult<TReply> =
+  | { readonly status: 'accepted'; readonly actor: ActorRef; readonly reply: TReply }
+  | { readonly status: 'rejected'; readonly reply: TReply };
 
-export interface ZLinkActorJoinSpotCall {
-  timeout(timeoutMs: number): ZLinkActorJoinSpotCall;
-  submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-  yield<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-}
-
-export interface ZLinkActorJoinEntrySpotCall {
-  timeout(timeoutMs: number): ZLinkActorJoinEntrySpotCall;
-  submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-  yield<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
+export interface ZLinkActorJoinCall {
+  timeout(timeoutMs: number): ZLinkActorJoinCall;
+  submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorFactory {
@@ -985,14 +962,15 @@ export interface ZLinkActorManager {
 }
 ```
 
-`submit(...)` 은 기본 serial terminator다. `yield(...)` 은 framework가 만든 actor
-join call object에서만 사용할 수 있으며, join completion을 기다리는 동안 현재 turn을
-반납하고 completion 뒤 같은 handler continuation을 재개한다.
+`spotRid`의 존재 여부가 join 상태의 단일 기준이다. join 결과는 discriminated union이라
+호출자는 `status`를 좁힌 뒤 승인된 actor ref에 접근한다.
+
+`submit(...)`은 actor join의 유일한 완료 terminator다. framework가 원래 실행 문맥의
+직렬 상태와 join 진행에 필요한 독립 실행을 함께 관리한다.
 
 > actor join은 bare reply가 아니라 `ZLinkActorJoinResult<TReply>`를 반환한다.
-> `ZLinkActorContext`는 generic `getSpot<TSpot>()`과 `joinEntrySpot(..., request)`을
-> 제공한다. overload를 TypeScript에서 같은 형태로 표현하기 어려운 부분은
-> `getSpot()`과 `getSpot<TSpot>(spotType)`로 분리한다.
+> `ZLinkActorContext`는 join operation과 bound session만 제공한다. Spot 상태는 Spot
+> handler가 받은 인자를 사용한다.
 
 ##### actor join callback
 
@@ -1016,7 +994,6 @@ framework state 는 기존을 유지하고 lifecycle callback 은 호출되지 �
 - outbound 는 actor context 의 기능이 아니다. 다른 Spot/channel 로 보내려면 handler 가 받은
   `spot.context.outbound.*` 를 쓴다. client stream 으로 push 하려면 actor 의
   `context.boundSession` 을 쓴다.
-- `getSpot(...)` 는 actor 가 Spot 에 join 한 뒤에만 유효하다. join 전 호출은 명확한 실패다.
 - `joinSpot(spotRid, request)` 는 user Spot routing id(`RoutingId`)를 받는다. domain key 는
   application registry 가 먼저 `RoutingId` 로 변환한다. `joinEntrySpot(spotNodeRid, request)` 는
   target SpotNode routing id 와 request 를 받는다. Entry Spot 은 SpotNode 마다 하나다.
@@ -1075,19 +1052,13 @@ export interface ZLinkMessageMetadataPolicy {
 }
 ```
 
-#### 4.4.3 dispatch mode
+#### 4.4.3 dispatch policy
 
-SPOT 과 actor packet 처리에는 편의 모드와 고성능 모드를 둔다.
+handler descriptor와 invocation 최적화는 framework가 registration 시 준비한다.
+application이 구현 전략을 선택하는 dispatch mode는 제공하지 않는다.
 
 ```ts
-export enum ZLinkDispatchMode {
-  Compiled = 'compiled',
-  Dynamic = 'dynamic',
-}
-
 export interface ZLinkDispatchOptions {
-  spotDispatchMode: ZLinkDispatchMode;
-  streamDispatchMode: ZLinkDispatchMode;
   readonly unhandled: ZLinkUnhandledDispatchOptions;
   readonly diagnostics: ZLinkDiagnosticsOptions;
 }
@@ -1124,12 +1095,8 @@ export enum ZLinkMessageFlowLogMode {
 }
 ```
 
-> `ZLinkDispatchOptions`는 dispatch mode와 함께 `unhandled`, `diagnostics` 두
-> sub-option 및 관련 enum을 제공한다.
-
-- `Compiled`: reflection 은 registration / warm-up 까지만. packet hot path 에서는 cached
-  delegate, prebuilt dispatch table, 미리 선택한 factory 만 쓴다.
-- `Dynamic`: 유연한 등록과 늦은 바인딩 우선. 성능이 덜 중요한 관리용 handler / 초기 실험 단계용.
+`ZLinkDispatchOptions`는 관찰 가능한 오류 처리와 diagnostics만 제공한다. cached
+delegate와 dispatch table 선택은 runtime 내부 정책이다.
 
 ### 4.5 message serializer / codec
 
@@ -1178,24 +1145,22 @@ export interface ZLinkCodecRegistryBuilder {
 Discovery 가 대상을 선택한다. 일반 channel messaging 에서는 특정 ROUTER 를 `rid` 로 직접
 지정하지 않는다(rid 호출은 SPOT spot-to-spot / route 경로에만 둔다).
 
-packet key 는 매번 별도 문자열로 받지 않는 것이 기본이다. payload 타입 이름(생성자 이름)을
-기본 packet key 로 본다. 변형은 builder 체이닝(`packetName`, `timeout`)으로 이어 붙인다.
+typed packet key는 decorator metadata 또는 nominal type 이름으로 registration 시 한 번
+확정한다. call builder는 이름을 다시 받지 않는다.
 
 ```ts
 export interface ZLinkSendCall {
-  packetName(packetName: string): ZLinkSendCall;
   submit(): void;
 }
 
 export interface ZLinkRequestCall {
-  packetName(packetName: string): ZLinkRequestCall;
   timeout(timeoutMs: number): ZLinkRequestCall;
   submit<TReply>(): Promise<TReply>;
 }
 
 export interface ZLinkChannelClient {
   sendToChannel<TMessage>(channelName: string, message: TMessage): ZLinkSendCall;
-  requestToChannel<TMessage>(channelName: string, request: TMessage): ZLinkYieldRequestCall;
+  requestToChannel<TMessage>(channelName: string, request: TMessage): ZLinkRequestCall;
 }
 ```
 
@@ -1205,23 +1170,17 @@ export interface ZLinkChannelClient {
 
 client-server channel 의 request/send 호출에는 `ZLinkChannelClient` public DI 표면을 쓴다.
 
-packet key 해석 순서:
-
-1. builder 의 `packetName(...)` 이 지정되어 있으면 그 값
-2. payload 객체의 `packetName(): string`
-3. payload 타입의 `@ZLinkPacket` metadata
-4. payload 생성자 이름(`Type.name`)
+packet key는 `@ZLinkPacket` metadata를 우선하고, 없으면 payload 생성자 이름을
+사용한다. payload instance의 `packetName()`과 호출별 override는 사용하지 않는다.
 
 timeout 규칙:
 
 - `requestToChannel(...)` 는 reply 를 기다리므로 `timeout(...)` 을 둘 수 있다.
 - `sendToChannel(...)` / `publish(...)` 는 응답을 기다리지 않으므로 timeout 을 두지 않는다.
-- `submit()` 은 handler 완료 대기가 아니라, framework 가 transport 에 위임할 수 있을 때까지
-  기다리는 비동기 submit 이다.
-- send backpressure 한계는 builder 가 아니라 framework 내부 submitter 의 기본값을 따른다.
-  framework 기본값은 core socket 과 동일한 1000ms 이다.
-- public no-wait 옵션은 제공하지 않는다. temporary backpressure 는 내부 queue + ready
-  notification 으로 처리한다.
+- one-way `submit()`은 입력 검증과 bounded local queue 수락까지만 동기로 수행하고
+  `void`를 반환한다. queue가 가득 찼거나 route가 준비되지 않으면 즉시 예외를 던진다.
+- queue 수락 이후의 transport 실패는 monitoring/error observer로 전달한다. request와
+  달리 완료 Promise, timeout 또는 public no-wait 옵션을 제공하지 않는다.
 
 ```ts
 @ZLinkPacket('GetProfile')
@@ -1234,13 +1193,13 @@ const reply = await client
   .timeout(200)
   .submit<GetProfileReply>();
 
-interface RefreshProfileCacheCommand {
-  readonly accountId: string;
+@ZLinkPacket('profile.refresh-cache')
+class RefreshProfileCacheCommand {
+  constructor(readonly accountId: string) {}
 }
 
 client
-  .sendToChannel('profile', { accountId } satisfies RefreshProfileCacheCommand)
-  .packetName('profile.refresh-cache')
+  .sendToChannel('profile', new RefreshProfileCacheCommand(accountId))
   .submit();
 ```
 
@@ -1252,11 +1211,11 @@ attach 된 channel 의 send/request, spot rid 기반 routed spot send/request.
 
 ```ts
 export interface ZLinkSpotOutbound {
-  sendToSpot<TMessage>(spot: SpotRef, message: TMessage): ZLinkSendCall;
-  requestToSpot<TMessage>(spot: SpotRef, request: TMessage): ZLinkYieldRequestCall;
+  sendToSpot<TMessage>(target: SpotHandle, message: TMessage): ZLinkSendCall;
+  requestToSpot<TMessage>(target: SpotHandle, request: TMessage): ZLinkRequestCall;
   publish<TEvent>(topic: string, message: TEvent): ZLinkPublishCall;
   sendToChannel<TMessage>(channelName: string, message: TMessage): ZLinkSendCall;
-  requestToChannel<TMessage>(channelName: string, request: TMessage): ZLinkYieldRequestCall;
+  requestToChannel<TMessage>(channelName: string, request: TMessage): ZLinkRequestCall;
 }
 ```
 
@@ -1266,7 +1225,7 @@ lifecycle callback / handler 안에서는 별도 client 주입 없이 `context.o
 `ZLinkChannelClient` 와의 차이:
 
 - `publish(topic, ...)` 가 포함된다(SPOT 은 현재 channel 안 topic publish 를 함께 쓰는 경우가 많다).
-- `sendToSpot` / `requestToSpot` 은 호출자가 넘긴 `SpotRef` 를 전송 대상으로 쓴다.
+- `sendToSpot` / `requestToSpot`은 resolver가 만든 `SpotHandle`을 전송 대상으로 쓴다.
 - `sendToChannel` / `requestToChannel` 은 route bridge channel socket을 통해 해소한다.
 - local `SpotNode` 가 없는 앱의 기본 outbound 는 `ZLinkChannelClient` 다. 외부 SPOT channel
   publish 만 필요하면 `ZLinkSpotPublisherClient` 를 별도로 쓴다.
@@ -1282,8 +1241,8 @@ lifecycle callback / handler 안에서는 별도 client 주입 없이 `context.o
 export interface ZLinkRouteClient {
   sendToNode<TMessage>(routerChannelId: string, targetNodeRid: RoutingId, message: TMessage): ZLinkSendCall;
   requestToNode<TRequest>(routerChannelId: string, targetNodeRid: RoutingId, request: TRequest): ZLinkRequestCall;
-  sendToSpot<TMessage>(routerChannelId: string, spot: SpotRef, message: TMessage): ZLinkSendCall;
-  requestToSpot<TRequest>(routerChannelId: string, spot: SpotRef, request: TRequest): ZLinkRequestCall;
+  sendToSpot<TMessage>(target: SpotHandle, message: TMessage): ZLinkSendCall;
+  requestToSpot<TRequest>(target: SpotHandle, request: TRequest): ZLinkRequestCall;
 }
 ```
 
@@ -1312,7 +1271,6 @@ export interface ZLinkSpotPublisherClient {
 
 ```ts
 export interface ZLinkPublishCall {
-  packetName(packetName: string): ZLinkPublishCall;
   submit(): void;
 }
 
@@ -1326,12 +1284,13 @@ export interface ZLinkFanoutClient {
 
 `publish('profile', 'profile.cache-refreshed', evt)` 는 `profile` channel 안의
 `profile.cache-refreshed` topic 으로 fan-out 한다. publish 도 timeout 을 두지 않고, packet
-이름 override 만 둘 수 있다. `submit()` 의 비동기 의미는 remote 처리 완료 대기가 아니라
-local publish transport 에 submit 되는 시점까지의 대기다.
+identity override를 두지 않는다. `submit()`은 입력 검증과 framework의 bounded local
+queue 수락이 끝나면 반환한다. remote 처리 완료를 기다리지 않는다.
 
-실패 처리: temporary backpressure 는 내부 queue + ready notification, 그 외 submit 실패
-(route-not-ready 등)는 예외다. subscriber 마다 task/직렬화를 새로 만들지 않고 topic/payload
-frame 을 한 번만 만든다. backpressure 대기 한계는 framework submitter 기본값을 따른다.
+입력이 잘못됐거나 route가 준비되지 않았거나 local queue가 수락할 수 없으면 `submit()`이
+즉시 예외를 던진다. 수락 뒤 발생한 transport 실패는 monitoring/error observer로 전달하며
+이미 반환한 호출에 비동기 예외를 되돌리지 않는다. subscriber마다 task/직렬화를 새로
+만들지 않고 topic/payload frame을 한 번만 만든다.
 
 ### 5.5 actor route resolver / route transport helper
 
@@ -1361,12 +1320,7 @@ export interface ZLinkBoundSession {
   disconnect(signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkBoundSessionFactory {
-  create(actorId: string): ZLinkBoundSession;
-}
-
 export interface ZLinkBoundSessionSendCall {
-  packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
   submit(): void;
 }
@@ -1378,15 +1332,15 @@ export interface ZLinkBoundSessionSendCall {
 `disconnect()` 도 현재 actor 의 binding 상태를 쓴다. actor 가 client 연결을 끊기로 결정한
 경우 호출하며, session callback 으로 `onDisconnected(...)` 를 다시 올리지 않는다.
 
-### 5.7 SpotRef resolver
+### 5.7 SpotHandle resolver
 
-public resolver 는 spot 축으로 둔다. spot rid 로부터 메시징 대상 `SpotRef` 를 조회한다.
-id 는 조회 입력이고, `SpotRef` 는 전송 입력이다. `sendToSpot(...)` / `requestToSpot(...)` 은
+public resolver는 spot rid로부터 메시징 대상 `SpotHandle`을 조회한다.
+id는 조회 입력이고 handle은 전송 입력이다. `sendToSpot(...)` / `requestToSpot(...)`은
 spot rid 를 직접 받지 않는다.
 
 ```ts
-export interface ZLinkSpotRefResolver {
-  resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotRef | undefined>;
+export interface ZLinkSpotHandleResolver {
+  resolveSpotHandle(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotHandle | undefined>;
 }
 
 export enum ZLinkSpotKind {
@@ -1395,17 +1349,15 @@ export enum ZLinkSpotKind {
   User = 'user',
 }
 
-export interface SpotRef {
-  readonly meshName: string;
-  readonly nodeRid: RoutingId;
+declare const spotHandleBrand: unique symbol;
+
+export interface SpotHandle {
   readonly spotRid: RoutingId;
-  readonly spotKind?: ZLinkSpotKind;
+  readonly [spotHandleBrand]: never;
 }
 ```
 
-`meshName` 은 target Spot 이 속한 Spot mesh 이름이고, `nodeRid` 는 현재 owner node 다.
-framework 는 이 값을 내부 routed transport 로 바꾸지만, application 은 route channel id 나
-bridge 세부 값을 직접 보지 않는다.
+handle의 mesh, owner node, generation과 주소 snapshot은 framework가 관리한다.
 
 resolver 입력에는 metadata, packet name, raw message, decoded payload 를 넘기지 않는다.
 resolver 의 책임은 위치 저장소 접근뿐이다. actor-session route 는 public contract 가 아니라
@@ -1439,27 +1391,23 @@ function createFrameworkRegistrationWithBuilder(
   configure: (options: ZLinkFrameworkOptions) => void): ZLinkFrameworkRegistration;
 
 export interface ZLinkFrameworkOptions {
+  codecs(): ZLinkCodecRegistryBuilder;
+  configureDispatch(): ZLinkDispatchOptionsBuilder;
   useInMemoryLocationStores(): this;
   addLocationStore(store: ZLinkLocationStore): this;
-  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this;
-  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this;
-  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this;
   addActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>,
   ): this;
   setActorTransferForwardWindow(timeoutMs: number): this;
-  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this;
-  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this;
   configureLocations(): ZLinkLocationOptions;
+  setDefaultRequestTimeout(timeoutMs: number): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
-  addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
+  addSpotMesh(channelName: string): ZLinkSpotNodeBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
-  addRouteChannel(name: string): ZLinkRouteChannelBuilder;
   addRouteMesh(name: string): ZLinkRouteMeshChannelBuilder;
   addStreamNode(name: string): ZLinkStreamNodeBuilder;
-  addSpotMesh(name: string): ZLinkSpotNodeBuilder;
 }
 
 export interface ZLinkMetadataPolicyBuilder {
@@ -1480,7 +1428,7 @@ handoff하고 이후 old ref packet은 즉시 `ActorLocationStale`로 끝난다.
 
 - `addClientServerChannel(...)`: request/send 용 client-server 채널 등록.
 - `addFanoutChannel(...)`: pub/sub fanout 채널 등록.
-- `addRouteChannel(...)` / `addRouteMesh(...)`: route channel 등록.
+- `addRouteMesh(...)`: route mesh channel 등록.
 - `useInMemoryLocationStores()` / `addLocationStore(...)`: 위치 조회와 자동 연결에 쓸 location store 등록.
 - `addStreamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
 - `addSpotFactory(...)`: `ZLinkSpotManager` 가 사용할 spot factory 타입 등록.
@@ -1498,7 +1446,7 @@ handoff하고 이후 old ref packet은 즉시 `ActorLocationStale`로 끝난다.
       zlinkFramework()
         .options({
           filters: [LoggingZLinkFilter, ValidationZLinkFilter],
-          dispatch: { spotDispatchMode: 'compiled', streamDispatchMode: 'compiled' },
+          dispatch: { diagnostics: { messageFlow: 'errorsOnly' } },
         })
         .codecs()
           .use(zlinkProtobufCodec())
@@ -1528,7 +1476,7 @@ export class AppModule {}
 | `addStreamNode(name)` | `addStreamNode(name)` | nestjs-stream |
 | `configureLocationStore(...)` | `addLocationStore(...)` / `configureLocations()` | handler-interfaces §10 |
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
-| `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
+| `configureDispatch(...)` | `dispatch: { unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
 | `addSpotMesh(...).actorFactory(...)` | SpotNode `actorFactories` | nestjs-actor |
 | `codecs` | `codecs().use(zlinkProtobufCodec())`  | §4.5 |
@@ -1543,28 +1491,33 @@ export interface ZLinkClientServerChannelBuilder {
   routingId(routingId: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
+  clientConnections(): ZLinkEndpointConnections;
+  setDefaultRequestTimeout(timeoutMs: number): this;
 }
 
 export interface ZLinkFanoutChannelBuilder {
   enablePublisher(endpoint: string): this;
   enableSubscriber(): this;
   enableSubscriber(endpoint: string): this;
+  subscriberConnections(): ZLinkEndpointConnections;
 }
 
-export interface ZLinkRouteChannelBuilder {
+export interface ZLinkRouteMeshChannelBuilder {
   enableServer(endpoint: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
+  clientConnections(): ZLinkEndpointConnections;
+  setDefaultRequestTimeout(timeoutMs: number): this;
 }
-
-/** route mesh 는 route channel builder 를 그대로 확장한다. */
-export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {}
 
 export interface ZLinkStreamNodeBuilder {
   bind(endpoint: string): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this;
 }
 ```
+
+전역 request timeout 기본값은 30초다. channel builder의
+`setDefaultRequestTimeout(...)`이 지정되면 전역 값보다 우선한다.
 
 > builder 표면은 registration options 를 만드는 편의 표면이다. handler group 과 typed
 > handler 직접 등록은 현재 선언적 module options 에서 소유한다.
@@ -1580,8 +1533,9 @@ export interface ZLinkStreamNodeBuilder {
 
 ### 6.2 channel 수동 연결
 
-수동 연결은 `enableClient(endpoint)` 또는 `enableSubscriber(endpoint)` 에서 등록한다. public 계약은
-host 시작 뒤 endpoint 를 바꾸는 별도 runtime 연결 관리 표면을 제공하지 않는다.
+수동 연결은 startup의 `enableClient(endpoint)` 또는 `enableSubscriber(endpoint)`에서
+등록할 수 있고, manual 모드 역할은 host 시작 뒤에도 capability별
+`ZLinkEndpointConnections`로 endpoint를 변경할 수 있다.
 
 ```ts
 export interface ZLinkEndpointConnections {
@@ -1591,8 +1545,8 @@ export interface ZLinkEndpointConnections {
 }
 ```
 
-이 표면은 설정 객체를 편집하는 용도이며 실행 중 socket 에 직접 연결 명령을 보내는 runtime
-handle 이 아니다. discovery 모드 역할은 peer 소유권이 discovery 에 있으므로, 수동
+이 표면은 실행 중 manual 역할의 연결 집합을 바꾸는 runtime handle이다. discovery 모드
+역할은 peer 소유권이 discovery에 있으므로, 수동
 연결이 필요하면 해당 역할을 manual 모드로 등록한다.
 
 ### 6.3 Spot 관리와 등록
@@ -1667,12 +1621,12 @@ export interface ZLinkSpotNodeBuilder {
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+  routerConnections(): ZLinkEndpointConnections;
+  pubSubConnections(): ZLinkEndpointConnections;
+  channelClientConnections(): ZLinkEndpointConnections;
+  publisherConnections(): ZLinkEndpointConnections;
 }
 
-/** mesh node 는 spot node builder 를 그대로 확장한다. */
-export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
-
-export interface ZLinkSpotMeshBuilder extends ZLinkSpotNodeBuilder {}
 ```
 
 > Node builder 에서도 node 자체 `bind(...)` 는 없다. router/pubSub endpoint 는
@@ -1862,13 +1816,12 @@ const reply = await client
 - handler 는 메서드 시그니처만으로 request/reply 타입을 결정한다.
 - client 호출부는 packet 이름과 payload 만 넘기고, 기다릴 reply 타입은 `submit<TReply>()` 에서 지정한다.
 
-기본 packet key 는 payload가 직접 제공하는 이름 정보나 payload 생성자 이름(`Type.name`)을
-쓴다. 부적절하면 `packetName(): string` 또는 `@ZLinkPacket('name')`로 명시 metadata 를
-부여한다. 이 정보는 outbound 기본 해석과 inbound handler 기본 매핑 양쪽에서 공통으로 쓴다.
+packet key는 runtime에서 식별 가능한 message class의 `@ZLinkPacket` metadata 또는 생성자
+이름으로 registration 시 확정한다. payload instance는 이름을 제공하지 않는다. 순수
+구조적 interface는 runtime identity가 없으므로 typed outbound message로 사용하지 않고,
+명시 descriptor를 받는 raw extension 경계에서만 사용한다.
 
-> TS 한계: 런타임 타입 소거 때문에 payload 식별은 클래스 생성자 이름 또는 명시적
-> `@ZLinkPacket` / `packetName` 에 의존한다. 순수 구조적 타입(plain interface)만 쓰면 packet
-> key 를 명시해야 한다(코드로 검증되는 제약). 의미가 아니라 표면 제약이다.
+> TypeScript 타입 소거 때문에 typed message는 runtime identity를 가진 class여야 한다.
 
 ## 10. Location / Monitoring 인터페이스
 
@@ -1926,11 +1879,11 @@ export interface IZLinkPeerLocationResolver {
   listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
-export interface IZLinkActorAddressResolver {
-  resolveActorSpotRef(
+export interface ZLinkActorSpotHandleResolver {
+  resolveActorSpotHandle(
     actorId: string,
     signal?: AbortSignal
-  ): Promise<SpotRef | undefined>;
+  ): Promise<SpotHandle | undefined>;
 }
 ```
 
@@ -1942,6 +1895,7 @@ Spot snapshot diff 를 감싼다.
 ```ts
 export interface ZLinkMonitoringOptions {
   socket?: ZLinkSocketMonitoringRegistration[];
+  registry?: ZLinkPollingMonitoringRegistration[];
   spot?: ZLinkPollingMonitoringRegistration[];
   locationRuntime?: ZLinkPollingMonitoringRegistration[];
   locationPeer?: ZLinkLocationMonitoringRegistration[];
@@ -2036,14 +1990,26 @@ export enum ZLinkLocationRuntimeEventKind {
   StoreRecovered = 4,
 }
 
-export interface ZLinkLocationRuntimeEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkLocationRuntimeEventKind;
-  readonly status?: ZLinkLocationRuntimeStatus;
-  readonly topology?: readonly ZLinkLocationTopologyEntry[];
-  readonly topologyFilter?: ZLinkLocationTopologyFilter;
-  readonly serviceSummary?: readonly ZLinkLocationServiceSummary[];
-  readonly serviceSummaryFilter?: ZLinkLocationServiceSummaryFilter;
-}
+export type ZLinkLocationRuntimeEvent =
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkLocationRuntimeEventKind.StatusChanged;
+      readonly status: ZLinkLocationRuntimeStatus;
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkLocationRuntimeEventKind.TopologyChanged;
+      readonly topology: readonly ZLinkLocationTopologyEntry[];
+      readonly topologyFilter?: ZLinkLocationTopologyFilter;
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkLocationRuntimeEventKind.ServiceSummaryChanged;
+      readonly serviceSummary: readonly ZLinkLocationServiceSummary[];
+      readonly serviceSummaryFilter?: ZLinkLocationServiceSummaryFilter;
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event:
+        | ZLinkLocationRuntimeEventKind.StoreUnavailable
+        | ZLinkLocationRuntimeEventKind.StoreRecovered;
+    });
 
 export enum ZLinkLocationPeerEventKind {
   RowUpdated = 0,
@@ -2058,12 +2024,20 @@ export interface ZLinkAutoConnectDesiredSetChange {
   readonly disconnectedEndpoints: readonly string[];
 }
 
-export interface ZLinkLocationPeerEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkLocationPeerEventKind;
-  readonly key?: string;
-  readonly peer?: ZLinkPeerLocation;
-  readonly desiredSetChange?: ZLinkAutoConnectDesiredSetChange;
-}
+export type ZLinkLocationPeerEvent =
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkLocationPeerEventKind.RowUpdated;
+      readonly key: string;
+      readonly peer: ZLinkPeerLocation;
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkLocationPeerEventKind.RowRemoved;
+      readonly key: string;
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkLocationPeerEventKind.DesiredSetChanged;
+      readonly desiredSetChange: ZLinkAutoConnectDesiredSetChange;
+    });
 
 export enum ZLinkLocationSpotEventKind {
   RowUpdated = 0,
@@ -2071,11 +2045,10 @@ export enum ZLinkLocationSpotEventKind {
   ResolveMiss = 2
 }
 
-export interface ZLinkLocationSpotEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkLocationSpotEventKind;
-  readonly key: ZLinkSpotLocationKey;
-  readonly spot?: ZLinkSpotLocation;
-}
+export type ZLinkLocationSpotEvent = ZLinkRuntimeEvent & (
+  | { readonly event: ZLinkLocationSpotEventKind.RowUpdated; readonly key: ZLinkSpotLocationKey; readonly spot: ZLinkSpotLocation }
+  | { readonly event: ZLinkLocationSpotEventKind.RowRemoved | ZLinkLocationSpotEventKind.ResolveMiss; readonly key: ZLinkSpotLocationKey }
+);
 
 export enum ZLinkLocationActorEventKind {
   RowUpdated = 0,
@@ -2083,11 +2056,10 @@ export enum ZLinkLocationActorEventKind {
   ResolveMiss = 2
 }
 
-export interface ZLinkLocationActorEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkLocationActorEventKind;
-  readonly key: ZLinkActorLocationKey;
-  readonly actor?: ZLinkActorLocation;
-}
+export type ZLinkLocationActorEvent = ZLinkRuntimeEvent & (
+  | { readonly event: ZLinkLocationActorEventKind.RowUpdated; readonly key: ZLinkActorLocationKey; readonly actor: ZLinkActorLocation }
+  | { readonly event: ZLinkLocationActorEventKind.RowRemoved | ZLinkLocationActorEventKind.ResolveMiss; readonly key: ZLinkActorLocationKey }
+);
 
 export enum ZLinkLocationRouteEventKind {
   RowUpdated = 0,
@@ -2095,11 +2067,10 @@ export enum ZLinkLocationRouteEventKind {
   ResolveMiss = 2
 }
 
-export interface ZLinkLocationRouteEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkLocationRouteEventKind;
-  readonly key: ZLinkRouteLocationKey;
-  readonly route?: ZLinkRouteLocation;
-}
+export type ZLinkLocationRouteEvent = ZLinkRuntimeEvent & (
+  | { readonly event: ZLinkLocationRouteEventKind.RowUpdated; readonly key: ZLinkRouteLocationKey; readonly route: ZLinkRouteLocation }
+  | { readonly event: ZLinkLocationRouteEventKind.RowRemoved | ZLinkLocationRouteEventKind.ResolveMiss; readonly key: ZLinkRouteLocationKey }
+);
 
 export enum ZLinkSpotEventKind {
   StatusChanged = 'statusChanged',
@@ -2120,13 +2091,25 @@ export interface ZLinkSpotTimerDiagnostic {
   readonly exceptionMessage: string;
 }
 
-export interface ZLinkSpotEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkSpotEventKind;
-  readonly status?: ZLinkSpotNodeStatus;
-  readonly peers?: readonly ZLinkSpotNodePeerEntry[];
-  readonly subjects?: readonly ZLinkSpotNodeSubjectEntry[];
-  readonly timerDiagnostic?: ZLinkSpotTimerDiagnostic;
-}
+export type ZLinkSpotEvent =
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkSpotEventKind.StatusChanged;
+      readonly status: ZLinkSpotNodeStatus;
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkSpotEventKind.PeersChanged;
+      readonly peers: readonly ZLinkSpotNodePeerEntry[];
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event: ZLinkSpotEventKind.SubjectsChanged;
+      readonly subjects: readonly ZLinkSpotNodeSubjectEntry[];
+    })
+  | (ZLinkRuntimeEvent & {
+      readonly event:
+        | ZLinkSpotEventKind.TimerHandlerFailed
+        | ZLinkSpotEventKind.TimerStoppedAfterUnhandledException;
+      readonly timerDiagnostic: ZLinkSpotTimerDiagnostic;
+    });
 ```
 
 > `ZLinkSpotEventKind`는 `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException`
@@ -2326,24 +2309,24 @@ handler metadata 를 직접 다루는 저수준 계약이다.
 export function ZLinkHandlerGroup(groupName: string): ClassDecorator;
 
 /** method decorator. request handler. (C# [ZLinkRequest]) */
-export function ZLinkRequest(packetName?: string): MethodDecorator;
+export function ZLinkRequest(): MethodDecorator;
 
 /** method decorator. one-way send handler. (C# [ZLinkSend]) */
-export function ZLinkSend(packetName?: string): MethodDecorator;
+export function ZLinkSend(): MethodDecorator;
 
 /** class decorator. payload packet key 명시. (C# [ZLinkPacket("name")]) */
 export function ZLinkPacket(packetName: string): ClassDecorator;
 ```
 
-> request, send, handler group과 packet decorator는 각각 packet name 또는 group name을
-> 받는다. publish decorator 이름은 `ZLinkPublish`로 고정한다.
+> request/send/publish method decorator는 operation kind만 표시한다. packet name은
+> message class의 `ZLinkPacket` descriptor가 소유한다. handler group만 group name을 받는다.
 
 NestJS module 에서는 같은 의미를 handler class decorator 로 표현한다. 그룹 이름은
 사용자가 정하는 임의 문자열이며 실제 channel 이름과 분리된다. 같은 그룹을 여러
 channel 에, 같은 channel 에 여러 그룹을 매핑할 수 있다.
 
 ```ts
-@zlinkRequestHandler('api', 'GetProfile')
+@zlinkRequestHandler('api')
 export class GetProfileHandler {
   async handle(request: GetProfileRequest, context: ZLinkRequestContext): Promise<GetProfileReply> {
     return { id: request.id };
@@ -2362,8 +2345,8 @@ Entry Spot 과 user Spot 에서 같은 decorator 이름을 쓴다. 어느 regist
 `configure()` 의 등록 위치가 정한다.
 
 ```ts
-export function ZLinkSpotActorSend(packetName?: string): MethodDecorator;
-export function ZLinkSpotActorRequest(packetName?: string): MethodDecorator;
+export function ZLinkSpotActorSend(): MethodDecorator;
+export function ZLinkSpotActorRequest(): MethodDecorator;
 ```
 
 method 시그니처 순서:
@@ -2371,14 +2354,14 @@ method 시그니처 순서:
 - send: `(spotOrEntrySpot, actor, context, message)` 반환 없음
 - request: `(spotOrEntrySpot, actor, context, request)` reply 반환
 
-`packetName` 미지정 시 message/request 타입의 packet 이름을 쓴다. 한 handler 클래스에 여러 spot
-actor handler decorator method 가 있으면 `addHandler(handlerType)` 에서 모호하므로 startup
-validation 오류다.
+message/request 타입의 packet descriptor를 사용한다. 한 handler 클래스에 여러 Spot actor
+handler decorator method가 있으면 각각의 message type으로 구분하며, 같은 descriptor가
+중복되면 startup validation 오류다.
 
 ### 11.3 publish
 
 ```ts
-export function ZLinkPublish(packetName?: string): MethodDecorator;
+export function ZLinkPublish(): MethodDecorator;
 ```
 
 이름을 `Event` 가 아니라 `Publish` 로 둔 까닭은 producer 동사(`ZLinkFanoutClient.publish(...)`)에
@@ -2387,13 +2370,13 @@ export function ZLinkPublish(packetName?: string): MethodDecorator;
 
 현재 NestJS module 자동 discovery 는 handler decorator 로 등록된 provider metadata를
 registration 에 연결한다. publish handler 는 subscriber 역할이 있는 fanout channel 에서
-`zlinkPublishHandler('events', 'Packet')` 로 등록한다. 같은 channel 안에서 packet name 이
+`zlinkPublishHandler('events')`와 event type descriptor로 등록한다. 같은 channel 안에서 packet name이
 중복되면 startup validation 오류다.
 
 ### 11.4 SPOT
 
 ```ts
-export function ZLinkSpotRequest(packetName?: string): MethodDecorator;
+export function ZLinkSpotRequest(): MethodDecorator;
 export function ZLinkSpotSubscription(spotNodeName: string, topic: string): MethodDecorator;
 ```
 
@@ -2471,9 +2454,8 @@ class 구성 방식은 자유롭다(주제별 묶음 `UserHandlers`, packet 별 
 | `ZLinkSpotManager` | `SpotNode` 가 하나 이상일 때 등록 |
 | `ZLinkSpotPublisherClient` | Spot publisher client 역할이 하나 이상일 때 등록 |
 | `ZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록 |
-| `ZLinkBoundSessionFactory` | framework runtime 과 함께 항상 등록 |
 | `ZLinkBoundSession` | actor bound session runtime 등록 시 |
-| `ZLinkSpotRefResolver` | location store 가 등록되어 있을 때 등록 |
+| `ZLinkSpotHandleResolver`, `ZLinkActorSpotHandleResolver` | location store 가 등록되어 있을 때 등록 |
 
 channel 이름의 위치는 handler class/method decorator 가 아니라 channel registration 에 둔다.
 outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수도 있다.
@@ -2487,8 +2469,8 @@ outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수
   표면에만 남긴다.
 - framework runtime 은 `ZLinkChannelClient` 위에 channel 별 typed wrapper 를 공식 기본 표면으로
   제공하지 않는다. 필요하면 응용/확장 패키지가 얹는다.
-- `spotRid` 타입은 `RoutingId` 를 쓴다. transport `RoutingId` 와 logical spot rid 를 같은 타입으로 노출한다.
-  lifecycle/실패 모델/제공 범위가 다르다.
+- `spotRid`는 Node.js의 `RoutingId` 값 타입을 쓰지만 의미는 logical Spot 식별자다.
+  owner node 같은 transport 대상은 이 값에서 꺼내지 않고 `SpotHandle`이 내부에서 관리한다.
 
 ### 14.1 message flow observer
 
@@ -2542,7 +2524,7 @@ optional `AbortSignal`을 사용할 수 있다.
 | 기능 | Node.js public contract |
 |------|-------------------------|
 | handler와 context | `ZLinkHandlerContext`, request/send/publish/route handler와 context, `ZLinkHandlerFilter` |
-| channel call | `ZLinkChannelClient`, `ZLinkRouteClient`, `ZLinkFanoutClient`, send/request/yield/publish call |
+| channel call | `ZLinkChannelClient`, `ZLinkRouteClient`, `ZLinkFanoutClient`, send/request/publish call |
 | actor | `ZLinkActor`, actor context/factory/manager/directory/client, actor send/request/join call |
 | Spot | `ZLinkSpot`, `ZLinkEntrySpot`, actor lifecycle/transfer adapter, handler registry, outbound와 context |
 | Spot handler와 관리 | Spot/Entry Spot actor handler, packet/request/subscription/timer handler, manager, publisher와 resolver |
@@ -2563,10 +2545,8 @@ contract에 포함한다. 이 이름 목록 자체는 시그니처 정의를 대
 ZLinkActorClient
 ZLinkActorDirectory
 ZLinkActorJoinCall
-ZLinkActorYieldJoinCall
 ZLinkActorSendCall
 ZLinkActorRequestCall
-ZLinkYieldRequestCall
 ZLinkChannelRuntimeOptions
 ZLinkClientServerChannelOptions
 ZLinkRouteMeshChannelOptions
@@ -2583,7 +2563,9 @@ ZLinkLocationChangeStampStore
 ZLinkLocationReadiness
 ZLinkLocationRuntimeQuery
 ZLinkPeerLocationResolver
-ZLinkSpotRefResolver
+ZLinkSpotHandleResolver
+ZLinkActorSpotHandleResolver
+SpotHandle
 ZLinkSpotActorLifecycle
 ZLinkSpotCommonContext
 ZLinkSessionPacketHandler
@@ -2617,7 +2599,6 @@ ZLinkPeerLocationKey
 ZLinkRouteChannelRequestHandler
 ZLinkRouteChannelSendHandler
 ZLinkSessionFactory
-ZLinkSpotAcceptRejectResponse
 ZLinkStreamCompressionCodec
 ZLinkStreamCompressionOptions
 ZLinkStreamTlsServerOptions
@@ -2669,28 +2650,17 @@ export interface ZLinkActorDirectory {
   ): Promise<ActorRef>;
 }
 
-export interface ZLinkActorJoinCall<TSelf> {
-  timeout(timeoutMs: number): TSelf;
-  submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
-}
-
-export interface ZLinkActorYieldJoinCall<TSelf> extends ZLinkActorJoinCall<TSelf> {
-  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
-}
-
 export interface ZLinkActorClient {
   sendToActor<TMessage>(actor: ActorRef, message: TMessage): ZLinkActorSendCall;
   requestToActor<TRequest>(actor: ActorRef, request: TRequest): ZLinkActorRequestCall;
 }
 
 export interface ZLinkActorSendCall {
-  packetName(packetName: string): this;
   metadata(key: string, value: string): this;
   submit(): void;
 }
 
 export interface ZLinkActorRequestCall {
-  packetName(packetName: string): this;
   metadata(key: string, value: string): this;
   timeout(timeoutMs: number): this;
   submit<TReply>(signal?: AbortSignal): Promise<TReply>;
@@ -2705,12 +2675,6 @@ export interface ZLinkActorRefSnapshot {
 ```
 
 ```ts
-export interface ZLinkYieldRequestCall extends ZLinkRequestCall {
-  packetName(packetName: string): this;
-  timeout(timeoutMs: number): this;
-  yield<TReply>(signal?: AbortSignal): Promise<TReply>;
-}
-
 export interface ZLinkChannelRuntimeOptions {
   clientServerChannel(channelName: string): ZLinkClientServerChannelRuntimeOptions;
   routeMeshChannel(channelName: string): ZLinkRouteMeshChannelRuntimeOptions;
@@ -2719,12 +2683,6 @@ export interface ZLinkChannelRuntimeOptions {
 export interface ZLinkWorkerCall<T> {
   timeoutMs(durationMs: number): ZLinkWorkerCall<T>;
   submit(signal?: AbortSignal): Promise<T>;
-  yield(signal?: AbortSignal): Promise<T>;
-  onCompleted(
-    callback: (result: T) => void | Promise<void>,
-    onError?: (error: unknown) => void | Promise<void>,
-    signal?: AbortSignal,
-  ): void;
 }
 
 export interface ZLinkWorkerOptions {
@@ -2757,6 +2715,11 @@ export interface ZLinkSpotActorLifecycle<TActor extends ZLinkActor> {
   onJoinedActor(actor: TActor): Promise<void>;
   onLeaveActor(actor: TActor): Promise<void>;
   onDisconnectActor?(actor: TActor): Promise<void>;
+}
+
+export interface ZLinkSpotActorJoinResponse {
+  readonly accepted: boolean;
+  readonly reply: ZLinkMessage;
 }
 
 export interface ZLinkSpotCommonContext {
@@ -3093,11 +3056,6 @@ export interface ZLinkSessionFactory<TSession extends ZLinkSession> {
   create(context: ZLinkSessionContext): Promise<TSession>;
 }
 
-export interface ZLinkSpotAcceptRejectResponse {
-  readonly accepted: boolean;
-  readonly reply?: ZLinkMessage;
-}
-
 export interface ZLinkClientCapabilityOptions {
   readonly connectEndpoints: readonly string[];
   readonly useDiscovery: boolean;
@@ -3180,16 +3138,21 @@ export interface ZLinkSerializerRegistryLike {
 |------|--------------------|-----------|------------------|
 | channel/Spot handler | request handler `handle(): Promise<TReply>`와 one-way handler `handle(): Promise<void>` | `RegistrationTypes.ts`의 request/send/publish/route handler 다섯 `handle`이 동기 결과 union을 허용 | gap. 다섯 member에서 동기 결과 union을 제거하고 Promise 반환으로 고정한다. |
 | one-way call | `ZLinkSendCall.submit()`, `ZLinkPublishCall.submit()`, `ZLinkActorSendCall.submit()`, `ZLinkBoundSessionSendCall.submit()`은 모두 `void` | actor send와 bound-session send의 `submit()`이 `Promise<void>`를 반환 | gap. 두 member의 반환 타입과 signal 인자를 제거한다. |
-| request/yield | reply를 반환하는 `Promise<T>` | `ZLinkRequestCall`, `ZLinkYieldRequestCall`과 actor join yield가 구현됨 | 일치 |
+| request/join/worker 완료 | `Promise<T>` terminator 하나, 실행 줄 관리는 framework 내부 | yield call과 worker callback completion이 public | gap. yield/callback 선택지를 제거한다. |
 | Spot lifecycle | `ZLinkSpotActorLifecycle`과 `ZLinkActorTransferAdapter` callback은 Promise를 반환하고 signal 인자를 받지 않음 | lifecycle/transfer callback declaration에 `signal?: AbortSignal` 인자가 존재 | gap. lifecycle/transfer callback에서 signal 인자를 제거한다. |
 | Entry Spot lifecycle | actor lifecycle을 상속하고 required `context`와 `onCreateActor(actor, createRequest)`를 포함 | 상속과 `onCreateActor`는 있으나 context와 모든 callback이 optional이고 callback이 signal 인자를 받음 | gap. context를 required로 바꾸고 목표 callback 형태로 맞춘다. 기본 구현 제공 여부는 runtime에서 결정한다. |
 | actor factory | `ZLinkActorFactory.create(...): Promise<ZLinkActor>` | `ZLinkActorFactory.create(...)`가 `ZLinkActor | Promise<ZLinkActor>`를 허용 | gap. 동기 반환 union을 제거한다. |
-| actor context | `spotRid`, `isJoined`, `boundSession`, `getSpot`, 두 join call | 현재 여기에 optional `actorRef`가 추가로 노출되고 `joinSpot` request도 optional임 | gap. 내부 식별 snapshot을 제거하고 join request를 명시적으로 받는다. |
-| actor join result | `{ accepted, actor?, reply }`, reply는 항상 결과 객체에 존재 | 현재 `reply?`가 optional임 | gap. 거절 결과도 빈 `ZLinkMessage` 또는 typed reply를 명시적으로 담는다. |
+| actor context | nullable `spotRid`, `boundSession`, 두 join call. `spotRid` 존재 여부가 join 상태의 단일 기준 | 현재 `actorRef`, `getSpot`, 별도 `isJoined`와 optional join request가 노출됨 | gap. 내부 식별 snapshot, Spot getter와 중복 boolean을 제거하고 join request를 명시적으로 받는다. |
+| actor join result | `status`로 구분하는 승인/거절 union. 승인 결과만 필수 `actor`를 가지며 reply는 두 결과에 항상 존재 | 현재 boolean, optional actor와 optional reply를 독립 필드로 노출함 | gap. 모순 상태를 만들 수 없는 union으로 바꾼다. |
+| manual connection | builder capability accessor가 반환하는 runtime `ZLinkEndpointConnections` | startup endpoint 설정과 설정 편집 의미만 있음 | gap. manual 역할의 실행 중 endpoint 제어로 연결한다. |
+| worker | Spot/Entry context의 `runWorker(...)`가 `ZLinkWorkerCall`을 반환 | call 타입만 있고 생성 member가 없음 | gap. 두 context에 producing member를 추가한다. |
+| route builder | `addRouteMesh`와 `ZLinkRouteMeshChannelBuilder` 하나 | route channel/mesh 이름과 빈 파생 interface가 중복됨 | gap. 하나의 route mesh 표면으로 합친다. |
+| default request timeout | 전역 30초와 channel별 override | public 설정 없음 | gap. framework와 request channel builder 설정을 추가한다. |
+| bound session 획득 | actor context의 `boundSession`만 public | 별도 `ZLinkBoundSessionFactory`를 전역 DI로 공개 | gap. factory를 runtime 내부로 이동한다. |
+| monitoring event 상태 | kind별 discriminated union과 registry/socket/Spot/location source | registry source가 없고 nullable payload interface를 노출 | gap. source 등록과 tagged union을 추가한다. |
 | abortable 장기 작업 | request 대기, connect/close/disconnect, resolver/query에 optional `AbortSignal` | request, actor directory, location query와 disconnect에 signal이 구현됨 | 일치. lifecycle callback에 추가된 signal은 위 Spot lifecycle gap에서 제거한다. |
-| dispatch mode | `Compiled`, `Dynamic` | 현재 `Inline`, `Queued`, `Serial` | gap. activation 전략인 목표 두 값으로 교체한다. 직렬 실행 정책은 별도 실행 문맥 계약으로 유지한다. |
 | Spot kind | `Invalid`, `Entry`, `User` string enum | 현재 같은 세 의미를 numeric enum으로 노출 | gap. wire 값과 분리된 Node string enum으로 고정한다. |
-| dispatch options | `spotDispatchMode`, `streamDispatchMode`, `unhandled`, `diagnostics` | 현재 `mode?`, `unhandled?`, `diagnostics?`, `messageFlowObserverType?` | gap. 목표 두 mode member를 추가하고 observer 등록은 builder method로 이동한다. |
+| dispatch options | `unhandled`, `diagnostics`; 최적화 전략은 내부 | 현재 `mode?`와 observer type까지 option에 노출 | gap. mode를 제거하고 observer 등록은 builder method로 이동한다. |
 | unhandled dispatch | request/send/publish별 action과 send/publish log level, action은 `ReplyError`, `LogAndDrop`, `Drop`, `Throw` | 현재 단일 `action?`, enum은 `Ignore`, `Warn`, `Throw` | gap. 메시지 종류별 정책과 목표 enum으로 교체한다. |
 | message metadata | readonly `values`, `find(key)`와 policy `canForward(key)` | 현재 flat source fields와 policy의 `forward: boolean` | gap. immutable map snapshot과 key별 forwarding 정책으로 교체한다. |
 | dispatch diagnostic enum | `ZLinkMessageFlowOutcome`, `ZLinkDispatchErrorSurface`, `ZLinkDispatchMessageKind`, `ZLinkDispatchErrorReason`, `ZLinkDispatchErrorAction` | package root에 같은 이름과 string 값으로 export됨 | 일치 |
@@ -3197,12 +3160,12 @@ export interface ZLinkSerializerRegistryLike {
 | encoded payload | serializer 경계의 immutable-copy `ZLinkEncodedPayload` | package root에 `from`, byte/string 조회, `copy`, `close`가 구현됨 | 일치 |
 | message-flow event | local/peer rid, socket role와 effective mode를 readonly 멤버로 포함 | 현재 `ZLinkMessageFlowEvent` declaration에 `peerRid`, `socketRole`, `effectiveMode`가 없음 | gap. 세 readonly 멤버를 추가한다. |
 | stream write/reply | `ZLinkStream.write(ZLinkMessage, flags?): boolean`; reply builder는 session client 소유 | 현재 stream write는 같은 boolean 형태이며 stream reply는 없음 | 일치. 문서에 있던 stream `reply()` builder는 제거했다. |
-| session context | `stream`, `client`, `actors`, `handlers`를 제공 | 현재 `stream`, `client`, `actors`는 있고 `handlers`가 없음 | gap. typed handler registry를 context에 추가한다. |
+| session context | `client`, `actors`, `handlers`를 제공하고 raw stream은 숨김 | 현재 `stream`, `client`, `actors`는 있고 `handlers`가 없음 | gap. typed handler registry를 추가하고 raw stream escape hatch를 제거한다. |
 | session actor collection | `bind(actor/ref)`, `bindOrGet(ref)`, `find`, `bound` | 현재 모두 구현됨 | 일치 |
 | typed session handler/registry | typed payload handler와 `addHandler`/`tryHandle` registry | 현재 raw `ZLinkMessage` handler와 `dispatch(): Promise<void>` dispatcher만 제공 | gap. serializer registry를 연결하고 처리 여부를 반환하는 registry로 교체한다. |
 | stream decorator | typed `ZLinkStreamPacket()`과 raw `ZLinkStreamRaw()` | 둘 다 export됨 | 일치 |
 | route handler context | `routerChannelId`, `sourceNodeRid` | 현재 `sourceNodeRid`, `sourcePeerRid`이고 request에는 `requestSeq`도 노출 | gap. transport 내부 peer/sequence를 제거하고 논리 channel id를 추가한다. |
-| route client | `sendToNode`, `requestToNode`, `sendToSpot`, `requestToSpot` | 현재 node 대상 두 member만 구현 | gap. `SpotRef` 대상 두 member를 추가한다. |
+| route client | `sendToNode`, `requestToNode`, `SpotHandle` 기반 `sendToSpot`, `requestToSpot` | 현재 node 대상 두 member와 `SpotRef` 기반 표면 | gap. handle 기반 두 member로 정렬한다. |
 | publisher client | Spot publisher와 fanout 모두 `publish(channelName, topic, event)` | Spot publisher는 일치. fanout은 channelless `publish(topic,event)`와 `publishToChannel(...)`을 노출 | gap. fanout을 단일 목표 member로 맞춘다. |
 | channel client | `sendToChannel`, `requestToChannel`만 노출 | 이 둘 외에 channelless `send`, `request`도 노출 | gap. target channel이 숨겨진 두 member를 제거한다. |
 | Spot registries | fluent `this`를 반환하고 actor packet/packet/subscription 등록 member를 제공 | 현재 fluent 반환은 일치하지만 alias member(`packet`, `subscribe`, `actorSend`, `actorRequest`, `addSpotHandler`)가 추가되고 목표 `addActorPacket`이 없음 | gap. 목표 member로 정리하고 registration alias는 내부로 이동한다. |
@@ -3214,6 +3177,7 @@ export interface ZLinkSerializerRegistryLike {
 | location runtime query | §16.1의 7개 query member | 현재 `IZLinkLocationRuntimeQuery`에 같은 7개 member가 구현됨 | 이름만 gap. `ZLinkLocationRuntimeQuery`로 rename한다. |
 | location result enum | `ZLinkLocationChangeType`, `ZLinkLocationWriteStatus` string enum | 현재 같은 의미의 numeric enum이 package root에 export됨 | gap. Node enum 규칙에 맞춰 string 값으로 고정하고 저장소 내부 numeric 값 변환은 runtime에 둔다. |
 | codec registrar | content type과 serializer/stream codec을 직접 받는 fluent member와 conditional serializer overload | 현재 `addSerializer(contentType, serializer)`와 `addStreamCodec(contentType, codec)`만 있고 conditional overload가 없음 | gap. overload를 추가하고 두 member가 `this`를 반환하도록 유지한다. |
+| typed packet name | registration descriptor가 한 번 결정 | call builder와 payload instance가 이름을 override | gap. typed call override를 제거하고 raw extension만 명시 이름을 받는다. |
 | error kind | 공통 오류 kind 집합 | 공통 집합 사용 | 일치 |
 | interface catalog | §3~§11 및 §16.1의 TypeScript declaration만 정식 시그니처로 판정 | §16의 text inventory에는 아직 별도 declaration이 없는 option/value 이름이 있음 | 문서 gap. 이름 목록만으로 완전성을 주장하지 않으며, 시그니처가 없는 이름은 후속 문서 보완 전까지 고정 계약으로 판정하지 않는다. |
 
@@ -3249,7 +3213,7 @@ export interface ZLinkSessionPacketDispatcher<TSessionContext> {
 | `IZLinkLocationWatchStore` | `ZLinkLocationWatchStore` |
 | `IZLinkLocationChangeStampStore` | `ZLinkLocationChangeStampStore` |
 | `IZLinkPeerLocationResolver` | `ZLinkPeerLocationResolver` |
-| `IZLinkActorAddressResolver` | `ZLinkActorAddressResolver` |
+| `IZLinkActorSpotHandleResolver` | `ZLinkActorSpotHandleResolver` |
 | `IZLinkLocationReadiness` | `ZLinkLocationReadiness` |
 | `IZLinkLocationRuntimeQuery` | `ZLinkLocationRuntimeQuery` |
 
@@ -3294,8 +3258,8 @@ ZLinkDecoratorMetadata
 ZLinkProviderResolver
 ```
 
-반대로 actor directory/client, 역할별 location store, runtime options, typed session
-handler와 yield call은 application이 직접 사용하는 기능이므로 public contract에 남기고
+반대로 actor directory/client, 역할별 location store, runtime options와 typed session
+handler는 application이 직접 사용하는 기능이므로 public contract에 남기고
 이 문서에 정확한 시그니처를 유지한다.
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.

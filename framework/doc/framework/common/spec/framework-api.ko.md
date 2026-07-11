@@ -103,9 +103,10 @@
 - bindings는 codec extension을 소유하지 않는다. bindings는 raw `Message`, byte payload,
   core protocol API만 제공한다. Python, Go, Rust는 bindings codec package 제거 뒤 대체
   codec package를 제공하지 않고 raw `Message`/bytes API만 유지한다.
-- packet name은 기본적으로 객체 타입에서 자동 추론하고(builder override → payload 자체
-  이름 정보 → 선언적 metadata(annotation/attribute/decorator/registry) → nominal type
-  정보 순), 추론할 수 없을 때만 `.packetName(...)` override를 쓴다.
+- typed message의 packet name은 registration 시 message type descriptor에서 한 번
+  확정한다. 선언적 metadata가 있으면 그 이름을 사용하고, 없으면 nominal type 이름을
+  사용한다. payload instance, 호출별 builder와 handler가 이름 결정 규칙을 다시
+  구현하지 않는다. raw message extension만 packet name을 명시적으로 받는다.
 - gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
 - send는 기본적으로 one-way submit으로 둔다. backpressure 처리는 호출자가

@@ -820,7 +820,7 @@ app.MapPost("/profiles/get", async (
 - 기존 웹 요청을 처리하다가 내부의 다른 서비스를 호출해야 할 때.
 - ZLink handler와 HTTP handler가 같은 outbound 호출 방식을 공유하고 싶을 때.
 - framework 내부 공통 helper에서 호출해야 할 때.
-- 특정 요청에만 별도 timeout이나 packet name override가 필요할 때.
+- 특정 요청에만 기본값과 다른 timeout이 필요할 때.
 
 이 정도 수준의 표면이 자연스럽다.
 

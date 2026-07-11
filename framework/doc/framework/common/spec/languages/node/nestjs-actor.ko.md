@@ -425,8 +425,8 @@ Entry Spot 전용 handler 등록 표면을 별도로 둔다. actor 객체는 상
 보관하는 자리고, message 와 lifecycle callback 은 현재 actor 가 어느 실행
 문맥에 있는지에 따라 Entry Spot registry 또는 user Spot registry 가 처리한다.
 
-이 표면의 목적은 application handler 가 `context.isJoined` 같은 상태값으로
-entry / user 단계를 직접 분기하지 않도록 막는 것이다. routing id 같은
+이 표면의 목적은 application handler가 nullable `context.spotRid` 하나로
+Entry/user 단계를 구분하게 하는 것이다. routing id 같은
 transport 위치값도 handler 표면에 노출하지 않는다.
 
 ## 4. Handler 모델
@@ -455,11 +455,9 @@ export interface ZLinkActorHandlerRegistry {
 
 // user Spot registry는 packet/subscribe/actor 등록을 더 갖는다.
 export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
-  addPacket(handlerType: Type, packetName?: string): this;
+  addPacket(handlerType: Type): this;
   addSubscribe(handlerType: Type, topic: string): this;
-  addSpotHandler(handlerType: Type): this;
-  actorSend(packetName: string, handlerType: Type, actorType?: Type): this;
-  actorRequest(packetName: string, handlerType: Type, actorType?: Type): this;
+  addActorPacket(handlerType: Type, actorType: Type): this;
 }
 ```
 
@@ -545,7 +543,7 @@ export class JoinMatchHandler
 
     await this.notifications.publish(result.reply.events);
 
-    // result.resultCode === 0 이면 join 허용, 0이 아니면 application 거절 코드
+    // status가 accepted일 때만 actor ref를 사용할 수 있다.
     return new JoinMatchRes(result.reply.matchId, result.actor.actorId);
   }
 }
@@ -675,54 +673,38 @@ actor 가 다른 user Spot 으로 이동하려면 framework 가 attach 한
 ```ts
 export interface ZLinkActorContext {
   readonly spotRid: string | undefined;
-  readonly isJoined: boolean;
 
   readonly boundSession: ZLinkBoundSession;
-
-  getSpot(): ZLinkSpot;
-  getSpot<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
 
   joinSpot<TRequest>(
     spotRid: string,
     request: TRequest,
-  ): ZLinkActorJoinSpotCall;
+  ): ZLinkActorJoinCall;
 
-  joinEntrySpot<TRequest>(spotNodeRid: string, request: TRequest): ZLinkActorJoinEntrySpotCall;
+  joinEntrySpot<TRequest>(spotNodeRid: string, request: TRequest): ZLinkActorJoinCall;
 }
 
-export interface ZLinkActorJoinResult<TReply> {
-  readonly resultCode: number;
-  readonly actor: ActorRef;
-  readonly reply: TReply;
-}
+export type ZLinkActorJoinResult<TReply> =
+  | { readonly status: 'accepted'; readonly actor: ActorRef; readonly reply: TReply }
+  | { readonly status: 'rejected'; readonly reply: TReply };
 
-export interface ZLinkActorJoinSpotCall {
-  timeout(timeoutMs: number): ZLinkActorJoinSpotCall;
-  submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-  yield<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-}
-
-export interface ZLinkActorJoinEntrySpotCall {
-  timeout(timeoutMs: number): ZLinkActorJoinEntrySpotCall;
-  submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-  yield<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
+export interface ZLinkActorJoinCall {
+  timeout(timeoutMs: number): ZLinkActorJoinCall;
+  submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 ```
 
-`submit(...)` 은 actor handler의 기본 serial 의미를 유지한다. `yield(...)` 은
-framework가 만든 actor join call object에서만 사용할 수 있으며, join admission을 기다리는
-동안 현재 Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다. Entry Spot actor
-handler에는 반납할 Entry Spot 전체 실행 turn이 없으므로 `yield(...)` 호출은 즉시 계약 오류가 난다.
+`submit(...)`은 actor join의 유일한 완료 terminator다. framework가 보호 중인
+actor/Spot 상태의 직렬성과 join에 필요한 독립 실행을 함께 관리한다.
 
 각 표면의 의미는 다음과 같다.
 
 | 표면 | 의미 |
 | --- | --- |
-| `spotRid` / `isJoined` | user Spot에 join한 경우 그 spot의 routing id, join 상태. Entry Spot에 있을 때는 `isJoined`가 false이고 `spotRid`는 `undefined` |
+| `spotRid` | user Spot에 join한 경우 그 Spot의 routing id. Entry Spot에 있을 때는 `undefined`이며, 이 값의 존재 여부가 join 상태의 단일 기준이다 |
 | `boundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
-| `getSpot()` / `getSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
 | `joinSpot(spotRid, request).submit<TReply>()` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(string) |
-| `joinEntrySpot(spotNodeRid, request).submit<TReply>()` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 명시해서 넘기며, 결과는 result code, actor ref, reply를 담는다 |
+| `joinEntrySpot(spotNodeRid, request).submit<TReply>()` | target SpotNode 의 Entry Spot으로 이동. 빈 요청도 명시해서 넘기며, 결과는 승인 또는 거절 union이다. 승인 결과만 actor ref를 가진다 |
 | `Entry Spot context.destroyActor(actor)` | Entry Spot 에 있는 actor 를 종료. lifecycle callback 없이 native actor ref와 framework registry를 정리 |
 
 `joinSpot(...)`/`joinEntrySpot(...)` 도 `timeout(...)` override 를 갖는다. 생략하면 기본
@@ -806,13 +788,11 @@ const result = await actor.context
 ```
 
 이 호출은 spot 쪽 join callback 의 결과를 framework가 decode해서 업무 reply 객체로
-돌려준다. application join 결정은 spot 쪽 callback 이 돌려주는 `resultCode` 로 표현한다.
-`resultCode === 0` 은 join 허용, 0 이 아닌 값은 room full, match closed 같은
-application 정의 거절 코드다. transport, timeout, protocol failure 는 결과값이 아니라
-예외로 처리한다. 성공 시 actor 쪽 상태가
+돌려준다. application join 결정은 `status`로 구분하는 승인 또는 거절 결과로 표현한다.
+승인 결과에만 actor ref가 있으며, room full이나 match closed 같은 설명은 거절 reply에
+담는다. transport, timeout, protocol failure는 결과값이 아니라 예외로 처리한다. 성공 시 actor 쪽 상태가
 다음과 같이 갱신된다.
 
-- `context.isJoined` 가 `true` 가 된다.
 - `context.spotRid` 가 채워진다.
 
 이후부터 spot 은 actor 객체에 직접 접근할 수 있다 (spot handler 에서 `actor`
@@ -947,7 +927,7 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
   router-capable SpotNode 를 relay ingress 로 사용한다. 이 연결이 있어야 session 에서
   actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 relay
   상태를 사용한다.
-- **`ZLinkSpotRefResolver`** -- spot rid 로 `SpotRef` 를 찾는다. actor 가
+- **`ZLinkSpotHandleResolver`** -- spot rid 로 `SpotHandle` 를 찾는다. actor 가
   `joinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 location store 를 등록해서
   framework 가 같은 위치 정보를 쓰게 한다.
 - **`ZLinkBoundSession`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
@@ -1013,7 +993,6 @@ export interface ZLinkBoundSession {
 }
 
 export interface ZLinkBoundSessionSendCall {
-  packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
   submit(): void;
 }
@@ -1193,7 +1172,7 @@ actor 관련 등록 표면은 `zlinkFramework()` builder 와 `.options(...)` 의
 | 키 / 표면 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
 | `.addSpotMesh(...).actorFactory(actorType, factoryType)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | 해당 SpotNode 가 소유할 factory 의 `actorType` 키를 매핑 |
-| `.useInMemoryLocationStores()` / `.addLocationStore(...)` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → `SpotRef` 조회 |
+| `.useInMemoryLocationStores()` / `.addLocationStore(...)` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → `SpotHandle` 조회 |
 | `.addSpotMesh(...).addEntrySpot(...)` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `.addSpotMesh(...).addSpotFactory(...)` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 | `.options({ metadata })` | metadata forward가 필요한 서버 | actor 경계 너머로 forward할 키 |

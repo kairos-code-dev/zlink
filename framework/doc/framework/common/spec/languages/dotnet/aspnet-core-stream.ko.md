@@ -201,7 +201,6 @@ public interface IZLinkSessionActor
 public interface IZLinkSessionSendCall
 {
     IZLinkSessionSendCall Metadata(string key, string value);
-    IZLinkSessionSendCall PacketName(string messageName);
     IZLinkSessionSendCall Compress();
     void Submit();
 }

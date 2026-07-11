@@ -1019,7 +1019,6 @@ interface ZLinkBoundSession {
 }
 
 interface ZLinkBoundSessionSendCall {
-  packetName(packetName: string): ZLinkBoundSessionSendCall;
 
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
 
@@ -1116,7 +1115,7 @@ session disconnect 는 bound actor 전체에 자동 전파되지 않는다. 연�
 actor 의 현재 Spot 실행 문맥에서 disconnected handler 를 실행할 뿐이며, actor 를
 room 에서 leave 시키지 않는다.
 
-## 6. SpotRef resolver 등록
+## 6. SpotHandle resolver 등록
 
 이 절은 actor 가 Spot 으로 join 하거나 Spot outbound 를 사용할 때 필요한 resolver 표면을 정리한다.
 
@@ -1125,19 +1124,20 @@ room 에서 leave 시키지 않는다.
 - actor 가 현재 연결된 client session 으로 push 를 보낼 때는,
   framework / core 가 가진 actor-session binding 상태를 사용한다.
 - actor 가 `joinSpot(spotRid, ...)` 로 user Spot 에 들어가는 경로가 node
-  경계를 넘을 수 있다면, location store 를 등록해서 framework 가 `SpotRef` 를
+  경계를 넘을 수 있다면, location store 를 등록해서 framework 가 `SpotHandle` 를
   조회할 수 있게 한다. `joinSpot(...)` 의 spot rid 는 lifecycle workflow 입력이고,
-  일반 spot 메시징 API 의 전송 대상은 `SpotRef` 다.
+  일반 spot 메시징 API 의 전송 대상은 `SpotHandle` 다.
 
 ```ts
-interface SpotRef {
-  readonly meshName: string;
-  readonly nodeRid: RoutingId;
+declare const spotHandleBrand: unique symbol;
+
+interface SpotHandle {
   readonly spotRid: RoutingId;
+  readonly [spotHandleBrand]: never;
 }
 
-interface ZLinkSpotRefResolver {
-  resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotRef | undefined>;
+interface ZLinkSpotHandleResolver {
+  resolveSpotHandle(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotHandle | undefined>;
 }
 ```
 

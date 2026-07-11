@@ -138,7 +138,7 @@ private:
 
 `bound_session_t`는 server-to-client request API를 기본 제공하지 않는다. client request
 에 대한 응답은 actor request handler의 반환값과 원래 request correlation으로 처리한다.
-actor가 client 연결을 끊어야 할 때는 `bound_session_t::disconnect().submit()`을 사용한다.
+actor가 client 연결을 끊어야 할 때는 `co_await bound_session_t::disconnect()`를 사용한다.
 이 호출은 session binding만 닫고 actor의 현재 Spot 소속은 바꾸지 않는다.
 
 ## 6. Runtime Mapping

@@ -33,7 +33,7 @@ public class ActorConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
         framework.useInMemoryLocationStores();
-        ZLinkSpotMeshBuilder node = framework.addSpotMesh("game.stage");
+        ZLinkSpotNodeBuilder node = framework.addSpotMesh("game.stage");
         node.enableRouter("tcp://0.0.0.0:9001");
         node.addEntrySpot(GameEntrySpot.class);
         node.addSpotFactory(GameRoomSpot.class);
@@ -132,38 +132,30 @@ stand-in을 만들어 이 경로를 대체하지 않는다.
 ```java
 public interface ZLinkActorContext {
     Optional<RoutingId> spotRid();
-    boolean isJoined();
     ZLinkBoundSession boundSession();
 
-    ZLinkSpot getSpot();
-    <TSpot extends ZLinkSpot> TSpot getSpot(Class<TSpot> spotType);
-
-    ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request);
-    ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid, Object request);
+    ZLinkActorJoinCall joinSpot(RoutingId spotRid, Object request);
+    ZLinkActorJoinCall joinEntrySpot(RoutingId spotNodeRid, Object request);
 }
 
-public interface ZLinkActorJoinEntrySpotCall {
-    ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
+public interface ZLinkActorJoinCall {
+    ZLinkActorJoinCall timeout(Duration timeout);
+    CompletionStage<ZLinkActorJoinResult<Void>> submit();
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
-    <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
-    ZLinkActorJoinResult<Void> yield();
-    <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
 }
 
-public interface ZLinkActorJoinSpotCall {
-    ZLinkActorJoinSpotCall timeout(Duration timeout);
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
-        Class<TReply> replyType);
-    <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
-    ZLinkActorJoinResult<Void> yield();
-    <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
-}
+public sealed interface ZLinkActorJoinResult<TReply>
+    permits ZLinkActorJoinResult.Accepted, ZLinkActorJoinResult.Rejected {
+    TReply reply();
 
-public record ZLinkActorJoinResult<TReply>(
-    int resultCode,
-    ActorRef actor,
-    TReply reply) {
+    record Accepted<TReply>(ActorRef actor, TReply reply)
+        implements ZLinkActorJoinResult<TReply> {
+    }
+
+    record Rejected<TReply>(TReply reply)
+        implements ZLinkActorJoinResult<TReply> {
+    }
 }
 
 public interface ZLinkBoundSession {
@@ -172,22 +164,14 @@ public interface ZLinkBoundSession {
 }
 ```
 
-`submit(...)` 과 `await(...)` 는 actor handler의 기본 serial 의미를 유지한다.
-`yield(...)` 는 framework가 만든 actor join call object에서만 사용한다.
-`yield(...)` 는 `CompletionStage.join()`을 직접 노출하는 helper가 아니라
-현재 Spot turn을 반납하고, join completion 뒤 원래 mailbox에서 handler를
-재개하는 terminator다. 동기 terminator 호출자는 Java `CompletableFuture.join()`
-규칙에 따라 `CompletionException`으로
-감싼 오류를 볼 수 있다.
-Entry Spot actor handler는 Entry Spot 전체 실행 turn을 갖지 않으므로 이 handler 안에서 만든
-actor join call object의 `yield(...)`를 호출하면 즉시 계약 오류가 난다. Entry Spot actor
-handler에서는 `submit(...)` 또는 `await(...)`를 사용한다.
+`submit(...)`은 `CompletionStage`를 반환하는 유일한 완료 terminator다. framework는
+보호 중인 actor/Spot 상태의 직렬성을 유지하면서 join에 필요한 독립 실행을 진행한다.
 
 `joinSpot(...)`은 actor가 Entry Spot 이후 실제 user Spot으로 들어가는 요청이다. 호출은
 `CompletionStage`로 완료되며 framework는 backend `SpotNode.joinActor(...)` 결과를
-받은 뒤 actor context의 `spotRid()`, `isJoined()`, `getSpot()` 상태를 갱신한다.
-이 경로는 테스트·클라이언트 시나리오용 `await(...)` blocking helper도 제공한다. Kotlin에서는
-같은 Java `CompletionStage`를 `suspend` wrapper로 감싸서 사용한다.
+받은 뒤 actor context의 `spotRid()` 상태를 갱신한다. nullable Spot 식별자가 join
+상태의 단일 기준이다. Kotlin에서는 같은
+Java `CompletionStage`를 `suspend` wrapper로 감싸서 사용한다.
 
 `joinSpot(...)`/`joinEntrySpot(...)` 도 `timeout(Duration)` override 를 갖는다. 생략하면
 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
@@ -199,14 +183,7 @@ request에 대한 응답은 actor request handler의 반환값과 원래 request
 actor context의 bound session을 비운다. 이 호출은 server가 session을 닫는 의미이므로
 Spot actor disconnected callback을 대신 실행하지 않는다.
 
-actor가 join한 SPOT의 실행 문맥 상태가 필요하면 `context.getSpot()` 또는 typed
-`context.getSpot(MatchSpot.class)`로 현재 join된 user Spot 인스턴스를 가져온다. join
-전이거나 Entry Spot 단계라면 user Spot이 없으므로 호출 가능 시점을 actor lifecycle에
-맞춘다.
-
-```java
-MatchSpot spot = actor.context().getSpot(MatchSpot.class);
-```
+actor가 join한 Spot 상태가 필요하면 Spot handler가 받은 `spot` 인자를 사용한다.
 
 session actor의 `notifyDisconnected()`는 backend actor binding을 해제한 뒤,
 그 binding이 actor context의 현재 bound session과 일치할 때만 disconnected lifecycle을

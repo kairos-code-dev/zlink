@@ -56,7 +56,7 @@ public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
         framework.useInMemoryLocationStores();
-        ZLinkSpotMeshBuilder node = framework.addSpotMesh("game.stage");
+        ZLinkSpotNodeBuilder node = framework.addSpotMesh("game.stage");
         node.enableRouter("tcp://0.0.0.0:9000");
         node.enablePubSub("tcp://0.0.0.0:9001");
         node.configureEntrySpot()
@@ -119,18 +119,11 @@ Entry Spot actor handler는 Entry Spot 인자를 받지만 Entry Spot 전체 실
 actor가 공유하는 동기화 수단으로 쓰면 안 된다. Entry Spot lifecycle callback과 route 같은
 Entry Spot 자체 상태 흐름은 별도 Entry Spot 실행 문맥에서 처리한다.
 
-기본 `submit(...)`/`await(...)` 경로는 actor별 순서를 유지한다. `yield(...)`는
-request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`, bound session send
-completion, worker completion에서만 현재 mailbox turn을 반납하고 completion 뒤 원래
-mailbox에서 재개한다. `yield(...)` 중에도 같은 actor와 같은 timer는 재진입하지 않는다.
-다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용 가변 상태를
-이어 판단하는 handler는 기본 `await(...)`를 사용해야 한다.
-Entry Spot actor handler 안에서 만든 call object의 `yield(...)`는 허용하지 않는다.
-호출하면 시간 초과가 아니라 즉시 `IllegalStateException` 같은 계약 오류가 나야 한다.
+request, join과 worker는 `CompletionStage` 완료 표면 하나만 제공한다. framework는
+보호 중인 Spot/actor 상태의 직렬성을 유지하면서 완료에 필요한 독립 실행을 진행하고,
+continuation을 원래 실행 문맥에서 재개한다.
 Java public handler에는 별도 cancellation token을 전달하지 않는다. request, actor join과
 worker completion은 timeout, host shutdown과 `CompletionStage` 완료 규칙을 따른다.
-`yield(...)` 같은 동기 terminator는 Java `CompletableFuture.join()` 규칙에 따라
-실패를 `CompletionException`으로 감싸서 던질 수 있다.
 
 SPOT route request 에 handler 가 없거나 payload decode, handler 예외, invalid frame 이 발생하면 reply
 path 가 있는 경우 error reply 를 반환한다. actor request 도 같은 원칙을 따른다. 같은 process 안의

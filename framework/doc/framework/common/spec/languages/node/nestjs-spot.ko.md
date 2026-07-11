@@ -104,7 +104,7 @@ Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 
   framework core 의 public high-level API 에서는 `targetRid + spotRid` 를 직접
   받는 direct routed 호출 표면을 두지 않는다.
 - spot rid 를 다른 노드의 user Spot 위치로 변환해야 하면 location store 기반
-  `ZLinkSpotRefResolver` 로 `SpotRef` 를 얻는다. application handler 는 이 ref 를
+  `ZLinkSpotHandleResolver` 로 `SpotHandle` 를 얻는다. application handler 는 이 ref 를
   전송 API 에 넘기며, route channel id 같은 내부 전송 값은 직접 다루지 않는다.
 - 외부 `PUB -> Spot` 입력은 generic pub/sub attach 가 아니라 별도의 ingress
   표면으로 분리한다.
@@ -188,7 +188,7 @@ export class AppModule {}
 - 필요하다면 `spotPublishers` 로 외부 노드용 spot publish client attach
 - `entrySpotType` 으로 자동 Entry Spot 에 붙일 application registry 등록
 - `spotFactories` 로 이 노드가 생성·소유할 user Spot 클래스 등록
-- location store 등록으로 spot rid 조회와 actor join 경로에서 사용할 `SpotRef`
+- location store 등록으로 spot rid 조회와 actor join 경로에서 사용할 `SpotHandle`
   resolver 준비
 - host shutdown 시 lifecycle 정리
 
@@ -362,7 +362,6 @@ handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. d
 | `addPacket(Handler)` | `AddPacket<THandler>()` | spot packet / request handler |
 | `addSubscribe(Handler, topic)` | `AddSubscribe<THandler>(topic)` | topic subscription handler |
 | `addHandler(Handler)` | `AddHandler<THandler>()` | spot-local handler |
-| `addHandler(Handler, packetName)` | `AddHandler<THandler>(packetName)` | 이름을 명시한 spot-local handler |
 | `onDisconnectActor(actor)` | `onDisconnectActor(...)` | disconnect 후 callback |
 
 ### 4.2 SPOT 실행 queue와 actor mailbox
@@ -679,7 +678,7 @@ resolve, activation, `onCreate(...)`, `onInitialize(...)` 실패는
 
 - `sendToChannel(...)` / `requestToChannel(...)` 는 route bridge channel socket을
   사용한다.
-- `sendToSpot(...)` / `requestToSpot(...)` 는 호출자가 넘긴 `SpotRef` 를 target 으로
+- `sendToSpot(...)` / `requestToSpot(...)` 는 호출자가 넘긴 `SpotHandle` 를 target 으로
   사용한다.
 - `targetRid + spotRid` 를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
   application guide 의 기본 API 로는 문서화하지 않는다.
@@ -689,8 +688,8 @@ resolve, activation, `onCreate(...)`, `onInitialize(...)` 실패는
 
 | node 메서드 | dotnet | 의미 |
 | --- | --- | --- |
-| `sendToSpot(spotRef, message)` | `SendToSpot<TMessage>(SpotRef, TMessage)` | spot-routed 단방향 send |
-| `requestToSpot(spotRef, request)` | `RequestToSpot<TRequest>(SpotRef, TRequest)` | spot-routed request |
+| `sendToSpot(spotHandle, message)` | `SendToSpot<TMessage>(SpotHandle, TMessage)` | spot-routed 단방향 send |
+| `requestToSpot(spotHandle, request)` | `RequestToSpot<TRequest>(SpotHandle, TRequest)` | spot-routed request |
 | `publish(topic, message)` | `Publish<TEvent>(string topic, TEvent)` | 현재 SPOT channel topic publish |
 | `sendToChannel(channelName, message)` | `SendToChannel<TMessage>(string, TMessage)` | attach 된 channel 로 send |
 | `requestToChannel(channelName, request)` | `RequestToChannel<TRequest>(string, TRequest)` | attach 된 channel 로 request |
@@ -703,8 +702,8 @@ registration 표면으로 둔다.
 현재 framework 표면은 channel 이름 기준 호출과 spot key 기반 호출을 구분한다.
 `targetRid + spotRid` 를 직접 받는 raw route 함수가 하부 바인딩에 있어도,
 framework application 문서에서는 backend / internal transport helper 로만 다룬다.
-일반 application 은 `SpotRef` 안의 mesh 이름, owner node rid, spot rid 만 본다.
-route channel id 나 bridge 값은 framework 내부 전송 계층에만 머문다.
+일반 application은 `SpotHandle.spotRid`만 볼 수 있다. mesh, owner node rid, route
+channel id와 bridge 값은 framework 내부 전송 계층에만 둔다.
 
 예를 들면 다음과 같이 사용할 수 있다.
 
@@ -717,9 +716,9 @@ const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
   { timeoutMs: 200 },
 );
 
-const stageRef = await spotRefResolver.resolveSpotRef(stage.spotRid);
-if (stageRef !== undefined) {
-  void spot.context.outbound.sendToSpot(stageRef, new StageNoticeMessage());
+const stageHandle = await spotHandleResolver.resolveSpotHandle(stage.spotRid);
+if (stageHandle !== undefined) {
+  void spot.context.outbound.sendToSpot(stageHandle, new StageNoticeMessage());
 }
 ```
 
@@ -775,9 +774,9 @@ const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
   { timeoutMs: 200 },
 );
 
-const stageRef = await spotRefResolver.resolveSpotRef(stage.spotRid);
-if (stageRef !== undefined) {
-  void spot.context.outbound.sendToSpot(stageRef, new StageNoticeMessage());
+const stageHandle = await spotHandleResolver.resolveSpotHandle(stage.spotRid);
+if (stageHandle !== undefined) {
+  void spot.context.outbound.sendToSpot(stageHandle, new StageNoticeMessage());
 }
 
 spot.context.outbound.publish('stage.state.updated', new StageStateUpdatedEvent());
@@ -1013,8 +1012,8 @@ route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 
 
 ## 11. Router channel route 수신
 
-`SpotRef.meshName` 은 target Spot 이 속한 Spot mesh 이름이다. framework 는 이 값을
-내부 route bridge 전송 대상으로 바꾼다. application 은 route channel id 를 직접 넘기지 않는다.
+`SpotHandle`의 mesh와 owner node는 framework 내부 상태다. framework는 이를 내부 route
+bridge 전송 대상으로 바꾸며 application은 route channel id를 직접 넘기지 않는다.
 같은 프로세스에 RouteMesh와 SpotMesh가 있으면 framework가 route bridge를 자동으로 붙인다.
 
 ```ts
@@ -1047,8 +1046,8 @@ zlinkFramework()
 ```
 
 node 에는 별도 route egress 표면이 없다. 실제 전송은
-`outbound.sendToSpot(spotRef, ...)` / `outbound.requestToSpot(spotRef, ...)`으로 하며,
-target Spot 은 spot rid 문자열 overload 없이 `SpotRef` 값으로 지정한다.
+`outbound.sendToSpot(spotHandle, ...)` / `outbound.requestToSpot(spotHandle, ...)`으로 하며,
+target Spot 은 spot rid 문자열 overload 없이 `SpotHandle` 값으로 지정한다.
 
 ## 12. 회귀 테스트
 
@@ -1082,14 +1081,9 @@ join 문맥이 함께 검증되어야 한다. 또한 spot 클래스와 id 를 �
 | `entrySpot timer waits for entrySpot callbacks` | Entry Spot timer callback 이 같은 Entry Spot의 다른 callback 과 동시에 실행되지 않는다. |
 | `entrySpot timer does not reenter same timer` | Entry Spot timer 는 같은 timer callback 을 겹쳐 실행하지 않는다. |
 
-기본 `submit(...)` 경로는 user Spot handler completion까지 같은 실행 줄을 유지한다.
-`yield(...)`은 request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`,
-`runWorker` completion에서만 현재 Spot turn을 반납하고
-completion 뒤 원래 mailbox에서 재개한다. Entry Spot actor handler에는 반납할 Entry Spot
-전체 실행 turn이 없으므로 `yield(...)` 호출은 시간 초과가 아니라 즉시 계약 오류가 난다.
-`yield(...)` 중에도 같은 actor와 같은 timer는
-재진입하지 않는다. 다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용
-가변 상태를 이어 판단하는 handler는 기본 `submit(...)`을 사용해야 한다.
+request, join과 worker는 `submit(...)` 완료 표면 하나만 제공한다. framework는 보호
+중인 Spot/actor 상태의 직렬성을 유지하면서 완료에 필요한 독립 실행을 진행하고,
+continuation을 원래 실행 문맥에서 재개한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

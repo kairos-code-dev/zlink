@@ -68,7 +68,33 @@ framework 공개 계약은 두 층으로 나눈다.
 `AbortSignal`, coroutine lifecycle, 표준 중단 타입처럼 해당 언어에서 사용하는
 관례를 따른다. 모든 callback에 취소 인자를 넣는 방식으로 모양을 복제하지 않는다.
 
-## 5. 검증
+## 5. POSD 검토 기준
+
+새 public interface를 확정할 때는 같은 기능을 두 가지 이상으로 설계하고 호출자가
+알아야 하는 결정의 수를 비교한다. 다음 항목은 framework 공통 계약의 필수 검토 기준이다.
+
+- transport 주소, stale 갱신, 실행 줄과 dispatch 최적화는 framework 내부에 둔다.
+- 호출자가 선행 조회와 후속 복구를 정해진 순서로 수행해야 하는 API는 시간적 분해로
+  보고, 하나의 capability나 operation이 순서를 소유할 수 있는지 먼저 검토한다.
+- 기능은 같고 이름만 다른 nominal interface를 반복하지 않는다. capability별 instance를
+  분리해야 해도 같은 계약이면 같은 interface를 재사용한다.
+- 유효하지 않은 상태에서 실패하는 getter보다 해당 상태의 handler 인자나 명시적 상태
+  값을 사용한다.
+- 같은 상태를 nullable 값과 boolean처럼 독립된 두 값으로 표현하지 않는다. 결과의 경우
+  sealed hierarchy나 tagged union을 사용해 유효한 상태만 만들 수 있게 한다.
+- typed message의 packet identity는 registration descriptor가 소유한다. call site,
+  payload instance와 handler가 같은 이름 결정 규칙을 반복하지 않는다.
+- public call object는 operation별로 허용되는 설정을 제한하고 transport 조립, timeout,
+  cancellation과 cleanup을 숨길 때만 유지한다. 설정과 완료 의미가 완전히 같은 단순
+  one-way call은 공통 계약을 재사용한다. metadata, reply, timeout, cancellation처럼
+  허용 capability가 다르면 같은 `submit` 이름을 쓴다는 이유만으로 합치지 않는다.
+
+call builder 자체는 제거하지 않는다. 직접 메서드와 options 인자로 평면화하면 모든
+호출자가 timeout, metadata, cancellation 조합을 다시 이해해야 하기 때문이다. 대신
+send, request처럼 관찰 결과가 다른 operation만 별도 계약으로 유지하고 packet identity와
+실행 방식 선택은 builder에서 제거한다.
+
+## 6. 검증
 
 문서는 계약의 기준이고 contract test는 실제 배포 public surface가 그 기준을
 지키는지 검증하는 장치다. 언어별 검증은 최소한 다음을 확인해야 한다.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Runtime.CompilerServices;
 using System.Text;
 using Systems.Zlink.Runtime.Native;
 
@@ -20,7 +21,9 @@ internal sealed partial class SocketKernel
         {
             while (true)
             {
-                ZlinkMsg part = default;
+                // HOT PATH: zlink_msg_init initializes the full opaque value
+                // before recv or cleanup observes it.
+                Unsafe.SkipInit(out ZlinkMsg part);
                 var initRc = NativeMethods.zlink_msg_init(ref part);
                 if (initRc != 0)
                     throw ZlinkException.CreateRecvException(

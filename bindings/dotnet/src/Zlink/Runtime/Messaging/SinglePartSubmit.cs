@@ -17,7 +17,9 @@ internal static class SinglePartSubmit
     internal static int Submit<TSubmit>(Message message, ref TSubmit submitter)
         where TSubmit : struct, INativeSinglePartSubmitter<TSubmit>
     {
-        ZlinkMsg nativePart = default;
+        // HOT PATH: zlink_msg_init inside MoveTo initializes all 64 opaque
+        // bytes before any read. Avoid clearing the same stack storage first.
+        Unsafe.SkipInit(out ZlinkMsg nativePart);
         var shouldRestore = false;
         try
         {

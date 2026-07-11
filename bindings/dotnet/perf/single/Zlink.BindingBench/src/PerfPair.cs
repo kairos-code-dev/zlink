@@ -167,7 +167,7 @@ internal static class PerfPair
             seq++;
             try
             {
-                if (!TrySendActiveMessage(sender, payload, "[single-pair]"))
+                if (SendBlocking(sender, payload) <= 0)
                     continue;
             }
             catch (ZlinkException ex)

@@ -550,15 +550,15 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.2 .NET
 
 - perf 경로: `bindings/dotnet/perf`
-- Single 상태: `미측정`
+- Single 상태: `PAIR tcp 완료, 나머지 transport와 pattern 미측정`
 - Multi 상태: `미측정`
-- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+- 다음 작업: Single `PAIR`의 ws transport를 C와 .NET 순서로 CPU pin 없이 paired 측정한다.
 
 #### 9.2.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PAIR` | 통과(98.3%) | 통과(86.5%) | 통과(99.0%) | 통과(99.9%) | 통과(100.0%) | 통과(99.9%) | 성공 submit 뒤에도 Message wrapper를 dispose하는 public 소유권 계약을 perf helper에 적용했다. 평균 latency 최대 비율 1.19배로 통과했다. |
 | `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1196,18 +1196,18 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
-| 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
-| 현재 pattern | Multi `MULTI_STREAM` 완료 | tcp, ws, wss, tls의 정책상 네 size가 throughput과 평균 latency 목표를 통과했다. C++의 모든 Single/Multi pattern이 완료됐다. |
-| paired C | 네 transport 완료 | transport를 하나씩 선택해 C 직후 C++을 CPU pin 없이 측정했다. tls 64B는 저부하 상태에서 해당 셀을 다시 paired 측정했다. |
-| 개선 반복 | 코드 변경 없음 | tls 64B 재측정까지 모든 transport와 size가 목표를 만족해 binding과 perf를 수정하지 않았다. |
-| 커밋과 푸시 | 완료 | `MULTI_STREAM`과 C++ 언어 완료 근거만 별도 커밋하고 원격에 푸시한 뒤 .NET으로 이동한다. |
+| 현재 언어 | .NET | .NET의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
+| 현재 pattern | Single `PAIR` 진행 중 | tcp의 모든 size가 throughput과 평균 latency 목표를 통과했다. 다음 transport는 ws다. |
+| paired C | tcp 완료 | tcp의 여섯 size를 C 직후 .NET 순서로 CPU pin 없이 5회 측정했다. 64B latency는 저부하 상태에서 해당 셀을 다시 paired 측정했다. |
+| 개선 반복 | tcp 개선 완료 | 성공 submit 뒤 Message wrapper를 dispose하지 않던 perf helper의 소유권 버그를 고쳤다. 64B 평균 latency가 0.894ms에서 0.239ms, 최종 전체 회귀 중앙값에서는 0.175ms로 낮아졌다. |
+| 커밋과 푸시 | 완료 | tcp 개선과 측정 근거만 별도 커밋하고 원격에 푸시한 뒤 ws로 이동한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | 미측정 | 미측정 | Single `PAIR` tcp를 C와 .NET 순서로 CPU pin 없이 paired 측정한다. |
+| 2 | .NET | `PAIR` tcp 완료 | 미측정 | Single `PAIR` ws를 C와 .NET 순서로 CPU pin 없이 paired 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1248,6 +1248,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | C++ | Multi `MULTI_SPOT_REQREP` | core_9_0_cpp_multi_spot_reqrep_*_nopin_paired_20260712 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 CPU pin 없이 5회 측정했다. 모든 처리량과 평균 latency 셀이 목표를 통과했다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | C++ | Multi `MULTI_SPOT_SENDSEND` | core_9_0_cpp_multi_spot_sendsend_*_nopin_*_20260712 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 CPU pin 없이 5회 측정했다. ws 131072B는 CPU idle 99% 상태에서 해당 셀만 다시 paired 측정했고, 모든 처리량과 평균 latency 셀이 목표를 통과했다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | C++ | Multi `MULTI_STREAM` | core_9_0_cpp_multi_stream_*_nopin_*_20260712 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 CPU pin 없이 측정했다. 정책상 64, 256, 1024, 65536B와 10,000 clients를 사용했다. tls 64B는 저부하 상태에서 다시 paired 측정했고 모든 처리량과 평균 latency 셀이 목표를 통과했다. | pattern 및 C++ 언어 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-12 | .NET | Single `PAIR` tcp | core_9_0_dotnet_pair_tcp*_nopin_*_20260712 | 최초 64B 평균 latency가 C의 5.62배로 재현됐다. profiler에서 초당 약 351MB의 managed allocation을 확인했고, 성공 submit 뒤에도 Message wrapper를 dispose하지 않던 perf helper를 public 소유권 계약에 맞췄다. 최종 여섯 size 처리량과 평균 latency가 모두 목표를 통과했다. | tcp 완료, perf helper 개선 | `doc/perf/perf/log/2026-07-12-dotnet-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

@@ -447,7 +447,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 - perf 경로: `bindings/cpp/perf`
 - Single 상태: `전체 pattern 완료`
 - Multi 상태: `MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_DEALER_ROUTER_REQREP, MULTI_ROUTER_ROUTER, MULTI_ROUTER_ROUTER_REQREP 완료, 나머지 pattern 미측정`
-- 다음 작업: Multi `MULTI_PUBSUB`의 tcp transport를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
+- 다음 작업: Multi `MULTI_PUBSUB`의 wss transport를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
 
 #### 9.1.1 Single suite
 
@@ -511,7 +511,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `MULTI_DEALER_ROUTER_REQREP` | 통과(88.8%) | 통과(92.5%) | 통과(90.6%) | 통과(90.5%) | 통과(71.6%) | 통과(78.3%) | CPU pin 없는 5회 paired 측정. 131072B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 1.94배로 통과했다. |
 | `tcp` | `MULTI_ROUTER_ROUTER` | 통과(90.0%) | 통과(86.9%) | 통과(89.1%) | 통과(89.8%) | 통과(84.8%) | 통과(91.1%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.74배로 통과했다. |
 | `tcp` | `MULTI_ROUTER_ROUTER_REQREP` | 통과(92.7%) | 통과(92.0%) | 통과(97.3%) | 통과(98.4%) | 통과(83.4%) | 통과(84.8%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.88배로 통과했다. |
-| `tcp` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `MULTI_PUBSUB` | 통과(87.4%) | 통과(91.1%) | 통과(85.9%) | 통과(102.5%) | 통과(131.4%) | 통과(105.7%) | CPU pin 없는 5회 paired 측정. 65536B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 0.32배로 통과했다. |
 | `tcp` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -521,7 +521,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `MULTI_DEALER_ROUTER_REQREP` | 통과(91.1%) | 통과(91.7%) | 통과(96.8%) | 통과(92.7%) | 통과(89.6%) | 통과(79.8%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.70배로 통과했다. |
 | `ws` | `MULTI_ROUTER_ROUTER` | 통과(83.4%) | 통과(84.8%) | 통과(89.5%) | 통과(83.3%) | 통과(82.4%) | 통과(90.4%) | CPU pin 없는 5회 paired 측정. 65536B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 1.22배로 통과했다. |
 | `ws` | `MULTI_ROUTER_ROUTER_REQREP` | 통과(89.5%) | 통과(87.3%) | 통과(94.7%) | 통과(87.2%) | 통과(72.1%) | 통과(73.3%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.80배로 통과했다. |
-| `ws` | `MULTI_PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `MULTI_PUBSUB` | 통과(94.1%) | 통과(88.1%) | 통과(91.7%) | 통과(95.8%) | 통과(93.9%) | 통과(86.9%) | pooled storage 상한에 in-flight block을 포함해 fan-out의 외부 buffer 확장을 제한했다. 131072B 최종 5회에서 평균 latency 0.36배로 통과했다. |
 | `ws` | `MULTI_SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `MULTI_SPOT_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `MULTI_SPOT_SENDSEND` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |

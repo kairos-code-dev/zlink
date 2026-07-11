@@ -36,15 +36,23 @@ class large_message_buffer_pool_t
                 if ((*found)->size == size_) {
                     pooled_message_block_t *block = *found;
                     _blocks.erase (found);
-                    _cached_bytes -= size_;
                     return block;
                 }
             }
+            // LARGE_MESSAGE_POOL_HOT_PATH: bound cached and in-flight pooled
+            // storage together so fan-out falls back to native allocation
+            // instead of expanding this reuse cache as a second allocator.
+            if (_allocated_bytes + size_ > max_pooled_bytes)
+                return nullptr;
+            _allocated_bytes += size_;
         }
 
         void *storage = std::malloc (sizeof (pooled_message_block_t) + size_);
-        if (!storage)
+        if (!storage) {
+            std::lock_guard<std::mutex> lock (_mutex);
+            _allocated_bytes -= size_;
             return nullptr;
+        }
         auto *block = static_cast<pooled_message_block_t *> (storage);
         block->size = size_;
         return block;
@@ -56,11 +64,14 @@ class large_message_buffer_pool_t
             return;
         try {
             std::lock_guard<std::mutex> lock (_mutex);
-            if (_cached_bytes + block_->size <= max_cached_bytes) {
-                _blocks.push_back (block_);
-                _cached_bytes += block_->size;
-                return;
-            }
+            _blocks.push_back (block_);
+            return;
+        }
+        catch (...) {
+        }
+        try {
+            std::lock_guard<std::mutex> lock (_mutex);
+            _allocated_bytes -= block_->size;
         }
         catch (...) {
         }
@@ -68,11 +79,11 @@ class large_message_buffer_pool_t
     }
 
   private:
-    static constexpr size_t max_cached_bytes = 8u * 1024u * 1024u;
+    static constexpr size_t max_pooled_bytes = 8u * 1024u * 1024u;
 
     std::mutex _mutex;
     std::vector<pooled_message_block_t *> _blocks;
-    size_t _cached_bytes = 0;
+    size_t _allocated_bytes = 0;
 };
 
 large_message_buffer_pool_t &large_message_buffer_pool ()

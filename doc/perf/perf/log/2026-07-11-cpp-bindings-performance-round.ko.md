@@ -1168,3 +1168,138 @@ C와 C++을 CPU pin 없이 각각 5회 측정했다. C 측정 후 CPU idle 99.3%
 - public API 변경: 없음
 - perf 변경: 없음
 - 다음 pattern: Multi `MULTI_PUBSUB`
+
+## Multi MULTI_PUBSUB
+
+### tcp
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. C 측정 후 다른 작업의
+ObservabilityOps server가 종료되기를 기다린 뒤 CPU idle 93.1%를 확인하고 C++을
+시작했다.
+
+- C: `perf_c_multi_linux_20260712_032022_core_9_0_cpp_multi_pubsub_tcp_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_032402_core_9_0_cpp_multi_pubsub_tcp_nopin_paired_20260712.txt`
+
+최초 처리량 비율은 87.4%, 91.1%, 85.9%, 102.5%, 83.8%, 105.7%였고 평균
+latency 최대 비율은 1.25배였다. 65536B는 단순 one-way 최소 목표 85%에서
+1.2%p 미달해 고부하 프로세스가 없는 상태에서 해당 셀만 C 직후 C++
+순서로 다시 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_032717_core_9_0_cpp_multi_pubsub_tcp65536_nopin_recheck_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_032810_core_9_0_cpp_multi_pubsub_tcp65536_nopin_recheck_20260712.txt`
+
+재측정 중앙값은 C 173.585 Kmsg/s와 123.586ms, C++ 228.109 Kmsg/s와 39.226ms다.
+처리량 비율은 131.4%, 평균 latency 비율은 0.32배로 통과했다. 경계 셀의
+반복 변동을 기록하고 코드 변경 없이 완료했다.
+
+- `MULTI_PUBSUB / tcp`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: ws
+
+### ws 최초 측정과 병목
+
+C와 C++을 CPU pin 없이 각각 5회 측정했다. 중간에 HEAD가 `705bedfe6`으로
+이동했지만 해당 커밋은 framework/.NET만 변경했고 core, bindings, perf는 변경하지
+않았다. 두 report는 같은 HEAD와 runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_033030_core_9_0_cpp_multi_pubsub_ws_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_033415_core_9_0_cpp_multi_pubsub_ws_nopin_paired_20260712.txt`
+
+최초 처리량 비율은 94.1%, 88.1%, 91.7%, 95.8%, 93.9%, 80.1%였고 평균
+latency 최대 비율은 1.11배였다. 131072B만 최소 목표 85%에서 4.9%p
+미달해 해당 셀만 C 직후 C++ 순서로 다시 5회 측정했다.
+
+- C: `perf_c_multi_linux_20260712_033722_core_9_0_cpp_multi_pubsub_ws131072_nopin_recheck_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_033817_core_9_0_cpp_multi_pubsub_ws131072_nopin_recheck_20260712.txt`
+
+재측정 중앙값은 C 58.328 Kmsg/s와 316.886ms, C++ 44.845 Kmsg/s와 132.349ms다.
+처리량 비율은 76.9%, 평균 latency 비율은 0.42배로 처리량 목표만 미달했다.
+
+#### POSD 위험 신호와 대안
+
+C++ `message_t`의 128KiB~1MiB owned storage는 Messaging 모듈 내부의 8MiB 제한
+저장소 풀을 사용한다. 재사용 자체는 Single PUBSUB에서 확정된 allocation hot
+path 개선이다. 그러나 현재 풀은 모든 크기의 block을 하나의 `vector`에 저장하고,
+acquire할 때 앞쪽 block을 지운 뒤 뒤의 모든 포인터를 이동한다. 128KiB에서는
+최대 64개의 block 관리가 전역 mutex 안에서 반복된다. 대형 저장소 재사용이라는
+하나의 책임 안에 allocation 회피와 O(n) 컨테이너 관리가 섞여 있는 것이 위험
+신호다. public API 정보 누출이나 패스스루 메서드는 없지만, 풀 내부가 호출자와
+무관하게 비용을 흡수하는 깊은 모듈이 되지 못한 상태다.
+
+다음 두 방안을 비교했다.
+
+1. 현재처럼 정확히 같은 크기만 재사용하되, 크기별 block 스택을 두어 acquire가
+   한 block만 끝에서 제거하도록 한다. public API와 소유권, 총 8MiB 제한을 유지하면서
+   mutex 안의 block 검색과 포인터 이동을 제거한다.
+2. 전역 풀을 thread-local cache로 바꾸거나 lock-free queue로 대체한다. mutex를 줄일 수
+   있지만 native release callback이 다른 I/O thread에서 실행될 수 있어 cross-thread 반납,
+   ABA 방지, thread 종료 시 회수 책임이 새로 생긴다.
+
+첫 번째 방안을 선택한다. 기존 소유권과 메모리 상한을 유지하고 복잡성을 Messaging
+모듈 안에 두면서, 128KiB 반복 hot path의 관리 비용만 제거할 수 있다. 후보는 ws
+131072B에서 목표를 통과하고 tcp 131072B와 Single PUBSUB 대표 셀이 회귀하지 않을
+때만 채택한다.
+
+크기별 stack 후보의 C++ 3회 중앙값은 44.065 Kmsg/s와 127.281ms였다.
+기존 C++ 재측정 44.845 Kmsg/s보다 처리량이 늘지 않았고 C 대비 약 75.6%로
+목표도 미달했다. 후보 report는
+`perf_cpp_multi_linux_20260712_034253_core_9_0_cpp_multi_pubsub_ws131072_bucket_candidate3_20260712.txt`다.
+측정 효과가 없어 후보 코드를 제거했다. 다음 진단은 128KiB 저장소 풀 사용을
+제외해 풀 자체가 multi ws 병목인지 분리한다. Single PUBSUB에서 풀 제거가
+회귀했던 근거가 있으므로 이 진단 상태는 최종 후보로 채택하지 않는다.
+
+128KiB만 풀에서 제외한 진단 후보의 C++ 3회 중앙값은 54.762 Kmsg/s와
+112.418ms였다. C 재측정 대비 처리량은 93.9%로 회복됐다. report는
+`perf_cpp_multi_linux_20260712_034445_core_9_0_cpp_multi_pubsub_ws131072_no128pool_diag3_20260712.txt`다.
+이 결과로 수신 wrapper가 아니라 128KiB owned storage 풀 사용을 병목으로 확정했다.
+
+현재 8MiB 상한은 cache에 반납된 block만 계산하고 native가 사용 중인 pooled
+block은 계산하지 않는다. 따라서 fan-out 중 cache miss가 이어지면 풀이 재사용
+캐시가 아니라 제한 없는 대체 allocator처럼 동작한다. 이는 8MiB 제한이라는
+정책과 실제 자원 소유권이 어긋난 정보 은닉 실패다.
+
+최종 후보는 재사용 범위를 128KiB 이상으로 유지하되 cached block과 in-flight
+block을 합친 전체 pooled storage를 8MiB로 제한한다. 상한을 넘는 cache miss는
+기존 `zlink_msg_init_size` 경로로 내려보낸다. public API, message 소유권과 exact-size
+재사용은 변하지 않는다. Single inproc의 재사용 이점을 유지하면서 multi fan-out의
+외부 buffer 확장을 Messaging 모듈 안에서 제한하는 방안이다.
+
+#### 최종 후보와 회귀
+
+제한 후보의 ws 131072B 3회 중앙값은 57.590 Kmsg/s와 99.042ms였다. 후보
+report는
+`perf_cpp_multi_linux_20260712_034735_core_9_0_cpp_multi_pubsub_ws131072_total_pool_cap_candidate3_20260712.txt`다.
+효과가 확인된 뒤 C와 C++을 다시 5회 paired 측정했다.
+
+- C: `perf_c_multi_linux_20260712_034823_core_9_0_cpp_multi_pubsub_ws131072_total_pool_cap_final_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_034915_core_9_0_cpp_multi_pubsub_ws131072_total_pool_cap_final_20260712.txt`
+
+최종 중앙값은 C 58.996 Kmsg/s와 316.138ms, C++ 51.265 Kmsg/s와 113.691ms다.
+처리량 비율은 86.9%, 평균 latency 비율은 0.36배로 목표를 통과했다.
+
+같은 Multi PUBSUB의 tcp 131072B를 3회 paired 측정했을 때 C는 69.564 Kmsg/s와
+211.425ms, C++은 75.598 Kmsg/s와 68.361ms였다. 처리량 비율 108.7%와 평균
+latency 0.32배로 회귀가 없었다.
+
+- C: `perf_c_multi_linux_20260712_035035_core_9_0_cpp_multi_pubsub_tcp131072_total_pool_cap_regression_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_035105_core_9_0_cpp_multi_pubsub_tcp131072_total_pool_cap_regression_20260712.txt`
+
+기존 풀 이점의 대표 셀인 Single PUBSUB inproc 131072B도 3회 paired 측정했다.
+C는 288.118 Kmsg/s와 0.012ms, C++은 303.167 Kmsg/s와 0.013ms로 처리량 비율
+105.2%와 평균 latency 1.08배를 기록했다.
+
+- C: `perf_c_single_linux_20260712_035142_core_9_0_cpp_pubsub_inproc131072_total_pool_cap_regression_20260712.txt`
+- C++: `perf_cpp_single_linux_20260712_035209_core_9_0_cpp_pubsub_inproc131072_total_pool_cap_regression_20260712.txt`
+
+`test_cpp_contract_message`, `test_cpp_contract_socket`, `test_cpp_contract_behavior`도 모두
+통과했다. 변경 후에는 8MiB 상한과 실제 pooled storage 소유권이 일치하고,
+fan-out 부하를 호출자나 transport 특수 분기에 노출하지 않는다. 확정된 hot
+path의 상한 의도는 `LARGE_MESSAGE_POOL_HOT_PATH` 주석으로 남겼다. 패스스루,
+얇은 모듈, 시간적 분해나 새 public 설정은 추가되지 않았다.
+
+- `MULTI_PUBSUB / ws`: 완료
+- C++ binding 변경: cached와 in-flight를 합친 pooled storage 전체를 8MiB로 제한
+- public API 변경: 없음
+- perf 변경: 없음
+- 다음 transport: wss

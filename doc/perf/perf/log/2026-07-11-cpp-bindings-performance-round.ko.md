@@ -325,4 +325,5 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - Single `DEALER_ROUTER`: 완료
 - C++ perf 변경: C와 같은 full payload copy 의미로 정합화
 - C++ binding 변경: 없음
+- 완료 커밋: `3643bf345`
 - 다음 pattern: Single `DEALER_ROUTER_REQREP`

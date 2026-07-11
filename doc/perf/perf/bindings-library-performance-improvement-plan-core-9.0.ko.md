@@ -87,7 +87,7 @@ pattern 그룹의 낮은 기준을 적용하고, 작은 메시지는 높은 기�
 Python의 과거 full matrix는 이후 공개 계약 복구 전 구현으로 측정한 값이므로 목표 상향
 근거에서 제외했다. Node와 Python의 기존 공통 목표는 이번 core 9.0 full matrix가 나올
 때까지 유지한다. socket request/reply도 이전 라운드에 정식 측정 항목이 없었으므로 현재
-값을 잠정 기준으로 유지하고, 이번 라운드의 paired full 측정 뒤 같은 규칙으로 조정한다.
+값을 잠정 기준으로 유지하고, 이번 라운드의 pattern별 paired 측정 뒤 같은 규칙으로 조정한다.
 
 | Pattern 그룹 | 포함 pattern | C++/Rust | .NET/Java | Go | Node/Python |
 |--------------|--------------|----------|-----------|----|-------------|
@@ -162,7 +162,7 @@ message size, 기본 client 수와 지원 option을 아래 네 곳에서 대조�
 3. `doc/perf` 정책 문서
 4. 이 문서의 상세 표
 
-하나라도 다르면 baseline을 만들지 않는다. 공식 C pattern이 binding에 없으면
+하나라도 다르면 해당 pattern의 paired 측정을 시작하지 않는다. 공식 C pattern이 binding에 없으면
 `해당 없음`으로 숨기지 않고 `측정 gap`으로 둔다. 공통 public contract에 근거가
 있으면 binding public API와 perf를 구현한다. 계약 근거가 없으면 공개 API를 바로
 추가하지 않고 spec 또는 draft 검토 항목으로 분리한다.
@@ -180,6 +180,8 @@ binding report에서 실제 client 수와 STREAM client 수가 같은지, memory
 
 ## 5. 고정 원칙
 
+- 성능 목표 달성이 작업의 우선 목적이지만, 개선 설계와 구현은
+  `doc/principal/software-design-principles.md`의 POSD 원칙을 계속 만족해야 한다.
 - 성능 개선은 각 binding의 public API를 사용하는 일반 경로에서 이루어져야 한다.
 - perf 전용 public API, private API 접근, C API 직접 호출, 특정 입력만 겨냥한 우회는
   개선으로 인정하지 않는다.
@@ -229,20 +231,27 @@ binding before와 after 사이에는 검토 중인 변경만 있어야 하며 �
 - binding single: `bindings/<lang>/perf/run_benchmarks.sh`
 - binding multi: `bindings/<lang>/perf/run_benchmarks_multi.sh`
 
-### 7.1 Smoke와 제한 사전 점검
+### 7.1 Pattern별 smoke와 제한 사전 점검
 
-정책 smoke는 전체 pattern과 transport의 64B 경로가 실행되는지 확인한다.
+C 전체 pattern을 한 번에 실행해 기준값을 만들지 않는다. 현재 언어에서 진행할 pattern 하나를
+선택한 뒤 C와 binding의 같은 pattern만 smoke한다. 이렇게 하면 서로 다른 pattern을 측정하는
+동안 생기는 host 부하와 시간 차이가 현재 비교값에 섞이지 않는다.
 
 ```bash
-PERF_FAIL_FAST=1 <runner> \
-  --pattern ALL \
+PERF_FAIL_FAST=1 <c-runner> \
+  --pattern <pattern> \
+  --msg-sizes 64 \
+  --duration 1 \
+  --runs 1
+
+PERF_FAIL_FAST=1 <binding-runner> \
+  --pattern <pattern> \
   --msg-sizes 64 \
   --duration 1 \
   --runs 1
 ```
 
-특정 병목을 측정하기 전에는 별도의 제한 사전 점검을 실행한다. 이 명령은 전체 smoke를
-대체하지 않는다.
+특정 transport나 message size의 병목을 확인할 때도 같은 pattern 안에서만 범위를 제한한다.
 
 ```bash
 PERF_FAIL_FAST=1 <runner> \
@@ -253,8 +262,8 @@ PERF_FAIL_FAST=1 <runner> \
   --runs 1
 ```
 
-두 실행 모두 `status: complete` report가 있어야 한다. console 출력만으로 통과로
-판정하지 않는다.
+C와 binding의 pattern별 smoke가 모두 `status: complete`여야 본 측정을 시작한다. console
+출력만으로 통과로 판정하지 않는다.
 
 ### 7.2 반복 횟수와 변동성
 
@@ -271,39 +280,106 @@ PERF_FAIL_FAST=1 <runner> \
 
 ### 7.3 Paired C 규칙
 
-최초 C full baseline은 전체 상태와 우선순위를 파악하는 기준이다. 언어별 통과 판정과
-before/after 채택은 가까운 시점에 같은 manifest로 실행한 제한 C 결과를 사용한다.
+언어별 통과 판정과 before/after 채택은 현재 진행 중인 pattern에 한정해 가까운 시점에
+같은 manifest로 실행한 C 결과를 사용한다. 다른 pattern을 위해 먼저 측정한 C 결과나 이전
+라운드의 C full report를 현재 pattern의 판정 기준으로 재사용하지 않는다.
 
 - C와 binding에 같은 session tag를 사용한다.
 - 같은 pattern, transport, size, duration, runs, client 수, I/O thread 수를 사용한다.
+- C pattern 측정이 끝나면 다른 pattern을 실행하지 않고 바로 같은 binding pattern을 측정한다.
 - binding before와 after는 같은 core source/build/runtime과 host session을 사용하고,
   검토 중인 binding 변경만 다르게 유지한다.
 - core source, build, runtime, host boot 또는 성능 환경이 달라지면 C를 다시 측정한다.
-- 목표 기준 ±5%p 셀은 이전 full baseline만으로 판정하지 않는다.
+- 개선 작업이 길어졌거나 host 부하가 달라졌으면 후보 최종 판정 직전에 같은 C pattern을 다시
+  측정한다.
+- 목표 기준 ±5%p 셀은 이전 측정값 하나만으로 판정하지 않는다.
 - paired report 중 하나라도 `status: complete`가 아니면 표를 갱신하지 않는다.
 
 ### 7.4 작업 순서
 
 1. inventory gate를 통과시키고 정책, runner, 상세 표의 측정 범위를 일치시킨다.
 2. core 9.0.0을 빌드하고 재현 환경 manifest를 기록한다.
-3. C single/multi 정책 smoke를 실행한다.
-4. C single/multi full baseline을 새로 측정해 전체 상태를 파악한다.
-5. C++, .NET, Java, Node, Go, Rust, Python 순서로 진행한다.
-6. 각 언어에서 single은 tcp 64/1024/65536, multi는 tcp 64/4096/65536을 먼저
-   측정해 우선 병목을 선별한다.
-7. 미달 셀은 profiler, allocation 자료, copy 수, callback/dispatch 및 native 경계
+3. C++, .NET, Java, Node, Go, Rust, Python 순서로 진행한다.
+4. 현재 언어에서 진행할 pattern 하나를 선택한다. C 전체 pattern이나 다음 언어를 미리
+   측정하지 않는다.
+5. 선택한 C pattern만 smoke하고, 바로 같은 binding pattern을 같은 조건으로 smoke한다.
+6. 같은 pattern의 C를 측정한 직후 binding before를 측정해 최초 paired 결과를 만든다.
+7. C 대비 throughput, latency, 변동성을 비교하고 목표 미달 셀을 확인한다.
+8. 미달 셀은 profiler, allocation 자료, copy 수, callback/dispatch 및 native 경계
    자료로 비용 위치를 확인한다.
-8. 의미를 보존하는 개선안을 두 가지 이상 설계하고, 예상 영향 셀과 폐기 기준을 적은 뒤
-   public interface가 더 단순한 방안을 선택한다.
-9. 제한 사전 점검을 통과한 뒤 binding before, 후보 after, paired C를 3회 측정한다.
-10. 목표 경계나 변동이 큰 셀은 5회와 CPU 고정으로 다시 측정한다.
-11. 기능 테스트와 대상이 아닌 대표 셀의 회귀 gate를 통과시킨다.
-12. tcp가 안정되면 tls, ws, wss 순서로 같은 pattern과 size를 확대한다.
-13. 현재 언어의 모든 size와 pattern을 확인한 뒤 해당 언어 full matrix를 한 번 실행한다.
-14. 모든 언어가 끝나면 core 9.0.0 기준 최종 full matrix를 다시 실행한다.
+9. 의미를 보존하는 개선안을 두 가지 이상 설계하고, 예상 영향 셀과 폐기 기준을 적은 뒤
+   public interface가 더 단순하고 책임 경계가 분명한 방안을 선택한다. 두 방안이 모두
+   계약과 POSD gate를 만족하면 예상 성능 효과가 큰 방안을 우선한다.
+10. 제한 사전 점검을 통과한 뒤 후보 after를 3회 측정한다. 비교 환경이 달라졌으면 같은
+    C pattern도 다시 3회 측정한다.
+11. 목표 경계나 변동이 큰 셀은 같은 pattern의 C와 binding을 5회, CPU 고정 조건으로
+    다시 측정한다.
+12. 기능 테스트와 같은 pattern 안의 대상이 아닌 대표 셀에 대한 회귀 gate를 통과시킨다.
+13. tcp가 안정되면 tls, ws, wss 순서로 같은 pattern의 모든 대상 size를 확대한다.
+14. 선택한 pattern의 모든 대상 transport와 size가 목표를 만족하면 pattern 완료를 기록한다.
+15. 성능 개선 코드를 채택했다면 검증된 변경과 측정 근거만 커밋하고 원격에 푸시한다.
+16. 커밋과 푸시가 끝난 뒤에만 같은 언어의 다음 pattern을 선택한다.
+17. 현재 언어의 Single과 Multi 모든 pattern이 완료된 뒤 pattern별 최종 report와 표를
+    다시 대조한다. 미측정, 미달, 측정 gap, 보류가 하나라도 있으면 다음 언어로 이동하지 않는다.
+18. 현재 언어가 모두 완료된 뒤에만 다음 언어로 이동한다.
 
 한 번에 하나의 언어만 측정한다. C와 binding을 paired 제한 측정할 때도 공식 perf
 프로세스는 순차 실행해 서로 CPU와 memory에 영향을 주지 않게 한다.
+
+### 7.5 Pattern 완료와 언어 전환 gate
+
+pattern 완료는 수치를 한 번 얻었다는 뜻이 아니다. 다음 조건을 모두 만족해야 완료로
+기록한다.
+
+- 해당 pattern의 모든 공식 transport와 message size에서 C와 binding report가
+  `status: complete`다.
+- 모든 셀이 throughput, latency, 변동성, client 수, auto-HWM 기준을 만족한다.
+- 개선 전후 기능 테스트와 같은 pattern의 대표 회귀 셀이 통과한다.
+- 최종 판정에 사용한 C와 binding이 가까운 시점의 같은 manifest와 session tag로 측정됐다.
+- 상세 표에 C report, binding report, 반복값, 비율과 판정 근거를 기록했다.
+- POSD 위험 신호를 변경 전후로 다시 확인했고 새 복잡성을 만들지 않았다.
+
+목표에 미달하면 같은 pattern에서 원인 분석, 개선, paired 재측정을 반복한다. 완료되지 않은
+pattern을 남겨 둔 채 다른 pattern이나 다음 언어로 이동하지 않는다. public contract 변경이
+필요하다고 판단되면 우회 구현으로 통과시키지 않고 설계 검토 항목을 기록하되, 그 상태는
+완료로 보지 않는다.
+
+### 7.6 개선 코드 커밋과 푸시
+
+성능 개선 후보가 pattern 목표와 회귀 gate를 통과해 최종 코드로 채택되면 다음 pattern을
+시작하기 전에 커밋하고 원격 저장소에 푸시한다. 커밋에는 현재 개선과 직접 관련된 binding,
+테스트, runner, 계획 문서와 측정 로그만 포함한다. 작업 트리의 다른 변경을 함께 넣지 않는다.
+
+커밋 전에는 변경 파일 목록과 staged diff를 확인하고 `git diff --cached --check`를 통과시킨다.
+커밋 메시지에는 언어와 pattern, 제거한 병목을 드러낸다. 푸시한 commit id와 paired report
+경로를 라운드 기록에 남긴다. 다음 상태는 커밋 대상으로 인정하지 않는다.
+
+- C 또는 binding report가 partial인 후보
+- 목표나 latency, 변동성, 회귀 gate를 통과하지 못한 후보
+- perf 전용 우회나 public contract 위반이 남은 후보
+- 기능 테스트를 통과하지 못한 후보
+
+후보를 기각했으면 코드를 최종 변경에서 제거하고 측정 결과와 기각 이유만 로그에 남긴다.
+
+### 7.7 성능 개선의 POSD gate
+
+성능 병목을 찾으면 구현 전에 현재 코드의 위험 신호를 먼저 적는다. 최소한 얕은 모듈,
+정보 누출, 패스스루 메서드, 실행 순서에 따른 책임 분리, 특수 코드와 범용 코드의 혼합,
+반복 지식을 확인한다. 각 위험 신호가 어떤 책임 경계에서 생겼는지 설명하고 서로 다른
+개선 방향을 두 가지 이상 비교한다.
+
+성능 개선은 호출자가 알아야 할 설정과 순서를 늘리지 않고 binding 내부에서 비용을 흡수해야
+한다. hot path의 allocation, copy, 검증, dispatch를 줄이더라도 public API에 내부 자료구조,
+transport 세부 정보, perf 전용 option을 노출하지 않는다. 새 helper나 class가 단순 전달만
+한다면 추가하지 않고 기존 모듈의 책임을 깊게 만든다.
+
+후보 측정 뒤에는 다음 순서로 판정한다.
+
+1. 측정 가능한 성능 향상이 없으면 복잡성을 남기지 않고 되돌린다.
+2. 성능 목표를 만족해도 public interface와 호출자 부담이 커졌으면 채택하지 않는다.
+3. 목표를 만족한 후보 중 정보 은닉과 책임 경계가 더 분명한 설계를 선택한다.
+4. 변경 뒤 같은 위험 신호 목록을 다시 확인해 해소 여부와 새 위험 신호를 기록한다.
+5. source comment는 코드가 반복하는 설명이 아니라 유지해야 할 계약과 설계 이유만 남긴다.
 
 ## 8. 판정과 기록 방법
 
@@ -349,15 +425,15 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.1 C++
 
 - perf 경로: `bindings/cpp/perf`
-- Single 상태: `누락 구현 완료, full 미측정`
-- Multi 상태: `누락 구현 완료, full 미측정`
-- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+- Single 상태: `PAIR 완료, 나머지 pattern 미측정`
+- Multi 상태: `누락 구현 완료, pattern별 미측정`
+- 다음 작업: Single `PUBSUB`을 core 9.0.0 C와 가까운 시점에 paired 측정한다.
 
 #### 9.1.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PAIR` | 통과(99.9%) | 통과(100.0%) | 통과(99.8%) | 통과(100.0%) | 통과(100.1%) | 통과(99.8%) | 3회 paired 측정. 1024B는 CPU 고정 5회 보강. 상세 report는 C++ 라운드 로그 참고. |
 | `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -365,7 +441,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
 | `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
-| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 통과(100.0%) | 통과(100.0%) | 통과(100.4%) | 통과(100.0%) | 통과(100.2%) | 통과(100.0%) | 3회 paired 측정. |
 | `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -373,7 +449,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
-| `wss` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PAIR` | 통과(100.6%) | 통과(99.9%) | 통과(96.8%) | 통과(98.2%) | 통과(97.3%) | 통과(95.1%) | CPU 고정 5회. 131072B는 단독 안정성 보강 report로 판정. |
 | `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -381,7 +457,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
-| `tls` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PAIR` | 통과(99.4%) | 통과(98.5%) | 통과(100.5%) | 통과(99.8%) | 통과(97.8%) | 통과(99.6%) | CPU 고정 5회 paired 측정. |
 | `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -389,7 +465,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tls` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
-| `inproc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PAIR` | 통과(90.6%) | 통과(93.9%) | 통과(89.2%) | 통과(99.8%) | 통과(100.1%) | 통과(100.3%) | 3회 paired 측정. |
 | `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -397,7 +473,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `inproc` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
-| `ipc` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PAIR` | 통과(100.5%) | 통과(100.3%) | 통과(95.3%) | 통과(99.8%) | 통과(100.0%) | 통과(100.0%) | 3회 paired 측정. |
 | `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -559,9 +635,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.3 Java
 
 - perf 경로: `bindings/java/perf`
-- Single 상태: `누락 구현 완료, full 미측정`
-- Multi 상태: `누락 구현 완료, full 미측정`
-- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+- Single 상태: `누락 구현 완료, pattern별 미측정`
+- Multi 상태: `누락 구현 완료, pattern별 미측정`
+- 다음 작업: 앞 언어의 모든 pattern이 완료된 뒤 pattern별 paired 측정을 시작한다.
 
 #### 9.3.1 Single suite
 
@@ -664,9 +740,9 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.4 Node
 
 - perf 경로: `bindings/node/perf`
-- Single 상태: `누락 구현 완료, full 미측정`
+- Single 상태: `누락 구현 완료, pattern별 미측정`
 - Multi 상태: `측정 gap 확인 필요`
-- 다음 작업: 사전 inventory gate를 통과한 뒤 core 9.0.0 C 결과와 같은 조건으로 측정한다.
+- 다음 작업: 앞 언어의 모든 pattern이 완료된 뒤 multi inventory gap을 먼저 해소한다.
 
 #### 9.4.1 Single suite
 
@@ -1094,25 +1170,26 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | Multi size 정책 | 정렬 완료 | 4096 추가, 262144 제거를 정책과 runner에 맞췄다. |
 | 무시되는 runner option | 정렬 완료 | .NET single의 pin, I/O thread, timeout, auto-HWM profile은 실제 emitter에 전달한다. output과 HWM/buffer override는 명시적으로 오류를 반환한다. 제한 report에서 Effective Options를 확인했다. |
 | memory guard | 미확인 | paired 측정에서 client cap이 발생하지 않는 환경을 확인한다. |
-| 재현 환경 manifest | 미작성 | 첫 C baseline 전에 작성한다. |
+| 재현 환경 manifest | 미작성 | 첫 pattern별 paired 측정 전에 작성한다. |
 
-### 10.2 기준 측정
+### 10.2 Pattern별 paired 기준 측정
 
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
-| C policy smoke | 미측정 | Single과 Multi의 ALL/64B report를 만든다. |
-| C single baseline | 미측정 | 새 full report를 만든다. |
-| C multi baseline | 미측정 | 64, 256, 1024, 4096, 65536, 131072 bytes로 새 full report를 만든다. |
-| C `MULTI_STREAM` baseline | 미측정 | 64, 256, 1024, 65536 bytes를 측정한다. |
+| 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
+| 현재 pattern | Single `PUBSUB` 대기 | Single `PAIR`은 모든 대상 셀을 완료했다. |
+| paired C | PAIR 완료 | 다음에는 C `PUBSUB`만 측정하고 바로 C++ `PUBSUB`을 측정한다. |
+| 개선 반복 | 미시작 | 목표 미달이면 같은 pattern에서 분석, 개선, paired 재측정을 반복한다. |
+| 커밋과 푸시 | 해당 없음 | 채택한 성능 개선이 생기면 다음 pattern 전에 검증된 범위만 커밋하고 푸시한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
-| 1 | C++ | 누락 구현 완료, full 미측정 | 누락 구현 완료, full 미측정 | C 기준과 같은 전체 matrix를 측정한다. |
+| 1 | C++ | `PAIR` 완료, 나머지 미측정 | 누락 구현 완료, pattern별 미측정 | Single `PUBSUB`을 C와 C++으로 paired 측정한다. |
 | 2 | .NET | 미측정 | 미측정 | runner option gate 통과 뒤 시작한다. |
-| 3 | Java | 누락 구현 완료, full 미측정 | 누락 구현 완료, full 미측정 | C 기준과 같은 전체 matrix를 측정한다. |
-| 4 | Node | 누락 구현 완료, full 미측정 | 측정 gap 확인 필요 | multi socket request/reply 2개 pattern을 구현한다. |
+| 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
+| 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
 | 6 | Rust | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
 | 7 | Python | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1135,13 +1212,16 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | Java | socket request/reply inventory 보완 | core_9_0_reqrep_inventory_gate | Java 공개 callback request와 수신 요청의 reply context로 single/multi 4개 pattern을 추가했다. socket callback은 binding의 request progress pump가 완료를 전달하므로, 여러 socket의 완료 대기는 callback이 해제하는 signal로 처리한다. | single과 2 clients multi 64B/tcp 제한 report complete | `bindings/java/perf/results/single/report/perf_java_single_linux_20260711_113457_core_9_0_reqrep_inventory_gate_v2.txt`, `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260711_113416_core_9_0_reqrep_inventory_gate.txt` |
 | 2026-07-11 | Node | single request/reply inventory 보완 | core_9_0_reqrep_inventory_gate_v2 | `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_REQREP`을 추가했다. 이 과정에서 공개 `RouterSocket.recv(Received)`가 reply context를 materializer에 전달하지 않던 runtime 결함을 고쳐 기존 `Received.reply()` 계약을 직접 사용했다. | build, typecheck, 64B/tcp 제한 report complete | `bindings/node/perf/results/single/report/perf_node_single_linux_20260711_114301_core_9_0_reqrep_inventory_gate_v2.txt` |
 | 2026-07-11 | 전체 | throughput 목표 재산정 | - | 이전 라운드의 완료된 최종 측정값에서 언어·pattern 그룹별 p10과 하위 25% 경계값을 계산했다. 과거 실측이 기존 목표를 넘은 구간만 최소 기준과 안정권 기준을 상향했다. | C++/Rust, .NET/Java, Go 목표 상향 | `doc/perf/perf/log/2026-05-18-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-01-node-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-01-go-bindings-performance-round.ko.md`, `doc/perf/perf/log/2026-06-02-rust-bindings-performance-round.ko.md` |
+| 2026-07-11 | 전체 | 실행 순서 명확화 | - | C 전체 baseline을 미리 측정하지 않고 현재 언어의 pattern 하나만 C와 binding으로 paired 측정한다. 비교, 개선, 재측정, 목표 확인, 커밋과 푸시를 마친 뒤 다음 pattern으로 이동한다. | pattern과 언어 전환 gate 갱신 | 이 문서 7장과 10장 |
+| 2026-07-11 | 전체 | POSD gate 추가 | - | 성능 목표를 우선하되 구현 전 위험 신호와 두 가지 설계를 비교하고, 측정 효과와 정보 은닉, 책임 경계를 함께 확인한다. | 개선 설계와 커밋 gate 갱신 | 이 문서 5장과 7.7장 |
+| 2026-07-11 | C++ | Single `PAIR` | core_9_0_cpp_pair_*_20260711 | transport별로 C 3회 측정 직후 C++ 3회를 측정했다. secure transport와 변동 셀은 CPU 고정 5회로 보강했다. 모든 셀이 throughput, latency, 변동성 gate를 통과했고 코드 변경은 필요하지 않았다. | pattern 완료, 커밋 해당 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 
 다음 조건을 모두 만족해야 작업을 완료한다.
 
 - runner, 정책, 상세 표의 pattern, transport, size inventory가 일치한다.
-- core 9.0.0으로 만든 C single/multi policy smoke와 full baseline report가 모두
+- 각 pattern의 최종 판정에 사용한 core 9.0.0 C와 binding paired report가 모두
   `status: complete`다.
 - 모든 binding 상세 표에 `미측정`, `미달`, `측정 gap`, `보류`가 없다.
 - 모든 통과 셀에 paired C와 binding report, manifest, 반복값, 비율, 옵션 일치 근거가
@@ -1149,7 +1229,8 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 - throughput, latency, 변동성, client 수, auto-HWM, 대상 외 대표 셀 회귀 gate를 모두
   통과한다.
 - 변경한 binding의 단위 테스트와 통합 테스트가 통과한다.
-- 언어별 full matrix와 마지막 전체 full matrix에서 제한 측정의 개선이 유지된다.
+- 한 언어의 모든 pattern이 각각 완료되기 전에는 다음 언어로 이동하지 않는다.
+- 채택한 성능 개선은 검증된 범위만 커밋하고 원격에 푸시했으며 commit id를 기록했다.
 - perf 전용 우회, private API 접근, 무시되는 필수 option, timeout/sleep 증가가 남아
   있지 않다.
 - 최종 리뷰에서 public interface가 더 복잡해지지 않았고 비용이 binding 내부에서

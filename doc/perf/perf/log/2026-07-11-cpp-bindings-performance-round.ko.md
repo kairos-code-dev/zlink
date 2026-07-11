@@ -694,3 +694,87 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - C++ perf 컴파일 수정: `3506ba1c7`
 - 완료 문서 커밋: `28ff6ca99`
 - 다음 pattern: Multi `MULTI_DEALER_DEALER`
+
+## Multi MULTI_DEALER_DEALER
+
+### tcp
+
+#### 측정 조건과 최초 결과
+
+- source before: `95fa00c5f`
+- clients: 100
+- message size: 64, 256, 1024, 4096, 65536, 131072 bytes
+- duration: 5초
+- 최초 반복: C 5회 직후 C++ 5회
+- CPU pin: 사용하지 않음
+- server/client I/O thread: 각각 4
+- connect-ready timeout: C와 C++ 모두 1000ms로 명시
+
+최초 C report는
+`perf_c_multi_linux_20260711_233311_core_9_0_cpp_multi_dealer_dealer_tcp_nopin_paired_20260711.txt`,
+C++ report는
+`perf_cpp_multi_linux_20260711_233657_core_9_0_cpp_multi_dealer_dealer_tcp_nopin_paired_20260711.txt`다.
+C++ 기본 connect-ready timeout이 5000ms라 첫 실행을 64B 초기에 중단하고 C와 같은 1000ms를
+CLI로 명시했다. runner 코드는 바꾸지 않았다.
+
+최초 throughput 비율은 64B 82.9%, 256B 95.3%, 1024B 97.8%, 4096B 119.2%,
+65536B 101.4%, 131072B 102.3%였다. 평균 latency는 모두 C의 0.99배 이하였다. 64B만
+SPOT 계열이 아닌 Multi 단순 one-way 최소 목표 85%에 미달했고 양쪽 5회 처리량 변동은
+작아 측정 오차로 판정하지 않았다.
+
+#### 병목과 POSD 대안
+
+64B client hot path를 비교하면 C와 C++ 모두 매 send마다 native message를 만들고 payload
+header를 기록한 뒤 같은 nonblocking DEALER send를 호출한다. C++은 public builder 상태를
+thread-local pool에서 가져와 사용한 뒤 반납한다. 이때 `reset_for_reuse()`가 raw send가
+사용하지 않은 topic, channel, actor, stream command 상태까지 매 message마다 초기화했다.
+공용 service operation 지식이 raw socket send 비용에 영향을 주는 정보 누출이자 hot-path
+복잡성으로 판단했다.
+
+검토한 대안은 다음 두 가지다.
+
+1. public builder와 공용 pooled state는 유지하되 `raw_send`가 실제로 채운 message, socket,
+   flags만 반납 시 초기화한다.
+2. raw socket 전용 builder와 state 타입을 별도로 만들어 공용 service state를 우회한다.
+
+두 번째 방안은 lifecycle과 builder 구현을 이중화하고 public operation 타입 주변에 병렬
+추상화를 만든다. 첫 번째 방안은 pool 모듈 안에서 복잡성을 흡수하고 호출자와 public API를
+바꾸지 않으므로 선택했다. `RAW_SEND_HOT_PATH` 주석으로 유지해야 할 이유와 필드 범위를
+코드에 남겼다.
+
+#### 개선 후 결과와 회귀
+
+빌드 직후 다른 작업의 LTO process가 여러 CPU를 사용해 첫 후보 C 회차를 중단했다. LTO가
+끝나고 연속 CPU 샘플에서 idle 99.5~100%를 확인한 뒤 C와 C++을 다시 측정했다. 중단한
+report는 판정에 사용하지 않았다.
+
+64B 최종 5회 report는 다음과 같다.
+
+- C: `perf_c_multi_linux_20260711_234445_core_9_0_cpp_multi_dealer_dealer_tcp64_raw_reset_after_stable_20260711.txt`
+- C++: `perf_cpp_multi_linux_20260711_234536_core_9_0_cpp_multi_dealer_dealer_tcp64_raw_reset_after_stable_20260711.txt`
+
+C 중앙값은 2.975 Mmsg/s, C++은 2.665 Mmsg/s로 비율이 89.6%다. C++ 처리량 범위는
+2.590~2.749 Mmsg/s였고 평균 latency는 C의 0.18배였다. 최초 C++ 중앙값
+2.481 Mmsg/s와 비교하면 7.4% 증가했다.
+
+전체 size 회귀는 다음 3회 report로 확인했다.
+
+- C: `perf_c_multi_linux_20260711_234633_core_9_0_cpp_multi_dealer_dealer_tcp_raw_reset_after_full_20260711.txt`
+- C++: `perf_cpp_multi_linux_20260711_234822_core_9_0_cpp_multi_dealer_dealer_tcp_raw_reset_after_full_20260711.txt`
+
+64, 256, 1024, 4096, 65536, 131072B 처리량 비율은 각각 90.0%, 99.3%, 101.0%,
+111.5%, 102.8%, 102.3%였다. 평균 latency 최대 비율은 0.96배다. 64B 최종 판정은 경계
+셀 5회 결과인 89.6%를 사용하고 나머지는 전체 회귀 report를 사용한다.
+
+`cpp_comp_src_dealer_dealer_server`, `cpp_comp_src_dealer_dealer_client`,
+`test_cpp_contract_message`, `test_cpp_contract_socket`, `test_cpp_contract_behavior`를 다시
+빌드했다. 세 계약 테스트와 Multi DEALER_DEALER runtime smoke가 모두 통과했다.
+
+#### tcp 판정
+
+- `MULTI_DEALER_DEALER / tcp`: 완료
+- C++ binding 변경: raw send pooled state reset hot path 축소
+- public API 변경: 없음
+- perf 변경: 없음
+- 개선 커밋: 진행 중
+- 다음 transport: ws

@@ -289,10 +289,21 @@ inline void restore_send_parts_to_state (spot_operation_state_t &state_,
 // Each send/request/reply chain acquires one pooled state at the entry factory
 // and returns it on submit success. The pool keeps string/vector capacity so
 // repeated PAIR/DEALER/PUBSUB sends with empty topic or short topic do not
-// trigger malloc/free per call. The reset_for_reuse routine zeros borrowed
-// pointers and clears containers in place (no realloc when SSO holds).
+// trigger malloc/free per call.
 inline void reset_for_reuse (spot_operation_state_t &state_) noexcept
 {
+    // RAW_SEND_HOT_PATH: pair/dealer send only populates the message, raw
+    // socket, and flags fields. Keep unrelated service command state out of
+    // this per-message reset; every other operation still takes the complete
+    // reset below before the pooled state becomes reusable.
+    if (state_.kind == spot_operation_kind_t::raw_send) {
+        state_.kind = spot_operation_kind_t::publish;
+        state_.message.reset ();
+        state_.raw.socket = nullptr;
+        state_.flags = send_flags_t::none;
+        return;
+    }
+
     state_.kind = spot_operation_kind_t::publish;
     state_.message.reset ();
     state_.raw.reset ();

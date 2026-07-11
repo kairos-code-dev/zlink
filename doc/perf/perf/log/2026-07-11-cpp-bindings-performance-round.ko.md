@@ -859,5 +859,5 @@ ready event 용량을 맞춘 뒤 처리량은 92.5%, 평균 latency는 2.90배�
 - C++ binding 변경: socket poll cache의 관심 이벤트 갱신을 O(1)로 개선
 - public API 변경: 없음
 - perf 변경: C 기준과 같은 all-ready-sockets scheduling으로 수정
-- 개선 커밋: 이번 커밋
+- 개선 커밋: `44ba93bdb`
 - 다음 pattern: Multi `MULTI_DEALER_ROUTER`

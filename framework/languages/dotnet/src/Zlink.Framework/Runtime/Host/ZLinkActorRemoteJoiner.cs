@@ -246,7 +246,9 @@ internal sealed class ZLinkActorRemoteJoiner(
             return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
         }
 
-        await actorState.BeginHandoffCaptureAsync(cancellationToken).ConfigureAwait(false);
+        var pendingRequests = await actorState.BeginHandoffCaptureAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var transferMetricStarted = ZLinkRuntimeMetrics.StartActorTransfer(pendingRequests);
         markSourceCaptureStarted();
 
         var transferState = transfer is null
@@ -308,6 +310,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     routerChannelId,
                 CancellationToken.None)
                 .ConfigureAwait(false);
+        ZLinkRuntimeMetrics.CompleteActorTransfer(transferMetricStarted);
         setTargetAccepted(true);
         actorState.Handoff.CommitForwardingCutover(registration.ActorTransferForwardWindow);
         runtime.RunDetached(
@@ -619,6 +622,24 @@ internal sealed class ZLinkActorRemoteJoiner(
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.SpotRouteNotFound,
                 $"SPOT '{spotRid}' has no live location row.");
+        var snapshot = handle.Snapshot;
+        if (services.GetService(typeof(IZLinkPeerLocationResolver))
+                is IZLinkPeerLocationResolver peerResolver)
+        {
+            var peers = await peerResolver.ListLivePeersAsync(
+                    new ZLinkPeerLocationFilter(
+                        ZLinkLocationAutoConnectType.SpotMesh,
+                        snapshot.RouterChannelId,
+                        ZLinkLocationRole.Spot,
+                        snapshot.NodeRid),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (peers.Any(static peer => peer.Draining))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestRejected,
+                    $"SPOT '{spotRid}' is hosted by a draining node.",
+                    false);
+        }
         return handle;
     }
 

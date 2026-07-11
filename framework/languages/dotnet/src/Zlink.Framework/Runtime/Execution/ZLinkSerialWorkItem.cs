@@ -7,12 +7,17 @@ internal sealed class ZLinkSerialWorkItem
     private readonly TaskCompletionSource _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ZLinkSerialWorkItem(Func<CancellationToken, ValueTask> callback)
+    public ZLinkSerialWorkItem(
+        Func<CancellationToken, ValueTask> callback,
+        long metricEnqueuedTimestamp = 0)
     {
         _callback = callback;
+        MetricEnqueuedTimestamp = metricEnqueuedTimestamp;
     }
 
     public Task Completion => _completion.Task;
+
+    public long MetricEnqueuedTimestamp { get; }
 
     public async ValueTask<ZLinkSerialWorkItemResult> InvokeAsync(
         Action<Exception> onUnhandledException,

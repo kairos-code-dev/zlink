@@ -91,6 +91,9 @@ internal static class ZLinkEnvelopeErrorMapper
             nameof(TaskCanceledException) => new TaskCanceledException(message),
             nameof(OperationCanceledException) => new OperationCanceledException(message),
             nameof(ZLinkActorHandoffRejectedException) => new ZLinkActorHandoffRejectedException(message),
+            nameof(ZLinkFrameworkErrorKind.RequestProtocolError) => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                message),
             _ => new InvalidOperationException(message)
         };
     }

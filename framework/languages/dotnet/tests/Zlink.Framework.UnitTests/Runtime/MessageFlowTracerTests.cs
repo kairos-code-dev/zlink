@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.UnitTests;
@@ -55,24 +56,69 @@ public sealed class MessageFlowTracerTests
         Assert.False(tracer.Enabled(ZLinkMessageFlowOutcome.Received));
     }
 
+    [Fact]
+    public void Sampling_Decision_Is_Stable_For_The_Whole_Flow()
+    {
+        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions, 0.5d);
+        var flowId = ZlinkStreamFlowId.Create();
+
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received, flowId));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Replied, flowId));
+
+        Assert.True(logger.Messages.Count is 0 or 2);
+    }
+
+    [Fact]
+    public void Sampling_Can_Keep_And_Drop_Different_Flows()
+    {
+        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions, 0.5d);
+
+        for (var index = 0; index < 256; index++)
+            tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received, ZlinkStreamFlowId.Create()));
+
+        Assert.NotEmpty(logger.Messages);
+        Assert.True(logger.Messages.Count < 256);
+    }
+
+    [Fact]
+    public void Dropped_And_Error_Bypass_Zero_Sample_Rate()
+    {
+        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions, 0.0d);
+
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received, ZlinkStreamFlowId.Create()));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Dropped, ZlinkStreamFlowId.Create()));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Error, ZlinkStreamFlowId.Create()));
+
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("outcome=received"));
+        Assert.Contains(logger.Messages, message => message.Contains("outcome=dropped"));
+        Assert.Contains(logger.Messages, message => message.Contains("outcome=error"));
+    }
+
     private static (ZLinkMessageFlowTracer Tracer, RecordingLogger Logger, ZLinkDispatchOptionsModel Options) Build(
-        ZLinkMessageFlowLogMode mode)
+        ZLinkMessageFlowLogMode mode,
+        double sampleRate = 1.0d)
     {
         var options = new ZLinkDispatchOptionsModel();
         options.MessageFlow(mode);
+        options.TraceSampleRate(sampleRate);
         var logger = new RecordingLogger();
         return (new ZLinkMessageFlowTracer(options, logger), logger, options);
     }
 
-    private static ZLinkMessageFlowEvent Flow(ZLinkMessageFlowOutcome outcome)
+    private static ZLinkMessageFlowEvent Flow(
+        ZLinkMessageFlowOutcome outcome,
+        string? flowId = null)
     {
-        return new ZLinkMessageFlowEvent(
+        var flow = new ZLinkMessageFlowEvent(
             outcome,
             ZLinkDispatchErrorSurface.Channel,
             ZLinkDispatchMessageKind.Request,
             "PlaceOrder",
             "orders",
             CorrelationId: "corr-1");
+        return flowId is null
+            ? flow
+            : flow with { FlowId = flowId, FlowOrigin = ZLinkFlowOrigin.Inbound };
     }
 
     private sealed class RecordingLogger : ILogger

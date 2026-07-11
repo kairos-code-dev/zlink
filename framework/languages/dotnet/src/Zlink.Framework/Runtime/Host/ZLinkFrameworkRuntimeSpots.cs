@@ -20,6 +20,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         where TSpot : IZLinkSpot
     {
         using var operation = EnterOperation();
+        _drainAdmission.RequireSpotAdmission();
         return await _spots.CreateAsync(GetOrStartState(), typeof(TSpot), request, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -31,6 +32,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         where TSpot : IZLinkSpot
     {
         using var operation = EnterOperation();
+        _drainAdmission.RequireSpotAdmission();
         return await _spots.GetOrCreateAsync(
                 GetOrStartState(), typeof(TSpot), spotRid, request, cancellationToken)
             .ConfigureAwait(false);
@@ -60,6 +62,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         using var operation = EnterOperation();
         var state = await GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
+        return _spots.GetActivationBySpotRid(state, spotRid);
+    }
+
+    internal ZLinkSpotActivation? GetSpotActivationForAcceptedHandoff(RoutingId spotRid)
+    {
+        var state = _state
+                    ?? throw new InvalidOperationException(
+                        "ZLink framework runtime is not available for an accepted actor handoff.");
         return _spots.GetActivationBySpotRid(state, spotRid);
     }
 

@@ -195,6 +195,67 @@ public sealed class UnhandledDispatchPolicyTests
     }
 
     [Fact]
+    public async Task Invalid_Envelope_Marker_Replies_RequestProtocolError()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var services = new ServiceCollection().BuildServiceProvider();
+        var dispatcher = new ZLinkChannelPacketDispatcher(
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration),
+            registration,
+            null);
+        var endpoint = GetTcpEndpoint();
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var routerSocket = context.CreateRouterSocket();
+        await using var dealerSocket = context.CreateDealerSocket();
+        routerSocket.Options.Linger = TimeSpan.Zero;
+        dealerSocket.Options.Linger = TimeSpan.Zero;
+        routerSocket.Bind(endpoint);
+        dealerSocket.Connect(endpoint);
+        var router = new ZLinkBackendRouterSocketWrapper(routerSocket);
+        var invalidHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Request,
+            "play",
+            "BrokenReq",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "corr",
+            null,
+            null,
+            null,
+            null);
+        using var invalidHeaderPart = Message.From(
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                invalidHeader,
+                ZLinkJsonSerializerOptions.Default));
+        using var body = Message.From("{}");
+
+        var requestTask = dealerSocket.Request()
+            .Message(invalidHeaderPart)
+            .Message(body)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async();
+        using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));
+        await dispatcher.DispatchServerMessageAsync("play", router, received, CancellationToken.None);
+
+        var reply = await requestTask.WaitAsync(TimeSpan.FromSeconds(2));
+        try
+        {
+            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
+            Assert.Equal(ZLinkMessageKind.Error, replyHeader.Kind);
+            Assert.Equal(
+                nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
+                replyHeader.ErrorCode);
+            Assert.Contains("format marker", replyHeader.ErrorMessage);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(reply);
+        }
+    }
+
+    [Fact]
     public async Task ChannelPublishDecodeFailure_DoesNotStopOtherEndpointTypes()
     {
         var probe = new PublishProbe();

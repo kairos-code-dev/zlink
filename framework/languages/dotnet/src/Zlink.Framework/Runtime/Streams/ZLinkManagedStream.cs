@@ -9,15 +9,19 @@ internal sealed class ZLinkManagedStream : IZLinkStream
     public ZLinkManagedStream(
         IZLinkBackendStreamSocket socket,
         RoutingId routingId,
-        ZLinkCodecRegistryBuilder codecs)
+        ZLinkCodecRegistryBuilder codecs,
+        string transport)
     {
         _socket = socket;
         _routingId = routingId;
         _codecs = codecs;
+        Transport = transport;
         SessionId = _routingId.ToHex();
     }
 
     public string SessionId { get; }
+
+    internal string Transport { get; }
 
     public RoutingId? RoutingId => _routingId;
 

@@ -59,12 +59,14 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _receivedMessages,
             _frameSender,
             _callbacks,
-            _inboundObservers);
+            _inboundObservers,
+            _lifecycle.HandleServerCloseAsync);
         _receiveLoop = new ZlinkStreamReceiveLoop(
             _receiveDispatcher,
             () => _lifecycle.Connection,
             _lifecycle.RecordInbound,
-            options.MaxReceivePayloadSize);
+            options.MaxReceivePayloadSize,
+            ZlinkStreamRuntimeMetrics.TransportLabel(options));
         Connect = new ZlinkStreamLifecycleCall(ConnectCoreAsync);
         Close = new ZlinkStreamLifecycleCall(CloseCoreAsync);
         Dispatch = new ZlinkStreamLifecycleCall(DispatchCoreAsync);

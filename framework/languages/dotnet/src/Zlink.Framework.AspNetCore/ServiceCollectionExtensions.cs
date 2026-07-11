@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 
 namespace Zlink.Framework.AspNetCore;
@@ -44,5 +45,16 @@ public static class ServiceCollectionExtensions
         ZLinkMonitoringServiceRegistrar.AddMonitoringRuntime(services, registration);
 
         return services;
+    }
+
+    public static IHealthChecksBuilder AddZLinkDrainHealthCheck(
+        this IHealthChecksBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder.AddCheck<ZLinkDrainHealthCheck>(
+            "zlink-drain",
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["ready"]);
     }
 }

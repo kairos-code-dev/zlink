@@ -66,6 +66,7 @@ internal static class ZLinkLocationStoreRead
         catch (Exception error)
         {
             health?.ReportFailure(source, error);
+            ZLinkRuntimeMetrics.RecordLocationStoreError();
             throw;
         }
     }

@@ -2,7 +2,7 @@ using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotTimerRegistry : IAsyncDisposable
+internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowGenerationEnabled) : IAsyncDisposable
 {
     private readonly List<IZLinkTimer> _timers = [];
 
@@ -45,8 +45,41 @@ internal sealed class ZLinkSpotTimerRegistry : IAsyncDisposable
             period,
             timerOptions,
             stopToken,
-            (tick, ct) => dispatchAsync(descriptor, tick, ct),
-            (tick, exception, stopped, ct) => reportFailureAsync(descriptor, tick, exception, stopped, ct));
+            async (tick, ct) =>
+            {
+                using var flow = ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    flowGenerationEnabled(),
+                    ZLinkFlowOrigin.Timer);
+                try
+                {
+                    await dispatchAsync(descriptor, tick, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception error)
+                {
+                    try
+                    {
+                        await reportFailureAsync(
+                                descriptor,
+                                tick,
+                                error,
+                                timerOptions.StopOnUnhandledException,
+                                ct)
+                            .ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Monitoring failures do not change timer execution policy.
+                    }
+                    throw;
+                }
+            },
+            static (_, _, _, _) => ValueTask.CompletedTask);
         _timers.Add(timer);
         return ValueTask.FromResult<IZLinkTimer>(timer);
     }

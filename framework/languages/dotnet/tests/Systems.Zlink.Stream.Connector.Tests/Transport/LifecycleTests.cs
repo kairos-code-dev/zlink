@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Buffers.Binary;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Xunit;
 
@@ -93,6 +94,65 @@ public sealed partial class StreamConnectorTests
 
         await connector.Connect.Async();
         await server.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SessionClosingPublishesServerDrainReasonAfterDisconnectedState()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var payload = new byte[4];
+            payload[0] = 1;
+            payload[1] = 4;
+            BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(2, 2), 0);
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Control,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    ZlinkStreamSessionClosingCodec.ControlName,
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                payload);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        var order = new List<string>();
+        var disconnected = new TaskCompletionSource<ZlinkStreamDisconnected>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.ConnectionStateChanged += (change, _) =>
+        {
+            lock (order) order.Add($"state:{change.Current}");
+            return ValueTask.CompletedTask;
+        };
+        connector.Disconnected += (closed, _) =>
+        {
+            lock (order) order.Add($"disconnected:{closed.CloseReason}");
+            disconnected.TrySetResult(closed);
+            return ValueTask.CompletedTask;
+        };
+
+        await connector.Connect.Async();
+        var closed = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(ZlinkStreamCloseReason.ServerDrain, closed.CloseReason);
+        Assert.Equal(
+            new[] { "state:Connecting", "state:Connected", "state:Disconnected", "disconnected:ServerDrain" },
+            order);
     }
 
     [Fact]

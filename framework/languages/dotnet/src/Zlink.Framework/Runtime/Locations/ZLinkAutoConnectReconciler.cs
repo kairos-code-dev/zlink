@@ -24,13 +24,15 @@ internal interface IZLinkAutoConnectExecutor
 internal sealed class ZLinkAutoConnectReconciler
 {
     private readonly ZLinkAutoConnectLocal _local;
-    private readonly ZLinkPeerLocation? _localRow;
+    private ZLinkPeerLocation? _localRow;
     private readonly ZLinkLocationRuntime _runtime;
     private readonly IZLinkPeerLocationResolver _peers;
     private readonly IZLinkAutoConnectExecutor _executor;
     private readonly ZLinkLocationOptions _options;
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
+    private readonly SemaphoreSlim _reconcileGate = new(1, 1);
+    private readonly object _peerMetricOwner = new();
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
     private Dictionary<string, ZLinkAutoConnectTarget> _lastDesired = new(StringComparer.Ordinal);
     private volatile HashSet<string>? _meshMemberRids;
@@ -39,6 +41,7 @@ internal sealed class ZLinkAutoConnectReconciler
     private bool _storeFailed;
     private long? _storeFailureStartedAt;
     private long _recoveryDeferUntil;
+    private bool _ownerCleanupStarted;
 
     /// <summary>
     /// <paramref name="localRow"/> is null for a dial-only capability that
@@ -84,6 +87,8 @@ internal sealed class ZLinkAutoConnectReconciler
     /// must not let a change stamp skip ticks in this state.</summary>
     internal bool StoreFailed => _storeFailed;
 
+    internal void RemovePeerMetric() => ZLinkRuntimeMetrics.RemoveLocationPeers(_peerMetricOwner);
+
     internal bool HasPendingTargets
     {
         get
@@ -95,8 +100,62 @@ internal sealed class ZLinkAutoConnectReconciler
         }
     }
 
+    internal async ValueTask<bool> MarkDrainingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _reconcileGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_localRow is null) return true;
+            _localRow = _localRow with { Draining = true };
+            if (!_localPublished)
+                await PublishLocalAsync(cancellationToken).ConfigureAwait(false);
+            if (!_localPublished || _localGeneration <= 0) return false;
+
+            var result = await _runtime.WritePeerAsync(
+                    _localRow with { Generation = _localGeneration },
+                    ZLinkLocationWriteIntent.Renew,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            _localPublished = result.Status == ZLinkLocationWriteStatus.Stored;
+            if (_localPublished) _localGeneration = result.Generation;
+            return _localPublished;
+        }
+        finally
+        {
+            _reconcileGate.Release();
+        }
+    }
+
+    internal async ValueTask FreezeOwnerWritesAsync(CancellationToken cancellationToken)
+    {
+        await _reconcileGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _ownerCleanupStarted = true;
+        }
+        finally
+        {
+            _reconcileGate.Release();
+        }
+    }
+
     internal async ValueTask TickAsync(CancellationToken cancellationToken = default)
     {
+        await _reconcileGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await TickCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _reconcileGate.Release();
+        }
+    }
+
+    private async ValueTask TickCoreAsync(CancellationToken cancellationToken)
+    {
+        if (_ownerCleanupStarted) return;
         // Publish (or re-publish after recovery) the local row before
         // reading the list, so peers observing the store during our
         // recovery window can already see us.
@@ -138,6 +197,7 @@ internal sealed class ZLinkAutoConnectReconciler
         }
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(_local, rows);
+        ZLinkRuntimeMetrics.SetLocationPeers(_peerMetricOwner, rows.Count);
         _lastDesired = new Dictionary<string, ZLinkAutoConnectTarget>(desired, StringComparer.Ordinal);
         // Membership snapshot for fail-fast target classification on the
         // send path (known peer vs unknown node). This is the full mesh

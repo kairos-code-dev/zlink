@@ -119,7 +119,15 @@ public sealed partial class StreamConnectorTests
     public void HeaderProtocolRejectsUnknownFlag()
     {
         var codec = new ZlinkStreamHeaderCodec();
-        var bytes = new byte[] { 1, 1, 0x80, 1, (byte)'x' };
+        var bytes = new byte[]
+        {
+            ZlinkStreamFlowId.FormatMarker,
+            (byte)ZlinkStreamMessageKind.Send,
+            (byte)ZlinkStreamCodec.Json,
+            0x80,
+            1,
+            (byte)'x'
+        };
 
         var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decode(bytes));
 
@@ -131,17 +139,20 @@ public sealed partial class StreamConnectorTests
     {
         var codec = new ZlinkStreamHeaderCodec();
 
-        var sendWithRequestSeq = new byte[12];
-        sendWithRequestSeq[0] = (byte)ZlinkStreamMessageKind.Send;
-        sendWithRequestSeq[1] = (byte)ZlinkStreamCodec.Json;
-        sendWithRequestSeq[2] = (byte)ZlinkStreamHeaderFlags.HasRequestSeq;
-        BinaryPrimitives.WriteUInt64BigEndian(sendWithRequestSeq.AsSpan(3, 8), 1);
-        sendWithRequestSeq[11] = 1;
+        var sendWithRequestSeq = new byte[14];
+        sendWithRequestSeq[0] = ZlinkStreamFlowId.FormatMarker;
+        sendWithRequestSeq[1] = (byte)ZlinkStreamMessageKind.Send;
+        sendWithRequestSeq[2] = (byte)ZlinkStreamCodec.Json;
+        sendWithRequestSeq[3] = (byte)ZlinkStreamHeaderFlags.HasRequestSeq;
+        BinaryPrimitives.WriteUInt64BigEndian(sendWithRequestSeq.AsSpan(4, 8), 1);
+        sendWithRequestSeq[12] = 1;
+        sendWithRequestSeq[13] = (byte)'x';
 
         Assert.Throws<ZlinkStreamException>(() => codec.Decode(sendWithRequestSeq));
 
         var responseWithoutRequestSeq = new byte[]
         {
+            ZlinkStreamFlowId.FormatMarker,
             (byte)ZlinkStreamMessageKind.Response,
             (byte)ZlinkStreamCodec.Json,
             0,
@@ -153,6 +164,7 @@ public sealed partial class StreamConnectorTests
 
         var errorWithRawCodec = new byte[]
         {
+            ZlinkStreamFlowId.FormatMarker,
             (byte)ZlinkStreamMessageKind.Error,
             (byte)ZlinkStreamCodec.Raw,
             0,
@@ -218,5 +230,34 @@ public sealed partial class StreamConnectorTests
             null,
             "$zlink.user",
             ZlinkStreamMetadata.Empty)));
+    }
+
+    [Fact]
+    public void SessionClosingCodecDecodesTheVersionedClosedReason()
+    {
+        var diagnostic = Encoding.UTF8.GetBytes("rolling drain");
+        var payload = new byte[4 + diagnostic.Length];
+        payload[0] = 1;
+        payload[1] = 4;
+        BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(2, 2), (ushort)diagnostic.Length);
+        diagnostic.CopyTo(payload.AsSpan(4));
+
+        var closing = ZlinkStreamSessionClosingCodec.Decode(payload);
+
+        Assert.Equal(ZlinkStreamCloseReason.ServerDrain, closing.Reason);
+        Assert.Equal("rolling drain", closing.Diagnostic);
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 2, 4, 0, 0 })]
+    [InlineData(new byte[] { 1, 0, 0, 0 })]
+    [InlineData(new byte[] { 1, 4, 0, 1 })]
+    [InlineData(new byte[] { 1, 4, 0, 1, 0xff })]
+    public void SessionClosingCodecRejectsInvalidVersionReasonLengthAndUtf8(byte[] payload)
+    {
+        var exception = Assert.Throws<ZlinkStreamException>(() =>
+            ZlinkStreamSessionClosingCodec.Decode(payload));
+
+        Assert.Equal(ZlinkStreamErrorCode.FrameDecodeFailed, exception.Error.Code);
     }
 }

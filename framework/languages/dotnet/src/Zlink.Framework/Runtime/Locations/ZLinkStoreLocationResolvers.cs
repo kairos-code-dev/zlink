@@ -94,6 +94,36 @@ internal sealed class ZLinkStoreLocationResolvers :
         return row;
     }
 
+    internal async ValueTask<IReadOnlyList<ZLinkSpotLocation>> ListLiveSpotRowsAsync(
+        ZLinkSpotLocationFilter filter,
+        CancellationToken cancellationToken = default)
+    {
+        var accepted = new List<ZLinkSpotLocation>();
+        string? continuation = null;
+        do
+        {
+            var page = await ZLinkLocationStoreRead.ExecuteAsync(
+                    _health,
+                    "spot-resolver-list",
+                    cancellationToken,
+                    () => _spotStore.ListSpotsAsync(
+                        filter,
+                        new ZLinkPageRequest(1000, continuation),
+                        cancellationToken))
+                .ConfigureAwait(false);
+            var live = await _liveRows.FilterAsync(
+                    page.Items,
+                    static row => row.OwnerId,
+                    row => _observed.AcceptSpot(row),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            accepted.AddRange(live);
+            continuation = page.ContinuationToken;
+        } while (continuation is not null);
+
+        return accepted;
+    }
+
     internal async ValueTask<ZLinkActorLocation?> ResolveActorRowAsync(
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default)

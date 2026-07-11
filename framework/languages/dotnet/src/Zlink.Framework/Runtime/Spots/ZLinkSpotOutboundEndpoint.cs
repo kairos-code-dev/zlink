@@ -46,18 +46,32 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
-        return await ZLinkRawRequestSubmitter.SubmitAsync(
-                bundle.Submitter
-                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."),
-                parts,
-                (pending, callback, currentTimeout) => dealer.Request(
-                    pending,
-                    callback,
-                    SendFlags.DontWait,
-                    currentTimeout),
-                requestTimeout,
-                "SPOT channel request failed with result '{0}'.",
-                cancellationToken).ConfigureAwait(false);
+        var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
+        var timedOut = false;
+        try
+        {
+            return await ZLinkRawRequestSubmitter.SubmitAsync(
+                    bundle.Submitter
+                    ?? throw new InvalidOperationException("ZLink request submitter is not initialized."),
+                    parts,
+                    (pending, callback, currentTimeout) => dealer.Request(
+                        pending,
+                        callback,
+                        SendFlags.DontWait,
+                        currentTimeout),
+                    requestTimeout,
+                    "SPOT channel request failed with result '{0}'.",
+                    cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            timedOut = true;
+            throw;
+        }
+        finally
+        {
+            ZLinkRuntimeMetrics.CompleteChannelRequest(metricStarted, timedOut);
+        }
     }
 
     public async ValueTask SendToChannelAsync(

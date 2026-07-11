@@ -55,6 +55,11 @@ internal sealed class ZLinkActorDispatchRouter(
         Message payload,
         CancellationToken cancellationToken = default)
     {
+        using var flow = ZLinkFlowContext.Enter(
+            header.FlowId,
+            header.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
+            _dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
         var actorId = actor.ActorId;
         var state = actorSessions.GetOrCreate(actor.ActorId);
         var shouldPrune = false;
@@ -78,6 +83,11 @@ internal sealed class ZLinkActorDispatchRouter(
         string actorId,
         CancellationToken cancellationToken = default)
     {
+        using var flow = ZLinkFlowContext.Enter(
+            null,
+            null,
+            _dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Lifecycle);
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
                     ?? throw new ZLinkFrameworkException(
@@ -97,6 +107,11 @@ internal sealed class ZLinkActorDispatchRouter(
         Message payload,
         CancellationToken cancellationToken)
     {
+        using var flow = ZLinkFlowContext.Enter(
+            header.FlowId,
+            header.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
+            _dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
         return await state.ExecuteDispatchAsync(
                 header,
                 ct => SubmitByCurrentLocationForReplyAsync(actor, state, header, payload, ct),

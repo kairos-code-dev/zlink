@@ -535,6 +535,43 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public async Task Drain_Waits_For_InProgress_And_Accepted_Handoff_Admission()
+    {
+        var time = new ManualTimeProvider();
+        var admissions = new ZLinkActorHandoffAdmissions(time);
+        var request = AdmissionRequest(time, "handoff-drain");
+        var target = RoutingId.From("target-spot");
+        var decisionStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var decision = new TaskCompletionSource<ZLinkRemoteActorAdmissionReply>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var admission = admissions.AdmitAsync(
+            request,
+            target,
+            _ =>
+            {
+                decisionStarted.TrySetResult();
+                return new ValueTask<ZLinkRemoteActorAdmissionReply>(decision.Task);
+            },
+            CancellationToken.None).AsTask();
+        await decisionStarted.Task;
+        var drainSafe = admissions.WaitUntilDrainSafeAsync(CancellationToken.None);
+        Assert.False(drainSafe.IsCompleted);
+
+        decision.SetResult(new ZLinkRemoteActorAdmissionReply(
+            true,
+            "application/json",
+            [],
+            request.DeadlineUnixTimeMilliseconds));
+        await admission;
+        Assert.False(drainSafe.IsCompleted);
+
+        admissions.Complete(request.HandoffId);
+        await drainSafe.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
     public void TerminalHandoffOutcome_SurvivesAdmissionCleanup_AndRejectsChangedRetry()
     {
         var admissions = new ZLinkActorHandoffAdmissions();

@@ -42,14 +42,14 @@ internal static class ZLinkFlowContext
         return new Scope(previous, state);
     }
 
-    public static ZLinkFlowValue CurrentOrCreate(ZLinkFlowOrigin origin)
+    public static Scope EnterCurrentOrCreate(ZLinkFlowOrigin origin, bool createIfAbsent)
     {
-        if (Current is { } current) return current;
-
-        var state = new State(new ZLinkFlowValue(ZlinkStreamFlowId.Create(), origin));
-        Ambient.Value = state;
-        return state.Value;
+        var current = Current;
+        return Enter(current?.FlowId, current?.Origin, createIfAbsent, origin);
     }
+
+    public static ZLinkFlowValue Create(ZLinkFlowOrigin origin) =>
+        new(ZlinkStreamFlowId.Create(), origin);
 
     internal sealed class State(ZLinkFlowValue value)
     {

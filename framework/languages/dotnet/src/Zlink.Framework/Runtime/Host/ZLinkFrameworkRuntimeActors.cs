@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
@@ -14,6 +16,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkMessage request,
         CancellationToken cancellationToken = default)
     {
+        _drainAdmission.RequireSpotAdmission();
         return _actors.JoinActorAsync(
             spotRid,
             actor,
@@ -37,6 +40,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkMessage request,
         CancellationToken cancellationToken = default)
     {
+        _drainAdmission.RequireSpotAdmission();
         return _actors.JoinActorEntrySpotAsync(
             spotNodeRid,
             actor,
@@ -52,6 +56,99 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         var managedActor = ResolveOwnedActorRef(actor);
         return JoinActorEntrySpotAsync(spotNodeRid, managedActor, request, cancellationToken);
+    }
+
+    internal async ValueTask<bool> DrainActorsAsync(CancellationToken cancellationToken)
+    {
+        var states = _actorSessionManager.SnapshotStates();
+        if (states.Length == 0) return true;
+
+        var targets = await ResolveActorDrainTargetsAsync(cancellationToken).ConfigureAwait(false);
+        var allMoved = true;
+        var nextTarget = -1;
+        const int maximumConcurrency = 8;
+        for (var offset = 0; offset < states.Length; offset += maximumConcurrency)
+        {
+            var count = Math.Min(maximumConcurrency, states.Length - offset);
+            var moves = new Task<bool>[count];
+            for (var index = 0; index < count; index++)
+            {
+                var state = states[offset + index];
+                moves[index] = MoveActorForDrainAsync(state).AsTask();
+            }
+            var results = await Task.WhenAll(moves).ConfigureAwait(false);
+            allMoved &= results.All(static moved => moved);
+        }
+        return allMoved;
+
+        async ValueTask<bool> MoveActorForDrainAsync(ZLinkActorRuntimeState actorState)
+        {
+            if (actorState.Handoff.IsSourceMigrationInProgress)
+            {
+                await actorState.Handoff.WaitForSourceCompletionAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (actorState.Actor is null)
+                {
+                    ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
+                    return true;
+                }
+            }
+
+            var actor = actorState.Actor;
+            var sourceNode = actorState.NativeActorRef?.NodeRid;
+            if (actor is null || sourceNode is null) return true;
+            var eligible = targets
+                .Where(target => target != sourceNode.Value)
+                .ToArray();
+            if (eligible.Length == 0) return false;
+
+            var target = eligible[(Interlocked.Increment(ref nextTarget) & int.MaxValue) % eligible.Length];
+            var result = await _actors.JoinActorEntrySpotAsync(
+                    target,
+                    actor,
+                    ZLinkMessage.Empty,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result is not ZLinkActorJoinResult.Accepted) return false;
+            ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
+            return true;
+        }
+    }
+
+    private async ValueTask<RoutingId[]> ResolveActorDrainTargetsAsync(
+        CancellationToken cancellationToken)
+    {
+        if (Services.GetService<ZLinkStoreLocationResolvers>() is not { } locations
+            || Services.GetService<IZLinkPeerLocationResolver>() is not { } peers)
+            return [];
+
+        var targets = new Dictionary<string, RoutingId>(StringComparer.Ordinal);
+        foreach (var meshName in Registration.SpotNodes.Values
+                     .Select(static node => node.SpotMeshChannelName ?? node.SpotNodeName)
+                     .Distinct(StringComparer.Ordinal))
+        {
+            var meshPeers = await peers.ListLivePeersAsync(
+                    new ZLinkPeerLocationFilter(
+                        ZLinkLocationAutoConnectType.SpotMesh,
+                        meshName,
+                        ZLinkLocationRole.Spot),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var acceptingNodes = meshPeers
+                .Where(static peer => !peer.Draining && peer.NodeRid is { Size: > 0 })
+                .Select(static peer => peer.NodeRid!.Value.ToHex())
+                .ToHashSet(StringComparer.Ordinal);
+            var entries = await locations.ListLiveSpotRowsAsync(
+                    new ZLinkSpotLocationFilter(
+                        MeshName: meshName,
+                        SpotKind: ZLinkSpotKind.Entry),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var entry in entries)
+                if (acceptingNodes.Contains(entry.NodeRid.ToHex()))
+                    targets[entry.NodeRid.ToHex()] = entry.NodeRid;
+        }
+        return targets.Values.ToArray();
     }
 
     private IZLinkActor ResolveOwnedActorRef(ActorRef actor)
@@ -96,19 +193,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (_actorHandoffAdmissions.TryGetJoinOutcome(request, spotRid, out var terminalReply))
             return terminalReply;
 
-        var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
-                             .ConfigureAwait(false)
-                         ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
-
         ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer);
         var ownsImport = false;
         var createdTransferredActor = false;
         try
         {
             if (!actorState.Handoff.IsKnown(request.HandoffId))
-            {
                 _actorHandoffAdmissions.BeginCommit(request, spotRid);
-            }
+            var activation = GetSpotActivationForAcceptedHandoff(spotRid)
+                             ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
             var import = await actorState.ExecuteHandoffTransitionAsync(
                     () =>
                     {
@@ -367,6 +460,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRemoteActorAdmissionRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (_drainAdmission.IsDraining)
+            return ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
+                false,
+                ZLinkMessage.Empty,
+                Registration.Codecs,
+                request.DeadlineUnixTimeMilliseconds);
         var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
                              .ConfigureAwait(false)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
@@ -544,6 +643,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkMessage createRequest,
         CancellationToken cancellationToken = default)
     {
+        _drainAdmission.RequireActorAdmission();
         return _actorSessionManager.CreateActorAsync(actorId, actorType, createRequest, cancellationToken);
     }
 

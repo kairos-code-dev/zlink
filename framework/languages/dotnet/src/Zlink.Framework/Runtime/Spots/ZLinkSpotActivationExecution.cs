@@ -190,6 +190,8 @@ internal sealed partial class ZLinkSpotActivation
 
     public ValueTask CloseAsync(CancellationToken cancellationToken)
     {
+        if (Interlocked.Exchange(ref _closingInvoked, 1) != 0)
+            return ValueTask.CompletedTask;
         return _serial.ExecuteLifecycleAsync(
             static (activation, ct) => activation.Spot.OnClosingAsync(ct),
             cancellationToken);

@@ -10,6 +10,14 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
     private readonly Queue<string> _terminalOrder = new();
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private CancellationTokenSource _generationStop = new();
+    private TaskCompletionSource _drainSafe = CompletedSignal();
+
+    public Task WaitUntilDrainSafeAsync(CancellationToken cancellationToken)
+    {
+        Task wait;
+        lock (_gate) wait = _drainSafe.Task;
+        return wait.WaitAsync(cancellationToken);
+    }
 
     public async ValueTask<ZLinkRemoteActorAdmissionReply> AdmitAsync(
         ZLinkRemoteActorAdmissionRequest request,
@@ -45,6 +53,7 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
             {
                 execution = new AdmissionExecution(request, targetSpotRid);
                 _admitting.Add(request.HandoffId, execution);
+                MarkDrainUnsafeLocked();
                 ownsExecution = true;
             }
         }
@@ -71,6 +80,7 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
                 if (_admitting.TryGetValue(request.HandoffId, out var current)
                     && ReferenceEquals(current, execution))
                     _admitting.Remove(request.HandoffId);
+                TryCompleteDrainSafeLocked();
             }
         }
     }
@@ -130,6 +140,7 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
             }
 
             _pending.Add(request.HandoffId, pending);
+            if (reply.Accepted) MarkDrainUnsafeLocked();
         }
 
         CancellationToken generationToken;
@@ -162,12 +173,20 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
 
     public void Complete(string handoffId)
     {
-        lock (_gate) _pending.Remove(handoffId);
+        lock (_gate)
+        {
+            _pending.Remove(handoffId);
+            TryCompleteDrainSafeLocked();
+        }
     }
 
     public void Abort(string handoffId)
     {
-        lock (_gate) _pending.Remove(handoffId);
+        lock (_gate)
+        {
+            _pending.Remove(handoffId);
+            TryCompleteDrainSafeLocked();
+        }
     }
 
     public bool TryGetJoinOutcome(
@@ -394,6 +413,7 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
             _pending.Clear();
             _terminal.Clear();
             _terminalOrder.Clear();
+            _drainSafe.TrySetResult();
         }
 
         stopped.Cancel();
@@ -424,8 +444,33 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
             if (_pending.TryGetValue(handoffId, out var current)
                 && ReferenceEquals(current, pending)
                 && !current.Committing)
+            {
                 _pending.Remove(handoffId);
+                TryCompleteDrainSafeLocked();
+            }
         }
+    }
+
+    private void MarkDrainUnsafeLocked()
+    {
+        if (_drainSafe.Task.IsCompleted)
+            _drainSafe = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private void TryCompleteDrainSafeLocked()
+    {
+        if (_admitting.Count == 0
+            && !_pending.Values.Any(static pending => pending.Reply.Accepted))
+            _drainSafe.TrySetResult();
+    }
+
+    private static TaskCompletionSource CompletedSignal()
+    {
+        var signal = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        signal.SetResult();
+        return signal;
     }
 
     private sealed class PendingAdmission(

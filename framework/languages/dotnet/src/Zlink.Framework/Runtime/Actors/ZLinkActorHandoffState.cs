@@ -18,6 +18,7 @@ internal sealed class ZLinkActorHandoffState(
     private int _importedFrameCount;
     private bool _sourceTrailingImported;
     private TaskCompletionSource<ZLinkRemoteActorJoinReply>? _preparation;
+    private TaskCompletionSource? _sourceCompletion;
 
     public void BeginCapture()
     {
@@ -38,6 +39,8 @@ internal sealed class ZLinkActorHandoffState(
             _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
             _sourceTrailingImported = false;
             _sourcePhase = ZLinkActorSourceHandoffPhase.Capturing;
+            _sourceCompletion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             _frames.Clear();
             _arrivalIndex = 0;
         }
@@ -78,6 +81,7 @@ internal sealed class ZLinkActorHandoffState(
 
     public void CompleteSourceMigration()
     {
+        TaskCompletionSource? completion;
         lock (_gate)
         {
             if (_sourcePhase is not (ZLinkActorSourceHandoffPhase.CutoverPending
@@ -85,7 +89,25 @@ internal sealed class ZLinkActorHandoffState(
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' does not have a source migration to complete.");
             _sourcePhase = ZLinkActorSourceHandoffPhase.Retired;
+            completion = _sourceCompletion;
+            _sourceCompletion = null;
         }
+        completion?.TrySetResult();
+    }
+
+    public Task WaitForSourceCompletionAsync(CancellationToken cancellationToken)
+    {
+        Task completion;
+        lock (_gate)
+        {
+            if (_sourcePhase is not (ZLinkActorSourceHandoffPhase.Capturing
+                or ZLinkActorSourceHandoffPhase.CutoverPending
+                or ZLinkActorSourceHandoffPhase.ForwardingCommitted))
+                return Task.CompletedTask;
+            completion = (_sourceCompletion ??= new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+        return completion.WaitAsync(cancellationToken);
     }
 
     public bool TryCapture(ZLinkSpotActorFrame frame)
@@ -353,6 +375,7 @@ internal sealed class ZLinkActorHandoffState(
 
     public IReadOnlyList<ZLinkActorHandoffFrame> AbortCapture()
     {
+        TaskCompletionSource? completion;
         lock (_forwardGate)
         {
             lock (_gate)
@@ -367,7 +390,10 @@ internal sealed class ZLinkActorHandoffState(
                 _importedFrameCount = 0;
                 _sourceTrailingImported = false;
                 _staleSourceActor = null;
+                completion = _sourceCompletion;
+                _sourceCompletion = null;
                 ClearForwardingMappingLocked();
+                completion?.TrySetResult();
                 return frames;
             }
         }
@@ -417,6 +443,8 @@ internal sealed class ZLinkActorHandoffState(
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
+                _sourceCompletion?.TrySetResult();
+                _sourceCompletion = null;
                 _staleSourceActor = null;
                 ClearForwardingMappingLocked();
             }
@@ -440,6 +468,8 @@ internal sealed class ZLinkActorHandoffState(
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
+                _sourceCompletion?.TrySetException(failure);
+                _sourceCompletion = null;
                 _staleSourceActor = null;
                 ClearForwardingMappingLocked();
             }

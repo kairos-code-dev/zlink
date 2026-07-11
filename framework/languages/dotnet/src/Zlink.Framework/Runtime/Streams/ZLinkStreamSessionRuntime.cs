@@ -14,15 +14,20 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly ZLinkStreamSessionSerialExecutor _serial;
     private readonly IZLinkBackendStreamSocket _socket;
     private int _connected;
+    private readonly TaskCompletionSource _completion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private string? _explicitCloseReason;
     private int _disconnected;
     private int _disposed;
+    private int _streamMetricActive;
 
     public static async ValueTask<ZLinkStreamSessionRuntime> CreateAsync(
         IServiceProvider services,
         IZLinkBackendStreamSocket socket,
         RoutingId routingId,
         Type? headerSessionType,
-        Action<string> removeSession)
+        Action<string> removeSession,
+        string transport)
     {
         AsyncServiceScope scope = default;
         var scopeCreated = false;
@@ -35,7 +40,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 scope,
                 socket,
                 routingId,
-                removeSession);
+                removeSession,
+                transport);
             session.Initialize(headerSessionType);
             return session;
         }
@@ -55,13 +61,14 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         AsyncServiceScope scope,
         IZLinkBackendStreamSocket socket,
         RoutingId routingId,
-        Action<string> removeSession)
+        Action<string> removeSession,
+        string transport)
     {
         _scope = scope;
         _socket = socket;
         _removeSession = removeSession;
         _runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
-        Stream = new ZLinkManagedStream(socket, routingId, _runtime.Registration.Codecs);
+        Stream = new ZLinkManagedStream(socket, routingId, _runtime.Registration.Codecs, transport);
         _flow = new ZLinkMessageFlowTracer(
             _runtime.Registration.DispatchOptions,
             scope.ServiceProvider.GetService<ILogger<ZLinkStreamSessionRuntime>>(),
@@ -121,6 +128,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         var failures = new List<Exception>();
+        RecordStreamClosedMetric(
+            Volatile.Read(ref _explicitCloseReason) ?? "transport_error");
         await CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
         if (Interlocked.Exchange(ref _disconnected, 1) == 0)
             await CaptureAsync(() => _handler.OnDisconnectedAsync(CancellationToken.None)).ConfigureAwait(false);
@@ -198,12 +207,38 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Enqueue(MarkProxyClosedAsync);
     }
 
+    internal async ValueTask<bool> CloseForDrainAsync(CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _disconnected) != 0) return true;
+        try
+        {
+            var payload = ZLinkStreamSessionClosingCodec.EncodeServerDrain();
+            ZLinkStreamFrameWriter.Write(
+                Stream,
+                ZLinkStreamSessionClosingCodec.CreateHeader(),
+                payload.AsMemory(),
+                "Could not submit the session-closing control packet.");
+            Volatile.Write(ref _explicitCloseReason, "server_drain");
+            await CloseAsync().ConfigureAwait(false);
+            await _completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async ValueTask MarkConnectedAsync(string localAddr, string remoteAddr)
     {
         Stream.UpdateAddresses(localAddr, remoteAddr);
         if (Interlocked.Exchange(ref _connected, 1) != 0) return;
 
-        ZLinkRuntimeMetrics.RecordStreamOpened();
+        RecordStreamOpenedMetric();
         await _handler.OnConnectedAsync(CancellationToken.None);
     }
 
@@ -310,8 +345,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         ZLinkStreamError? error,
         bool notifyDisconnected)
     {
-        if (Volatile.Read(ref _connected) != 0)
-            ZLinkRuntimeMetrics.RecordStreamClosed(error is null ? "client_close" : "transport_error");
+        RecordStreamClosedMetric(
+            Volatile.Read(ref _explicitCloseReason)
+            ?? (error is null ? "client_close" : "transport_error"));
 
         Exception? callbackFailure = null;
         if (error is { } streamError)
@@ -340,6 +376,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             $"stream-session-dispose:{Stream.SessionId}",
             _ => DisposeAsync());
 
+        _completion.TrySetResult();
         if (callbackFailure is not null)
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(callbackFailure).Throw();
     }
@@ -357,7 +394,20 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
         if (Interlocked.CompareExchange(ref _connected, 1, 0) != 0) return ValueTask.CompletedTask;
 
+        RecordStreamOpenedMetric();
         return _handler.OnConnectedAsync(CancellationToken.None);
+    }
+
+    private void RecordStreamOpenedMetric()
+    {
+        if (Interlocked.Exchange(ref _streamMetricActive, 1) == 0)
+            ZLinkRuntimeMetrics.RecordStreamOpened();
+    }
+
+    private void RecordStreamClosedMetric(string reason)
+    {
+        if (Interlocked.Exchange(ref _streamMetricActive, 0) != 0)
+            ZLinkRuntimeMetrics.RecordStreamClosed(reason);
     }
 
     private static bool IsClosedReplyFailure(Exception exception)

@@ -19,8 +19,17 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             message,
             activation.Codecs);
         ZLinkUnawaitedSubmit.Observe(
-            activation.OutboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken),
+            SubmitAsync(parts, cancellationToken),
             "spot publish submit");
+    }
+
+    private async ValueTask SubmitAsync(
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken)
+    {
+        await activation.OutboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken)
+            .ConfigureAwait(false);
+        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
     }
 }
 
@@ -51,6 +60,9 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.GenerationEnabled);
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var packetName = _messageName;
@@ -79,6 +91,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
                 parts,
                 pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
                 cancellationToken).ConfigureAwait(false);
+        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
     }
 }
 

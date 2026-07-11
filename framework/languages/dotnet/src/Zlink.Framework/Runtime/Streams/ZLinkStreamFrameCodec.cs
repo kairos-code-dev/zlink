@@ -5,7 +5,7 @@ namespace Zlink.Framework.Runtime.Streams;
 internal static class ZLinkStreamFrameCodec
 {
     // Keep byte-compatible with Systems.Zlink.Stream.Connector framing; StreamWireInteropTests is the drift gate.
-    private const int PrefixSize = 6;
+    internal const int PrefixSize = 6;
 
     public static byte[] Encode(
         ReadOnlySpan<byte> header,

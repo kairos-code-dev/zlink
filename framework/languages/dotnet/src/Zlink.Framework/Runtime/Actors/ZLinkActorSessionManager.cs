@@ -26,6 +26,8 @@ internal sealed partial class ZLinkActorSessionManager(
     private ZLinkActorDispatchRouter DispatchRouter => _dispatchRouterInitialized
         ??= new ZLinkActorDispatchRouter(runtime, _actorSessions, BindActorContext);
 
+    internal ZLinkActorRuntimeState[] SnapshotStates() => _actorSessions.Snapshot();
+
     public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         string actorId,
         string actorType,

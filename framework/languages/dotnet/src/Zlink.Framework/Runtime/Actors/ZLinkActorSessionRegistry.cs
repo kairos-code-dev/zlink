@@ -58,4 +58,9 @@ internal sealed class ZLinkActorSessionRegistry
 
         foreach (var state in states) state.InvalidateRuntimeGeneration();
     }
+
+    public ZLinkActorRuntimeState[] Snapshot()
+    {
+        lock (_gate) return _states.Values.ToArray();
+    }
 }

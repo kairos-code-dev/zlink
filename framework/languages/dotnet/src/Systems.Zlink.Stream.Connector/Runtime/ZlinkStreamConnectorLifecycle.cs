@@ -20,6 +20,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     private Func<CancellationToken, ValueTask>? _sendHeartbeatPing;
     private CancellationTokenSource? _sessionCts;
     private ZlinkStreamConnectionState _state = ZlinkStreamConnectionState.Created;
+    private ZlinkStreamCloseReason? _lastCloseReason;
 
     public IZlinkStreamConnection? Connection
     {
@@ -44,6 +45,14 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     }
 
     public bool IsConnected => State == ZlinkStreamConnectionState.Connected;
+
+    internal ZlinkStreamCloseReason? LastCloseReason
+    {
+        get
+        {
+            lock (_gate) return _lastCloseReason;
+        }
+    }
 
     public void Dispose()
     {
@@ -102,6 +111,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
+        _ = cancellationToken;
         LifecycleSnapshot snapshot;
         Task? activeConnectTask;
         ZlinkStreamConnectionStateChanged? change;
@@ -140,6 +150,17 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     {
         await callbacks.PublishErrorAsync(error, cancellationToken).ConfigureAwait(false);
         await HandleDisconnectAsync(error, cancellationToken).ConfigureAwait(false);
+    }
+
+    public ValueTask HandleServerCloseAsync(
+        ZlinkStreamCloseReason closeReason,
+        string? diagnostic,
+        CancellationToken cancellationToken = default)
+    {
+        var error = new ZlinkStreamError(
+            ZlinkStreamErrorCode.Disconnected,
+            diagnostic ?? $"Server closed the stream session ({closeReason}).");
+        return HandleDisconnectAsync(error, cancellationToken, closeReason);
     }
 
     private async Task ConnectOnceAsync(CancellationToken cancellationToken)
@@ -186,6 +207,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             {
                 await Task.Delay(delay, _closeCts.Token).ConfigureAwait(false);
                 attempt++;
+                ZlinkStreamRuntimeMetrics.RecordReconnectAttempt();
 
                 try
                 {
@@ -319,7 +341,10 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask HandleDisconnectAsync(ZlinkStreamError error, CancellationToken cancellationToken)
+    private async ValueTask HandleDisconnectAsync(
+        ZlinkStreamError error,
+        CancellationToken cancellationToken,
+        ZlinkStreamCloseReason? explicitCloseReason = null)
     {
         LifecycleSnapshot snapshot;
         ZlinkStreamConnectionStateChanged? change;
@@ -329,6 +354,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             if (_state is ZlinkStreamConnectionState.Closed or ZlinkStreamConnectionState.Disconnected) return;
 
             snapshot = DetachLocked();
+            _lastCloseReason = explicitCloseReason ?? MapCloseReason(error);
             var nextState = options.Reconnect.Enabled
                 ? ZlinkStreamConnectionState.Reconnecting
                 : ZlinkStreamConnectionState.Disconnected;
@@ -342,13 +368,15 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             }
         }
 
-        reconnectStart?.Start();
         snapshot.SessionCts?.Cancel();
-        await CloseConnectionAsync(snapshot.Connection, cancellationToken).ConfigureAwait(false);
+        await CloseConnectionAsync(snapshot.Connection, CancellationToken.None).ConfigureAwait(false);
         snapshot.SessionCts?.Dispose();
-        await NotifyStateChangedAsync(change, cancellationToken).ConfigureAwait(false);
+        await NotifyStateChangedAsync(change, CancellationToken.None).ConfigureAwait(false);
         pending.FailAll(GetPendingDisconnectError(error));
-        await callbacks.NotifyDisconnectedAsync(MapCloseReason(error), cancellationToken).ConfigureAwait(false);
+        await callbacks.NotifyDisconnectedAsync(
+            explicitCloseReason ?? MapCloseReason(error),
+            CancellationToken.None).ConfigureAwait(false);
+        reconnectStart?.Start();
     }
 
     private async ValueTask TransitionToDisconnectedAsync(ZlinkStreamError error, CancellationToken cancellationToken)

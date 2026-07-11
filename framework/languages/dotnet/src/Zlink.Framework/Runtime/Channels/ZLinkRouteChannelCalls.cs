@@ -35,6 +35,9 @@ internal sealed class ZLinkRouteChannelCalls
         TMessage message,
         CancellationToken cancellationToken)
     {
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            _flow.GenerationEnabled);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             _routerChannelId,
@@ -60,6 +63,9 @@ internal sealed class ZLinkRouteChannelCalls
         IReadOnlyList<Message> payloadParts,
         CancellationToken cancellationToken)
     {
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            _flow.GenerationEnabled);
         var parts = PrependHeader(header, payloadParts);
 
         TraceRouteSent(
@@ -78,6 +84,9 @@ internal sealed class ZLinkRouteChannelCalls
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            _flow.GenerationEnabled);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             _routerChannelId,
@@ -117,6 +126,9 @@ internal sealed class ZLinkRouteChannelCalls
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            _flow.GenerationEnabled);
         var parts = PrependHeader(header, payloadParts);
 
         TraceRouteSent(
@@ -207,6 +219,8 @@ internal sealed class ZLinkRouteChannelCalls
     {
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
+        var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
+        var timedOut = false;
         try
         {
             return await _submitter
@@ -230,7 +244,12 @@ internal sealed class ZLinkRouteChannelCalls
         catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested
                                                  && !cancellationToken.IsCancellationRequested)
         {
+            timedOut = true;
             throw new TimeoutException("ZLink routed request timed out.");
+        }
+        finally
+        {
+            ZLinkRuntimeMetrics.CompleteChannelRequest(metricStarted, timedOut);
         }
     }
 }

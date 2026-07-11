@@ -9,6 +9,7 @@ internal sealed class ZLinkActorRuntimeState(
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _sessionGate = new();
     private Task<IZLinkActor>? _actorCreationTask;
+    private int _actorMetricActive;
     private ZLinkActorBoundSession? _boundSession;
     private TaskCompletionSource<Exception?>? _teardownAttempt;
 
@@ -99,6 +100,8 @@ internal sealed class ZLinkActorRuntimeState(
         if (ReferenceEquals(Actor, actor)) return false;
 
         Actor = actor;
+        if (Interlocked.Exchange(ref _actorMetricActive, 1) == 0)
+            ZLinkRuntimeMetrics.RecordActorCreated();
         IsConfigured = false;
         return true;
     }
@@ -123,7 +126,11 @@ internal sealed class ZLinkActorRuntimeState(
     public void RollBackActorConfiguration(bool clearAssignedActor)
     {
         IsConfigured = false;
-        if (clearAssignedActor) Actor = null;
+        if (clearAssignedActor)
+        {
+            Actor = null;
+            ClearActorMetric();
+        }
     }
 
     public void BindSession(
@@ -185,6 +192,7 @@ internal sealed class ZLinkActorRuntimeState(
         CurrentDispatch = null;
         Context = null;
         Actor = null;
+        ClearActorMetric();
         ActorType = null;
         IsConfigured = false;
         _destroyPhase = ZLinkActorDestroyPhase.None;
@@ -214,12 +222,19 @@ internal sealed class ZLinkActorRuntimeState(
         CurrentDispatch = null;
         Context = null;
         Actor = null;
+        ClearActorMetric();
         ActorType = null;
         IsConfigured = false;
         ContextInvalidated = true;
         _actorCreationTask = null;
         RetiredLocalActorRef = sourceActor;
         Handoff.CompleteSourceMigration();
+    }
+
+    private void ClearActorMetric()
+    {
+        if (Interlocked.Exchange(ref _actorMetricActive, 0) != 0)
+            ZLinkRuntimeMetrics.RecordActorClosed();
     }
 
     public void PrepareForTransferredActivation()
@@ -443,28 +458,31 @@ internal sealed class ZLinkActorRuntimeState(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask BeginHandoffCaptureAsync(CancellationToken cancellationToken)
+    public async ValueTask<int> BeginHandoffCaptureAsync(CancellationToken cancellationToken)
     {
         if (AmbientDispatch.Value is { IsActive: true } ownership
             && ReferenceEquals(ownership.State, this))
         {
-            await ExecuteLockedAsync(
+            return await ExecuteLockedAsync(
                     () =>
                     {
                         EnsureReusable();
+                        var pendingRequests = _dispatchMailbox.PendingCount;
                         Handoff.BeginCapture();
+                        return pendingRequests;
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
-            return;
         }
 
         using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
-        await ExecuteLockedAsync(
+        return await ExecuteLockedAsync(
                 () =>
                 {
                     EnsureReusable();
+                    var pendingRequests = _dispatchMailbox.PendingCount;
                     Handoff.BeginCapture();
+                    return pendingRequests;
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -475,7 +493,10 @@ internal sealed class ZLinkActorRuntimeState(
         Func<CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
-        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        using var turn = await _dispatchMailbox.EnterAsync(
+                cancellationToken,
+                countAsPendingMessage: true)
+            .ConfigureAwait(false);
         EnsureDispatchAvailable();
         using var dispatch = EnterDispatch(header);
         await operation(cancellationToken).ConfigureAwait(false);
@@ -486,7 +507,10 @@ internal sealed class ZLinkActorRuntimeState(
         Func<CancellationToken, ValueTask<T>> operation,
         CancellationToken cancellationToken)
     {
-        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        using var turn = await _dispatchMailbox.EnterAsync(
+                cancellationToken,
+                countAsPendingMessage: true)
+            .ConfigureAwait(false);
         EnsureDispatchAvailable();
         using var dispatch = EnterDispatch(header);
         return await operation(cancellationToken).ConfigureAwait(false);

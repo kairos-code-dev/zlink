@@ -5,8 +5,19 @@ internal sealed class ZLinkActorDispatchMailbox
     private readonly object _sync = new();
     private readonly Queue<Waiter> _waiters = new();
     private bool _busy;
+    private int _pendingMessages;
 
-    public ValueTask<Turn> EnterAsync(CancellationToken cancellationToken)
+    public int PendingCount
+    {
+        get
+        {
+            lock (_sync) return _pendingMessages;
+        }
+    }
+
+    public ValueTask<Turn> EnterAsync(
+        CancellationToken cancellationToken,
+        bool countAsPendingMessage = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -18,8 +29,13 @@ internal sealed class ZLinkActorDispatchMailbox
                 return ValueTask.FromResult(new Turn(this));
             }
 
-            var waiter = new Waiter(cancellationToken);
+            var waiter = new Waiter(cancellationToken, countAsPendingMessage);
             _waiters.Enqueue(waiter);
+            if (countAsPendingMessage)
+            {
+                _pendingMessages++;
+                ZLinkRuntimeMetrics.RecordActorMailboxEnqueued();
+            }
             return AwaitTurnAsync(waiter);
         }
     }
@@ -47,6 +63,11 @@ internal sealed class ZLinkActorDispatchMailbox
                 while (_waiters.Count > 0)
                 {
                     next = _waiters.Dequeue();
+                    if (next.CountsAsPendingMessage)
+                    {
+                        _pendingMessages--;
+                        ZLinkRuntimeMetrics.RecordActorMailboxStarted();
+                    }
                     if (!next.IsCanceled)
                     {
                         next.Owner = this;
@@ -93,8 +114,11 @@ internal sealed class ZLinkActorDispatchMailbox
         private readonly CancellationTokenRegistration _registration;
         private int _canceled;
 
-        public Waiter(CancellationToken cancellationToken)
+        public Waiter(
+            CancellationToken cancellationToken,
+            bool countsAsPendingMessage)
         {
+            CountsAsPendingMessage = countsAsPendingMessage;
             if (cancellationToken.CanBeCanceled)
                 _registration = cancellationToken.Register(
                     static state => ((Waiter)state!).Cancel(),
@@ -106,6 +130,8 @@ internal sealed class ZLinkActorDispatchMailbox
         public Task Task => _ready.Task;
 
         public bool IsCanceled => Volatile.Read(ref _canceled) != 0;
+
+        public bool CountsAsPendingMessage { get; }
 
         public void Dispose()
         {

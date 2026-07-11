@@ -16,6 +16,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly ZLinkActorHandoffAdmissions _actorHandoffAdmissions = new();
     private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
     private readonly ZLinkChannelRuntimeManager _channels;
+    private readonly ZLinkDrainAdmissionGate _drainAdmission;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private ZLinkRuntimeExecutionScope? _executionScope;
     private readonly object _operationGate = new();
@@ -45,6 +46,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         Services = services;
         _backendAdapterFactory = backendAdapterFactory;
         Registration = registration;
+        _drainAdmission = services.GetService<ZLinkDrainAdmissionGate>() ?? new ZLinkDrainAdmissionGate();
         _locationLifecycle = services.GetService<ZLinkLocationLifecycle>();
         _topologyQuery = services.GetService<IZLinkAutoConnectTopologyQuery>();
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
@@ -82,6 +84,35 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         this);
 
     internal IServiceProvider Services { get; }
+
+    internal ZLinkDrainAdmissionGate DrainAdmission => _drainAdmission;
+
+    internal async ValueTask<bool> DrainStreamSessionsAsync(CancellationToken cancellationToken)
+    {
+        var state = _state;
+        if (state is null) return true;
+        var drained = true;
+        foreach (var streamNode in state.StreamNodes.Values)
+            drained &= await streamNode.DrainSessionsAsync(cancellationToken).ConfigureAwait(false);
+        return drained;
+    }
+
+    internal async ValueTask DrainSpotsAsync(CancellationToken cancellationToken)
+    {
+        var state = _state;
+        if (state is null) return;
+        foreach (var spotNode in state.SpotNodes.Values)
+            await spotNode.DrainSpotsAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    internal Task SealAndWaitOperationsForDrainAsync()
+    {
+        _drainAdmission.Seal();
+        return StopAcceptingOperationsAsync();
+    }
+
+    internal Task WaitForAcceptedActorHandoffsAsync(CancellationToken cancellationToken) =>
+        _actorHandoffAdmissions.WaitUntilDrainSafeAsync(cancellationToken);
 
     internal object ExecutionOwner
     {

@@ -9,7 +9,8 @@ internal sealed class ZlinkStreamReceiveDispatcher(
     ZlinkStreamReceivedMessages receivedMessages,
     ZlinkStreamFrameSender frameSender,
     ZlinkStreamConnectorCallbacks callbacks,
-    ZlinkStreamInboundObserverDispatcher inboundObservers)
+    ZlinkStreamInboundObserverDispatcher inboundObservers,
+    Func<ZlinkStreamCloseReason, string?, CancellationToken, ValueTask> closeFromServer)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -41,10 +42,18 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
+        if (header.Name == ZlinkStreamSessionClosingCodec.ControlName)
+        {
+            var closing = ZlinkStreamSessionClosingCodec.Decode(payload.Span);
+            await closeFromServer(closing.Reason, closing.Diagnostic, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         if (payload.Length != 0)
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.FrameDecodeFailed,
-                "Control packet payload must be empty.");
+                "Heartbeat control packet payload must be empty.");
 
         if (header.Name == ZlinkStreamConnector.HeartbeatPingName)
         {

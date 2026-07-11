@@ -9,6 +9,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private readonly ZLinkStreamSessionSerialExecutor _sessionIngress;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly string _transport;
     private Task? _monitorLoop;
 
     public ZLinkStreamNodeRuntime(
@@ -17,15 +18,22 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         IZLinkBackendStreamSocket socket,
         IZLinkBackendSocketMonitor monitor,
         Type? headerSessionType,
-        ZLinkRuntimeTaskRunner taskRunner)
+        ZLinkRuntimeTaskRunner taskRunner,
+        string transport)
     {
         NodeName = nodeName;
         Socket = socket;
         Monitor = monitor;
         _taskRunner = taskRunner;
-        _sessionIngress = new ZLinkStreamSessionSerialExecutor(
-            services.GetRequiredService<ZLinkFrameworkRuntime>().ExecutionOwner);
-        _sessions = new ZLinkStreamSessionTable(services, socket, headerSessionType);
+        _transport = transport;
+        var runtime = services.GetRequiredService<ZLinkFrameworkRuntime>();
+        _sessionIngress = new ZLinkStreamSessionSerialExecutor(runtime.ExecutionOwner);
+        _sessions = new ZLinkStreamSessionTable(
+            services,
+            socket,
+            headerSessionType,
+            runtime.DrainAdmission,
+            transport);
     }
 
     public string NodeName { get; }
@@ -40,6 +48,9 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         _sessionIngress.RequestStop();
         _sessions.RequestStop();
     }
+
+    internal ValueTask<bool> DrainSessionsAsync(CancellationToken cancellationToken) =>
+        _sessions.DrainSessionsAsync(cancellationToken);
 
     public async ValueTask DisposeAsync()
     {
@@ -126,6 +137,12 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         Message header,
         Message payload)
     {
+        ZLinkRuntimeMetrics.RecordStreamBytes(
+            inbound: true,
+            ZLinkStreamFrameCodec.PrefixSize
+            + header.AsReadOnlyMemory().Length
+            + payload.AsReadOnlyMemory().Length,
+            _transport);
         if (_sessionIngress.Enqueue(async () =>
         {
             var ownershipTransferred = false;

@@ -31,6 +31,9 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
     private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         using var operation = _runtime.EnterOperation();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            _runtime.Flow.GenerationEnabled);
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
@@ -83,6 +86,9 @@ internal sealed class ZLinkRequestCall<TMessage>(
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         using var operation = runtime.EnterOperation();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.GenerationEnabled);
         var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var timeout = _timeout ?? registration.ResolveChannelRequestTimeout(channelName);
@@ -108,48 +114,48 @@ internal sealed class ZLinkRequestCall<TMessage>(
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
 
-        var reply = (bundle.Submitter
-                    ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
-            .SubmitRequestAsync<TReply>(
-                message,
-                (pending, complete, fail) => dealer.Request(
-                    pending,
-                    (result, replyMessage) => ZLinkEnvelopeReplyCompletion.Complete(
-                        result,
-                        replyMessage,
-                        complete,
-                        fail,
-                        "ZLink request",
-                        registration.Codecs),
-                    SendFlags.DontWait,
-                    timeout),
-                cancellationToken);
-
-        if (!traceReply) return await reply.ConfigureAwait(false);
-
-        return await TraceReplyAsync(reply, header, bundle.LocalRid, bundle.SocketRole)
-            .ConfigureAwait(false);
-    }
-
-    private async ValueTask<TReply> TraceReplyAsync<TReply>(
-        ValueTask<TReply> reply,
-        ZLinkEnvelopeHeader header,
-        string? localRid,
-        string? socketRole)
-    {
-        var result = await reply.ConfigureAwait(false);
-
-        runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowOutcome.ReplyReceived,
-            ZLinkDispatchErrorSurface.Channel,
-            ZLinkDispatchMessageKind.Response,
-            header.MessageName,
-            channelName,
-            CorrelationId: header.CorrelationId,
-            LocalRid: localRid,
-            SocketRole: socketRole));
-
-        return result;
+        var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
+        var timedOut = false;
+        try
+        {
+            var reply = (bundle.Submitter
+                        ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+                .SubmitRequestAsync<TReply>(
+                    message,
+                    (pending, complete, fail) => dealer.Request(
+                        pending,
+                        (result, replyMessage) => ZLinkEnvelopeReplyCompletion.Complete(
+                            result,
+                            replyMessage,
+                            complete,
+                            fail,
+                            "ZLink request",
+                            registration.Codecs),
+                        SendFlags.DontWait,
+                        timeout),
+                    cancellationToken);
+            var result = await reply.ConfigureAwait(false);
+            if (traceReply)
+                runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowOutcome.ReplyReceived,
+                    ZLinkDispatchErrorSurface.Channel,
+                    ZLinkDispatchMessageKind.Response,
+                    header.MessageName,
+                    channelName,
+                    CorrelationId: header.CorrelationId,
+                    LocalRid: bundle.LocalRid,
+                    SocketRole: bundle.SocketRole));
+            return result;
+        }
+        catch (TimeoutException)
+        {
+            timedOut = true;
+            throw;
+        }
+        finally
+        {
+            ZLinkRuntimeMetrics.CompleteChannelRequest(metricStarted, timedOut);
+        }
     }
 
 }
@@ -172,6 +178,9 @@ internal sealed class ZLinkPublishCall(
     private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.GenerationEnabled);
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetPublisherBundle(channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
@@ -204,5 +213,6 @@ internal sealed class ZLinkPublishCall(
                 envelopedMsg,
                 pending => publisher.Publish(topic, pending, SendFlags.DontWait),
                 cancellationToken).ConfigureAwait(false);
+        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
     }
 }

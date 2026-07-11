@@ -114,6 +114,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             header.FlowOrigin,
             dispatchErrors.Flow.GenerationEnabled,
             ZLinkFlowOrigin.Inbound);
+        ZLinkRuntimeMetrics.RecordFanoutReceived(message.Topic);
         var scope = CreateScope(
             header.MessageName,
             message.Topic,

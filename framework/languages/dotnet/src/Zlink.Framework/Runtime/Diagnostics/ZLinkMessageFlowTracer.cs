@@ -51,7 +51,8 @@ internal sealed class ZLinkMessageFlowTracer
 
         if (string.IsNullOrEmpty(flow.FlowId))
         {
-            var current = ZLinkFlowContext.CurrentOrCreate(ZLinkFlowOrigin.Application);
+            var current = ZLinkFlowContext.Current
+                          ?? ZLinkFlowContext.Create(ZLinkFlowOrigin.Application);
             flow = flow with { FlowId = current.FlowId, FlowOrigin = current.Origin };
         }
 

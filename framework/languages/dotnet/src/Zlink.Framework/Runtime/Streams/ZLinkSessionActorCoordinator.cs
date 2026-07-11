@@ -15,12 +15,20 @@ internal sealed class ZLinkSessionActorCoordinator(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(actor);
-        var actorRef = ResolveActorRefForBinding(actor);
-        await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
-        return await _bindings.BindAsync(
-            context,
-            actorRef.ToNative(),
-            cancellationToken).ConfigureAwait(false);
+        var metricStarted = ZLinkRuntimeMetrics.StartStreamSessionBind();
+        try
+        {
+            var actorRef = ResolveActorRefForBinding(actor);
+            await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
+            return await _bindings.BindAsync(
+                context,
+                actorRef.ToNative(),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ZLinkRuntimeMetrics.CompleteStreamSessionBind(metricStarted);
+        }
     }
 
     public ValueTask<IZLinkSessionActor> BindActorAsync(
@@ -56,13 +64,21 @@ internal sealed class ZLinkSessionActorCoordinator(
         ActorRef actor,
         CancellationToken cancellationToken)
     {
-        EnsureConcreteActorRef(actor);
-        var actorRef = actor.ToBackend();
-        await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
-        return await _bindings.BindAsync(
-            context,
-            actor,
-            cancellationToken).ConfigureAwait(false);
+        var metricStarted = ZLinkRuntimeMetrics.StartStreamSessionBind();
+        try
+        {
+            EnsureConcreteActorRef(actor);
+            var actorRef = actor.ToBackend();
+            await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
+            return await _bindings.BindAsync(
+                context,
+                actor,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ZLinkRuntimeMetrics.CompleteStreamSessionBind(metricStarted);
+        }
     }
 
     public IZLinkSessionActor? FindActor(string actorId)

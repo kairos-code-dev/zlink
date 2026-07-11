@@ -14,6 +14,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
     private readonly SemaphoreSlim _drainGate = new(1, 1);
     private readonly IZLinkRuntimeErrorSink _errorSink;
     private readonly CancellationToken _executionToken;
+    private readonly string? _spotMetricKind;
 
     private readonly Channel<ZLinkSerialWorkItem> _queue =
         Channel.CreateUnbounded<ZLinkSerialWorkItem>(
@@ -34,11 +35,13 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         ZLinkRuntimeTaskRunner taskRunner,
         IZLinkRuntimeErrorSink errorSink,
         CancellationToken executionToken,
-        int capacity = DefaultCapacity)
+        int capacity = DefaultCapacity,
+        string? spotMetricKind = null)
     {
         _taskRunner = taskRunner;
         _errorSink = errorSink;
         _executionToken = executionToken;
+        _spotMetricKind = spotMetricKind;
         _capacity = capacity > 0
             ? capacity
             : throw new ArgumentOutOfRangeException(nameof(capacity));
@@ -95,9 +98,14 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
                 return false;
             }
 
-            item = new ZLinkSerialWorkItem(callback);
+            var metricTimestamp = _spotMetricKind is null
+                ? 0
+                : ZLinkRuntimeMetrics.RecordSpotQueueEnqueued(_spotMetricKind);
+            item = new ZLinkSerialWorkItem(callback, metricTimestamp);
             if (!_queue.Writer.TryWrite(item))
             {
+                if (_spotMetricKind is not null)
+                    ZLinkRuntimeMetrics.RecordSpotQueueRemoved(_spotMetricKind);
                 CompletePendingItem();
                 item = null!;
                 return false;
@@ -150,6 +158,10 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         {
             while (_queue.Reader.TryRead(out var item))
             {
+                if (_spotMetricKind is not null)
+                    ZLinkRuntimeMetrics.RecordSpotQueueStarted(
+                        _spotMetricKind,
+                        item.MetricEnqueuedTimestamp);
                 var turn = new ZLinkSerialTurn(PostResume);
                 var result = await item.InvokeAsync(
                     ReportHandlerException,
@@ -201,6 +213,9 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         if (Volatile.Read(ref _completed) != 0) return false;
 
         Interlocked.Increment(ref _pendingCount);
+        var metricTimestamp = _spotMetricKind is null
+            ? 0
+            : ZLinkRuntimeMetrics.RecordSpotQueueEnqueued(_spotMetricKind);
         var item = new ZLinkSerialWorkItem(async _ =>
         {
             turn.ResetSuspension();
@@ -209,9 +224,11 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             if (ownerTask is null || ownerTask.IsCompleted) return;
 
             await Task.WhenAny(ownerTask, turn.Suspended).ConfigureAwait(false);
-        });
+        }, metricTimestamp);
         if (!_queue.Writer.TryWrite(item))
         {
+            if (_spotMetricKind is not null)
+                ZLinkRuntimeMetrics.RecordSpotQueueRemoved(_spotMetricKind);
             CompletePendingItem();
             return false;
         }

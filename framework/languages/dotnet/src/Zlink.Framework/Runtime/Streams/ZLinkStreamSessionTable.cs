@@ -5,11 +5,14 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkStreamSessionTable(
     IServiceProvider services,
     IZLinkBackendStreamSocket socket,
-    Type? headerSessionType)
+    Type? headerSessionType,
+    ZLinkDrainAdmissionGate drainAdmission,
+    string transport)
 {
     private readonly object _gate = new();
     private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
     private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
+    private bool _rejectNewSessions;
     private bool _stopping;
 
     public bool IsStopping
@@ -45,12 +48,19 @@ internal sealed class ZLinkStreamSessionTable(
     public async ValueTask<ZLinkStreamSessionRuntime?> GetOrCreateAsync(RoutingId routingId)
     {
         var sessionId = routingId.ToHex();
+        var reject = false;
         lock (_gate)
         {
             if (_stopping) return null;
 
             if (_sessions.TryGetValue(sessionId, out var existing))
                 return existing;
+            reject = _rejectNewSessions || drainAdmission.IsDraining;
+        }
+        if (reject)
+        {
+            RejectNewSession(routingId);
+            return null;
         }
 
         var created = await ZLinkStreamSessionRuntime.CreateAsync(
@@ -58,7 +68,8 @@ internal sealed class ZLinkStreamSessionTable(
                 socket,
                 routingId,
                 headerSessionType,
-                Remove)
+                Remove,
+                transport)
             .ConfigureAwait(false);
         ZLinkStreamSessionRuntime? duplicate = null;
         lock (_gate)
@@ -73,6 +84,12 @@ internal sealed class ZLinkStreamSessionTable(
                 duplicate = created;
                 created = existing;
             }
+            else if (_rejectNewSessions || drainAdmission.IsDraining)
+            {
+                duplicate = created;
+                created = null!;
+                reject = true;
+            }
             else
             {
                 _sessions.Add(sessionId, created);
@@ -80,7 +97,38 @@ internal sealed class ZLinkStreamSessionTable(
         }
 
         if (duplicate is not null) await duplicate.DisposeUncommittedAsync().ConfigureAwait(false);
+        if (reject) RejectNewSession(routingId);
         return created;
+    }
+
+    public async ValueTask<bool> DrainSessionsAsync(CancellationToken cancellationToken)
+    {
+        ZLinkStreamSessionRuntime[] sessions;
+        lock (_gate)
+        {
+            _rejectNewSessions = true;
+            sessions = _sessions.Values.ToArray();
+        }
+
+        var allClosed = true;
+        const int maximumConcurrency = 16;
+        for (var offset = 0; offset < sessions.Length; offset += maximumConcurrency)
+        {
+            var count = Math.Min(maximumConcurrency, sessions.Length - offset);
+            var closes = new Task<bool>[count];
+            for (var index = 0; index < count; index++)
+                closes[index] = sessions[offset + index]
+                    .CloseForDrainAsync(cancellationToken)
+                    .AsTask();
+            var results = await Task.WhenAll(closes).ConfigureAwait(false);
+            foreach (var closed in results)
+            {
+                if (closed) continue;
+                allClosed = false;
+                ZLinkRuntimeMetrics.RecordDrainForced("session");
+            }
+        }
+        return allClosed;
     }
 
     public void QueueConnectionMetadata(string localAddr, string remoteAddr)
@@ -138,6 +186,28 @@ internal sealed class ZLinkStreamSessionTable(
         lock (_gate)
         {
             _sessions.Remove(sessionId);
+        }
+    }
+
+    private void RejectNewSession(RoutingId routingId)
+    {
+        try
+        {
+            var payload = ZLinkStreamSessionClosingCodec.EncodeServerDrain();
+            ZLinkStreamFrameWriter.Write(
+                message => socket.Send(routingId, message, SendFlags.None),
+                ZLinkStreamSessionClosingCodec.CreateHeader(),
+                payload,
+                "Could not submit the session-closing control packet.",
+                transport);
+        }
+        catch
+        {
+            ZLinkRuntimeMetrics.RecordDrainForced("session");
+        }
+        finally
+        {
+            socket.DisconnectPeer(routingId);
         }
     }
 }

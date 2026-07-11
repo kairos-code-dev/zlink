@@ -22,6 +22,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly List<ZLinkAutoConnectLoop> _loops = [];
+    private readonly List<ZLinkAutoConnectReconciler> _reconcilers = [];
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ZLinkAutoConnectReconciler>
         _routeMeshReconcilers = new(StringComparer.Ordinal);
     private int _disposed;
@@ -207,6 +208,40 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         }
     }
 
+    internal async ValueTask<bool> MarkDrainingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var published = true;
+            foreach (var reconciler in _reconcilers)
+                published &= await reconciler.MarkDrainingAsync(cancellationToken).ConfigureAwait(false);
+            return published;
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
+    internal async ValueTask FreezeOwnerWritesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            foreach (var reconciler in _reconcilers)
+                await reconciler.FreezeOwnerWritesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -225,8 +260,11 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private async ValueTask DisposeGenerationAsync()
     {
         var loops = _loops.ToArray();
+        var reconcilers = _reconcilers.ToArray();
         _loops.Clear();
+        _reconcilers.Clear();
         _routeMeshReconcilers.Clear();
+        foreach (var reconciler in reconcilers) reconciler.RemovePeerMetric();
         List<Exception>? failures = null;
         foreach (var loop in loops)
         {
@@ -274,6 +312,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
             local, row, _runtime, _peers, executor, _options, _time, _events);
+        _reconcilers.Add(reconciler);
         if (type == ZLinkLocationAutoConnectType.RouteMesh)
             _routeMeshReconcilers[meshName] = reconciler;
         _loops.Add(new ZLinkAutoConnectLoop(

@@ -60,7 +60,8 @@ public sealed class RequestFailureMappingTests
         await using var submitter = new ZLinkAsyncSubmitter(
             _ => { },
             TimeSpan.FromSeconds(30),
-            CancellationToken.None);
+            CancellationToken.None,
+            failFastNotConnected: static () => true);
 
         var task = submitter.SubmitRequestAsync<string>(
             Message.From("payload"),

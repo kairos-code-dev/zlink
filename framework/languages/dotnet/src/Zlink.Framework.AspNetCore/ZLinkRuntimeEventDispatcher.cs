@@ -12,6 +12,18 @@ internal sealed class ZLinkRuntimeEventDispatcher(IServiceScopeFactory scopeFact
         await using var scope = scopeFactory.CreateAsyncScope();
         var handlers = scope.ServiceProvider.GetServices<IZLinkRuntimeEventHandler<TEvent>>();
 
-        foreach (var handler in handlers) await handler.HandleAsync(@event, cancellationToken);
+        foreach (var handler in handlers)
+            try
+            {
+                await handler.HandleAsync(@event, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(exception);
+            }
     }
 }

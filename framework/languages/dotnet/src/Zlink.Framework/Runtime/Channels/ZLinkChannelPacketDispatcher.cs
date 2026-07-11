@@ -11,15 +11,17 @@ internal sealed class ZLinkChannelPacketDispatcher
     private readonly ZLinkChannelPublishDispatchPipeline _publishPipeline;
     private readonly ZLinkChannelRequestDispatchPipeline _requestPipeline;
     private readonly ZLinkFrameworkRegistration _registration;
+    private readonly ZLinkFrameworkRuntime? _runtime;
 
     public ZLinkChannelPacketDispatcher(
         ZLinkHandlerRegistry handlerRegistry,
         ZLinkHandlerDispatcher dispatcher,
         ZLinkFrameworkRegistration registration,
-        ZLinkFrameworkRuntime runtime,
+        ZLinkFrameworkRuntime? runtime,
         ILogger<ZLinkChannelPacketDispatcher>? logger = null)
     {
         _registration = registration;
+        _runtime = runtime;
         var resolvedLogger = logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
         _dispatchErrors = new ZLinkDispatchErrorReporter(
             registration.DispatchOptions,
@@ -58,7 +60,40 @@ internal sealed class ZLinkChannelPacketDispatcher
     {
         if (received.Parts.Count == 0) return;
 
-        var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+        ZLinkEnvelopeHeader header;
+        try
+        {
+            header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+        }
+        catch (ZLinkEnvelopeProtocolException protocolError)
+        {
+            HandleProtocolError(channelName, router, received, protocolError);
+            return;
+        }
+        if (_runtime?.DrainAdmission.IsSealed == true)
+        {
+            if (header.Kind == ZLinkMessageKind.Request)
+            {
+                var error = new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestRejected,
+                    "The framework runtime is draining and no longer accepts new requests.",
+                    false);
+                ZLinkChannelReplyWriter.ReplyRequest(
+                    router,
+                    received,
+                    ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error),
+                    null,
+                    null);
+            }
+            return;
+        }
+        using var operation = _runtime?.EnterOperation()
+            ?? new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        using var currentFlow = ZLinkFlowContext.Enter(
+            header.FlowId,
+            header.FlowOrigin,
+            _dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
         if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
             _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Received,
@@ -95,6 +130,14 @@ internal sealed class ZLinkChannelPacketDispatcher
         if (topicMessage.Parts.Count == 0) return;
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts);
+        if (_runtime?.DrainAdmission.IsSealed == true) return;
+        using var operation = _runtime?.EnterOperation()
+            ?? new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        using var currentFlow = ZLinkFlowContext.Enter(
+            header.FlowId,
+            header.FlowOrigin,
+            _dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
 
         if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
             _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
@@ -141,6 +184,44 @@ internal sealed class ZLinkChannelPacketDispatcher
                     null),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private void HandleProtocolError(
+        string channelName,
+        IZLinkBackendRouterSocket router,
+        Received received,
+        ZLinkEnvelopeProtocolException protocolError)
+    {
+        var header = protocolError.Header;
+        using var flow = ZLinkFlowContext.Enter(
+            null,
+            null,
+            _dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
+        _dispatchErrors.Report(new ZLinkDispatchFailure(
+            ZLinkDispatchErrorSurface.Channel,
+            header.Kind == ZLinkMessageKind.Request
+                ? ZLinkDispatchMessageKind.Request
+                : ZLinkDispatchMessageKind.Send,
+            ZLinkDispatchErrorReason.InvalidFrame,
+            header.Kind == ZLinkMessageKind.Request
+                ? ZLinkDispatchErrorAction.ReplyError
+                : ZLinkDispatchErrorAction.Drop,
+            header.MessageName,
+            channelName,
+            CorrelationId: header.CorrelationId,
+            Exception: protocolError));
+        if (header.Kind != ZLinkMessageKind.Request) return;
+
+        ZLinkChannelReplyWriter.ReplyRequest(
+            router,
+            received,
+            ZLinkChannelReplyWriter.CreateProtocolErrorHeader(
+                channelName,
+                header,
+                protocolError.Message),
+            null,
+            null);
     }
 
     private static IReadOnlySet<string> ResolveMappedGroups(

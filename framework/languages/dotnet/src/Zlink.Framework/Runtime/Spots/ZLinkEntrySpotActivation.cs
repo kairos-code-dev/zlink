@@ -28,7 +28,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
     private ZLinkSerialExecutionQueue _serial = null!;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
-    private readonly ZLinkSpotTimerRegistry _timers = new();
+    private readonly ZLinkSpotTimerRegistry _timers;
     private bool _configurationOpen = true;
     private int _disposed;
 
@@ -45,6 +45,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         TimeSpan? sendTimeout)
     {
         _runtime = runtime;
+        _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.GenerationEnabled);
         _nativeSpot = nativeSpot;
         NodeRid = nodeRid;
         SpotNodeName = spotNodeName;
@@ -120,7 +121,8 @@ internal sealed partial class ZLinkEntrySpotActivation :
                 _stopSource.Token,
                 _runtime.ExecutionOwner),
             errorSink,
-            _stopSource.Token);
+            _stopSource.Token,
+            spotMetricKind: "entry");
     }
 
     public async ValueTask DisposeAsync()
@@ -229,14 +231,30 @@ internal sealed partial class ZLinkEntrySpotActivation :
     public ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
         return ExecuteAsync(
-            static (activation, ct) => activation.EntrySpot.OnInitializeAsync(ct),
+            static async (activation, ct) =>
+            {
+                using var flow = ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    activation._runtime.Flow.GenerationEnabled,
+                    ZLinkFlowOrigin.Lifecycle);
+                await activation.EntrySpot.OnInitializeAsync(ct).ConfigureAwait(false);
+            },
             cancellationToken);
     }
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
         await ExecuteAsync(
-            static (activation, ct) => activation.EntrySpot.OnClosingAsync(ct),
+            static async (activation, ct) =>
+            {
+                using var flow = ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    activation._runtime.Flow.GenerationEnabled,
+                    ZLinkFlowOrigin.Lifecycle);
+                await activation.EntrySpot.OnClosingAsync(ct).ConfigureAwait(false);
+            },
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -378,11 +396,20 @@ internal sealed partial class ZLinkEntrySpotActivation :
         CancellationToken cancellationToken)
     {
         await ExecuteAsync(
-            static (activation, state, ct) => activation._invoker.InvokeActorLifecycleAsync(
-                state.Descriptor,
-                state.Actor,
-                state.Request,
-                ct),
+            static async (activation, state, ct) =>
+            {
+                using var flow = ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    activation._runtime.Flow.GenerationEnabled,
+                    ZLinkFlowOrigin.Lifecycle);
+                await activation._invoker.InvokeActorLifecycleAsync(
+                        state.Descriptor,
+                        state.Actor,
+                        state.Request,
+                        ct)
+                    .ConfigureAwait(false);
+            },
             (Descriptor: descriptor, Actor: actor, Request: request),
             cancellationToken).ConfigureAwait(false);
     }
@@ -393,10 +420,19 @@ internal sealed partial class ZLinkEntrySpotActivation :
         CancellationToken cancellationToken)
     {
         await ExecuteAsync(
-            static (activation, state, ct) => activation._invoker.InvokeActorLifecycleAsync(
-                state.Descriptor,
-                state.Actor,
-                ct),
+            static async (activation, state, ct) =>
+            {
+                using var flow = ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    activation._runtime.Flow.GenerationEnabled,
+                    ZLinkFlowOrigin.Lifecycle);
+                await activation._invoker.InvokeActorLifecycleAsync(
+                        state.Descriptor,
+                        state.Actor,
+                        ct)
+                    .ConfigureAwait(false);
+            },
             (Descriptor: descriptor, Actor: actor),
             cancellationToken).ConfigureAwait(false);
     }

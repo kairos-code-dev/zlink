@@ -37,7 +37,10 @@ public sealed class FlowCorrelationTests
 
         release.SetResult();
         Assert.Null(await detached);
-        var application = ZLinkFlowContext.CurrentOrCreate(ZLinkFlowOrigin.Application);
+        using var applicationScope = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            createIfAbsent: true);
+        var application = Assert.IsType<ZLinkFlowValue>(ZLinkFlowContext.Current);
         Assert.NotEqual(flowId, application.FlowId);
         Assert.Equal(ZLinkFlowOrigin.Application, application.Origin);
     }

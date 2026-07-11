@@ -20,10 +20,11 @@ internal sealed partial class ZLinkSpotActivation :
     private readonly ZLinkSpotSerialExecutor _serial;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
-    private readonly ZLinkSpotTimerRegistry _timers = new();
+    private readonly ZLinkSpotTimerRegistry _timers;
     private ZLinkSpotActorHandlerRegistry? _actorHandlers;
     private bool _configurationOpen = true;
     private int _disposed;
+    private int _closingInvoked;
     private ZLinkSpotHandlerInvoker? _handlerInvoker;
     private IZLinkSpot? _spot;
 
@@ -38,6 +39,7 @@ internal sealed partial class ZLinkSpotActivation :
         TimeSpan? sendTimeout)
     {
         _runtime = runtime;
+        _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.GenerationEnabled);
         _scope = scope;
         NativeSpot = nativeSpot;
         NodeRid = nodeRid;
@@ -54,7 +56,11 @@ internal sealed partial class ZLinkSpotActivation :
             _runtime);
         Handlers = new ZLinkSpotHandlerRegistrySurface(this);
         Outbound = _outboundEndpoint;
-        _serial = new ZLinkSpotSerialExecutor(this, () => IsDisposed, _stopSource.Token);
+        _serial = new ZLinkSpotSerialExecutor(
+            this,
+            () => IsDisposed,
+            _stopSource.Token,
+            () => runtime.Flow.GenerationEnabled);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,
             nativeSpot,

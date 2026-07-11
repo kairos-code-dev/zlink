@@ -16,6 +16,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
+    private int _entrySpotMetricActive;
     private int _entrySpotLifecycleClosed;
 
     public ZLinkSpotNodeRuntime(
@@ -146,6 +147,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 _entrySpot = Node.EntrySpot();
                 new ZLinkEntrySpotDispatchPump(_runtime, null, _taskRunner)
                     .Attach(_entrySpot);
+                if (Interlocked.Exchange(ref _entrySpotMetricActive, 1) == 0)
+                    ZLinkRuntimeMetrics.RecordSpotCreated("entry");
             }
 
             return;
@@ -167,6 +170,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner)
             .Attach(entrySpot);
+        if (Interlocked.Exchange(ref _entrySpotMetricActive, 1) == 0)
+            ZLinkRuntimeMetrics.RecordSpotCreated("entry");
     }
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
@@ -218,6 +223,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         return await _spots.CloseAsync(spotRid, cancellationToken);
     }
+
+    internal ValueTask DrainSpotsAsync(CancellationToken cancellationToken) =>
+        _spots.DrainAsync(Registration.DrainPolicy, cancellationToken);
 
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
     {
@@ -328,6 +336,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
 
         await CaptureAsync(_entrySpot.DisposeAsync).ConfigureAwait(false);
+        if (Interlocked.Exchange(ref _entrySpotMetricActive, 0) != 0)
+            ZLinkRuntimeMetrics.RecordSpotClosed("entry");
         if (failures.Count == 1)
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
         if (failures.Count > 1) throw new AggregateException(failures);

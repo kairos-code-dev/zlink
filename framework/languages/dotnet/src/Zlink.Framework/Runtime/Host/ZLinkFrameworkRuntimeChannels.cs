@@ -146,20 +146,34 @@ internal sealed partial class ZLinkFrameworkRuntime
         try
         {
             using var operation = EnterOperation();
-            if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
-                throw CreateUnknownRouteTargetException(
-                    routerChannelId,
-                    targetNodeRid,
-                    $"SPOT '{targetSpotRid}'");
+            var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
+            var timedOut = false;
+            try
+            {
+                if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
+                    throw CreateUnknownRouteTargetException(
+                        routerChannelId,
+                        targetNodeRid,
+                        $"SPOT '{targetSpotRid}'");
 
-            return await _spotRouteRouter.RequestAsync(
-                routerChannelId,
-                targetNodeRid,
-                targetSpotRid,
-                parts,
-                timeout,
-                cancellationToken)
-                .ConfigureAwait(false);
+                return await _spotRouteRouter.RequestAsync(
+                        routerChannelId,
+                        targetNodeRid,
+                        targetSpotRid,
+                        parts,
+                        timeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                timedOut = true;
+                throw;
+            }
+            finally
+            {
+                ZLinkRuntimeMetrics.CompleteChannelRequest(metricStarted, timedOut);
+            }
         }
         finally
         {

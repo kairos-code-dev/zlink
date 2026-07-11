@@ -543,6 +543,11 @@ public interface IZLinkDrainControl
     ValueTask<ZLinkDrainResult> AwaitDrainedAsync(
         CancellationToken cancellationToken = default);
 }
+public static class ServiceCollectionExtensions
+{
+    public static IHealthChecksBuilder AddZLinkDrainHealthCheck(
+        this IHealthChecksBuilder builder);
+}
 ```
 
 | 공통 개념 | `.NET` |
@@ -551,7 +556,7 @@ public interface IZLinkDrainControl
 | SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/ReleaseAndRecreate})` |
 | terminal result | abstract `ZLinkDrainResult` + sealed `Drained`, `ForceStopped(ZLinkDrainForceReason Reason)`; reason은 `DeadlineExceeded`, `DrainingStatePublishFailed`, `OwnerCleanupFailed`, `TeardownFailed` |
 | 명시 제어(선택) | `IZLinkDrainControl` { `ValueTask<ZLinkDrainResult> DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(30초), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
-| readiness probe | `IZLinkDrainControl.IsReady` 또는 편의 `AddZLinkDrainHealthCheck()` |
+| readiness probe | `IZLinkDrainControl.IsReady` 또는 `IHealthChecksBuilder.AddZLinkDrainHealthCheck()` |
 | 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `SourceName` = 고정값 `"drain"` |
 
 ```csharp

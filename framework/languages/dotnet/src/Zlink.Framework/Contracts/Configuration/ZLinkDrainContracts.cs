@@ -16,7 +16,7 @@ public enum ZLinkDrainForceReason
 
 public abstract record ZLinkDrainResult
 {
-    protected ZLinkDrainResult()
+    private protected ZLinkDrainResult()
     {
     }
 }

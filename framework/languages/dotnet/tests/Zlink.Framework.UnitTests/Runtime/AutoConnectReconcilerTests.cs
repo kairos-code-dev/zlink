@@ -49,6 +49,42 @@ public sealed class AutoConnectReconcilerTests
         Assert.Equal("tcp://r:1", target.Endpoint);
     }
 
+    [Fact]
+    public void Planner_Keeps_Draining_Peer_Connected()
+    {
+        var local = Local(
+            ZLinkLocationAutoConnectType.ClientServer,
+            ZLinkLocationRole.Dealer,
+            "local",
+            "tcp://l:1");
+        var draining = Peer(
+            ZLinkLocationAutoConnectType.ClientServer,
+            ZLinkLocationRole.Router,
+            "remote",
+            "tcp://r:1") with { Draining = true };
+
+        var target = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(local, [draining])).Value;
+
+        Assert.Equal("tcp://r:1", target.Endpoint);
+    }
+
+    [Fact]
+    public async Task Draining_Marker_Is_Monotonic_Across_Subsequent_Renewal()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.Reconciler.TickAsync();
+
+        Assert.True(await fixture.Reconciler.MarkDrainingAsync());
+        await fixture.Reconciler.TickAsync();
+
+        var row = Assert.Single(await fixture.Store.ListPeersAsync(
+            new ZLinkPeerLocationFilter(
+                MeshName: "play",
+                Role: ZLinkLocationRole.Dealer,
+                Endpoint: "tcp://l:1")));
+        Assert.True(row.Draining);
+    }
+
     [Theory]
     [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
     [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]

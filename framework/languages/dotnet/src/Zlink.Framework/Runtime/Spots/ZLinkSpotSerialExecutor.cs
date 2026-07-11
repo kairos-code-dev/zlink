@@ -4,16 +4,19 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
 {
     private readonly ZLinkSpotActivation _activation;
     private readonly Func<bool> _isDisposed;
+    private readonly Func<bool> _flowGenerationEnabled;
     private readonly ZLinkSerialExecutionQueue _queue;
 
     public ZLinkSpotSerialExecutor(
         ZLinkSpotActivation activation,
         Func<bool> isDisposed,
         CancellationToken stopToken,
+        Func<bool>? flowGenerationEnabled = null,
         object? executionOwner = null)
     {
         _activation = activation;
         _isDisposed = isDisposed;
+        _flowGenerationEnabled = flowGenerationEnabled ?? AlwaysDisabled;
         var errorSink = new ZLinkRuntimeErrorSink();
         _queue = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(
@@ -21,8 +24,11 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                 stopToken,
                 executionOwner ?? activation?.RuntimeExecutionOwner ?? new object()),
             errorSink,
-            stopToken);
+            stopToken,
+            spotMetricKind: "user");
     }
+
+    private static bool AlwaysDisabled() => false;
 
     public async ValueTask DisposeAsync()
     {
@@ -50,9 +56,21 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         if (_isDisposed()) return;
 
         await _queue.RunAsync(
-                _ => ExecuteOperationAsync(operation, null, cancellationToken),
+                _ => ExecuteLifecycleOperationAsync(operation, cancellationToken),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask ExecuteLifecycleOperationAsync(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        using var flow = ZLinkFlowContext.Enter(
+            null,
+            null,
+            _flowGenerationEnabled(),
+            ZLinkFlowOrigin.Lifecycle);
+        await ExecuteOperationAsync(operation, null, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask ExecuteAsync<TState>(

@@ -34,6 +34,13 @@ internal sealed record ZLinkEnvelopeHeader(
     public ZLinkFlowOrigin? FlowOrigin { get; init; }
 }
 
+internal sealed class ZLinkEnvelopeProtocolException(
+    ZLinkEnvelopeHeader header,
+    string message) : InvalidOperationException(message)
+{
+    public ZLinkEnvelopeHeader Header { get; } = header;
+}
+
 internal static class ZLinkEnvelopeCodec
 {
     private const string JsonContentType = "application/json";
@@ -354,18 +361,26 @@ internal static class ZLinkEnvelopeCodec
     private static void ValidateProtocolHeader(ZLinkEnvelopeHeader header)
     {
         if (header.FormatMarker != ZlinkStreamFlowId.FormatMarker)
-            throw new InvalidOperationException("ZLink envelope format marker is invalid.");
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope format marker is invalid.");
 
         var hasFlowId = header.FlowId is not null;
         var hasFlowOrigin = header.FlowOrigin is not null;
         if (hasFlowId != hasFlowOrigin)
-            throw new InvalidOperationException("ZLink envelope flow id and origin must be present together.");
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope flow id and origin must be present together.");
 
         if (hasFlowId && !ZlinkStreamFlowId.IsValid(header.FlowId))
-            throw new InvalidOperationException("ZLink envelope flow id must be UUIDv7.");
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope flow id must be UUIDv7.");
 
         if (header.FlowOrigin is { } origin && !Enum.IsDefined(origin))
-            throw new InvalidOperationException("ZLink envelope flow origin is invalid.");
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope flow origin is invalid.");
     }
 
     private readonly record struct SimpleHeaderKey(

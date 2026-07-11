@@ -2,6 +2,7 @@ using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
 using ConnectorFrameCodec = Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing.ZlinkStreamFrameCodec;
 using ConnectorHeaderCodec = Systems.Zlink.Stream.Connector.Runtime.Protocol.ZlinkStreamHeaderCodec;
+using ConnectorClosingCodec = Systems.Zlink.Stream.Connector.Runtime.Protocol.ZlinkStreamSessionClosingCodec;
 using CoreFrameCodec = Zlink.Framework.Runtime.Streams.ZLinkStreamFrameCodec;
 using CoreHeaderCodec = Zlink.Framework.Runtime.Streams.ZLinkStreamHeaderCodec;
 
@@ -65,6 +66,21 @@ public sealed class StreamWireInteropTests
         var core = CoreFrameCodec.Encode(header.Span, payload);
 
         Assert.Equal(core, connector);
+    }
+
+    [Fact]
+    public void SessionClosingServerDrainPayload_DecodesInConnector()
+    {
+        var header = ZLinkStreamProtocolDefaults.EncodeHeader(
+            ZLinkStreamSessionClosingCodec.CreateHeader());
+        var decodedHeader = new ConnectorHeaderCodec().Decode(header);
+        var closing = ConnectorClosingCodec.Decode(
+            ZLinkStreamSessionClosingCodec.EncodeServerDrain("rolling drain"));
+
+        Assert.Equal(ConnectorClosingCodec.ControlName, decodedHeader.Name);
+        Assert.Equal(ZlinkStreamMessageKind.Control, decodedHeader.Kind);
+        Assert.Equal(ZlinkStreamCloseReason.ServerDrain, closing.Reason);
+        Assert.Equal("rolling drain", closing.Diagnostic);
     }
 
     private static ZlinkStreamHeader CreateHeader()

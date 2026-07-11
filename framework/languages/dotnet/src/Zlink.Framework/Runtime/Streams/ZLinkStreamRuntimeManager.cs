@@ -31,7 +31,8 @@ internal sealed class ZLinkStreamRuntimeManager(
                     socket,
                     monitor,
                     streamNodeRegistration.HeaderSessionType,
-                    state.TaskRunner);
+                    state.TaskRunner,
+                    streamNodeRegistration.TlsServer is null ? "tcp" : "tls");
                 state.StreamNodes.Add(streamNodeRegistration.StreamNodeName, runtime);
                 runtime.Start();
             }

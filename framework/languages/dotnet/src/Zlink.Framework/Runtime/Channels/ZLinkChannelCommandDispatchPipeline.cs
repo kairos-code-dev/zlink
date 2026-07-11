@@ -17,11 +17,6 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        using var currentFlow = ZLinkFlowContext.Enter(
-            header.FlowId,
-            header.FlowOrigin,
-            dispatchErrors.Flow.GenerationEnabled,
-            ZLinkFlowOrigin.Inbound);
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
             "Channel",

@@ -97,4 +97,21 @@ internal static class ZLinkChannelReplyWriter
             FlowOrigin = request.FlowOrigin
         };
     }
+
+    public static ZLinkEnvelopeHeader CreateProtocolErrorHeader(
+        string channelName,
+        ZLinkEnvelopeHeader request,
+        string message)
+    {
+        return new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Error,
+            channelName,
+            request.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            request.CorrelationId,
+            null,
+            null,
+            nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
+            message);
+    }
 }

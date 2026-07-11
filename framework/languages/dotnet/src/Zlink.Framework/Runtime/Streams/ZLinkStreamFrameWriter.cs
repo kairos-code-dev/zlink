@@ -6,11 +6,13 @@ internal static class ZLinkStreamFrameWriter
         Func<Message, bool> write,
         ZlinkStreamHeader header,
         ReadOnlySpan<byte> payload,
-        string failureMessage)
+        string failureMessage,
+        string transport = "tcp")
     {
         var frame = ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, payload);
         using var payloadMessage = Message.From(frame);
         if (!write(payloadMessage)) throw new InvalidOperationException(failureMessage);
+        ZLinkRuntimeMetrics.RecordStreamBytes(inbound: false, frame.Length, transport);
     }
 
     public static void Write(
@@ -19,7 +21,12 @@ internal static class ZLinkStreamFrameWriter
         ReadOnlyMemory<byte> payload,
         string failureMessage)
     {
-        Write(message => WriteRaw(stream, message), header, payload.Span, failureMessage);
+        Write(
+            message => WriteRaw(stream, message),
+            header,
+            payload.Span,
+            failureMessage,
+            ResolveTransport(stream));
     }
 
     public static void Write(
@@ -28,7 +35,12 @@ internal static class ZLinkStreamFrameWriter
         ReadOnlySpan<byte> payload,
         string failureMessage)
     {
-        Write(message => WriteRaw(stream, message), header, payload, failureMessage);
+        Write(
+            message => WriteRaw(stream, message),
+            header,
+            payload,
+            failureMessage,
+            ResolveTransport(stream));
     }
 
     private static bool WriteRaw(IZLinkStream stream, Message message)
@@ -37,4 +49,7 @@ internal static class ZLinkStreamFrameWriter
 
         return stream.Write(ZLinkMessage.From(message.ToArray()));
     }
+
+    private static string ResolveTransport(IZLinkStream stream) =>
+        stream is ZLinkManagedStream managed ? managed.Transport : "tcp";
 }

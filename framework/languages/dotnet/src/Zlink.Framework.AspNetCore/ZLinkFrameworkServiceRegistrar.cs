@@ -112,6 +112,9 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetServices<ZLinkHandlerEndpointDescriptor>()));
         services.TryAddSingleton<ZLinkHandlerDispatcher>();
         services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
+        services.TryAddSingleton<IZLinkRuntimeEventPublisher>(static provider =>
+            provider.GetRequiredService<ZLinkRuntimeEventDispatcher>());
+        services.TryAddSingleton<ZLinkDrainAdmissionGate>();
         services.AddSingleton(static provider =>
             new ZLinkFrameworkRuntime(
                 provider,
@@ -120,13 +123,31 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkHandlerRegistry>(),
                 provider.GetRequiredService<ZLinkHandlerDispatcher>()));
         services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
+        services.TryAddSingleton<IZLinkDrainExecutor>(provider =>
+            new ZLinkFrameworkDrainExecutor(
+                provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<ZLinkFrameworkRegistration>(),
+                registration.Locations.Options,
+                provider.GetService<ZLinkLocationAutoConnectHost>(),
+                provider.GetService<ZLinkLocationRuntime>()));
+        services.TryAddSingleton<ZLinkDrainCoordinator>(static provider =>
+            new ZLinkDrainCoordinator(
+                provider.GetRequiredService<ZLinkDrainAdmissionGate>(),
+                provider.GetRequiredService<IZLinkDrainExecutor>(),
+                provider.GetRequiredService<IZLinkRuntimeEventPublisher>(),
+                () => provider.GetRequiredService<ZLinkFrameworkRegistration>()
+                    .DispatchOptions.Diagnostics.EffectiveMessageFlow
+                    != ZLinkMessageFlowLogMode.Off));
+        services.TryAddSingleton<IZLinkDrainControl>(static provider =>
+            provider.GetRequiredService<ZLinkDrainCoordinator>());
         services.AddSingleton<IHostedService>(static provider =>
             new ZLinkFrameworkHostedService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                 provider.GetService<ZLinkMonitoringRegistration>(),
                 provider.GetService<ZLinkLocationRuntime>(),
                 provider.GetService<ZLinkLocationAutoConnectHost>(),
-                provider.GetService<ZLinkLocationLifecycle>()));
+                provider.GetService<ZLinkLocationLifecycle>(),
+                provider.GetRequiredService<ZLinkDrainCoordinator>()));
 
         return services;
     }

@@ -186,6 +186,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
             ZLinkTimerTick tick,
             CancellationToken cancellationToken)
         {
+            ZLinkRuntimeMetrics.RecordTimerLateness(tick.Delay);
             try
             {
                 await onTickAsync(tick, cancellationToken).ConfigureAwait(false);

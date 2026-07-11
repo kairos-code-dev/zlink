@@ -15,7 +15,19 @@ internal sealed class ZLinkMessageFlowObserverPump(
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
             SingleWriter = false
-        });
+        },
+        static dropped => ZLinkRuntimeMetrics.RecordObserverOverflow(
+            dropped.Outcome switch
+            {
+                ZLinkMessageFlowOutcome.Received => "received",
+                ZLinkMessageFlowOutcome.Dispatched => "dispatched",
+                ZLinkMessageFlowOutcome.Replied => "replied",
+                ZLinkMessageFlowOutcome.Dropped => "dropped",
+                ZLinkMessageFlowOutcome.Sent => "sent",
+                ZLinkMessageFlowOutcome.ReplyReceived => "reply_received",
+                ZLinkMessageFlowOutcome.Error => "error",
+                _ => "unknown"
+            }));
     private IZLinkMessageFlowObserver? _observer;
     private bool _ownsObserver;
     private int _draining;

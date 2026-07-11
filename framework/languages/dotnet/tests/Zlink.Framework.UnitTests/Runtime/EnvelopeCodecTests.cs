@@ -33,7 +33,7 @@ public sealed class EnvelopeCodecTests
 
         using var missingMarker = Message.From(
             "{\"Kind\":3,\"ChannelName\":\"play\",\"MessageName\":\"Move\",\"ContentType\":\"application/json\"}");
-        Assert.Throws<InvalidOperationException>(() => ZLinkEnvelopeCodec.DecodeHeader(missingMarker));
+        Assert.Throws<ZLinkEnvelopeProtocolException>(() => ZLinkEnvelopeCodec.DecodeHeader(missingMarker));
     }
 
     [Fact]

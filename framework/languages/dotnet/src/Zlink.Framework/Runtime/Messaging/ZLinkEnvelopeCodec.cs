@@ -220,6 +220,10 @@ internal static class ZLinkEnvelopeCodec
         return DecodeHeader(parts[0]);
     }
 
+    public static ZLinkEnvelopeProtocolException MissingHeader() => new(
+        InvalidProtocolHeader(),
+        "ZLink envelope header is missing.");
+
     public static object? DecodeBody(IReadOnlyList<Message> parts, Type bodyType)
     {
         return DecodeBody(parts, bodyType, null);
@@ -408,6 +412,39 @@ internal static class ZLinkEnvelopeCodec
         null,
         null,
         null);
+
+    public static (string? FlowId, ZLinkFlowOrigin? FlowOrigin) ValidFlow(
+        ZLinkEnvelopeHeader header)
+    {
+        if (header.FlowId is null
+            || header.FlowOrigin is not { } origin
+            || !ZlinkStreamFlowId.IsValid(header.FlowId)
+            || !Enum.IsDefined(origin))
+            return (null, null);
+
+        return (header.FlowId, origin);
+    }
+
+    public static string ProtocolErrorMessageName(ZLinkEnvelopeHeader header) =>
+        string.IsNullOrWhiteSpace(header.MessageName)
+            ? "$zlink.protocol-error"
+            : header.MessageName;
+
+    public static void ValidateDispatchHeader(ZLinkEnvelopeHeader header)
+    {
+        if (string.IsNullOrWhiteSpace(header.ChannelName))
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope channel name is missing.");
+        if (string.IsNullOrWhiteSpace(header.MessageName))
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope message name is missing.");
+        if (string.IsNullOrWhiteSpace(header.ContentType))
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope content type is missing.");
+    }
 
     private readonly record struct SimpleHeaderKey(
         ZLinkMessageKind Kind,

@@ -7,7 +7,8 @@ internal sealed class ZLinkStreamSessionTable(
     IZLinkBackendStreamSocket socket,
     Type? headerSessionType,
     ZLinkDrainAdmissionGate drainAdmission,
-    string transport)
+    string transport,
+    TimeProvider timeProvider)
 {
     private readonly object _gate = new();
     private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
@@ -32,6 +33,11 @@ internal sealed class ZLinkStreamSessionTable(
         {
             lock (_gate) return _sessions.Count;
         }
+    }
+
+    public ZLinkStreamSessionRuntime[] Snapshot()
+    {
+        lock (_gate) return _sessions.Values.ToArray();
     }
 
     public ZLinkStreamSessionRuntime[] Stop()
@@ -77,7 +83,8 @@ internal sealed class ZLinkStreamSessionTable(
                 routingId,
                 headerSessionType,
                 Remove,
-                transport)
+                transport,
+                timeProvider)
             .ConfigureAwait(false);
         ZLinkStreamSessionRuntime? duplicate = null;
         lock (_gate)

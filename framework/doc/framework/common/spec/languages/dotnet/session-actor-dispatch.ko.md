@@ -650,32 +650,40 @@ public `.NET` API 에서는 framework error 를 하나의 exception family 로
 ```csharp
 public sealed class ZLinkFrameworkException : Exception
 {
+    public ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind kind,
+        string message,
+        bool? isRetriable = null,
+        Exception? innerException = null);
+
     public ZLinkFrameworkErrorKind Kind { get; }
     public bool IsRetriable { get; }
 }
 
 public enum ZLinkFrameworkErrorKind
 {
-    ActorRouteNotFound,
-    ActorCreateFailed,
-    ActorAlreadyExists,
-    ActorTypeMismatch,
-    SpotCreateFailed,
-    SpotRouteNotFound,
-    SpotTypeMismatch,
-    ActorSessionNotBound,
-    HandlerNotFound,
-    RouteHandlerNotFound,
-    ActorDispatchHandlerNotFound,
-    PayloadDecodeFailed,
-    RouteNotConnected,
-    RequestTargetNotFound,
-    RequestRejected,
-    RequestProtocolError,
-    RequestFailed,
-    WorkerQueueFull,
-    WorkerTimedOut,
-    WorkerFailed,
+    ActorRouteNotFound = 0,
+    ActorCreateFailed = 1,
+    ActorAlreadyExists = 2,
+    ActorTypeMismatch = 3,
+    SpotCreateFailed = 4,
+    SpotRouteNotFound = 5,
+    SpotTypeMismatch = 6,
+    ActorSessionNotBound = 7,
+    HandlerNotFound = 8,
+    RouteHandlerNotFound = 9,
+    ActorDispatchHandlerNotFound = 10,
+    PayloadDecodeFailed = 11,
+    RouteNotConnected = 12,
+    RequestTargetNotFound = 13,
+    RequestRejected = 14,
+    RequestProtocolError = 15,
+    RequestFailed = 16,
+    WorkerQueueFull = 17,
+    WorkerTimedOut = 18,
+    WorkerFailed = 19,
+    ActorLocationStale = 20,
+    ActorCreateRejected = 21,
 }
 ```
 

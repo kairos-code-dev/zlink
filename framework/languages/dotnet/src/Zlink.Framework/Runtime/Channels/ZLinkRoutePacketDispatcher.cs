@@ -21,12 +21,17 @@ internal sealed class ZLinkRoutePacketDispatcher(
         Received received,
         CancellationToken cancellationToken)
     {
-        if (received.Parts.Count == 0) return;
+        if (received.Parts.Count == 0)
+        {
+            HandleProtocolError(received, ZLinkEnvelopeCodec.MissingHeader());
+            return;
+        }
 
         ZLinkEnvelopeHeader header;
         try
         {
             header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            ZLinkEnvelopeCodec.ValidateDispatchHeader(header);
         }
         catch (ZLinkEnvelopeProtocolException protocolError)
         {
@@ -299,18 +304,20 @@ internal sealed class ZLinkRoutePacketDispatcher(
         ZLinkEnvelopeProtocolException protocolError)
     {
         var header = protocolError.Header;
+        var isRequest = received.RequestSeq.HasValue;
+        var validFlow = ZLinkEnvelopeCodec.ValidFlow(header);
         using var flow = ZLinkFlowContext.Enter(
-            null,
-            null,
+            validFlow.FlowId,
+            validFlow.FlowOrigin,
             dispatchErrors.Flow.GenerationEnabled,
             ZLinkFlowOrigin.Inbound);
         dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.RouteMeshChannel,
-            header.Kind == ZLinkMessageKind.Request
+            isRequest
                 ? ZLinkDispatchMessageKind.Request
                 : ZLinkDispatchMessageKind.Send,
             ZLinkDispatchErrorReason.InvalidFrame,
-            header.Kind == ZLinkMessageKind.Request
+            isRequest
                 ? ZLinkDispatchErrorAction.ReplyError
                 : ZLinkDispatchErrorAction.Drop,
             header.MessageName,
@@ -318,7 +325,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
             SourceRid: received.RoutingId?.ToString(),
             CorrelationId: header.CorrelationId,
             Exception: protocolError));
-        if (header.Kind != ZLinkMessageKind.Request || received.RoutingId is not { } sourceRid) return;
+        if (!isRequest || received.RoutingId is not { } sourceRid) return;
 
         ZLinkChannelReplyWriter.ReplyEnvelope(
             router,

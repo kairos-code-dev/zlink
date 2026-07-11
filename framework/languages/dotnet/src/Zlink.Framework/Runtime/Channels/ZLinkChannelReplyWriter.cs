@@ -106,15 +106,20 @@ internal static class ZLinkChannelReplyWriter
         ZLinkEnvelopeHeader request,
         string message)
     {
+        var validFlow = ZLinkEnvelopeCodec.ValidFlow(request);
         return new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Error,
             channelName,
-            request.MessageName,
+            ZLinkEnvelopeCodec.ProtocolErrorMessageName(request),
             ZLinkEnvelopeCodec.DefaultContentType,
             request.CorrelationId,
             null,
             null,
             nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
-            message);
+            message)
+        {
+            FlowId = validFlow.FlowId,
+            FlowOrigin = validFlow.FlowOrigin
+        };
     }
 }

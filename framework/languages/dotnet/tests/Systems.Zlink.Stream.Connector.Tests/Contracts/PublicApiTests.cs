@@ -1,5 +1,6 @@
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
+using System.Reflection;
 using Xunit;
 
 public sealed partial class StreamConnectorTests
@@ -60,6 +61,63 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public void ConnectorCallInterfacesMatchTheFrozenSurface()
+    {
+        AssertMethod(
+            typeof(IZlinkStreamLifecycleCall),
+            nameof(IZlinkStreamLifecycleCall.Async),
+            typeof(ValueTask),
+            (typeof(CancellationToken), true));
+
+        AssertMethod(
+            typeof(IZlinkStreamSendCall),
+            nameof(IZlinkStreamSendCall.PacketName),
+            typeof(IZlinkStreamSendCall),
+            (typeof(string), false));
+        Assert.Equal(2, typeof(IZlinkStreamSendCall).GetMethods().Count(
+            static method => method.Name == nameof(IZlinkStreamSendCall.Metadata)));
+        AssertMethod(
+            typeof(IZlinkStreamSendCall),
+            nameof(IZlinkStreamSendCall.Compress),
+            typeof(IZlinkStreamSendCall));
+        AssertMethod(
+            typeof(IZlinkStreamSendCall),
+            nameof(IZlinkStreamSendCall.Submit),
+            typeof(void),
+            (typeof(CancellationToken), true));
+
+        Assert.Equal(2, typeof(IZlinkStreamRequestCall).GetMethods().Count(
+            static method => method.Name == nameof(IZlinkStreamRequestCall.Metadata)));
+        Assert.Equal(2, typeof(IZlinkStreamRequestCall).GetMethods().Count(
+            static method => method.Name == nameof(IZlinkStreamRequestCall.Submit)));
+        AssertMethod(
+            typeof(IZlinkStreamRequestCall),
+            nameof(IZlinkStreamRequestCall.Async),
+            typeof(ValueTask<ZlinkStreamEncodedPayload>),
+            (typeof(CancellationToken), true));
+        AssertMethod(
+            typeof(IZlinkStreamWaitCall),
+            nameof(IZlinkStreamWaitCall.Async),
+            typeof(ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>>),
+            (typeof(CancellationToken), true));
+
+        Assert.Empty(typeof(ZlinkStreamTypedSendBuilder).GetConstructors());
+        Assert.Empty(typeof(ZlinkStreamTypedRequestBuilder).GetConstructors());
+        Assert.Empty(typeof(ZlinkStreamTypedWaitBuilder<>).GetConstructors());
+        AssertMethod(
+            typeof(ZlinkStreamTypedSendBuilder),
+            nameof(ZlinkStreamTypedSendBuilder.Submit),
+            typeof(void),
+            (typeof(CancellationToken), true));
+        Assert.Contains(
+            typeof(ZlinkStreamTypedRequestBuilder).GetMethods(),
+            static method => method.Name == nameof(ZlinkStreamTypedRequestBuilder.Async)
+                             && method.IsGenericMethodDefinition
+                             && method.GetParameters() is [{ ParameterType: var token, HasDefaultValue: true }]
+                             && token == typeof(CancellationToken));
+    }
+
+    [Fact]
     public void DisconnectEventCarriesTheFrozenCloseReasonContract()
     {
         var eventInfo = typeof(IZlinkStreamConnector).GetEvent(nameof(IZlinkStreamConnector.Disconnected));
@@ -73,6 +131,47 @@ public sealed partial class StreamConnectorTests
                 "ClientClose", "HeartbeatTimeout", "IdleTimeout", "ProtocolError", "ServerDrain", "TransportError"
             },
             Enum.GetNames<ZlinkStreamCloseReason>().Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public void ConnectorOptionsMatchTheFrozenDefaults()
+    {
+        var endpoint = new Uri("tcp://127.0.0.1:1");
+        var options = new ZlinkStreamConnectorOptions { Endpoint = endpoint };
+
+        Assert.Equal(endpoint, options.Endpoint);
+        Assert.Null(options.Transport);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.ConnectTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.RequestTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.WaitTimeout);
+        Assert.Equal(64 * 1024, options.MaxSendPayloadSize);
+        Assert.Equal(64 * 1024, options.MaxReceivePayloadSize);
+        Assert.Equal(1024, options.MaxReceivedMessages);
+        Assert.Equal(1024, options.MaxPendingDispatchCallbacks);
+        Assert.Equal(1024, options.MaxInboundObserverNotifications);
+        Assert.Equal(0, options.MaxInboundObserverPayloadPreviewBytes);
+        Assert.False(options.SkipServerCertificateValidation);
+        Assert.Equal(ZlinkStreamDispatchMode.Manual, options.DispatchMode);
+        Assert.Equal(ZlinkStreamCompression.Lz4, options.Compression);
+        Assert.Null(options.CompressionCodec);
+        Assert.IsType<ZlinkStreamPacketNameResolver>(options.NameResolver);
+        Assert.Null(options.PayloadCodec);
+
+        Assert.True(options.Heartbeat.Enabled);
+        Assert.Equal(TimeSpan.FromSeconds(1), options.Heartbeat.Interval);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.Heartbeat.Timeout);
+        Assert.True(options.Reconnect.Enabled);
+        Assert.Equal(TimeSpan.FromMilliseconds(250), options.Reconnect.InitialDelay);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.Reconnect.MaxDelay);
+        Assert.Equal(2.0, options.Reconnect.BackoffFactor);
+        Assert.Equal(3, options.Reconnect.MaxAttempts);
+
+        var endpointProperty = typeof(ZlinkStreamConnectorOptions).GetProperty(
+            nameof(ZlinkStreamConnectorOptions.Endpoint))!;
+        Assert.Contains(
+            endpointProperty.GetCustomAttributesData(),
+            static attribute => attribute.AttributeType.FullName ==
+                                "System.Runtime.CompilerServices.RequiredMemberAttribute");
     }
 
     [Fact]
@@ -172,5 +271,21 @@ public sealed partial class StreamConnectorTests
             .Select(static line => line.TrimEnd('\r'))
             .Any(static line =>
                 InternalTypeDeclarationTokens.Any(token => line.StartsWith(token, StringComparison.Ordinal)));
+    }
+
+    private static void AssertMethod(
+        Type type,
+        string name,
+        Type returnType,
+        params (Type Type, bool HasDefault)[] expectedParameters)
+    {
+        var method = Assert.Single(type.GetMethods().Where(candidate =>
+            candidate.Name == name
+            && candidate.GetParameters().Select(static parameter => parameter.ParameterType)
+                .SequenceEqual(expectedParameters.Select(static parameter => parameter.Type))));
+        Assert.Equal(returnType, method.ReturnType);
+        Assert.Equal(
+            expectedParameters.Select(static parameter => parameter.HasDefault),
+            method.GetParameters().Select(static parameter => parameter.HasDefaultValue));
     }
 }

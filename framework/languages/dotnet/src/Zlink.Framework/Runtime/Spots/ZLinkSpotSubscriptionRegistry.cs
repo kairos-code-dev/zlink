@@ -91,6 +91,11 @@ internal sealed class ZLinkSpotSubscriptionRegistry
     {
         if (message.Parts.Count == 0)
         {
+            using var invalidFlow = ZLinkFlowContext.Enter(
+                null,
+                null,
+                dispatchErrors.Flow.GenerationEnabled,
+                ZLinkFlowOrigin.Inbound);
             CreateScope("<unknown>", message.Topic)
                 .Dropped(
                     logger,
@@ -112,12 +117,14 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         try
         {
             header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts);
+            ZLinkEnvelopeCodec.ValidateDispatchHeader(header);
         }
         catch (ZLinkEnvelopeProtocolException protocolError)
         {
+            var validFlow = ZLinkEnvelopeCodec.ValidFlow(protocolError.Header);
             using var invalidFlow = ZLinkFlowContext.Enter(
-                null,
-                null,
+                validFlow.FlowId,
+                validFlow.FlowOrigin,
                 dispatchErrors.Flow.GenerationEnabled,
                 ZLinkFlowOrigin.Inbound);
             CreateScope(

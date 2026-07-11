@@ -19,6 +19,32 @@
 `new ZLinkRedisLocationStore(redis => redis.SetConnectionString(...).SetKeyPrefix(...))`
 (`SetConfiguration(ConfigurationOptions)` 으로 StackExchange.Redis 옵션 직접 전달 가능).
 
+```csharp
+public sealed class ZLinkRedisLocationOptions
+{
+    public string? ConnectionString { get; set; }
+    public ConfigurationOptions? ConfigurationOptions { get; set; }
+    public string KeyPrefix { get; set; } = string.Empty;
+
+    public ZLinkRedisLocationOptions SetConnectionString(string connectionString);
+    public ZLinkRedisLocationOptions SetConfiguration(ConfigurationOptions configuration);
+    public ZLinkRedisLocationOptions SetKeyPrefix(string keyPrefix);
+}
+
+public sealed class ZLinkRedisLocationStore :
+    IZLinkLocationStore,
+    IZLinkLocationChangeStampStore,
+    IAsyncDisposable
+{
+    public ZLinkRedisLocationStore(ZLinkRedisLocationOptions options);
+    public ZLinkRedisLocationStore(Action<ZLinkRedisLocationOptions> configure);
+}
+```
+
+두 constructor는 같은 설정 계약을 사용한다. `KeyPrefix`는 빈 문자열일 수 없고,
+`ConnectionString`과 `ConfigurationOptions` 중 하나를 지정해야 한다.
+`ConfigurationOptions`를 지정하면 `ConnectionString`보다 먼저 적용한다.
+
 `AddLocationStore(...)` 와 `UseInMemoryLocationStores()` 는 서로 대체 관계다. 둘 다
 등록하면 startup 검증 오류다. 역할별 store 를 따로 등록하는 public API 는 없다. owner
 lease 와 위치 row 가 같은 물리 저장소에 있어야 오래된 소유자 판정과 위치 갱신을 같은

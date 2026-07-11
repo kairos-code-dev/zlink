@@ -224,7 +224,11 @@ public sealed class UnhandledDispatchPolicyTests
             null,
             null,
             null,
-            null);
+            null)
+        {
+            FlowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d",
+            FlowOrigin = ZLinkFlowOrigin.Application
+        };
         using var invalidHeaderPart = Message.From(
             System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
                 invalidHeader,
@@ -248,6 +252,54 @@ public sealed class UnhandledDispatchPolicyTests
                 nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
                 replyHeader.ErrorCode);
             Assert.Contains("format marker", replyHeader.ErrorMessage);
+            Assert.Equal(invalidHeader.FlowId, replyHeader.FlowId);
+            Assert.Equal(invalidHeader.FlowOrigin, replyHeader.FlowOrigin);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(reply);
+        }
+    }
+
+    [Fact]
+    public async Task Invalid_Json_Envelope_Replies_RequestProtocolError()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var services = new ServiceCollection().BuildServiceProvider();
+        var dispatcher = new ZLinkChannelPacketDispatcher(
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration),
+            registration,
+            null);
+        var endpoint = GetTcpEndpoint();
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var routerSocket = context.CreateRouterSocket();
+        await using var dealerSocket = context.CreateDealerSocket();
+        routerSocket.Options.Linger = TimeSpan.Zero;
+        dealerSocket.Options.Linger = TimeSpan.Zero;
+        routerSocket.Bind(endpoint);
+        dealerSocket.Connect(endpoint);
+        var router = new ZLinkBackendRouterSocketWrapper(routerSocket);
+        using var invalidHeader = Message.From("{");
+        using var body = Message.From("{}");
+
+        var requestTask = dealerSocket.Request()
+            .Message(invalidHeader)
+            .Message(body)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async();
+        using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));
+        await dispatcher.DispatchServerMessageAsync("play", router, received, CancellationToken.None);
+
+        var reply = await requestTask.WaitAsync(TimeSpan.FromSeconds(2));
+        try
+        {
+            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
+            Assert.Equal(ZLinkMessageKind.Error, replyHeader.Kind);
+            Assert.Equal(nameof(ZLinkFrameworkErrorKind.RequestProtocolError), replyHeader.ErrorCode);
+            Assert.Contains("header is invalid", replyHeader.ErrorMessage);
         }
         finally
         {
@@ -359,6 +411,7 @@ public sealed class UnhandledDispatchPolicyTests
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
+        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
         options.SetMessageFlowObserver(observer);
         var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);

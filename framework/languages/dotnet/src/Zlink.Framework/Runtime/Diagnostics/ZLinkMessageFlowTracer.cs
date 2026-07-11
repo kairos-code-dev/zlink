@@ -41,44 +41,57 @@ internal sealed class ZLinkMessageFlowTracer
     // after this returns true.
     public bool Enabled(ZLinkMessageFlowOutcome outcome)
     {
-        return (int)_options.Diagnostics.EffectiveMessageFlow >= (int)RequiredMode(outcome);
+        return LogEnabled(outcome) || ObserverEnabled;
     }
 
     public void Trace(ZLinkMessageFlowEvent flow)
     {
-        if (!Enabled(flow.Outcome)) return;
+        var logEnabled = LogEnabled(flow.Outcome);
+        var observerEnabled = ObserverEnabled;
+        if (!logEnabled && !observerEnabled) return;
 
         if (string.IsNullOrEmpty(flow.FlowId))
         {
-            var current = ZLinkFlowContext.Current
-                          ?? ZLinkFlowContext.Create(ZLinkFlowOrigin.Application);
-            flow = flow with { FlowId = current.FlowId, FlowOrigin = current.Origin };
+            var current = ZLinkFlowContext.Current;
+            if (current is null && GenerationEnabled)
+                current = ZLinkFlowContext.Create(ZLinkFlowOrigin.Application);
+            if (current is { } value)
+                flow = flow with { FlowId = value.FlowId, FlowOrigin = value.Origin };
         }
 
         // Sampling thins healthy traffic; dropped transitions always pass through.
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Dropped
-            && flow.Outcome != ZLinkMessageFlowOutcome.Error
-            && !Sample(flow.FlowId))
-            return;
+        var logSampled = logEnabled
+                         && (flow.Outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
+                             || Sample(flow.FlowId));
+        if (!logSampled && !observerEnabled) return;
 
         Interlocked.Increment(ref _tracedCount);
 
-        try
+        if (logSampled)
         {
-            LogDefault(flow);
-        }
-        catch (Exception ex)
-        {
-            ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
+            try
+            {
+                LogDefault(flow);
+            }
+            catch (Exception ex)
+            {
+                ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
+            }
         }
 
-        if (_options.MessageFlowObserver is null && _options.MessageFlowObserverType is null) return;
+        if (!observerEnabled) return;
 
         if (_runtime is not null)
             _runtime.TryEnqueueMessageFlowObserver(flow);
         else
             _observerPump?.Enqueue(flow);
     }
+
+    private bool ObserverEnabled =>
+        _options.MessageFlowObserver is not null || _options.MessageFlowObserverType is not null;
+
+    private bool LogEnabled(ZLinkMessageFlowOutcome outcome) =>
+        (int)_options.Diagnostics.EffectiveMessageFlow >= (int)RequiredMode(outcome);
 
     private static ZLinkMessageFlowLogMode RequiredMode(ZLinkMessageFlowOutcome outcome)
     {

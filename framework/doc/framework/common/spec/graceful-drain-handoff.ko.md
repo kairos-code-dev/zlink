@@ -274,6 +274,24 @@ reason 값은 `1=client_close`, `2=idle_timeout`, `3=heartbeat_timeout`, `4=serv
 socket 오류와 TLS/WS transport 실패는 connector가 `transport_error`로 합성한다. 모든 경우 connector는
 close reason을 저장한 뒤 disconnect event를 내보낸다.
 
+서버의 liveness 정책은 언어별 public 설정을 추가하지 않는 framework 내부 고정 정책이다. 모든 언어가
+다음 값을 같은 의미로 사용한다.
+
+- 서버가 1초마다 heartbeat ping을 보내고, 마지막 ping 뒤 5초 안에 pong을 받지 못하면
+  `heartbeat_timeout`으로 종료한다.
+- 애플리케이션 message를 30초 동안 받지 못하면 `idle_timeout`으로 종료한다. heartbeat와
+  `session-closing` 같은 control packet은 application idle 시간을 갱신하지 않는다.
+- application message는 idle 시간만 갱신하고, heartbeat pong은 heartbeat 응답 상태만 갱신한다.
+- 두 제한이 같은 검사 주기에 함께 만료되면 통신 불능을 더 직접적으로 나타내는
+  `heartbeat_timeout`을 먼저 적용한다.
+- 서버는 node마다 liveness 검사 loop 하나를 사용한다. session마다 timer나 task를 만들지 않으며,
+  실제 종료는 해당 session의 직렬 실행 queue에서 한 번만 수행한다.
+
+1초/5초는 connector의 기본 heartbeat와 같은 값이다. 30초 idle 제한은 heartbeat에는 응답하지만
+애플리케이션 message를 주고받지 않는 session을 정리하는 별도 제한이다. 이 값들은 wire와 운영 의미를
+언어 간 동일하게 유지하기 위한 고정 정책이므로 request timeout이나 location heartbeat 설정으로
+대체하지 않는다.
+
 대체 endpoint 선택과 재접속은 **앱/connector의 몫**으로 둔다. connector의 disconnect 이벤트/오류
 표면은 `closeReason`(닫힌 enum, [runtime-metrics §4.1](runtime-metrics.ko.md)의 `close_reason`과 정합)을
 노출한다. 언어별 projection은 각 connector 문서가 소유한다(예:

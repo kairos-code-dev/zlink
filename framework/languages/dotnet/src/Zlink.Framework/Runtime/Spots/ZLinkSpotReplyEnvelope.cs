@@ -50,16 +50,21 @@ internal static class ZLinkSpotReplyEnvelope
         ZLinkEnvelopeHeader request,
         string message)
     {
+        var validFlow = ZLinkEnvelopeCodec.ValidFlow(request);
         var replyHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Error,
             channelName,
-            request.MessageName,
+            ZLinkEnvelopeCodec.ProtocolErrorMessageName(request),
             ZLinkEnvelopeCodec.DefaultContentType,
             request.CorrelationId,
             null,
             null,
             nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
-            message);
+            message)
+        {
+            FlowId = validFlow.FlowId,
+            FlowOrigin = validFlow.FlowOrigin
+        };
         return ZLinkEnvelopeCodec.EncodeParts(replyHeader, null, null, null);
     }
 }

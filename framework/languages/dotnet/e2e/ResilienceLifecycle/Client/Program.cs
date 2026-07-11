@@ -28,7 +28,8 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RL-A5", () => RlA5ProviderFlappingScenario.RunAsync(consumer, registry, processes, providerA, providerB)),
     ("RL-B1", () => RlB1CancellationCleanupScenario.RunAsync(consumer, providerA, providerB)),
     ("RL-B2", () => RlB2CrashDuringInflightScenario.RunAsync(consumer, registry, processes, providerA, providerB)),
-    ("RL-B3", () => RlB3GracefulShutdownScenario.RunAsync(consumer, processes, providerA, providerB)),
+    ("RL-B3", () => RlB3GracefulShutdownScenario.RunAsync(
+        consumer, registry, processes, providerA, providerB)),
     ("RL-B4", () => RlB4RuntimeDrainScenario.RunAsync(consumer, providerA, providerB)),
     ("RL-B5", () => RlB5DrainInflightScenario.RunAsync(consumer, providerA, providerB)),
     ("RL-B6", () => RlB6GrayFaultScenario.RunAsync(consumer, providerA, providerB)),

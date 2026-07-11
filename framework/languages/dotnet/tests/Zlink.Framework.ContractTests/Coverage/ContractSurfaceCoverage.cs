@@ -3,6 +3,10 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Workers;
 using Zlink.Framework.ContractTests.Support;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Codecs.MessagePack;
+using Zlink.Framework.Codecs.Protobuf;
+using Zlink.Framework.Locations.Redis;
 
 namespace Zlink.Framework.ContractTests.Coverage;
 
@@ -144,14 +148,17 @@ public sealed class ContractSurfaceCoverage
         Assert.NotEmpty(documents);
         var canonicalText = string.Join(Environment.NewLine, documents);
 
-        var exportedContracts = typeof(IZLinkFrameworkOptions).Assembly.GetExportedTypes()
-            .Where(static type => type.Namespace?.StartsWith(
-                "Zlink.Framework.Contracts",
-                StringComparison.Ordinal) == true)
-            .Concat(typeof(IZlinkStreamConnector).Assembly.GetExportedTypes()
-                .Where(static type => type.Namespace?.StartsWith(
-                    "Systems.Zlink.Stream.Connector.Contracts",
-                    StringComparison.Ordinal) == true))
+        var exportedContracts = new[]
+            {
+                typeof(IZLinkFrameworkOptions).Assembly,
+                typeof(ServiceCollectionExtensions).Assembly,
+                typeof(ZLinkMessagePackCodec).Assembly,
+                typeof(ZLinkProtobufCodec).Assembly,
+                typeof(ZLinkRedisLocationStore).Assembly,
+                typeof(IZlinkStreamConnector).Assembly
+            }
+            .Distinct()
+            .SelectMany(static assembly => assembly.GetExportedTypes())
             .OrderBy(static type => type.FullName, StringComparer.Ordinal)
             .ToArray();
 

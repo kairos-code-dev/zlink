@@ -5,6 +5,26 @@ internal static class ZLinkStreamControlFrames
     private const string HeartbeatPingName = "$zlink.heartbeat.ping";
     private const string HeartbeatPongName = "$zlink.heartbeat.pong";
 
+    public static bool IsHeartbeatPong(ZlinkStreamHeader header) =>
+        header.Kind == ZlinkStreamMessageKind.Control
+        && header.Name == HeartbeatPongName;
+
+    public static void SendHeartbeatPing(ZLinkManagedStream stream)
+    {
+        var ping = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Control,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            HeartbeatPingName,
+            ZlinkStreamMetadata.Empty);
+        ZLinkStreamFrameWriter.Write(
+            stream,
+            ping,
+            ReadOnlySpan<byte>.Empty,
+            "Stream heartbeat ping send failed.");
+    }
+
     public static void Dispatch(
         ZLinkManagedStream stream,
         ZlinkStreamHeader header,

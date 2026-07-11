@@ -16,7 +16,8 @@ public sealed partial class RegressionTests
             "Outbound", "WorkflowPorts.cs"));
         var commerceSelfCheckClient = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi",
             "Infrastructure", "Http", "HttpOrderWorkflowSelfCheckClient.cs"));
-        var workflow = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Program.cs"));
+        var workflowHostFactory = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow",
+            "OrderWorkflowServerHostFactory.cs"));
         var workflowService = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Application",
             "OrderWorkflow", "OrderWorkflowService.cs"));
         var workflowSelfCheck = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Application",
@@ -98,9 +99,9 @@ public sealed partial class RegressionTests
         Assert.Contains("SHOPPINGMALL_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("SHOPPINGMALL_STORE_DIR", topology, StringComparison.Ordinal);
         Assert.Contains("new RedisCommerceStores(topology)", commerceApi, StringComparison.Ordinal);
-        Assert.Contains("new RedisCommerceStores(topology)", workflow, StringComparison.Ordinal);
+        Assert.Contains("new RedisCommerceStores(topology)", workflowHostFactory, StringComparison.Ordinal);
         Assert.Contains("/self-check/workflow/inventory-reserved", commerceApi, StringComparison.Ordinal);
-        Assert.Contains("/self-check/workflow/inventory-reserved", workflow, StringComparison.Ordinal);
+        Assert.Contains("/self-check/workflow/inventory-reserved", workflowHostFactory, StringComparison.Ordinal);
         Assert.Contains("/self-check/workflow/{orderId}/continue", commerceApi, StringComparison.Ordinal);
         Assert.Contains("PrepareInventoryReservedOrderUseCase", commerceApi, StringComparison.Ordinal);
         Assert.Contains("IOrderWorkflowSelfCheckClient", commerceWorkflowPorts, StringComparison.Ordinal);
@@ -119,7 +120,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("StartOrderWorkflowToInventoryRes", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("StartOrderWorkflowToInventoryRouteHandler", routeHandlers, StringComparison.Ordinal);
         Assert.DoesNotContain("StartToInventoryAsync", workflowService, StringComparison.Ordinal);
-        Assert.Contains("OrderWorkflowSelfCheckService", workflow, StringComparison.Ordinal);
+        Assert.Contains("OrderWorkflowSelfCheckService", workflowHostFactory, StringComparison.Ordinal);
         Assert.Contains("PrepareInventoryReservedCheckpointReq", workflowSpot, StringComparison.Ordinal);
         Assert.Contains("ContinueUntilInventoryReservedAsync(command.OrderId, cancellationToken)", workflowSelfCheck,
             StringComparison.Ordinal);

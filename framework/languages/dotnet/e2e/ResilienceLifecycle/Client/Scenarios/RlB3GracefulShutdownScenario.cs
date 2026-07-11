@@ -9,6 +9,7 @@ internal static class RlB3GracefulShutdownScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient consumer,
+        ZLinkHttpClient registry,
         ResilienceProcessManager processes,
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
@@ -34,6 +35,11 @@ internal static class RlB3GracefulShutdownScenario
 
             await Task.Delay(100);
         }
+
+        await processes.WaitProviderBExitedAsync();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryRes[]>();
 
         for (var i = 0; i < 12; i++)
         {

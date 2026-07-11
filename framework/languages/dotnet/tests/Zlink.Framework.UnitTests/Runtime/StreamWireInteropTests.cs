@@ -83,6 +83,27 @@ public sealed class StreamWireInteropTests
         Assert.Equal("rolling drain", closing.Diagnostic);
     }
 
+    [Theory]
+    [InlineData("idle", ZlinkStreamCloseReason.IdleTimeout)]
+    [InlineData("heartbeat", ZlinkStreamCloseReason.HeartbeatTimeout)]
+    [InlineData("drain", ZlinkStreamCloseReason.ServerDrain)]
+    [InlineData("protocol", ZlinkStreamCloseReason.ProtocolError)]
+    public void SessionClosingServerReasons_DecodeInConnector(
+        string producer,
+        ZlinkStreamCloseReason expected)
+    {
+        var payload = producer switch
+        {
+            "idle" => ZLinkStreamSessionClosingCodec.EncodeIdleTimeout(),
+            "heartbeat" => ZLinkStreamSessionClosingCodec.EncodeHeartbeatTimeout(),
+            "drain" => ZLinkStreamSessionClosingCodec.EncodeServerDrain(),
+            "protocol" => ZLinkStreamSessionClosingCodec.EncodeProtocolError(),
+            _ => throw new ArgumentOutOfRangeException(nameof(producer))
+        };
+
+        Assert.Equal(expected, ConnectorClosingCodec.Decode(payload).Reason);
+    }
+
     private static ZlinkStreamHeader CreateHeader()
     {
         return new ZlinkStreamHeader(

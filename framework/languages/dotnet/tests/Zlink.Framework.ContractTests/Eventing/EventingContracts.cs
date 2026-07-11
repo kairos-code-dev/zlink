@@ -67,6 +67,21 @@ public sealed class EventingContracts
         Assert.Equal(
             new[] { "DeadlineExceeded", "DrainingStatePublishFailed", "OwnerCleanupFailed", "TeardownFailed" },
             Enum.GetNames<ZLinkDrainForceReason>());
+        AssertEnumValues<ZLinkMessageFlowOutcome>(
+            ("Received", 0), ("Dispatched", 1), ("Replied", 2), ("Dropped", 3),
+            ("Sent", 4), ("ReplyReceived", 5), ("Error", 6));
+        AssertEnumValues<ZLinkDispatchErrorSurface>(
+            ("Channel", 0), ("RouteMeshChannel", 1), ("SpotRoute", 2),
+            ("SpotSubscription", 3), ("SpotActor", 4), ("StreamSession", 5));
+        AssertEnumValues<ZLinkDispatchMessageKind>(
+            ("Request", 0), ("Send", 1), ("Publish", 2), ("Response", 3),
+            ("Error", 4), ("ActorRequest", 5), ("ActorSend", 6));
+        AssertEnumValues<ZLinkDispatchErrorReason>(
+            ("HandlerMissing", 0), ("PayloadDecodeFailed", 1), ("HandlerException", 2),
+            ("InvalidFrame", 3), ("ReplyPathMissing", 4), ("UnexpectedReply", 5));
+        AssertEnumValues<ZLinkDispatchErrorAction>(("ReplyError", 0), ("Drop", 1));
+        AssertEnumValues<ZLinkDrainState>(
+            ("Serving", 0), ("Draining", 1), ("Drained", 2), ("ForceStopping", 3));
 
         var contract = typeof(IZLinkDrainControl);
         var isReady = contract.GetProperty(nameof(IZLinkDrainControl.IsReady));
@@ -108,6 +123,25 @@ public sealed class EventingContracts
         var flow = typeof(ZLinkMessageFlowEvent);
         Assert.Equal(typeof(string), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowId))!.PropertyType);
         Assert.Equal(typeof(ZLinkFlowOrigin), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowOrigin))!.PropertyType);
+        var flowConstructor = Assert.Single(flow.GetConstructors());
+        var flowParameters = flowConstructor.GetParameters();
+        Assert.Equal(18, flowParameters.Length);
+        Assert.All(flowParameters.Skip(3), static parameter => Assert.True(parameter.HasDefaultValue));
+        Assert.All(flowParameters.Skip(3), static parameter => Assert.Null(parameter.DefaultValue));
+
+        var now = DateTimeOffset.UtcNow;
+        var drainEvent = new ZLinkDrainEvent(now, ZLinkDrainState.Draining);
+        Assert.Equal(now, drainEvent.Timestamp);
+        Assert.Equal(ZLinkDrainState.Draining, drainEvent.State);
+        Assert.Equal("drain", drainEvent.SourceName);
+    }
+
+    private static void AssertEnumValues<TEnum>(params (string Name, int Value)[] expected)
+        where TEnum : struct, Enum
+    {
+        Assert.Equal(
+            expected,
+            Enum.GetValues<TEnum>().Select(static value => (value.ToString(), Convert.ToInt32(value))).ToArray());
     }
 
     private static void AssertDrainMethod(

@@ -20,6 +20,7 @@ CONFIGS=(
   StoreFailure
   ToActorMessaging
   AutomaticTurnDispatch
+  ObservabilityOps
 )
 
 cleanup_done=0

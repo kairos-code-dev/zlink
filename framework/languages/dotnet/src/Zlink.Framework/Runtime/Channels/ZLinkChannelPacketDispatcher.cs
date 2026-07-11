@@ -58,12 +58,17 @@ internal sealed class ZLinkChannelPacketDispatcher
         Received received,
         CancellationToken cancellationToken)
     {
-        if (received.Parts.Count == 0) return;
+        if (received.Parts.Count == 0)
+        {
+            HandleProtocolError(channelName, router, received, ZLinkEnvelopeCodec.MissingHeader());
+            return;
+        }
 
         ZLinkEnvelopeHeader header;
         try
         {
             header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            ZLinkEnvelopeCodec.ValidateDispatchHeader(header);
         }
         catch (ZLinkEnvelopeProtocolException protocolError)
         {
@@ -133,31 +138,21 @@ internal sealed class ZLinkChannelPacketDispatcher
         TopicMessage topicMessage,
         CancellationToken cancellationToken)
     {
-        if (topicMessage.Parts.Count == 0) return;
+        if (topicMessage.Parts.Count == 0)
+        {
+            ReportPublishProtocolError(channelName, topicMessage, ZLinkEnvelopeCodec.MissingHeader());
+            return;
+        }
 
         ZLinkEnvelopeHeader header;
         try
         {
             header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts);
+            ZLinkEnvelopeCodec.ValidateDispatchHeader(header);
         }
         catch (ZLinkEnvelopeProtocolException protocolError)
         {
-            using var invalidFlow = ZLinkFlowContext.Enter(
-                null,
-                null,
-                _dispatchErrors.Flow.GenerationEnabled,
-                ZLinkFlowOrigin.Inbound);
-            _dispatchErrors.Report(new ZLinkDispatchFailure(
-                ZLinkDispatchErrorSurface.Channel,
-                ZLinkDispatchMessageKind.Publish,
-                ZLinkDispatchErrorReason.InvalidFrame,
-                ZLinkDispatchErrorAction.Drop,
-                protocolError.Header.MessageName,
-                channelName,
-                topicMessage.Topic,
-                SourceRid: protocolError.Header.Source,
-                CorrelationId: protocolError.Header.CorrelationId,
-                Exception: protocolError));
+            ReportPublishProtocolError(channelName, topicMessage, protocolError);
             return;
         }
         ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease operation;
@@ -228,25 +223,27 @@ internal sealed class ZLinkChannelPacketDispatcher
         ZLinkEnvelopeProtocolException protocolError)
     {
         var header = protocolError.Header;
+        var isRequest = received.RequestSeq.HasValue;
+        var validFlow = ZLinkEnvelopeCodec.ValidFlow(header);
         using var flow = ZLinkFlowContext.Enter(
-            null,
-            null,
+            validFlow.FlowId,
+            validFlow.FlowOrigin,
             _dispatchErrors.Flow.GenerationEnabled,
             ZLinkFlowOrigin.Inbound);
         _dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.Channel,
-            header.Kind == ZLinkMessageKind.Request
+            isRequest
                 ? ZLinkDispatchMessageKind.Request
                 : ZLinkDispatchMessageKind.Send,
             ZLinkDispatchErrorReason.InvalidFrame,
-            header.Kind == ZLinkMessageKind.Request
+            isRequest
                 ? ZLinkDispatchErrorAction.ReplyError
                 : ZLinkDispatchErrorAction.Drop,
             header.MessageName,
             channelName,
             CorrelationId: header.CorrelationId,
             Exception: protocolError));
-        if (header.Kind != ZLinkMessageKind.Request) return;
+        if (!isRequest) return;
 
         ZLinkChannelReplyWriter.ReplyRequest(
             router,
@@ -257,6 +254,30 @@ internal sealed class ZLinkChannelPacketDispatcher
                 protocolError.Message),
             null,
             null);
+    }
+
+    private void ReportPublishProtocolError(
+        string channelName,
+        TopicMessage topicMessage,
+        ZLinkEnvelopeProtocolException protocolError)
+    {
+        var validFlow = ZLinkEnvelopeCodec.ValidFlow(protocolError.Header);
+        using var invalidFlow = ZLinkFlowContext.Enter(
+            validFlow.FlowId,
+            validFlow.FlowOrigin,
+            _dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
+        _dispatchErrors.Report(new ZLinkDispatchFailure(
+            ZLinkDispatchErrorSurface.Channel,
+            ZLinkDispatchMessageKind.Publish,
+            ZLinkDispatchErrorReason.InvalidFrame,
+            ZLinkDispatchErrorAction.Drop,
+            protocolError.Header.MessageName,
+            channelName,
+            topicMessage.Topic,
+            SourceRid: protocolError.Header.Source,
+            CorrelationId: protocolError.Header.CorrelationId,
+            Exception: protocolError));
     }
 
     private static IReadOnlySet<string> ResolveMappedGroups(

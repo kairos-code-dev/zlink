@@ -1,11 +1,13 @@
 using System.Diagnostics.Metrics;
+using System.Net;
+using System.Net.Sockets;
 using Bingo.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Codecs.Protobuf;
 
 if (args.Length < 2)
     throw new ArgumentException(
-        "Usage: ObservabilityOps.Trigger flow-action|error|metrics-reconnect <endpoint> | metrics-session <endpoint> <release-file> | hold-play <endpoint-a> <endpoint-b> | hold-session <endpoint>");
+        "Usage: ObservabilityOps.Trigger flow-action|error|metrics-reconnect|idle-session|heartbeat-session <endpoint> | metrics-session <endpoint> <release-file> | hold-play <endpoint-a> <endpoint-b> | hold-session <endpoint>");
 
 switch (args[0])
 {
@@ -26,6 +28,16 @@ switch (args[0])
         break;
     case "hold-session":
         await HoldSessionAsync(args[1]);
+        break;
+    case "idle-session":
+        await WaitForServerLivenessCloseAsync(
+            args[1],
+            "idle",
+            ZlinkStreamCloseReason.IdleTimeout,
+            TimeSpan.FromSeconds(40));
+        break;
+    case "heartbeat-session":
+        await WaitForHeartbeatTimeoutAsync(args[1]);
         break;
     default:
         throw new ArgumentException("Unknown trigger mode.");
@@ -177,6 +189,50 @@ static async Task HoldSessionAsync(string endpoint)
     Console.WriteLine($"OBS-C4 close_reason={reason}");
 }
 
+static async Task WaitForServerLivenessCloseAsync(
+    string endpoint,
+    string scenario,
+    ZlinkStreamCloseReason expected,
+    TimeSpan timeout)
+{
+    await using var connector = Create(endpoint, reconnectEnabled: false);
+    var disconnected = new TaskCompletionSource<ZlinkStreamCloseReason>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    connector.Disconnected += (change, _) =>
+    {
+        disconnected.TrySetResult(change.CloseReason);
+        return ValueTask.CompletedTask;
+    };
+    await AuthenticateAsync(connector, BingoSamplePlayers.Observer);
+    Console.WriteLine($"OBS-C4 {scenario}=ready");
+    var reason = await disconnected.Task.WaitAsync(timeout);
+    if (reason != expected)
+        throw new InvalidOperationException(
+            $"Server {scenario} close reason was {reason}, expected {expected}.");
+    Console.WriteLine($"OBS-C4 {scenario}_close_reason={reason}");
+}
+
+static async Task WaitForHeartbeatTimeoutAsync(string endpoint)
+{
+    await using var proxy = new ClientWriteDropProxy(new Uri(endpoint));
+    await using var connector = Create(proxy.Endpoint.ToString(), reconnectEnabled: false);
+    var disconnected = new TaskCompletionSource<ZlinkStreamCloseReason>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    connector.Disconnected += (change, _) =>
+    {
+        disconnected.TrySetResult(change.CloseReason);
+        return ValueTask.CompletedTask;
+    };
+    await AuthenticateAsync(connector, BingoSamplePlayers.Observer);
+    proxy.DropClientWrites();
+    Console.WriteLine("OBS-C4 heartbeat=ready");
+    var reason = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(20));
+    if (reason != ZlinkStreamCloseReason.HeartbeatTimeout)
+        throw new InvalidOperationException(
+            $"Server heartbeat close reason was {reason}, expected HeartbeatTimeout.");
+    Console.WriteLine($"OBS-C4 heartbeat_close_reason={reason}");
+}
+
 static async Task AuthenticateAsync(IZlinkStreamConnector connector, string player)
 {
     await connector.Connect.Async();
@@ -184,7 +240,10 @@ static async Task AuthenticateAsync(IZlinkStreamConnector connector, string play
         .Async<AuthenticateRes>();
 }
 
-static IZlinkStreamConnector Create(string endpoint, bool persistentReconnect = false) =>
+static IZlinkStreamConnector Create(
+    string endpoint,
+    bool persistentReconnect = false,
+    bool reconnectEnabled = true) =>
     ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
     {
         Endpoint = new Uri(endpoint),
@@ -199,7 +258,89 @@ static IZlinkStreamConnector Create(string endpoint, bool persistentReconnect = 
                 BackoffFactor = 2,
                 MaxAttempts = null
             }
-            : new ZlinkStreamReconnectOptions(),
+            : new ZlinkStreamReconnectOptions { Enabled = reconnectEnabled },
         DispatchMode = ZlinkStreamDispatchMode.Immediate,
         PayloadCodec = ZLinkProtobufCodec.Default
     });
+
+internal sealed class ClientWriteDropProxy : IAsyncDisposable
+{
+    private readonly CancellationTokenSource _stop = new();
+    private readonly TcpListener _listener;
+    private readonly Task _run;
+    private readonly Uri _upstream;
+    private TcpClient? _client;
+    private TcpClient? _server;
+    private int _dropClientWrites;
+
+    public ClientWriteDropProxy(Uri upstream)
+    {
+        _upstream = upstream;
+        _listener = new TcpListener(IPAddress.Loopback, 0);
+        _listener.Start();
+        var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+        Endpoint = new Uri($"tcp://127.0.0.1:{port}");
+        _run = RunAsync(_stop.Token);
+    }
+
+    public Uri Endpoint { get; }
+
+    public void DropClientWrites()
+    {
+        Volatile.Write(ref _dropClientWrites, 1);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _stop.Cancel();
+        _listener.Stop();
+        _client?.Dispose();
+        _server?.Dispose();
+        try
+        {
+            await _run.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        _stop.Dispose();
+    }
+
+    private async Task RunAsync(CancellationToken cancellationToken)
+    {
+        _client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+        _server = new TcpClient();
+        await _server.ConnectAsync(_upstream.Host, _upstream.Port, cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(
+                PumpAsync(
+                    _client.GetStream(),
+                    _server.GetStream(),
+                    dropClientWrites: true,
+                    cancellationToken),
+                PumpAsync(
+                    _server.GetStream(),
+                    _client.GetStream(),
+                    dropClientWrites: false,
+                    cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private async Task PumpAsync(
+        NetworkStream source,
+        NetworkStream target,
+        bool dropClientWrites,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[16 * 1024];
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var count = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (count == 0) return;
+            if (dropClientWrites && Volatile.Read(ref _dropClientWrites) != 0) continue;
+            await target.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+        }
+    }
+}

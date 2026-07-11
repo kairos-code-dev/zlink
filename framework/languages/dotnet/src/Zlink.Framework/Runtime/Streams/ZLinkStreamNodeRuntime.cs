@@ -9,7 +9,9 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private readonly ZLinkStreamSessionSerialExecutor _sessionIngress;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly TimeProvider _timeProvider;
     private readonly string _transport;
+    private Task? _livenessLoop;
     private Task? _monitorLoop;
 
     public ZLinkStreamNodeRuntime(
@@ -19,12 +21,14 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         IZLinkBackendSocketMonitor monitor,
         Type? headerSessionType,
         ZLinkRuntimeTaskRunner taskRunner,
-        string transport)
+        string transport,
+        TimeProvider? timeProvider = null)
     {
         NodeName = nodeName;
         Socket = socket;
         Monitor = monitor;
         _taskRunner = taskRunner;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _transport = transport;
         var runtime = services.GetRequiredService<ZLinkFrameworkRuntime>();
         _sessionIngress = new ZLinkStreamSessionSerialExecutor(runtime.ExecutionOwner);
@@ -33,7 +37,8 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             socket,
             headerSessionType,
             runtime.DrainAdmission,
-            transport);
+            transport,
+            _timeProvider);
     }
 
     public string NodeName { get; }
@@ -66,6 +71,22 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             try
             {
                 await _monitorLoop;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+
+        if (_livenessLoop is not null)
+            try
+            {
+                await _livenessLoop;
             }
             catch (OperationCanceledException)
             {
@@ -124,6 +145,9 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         _monitorLoop = _taskRunner.Run(
             $"stream-monitor:{NodeName}",
             runtimeToken => new ValueTask(RunMonitorLoopUntilStoppedAsync(runtimeToken)));
+        _livenessLoop = _taskRunner.Run(
+            $"stream-liveness:{NodeName}",
+            runtimeToken => new ValueTask(RunLivenessLoopUntilStoppedAsync(runtimeToken)));
     }
 
     private async Task RunMonitorLoopUntilStoppedAsync(CancellationToken runtimeToken)
@@ -132,6 +156,22 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             _stopSource.Token,
             runtimeToken);
         await RunMonitorLoopAsync(stop.Token).ConfigureAwait(false);
+    }
+
+    private async Task RunLivenessLoopUntilStoppedAsync(CancellationToken runtimeToken)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(
+            _stopSource.Token,
+            runtimeToken);
+        while (!stop.IsCancellationRequested)
+        {
+            await Task.Delay(
+                    ZLinkStreamSessionLiveness.SweepInterval,
+                    _timeProvider,
+                    stop.Token)
+                .ConfigureAwait(false);
+            foreach (var session in _sessions.Snapshot()) session.CheckLiveness();
+        }
     }
 
     private void OnFramedPacket(

@@ -709,6 +709,17 @@ print("OBS-C3 release-and-recreate PASS")
 PY
 
 dotnet "$TRIGGER_DLL" \
+  idle-session "$BINGO_SESSION_B_STREAM_ENDPOINT" \
+  >"$LOG_DIR/idle-session.stdout.log" 2>"$LOG_DIR/idle-session.stderr.log"
+grep -q "OBS-C4 idle_close_reason=IdleTimeout" "$LOG_DIR/idle-session.stdout.log"
+
+dotnet "$TRIGGER_DLL" \
+  heartbeat-session "$BINGO_SESSION_B_STREAM_ENDPOINT" \
+  >"$LOG_DIR/heartbeat-session.stdout.log" 2>"$LOG_DIR/heartbeat-session.stderr.log"
+grep -q "OBS-C4 heartbeat_close_reason=HeartbeatTimeout" "$LOG_DIR/heartbeat-session.stdout.log"
+echo "OBS-C4 liveness PASS"
+
+dotnet "$TRIGGER_DLL" \
   hold-session "$BINGO_SESSION_B_STREAM_ENDPOINT" \
   >"$LOG_DIR/hold-session.stdout.log" 2>"$LOG_DIR/hold-session.stderr.log" &
 hold_session_pid=$!

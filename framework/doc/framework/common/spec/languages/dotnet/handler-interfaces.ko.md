@@ -2408,7 +2408,7 @@ public interface IZLinkFrameworkOptions
 
     IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName);
 
-    IZLinkSpotNodeBuilder AddSpotMesh(string channelName);
+    IZLinkSpotMeshBuilder AddSpotMesh(string channelName);
 
 }
 ```
@@ -4360,6 +4360,30 @@ public sealed class ZlinkStreamException : Exception
     public ZlinkStreamError Error { get; }
 }
 
+public sealed class ZlinkStreamConnectorOptions
+{
+    public required Uri Endpoint { get; init; }
+    public ZlinkStreamTransport? Transport { get; init; }
+    public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public TimeSpan WaitTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    public ZlinkStreamHeartbeatOptions Heartbeat { get; init; } = new();
+    public ZlinkStreamReconnectOptions Reconnect { get; init; } = new();
+    public int MaxSendPayloadSize { get; init; } = 64 * 1024;
+    public int MaxReceivePayloadSize { get; init; } = 64 * 1024;
+    public int MaxReceivedMessages { get; init; } = 1024;
+    public int MaxPendingDispatchCallbacks { get; init; } = 1024;
+    public int MaxInboundObserverNotifications { get; init; } = 1024;
+    public int MaxInboundObserverPayloadPreviewBytes { get; init; }
+    public bool SkipServerCertificateValidation { get; init; }
+    public ZlinkStreamDispatchMode DispatchMode { get; init; } = ZlinkStreamDispatchMode.Manual;
+    public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.Lz4;
+    public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
+    public IZlinkStreamPacketNameResolver NameResolver { get; init; }
+        = new ZlinkStreamPacketNameResolver();
+    public IZlinkStreamPayloadCodec? PayloadCodec { get; init; }
+}
+
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public sealed class ZlinkStreamPacketNameAttribute(string name) : Attribute
 {
@@ -4386,6 +4410,12 @@ public sealed class ZlinkStreamReconnectOptions
     public int? MaxAttempts { get; init; } = 3;
 }
 ```
+
+위 heartbeat option은 connector가 서버 응답을 감시하는 설정이다. framework STREAM 서버도 공통
+liveness 정책에 따라 1초마다 ping을 보내고 5초 동안 pong이 없으면 `HeartbeatTimeout`, application
+message가 30초 동안 없으면 `IdleTimeout`으로 session을 종료한다. control packet은 application idle
+시간을 갱신하지 않는다. 서버 값은 언어 간 같은 동작을 위한 내부 고정 정책이며
+`IZLinkStreamNodeBuilder`에 별도 설정을 추가하지 않는다.
 
 typed helper는 별도 codec 등록 없이 JSON을 기본으로 사용한다. builder constructor는 public이 아니며
 아래 extension에서만 얻는다.

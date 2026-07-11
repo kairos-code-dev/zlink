@@ -233,6 +233,61 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
 (`BINGO_LOG_DIR`로 디렉토리 override, `run_sample.sh`가 export). 한 요청을 `corr=`로 grep하면
 노드 간 `sent`→`received`→`replied`→`reply_received`가 이어진다.
 
+## 8. 런타임 메트릭 (runtime metrics)
+
+공통 의미는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이 소유한다. 이 절은 C++ 표면만
+적는다.
+
+> **설계 원칙(깊은 모듈).** DI가 없는 C++는 벤더 중립 meter 앰비언트가 없다. 그래서 유일한 공개
+> 표면은 **pull 방식 reader 인터페이스 하나**다. framework가 카탈로그 계기를 내부에 유지하고, 앱이
+> 등록한 reader가 주기적으로 스냅샷을 당긴다. per-계기 API는 노출하지 않는다.
+
+### 8.1 표면
+
+| 공통 개념 | C++ |
+|-----------|-----|
+| reader 인터페이스 | `class zlink_metrics_reader_t { virtual void on_snapshot(const zlink_metrics_snapshot_t&) = 0; };` |
+| 스냅샷 | `zlink_metrics_snapshot_t` — counter/updown 현재값, histogram 버킷을 계기 이름·라벨 키로 노출 |
+| 등록 | `app.use_metrics(reader)` (미등록이면 계기 갱신이 no-op으로 접힘) |
+| OTel 브리지 | 앱이 reader에서 OTel C++ SDK로 매핑(framework는 OTel을 모른다, 공통 §6) |
+
+- `updown`은 이벤트 시점 atomic inc/dec, `observable`은 `on_snapshot` 시점에만 계산(공통 §7.1).
+- 계기 이름·라벨 키는 공통 §4 카탈로그와 바이트 동일. reader 미등록 시 무한 적재 없음(공통 §7.3).
+
+## 9. 메시지 흐름 상관관계 (flow correlation)
+
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. §7(메시지
+흐름 추적)의 additive 확장이다.
+
+### 9.1 표면
+
+| 공통 개념 | C++ |
+|-----------|-----|
+| flow id 모드 | `enum class zlink_flow_id_mode_t { none, monotonic /*기본*/, global_unique };` |
+| 설정 | `configure_dispatch().flow_id(zlink_flow_id_mode_t::global_unique)` |
+| event 필드(추가) | `message_flow_event_t.flow_id`(`std::optional<std::string>`, ≤64B ASCII), `dispatch_error_event_t`에도 동일 |
+| 스트림 와이어 | `header_flags_t`에 `has_flow_id = 0x10`, correlation_id 블록 뒤 `u8 len+bytes`(공통 §3.2) |
+
+- connector `header_codec`와 framework `stream_runtime`이 바이트 동일하게 인코딩한다(correlation_id
+  `0x08` 뒤 flow_id `0x10`). flag 미set은 하위호환.
+- gateway tracer 기본 배선으로 stream/actor gateway 무로그 함정 제거(공통 §7), 게이팅 불변.
+
+## 10. Graceful Drain & Handoff
+
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+lifecycle 제어 표면(관측 아님)의 C++ 투영이다.
+
+### 10.1 표면
+
+| 공통 개념 | C++ |
+|-----------|-----|
+| drain 제어 | `app.drain(deadline)` / `app.await_drained()` / `bool app.is_ready()` |
+| SPOT drain 정책 | spot mesh 등록의 `.use_drain_policy(zlink_spot_drain_policy_t::{drain_natural /*기본*/, deadline, release_and_recreate})` |
+| 상태 관측 | 기존 runtime event handler 재사용. `zlink_drain_event_t.state` { `serving`/`draining`/`drained`/`force_stopping` } |
+
+- C++는 DI/host lifecycle 앰비언트가 없으므로 `app.drain()`을 배포 훅(SIGTERM 핸들러)에서 명시
+  호출한다. draining 마커·owner lease 유지·`Takeover` 순서(공통 §3)는 framework 내부가 소유한다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../../../README.ko.md) | [이전: C++ Runtime Architecture](../../../../cpp/internals/runtime-architecture.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](cpp-registry.ko.md)

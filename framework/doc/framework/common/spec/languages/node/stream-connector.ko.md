@@ -51,8 +51,8 @@ connector 의 disconnect 이벤트는 `closeReason` 을 노출한다. 값은 서
 ([runtime-metrics §4.1](../../runtime-metrics.ko.md))과 정합하는 닫힌 union 이다:
 `'ClientClose' | 'IdleTimeout' | 'HeartbeatTimeout' | 'ServerDrain' | 'ProtocolError' | 'TransportError'`.
 서버가 우아한 종료(graceful drain)로 세션을 닫으면 `'ServerDrain'` 이 오며, 클라이언트는 이 값을 보고
-재접속·백오프를 결정한다([Graceful Drain & Handoff §7.1](../../graceful-drain-handoff.ko.md)). 대체
-endpoint 지정(reconnect hint)은 별도 후속 스펙이다.
+재접속·백오프를 결정한다([Graceful Drain & Handoff §7.1](../../graceful-drain-handoff.ko.md)). 서버가
+대체 endpoint를 지정하는 기능은 이 계약에 포함하지 않는다.
 
 ## 회귀 테스트
 

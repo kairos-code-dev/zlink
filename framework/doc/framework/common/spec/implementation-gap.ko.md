@@ -37,6 +37,7 @@
 | route-mesh runtime options | 충족 | 없음 | 충족 | 없음 |
 | actor membership 상태 | 충족 | `spotRid`와 `isJoined`를 중복 노출 | `spotRid`와 `isJoined`를 중복 노출 | `is_joined()`만 노출해 현재 Spot 식별자 없음 |
 | actor join 결과 | 충족 | result code, actor와 reply가 독립 필드 | 승인 boolean, optional actor/reply가 독립 필드 | result code 기반 결과가 유효 상태를 타입으로 제한하지 않음 |
+| 관측·운영(metrics/flow/drain) | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 | 새 목표 계약 전체 미검증 |
 
 ## 3. Java/Kotlin
 
@@ -351,7 +352,26 @@ alias가 같은 복잡성을 계속 노출하면 POSD 목표를 달성하지 못
 필요하면 deprecated adapter를 별도 compatibility package에 두고 정식 package root에서는
 새 계약만 노출한다.
 
-## 9. 완료 조건
+## 9. 관측·운영 계약 구현 차이
+
+2026-07-11에 확정한 runtime metrics, flow correlation, graceful drain 계약은 현재 plan의 각 언어
+G0에서 실제 symbol과 source 위치를 조사한다. 기존 monitoring 또는 shutdown 기능이 일부 있어도 아래
+항목 전체가 contract test로 증명되기 전에는 충족으로 판정하지 않는다.
+
+| 영역 | 모든 언어에서 확인하고 구현할 차이 | plan 연결 |
+|------|--------------------------------------|-----------|
+| flow correlation | UUIDv7 id 자동 생성, 네 origin, 모든 홉과 비동기 문맥 전파·정리, `0xF2` marker codec 일괄 교체 | DN-017~018과 각 언어 G0~G3 |
+| runtime metrics | 고정 catalog, server/connector 계기 소유권, 닫힌 label, fanout drop capability, 비활성 최소 비용 | DN-019와 각 언어 G0~G3 |
+| graceful drain | typed `Draining` field, readiness/admission 차단, lease 유지, actor handoff와 두 SPOT 정책, 공유 terminal result | DN-020~021과 각 언어 G0~G3 |
+| session closing | versioned control, 닫힌 close reason, disconnect event 순서와 bounded 전송 | DN-022와 각 언어 G0~G3 |
+| 사용 예제와 배포 검증 | Bingo §17 공개 사용 예제와 Config 11 OBS-A1~C5 전체 | 각 언어 G5~G6 |
+
+Java runtime을 공유하는 Kotlin도 별도 완료 판정을 받는다. Kotlin coroutine 문맥에서 flow가 누출되지
+않고 drain waiter 취소가 shared drain을 취소하지 않는다는 Kotlin 전용 test가 필요하다. C++는
+framework가 signal handler를 설치하지 않으며 애플리케이션이 소유한 종료 실행 문맥에서 drain을
+호출하는 예제를 제공해야 한다.
+
+## 10. 완료 조건
 
 각 항목은 다음 조건을 모두 만족해야 닫을 수 있다.
 

@@ -90,7 +90,8 @@ true로 갱신한다. 이 마커는 **"신규 배치 제외"와 "기존 연결 �
   `Draining=true` peer를 후보에서 제외한다.
 - **자동 연결(§6)**은 마커만으로 disconnect하지 않는다 — draining peer로의 기존 연결을 유지한다.
 
-`Draining`은 additive optional 필드다(기본 false, 구버전 row와 하위호환). 전체 drain 수명주기 계약은
+`Draining`은 기본값 false인 필수 typed 필드다. 이번 framework 계약 교체에서는 구형 row decoder나
+metadata fallback을 두지 않으며 store row schema와 모든 언어 codec을 함께 바꾼다. 전체 drain 수명주기 계약은
 [Graceful Drain & Handoff](graceful-drain-handoff.ko.md) §3이 소유한다.
 
 ### 2.2 spot location

@@ -88,7 +88,7 @@ Java는 event를 `on...` registration으로 노출한다. .NET의 event와 의�
 `CLIENT_CLOSE`, `IDLE_TIMEOUT`, `HEARTBEAT_TIMEOUT`, `SERVER_DRAIN`, `PROTOCOL_ERROR`,
 `TRANSPORT_ERROR`. 서버가 우아한 종료(graceful drain)로 세션을 닫으면 `SERVER_DRAIN`이 오며,
 클라이언트는 이 값을 보고 재접속·백오프를 결정한다([Graceful Drain & Handoff §7.1](../../graceful-drain-handoff.ko.md)).
-대체 endpoint 지정(reconnect hint)은 별도 후속 스펙이다.
+서버가 대체 endpoint를 지정하는 기능은 이 계약에 포함하지 않는다.
 `waitFor(...)`는 특정 packet name의 server push를 한 번 기다리는 call builder를 반환한다.
 필요한 message만 고를 때는 builder의 `where(...)`를 사용한다. timeout이 지나면 반환된
 `CompletionStage`가 timeout 실패로 끝난다. 별도 timeout을 지정하지 않으면 connector

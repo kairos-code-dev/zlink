@@ -171,13 +171,19 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 
 | 순서 | 언어 | G0 | G1 | G2 | G3 | G4 | G5 | G6 | G7 | 상태 |
 |------|------|----|----|----|----|----|----|----|----|------|
-| 1 | `.NET` | [x] | [x] | [x] | [x] | [ ] | [ ] | [ ] | [ ] | 진행 |
+| 1 | `.NET` | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 진행 |
 | 2 | Java | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
 | 3 | Kotlin | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
 | 4 | Node.js | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
 | 5 | C++ | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | 대기 |
 
-현재 실행 대상: `.NET` G4 DDD/POSD 반복 검토
+현재 실행 대상: `.NET` G0 재개. 새 관측·운영 계약을 기존 ledger에 합친 뒤 G1부터 다시 닫는다.
+
+2026-07-11에 `flow-correlation.ko.md`, `runtime-metrics.ko.md`,
+`graceful-drain-handoff.ko.md`와 Config 11이 작업 범위에 추가되었다. 이 기능은 별도 후속 계획으로
+분리하지 않는다. 아직 통과하지 않은 G4에 덧붙이는 방식도 금지한다. 공개 표면, wire protocol,
+runtime 동작과 테스트가 바뀌므로 `.NET` G0~G3을 다시 열고, 이후 각 언어의 기존 G0~G7 안에서
+같이 구현한다.
 
 ## 5. 공통 spec coverage matrix
 
@@ -200,6 +206,9 @@ public contract를 교체할 때는 다음 항목을 같은 작업 범위에서 
 | `location-runtime.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `location-store-redis.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `message-flow-tracing.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `flow-correlation.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `runtime-metrics.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `graceful-drain-handoff.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `public-contract-governance.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | `implementation-gap.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 
@@ -301,6 +310,12 @@ public symbol을 묶지 않는다. overload, nullable, generic 제약과 default
 | DN-014 | `dotnet/handler-interfaces` §16 | `IZLinkBoundSessionFactory` internal | `Runtime/Streams/IZLinkBoundSessionFactory.cs` | public assembly/export 비노출 확인 | exported contract coverage | registration unit test | 완료 | package consumer PASS |
 | DN-015 | `config-8-automatic-turn-dispatch` | 단일 terminator 자동 turn | `Runtime/Execution/ZLinkSerialTurn.cs` | `YieldDispatch`를 `AutomaticTurnDispatch`로 이관 | contract exclusion tests | ATD-A1~E3 | 완료 | Config 8 full/shutdown PASS |
 | DN-016 | package artifact gate | 6개 package manifest | `scripts/verify_packaged_contract.sh` | source-built assembly만 검사하던 gap 제거 | clean consumer reflection | clean consumer run | 완료 | `dotnet packaged contract result=passed` |
+| DN-017 | `flow-correlation` §2~§5 | 자동 생성되는 전역 고유 `flow_id`, 네 origin과 event 필드 | 조사 필요 | host는 기존 message-flow 게이트, connector 발원은 무설정 생성, 모든 홉 전파 | flow event surface | MFLOW-EXT-001~015 | 대기 | - |
+| DN-018 | `flow-correlation` §3 | flow header encode/decode 일괄 교체 | 조사 필요 | 구형 decoder/dual path 없이 모든 transport·gateway에서 바이트 동일 | protocol export/surface | flow wire 및 mandatory flag protocol-error test | 대기 | - |
+| DN-019 | `runtime-metrics` §3~§7 | 언어 표준 meter의 고정 catalog와 닫힌 label | 조사 필요 | 서버/connector 소유권 분리, 관찰 불가 신호를 0으로 위조하지 않고 비활성 event별 비용을 제한 | meter name/catalog | RMETRIC-001~017 | 대기 | - |
+| DN-020 | `graceful-drain-handoff` §3~§6 | `IZLinkDrainControl`, drain policy와 terminal result | 조사 필요 | 공유 drain, 30초 기본값, waiter cancellation 분리, 종료 순서 구현 | drain surface/result | DRAIN-001~020 | 대기 | - |
+| DN-021 | `graceful-drain-handoff` §3 | peer row typed `Draining: bool` | 조사 필요 | readiness/admission fail-closed, field 게시 retry와 owner lease 유지 | location row contract | drain placement/store failure tests | 대기 | - |
+| DN-022 | `graceful-drain-handoff` §7 | versioned `session-closing` 제어 프레임과 connector close reason | 조사 필요 | disconnect event 전에 닫힌 사유 저장, ack 없는 bounded 전송 | stream connector surface | drain session closing tests | 대기 | - |
 
 ledger 작성 완료 조건:
 
@@ -336,6 +351,12 @@ ledger 작성 완료 조건:
 - [ ] dispatch 최적화 mode의 public surface 제거
 - [ ] message-kind별 unhandled policy와 diagnostics
 - [ ] monitoring event의 sealed/tagged/variant 유효 상태
+- [ ] flow id의 자동 생성, 모든 홉 전파, 네 origin과 async/coroutine/Promise 문맥 정리
+- [ ] flow header codec 일괄 교체, unknown mandatory flag protocol error와 구형 decoder/dual relay 부재
+- [ ] 언어 표준 계측기 기반 runtime metric catalog, 계기 소유권과 닫힌 label
+- [ ] peer row typed `Draining` 필드, readiness/admission, owner lease와 actor/SPOT 정리 순서
+- [ ] 공유 drain의 단일 terminal result, 기본 30초 deadline과 waiter cancellation 분리
+- [ ] versioned `session-closing` 제어 프레임, connector close reason과 bounded 종료
 - [ ] Spot/Entry Spot context의 역할별 method와 worker producer
 - [ ] location store, resolver, readiness, watch와 runtime query
 - [ ] route-mesh runtime options와 기본 request timeout
@@ -376,6 +397,11 @@ terminator를 계약으로 가정하므로 그대로 둘 수 없다. `.NET` 구�
   남지 않았음을 기록한다. 일반 언어 키워드나 내부 scheduler 용어는 public API와 구분한다.
 - [ ] 새 scenario가 현재 언어 coverage matrix에 있고 실제 runner에서 한 번만 실행되는지
   확인한다.
+
+Config 11도 동일한 원칙으로 각 언어 G0에서 fixture와 runner를 만들고 G6에서 전체 시나리오를
+실행한다. OBS-A1~A4, OBS-B1~B4, OBS-C1~C5는 우선순위와 관계없이 모두 필수다. flow wire
+protocol mismatch와 async 문맥 누수는 E2E만으로 충분히 관찰할 수 없으므로 G2 unit/contract test를
+별도로 둔다.
 
 공통 문서 이관은 `.NET` G0의 선행 gate고 언어별 fixture 이관은 각 언어 G0의 gate다.
 이관 과정에서 framework production code를 바꾸면 현재 언어의 G1부터 정상 절차를 적용한다.
@@ -728,6 +754,18 @@ sample coverage는 다음 표로 기록한다. all runner에 포함되지 않은
 
 | 언어 | 종류 | scenario/sample | 공통 문서 | runner 포함 | 개별 실행 필요 | 결과 | 증거 |
 |------|------|-----------------|-----------|-------------|----------------|------|------|
+| `.NET` | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
+| Java | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
+| Kotlin | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
+| Node.js | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
+| C++ | sample | Bingo 관측·운영 §17 | `sample/bingo/README.ko.md` | [ ] | [ ] | 대기 | - |
+
+Bingo는 기존 게임 smoke 성공만으로 완료하지 않는다. G5에서 각 언어 샘플이 별도 flow id 설정 없이
+노드별 flow 로그를 남기고, 언어 표준 meter/registry 연결 예제를 제공하며, Play의
+`DrainNatural` 정책과 자동 또는 명시 drain을 실제 public API로 시연하는지 확인한다. 샘플 runner는
+기존 게임 self-check를 유지하고 관측 기능을 켠 실행에서도 `bingo=completed`를 확인한다. 다중 노드
+계기 정합과 실제 drain handoff는 Config 11이 소유하므로 샘플에 test-only evidence API를 추가하지
+않는다.
 
 E2E는 먼저 현재 공통 문서 전체를 아래 config inventory에 고정한다. Config 8은 §7.1의
 이관된 파일명을 사용한다.
@@ -744,6 +782,7 @@ E2E는 먼저 현재 공통 문서 전체를 아래 config inventory에 고정�
 | 8 | `config-8-automatic-turn-dispatch.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | 9 | `config-9-to-actor-messaging.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 | 10 | `config-10-spot-actor-transfer.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
+| 11 | `config-11-observability-ops.ko.md` | [ ] | [ ] | [ ] | [ ] | [ ] |
 
 config 셀은 해당 문서의 모든 세부 scenario 행이 닫힌 뒤에만 체크한다. 각 문서의 heading에
 있는 scenario ID를 한 행씩 다음 표에 옮긴다. 이름이 다른 구현을 의미가 같다고 추정하지
@@ -765,14 +804,18 @@ config 셀은 해당 문서의 모든 세부 scenario 행이 닫힌 뒤에만 �
 
 ### 8.7 Cross-language 검증
 
-한 언어의 자체 E2E 성공을 cross-language 성공으로 간주하지 않는다. `store`, `codec`,
-`messaging` 각각에 대해 producer 언어와 consumer 언어가 다른 모든 방향 조합을 inventory한다.
+한 언어의 자체 E2E 성공을 cross-language 성공으로 간주하지 않는다. `store`, `codec`, `messaging`,
+`flow-wire`, `draining-row`, `session-closing` 각각에 대해 producer 언어와 consumer 언어가 다른 모든
+방향 조합을 inventory한다.
 topology는 해당 공통 spec이 요구하는 direct, registry/store discovery, relay/route 경계를
 각각 행으로 분리한다.
 
 | feature | producer | consumer | topology | contract 근거 | runner/selector | 기대 marker | 결과 | 비적용 승인 근거 |
 |---------|----------|----------|----------|---------------|-----------------|-------------|------|------------------|
 | messaging | Node.js | `.NET` | 기존 smoke topology | ledger 연결 필요 | `framework/languages/node/cross-language/run_cross_language_smoke.sh` | marker 기록 필요 | [ ] | - |
+| flow-wire | 현재 언어 | 이전 언어 | stream/channel/actor relay | `flow-correlation` §3 | 언어 단계에서 추가 | UUIDv7 id와 root origin 바이트 동일 | [ ] | - |
+| draining-row | 현재 언어 | 이전 언어 | shared location store | `location-runtime` §2.1 | 언어 단계에서 추가 | typed `Draining=true` 소비 | [ ] | - |
+| session-closing | 현재 언어 server | 이전 언어 connector | STREAM | `graceful-drain-handoff` §7.1 | 언어 단계에서 추가 | `server_drain` 뒤 disconnect | [ ] | - |
 
 위 행은 현재 존재하는 runner를 나타내는 seed일 뿐 완료 목록이 아니다. 각 feature마다
 `.NET`, Java, Kotlin, Node.js, C++의 서로 다른 producer/consumer 방향 조합을 모두 행으로
@@ -823,6 +866,12 @@ topology는 해당 공통 spec이 요구하는 direct, registry/store discovery,
 - [ ] one-way queue 수락과 monitoring 오류 관측 의미 구현
 - [ ] 정식 spec 경로를 읽도록 documentation regression test 수정
 - [ ] interface inventory의 보완 타입 전체 구현/검증
+- [ ] `System.Diagnostics.Metrics` catalog와 `MeterListener` contract test 구현
+- [ ] message-flow 설정에 연결된 자동 flow id, `AsyncLocal` 전파·정리와 `0xF2` marker codec 교체
+- [ ] `IZLinkDrainControl`의 공유 결과, hosted-service 종료 순서와 typed `Draining` field 구현
+- [ ] `session-closing` 제어 프레임과 connector `CloseReason` 구현
+- [ ] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
+- [ ] Bingo §17의 .NET flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 9.2 검증 명령
 
@@ -877,6 +926,12 @@ dotnet test Zlink.Framework.sln --no-build
 - [ ] route-mesh runtime options와 public export 정렬
 - [ ] 정식 spec 경로 regression test 수정
 - [ ] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
+- [ ] Micrometer catalog와 connector 소유 reconnect 계기 구현
+- [ ] 자동 flow id, `CompletionStage` 문맥 전파·정리와 `0xF2` marker codec 교체
+- [ ] `ZLinkDrainControl` 결과, `SmartLifecycle` 종료 순서와 typed `Draining` field 구현
+- [ ] `session-closing` 제어 프레임과 connector close reason 구현
+- [ ] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
+- [ ] Bingo §17의 Java flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 10.2 검증 명령
 
@@ -919,6 +974,12 @@ ZLINK_SAMPLE_LANGUAGES=java ./samples/run_samples.sh
 - [ ] Java runtime의 모든 공통 기능이 Kotlin surface에서도 도달 가능한지 검증
 - [ ] Kotlin interface/function inventory 전체 contract test 추가
 - [ ] Kotlin `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
+- [ ] Java의 metrics/flow/drain 공개 기능이 Kotlin에서 별도 중복 설정 없이 도달 가능함을 검증
+- [ ] coroutine 전환 뒤 flow 문맥이 유지되고 완료·취소 뒤 다음 작업으로 누출되지 않음을 검증
+- [ ] drain의 `CompletionStage<ZLinkDrainResult>`를 nonblocking `await()`로 대기하고 waiter 취소만
+  전파함을 검증
+- [ ] Config 11 OBS-A1~C5 Kotlin fixture, runner와 evidence 구현
+- [ ] Bingo §17의 Kotlin flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 11.2 검증 명령
 
@@ -970,6 +1031,12 @@ ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh
 - [ ] 정식 spec 경로 regression test 수정
 - [ ] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
 - [ ] contract/supporting artifact manifest 정렬과 배포 package의 `private` 제거
+- [ ] OpenTelemetry metric catalog와 connector 소유 reconnect 계기 구현
+- [ ] 자동 flow id, `AsyncLocalStorage` 전파·정리와 `0xF2` marker codec 교체
+- [ ] `ZLinkDrainControl` 결과, NestJS shutdown 종료 순서와 typed `Draining` field 구현
+- [ ] `session-closing` 제어 프레임과 connector `closeReason` 구현
+- [ ] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
+- [ ] Bingo §17의 Node.js flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 12.2 검증 명령
 
@@ -1028,6 +1095,12 @@ npm run verify:release
 - [ ] `AutomaticTurnDispatch` fixture와 runner로 Config 8 이관
 - [ ] CMake Framework/StreamConnector/FrameworkDependency/HttpClient install component와
   export set 분리
+- [ ] `metric_event_payload_t` 기반 catalog와 test collector 집계 구현
+- [ ] 자동 flow id, coroutine 문맥 전파·정리와 `0xF2` marker codec 교체
+- [ ] `drain_result_t`, typed `Draining` field와 애플리케이션 소유 signal 종료 순서 구현
+- [ ] `session-closing` 제어 프레임과 connector close reason 구현
+- [ ] Config 11 OBS-A1~C5 fixture, runner와 evidence 구현
+- [ ] Bingo §17의 C++ flow/metrics/drain 예제와 관측 기능을 켠 sample smoke 구현
 
 ### 13.2 검증 명령
 

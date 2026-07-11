@@ -3769,7 +3769,7 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     IZlinkStreamLifecycleCall Close { get; }
     IZlinkStreamLifecycleCall Dispatch { get; }
     event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived;
-    event Func<CancellationToken, ValueTask>? Disconnected;
+    event Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? Disconnected;
     event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>?
         ConnectionStateChanged;
     int ReceivedCount(string name);
@@ -3783,6 +3783,18 @@ public interface IZlinkStreamConnector : IAsyncDisposable
             handler);
     IZlinkStreamWaitCall WaitFor(string name);
 }
+
+public enum ZlinkStreamCloseReason
+{
+    ClientClose,
+    IdleTimeout,
+    HeartbeatTimeout,
+    ServerDrain,
+    ProtocolError,
+    TransportError,
+}
+
+public sealed record ZlinkStreamDisconnected(ZlinkStreamCloseReason CloseReason);
 
 public interface IZlinkStreamLifecycleCall
 {
@@ -4149,6 +4161,12 @@ interface가 그 동작을 보장하도록 한다.
 | channel, publish, session과 connector one-way call | `Submit(...)`이 `void` 반환 | 일치 | 내부 비동기 queue를 public completion으로 노출하지 않는다. |
 | `IZLinkActorSendCall` | `Submit(CancellationToken): void` | 일치 | local queue 수락 뒤 오류는 runtime 관측 경로로 보낸다. |
 | cancellation | 취소 가능한 `.NET` call과 callback에 `CancellationToken` 사용 | 일치 | 이 인자 모양은 다른 언어에 그대로 강제하지 않는다. |
+
+관측·운영 public inventory에는 `ZLinkMeters`, `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
+`ZLinkDrainForceReason`, `ZLinkDrainResult`, `Drained`, `ForceStopped`, `IZLinkDrainControl`,
+`ZlinkStreamCloseReason`, `ZlinkStreamDisconnected`도 포함한다. 앞의 connector 선언과
+[ASP.NET Core Monitoring §10~12](aspnet-core-monitoring.ko.md)의 전체 declaration이 정확한 member,
+overload, default와 반환형을 고정하며 contract test는 이 타입들을 누락 없이 검사한다.
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
 [^transport]: 메시지가 실제로 네트워크나 IPC 위에서 오가는 하부 계층. ZLink에서는 socket, stream, route 등이 이에 해당한다.

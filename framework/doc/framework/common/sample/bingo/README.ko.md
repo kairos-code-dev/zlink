@@ -1056,6 +1056,9 @@ evidence를 남겨야 한다.
   정리한다.
 - client는 API 서버나 Play 서버 endpoint를 직접 사용하지 않는다.
 - handler 등록은 typed handler 계약을 구성 코드에서 명시 등록하는 방식을 사용한다.
+- 카드 제출 flow는 제출 dispatch까지 이어지고, 각 timer tick은 별도 `origin=timer` flow로
+  room dispatch와 해당 bound push까지 이어진다.
+- 언어 표준 meter/registry 연결 예제가 있고 Play는 `DrainNatural` 정책을 공개 API로 선언한다.
 
 ## 17. 관측·운영 켜기 (Observability & Ops)
 
@@ -1067,20 +1070,20 @@ Bingo는 이미 세션 게이트웨이(STREAM)·actor 이동·룸 타이머·bou
 
 ### 17.1 메시지 흐름 추적 로그 (flow correlation)
 
-세 노드(`Session`/`Api`/`Play`)에서 dispatch 추적을 켜고 `flowId`를 준다. 이미 §14 흐름이 있으므로
-한 판(카드 제출→추첨→bound push)을 `flow=`로 grep하면 STREAM→actor→room-spot이 한 줄로 이어진다.
+세 노드(`Session`/`Api`/`Play`)에서 dispatch 추적을 켠다. flow id는 framework가 발원점에서
+자동으로 만들고 모든 메시지 경계에 전파한다. 카드 제출 flow는 STREAM→actor→room-spot까지
+이어진다. timer tick은 `origin=timer`인 새 flow를 시작하고 room dispatch→bound push까지 이어진다.
 
 ```csharp
 // 각 노드 공통 (.NET). role = 그 노드의 역할 문자열("session"/"api"/"play", README §6)
 options.ConfigureDispatch()
     .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
     .TraceLogFile($"log/flow-{role}.log")
-    .TraceLabel(role)
-    .FlowId(ZLinkFlowIdMode.GlobalUnique);   // 다중 노드 전역 조인
+    .TraceLabel(role); // 자동 생성된 flow id로 여러 노드의 로그를 조인
 ```
 
-확인: `grep flow=<id> log/flow-*.log`가 `Session`(생성)→`Play` actor relay→`BingoRoomSpot` 내부
-dispatch→bound push까지 시간순으로 잇는다. corr이 끊기는 spot 경계에서도 `flow=`가 유지된다.
+확인: 카드 제출 id는 `Session`→`Play` actor relay→`BingoRoomSpot` dispatch를 잇는다. 별도 timer id는
+`BingoRoomSpot` timer dispatch→bound push를 잇는다. corr이 없는 spot 경계에서도 각 `flow=`가 유지된다.
 
 ### 17.2 런타임 메트릭
 
@@ -1091,6 +1094,8 @@ dispatch→bound push까지 시간순으로 잇는다. corr이 끊기는 spot �
 builder.Services.AddOpenTelemetry().WithMetrics(m => m
     .AddMeter(ZLinkMeters.Framework)
     .AddPrometheusExporter());
+
+app.MapPrometheusScrapingEndpoint(); // 샘플에서 실제 계기 값을 확인할 endpoint 공개
 ```
 
 `AddPrometheusExporter()`는 `OpenTelemetry.Exporter.Prometheus.AspNetCore` 패키지가 필요하다(exporter는

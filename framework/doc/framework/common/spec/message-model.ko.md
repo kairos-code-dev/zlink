@@ -118,14 +118,14 @@ framework route는 이미 zlink multipart message를 기본 단위로 다루므�
 | `error-code` | 공통 에러 코드 |
 | `source` | 호출자 식별 정보 |
 | `target` | 필요할 때 명시적 대상 정보 |
-| `trace-id` | 여러 단계 호출을 잇는 추적 정보 |
+| `flow-id` | 여러 단계 호출과 메시지 경계를 잇는 전역 추적 정보. 정확한 생성·전파 계약은 [메시지 흐름 상관관계](flow-correlation.ko.md)가 소유한다. |
 | `causation-id` | 어떤 이전 메시지에서 파생됐는지 식별 |
 
 모든 framework message는 `message-kind`, `packet-name`과 `content-type`을 포함한다.
 channel 경로는 `channel`을 포함하고, request와 response는 같은 `correlation-id`를
 포함한다. response는 `status`를 포함하며 실패 response는 `error-code`도 포함한다.
 route가 대상을 명시해야 하는 경로만 `source`와 `target`을 포함한다. deadline,
-trace-id와 causation-id는 해당 기능을 사용한 경우에만 포함한다.
+flow-id와 causation-id는 해당 기능을 사용한 경우에만 포함한다.
 
 Spot worker offload에서 생긴 실패도 `error-code`에 보존한다. queue가 가득 찬 경우,
 timeout이 난 경우, worker 함수가 예외를 낸 경우는 같은 `RequestFailed`로 뭉개지 않고

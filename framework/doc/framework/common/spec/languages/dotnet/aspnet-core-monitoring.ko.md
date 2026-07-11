@@ -466,7 +466,7 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 | meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"` (meter/scope 이름은 언어 간 바이트 동일, 공통 §11) |
 | 계기 방출 | `System.Diagnostics.Metrics.Meter("zlink.framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
 | 앱 연결(공통 케이스) | OTel `MeterProviderBuilder.AddMeter(ZLinkMeters.Framework)` — 이게 전부다 |
-| 비-OTel/커스텀 수집(선택) | `options.SetMetricsListener(IZLinkMetricsListener listener)` — `MeterListener` 선례(`SetMessageFlowObserver`)와 같은 단일 훅 setter |
+| 비-OTel/테스트 수집 | .NET 표준 `MeterListener`가 `ZLinkMeters.Framework`를 직접 구독 — zlink 전용 listener interface 없음 |
 
 ```csharp
 // 앱은 이 한 줄로 zlink 계기를 자기 OTel 파이프라인에 넣는다. 별도 zlink 설정 없음.
@@ -476,34 +476,33 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 ```
 
 - 공통 §3의 `updown`=`UpDownCounter<long>`, `observable`=`ObservableGauge`(scrape 시 콜백),
-  histogram=`Histogram<double>`(단위 ms, 공통 §4.0).
-- meter가 어떤 listener에도 안 붙으면 계기 갱신은 사실상 no-op이다(off 제로코스트, 공통 §7.2).
+  histogram=`Histogram<double>`(단위 `s`, 공통 §4.0).
+- meter가 어떤 listener에도 연결되지 않으면 event별 allocation, lock, clock read와 sample 보관 없이
+  최소 비용의 비활성 경로로 끝난다. 고정 instrument는 startup에 한 번 만들 수 있다(공통 §7.2).
 - 대시보드·exporter는 앱 몫. framework는 내장 scrape 서버를 제공하지 않는다(공통 §6).
 
 ### 10.2 왜 새 인터페이스가 없나
 
 `.NET`의 `Meter`/`MeterListener`가 이미 벤더 중립 계기 파사드다. framework가 별도 `IZLinkMetrics*`
 표면을 두면 그 위에 pass-through 층이 생겨 깊이가 없다(얕은 모듈). 그래서 공개 표면을 **안정된 meter
-이름 하나 + 선택적 `SetMetricsListener`**로 최소화한다.
+이름 하나**로 최소화한다. contract/E2E collector도 표준 `MeterListener`를 사용한다.
 
 ## 11. 메시지 흐름 상관관계 (flow correlation)
 
 공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. 이 절은
-§9(메시지 흐름 추적)의 **additive 확장**이며 **새 최상위 표면을 만들지 않는다** — 기존
-`ConfigureDispatch()` 체인에 모드 하나, 기존 `ZLinkMessageFlowEvent`에 필드 하나를 더한다.
+§9(메시지 흐름 추적)의 확장이며 **새 설정 표면을 만들지 않는다**. 기존 message-flow mode가 `Off`가
+아니면 framework가 전역 유일 id를 자동 생성하고 기존 event에 필드를 더한다.
 
 ### 11.1 표면
 
 | 공통 개념 | `.NET` |
 |-----------|--------|
-| flow id 모드 | `ZLinkFlowIdMode` { `None`, `Monotonic`(기본), `GlobalUnique` } |
-| 설정 | `ConfigureDispatch().FlowId(ZLinkFlowIdMode.GlobalUnique)` |
-| event 필드(추가) | `ZLinkMessageFlowEvent.FlowId`, `ZLinkMessageFlowEvent.FlowOrigin`(`ZLinkFlowOrigin` { `Inbound`, `Timer` }, §공통 §4.2) — §9.1 record에 추가. dispatch 오류 이벤트에도 `FlowId` 동일 |
+| 생성 gate | 기존 `MessageFlow` mode가 `Off`가 아니면 create-if-absent 자동 생성 |
+| event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
 
 ```csharp
 options.ConfigureDispatch()
-    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-    .FlowId(ZLinkFlowIdMode.GlobalUnique);   // 대규모 fleet 전역 조인; 기본은 Monotonic
+    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions); // flow id는 자동 생성·전파
 ```
 
 - 생성은 트레이싱 모드 게이트, **전파(echo)는 무조건**이라 off 노드를 지나도 흐름이 끊기지 않는다
@@ -524,11 +523,34 @@ options.ConfigureDispatch()
 
 ### 12.1 표면
 
+```csharp
+public static class ZLinkMeters { public const string Framework = "zlink.framework"; }
+public enum ZLinkFlowOrigin { Inbound, Timer, Application, Lifecycle }
+public enum ZLinkSpotDrainPolicy { DrainNatural, ReleaseAndRecreate }
+public enum ZLinkDrainForceReason
+{
+    DeadlineExceeded, DrainingStatePublishFailed, OwnerCleanupFailed, TeardownFailed
+}
+public abstract record ZLinkDrainResult;
+public sealed record Drained : ZLinkDrainResult;
+public sealed record ForceStopped(ZLinkDrainForceReason Reason) : ZLinkDrainResult;
+public interface IZLinkDrainControl
+{
+    bool IsReady { get; }
+    ValueTask<ZLinkDrainResult> DrainAsync(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkDrainResult> DrainAsync(
+        TimeSpan deadline, CancellationToken cancellationToken = default);
+    ValueTask<ZLinkDrainResult> AwaitDrainedAsync(
+        CancellationToken cancellationToken = default);
+}
+```
+
 | 공통 개념 | `.NET` |
 |-----------|--------|
 | 자동 drain(기본) | framework hosted service가 `IHostApplicationLifetime` 종료에 참여, `StopAsync`에서 drain — 앱 코드 0 |
-| SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/Deadline/ReleaseAndRecreate})` |
-| 명시 제어(선택) | `IZLinkDrainControl` { `DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(기본 deadline, 공통 §6), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
+| SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/ReleaseAndRecreate})` |
+| terminal result | abstract `ZLinkDrainResult` + sealed `Drained`, `ForceStopped(ZLinkDrainForceReason Reason)`; reason은 `DeadlineExceeded`, `DrainingStatePublishFailed`, `OwnerCleanupFailed`, `TeardownFailed` |
+| 명시 제어(선택) | `IZLinkDrainControl` { `ValueTask<ZLinkDrainResult> DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(30초), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
 | readiness probe | `IZLinkDrainControl.IsReady` 또는 편의 `AddZLinkDrainHealthCheck()` |
 | 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `SourceName` = 고정값 `"drain"` |
 

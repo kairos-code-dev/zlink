@@ -247,7 +247,7 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
 
 | 공통 개념 | C++ |
 |-----------|-----|
-| 계기 방출 | framework가 공통 §4 카탈로그를 `metric_event_payload_t` 이벤트로 방출(이름·라벨 키는 카탈로그와 바이트 동일) |
+| 계기 방출 | framework가 공통 §4 카탈로그를 확장된 `metric_event_payload_t` 이벤트로 방출(이름·라벨 키는 카탈로그와 바이트 동일) |
 | 수신 | 기존 `app.monitoring().on<metric_event_payload_t>(handler)`(§6) — 새 표면 없음 |
 | OTel 브리지 | 앱이 handler에서 OTel C++ SDK로 매핑(framework는 OTel을 모른다, 공통 §6) |
 
@@ -255,6 +255,23 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
   경로다 — 앱 커스텀 계기에 framework 소유 라벨(`surface` 등)을 붙이지 않는다(공통 §5).
 - `updown`은 이벤트 시점 값, `observable`은 주기 방출 시점 값(공통 §7.1). 구독 handler가 없으면 방출
   자체가 접힌다(무한 적재 없음, 공통 §7.3).
+
+```cpp
+enum class metric_instrument_kind_t { counter, updown, observable, histogram };
+enum class metric_temporality_t { delta, current, sample };
+
+struct metric_event_payload_t {
+    std::string name;
+    double value;
+    std::string unit;
+    metric_instrument_kind_t instrument_kind;
+    metric_temporality_t temporality;
+    std::map<std::string, std::string> tags;
+};
+```
+
+counter/updown update는 `delta`, observable gauge는 `current`, histogram record는 `sample`이다. 앱의
+OTel bridge는 이름별 카탈로그를 다시 하드코딩하지 않고 이 필드로 instrument와 기록 방식을 정한다.
 
 ## 9. 메시지 흐름 상관관계 (flow correlation)
 
@@ -265,13 +282,12 @@ Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key
 
 | 공통 개념 | C++ |
 |-----------|-----|
-| flow id 모드 | `enum class flow_id_mode_t { none, monotonic /*기본*/, global_unique };` |
-| 설정 | `configure_dispatch().flow_id(flow_id_mode_t::global_unique)` |
-| event 필드(추가) | `message_flow_event_t.flow_id`(`std::optional<std::string>`, ≤64B ASCII), `message_flow_event_t.flow_origin`(`enum class flow_origin_t { inbound, timer }`, §4.2), `dispatch_error_event_t`에도 `flow_id` 동일 |
-| 스트림 와이어 | `header_flags_t`에 `has_flow_id = 0x10`, correlation_id 블록 뒤 `u8 len+bytes`(공통 §3.2) |
+| 생성 게이트 | 기존 `configure_dispatch().message_flow(...)` 설정을 그대로 사용한다. 별도 flow id 설정은 없다. |
+| event 필드(추가) | `message_flow_event_t.flow_id`(`std::optional<std::string>`, 36B lowercase UUIDv7), `message_flow_event_t.flow_origin`(`enum class flow_origin_t { inbound, timer, application, lifecycle }`, §4.2), `dispatch_error_event_t`에도 `flow_id` 동일 |
+| 스트림 와이어 | 첫 byte `format_marker=0xF2`, `has_flow_id=0x10`, correlation_id 뒤 UUIDv7 36B + origin u8(공통 §3.2) |
 
-- connector `header_codec`와 framework `stream_runtime`이 바이트 동일하게 인코딩한다(correlation_id
-  `0x08` 뒤 flow_id `0x10`). flag 미set은 하위호환.
+- connector `header_codec`와 framework `stream_runtime`이 바이트 동일하게 인코딩한다. marker가 없는
+  구형 frame decoder를 병행하지 않으며 mismatch는 protocol error다.
 - gateway tracer 기본 배선으로 stream/actor gateway 무로그 함정 제거(공통 §7), 게이팅 불변.
 
 ## 10. Graceful Drain & Handoff
@@ -281,15 +297,39 @@ lifecycle 제어 표면(관측 아님)의 C++ 투영이다.
 
 ### 10.1 표면
 
+```cpp
+enum class flow_origin_t { inbound, timer, application, lifecycle };
+enum class spot_drain_policy_t { drain_natural, release_and_recreate };
+enum class drain_force_reason_t {
+    deadline_exceeded,
+    draining_state_publish_failed,
+    owner_cleanup_failed,
+    teardown_failed
+};
+struct drained_t {};
+struct force_stopped_t { drain_force_reason_t reason; };
+using drain_result_t = std::variant<drained_t, force_stopped_t>;
+
+// app_t public members; the parameterless overload uses 30 seconds.
+task_t<drain_result_t> drain(std::chrono::milliseconds deadline);
+task_t<drain_result_t> drain();
+task_t<drain_result_t> await_drained();
+bool is_ready() const;
+```
+
 | 공통 개념 | C++ |
 |-----------|-----|
-| drain 제어 | `app.drain(deadline)` / `app.drain()`(기본 deadline) / `app.await_drained()` / `bool app.is_ready()` |
-| SPOT drain 정책 | spot mesh 등록의 `.use_drain_policy(spot_drain_policy_t::{drain_natural /*기본*/, deadline, release_and_recreate})` |
+| drain 제어 | `task<drain_result_t> app.drain(deadline)` / `app.drain()`(30초) / `task<drain_result_t> app.await_drained()` / `bool app.is_ready()` |
+| drain 결과 | `std::variant<drained_t, force_stopped_t>`이며 `force_stopped_t.reason`은 `drain_force_reason_t { deadline_exceeded, draining_state_publish_failed, owner_cleanup_failed, teardown_failed }`다. |
+| SPOT drain 정책 | spot mesh 등록의 `.use_drain_policy(spot_drain_policy_t::{drain_natural /*기본*/, release_and_recreate})` |
 | 상태 관측 | 기존 `app.monitoring().on<drain_event_t>(...)` 재사용. `drain_event_t.state` { `serving`/`draining`/`drained`/`force_stopping` } |
 | readiness | Draining 진입 시 기존 `app.health().report().ready()`가 false — 새 표면 없음(§5 `map_readiness`가 그대로 반영) |
+| connector 종료 사유 | `stream_disconnect_event_t.close_reason`은 `stream_close_reason_t { client_close, idle_timeout, heartbeat_timeout, server_drain, protocol_error, transport_error }`를 제공 |
 
-- C++는 DI/host lifecycle 앰비언트가 없으므로 `app.drain()`을 배포 훅(SIGTERM 핸들러)에서 명시
-  호출한다. draining 마커·owner lease 유지·`Takeover` 순서(공통 §3)는 framework 내부가 소유한다.
+- C++는 DI/host lifecycle 앰비언트가 없으므로 애플리케이션이 signal을 소유하고 종료 실행 문맥에서
+  `app.drain()`을 명시 호출한다. signal handler 안에서 직접 비동기 작업을 수행하지 않으며 framework가
+  signal handler를 설치하지 않는다. draining 마커·owner lease 유지·`Takeover` 순서(공통 §3)는
+  framework 내부가 소유한다.
 - **drain 이벤트는 source 등록이 필요 없다.** 노드 생애 수 회의 저빈도 lifecycle 이벤트라 polling·
   filter 개념이 없고, `on<drain_event_t>(...)` handler 존재만으로 수신한다(공통 §9, 조용한 무관측
   없음).

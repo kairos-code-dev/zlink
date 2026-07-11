@@ -429,6 +429,16 @@ class hosted_service_t;
 ```cpp
 namespace zlink::framework {
 
+enum class drain_force_reason_t {
+    deadline_exceeded,
+    draining_state_publish_failed,
+    owner_cleanup_failed,
+    teardown_failed
+};
+struct drained_t {};
+struct force_stopped_t { drain_force_reason_t reason; };
+using drain_result_t = std::variant<drained_t, force_stopped_t>;
+
 class app_t {
 public:
     static app_t create();
@@ -444,6 +454,11 @@ public:
     template <typename TModule, typename... TArgs>
     app_t &add_zlink_framework(TArgs &&...args);
     app_t &add_hosted_service(std::unique_ptr<hosted_service_t> service);
+
+    task_t<drain_result_t> drain(std::chrono::milliseconds deadline);
+    task_t<drain_result_t> drain();
+    task_t<drain_result_t> await_drained();
+    bool is_ready() const;
 
     int run(int argc, char **argv);
     void stop();

@@ -209,8 +209,9 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 | 커스텀 조정(선택) | `ZLinkMetricsCustomizer { void customize(MeterRegistry registry); }`(공통 태그 추가·필터 등) — `ZLinkMonitoringOptionsCustomizer` 선례와 동형 |
 
 - 공통 §3 `updown`=Micrometer `Gauge`(등록 시 상태 참조), `observable`=`Gauge` 콜백. histogram은 **duration
-  계기(`.duration`/`.latency`)=`Timer`, 그 외 분포=`DistributionSummary`**로 고정한다. `Timer` base unit은
-  백엔드별이라 공통 §4.0의 ms 고정은 export 브리지가 맞춘다.
+  계기(`.duration`/`.latency`)=`Timer`, 그 외 분포=`DistributionSummary`**로 고정한다. framework는
+  duration을 Micrometer `Timer`로 기록하고 표준 export의 초 단위를 사용한다. contract/E2E evidence도
+  `Timer` snapshot을 초로 읽어 공통 단위를 유지한다.
 - registry가 없으면(예: 테스트) 계기는 no-op registry로 접혀 성능 영향이 없다(공통 §7.2).
 - 대시보드·exporter(Prometheus/OTLP)는 앱 몫이다(공통 §6).
 
@@ -223,20 +224,18 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 
 | 공통 개념 | Java |
 |-----------|------|
-| flow id 모드 | `ZLinkFlowIdMode` { `NONE`, `MONOTONIC`(기본), `GLOBAL_UNIQUE` } |
-| 설정 | `configureDispatch().flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE)` |
-| event 필드(추가) | `ZLinkMessageFlowEvent.flowId()`, `ZLinkMessageFlowEvent.flowOrigin()`(`ZLinkFlowOrigin` { `INBOUND`, `TIMER` }, 공통 §4.2) — §7.1 record accessor 추가. 오류 이벤트에도 `flowId()` 동일 |
+| 생성 gate | 기존 message-flow mode가 `OFF`가 아니면 create-if-absent 자동 생성 |
+| event 필드(추가) | `String ZLinkMessageFlowEvent.flowId()`, `ZLinkFlowOrigin flowOrigin()` — 오류 이벤트에도 동일 |
 
 ```java
 ZLinkFrameworkConfigurer dispatchTracing() {
     return configurer -> configurer.configureDispatch()
-        .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-        .flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE);   // 기본은 MONOTONIC
+        .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS); // flow id 자동 생성·전파
 }
 ```
 
 - 생성은 모드 게이트, 전파는 무조건(공통 §2.2). stream/actor gateway 로거 자동 배선(공통 §7),
-  게이팅 불변. Kotlin은 `configureDispatch { flowId(...) }` DSL로 노출한다.
+  게이팅 불변이다. Kotlin도 같은 설정을 사용하며 flow id 전용 DSL을 추가하지 않는다.
 
 ## 10. Graceful Drain & Handoff
 
@@ -248,11 +247,29 @@ lifecycle 제어 표면(관측 아님)의 Java 투영이다.
 
 ### 10.1 표면
 
+```java
+public enum ZLinkFlowOrigin { INBOUND, TIMER, APPLICATION, LIFECYCLE }
+public enum ZLinkSpotDrainPolicy { DRAIN_NATURAL, RELEASE_AND_RECREATE }
+public enum ZLinkDrainForceReason {
+    DEADLINE_EXCEEDED, DRAINING_STATE_PUBLISH_FAILED, OWNER_CLEANUP_FAILED, TEARDOWN_FAILED
+}
+public sealed interface ZLinkDrainResult permits Drained, ForceStopped {}
+public record Drained() implements ZLinkDrainResult {}
+public record ForceStopped(ZLinkDrainForceReason reason) implements ZLinkDrainResult {}
+public interface ZLinkDrainControl {
+    CompletionStage<ZLinkDrainResult> drain();
+    CompletionStage<ZLinkDrainResult> drain(Duration deadline);
+    CompletionStage<ZLinkDrainResult> awaitDrained();
+    boolean isReady();
+}
+```
+
 | 공통 개념 | Java |
 |-----------|------|
 | 자동 drain(기본) | framework `SmartLifecycle` 빈이 shutdown에서 drain — 앱 코드 0 |
-| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy(ZLinkSpotDrainPolicy.{DRAIN_NATURAL(기본)/DEADLINE/RELEASE_AND_RECREATE})` |
-| 명시 제어(선택) | `ZLinkDrainControl` { `drain(Duration deadline)` → `CompletionStage<Void>`, `drain()`(기본 deadline) → `CompletionStage<Void>`, `awaitDrained()` → `CompletionStage<Void>`, `boolean isReady()` } (빈) |
+| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy(ZLinkSpotDrainPolicy.{DRAIN_NATURAL(기본)/RELEASE_AND_RECREATE})` |
+| terminal result | sealed `ZLinkDrainResult` permits `Drained`, `ForceStopped(ZLinkDrainForceReason reason)`; reason은 `DEADLINE_EXCEEDED`, `DRAINING_STATE_PUBLISH_FAILED`, `OWNER_CLEANUP_FAILED`, `TEARDOWN_FAILED` |
+| 명시 제어(선택) | `ZLinkDrainControl` { `drain(Duration deadline)`/`drain()`(30초)/`awaitDrained()` → `CompletionStage<ZLinkDrainResult>`, `boolean isReady()` } (빈) |
 | readiness probe | starter가 `ZLinkDrainReadinessContributor`를 자동 등록해 Actuator readiness group에 반영(무설정). 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
 | 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state()` { `SERVING`/`DRAINING`/`DRAINED`/`FORCE_STOPPING` }, `sourceName()` = 고정값 `"drain"` |
 

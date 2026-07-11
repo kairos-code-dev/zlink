@@ -3262,6 +3262,12 @@ ZLinkProviderResolver
 handler는 application이 직접 사용하는 기능이므로 public contract에 남기고
 이 문서에 정확한 시그니처를 유지한다.
 
+관측·운영 public inventory에는 `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
+`ZLinkDrainForceReason`, `ZLinkDrainResult`, `ZLinkDrainControl`과 stream disconnect의
+`closeReason` union도 포함한다. [NestJS Monitoring §10~12](nestjs-monitoring.ko.md)과
+[Stream Connector](stream-connector.ko.md)의 전체 declaration이 optional parameter, `AbortSignal`,
+readonly field와 Promise 반환형을 고정한다.
+
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
 [^transport]: 메시지가 실제로 네트워크나 IPC 위에서 오가는 하부 계층. ZLink 에서는 socket, stream, route 등이 이에 해당한다.
 

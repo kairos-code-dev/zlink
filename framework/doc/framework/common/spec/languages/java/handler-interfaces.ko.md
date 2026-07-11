@@ -1709,6 +1709,11 @@ application contract가 아니다. `ZLinkHandlerFactory`, `ZLinkSuspendHandlerIn
 application이 import하지 못하게 해야 한다. 이 타입을 위 inventory에 추가해 public
 contract로 고정하지 않는다.
 
+관측·운영 public inventory에는 `ZLinkFlowOrigin`, `ZLinkSpotDrainPolicy`,
+`ZLinkDrainForceReason`, `ZLinkDrainResult`, `Drained`, `ForceStopped`, `ZLinkDrainControl`,
+`ZLinkStreamCloseReason`과 disconnect event type도 포함한다. [Spring Boot Monitoring §8~10](spring-boot-monitoring.ko.md)과
+[Stream Connector](stream-connector.ko.md)의 전체 declaration이 정확한 member와 반환형을 고정한다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Java Channel Messaging Samples](../../../../java/guide/samples/channel-messaging-samples.ko.md) | [다음: ZLink Framework Java SPOT Samples](../../../../java/guide/samples/spot-samples.ko.md)

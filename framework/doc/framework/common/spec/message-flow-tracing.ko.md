@@ -85,10 +85,17 @@ struct message_flow_event_t {                 // surface/kind는 error 이벤트
     std::optional<std::string> packet_name, channel_name, topic, correlation_id,
                                source_rid, spot_rid, actor_id;
     std::optional<std::size_t> message_size;   // verbose에서만, 값이 있을 때만
+    // 아래 두 필드는 flow-correlation 확장이 소유한다(additive, 값 있을 때만):
+    std::optional<std::string>   flow_id;      // §flow-correlation §2·§3
+    std::optional<flow_origin_t> flow_origin;  // inbound | timer, §flow-correlation §4.2
 };
 class message_flow_observer_t { virtual void on_message_flow(const message_flow_event_t&)=0; };
 // dispatch options: set_message_flow_observer(observer | callback)
 ```
+
+> `flow_id`·`flow_origin`은 [메시지 흐름 상관관계](flow-correlation.ko.md) 확장이 소유하는 additive
+> 필드다. correlation_id가 channel/route/stream 경계에서만 1급인 한계(§7·§8)를, flow_id가 spot/actor
+> 경계와 fleet 전역까지 관통해 보완한다. 이 확장을 쓰지 않으면 두 필드는 비어 있고 나머지 계약은 그대로다.
 
 **옵저버 계약**(모든 언어 동일):
 

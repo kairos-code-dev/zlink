@@ -45,6 +45,15 @@ queue 기본 크기는 1024개 notification이다. 테스트나 제한된 client
 response, request error, heartbeat control frame 은 request 완료와 연결 상태 유지에
 필요하므로 이 제한에 넣지 않는다.
 
+## 세션 종료 사유 (close reason)
+
+connector 의 disconnect 이벤트는 `closeReason` 을 노출한다. 값은 서버 측 `close_reason`
+([runtime-metrics §4.1](../../runtime-metrics.ko.md))과 정합하는 닫힌 union 이다:
+`'ClientClose' | 'IdleTimeout' | 'HeartbeatTimeout' | 'ServerDrain' | 'ProtocolError' | 'TransportError'`.
+서버가 우아한 종료(graceful drain)로 세션을 닫으면 `'ServerDrain'` 이 오며, 클라이언트는 이 값을 보고
+재접속·백오프를 결정한다([Graceful Drain & Handoff §7.1](../../graceful-drain-handoff.ko.md)). 대체
+endpoint 지정(reconnect hint)은 별도 후속 스펙이다.
+
 ## 회귀 테스트
 
 stream connector 문서는 connector 표면이 framework server 표면과 다른 책임을 가진다는 점을

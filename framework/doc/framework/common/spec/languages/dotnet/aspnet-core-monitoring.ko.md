@@ -449,6 +449,110 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 (`BINGO_LOG_DIR`로 로그 디렉토리 override). 한 요청을 `corr=`로 grep하면 노드 간
 `outcome=sent`→`outcome=received`→`outcome=replied`→`outcome=reply-received`가 시간순으로 이어진다.
 
+## 10. 런타임 메트릭 (runtime metrics)
+
+공통 의미(계기 카탈로그·종류·라벨·성능 계약)는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이
+소유한다. 이 절은 `.NET` 표면만 적는다.
+
+> **설계 원칙(깊은 모듈): 공통 케이스는 무설정.** framework는 안정된 이름의 `Meter` 하나로 카탈로그
+> 계기를 방출하고, 앱은 자기 OpenTelemetry 파이프라인에 그 meter만 포함한다. per-계기 API는
+> 노출하지 않는다 — 계기 갱신 지점·라벨은 framework 내부에 있고, 앱이 배우는 것은 meter 이름
+> 하나뿐이다.
+
+### 10.1 표면
+
+| 공통 개념 | `.NET` |
+|-----------|--------|
+| meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"` (meter/scope 이름은 언어 간 바이트 동일, 공통 §11) |
+| 계기 방출 | `System.Diagnostics.Metrics.Meter("zlink.framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
+| 앱 연결(공통 케이스) | OTel `MeterProviderBuilder.AddMeter(ZLinkMeters.Framework)` — 이게 전부다 |
+| 비-OTel/커스텀 수집(선택) | `options.SetMetricsListener(IZLinkMetricsListener listener)` — `MeterListener` 선례(`SetMessageFlowObserver`)와 같은 단일 훅 setter |
+
+```csharp
+// 앱은 이 한 줄로 zlink 계기를 자기 OTel 파이프라인에 넣는다. 별도 zlink 설정 없음.
+builder.Services.AddOpenTelemetry().WithMetrics(m => m
+    .AddMeter(ZLinkMeters.Framework)
+    .AddPrometheusExporter());
+```
+
+- 공통 §3의 `updown`=`UpDownCounter<long>`, `observable`=`ObservableGauge`(scrape 시 콜백),
+  histogram=`Histogram<double>`(단위 ms, 공통 §4.0).
+- meter가 어떤 listener에도 안 붙으면 계기 갱신은 사실상 no-op이다(off 제로코스트, 공통 §7.2).
+- 대시보드·exporter는 앱 몫. framework는 내장 scrape 서버를 제공하지 않는다(공통 §6).
+
+### 10.2 왜 새 인터페이스가 없나
+
+`.NET`의 `Meter`/`MeterListener`가 이미 벤더 중립 계기 파사드다. framework가 별도 `IZLinkMetrics*`
+표면을 두면 그 위에 pass-through 층이 생겨 깊이가 없다(얕은 모듈). 그래서 공개 표면을 **안정된 meter
+이름 하나 + 선택적 `SetMetricsListener`**로 최소화한다.
+
+## 11. 메시지 흐름 상관관계 (flow correlation)
+
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. 이 절은
+§9(메시지 흐름 추적)의 **additive 확장**이며 **새 최상위 표면을 만들지 않는다** — 기존
+`ConfigureDispatch()` 체인에 모드 하나, 기존 `ZLinkMessageFlowEvent`에 필드 하나를 더한다.
+
+### 11.1 표면
+
+| 공통 개념 | `.NET` |
+|-----------|--------|
+| flow id 모드 | `ZLinkFlowIdMode` { `None`, `Monotonic`(기본), `GlobalUnique` } |
+| 설정 | `ConfigureDispatch().FlowId(ZLinkFlowIdMode.GlobalUnique)` |
+| event 필드(추가) | `ZLinkMessageFlowEvent.FlowId`, `ZLinkMessageFlowEvent.FlowOrigin`(`ZLinkFlowOrigin` { `Inbound`, `Timer` }, §공통 §4.2) — §9.1 record에 추가. dispatch 오류 이벤트에도 `FlowId` 동일 |
+
+```csharp
+options.ConfigureDispatch()
+    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+    .FlowId(ZLinkFlowIdMode.GlobalUnique);   // 대규모 fleet 전역 조인; 기본은 Monotonic
+```
+
+- 생성은 트레이싱 모드 게이트, **전파(echo)는 무조건**이라 off 노드를 지나도 흐름이 끊기지 않는다
+  (공통 §2.2).
+- stream/actor gateway 로거는 부트스트랩에서 **자동 배선**된다(공통 §7). 명시 주입이 우선하되, 없을
+  때 침묵 대신 기본 sink로 폴백 — "조용한 무로그"를 기본에서 제거한다. 게이팅은 불변(배선 ≠ 출력,
+  `Off`면 완전 침묵).
+- 로그 토큰 `flow=`는 언어 간 바이트 동일(공통 §8).
+
+## 12. Graceful Drain & Handoff
+
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+이 절은 **lifecycle 제어 표면**(관측이 아님)의 `.NET` 투영이다.
+
+> **설계 원칙(복잡도 하향): 공통 케이스는 무설정.** framework가 host shutdown에 자동 참여해 drain하므로
+> 앱은 아무 코드도 쓰지 않는다. draining 마커·owner lease 유지·`Takeover` 순서 같은 분산 정합은
+> 공통 스펙 §3이 소유하며 앱 표면에 노출하지 않는다.
+
+### 12.1 표면
+
+| 공통 개념 | `.NET` |
+|-----------|--------|
+| 자동 drain(기본) | framework hosted service가 `IHostApplicationLifetime` 종료에 참여, `StopAsync`에서 drain — 앱 코드 0 |
+| SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/Deadline/ReleaseAndRecreate})` |
+| 명시 제어(선택) | `IZLinkDrainControl` { `DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(기본 deadline, 공통 §6), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
+| readiness probe | `IZLinkDrainControl.IsReady` 또는 편의 `AddZLinkDrainHealthCheck()` |
+| 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `SourceName` = 고정값 `"drain"` |
+
+```csharp
+// SPOT별 정책만 선언 — 나머지는 전부 기본 동작
+options.AddSpotMesh("orders")
+    .UseDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate);  // event-sourcing owner spot
+
+// 배포 자동화가 세밀 제어를 원할 때만 (대개 불필요)
+var drain = app.Services.GetRequiredService<IZLinkDrainControl>();
+await drain.DrainAsync(TimeSpan.FromSeconds(25), ct);
+await drain.AwaitDrainedAsync(ct);
+```
+
+- **왜 새 이벤트 구독을 안 만드나:** drain 상태 관측은 monitoring의 `IZLinkRuntimeEventHandler<T>`를
+  그대로 쓴다(같은 개념 → 같은 메커니즘). 새 관측 표면을 만들지 않는다.
+- **drain 이벤트는 source 등록이 필요 없다.** socket/spot source와 달리 drain은 노드 생애 수 회의
+  저빈도 lifecycle 이벤트라 polling·filter 파라미터가 없다. `IZLinkRuntimeEventHandler<ZLinkDrainEvent>`
+  핸들러가 DI에 있으면 monitoring 구성 유무와 무관하게 항상 수신한다 — flow correlation이 제거한
+  "조용한 무관측" 함정을 여기서도 만들지 않는다(공통 §9).
+- **왜 앱이 `Drain`을 안 불러도 되나:** host 종료 신호 처리를 framework가 흡수한다. `IZLinkDrainControl`
+  은 배포 자동화가 세밀 제어할 때만 쓰는 탈출구다.
+- `IsReady`는 술어 프로퍼티다(`Draining`이면 false). readiness probe가 이 값을 그대로 읽는다.
+
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.
 [^location-store]: location store 는 분산 환경에서 어떤 서비스가 어느 endpoint에 있는지를 row 로 저장하고 조회하는 공유 저장소다.

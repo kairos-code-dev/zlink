@@ -600,6 +600,65 @@ Bingo.Ts 3노드(Api/Play/Session)는 각자 `messageFlow(KeyTransitions)` +
 `traceLogFile(.../flow-<role>.log)` + `traceLabel(role)`로 분리 파일 로깅을 시연한다
 (`BINGO_LOG_DIR` override). 한 요청을 `corr=`로 grep하면 노드 간 흐름이 이어진다.
 
+## 10. 런타임 메트릭 (runtime metrics)
+
+공통 의미는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이 소유한다. 이 절은 Node.js 표면만
+적는다.
+
+> **설계 원칙(깊은 모듈): 공통 케이스는 무설정.** framework는 안정된 이름의 OpenTelemetry `Meter`로
+> 카탈로그 계기를 방출한다. 앱은 전역 `MeterProvider`만 구성하면 되고 계기를 하나도 선언하지 않는다.
+
+### 10.1 표면
+
+| 공통 개념 | Node.js |
+|-----------|---------|
+| meter 이름(상수) | `ZLinkMeters.Framework` = `'zlink.framework'` |
+| 계기 방출 | OpenTelemetry Metrics API `Meter` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
+| 앱 연결(공통 케이스) | 전역 OTel `MeterProvider`(SDK) 구성 — 별도 zlink 설정 없음 |
+| 커스텀(선택) | `ZLinkModule.forRoot({ metrics: { meterProvider } })`로 provider 주입 |
+
+- 공통 §3 매핑: `updown`=`UpDownCounter`, `observable`=`ObservableGauge`(관찰 콜백), histogram=`Histogram`(ms).
+- MeterProvider가 no-op이면 계기 갱신 비용만 남고 export는 0(공통 §7.2). exporter·대시보드는 앱 몫.
+
+## 11. 메시지 흐름 상관관계 (flow correlation)
+
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. §9(메시지
+흐름 추적)의 additive 확장이며 새 최상위 표면을 만들지 않는다.
+
+### 11.1 표면
+
+| 공통 개념 | Node.js |
+|-----------|---------|
+| flow id 모드 | `ZLinkFlowIdMode` { `None`, `Monotonic`(기본), `GlobalUnique` }(enum) |
+| 설정 | `configureDispatch().flowId(ZLinkFlowIdMode.GlobalUnique)` — §9.2 MFT 설정과 같은 builder 체인(경로 이중화 금지) |
+| event 필드(추가) | `ZLinkMessageFlowEvent.flowId?`, `ZLinkMessageFlowEvent.flowOrigin?`(`ZLinkFlowOrigin` { `Inbound`, `Timer` }, 공통 §4.2) — 불변 interface 필드 추가. 오류 이벤트에도 `flowId` 동일(§9.1 outcome 집합에 `Error` 정합 전제) |
+
+- 생성은 모드 게이트, 전파는 무조건(공통 §2.2). stream/actor gateway 로거 자동 배선(공통 §7),
+  게이팅 불변(`Off`면 완전 침묵). 로그 토큰 `flow=`는 언어 간 바이트 동일.
+
+## 12. Graceful Drain & Handoff
+
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+lifecycle 제어 표면(관측 아님)의 Node.js 투영이다.
+
+> **설계 원칙(복잡도 하향): 공통 케이스는 무설정.** framework가 NestJS `onApplicationShutdown`
+> (`enableShutdownHooks()`)에 자동 참여해 drain한다. 앱은 코드를 쓰지 않는다.
+
+### 12.1 표면
+
+| 공통 개념 | Node.js |
+|-----------|---------|
+| 자동 drain(기본) | framework가 `onApplicationShutdown(signal)`에서 drain — 앱 코드 0 |
+| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate)`(enum, 기본 `DrainNatural`) |
+| 명시 제어(선택) | `ZLinkDrainControl` { `drain(deadlineMs?): Promise<void>`(생략 시 기본 deadline), `awaitDrained(): Promise<void>`, `isReady(): boolean` } (injectable) |
+| readiness probe | framework가 NestJS Terminus `ZLinkDrainHealthIndicator`를 제공, health controller에 등록. 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
+| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `sourceName` = 고정값 `'drain'` |
+
+- 비동기 반환에 `Async` 접미사를 쓰지 않는 이 코드베이스 관례(`handle(): Promise`)에 맞춰 `drain`으로 둔다.
+- drain 상태 관측은 monitoring의 `ZLinkRuntimeEventHandler<T>`를 그대로 쓴다(같은 개념 → 같은
+  메커니즘). **drain 이벤트는 source 등록이 필요 없다** — 저빈도 lifecycle 이벤트라 handler provider
+  존재만으로 수신한다(공통 §9, 조용한 무관측 없음).
+
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake 는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.
 [^discovery]: discovery 는 분산 환경에서 어떤 서비스가 어느 endpoint 에 있는지를 자동으로 알아내는 메커니즘이다. ZLink 에서는 registry 가 그 역할을 한다.

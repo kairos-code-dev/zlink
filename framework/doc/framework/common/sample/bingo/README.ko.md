@@ -1056,3 +1056,71 @@ evidence를 남겨야 한다.
   정리한다.
 - client는 API 서버나 Play 서버 endpoint를 직접 사용하지 않는다.
 - handler 등록은 typed handler 계약을 구성 코드에서 명시 등록하는 방식을 사용한다.
+
+## 17. 관측·운영 켜기 (Observability & Ops)
+
+Bingo는 이미 세션 게이트웨이(STREAM)·actor 이동·룸 타이머·bound push를 갖춰, 관측·운영 기능이
+관측하는 사건을 그대로 만들어 낸다. 그래서 사용자가 **바로 따라 켜 보기** 좋은 샘플이다. 세
+기능은 각각 [메시지 흐름 상관관계](../../spec/flow-correlation.ko.md), [런타임 메트릭](../../spec/runtime-metrics.ko.md),
+[Graceful Drain & Handoff](../../spec/graceful-drain-handoff.ko.md)이 계약을 소유하고, 언어별 표면은
+각 언어 monitoring 문서가 소유한다. **셋 다 공통 케이스는 무설정에 가깝다.**
+
+### 17.1 메시지 흐름 추적 로그 (flow correlation)
+
+세 노드(`Session`/`Api`/`Play`)에서 dispatch 추적을 켜고 `flowId`를 준다. 이미 §14 흐름이 있으므로
+한 판(카드 제출→추첨→bound push)을 `flow=`로 grep하면 STREAM→actor→room-spot이 한 줄로 이어진다.
+
+```csharp
+// 각 노드 공통 (.NET). role = 그 노드의 역할 문자열("session"/"api"/"play", README §6)
+options.ConfigureDispatch()
+    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+    .TraceLogFile($"log/flow-{role}.log")
+    .TraceLabel(role)
+    .FlowId(ZLinkFlowIdMode.GlobalUnique);   // 다중 노드 전역 조인
+```
+
+확인: `grep flow=<id> log/flow-*.log`가 `Session`(생성)→`Play` actor relay→`BingoRoomSpot` 내부
+dispatch→bound push까지 시간순으로 잇는다. corr이 끊기는 spot 경계에서도 `flow=`가 유지된다.
+
+### 17.2 런타임 메트릭
+
+`Session`은 CCU, `Play`는 룸 큐·actor 이동을 방출한다. 앰비언트 meter/registry만 연결하면 끝이다.
+
+```csharp
+// Session/Play 공통 (.NET) — zlink 계기를 앱 OTel 파이프라인에 포함
+builder.Services.AddOpenTelemetry().WithMetrics(m => m
+    .AddMeter(ZLinkMeters.Framework)
+    .AddPrometheusExporter());
+```
+
+`AddPrometheusExporter()`는 `OpenTelemetry.Exporter.Prometheus.AspNetCore` 패키지가 필요하다(exporter는
+앱 몫, 공통 스펙 §6). 관찰 포인트: `zlink.stream.connections.active`(=CCU, `Session`),
+`zlink.spot.queue.depth`(`kind=user`, `Play`), player가 다른 `Play`로 옮겨질 때 `zlink.actor.transfers`.
+
+### 17.3 Graceful Drain
+
+`Play`를 무중단 배포하려면 룸 정책만 선언하고 나머지는 자동 drain에 맡긴다.
+
+```csharp
+// Play 노드 (.NET) — 짧은 매치룸은 자연 종료 정책
+options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+    .UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural)
+    .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
+    .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType);
+```
+
+확인: `play-a`에 drain을 걸면 신규 매칭 배정에서만 빠지고, 진행 중 룸은 자연 종료될 때까지
+유지되며, bound actor는 `play-b`로 이동해 세션이 이어진다. `zlink.drain.actors.handed_off`로 확인.
+
+> event-sourcing owner spot(ShoppingMall `OrderWorkflowSpot`)은 `ReleaseAndRecreate` 정책이
+> 맞다 — drain 시 row를 해제하고 다음 요청이 타 노드에서 event replay로 재구성한다.
+
+### 17.4 언어별 표면
+
+같은 세 기능의 언어별 정식 표면은 각 언어 monitoring 문서를 본다:
+[.NET](../../spec/languages/dotnet/aspnet-core-monitoring.ko.md) §10~12 ·
+[Java](../../spec/languages/java/spring-boot-monitoring.ko.md) §8~10 ·
+[Node](../../spec/languages/node/nestjs-monitoring.ko.md) §10~12 ·
+[C++](../../spec/languages/cpp/cpp-monitoring.ko.md) §8~10 ·
+[Kotlin](../../spec/languages/kotlin/handler-interfaces.ko.md) §8. 배포 조건에서의 e2e 검증은
+[Config 11 — 관측·운영 배포](../../e2e/config-11-observability-ops.ko.md)가 다룬다.

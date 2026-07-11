@@ -190,6 +190,84 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 (`BINGO_LOG_DIR` override). Kotlin은 같은 Java 런타임을 공유하며 `configureDispatch { }` DSL과
 `onMessageFlow { }` 람다 옵저버(에르고노믹스)를 추가로 제공한다.
 
+## 8. 런타임 메트릭 (runtime metrics)
+
+공통 의미는 [공통 스펙 — 런타임 메트릭](../../runtime-metrics.ko.md)이 소유한다. 이 절은 Java 표면만
+적는다.
+
+> **설계 원칙(깊은 모듈): 공통 케이스는 무설정.** Spring Boot 앱에 Micrometer `MeterRegistry` 빈이
+> 있으면 framework가 자동으로 바인딩해 카탈로그 계기를 방출한다. 앱은 계기를 하나도 선언하지 않는다.
+
+### 8.1 표면
+
+| 공통 개념 | Java |
+|-----------|------|
+| 계기 이름 접두 | `zlink.` (Micrometer meter name, 공통 §4.0 바이트 동일) |
+| 계기 방출 | 앰비언트 `MeterRegistry`에 `Counter`/`Gauge`/`Timer`(histogram) 등록 |
+| 앱 연결(공통 케이스) | Spring Boot Actuator + Micrometer registry 자동 구성 — 별도 zlink 설정 없음 |
+| meter/scope 이름 | 계기 접두 `zlink.` (Micrometer는 scope 개념이 없어 접두가 바이트 동일 식별자, 공통 §11) |
+| 커스텀 조정(선택) | `ZLinkMetricsCustomizer { void customize(MeterRegistry registry); }`(공통 태그 추가·필터 등) — `ZLinkMonitoringOptionsCustomizer` 선례와 동형 |
+
+- 공통 §3 `updown`=Micrometer `Gauge`(등록 시 상태 참조), `observable`=`Gauge` 콜백. histogram은 **duration
+  계기(`.duration`/`.latency`)=`Timer`, 그 외 분포=`DistributionSummary`**로 고정한다. `Timer` base unit은
+  백엔드별이라 공통 §4.0의 ms 고정은 export 브리지가 맞춘다.
+- registry가 없으면(예: 테스트) 계기는 no-op registry로 접혀 성능 영향이 없다(공통 §7.2).
+- 대시보드·exporter(Prometheus/OTLP)는 앱 몫이다(공통 §6).
+
+## 9. 메시지 흐름 상관관계 (flow correlation)
+
+공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../flow-correlation.ko.md)가 소유한다. §7(메시지
+흐름 추적)의 additive 확장이며 새 최상위 표면을 만들지 않는다.
+
+### 9.1 표면
+
+| 공통 개념 | Java |
+|-----------|------|
+| flow id 모드 | `ZLinkFlowIdMode` { `NONE`, `MONOTONIC`(기본), `GLOBAL_UNIQUE` } |
+| 설정 | `configureDispatch().flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE)` |
+| event 필드(추가) | `ZLinkMessageFlowEvent.flowId()`, `ZLinkMessageFlowEvent.flowOrigin()`(`ZLinkFlowOrigin` { `INBOUND`, `TIMER` }, 공통 §4.2) — §7.1 record accessor 추가. 오류 이벤트에도 `flowId()` 동일 |
+
+```java
+ZLinkFrameworkConfigurer dispatchTracing() {
+    return configurer -> configurer.configureDispatch()
+        .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+        .flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE);   // 기본은 MONOTONIC
+}
+```
+
+- 생성은 모드 게이트, 전파는 무조건(공통 §2.2). stream/actor gateway 로거 자동 배선(공통 §7),
+  게이팅 불변. Kotlin은 `configureDispatch { flowId(...) }` DSL로 노출한다.
+
+## 10. Graceful Drain & Handoff
+
+공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../graceful-drain-handoff.ko.md)가 소유한다.
+lifecycle 제어 표면(관측 아님)의 Java 투영이다.
+
+> **설계 원칙(복잡도 하향): 공통 케이스는 무설정.** framework가 Spring `SmartLifecycle`로 graceful
+> shutdown에 자동 참여해 drain한다. 앱은 코드를 쓰지 않는다.
+
+### 10.1 표면
+
+| 공통 개념 | Java |
+|-----------|------|
+| 자동 drain(기본) | framework `SmartLifecycle` 빈이 shutdown에서 drain — 앱 코드 0 |
+| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy(ZLinkSpotDrainPolicy.{DRAIN_NATURAL(기본)/DEADLINE/RELEASE_AND_RECREATE})` |
+| 명시 제어(선택) | `ZLinkDrainControl` { `drain(Duration deadline)` → `CompletionStage<Void>`, `drain()`(기본 deadline) → `CompletionStage<Void>`, `awaitDrained()` → `CompletionStage<Void>`, `boolean isReady()` } (빈) |
+| readiness probe | starter가 `ZLinkDrainReadinessContributor`를 자동 등록해 Actuator readiness group에 반영(무설정). 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
+| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state()` { `SERVING`/`DRAINING`/`DRAINED`/`FORCE_STOPPING` }, `sourceName()` = 고정값 `"drain"` |
+
+```java
+options.addSpotMesh("orders")
+    .useDrainPolicy(ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE);
+```
+
+- 비동기 반환에 `Async` 접미사를 쓰지 않는 이 코드베이스 관례(`transferOut`, `onMessageFlow`)에 맞춰
+  `drain`으로 둔다.
+- drain 상태 관측은 monitoring의 `ZLinkRuntimeEventHandler<T>`를 그대로 쓴다(같은 개념 → 같은
+  메커니즘). **drain 이벤트는 source 등록이 필요 없다** — 저빈도 lifecycle 이벤트라 handler 빈 존재만으로
+  monitoring configurer 유무와 무관하게 수신한다(공통 §9, 조용한 무관측 없음). Kotlin은
+  `drainControl.drain(deadline).await()`와 `onDrain { }` 람다를 제공한다(§8).
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot Channel Messaging](spring-boot-channel-messaging.ko.md) | [다음: ZLink Framework Spring Boot Registry](spring-boot-registry.ko.md)

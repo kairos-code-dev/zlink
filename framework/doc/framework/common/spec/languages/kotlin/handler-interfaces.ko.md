@@ -845,3 +845,24 @@ fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 | request/join/worker yield extension | 별도 extension 없음. 일반 `await`가 실행 문맥을 보존 | 여러 `yield(...)` top-level extension 공개 | gap — yield extension을 제거하고 Java의 단일 완료 계약을 사용한다. |
 | Spot messaging target | `SpotHandle` extension과 handle resolver | `SpotRef` resolver extension 공개 | gap — 주소 snapshot 대신 불투명 handle을 사용한다. |
 | 이 절의 top-level extension 선언 | receiver, overload, parameter, default와 반환형을 위 시그니처로 고정 | public 함수는 존재하지만 기존 문서는 이름만 나열 | 문서 gap 해소 — contract test가 각 overload의 JVM signature까지 검증해야 한다. |
+
+## 8. 관측·운영 표면 (metrics · flow correlation · drain)
+
+메트릭·flow correlation·drain의 계약은 Java 공개 계약([Spring Boot Monitoring](../java/spring-boot-monitoring.ko.md)
+§8~§10)을 그대로 따르고, 여기서 Java 타입을 복사해 다시 정의하지 않는다. Kotlin은 같은 Java runtime
+위에 **관용 델타만** 추가한다.
+
+| 대상 | Java 표면(정본) | Kotlin 델타 |
+|------|------------------|-------------|
+| 메트릭 | Micrometer `MeterRegistry` 자동 바인딩(무설정) | 없음 — Spring Boot Kotlin 앱도 동일 |
+| flow id 설정 | `configureDispatch().flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE)` | `configureDispatch { flowId(ZLinkFlowIdMode.GLOBAL_UNIQUE) }` DSL |
+| SPOT drain 정책 | `useDrainPolicy(ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE)` | 동일(builder DSL) |
+| drain 명시 제어 | `ZLinkDrainControl` { `drain(Duration)`, `awaitDrained()`, `isReady()` } | 별도 extension 없음 — Java `drain(deadline)`/`awaitDrained()`가 반환하는 `CompletionStage`를 기존 `CompletionStage.await()`(§7.2)로 대기: `drainControl.drain(deadline).await()` |
+| drain 상태 관측 | `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` | `onDrain { event -> ... }` 람다 옵저버(에르고노믹스) |
+
+Java `drain`이 멤버이므로 Kotlin은 이름이 겹치는 `drain` extension을 두지 않고 기존 `CompletionStage.await()`
+확장을 재사용한다(표면 축소, §7.2 취소 규칙 — 별도 `CancellationToken` 없음). `ZLinkFlowIdMode`·
+`ZLinkFlowOrigin`·`ZLinkSpotDrainPolicy`·`ZLinkDrainEvent` enum/타입은 Java 타입을 그대로 사용한다.
+
+> §7.1 타입 목록·§7.2 함수 inventory는 이 §8의 `onDrain` 람다와 위 `.await()` 재사용을 포함한 것으로
+> 읽는다(새 `drain` extension은 추가하지 않으므로 inventory 증가 없음).

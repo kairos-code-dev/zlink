@@ -268,7 +268,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         var local = new ZLinkAutoConnectLocal(type, meshName, role, nodeRid, endpoint);
         var row = advertisable
             ? new ZLinkPeerLocation(
-                type, meshName, nodeRid, role, endpoint, weight, 0,
+                type, meshName, nodeRid, role, endpoint, weight, false, 0,
                 Metadata: metadata, Capabilities: null,
                 OwnerId: string.Empty, Generation: 0, UpdatedAt: default)
             : null;

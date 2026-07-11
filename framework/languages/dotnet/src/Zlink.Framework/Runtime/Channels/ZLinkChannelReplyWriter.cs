@@ -70,7 +70,11 @@ internal static class ZLinkChannelReplyWriter
             null,
             null,
             null,
-            null);
+            null)
+        {
+            FlowId = request.FlowId,
+            FlowOrigin = request.FlowOrigin
+        };
     }
 
     public static ZLinkEnvelopeHeader CreateErrorHeader(
@@ -87,6 +91,10 @@ internal static class ZLinkChannelReplyWriter
             null,
             null,
             exception.GetType().Name,
-            exception.Message);
+            exception.Message)
+        {
+            FlowId = request.FlowId,
+            FlowOrigin = request.FlowOrigin
+        };
     }
 }

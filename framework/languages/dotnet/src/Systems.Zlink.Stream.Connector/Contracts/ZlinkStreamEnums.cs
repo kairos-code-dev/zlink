@@ -65,3 +65,13 @@ public enum ZlinkStreamConnectionState
     Disconnected,
     Closed
 }
+
+public enum ZlinkStreamCloseReason
+{
+    ClientClose = 0,
+    IdleTimeout = 1,
+    HeartbeatTimeout = 2,
+    ServerDrain = 3,
+    ProtocolError = 4,
+    TransportError = 5
+}

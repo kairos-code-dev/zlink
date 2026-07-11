@@ -183,6 +183,7 @@ internal readonly struct ZLinkDispatchFlowScope(
         ZLinkMessageFlowOutcome outcome,
         bool forLog)
     {
+        var flow = ZLinkFlowContext.Current;
         return new ZLinkMessageFlowEvent(
             outcome,
             surface,
@@ -193,7 +194,11 @@ internal readonly struct ZLinkDispatchFlowScope(
             correlationId,
             sourceRid,
             SpotRid: forLog ? logSpotRid ?? spotRid : spotRid,
-            ActorId: actorId);
+            ActorId: actorId)
+        {
+            FlowId = flow?.FlowId ?? string.Empty,
+            FlowOrigin = flow?.Origin ?? ZLinkFlowOrigin.Inbound
+        };
     }
 
     private static string FormatAction(ZLinkDispatchErrorAction action)

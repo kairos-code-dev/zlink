@@ -7,6 +7,7 @@ public sealed record ZLinkPeerLocation(
     ZLinkLocationRole Role,
     string Endpoint,
     uint Weight,
+    bool Draining,
     long Value,
     IReadOnlyDictionary<string, string>? Metadata,
     IReadOnlyList<string>? Capabilities,

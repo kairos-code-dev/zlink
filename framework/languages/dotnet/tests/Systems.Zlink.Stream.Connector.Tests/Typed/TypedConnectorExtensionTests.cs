@@ -250,7 +250,7 @@ public sealed partial class StreamConnectorTests
             remove { }
         }
 
-        public event Func<CancellationToken, ValueTask>? Disconnected
+        public event Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? Disconnected
         {
             add { }
             remove { }

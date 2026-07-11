@@ -203,6 +203,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Stream.UpdateAddresses(localAddr, remoteAddr);
         if (Interlocked.Exchange(ref _connected, 1) != 0) return;
 
+        ZLinkRuntimeMetrics.RecordStreamOpened();
         await _handler.OnConnectedAsync(CancellationToken.None);
     }
 
@@ -220,6 +221,12 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 ZLinkStreamControlFrames.Dispatch(Stream, decoded, payload.AsReadOnlyMemory());
                 return;
             }
+
+            using var currentFlow = ZLinkFlowContext.Enter(
+                decoded.FlowId,
+                decoded.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
+                _flow.GenerationEnabled,
+                ZLinkFlowOrigin.Inbound);
 
             if (_context.TryCompleteResponse(decoded, payload))
             {
@@ -303,6 +310,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         ZLinkStreamError? error,
         bool notifyDisconnected)
     {
+        if (Volatile.Read(ref _connected) != 0)
+            ZLinkRuntimeMetrics.RecordStreamClosed(error is null ? "client_close" : "transport_error");
+
         Exception? callbackFailure = null;
         if (error is { } streamError)
             try

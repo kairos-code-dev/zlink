@@ -245,6 +245,7 @@ public sealed class AutoConnectReconcilerTests
                 ZLinkLocationRole.Dealer,
                 "tcp://l:1",
                 100,
+                false,
                 0,
                 null,
                 null,
@@ -426,7 +427,7 @@ public sealed class AutoConnectReconcilerTests
         string rid,
         string endpoint,
         string mesh = "play") =>
-        new(type, mesh, RoutingId.From(rid), role, endpoint, 100, 0, null, null, "peer-owner", 1, default);
+        new(type, mesh, RoutingId.From(rid), role, endpoint, 100, false, 0, null, null, "peer-owner", 1, default);
 
     private static async Task<ReconcilerFixture> FixtureAsync(Action<ZLinkLocationOptions>? configure = null)
     {
@@ -448,7 +449,7 @@ public sealed class AutoConnectReconcilerTests
             RoutingId.From("local"), "tcp://l:1");
         var localRow = new ZLinkPeerLocation(
             local.AutoConnectType, local.MeshName, local.NodeRid, local.Role, local.Endpoint,
-            100, 0, null, null, "ignored", 0, default);
+            100, false, 0, null, null, "ignored", 0, default);
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, failable, executor, options, time);
         return new ReconcilerFixture(store, runtime, failable, executor, reconciler, time);

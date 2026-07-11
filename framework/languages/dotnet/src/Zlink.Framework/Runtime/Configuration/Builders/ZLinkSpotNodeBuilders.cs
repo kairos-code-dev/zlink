@@ -12,6 +12,15 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     public IZLinkEndpointConnections PublisherConnections => PubSubConnections;
 
+    public IZLinkSpotMeshBuilder UseDrainPolicy(ZLinkSpotDrainPolicy policy)
+    {
+        if (!Enum.IsDefined(policy))
+            throw new ZLinkConfigurationException($"Unknown SPOT drain policy '{policy}'.");
+
+        registration.DrainPolicy = policy;
+        return this;
+    }
+
     public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
     {
         var router = EnsureRouter();

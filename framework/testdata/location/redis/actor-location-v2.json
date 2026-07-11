@@ -24,7 +24,7 @@
       "hash": {
         "owner": "owner-a",
         "gen": "0",
-        "json": "{\"AutoConnectType\":1,\"MeshName\":\"play\",\"NodeRid\":\"6e6f64652d31\",\"Role\":3,\"Endpoint\":\"tcp://127.0.0.1:5001\",\"Weight\":100,\"Value\":7,\"Metadata\":{\"route-endpoint\":\"tcp://127.0.0.1:6001\"},\"Capabilities\":[\"router\",\"route-bridge\"],\"OwnerId\":\"owner-a\",\"Generation\":0,\"UpdatedAt\":\"0001-01-01T00:00:00+00:00\"}",
+        "json": "{\"AutoConnectType\":1,\"MeshName\":\"play\",\"NodeRid\":\"6e6f64652d31\",\"Role\":3,\"Endpoint\":\"tcp://127.0.0.1:5001\",\"Weight\":100,\"Draining\":false,\"Value\":7,\"Metadata\":{\"route-endpoint\":\"tcp://127.0.0.1:6001\"},\"Capabilities\":[\"router\",\"route-bridge\"],\"OwnerId\":\"owner-a\",\"Generation\":0,\"UpdatedAt\":\"0001-01-01T00:00:00+00:00\"}",
         "updatedAtMs": "0"
       }
     },

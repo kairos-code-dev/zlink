@@ -33,6 +33,20 @@ public sealed class RedisLocationStoreTests
     }
 
     [Fact]
+    public void Peer_Row_Json_Requires_The_Typed_Draining_Field()
+    {
+        var row = TestRows.Peer(OwnerA) with { Draining = true };
+        var json = ZLinkRedisLocationRowJson.Serialize(row);
+
+        Assert.Contains("\"Draining\":true", json, StringComparison.Ordinal);
+        Assert.True(ZLinkRedisLocationRowJson.Deserialize<ZLinkPeerLocation>(json).Draining);
+
+        var legacy = json.Replace("\"Draining\":true,", string.Empty, StringComparison.Ordinal);
+        Assert.Throws<System.Text.Json.JsonException>(
+            () => ZLinkRedisLocationRowJson.Deserialize<ZLinkPeerLocation>(legacy));
+    }
+
+    [Fact]
     public void RemoveAllByOwner_Uses_One_Lua_Script_For_All_Four_Kinds()
     {
         Assert.Contains("for i = 1, 4 do", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);

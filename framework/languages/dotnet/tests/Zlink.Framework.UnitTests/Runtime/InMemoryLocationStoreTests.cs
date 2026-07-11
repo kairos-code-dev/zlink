@@ -380,6 +380,7 @@ public sealed class InMemoryLocationStoreTests
         ZLinkLocationRole.Router,
         endpoint,
         100,
+        false,
         0,
         null,
         null,

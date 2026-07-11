@@ -206,6 +206,7 @@ public sealed class LocationContracts
         ZLinkLocationRole.Router,
         "tcp://127.0.0.1:5001",
         100,
+        false,
         0,
         null,
         null,

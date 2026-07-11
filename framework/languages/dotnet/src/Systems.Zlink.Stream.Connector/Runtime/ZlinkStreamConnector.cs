@@ -76,7 +76,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         remove => _callbacks.RemoveErrorReceived(value);
     }
 
-    public event Func<CancellationToken, ValueTask>? Disconnected
+    public event Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? Disconnected
     {
         add => _callbacks.AddDisconnected(value);
         remove => _callbacks.RemoveDisconnected(value);

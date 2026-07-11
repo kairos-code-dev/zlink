@@ -23,7 +23,7 @@ public sealed class AutoConnectLoopTests
             RoutingId.From("local"), "tcp://l:1");
         var localRow = new ZLinkPeerLocation(
             local.AutoConnectType, local.MeshName, local.NodeRid, local.Role, local.Endpoint,
-            100, 0, null, null, "ignored", 0, default);
+            100, false, 0, null, null, "ignored", 0, default);
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, countingResolver, new NullExecutor(), options, time);
         var loop = new ZLinkAutoConnectLoop(reconciler, local, options, stampStore: store, timeProvider: time);
@@ -45,7 +45,7 @@ public sealed class AutoConnectLoopTests
         await store.UpdatePeerAsync(
             new ZLinkPeerLocation(
                 ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, 0, null, null, "peer-owner", 0, default),
+                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null, "peer-owner", 0, default),
             ZLinkLocationWriteIntent.NewClaim);
         await loop.TickAsync();
         Assert.Equal(reads + 1, countingResolver.ListCalls);
@@ -78,7 +78,7 @@ public sealed class AutoConnectLoopTests
         await store.UpdatePeerAsync(
             new ZLinkPeerLocation(
                 ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, 0, null, null, "late-owner", 0, default),
+                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null, "late-owner", 0, default),
             ZLinkLocationWriteIntent.NewClaim);
         await loop.TickAsync();
         Assert.Empty(executor.Connected);
@@ -111,7 +111,7 @@ public sealed class AutoConnectLoopTests
         await store.UpdatePeerAsync(
             new ZLinkPeerLocation(
                 ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, 0, null, null, "peer-owner", 0, default),
+                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null, "peer-owner", 0, default),
             ZLinkLocationWriteIntent.NewClaim);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(

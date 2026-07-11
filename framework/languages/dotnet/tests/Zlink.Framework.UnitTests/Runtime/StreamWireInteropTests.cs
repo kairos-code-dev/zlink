@@ -78,6 +78,8 @@ public sealed class StreamWireInteropTests
             ZlinkStreamMetadata.Empty
                 .With("traceId", "abc")
                 .With("optional", ""),
-            "corr-1");
+            "corr-1",
+            "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d",
+            ZlinkStreamFlowOrigin.Application);
     }
 }

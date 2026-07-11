@@ -74,7 +74,12 @@ public sealed record ZLinkMessageFlowEvent(
     ZLinkDispatchErrorReason? ErrorReason = null,
     ZLinkDispatchErrorAction? ErrorAction = null,
     string? ErrorType = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null)
+{
+    public string FlowId { get; init; } = string.Empty;
+
+    public ZLinkFlowOrigin FlowOrigin { get; init; } = ZLinkFlowOrigin.Inbound;
+}
 
 public interface IZLinkUnhandledDispatchOptions
 {

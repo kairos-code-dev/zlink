@@ -63,10 +63,56 @@ public sealed partial class StreamConnectorTests
 
         Assert.Equal("a1b2", decoded.CorrelationId);
         Assert.True(decoded.Flags.HasFlag(ZlinkStreamHeaderFlags.HasCorrelationId));
+        Assert.True(decoded.Flags.HasFlag(ZlinkStreamHeaderFlags.HasFlowId));
+        Assert.True(ZlinkStreamFlowId.IsValid(decoded.FlowId));
+        Assert.Equal(ZlinkStreamFlowOrigin.Application, decoded.FlowOrigin);
 
         var span = encoded.Span;
-        Assert.Equal((byte)4, span[^5]);
-        Assert.Equal("a1b2", Encoding.UTF8.GetString(span[^4..]));
+        Assert.Equal(ZlinkStreamFlowId.FormatMarker, span[0]);
+        Assert.Equal((byte)4, span[^(ZlinkStreamFlowId.EncodedLength + 6)]);
+        Assert.Equal(
+            "a1b2",
+            Encoding.UTF8.GetString(
+                span.Slice(span.Length - ZlinkStreamFlowId.EncodedLength - 5, 4)));
+    }
+
+    [Fact]
+    public void HeaderProtocolRoundTripsExplicitUuidV7AndRootOrigin()
+    {
+        var codec = new ZlinkStreamHeaderCodec();
+        var flowId = ZlinkStreamFlowId.Create();
+        var source = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "flow.test",
+            ZlinkStreamMetadata.Empty,
+            FlowId: flowId,
+            FlowOrigin: ZlinkStreamFlowOrigin.Timer);
+
+        var decoded = codec.Decode(codec.Encode(source));
+
+        Assert.Equal(flowId, decoded.FlowId);
+        Assert.Equal(ZlinkStreamFlowOrigin.Timer, decoded.FlowOrigin);
+    }
+
+    [Fact]
+    public void HeaderProtocolRejectsMissingMarkerAndInvalidFlowFields()
+    {
+        var codec = new ZlinkStreamHeaderCodec();
+        Assert.Throws<ZlinkStreamException>(() => codec.Decode(new byte[] { 1, 1, 0, 1, (byte)'x' }));
+
+        var invalid = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "flow.test",
+            ZlinkStreamMetadata.Empty,
+            FlowId: "00000000-0000-4000-8000-000000000000",
+            FlowOrigin: ZlinkStreamFlowOrigin.Application);
+        Assert.Throws<ZlinkStreamException>(() => codec.Encode(invalid));
     }
 
     [Fact]

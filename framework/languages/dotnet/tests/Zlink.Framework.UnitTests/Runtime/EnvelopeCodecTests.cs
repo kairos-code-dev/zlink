@@ -6,6 +6,37 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class EnvelopeCodecTests
 {
     [Fact]
+    public void Envelope_requires_marker_and_roundtrips_flow_fields()
+    {
+        var flowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d";
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Command,
+            "play",
+            "Move",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            null,
+            null,
+            null)
+        {
+            FlowId = flowId,
+            FlowOrigin = ZLinkFlowOrigin.Application
+        };
+
+        using var encoded = ZLinkEnvelopeCodec.EncodeHeader(header);
+        var decoded = ZLinkEnvelopeCodec.DecodeHeader(encoded);
+
+        Assert.Equal(0xF2, decoded.FormatMarker);
+        Assert.Equal(flowId, decoded.FlowId);
+        Assert.Equal(ZLinkFlowOrigin.Application, decoded.FlowOrigin);
+
+        using var missingMarker = Message.From(
+            "{\"Kind\":3,\"ChannelName\":\"play\",\"MessageName\":\"Move\",\"ContentType\":\"application/json\"}");
+        Assert.Throws<InvalidOperationException>(() => ZLinkEnvelopeCodec.DecodeHeader(missingMarker));
+    }
+
+    [Fact]
     public void DecodeBody_Returns_Message_When_BodyType_Is_Message()
     {
         using var body = Message.From("raw-join-request");

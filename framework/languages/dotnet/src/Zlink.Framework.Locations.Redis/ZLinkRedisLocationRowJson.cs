@@ -19,9 +19,25 @@ internal static class ZLinkRedisLocationRowJson
     internal static string Serialize<TRow>(TRow row) =>
         JsonSerializer.Serialize(row, Options);
 
-    internal static TRow Deserialize<TRow>(string json) =>
-        JsonSerializer.Deserialize<TRow>(json, Options)
-        ?? throw new InvalidOperationException("Location row payload deserialized to null.");
+    internal static TRow Deserialize<TRow>(string json)
+    {
+        if (typeof(TRow) == typeof(ZLinkPeerLocation))
+            RequirePeerDrainingField(json);
+
+        return JsonSerializer.Deserialize<TRow>(json, Options)
+               ?? throw new InvalidOperationException("Location row payload deserialized to null.");
+    }
+
+    private static void RequirePeerDrainingField(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.EnumerateObject().Any(
+                property => property.Name.Equals("Draining", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new JsonException("Peer location row must contain the typed Draining field.");
+        }
+    }
 
     /// <summary>Routing ids are opaque bytes (1..255); hex is the only
     /// lossless text form. Nullable routing ids serialize as JSON null via

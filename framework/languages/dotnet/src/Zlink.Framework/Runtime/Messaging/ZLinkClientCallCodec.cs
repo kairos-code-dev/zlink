@@ -12,6 +12,7 @@ internal static class ZLinkClientCallCodec
         bool includeCorrelationId = true,
         bool includeDeadline = true)
     {
+        var flow = ZLinkFlowContext.Current;
         return new ZLinkEnvelopeHeader(
             kind,
             channelName,
@@ -22,7 +23,11 @@ internal static class ZLinkClientCallCodec
             topic,
             null,
             null,
-            source);
+            source)
+        {
+            FlowId = flow?.FlowId,
+            FlowOrigin = flow?.Origin
+        };
     }
 
     public static IReadOnlyList<Message> EncodeEnvelopeParts<TMessage>(

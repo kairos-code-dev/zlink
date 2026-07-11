@@ -40,6 +40,7 @@ internal static class TestRows
         ZLinkLocationRole.Router,
         endpoint,
         100,
+        false,
         7,
         new Dictionary<string, string> { ["route-endpoint"] = "tcp://127.0.0.1:6001" },
         ["router", "route-bridge"],

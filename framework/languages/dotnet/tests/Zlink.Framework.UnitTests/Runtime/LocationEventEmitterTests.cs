@@ -62,7 +62,7 @@ public sealed class LocationEventEmitterTests
         await fixture.Store.UpdatePeerAsync(
             new ZLinkPeerLocation(
                 ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, 0, null, null,
+                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null,
                 "peer-owner", 0, default),
             ZLinkLocationWriteIntent.NewClaim);
 
@@ -155,7 +155,7 @@ public sealed class LocationEventEmitterTests
             RoutingId.From("local"), "tcp://l:1");
         var localRow = new ZLinkPeerLocation(
             local.AutoConnectType, local.MeshName, local.NodeRid, local.Role, local.Endpoint,
-            100, 0, null, null, "ignored", 0, default);
+            100, false, 0, null, null, "ignored", 0, default);
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, resolvers, new NullExecutor(), options, time, emitter);
 

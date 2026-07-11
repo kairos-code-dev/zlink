@@ -12,10 +12,22 @@ internal sealed class ZlinkStreamHeaderCodec
         ZlinkStreamHeaderFlags.HasRequestSeq |
         ZlinkStreamHeaderFlags.HasMetadata |
         ZlinkStreamHeaderFlags.PayloadCompressed |
-        ZlinkStreamHeaderFlags.HasCorrelationId;
+        ZlinkStreamHeaderFlags.HasCorrelationId |
+        ZlinkStreamHeaderFlags.HasFlowId;
 
     public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
     {
+        if (header.Kind != ZlinkStreamMessageKind.Control
+            && header.FlowId is null
+            && header.FlowOrigin is null)
+        {
+            header = header with
+            {
+                FlowId = ZlinkStreamFlowId.Create(),
+                FlowOrigin = ZlinkStreamFlowOrigin.Application
+            };
+        }
+
         ZlinkStreamConnector.ValidateName(header.Name, header.Kind == ZlinkStreamMessageKind.Control);
         ValidateEnum(header.Kind, header.Codec, header.Flags);
 
@@ -28,9 +40,19 @@ internal sealed class ZlinkStreamHeaderCodec
             : Array.Empty<byte>();
         if (correlationBytes.Length > byte.MaxValue)
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Correlation id is too long.");
+        var hasFlowId = header.FlowId is not null || header.FlowOrigin is not null;
+        if (hasFlowId && (header.FlowId is null || header.FlowOrigin is null))
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "Flow id and flow origin must be present together.");
+        if (header.FlowId is not null && !ZlinkStreamFlowId.IsValid(header.FlowId))
+            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Flow id must be UUIDv7.");
+        if (header.FlowOrigin is { } origin && !Enum.IsDefined(origin))
+            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Flow origin is invalid.");
 
         var flags = header.Flags;
-        ValidateHeaderSemantics(header.Kind, header.Codec, flags, hasRequestSeq, hasMetadata, hasCorrelationId);
+        ValidateHeaderSemantics(
+            header.Kind, header.Codec, flags, hasRequestSeq, hasMetadata, hasCorrelationId, hasFlowId);
 
         flags = hasRequestSeq
             ? flags | ZlinkStreamHeaderFlags.HasRequestSeq
@@ -39,6 +61,7 @@ internal sealed class ZlinkStreamHeaderCodec
         flags = hasCorrelationId
             ? flags | ZlinkStreamHeaderFlags.HasCorrelationId
             : flags & ~ZlinkStreamHeaderFlags.HasCorrelationId;
+        flags = hasFlowId ? flags | ZlinkStreamHeaderFlags.HasFlowId : flags & ~ZlinkStreamHeaderFlags.HasFlowId;
 
         var metadataSize = hasMetadata ? ZlinkStreamMetadataCodec.GetPayloadSize(header.Metadata) : 0;
         if (metadataSize > MaxMetadataPayloadSize)
@@ -46,11 +69,13 @@ internal sealed class ZlinkStreamHeaderCodec
                 ZlinkStreamErrorCode.ValidationFailed,
                 $"Metadata payload exceeds fixed limit ({MaxMetadataPayloadSize}).");
 
-        var size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.Length
+        var size = 4 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.Length
                    + (hasMetadata ? 2 + metadataSize : 0)
-                   + (hasCorrelationId ? 1 + correlationBytes.Length : 0);
+                   + (hasCorrelationId ? 1 + correlationBytes.Length : 0)
+                   + (hasFlowId ? ZlinkStreamFlowId.EncodedLength + 1 : 0);
         var buffer = new byte[size];
         var offset = 0;
+        buffer[offset++] = ZlinkStreamFlowId.FormatMarker;
         buffer[offset++] = (byte)header.Kind;
         buffer[offset++] = (byte)header.Codec;
         buffer[offset++] = (byte)flags;
@@ -84,21 +109,30 @@ internal sealed class ZlinkStreamHeaderCodec
             offset += correlationBytes.Length;
         }
 
+        if (hasFlowId)
+        {
+            Encoding.ASCII.GetBytes(header.FlowId!, buffer.AsSpan(offset, ZlinkStreamFlowId.EncodedLength));
+            offset += ZlinkStreamFlowId.EncodedLength;
+            buffer[offset++] = (byte)header.FlowOrigin!.Value;
+        }
+
         return buffer;
     }
 
     public ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header)
     {
         var span = header.Span;
-        if (span.Length < 4)
+        if (span.Length < 5)
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header is too short.");
+        if (span[0] != ZlinkStreamFlowId.FormatMarker)
+            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Stream format marker is invalid.");
 
-        var kind = (ZlinkStreamMessageKind)span[0];
-        var codec = (ZlinkStreamCodec)span[1];
-        var flags = (ZlinkStreamHeaderFlags)span[2];
+        var kind = (ZlinkStreamMessageKind)span[1];
+        var codec = (ZlinkStreamCodec)span[2];
+        var flags = (ZlinkStreamHeaderFlags)span[3];
         ValidateEnum(kind, codec, flags);
 
-        var offset = 3;
+        var offset = 4;
         ZlinkStreamRequestSeq? requestSeq = null;
         if (flags.HasFlag(ZlinkStreamHeaderFlags.HasRequestSeq))
         {
@@ -160,14 +194,34 @@ internal sealed class ZlinkStreamHeaderCodec
             offset += correlationLength;
         }
 
+        string? flowId = null;
+        ZlinkStreamFlowOrigin? flowOrigin = null;
+        if (flags.HasFlag(ZlinkStreamHeaderFlags.HasFlowId))
+        {
+            if (span.Length - offset < ZlinkStreamFlowId.EncodedLength + 1)
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.FrameDecodeFailed,
+                    "Helper header flow fields are incomplete.");
+
+            flowId = Encoding.ASCII.GetString(span.Slice(offset, ZlinkStreamFlowId.EncodedLength));
+            offset += ZlinkStreamFlowId.EncodedLength;
+            flowOrigin = (ZlinkStreamFlowOrigin)span[offset++];
+            if (!ZlinkStreamFlowId.IsValid(flowId) || !Enum.IsDefined(flowOrigin.Value))
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.FrameDecodeFailed,
+                    "Helper header flow fields are invalid.");
+        }
+
         if (offset != span.Length)
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed,
                 "Helper header contains trailing bytes.");
 
         ZlinkStreamConnector.ValidateName(name, kind == ZlinkStreamMessageKind.Control);
-        ValidateHeaderSemantics(kind, codec, flags, requestSeq is not null, metadata.Count > 0,
-            correlationId is not null);
-        return new ZlinkStreamHeader(kind, codec, flags, requestSeq, name, metadata, correlationId);
+        ValidateHeaderSemantics(
+            kind, codec, flags, requestSeq is not null, metadata.Count > 0,
+            correlationId is not null, flowId is not null);
+        return new ZlinkStreamHeader(
+            kind, codec, flags, requestSeq, name, metadata, correlationId, flowId, flowOrigin);
     }
 
     private static void ValidateEnum(
@@ -191,7 +245,8 @@ internal sealed class ZlinkStreamHeaderCodec
         ZlinkStreamHeaderFlags flags,
         bool hasRequestSeq,
         bool hasMetadata,
-        bool hasCorrelationId)
+        bool hasCorrelationId,
+        bool hasFlowId)
     {
         if (kind == ZlinkStreamMessageKind.Send && hasRequestSeq)
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed,
@@ -226,6 +281,11 @@ internal sealed class ZlinkStreamHeaderCodec
             if (hasCorrelationId)
                 throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed,
                     "Control packet must not contain a correlation id.");
+
+            if (hasFlowId)
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.FrameDecodeFailed,
+                    "Control packet must not contain flow fields.");
         }
     }
 }

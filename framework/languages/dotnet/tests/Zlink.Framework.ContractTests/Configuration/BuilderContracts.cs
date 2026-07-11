@@ -124,6 +124,7 @@ public sealed class BuilderContracts
 
         {
             var mesh = options.AddSpotMesh("play-spots");
+            Assert.Same(mesh, mesh.UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural));
             ConfigureSpotNode(mesh);
         }
 
@@ -652,6 +653,10 @@ public sealed class BuilderContracts
 
     private sealed class SpotMeshBuilder : SpotNodeBuilder, IZLinkSpotMeshBuilder
     {
+        public IZLinkSpotMeshBuilder UseDrainPolicy(ZLinkSpotDrainPolicy policy)
+        {
+            return this;
+        }
     }
 
     private sealed class ActorFactory : IZLinkActorFactory

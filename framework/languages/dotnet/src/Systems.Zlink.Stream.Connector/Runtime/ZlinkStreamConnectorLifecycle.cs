@@ -126,7 +126,8 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 
         await NotifyStateChangedAsync(change, cancellationToken).ConfigureAwait(false);
         if (snapshot.Connection is not null)
-            await callbacks.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
+            await callbacks.NotifyDisconnectedAsync(ZlinkStreamCloseReason.ClientClose, cancellationToken)
+                .ConfigureAwait(false);
     }
 
     public void RecordInbound()
@@ -347,7 +348,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         snapshot.SessionCts?.Dispose();
         await NotifyStateChangedAsync(change, cancellationToken).ConfigureAwait(false);
         pending.FailAll(GetPendingDisconnectError(error));
-        await callbacks.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
+        await callbacks.NotifyDisconnectedAsync(MapCloseReason(error), cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask TransitionToDisconnectedAsync(ZlinkStreamError error, CancellationToken cancellationToken)
@@ -361,6 +362,18 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         }
 
         await NotifyStateChangedAsync(change, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static ZlinkStreamCloseReason MapCloseReason(ZlinkStreamError error)
+    {
+        if (error.Code == ZlinkStreamErrorCode.FrameDecodeFailed)
+            return ZlinkStreamCloseReason.ProtocolError;
+
+        if (error.Message.Contains("heartbeat", StringComparison.OrdinalIgnoreCase)
+            && error.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+            return ZlinkStreamCloseReason.HeartbeatTimeout;
+
+        return ZlinkStreamCloseReason.TransportError;
     }
 
     private LifecycleSnapshot DetachLocked()

@@ -1,5 +1,7 @@
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
+public sealed record ZlinkStreamDisconnected(ZlinkStreamCloseReason CloseReason);
+
 public sealed record ZlinkStreamEncodedPayload(
     ZlinkStreamCodec Codec,
     ReadOnlyMemory<byte> Payload,

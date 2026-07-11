@@ -20,7 +20,6 @@ internal sealed class ZLinkMessageFlowTracer
     private readonly ZLinkDispatchOptionsModel _options;
     private readonly ZLinkMessageFlowObserverPump? _observerPump;
     private readonly ZLinkFrameworkRuntime? _runtime;
-    private long _sampleCounter;
 
     public ZLinkMessageFlowTracer(
         ZLinkDispatchOptionsModel options,
@@ -36,6 +35,9 @@ internal sealed class ZLinkMessageFlowTracer
 
     public static long TracedCount => Interlocked.Read(ref _tracedCount);
 
+    public bool GenerationEnabled =>
+        _options.Diagnostics.EffectiveMessageFlow != ZLinkMessageFlowLogMode.Off;
+
     // Cheap mode gate (relaxed/volatile read of the live mode). Build the event only
     // after this returns true.
     public bool Enabled(ZLinkMessageFlowOutcome outcome)
@@ -47,10 +49,16 @@ internal sealed class ZLinkMessageFlowTracer
     {
         if (!Enabled(flow.Outcome)) return;
 
+        if (string.IsNullOrEmpty(flow.FlowId))
+        {
+            var current = ZLinkFlowContext.CurrentOrCreate(ZLinkFlowOrigin.Application);
+            flow = flow with { FlowId = current.FlowId, FlowOrigin = current.Origin };
+        }
+
         // Sampling thins healthy traffic; dropped transitions always pass through.
         if (flow.Outcome != ZLinkMessageFlowOutcome.Dropped
             && flow.Outcome != ZLinkMessageFlowOutcome.Error
-            && !Sample())
+            && !Sample(flow.FlowId))
             return;
 
         Interlocked.Increment(ref _tracedCount);
@@ -79,17 +87,23 @@ internal sealed class ZLinkMessageFlowTracer
             : ZLinkMessageFlowLogMode.KeyTransitions;
     }
 
-    private bool Sample()
+    private bool Sample(string flowId)
     {
         var rate = _options.Diagnostics.SampleRate;
         if (rate >= 1.0d) return true;
 
         if (rate <= 0.0d) return false;
 
-        var stride = (long)(1.0d / rate + 0.5d);
-        if (stride < 1) stride = 1;
+        const ulong offset = 14695981039346656037ul;
+        const ulong prime = 1099511628211ul;
+        var hash = offset;
+        foreach (var character in flowId)
+        {
+            hash ^= (byte)character;
+            hash *= prime;
+        }
 
-        return Interlocked.Increment(ref _sampleCounter) % stride == 0;
+        return hash / (double)ulong.MaxValue < rate;
     }
 
     private void LogDefault(ZLinkMessageFlowEvent flow)
@@ -112,7 +126,7 @@ internal sealed class ZLinkMessageFlowTracer
         if (!_logger.IsEnabled(LogLevel.Information)) return;
 
         _logger.LogInformation(
-            "message flow outcome={Outcome} surface={Surface} kind={Kind} label={Label} packet={Packet} channel={Channel} topic={Topic} corr={Corr} src={Src} localRid={LocalRid} peerRid={PeerRid} socket={Socket} spot={Spot} actor={Actor} errorReason={ErrorReason} errorAction={ErrorAction} errorType={ErrorType} errorMessage={ErrorMessage} size={Size}",
+            "message flow outcome={Outcome} surface={Surface} kind={Kind} label={Label} packet={Packet} channel={Channel} topic={Topic} corr={Corr} flow={Flow} origin={Origin} src={Src} localRid={LocalRid} peerRid={PeerRid} socket={Socket} spot={Spot} actor={Actor} errorReason={ErrorReason} errorAction={ErrorAction} errorType={ErrorType} errorMessage={ErrorMessage} size={Size}",
             ZLinkTraceFormat.OutcomeKey(flow.Outcome),
             flow.Surface,
             flow.MessageKind,
@@ -121,6 +135,8 @@ internal sealed class ZLinkMessageFlowTracer
             flow.ChannelName,
             flow.Topic,
             flow.CorrelationId,
+            flow.FlowId,
+            flow.FlowOrigin.ToString().ToLowerInvariant(),
             flow.SourceRid,
             flow.LocalRid,
             flow.PeerRid,
@@ -175,6 +191,8 @@ internal static class ZLinkTraceFormat
         Append(builder, "channel", flow.ChannelName);
         Append(builder, "topic", flow.Topic);
         Append(builder, "corr", flow.CorrelationId);
+        Append(builder, "flow", flow.FlowId);
+        Append(builder, "origin", flow.FlowOrigin.ToString().ToLowerInvariant());
         Append(builder, "src", flow.SourceRid);
         Append(builder, "localRid", flow.LocalRid);
         Append(builder, "peerRid", flow.PeerRid);

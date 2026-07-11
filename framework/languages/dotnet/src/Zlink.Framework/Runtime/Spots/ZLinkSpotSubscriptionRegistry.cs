@@ -109,6 +109,11 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts);
+        using var currentFlow = ZLinkFlowContext.Enter(
+            header.FlowId,
+            header.FlowOrigin,
+            dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
         var scope = CreateScope(
             header.MessageName,
             message.Topic,

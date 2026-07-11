@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
@@ -62,7 +61,7 @@ public sealed class UnhandledDispatchPolicyTests
     }
 
     [Fact]
-    public async Task HandlerMissing_EmitsTraceAndMetric()
+    public async Task HandlerMissing_EmitsTrace()
     {
         using var listener = new ActivityListener
         {
@@ -72,20 +71,6 @@ public sealed class UnhandledDispatchPolicyTests
         var activities = new List<Activity>();
         listener.ActivityStopped = activities.Add;
         ActivitySource.AddActivityListener(listener);
-        using var meterListener = new MeterListener();
-        var handlerMissingCount = 0L;
-        meterListener.InstrumentPublished = (instrument, listenerRef) =>
-        {
-            if (instrument.Meter.Name == ZLinkTelemetry.MeterName
-                && instrument.Name == "zlink.messages.handler_missing")
-                listenerRef.EnableMeasurementEvents(instrument);
-        };
-        meterListener.SetMeasurementEventCallback<long>((_, measurement, _, _) =>
-        {
-            handlerMissingCount += measurement;
-        });
-        meterListener.Start();
-
         var nativeSpot = new CapturingSpot();
         var dispatcher = new ZLinkSpotActorJoinDispatcher(
             null!,
@@ -127,12 +112,10 @@ public sealed class UnhandledDispatchPolicyTests
             ZLinkMessageParts.DisposeAll(parts);
         }
 
-        meterListener.RecordObservableInstruments();
         Assert.Contains(activities, activity =>
             activity.OperationName == "zlink.actor.dispatch"
             && activity.Tags.Any(tag =>
                 tag.Key == "zlink.reason" && tag.Value == "no-join-handler"));
-        Assert.True(handlerMissingCount > 0);
     }
 
     [Fact]

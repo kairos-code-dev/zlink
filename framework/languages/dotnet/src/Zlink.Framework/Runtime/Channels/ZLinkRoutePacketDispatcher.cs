@@ -23,6 +23,11 @@ internal sealed class ZLinkRoutePacketDispatcher(
         if (received.Parts.Count == 0) return;
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+        using var currentFlow = ZLinkFlowContext.Enter(
+            header.FlowId,
+            header.FlowOrigin,
+            dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
 
         CreateScope(
                 header,

@@ -52,6 +52,32 @@ public sealed class EventingContracts
         Assert.Equal(ZLinkSocketEventKind.Connected, handler.LastEvent?.Event);
     }
 
+    [Fact]
+    [ContractExample(typeof(IZLinkDrainControl))]
+    public void Observability_and_drain_contracts_match_the_frozen_surface()
+    {
+        Assert.Equal("zlink.framework", ZLinkMeters.Framework);
+        Assert.Equal(
+            new[] { "Application", "Inbound", "Lifecycle", "Timer" },
+            Enum.GetNames<ZLinkFlowOrigin>().Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(
+            new[] { "DrainNatural", "ReleaseAndRecreate" },
+            Enum.GetNames<ZLinkSpotDrainPolicy>());
+        Assert.Equal(
+            new[] { "DeadlineExceeded", "DrainingStatePublishFailed", "OwnerCleanupFailed", "TeardownFailed" },
+            Enum.GetNames<ZLinkDrainForceReason>());
+
+        var methods = typeof(IZLinkDrainControl).GetMethods();
+        Assert.Equal(3, methods.Count(method => method.Name is "DrainAsync" or "AwaitDrainedAsync"));
+        Assert.All(
+            methods.Where(method => method.Name is "DrainAsync" or "AwaitDrainedAsync"),
+            method => Assert.Equal(typeof(ValueTask<ZLinkDrainResult>), method.ReturnType));
+
+        var flow = typeof(ZLinkMessageFlowEvent);
+        Assert.Equal(typeof(string), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowId))!.PropertyType);
+        Assert.Equal(typeof(ZLinkFlowOrigin), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowOrigin))!.PropertyType);
+    }
+
     private sealed class ExampleMonitoringOptions : IZLinkMonitoringOptions
     {
         private readonly List<string> _sources = [];

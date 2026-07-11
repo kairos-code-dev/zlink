@@ -244,6 +244,8 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public string? SpotMeshChannelName { get; set; }
 
+    public ZLinkSpotDrainPolicy DrainPolicy { get; set; } = ZLinkSpotDrainPolicy.DrainNatural;
+
     public ZLinkSpotRouterCapabilityRegistration? Router { get; set; }
 
     public ZLinkSpotPubSubCapabilityRegistration? PubSub { get; set; }

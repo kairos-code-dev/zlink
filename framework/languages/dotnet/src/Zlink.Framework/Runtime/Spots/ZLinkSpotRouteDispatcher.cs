@@ -25,6 +25,11 @@ internal sealed class ZLinkSpotRouteDispatcher(
             if (received.Parts.Count == 0) return;
 
             var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            using var currentFlow = ZLinkFlowContext.Enter(
+                header.FlowId,
+                header.FlowOrigin,
+                dispatchErrors.Flow.GenerationEnabled,
+                ZLinkFlowOrigin.Inbound);
             var dispatchSpotRid = received.SpotRid?.ToString() ?? spotRid;
             var kind = header.Kind == ZLinkMessageKind.Request
                 ? ZLinkDispatchMessageKind.Request

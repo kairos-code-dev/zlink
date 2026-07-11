@@ -182,7 +182,10 @@ public interface IZLinkSpotNodeBuilder
         where TAdapter : class, IZLinkActorTransferAdapter<TActor>;
 }
 
-public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder;
+public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
+{
+    IZLinkSpotMeshBuilder UseDrainPolicy(ZLinkSpotDrainPolicy policy);
+}
 
 public interface IZLinkFrameworkOptions
 {

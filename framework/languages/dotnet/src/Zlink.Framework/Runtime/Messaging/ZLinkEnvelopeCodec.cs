@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 
 namespace Zlink.Framework.Runtime.Messaging;
 
@@ -23,7 +24,15 @@ internal sealed record ZLinkEnvelopeHeader(
     string? Topic,
     string? ErrorCode,
     string? ErrorMessage,
-    string? Source = null);
+    string? Source = null)
+{
+    [System.Text.Json.Serialization.JsonPropertyOrder(-100)]
+    public byte FormatMarker { get; init; }
+
+    public string? FlowId { get; init; }
+
+    public ZLinkFlowOrigin? FlowOrigin { get; init; }
+}
 
 internal static class ZLinkEnvelopeCodec
 {
@@ -70,6 +79,14 @@ internal static class ZLinkEnvelopeCodec
 
     public static Message EncodeHeader(ZLinkEnvelopeHeader header)
     {
+        var flow = ZLinkFlowContext.Current;
+        header = header with
+        {
+            FormatMarker = ZlinkStreamFlowId.FormatMarker,
+            FlowId = header.FlowId ?? flow?.FlowId,
+            FlowOrigin = header.FlowOrigin ?? flow?.Origin
+        };
+        ValidateProtocolHeader(header);
         if (IsSimpleHeader(header))
         {
             // Hot path: route/request envelopes usually differ only in the body.
@@ -86,7 +103,10 @@ internal static class ZLinkEnvelopeCodec
                     null,
                     null,
                     null,
-                    null)));
+                    null)
+                {
+                    FormatMarker = ZlinkStreamFlowId.FormatMarker
+                }));
             return Message.From(bytes);
         }
 
@@ -172,6 +192,7 @@ internal static class ZLinkEnvelopeCodec
                          bytes,
                          ZLinkJsonSerializerOptions.Default)
                      ?? throw new InvalidOperationException("Invalid ZLink envelope header.");
+        ValidateProtocolHeader(header);
         AddDecodedHeaderCacheEntry(bytes, hash, header);
         return header;
     }
@@ -325,7 +346,26 @@ internal static class ZLinkEnvelopeCodec
                && header.Topic is null
                && header.ErrorCode is null
                && header.ErrorMessage is null
-               && header.Source is null;
+               && header.Source is null
+               && header.FlowId is null
+               && header.FlowOrigin is null;
+    }
+
+    private static void ValidateProtocolHeader(ZLinkEnvelopeHeader header)
+    {
+        if (header.FormatMarker != ZlinkStreamFlowId.FormatMarker)
+            throw new InvalidOperationException("ZLink envelope format marker is invalid.");
+
+        var hasFlowId = header.FlowId is not null;
+        var hasFlowOrigin = header.FlowOrigin is not null;
+        if (hasFlowId != hasFlowOrigin)
+            throw new InvalidOperationException("ZLink envelope flow id and origin must be present together.");
+
+        if (hasFlowId && !ZlinkStreamFlowId.IsValid(header.FlowId))
+            throw new InvalidOperationException("ZLink envelope flow id must be UUIDv7.");
+
+        if (header.FlowOrigin is { } origin && !Enum.IsDefined(origin))
+            throw new InvalidOperationException("ZLink envelope flow origin is invalid.");
     }
 
     private readonly record struct SimpleHeaderKey(

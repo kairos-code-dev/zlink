@@ -54,7 +54,7 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     /// <summary>
     ///     Raised after the connector becomes disconnected.
     /// </summary>
-    event Func<CancellationToken, ValueTask>? Disconnected;
+    event Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? Disconnected;
 
     /// <summary>
     ///     Raised when the connection state changes.

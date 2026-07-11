@@ -10,7 +10,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
     private readonly ConcurrentQueue<QueuedCallback> _dispatchQueue = new();
     private readonly object _gate = new();
     private Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? _connectionStateChanged;
-    private Func<CancellationToken, ValueTask>? _disconnected;
+    private Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? _disconnected;
     private Func<ZlinkStreamError, CancellationToken, ValueTask>? _errorReceived;
     private int _pendingDispatchCount;
 
@@ -32,7 +32,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         }
     }
 
-    public void AddDisconnected(Func<CancellationToken, ValueTask>? handler)
+    public void AddDisconnected(Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? handler)
     {
         lock (_gate)
         {
@@ -40,7 +40,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         }
     }
 
-    public void RemoveDisconnected(Func<CancellationToken, ValueTask>? handler)
+    public void RemoveDisconnected(Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? handler)
     {
         lock (_gate)
         {
@@ -76,12 +76,14 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                 .ConfigureAwait(false);
     }
 
-    public async ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken)
+    public async ValueTask NotifyDisconnectedAsync(
+        ZlinkStreamCloseReason closeReason,
+        CancellationToken cancellationToken)
     {
         var disconnected = SnapshotDisconnected();
         if (disconnected is not null)
             await DispatchUserCallbackAsync(
-                    disconnected,
+                    dispatchedToken => disconnected(new ZlinkStreamDisconnected(closeReason), dispatchedToken),
                     cancellationToken)
                 .ConfigureAwait(false);
     }
@@ -253,7 +255,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         }
     }
 
-    private Func<CancellationToken, ValueTask>? SnapshotDisconnected()
+    private Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>? SnapshotDisconnected()
     {
         lock (_gate)
         {

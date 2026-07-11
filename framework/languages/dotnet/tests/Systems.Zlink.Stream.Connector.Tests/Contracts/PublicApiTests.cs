@@ -60,6 +60,22 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public void DisconnectEventCarriesTheFrozenCloseReasonContract()
+    {
+        var eventInfo = typeof(IZlinkStreamConnector).GetEvent(nameof(IZlinkStreamConnector.Disconnected));
+        Assert.NotNull(eventInfo);
+        Assert.Equal(
+            typeof(Func<ZlinkStreamDisconnected, CancellationToken, ValueTask>),
+            eventInfo!.EventHandlerType);
+        Assert.Equal(
+            new[]
+            {
+                "ClientClose", "HeartbeatTimeout", "IdleTimeout", "ProtocolError", "ServerDrain", "TransportError"
+            },
+            Enum.GetNames<ZlinkStreamCloseReason>().Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
     public void ConnectorPublicTypeSourceFiles_LiveUnderContracts()
     {
         var sourceRoot = GetConnectorSourceRoot();

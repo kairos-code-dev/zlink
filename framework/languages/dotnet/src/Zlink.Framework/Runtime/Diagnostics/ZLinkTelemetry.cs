@@ -6,19 +6,9 @@ namespace Zlink.Framework.Runtime.Diagnostics;
 internal static class ZLinkTelemetry
 {
     public const string ActivitySourceName = "Zlink.Framework";
-    public const string MeterName = "Zlink.Framework";
+    public const string MeterName = ZLinkMeters.Framework;
 
     public static readonly ActivitySource ActivitySource = new(ActivitySourceName);
-    public static readonly Meter Meter = new(MeterName);
-
-    private static readonly Counter<long> HandlerMissingCounter =
-        Meter.CreateCounter<long>("zlink.messages.handler_missing");
-
-    private static readonly Counter<long> DroppedCounter =
-        Meter.CreateCounter<long>("zlink.messages.dropped");
-
-    private static readonly Counter<long> ReplyErrorCounter =
-        Meter.CreateCounter<long>("zlink.messages.reply_error");
 
     public static void RecordHandlerMissing(
         string surface,
@@ -26,14 +16,8 @@ internal static class ZLinkTelemetry
         string action,
         string reason)
     {
-        HandlerMissingCounter.Add(
-            1,
-            new KeyValuePair<string, object?>("surface", surface),
-            new KeyValuePair<string, object?>("kind", kind),
-            new KeyValuePair<string, object?>("action", action),
-            new KeyValuePair<string, object?>("reason", reason));
-
-        if (string.Equals(action, "reply-error", StringComparison.Ordinal)) RecordReplyError(surface, kind, reason);
+        if (string.Equals(action, "drop", StringComparison.Ordinal))
+            ZLinkRuntimeMetrics.RecordChannelDropped(surface, kind, "no_handler");
     }
 
     public static void RecordDropped(
@@ -41,12 +25,7 @@ internal static class ZLinkTelemetry
         string kind,
         string reason)
     {
-        DroppedCounter.Add(
-            1,
-            new KeyValuePair<string, object?>("surface", surface),
-            new KeyValuePair<string, object?>("kind", kind),
-            new KeyValuePair<string, object?>("action", "drop"),
-            new KeyValuePair<string, object?>("reason", reason));
+        ZLinkRuntimeMetrics.RecordChannelDropped(surface, kind, NormalizeDropReason(reason));
     }
 
     public static void RecordReplyError(
@@ -54,12 +33,21 @@ internal static class ZLinkTelemetry
         string kind,
         string reason)
     {
-        ReplyErrorCounter.Add(
-            1,
-            new KeyValuePair<string, object?>("surface", surface),
-            new KeyValuePair<string, object?>("kind", kind),
-            new KeyValuePair<string, object?>("action", "reply-error"),
-            new KeyValuePair<string, object?>("reason", reason));
+        _ = surface;
+        _ = kind;
+        _ = reason;
+    }
+
+    private static string NormalizeDropReason(string reason)
+    {
+        return reason switch
+        {
+            "handler-missing" or "no-handler" => "no_handler",
+            "payload-decode-failed" or "invalid-frame" => "decode_error",
+            "backpressure" => "backpressure",
+            "stale-route" => "stale_route",
+            _ => "decode_error"
+        };
     }
 
     public static void TraceFlowEvent(

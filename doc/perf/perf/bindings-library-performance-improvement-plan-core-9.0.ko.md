@@ -1200,7 +1200,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Single `ROUTER_ROUTER_REQREP` 완료 | 여섯 transport의 36개 size가 throughput 및 평균 latency 목표를 통과했다. |
 | paired C | `ROUTER_ROUTER_REQREP` 완료 | 각 transport에서 C 5회 직후 C++ 5회를 CPU pin 없이 측정했다. 다음에는 C `SPOT`의 tcp만 측정한다. |
 | 개선 반복 | `ROUTER_ROUTER_REQREP` 불필요 | 최초 paired 중앙값과 ws 65536B 보강 측정이 목표를 만족해 binding 코드를 변경하지 않았다. |
-| 커밋과 푸시 | 진행 중 | 검증된 측정 근거와 문서만 별도 커밋하고 원격에 푸시한 뒤 `SPOT`으로 이동한다. |
+| 커밋과 푸시 | 완료 | 검증된 측정 근거와 문서만 `f1916050c`로 커밋해 원격에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
@@ -1240,7 +1240,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | C++ | Single `DEALER_DEALER` | core_9_0_cpp_dealer_dealer_*_20260711 | transport별로 C 직후 C++을 CPU pin 없이 측정했다. secure transport는 5회, 나머지는 3회 중앙값으로 판정했고 모든 throughput과 평균 latency 셀이 목표를 통과했다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-11 | C++ | Single `DEALER_ROUTER_REQREP` | core_9_0_cpp_dealer_router_reqrep_*_direct_reply_*_20260711 | C request/reply의 queue 수명 주기와 C에만 있던 응답 payload 전체 복사를 바로잡고 C++과 같은 echo 의미로 측정했다. CPU pin 없이 transport별 C와 C++을 5회 paired 측정했으며 36개 처리량과 평균 latency 셀이 목표를 통과했다. 저부하에서도 반복된 inproc과 wss 일부 셀의 변동은 범위와 runner 대안 검토를 라운드 로그에 남겼다. | pattern 완료, `f951e7baa` 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-11 | C++ | Single `ROUTER_ROUTER` | core_9_0_cpp_router_router_*_nopin_paired_20260711 | tcp, ws, wss, tls, inproc, ipc를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 36개 처리량과 평균 latency 셀이 목표를 통과했다. ipc 65536B는 저부하 상태에서 해당 셀만 다시 paired 측정했다. | pattern 완료, 코드 변경 없음, `46be5a62c` 문서 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
-| 2026-07-11 | C++ | Single `ROUTER_ROUTER_REQREP` | core_9_0_cpp_router_router_reqrep_*_nopin_paired_20260711 | transport를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 36개 처리량과 평균 latency 셀이 목표를 통과했고 ws 65536B는 해당 셀만 다시 paired 측정했다. | pattern 완료, 코드 변경 없음, 문서 커밋과 푸시 진행 중 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-11 | C++ | Single `ROUTER_ROUTER_REQREP` | core_9_0_cpp_router_router_reqrep_*_nopin_paired_20260711 | transport를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 36개 처리량과 평균 latency 셀이 목표를 통과했고 ws 65536B는 해당 셀만 다시 paired 측정했다. | pattern 완료, 코드 변경 없음, `f1916050c` 문서 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

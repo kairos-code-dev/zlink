@@ -517,4 +517,5 @@ report의 공통 위치는 C가 `bindings/c/perf/results/single/report/`, C++가
 - Single `ROUTER_ROUTER`: 완료
 - C++ binding 변경: 없음
 - C++ perf 변경: 없음
+- 완료 문서 커밋: `46be5a62c`
 - 다음 pattern: Single `ROUTER_ROUTER_REQREP`

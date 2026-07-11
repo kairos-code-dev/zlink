@@ -156,6 +156,14 @@ export class RouterSocket extends RoutedMessageSocket {
   reply(peerRid: RoutingId, requestSeq: bigint): ReplyOperation {
     return new RuntimeReplyOperation((parts, opFlags) => this.replyDirect(peerRid, requestSeq, parts, opFlags));
   }
+  protected replyToRoutedMessage(
+    sourceRid: RoutingId,
+    requestSeq: bigint,
+    parts: readonly Message[],
+    flags: SendFlags,
+  ): void {
+    this.replyDirect(sourceRid, requestSeq, parts, flags);
+  }
   private replyDirect(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);
     const normalizedPeerRid = normalizeRoutingId(peerRid, 'peerRid');

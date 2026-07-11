@@ -229,6 +229,18 @@ export class RoutedMessageSocket extends SendReadySocket {
     throw submitErrorFromResult(SubmitResult.InvalidState, 'spot-routed send is only supported by RouterSocket');
   }
 
+  protected replyToRoutedMessage(
+    _sourceRid: RoutingId,
+    _requestSeq: bigint,
+    _parts: readonly Message[],
+    _flags: SendFlags,
+  ): void {
+    throw submitErrorFromResult(
+      SubmitResult.InvalidState,
+      'request reply is only supported by RouterSocket'
+    );
+  }
+
   /**
    * Receives into caller-provided storage. See {@link MessageSocket.recv}.
    */
@@ -260,7 +272,17 @@ export class RoutedMessageSocket extends SendReadySocket {
         }
         return this.sendDirectRaw(raw.routingId, parts, sendFlags);
       };
-    materializeReceivedInto(result, raw, undefined, send);
+    const reply = raw.routingId == null || raw.requestSeq == null || raw.requestSeq === 0n
+      ? undefined
+      : (requestSeq: bigint, parts: readonly Message[], replyFlags: SendFlags) => {
+        if (!raw.routingId) {
+          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing request reply target');
+        }
+        this.replyToRoutedMessage(
+          RoutingId.from(raw.routingId), requestSeq, parts, replyFlags
+        );
+      };
+    materializeReceivedInto(result, raw, reply, send);
     return true;
   }
 }

@@ -1200,7 +1200,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Multi `MULTI_DEALER_DEALER` tcp 완료 | tcp의 여섯 size가 throughput 및 평균 latency 목표를 통과했다. |
 | paired C | tcp 완료 | C와 C++의 clients, I/O thread, HWM, timeout과 connect-ready timeout을 맞춰 측정했다. 다음에는 ws만 측정한다. |
 | 개선 반복 | tcp 64B 완료 | raw send pool reset hot path를 줄여 64B를 82.9%에서 89.6%로 개선했고 전체 size 회귀를 확인했다. |
-| 커밋과 푸시 | 진행 중 | 검증된 C++ binding 내부 변경과 tcp 측정 근거만 별도 커밋하고 원격에 푸시한다. |
+| 커밋과 푸시 | 완료 | 검증된 C++ binding 내부 변경과 tcp 측정 근거를 `18f539948`로 커밋해 원격에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
@@ -1242,7 +1242,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | C++ | Single `ROUTER_ROUTER` | core_9_0_cpp_router_router_*_nopin_paired_20260711 | tcp, ws, wss, tls, inproc, ipc를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 36개 처리량과 평균 latency 셀이 목표를 통과했다. ipc 65536B는 저부하 상태에서 해당 셀만 다시 paired 측정했다. | pattern 완료, 코드 변경 없음, `46be5a62c` 문서 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-11 | C++ | Single `ROUTER_ROUTER_REQREP` | core_9_0_cpp_router_router_reqrep_*_nopin_paired_20260711 | transport를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 36개 처리량과 평균 latency 셀이 목표를 통과했고 ws 65536B는 해당 셀만 다시 paired 측정했다. | pattern 완료, 코드 변경 없음, `f1916050c` 문서 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-11 | C++ | Single `SPOT` | core_9_0_cpp_spot_*_nopin_paired_20260711 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 경계 셀과 다중 처리량 모드는 해당 셀만 다시 측정했다. | 24개 셀 완료, perf enum 수정 `3506ba1c7`, 문서 `28ff6ca99` 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
-| 2026-07-11 | C++ | Multi `MULTI_DEALER_DEALER` tcp | core_9_0_cpp_multi_dealer_dealer_tcp*_20260711 | raw DEALER send의 pooled state 반납이 사용하지 않은 service command 상태까지 초기화하던 비용을 제거했다. 64B 5회와 전체 size 3회 paired 재측정에서 목표와 회귀 gate를 통과했다. | tcp 완료, 코드 커밋과 푸시 진행 중 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-11 | C++ | Multi `MULTI_DEALER_DEALER` tcp | core_9_0_cpp_multi_dealer_dealer_tcp*_20260711 | raw DEALER send의 pooled state 반납이 사용하지 않은 service command 상태까지 초기화하던 비용을 제거했다. 64B 5회와 전체 size 3회 paired 재측정에서 목표와 회귀 gate를 통과했다. | tcp 완료, `18f539948` 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

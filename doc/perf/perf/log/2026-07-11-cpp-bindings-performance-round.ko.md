@@ -776,5 +776,5 @@ C 중앙값은 2.975 Mmsg/s, C++은 2.665 Mmsg/s로 비율이 89.6%다. C++ 처�
 - C++ binding 변경: raw send pooled state reset hot path 축소
 - public API 변경: 없음
 - perf 변경: 없음
-- 개선 커밋: 진행 중
+- 개선 커밋: `18f539948`
 - 다음 transport: ws

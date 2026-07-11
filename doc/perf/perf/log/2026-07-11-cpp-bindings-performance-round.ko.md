@@ -155,4 +155,5 @@ timeout은 200ms로 일치한다.
 - tcp throughput과 latency 비율: 목표 만족
 - tcp 변동성: 미달, 통과 처리하지 않음
 - C++ binding 변경: 없음
+- 기준 측정 수정 커밋: `77d180588` (`main` push 완료)
 - 다음 측정: host p99가 안정된 시점에 tcp 64B를 C와 C++ 순서로 다시 측정

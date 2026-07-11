@@ -1181,7 +1181,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 현재 pattern | Single `PUBSUB` 진행 중 | tcp 64/1024/65536B의 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘었다. |
 | paired C | PUBSUB tcp 일부 측정 | C PUBSUB의 잘못된 `DONTWAIT`를 blocking publish로 고친 뒤 C와 C++을 CPU 고정 5회로 측정했다. |
 | 개선 반복 | 측정 조건 조사 중 | CPU 집합 후보는 p99 변동을 없애지 못해 폐기했다. host가 안정된 시점에 같은 tcp 셀만 다시 측정한다. |
-| 커밋과 푸시 | 준비 중 | 채택한 C 기준 측정 수정과 근거만 별도 커밋하고 푸시한다. |
+| 커밋과 푸시 | 완료 | C PUBSUB 기준 측정 수정과 근거를 `77d180588`로 `main`에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
@@ -1216,7 +1216,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | 전체 | 실행 순서 명확화 | - | C 전체 baseline을 미리 측정하지 않고 현재 언어의 pattern 하나만 C와 binding으로 paired 측정한다. 비교, 개선, 재측정, 목표 확인, 커밋과 푸시를 마친 뒤 다음 pattern으로 이동한다. | pattern과 언어 전환 gate 갱신 | 이 문서 7장과 10장 |
 | 2026-07-11 | 전체 | POSD gate 추가 | - | 성능 목표를 우선하되 구현 전 위험 신호와 두 가지 설계를 비교하고, 측정 효과와 정보 은닉, 책임 경계를 함께 확인한다. | 개선 설계와 커밋 gate 갱신 | 이 문서 5장과 7.7장 |
 | 2026-07-11 | C++ | Single `PAIR` | core_9_0_cpp_pair_*_20260711 | transport별로 C 3회 측정 직후 C++ 3회를 측정했다. secure transport와 변동 셀은 CPU 고정 5회로 보강했다. 모든 셀이 throughput, latency, 변동성 gate를 통과했고 코드 변경은 필요하지 않았다. | pattern 완료, 커밋 해당 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
-| 2026-07-11 | C++ | Single `PUBSUB` tcp 일부 | core_9_0_cpp_pubsub_tcp_blocking_*_20260711 | C PUBSUB의 active publish를 Single 정책에 맞게 blocking으로 수정한 뒤 C와 C++을 paired 측정했다. 64/1024/65536B 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘었다. | pattern 진행 중, tcp 통과 보류 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-11 | C++ | Single `PUBSUB` tcp 일부 | core_9_0_cpp_pubsub_tcp_blocking_*_20260711 | C PUBSUB의 active publish를 Single 정책에 맞게 blocking으로 수정한 뒤 C와 C++을 paired 측정했다. 64/1024/65536B 처리량과 latency 비율은 목표를 만족했지만 p99 변동 기준을 넘었다. | pattern 진행 중, `77d180588` push | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

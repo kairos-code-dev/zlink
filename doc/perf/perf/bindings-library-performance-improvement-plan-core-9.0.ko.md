@@ -446,8 +446,8 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 
 - perf 경로: `bindings/cpp/perf`
 - Single 상태: `전체 pattern 완료`
-- Multi 상태: `MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_DEALER_ROUTER_REQREP, MULTI_ROUTER_ROUTER, MULTI_ROUTER_ROUTER_REQREP, MULTI_PUBSUB, MULTI_SPOT, MULTI_SPOT_REQREP, MULTI_SPOT_SENDSEND 완료, 나머지 pattern 미측정`
-- 다음 작업: Multi `MULTI_STREAM`의 tcp transport를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
+- Multi 상태: `전체 pattern 완료`
+- 다음 작업: C++의 모든 pattern을 완료했으므로 .NET Single `PAIR`의 tcp transport를 C와 .NET 순서로 CPU pin 없이 paired 측정한다.
 
 #### 9.1.1 Single suite
 
@@ -515,7 +515,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `MULTI_SPOT` | 통과(97.9%) | 통과(106.2%) | 통과(95.4%) | 통과(100.1%) | 통과(103.6%) | 통과(104.1%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.03배로 통과했다. 두 report 사이 HEAD 변경은 framework/.NET만 포함했다. |
 | `tcp` | `MULTI_SPOT_REQREP` | 통과(100.3%) | 통과(104.1%) | 통과(96.6%) | 통과(101.0%) | 통과(107.5%) | 통과(118.7%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.03배로 통과했다. |
 | `tcp` | `MULTI_SPOT_SENDSEND` | 통과(121.4%) | 통과(122.4%) | 통과(130.3%) | 통과(114.9%) | 통과(94.0%) | 통과(86.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.03배로 통과했다. |
-| `tcp` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tcp` | `MULTI_STREAM` | 통과(101.8%) | 통과(100.6%) | 통과(98.8%) | 해당 없음 | 통과(100.6%) | 해당 없음 | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.06배로 통과했다. |
 | `ws` | `MULTI_DEALER_DEALER` | 통과(88.3%) | 통과(98.8%) | 통과(105.4%) | 통과(125.3%) | 통과(99.7%) | 통과(99.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.13배로 통과했다. |
 | `ws` | `MULTI_DEALER_ROUTER` | 통과(93.1%) | 통과(91.0%) | 통과(92.4%) | 통과(91.4%) | 통과(92.9%) | 통과(95.2%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.10배로 통과했다. |
 | `ws` | `MULTI_DEALER_ROUTER_REQREP` | 통과(91.1%) | 통과(91.7%) | 통과(96.8%) | 통과(92.7%) | 통과(89.6%) | 통과(79.8%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.70배로 통과했다. |
@@ -525,7 +525,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `MULTI_SPOT` | 통과(97.3%) | 통과(108.4%) | 통과(100.0%) | 통과(97.2%) | 통과(105.9%) | 통과(104.2%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.01배로 통과했다. |
 | `ws` | `MULTI_SPOT_REQREP` | 통과(95.0%) | 통과(90.7%) | 통과(97.0%) | 통과(98.5%) | 통과(107.0%) | 통과(98.9%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.10배로 통과했다. |
 | `ws` | `MULTI_SPOT_SENDSEND` | 통과(107.9%) | 통과(102.6%) | 통과(93.3%) | 통과(102.9%) | 통과(92.7%) | 통과(95.2%) | CPU pin 없는 5회 paired 측정. 131072B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 0.99배로 통과했다. |
-| `ws` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `ws` | `MULTI_STREAM` | 통과(106.8%) | 통과(99.8%) | 통과(100.2%) | 해당 없음 | 통과(98.4%) | 해당 없음 | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.00배로 통과했다. |
 | `wss` | `MULTI_DEALER_DEALER` | 통과(88.4%) | 통과(100.8%) | 통과(108.3%) | 통과(98.6%) | 통과(96.2%) | 통과(100.6%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.03배로 통과했다. |
 | `wss` | `MULTI_DEALER_ROUTER` | 통과(96.4%) | 통과(95.2%) | 통과(97.1%) | 통과(96.4%) | 통과(97.0%) | 통과(100.7%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.06배로 통과했다. |
 | `wss` | `MULTI_DEALER_ROUTER_REQREP` | 통과(92.0%) | 통과(95.1%) | 통과(99.9%) | 통과(94.7%) | 통과(91.4%) | 통과(95.8%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.09배로 통과했다. |
@@ -535,7 +535,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `MULTI_SPOT` | 통과(96.0%) | 통과(96.1%) | 통과(117.7%) | 통과(157.4%) | 통과(111.8%) | 통과(113.0%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.01배로 통과했다. 두 report 사이 HEAD 변경은 framework/.NET만 포함했다. |
 | `wss` | `MULTI_SPOT_REQREP` | 통과(96.2%) | 통과(97.0%) | 통과(96.9%) | 통과(97.8%) | 통과(96.5%) | 통과(96.8%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.05배로 통과했다. |
 | `wss` | `MULTI_SPOT_SENDSEND` | 통과(122.2%) | 통과(107.6%) | 통과(123.3%) | 통과(114.3%) | 통과(110.4%) | 통과(103.7%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.02배로 통과했다. |
-| `wss` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `wss` | `MULTI_STREAM` | 통과(102.8%) | 통과(99.8%) | 통과(85.6%) | 해당 없음 | 통과(100.6%) | 해당 없음 | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.17배로 통과했다. |
 | `tls` | `MULTI_DEALER_DEALER` | 통과(94.8%) | 통과(98.7%) | 통과(94.0%) | 통과(96.7%) | 통과(95.5%) | 통과(95.9%) | C++ perf의 ready-event 용량을 C와 같은 의미로 수정하고 bindings poller의 관심 이벤트 갱신을 O(1)로 개선했다. 최종 5회 회귀에서 평균 latency 최대 1.70배로 통과했다. |
 | `tls` | `MULTI_DEALER_ROUTER` | 통과(95.7%) | 통과(92.7%) | 통과(94.8%) | 통과(96.2%) | 통과(91.6%) | 통과(98.1%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.12배로 통과했다. |
 | `tls` | `MULTI_DEALER_ROUTER_REQREP` | 통과(90.9%) | 통과(91.5%) | 통과(90.9%) | 통과(91.6%) | 통과(84.5%) | 통과(91.5%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 1.18배로 통과했다. |
@@ -545,7 +545,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tls` | `MULTI_SPOT` | 통과(96.0%) | 통과(99.2%) | 통과(98.3%) | 통과(102.4%) | 통과(104.7%) | 통과(106.5%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.03배로 통과했다. |
 | `tls` | `MULTI_SPOT_REQREP` | 통과(90.8%) | 통과(93.1%) | 통과(93.3%) | 통과(94.3%) | 통과(96.1%) | 통과(98.3%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.09배로 통과했다. |
 | `tls` | `MULTI_SPOT_SENDSEND` | 통과(124.0%) | 통과(125.8%) | 통과(126.2%) | 통과(101.3%) | 통과(95.6%) | 통과(104.1%) | CPU pin 없는 5회 paired 측정. 평균 latency 최대 비율 1.02배로 통과했다. |
-| `tls` | `MULTI_STREAM` | 미측정 | 미측정 | 미측정 | 해당 없음 | 미측정 | 해당 없음 |  |
+| `tls` | `MULTI_STREAM` | 통과(103.3%) | 통과(99.1%) | 통과(99.7%) | 해당 없음 | 통과(98.9%) | 해당 없음 | CPU pin 없는 5회 paired 측정. 64B는 저부하 상태에서 같은 셀을 다시 측정해 평균 latency 1.03배로 통과했다. |
 
 ### 9.2 .NET
 
@@ -1197,17 +1197,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
-| 현재 pattern | Multi `MULTI_SPOT_SENDSEND` 완료 | tcp, ws, wss, tls의 모든 size가 throughput과 평균 latency 목표를 통과했다. |
-| paired C | 네 transport 완료 | transport를 하나씩 선택해 C 직후 C++을 CPU pin 없이 5회 측정했다. ws 131072B는 저부하 상태에서 해당 셀만 다시 paired 측정했다. |
-| 개선 반복 | 코드 변경 없음 | ws 131072B 재측정까지 모든 transport와 size가 목표를 만족해 binding과 perf를 수정하지 않았다. |
-| 커밋과 푸시 | 완료 | `MULTI_SPOT_SENDSEND` 완료 근거만 별도 커밋하고 원격에 푸시한 뒤 다음 pattern으로 이동한다. |
+| 현재 pattern | Multi `MULTI_STREAM` 완료 | tcp, ws, wss, tls의 정책상 네 size가 throughput과 평균 latency 목표를 통과했다. C++의 모든 Single/Multi pattern이 완료됐다. |
+| paired C | 네 transport 완료 | transport를 하나씩 선택해 C 직후 C++을 CPU pin 없이 측정했다. tls 64B는 저부하 상태에서 해당 셀을 다시 paired 측정했다. |
+| 개선 반복 | 코드 변경 없음 | tls 64B 재측정까지 모든 transport와 size가 목표를 만족해 binding과 perf를 수정하지 않았다. |
+| 커밋과 푸시 | 완료 | `MULTI_STREAM`과 C++ 언어 완료 근거만 별도 커밋하고 원격에 푸시한 뒤 .NET으로 이동한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
-| 1 | C++ | 전체 pattern 완료 | `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_DEALER_ROUTER_REQREP`, `MULTI_ROUTER_ROUTER`, `MULTI_ROUTER_ROUTER_REQREP`, `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_SPOT_SENDSEND` 완료 | `MULTI_STREAM` tcp를 C와 C++ 순서로 CPU pin 없이 paired 측정한다. |
-| 2 | .NET | 미측정 | 미측정 | runner option gate 통과 뒤 시작한다. |
+| 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
+| 2 | .NET | 미측정 | 미측정 | Single `PAIR` tcp를 C와 .NET 순서로 CPU pin 없이 paired 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |
@@ -1247,6 +1247,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-12 | C++ | Multi `MULTI_SPOT` | core_9_0_cpp_multi_spot_*_nopin_paired_20260712 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 5회 측정했다. 두 report 사이의 HEAD 변경은 framework/.NET에만 있었고 core와 bindings/perf는 동일했다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | C++ | Multi `MULTI_SPOT_REQREP` | core_9_0_cpp_multi_spot_reqrep_*_nopin_paired_20260712 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 CPU pin 없이 5회 측정했다. 모든 처리량과 평균 latency 셀이 목표를 통과했다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 | 2026-07-12 | C++ | Multi `MULTI_SPOT_SENDSEND` | core_9_0_cpp_multi_spot_sendsend_*_nopin_*_20260712 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 CPU pin 없이 5회 측정했다. ws 131072B는 CPU idle 99% 상태에서 해당 셀만 다시 paired 측정했고, 모든 처리량과 평균 latency 셀이 목표를 통과했다. | pattern 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-12 | C++ | Multi `MULTI_STREAM` | core_9_0_cpp_multi_stream_*_nopin_*_20260712 | tcp, ws, wss, tls를 하나씩 나누고 각 transport에서 C 직후 C++을 CPU pin 없이 측정했다. 정책상 64, 256, 1024, 65536B와 10,000 clients를 사용했다. tls 64B는 저부하 상태에서 다시 paired 측정했고 모든 처리량과 평균 latency 셀이 목표를 통과했다. | pattern 및 C++ 언어 완료, 코드 변경 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 

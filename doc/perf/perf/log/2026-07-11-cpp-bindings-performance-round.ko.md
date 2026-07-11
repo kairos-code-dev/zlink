@@ -1585,3 +1585,88 @@ latency 최대 비율은 1.02배였다. 모든 셀이 목표를 만족해 코드
 - public API 변경: 없음
 - perf 변경: 없음
 - 다음 pattern: Multi `MULTI_STREAM`
+
+## Multi MULTI_STREAM
+
+### tcp
+
+다른 작업의 .NET package 검증이 CPU 한 코어를 사용하고 있어 해당 작업이 끝날 때까지
+기다렸다. 종료 후 CPU idle 100%를 세 번 확인하고 C와 C++을 CPU pin 없이 차례로
+측정했다. STREAM 정책에 따라 64, 256, 1024, 65536B와 10,000 clients를 사용했으며
+두 report는 같은 `a8f8dc597`과 core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_070818_core_9_0_cpp_multi_stream_tcp_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_070852_core_9_0_cpp_multi_stream_tcp_nopin_paired_20260712.txt`
+
+처리량 비율은 101.8%, 100.6%, 98.8%, 100.6%였고 평균 latency 최대 비율은
+1.06배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_STREAM / tcp`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: ws
+
+### ws
+
+CPU idle 98.6~99.5%를 확인하고 C와 C++을 CPU pin 없이 차례로 측정했다. 두 report는
+같은 `a8f8dc597`과 core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_070945_core_9_0_cpp_multi_stream_ws_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_071018_core_9_0_cpp_multi_stream_ws_nopin_paired_20260712.txt`
+
+처리량 비율은 106.8%, 99.8%, 100.2%, 98.4%였고 평균 latency 최대 비율은
+1.00배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_STREAM / ws`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: wss
+
+### wss
+
+CPU idle 99.1~100%를 확인하고 C와 C++을 CPU pin 없이 차례로 측정했다. 두 report는
+같은 `a8f8dc597`과 core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_071109_core_9_0_cpp_multi_stream_wss_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_071208_core_9_0_cpp_multi_stream_wss_nopin_paired_20260712.txt`
+
+처리량 비율은 102.8%, 99.8%, 85.6%, 100.6%였고 평균 latency 최대 비율은
+1.17배였다. 모든 셀이 목표를 만족해 코드 변경 없이 완료했다.
+
+- `MULTI_STREAM / wss`: 완료
+- C++ binding 변경: 없음
+- perf 변경: 없음
+- 다음 transport: tls
+
+### tls
+
+측정 직전 CPU idle 98.1~99.5%를 확인하고 C와 C++을 CPU pin 없이 차례로 측정했다.
+두 report는 같은 `a8f8dc597`과 core runtime을 사용했다.
+
+- C: `perf_c_multi_linux_20260712_071343_core_9_0_cpp_multi_stream_tls_nopin_paired_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_071444_core_9_0_cpp_multi_stream_tls_nopin_paired_20260712.txt`
+
+최초 처리량 비율은 77.5%, 99.1%, 99.7%, 98.9%였고 평균 latency 최대 비율은
+1.20배였다. 64B만 단순 one-way C++ 최소 목표 85%에 미달했다. 측정 시작 전 CPU는
+idle 상태였지만 C++ report 시작 시점의 load average가 6.37까지 올라가 있어, 시스템이
+다시 안정된 뒤 64B를 가까운 시점에 다시 비교했다. C runner에서 `--msg-sizes 64`는
+STREAM 기본 크기를 유지했으므로 C report는 네 크기를 모두 포함하고, 문서화된
+`PERF_MULTI_STREAM_MSG_SIZES=64`로 C++ report만 64B로 제한했다.
+
+- C: `perf_c_multi_linux_20260712_071550_core_9_0_cpp_multi_stream_tls64_nopin_recheck_20260712.txt`
+- C++: `perf_cpp_multi_linux_20260712_071653_core_9_0_cpp_multi_stream_tls64_nopin_recheck_20260712.txt`
+
+재측정 64B는 C 234.947 Kops/s와 42.885ms, C++ 242.756 Kops/s와 44.282ms다.
+처리량 비율 103.3%와 평균 latency 비율 1.03배로 통과했다.
+
+### pattern 판정
+
+- `MULTI_STREAM / tcp`: 완료
+- `MULTI_STREAM / ws`: 완료
+- `MULTI_STREAM / wss`: 완료
+- `MULTI_STREAM / tls`: 완료
+- C++ binding 변경: 없음
+- public API 변경: 없음
+- perf 변경: 없음
+- C++ Single/Multi 전체 pattern: 완료
+- 다음 언어와 pattern: .NET Single `PAIR`

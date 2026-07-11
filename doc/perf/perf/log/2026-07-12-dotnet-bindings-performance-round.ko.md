@@ -89,3 +89,75 @@ latency 최대 비율은 1.19배였다. 모든 셀이 목표를 만족했다.
 - binding runtime 변경: 없음
 - perf 변경: 성공 submit 뒤 Message wrapper dispose와 pool-backed 생성 적용
 - 다음 transport: ws
+
+### PAIR active send 정책 정합화
+
+`PERF_SINGLE_TEST_POLICY.md`는 raw one-way sender가 blocking send를 연속 수행하고 HWM에서
+자연 backpressure를 받도록 정한다. 그러나 C `perf_pair.cpp`와 .NET `PerfPair`는 모두
+`DONTWAIT`를 사용하고 있었다. C와 binding 사이만 같고 확정 정책의 측정 의미와는 달랐으므로,
+현재 pattern인 PAIR의 두 perf를 함께 blocking send로 수정했다. 다른 pattern의 perf는
+현재 작업 단위가 아니므로 미리 바꾸지 않았다.
+
+이 정합화로 기존 tcp 완료 report는 같은 측정 의미의 근거가 아니게 됐다. tcp의 모든
+transport size를 blocking 의미로 다시 paired 측정한 뒤 완료 상태를 복구한다.
+
+### ws 256B blocking paired 측정
+
+CPU idle 상태에서 C와 .NET을 CPU pin 없이 각각 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_080902_core_9_0_dotnet_pair_ws256_blocking_policy_paired_20260712.txt`
+- .NET before: `perf_dotnet_single_linux_20260712_080939_core_9_0_dotnet_pair_ws256_blocking_policy_paired_20260712.txt`
+
+C 중앙값은 1,648,611.8 msg/s와 평균 latency 41.411ms였다. .NET before는
+1,015,541.6 msg/s와 67.322ms로, 처리량 비율 61.60%는 최소 목표 70%에 미달했고
+평균 latency 비율 1.63배는 3.0배 상한을 통과했다.
+
+### blocking 병목 POSD 검토
+
+sampling trace에서 `PerfSocketIo.Send` 48.21%, `SinglePartSubmit.Submit` 23.69%,
+`Message.MoveTo` 10.10%, `SocketKernel.ReceiveBasicParts` 39.90%,
+`Received.ResetForReuse` 4.99%가 관측됐다. `dotnet-counters`에서는 초당 약 67MB의
+지속 할당이 있었지만 5초 동안 GC가 발생하지 않아 GC pause는 이번 blocking 처리량
+미달의 원인이 아니었다.
+
+검토한 위험 신호와 대안은 다음과 같다.
+
+1. one-shot builder를 풀링하면 과거 builder 참조와 다음 operation이 결합된다. 실제로
+   builder 할당을 제거한 진단 후보도 처리량이 약 2%만 올라 목표에 도달하지 못해 제거했다.
+2. opaque `ZlinkMsg`를 C#에서 직접 복사하면 core message layout 지식이 binding으로
+   누출된다. 기존 `zlink_msg_adopt`를 사용한 후보는 수치 변화가 없어 제거했다.
+3. assembly 전체 local 초기화를 생략하면 unrelated interop local까지 안전 가정이 퍼진다.
+   바로 다음 native init이 64바이트 전체를 초기화하는 송신·basic 수신 local 두 곳만
+   `Unsafe.SkipInit`으로 좁히는 방안을 선택했다.
+
+수신 wrapper 직접 교체, compact builder buffer, GC transition 생략, tiered JIT 강제 최적화,
+중복 guard 제거, 예외 slow-path 분리 후보도 기능 검증 뒤 제한 측정했지만 처리량 개선이
+없거나 latency가 악화돼 모두 제거했다.
+
+### 채택한 `ZlinkMsg` 중복 초기화 제거
+
+`SinglePartSubmit`과 `SocketKernel.ReceiveBasicParts`는 stack의 64바이트 `ZlinkMsg`를
+0으로 채운 직후 `zlink_msg_init`으로 다시 전부 초기화했다. 두 local에만
+`Unsafe.SkipInit`을 적용하고, native init 성공 전에는 값을 읽거나 닫지 않는 기존 순서를
+유지했다. 확정 hot path와 안전 조건은 코드 주석으로 남겼다.
+
+공식 5회 후보 report는 다음과 같다.
+
+- .NET after: `perf_dotnet_single_linux_20260712_082632_core_9_0_dotnet_pair_ws256_blocking_skipinit_candidate_20260712.txt`
+
+처리량 중앙값은 1,050,306.2 msg/s로 before보다 3.42% 높아졌고 평균 latency는
+64.065ms로 4.84% 낮아졌다. C 대비 처리량은 63.71%라 아직 미달이며 평균 latency는
+1.55배로 통과한다. 이 개선은 유지하되 ws 완료로 기록하지 않는다.
+
+검증 결과:
+
+- .NET single Release build: 통과, warning 0
+- .NET multi Release build: 통과, warning 0
+- `Zlink.Tests` Release 전체: 177개 통과
+- C `perf_pair` build와 C/.NET blocking smoke: 통과
+
+검증된 코드와 perf 정합화는 `f1440eb18` (`perf(dotnet): align pair send and skip native clears`)
+커밋으로 분리했다.
+
+다음 작업은 blocking 의미로 PAIR tcp 전체 size를 C와 .NET 순서로 다시 paired 측정하고,
+tcp 완료 상태를 복구한 뒤 ws 256B의 남은 처리량 미달을 계속 개선하는 것이다.

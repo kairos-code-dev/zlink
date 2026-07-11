@@ -550,15 +550,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.2 .NET
 
 - perf 경로: `bindings/dotnet/perf`
-- Single 상태: `PAIR tcp 완료, 나머지 transport와 pattern 미측정`
+- Single 상태: `PAIR blocking send 정책 정합화 후 tcp 재측정 필요, ws 256B 개선 중`
 - Multi 상태: `미측정`
-- 다음 작업: Single `PAIR`의 ws transport를 C와 .NET 순서로 CPU pin 없이 paired 측정한다.
+- 다음 작업: Single `PAIR`의 tcp transport를 blocking send 의미로 C와 .NET 순서로
+  CPU pin 없이 다시 paired 측정한다. tcp를 다시 완료한 뒤 ws 256B의 남은 처리량
+  미달을 계속 개선한다.
 
 #### 9.2.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | 통과(98.3%) | 통과(86.5%) | 통과(99.0%) | 통과(99.9%) | 통과(100.0%) | 통과(99.9%) | 성공 submit 뒤에도 Message wrapper를 dispose하는 public 소유권 계약을 perf helper에 적용했다. 평균 latency 최대 비율 1.19배로 통과했다. |
+| `tcp` | `PAIR` | 재측정 | 재측정 | 재측정 | 재측정 | 재측정 | 재측정 | 기존 결과는 `DONTWAIT` active send 기준이었다. 정책이 요구하는 blocking send로 C와 .NET perf를 정합화했으므로 같은 의미로 다시 paired 측정한다. |
 | `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -566,7 +568,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `ROUTER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
-| `ws` | `PAIR` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PAIR` | 미측정 | 미달(63.7%) | 미측정 | 미측정 | 미측정 | 미측정 | blocking send 5회 기준 C 1.649Mmsg/s, .NET `SkipInit` 후보 1.050Mmsg/s다. 평균 latency는 C 대비 1.55배로 통과했다. 남은 미달을 계속 개선한다. |
 | `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
@@ -1197,17 +1199,17 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | .NET | .NET의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
-| 현재 pattern | Single `PAIR` 진행 중 | tcp의 모든 size가 throughput과 평균 latency 목표를 통과했다. 다음 transport는 ws다. |
-| paired C | tcp 완료 | tcp의 여섯 size를 C 직후 .NET 순서로 CPU pin 없이 5회 측정했다. 64B latency는 저부하 상태에서 해당 셀을 다시 paired 측정했다. |
-| 개선 반복 | tcp 개선 완료 | 성공 submit 뒤 Message wrapper를 dispose하지 않던 perf helper의 소유권 버그를 고쳤다. 64B 평균 latency가 0.894ms에서 0.239ms, 최종 전체 회귀 중앙값에서는 0.175ms로 낮아졌다. |
-| 커밋과 푸시 | 완료 | tcp 개선과 측정 근거만 별도 커밋하고 원격에 푸시한 뒤 ws로 이동한다. |
+| 현재 pattern | Single `PAIR` 진행 중 | active send를 정책의 blocking 의미로 정합화했다. 기존 tcp 완료 근거를 다시 열고 tcp부터 재측정한다. ws 256B는 처리량 63.7%로 미달이다. |
+| paired C | tcp 재측정 필요, ws 256B 완료 | ws 256B blocking 5회 C 기준은 1.649Mmsg/s와 41.411ms다. tcp의 기존 report는 `DONTWAIT` 의미이므로 새 근거가 될 수 없다. |
+| 개선 반복 | 진행 중 | 64바이트 opaque `ZlinkMsg` local의 중복 초기화를 제거해 ws 256B .NET 처리량을 1.016M에서 1.050Mmsg/s로 3.42% 높였다. 평균 latency는 4.84% 낮아졌다. |
+| 커밋과 푸시 | 코드 커밋 완료 | 검증된 `SkipInit` 개선과 blocking perf 정합화를 `f1440eb18`에 분리했다. 측정 문서 커밋과 함께 푸시한 뒤 tcp paired 재측정을 시작한다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
 | 1 | C++ | 전체 pattern 완료 | 전체 pattern 완료 | 완료 |
-| 2 | .NET | `PAIR` tcp 완료 | 미측정 | Single `PAIR` ws를 C와 .NET 순서로 CPU pin 없이 paired 측정한다. |
+| 2 | .NET | `PAIR` tcp 재측정 필요, ws 256B 개선 중 | 미측정 | blocking send 의미로 Single `PAIR` tcp 전체를 다시 paired 측정한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
 | 5 | Go | 측정 gap 확인 필요 | 측정 gap 확인 필요 | socket request/reply 지원 근거를 조사한다. |

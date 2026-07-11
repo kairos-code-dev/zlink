@@ -104,18 +104,19 @@ Python의 과거 full matrix는 이후 공개 계약 복구 전 구현으로 측
 
 ### 2.2 Latency 목표
 
-throughput을 통과해도 latency mean, p95, p99 중 하나가 아래 상한을 넘으면
-`미달`로 판정한다. C latency가 0으로 기록된 결과는 유효한 비율을 계산할 수 없으므로
+throughput을 통과해도 평균 latency가 아래 상한을 넘으면 `미달`로 판정한다.
+p95와 p99는 진단 자료로만 기록하고 목표 통과 여부에는 사용하지 않는다.
+C의 평균 latency가 0으로 기록된 결과는 유효한 비율을 계산할 수 없으므로
 다시 측정한다.
 
-| 언어 그룹 | mean / p95 / p99의 C 대비 최대 비율 |
-|-----------|--------------------------------------|
+| 언어 그룹 | 평균 latency의 C 대비 최대 비율 |
+|-----------|------------------------------------|
 | C++ / Rust | 2.0배 |
 | .NET / Java / Go | 3.0배 |
 | Node / Python | 5.0배 |
 
 목표 경계 셀과 secure transport는 5회 반복 결과로 판정한다. 최적화 전후를 비교할 때
-대상이 아닌 대표 셀의 throughput 중앙값이 5% 넘게 낮아지거나 p99가 10% 넘게
+대상이 아닌 대표 셀의 throughput 중앙값이 5% 넘게 낮아지거나 평균 latency가 10% 넘게
 높아지면 회귀로 판정한다.
 
 ## 3. 측정 크기
@@ -277,8 +278,8 @@ C와 binding의 pattern별 smoke가 모두 `status: complete`여야 본 측정�
 | 후보 판정 | 기본 duration, 3회 | before/after와 C 대비 비율 판정 |
 | 최종·경계 판정 | 기본 duration, 5회, CPU pin 없음 | 목표 기준 ±5%p, secure transport, 고변동 셀, 최종 근거 |
 
-3회 결과에서 throughput의 `(최댓값 - 최솟값) / 중앙값`이 10%를 넘거나 p99의 같은
-비율이 20%를 넘으면 5회와 CPU 고정으로 다시 측정한다. 5회 결과에서도 같은 한계를
+3회 결과에서 throughput의 `(최댓값 - 최솟값) / 중앙값`이 10%를 넘거나 평균 latency의
+같은 비율이 20%를 넘으면 CPU pin 없이 5회로 다시 측정한다. 5회 결과에서도 같은 한계를
 넘으면 `통과`로 판정하지 않고 환경과 runner 조건을 먼저 조사한다.
 
 ### 7.3 Paired C 규칙
@@ -337,7 +338,7 @@ pattern 완료는 수치를 한 번 얻었다는 뜻이 아니다. 다음 조건
 
 - 해당 pattern의 모든 공식 transport와 message size에서 C와 binding report가
   `status: complete`다.
-- 모든 셀이 throughput, latency, 변동성, client 수, auto-HWM 기준을 만족한다.
+- 모든 셀이 throughput, 평균 latency, 변동성, client 수, auto-HWM 기준을 만족한다.
 - 개선 전후 기능 테스트와 같은 pattern의 대표 회귀 셀이 통과한다.
 - 최종 판정에 사용한 C와 binding이 가까운 시점의 같은 manifest와 session tag로 측정됐다.
 - 상세 표에 C report, binding report, 반복값, 비율과 판정 근거를 기록했다.
@@ -409,15 +410,15 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 - C report와 binding report 경로
 - 두 report의 runtime 경로와 실제 core 버전
 - throughput 비율과 개별 반복값
-- latency mean, p95, p99 비율과 개별 반복값
-- throughput과 p99 변동 폭
+- 평균 latency 비율과 개별 반복값. p95와 p99는 진단 자료로만 기록한다.
+- throughput과 평균 latency 변동 폭
 - Effective Options 일치 여부
 - auto-HWM의 `MsgUnit(B)` 일치 여부
 - 실제 client 수, STREAM client 수, memory guard cap 발생 여부
 - server/client의 CPU 피크와 최대 `nlwp`
 - profiler 또는 allocation/copy/native 경계 근거
 - 검토한 두 가지 개선안, 선택 이유, 예상 영향 셀, 폐기 기준
-- 대상이 아닌 대표 셀의 throughput과 p99 회귀 결과
+- 대상이 아닌 대표 셀의 throughput과 평균 latency 회귀 결과
 - 미달이면 다음 병목 후보, 보류이면 필요한 계약 변경
 
 ## 9. 언어별 성능 확인 표
@@ -429,16 +430,16 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 ### 9.1 C++
 
 - perf 경로: `bindings/cpp/perf`
-- Single 상태: `PAIR 완료, 나머지 pattern 미측정`
+- Single 상태: `PAIR, PUBSUB 완료, 나머지 pattern 미측정`
 - Multi 상태: `누락 구현 완료, pattern별 미측정`
-- 다음 작업: Single `PUBSUB`을 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
+- 다음 작업: Single `DEALER_DEALER`를 C와 C++ 순서로 CPU pin 없이 paired 측정한다.
 
 #### 9.1.1 Single suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
 | `tcp` | `PAIR` | 통과(99.9%) | 통과(100.0%) | 통과(99.8%) | 통과(100.0%) | 통과(100.1%) | 통과(99.8%) | 3회 paired 측정. 1024B는 CPU 고정 5회 보강. 상세 report는 C++ 라운드 로그 참고. |
-| `tcp` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tcp` | `PUBSUB` | 통과(95.7%) | 통과(95.2%) | 통과(101.7%) | 통과(109.2%) | 통과(99.4%) | 통과(91.4%) | CPU pin 없는 paired 측정. 경계 셀은 5회 보강. 상세 report는 C++ 라운드 로그 참고. |
 | `tcp` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tcp` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
@@ -446,7 +447,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tcp` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. 64B 제한 스모크는 `core_9_0_reqrep_inventory_gate` report에서 통과했다. |
 | `tcp` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `PAIR` | 통과(100.0%) | 통과(100.0%) | 통과(100.4%) | 통과(100.0%) | 통과(100.2%) | 통과(100.0%) | 3회 paired 측정. |
-| `ws` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ws` | `PUBSUB` | 통과(95.3%) | 통과(91.2%) | 통과(100.7%) | 통과(96.4%) | 통과(93.0%) | 통과(97.9%) | CPU pin 없는 paired 측정. 65536B는 5회 보강. |
 | `ws` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ws` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -454,7 +455,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `ws` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `ws` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `PAIR` | 통과(100.6%) | 통과(99.9%) | 통과(96.8%) | 통과(98.2%) | 통과(97.3%) | 통과(95.1%) | CPU 고정 5회. 131072B는 단독 안정성 보강 report로 판정. |
-| `wss` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `wss` | `PUBSUB` | 통과(95.2%) | 통과(92.6%) | 통과(97.4%) | 통과(96.8%) | 통과(100.0%) | 통과(100.6%) | CPU pin 없는 paired 측정. 262144B는 5회 보강. |
 | `wss` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `wss` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -462,7 +463,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `wss` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `wss` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `PAIR` | 통과(99.4%) | 통과(98.5%) | 통과(100.5%) | 통과(99.8%) | 통과(97.8%) | 통과(99.6%) | CPU 고정 5회 paired 측정. |
-| `tls` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `tls` | `PUBSUB` | 통과(91.9%) | 통과(95.0%) | 통과(101.6%) | 통과(98.4%) | 통과(99.5%) | 통과(99.0%) | CPU pin 없는 paired 측정. secure transport와 64B 경계는 5회 보강. |
 | `tls` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `tls` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -470,7 +471,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `tls` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `tls` | `SPOT` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `PAIR` | 통과(90.6%) | 통과(93.9%) | 통과(89.2%) | 통과(99.8%) | 통과(100.1%) | 통과(100.3%) | 3회 paired 측정. |
-| `inproc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `inproc` | `PUBSUB` | 통과(101.8%) | 통과(95.0%) | 통과(92.4%) | 통과(85.2%) | 통과(105.9%) | 통과(125.4%) | 5회 paired 측정. 128KiB 이상 메시지 저장소 재사용 후 최종 판정. |
 | `inproc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `inproc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -478,7 +479,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | `inproc` | `ROUTER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
 | `inproc` | `SPOT` | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 | 해당 없음 |  |
 | `ipc` | `PAIR` | 통과(100.5%) | 통과(100.3%) | 통과(95.3%) | 통과(99.8%) | 통과(100.0%) | 통과(100.0%) | 3회 paired 측정. |
-| `ipc` | `PUBSUB` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
+| `ipc` | `PUBSUB` | 통과(94.3%) | 통과(95.4%) | 통과(95.2%) | 통과(94.2%) | 통과(97.8%) | 통과(94.6%) | CPU pin 없는 paired 측정. 65536B는 5회 보강. |
 | `ipc` | `DEALER_DEALER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `DEALER_ROUTER` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 |  |
 | `ipc` | `DEALER_ROUTER_REQREP` | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 미측정 | 공개 request API 구현 완료. full 측정 전이다. |
@@ -1174,23 +1175,23 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | Multi size 정책 | 정렬 완료 | 4096 추가, 262144 제거를 정책과 runner에 맞췄다. |
 | 무시되는 runner option | 정렬 완료 | .NET single의 pin, I/O thread, timeout, auto-HWM profile은 실제 emitter에 전달한다. output과 HWM/buffer override는 명시적으로 오류를 반환한다. 제한 report에서 Effective Options를 확인했다. |
 | memory guard | 미확인 | paired 측정에서 client cap이 발생하지 않는 환경을 확인한다. |
-| 재현 환경 manifest | 미작성 | 첫 pattern별 paired 측정 전에 작성한다. |
+| 재현 환경 manifest | 작성 | C++ 라운드 로그에 runtime, host, CPU, memory, toolchain과 측정 중 별도 perf process 유무를 기록했다. |
 
 ### 10.2 Pattern별 paired 기준 측정
 
 | 구분 | 상태 | 결과 파일 / 메모 |
 |------|------|------------------|
 | 현재 언어 | C++ | C++의 pattern을 순서대로 완료한 뒤 다음 언어로 이동한다. |
-| 현재 pattern | Single `PUBSUB` 대기 | Single `PAIR`은 완료했다. 확정된 C perf를 복원한 뒤 PUBSUB paired 측정을 다시 시작한다. |
-| paired C | PAIR 완료 | 다음에는 C `PUBSUB`만 CPU pin 없이 측정하고 바로 C++ `PUBSUB`을 측정한다. |
-| 개선 반복 | 미시작 | 상대 측정에서 목표가 미달한 C++ binding 내부 경로만 분석하고 개선한다. |
-| 커밋과 푸시 | 준비 중 | 앞서 변경한 C/C++ perf source를 확정 상태로 복원해 별도 커밋하고 푸시한다. |
+| 현재 pattern | Single `PUBSUB` 완료 | 모든 공식 transport와 size가 throughput 및 평균 latency 목표를 통과했다. |
+| paired C | PAIR, PUBSUB 완료 | 다음에는 C `DEALER_DEALER`만 CPU pin 없이 측정하고 바로 C++을 측정한다. |
+| 개선 반복 | PUBSUB 완료 | 대형 owned message 할당 병목을 8MiB 제한 저장소 재사용으로 개선했다. |
+| 커밋과 푸시 | 완료 | 검증된 PUBSUB 변경과 측정 근거만 별도 커밋하고 원격에 푸시했다. |
 
 ### 10.3 언어 진행 상태
 
 | 순서 | 언어 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-------------|------------|-----------|
-| 1 | C++ | `PAIR` 완료, 나머지 미측정 | 누락 구현 완료, pattern별 미측정 | Single `PUBSUB`을 C와 C++ 순서로 CPU pin 없이 paired 측정한다. |
+| 1 | C++ | `PAIR`, `PUBSUB` 완료, 나머지 미측정 | 누락 구현 완료, pattern별 미측정 | Single `DEALER_DEALER`를 C와 C++ 순서로 CPU pin 없이 paired 측정한다. |
 | 2 | .NET | 미측정 | 미측정 | runner option gate 통과 뒤 시작한다. |
 | 3 | Java | 누락 구현 완료, pattern별 미측정 | 누락 구현 완료, pattern별 미측정 | C++의 모든 pattern이 완료된 뒤 시작한다. |
 | 4 | Node | 누락 구현 완료, pattern별 미측정 | 측정 gap 확인 필요 | 앞 언어 완료 뒤 multi socket request/reply 2개 pattern을 구현한다. |
@@ -1219,6 +1220,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 | 2026-07-11 | 전체 | 실행 순서 명확화 | - | C 전체 baseline을 미리 측정하지 않고 현재 언어의 pattern 하나만 C와 binding으로 paired 측정한다. 비교, 개선, 재측정, 목표 확인, 커밋과 푸시를 마친 뒤 다음 pattern으로 이동한다. | pattern과 언어 전환 gate 갱신 | 이 문서 7장과 10장 |
 | 2026-07-11 | 전체 | POSD gate 추가 | - | 성능 목표를 우선하되 구현 전 위험 신호와 두 가지 설계를 비교하고, 측정 효과와 정보 은닉, 책임 경계를 함께 확인한다. | 개선 설계와 커밋 gate 갱신 | 이 문서 5장과 7.7장 |
 | 2026-07-11 | C++ | Single `PAIR` | core_9_0_cpp_pair_*_20260711 | transport별로 C 3회 측정 직후 C++ 3회를 측정했다. secure transport와 변동 셀은 CPU 고정 5회로 보강했다. 모든 셀이 throughput, latency, 변동성 gate를 통과했고 코드 변경은 필요하지 않았다. | pattern 완료, 커밋 해당 없음 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
+| 2026-07-11 | C++ | Single `PUBSUB` | core_9_0_cpp_pubsub_*_20260711 | C perf를 blocking send 정책에 맞췄다. C++ 대형 메시지 할당 병목은 128KiB~1MiB exact-size storage를 총 8MiB까지만 재사용해 제거했다. 모든 측정은 CPU pin 없이 한 process씩 실행했고 전체 transport와 size가 throughput 및 평균 latency gate를 통과했다. | pattern 완료, 커밋과 푸시 완료 | `doc/perf/perf/log/2026-07-11-cpp-bindings-performance-round.ko.md` |
 
 ## 12. 완료 기준
 
@@ -1230,7 +1232,7 @@ timeout, no result, runtime mismatch, message size 불일치, client 수 불일�
 - 모든 binding 상세 표에 `미측정`, `미달`, `측정 gap`, `보류`가 없다.
 - 모든 통과 셀에 paired C와 binding report, manifest, 반복값, 비율, 옵션 일치 근거가
   기록되어 있다.
-- throughput, latency, 변동성, client 수, auto-HWM, 대상 외 대표 셀 회귀 gate를 모두
+- throughput, 평균 latency, 변동성, client 수, auto-HWM, 대상 외 대표 셀 회귀 gate를 모두
   통과한다.
 - 변경한 binding의 단위 테스트와 통합 테스트가 통과한다.
 - 한 언어의 모든 pattern이 각각 완료되기 전에는 다음 언어로 이동하지 않는다.

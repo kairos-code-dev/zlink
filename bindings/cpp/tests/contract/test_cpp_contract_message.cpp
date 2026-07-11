@@ -3,6 +3,7 @@
 #include "support.hpp"
 
 #include <atomic>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -86,6 +87,22 @@ void test_copy_and_move_preserve_payload ()
     assert (moved.ref_count () == 2);
 }
 
+void test_large_owned_payload_survives_reuse_and_copy ()
+{
+    constexpr size_t payload_size = 262144;
+    for (uint8_t marker : {uint8_t{0x2a}, uint8_t{0x5c}}) {
+        zlink::message_t original (payload_size);
+        assert (original.valid ());
+        std::memset (original.data (), marker, payload_size);
+
+        zlink::message_t copy (original);
+        assert (copy.valid ());
+        assert (copy.size () == payload_size);
+        assert (std::to_integer<uint8_t> (copy.bytes ()[0]) == marker);
+        assert (std::to_integer<uint8_t> (copy.bytes ()[payload_size - 1]) == marker);
+    }
+}
+
 void test_external_message_uses_caller_owned_storage_until_close ()
 {
     std::atomic<int> frees {0};
@@ -157,6 +174,7 @@ int main ()
     test_allocate_exposes_writable_owned_payload ();
     test_copy_helpers_copy_payload ();
     test_copy_and_move_preserve_payload ();
+    test_large_owned_payload_survives_reuse_and_copy ();
     test_external_message_uses_caller_owned_storage_until_close ();
     test_diagnostic_surface_uses_canonical_names ();
     test_routing_id_hex_and_display_policy ();

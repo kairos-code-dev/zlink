@@ -2,12 +2,113 @@
 
 #include <Runtime/Native/message_access.hpp>
 
+#include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
+#include <vector>
 #include <zlink.h>
 
 namespace zlink
 {
+namespace
+{
+
+struct alignas (std::max_align_t) pooled_message_block_t
+{
+    size_t size;
+};
+
+class large_message_buffer_pool_t
+{
+  public:
+    ~large_message_buffer_pool_t ()
+    {
+        for (pooled_message_block_t *block : _blocks)
+            std::free (block);
+    }
+
+    pooled_message_block_t *acquire (size_t size_)
+    {
+        {
+            std::lock_guard<std::mutex> lock (_mutex);
+            for (auto found = _blocks.begin (); found != _blocks.end (); ++found) {
+                if ((*found)->size == size_) {
+                    pooled_message_block_t *block = *found;
+                    _blocks.erase (found);
+                    _cached_bytes -= size_;
+                    return block;
+                }
+            }
+        }
+
+        void *storage = std::malloc (sizeof (pooled_message_block_t) + size_);
+        if (!storage)
+            return nullptr;
+        auto *block = static_cast<pooled_message_block_t *> (storage);
+        block->size = size_;
+        return block;
+    }
+
+    void release (pooled_message_block_t *block_) noexcept
+    {
+        if (!block_)
+            return;
+        try {
+            std::lock_guard<std::mutex> lock (_mutex);
+            if (_cached_bytes + block_->size <= max_cached_bytes) {
+                _blocks.push_back (block_);
+                _cached_bytes += block_->size;
+                return;
+            }
+        }
+        catch (...) {
+        }
+        std::free (block_);
+    }
+
+  private:
+    static constexpr size_t max_cached_bytes = 8u * 1024u * 1024u;
+
+    std::mutex _mutex;
+    std::vector<pooled_message_block_t *> _blocks;
+    size_t _cached_bytes = 0;
+};
+
+large_message_buffer_pool_t &large_message_buffer_pool ()
+{
+    static large_message_buffer_pool_t pool;
+    return pool;
+}
+
+void release_pooled_message_buffer (void *, void *hint_) noexcept
+{
+    large_message_buffer_pool ().release (static_cast<pooled_message_block_t *> (hint_));
+}
+
+zlink_config_result_t init_owned_message_storage (zlink_msg_t *message_, size_t size_)
+{
+    constexpr size_t pooled_size_min = 128u * 1024u;
+    constexpr size_t pooled_size_max = 1024u * 1024u;
+    if (size_ < pooled_size_min || size_ > pooled_size_max)
+        return zlink_msg_init_size (message_, size_);
+
+    // This allocation is a measured hot path for large messages. Keep reuse in
+    // the binding: replacing it with per-message allocation regressed inproc
+    // PUBSUB throughput substantially at 128 KiB and 256 KiB.
+    pooled_message_block_t *block = large_message_buffer_pool ().acquire (size_);
+    if (!block)
+        return zlink_msg_init_size (message_, size_);
+
+    void *data = block + 1;
+    const zlink_config_result_t result = zlink_msg_init_data (
+      message_, data, size_, &release_pooled_message_buffer, block);
+    if (result != ZLINK_CONFIG_OK)
+        large_message_buffer_pool ().release (block);
+    return result;
+}
+
+} // namespace
 
 message_t::message_t () : _storage (), _valid (false)
 {
@@ -17,7 +118,7 @@ message_t::message_t () : _storage (), _valid (false)
 
 message_t::message_t (size_t size_) : _storage (), _valid (false)
 {
-    if (zlink_msg_init_size (detail::native_handle (*this), size_) == 0)
+    if (init_owned_message_storage (detail::native_handle (*this), size_) == 0)
         _valid = true;
 }
 
@@ -133,7 +234,7 @@ void message_t::init ()
 void message_t::init (size_t size_)
 {
     close_noexcept ();
-    if (zlink_msg_init_size (detail::native_handle (*this), size_) != 0)
+    if (init_owned_message_storage (detail::native_handle (*this), size_) != 0)
         return;
     _valid = true;
 }

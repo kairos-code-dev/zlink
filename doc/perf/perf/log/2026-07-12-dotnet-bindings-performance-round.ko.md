@@ -161,3 +161,45 @@ sampling trace에서 `PerfSocketIo.Send` 48.21%, `SinglePartSubmit.Submit` 23.69
 
 다음 작업은 blocking 의미로 PAIR tcp 전체 size를 C와 .NET 순서로 다시 paired 측정하고,
 tcp 완료 상태를 복구한 뒤 ws 256B의 남은 처리량 미달을 계속 개선하는 것이다.
+
+### POSD 개선 단독 채택 기준
+
+성능 수치가 좋아지지 않더라도 기존 위험 신호를 실제로 제거하고 정보 은닉이나 책임 경계를
+분명하게 개선하며, 처리량·평균 latency·기능 회귀가 없으면 채택할 수 있도록 판정 기준을
+보완했다. 다만 POSD 개선만으로 목표 미달 셀을 통과로 바꾸지는 않는다. 성능과 POSD 어느
+쪽에서도 분명한 이득이 없거나 성능 회귀가 생긴 후보는 계속 제거한다.
+
+### PAIR tcp blocking paired 재측정
+
+CPU 고부하 프로세스가 없을 때 C와 .NET을 CPU pin 없이 차례로 5회 측정했다.
+
+- C: `perf_c_single_linux_20260712_083121_core_9_0_dotnet_pair_tcp_blocking_nopin_paired_20260712.txt`
+- .NET: `perf_dotnet_single_linux_20260712_083602_core_9_0_dotnet_pair_tcp_blocking_nopin_paired_20260712.txt`
+
+64, 256, 1024, 65536, 131072, 262144B 처리량 비율은 각각 87.5%, 64.4%,
+76.5%, 85.9%, 90.6%, 87.0%였다. 평균 latency 비율은 모두 3배 이내였다. 256B만
+최소 처리량 목표에 미달했다. 변동 여부를 확인하기 위해 같은 크기만 다시 C 직후 .NET으로
+5회 측정했고 C 1,854,838.8msg/s, .NET 1,180,672.2msg/s로 63.65%가 재현됐다.
+
+- C 256B 재확인: `perf_c_single_linux_20260712_084049_core_9_0_dotnet_pair_tcp256_blocking_nopin_recheck_20260712.txt`
+- .NET 256B 재확인: `perf_dotnet_single_linux_20260712_084120_core_9_0_dotnet_pair_tcp256_blocking_nopin_recheck_20260712.txt`
+
+### tcp 256B 추가 병목 진단과 기각 후보
+
+sampling trace에서 송신 스레드의 5초 중 대부분은 native blocking 구간에 있었고,
+`SinglePartSubmit`과 `Message.MoveTo`가 남은 관리 경계로 확인됐다. 두 방향을 추가로
+검증했다.
+
+1. `Message`가 가진 native handle을 임시 handle로 옮기지 않고 직접 submit하는 후보는
+   처리량이 1,189,576.0msg/s로 0.75%만 높아졌고 평균 latency가 0.185ms에서
+   0.235ms로 27.0% 높아졌다. 성능 회귀가 있어 제거했다.
+2. 임시 friend 접근으로 public fluent builder 비용을 완전히 뺀 진단 상한도
+   1,209,149.4msg/s로 2.4%만 높아졌고 C 대비 65.2%였다. public API나 builder
+   수명 모델을 바꿀 근거가 없으므로 임시 코드를 모두 제거했고 이 결과는 공식 판정에
+   사용하지 않는다.
+
+`/usr/bin/time -v`로 같은 5초 실행을 비교하면 C는 user 7.07초, system 2.59초,
+최대 RSS 138,336KB였고 .NET은 user 8.43초, system 2.57초, 최대 RSS 489,368KB였다.
+system 비용보다 관리 힙 누적과 관리 경계의 user CPU 차이가 크지만 builder 하나만으로는
+목표 차이를 설명하지 못한다. tcp 256B는 계속 `미달`로 유지하고 다음 binding 내부 후보를
+조사한다.

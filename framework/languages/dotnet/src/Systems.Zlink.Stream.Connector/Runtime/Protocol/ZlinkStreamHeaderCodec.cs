@@ -17,17 +17,6 @@ internal sealed class ZlinkStreamHeaderCodec
 
     public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
     {
-        if (header.Kind != ZlinkStreamMessageKind.Control
-            && header.FlowId is null
-            && header.FlowOrigin is null)
-        {
-            header = header with
-            {
-                FlowId = ZlinkStreamFlowId.Create(),
-                FlowOrigin = ZlinkStreamFlowOrigin.Application
-            };
-        }
-
         ZlinkStreamConnector.ValidateName(header.Name, header.Kind == ZlinkStreamMessageKind.Control);
         ValidateEnum(header.Kind, header.Codec, header.Flags);
 

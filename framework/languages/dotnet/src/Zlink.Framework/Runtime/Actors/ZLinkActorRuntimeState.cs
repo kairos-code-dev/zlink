@@ -467,7 +467,7 @@ internal sealed class ZLinkActorRuntimeState(
                     () =>
                     {
                         EnsureReusable();
-                        var pendingRequests = _dispatchMailbox.PendingCount;
+                        var pendingRequests = _dispatchMailbox.PendingRequestCount;
                         Handoff.BeginCapture();
                         return pendingRequests;
                     },
@@ -480,7 +480,7 @@ internal sealed class ZLinkActorRuntimeState(
                 () =>
                 {
                     EnsureReusable();
-                    var pendingRequests = _dispatchMailbox.PendingCount;
+                    var pendingRequests = _dispatchMailbox.PendingRequestCount;
                     Handoff.BeginCapture();
                     return pendingRequests;
                 },
@@ -505,11 +505,13 @@ internal sealed class ZLinkActorRuntimeState(
     public async ValueTask<T> ExecuteDispatchAsync<T>(
         ZlinkStreamHeader header,
         Func<CancellationToken, ValueTask<T>> operation,
+        bool countAsPendingRequest,
         CancellationToken cancellationToken)
     {
         using var turn = await _dispatchMailbox.EnterAsync(
                 cancellationToken,
-                countAsPendingMessage: true)
+                countAsPendingMessage: true,
+                countAsPendingRequest)
             .ConfigureAwait(false);
         EnsureDispatchAvailable();
         using var dispatch = EnterDispatch(header);

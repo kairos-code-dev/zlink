@@ -77,6 +77,18 @@ internal static class ZLinkAutoConnectPlanner
         return desired;
     }
 
+    internal static int CountDiscoveredPeers(
+        ZLinkAutoConnectLocal local,
+        IReadOnlyList<ZLinkPeerLocation> peers)
+    {
+        return peers.Count(peer =>
+            peer.AutoConnectType == local.AutoConnectType
+            && string.Equals(peer.MeshName, local.MeshName, StringComparison.Ordinal)
+            && IsRoleAllowed(local.AutoConnectType, peer.Role)
+            && !string.IsNullOrEmpty(peer.Endpoint)
+            && !IsSelf(local, peer));
+    }
+
     private static string? ConnectionFingerprintOf(ZLinkPeerLocation peer)
     {
         if (peer.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh

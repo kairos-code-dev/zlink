@@ -87,6 +87,51 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
+    public async Task Force_Stop_Reports_Owner_Cleanup_Failure_As_The_Terminal_Reason()
+    {
+        var executor = new FakeDrainExecutor
+        {
+            ForceFailureReason = ZLinkDrainForceReason.OwnerCleanupFailed
+        };
+        var coordinator = new ZLinkDrainCoordinator(
+            new ZLinkDrainAdmissionGate(),
+            executor,
+            events: null);
+
+        var drain = coordinator.DrainAsync(TimeSpan.FromSeconds(1)).AsTask();
+        await executor.Started.Task;
+        executor.Complete.TrySetResult(ZLinkDrainForceReason.DeadlineExceeded);
+
+        var forced = Assert.IsType<ForceStopped>(await drain);
+        Assert.Equal(ZLinkDrainForceReason.OwnerCleanupFailed, forced.Reason);
+    }
+
+    [Fact]
+    public void Actor_Drain_Uses_Only_The_Mesh_That_Owns_The_Actor_Factory()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        registration.SpotNodes.Add(
+            "rooms",
+            new ZLinkSpotNodeRegistration
+            {
+                SpotNodeName = "rooms",
+                SpotMeshChannelName = "room-mesh"
+            });
+        var actors = new ZLinkSpotNodeRegistration
+        {
+            SpotNodeName = "actors",
+            SpotMeshChannelName = "actor-mesh"
+        };
+        actors.ActorFactories.Add("player", typeof(object));
+        registration.SpotNodes.Add("actors", actors);
+
+        Assert.Equal(
+            "actor-mesh",
+            ZLinkFrameworkRuntime.ResolveActorDrainMeshName(registration, "player"));
+        Assert.Null(ZLinkFrameworkRuntime.ResolveActorDrainMeshName(registration, "unknown"));
+    }
+
+    [Fact]
     public async Task Drain_Health_Check_Projects_Readiness_Without_Starting_Drain()
     {
         var drain = new MutableDrainControl();
@@ -200,6 +245,8 @@ public sealed class DrainCoordinatorTests
 
         public bool WaitForDeadline { get; init; }
 
+        public ZLinkDrainForceReason? ForceFailureReason { get; init; }
+
         public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
             TimeSpan deadline,
             CancellationToken deadlineToken)
@@ -220,6 +267,10 @@ public sealed class DrainCoordinatorTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             ForceReason = reason;
+            if (ForceFailureReason is { } failureReason)
+                throw new ZLinkDrainForceException(
+                    failureReason,
+                    [new InvalidOperationException("owner cleanup failed")]);
             return ValueTask.CompletedTask;
         }
     }

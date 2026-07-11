@@ -185,7 +185,7 @@ public sealed class UnhandledDispatchPolicyTests
         {
             var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
             Assert.Equal(ZLinkMessageKind.Error, replyHeader.Kind);
-            Assert.Equal("ZLinkFrameworkException", replyHeader.ErrorCode);
+            Assert.Equal(nameof(ZLinkFrameworkErrorKind.PayloadDecodeFailed), replyHeader.ErrorCode);
             Assert.Contains("PayloadDecodeFailed", replyHeader.ErrorMessage);
         }
         finally

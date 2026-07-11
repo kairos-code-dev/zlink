@@ -42,7 +42,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        using var operation = runtime.EnterOperation();
+        using var operation = runtime.EnterOperation(countAsRequest: true);
         var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;

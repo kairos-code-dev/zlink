@@ -26,6 +26,14 @@ internal sealed class ZLinkStreamSessionTable(
         }
     }
 
+    public int Count
+    {
+        get
+        {
+            lock (_gate) return _sessions.Count;
+        }
+    }
+
     public ZLinkStreamSessionRuntime[] Stop()
     {
         lock (_gate)
@@ -121,12 +129,7 @@ internal sealed class ZLinkStreamSessionTable(
                     .CloseForDrainAsync(cancellationToken)
                     .AsTask();
             var results = await Task.WhenAll(closes).ConfigureAwait(false);
-            foreach (var closed in results)
-            {
-                if (closed) continue;
-                allClosed = false;
-                ZLinkRuntimeMetrics.RecordDrainForced("session");
-            }
+            foreach (var closed in results) allClosed &= closed;
         }
         return allClosed;
     }

@@ -93,6 +93,73 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task Callback_Outbound_Reuses_Inbound_Flow_And_Does_Not_Leak_To_The_Next_Callback()
+    {
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var inheritedFlow = ZlinkStreamFlowId.Create();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var inheritedHeader = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "flow-trigger",
+                ZlinkStreamMetadata.Empty,
+                FlowId: inheritedFlow,
+                FlowOrigin: ZlinkStreamFlowOrigin.Lifecycle);
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(inheritedHeader).ToArray(),
+                Array.Empty<byte>());
+
+            var inheritedReply = headerCodec.Decode((await ReadPacketAsync(stream)).Header);
+            Assert.Equal(inheritedFlow, inheritedReply.FlowId);
+            Assert.Equal(ZlinkStreamFlowOrigin.Lifecycle, inheritedReply.FlowOrigin);
+
+            var unrelatedHeader = inheritedHeader with
+            {
+                FlowId = null,
+                FlowOrigin = null
+            };
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(unrelatedHeader).ToArray(),
+                Array.Empty<byte>());
+
+            var unrelatedReply = headerCodec.Decode((await ReadPacketAsync(stream)).Header);
+            Assert.True(ZlinkStreamFlowId.IsValid(unrelatedReply.FlowId));
+            Assert.NotEqual(inheritedFlow, unrelatedReply.FlowId);
+            Assert.Equal(ZlinkStreamFlowOrigin.Application, unrelatedReply.FlowOrigin);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            Compression = ZlinkStreamCompression.None
+        });
+        using var subscription = connector.On("flow-trigger", (_, _) =>
+        {
+            connector.Send(new ZlinkStreamEncodedPayload(
+                    ZlinkStreamCodec.Raw,
+                    ReadOnlyMemory<byte>.Empty))
+                .PacketName("flow-followup")
+                .Submit();
+            return ValueTask.CompletedTask;
+        });
+
+        await connector.Connect.Async();
+        await server.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public void Lz4CodecRejectsDecodedPayloadAboveReceiveLimit()
     {
         var source = Encoding.UTF8.GetBytes(new string('A', 1024));

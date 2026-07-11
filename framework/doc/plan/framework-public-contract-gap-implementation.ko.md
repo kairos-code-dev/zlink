@@ -310,12 +310,12 @@ public symbol을 묶지 않는다. overload, nullable, generic 제약과 default
 | DN-014 | `dotnet/handler-interfaces` §16 | `IZLinkBoundSessionFactory` internal | `Runtime/Streams/IZLinkBoundSessionFactory.cs` | public assembly/export 비노출 확인 | exported contract coverage | registration unit test | 완료 | package consumer PASS |
 | DN-015 | `config-8-automatic-turn-dispatch` | 단일 terminator 자동 turn | `Runtime/Execution/ZLinkSerialTurn.cs` | `YieldDispatch`를 `AutomaticTurnDispatch`로 이관 | contract exclusion tests | ATD-A1~E3 | 완료 | Config 8 full/shutdown PASS |
 | DN-016 | package artifact gate | 6개 package manifest | `scripts/verify_packaged_contract.sh` | source-built assembly만 검사하던 gap 제거 | clean consumer reflection | clean consumer run | 완료 | `dotnet packaged contract result=passed` |
-| DN-017 | `flow-correlation` §2~§5 | 자동 생성되는 전역 고유 `flow_id`, 네 origin과 event 필드 | 조사 필요 | host는 기존 message-flow 게이트, connector 발원은 무설정 생성, 모든 홉 전파 | flow event surface | MFLOW-EXT-001~015 | 대기 | - |
-| DN-018 | `flow-correlation` §3 | flow header encode/decode 일괄 교체 | 조사 필요 | 구형 decoder/dual path 없이 모든 transport·gateway에서 바이트 동일 | protocol export/surface | flow wire 및 mandatory flag protocol-error test | 대기 | - |
-| DN-019 | `runtime-metrics` §3~§7 | 언어 표준 meter의 고정 catalog와 닫힌 label | 조사 필요 | 서버/connector 소유권 분리, 관찰 불가 신호를 0으로 위조하지 않고 비활성 event별 비용을 제한 | meter name/catalog | RMETRIC-001~017 | 대기 | - |
-| DN-020 | `graceful-drain-handoff` §3~§6 | `IZLinkDrainControl`, drain policy와 terminal result | 조사 필요 | 공유 drain, 30초 기본값, waiter cancellation 분리, 종료 순서 구현 | drain surface/result | DRAIN-001~020 | 대기 | - |
-| DN-021 | `graceful-drain-handoff` §3 | peer row typed `Draining: bool` | 조사 필요 | readiness/admission fail-closed, field 게시 retry와 owner lease 유지 | location row contract | drain placement/store failure tests | 대기 | - |
-| DN-022 | `graceful-drain-handoff` §7 | versioned `session-closing` 제어 프레임과 connector close reason | 조사 필요 | disconnect event 전에 닫힌 사유 저장, ack 없는 bounded 전송 | stream connector surface | drain session closing tests | 대기 | - |
+| DN-017 | `flow-correlation` §2~§5 | 자동 생성되는 전역 고유 `flow_id`, 네 origin과 event 필드 | `Runtime/Diagnostics/ZLinkFlowContext.cs`, connector `ZlinkStreamFlowContext.cs` | host mode gate, connector 무설정 생성, typed inbound와 framework/connector lifecycle callback 문맥은 구현. request completion, transfer, off relay, fan-out의 MFLOW-EXT 증거가 남음 | `EventingContracts`, connector `PublicApiTests` | `FlowCorrelationTests`, `MessageFlowTracerTests`, connector `HeaderCodecTests` | 진행 | contract 39 PASS, unit 412 PASS, connector 88 PASS |
+| DN-018 | `flow-correlation` §3 | flow header encode/decode 일괄 교체 | `Runtime/Messaging/ZLinkEnvelopeCodec.cs`, connector `ZlinkStreamHeaderCodec.cs` | marker와 flow codec 일괄 교체, framework STREAM codec을 단일 wire codec 위임으로 정리. route/Spot protocol-error 전체 경로와 cross-language 증거가 남음 | protocol export/surface | `StreamWireInteropTests`, `UnhandledDispatchPolicyTests`, connector `HeaderCodecTests` | 진행 | solution build 0 warning, targeted test PASS |
+| DN-019 | `runtime-metrics` §3~§7 | 언어 표준 meter의 고정 catalog와 닫힌 label | `Runtime/Diagnostics/ZLinkRuntimeMetrics.cs`, connector `ZlinkStreamRuntimeMetrics.cs` | catalog와 주요 생산 경로 구현. 전 계기 정확성·비활성 비용·장시간 bounded storage·1:N fan-out 검증이 남음 | meter name/catalog | `RuntimeMetricsTests`와 connector 동명 test | 진행 | framework/connector targeted PASS; RMETRIC 전체 closure 전 |
+| DN-020 | `graceful-drain-handoff` §3~§6 | `IZLinkDrainControl`, drain policy와 terminal result | `Contracts/Configuration/ZLinkDrainContracts.cs`, ASP.NET Core coordinator/executor | 공유 drain, 기본 30초, waiter 취소 분리, health projection, 호환 actor mesh, 원자적 외부 요청 차단, actor 대상 부재 시 Spot 정책 진행, force reason/count 구현. 두 Spot 정책과 production handoff 전체 증거가 남음 | `EventingContracts`, `BuilderContracts` | `DrainCoordinatorTests`, `ActorHandoffTests` | 진행 | contract 39 PASS, unit 412 PASS; DRAIN 전체 closure 전 |
+| DN-021 | `graceful-drain-handoff` §3 | peer row typed `Draining: bool` | `Contracts/Locations/Rows.cs`, `ZLinkAutoConnectReconciler.cs`, `ZLinkLocationRuntime.cs` | typed field, monotonic 게시, 연결 유지, owner cleanup retry 구현. 모든 placement 결정점과 장애 E2E 증거가 남음 | `LocationContracts` | Redis row, `AutoConnectReconcilerTests`, `LocationRuntimeTests` | 진행 | typed Redis/marker/cleanup unit PASS |
+| DN-022 | `graceful-drain-handoff` §7 | versioned `session-closing` 제어 프레임과 connector close reason | server/connector `ZLinkStreamSessionClosingCodec`, connector lifecycle, core STREAM orderly disconnect | `server_drain` control과 close reason 순서, queued message-before-disconnect, 종료 완료 전 session table 제거를 구현. server idle/heartbeat/protocol producer와 bounded production E2E가 남음 | connector `PublicApiTests` | `StreamWireInteropTests`, connector `LifecycleTests`, core/binding STREAM 회귀 | 진행 | core 1 PASS, binding 1 PASS, connector 88 PASS |
 
 ledger 작성 완료 조건:
 
@@ -1160,11 +1160,19 @@ ctest --test-dir <coverage-build-dir> \
 | 2026-07-11 16:49 KST | `.NET` | G3 | `99c58f4d0` + working tree | `dotnet test Zlink.Framework.sln --no-build` | 0 | contract 37, unit 345, Redis 25, Stream Connector 72, sample regression 28, HTTP client 54 PASS | `/tmp/zlink-dotnet-sln-test2.log` |
 | 2026-07-11 16:51 KST | `.NET` | G1 | `99c58f4d0` + working tree | `./scripts/verify_packaged_contract.sh` | 0 | manifest 6개 pack과 clean consumer reflection/run PASS | `dotnet packaged contract result=passed` |
 | 2026-07-11 16:53 KST | `.NET` | G0 | `99c58f4d0` + working tree | bindings package/version/hash audit | 0 | `Systems.Zlink` 8.6.4, package SHA-256 확인 | `a5f77980710e35aabb1c0233ec4b00c1de53f62a94acb9c1ecdd3a471dd73594` |
+| 2026-07-12 00:16 KST | `.NET` | G0/G1 | `7ede19a96` + working tree | `dotnet test tests/Zlink.Framework.ContractTests/Zlink.Framework.ContractTests.csproj --no-build --no-restore` | 0 | drain overload/default/result/health와 정식 문서 exported type 43개 coverage 포함 39 PASS | console output |
+| 2026-07-12 00:16 KST | `.NET` | G0/G2 | `7ede19a96` + working tree | connector 전체 test | 0 | flow 생성 책임·callback lease 포함 87 PASS | console output |
+| 2026-07-12 00:16 KST | `.NET` | G0/G2 | `7ede19a96` + working tree | framework unit test 전체 | 0 | 407 PASS | console output |
+| 2026-07-12 00:16 KST | `.NET` | G3 준비 | `7ede19a96` + working tree | `dotnet build Zlink.Framework.sln --no-restore --nologo` | 0 | 0 warning, 0 error | console output |
+| 2026-07-12 00:20 KST | `.NET` | G3 준비 | `7ede19a96` + working tree | `dotnet test Zlink.Framework.sln --no-build --no-restore --nologo` | 0 | contract 39, unit 407, Redis 26, connector 87, sample regression 28, HTTP client 54 PASS | console output |
 
 Codex 리뷰도 같은 방식으로 기록한다.
 
 | 시각 | 언어 | loop | reviewer 역할 | finding 수 | 판정 | 반영 commit | 증거 |
 |------|------|------|---------------|------------|------|-------------|------|
+| 2026-07-12 00:16 KST | `.NET` | G0 재감사 | Codex drain/flow/metrics 3개 병렬 읽기 전용 리뷰 | drain 8, flow 기능 6+test gap, metrics 6+test gap | 미완료; 확인된 기능 결함부터 반영 중 | working tree | agent file:line finding |
+| 2026-07-12 00:45 KST | `.NET` | G0/G2 | working tree | solution build와 unit/connector/contract 전체 test | 0 | build 0 warning/error, unit 412, connector 88, contract 39 PASS | console output |
+| 2026-07-12 00:45 KST | `.NET` | G0 재감사 | Codex drain/flow/metrics 3개 병렬 읽기 전용 재검토 | drain 2, flow 4, metrics 5 기능 gap | 반영 진행; actor/Spot drain 순서, route admission, 오류 kind, pending/request/session 계수, lifecycle flow 수정 | working tree | agent file:line finding |
 
 ## 15. 최종 전체 완료 조건
 

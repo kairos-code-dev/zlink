@@ -71,7 +71,11 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         var handler = SnapshotErrorReceived();
         if (handler is not null)
             await DispatchUserCallbackAsync(
-                    dispatchedToken => handler(error, dispatchedToken),
+                    async dispatchedToken =>
+                    {
+                        using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
+                        await handler(error, dispatchedToken).ConfigureAwait(false);
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
     }
@@ -83,7 +87,12 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         var disconnected = SnapshotDisconnected();
         if (disconnected is not null)
             await DispatchUserCallbackAsync(
-                    dispatchedToken => disconnected(new ZlinkStreamDisconnected(closeReason), dispatchedToken),
+                    async dispatchedToken =>
+                    {
+                        using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
+                        await disconnected(new ZlinkStreamDisconnected(closeReason), dispatchedToken)
+                            .ConfigureAwait(false);
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
     }
@@ -95,7 +104,11 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         var handler = SnapshotConnectionStateChanged();
         if (handler is not null)
             await DispatchUserCallbackAsync(
-                    dispatchedToken => handler(change, dispatchedToken),
+                    async dispatchedToken =>
+                    {
+                        using var flow = ZlinkStreamFlowContext.EnterNew(ZlinkStreamFlowOrigin.Lifecycle);
+                        await handler(change, dispatchedToken).ConfigureAwait(false);
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
     }

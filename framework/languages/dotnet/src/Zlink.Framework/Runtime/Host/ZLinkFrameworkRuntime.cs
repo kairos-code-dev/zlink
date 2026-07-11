@@ -8,6 +8,12 @@ internal readonly record struct CreateActorResult(
     bool Created,
     ZLinkMessage CreateRequest);
 
+internal readonly record struct ZLinkDrainRemainderCounts(
+    int Actors,
+    int Spots,
+    int Requests,
+    int Sessions);
+
 internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 {
     private static readonly AsyncLocal<ZLinkRuntimeOperationOwnership?> AmbientOperation = new();
@@ -34,6 +40,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private ZLinkWorkerPool? _workerPool;
     private TaskCompletionSource? _operationsDrained;
     private int _activeOperations;
+    private int _activeRequests;
     private bool _acceptingOperations;
 
     public ZLinkFrameworkRuntime(
@@ -105,14 +112,27 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             await spotNode.DrainSpotsAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    internal Task SealAndWaitOperationsForDrainAsync()
+    internal void SealRequestAdmissionsForDrain()
     {
-        _drainAdmission.Seal();
-        return StopAcceptingOperationsAsync();
+        lock (_operationGate) _drainAdmission.Seal();
     }
+
+    internal Task StopAndWaitOperationsForDrainAsync() => StopAcceptingOperationsAsync();
 
     internal Task WaitForAcceptedActorHandoffsAsync(CancellationToken cancellationToken) =>
         _actorHandoffAdmissions.WaitUntilDrainSafeAsync(cancellationToken);
+
+    internal ZLinkDrainRemainderCounts GetDrainRemainderCounts()
+    {
+        var actors = _actorSessionManager.SnapshotStates()
+            .Count(static actor => actor.Actor is not null);
+        var state = _state;
+        var spots = state?.SpotNodes.Values.Sum(static node => node.Spots.Count) ?? 0;
+        var sessions = state?.StreamNodes.Values.Sum(static node => node.SessionCount) ?? 0;
+        int requests;
+        lock (_operationGate) requests = _activeRequests;
+        return new ZLinkDrainRemainderCounts(actors, spots, requests, sessions);
+    }
 
     internal object ExecutionOwner
     {
@@ -125,23 +145,46 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         }
     }
 
-    internal ZLinkRuntimeOperationLease EnterOperation()
+    internal ZLinkRuntimeOperationLease EnterOperation(bool countAsRequest = false)
     {
         if (AmbientOperation.Value is { IsActive: true } current
             && ReferenceEquals(current.Runtime, this))
-            return new ZLinkRuntimeOperationLease();
+        {
+            if (!countAsRequest) return new ZLinkRuntimeOperationLease();
+            lock (_operationGate) _activeRequests++;
+            return new ZLinkRuntimeOperationLease(this, countsRequest: true);
+        }
+
+        lock (_operationGate)
+            return EnterOperationUnderLock(countAsRequest);
+    }
+
+    internal bool TryEnterInboundOperation(
+        bool countAsRequest,
+        out ZLinkRuntimeOperationLease lease)
+    {
+        if (AmbientOperation.Value is { IsActive: true } current
+            && ReferenceEquals(current.Runtime, this))
+        {
+            if (!countAsRequest)
+            {
+                lease = new ZLinkRuntimeOperationLease();
+                return true;
+            }
+            lock (_operationGate) _activeRequests++;
+            lease = new ZLinkRuntimeOperationLease(this, countsRequest: true);
+            return true;
+        }
 
         lock (_operationGate)
         {
-            if (!_acceptingOperations
-                || Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running
-                || _state is not { } state)
-                throw new InvalidOperationException("ZLink framework runtime is not accepting operations.");
-            _activeOperations++;
-            var previous = AmbientOperation.Value;
-            var ownership = new ZLinkRuntimeOperationOwnership(this, state);
-            AmbientOperation.Value = ownership;
-            return new ZLinkRuntimeOperationLease(this, ownership, previous);
+            if (_drainAdmission.IsSealed)
+            {
+                lease = new ZLinkRuntimeOperationLease();
+                return false;
+            }
+            lease = EnterOperationUnderLock(countAsRequest);
+            return true;
         }
     }
 
@@ -430,12 +473,28 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         }
     }
 
-    private void ExitOperation()
+    private ZLinkRuntimeOperationLease EnterOperationUnderLock(bool countAsRequest)
+    {
+        if (!_acceptingOperations
+            || Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running
+            || _state is not { } state)
+            throw new InvalidOperationException("ZLink framework runtime is not accepting operations.");
+        _activeOperations++;
+        if (countAsRequest) _activeRequests++;
+        var previous = AmbientOperation.Value;
+        var ownership = new ZLinkRuntimeOperationOwnership(this, state);
+        AmbientOperation.Value = ownership;
+        return new ZLinkRuntimeOperationLease(this, ownership, previous, countAsRequest);
+    }
+
+    private void ExitOperation(bool countsOperation, bool countsRequest)
     {
         TaskCompletionSource? drained = null;
         lock (_operationGate)
         {
-            if (--_activeOperations < 0)
+            if (countsRequest && --_activeRequests < 0)
+                throw new InvalidOperationException("Runtime request lease count became negative.");
+            if (countsOperation && --_activeOperations < 0)
                 throw new InvalidOperationException("Runtime operation lease count became negative.");
             if (_activeOperations == 0 && !_acceptingOperations)
             {
@@ -451,6 +510,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         private readonly ZLinkFrameworkRuntime? _runtime;
         private readonly ZLinkRuntimeOperationOwnership? _ownership;
         private readonly ZLinkRuntimeOperationOwnership? _previous;
+        private readonly bool _countsOperation;
+        private readonly bool _countsRequest;
         private int _disposed;
 
         internal ZLinkRuntimeOperationLease()
@@ -459,12 +520,23 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
         internal ZLinkRuntimeOperationLease(
             ZLinkFrameworkRuntime runtime,
+            bool countsRequest)
+        {
+            _runtime = runtime;
+            _countsRequest = countsRequest;
+        }
+
+        internal ZLinkRuntimeOperationLease(
+            ZLinkFrameworkRuntime runtime,
             ZLinkRuntimeOperationOwnership ownership,
-            ZLinkRuntimeOperationOwnership? previous)
+            ZLinkRuntimeOperationOwnership? previous,
+            bool countsRequest)
         {
             _runtime = runtime;
             _ownership = ownership;
             _previous = previous;
+            _countsOperation = true;
+            _countsRequest = countsRequest;
         }
 
         public void Dispose()
@@ -474,7 +546,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 _ownership?.Deactivate();
                 if (_ownership is not null && ReferenceEquals(AmbientOperation.Value, _ownership))
                     AmbientOperation.Value = _previous;
-                _runtime?.ExitOperation();
+                _runtime?.ExitOperation(_countsOperation, _countsRequest);
             }
         }
     }

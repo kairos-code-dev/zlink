@@ -11,6 +11,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
     ZLinkCodecRegistryBuilder codecs,
     IZLinkRouteInternalPacketDispatcher internalPackets,
     ZLinkDispatchErrorReporter dispatchErrors,
+    ZLinkFrameworkRuntime? runtime,
     ILogger<ZLinkRoutePacketDispatcher>? logger = null)
 {
     private readonly ILogger<ZLinkRoutePacketDispatcher> _logger =
@@ -22,7 +23,16 @@ internal sealed class ZLinkRoutePacketDispatcher(
     {
         if (received.Parts.Count == 0) return;
 
-        var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+        ZLinkEnvelopeHeader header;
+        try
+        {
+            header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+        }
+        catch (ZLinkEnvelopeProtocolException protocolError)
+        {
+            HandleProtocolError(received, protocolError);
+            return;
+        }
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,
@@ -58,6 +68,18 @@ internal sealed class ZLinkRoutePacketDispatcher(
             await internalPackets.DispatchSendAsync(received, cancellationToken).ConfigureAwait(false);
             return;
         }
+
+        ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease operation;
+        if (runtime is null)
+            operation = new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        else if (!runtime.TryEnterInboundOperation(countAsRequest: false, out operation))
+        {
+            CreateScope(header, ZLinkDispatchMessageKind.Send, "Send")
+                .Dropped(_logger, dispatchErrors, LogLevel.Information);
+            return;
+        }
+        using (operation)
+        {
 
         if (!handlers.TryGet(
                 routerChannelId,
@@ -102,6 +124,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ZLinkDispatchErrorAction.Drop,
                 ex);
         }
+        }
     }
 
     private async ValueTask DispatchRequestAsync(
@@ -126,6 +149,21 @@ internal sealed class ZLinkRoutePacketDispatcher(
             ZLinkDispatchMessageKind.Request,
             "Request",
             sourceRid: source);
+
+        ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease operation;
+        if (runtime is null)
+            operation = new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        else if (!runtime.TryEnterInboundOperation(countAsRequest: true, out operation))
+        {
+            var error = new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestRejected,
+                "The framework is draining and no longer accepts new requests.");
+            ReplyError(sourceRid, received.RequestSeq, header, error);
+            scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Error);
+            return;
+        }
+        using (operation)
+        {
 
         if (!handlers.TryGet(
                 routerChannelId,
@@ -170,6 +208,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 null,
                 ZLinkDispatchErrorAction.ReplyError,
                 ex);
+        }
         }
     }
 
@@ -253,6 +292,44 @@ internal sealed class ZLinkRoutePacketDispatcher(
     {
         return received.RoutingId
                ?? throw new InvalidOperationException($"{operationName} requires a source routing id.");
+    }
+
+    private void HandleProtocolError(
+        Received received,
+        ZLinkEnvelopeProtocolException protocolError)
+    {
+        var header = protocolError.Header;
+        using var flow = ZLinkFlowContext.Enter(
+            null,
+            null,
+            dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
+        dispatchErrors.Report(new ZLinkDispatchFailure(
+            ZLinkDispatchErrorSurface.RouteMeshChannel,
+            header.Kind == ZLinkMessageKind.Request
+                ? ZLinkDispatchMessageKind.Request
+                : ZLinkDispatchMessageKind.Send,
+            ZLinkDispatchErrorReason.InvalidFrame,
+            header.Kind == ZLinkMessageKind.Request
+                ? ZLinkDispatchErrorAction.ReplyError
+                : ZLinkDispatchErrorAction.Drop,
+            header.MessageName,
+            routerChannelId,
+            SourceRid: received.RoutingId?.ToString(),
+            CorrelationId: header.CorrelationId,
+            Exception: protocolError));
+        if (header.Kind != ZLinkMessageKind.Request || received.RoutingId is not { } sourceRid) return;
+
+        ZLinkChannelReplyWriter.ReplyEnvelope(
+            router,
+            sourceRid,
+            received.RequestSeq,
+            ZLinkChannelReplyWriter.CreateProtocolErrorHeader(
+                routerChannelId,
+                header,
+                protocolError.Message),
+            null,
+            null);
     }
 
     private void ReplyRaw(

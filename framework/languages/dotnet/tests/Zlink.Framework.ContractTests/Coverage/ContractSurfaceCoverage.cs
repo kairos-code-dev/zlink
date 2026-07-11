@@ -2,6 +2,7 @@ using System.Reflection;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Workers;
 using Zlink.Framework.ContractTests.Support;
+using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Zlink.Framework.ContractTests.Coverage;
 
@@ -121,6 +122,62 @@ public sealed class ContractSurfaceCoverage
         Assert.DoesNotContain(
             typeof(ZLinkSpotCreateResponse).GetMethods(BindingFlags.Public | BindingFlags.Static),
             method => method.GetParameters().Any(parameter => parameter.ParameterType == bindingMessage));
+    }
+
+    [Fact]
+    public void Canonical_interface_documents_cover_every_exported_contract_type()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var specRoot = Path.Combine(
+            repositoryRoot,
+            "framework",
+            "doc",
+            "framework",
+            "common",
+            "spec",
+            "languages",
+            "dotnet");
+        var documents = Directory.GetFiles(specRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Where(path => !path.EndsWith("stage-wrapper-on-spot.ko.md", StringComparison.Ordinal))
+            .Select(File.ReadAllText)
+            .ToArray();
+        Assert.NotEmpty(documents);
+        var canonicalText = string.Join(Environment.NewLine, documents);
+
+        var exportedContracts = typeof(IZLinkFrameworkOptions).Assembly.GetExportedTypes()
+            .Where(static type => type.Namespace?.StartsWith(
+                "Zlink.Framework.Contracts",
+                StringComparison.Ordinal) == true)
+            .Concat(typeof(IZlinkStreamConnector).Assembly.GetExportedTypes()
+                .Where(static type => type.Namespace?.StartsWith(
+                    "Systems.Zlink.Stream.Connector.Contracts",
+                    StringComparison.Ordinal) == true))
+            .OrderBy(static type => type.FullName, StringComparer.Ordinal)
+            .ToArray();
+
+        var missing = exportedContracts
+            .Where(type => !canonicalText.Contains(
+                type.Name.Split('`')[0],
+                StringComparison.Ordinal))
+            .Select(static type => type.FullName)
+            .ToArray();
+
+        Assert.True(
+            missing.Length == 0,
+            $"Canonical .NET interface documents are missing exported contract types:{Environment.NewLine}{string.Join(Environment.NewLine, missing)}");
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "AGENTS.md")))
+                return current.FullName;
+            current = current.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the repository root containing AGENTS.md.");
     }
 
     private static void AssertMethodParameter(

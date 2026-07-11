@@ -24,7 +24,16 @@ internal sealed class ZLinkSpotRouteDispatcher(
         {
             if (received.Parts.Count == 0) return;
 
-            var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            ZLinkEnvelopeHeader header;
+            try
+            {
+                header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            }
+            catch (ZLinkEnvelopeProtocolException protocolError)
+            {
+                HandleProtocolError(received, protocolError);
+                return;
+            }
             using var currentFlow = ZLinkFlowContext.Enter(
                 header.FlowId,
                 header.FlowOrigin,
@@ -179,6 +188,40 @@ internal sealed class ZLinkSpotRouteDispatcher(
             header.MessageName,
             header.CorrelationId,
             exception);
+        ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
+    }
+
+    private void HandleProtocolError(
+        Received received,
+        ZLinkEnvelopeProtocolException protocolError)
+    {
+        var header = protocolError.Header;
+        var dispatchSpotRid = received.SpotRid?.ToString() ?? spotRid;
+        using var flow = ZLinkFlowContext.Enter(
+            null,
+            null,
+            dispatchErrors.Flow.GenerationEnabled,
+            ZLinkFlowOrigin.Inbound);
+        dispatchErrors.Report(new ZLinkDispatchFailure(
+            ZLinkDispatchErrorSurface.SpotRoute,
+            header.Kind == ZLinkMessageKind.Request
+                ? ZLinkDispatchMessageKind.Request
+                : ZLinkDispatchMessageKind.Send,
+            ZLinkDispatchErrorReason.InvalidFrame,
+            header.Kind == ZLinkMessageKind.Request
+                ? ZLinkDispatchErrorAction.ReplyError
+                : ZLinkDispatchErrorAction.Drop,
+            header.MessageName,
+            channelName,
+            SpotRid: dispatchSpotRid,
+            CorrelationId: header.CorrelationId,
+            Exception: protocolError));
+        if (header.Kind != ZLinkMessageKind.Request) return;
+
+        var replyParts = ZLinkSpotReplyEnvelope.EncodeProtocolErrorParts(
+            channelName,
+            header,
+            protocolError.Message);
         ZLinkSpotReplySubmitter.SubmitAndDispose(received, replyParts);
     }
 }

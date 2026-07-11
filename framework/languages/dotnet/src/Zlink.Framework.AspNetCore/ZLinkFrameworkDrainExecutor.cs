@@ -18,14 +18,18 @@ internal sealed class ZLinkFrameworkDrainExecutor(
             ? Task.CompletedTask
             : Task.Delay(PropagationDelay(), deadlineToken);
         await propagation.ConfigureAwait(false);
-        await runtime.SealAndWaitOperationsForDrainAsync().WaitAsync(deadlineToken)
-            .ConfigureAwait(false);
+        runtime.SealRequestAdmissionsForDrain();
         await runtime.WaitForAcceptedActorHandoffsAsync(deadlineToken).ConfigureAwait(false);
 
-        while (!await runtime.DrainActorsAsync(deadlineToken).ConfigureAwait(false))
-            await Task.Delay(locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
-
+        var actorsDrained = await runtime.DrainActorsAsync(deadlineToken).ConfigureAwait(false);
         await runtime.DrainSpotsAsync(deadlineToken).ConfigureAwait(false);
+        while (!actorsDrained)
+        {
+            await Task.Delay(locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
+            actorsDrained = await runtime.DrainActorsAsync(deadlineToken).ConfigureAwait(false);
+        }
+        await runtime.StopAndWaitOperationsForDrainAsync().WaitAsync(deadlineToken)
+            .ConfigureAwait(false);
 
         if (!await runtime.DrainStreamSessionsAsync(deadlineToken).ConfigureAwait(false))
             return ZLinkDrainForceReason.TeardownFailed;
@@ -52,12 +56,33 @@ internal sealed class ZLinkFrameworkDrainExecutor(
         {
         }
 
+        var remaining = runtime.GetDrainRemainderCounts();
+        ZLinkRuntimeMetrics.RecordDrainForced("actor", remaining.Actors);
+        ZLinkRuntimeMetrics.RecordDrainForced("spot", remaining.Spots);
+        ZLinkRuntimeMetrics.RecordDrainForced("request", remaining.Requests);
+        ZLinkRuntimeMetrics.RecordDrainForced("session", remaining.Sessions);
+
         var failures = new List<Exception>();
         await CaptureAsync(() => runtime.StopAsync(CancellationToken.None), failures).ConfigureAwait(false);
         if (autoConnect is not null)
             await CaptureAsync(() => autoConnect.StopAsync(CancellationToken.None), failures).ConfigureAwait(false);
+        var ownerCleanupFailed = false;
         if (locationRuntime is not null)
+        {
+            using var cleanupBound = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
+            {
+                await locationRuntime.CleanupOwnerForDrainAsync(cleanupBound.Token).ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                ownerCleanupFailed = true;
+                failures.Add(error);
+            }
             await CaptureAsync(() => locationRuntime.StopAsync(CancellationToken.None), failures).ConfigureAwait(false);
+        }
+        if (ownerCleanupFailed)
+            throw new ZLinkDrainForceException(ZLinkDrainForceReason.OwnerCleanupFailed, failures);
         if (failures.Count == 1) throw failures[0];
         if (failures.Count > 1) throw new AggregateException(failures);
     }

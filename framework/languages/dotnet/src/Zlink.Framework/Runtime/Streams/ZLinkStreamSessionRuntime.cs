@@ -132,7 +132,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             Volatile.Read(ref _explicitCloseReason) ?? "transport_error");
         await CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
         if (Interlocked.Exchange(ref _disconnected, 1) == 0)
-            await CaptureAsync(() => _handler.OnDisconnectedAsync(CancellationToken.None)).ConfigureAwait(false);
+            await CaptureAsync(InvokeDisconnectedLifecycleAsync).ConfigureAwait(false);
         await CaptureAsync(() => _context.CleanupAsync(CancellationToken.None)).ConfigureAwait(false);
         Capture(() => _removeSession(Stream.SessionId));
         await CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
@@ -239,7 +239,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         if (Interlocked.Exchange(ref _connected, 1) != 0) return;
 
         RecordStreamOpenedMetric();
-        await _handler.OnConnectedAsync(CancellationToken.None);
+        await InvokeConnectedLifecycleAsync().ConfigureAwait(false);
     }
 
     private async ValueTask DispatchPacketAsync(
@@ -353,6 +353,11 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         if (error is { } streamError)
             try
             {
+                using var flow = ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    _flow.GenerationEnabled,
+                    ZLinkFlowOrigin.Lifecycle);
                 await _handler.OnErrorAsync(streamError, CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception exception)
@@ -363,7 +368,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         if (notifyDisconnected)
             try
             {
-                await _handler.OnDisconnectedAsync(CancellationToken.None).ConfigureAwait(false);
+                await InvokeDisconnectedLifecycleAsync().ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -372,6 +377,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                     : new AggregateException(callbackFailure, exception);
             }
 
+        _removeSession(Stream.SessionId);
         _runtime.TryRunDetached(
             $"stream-session-dispose:{Stream.SessionId}",
             _ => DisposeAsync());
@@ -386,16 +392,36 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         if (!_serial.Enqueue(work)) onRejected?.Invoke();
     }
 
-    private ValueTask EnsureConnectedAsync()
+    private async ValueTask EnsureConnectedAsync()
     {
         if (string.IsNullOrWhiteSpace(Stream.LocalAddr)
             || string.IsNullOrWhiteSpace(Stream.RemoteAddr))
-            return ValueTask.CompletedTask;
+            return;
 
-        if (Interlocked.CompareExchange(ref _connected, 1, 0) != 0) return ValueTask.CompletedTask;
+        if (Interlocked.CompareExchange(ref _connected, 1, 0) != 0) return;
 
         RecordStreamOpenedMetric();
-        return _handler.OnConnectedAsync(CancellationToken.None);
+        await InvokeConnectedLifecycleAsync().ConfigureAwait(false);
+    }
+
+    private async ValueTask InvokeConnectedLifecycleAsync()
+    {
+        using var flow = ZLinkFlowContext.Enter(
+            null,
+            null,
+            _flow.GenerationEnabled,
+            ZLinkFlowOrigin.Lifecycle);
+        await _handler.OnConnectedAsync(CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private async ValueTask InvokeDisconnectedLifecycleAsync()
+    {
+        using var flow = ZLinkFlowContext.Enter(
+            null,
+            null,
+            _flow.GenerationEnabled,
+            ZLinkFlowOrigin.Lifecycle);
+        await _handler.OnDisconnectedAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private void RecordStreamOpenedMetric()

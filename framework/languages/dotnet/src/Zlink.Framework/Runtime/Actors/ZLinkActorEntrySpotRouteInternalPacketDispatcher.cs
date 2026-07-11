@@ -32,6 +32,11 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
         _ = routedHeader;
         var request = ZLinkActorEntrySpotRoutePackets.DecodeJoinRequest(received.Parts);
 
+        // This one-phase Entry Spot join is admitted at dispatch. A drain
+        // that already started rejects it; an admission that won the race
+        // is allowed to finish as an in-flight handoff.
+        runtime.DrainAdmission.RequireActorAdmission();
+
         // Hosting handoff from the source node (see JoinRoutedActorAsync).
         var created = await runtime.CreateLocalActorForHandoffAsync(
                 request.ActorId,

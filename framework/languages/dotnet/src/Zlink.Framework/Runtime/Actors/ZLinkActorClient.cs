@@ -42,7 +42,7 @@ internal sealed class ZLinkActorClient(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        using var operation = runtime.EnterOperation();
+        using var operation = runtime.EnterOperation(countAsRequest: true);
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Request,
             new ZlinkStreamRequestSeq(1),

@@ -4168,6 +4168,297 @@ interface가 그 동작을 보장하도록 한다.
 [ASP.NET Core Monitoring §10~12](aspnet-core-monitoring.ko.md)의 전체 declaration이 정확한 member,
 overload, default와 반환형을 고정하며 contract test는 이 타입들을 누락 없이 검사한다.
 
+### 16.3 Exported 보조 타입의 정식 선언
+
+interface가 반환하거나 인자로 받는 public enum, record, attribute, builder class도 호출자가 직접
+컴파일하는 계약이다. 아래 선언은 앞 절의 interface와 같은 수준으로 고정한다. 코드에는 각 묶음의
+핵심 제약만 주석으로 표시한다.
+
+```csharp
+public sealed record ActorRefSnapshot(
+    RoutingId NodeRid,
+    string ActorId,
+    ulong Generation)
+{
+    public static ActorRefSnapshot From(ActorRef actorRef);
+    public ActorRef ToActorRef();
+}
+
+public enum ZLinkAutoConnectType
+{
+    Invalid = 0,
+    RouteMesh = 1,
+    ClientServer = 2,
+    Fanout = 4,   // location 전용 DealerMesh 값 3은 channel 표면에 노출하지 않는다.
+    SpotMesh = 5
+}
+
+public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
+{
+    IZLinkSpotMeshBuilder UseDrainPolicy(ZLinkSpotDrainPolicy policy);
+}
+```
+
+dispatch 오류는 유효한 surface, message kind, reason, action 조합으로 기록한다. enum 숫자는 event와
+계기 연결에서 사용하는 고정 값이다.
+
+```csharp
+public enum ZLinkDispatchErrorSurface
+{
+    Channel = 0, RouteMeshChannel = 1, SpotRoute = 2,
+    SpotSubscription = 3, SpotActor = 4, StreamSession = 5
+}
+
+public enum ZLinkDispatchMessageKind
+{
+    Request = 0, Send = 1, Publish = 2, Response = 3,
+    Error = 4, ActorRequest = 5, ActorSend = 6
+}
+
+public enum ZLinkDispatchErrorReason
+{
+    HandlerMissing = 0, PayloadDecodeFailed = 1, HandlerException = 2,
+    InvalidFrame = 3, ReplyPathMissing = 4, UnexpectedReply = 5
+}
+
+public enum ZLinkDispatchErrorAction { ReplyError = 0, Drop = 1 }
+
+public enum ZLinkDrainState
+{
+    Serving = 0, Draining = 1, Drained = 2, ForceStopping = 3
+}
+```
+
+class 기반 Spot handler의 attribute는 constructor 인자를 필수 identity로 사용한다. method 기반
+attribute의 선택적 packet name과 혼동하지 않는다.
+
+```csharp
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ZLinkSpotPacketHandlerAttribute(string packetName) : Attribute
+{
+    public string PacketName { get; }
+}
+
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ZLinkSpotRequestHandlerAttribute(string packetName) : Attribute
+{
+    public string PacketName { get; }
+}
+
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ZLinkSpotSubscriptionHandlerAttribute(string topic) : Attribute
+{
+    public string Topic { get; }
+}
+
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ZLinkSpotActorSendHandlerAttribute(string packetName) : Attribute
+{
+    public string PacketName { get; }
+}
+
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ZLinkSpotActorRequestHandlerAttribute(string packetName) : Attribute
+{
+    public string PacketName { get; }
+}
+
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ZLinkSpotTimerHandlerAttribute(
+    string name,
+    double periodMilliseconds) : Attribute
+{
+    public string Name { get; }
+    public double PeriodMilliseconds { get; } // attribute 상수 제약 때문에 밀리초 숫자를 사용한다.
+}
+```
+
+location row와 watch의 종류 값은 저장소 직렬화와 event에서 공유한다. `ZLinkLocationKey`는 인코딩된
+문자열을 노출하지 않는 닫힌 typed key 집합이다.
+
+```csharp
+public enum ZLinkLocationAutoConnectType
+{
+    Invalid = 0, RouteMesh = 1, ClientServer = 2,
+    DealerMesh = 3, Fanout = 4, SpotMesh = 5
+}
+
+public enum ZLinkRouteKind
+{
+    Invalid = 0, ActorSession = 1, SpotName = 2, FrameworkRoute = 3
+}
+
+public enum ZLinkLocationKind
+{
+    Invalid = 0, Peer = 1, Spot = 2, Actor = 3, Route = 4
+}
+
+public enum ZLinkLocationChangeType { Upserted = 1, Removed = 2, Expired = 3 }
+
+public enum ZLinkLocationTopologyState
+{
+    Discovered = 1, Connecting = 2, Ready = 3,
+    Lost = 4, Error = 5, Stopped = 6
+}
+
+public enum ZLinkLocationWriteStatus
+{
+    Stored = 1, IgnoredStale = 2, RejectedConflict = 3
+}
+
+public abstract record ZLinkLocationKey
+{
+    public sealed record Peer(ZLinkPeerLocationKey Key) : ZLinkLocationKey;
+    public sealed record Spot(ZLinkSpotLocationKey Key) : ZLinkLocationKey;
+    public sealed record Actor(ZLinkActorLocationKey Key) : ZLinkLocationKey;
+    public sealed record Route(ZLinkRouteLocationKey Key) : ZLinkLocationKey;
+}
+```
+
+Spot monitoring 값은 native 상태를 public event와 query 결과로 투영한다. 값과 underlying type을
+변경하면 package consumer의 switch와 직렬화가 달라지므로 다음 선언을 유지한다.
+
+```csharp
+public enum ZLinkSpotKind { Invalid = 0, Entry = 1, User = 2 }
+public enum ZLinkSpotNodeState
+{
+    Idle = 1, Connecting = 2, PartialReady = 3, Ready = 4, Error = 5
+}
+public enum ZLinkSpotPeerSource { Manual = 1, Discovery = 2, Mixed = 3 }
+public enum ZLinkSpotPeerKind { SpotMesh = 1, RouterChannel = 2 }
+public enum ZLinkSpotPeerState { Configured = 1, Connecting = 2, Connected = 3 }
+public enum ZLinkSubjectKind : uint { None = 0, Topic = 1, Pattern = 2 }
+public enum ZLinkSpotRole { Pub = 1, Sub = 2 }
+```
+
+Stream Connector의 transport, dispatch, packet, 오류 값과 생성 진입점은 별도 package의 public
+계약이다. `Create(...)`는 구현 class가 아니라 interface를 반환한다.
+
+```csharp
+public enum ZlinkStreamTransport { Tcp, Tls, WebSocket, WebSocketSecure }
+public enum ZlinkStreamDispatchMode { Manual, Immediate }
+public enum ZlinkStreamMessageKind : byte
+{
+    Send = 1, Request = 2, Response = 3, Error = 4, Control = 5
+}
+public enum ZlinkStreamErrorCode
+{
+    Disconnected, ConfigurationError, ValidationFailed, RequestTimeout,
+    ConnectTimeout, FrameDecodeFailed, FrameTooLarge, SendFailed,
+    CompressionFailed, TlsValidationFailed, DecompressionFailed,
+    UserCallbackFailed, ObserverFailed, ObserverDropped, RemoteError
+}
+
+public static class ZlinkStreamConnectorFactory
+{
+    public static IZlinkStreamConnector Create(ZlinkStreamConnectorOptions options);
+}
+
+public sealed class ZlinkStreamException : Exception
+{
+    public ZlinkStreamException(ZlinkStreamError error);
+    public ZlinkStreamError Error { get; }
+}
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public sealed class ZlinkStreamPacketNameAttribute(string name) : Attribute
+{
+    public string Name { get; }
+}
+```
+
+heartbeat와 reconnect는 connector가 소유한다. 아래 기본값도 계약에 포함한다.
+
+```csharp
+public sealed class ZlinkStreamHeartbeatOptions
+{
+    public bool Enabled { get; init; } = true;
+    public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
+}
+
+public sealed class ZlinkStreamReconnectOptions
+{
+    public bool Enabled { get; init; } = true;
+    public TimeSpan InitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+    public TimeSpan MaxDelay { get; init; } = TimeSpan.FromSeconds(5);
+    public double BackoffFactor { get; init; } = 2.0;
+    public int? MaxAttempts { get; init; } = 3;
+}
+```
+
+typed helper는 별도 codec 등록 없이 JSON을 기본으로 사용한다. builder constructor는 public이 아니며
+아래 extension에서만 얻는다.
+
+```csharp
+public static class ZlinkStreamJsonCodec
+{
+    public static JsonSerializerOptions SerializerOptions { get; private set; }
+    public static void Configure(JsonSerializerOptions options);
+}
+
+public static class ZlinkStreamJsonExtensions
+{
+    public static T FromJson<T>(this ZlinkStreamEncodedPayload payload);
+    public static ZlinkStreamEncodedPayload ToJson<T>(this T value);
+}
+
+public static class ZlinkStreamTypedConnectorExtensions
+{
+    public static IZlinkStreamConnector WithInboundObserver(
+        this IZlinkStreamConnector connector,
+        Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer);
+    public static ZlinkStreamTypedSendBuilder Send<TPayload>(
+        this IZlinkStreamConnector connector,
+        TPayload payload);
+    public static ZlinkStreamTypedRequestBuilder Request<TPayload>(
+        this IZlinkStreamConnector connector,
+        TPayload payload);
+    public static IDisposable On<TPayload>(
+        this IZlinkStreamConnector connector,
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler);
+    public static IDisposable On<TPayload>(
+        this IZlinkStreamConnector connector,
+        string name,
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler);
+    public static ZlinkStreamTypedWaitBuilder<TPayload> WaitFor<TPayload>(
+        this IZlinkStreamConnector connector,
+        string name);
+    public static ZlinkStreamTypedWaitBuilder<TPayload> WaitFor<TPayload>(
+        this IZlinkStreamConnector connector);
+}
+
+public sealed class ZlinkStreamTypedWaitBuilder<TPayload>
+{
+    public ZlinkStreamTypedWaitBuilder<TPayload> Timeout(TimeSpan timeout);
+    public ZlinkStreamTypedWaitBuilder<TPayload> Where(
+        Func<ZlinkStreamMessage<TPayload>, bool> predicate);
+    public ValueTask<ZlinkStreamMessage<TPayload>> Async(
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class ZlinkStreamTypedSendBuilder
+{
+    public ZlinkStreamTypedSendBuilder PacketName(string name);
+    public ZlinkStreamTypedSendBuilder Metadata(string key, string value);
+    public ZlinkStreamTypedSendBuilder Metadata(ZlinkStreamMetadata metadata);
+    public ZlinkStreamTypedSendBuilder Compress();
+    public void Submit(CancellationToken cancellationToken = default);
+}
+
+public sealed class ZlinkStreamTypedRequestBuilder
+{
+    public ZlinkStreamTypedRequestBuilder PacketName(string name);
+    public ZlinkStreamTypedRequestBuilder Metadata(string key, string value);
+    public ZlinkStreamTypedRequestBuilder Metadata(ZlinkStreamMetadata metadata);
+    public ZlinkStreamTypedRequestBuilder Timeout(TimeSpan timeout);
+    public ZlinkStreamTypedRequestBuilder Compress();
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    public void Submit(Action<ZlinkStreamResult> callback);
+    public void Submit<TReply>(Action<ZlinkStreamResult<TReply>> callback);
+}
+```
+
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
 [^transport]: 메시지가 실제로 네트워크나 IPC 위에서 오가는 하부 계층. ZLink에서는 socket, stream, route 등이 이에 해당한다.
 

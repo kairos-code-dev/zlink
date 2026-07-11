@@ -3,6 +3,84 @@ namespace Zlink.Framework.UnitTests;
 public sealed class RequestFailureMappingTests
 {
     [Fact]
+    public void Malformed_Envelope_Header_Is_A_Protocol_Error()
+    {
+        using var header = Message.From("{");
+
+        Assert.Throws<ZLinkEnvelopeProtocolException>(() => ZLinkEnvelopeCodec.DecodeHeader(header));
+    }
+
+    [Fact]
+    public void Undefined_Envelope_Message_Kind_Is_A_Protocol_Error()
+    {
+        var invalid = new ZLinkEnvelopeHeader(
+            (ZLinkMessageKind)99,
+            "route",
+            "Lookup",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            null,
+            null,
+            null)
+        {
+            FormatMarker = 0xF2
+        };
+        using var encoded = ZLinkEnvelopeCodec.EncodePart(invalid);
+
+        Assert.Throws<ZLinkEnvelopeProtocolException>(() => ZLinkEnvelopeCodec.DecodeHeader(encoded));
+    }
+
+    [Fact]
+    public void Spot_Error_Envelope_Preserves_Framework_Error_Kind()
+    {
+        var parts = ZLinkSpotReplyEnvelope.EncodeErrorParts(
+            "spot",
+            "Lookup",
+            "correlation",
+            new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestRejected, "draining"));
+        try
+        {
+            var reply = ZLinkEnvelopeCodec.DecodeHeader(parts);
+            Assert.Equal(nameof(ZLinkFrameworkErrorKind.RequestRejected), reply.ErrorCode);
+            var error = Assert.IsType<ZLinkFrameworkException>(
+                ZLinkEnvelopeErrorMapper.CreateException(reply, "fallback"));
+            Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, error.Kind);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    [Fact]
+    public void ErrorEnvelope_Preserves_Framework_Error_Kind()
+    {
+        var request = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Request,
+            "route",
+            "Lookup",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "correlation",
+            null,
+            null,
+            null,
+            null);
+        var reply = ZLinkChannelReplyWriter.CreateErrorHeader(
+            "route",
+            request,
+            new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestRejected,
+                "draining"));
+
+        Assert.Equal(nameof(ZLinkFrameworkErrorKind.RequestRejected), reply.ErrorCode);
+        var error = Assert.IsType<ZLinkFrameworkException>(
+            ZLinkEnvelopeErrorMapper.CreateException(reply, "fallback"));
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, error.Kind);
+        Assert.Equal("draining", error.Message);
+    }
+
+    [Fact]
     public void EnvelopeCompletion_Maps_NotConnected_To_RouteNotConnected()
     {
         Exception? observed = null;

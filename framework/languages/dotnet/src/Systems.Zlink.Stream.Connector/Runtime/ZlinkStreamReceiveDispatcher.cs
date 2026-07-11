@@ -82,7 +82,11 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         var handlers = typedHandlers.Snapshot(header.Name);
         foreach (var handler in handlers)
             await callbacks.DispatchUserCallbackAsync(
-                    dispatchedToken => handler.Invoke(message, dispatchedToken),
+                    async dispatchedToken =>
+                    {
+                        using var flow = ZlinkStreamFlowContext.Enter(header.FlowId, header.FlowOrigin);
+                        await handler.Invoke(message, dispatchedToken).ConfigureAwait(false);
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
     }

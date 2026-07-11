@@ -47,6 +47,7 @@ public sealed class AutoConnectReconcilerTests
 
         var target = Assert.Single(desired.Values);
         Assert.Equal("tcp://r:1", target.Endpoint);
+        Assert.Equal(2, ZLinkAutoConnectPlanner.CountDiscoveredPeers(local, peers));
     }
 
     [Fact]

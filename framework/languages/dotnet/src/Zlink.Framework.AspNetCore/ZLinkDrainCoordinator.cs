@@ -13,6 +13,15 @@ internal interface IZLinkDrainExecutor
         CancellationToken cancellationToken);
 }
 
+internal sealed class ZLinkDrainForceException(
+    ZLinkDrainForceReason reason,
+    IReadOnlyList<Exception> failures) : Exception(
+    $"Forced drain teardown failed with '{reason}'.",
+    failures.Count == 1 ? failures[0] : new AggregateException(failures))
+{
+    public ZLinkDrainForceReason Reason { get; } = reason;
+}
+
 internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
 {
     internal static readonly TimeSpan DefaultDeadline = TimeSpan.FromSeconds(30);
@@ -127,6 +136,10 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl
         try
         {
             await _executor.ForceStopAsync(reason, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (ZLinkDrainForceException failure)
+        {
+            reason = failure.Reason;
         }
         catch
         {

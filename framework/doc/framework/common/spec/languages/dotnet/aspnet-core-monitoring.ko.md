@@ -525,11 +525,25 @@ options.ConfigureDispatch()
 
 ```csharp
 public static class ZLinkMeters { public const string Framework = "zlink.framework"; }
-public enum ZLinkFlowOrigin { Inbound, Timer, Application, Lifecycle }
-public enum ZLinkSpotDrainPolicy { DrainNatural, ReleaseAndRecreate }
+public enum ZLinkFlowOrigin : byte
+{
+    Inbound = 1, Timer = 2, Application = 3, Lifecycle = 4
+}
+public enum ZLinkSpotDrainPolicy { DrainNatural = 0, ReleaseAndRecreate = 1 }
 public enum ZLinkDrainForceReason
 {
-    DeadlineExceeded, DrainingStatePublishFailed, OwnerCleanupFailed, TeardownFailed
+    DeadlineExceeded = 0, DrainingStatePublishFailed = 1,
+    OwnerCleanupFailed = 2, TeardownFailed = 3
+}
+public enum ZLinkDrainState
+{
+    Serving = 0, Draining = 1, Drained = 2, ForceStopping = 3
+}
+public sealed record ZLinkDrainEvent(
+    DateTimeOffset Timestamp,
+    ZLinkDrainState State) : IZLinkRuntimeEvent
+{
+    public string SourceName => "drain";
 }
 public abstract record ZLinkDrainResult;
 public sealed record Drained : ZLinkDrainResult;

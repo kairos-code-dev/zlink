@@ -63,7 +63,17 @@ internal sealed partial class ZLinkFrameworkRuntime
         var states = _actorSessionManager.SnapshotStates();
         if (states.Length == 0) return true;
 
-        var targets = await ResolveActorDrainTargetsAsync(cancellationToken).ConfigureAwait(false);
+        var targetsByActorType = new Dictionary<string, RoutingId[]>(StringComparer.Ordinal);
+        foreach (var actorType in states
+                     .Select(static state => state.ActorType)
+                     .Where(static actorType => !string.IsNullOrWhiteSpace(actorType))
+                     .Distinct(StringComparer.Ordinal))
+        {
+            targetsByActorType[actorType!] = await ResolveActorDrainTargetsAsync(
+                    actorType!,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
         var allMoved = true;
         var nextTarget = -1;
         const int maximumConcurrency = 8;
@@ -96,59 +106,88 @@ internal sealed partial class ZLinkFrameworkRuntime
 
             var actor = actorState.Actor;
             var sourceNode = actorState.NativeActorRef?.NodeRid;
-            if (actor is null || sourceNode is null) return true;
+            var actorType = actorState.ActorType;
+            if (actor is null || sourceNode is null || string.IsNullOrWhiteSpace(actorType)) return true;
+            if (!targetsByActorType.TryGetValue(actorType, out var targets)) return false;
             var eligible = targets
                 .Where(target => target != sourceNode.Value)
                 .ToArray();
             if (eligible.Length == 0) return false;
 
-            var target = eligible[(Interlocked.Increment(ref nextTarget) & int.MaxValue) % eligible.Length];
-            var result = await _actors.JoinActorEntrySpotAsync(
-                    target,
-                    actor,
-                    ZLinkMessage.Empty,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (result is not ZLinkActorJoinResult.Accepted) return false;
-            ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
-            return true;
+            var start = (Interlocked.Increment(ref nextTarget) & int.MaxValue) % eligible.Length;
+            for (var attempt = 0; attempt < eligible.Length; attempt++)
+            {
+                var target = eligible[(start + attempt) % eligible.Length];
+                try
+                {
+                    var result = await _actors.JoinActorEntrySpotAsync(
+                            target,
+                            actor,
+                            ZLinkMessage.Empty,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (result is not ZLinkActorJoinResult.Accepted) continue;
+                    ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
+                    return true;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (ZLinkFrameworkException)
+                {
+                    // A peer can leave or reject admission after the location
+                    // snapshot. Try the remaining compatible entries before
+                    // the next bounded drain pass refreshes the store view.
+                }
+            }
+            return false;
         }
     }
 
     private async ValueTask<RoutingId[]> ResolveActorDrainTargetsAsync(
+        string actorType,
         CancellationToken cancellationToken)
     {
         if (Services.GetService<ZLinkStoreLocationResolvers>() is not { } locations
             || Services.GetService<IZLinkPeerLocationResolver>() is not { } peers)
             return [];
 
+        var meshName = ResolveActorDrainMeshName(Registration, actorType);
+        if (meshName is null) return [];
+        var meshPeers = await peers.ListLivePeersAsync(
+                new ZLinkPeerLocationFilter(
+                    ZLinkLocationAutoConnectType.SpotMesh,
+                    meshName,
+                    ZLinkLocationRole.Spot),
+                cancellationToken)
+            .ConfigureAwait(false);
+        var acceptingNodes = meshPeers
+            .Where(static peer => !peer.Draining && peer.NodeRid is { Size: > 0 })
+            .Select(static peer => peer.NodeRid!.Value.ToHex())
+            .ToHashSet(StringComparer.Ordinal);
+        var entries = await locations.ListLiveSpotRowsAsync(
+                new ZLinkSpotLocationFilter(
+                    MeshName: meshName,
+                    SpotKind: ZLinkSpotKind.Entry),
+                cancellationToken)
+            .ConfigureAwait(false);
         var targets = new Dictionary<string, RoutingId>(StringComparer.Ordinal);
-        foreach (var meshName in Registration.SpotNodes.Values
-                     .Select(static node => node.SpotMeshChannelName ?? node.SpotNodeName)
-                     .Distinct(StringComparer.Ordinal))
-        {
-            var meshPeers = await peers.ListLivePeersAsync(
-                    new ZLinkPeerLocationFilter(
-                        ZLinkLocationAutoConnectType.SpotMesh,
-                        meshName,
-                        ZLinkLocationRole.Spot),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            var acceptingNodes = meshPeers
-                .Where(static peer => !peer.Draining && peer.NodeRid is { Size: > 0 })
-                .Select(static peer => peer.NodeRid!.Value.ToHex())
-                .ToHashSet(StringComparer.Ordinal);
-            var entries = await locations.ListLiveSpotRowsAsync(
-                    new ZLinkSpotLocationFilter(
-                        MeshName: meshName,
-                        SpotKind: ZLinkSpotKind.Entry),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            foreach (var entry in entries)
-                if (acceptingNodes.Contains(entry.NodeRid.ToHex()))
-                    targets[entry.NodeRid.ToHex()] = entry.NodeRid;
-        }
+        foreach (var entry in entries)
+            if (acceptingNodes.Contains(entry.NodeRid.ToHex()))
+                targets[entry.NodeRid.ToHex()] = entry.NodeRid;
         return targets.Values.ToArray();
+    }
+
+    internal static string? ResolveActorDrainMeshName(
+        ZLinkFrameworkRegistration registration,
+        string actorType)
+    {
+        var actorNode = registration.SpotNodes.Values.SingleOrDefault(
+            node => node.ActorFactories.ContainsKey(actorType));
+        return actorNode is null
+            ? null
+            : actorNode.SpotMeshChannelName ?? actorNode.SpotNodeName;
     }
 
     private IZLinkActor ResolveOwnedActorRef(ActorRef actor)

@@ -1,4 +1,5 @@
 using Zlink.Framework.ContractTests.Support;
+using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.ContractTests.Monitoring;
 
@@ -67,15 +68,61 @@ public sealed class EventingContracts
             new[] { "DeadlineExceeded", "DrainingStatePublishFailed", "OwnerCleanupFailed", "TeardownFailed" },
             Enum.GetNames<ZLinkDrainForceReason>());
 
-        var methods = typeof(IZLinkDrainControl).GetMethods();
-        Assert.Equal(3, methods.Count(method => method.Name is "DrainAsync" or "AwaitDrainedAsync"));
-        Assert.All(
-            methods.Where(method => method.Name is "DrainAsync" or "AwaitDrainedAsync"),
-            method => Assert.Equal(typeof(ValueTask<ZLinkDrainResult>), method.ReturnType));
+        var contract = typeof(IZLinkDrainControl);
+        var isReady = contract.GetProperty(nameof(IZLinkDrainControl.IsReady));
+        Assert.NotNull(isReady);
+        Assert.Equal(typeof(bool), isReady!.PropertyType);
+        Assert.True(isReady.CanRead);
+        Assert.False(isReady.CanWrite);
+
+        AssertDrainMethod(
+            contract.GetMethod(nameof(IZLinkDrainControl.DrainAsync), [typeof(CancellationToken)]),
+            (typeof(CancellationToken), true));
+        AssertDrainMethod(
+            contract.GetMethod(
+                nameof(IZLinkDrainControl.DrainAsync),
+                [typeof(TimeSpan), typeof(CancellationToken)]),
+            (typeof(TimeSpan), false),
+            (typeof(CancellationToken), true));
+        AssertDrainMethod(
+            contract.GetMethod(nameof(IZLinkDrainControl.AwaitDrainedAsync), [typeof(CancellationToken)]),
+            (typeof(CancellationToken), true));
+
+        Assert.True(typeof(ZLinkDrainResult).IsAbstract);
+        Assert.Empty(typeof(ZLinkDrainResult).GetConstructors());
+        Assert.True(typeof(Drained).IsSealed);
+        Assert.True(typeof(ForceStopped).IsSealed);
+        Assert.Equal(
+            typeof(ZLinkDrainForceReason),
+            typeof(ForceStopped).GetProperty(nameof(ForceStopped.Reason))!.PropertyType);
+
+        var healthExtension = typeof(ServiceCollectionExtensions).GetMethod(
+            nameof(ServiceCollectionExtensions.AddZLinkDrainHealthCheck),
+            [typeof(Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder)]);
+        Assert.NotNull(healthExtension);
+        Assert.True(healthExtension!.IsPublic && healthExtension.IsStatic);
+        Assert.Equal(
+            typeof(Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder),
+            healthExtension.ReturnType);
 
         var flow = typeof(ZLinkMessageFlowEvent);
         Assert.Equal(typeof(string), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowId))!.PropertyType);
         Assert.Equal(typeof(ZLinkFlowOrigin), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowOrigin))!.PropertyType);
+    }
+
+    private static void AssertDrainMethod(
+        System.Reflection.MethodInfo? method,
+        params (Type Type, bool HasDefault)[] expectedParameters)
+    {
+        Assert.NotNull(method);
+        Assert.Equal(typeof(ValueTask<ZLinkDrainResult>), method!.ReturnType);
+        var parameters = method.GetParameters();
+        Assert.Equal(expectedParameters.Length, parameters.Length);
+        for (var index = 0; index < parameters.Length; index++)
+        {
+            Assert.Equal(expectedParameters[index].Type, parameters[index].ParameterType);
+            Assert.Equal(expectedParameters[index].HasDefault, parameters[index].HasDefaultValue);
+        }
     }
 
     private sealed class ExampleMonitoringOptions : IZLinkMonitoringOptions

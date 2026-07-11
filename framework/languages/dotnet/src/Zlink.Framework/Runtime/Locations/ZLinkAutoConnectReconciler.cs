@@ -197,7 +197,9 @@ internal sealed class ZLinkAutoConnectReconciler
         }
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(_local, rows);
-        ZLinkRuntimeMetrics.SetLocationPeers(_peerMetricOwner, rows.Count);
+        ZLinkRuntimeMetrics.SetLocationPeers(
+            _peerMetricOwner,
+            ZLinkAutoConnectPlanner.CountDiscoveredPeers(_local, rows));
         _lastDesired = new Dictionary<string, ZLinkAutoConnectTarget>(desired, StringComparer.Ordinal);
         // Membership snapshot for fail-fast target classification on the
         // send path (known peer vs unknown node). This is the full mesh

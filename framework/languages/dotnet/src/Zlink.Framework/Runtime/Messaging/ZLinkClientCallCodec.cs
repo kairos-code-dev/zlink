@@ -86,14 +86,14 @@ internal static class ZLinkEnvelopeErrorMapper
         string fallbackMessage)
     {
         var message = header.ErrorMessage ?? fallbackMessage;
+        if (Enum.TryParse<ZLinkFrameworkErrorKind>(header.ErrorCode, out var frameworkErrorKind))
+            return new ZLinkFrameworkException(frameworkErrorKind, message);
+
         return header.ErrorCode switch
         {
             nameof(TaskCanceledException) => new TaskCanceledException(message),
             nameof(OperationCanceledException) => new OperationCanceledException(message),
             nameof(ZLinkActorHandoffRejectedException) => new ZLinkActorHandoffRejectedException(message),
-            nameof(ZLinkFrameworkErrorKind.RequestProtocolError) => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
-                message),
             _ => new InvalidOperationException(message)
         };
     }

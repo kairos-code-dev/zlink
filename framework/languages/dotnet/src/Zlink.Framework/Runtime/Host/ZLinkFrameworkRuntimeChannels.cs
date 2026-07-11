@@ -74,7 +74,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        using var operation = EnterOperation();
+        using var operation = EnterOperation(countAsRequest: true);
         var routeChannel = GetRouteChannel(routerChannelId);
         var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
         try
@@ -145,7 +145,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         try
         {
-            using var operation = EnterOperation();
+            using var operation = EnterOperation(countAsRequest: true);
             var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
             var timedOut = false;
             try

@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Zlink.Framework.Runtime.Diagnostics;
 
@@ -30,7 +29,7 @@ internal sealed class ZLinkMessageFlowTracer
         _options = options;
         _runtime = runtime;
         _observerPump = observerPump;
-        _logger = logger ?? NullLogger.Instance;
+        _logger = logger ?? ZLinkStandardErrorLogger.Instance;
     }
 
     public static long TracedCount => Interlocked.Read(ref _tracedCount);
@@ -149,6 +148,30 @@ internal sealed class ZLinkMessageFlowTracer
             flow.ErrorType,
             flow.ErrorMessage,
             size);
+    }
+}
+
+internal sealed class ZLinkStandardErrorLogger : ILogger
+{
+    public static ZLinkStandardErrorLogger Instance { get; } = new();
+
+    private ZLinkStandardErrorLogger()
+    {
+    }
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None;
+
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        if (!IsEnabled(logLevel)) return;
+        Console.Error.WriteLine($"zlink flow: {formatter(state, exception)}");
     }
 }
 

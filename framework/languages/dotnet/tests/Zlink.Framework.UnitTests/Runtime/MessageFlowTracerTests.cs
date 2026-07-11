@@ -8,6 +8,8 @@ namespace Zlink.Framework.UnitTests;
 // MFLOW-001/002/003/011: mode gating + runtime live toggle for the .NET tracer.
 public sealed class MessageFlowTracerTests
 {
+    private static readonly object StandardErrorGate = new();
+
     [Fact]
     public void Off_SuppressesAllTransitions()
     {
@@ -92,6 +94,39 @@ public sealed class MessageFlowTracerTests
         Assert.DoesNotContain(logger.Messages, message => message.Contains("outcome=received"));
         Assert.Contains(logger.Messages, message => message.Contains("outcome=dropped"));
         Assert.Contains(logger.Messages, message => message.Contains("outcome=error"));
+    }
+
+    [Fact]
+    public void Missing_Logger_Uses_Standard_Error_But_Still_Respects_Off()
+    {
+        lock (StandardErrorGate)
+        {
+            var original = Console.Error;
+            using var output = new StringWriter();
+            Console.SetError(output);
+            try
+            {
+                var enabledOptions = new ZLinkDispatchOptionsModel();
+                enabledOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+                new ZLinkMessageFlowTracer(enabledOptions)
+                    .Trace(Flow(ZLinkMessageFlowOutcome.Received));
+
+                var offOptions = new ZLinkDispatchOptionsModel();
+                offOptions.MessageFlow(ZLinkMessageFlowLogMode.Off);
+                new ZLinkMessageFlowTracer(offOptions)
+                    .Trace(Flow(ZLinkMessageFlowOutcome.Replied));
+            }
+            finally
+            {
+                Console.SetError(original);
+            }
+
+            var text = output.ToString();
+            Assert.Contains("zlink flow:", text, StringComparison.Ordinal);
+            Assert.Contains("PlaceOrder", text, StringComparison.Ordinal);
+            Assert.Contains("outcome=received", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("outcome=replied", text, StringComparison.Ordinal);
+        }
     }
 
     private static (ZLinkMessageFlowTracer Tracer, RecordingLogger Logger, ZLinkDispatchOptionsModel Options) Build(

@@ -42,6 +42,8 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     public IZLinkBackendSocketMonitor Monitor { get; }
 
+    internal int SessionCount => _sessions.Count;
+
     internal void RequestStop()
     {
         _stopSource.Cancel();

@@ -201,8 +201,16 @@ internal static class ZLinkRuntimeMetrics
     public static void RecordFanoutPublished(string? topic) => RecordTopic(FanoutPublished, topic);
     public static void RecordFanoutReceived(string? topic) => RecordTopic(FanoutReceived, topic);
 
-    public static void SetLocationPeers(object owner, long count) =>
+    public static void SetLocationPeers(object owner, long count)
+    {
+        if (!LocationPeers.Enabled)
+        {
+            LocationPeerContributions.TryRemove(owner, out _);
+            return;
+        }
+
         LocationPeerContributions[owner] = Math.Max(0, count);
+    }
 
     public static void RemoveLocationPeers(object owner) =>
         LocationPeerContributions.TryRemove(owner, out _);
@@ -262,8 +270,10 @@ internal static class ZLinkRuntimeMetrics
     public static void RecordDrainRoom(string policy) =>
         SafeAdd(DrainRoomsDrained, 1, "policy", policy);
 
-    public static void RecordDrainForced(string kind) =>
-        SafeAdd(DrainForced, 1, "kind", kind);
+    public static void RecordDrainForced(string kind, long count = 1)
+    {
+        if (count > 0) SafeAdd(DrainForced, count, "kind", kind);
+    }
 
     private static void RecordTopic(Counter<long> counter, string? topic)
     {

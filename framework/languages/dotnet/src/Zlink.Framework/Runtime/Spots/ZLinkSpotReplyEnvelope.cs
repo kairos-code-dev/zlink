@@ -29,6 +29,9 @@ internal static class ZLinkSpotReplyEnvelope
         string? correlationId,
         Exception exception)
     {
+        var errorCode = exception is ZLinkFrameworkException frameworkException
+            ? frameworkException.Kind.ToString()
+            : exception.GetType().Name;
         var replyHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Error,
             channelName,
@@ -37,8 +40,26 @@ internal static class ZLinkSpotReplyEnvelope
             correlationId,
             null,
             null,
-            exception.GetType().Name,
+            errorCode,
             exception.Message);
+        return ZLinkEnvelopeCodec.EncodeParts(replyHeader, null, null, null);
+    }
+
+    public static IReadOnlyList<Message> EncodeProtocolErrorParts(
+        string channelName,
+        ZLinkEnvelopeHeader request,
+        string message)
+    {
+        var replyHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Error,
+            channelName,
+            request.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            request.CorrelationId,
+            null,
+            null,
+            nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
+            message);
         return ZLinkEnvelopeCodec.EncodeParts(replyHeader, null, null, null);
     }
 }

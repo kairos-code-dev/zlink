@@ -82,6 +82,9 @@ internal static class ZLinkChannelReplyWriter
         ZLinkEnvelopeHeader request,
         Exception exception)
     {
+        var errorCode = exception is ZLinkFrameworkException frameworkException
+            ? frameworkException.Kind.ToString()
+            : exception.GetType().Name;
         return new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Error,
             channelName,
@@ -90,7 +93,7 @@ internal static class ZLinkChannelReplyWriter
             request.CorrelationId,
             null,
             null,
-            exception.GetType().Name,
+            errorCode,
             exception.Message)
         {
             FlowId = request.FlowId,

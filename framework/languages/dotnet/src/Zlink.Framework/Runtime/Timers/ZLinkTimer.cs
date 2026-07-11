@@ -14,13 +14,18 @@ internal sealed class ZLinkTimer : IZLinkTimer
         ZLinkTimerOptions options,
         CancellationToken spotStopToken,
         Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
-        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync)
+        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
+        Func<IDisposable>? enterTickScope = null)
     {
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(spotStopToken);
         _pump = RunAsync(
             name,
             period,
-            new ZLinkTimerCallbacks(options, onTickAsync, onUnhandledExceptionAsync),
+            new ZLinkTimerCallbacks(
+                options,
+                onTickAsync,
+                onUnhandledExceptionAsync,
+                enterTickScope),
             _stopSource.Token);
     }
 
@@ -178,7 +183,8 @@ internal sealed class ZLinkTimer : IZLinkTimer
     private readonly struct ZLinkTimerCallbacks(
         ZLinkTimerOptions options,
         Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
-        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync)
+        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
+        Func<IDisposable>? enterTickScope)
     {
         public ZLinkTimerOptions Options => options;
 
@@ -187,6 +193,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
             CancellationToken cancellationToken)
         {
             ZLinkRuntimeMetrics.RecordTimerLateness(tick.Delay);
+            using var tickScope = enterTickScope?.Invoke();
             try
             {
                 await onTickAsync(tick, cancellationToken).ConfigureAwait(false);

@@ -67,7 +67,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                             actor,
                             header,
                             body,
-                            cancellationToken)
+                            cancellationToken: cancellationToken)
                         .ConfigureAwait(false)
                     : await runtimeState.ExecuteDispatchAsync(
                             header,
@@ -77,6 +77,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                                 header,
                                 body,
                                 ct),
+                            countAsPendingRequest: true,
                             cancellationToken)
                         .ConfigureAwait(false);
                 return new EntrySpotActorReplyDispatchResult(true, reply);

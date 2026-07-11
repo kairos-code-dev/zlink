@@ -264,7 +264,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         _loops.Clear();
         _reconcilers.Clear();
         _routeMeshReconcilers.Clear();
-        foreach (var reconciler in reconcilers) reconciler.RemovePeerMetric();
         List<Exception>? failures = null;
         foreach (var loop in loops)
         {
@@ -277,6 +276,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 (failures ??= []).Add(exception);
             }
         }
+        foreach (var reconciler in reconcilers) reconciler.RemovePeerMetric();
 
         if (failures is { Count: 1 })
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();

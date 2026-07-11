@@ -62,6 +62,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                     frameworkRegistration.DispatchOptions,
                     services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkDispatchErrorReporter>(),
                     frameworkRuntime),
+                frameworkRuntime,
                 services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRoutePacketDispatcher>()));
     }
 

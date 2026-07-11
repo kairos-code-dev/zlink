@@ -161,6 +161,65 @@ public sealed class RuntimeMetricsTests
         });
     }
 
+    [Fact]
+    public async Task Actor_Transfer_Pending_Count_Excludes_One_Way_Send()
+    {
+        var mailbox = new ZLinkActorDispatchMailbox();
+        var active = await mailbox.EnterAsync(CancellationToken.None);
+        var pendingSend = mailbox.EnterAsync(
+                CancellationToken.None,
+                countAsPendingMessage: true)
+            .AsTask();
+        var pendingRequest = mailbox.EnterAsync(
+                CancellationToken.None,
+                countAsPendingMessage: true,
+                countAsPendingRequest: true)
+            .AsTask();
+
+        Assert.Equal(1, mailbox.PendingRequestCount);
+
+        active.Dispose();
+        (await pendingSend).Dispose();
+        (await pendingRequest).Dispose();
+        Assert.Equal(0, mailbox.PendingRequestCount);
+    }
+
+    [Fact]
+    public void Forced_Drain_Records_The_Exact_Count_For_Each_Closed_Kind()
+    {
+        var samples = new List<(long Value, string? Kind)>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name == "zlink.drain.forced")
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            if (instrument.Name == "zlink.drain.forced")
+                samples.Add((value, Tag(tags, "kind")));
+        });
+        listener.Start();
+
+        ZLinkRuntimeMetrics.RecordDrainForced("actor", 2);
+        ZLinkRuntimeMetrics.RecordDrainForced("spot", 3);
+        ZLinkRuntimeMetrics.RecordDrainForced("request", 4);
+        ZLinkRuntimeMetrics.RecordDrainForced("session", 5);
+
+        Assert.Equal(
+            new[]
+            {
+                (2L, (string?)"actor"),
+                (3L, (string?)"spot"),
+                (4L, (string?)"request"),
+                (5L, (string?)"session")
+            },
+            samples);
+    }
+
     private static string? Tag(ReadOnlySpan<KeyValuePair<string, object?>> tags, string name)
     {
         foreach (var tag in tags)

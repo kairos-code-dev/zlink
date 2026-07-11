@@ -34,7 +34,24 @@ internal sealed class ZlinkStreamFrameSender(
         var correlationId = kind == ZlinkStreamMessageKind.Control
             ? null
             : ZlinkStreamCorrelation.Next();
-        var header = new ZlinkStreamHeader(kind, payload.Codec, flags, requestSeq, name, metadata, correlationId);
+        var flow = kind == ZlinkStreamMessageKind.Control
+            ? null
+            : ZlinkStreamFlowContext.Current;
+        var flowId = flow?.FlowId ?? (kind == ZlinkStreamMessageKind.Control ? null : ZlinkStreamFlowId.Create());
+        var flowOrigin = flow?.Origin
+                         ?? (kind == ZlinkStreamMessageKind.Control
+                             ? null
+                             : ZlinkStreamFlowOrigin.Application);
+        var header = new ZlinkStreamHeader(
+            kind,
+            payload.Codec,
+            flags,
+            requestSeq,
+            name,
+            metadata,
+            correlationId,
+            flowId,
+            flowOrigin);
         return new ZlinkStreamOutboundFrame(EncodeHeaderForSend(header), payloadBytes);
     }
 

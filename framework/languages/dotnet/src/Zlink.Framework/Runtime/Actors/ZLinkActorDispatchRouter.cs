@@ -70,7 +70,8 @@ internal sealed class ZLinkActorDispatchRouter(
             shouldPrune = await state.ExecuteDispatchAsync(
                     header,
                     ct => SubmitByCurrentLocationAsync(actor, state, header, payload, ct),
-                    cancellationToken)
+                    countAsPendingRequest: false,
+                    cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -96,7 +97,7 @@ internal sealed class ZLinkActorDispatchRouter(
 
         await state.ExecuteLifecycleAsync(
                 ct => NotifyDisconnectedByCurrentLocationAsync(actor, state, ct),
-                cancellationToken)
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -115,6 +116,7 @@ internal sealed class ZLinkActorDispatchRouter(
         return await state.ExecuteDispatchAsync(
                 header,
                 ct => SubmitByCurrentLocationForReplyAsync(actor, state, header, payload, ct),
+                countAsPendingRequest: true,
                 cancellationToken)
             .ConfigureAwait(false);
     }

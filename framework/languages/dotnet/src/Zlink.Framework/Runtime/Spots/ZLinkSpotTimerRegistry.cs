@@ -45,41 +45,14 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowGenerationEnabled) :
             period,
             timerOptions,
             stopToken,
-            async (tick, ct) =>
-            {
-                using var flow = ZLinkFlowContext.Enter(
-                    null,
-                    null,
-                    flowGenerationEnabled(),
-                    ZLinkFlowOrigin.Timer);
-                try
-                {
-                    await dispatchAsync(descriptor, tick, ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception error)
-                {
-                    try
-                    {
-                        await reportFailureAsync(
-                                descriptor,
-                                tick,
-                                error,
-                                timerOptions.StopOnUnhandledException,
-                                ct)
-                            .ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // Monitoring failures do not change timer execution policy.
-                    }
-                    throw;
-                }
-            },
-            static (_, _, _, _) => ValueTask.CompletedTask);
+            (tick, ct) => dispatchAsync(descriptor, tick, ct),
+            (tick, error, stopped, ct) =>
+                reportFailureAsync(descriptor, tick, error, stopped, ct),
+            () => ZLinkFlowContext.Enter(
+                null,
+                null,
+                flowGenerationEnabled(),
+                ZLinkFlowOrigin.Timer));
         _timers.Add(timer);
         return ValueTask.FromResult<IZLinkTimer>(timer);
     }

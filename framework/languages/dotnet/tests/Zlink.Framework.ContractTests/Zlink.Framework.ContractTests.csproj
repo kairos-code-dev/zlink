@@ -8,6 +8,7 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks"/>
         <PackageReference Include="Microsoft.Extensions.Hosting"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk"/>
         <PackageReference Include="Systems.Zlink"/>
@@ -28,6 +29,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj"/>
         <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
     </ItemGroup>
 

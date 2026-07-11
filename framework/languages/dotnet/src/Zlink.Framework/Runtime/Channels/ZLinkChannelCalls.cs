@@ -85,7 +85,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        using var operation = runtime.EnterOperation();
+        using var operation = runtime.EnterOperation(countAsRequest: true);
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
             runtime.Flow.GenerationEnabled);

@@ -653,6 +653,26 @@ public sealed class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task Drain_Remainder_Request_Count_Excludes_Non_Request_Operations()
+    {
+        var (runtime, _) = await CreateStartedRuntimeAsync(new CapturingSpotNode());
+        try
+        {
+            using (runtime.EnterOperation())
+            using (runtime.EnterOperation(countAsRequest: true))
+            {
+                var remainder = runtime.GetDrainRemainderCounts();
+
+                Assert.Equal(1, remainder.Requests);
+            }
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task RuntimeStop_RejectsOwnedStopBeforeWaitingForAnExternalStopGate()
     {
         var node = new CapturingSpotNode();

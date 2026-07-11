@@ -108,7 +108,32 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             return;
         }
 
-        var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts);
+        ZLinkEnvelopeHeader header;
+        try
+        {
+            header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts);
+        }
+        catch (ZLinkEnvelopeProtocolException protocolError)
+        {
+            using var invalidFlow = ZLinkFlowContext.Enter(
+                null,
+                null,
+                dispatchErrors.Flow.GenerationEnabled,
+                ZLinkFlowOrigin.Inbound);
+            CreateScope(
+                    protocolError.Header.MessageName,
+                    message.Topic,
+                    protocolError.Header.ContentType,
+                    protocolError.Header.CorrelationId,
+                    protocolError.Header.Source)
+                .Dropped(
+                    logger,
+                    dispatchErrors,
+                    LogLevel.Warning,
+                    ZLinkDispatchErrorReason.InvalidFrame,
+                    "invalid-frame");
+            return;
+        }
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,

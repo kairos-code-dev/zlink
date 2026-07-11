@@ -25,7 +25,7 @@ internal sealed class ZLinkChannelPacketDispatcher
         var resolvedLogger = logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
         _dispatchErrors = new ZLinkDispatchErrorReporter(
             registration.DispatchOptions,
-            resolvedLogger,
+            logger,
             runtime);
         _commandPipeline = new ZLinkChannelCommandDispatchPipeline(
             handlerRegistry,
@@ -70,7 +70,12 @@ internal sealed class ZLinkChannelPacketDispatcher
             HandleProtocolError(channelName, router, received, protocolError);
             return;
         }
-        if (_runtime?.DrainAdmission.IsSealed == true)
+        ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease operation;
+        if (_runtime is null)
+            operation = new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        else if (!_runtime.TryEnterInboundOperation(
+                     header.Kind == ZLinkMessageKind.Request,
+                     out operation))
         {
             if (header.Kind == ZLinkMessageKind.Request)
             {
@@ -87,8 +92,8 @@ internal sealed class ZLinkChannelPacketDispatcher
             }
             return;
         }
-        using var operation = _runtime?.EnterOperation()
-            ?? new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        using (operation)
+        {
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,
@@ -120,6 +125,7 @@ internal sealed class ZLinkChannelPacketDispatcher
                     .ConfigureAwait(false);
                 break;
         }
+        }
     }
 
     public async Task DispatchEventMessageAsync(
@@ -129,10 +135,38 @@ internal sealed class ZLinkChannelPacketDispatcher
     {
         if (topicMessage.Parts.Count == 0) return;
 
-        var header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts);
-        if (_runtime?.DrainAdmission.IsSealed == true) return;
-        using var operation = _runtime?.EnterOperation()
-            ?? new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        ZLinkEnvelopeHeader header;
+        try
+        {
+            header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts);
+        }
+        catch (ZLinkEnvelopeProtocolException protocolError)
+        {
+            using var invalidFlow = ZLinkFlowContext.Enter(
+                null,
+                null,
+                _dispatchErrors.Flow.GenerationEnabled,
+                ZLinkFlowOrigin.Inbound);
+            _dispatchErrors.Report(new ZLinkDispatchFailure(
+                ZLinkDispatchErrorSurface.Channel,
+                ZLinkDispatchMessageKind.Publish,
+                ZLinkDispatchErrorReason.InvalidFrame,
+                ZLinkDispatchErrorAction.Drop,
+                protocolError.Header.MessageName,
+                channelName,
+                topicMessage.Topic,
+                SourceRid: protocolError.Header.Source,
+                CorrelationId: protocolError.Header.CorrelationId,
+                Exception: protocolError));
+            return;
+        }
+        ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease operation;
+        if (_runtime is null)
+            operation = new ZLinkFrameworkRuntime.ZLinkRuntimeOperationLease();
+        else if (!_runtime.TryEnterInboundOperation(countAsRequest: false, out operation))
+            return;
+        using (operation)
+        {
         using var currentFlow = ZLinkFlowContext.Enter(
             header.FlowId,
             header.FlowOrigin,
@@ -156,6 +190,7 @@ internal sealed class ZLinkChannelPacketDispatcher
                 header,
                 cancellationToken)
             .ConfigureAwait(false);
+        }
     }
 
     private async Task HandleRequestAsync(

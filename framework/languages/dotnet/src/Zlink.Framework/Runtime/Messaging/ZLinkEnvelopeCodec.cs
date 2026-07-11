@@ -195,10 +195,20 @@ internal static class ZLinkEnvelopeCodec
                 return entry.Header;
         }
 
-        var header = JsonSerializer.Deserialize<ZLinkEnvelopeHeader>(
+        ZLinkEnvelopeHeader header;
+        try
+        {
+            header = JsonSerializer.Deserialize<ZLinkEnvelopeHeader>(
                          bytes,
                          ZLinkJsonSerializerOptions.Default)
-                     ?? throw new InvalidOperationException("Invalid ZLink envelope header.");
+                     ?? throw new JsonException("ZLink envelope header is null.");
+        }
+        catch (JsonException error)
+        {
+            throw new ZLinkEnvelopeProtocolException(
+                InvalidProtocolHeader(),
+                $"ZLink envelope header is invalid: {error.Message}");
+        }
         ValidateProtocolHeader(header);
         AddDecodedHeaderCacheEntry(bytes, hash, header);
         return header;
@@ -360,6 +370,11 @@ internal static class ZLinkEnvelopeCodec
 
     private static void ValidateProtocolHeader(ZLinkEnvelopeHeader header)
     {
+        if (!Enum.IsDefined(header.Kind))
+            throw new ZLinkEnvelopeProtocolException(
+                header,
+                "ZLink envelope message kind is invalid.");
+
         if (header.FormatMarker != ZlinkStreamFlowId.FormatMarker)
             throw new ZLinkEnvelopeProtocolException(
                 header,
@@ -382,6 +397,17 @@ internal static class ZLinkEnvelopeCodec
                 header,
                 "ZLink envelope flow origin is invalid.");
     }
+
+    private static ZLinkEnvelopeHeader InvalidProtocolHeader() => new(
+        ZLinkMessageKind.Command,
+        string.Empty,
+        string.Empty,
+        DefaultContentType,
+        null,
+        null,
+        null,
+        null,
+        null);
 
     private readonly record struct SimpleHeaderKey(
         ZLinkMessageKind Kind,

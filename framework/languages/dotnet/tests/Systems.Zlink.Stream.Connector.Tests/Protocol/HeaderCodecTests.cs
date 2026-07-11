@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime;
 using Xunit;
 
 public sealed partial class StreamConnectorTests
@@ -49,6 +50,7 @@ public sealed partial class StreamConnectorTests
     public void HeaderProtocolRoundTripsCorrelationIdAfterMetadata()
     {
         var codec = new ZlinkStreamHeaderCodec();
+        var flowId = ZlinkStreamFlowId.Create();
         var source = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -56,7 +58,9 @@ public sealed partial class StreamConnectorTests
             new ZlinkStreamRequestSeq(7),
             "order.place",
             ZlinkStreamMetadata.Empty.With("k", "v"),
-            "a1b2");
+            "a1b2",
+            flowId,
+            ZlinkStreamFlowOrigin.Application);
 
         var encoded = codec.Encode(source);
         var decoded = codec.Decode(encoded);
@@ -64,7 +68,7 @@ public sealed partial class StreamConnectorTests
         Assert.Equal("a1b2", decoded.CorrelationId);
         Assert.True(decoded.Flags.HasFlag(ZlinkStreamHeaderFlags.HasCorrelationId));
         Assert.True(decoded.Flags.HasFlag(ZlinkStreamHeaderFlags.HasFlowId));
-        Assert.True(ZlinkStreamFlowId.IsValid(decoded.FlowId));
+        Assert.Equal(flowId, decoded.FlowId);
         Assert.Equal(ZlinkStreamFlowOrigin.Application, decoded.FlowOrigin);
 
         var span = encoded.Span;
@@ -74,6 +78,59 @@ public sealed partial class StreamConnectorTests
             "a1b2",
             Encoding.UTF8.GetString(
                 span.Slice(span.Length - ZlinkStreamFlowId.EncodedLength - 5, 4)));
+    }
+
+    [Fact]
+    public void OutboundFrameCreatesFlowOnceAndCodecRemainsDeterministic()
+    {
+        var codec = new ZlinkStreamHeaderCodec();
+        var sender = new ZlinkStreamFrameSender(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Compression = ZlinkStreamCompression.None
+            },
+            codec,
+            null,
+            new SemaphoreSlim(1, 1),
+            static () => null);
+
+        var frame = sender.BuildOutboundFrame(
+            ZlinkStreamMessageKind.Send,
+            "flow.start",
+            new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, ReadOnlyMemory<byte>.Empty),
+            ZlinkStreamMetadata.Empty,
+            false,
+            null);
+        var header = codec.Decode(frame.HeaderBytes);
+
+        Assert.True(ZlinkStreamFlowId.IsValid(header.FlowId));
+        Assert.Equal(ZlinkStreamFlowOrigin.Application, header.FlowOrigin);
+        Assert.Equal(codec.Encode(header).ToArray(), codec.Encode(header).ToArray());
+    }
+
+    [Fact]
+    public async Task InboundFlowIsReusedAndExpiresAfterCallbackScope()
+    {
+        var flowId = ZlinkStreamFlowId.Create();
+        var releaseDetached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<(string FlowId, ZlinkStreamFlowOrigin Origin)?> detached;
+
+        using (ZlinkStreamFlowContext.Enter(flowId, ZlinkStreamFlowOrigin.Inbound))
+        {
+            Assert.Equal(
+                (flowId, ZlinkStreamFlowOrigin.Inbound),
+                ZlinkStreamFlowContext.Current);
+            detached = Task.Run(async () =>
+            {
+                await releaseDetached.Task.ConfigureAwait(false);
+                return ZlinkStreamFlowContext.Current;
+            });
+        }
+
+        releaseDetached.SetResult();
+        Assert.Null(await detached);
+        Assert.Null(ZlinkStreamFlowContext.Current);
     }
 
     [Fact]

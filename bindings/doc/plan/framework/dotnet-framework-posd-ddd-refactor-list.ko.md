@@ -545,3 +545,59 @@ timeout 420s framework/languages/dotnet/e2e/YieldDispatch/run_e2e.sh
   send-saturation 366.80 KMSG/s였다. 짧은 smoke라 절대 성능 판정에는 쓰지 않지만, 같은 문서에 남은 이전
   2초 smoke의 93.15 KOPS / 229.84 KMSG/s보다 낮아지는 회귀는 관측되지 않았다.
 - 제거 대상 식별자는 production/test `.cs` 전 범위에서 no-hit을 확인했고 `git diff --check`도 통과했다.
+
+### 2026-07-11 actor handoff 후속 POSD·DDD 재리뷰
+
+- 생성 대기자의 취소와 공유 actor 생성 transaction의 실패 정리를 분리했다. 실제 공유 task의 종료를
+  관찰하는 state만 실패 정리를 수행하므로 취소된 waiter가 성공한 actor를 지우지 않는다.
+- actor handoff 상태를 source/target의 명시적 phase로 나누고, dispatch mailbox와 lifecycle teardown
+  transaction을 중앙 경계로 모았다. native destroy, location ownership release, registry 제거 순서를
+  한 transaction이 소유하며 동시 teardown은 같은 완료 결과를 기다린다.
+- prepared handoff의 accepted 결과는 후속 단계 실패 시 rejected 결과로 보상한다. 만료 rollback은 만료
+  조정 루프 하나만 retry를 소유하므로 detached reconciliation과 중복 실행하지 않는다.
+- runtime detached task를 추적하고 shutdown cancellation 뒤 모두 종료한 다음 node와 context를 정리한다.
+  stream monitor는 runtime shutdown token과 node token을 함께 관찰한다. runner 내부 task가 자기 runner를
+  동기적으로 중지하려 하면 교착 대신 명시적 오류를 반환한다.
+- bound-session dispatch 뒤 정리는 lock으로 보호한 queue가 소유한다. drain과 detached 등록이 경쟁해도
+  작업이 유실되거나 `List`가 동시에 변경되지 않는다. drain은 하나만 실행되며, 작업은 성공한 뒤에만
+  queue에서 제거하므로 실패한 정리를 건너뛰고 다음 작업이 추월하지 않는다.
+- runtime start/stop은 state와 worker pool 정리가 끝날 때까지 같은 lifecycle gate 안에서 직렬화한다.
+  이전 세대 stop이 진행 중일 때 새 start가 만든 worker pool을 이전 stop이 폐기하는 경쟁을 막는다.
+- runtime은 `Starting`/`Running`/`Stopping`/`Stopped` phase와 operation lease를 함께 사용한다. Stop은
+  신규 operation lease 발급을 먼저 막고 이미 시작한 channel·route·Spot·actor·bound-session 호출이
+  끝난 뒤 state를 폐기한다. 모든 nested runner도 같은 runtime execution owner를 사용하므로 handler가
+  자기 runtime을 중지해 만드는 drain 교착을 시작 전에 거부한다.
+- location ownership reconciliation과 ownership-loss deactivation task를 각 lifecycle 소유자가 추적한다.
+  runtime stop은 cancellation 뒤 task를 모두 기다리고, 재시작을 위해 새 background token을 준비한다.
+- straggler forwarding은 전역 permit을 payload 복사 전에 확보해 내부 보관량과 drain task 수를 제한한다.
+  permit 대기는 handoff mapping lock 밖에서 이루어져 cutoff·새 cutover를 막지 않으며, frame 인코딩이나
+  복사가 실패해도 permit을 반환한다. actor별 queue는 같은 actor의 arrival order만 소유한다.
+- 검토했지만 폐기한 대안: 일반 `SendToActor`의 첫 part에 .NET 전용 route envelope를 넣으면 multipart
+  제출은 원자화할 수 있지만 언어 간 wire 호환성과 ingress 신뢰 경계를 깨뜨린다. 배포된
+  `Systems.Zlink 8.6.4`의 공개 `ForwardActorBoundSessionPart`에는 시작한 multipart를 취소하는 API가
+  없으므로, header 접수 뒤 body 제출 실패를 완전히 원자화하는 일은 bindings 공개 계약 후속 후보로
+  남긴다. 이 제약을 숨기기 위해 core를 직접 빌드하거나 framework에서 private API를 우회하지 않는다.
+
+### 2026-07-11 generation·종료 경계 최종 정리
+
+- runtime은 generation 단위 task supervisor와 operation lease를 사용한다. 종료는 신규 작업 접수를 먼저
+  차단하고, worker pool과 Spot·Entry Spot·stream의 직렬 queue 접수를 닫은 뒤 이미 접수한 작업을 기다린다.
+  worker thread와 request completion poll도 완전히 종료한 다음 socket과 context를 정리한다.
+- Spot 생성 결과는 location claim이 성공한 뒤에만 catalog에 반영한다. `GetOrCreateAsync`의 동시 호출은 같은
+  pending transaction 결과를 기다리며, 호출자 취소는 공유 생성을 취소하지 않는다. 생성 실패와 정리 실패도
+  owner와 waiter가 같은 최종 예외를 관찰한다.
+- stream session 생성은 table lock 밖의 직렬 admission에서 수행한다. 사용자 DI 생성, `Configure()`, 비동기
+  scope 정리를 모두 async transaction이 소유하므로 sync-over-async와 table lock 재진입 경로가 없다.
+- message-flow observer는 generation마다 하나의 pump와 DI scope를 사용한다. observer drain은 generation
+  supervisor가 추적하며, 종료할 때 drain을 기다린 뒤 framework가 만든 observer와 scope를 정리한다.
+- location 상태는 owner lease 상태와 일반 store 오류를 분리한 immutable snapshot으로 게시한다. 재시작할
+  때는 새 owner ID를 발급하므로 이전 generation에서 정리하지 못한 row가 다시 유효한 상태로 바뀌지 않는다.
+- 초기화 보상은 `ZLinkFailureCollector` 정책을 사용한다. primary failure를 보존하면서 해당 aggregate가 소유한
+  monitor, bridge, socket, scope, native Spot을 끝까지 정리하고 여러 실패를 하나의 결과로 전달한다.
+- 독립 POSD·DDD 재검토를 반복해 최신 tree에서 각각 `CLEAN`을 확인했다. 배포된 `Systems.Zlink 8.6.4`의
+  public API만 사용했으며 core build와 package version 변경은 수행하지 않았다.
+- 최종 solution build는 0 warnings, 0 errors였다. framework unit 344개, contract 36개, HTTP client 54개,
+  stream connector 72개, Redis location 25개와 문서 경로 의존 항목 하나를 제외한 sample regression 27개가
+  통과했다. ToActorMessaging 전체와 SpotActorTransfer ST-F1~ST-F5도 독립 실행에서 통과했다.
+- 현재 작업 트리의 별도 문서 이동 때문에 unit의 `Documentation.RegressionTests` 8개와 sample regression의
+  문서 경로 확인 1개는 코드 회귀 집계에서 분리했다. runtime·public contract 검증 실패로 해석하지 않는다.

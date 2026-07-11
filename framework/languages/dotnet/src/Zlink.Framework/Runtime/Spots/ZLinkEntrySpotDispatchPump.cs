@@ -5,6 +5,9 @@ internal sealed class ZLinkEntrySpotDispatchPump(
     ZLinkEntrySpotActivation? activation,
     ZLinkRuntimeTaskRunner taskRunner)
 {
+    private readonly ZLinkActorInboundPipeline _actorPipeline = new(
+        runtime,
+        new ZLinkEntrySpotActorInboundEndpoint(runtime));
     private IZLinkBackendSpot? _entrySpot;
 
     public void Attach(IZLinkBackendSpot entrySpot)
@@ -31,9 +34,10 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                     if (info.RoutedMessages is { Count: > 0 } routedMessages)
                     {
                         foreach (var received in routedMessages)
-                            taskRunner.RunDetached(
-                                "entry-spot-route-dispatch",
-                                ct => activation.DispatchRouteAsync(received, ct));
+                            if (!taskRunner.TryRunDetached(
+                                    "entry-spot-route-dispatch",
+                                    ct => activation.DispatchRouteAsync(received, ct)))
+                                received.Dispose();
                     }
                     else
                     {
@@ -70,13 +74,10 @@ internal sealed class ZLinkEntrySpotDispatchPump(
         var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(runtime, actorParts);
         if (dispatchable.Count == 0) return;
 
-        taskRunner.RunDetached(
-            "entry-spot-actor-dispatch",
-            ct => new ValueTask(ZLinkEntrySpotActorDispatcher.DispatchAsync(
-                runtime,
-                activation,
-                dispatchable,
-                ct)));
+        if (!taskRunner.TryRunDetached(
+                "entry-spot-actor-dispatch",
+                ct => _actorPipeline.DispatchAsync(dispatchable, ct)))
+            dispatchable.Dispose();
     }
 
     private async ValueTask DispatchActorLifecycleDrainAsync(CancellationToken cancellationToken)

@@ -1,14 +1,56 @@
 namespace Zlink.Framework.Runtime.Spots;
 
-internal readonly record struct ZLinkSpotActorFrame(
-    ZLinkBackendActorRef Actor,
-    ZLinkBackendActorRef ReplyActor,
-    RoutingId SourceNodeRid,
-    RoutingId SourceSessionRid,
-    ulong RequestId,
-    uint Flags,
-    ZlinkStreamHeader Header,
-    Message Body);
+internal sealed class ZLinkSpotActorFrame(
+    ZLinkBackendActorRef actor,
+    ZLinkBackendActorRef replyActor,
+    RoutingId sourceNodeRid,
+    RoutingId sourceSessionRid,
+    ulong requestId,
+    uint flags,
+    ZlinkStreamHeader header,
+    Message body) : IDisposable
+{
+    private Message? _body = body;
+
+    public ZLinkBackendActorRef Actor { get; } = actor;
+
+    public ZLinkBackendActorRef ReplyActor { get; } = replyActor;
+
+    public RoutingId SourceNodeRid { get; } = sourceNodeRid;
+
+    public RoutingId SourceSessionRid { get; } = sourceSessionRid;
+
+    public ulong RequestId { get; } = requestId;
+
+    public uint Flags { get; } = flags;
+
+    public ZlinkStreamHeader Header { get; } = header;
+
+    public Message Body => _body
+                           ?? throw new ObjectDisposedException(nameof(ZLinkSpotActorFrame));
+
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref _body, null)?.Dispose();
+    }
+}
+
+internal sealed class ZLinkSpotActorFrameBatch(
+    IReadOnlyList<ZLinkSpotActorFrame> frames) : IDisposable
+{
+    private int _disposed;
+
+    public int Count => frames.Count;
+
+    public ZLinkSpotActorFrame this[int index] => frames[index];
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        foreach (var frame in frames) frame.Dispose();
+    }
+}
 
 internal static class ZLinkSpotActorFrameReader
 {
@@ -26,7 +68,7 @@ internal static class ZLinkSpotActorFrameReader
         catch
         {
             DisposeContinuationParts(parts, ref index, headerPart.More);
-            frame = default;
+            frame = null!;
             return false;
         }
         finally
@@ -37,7 +79,7 @@ internal static class ZLinkSpotActorFrameReader
         var body = TakeBodyPart(parts, ref index, headerPart.More);
         if (body is null)
         {
-            frame = default;
+            frame = null!;
             return false;
         }
 

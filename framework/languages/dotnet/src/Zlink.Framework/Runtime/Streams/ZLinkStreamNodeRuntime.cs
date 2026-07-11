@@ -1,10 +1,12 @@
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 {
     private readonly ZLinkStreamSessionTable _sessions;
+    private readonly ZLinkStreamSessionSerialExecutor _sessionIngress;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private Task? _monitorLoop;
@@ -21,6 +23,8 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         Socket = socket;
         Monitor = monitor;
         _taskRunner = taskRunner;
+        _sessionIngress = new ZLinkStreamSessionSerialExecutor(
+            services.GetRequiredService<ZLinkFrameworkRuntime>().ExecutionOwner);
         _sessions = new ZLinkStreamSessionTable(services, socket, headerSessionType);
     }
 
@@ -30,12 +34,20 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     public IZLinkBackendSocketMonitor Monitor { get; }
 
+    internal void RequestStop()
+    {
+        _stopSource.Cancel();
+        _sessionIngress.RequestStop();
+        _sessions.RequestStop();
+    }
+
     public async ValueTask DisposeAsync()
     {
         var sessions = _sessions.Stop();
-
-        _stopSource.Cancel();
-        await Monitor.DisposeAsync();
+        var failures = new List<Exception>();
+        Capture(RequestStop);
+        await CaptureAsync(_sessionIngress.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(Monitor.DisposeAsync).ConfigureAwait(false);
 
         if (_monitorLoop is not null)
             try
@@ -48,11 +60,44 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             catch (ObjectDisposedException)
             {
             }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
 
-        foreach (var session in sessions) await session.DisposeAsync();
+        foreach (var session in sessions)
+            await CaptureAsync(session.DisposeAsync).ConfigureAwait(false);
 
-        await Socket.DisposeAsync();
-        _stopSource.Dispose();
+        await CaptureAsync(Socket.DisposeAsync).ConfigureAwait(false);
+        Capture(_stopSource.Dispose);
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+        return;
+
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
     }
 
     public void Start()
@@ -65,7 +110,15 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
         _monitorLoop = _taskRunner.Run(
             $"stream-monitor:{NodeName}",
-            _ => new ValueTask(RunMonitorLoopAsync(_stopSource.Token)));
+            runtimeToken => new ValueTask(RunMonitorLoopUntilStoppedAsync(runtimeToken)));
+    }
+
+    private async Task RunMonitorLoopUntilStoppedAsync(CancellationToken runtimeToken)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(
+            _stopSource.Token,
+            runtimeToken);
+        await RunMonitorLoopAsync(stop.Token).ConfigureAwait(false);
     }
 
     private void OnFramedPacket(
@@ -73,16 +126,31 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         Message header,
         Message payload)
     {
-        var routingId = ParsePublicRoutingId(routingIdText);
-        if (!_sessions.TryGetOrCreate(routingId, out var session))
+        if (_sessionIngress.Enqueue(async () =>
         {
-            header.Dispose();
-            payload.Dispose();
-            return;
-        }
+            var ownershipTransferred = false;
+            try
+            {
+                var routingId = ParsePublicRoutingId(routingIdText);
+                var session = await _sessions.GetOrCreateAsync(routingId).ConfigureAwait(false);
+                if (session is null) return;
 
-        _sessions.ApplyPendingConnectionMetadata(session);
-        session.EnqueuePacket(header, payload);
+                _sessions.ApplyPendingConnectionMetadata(session);
+                session.EnqueuePacket(header, payload);
+                ownershipTransferred = true;
+            }
+            finally
+            {
+                if (!ownershipTransferred)
+                {
+                    header.Dispose();
+                    payload.Dispose();
+                }
+            }
+        })) return;
+
+        header.Dispose();
+        payload.Dispose();
     }
 
     private void OnMonitorEvent(ZLinkBackendSocketMonitorEvent monitorEvent)
@@ -94,23 +162,38 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             case ZLinkSocketNativeEventType.ConnectionReady:
                 if (monitorEvent.RoutingId is RoutingId readyRoutingId)
                 {
-                    if (_sessions.TryGetOrCreate(readyRoutingId, out var session))
-                        session.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
+                    _ = _sessionIngress.Enqueue(async () =>
+                    {
+                        var session = await _sessions.GetOrCreateAsync(readyRoutingId).ConfigureAwait(false);
+                        session?.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
+                    });
                 }
                 else
                 {
-                    _sessions.QueueConnectionMetadata(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
+                    _ = _sessionIngress.Enqueue(() =>
+                    {
+                        _sessions.QueueConnectionMetadata(
+                            monitorEvent.LocalAddr,
+                            monitorEvent.RemoteAddr);
+                        return ValueTask.CompletedTask;
+                    });
                 }
 
                 break;
             case ZLinkSocketNativeEventType.Accepted:
                 break;
             case ZLinkSocketNativeEventType.Disconnected:
-                if (_sessions.TryResolveMonitorSession(monitorEvent.RoutingId, out var disconnectedSession))
-                    disconnectedSession.EnqueueDisconnected(
-                        new ZLinkStreamError(
-                            ZLinkStreamSessionError.TransportError,
-                            new ZLinkStreamDiagnostic((int)monitorEvent.Value, monitorEvent.NativeEvent.ToString())));
+                _ = _sessionIngress.Enqueue(() =>
+                {
+                    if (_sessions.TryResolveMonitorSession(monitorEvent.RoutingId, out var disconnectedSession))
+                        disconnectedSession.EnqueueDisconnected(
+                            new ZLinkStreamError(
+                                ZLinkStreamSessionError.TransportError,
+                                new ZLinkStreamDiagnostic(
+                                    (int)monitorEvent.Value,
+                                    monitorEvent.NativeEvent.ToString())));
+                    return ValueTask.CompletedTask;
+                });
                 break;
         }
     }

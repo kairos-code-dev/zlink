@@ -20,9 +20,11 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly List<ZLinkAutoConnectLoop> _loops = [];
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ZLinkAutoConnectReconciler>
         _routeMeshReconcilers = new(StringComparer.Ordinal);
+    private int _disposed;
 
     internal ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
@@ -48,7 +50,12 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         ZLinkFrameworkRuntimeState state,
         CancellationToken cancellationToken = default)
     {
-        var registration = state.Registration;
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_loops.Count != 0) return;
+            var registration = state.Registration;
 
         foreach (var (name, route) in registration.RouteChannels)
         {
@@ -156,28 +163,81 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 metadata);
         }
 
-        foreach (var loop in _loops)
+            try
+            {
+                foreach (var loop in _loops)
+                    await loop.StartAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception startFailure)
+            {
+                try
+                {
+                    await DisposeGenerationAsync().ConfigureAwait(false);
+                }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException(startFailure, cleanupFailure);
+                }
+
+                throw;
+            }
+        }
+        finally
         {
-            await loop.StartAsync(cancellationToken).ConfigureAwait(false);
+            _lifecycleGate.Release();
         }
     }
 
     internal async ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var loop in _loops)
+        if (Volatile.Read(ref _disposed) != 0) return;
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await loop.StopAsync(cancellationToken).ConfigureAwait(false);
+            await DisposeGenerationAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var loop in _loops)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
         {
-            await loop.DisposeAsync().ConfigureAwait(false);
+            await DisposeGenerationAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+            _lifecycleGate.Dispose();
+        }
+    }
+
+    private async ValueTask DisposeGenerationAsync()
+    {
+        var loops = _loops.ToArray();
+        _loops.Clear();
+        _routeMeshReconcilers.Clear();
+        List<Exception>? failures = null;
+        foreach (var loop in loops)
+        {
+            try
+            {
+                await loop.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
         }
 
-        _loops.Clear();
+        if (failures is { Count: 1 })
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures is { Count: > 1 }) throw new AggregateException(failures);
     }
 
     internal const string SpotPubEndpointMetadataKey = "pub-endpoint";

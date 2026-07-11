@@ -5,20 +5,26 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
     private readonly ZLinkSerialExecutionQueue _queue;
     private readonly CancellationTokenSource _stopSource = new();
 
-    public ZLinkStreamSessionSerialExecutor()
+    public ZLinkStreamSessionSerialExecutor(object executionOwner)
     {
         var errorSink = new ZLinkRuntimeErrorSink();
         _queue = new ZLinkSerialExecutionQueue(
-            new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token),
+            new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token, executionOwner),
             errorSink,
             _stopSource.Token);
     }
 
     public async ValueTask DisposeAsync()
     {
-        _stopSource.Cancel();
+        RequestStop();
         await _queue.DisposeAsync().ConfigureAwait(false);
         _stopSource.Dispose();
+    }
+
+    public void RequestStop()
+    {
+        _queue.Complete();
+        _stopSource.Cancel();
     }
 
     public bool Enqueue(Func<ValueTask> work)

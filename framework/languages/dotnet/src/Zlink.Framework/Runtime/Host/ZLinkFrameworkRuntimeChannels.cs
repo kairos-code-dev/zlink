@@ -37,6 +37,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         TMessage message,
         CancellationToken cancellationToken)
     {
+        using var operation = EnterOperation();
         // Route channel sends target node rids only; spot-addressed
         // traffic goes through the address-based spot outbound instead
         // (spot-address messaging draft §6).
@@ -73,6 +74,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        using var operation = EnterOperation();
         var routeChannel = GetRouteChannel(routerChannelId);
         var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
         try
@@ -106,6 +108,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
+        using var operation = EnterOperation();
         if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
         {
             ZLinkMessageParts.DisposeAll(parts);
@@ -136,6 +139,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        using var operation = EnterOperation();
         if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
         {
             ZLinkMessageParts.DisposeAll(parts);

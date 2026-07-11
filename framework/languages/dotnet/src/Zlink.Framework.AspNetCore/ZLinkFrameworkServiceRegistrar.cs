@@ -111,7 +111,10 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IHostedService>(static provider =>
             new ZLinkFrameworkHostedService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
-                provider.GetService<ZLinkMonitoringRegistration>()));
+                provider.GetService<ZLinkMonitoringRegistration>(),
+                provider.GetService<ZLinkLocationRuntime>(),
+                provider.GetService<ZLinkLocationAutoConnectHost>(),
+                provider.GetService<ZLinkLocationLifecycle>()));
 
         return services;
     }
@@ -192,12 +195,10 @@ internal static class ZLinkFrameworkServiceRegistrar
     {
         foreach (var filterType in registration.Filters) services.AddTransient(filterType);
 
-        foreach (var actorFactoryType in registration.SpotNodes.Values
-                     .SelectMany(static spotNode => spotNode.ActorFactories.Values))
+        foreach (var actorFactoryType in registration.ActorCatalog.Factories.Values)
             services.TryAddScoped(actorFactoryType);
 
-        foreach (var adapterType in registration.SpotNodes.Values
-                     .SelectMany(static spotNode => spotNode.ActorTransfers.Values)
+        foreach (var adapterType in registration.ActorCatalog.Transfers.Values
                      .Select(static transfer => transfer.AdapterType))
             services.TryAddScoped(adapterType);
 
@@ -346,7 +347,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>()));
         services.AddSingleton<IZLinkAutoConnectTopologyQuery>(static provider =>
             provider.GetRequiredService<ZLinkLocationAutoConnectHost>());
-        services.AddSingleton<IHostedService, ZLinkLocationHostedService>();
         return services;
     }
 

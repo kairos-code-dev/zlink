@@ -8,6 +8,7 @@ internal sealed class ZLinkRequestCompletionPump : IAsyncDisposable
 
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _worker;
+    private int _disposed;
 
     private ZLinkRequestCompletionPump(IZlinkSocket socket)
     {
@@ -27,16 +28,11 @@ internal sealed class ZLinkRequestCompletionPump : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _stop.Cancel();
         try
         {
-            await _worker.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (TimeoutException)
-        {
+            await _worker.ConfigureAwait(false);
         }
         finally
         {

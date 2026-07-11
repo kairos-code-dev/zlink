@@ -43,6 +43,7 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             registration,
             locationLifecycle);
         var stateFactory = new ZLinkFrameworkRuntimeStateFactory(
+            runtime,
             backendAdapterFactory,
             registration,
             channels,

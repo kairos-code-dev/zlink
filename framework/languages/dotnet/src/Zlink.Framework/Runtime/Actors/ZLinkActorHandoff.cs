@@ -7,6 +7,10 @@ internal enum ZLinkActorFrameRoute
     Stale
 }
 
+internal sealed class ZLinkActorHandoffRejectedException(
+    string message,
+    Exception? innerException = null) : InvalidOperationException(message, innerException);
+
 internal sealed record ZLinkActorHandoffFrame(
     byte[] ReplyActorNodeRid,
     ulong ReplyActorGeneration,
@@ -36,37 +40,36 @@ internal static class ZLinkActorHandoffFrames
             arrivalIndex);
     }
 
-    public static IReadOnlyList<ZLinkBackendActorPart> Restore(
+    public static ZLinkSpotActorFrameBatch Restore(
         ZLinkBackendActorRef actor,
         IReadOnlyList<ZLinkActorHandoffFrame> frames)
     {
-        var parts = new List<ZLinkBackendActorPart>(frames.Count * 2);
-        foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
+        var restored = new List<ZLinkSpotActorFrame>(frames.Count);
+        try
         {
-            var replyActor = new ZLinkBackendActorRef(
-                RoutingId.From(frame.ReplyActorNodeRid),
-                actor.ActorId,
-                frame.ReplyActorGeneration);
-            parts.Add(new ZLinkBackendActorPart(
-                actor,
-                RoutingId.From(frame.SourceNodeRid),
-                RoutingId.From(frame.SourceSessionRid),
-                frame.RequestId,
-                frame.Flags,
-                Message.From(frame.Header),
-                true,
-                replyActor));
-            parts.Add(new ZLinkBackendActorPart(
-                actor,
-                RoutingId.From(frame.SourceNodeRid),
-                RoutingId.From(frame.SourceSessionRid),
-                frame.RequestId,
-                frame.Flags,
-                Message.From(frame.Body),
-                false,
-                replyActor));
-        }
+            foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
+            {
+                var replyActor = new ZLinkBackendActorRef(
+                    RoutingId.From(frame.ReplyActorNodeRid),
+                    actor.ActorId,
+                    frame.ReplyActorGeneration);
+                restored.Add(new ZLinkSpotActorFrame(
+                    actor,
+                    replyActor,
+                    RoutingId.From(frame.SourceNodeRid),
+                    RoutingId.From(frame.SourceSessionRid),
+                    frame.RequestId,
+                    frame.Flags,
+                    ZLinkStreamProtocolDefaults.DecodeHeader(frame.Header),
+                    Message.From(frame.Body)));
+            }
 
-        return parts;
+            return new ZLinkSpotActorFrameBatch(restored);
+        }
+        catch
+        {
+            foreach (var frame in restored) frame.Dispose();
+            throw;
+        }
     }
 }

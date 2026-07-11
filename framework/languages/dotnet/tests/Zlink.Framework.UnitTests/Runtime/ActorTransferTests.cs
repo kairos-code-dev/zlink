@@ -12,9 +12,8 @@ public sealed class ActorTransferTests
         var services = new ServiceCollection()
             .AddSingleton<TransferActorAdapter>()
             .BuildServiceProvider();
-        var transfer = new ZLinkActorTransferRegistration(
-            typeof(TransferActor),
-            typeof(TransferActorAdapter));
+        var transfer = ZLinkActorTransferRegistry
+            .CreateRegistration<TransferActor, TransferActorAdapter>();
         var source = new TransferActor("actor-1", new TestActorContext(), "source-state");
         var state = await ZLinkActorTransferRegistry.TransferOutAsync(
             services,
@@ -52,6 +51,8 @@ public sealed class ActorTransferTests
             "actor-1",
             "player",
             "handoff-1",
+            RoutingId.From("source-spot"),
+            RoutingId.From("source-node"),
             RoutingId.From("source-node"),
             RoutingId.From("session-1"),
             ZLinkMessage.From("transfer-state"),

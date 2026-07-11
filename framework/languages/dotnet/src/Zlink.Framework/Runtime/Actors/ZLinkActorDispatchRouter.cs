@@ -11,8 +11,8 @@ internal sealed class ZLinkActorDispatchRouter(
 {
     private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
         runtime.Registration.DispatchOptions,
-        runtime.Services,
-        runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>());
+        runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>(),
+        runtime);
 
     private readonly ILogger _logger =
         runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>()

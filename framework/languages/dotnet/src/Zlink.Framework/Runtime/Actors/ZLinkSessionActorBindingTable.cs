@@ -79,4 +79,9 @@ internal sealed class ZLinkSessionActorBindingTable
             return false;
         }
     }
+
+    public void ResetGeneration()
+    {
+        lock (_entries) _entries.Clear();
+    }
 }

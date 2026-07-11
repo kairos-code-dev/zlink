@@ -151,19 +151,17 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkActorRuntimeState actorState,
         CancellationToken cancellationToken)
     {
-        await JoinActorToSpotCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await JoinActorToSpotCoreAsync(actor, cancellationToken).ConfigureAwait(false);
 
-        var backlog = actorState.DrainHandoffFrames();
-        if (backlog.Count == 0) return;
-
-        var actorRef = actorState.NativeActorRef
-                       ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                           $"Actor '{actor.ActorId}' does not have a native Actor ref during handoff replay.");
-        await _dispatcher.DispatchActorPartsAsync(
-                ZLinkActorHandoffFrames.Restore(actorRef, backlog),
-                cancellationToken)
-            .ConfigureAwait(false);
+        }
+        catch
+        {
+            _actors.RemoveIfCurrent(actor);
+            actorState.LeaveSpotIfCurrent(this);
+            throw;
+        }
     }
 
     internal async ValueTask ReplayTransferredActorHandoffAsync(
@@ -171,12 +169,8 @@ internal sealed partial class ZLinkSpotActivation
         IReadOnlyList<ZLinkActorHandoffFrame> sourceFrames,
         CancellationToken cancellationToken)
     {
-        var targetFrames = actorState.CompleteHandoffCapture();
-        var frames = sourceFrames
-            .Concat(targetFrames)
-            .Select(static (frame, index) => frame with { ArrivalIndex = index })
-            .ToArray();
-        if (frames.Length == 0) return;
+        var frames = actorState.Handoff.PrepareImportedReplay(sourceFrames);
+        if (frames.Count == 0) return;
 
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
@@ -185,10 +179,73 @@ internal sealed partial class ZLinkSpotActivation
         foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 $"backlog_enqueued actor={actorState.ActorId} arrival={frame.ArrivalIndex} trailing=true request_id={frame.RequestId} flags={frame.Flags}");
-        await _dispatcher.DispatchActorPartsAsync(
+        await _dispatcher.DispatchActorReplayFramesAsync(
                 ZLinkActorHandoffFrames.Restore(actorRef, frames),
+                actorState.Handoff.AcknowledgeReplayedFrame,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    internal async ValueTask ReplayFinalTransferredActorHandoffAsync(
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorState.ActorId}' does not have a native Actor ref during final handoff replay.");
+        while (true)
+        {
+            var frames = actorState.Handoff.SnapshotFinalReplay();
+            if (frames.Count == 0) return;
+
+            await _dispatcher.DispatchActorReplayFramesAsync(
+                    ZLinkActorHandoffFrames.Restore(actorRef, frames),
+                    actorState.Handoff.AcknowledgeReplayedFrame,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    internal ValueTask ReplayAbortedActorHandoffAsync(
+        ZLinkActorRuntimeState actorState,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames,
+        CancellationToken cancellationToken)
+    {
+        if (frames.Count == 0) return ValueTask.CompletedTask;
+
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorState.ActorId}' does not have a native Actor ref during handoff rollback.");
+        return _dispatcher.DispatchActorFramesAsync(
+            ZLinkActorHandoffFrames.Restore(actorRef, frames),
+            cancellationToken);
+    }
+
+    internal ValueTask RestoreActorAfterFailedHandoffAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? RestoreActorAfterFailedHandoffCoreAsync(actor, cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) => activation.RestoreActorAfterFailedHandoffCoreAsync(state, ct),
+                actor,
+                cancellationToken);
+    }
+
+    private async ValueTask RestoreActorAfterFailedHandoffCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        await JoinActorToSpotCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+        if (_runtime.LocationLifecycle is { } locations)
+            await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
+                    actor.ActorId,
+                    SpotRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 
     public ValueTask NotifyActorDisconnectedAsync(

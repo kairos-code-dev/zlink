@@ -8,7 +8,8 @@ internal sealed class ZLinkActorCreationCoordinator(
     Func<IZLinkBackendSpotNode?> getActorSpotNode,
     IZLinkActorLocationLifecycle? lifecycle,
     Func<ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext,
-    Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> bindActorContext)
+    Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> bindActorContext,
+    Func<ZLinkActorRuntimeState, ZLinkBackendActorRef, CancellationToken, ValueTask> teardownActor)
 {
     private IZLinkActorLocationLifecycle? Lifecycle { get; } = lifecycle;
 
@@ -37,20 +38,13 @@ internal sealed class ZLinkActorCreationCoordinator(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        try
-        {
-            var actor = await creation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return new CreateActorResult(
-                actor,
-                creation.Created,
-                creation.Created ? createRequest : ZLinkMessage.Empty);
-        }
-        catch
-        {
-            await state.ClearFailedActorCreationAsync(creation.Task)
-                .ConfigureAwait(false);
-            throw;
-        }
+        // A waiter's cancellation never owns shared creation cleanup. The
+        // state observes the shared task itself and clears only its failure.
+        var actor = await creation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new CreateActorResult(
+            actor,
+            creation.Created,
+            creation.Created ? createRequest : ZLinkMessage.Empty);
     }
 
     public async ValueTask<CreateActorResult> TransferAndBindActorAsync(
@@ -78,17 +72,11 @@ internal sealed class ZLinkActorCreationCoordinator(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        try
-        {
-            var actor = await creation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return new CreateActorResult(actor, creation.Created, ZLinkMessage.Empty);
-        }
-        catch
-        {
-            await state.ClearFailedActorCreationAsync(creation.Task)
-                .ConfigureAwait(false);
-            throw;
-        }
+        // A transfer creation belongs to the handoff transaction once it
+        // starts. Observe it to a terminal result so cancellation cannot
+        // detach a late actor/claim from rollback ownership.
+        var actor = await creation.Task.ConfigureAwait(false);
+        return new CreateActorResult(actor, creation.Created, ZLinkMessage.Empty);
     }
 
     private async ValueTask<IZLinkActor> TransferActorCoreAsync(
@@ -131,15 +119,7 @@ internal sealed class ZLinkActorCreationCoordinator(
 
     private Type ResolveActorFactory(string actorType)
     {
-        foreach (var actorNode in runtime.Registration.SpotNodes.Values)
-        {
-            if (actorNode.ActorFactories.TryGetValue(actorType, out var factoryType))
-                return factoryType;
-        }
-
-        throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorCreateFailed,
-            $"Actor factory '{actorType}' is not registered.");
+        return runtime.Registration.ActorCatalog.ResolveFactory(actorType);
     }
 
     private async ValueTask<IZLinkActor> CreateTransferredActorCoreAsync(
@@ -176,9 +156,11 @@ internal sealed class ZLinkActorCreationCoordinator(
         }
 
         if (publishActorRef && state.NativeActorRef is { } nativeRef)
-            await lifecycle.PublishActorRefAsync(
+            await PublishActorRefOrCompensateAsync(
+                    state,
                     actorId,
-                    nativeRef.ToNative(),
+                    nativeRef,
+                    lifecycle,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -250,9 +232,11 @@ internal sealed class ZLinkActorCreationCoordinator(
         }
 
         if (publishActorRef && state.NativeActorRef is { } nativeRef)
-            await lifecycle.PublishActorRefAsync(
+            await PublishActorRefOrCompensateAsync(
+                    state,
                     actorId,
-                    nativeRef.ToNative(),
+                    nativeRef,
+                    lifecycle,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -300,5 +284,73 @@ internal sealed class ZLinkActorCreationCoordinator(
 
         using var nativeCreateRequest = createRequest.ToRawMessage(runtime.Registration.Codecs);
         state.BindNativeActorRef(node.CreateActor(actorId, nativeCreateRequest));
+    }
+
+    private async ValueTask PublishActorRefOrCompensateAsync(
+        ZLinkActorRuntimeState state,
+        string actorId,
+        ZLinkBackendActorRef nativeActor,
+        IZLinkActorLocationLifecycle lifecycle,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await lifecycle.PublishActorRefAsync(
+                    actorId,
+                    nativeActor.ToNative(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception publishFailure)
+        {
+            await state.ExecuteLockedAsync(
+                    state.BeginTeardown,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+
+            try
+            {
+                await teardownActor(state, nativeActor, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception cleanupFailure)
+            {
+                runtime.RunDetached(
+                    "actor-creation-compensation",
+                    ct => ReconcileCreationCompensationAsync(
+                        state,
+                        actorId,
+                        nativeActor,
+                        ct));
+                throw new AggregateException(publishFailure, cleanupFailure);
+            }
+            throw;
+        }
+    }
+
+    private async ValueTask ReconcileCreationCompensationAsync(
+        ZLinkActorRuntimeState state,
+        string actorId,
+        ZLinkBackendActorRef nativeActor,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await teardownActor(state, nativeActor, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"actor creation compensation retry for '{actorId}': {exception.Message}");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 }

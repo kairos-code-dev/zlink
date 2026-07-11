@@ -9,13 +9,17 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     public ZLinkSpotSerialExecutor(
         ZLinkSpotActivation activation,
         Func<bool> isDisposed,
-        CancellationToken stopToken)
+        CancellationToken stopToken,
+        object? executionOwner = null)
     {
         _activation = activation;
         _isDisposed = isDisposed;
         var errorSink = new ZLinkRuntimeErrorSink();
         _queue = new ZLinkSerialExecutionQueue(
-            new ZLinkRuntimeTaskRunner(errorSink, stopToken),
+            new ZLinkRuntimeTaskRunner(
+                errorSink,
+                stopToken,
+                executionOwner ?? activation?.RuntimeExecutionOwner ?? new object()),
             errorSink,
             stopToken);
     }
@@ -25,6 +29,8 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         await _queue.DisposeAsync().ConfigureAwait(false);
     }
 
+    public void RequestStop() => _queue.Complete();
+
     public async ValueTask ExecuteAsync(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
@@ -32,7 +38,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         if (_isDisposed()) return;
 
         await _queue.RunAsync(
-                ct => ExecuteOperationAsync(operation, ct),
+                ct => ExecuteOperationAsync(operation, null, ct),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -50,16 +56,23 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
-    public void Queue(Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation)
+    public bool Queue(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action? onSkipped = null)
     {
-        _queue.TryPost(ct => ExecuteOperationAsync(operation, ct), out _);
+        return _queue.TryPost(ct => ExecuteOperationAsync(operation, onSkipped, ct), out _);
     }
 
     private async ValueTask ExecuteOperationAsync(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action? onSkipped,
         CancellationToken cancellationToken)
     {
-        if (_isDisposed()) return;
+        if (_isDisposed())
+        {
+            onSkipped?.Invoke();
+            return;
+        }
 
         using var _ = ZLinkSpotAmbientContext.Push(_activation);
         await operation(_activation, cancellationToken).ConfigureAwait(false);

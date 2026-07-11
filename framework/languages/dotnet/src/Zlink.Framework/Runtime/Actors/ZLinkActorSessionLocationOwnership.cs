@@ -2,50 +2,230 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed partial class ZLinkActorSessionManager
 {
+    public async ValueTask RollbackTransferredActorAsync(
+        string actorId,
+        CancellationToken cancellationToken = default,
+        bool startTeardownReconciliation = true)
+    {
+        if (!_actorSessions.TryGet(actorId, out var state)) return;
+
+        var actorRef = state.NativeActorRef;
+        if (actorRef is not { } nativeActor)
+            throw new InvalidOperationException(
+                $"Actor '{actorId}' handoff rollback cannot complete without its native actor ref.");
+
+        await state.ExecuteLockedAsync(
+            state.BeginTeardown,
+            CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            await ExecuteActorTeardownAttemptAsync(state, nativeActor, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception cleanupFailure)
+        {
+            if (startTeardownReconciliation)
+                StartActorTeardownReconciliation(state, nativeActor, "actor-handoff-rollback");
+            throw new InvalidOperationException(
+                $"Actor '{actorId}' handoff rollback is quarantined until cleanup can be reconciled.",
+                cleanupFailure);
+        }
+    }
+
+    public async ValueTask FinalizeMigratedSourceAsync(
+        ZLinkActorRuntimeState state,
+        ZLinkBackendActorRef sourceActor)
+    {
+        if (state.TryGetBoundSession(out var boundSession))
+            runtime.RemoveActorSessionBinding(state.ActorId, boundSession.BindingToken);
+
+        await state.ExecuteLockedAsync(
+                () => state.RetireMigratedActorInstance(sourceActor),
+                CancellationToken.None)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask PrepareForTransferredActivationAsync(
+        ZLinkActorRuntimeState state,
+        CancellationToken cancellationToken)
+    {
+        var retired = await state.ExecuteLockedAsync(
+                () => state.RetiredLocalActorRef,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (retired is { } retiredActor && getActorSpotNode() is { } node)
+        {
+            try
+            {
+                await node.DestroyActorAsync(
+                        retiredActor,
+                        runtime.Registration.DefaultRequestTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ZlinkRequestException exception)
+                when (exception.Result == ZlinkRequestException.ErrorCode.NotFound)
+            {
+            }
+
+            await state.ExecuteLockedAsync(
+                    () => state.ClearRetiredLocalActorRef(retiredActor),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+
+        await state.ExecuteLockedAsync(
+                state.PrepareForTransferredActivation,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Ownership-loss rule (location resolver store draft, section 9):
     /// another owner replaced this actor's location row, so the local
     /// instance must deactivate to keep single-activation. The context is
-    /// invalidated first so in-flight callers fail fast, then local state
-    /// is cleared and the native actor is destroyed best-effort.
+    /// invalidated first so in-flight callers fail fast. The native actor ref
+    /// remains quarantined until native destruction reaches a terminal result;
+    /// only then is ownership released and local state cleared.
     /// </summary>
     public async ValueTask DeactivateActorOnOwnershipLossAsync(
         string actorId,
         CancellationToken cancellationToken = default)
     {
         if (!_actorSessions.TryGet(actorId, out var state)) return;
+        if (state.Handoff.IsSourceMigrationInProgress
+            || (state.Actor is null && state.Handoff.RetainsSourceTombstone))
+            return;
 
         var actorRef = await state.ExecuteLockedAsync<ZLinkBackendActorRef?>(
             () =>
             {
+                if (state.Handoff.IsSourceMigrationInProgress
+                    || (state.Actor is null && state.Handoff.RetainsSourceTombstone))
+                    return null;
                 var nativeRef = state.NativeActorRef;
-                state.InvalidateContext();
+                if (nativeRef is not null)
+                    state.BeginTeardown();
                 return nativeRef;
             },
             cancellationToken).ConfigureAwait(false);
 
-        var boundSession = await state.ExecuteLockedAsync(
-            () => state.ClearAfterDestroy(),
-            CancellationToken.None).ConfigureAwait(false);
-        if (boundSession is { } session) runtime.RemoveActorSessionBinding(actorId, session.BindingToken);
-
-        _actorSessions.RemoveIfCurrent(actorId, state);
-
-        if (actorRef is not { } nativeActor || getActorSpotNode() is not { } node) return;
+        if (actorRef is not { } nativeActor) return;
 
         try
         {
-            await node.DestroyActorAsync(
-                    nativeActor,
-                    runtime.Registration.DefaultRequestTimeout,
-                    cancellationToken)
+            await ExecuteActorTeardownAttemptAsync(state, nativeActor, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"ownership-loss native actor destroy failed for '{actorId}': {exception.Message}");
+                $"ownership-loss teardown retry for '{actorId}': {exception.Message}");
+            StartActorTeardownReconciliation(state, nativeActor, "actor-ownership-loss");
         }
+    }
+
+    private async ValueTask ExecuteActorTeardownAttemptAsync(
+        ZLinkActorRuntimeState state,
+        ZLinkBackendActorRef nativeActor,
+        CancellationToken cancellationToken)
+    {
+        var transaction = await state.ExecuteLockedAsync(
+                state.BeginOrJoinTeardownAttempt,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!transaction.OwnsExecution)
+        {
+            var sharedFailure = await transaction.Completion.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (sharedFailure is not null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(sharedFailure).Throw();
+            return;
+        }
+
+        var nativeDestroyed = transaction.NativeAlreadyDestroyed;
+        try
+        {
+            if (!nativeDestroyed)
+            {
+                var node = getActorSpotNode()
+                           ?? throw new InvalidOperationException(
+                               $"Actor '{state.ActorId}' teardown cannot confirm native destruction without a SpotNode.");
+                try
+                {
+                    await node.DestroyActorAsync(
+                            nativeActor,
+                            runtime.Registration.DefaultRequestTimeout,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (ZlinkRequestException exception)
+                    when (exception.Result == ZlinkRequestException.ErrorCode.NotFound)
+                {
+                }
+
+                await state.ExecuteLockedAsync(
+                        () => state.MarkNativeDestroyed(transaction),
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                nativeDestroyed = true;
+            }
+
+            if (LocationLifecycle is { } lifecycle)
+                await lifecycle.ActorOwnership.ReleaseActorAsync(
+                        state.ActorId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+            var boundSession = await state.ExecuteLockedAsync(
+                    () => state.CompleteTeardownAttempt(transaction),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (boundSession is { } session)
+                runtime.RemoveActorSessionBinding(state.ActorId, session.BindingToken);
+            _actorSessions.RemoveIfCurrent(state.ActorId, state);
+        }
+        catch (Exception failure)
+        {
+            await state.ExecuteLockedAsync(
+                    () => state.FailTeardownAttempt(transaction, nativeDestroyed, failure),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private void StartActorTeardownReconciliation(
+        ZLinkActorRuntimeState state,
+        ZLinkBackendActorRef nativeActor,
+        string operationName)
+    {
+        if (!runtime.IsStarted) return;
+
+        runtime.RunDetached(
+            operationName,
+            async cancellationToken =>
+            {
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        await ExecuteActorTeardownAttemptAsync(state, nativeActor, cancellationToken)
+                            .ConfigureAwait(false);
+                        return;
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"{operationName} retry for '{state.ActorId}': {exception.Message}");
+                    }
+
+                    await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            });
     }
 
     /// <summary>

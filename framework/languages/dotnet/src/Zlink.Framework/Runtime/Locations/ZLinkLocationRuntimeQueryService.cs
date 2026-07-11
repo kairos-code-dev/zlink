@@ -41,15 +41,18 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
     }
 
     public ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(new ZLinkLocationRuntimeStatus(
-            StoreHealthy: _runtime.LastError is null,
+        CancellationToken cancellationToken = default)
+    {
+        var health = _runtime.GetHealthSnapshot();
+        return ValueTask.FromResult(new ZLinkLocationRuntimeStatus(
+            StoreHealthy: health.LastError is null,
             WatchEnabled: false,
             PollingInterval: _options.PollingInterval,
-            LastRefreshAt: _runtime.OwnerLeaseRenewedAt,
-            LastError: _runtime.LastError,
-            OwnerLeaseHealthy: _runtime.OwnerLeaseHealthy,
-            OwnerLeaseRenewedAt: _runtime.OwnerLeaseRenewedAt));
+            LastRefreshAt: health.RenewedAt,
+            LastError: health.LastError,
+            OwnerLeaseHealthy: health.Healthy,
+            OwnerLeaseRenewedAt: health.RenewedAt));
+    }
 
     public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeerLocationsAsync(
         ZLinkPeerLocationFilter filter,

@@ -16,10 +16,13 @@ internal sealed class ZLinkSpotActivationFactory(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var spotScope = services.CreateAsyncScope();
+        AsyncServiceScope spotScope = default;
+        var scopeCreated = false;
         ZLinkSpotActivation? activation = null;
         try
         {
+            spotScope = services.CreateAsyncScope();
+            scopeCreated = true;
             activation = new ZLinkSpotActivation(
                 runtime,
                 spotScope,
@@ -47,14 +50,22 @@ internal sealed class ZLinkSpotActivationFactory(
             var response = await activation.InitializeAsync(request, cancellationToken).ConfigureAwait(false);
             return new ZLinkSpotActivationCreateResult(activation, response);
         }
-        catch
+        catch (Exception initializationFailure)
         {
+            var failures = new ZLinkFailureCollector(initializationFailure);
             if (activation is null)
-                await spotScope.DisposeAsync().ConfigureAwait(false);
+            {
+                if (scopeCreated)
+                    await failures.CaptureAsync(spotScope.DisposeAsync).ConfigureAwait(false);
+                await failures.CaptureAsync(nativeSpot.DisposeAsync).ConfigureAwait(false);
+            }
             else
-                await activation.DisposeAsync().ConfigureAwait(false);
+            {
+                await failures.CaptureAsync(activation.DisposeAsync).ConfigureAwait(false);
+            }
 
-            throw;
+            failures.ThrowIfAny();
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
 }

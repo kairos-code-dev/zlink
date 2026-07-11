@@ -293,6 +293,53 @@ public sealed class WorkerPoolTests
         Assert.Throws<InvalidOperationException>(() => call.Submit((_, _) => ValueTask.CompletedTask));
     }
 
+    [Fact]
+    public async Task Dispose_Waits_For_The_Running_Generation_Worker()
+    {
+        var pool = CreatePool(1);
+        using var release = new ManualResetEventSlim(false);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.Equal(ZLinkWorkerSubmitResult.Accepted, pool.TrySubmit(_ =>
+        {
+            started.TrySetResult();
+            release.Wait();
+        }));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var dispose = pool.DisposeAsync().AsTask();
+        await Task.Delay(100);
+        Assert.False(dispose.IsCompleted);
+
+        release.Set();
+        await dispose.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, pool.ThreadCount);
+    }
+
+    [Fact]
+    public async Task RequestStop_Cancels_Work_That_Has_Not_Started()
+    {
+        var pool = CreatePool(1);
+        await using var queue = CreateQueue();
+        using var release = new ManualResetEventSlim(false);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.Equal(ZLinkWorkerSubmitResult.Accepted, pool.TrySubmit(_ =>
+        {
+            started.TrySetResult();
+            release.Wait();
+        }));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var queued = CreateCall(pool, _ => 42, queue).Async().AsTask();
+        await WaitForAsync(() => pool.QueueLength == 1);
+
+        pool.RequestStop();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => queued);
+
+        release.Set();
+        await pool.DisposeAsync();
+    }
+
     private static ZLinkWorkerPool CreatePool(
         int maxThreads,
         int maxQueueLength = 16)

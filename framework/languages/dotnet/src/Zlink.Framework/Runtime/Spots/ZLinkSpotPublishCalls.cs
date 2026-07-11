@@ -55,11 +55,14 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
+        using (var operation = runtime.EnterOperation())
+            runtime.GetSpotPublisherBundle(channelName);
         ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "spot publish submit");
     }
 
-    private ValueTask SubmitAsync(CancellationToken cancellationToken)
+    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
+        using var operation = runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var packetName = _messageName ?? throw new InvalidOperationException("Message name is required.");
@@ -82,12 +85,12 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
                 topic,
                 correlationId));
 
-        return (bundle.Submitter
+        await (bundle.Submitter
                 ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
             .Async(
                 parts,
                 pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
     }
 }
 

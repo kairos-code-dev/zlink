@@ -35,35 +35,52 @@ internal sealed class ZLinkStreamSessionTable(
         }
     }
 
-    public bool TryGetOrCreate(
-        RoutingId routingId,
-        out ZLinkStreamSessionRuntime session)
+    public void RequestStop()
+    {
+        ZLinkStreamSessionRuntime[] sessions;
+        lock (_gate) sessions = _sessions.Values.ToArray();
+        foreach (var session in sessions) session.RequestStop();
+    }
+
+    public async ValueTask<ZLinkStreamSessionRuntime?> GetOrCreateAsync(RoutingId routingId)
     {
         var sessionId = routingId.ToHex();
         lock (_gate)
         {
-            if (_stopping)
-            {
-                session = null!;
-                return false;
-            }
+            if (_stopping) return null;
 
             if (_sessions.TryGetValue(sessionId, out var existing))
-            {
-                session = existing;
-                return true;
-            }
+                return existing;
+        }
 
-            var created = new ZLinkStreamSessionRuntime(
-                services.CreateAsyncScope(),
+        var created = await ZLinkStreamSessionRuntime.CreateAsync(
+                services,
                 socket,
                 routingId,
                 headerSessionType,
-                Remove);
-            _sessions.Add(sessionId, created);
-            session = created;
-            return true;
+                Remove)
+            .ConfigureAwait(false);
+        ZLinkStreamSessionRuntime? duplicate = null;
+        lock (_gate)
+        {
+            if (_stopping)
+            {
+                duplicate = created;
+                created = null!;
+            }
+            else if (_sessions.TryGetValue(sessionId, out var existing))
+            {
+                duplicate = created;
+                created = existing;
+            }
+            else
+            {
+                _sessions.Add(sessionId, created);
+            }
         }
+
+        if (duplicate is not null) await duplicate.DisposeUncommittedAsync().ConfigureAwait(false);
+        return created;
     }
 
     public void QueueConnectionMetadata(string localAddr, string remoteAddr)

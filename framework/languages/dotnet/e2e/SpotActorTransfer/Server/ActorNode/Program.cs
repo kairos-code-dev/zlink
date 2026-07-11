@@ -28,7 +28,7 @@ builder.Services.AddSingleton<JoinedGateStore>();
 builder.Services.AddSingleton<TransferGateStore>();
 builder.Services.AddZLinkFramework(framework =>
 {
-    framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(3);
+    framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(options.RedisEndpoint)
         .SetKeyPrefix(options.RedisKeyPrefix)));

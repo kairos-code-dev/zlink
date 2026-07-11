@@ -84,6 +84,7 @@ internal sealed class ZLinkActorJoinSpotCall(
     public async ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default)
     {
+        using var operation = runtime.EnterOperation();
         var timeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
@@ -133,6 +134,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
 
     public async ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
     {
+        using var operation = runtime.EnterOperation();
         var timeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);

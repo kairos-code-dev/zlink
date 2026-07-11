@@ -124,7 +124,7 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     {
         AddActorTransfer(
             actorType,
-            new ZLinkActorTransferRegistration(typeof(TActor), typeof(TAdapter)));
+            ZLinkActorTransferRegistry.CreateRegistration<TActor, TAdapter>());
         return this;
     }
 

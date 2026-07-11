@@ -61,8 +61,7 @@ public sealed class MessageFlowTracerTests
         var options = new ZLinkDispatchOptionsModel();
         options.MessageFlow(mode);
         var logger = new RecordingLogger();
-        var services = new ServiceCollection().BuildServiceProvider();
-        return (new ZLinkMessageFlowTracer(options, services, logger), logger, options);
+        return (new ZLinkMessageFlowTracer(options, logger), logger, options);
     }
 
     private static ZLinkMessageFlowEvent Flow(ZLinkMessageFlowOutcome outcome)

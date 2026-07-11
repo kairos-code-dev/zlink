@@ -4,19 +4,22 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal static class ZLinkActorTransferRegistry
 {
+    public static ZLinkActorTransferRegistration CreateRegistration<TActor, TAdapter>()
+        where TActor : IZLinkActor
+        where TAdapter : class, IZLinkActorTransferAdapter<TActor>
+    {
+        return new ZLinkActorTransferRegistration(
+            typeof(TActor),
+            typeof(TAdapter),
+            new ZLinkActorTransferInvoker<TActor>());
+    }
+
     public static bool TryResolve(
         ZLinkFrameworkRegistration registration,
         string actorType,
         out ZLinkActorTransferRegistration? transfer)
     {
-        foreach (var spotNode in registration.SpotNodes.Values)
-        {
-            if (spotNode.ActorTransfers.TryGetValue(actorType, out transfer!))
-                return true;
-        }
-
-        transfer = null;
-        return false;
+        return registration.ActorCatalog.TryGetTransfer(actorType, out transfer);
     }
 
     public static async ValueTask<ZLinkMessage> TransferOutAsync(
@@ -27,8 +30,7 @@ internal static class ZLinkActorTransferRegistry
     {
         await using var scope = services.CreateAsyncScope();
         var adapter = scope.ServiceProvider.GetRequiredService(transfer.AdapterType);
-        var invokerType = typeof(ZLinkActorTransferInvoker<>).MakeGenericType(transfer.ActorType);
-        return await ((IZLinkActorTransferOutInvoker)Activator.CreateInstance(invokerType)!)
+        return await transfer.Invoker
             .TransferOutAsync(adapter, actor, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -43,33 +45,12 @@ internal static class ZLinkActorTransferRegistry
     {
         await using var scope = services.CreateAsyncScope();
         var adapter = scope.ServiceProvider.GetRequiredService(transfer.AdapterType);
-        var invokerType = typeof(ZLinkActorTransferInvoker<>).MakeGenericType(transfer.ActorType);
-        return await ((IZLinkActorTransferInInvoker)Activator.CreateInstance(invokerType)!)
+        return await transfer.Invoker
             .TransferInAsync(adapter, actorId, context, state, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private interface IZLinkActorTransferOutInvoker
-    {
-        ValueTask<ZLinkMessage> TransferOutAsync(
-            object adapter,
-            IZLinkActor actor,
-            CancellationToken cancellationToken);
-    }
-
-    private interface IZLinkActorTransferInInvoker
-    {
-        ValueTask<IZLinkActor> TransferInAsync(
-            object adapter,
-            string actorId,
-            IZLinkActorContext context,
-            ZLinkMessage state,
-            CancellationToken cancellationToken);
-    }
-
-    private sealed class ZLinkActorTransferInvoker<TActor> :
-        IZLinkActorTransferOutInvoker,
-        IZLinkActorTransferInInvoker
+    private sealed class ZLinkActorTransferInvoker<TActor> : IZLinkActorTransferInvoker
         where TActor : IZLinkActor
     {
         public async ValueTask<ZLinkMessage> TransferOutAsync(
@@ -94,4 +75,19 @@ internal static class ZLinkActorTransferRegistry
                 .ConfigureAwait(false);
         }
     }
+}
+
+internal interface IZLinkActorTransferInvoker
+{
+    ValueTask<ZLinkMessage> TransferOutAsync(
+        object adapter,
+        IZLinkActor actor,
+        CancellationToken cancellationToken);
+
+    ValueTask<IZLinkActor> TransferInAsync(
+        object adapter,
+        string actorId,
+        IZLinkActorContext context,
+        ZLinkMessage state,
+        CancellationToken cancellationToken);
 }

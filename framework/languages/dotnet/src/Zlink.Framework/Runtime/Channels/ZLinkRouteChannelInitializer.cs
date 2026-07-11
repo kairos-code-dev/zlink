@@ -20,11 +20,13 @@ internal sealed class ZLinkRouteChannelInitializer(
 
                 runtime.Start();
             }
-            catch
+            catch (Exception initializationFailure)
             {
                 state.RouteChannels.Remove(routedRegistration.RouterChannelId);
-                await runtime.DisposeAsync().ConfigureAwait(false);
-                throw;
+                var failures = new ZLinkFailureCollector(initializationFailure);
+                await failures.CaptureAsync(runtime.DisposeAsync).ConfigureAwait(false);
+                failures.ThrowIfAny();
+                throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
             }
         }
     }
@@ -41,6 +43,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         ZLinkRouteChannelRegistration routedRegistration)
     {
         IZLinkBackendRouterSocket? router = null;
+        ZLinkRouteChannelRuntime? runtime = null;
         try
         {
             router = adapter.CreateRouterSocket(state.Context);
@@ -54,7 +57,7 @@ internal sealed class ZLinkRouteChannelInitializer(
             if (!string.IsNullOrWhiteSpace(routedRegistration.BindEndpoint))
                 router.Bind(routedRegistration.BindEndpoint);
             var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
-            var runtime = new ZLinkRouteChannelRuntime(
+            runtime = new ZLinkRouteChannelRuntime(
                 services,
                 registration,
                 routedRegistration,
@@ -63,16 +66,22 @@ internal sealed class ZLinkRouteChannelInitializer(
                 new ZLinkCompositeRouteInternalPacketDispatcher(
                     new ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                         services.GetRequiredService<ZLinkFrameworkRuntime>())),
-                state.StopTokenSource.Token);
+                state.StopTokenSource.Token,
+                state.TaskRunner.ExecutionOwner,
+                services.GetRequiredService<ZLinkFrameworkRuntime>());
             await AttachSpotRouteBridgeIfAcceptedAsync(state, routedRegistration, runtime)
                 .ConfigureAwait(false);
             return runtime;
         }
-        catch
+        catch (Exception initializationFailure)
         {
-            if (router is not null) await router.DisposeAsync().ConfigureAwait(false);
-
-            throw;
+            var failures = new ZLinkFailureCollector(initializationFailure);
+            if (runtime is not null)
+                await failures.CaptureAsync(runtime.DisposeAsync).ConfigureAwait(false);
+            else if (router is not null)
+                await failures.CaptureAsync(router.DisposeAsync).ConfigureAwait(false);
+            failures.ThrowIfAny();
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
 
@@ -94,10 +103,12 @@ internal sealed class ZLinkRouteChannelInitializer(
             runtime.AttachSpotRouteBridge(bridge);
             state.SpotRouteBridges.Add(bridge);
         }
-        catch
+        catch (Exception attachmentFailure)
         {
-            await bridge.DisposeAsync().ConfigureAwait(false);
-            throw;
+            var failures = new ZLinkFailureCollector(attachmentFailure);
+            await failures.CaptureAsync(bridge.DisposeAsync).ConfigureAwait(false);
+            failures.ThrowIfAny();
+            throw new InvalidOperationException("Unreachable after bridge cleanup failure propagation.");
         }
     }
 

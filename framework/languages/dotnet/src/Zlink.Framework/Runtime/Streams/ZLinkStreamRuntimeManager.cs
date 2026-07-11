@@ -35,21 +35,25 @@ internal sealed class ZLinkStreamRuntimeManager(
                 state.StreamNodes.Add(streamNodeRegistration.StreamNodeName, runtime);
                 runtime.Start();
             }
-            catch
+            catch (Exception initializationFailure)
             {
                 state.StreamNodes.Remove(streamNodeRegistration.StreamNodeName);
+                var failures = new ZLinkFailureCollector(initializationFailure);
                 if (runtime is not null)
                 {
-                    await runtime.DisposeAsync().ConfigureAwait(false);
+                    await failures.CaptureAsync(runtime.DisposeAsync).ConfigureAwait(false);
                 }
                 else
                 {
-                    if (monitor is not null) await monitor.DisposeAsync().ConfigureAwait(false);
+                    if (monitor is not null)
+                        await failures.CaptureAsync(monitor.DisposeAsync).ConfigureAwait(false);
 
-                    if (socket is not null) await socket.DisposeAsync().ConfigureAwait(false);
+                    if (socket is not null)
+                        await failures.CaptureAsync(socket.DisposeAsync).ConfigureAwait(false);
                 }
 
-                throw;
+                failures.ThrowIfAny();
+                throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
             }
         }
     }

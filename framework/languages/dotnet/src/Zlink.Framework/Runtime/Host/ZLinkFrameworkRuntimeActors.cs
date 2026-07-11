@@ -2,6 +2,10 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
+    private readonly ZLinkActorStragglerForwarder _actorStragglerForwarder;
+
+    internal ZLinkActorStragglerForwarder ActorStragglerForwarder
+        => _actorStragglerForwarder;
     private static readonly ZLinkActorBoundSessionRegistry ActorBoundSessions = new();
 
     internal ValueTask<ZLinkActorJoinResult> JoinActorAsync(
@@ -78,16 +82,49 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRemoteActorJoinRequest request,
         CancellationToken cancellationToken = default)
     {
+        var actorState = GetOrCreateActorState(request.ActorId);
+        if (actorState.Handoff.IsQuarantined(request.HandoffId))
+        {
+            await _actorSessionManager.RollbackTransferredActorAsync(
+                    request.ActorId,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            throw new ZLinkActorHandoffRejectedException(
+                $"Actor '{request.ActorId}' handoff failed and its quarantined rollback was reconciled.");
+        }
+
+        if (_actorHandoffAdmissions.TryGetJoinOutcome(request, spotRid, out var terminalReply))
+            return terminalReply;
+
         var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
                              .ConfigureAwait(false)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
         ZLinkActorTransferRegistry.TryResolve(Registration, request.ActorType, out var transfer);
-        var actorState = GetOrCreateActorState(request.ActorId);
-        actorState.ImportHandoffFrames(request.HandoffId, request.HandoffFrames);
-
+        var ownsImport = false;
+        var createdTransferredActor = false;
         try
         {
+            if (!actorState.Handoff.IsKnown(request.HandoffId))
+            {
+                _actorHandoffAdmissions.BeginCommit(request, spotRid);
+            }
+            var import = await actorState.ExecuteHandoffTransitionAsync(
+                    () =>
+                    {
+                        var owned = actorState.Handoff.Import(request, out var preparation);
+                        return (Owned: owned, Preparation: preparation);
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!import.Owned)
+                return await import.Preparation.WaitAsync(cancellationToken).ConfigureAwait(false);
+            ownsImport = true;
+
+            await _actorSessionManager.PrepareForTransferredActivationAsync(
+                    actorState,
+                    cancellationToken)
+                .ConfigureAwait(false);
             // Hosting handoff: the source node still owns the location row, so
             // the local claim may fence it out with Takeover. This path does not
             // call the Entry Spot create callback; transfer materialization is
@@ -101,44 +138,86 @@ internal sealed partial class ZLinkFrameworkRuntime
                     publishActorRef: false,
                     cancellationToken)
                 .ConfigureAwait(false);
+            createdTransferredActor = creation.Created;
             var actorId = request.ActorId;
             var actorRef = actorState.NativeActorRef
                            ?? throw new ZLinkFrameworkException(
                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                $"Actor '{actorId}' does not have a native Actor ref.");
             var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
-            await BindRemoteBoundSessionRouteAsync(
-                    request.ActorId,
-                    actorRef,
-                    boundRoute.NodeRid,
-                    boundRoute.SessionRid,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            actorState.Handoff.SetPendingBoundSessionRoute(boundRoute);
             await activation.PrepareTransferredActorJoinAndReplayAsync(
                     creation.Actor,
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            return ZLinkRemoteActorJoinPackets.CreateJoinReply(
+            var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(
                 true,
-                actorRef,
-                ZLinkMessage.Empty,
-                Registration.Codecs);
+                actorRef);
+            _actorHandoffAdmissions.RecordJoinOutcome(
+                request,
+                spotRid,
+                reply,
+                Registration.DefaultRequestTimeout);
+            actorState.Handoff.AcceptPreparation(request.HandoffId, reply);
+            RunDetached(
+                "actor-handoff-prepared-expiry",
+                ct => ReconcileExpiredPreparedHandoffAsync(
+                    actorState,
+                    request,
+                    spotRid,
+                    Registration.DefaultRequestTimeout,
+                    ct));
+            return reply;
         }
-        catch
+        catch (Exception commitFailure)
         {
-            actorState.CancelHandoffCapture();
-            throw;
+            var rejected = CreateRejectedHandoffReply(request.ActorId);
+            _actorHandoffAdmissions.RejectPreparedJoinOutcome(request, spotRid, rejected);
+            if (ownsImport)
+                actorState.Handoff.RejectPreparation(request.HandoffId, rejected);
+            try
+            {
+                if (!ownsImport)
+                {
+                    // A conflicting transaction owns the actor handoff state.
+                }
+                else if (createdTransferredActor)
+                {
+                    actorState.Handoff.Quarantine(request.HandoffId);
+                    await RollbackPreparedTransferredActorAsync(actorState, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    actorState.Handoff.AbortImport(request.HandoffId);
+                }
+            }
+            catch (Exception rollbackFailure)
+            {
+                actorState.Handoff.Quarantine(request.HandoffId);
+                throw new AggregateException(commitFailure, rollbackFailure);
+            }
+            finally
+            {
+                _actorHandoffAdmissions.Abort(request.HandoffId);
+            }
+
+            throw new ZLinkActorHandoffRejectedException(
+                $"Actor '{request.ActorId}' handoff commit was rejected.",
+                commitFailure);
         }
     }
 
     internal async ValueTask CompleteRoutedActorHandoffAsync(
+        RoutingId spotRid,
         ZLinkRemoteActorHandoffCompletionRequest request,
         CancellationToken cancellationToken)
     {
+        if (!_actorHandoffAdmissions.TryBeginCompletion(request, spotRid)) return;
+
         var actorState = GetOrCreateActorState(request.ActorId);
-        if (!actorState.TryBeginHandoffCompletion(request.HandoffId)) return;
 
         try
         {
@@ -146,23 +225,123 @@ internal sealed partial class ZLinkFrameworkRuntime
                              ?? throw new ZLinkFrameworkException(
                                  ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                  $"Actor '{request.ActorId}' is not hosted by an active Spot during handoff completion.");
+            var boundRoute = actorState.Handoff.GetPendingBoundSessionRoute();
+            var actorRef = actorState.NativeActorRef
+                           ?? throw new ZLinkFrameworkException(
+                               ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                               $"Actor '{request.ActorId}' does not have a native Actor ref during route commit.");
             await activation.ReplayTransferredActorHandoffAsync(
                     actorState,
                     request.Frames,
                     cancellationToken)
                 .ConfigureAwait(false);
+            await BindRemoteBoundSessionRouteAsync(
+                    request.ActorId,
+                    actorRef,
+                    boundRoute.NodeRid,
+                    boundRoute.SessionRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
             await PublishTransferredActorLocationAsync(actorState, activation, cancellationToken)
                 .ConfigureAwait(false);
-            actorState.CompleteHandoffContinuation(request.HandoffId);
+            await activation.ReplayFinalTransferredActorHandoffAsync(
+                    actorState,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            actorState.Handoff.Complete(request.HandoffId);
+            _actorHandoffAdmissions.RecordCompletion(request, spotRid);
+            _actorHandoffAdmissions.Complete(request.HandoffId);
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 $"handoff_completion actor={request.ActorId} id={request.HandoffId} frames={request.Frames.Count}");
         }
         catch
         {
-            actorState.CancelHandoffContinuation(request.HandoffId);
+            _actorHandoffAdmissions.CancelCompletion(request, spotRid);
             throw;
         }
     }
+
+    private async ValueTask ReconcileExpiredPreparedHandoffAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkRemoteActorJoinRequest request,
+        RoutingId spotRid,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await Task.Delay(timeout, cancellationToken).ConfigureAwait(false);
+        var rejected = CreateRejectedHandoffReply(request.ActorId);
+        while (!_actorHandoffAdmissions.TryExpirePreparedCommit(request, spotRid, rejected))
+        {
+            if (!_actorHandoffAdmissions.IsPreparedCommitPending(request, spotRid)) return;
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        actorState.Handoff.Quarantine(request.HandoffId);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await RollbackPreparedTransferredActorAsync(
+                        actorState,
+                        cancellationToken,
+                        startTeardownReconciliation: false)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"expired actor handoff rollback retry for '{request.ActorId}': {exception.Message}");
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async ValueTask RollbackPreparedTransferredActorAsync(
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken,
+        bool startTeardownReconciliation = true)
+    {
+        Exception? failure = null;
+        if (actorState.Actor is { } actor && actorState.LiveActivation is { } activation)
+        {
+            try
+            {
+                await activation.NotifyActorLeftAfterManagedJoinSpotAsync(actor, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        }
+
+        try
+        {
+            await _actorSessionManager.RollbackTransferredActorAsync(
+                    actorState.ActorId,
+                    cancellationToken,
+                    startTeardownReconciliation)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure = failure is null ? exception : new AggregateException(failure, exception);
+        }
+
+        if (failure is not null)
+            throw new InvalidOperationException(
+                $"Actor '{actorState.ActorId}' prepared handoff rollback did not finish.",
+                failure);
+    }
+
+    private static ZLinkRemoteActorJoinReply CreateRejectedHandoffReply(string actorId)
+        => ZLinkRemoteActorJoinPackets.CreateJoinReply(
+            false,
+            new ZLinkBackendActorRef(RoutingId.From("rejected"), actorId, 0));
 
     private async ValueTask PublishTransferredActorLocationAsync(
         ZLinkActorRuntimeState actorState,
@@ -194,18 +373,26 @@ internal sealed partial class ZLinkFrameworkRuntime
                              .ConfigureAwait(false)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        var result = await activation.AdmitRemoteActorJoinAsync(
-                request.ActorId,
-                ZLinkRemoteActorJoinPackets.DecodeAdmissionRequestPayload(
-                    request,
-                    Registration.Codecs),
+        return await _actorHandoffAdmissions.AdmitAsync(
+                request,
+                spotRid,
+                async ct =>
+                {
+                    var result = await activation.AdmitRemoteActorJoinAsync(
+                            request.ActorId,
+                            ZLinkRemoteActorJoinPackets.DecodeAdmissionRequestPayload(
+                                request,
+                                Registration.Codecs),
+                            ct)
+                        .ConfigureAwait(false);
+                    return ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
+                        result.Accepted,
+                        result.Reply,
+                        Registration.Codecs,
+                        request.DeadlineUnixTimeMilliseconds);
+                },
                 cancellationToken)
             .ConfigureAwait(false);
-
-        return ZLinkRemoteActorJoinPackets.CreateAdmissionReply(
-            result.Accepted,
-            result.Reply,
-            Registration.Codecs);
     }
 
     private async ValueTask BindRemoteBoundSessionRouteAsync(
@@ -547,6 +734,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         out ZLinkActorBoundSession session)
     {
         return GetOrCreateActorState(actorId).TryGetBoundSession(out session);
+    }
+
+    private void ResetActorRuntimeGeneration()
+    {
+        _actorSessionManager.ResetGeneration();
+        _actorHandoffAdmissions.ResetGeneration();
+        _sessionBindings.ResetGeneration();
+        ActorBoundSessions.UnregisterRuntime(this);
     }
 
     internal bool SendActorBoundSession(

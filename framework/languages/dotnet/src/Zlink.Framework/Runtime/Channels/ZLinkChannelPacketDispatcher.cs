@@ -23,8 +23,8 @@ internal sealed class ZLinkChannelPacketDispatcher
         var resolvedLogger = logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
         _dispatchErrors = new ZLinkDispatchErrorReporter(
             registration.DispatchOptions,
-            ResolveServices(runtime),
-            resolvedLogger);
+            resolvedLogger,
+            runtime);
         _commandPipeline = new ZLinkChannelCommandDispatchPipeline(
             handlerRegistry,
             dispatcher,
@@ -152,8 +152,4 @@ internal sealed class ZLinkChannelPacketDispatcher
             : EmptyGroups;
     }
 
-    private static IServiceProvider ResolveServices(ZLinkFrameworkRuntime? runtime)
-    {
-        return runtime?.Services ?? EmptyServiceProvider.Instance;
-    }
 }

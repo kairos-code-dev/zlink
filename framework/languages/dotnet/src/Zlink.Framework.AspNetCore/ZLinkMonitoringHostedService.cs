@@ -14,87 +14,84 @@ internal sealed class ZLinkMonitoringHostedService(
 
     private readonly List<IAsyncDisposable> _monitors = [];
     private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(registration);
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private Task? _pollingTask;
     private CancellationTokenSource? _stopTokenSource;
     private ZLinkRuntimeTaskRunner? _taskRunner;
+    private int _disposed;
 
     public async ValueTask DisposeAsync()
     {
-        if (_stopTokenSource is not null) _stopTokenSource.Cancel();
-
-        if (_pollingTask is not null)
-            try
-            {
-                await _pollingTask;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-
-        await DisposeMonitorsAsync();
-        _stopTokenSource?.Dispose();
-        _stopTokenSource = null;
-        _taskRunner = null;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        try
+        {
+            await StopCoreAsync(disposing: true).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleGate.Dispose();
+        }
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _sourceValidator.ValidateRequiredRuntimes(frameworkRuntime, locationQuery);
-
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _sourceValidator.PreflightSocketSources(frameworkRuntime);
+            if (_stopTokenSource is not null) return;
+            _sourceValidator.ValidateRequiredRuntimes(frameworkRuntime, locationQuery);
+            var startedFramework = false;
 
-            if (frameworkRuntime is not null) await frameworkRuntime.StartAsync(cancellationToken);
+            try
+            {
+                _sourceValidator.PreflightSocketSources(frameworkRuntime);
 
-            await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, cancellationToken);
-            AttachSocketMonitors(frameworkRuntime);
+                if (frameworkRuntime is not null && !frameworkRuntime.IsStarted)
+                {
+                    await frameworkRuntime.StartAsync(cancellationToken);
+                    startedFramework = true;
+                }
+
+                await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, cancellationToken);
+                AttachSocketMonitors(frameworkRuntime);
+            }
+            catch (Exception startupFailure)
+            {
+                var failures = new List<Exception> { startupFailure };
+                await CaptureCleanupAsync(DisposeMonitorsAsync, failures).ConfigureAwait(false);
+                if (startedFramework && frameworkRuntime is not null)
+                    await CaptureCleanupAsync(
+                            () => frameworkRuntime.StopAsync(CancellationToken.None),
+                            failures)
+                        .ConfigureAwait(false);
+
+                ThrowFailures(failures);
+            }
+
+            _stopTokenSource = new CancellationTokenSource();
+            _taskRunner = new ZLinkRuntimeTaskRunner(
+                new ZLinkRuntimeErrorSink(),
+                _stopTokenSource.Token);
+            var pollingRunner = new ZLinkMonitoringPollingRunner(
+                registration,
+                spotEvent => QueueDispatch(spotEvent),
+                locationEvent => QueueDispatch(locationEvent));
+            _pollingTask = pollingRunner.RunAsync(
+                frameworkRuntime,
+                locationQuery,
+                _stopTokenSource.Token);
         }
-        catch
+        finally
         {
-            await DisposeMonitorsAsync();
-            if (frameworkRuntime is not null && frameworkRuntime.IsStarted)
-                await frameworkRuntime.StopAsync(CancellationToken.None);
-
-            throw;
+            _lifecycleGate.Release();
         }
-
-        _stopTokenSource = new CancellationTokenSource();
-        _taskRunner = new ZLinkRuntimeTaskRunner(
-            new ZLinkRuntimeErrorSink(),
-            _stopTokenSource.Token);
-        var pollingRunner = new ZLinkMonitoringPollingRunner(
-            registration,
-            spotEvent => QueueDispatch(spotEvent),
-            locationEvent => QueueDispatch(locationEvent));
-        _pollingTask = pollingRunner.RunAsync(
-            frameworkRuntime,
-            locationQuery,
-            _stopTokenSource.Token);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_stopTokenSource is not null) _stopTokenSource.Cancel();
-
-        if (_pollingTask is not null)
-            try
-            {
-                await _pollingTask.WaitAsync(cancellationToken);
-            }
-            catch (Exception)
-            {
-                // Whatever ended the polling task, the monitors must be
-                // disposed below: a socket monitor left open keeps the
-                // native context from terminating.
-            }
-
-        await DisposeMonitorsAsync();
-
-        _stopTokenSource?.Dispose();
-        _stopTokenSource = null;
-        _taskRunner = null;
-        _pollingTask = null;
+        _ = cancellationToken;
+        await StopCoreAsync().ConfigureAwait(false);
     }
 
     private void AttachSocketMonitors(ZLinkFrameworkRuntime? frameworkRuntime)
@@ -114,6 +111,7 @@ internal sealed class ZLinkMonitoringHostedService(
             }
 
             var monitor = _monitoringAdapter.OpenSocketMonitor(socket);
+            _monitors.Add(monitor);
             RegisterWithoutSynchronizationContext(() =>
             {
                 monitor.OnEvent(monitorEvent =>
@@ -123,7 +121,6 @@ internal sealed class ZLinkMonitoringHostedService(
                 });
                 return 0;
             });
-            _monitors.Add(monitor);
         }
     }
 
@@ -154,8 +151,102 @@ internal sealed class ZLinkMonitoringHostedService(
 
     private async ValueTask DisposeMonitorsAsync()
     {
-        for (var index = _monitors.Count - 1; index >= 0; index--) await _monitors[index].DisposeAsync();
-
+        var failures = new List<Exception>();
+        for (var index = _monitors.Count - 1; index >= 0; index--)
+            await CaptureCleanupAsync(_monitors[index].DisposeAsync, failures).ConfigureAwait(false);
         _monitors.Clear();
+        ThrowFailures(failures);
+    }
+
+    private static async ValueTask CaptureCleanupAsync(
+        Func<ValueTask> cleanup,
+        ICollection<Exception> failures)
+    {
+        try
+        {
+            await cleanup().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
+    }
+
+    private static void ThrowFailures(IReadOnlyList<Exception> failures)
+    {
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+    }
+
+    private async ValueTask StopCoreAsync(bool disposing = false)
+    {
+        if (!disposing && Volatile.Read(ref _disposed) != 0) return;
+        await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            var stop = _stopTokenSource;
+            var polling = _pollingTask;
+            var runner = _taskRunner;
+            _pollingTask = null;
+            var failures = new List<Exception>();
+
+            if (stop is not null) Capture(stop.Cancel);
+            if (polling is not null) await CaptureTaskAsync(polling).ConfigureAwait(false);
+            await CaptureAsync(DisposeMonitorsAsync).ConfigureAwait(false);
+            if (runner is not null) await CaptureAsync(runner.StopAsync).ConfigureAwait(false);
+
+            _taskRunner = null;
+            _stopTokenSource = null;
+            if (stop is not null) Capture(stop.Dispose);
+
+            if (failures.Count == 1)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            if (failures.Count > 1) throw new AggregateException(failures);
+            return;
+
+            async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+            {
+                try
+                {
+                    await cleanup().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(exception);
+                }
+            }
+
+            async ValueTask CaptureTaskAsync(Task task)
+            {
+                try
+                {
+                    await task.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (stop?.IsCancellationRequested == true)
+                {
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(exception);
+                }
+            }
+
+            void Capture(Action cleanup)
+            {
+                try
+                {
+                    cleanup();
+                }
+                catch (Exception exception)
+                {
+                    failures.Add(exception);
+                }
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
     }
 }

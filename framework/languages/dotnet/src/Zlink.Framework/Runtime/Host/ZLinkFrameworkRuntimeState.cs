@@ -4,13 +4,21 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 {
     public ZLinkFrameworkRuntimeState(
         IZLinkBackendContext context,
-        ZLinkFrameworkRegistration registration)
+        ZLinkFrameworkRegistration registration,
+        IServiceProvider services,
+        object executionOwner)
     {
         Context = context;
         Registration = registration;
         TaskRunner = new ZLinkRuntimeTaskRunner(
             new ZLinkRuntimeErrorSink(),
-            StopTokenSource.Token);
+            StopTokenSource.Token,
+            executionOwner,
+            ownsSupervisor: true);
+        MessageFlowObservers = new ZLinkMessageFlowObserverPump(
+            registration.DispatchOptions,
+            services,
+            TaskRunner);
     }
 
     public IZLinkBackendContext Context { get; }
@@ -22,6 +30,8 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
     public CancellationTokenSource StopTokenSource { get; } = new();
 
     public ZLinkRuntimeTaskRunner TaskRunner { get; }
+
+    public ZLinkMessageFlowObserverPump MessageFlowObservers { get; }
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> ServerBundles { get; } = new(StringComparer.Ordinal);
 
@@ -58,26 +68,72 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        StopTokenSource.Cancel();
+        var failures = new List<Exception>();
+        foreach (var node in SpotNodes.Values)
+            await CaptureAsync(node.CloseLifecycleAsync).ConfigureAwait(false);
 
-        foreach (var node in SpotNodes.Values) await DisposeSafelyAsync(node);
+        Capture(StopTokenSource.Cancel);
+        foreach (var node in SpotNodes.Values) Capture(node.RequestStop);
+        foreach (var route in RouteChannels.Values) Capture(route.RequestStop);
+        foreach (var stream in StreamNodes.Values) Capture(stream.RequestStop);
 
-        foreach (var routed in RouteChannels.Values) await DisposeSafelyAsync(routed);
+        await CaptureAsync(TaskRunner.StopAsync).ConfigureAwait(false);
+        await CaptureAsync(MessageFlowObservers.DisposeAsync).ConfigureAwait(false);
 
-        foreach (var stream in StreamNodes.Values) await DisposeSafelyAsync(stream);
+        foreach (var node in SpotNodes.Values)
+            await CaptureAsync(() => DisposeSafelyAsync(node)).ConfigureAwait(false);
 
-        foreach (var bundle in ClientBundles.Values) await DisposeSafelyAsync(bundle);
+        foreach (var routed in RouteChannels.Values)
+            await CaptureAsync(() => DisposeSafelyAsync(routed)).ConfigureAwait(false);
 
-        foreach (var bundle in PublisherBundles.Values) await DisposeSafelyAsync(bundle);
+        foreach (var stream in StreamNodes.Values)
+            await CaptureAsync(() => DisposeSafelyAsync(stream)).ConfigureAwait(false);
 
-        foreach (var bundle in SubscriberBundles.Values) await DisposeSafelyAsync(bundle);
+        foreach (var bundle in ClientBundles.Values)
+            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
-        foreach (var bundle in ServerBundles.Values) await DisposeSafelyAsync(bundle);
+        foreach (var bundle in PublisherBundles.Values)
+            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
-        await WaitForListenerTasksAsync();
+        foreach (var bundle in SubscriberBundles.Values)
+            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
-        StopTokenSource.Dispose();
-        await DisposeSafelyAsync(Context);
+        foreach (var bundle in ServerBundles.Values)
+            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
+
+        await CaptureAsync(WaitForListenerTasksAsync).ConfigureAwait(false);
+
+        Capture(StopTokenSource.Dispose);
+        await CaptureAsync(() => DisposeSafelyAsync(Context)).ConfigureAwait(false);
+
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+        return;
+
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
     }
 
     private async ValueTask WaitForListenerTasksAsync()

@@ -1,24 +1,22 @@
 namespace Zlink.Framework.Runtime.Actors;
 
-internal sealed class ZLinkActorRuntimeState(string actorId)
+internal sealed class ZLinkActorRuntimeState(
+    string actorId,
+    TimeProvider? timeProvider = null)
 {
+    private static readonly AsyncLocal<DispatchOwnership?> AmbientDispatch = new();
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _sessionGate = new();
-    private readonly object _handoffGate = new();
-    private readonly object _forwardGate = new();
-    private readonly List<ZLinkActorHandoffFrame> _handoffFrames = [];
     private Task<IZLinkActor>? _actorCreationTask;
     private ZLinkActorBoundSession? _boundSession;
-    private CancellationTokenSource? _forwardingExpiry;
-    private ZLinkActorForwardingMapping? _forwarding;
-    private string? _handoffId;
-    private bool _handoffCompletionInProgress;
-    private bool _handoffCompletionApplied;
-    private bool _handoffCaptureActive;
-    private long _handoffArrivalIndex;
+    private TaskCompletionSource<Exception?>? _teardownAttempt;
 
     public string ActorId { get; } = actorId;
+
+    public ZLinkActorHandoffState Handoff { get; } = new(
+        actorId,
+        timeProvider ?? TimeProvider.System);
 
     public string? ActorType { get; private set; }
 
@@ -27,6 +25,8 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public IZLinkStream? Stream { get; private set; }
 
     public ZLinkBackendActorRef? NativeActorRef { get; private set; }
+
+    public ZLinkBackendActorRef? RetiredLocalActorRef { get; private set; }
 
     public ZLinkSpotActivation? Activation { get; private set; }
 
@@ -40,7 +40,12 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public bool ContextInvalidated { get; private set; }
 
-    public bool IsDestroying { get; private set; }
+    private volatile ZLinkActorDestroyPhase _destroyPhase;
+    private volatile bool _teardownPending;
+
+    public bool IsDispatchBlocked => _destroyPhase != ZLinkActorDestroyPhase.None || _teardownPending;
+
+    public bool IsTeardownPending => _teardownPending;
 
     public ZLinkSpotActivation? LiveActivation
         => Activation is { IsDisposed: false } activation ? activation : null;
@@ -76,223 +81,13 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public void BindNativeActorRef(ZLinkBackendActorRef actorRef)
     {
+        EnsureReusable();
         NativeActorRef = actorRef;
-    }
-
-    public void BeginHandoffCapture()
-    {
-        lock (_handoffGate)
-        {
-            _handoffCaptureActive = true;
-            _handoffFrames.Clear();
-            _handoffArrivalIndex = 0;
-        }
-    }
-
-    public bool TryCaptureHandoffFrame(ZLinkSpotActorFrame frame)
-    {
-        lock (_handoffGate)
-        {
-            if (!_handoffCaptureActive) return false;
-
-            _handoffFrames.Add(ZLinkActorHandoffFrames.Capture(frame, _handoffArrivalIndex++));
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"handoff_backlog actor={ActorId} arrival={_handoffArrivalIndex - 1} kind={frame.Header.Kind} request_id={frame.RequestId} flags={frame.Flags}");
-            return true;
-        }
-    }
-
-    public void ImportHandoffFrames(
-        string handoffId,
-        IReadOnlyList<ZLinkActorHandoffFrame> frames)
-    {
-        if (string.IsNullOrWhiteSpace(handoffId))
-            throw new InvalidOperationException("Actor handoff id must not be empty.");
-
-        lock (_handoffGate)
-        {
-            _handoffId = handoffId;
-            _handoffCompletionInProgress = false;
-            _handoffCompletionApplied = false;
-            _handoffCaptureActive = true;
-            _handoffFrames.Clear();
-            _handoffArrivalIndex = 0;
-            foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
-            {
-                _handoffFrames.Add(frame with { ArrivalIndex = _handoffArrivalIndex++ });
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"backlog_enqueued actor={ActorId} arrival={_handoffArrivalIndex - 1} request_id={frame.RequestId} flags={frame.Flags}");
-            }
-        }
-    }
-
-    public bool TryBeginHandoffCompletion(string handoffId)
-    {
-        lock (_handoffGate)
-        {
-            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    $"Actor '{ActorId}' received handoff completion for an inactive transfer.");
-            if (_handoffCompletionApplied) return false;
-            if (_handoffCompletionInProgress)
-                throw new InvalidOperationException(
-                    $"Actor '{ActorId}' handoff completion is already in progress.");
-
-            _handoffCompletionInProgress = true;
-            return true;
-        }
-    }
-
-    public void CompleteHandoffContinuation(string handoffId)
-    {
-        lock (_handoffGate)
-        {
-            EnsureActiveHandoffCompletion(handoffId);
-            _handoffCompletionInProgress = false;
-            _handoffCompletionApplied = true;
-        }
-    }
-
-    public void CancelHandoffContinuation(string handoffId)
-    {
-        lock (_handoffGate)
-        {
-            if (string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
-                _handoffCompletionInProgress = false;
-        }
-    }
-
-    private void EnsureActiveHandoffCompletion(string handoffId)
-    {
-        if (!_handoffCompletionInProgress
-            || !string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
-            throw new InvalidOperationException(
-                $"Actor '{ActorId}' does not have an active handoff completion.");
-    }
-
-    public IReadOnlyList<ZLinkActorHandoffFrame> DrainHandoffFrames()
-    {
-        lock (_handoffGate)
-        {
-            var frames = _handoffFrames.ToArray();
-            _handoffFrames.Clear();
-            return frames;
-        }
-    }
-
-    public IReadOnlyList<ZLinkActorHandoffFrame> CompleteHandoffCapture()
-    {
-        lock (_handoffGate)
-        {
-            _handoffCaptureActive = false;
-            var frames = _handoffFrames.ToArray();
-            _handoffFrames.Clear();
-            return frames;
-        }
-    }
-
-    public void CancelHandoffCapture()
-    {
-        lock (_handoffGate)
-        {
-            _handoffCaptureActive = false;
-            _handoffFrames.Clear();
-        }
-    }
-
-    public void InstallForwardingMapping(
-        ZLinkBackendActorRef sourceActor,
-        ZLinkBackendActorRef targetActor,
-        TimeSpan window)
-    {
-        CancellationTokenSource expiry;
-        lock (_handoffGate)
-        {
-            _forwardingExpiry?.Cancel();
-            _forwardingExpiry?.Dispose();
-            expiry = new CancellationTokenSource();
-            _forwardingExpiry = expiry;
-            _forwarding = new ZLinkActorForwardingMapping(
-                sourceActor,
-                targetActor,
-                DateTimeOffset.UtcNow + window);
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"mapping_installed actor={ActorId} source={sourceActor.NodeRid} target={targetActor.NodeRid} entries=1");
-        }
-
-        _ = EvictForwardingMappingAsync(window, expiry);
-    }
-
-    public ZLinkActorFrameRoute ResolveFrameRoute(
-        ZLinkBackendActorRef frameActor,
-        out ZLinkBackendActorRef targetActor)
-    {
-        lock (_handoffGate)
-        {
-            targetActor = NativeActorRef ?? frameActor;
-            if (targetActor.NodeRid == frameActor.NodeRid
-                && targetActor.Generation == frameActor.Generation)
-                return ZLinkActorFrameRoute.Current;
-
-            if (_forwarding is { } forwarding
-                && forwarding.SourceActor.NodeRid == frameActor.NodeRid
-                && forwarding.SourceActor.Generation == frameActor.Generation
-                && forwarding.ExpiresAt > DateTimeOffset.UtcNow)
-            {
-                targetActor = forwarding.TargetActor;
-                return ZLinkActorFrameRoute.Forward;
-            }
-
-            return ZLinkActorFrameRoute.Stale;
-        }
-    }
-
-    public void ForwardFrame(Action forward)
-    {
-        ArgumentNullException.ThrowIfNull(forward);
-        lock (_forwardGate) forward();
-    }
-
-    internal bool TryGetForwardingMapping(out ZLinkActorForwardingMapping mapping)
-    {
-        lock (_handoffGate)
-        {
-            if (_forwarding is { } current)
-            {
-                mapping = current;
-                return true;
-            }
-
-            mapping = default!;
-            return false;
-        }
-    }
-
-    private async Task EvictForwardingMappingAsync(TimeSpan window, CancellationTokenSource expiry)
-    {
-        try
-        {
-            await Task.Delay(window, expiry.Token).ConfigureAwait(false);
-            lock (_handoffGate)
-            {
-                if (!ReferenceEquals(_forwardingExpiry, expiry)) return;
-
-                _forwarding = null;
-                _forwardingExpiry = null;
-                ZLinkFrameworkDebugLog.SpotDiscovery($"mapping_evicted actor={ActorId} entries=0");
-            }
-        }
-        catch (OperationCanceledException) when (expiry.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            expiry.Dispose();
-        }
     }
 
     public bool BindActorInstance(IZLinkActor actor)
     {
+        EnsureReusable();
         if (!string.Equals(ActorId, actor.ActorId, StringComparison.Ordinal))
             throw new InvalidOperationException(
                 $"Actor state id '{ActorId}' does not match actor id '{actor.ActorId}'.");
@@ -312,6 +107,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public ZLinkActorContext GetOrCreateContext(Func<ZLinkActorContext> createContext)
     {
+        EnsureReusable();
         if (Context is not null) return Context;
 
         ContextInvalidated = false;
@@ -337,6 +133,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         RoutingId sessionRid,
         string bindingToken)
     {
+        EnsureReusable();
         if (bindingToken.Length == 0)
             throw new InvalidOperationException("Actor session binding token must not be empty.");
 
@@ -385,40 +182,137 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         SessionId = null;
         Stream = null;
         NativeActorRef = null;
+        RetiredLocalActorRef = null;
         Activation = null;
         CurrentDispatch = null;
         Context = null;
         Actor = null;
         ActorType = null;
         IsConfigured = false;
-        IsDestroying = false;
+        _destroyPhase = ZLinkActorDestroyPhase.None;
+        _teardownPending = false;
+        _teardownAttempt = null;
         ContextInvalidated = true;
         _actorCreationTask = null;
-        lock (_handoffGate)
-        {
-            _handoffCaptureActive = false;
-            _handoffFrames.Clear();
-            _handoffId = null;
-            _handoffCompletionInProgress = false;
-            _handoffCompletionApplied = false;
-            _forwarding = null;
-            _forwardingExpiry?.Cancel();
-            _forwardingExpiry = null;
-        }
+        Handoff.Reset();
         return boundSession;
     }
 
-    public bool TryBeginDestroy()
+    public void InvalidateRuntimeGeneration()
     {
-        if (IsDestroying) return false;
-
-        IsDestroying = true;
-        return true;
+        var failure = new InvalidOperationException(
+            $"Actor '{ActorId}' belongs to a stopped framework runtime generation.");
+        var teardownAttempt = _teardownAttempt;
+        Handoff.AbortRuntimeGeneration(failure);
+        ClearAfterDestroy();
+        teardownAttempt?.TrySetResult(failure);
     }
 
-    public void ResetDestroying()
+    public void RetireMigratedActorInstance(ZLinkBackendActorRef sourceActor)
     {
-        IsDestroying = false;
+        SessionId = null;
+        Stream = null;
+        Activation = null;
+        CurrentDispatch = null;
+        Context = null;
+        Actor = null;
+        ActorType = null;
+        IsConfigured = false;
+        ContextInvalidated = true;
+        _actorCreationTask = null;
+        RetiredLocalActorRef = sourceActor;
+        Handoff.CompleteSourceMigration();
+    }
+
+    public void PrepareForTransferredActivation()
+    {
+        if (Actor is not null || IsConfigured)
+            throw new InvalidOperationException(
+                $"Actor '{ActorId}' already has an active local instance.");
+
+        NativeActorRef = null;
+        ContextInvalidated = false;
+    }
+
+    public void ClearRetiredLocalActorRef(ZLinkBackendActorRef actor)
+    {
+        if (RetiredLocalActorRef == actor) RetiredLocalActorRef = null;
+    }
+
+    public void BeginTeardown()
+    {
+        _teardownPending = true;
+        ContextInvalidated = true;
+    }
+
+    public ZLinkActorTeardownOperation BeginOrJoinTeardownAttempt()
+    {
+        if (!_teardownPending)
+            throw new InvalidOperationException(
+                $"Actor '{ActorId}' does not have a pending teardown.");
+        if (_teardownAttempt is { } existing)
+            return new ZLinkActorTeardownOperation(existing.Task, false, false);
+
+        var nativeAlreadyDestroyed = false;
+        switch (_destroyPhase)
+        {
+            case ZLinkActorDestroyPhase.None:
+                _destroyPhase = ZLinkActorDestroyPhase.DestroyingNative;
+                break;
+            case ZLinkActorDestroyPhase.NativeDestroyed:
+                _destroyPhase = ZLinkActorDestroyPhase.ReleasingOwnership;
+                nativeAlreadyDestroyed = true;
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Actor '{ActorId}' teardown phase has no owning operation.");
+        }
+
+        _teardownAttempt = new TaskCompletionSource<Exception?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        return new ZLinkActorTeardownOperation(
+            _teardownAttempt.Task,
+            true,
+            nativeAlreadyDestroyed);
+    }
+
+    public void MarkNativeDestroyed(ZLinkActorTeardownOperation operation)
+    {
+        EnsureCurrentTeardownAttempt(operation);
+        if (_destroyPhase != ZLinkActorDestroyPhase.DestroyingNative)
+            throw new InvalidOperationException($"Actor '{ActorId}' native destroy is not active.");
+        _destroyPhase = ZLinkActorDestroyPhase.ReleasingOwnership;
+    }
+
+    public void FailTeardownAttempt(
+        ZLinkActorTeardownOperation operation,
+        bool nativeDestroyed,
+        Exception failure)
+    {
+        EnsureCurrentTeardownAttempt(operation);
+        if (nativeDestroyed)
+            _destroyPhase = ZLinkActorDestroyPhase.NativeDestroyed;
+        else
+            _destroyPhase = ZLinkActorDestroyPhase.None;
+        var completion = _teardownAttempt!;
+        _teardownAttempt = null;
+        completion.TrySetResult(failure);
+    }
+
+    public ZLinkActorBoundSession? CompleteTeardownAttempt(ZLinkActorTeardownOperation operation)
+    {
+        EnsureCurrentTeardownAttempt(operation);
+        var completion = _teardownAttempt!;
+        var boundSession = ClearAfterDestroy();
+        completion.TrySetResult(null);
+        return boundSession;
+    }
+
+    private void EnsureCurrentTeardownAttempt(ZLinkActorTeardownOperation operation)
+    {
+        if (_teardownAttempt is null || !ReferenceEquals(_teardownAttempt.Task, operation.Completion))
+            throw new InvalidOperationException(
+                $"Actor '{ActorId}' teardown operation is no longer current.");
     }
 
     public IZLinkSpot GetJoinedSpot()
@@ -465,6 +359,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         var task = await ExecuteLockedAsync(
             () =>
             {
+                EnsureReusable();
                 if (ActorType is not null
                     && !string.Equals(ActorType, actorType, StringComparison.Ordinal))
                     throw new ZLinkFrameworkException(
@@ -511,18 +406,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         return new ZLinkActorCreationOperation(task, created);
     }
 
-    public async ValueTask ClearFailedActorCreationAsync(Task<IZLinkActor> creationTask)
-    {
-        await ExecuteLockedAsync(
-            () =>
-            {
-                if (!ReferenceEquals(_actorCreationTask, creationTask)) return;
-
-                ClearFailedActorCreationLocked();
-            },
-            CancellationToken.None).ConfigureAwait(false);
-    }
-
     public async ValueTask ExecuteLockedAsync(
         Action operation,
         CancellationToken cancellationToken)
@@ -553,12 +436,56 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         }
     }
 
+    public async ValueTask<T> ExecuteHandoffTransitionAsync<T>(
+        Func<T> transition,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(transition);
+        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        return await ExecuteLockedAsync(
+                () =>
+                {
+                    EnsureReusable();
+                    return transition();
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask BeginHandoffCaptureAsync(CancellationToken cancellationToken)
+    {
+        if (AmbientDispatch.Value is { IsActive: true } ownership
+            && ReferenceEquals(ownership.State, this))
+        {
+            await ExecuteLockedAsync(
+                    () =>
+                    {
+                        EnsureReusable();
+                        Handoff.BeginCapture();
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        await ExecuteLockedAsync(
+                () =>
+                {
+                    EnsureReusable();
+                    Handoff.BeginCapture();
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask ExecuteDispatchAsync(
         ZlinkStreamHeader header,
         Func<CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
         using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        EnsureDispatchAvailable();
         using var dispatch = EnterDispatch(header);
         await operation(cancellationToken).ConfigureAwait(false);
     }
@@ -569,6 +496,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         CancellationToken cancellationToken)
     {
         using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        EnsureDispatchAvailable();
         using var dispatch = EnterDispatch(header);
         return await operation(cancellationToken).ConfigureAwait(false);
     }
@@ -578,14 +506,36 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         CancellationToken cancellationToken)
     {
         using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        EnsureDispatchAvailable();
         await operation(cancellationToken).ConfigureAwait(false);
+    }
+
+    private void EnsureDispatchAvailable()
+    {
+        if (!IsDispatchBlocked && !Handoff.BlocksLocalDispatch) return;
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            $"Actor '{ActorId}' is not available while its lifecycle transition is active.");
+    }
+
+    private void EnsureReusable()
+    {
+        if (!IsDispatchBlocked) return;
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            $"Actor '{ActorId}' cannot be reused while teardown is incomplete.");
     }
 
     public DispatchScope EnterDispatch(ZlinkStreamHeader header)
     {
         var previous = CurrentDispatch;
+        var previousAmbient = AmbientDispatch.Value;
+        var ownership = new DispatchOwnership(this);
         CurrentDispatch = new ZLinkActorDispatchState(header);
-        return new DispatchScope(this, previous);
+        AmbientDispatch.Value = ownership;
+        return new DispatchScope(this, previous, previousAmbient, ownership);
     }
 
     private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)
@@ -617,30 +567,71 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     private void ClearFailedActorCreationLocked()
     {
         _actorCreationTask = null;
-        if (!IsConfigured) Actor = null;
+        if (_teardownPending) return;
 
-        if (Actor is null) ActorType = null;
+        Actor = null;
+        ActorType = null;
+        Context = null;
+        Activation = null;
+        NativeActorRef = null;
+        IsConfigured = false;
+        ContextInvalidated = true;
     }
 
     public readonly struct DispatchScope : IDisposable
     {
         private readonly ZLinkActorRuntimeState? _state;
         private readonly ZLinkActorDispatchState? _previous;
+        private readonly DispatchOwnership? _previousAmbient;
+        private readonly DispatchOwnership? _ownership;
 
         internal DispatchScope(
             ZLinkActorRuntimeState state,
-            ZLinkActorDispatchState? previous)
+            ZLinkActorDispatchState? previous,
+            DispatchOwnership? previousAmbient,
+            DispatchOwnership ownership)
         {
             _state = state;
             _previous = previous;
+            _previousAmbient = previousAmbient;
+            _ownership = ownership;
         }
 
         public void Dispose()
         {
-            if (_state is not null) _state.CurrentDispatch = _previous;
+            if (_state is not null)
+            {
+                _ownership?.Deactivate();
+                _state.CurrentDispatch = _previous;
+                AmbientDispatch.Value = _previousAmbient;
+            }
         }
     }
+
+    internal sealed class DispatchOwnership(ZLinkActorRuntimeState state)
+    {
+        private int _active = 1;
+
+        public ZLinkActorRuntimeState State { get; } = state;
+
+        public bool IsActive => Volatile.Read(ref _active) != 0;
+
+        public void Deactivate() => Interlocked.Exchange(ref _active, 0);
+    }
 }
+
+internal enum ZLinkActorDestroyPhase
+{
+    None,
+    DestroyingNative,
+    NativeDestroyed,
+    ReleasingOwnership
+}
+
+internal readonly record struct ZLinkActorTeardownOperation(
+    Task<Exception?> Completion,
+    bool OwnsExecution,
+    bool NativeAlreadyDestroyed);
 
 internal readonly record struct ZLinkActorBoundSession(
     RoutingId? SessionNodeRid,
@@ -654,8 +645,3 @@ internal readonly record struct ZLinkActorCreationOperation(
 internal readonly record struct ZLinkActorPlacementSelection(
     ZLinkSpotActivation? Activation,
     bool Prune);
-
-internal readonly record struct ZLinkActorForwardingMapping(
-    ZLinkBackendActorRef SourceActor,
-    ZLinkBackendActorRef TargetActor,
-    DateTimeOffset ExpiresAt);

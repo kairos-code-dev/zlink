@@ -30,11 +30,14 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
 
     public void Submit(CancellationToken cancellationToken = default)
     {
+        using (var operation = _runtime.EnterOperation())
+            _runtime.GetClientBundle(_channelName);
         ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "channel submit");
     }
 
-    private ValueTask SubmitAsync(CancellationToken cancellationToken)
+    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
+        using var operation = _runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
@@ -59,12 +62,12 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
 
-        return (bundle.Submitter
+        await (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
             .Async(
                 message,
                 pending => dealer.Send(pending, SendFlags.DontWait),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
     }
 }
 
@@ -101,8 +104,9 @@ internal sealed class ZLinkRequestCall<TMessage>(
         return Timeout(timeout);
     }
 
-    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
+        using var operation = runtime.EnterOperation();
         var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var timeout = _timeout ?? registration.ResolveChannelRequestTimeout(channelName);
@@ -145,9 +149,10 @@ internal sealed class ZLinkRequestCall<TMessage>(
                     timeout),
                 cancellationToken);
 
-        if (!traceReply) return reply;
+        if (!traceReply) return await reply.ConfigureAwait(false);
 
-        return TraceReplyAsync(reply, header, bundle.LocalRid, bundle.SocketRole);
+        return await TraceReplyAsync(reply, header, bundle.LocalRid, bundle.SocketRole)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<TReply> TraceReplyAsync<TReply>(
@@ -202,11 +207,14 @@ internal sealed class ZLinkPublishCall(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
+        using (var operation = runtime.EnterOperation())
+            runtime.GetPublisherBundle(channelName);
         ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "channel submit");
     }
 
-    private ValueTask SubmitAsync(CancellationToken cancellationToken)
+    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
+        using var operation = runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetPublisherBundle(channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
@@ -233,11 +241,11 @@ internal sealed class ZLinkPublishCall(
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
 
-        return (bundle.Submitter
+        await (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))
             .Async(
                 envelopedMsg,
                 pending => publisher.Publish(topic, pending, SendFlags.DontWait),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
     }
 }

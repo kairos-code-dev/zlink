@@ -2,67 +2,54 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkActorHandoffIngress
 {
-    public static IReadOnlyList<ZLinkBackendActorPart> CaptureMovingFrames(
+    public static ZLinkSpotActorFrameBatch CaptureMovingFrames(
         ZLinkFrameworkRuntime runtime,
         IReadOnlyList<ZLinkBackendActorPart> parts)
     {
-        var dispatchable = new List<ZLinkBackendActorPart>(parts.Count);
+        var dispatchable = new List<ZLinkSpotActorFrame>(parts.Count / 2);
         var index = 0;
         while (index < parts.Count)
         {
             var headerPart = parts[index++];
             if (!ZLinkSpotActorFrameReader.TryRead(parts, ref index, headerPart, out var frame))
                 continue;
-
-            var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
-            if (state.TryCaptureHandoffFrame(frame))
-            {
-                frame.Body.Dispose();
-                continue;
-            }
-
             try
             {
-                if (ZLinkActorSessionForwarder.ShouldForward(state, frame.Actor, out var targetActor))
+                var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
+                try
                 {
-                    using (frame.Body)
-                        ZLinkActorSessionForwarder.Forward(
+                    if (ZLinkActorSessionForwarder.TryForward(
                             runtime,
                             state,
-                            targetActor,
+                            frame.Actor,
                             frame.SourceNodeRid,
                             frame.SourceSessionRid,
+                            frame.RequestId,
+                            frame.Flags,
                             frame.Header,
-                            frame.Body);
-                    continue;
+                            frame.Body))
+                    {
+                        frame.Dispose();
+                        continue;
+                    }
                 }
-            }
-            catch (ZLinkFrameworkException exception)
-                when (exception.Kind == ZLinkFrameworkErrorKind.ActorLocationStale)
-            {
-                // The async dispatcher owns stale request replies.
-            }
+                catch (ZLinkFrameworkException exception)
+                    when (exception.Kind == ZLinkFrameworkErrorKind.ActorLocationStale)
+                {
+                    // The async dispatcher owns stale request replies.
+                }
 
-            dispatchable.Add(new ZLinkBackendActorPart(
-                frame.Actor,
-                frame.SourceNodeRid,
-                frame.SourceSessionRid,
-                frame.RequestId,
-                frame.Flags,
-                Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(frame.Header).Span),
-                true,
-                frame.ReplyActor));
-            dispatchable.Add(new ZLinkBackendActorPart(
-                frame.Actor,
-                frame.SourceNodeRid,
-                frame.SourceSessionRid,
-                frame.RequestId,
-                frame.Flags,
-                frame.Body,
-                false,
-                frame.ReplyActor));
+                dispatchable.Add(frame);
+            }
+            catch
+            {
+                frame.Dispose();
+                foreach (var dispatchableFrame in dispatchable) dispatchableFrame.Dispose();
+                for (; index < parts.Count; index++) parts[index].Message.Dispose();
+                throw;
+            }
         }
 
-        return dispatchable;
+        return new ZLinkSpotActorFrameBatch(dispatchable);
     }
 }

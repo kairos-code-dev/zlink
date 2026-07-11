@@ -52,7 +52,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         return new ZLinkRouteSpotRequestCall<TRequest>(runtime, routerChannelId, address, request);
     }
 
-    public ValueTask SendPartsTo(
+    public async ValueTask SendPartsTo(
         string routerChannelId,
         RoutingId targetNodeRid,
         string packetName,
@@ -63,11 +63,13 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
             ZLinkMessageKind.Command,
             routerChannelId,
             packetName);
-        return runtime.GetRouteChannel(routerChannelId)
-            .SubmitSendPartsAsync(targetNodeRid, header, payloadParts, cancellationToken);
+        using var operation = runtime.EnterOperation();
+        await runtime.GetRouteChannel(routerChannelId)
+            .SubmitSendPartsAsync(targetNodeRid, header, payloadParts, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    public ValueTask<TReply> RequestPartsTo<TReply>(
+    public async ValueTask<TReply> RequestPartsTo<TReply>(
         string routerChannelId,
         RoutingId targetNodeRid,
         string packetName,
@@ -80,13 +82,14 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
             routerChannelId,
             packetName,
             timeout);
-        return runtime.GetRouteChannel(routerChannelId)
+        using var operation = runtime.EnterOperation();
+        return await runtime.GetRouteChannel(routerChannelId)
             .RequestPartsAsync<TReply>(
                 targetNodeRid,
                 header,
                 payloadParts,
                 timeout,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
     }
 }
 
@@ -106,7 +109,8 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        runtime.GetRouteChannel(routerChannelId);
+        using (var operation = runtime.EnterOperation())
+            runtime.GetRouteChannel(routerChannelId);
         ZLinkUnawaitedSubmit.Observe(
             runtime.SubmitRouteSendAsync(
                 routerChannelId,

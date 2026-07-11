@@ -19,18 +19,20 @@ internal sealed class ZLinkActorClient(
         return new ZLinkActorRequestCall<TRequest>(this, actor, request);
     }
 
-    private ValueTask SendAsync<TMessage>(
+    private async ValueTask SendAsync<TMessage>(
         ActorRef actor,
         string packetName,
         TMessage message,
         CancellationToken cancellationToken)
     {
+        using var operation = runtime.EnterOperation();
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Send,
             null,
             packetName,
             message);
-        return SubmitActorSendAsync(actor.ToBackend(), parts, cancellationToken);
+        await SubmitActorSendAsync(actor.ToBackend(), parts, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<TReply> RequestAsync<TRequest, TReply>(
@@ -40,6 +42,7 @@ internal sealed class ZLinkActorClient(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
+        using var operation = runtime.EnterOperation();
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Request,
             new ZlinkStreamRequestSeq(1),

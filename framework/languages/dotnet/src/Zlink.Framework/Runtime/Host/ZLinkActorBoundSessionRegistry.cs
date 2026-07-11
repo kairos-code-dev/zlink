@@ -61,6 +61,19 @@ internal sealed class ZLinkActorBoundSessionRegistry
                 runtime.UnbindActorSession(entry.ActorId, entry.BindingToken);
     }
 
+    public void UnregisterRuntime(ZLinkFrameworkRuntime runtime)
+    {
+        lock (_gate)
+        {
+            foreach (var key in _entries.Keys.ToArray())
+            {
+                var entries = _entries[key];
+                entries.RemoveAll(entry => entry.BelongsTo(runtime) || !entry.IsAlive);
+                if (entries.Count == 0) _entries.Remove(key);
+            }
+        }
+    }
+
     private sealed record Entry(
         WeakReference<ZLinkFrameworkRuntime> Runtime,
         string ActorId,
@@ -78,5 +91,8 @@ internal sealed class ZLinkActorBoundSessionRegistry
                    && string.Equals(ActorId, actorId, StringComparison.Ordinal)
                    && string.Equals(BindingToken, bindingToken, StringComparison.Ordinal);
         }
+
+        public bool BelongsTo(ZLinkFrameworkRuntime runtime)
+            => Runtime.TryGetTarget(out var current) && ReferenceEquals(current, runtime);
     }
 }

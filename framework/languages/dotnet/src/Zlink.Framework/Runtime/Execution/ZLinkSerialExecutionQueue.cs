@@ -6,6 +6,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 {
     private const int DefaultCapacity = 4096;
     private readonly int _capacity;
+    private readonly object _admissionGate = new();
 
     private readonly TaskCompletionSource _drained =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -25,6 +26,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private int _completed;
+    private int _disposed;
     private int _drainScheduled;
     private int _pendingCount;
 
@@ -44,11 +46,8 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _completed, 1) != 0) return;
-
-        _queue.Writer.TryComplete();
-        if (Volatile.Read(ref _pendingCount) == 0) _drained.TrySetResult();
-
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Complete();
         try
         {
             await _drained.Task.ConfigureAwait(false);
@@ -63,22 +62,24 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         _drainGate.Dispose();
     }
 
+    public void Complete()
+    {
+        lock (_admissionGate)
+        {
+            if (Interlocked.Exchange(ref _completed, 1) != 0) return;
+            _queue.Writer.TryComplete();
+        }
+        if (Volatile.Read(ref _pendingCount) == 0) _drained.TrySetResult();
+    }
+
     public ValueTask<ZLinkSerialWorkItem> PostAsync(
         Func<CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryReserveSlot()) throw new InvalidOperationException("ZLink serial execution queue is full.");
-
-        var item = new ZLinkSerialWorkItem(callback);
-        if (!_queue.Writer.TryWrite(item))
-        {
-            CompletePendingItem();
-            throw new InvalidOperationException("ZLink serial execution queue is closed.");
-        }
-
-        ScheduleDrain();
+        if (!TryPost(callback, out var item))
+            throw new InvalidOperationException("ZLink serial execution queue is closed or full.");
         return ValueTask.FromResult(item);
     }
 
@@ -86,21 +87,24 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         Func<CancellationToken, ValueTask> callback,
         out ZLinkSerialWorkItem item)
     {
-        if (!TryReserveSlot())
+        lock (_admissionGate)
         {
-            item = null!;
-            return false;
-        }
+            if (Volatile.Read(ref _completed) != 0 || !TryReserveSlot())
+            {
+                item = null!;
+                return false;
+            }
 
-        item = new ZLinkSerialWorkItem(callback);
-        if (_queue.Writer.TryWrite(item))
-        {
+            item = new ZLinkSerialWorkItem(callback);
+            if (!_queue.Writer.TryWrite(item))
+            {
+                CompletePendingItem();
+                item = null!;
+                return false;
+            }
             ScheduleDrain();
             return true;
         }
-
-        CompletePendingItem();
-        return false;
     }
 
     private bool TryReserveSlot()
@@ -124,13 +128,11 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
     private void ScheduleDrain()
     {
-        if (Volatile.Read(ref _completed) != 0
-            || Interlocked.Exchange(ref _drainScheduled, 1) != 0)
+        if (Interlocked.Exchange(ref _drainScheduled, 1) != 0)
             return;
 
-        _taskRunner.RunDetached(
-            "serial-queue-drain",
-            DrainAsync);
+        if (!_taskRunner.TryRunDetached("serial-queue-drain", DrainAsync))
+            _ = DrainAsync(CancellationToken.None);
     }
 
     private async ValueTask DrainAsync(CancellationToken cancellationToken)

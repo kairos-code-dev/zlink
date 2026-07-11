@@ -7,21 +7,54 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 {
     private readonly ZLinkSessionContext _context;
     private readonly ZLinkMessageFlowTracer _flow;
-    private readonly IZLinkSession _handler;
+    private IZLinkSession _handler = null!;
     private readonly Action<string> _removeSession;
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;
-    private readonly ZLinkStreamSessionSerialExecutor _serial = new();
+    private readonly ZLinkStreamSessionSerialExecutor _serial;
     private readonly IZLinkBackendStreamSocket _socket;
     private int _connected;
     private int _disconnected;
     private int _disposed;
 
-    public ZLinkStreamSessionRuntime(
-        AsyncServiceScope scope,
+    public static async ValueTask<ZLinkStreamSessionRuntime> CreateAsync(
+        IServiceProvider services,
         IZLinkBackendStreamSocket socket,
         RoutingId routingId,
         Type? headerSessionType,
+        Action<string> removeSession)
+    {
+        AsyncServiceScope scope = default;
+        var scopeCreated = false;
+        ZLinkStreamSessionRuntime? session = null;
+        try
+        {
+            scope = services.CreateAsyncScope();
+            scopeCreated = true;
+            session = new ZLinkStreamSessionRuntime(
+                scope,
+                socket,
+                routingId,
+                removeSession);
+            session.Initialize(headerSessionType);
+            return session;
+        }
+        catch (Exception initializationFailure)
+        {
+            var failures = new ZLinkFailureCollector(initializationFailure);
+            if (session is not null)
+                await failures.CaptureAsync(session.DisposeInitializationAsync).ConfigureAwait(false);
+            else if (scopeCreated)
+                await failures.CaptureAsync(scope.DisposeAsync).ConfigureAwait(false);
+            failures.ThrowIfAny();
+            throw new InvalidOperationException("Unreachable after session initialization cleanup.");
+        }
+    }
+
+    private ZLinkStreamSessionRuntime(
+        AsyncServiceScope scope,
+        IZLinkBackendStreamSocket socket,
+        RoutingId routingId,
         Action<string> removeSession)
     {
         _scope = scope;
@@ -31,8 +64,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Stream = new ZLinkManagedStream(socket, routingId, _runtime.Registration.Codecs);
         _flow = new ZLinkMessageFlowTracer(
             _runtime.Registration.DispatchOptions,
-            scope.ServiceProvider,
-            scope.ServiceProvider.GetService<ILogger<ZLinkStreamSessionRuntime>>());
+            scope.ServiceProvider.GetService<ILogger<ZLinkStreamSessionRuntime>>(),
+            _runtime);
         var handlers = new ZLinkSessionHandlerRegistry(scope.ServiceProvider);
         _context = new ZLinkSessionContext(
             _runtime,
@@ -40,36 +73,86 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             handlers,
             CloseAsync,
             CloseByProxyAsync);
-        handlers.BindContext(_context);
+        Handlers = handlers;
+        _serial = new ZLinkStreamSessionSerialExecutor(_runtime.ExecutionOwner);
+    }
+
+    public ZLinkManagedStream Stream { get; }
+
+    private ZLinkSessionHandlerRegistry Handlers { get; }
+
+    internal void RequestStop() => _serial.RequestStop();
+
+    private void Initialize(Type? headerSessionType)
+    {
+        Handlers.BindContext(_context);
         _handler = (IZLinkSession)ActivatorUtilities.CreateInstance(
-            scope.ServiceProvider,
+            _scope.ServiceProvider,
             headerSessionType!,
             _context);
         if (!ReferenceEquals(_handler.Context, _context))
             throw new InvalidOperationException(
                 $"Session '{_handler.GetType().FullName}' must expose the context provided by the runtime.");
-        handlers.AddScannedHandlers(_runtime.Registration.EnumerateHandlerScanAssemblies());
+        Handlers.AddScannedHandlers(_runtime.Registration.EnumerateHandlerScanAssemblies());
         _handler.Configure();
-        handlers.Bind();
+        Handlers.Bind();
     }
 
-    public ZLinkManagedStream Stream { get; }
+    private async ValueTask DisposeInitializationAsync()
+    {
+        var failures = new ZLinkFailureCollector();
+        await failures.CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
+        await failures.CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
+        failures.ThrowIfAny();
+    }
+
+    internal async ValueTask DisposeUncommittedAsync()
+    {
+        var failures = new ZLinkFailureCollector();
+        await failures.CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
+        await failures.CaptureAsync(() => _context.CleanupAsync(CancellationToken.None)).ConfigureAwait(false);
+        await failures.CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
+        failures.ThrowIfAny();
+    }
 
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        await _serial.DisposeAsync();
-        try
-        {
-            if (Interlocked.Exchange(ref _disconnected, 1) == 0)
-                await _handler.OnDisconnectedAsync(CancellationToken.None);
+        var failures = new List<Exception>();
+        await CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
+        if (Interlocked.Exchange(ref _disconnected, 1) == 0)
+            await CaptureAsync(() => _handler.OnDisconnectedAsync(CancellationToken.None)).ConfigureAwait(false);
+        await CaptureAsync(() => _context.CleanupAsync(CancellationToken.None)).ConfigureAwait(false);
+        Capture(() => _removeSession(Stream.SessionId));
+        await CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+        return;
 
-            await CleanupSessionAsync();
-        }
-        finally
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
         {
-            await _scope.DisposeAsync();
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
         }
     }
 
@@ -219,17 +302,35 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         ZLinkStreamError? error,
         bool notifyDisconnected)
     {
-        if (error is { } streamError) await _handler.OnErrorAsync(streamError, CancellationToken.None);
+        Exception? callbackFailure = null;
+        if (error is { } streamError)
+            try
+            {
+                await _handler.OnErrorAsync(streamError, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                callbackFailure = exception;
+            }
 
-        if (notifyDisconnected) await _handler.OnDisconnectedAsync(CancellationToken.None);
+        if (notifyDisconnected)
+            try
+            {
+                await _handler.OnDisconnectedAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                callbackFailure = callbackFailure is null
+                    ? exception
+                    : new AggregateException(callbackFailure, exception);
+            }
 
-        await CleanupSessionAsync();
-    }
+        _runtime.TryRunDetached(
+            $"stream-session-dispose:{Stream.SessionId}",
+            _ => DisposeAsync());
 
-    private async ValueTask CleanupSessionAsync()
-    {
-        await _context.CleanupAsync(CancellationToken.None);
-        _removeSession(Stream.SessionId);
+        if (callbackFailure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(callbackFailure).Throw();
     }
 
     private void Enqueue(Func<ValueTask> work, Action? onRejected = null)

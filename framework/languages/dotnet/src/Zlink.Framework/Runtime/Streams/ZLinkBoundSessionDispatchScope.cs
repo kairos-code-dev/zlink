@@ -4,7 +4,9 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
 {
     private static readonly AsyncLocal<ZLinkBoundSessionDispatchScope?> CurrentScope = new();
     private readonly string _actorId;
-    private readonly List<Func<CancellationToken, ValueTask>> _deferredOperations = new();
+    private readonly object _gate = new();
+    private readonly Queue<Func<CancellationToken, ValueTask>> _deferredOperations = new();
+    private readonly SemaphoreSlim _drainGate = new(1, 1);
     private readonly ZLinkBoundSessionDispatchScope? _previous;
     private bool _drained;
 
@@ -44,22 +46,48 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
         Func<CancellationToken, ValueTask> operationAsync)
     {
         var scope = CurrentScope.Value;
-        if (scope is null
-            || !string.Equals(scope._actorId, actorId, StringComparison.Ordinal)
-            || scope._drained)
+        if (scope is null || !string.Equals(scope._actorId, actorId, StringComparison.Ordinal))
             return false;
 
-        scope._deferredOperations.Add(operationAsync);
-        return true;
+        lock (scope._gate)
+        {
+            if (scope._drained) return false;
+            scope._deferredOperations.Enqueue(operationAsync);
+            return true;
+        }
     }
 
     public async ValueTask DrainAsync(CancellationToken cancellationToken)
     {
-        if (_drained) return;
+        await _drainGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            while (true)
+            {
+                Func<CancellationToken, ValueTask>? operation;
+                lock (_gate)
+                {
+                    if (_drained) return;
+                    if (!_deferredOperations.TryPeek(out operation))
+                    {
+                        _drained = true;
+                        return;
+                    }
+                }
 
-        _drained = true;
-        foreach (var operationAsync in _deferredOperations) await operationAsync(cancellationToken).ConfigureAwait(false);
-
-        _deferredOperations.Clear();
+                await operation(cancellationToken).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (!_deferredOperations.TryDequeue(out var completed)
+                        || !ReferenceEquals(completed, operation))
+                        throw new InvalidOperationException(
+                            "Bound-session deferred operation order changed while draining.");
+                }
+            }
+        }
+        finally
+        {
+            _drainGate.Release();
+        }
     }
 }

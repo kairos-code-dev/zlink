@@ -105,6 +105,44 @@ public sealed class LocationRuntimeTests
     }
 
     [Fact]
+    public async Task Startup_RequiresOwnerLease_AndCanRetryAfterTheStoreRecovers()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var flaky = new FlakyOwnerLeaseStore(store) { Fail = true };
+        var runtime = NewRuntime(store, flaky, time);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            runtime.StartAsync(RoutingId.From("node-1")).AsTask());
+        Assert.Empty((await store.ListOwnerLeasesAsync()).Leases);
+
+        flaky.Fail = false;
+        await runtime.StartAsync(RoutingId.From("node-1"));
+        Assert.Single((await store.ListOwnerLeasesAsync()).Leases);
+        await runtime.StopAsync();
+    }
+
+    [Fact]
+    public async Task Restart_UsesFreshOwnerGeneration_AndReportsStoppedLeaseUnhealthy()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var runtime = NewRuntime(store, store, time);
+
+        await runtime.StartAsync(RoutingId.From("stable-node"));
+        var firstOwner = runtime.OwnerId;
+        Assert.True(runtime.OwnerLeaseHealthy);
+
+        await runtime.StopAsync();
+        Assert.False(runtime.OwnerLeaseHealthy);
+
+        await runtime.StartAsync(RoutingId.From("stable-node"));
+        Assert.NotEqual(firstOwner, runtime.OwnerId);
+        Assert.True(runtime.OwnerLeaseHealthy);
+        await runtime.StopAsync();
+    }
+
+    [Fact]
     public void InMemory_Registration_Resolves_Resolvers_Query_And_Shared_Store()
     {
         var services = new ServiceCollection();

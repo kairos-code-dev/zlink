@@ -44,14 +44,10 @@ internal sealed class ZLinkChannelBundleFactory(
 
             return bundle;
         }
-        catch
+        catch (Exception initializationFailure)
         {
-            if (bundle is not null)
-                await bundle.DisposeAsync().ConfigureAwait(false);
-            else if (dealer is not null)
-                await dealer.DisposeAsync().ConfigureAwait(false);
-
-            throw;
+            await ThrowAfterCleanupAsync(initializationFailure, bundle, dealer).ConfigureAwait(false);
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
 
@@ -82,14 +78,10 @@ internal sealed class ZLinkChannelBundleFactory(
 
             return bundle;
         }
-        catch
+        catch (Exception initializationFailure)
         {
-            if (bundle is not null)
-                await bundle.DisposeAsync().ConfigureAwait(false);
-            else if (router is not null)
-                await router.DisposeAsync().ConfigureAwait(false);
-
-            throw;
+            await ThrowAfterCleanupAsync(initializationFailure, bundle, router).ConfigureAwait(false);
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
 
@@ -120,14 +112,10 @@ internal sealed class ZLinkChannelBundleFactory(
 
             return bundle;
         }
-        catch
+        catch (Exception initializationFailure)
         {
-            if (bundle is not null)
-                await bundle.DisposeAsync().ConfigureAwait(false);
-            else if (subscriber is not null)
-                await subscriber.DisposeAsync().ConfigureAwait(false);
-
-            throw;
+            await ThrowAfterCleanupAsync(initializationFailure, bundle, subscriber).ConfigureAwait(false);
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
 
@@ -164,14 +152,10 @@ internal sealed class ZLinkChannelBundleFactory(
 
             return bundle;
         }
-        catch
+        catch (Exception initializationFailure)
         {
-            if (bundle is not null)
-                await bundle.DisposeAsync().ConfigureAwait(false);
-            else if (publisher is not null)
-                await publisher.DisposeAsync().ConfigureAwait(false);
-
-            throw;
+            await ThrowAfterCleanupAsync(initializationFailure, bundle, publisher).ConfigureAwait(false);
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
 
@@ -196,6 +180,19 @@ internal sealed class ZLinkChannelBundleFactory(
             socket.Connect(endpoint);
             _ = bundle.TryAddManualConnection(endpoint);
         }
+    }
+
+    private static async ValueTask ThrowAfterCleanupAsync(
+        Exception initializationFailure,
+        IAsyncDisposable? composite,
+        IAsyncDisposable? standalone)
+    {
+        var failures = new ZLinkFailureCollector(initializationFailure);
+        if (composite is not null)
+            await failures.CaptureAsync(composite.DisposeAsync).ConfigureAwait(false);
+        else if (standalone is not null)
+            await failures.CaptureAsync(standalone.DisposeAsync).ConfigureAwait(false);
+        failures.ThrowIfAny();
     }
 
 }

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Collections.Frozen;
 
 namespace Zlink.Framework.Runtime.Configuration;
 
@@ -38,6 +39,8 @@ internal sealed class ZLinkFrameworkRegistration
     public Dictionary<string, ZLinkStreamNodeRegistration> StreamNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkSpotNodeRegistration> SpotNodes { get; } = new(StringComparer.Ordinal);
+
+    public ZLinkActorCatalog ActorCatalog { get; } = new();
 
     public Dictionary<string, ZLinkSpotMeshChannelRegistration> SpotMeshChannels { get; } = new(StringComparer.Ordinal);
 
@@ -256,7 +259,54 @@ internal sealed class ZLinkSpotNodeRegistration
 
 internal sealed record ZLinkActorTransferRegistration(
     Type ActorType,
-    Type AdapterType);
+    Type AdapterType,
+    IZLinkActorTransferInvoker Invoker);
+
+internal sealed class ZLinkActorCatalog
+{
+    private IReadOnlyDictionary<string, Type> _factories = FrozenDictionary<string, Type>.Empty;
+    private IReadOnlyDictionary<string, ZLinkActorTransferRegistration> _transfers =
+        FrozenDictionary<string, ZLinkActorTransferRegistration>.Empty;
+
+    public IReadOnlyDictionary<string, Type> Factories => _factories;
+
+    public IReadOnlyDictionary<string, ZLinkActorTransferRegistration> Transfers => _transfers;
+
+    public void Build(IEnumerable<ZLinkSpotNodeRegistration> spotNodes)
+    {
+        var factories = new Dictionary<string, Type>(StringComparer.Ordinal);
+        var transfers = new Dictionary<string, ZLinkActorTransferRegistration>(StringComparer.Ordinal);
+        foreach (var spotNode in spotNodes)
+        {
+            foreach (var (actorType, factoryType) in spotNode.ActorFactories)
+                factories.TryAdd(actorType, factoryType);
+
+            foreach (var (actorType, transfer) in spotNode.ActorTransfers)
+                if (!transfers.TryAdd(actorType, transfer))
+                    throw new ZLinkConfigurationException(
+                        $"Duplicate actor transfer '{actorType}' across SpotNodes.");
+        }
+
+        _factories = factories.ToFrozenDictionary(StringComparer.Ordinal);
+        _transfers = transfers.ToFrozenDictionary(StringComparer.Ordinal);
+    }
+
+    public bool TryGetTransfer(
+        string actorType,
+        out ZLinkActorTransferRegistration? transfer)
+    {
+        return _transfers.TryGetValue(actorType, out transfer);
+    }
+
+    public Type ResolveFactory(string actorType)
+    {
+        return _factories.TryGetValue(actorType, out var factoryType)
+            ? factoryType
+            : throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                $"Actor factory '{actorType}' is not registered.");
+    }
+}
 
 internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
 {

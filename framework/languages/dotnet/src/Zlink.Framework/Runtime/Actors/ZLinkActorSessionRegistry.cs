@@ -46,4 +46,16 @@ internal sealed class ZLinkActorSessionRegistry
                 _states.Remove(actorId);
         }
     }
+
+    public void ResetGeneration()
+    {
+        ZLinkActorRuntimeState[] states;
+        lock (_gate)
+        {
+            states = _states.Values.ToArray();
+            _states.Clear();
+        }
+
+        foreach (var state in states) state.InvalidateRuntimeGeneration();
+    }
 }

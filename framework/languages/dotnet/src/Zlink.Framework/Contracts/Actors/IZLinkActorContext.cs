@@ -48,6 +48,11 @@ public sealed record ZLinkActorJoinResult<TReply>(
 
 public interface IZLinkActorJoinCall
 {
+    /// <summary>
+    /// Executes the join as part of the actor handler turn that created this
+    /// call. The returned operation must be awaited by that handler and must
+    /// not be started from a detached child task.
+    /// </summary>
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
 

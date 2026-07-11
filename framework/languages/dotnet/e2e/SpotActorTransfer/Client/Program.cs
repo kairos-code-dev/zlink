@@ -442,9 +442,12 @@ async Task RunBoundSessionCrossMoveOrderAsync()
     bound.Send(new HandoffPacket("ST-F3", "S2")).PacketName(nameof(HandoffPacket)).Submit();
     await Task.Delay(300);
     await ReleaseJoinedGateAsync(nodeB, spotRid);
-    Require((await joinTask).Accepted, "ST-F3 transfer was rejected.");
+    // Submit at the completion boundary so the packets may hit either the
+    // source capture or the rebound target route. The actor queue must still
+    // observe the pre-cutover backlog first.
     bound.Send(new HandoffPacket("ST-F3", "S3")).PacketName(nameof(HandoffPacket)).Submit();
     bound.Send(new HandoffPacket("ST-F3", "S4")).PacketName(nameof(HandoffPacket)).Submit();
+    Require((await joinTask).Accepted, "ST-F3 transfer was rejected.");
     await AssertEvidenceOrderAsync(nodeB, actorId, "handoff_packet", ["S1", "S2", "S3", "S4"]);
 }
 
@@ -454,7 +457,7 @@ async Task RunStragglerForwardThenFailFastAsync()
     await SendRefAsync(nodeA, actorId, oldRef, new HandoffPacket("ST-F4", "G1"));
     await WaitEvidenceAsync(nodeB, [$"ST-F4|{actorId}|handoff_packet|G1"]);
 
-    await Task.Delay(TimeSpan.FromMilliseconds(3300));
+    await Task.Delay(TimeSpan.FromMilliseconds(5300));
     var stale = await ProbeRefAsync(nodeA, actorId, oldRef, new ProbeReq("ST-F4", "G2"));
     Require(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
         $"ST-F4 expected ActorLocationStale, got '{stale.ErrorKind}'.");
@@ -478,16 +481,24 @@ async Task RunForwardingMappingEvictionAsync()
     await SendRefAsync(nodeA, actorId, oldRefA, new HandoffPacket("ST-F5", "chain-to-final"));
     await WaitEvidenceAsync(nodeC, [$"ST-F5|{actorId}|handoff_packet|chain-to-final"]);
 
-    await Task.Delay(TimeSpan.FromMilliseconds(3300));
+    Require((await JoinAsync(nodeC, actorId, new JoinTargetReq("ST-F5", spotB))).Accepted,
+        "ST-F5 immediate return transfer to the previous node was rejected.");
+    var returnedRef = await GetActorRefAsync(nodeB, actorId);
+    await SendRefAsync(nodeB, actorId, returnedRef, new HandoffPacket("ST-F5", "returned-within-window"));
+    await WaitEvidenceAsync(nodeB, [$"ST-F5|{actorId}|handoff_packet|returned-within-window"]);
+
+    await Task.Delay(TimeSpan.FromMilliseconds(5300));
     var stale = await ProbeRefAsync(nodeA, actorId, oldRefA, new ProbeReq("ST-F5", "after-eviction"));
     Require(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
         $"ST-F5 expected evicted mapping to fail stale, got '{stale.ErrorKind}'.");
     var staleB = await ProbeRefAsync(nodeB, actorId, oldRefB, new ProbeReq("ST-F5", "after-eviction-b"));
     Require(!staleB.Succeeded && staleB.ErrorKind == "ActorLocationStale",
         $"ST-F5 expected node-b mapping eviction, got '{staleB.ErrorKind}'.");
-    var evidence = await GetEvidenceAsync(nodeC);
+    var evidence = await GetEvidenceAsync(nodeB);
     RequireNoContains(evidence, $"ST-F5|{actorId}|packet_handler|after-eviction",
         "ST-F5 evicted packet reached the target handler.");
+    await SendRefAsync(nodeB, actorId, returnedRef, new HandoffPacket("ST-F5", "returned-to-b"));
+    await WaitEvidenceAsync(nodeB, [$"ST-F5|{actorId}|handoff_packet|returned-to-b"]);
 }
 
 async Task RunInFlightRequestCorrelationAndTimeoutAsync()

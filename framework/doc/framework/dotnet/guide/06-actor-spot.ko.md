@@ -4,7 +4,7 @@
 
 # 6. Actor & Spot 호스팅
 
-> 정식 계약은 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)가 다룬다.
+> 정식 계약은 [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)가 다룬다.
 > 이 챕터는 actor 모델과 **Spot 이 actor 를 호스팅하는 면(location 축)** — 즉 spot 쪽에
 > 호출되는 actor lifecycle 콜백과 그 콜백을 부르는 트리거 함수 — 를 다룬다.
 > session ↔ actor relay(binding 축)는 [07-actor-session](07-actor-session.ko.md)이 다룬다.
@@ -23,8 +23,8 @@ framework 가 등록된 resolver 로 푼다.
 
 actor **하나**를 볼 때 서로 독립인 **두 속성**이 있다.
 
-- **위치(location)** — 이 actor 가 **어느 Spot 에 사는가**. Entry Spot(생성 직후 기본) ↔ user Spot.
-- **binding** — 이 actor 에 **어느 client 의 연결이 물려 있는가**. `bind` 는 client 의 STREAM
+- **위치(location)** — 이 actor 가 **어느 Spot 에 존재하는가**. Entry Spot(생성 직후 기본) ↔ user Spot.
+- **binding** — 이 actor 에 **어느 client 의 연결이 설정되어 있는가**. `bind` 는 client 의 STREAM
   session 을 actor 에 이어 주는 것이다. bound 되면 그 client 가 보낸 packet 이 이 actor 로 들어오고,
   actor 가 보낸 메시지는 그 session 을 타고 같은 client 로 돌아간다 — **client 연결 하나 ↔ actor
   하나를 잇는 선**이라고 보면 된다.
@@ -35,11 +35,11 @@ actor **하나**를 볼 때 서로 독립인 **두 속성**이 있다.
 | **binding** | unbound ↔ client STREAM session 에 bound | `bind` / `disconnect·unbind` | [07-actor-session](07-actor-session.ko.md) |
 
 두 속성은 **완전히 독립**이다. user Spot 에 join 하는 데 client bind 가 필요 없고, 반대로 client 가
-끊겨 unbound 가 돼도 actor 의 위치·상태는 그대로 남는다(같은 `actorId` 로 다시 붙으면 새 session 이
-같은 actor 에 bind 될 뿐이다). 그래서 actor 는 **두 가지 모습**으로 돈다.
+끊겨 unbound 가 돼도 actor 의 위치·상태는 그대로 남는다(같은 `actorId` 로 다시 연결하면 새 session 이
+같은 actor 에 bind 될 뿐이다). 그래서 actor 는 **두 가지 모습**으로 동작한다.
 
-**(A) session 없이 — spot 이 actor 를 호스팅한다 (위치 축, 이 챕터).** client 가 안 붙어도 actor 는
-살아 있고, `actorId` routing 으로 다른 actor·handler 가 호출한다. 바뀌는 건 **어느 Spot 에 사는지**뿐이다.
+**(A) session 없이 사용하는경우 — spot 이 actor 를 호스팅한다.** client 가 연결되지 않아도 actor 는
+유지되고, `actorId` routing 으로 다른 actor·handler 가 호출한다. 바뀌는 건 **어느 Spot 에 존재하는지**뿐이다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -57,8 +57,8 @@ stateDiagram-v2
 - 생성 직후 **Entry Spot**, `JoinSpot` 으로 user Spot(room)에 들어가고 framework 가 `leave` 로 되돌린다.
 - destroy 는 **Entry Spot 에서만** 가능하다(user Spot 이면 먼저 `leave`). 여기엔 client 가 없다.
 
-**왜 client 없이 사는 actor 가 필요한가.** binding 은 "지금 이 actor 를 누가 조종하느냐"일 뿐,
-actor 의 존재 이유가 아니다. client 를 안 붙이고 살려 두는 대표 경우는 둘이다.
+**왜 client 없이 존재하는 actor 가 필요한가.** binding 은 "지금 이 actor 를 누가 조종하느냐"일 뿐,
+actor 의 존재 이유가 아니다. client 를 연결하지 않고 유지하는 대표 경우는 둘이다.
 
 - **재접속 사이 상태 유지** — 연결이 잠깐 끊겨도 진행 상태·위치는 그대로 남고, 재접속하면 새
   session 이 **같은 actor** 에 다시 bind 된다. TicTacToe·Bingo 는 disconnect 때 actor 를 지우지
@@ -88,17 +88,43 @@ sequenceDiagram
     S-->>C: STREAM push
 ```
 
-- client 는 STREAM 하나만 들면 된다. actor 가 어느 Spot 에 사는지는 client 가 몰라도 된다.
+- client 는 STREAM 하나만 사용하면 된다. actor 가 어느 Spot 에 존재하는지는 client 가 몰라도 된다.
 - client 가 끊겨도 actor·spot membership 은 그대로 — 재접속하면 새 session 이 같은 actor 에 다시 bind 된다.
 
 framework 가 자동으로 관리하는 것: Entry Spot 생성/소멸, user Spot 에서 Entry Spot 으로 leave.
-session disconnect 는 actor membership 을 바꾸지 않는다. actor 에게 끊김을 알려야 하면 응용이 대상
-actor 를 선택해서 `NotifyDisconnectedAsync(...)` 를 호출한다.
+session disconnect 는 actor membership 을 바꾸지 않는다. actor 에게 끊김을 알려야 하면 어플리케이션에서
+대상 actor 를 선택해서 `NotifyDisconnectedAsync(...)` 를 호출한다.
 
 actor 객체를 끝내려면 actor 를 Entry Spot 에 둔 뒤 `IZLinkEntrySpotContext.DestroyActorAsync(actor)`
 를 호출한다. 이 호출은 lifecycle callback 을 호출하지 않고 native actor ref, framework registry,
 bound session mapping 을 정리한다. user Spot 에 있는 actor 를 직접 destroy 할 수 없으므로 room
 안에서는 먼저 leave 를 완료해야 한다.
+
+수명주기를 시간순으로 한눈에 보면 아래와 같다. 두 **Entry Spot** 박스는 같은 Entry Spot 을 시점만
+달리 표시한 것이다.
+
+```mermaid
+flowchart LR
+    C([factory.CreateAsync]) --> A1
+    subgraph ES1["Entry Spot (생성 직후)"]
+        A1(("actor"))
+    end
+    A1 -->|JoinSpot| A2
+    subgraph US["user Spot (room)"]
+        A2(("actor"))
+    end
+    A2 -->|leave| A3
+    subgraph ES2["Entry Spot (leave 후)"]
+        A3(("actor"))
+    end
+    A3 -->|DestroyActorAsync| D([종료 · ref/registry/session 정리])
+    classDef actor fill:#e53935,stroke:#b71c1c,color:#fff;
+    class A1,A2,A3 actor;
+```
+
+- 생성은 **Entry Spot** 에서 시작하고, room 진입은 `JoinSpot`, room 이탈은 `leave` 다.
+- **destroy 는 Entry Spot 에서만** 가능하다. user Spot 에 있으면 `leave` 로 Entry Spot 에 돌아온 뒤에야
+  destroy 할 수 있어서, 경로는 항상 **user Spot → leave → Entry Spot → destroy** 를 지난다.
 
 ## 2. actor 등록과 작성
 
@@ -145,6 +171,11 @@ actor 안에서의 spot join 과 현재 상태 조회는 주입된 `IZLinkActorC
 `JoinSpot`/`JoinEntrySpot` 도 `Request` 처럼 reply 대기 `Timeout(...)` override 를 받는다. 생략하면
 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
 
+join 호출은 현재 actor handler 실행의 일부다. handler가 만든 호출은 그 handler에서 바로 `await`한다.
+`Task.Run`이나 저장해 둔 callback으로 join을 분리하면 단일 actor 실행 순서에서 벗어나므로 지원하지
+않는다. actor 실행과 분리한 작업의 결과로 이동해야 한다면 그 결과를 새 actor message로 전달하고,
+그 message를 처리하는 handler 안에서 join을 호출한다.
+
 `spotRid`는 user Spot 의 `RoutingId`이고, `spotNodeRid`는 Entry Spot 을 가진 SpotNode 의
 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서 `RoutingId`를 얻는 규칙은 application 이
 정하는데, 샘플·e2e 는 대부분 **domain id 를 그대로 `RoutingId.From(roomId)`** 로 쓴다(예: Bingo 의
@@ -181,8 +212,8 @@ public sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
 > create payload 가 필요 없으면 `GetOrCreateAsync(actorId, actorType, ct)` 오버로드를 쓴다.
 >
 > **`Generation` 은 무엇에 쓰는 값인가 — fencing token.** ref 3종 중 `NodeRid`·`ActorId` 가
-> "그 actor 가 누구이고 어느 노드에 있나"를 가리킨다면, `Generation` 은 "이 ref 가 아직 **지금 살아
-> 있는 바로 그 actor**를 가리키는가"를 판별한다. 같은 `actorId` 라도 actor 가 다른 노드로 migration 되면
+> "그 actor 가 누구이고 어느 노드에 있나"를 가리킨다면, `Generation` 은 "이 ref 가 아직 **현재 유효한
+> 바로 그 actor**를 가리키는가"를 판별한다. 같은 `actorId` 라도 actor 가 다른 노드로 migration 되면
 > store 가 `generation` 을 원자적으로 +1 발급한다(§3 "actor 이동"). **바뀌는 기준은 "어느 Spot 이냐"가
 > 아니라 "어느 노드냐"다** — 같은 노드 안에서 Spot 만 이동하면(Entry Spot ↔ 같은 노드의 user Spot)
 > 기존 인스턴스를 그대로 쓰므로 `generation` 은 그대로다. 노드를 넘는 transfer 때만 올라간다. 그래서 어떤 session·caller 가
@@ -191,7 +222,7 @@ public sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
 > **stale 로 판정해 되돌린다**(`ActorLocationStale`). caller 는 resolver 에서 새 live ref 를 다시 얻어
 > 재호출하고, 그 사이 옛 노드에서 handler 가 잘못 실행되는 일은 없다. 즉 노드가 바뀌어도 "옛 위치로
 > 조용히 잘못 배달"되지 않게 막는 세대 번호다. (fencing 규칙 전체는
-> [spec/aspnet-core-location](../spec/aspnet-core-location.ko.md).)
+> [spec/aspnet-core-location](../../common/spec/languages/dotnet/aspnet-core-location.ko.md).)
 >
 > 5초는 `ActorTransferForwardWindow`의 기본값이다. 배포 환경에서 이 값을 바꿀 수 있지만, 값을 늘리면
 > stale ref를 더 오래 흡수하는 대신 source node가 forwarding mapping을 더 오래 보관한다. 이 값은
@@ -212,7 +243,7 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 | `OnActorJoinAsync(actorId, req, ct) → ZLinkSpotActorJoinResult` | actor 의 `Context.JoinSpot(spotRid, req)` / `JoinEntrySpot(...)` — **admission 결정 지점**(Accept/Reject). actor instance나 route 정보 없이 actor id만 받는다 | ✅ | ✅ |
 | `OnJoinedActorAsync(actor, ct)` | membership commit이 끝난 뒤 join 완료를 알릴 때 | ✅ | ✅ |
 | `OnLeaveActorAsync(actor, ct)` | actor 가 **그 Spot 을 떠날 때** — 다른 Spot 으로 join(Entry→room 포함) 또는 `leaveActor`/framework leave | ✅ | ✅ |
-| `OnDisconnectActorAsync(actor, ct)` | 응용이 그 actor 에 `NotifyDisconnectedAsync(...)` | ✅ | ✅ |
+| `OnDisconnectActorAsync(actor, ct)` | 어플리케이션이 그 actor 에 `NotifyDisconnectedAsync(...)` | ✅ | ✅ |
 | actor packet handler | session 이 bound actor 로 `actorRef.RelayAsync(payload)`(→ [07 §1](07-actor-session.ko.md)) | ✅ | ✅ |
 
 > **admission 은 `OnActorJoinAsync` 의 반환값으로 정한다.** `ZLinkSpotActorJoinResult.Accept(reply)`
@@ -262,7 +293,7 @@ sequenceDiagram
 는 target admission만 결정하고, remote materialize는 새 actor 생성이 아니므로 Entry Spot
 `OnCreateActorAsync`는 호출하지 않는다.
 
-먼저 큰 그림 — actor 인스턴스가 **A 노드의 Spot 을 떠나 B 노드의 Spot 에서 다시 살아난다**. 같은
+먼저 큰 그림 — actor 인스턴스가 **A 노드의 Spot 에서 벗어나 B 노드의 Spot 에서 다시 만들어진다**. 같은
 `actorId` 지만 노드를 넘었으므로 `generation` 이 +1 되고, client 의 bound STREAM 도 A→B 로 함께 옮겨져
 push 가 끊기지 않는다.
 
@@ -402,7 +433,7 @@ node 사이에는 `ZLinkMessage`의 content type과 payload만 전달된다. 따
 > **규칙 — join 이 성공(Accept)하면 그 `actor` 객체를 더 접근하지 않는다.** join 이 끝나면 actor 는 이
 > Spot 을 떠났고, **크로스노드면 이 노드의 인스턴스는 retire** 된다(접근하면 stale). 호출한 handler 는
 > `joined.Accepted`/`joined.Reply` 로 결과만 처리하고 **반환**한다. join 직후의 client push 같은 후처리는
-> actor 가 실제로 사는 **대상 Spot 의 `OnJoinedActorAsync`**(또는 그 Spot handler)에서 한다 — 거기서
+> actor 가 실제로 존재하는 **대상 Spot 의 `OnJoinedActorAsync`**(또는 그 Spot handler)에서 한다 — 거기서
 > 받는 actor 가 옳은(이동 후) 인스턴스다. 참고로 `OnLeaveActorAsync` 는 actor 객체가 아니라 actor 가
 > 떠난 **Spot** 에게 알리는 콜백이다(객체 destroy 가 아니라 membership 통지).
 
@@ -547,7 +578,7 @@ internal sealed class BingoRoom(IZLinkSpotContext context, /* … */) : IZLinkSp
     // 트리거: Context.leaveActor(actor) 또는 framework leave. room 상태에서 제거.
     public ValueTask OnLeaveActorAsync(PlayerActor actor, CancellationToken ct) { _actors.Remove(actor.ActorId); return ValueTask.CompletedTask; }
 
-    // 트리거: 응용의 actor.NotifyDisconnectedAsync(). 끊김 표시만, membership 은 유지.
+    // 트리거: 어플리케이션의 actor.NotifyDisconnectedAsync(). 끊김 표시만, membership 은 유지.
     public ValueTask OnDisconnectActorAsync(PlayerActor actor, CancellationToken ct) { actor.MarkDisconnected(); return ValueTask.CompletedTask; }
 
     // 게임 종료 시 room 이 직접 참가자들을 내보낸다 → 각 actor 의 OnLeaveActorAsync 트리거.
@@ -567,7 +598,7 @@ match handler → `JoinSpot`→ room `OnActorJoin`(admission)/`OnJoined` → 게
 
 - session ↔ actor relay(인증·binding·bound session push·등록 코드): [07-actor-session](07-actor-session.ko.md)
 - 이 챕터 계약의 실행 검증 예문(actor/context/factory/handler): [12-interface-catalog](12-interface-catalog.ko.md) §4 — 검증 클래스 `ActorContracts`
-- 정식 계약: [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)
+- 정식 계약: [spec/aspnet-core-actor](../../common/spec/languages/dotnet/aspnet-core-actor.ko.md)
 - 전체 예제: [bingo 샘플](samples/bingo-game-sample.ko.md), [tictactoe 샘플](samples/tictactoe-game-sample.ko.md)
 - Spot 자체(생성·메시징·timer): [05-spot](05-spot.ko.md)
 

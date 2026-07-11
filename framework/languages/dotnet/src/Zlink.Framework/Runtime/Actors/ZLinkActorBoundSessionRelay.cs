@@ -159,8 +159,6 @@ internal static class ZLinkActorBoundSessionRelay
     {
         var frame = reply.ToFrame(requestHeader);
         using var replyMessage = Message.From(frame);
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");
         runtime.ReplyActorNoBind(
             actorRef,
             sourceNodeRid,
@@ -168,6 +166,8 @@ internal static class ZLinkActorBoundSessionRelay
             requestId,
             flags,
             [replyMessage]);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");
     }
 
     private static async ValueTask SendFrameWithRetryAsync(

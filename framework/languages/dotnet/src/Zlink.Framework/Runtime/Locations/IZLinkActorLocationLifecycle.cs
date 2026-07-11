@@ -19,8 +19,12 @@ internal interface IZLinkActorLocationLifecycle
         Func<CancellationToken, ValueTask>? deactivate,
         CancellationToken cancellationToken);
 
-    ValueTask<ZLinkLocationWriteResult> PublishActorRefAsync(
+    ValueTask PublishActorRefAsync(
         string actorId,
         ActorRef actorRef,
+        CancellationToken cancellationToken = default);
+
+    ValueTask ReleaseActorAsync(
+        string actorId,
         CancellationToken cancellationToken = default);
 }

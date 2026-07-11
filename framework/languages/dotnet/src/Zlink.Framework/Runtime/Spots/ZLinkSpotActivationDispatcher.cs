@@ -7,6 +7,7 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotActivationDispatcher
 {
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher;
+    private readonly ZLinkActorInboundPipeline _actorPipeline;
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher;
     private readonly ZLinkDispatchErrorReporter _dispatchErrors;
     private readonly ILogger<ZLinkSpotActivationDispatcher> _logger;
@@ -40,14 +41,17 @@ internal sealed class ZLinkSpotActivationDispatcher
                   ?? NullLogger<ZLinkSpotActivationDispatcher>.Instance;
         _dispatchErrors = new ZLinkDispatchErrorReporter(
             runtime.Registration.DispatchOptions,
-            runtime.Services,
-            _logger);
+            _logger,
+            runtime);
         _actorPacketDispatcher = new ZLinkSpotActorPacketDispatcher(
             actorHandlers,
             handlerInvoker,
             _dispatchErrors,
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorPacketDispatcher>()
             ?? NullLogger<ZLinkSpotActorPacketDispatcher>.Instance);
+        _actorPipeline = new ZLinkActorInboundPipeline(
+            runtime,
+            new ZLinkUserSpotActorInboundEndpoint(runtime, actors, _actorPacketDispatcher));
         _actorJoinDispatcher = new ZLinkSpotActorJoinDispatcher(
             runtime,
             nativeSpot,
@@ -98,97 +102,19 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
     }
 
-    public async ValueTask DispatchActorPartsAsync(
-        IReadOnlyList<ZLinkBackendActorPart> parts,
+    public async ValueTask DispatchActorFramesAsync(
+        ZLinkSpotActorFrameBatch frames,
         CancellationToken cancellationToken)
     {
-        var i = 0;
-        while (i < parts.Count)
-        {
-            var headerPart = parts[i++];
-            var runtimeState = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
-            if (!actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
-                actor = runtimeState.Actor;
+        await _actorPipeline.DispatchAsync(frames, cancellationToken).ConfigureAwait(false);
+    }
 
-            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame)) continue;
-
-            if (actor is null)
-            {
-                using (frame.Body)
-                {
-                    ZLinkActorBoundSessionRelay.TryReplyMissingNoBindActor(
-                        runtime,
-                        frame.Actor,
-                        frame.SourceNodeRid,
-                        frame.SourceSessionRid,
-                        frame.RequestId,
-                        frame.Flags,
-                        frame.Header);
-                }
-
-                continue;
-            }
-
-            ZLinkBackendActorRef targetActor;
-            bool shouldForward;
-            try
-            {
-                shouldForward = ZLinkActorSessionForwarder.ShouldForward(
-                    runtimeState,
-                    frame.Actor,
-                    out targetActor);
-            }
-            catch (ZLinkFrameworkException exception)
-                when (exception.Kind == ZLinkFrameworkErrorKind.ActorLocationStale)
-            {
-                using (frame.Body)
-                    await ZLinkActorBoundSessionRelay.ReplyStaleActorAsync(
-                            runtime,
-                            frame.Actor,
-                            frame.SourceNodeRid,
-                            frame.SourceSessionRid,
-                            frame.RequestId,
-                            frame.Flags,
-                            frame.Header,
-                            exception,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                continue;
-            }
-
-            if (shouldForward)
-            {
-                using (frame.Body)
-                {
-                    ZLinkActorSessionForwarder.Forward(
-                        runtime,
-                        runtimeState,
-                        targetActor,
-                        frame.SourceNodeRid,
-                        frame.SourceSessionRid,
-                        frame.Header,
-                        frame.Body);
-                }
-
-                continue;
-            }
-
-            using (frame.Body)
-            {
-                await DispatchActorStreamPartAsync(
-                        actor,
-                        frame.ReplyActor,
-                        frame.Actor.ActorId,
-                        frame.SourceNodeRid,
-                        frame.SourceSessionRid,
-                        frame.RequestId,
-                        frame.Flags,
-                        frame.Header,
-                        frame.Body,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
+    public ValueTask DispatchActorReplayFramesAsync(
+        ZLinkSpotActorFrameBatch frames,
+        Action acknowledgeFrame,
+        CancellationToken cancellationToken)
+    {
+        return _actorPipeline.DispatchReplayAsync(frames, acknowledgeFrame, cancellationToken);
     }
 
     public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
@@ -272,7 +198,10 @@ internal sealed class ZLinkSpotActivationDispatcher
             if (string.Equals(header.MessageName, ZLinkRemoteActorJoinPackets.HandoffCompletionPacketName, StringComparison.Ordinal))
             {
                 var completionRequest = ZLinkRemoteActorJoinPackets.DecodeHandoffCompletionRequest(received.Parts);
-                await runtime.CompleteRoutedActorHandoffAsync(completionRequest, cancellationToken)
+                await runtime.CompleteRoutedActorHandoffAsync(
+                        nativeSpot.RoutingId,
+                        completionRequest,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 var completionReplyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
                     channelName,
@@ -325,81 +254,6 @@ internal sealed class ZLinkSpotActivationDispatcher
             .DrainAsync(nativeSpot, runtime.Registration.Codecs, _dispatchErrors, _logger, InvokeSubscriptionAsync,
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private async ValueTask DispatchActorStreamPartAsync(
-        IZLinkActor actor,
-        ZLinkBackendActorRef actorRef,
-        string actorId,
-        RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid,
-        ulong requestId,
-        uint flags,
-        ZlinkStreamHeader streamHeader,
-        Message body,
-        CancellationToken cancellationToken)
-    {
-        if (ZLinkActorBoundSessionRelay.IsSessionDisconnectedPacket(streamHeader))
-        {
-            ZLinkActorBoundSessionRelay.RemoveNativeBinding(runtime, actorId, sourceSessionRid);
-            await runtime.NotifyActorDisconnectedByIdAsync(actorId, cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
-        var runtimeState = runtime.GetOrCreateActorState(actorId);
-        var boundSession = ZLinkActorBoundSessionRelay.EnterDispatch(
-            runtime,
-            actorId,
-            sourceNodeRid,
-            sourceSessionRid,
-            requestId,
-            flags);
-
-        try
-        {
-            if (streamHeader.RequestSeq is not null)
-            {
-                var reply = await _actorPacketDispatcher.DispatchForReplyAsync(
-                        actor,
-                        runtimeState,
-                        streamHeader,
-                        body,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (reply is null) return;
-
-                await ZLinkActorBoundSessionRelay.SendReplyAsync(
-                        runtime,
-                        actorId,
-                        actorRef,
-                        sourceNodeRid,
-                        sourceSessionRid,
-                        requestId,
-                        flags,
-                        boundSession.IsNoBind,
-                        streamHeader,
-                        reply,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-
-                await boundSession.DrainAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            await _actorPacketDispatcher.DispatchAsync(
-                    actor,
-                    runtimeState,
-                    streamHeader,
-                    body,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            await boundSession.DisposeAsync().ConfigureAwait(false);
-        }
     }
 
     private async ValueTask InvokeSubscriptionAsync(

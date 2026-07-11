@@ -57,12 +57,17 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
 
     internal async ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
-        if (_cts is not null)
-        {
-            await _cts.CancelAsync().ConfigureAwait(false);
-        }
+        var cts = _cts;
+        var loop = _loop;
+        var watch = _watch;
+        _cts = null;
+        _loop = null;
+        _watch = null;
+        var failures = new List<Exception>();
+        if (cts is not null)
+            await CaptureAsync(async () => await cts.CancelAsync().ConfigureAwait(false)).ConfigureAwait(false);
 
-        foreach (var task in new[] { _loop, _watch })
+        foreach (var task in new[] { loop, watch })
         {
             if (task is null)
             {
@@ -76,16 +81,50 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
             catch (OperationCanceledException)
             {
             }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
         }
 
-        await _reconciler.ShutdownAsync(cancellationToken).ConfigureAwait(false);
+        await CaptureAsync(() => _reconciler.ShutdownAsync(cancellationToken)).ConfigureAwait(false);
+        cts?.Dispose();
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+        return;
+
+        async ValueTask CaptureAsync(Func<ValueTask> operation)
+        {
+            try
+            {
+                await operation().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        await StopAsync().ConfigureAwait(false);
-        _cts?.Dispose();
-        _wake.Dispose();
+        Exception? failure = null;
+        try
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+        finally
+        {
+            _wake.Dispose();
+        }
+
+        if (failure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     /// <summary>Runs one reconcile tick, letting the change stamp skip the

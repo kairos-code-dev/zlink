@@ -4,6 +4,7 @@ namespace Zlink.Framework.Runtime.Channels;
 // startup 전용 속성은 read 는 build-time recipe 값을 돌려주되 set 은 명확한 오류로 거부한다.
 // (build-time 객체는 ZLinkSocketConfig 가 그대로 처리하므로 이 wrapper 는 runtime 전용이다.)
 internal sealed class ZLinkLiveSocketConfig(
+    ZLinkFrameworkRuntime runtime,
     IZLinkBackendWeightedSocket socket,
     IZLinkSocketConfig recipe) : IZLinkSocketConfig
 {
@@ -13,11 +14,15 @@ internal sealed class ZLinkLiveSocketConfig(
     // 경계다. 즉 weight mutation 은 기존 concurrent send 패턴보다 더 위험하지 않다.
     public int Weight
     {
-        get => socket.GetPeerWeight();
+        get => runtime.ExecuteOperation(socket.GetPeerWeight);
         set
         {
             ZLinkSocketConfig.ValidatePeerWeight(value);
-            socket.SetPeerWeight(value);
+            runtime.ExecuteOperation(() =>
+            {
+                socket.SetPeerWeight(value);
+                return true;
+            });
         }
     }
 

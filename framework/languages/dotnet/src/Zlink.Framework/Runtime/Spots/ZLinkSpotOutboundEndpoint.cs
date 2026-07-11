@@ -30,16 +30,17 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request);
     }
 
-    public ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
+        using var operation = runtime.EnterOperation();
         var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
-        return ZLinkRawRequestSubmitter.SubmitAsync(
+        return await ZLinkRawRequestSubmitter.SubmitAsync(
                 bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink request submitter is not initialized."),
                 parts,
@@ -50,22 +51,23 @@ internal sealed class ZLinkSpotOutboundEndpoint(
                     currentTimeout),
                 requestTimeout,
                 "SPOT channel request failed with result '{0}'.",
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask SendToChannelAsync(
+    public async ValueTask SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
+        using var operation = runtime.EnterOperation();
         var bundle = runtime.GetClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        return (bundle.Submitter
+        await (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
             .Async(
                 parts,
                 pending => dealer.Send(pending, SendFlags.DontWait),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
     }
 
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
@@ -85,12 +87,14 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             cancellationToken);
     }
 
-    public ValueTask PublishCurrentAsync(
+    public async ValueTask PublishCurrentAsync(
         string topic,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return outbound.PublishCurrentAsync(topic, parts, cancellationToken);
+        using var operation = runtime.EnterOperation();
+        await outbound.PublishCurrentAsync(topic, parts, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public ValueTask SendToSpotAsync(

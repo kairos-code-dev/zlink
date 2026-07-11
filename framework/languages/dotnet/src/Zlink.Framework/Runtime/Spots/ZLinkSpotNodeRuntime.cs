@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
@@ -14,6 +16,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
+    private int _entrySpotLifecycleClosed;
 
     public ZLinkSpotNodeRuntime(
         IServiceProvider services,
@@ -33,7 +36,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         Node = node;
         _taskRunner = new ZLinkRuntimeTaskRunner(
             new ZLinkRuntimeErrorSink(),
-            _stopSource.Token);
+            _stopSource.Token,
+            runtime.ExecutionOwner);
         _monitoringSnapshots = new ZLinkSpotMonitoringSnapshotProvider(node);
         _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
         _bundles = new ZLinkSpotNodeBundleRegistry(
@@ -62,18 +66,62 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     internal ZLinkEntrySpotActivation? EntrySpotActivation => _entrySpotActivation;
 
-    public async ValueTask DisposeAsync()
+    internal void RequestStop()
     {
         _stopSource.Cancel();
+        _spots.RequestStop();
+        _entrySpotActivation?.RequestStop();
+    }
 
-        await _spots.DisposeAsync();
+    internal async ValueTask CloseLifecycleAsync()
+    {
+        await _spots.CloseLifecycleAsync().ConfigureAwait(false);
+        if (_entrySpotActivation is not { } activation
+            || Interlocked.Exchange(ref _entrySpotLifecycleClosed, 1) != 0)
+            return;
 
-        await _bundles.DisposeAsync();
+        await activation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+    }
 
-        await DisposeEntrySpotAsync().ConfigureAwait(false);
+    public async ValueTask DisposeAsync()
+    {
+        var failures = new List<Exception>();
+        await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
+        Capture(RequestStop);
+        await CaptureAsync(_taskRunner.StopAsync).ConfigureAwait(false);
+        await CaptureAsync(_spots.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(_bundles.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(DisposeEntrySpotAsync).ConfigureAwait(false);
+        await CaptureAsync(Node.DisposeAsync).ConfigureAwait(false);
+        Capture(_stopSource.Dispose);
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+        return;
 
-        await Node.DisposeAsync();
-        _stopSource.Dispose();
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
     }
 
     public void ApplyEntrySpotRoutingIdBeforeBind()
@@ -189,26 +237,48 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         if (Registration.EntrySpotType is null) return null;
 
-        var activation = new ZLinkEntrySpotActivation(
-            _runtime,
-            _services,
-            entrySpot,
-            Registration.EntrySpotType,
-            Node.RoutingId,
-            Registration.SpotNodeName,
-            _frameworkRegistration.SpotDiscovery?.ChannelName ?? Registration.SpotNodeName,
-            _frameworkRegistration.DefaultRequestTimeout,
-            Registration.Router?.SocketConfig.SendTimeout
-            ?? _frameworkRegistration.DefaultSocketSendTimeout);
-        foreach (var assembly in _frameworkRegistration.EnumerateHandlerScanAssemblies())
-        foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))
-            await activation.ApplyScannedHandlerAsync(handler, _stopSource.Token)
-                .ConfigureAwait(false);
+        var scope = _services.CreateAsyncScope();
+        ZLinkEntrySpotActivation? activation = null;
+        try
+        {
+            activation = new ZLinkEntrySpotActivation(
+                _runtime,
+                _services,
+                scope,
+                entrySpot,
+                Registration.EntrySpotType,
+                Node.RoutingId,
+                Registration.SpotNodeName,
+                _frameworkRegistration.SpotDiscovery?.ChannelName ?? Registration.SpotNodeName,
+                _frameworkRegistration.DefaultRequestTimeout,
+                Registration.Router?.SocketConfig.SendTimeout
+                ?? _frameworkRegistration.DefaultSocketSendTimeout);
+            activation.InitializeRuntimeResources();
+            foreach (var assembly in _frameworkRegistration.EnumerateHandlerScanAssemblies())
+            foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))
+                await activation.ApplyScannedHandlerAsync(handler, _stopSource.Token)
+                    .ConfigureAwait(false);
 
-        activation.Configure();
-        await activation.InitializeAsync(_stopSource.Token)
-            .ConfigureAwait(false);
-        return activation;
+            activation.Configure();
+            await activation.InitializeAsync(_stopSource.Token).ConfigureAwait(false);
+            return activation;
+        }
+        catch (Exception initializationFailure)
+        {
+            try
+            {
+                if (activation is null)
+                    await scope.DisposeAsync().ConfigureAwait(false);
+                else
+                    await activation.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException(initializationFailure, cleanupFailure);
+            }
+
+            throw;
+        }
     }
 
     private bool ShouldAttachActorDispatchPump()
@@ -221,13 +291,31 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         if (_entrySpot is null) return;
 
+        var failures = new List<Exception>();
         if (_entrySpotActivation is { } activation)
         {
-            await activation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
-            await activation.DisposeAsync().ConfigureAwait(false);
+            if (Volatile.Read(ref _entrySpotLifecycleClosed) == 0)
+                await CaptureAsync(() => activation.CloseAsync(CancellationToken.None)).ConfigureAwait(false);
+            await CaptureAsync(activation.DisposeAsync).ConfigureAwait(false);
         }
 
-        await _entrySpot.DisposeAsync();
+        await CaptureAsync(_entrySpot.DisposeAsync).ConfigureAwait(false);
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+        return;
+
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
     }
 }
 

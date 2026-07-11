@@ -20,7 +20,8 @@ internal sealed partial class ZLinkActorSessionManager(
             getActorSpotNode,
             LocationLifecycle?.ActorOwnership,
             EnsureActorContext,
-            BindActorContext);
+            BindActorContext,
+            ExecuteActorTeardownAttemptAsync);
 
     private ZLinkActorDispatchRouter DispatchRouter => _dispatchRouterInitialized
         ??= new ZLinkActorDispatchRouter(runtime, _actorSessions, BindActorContext);
@@ -129,6 +130,7 @@ internal sealed partial class ZLinkActorSessionManager(
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(
             _actorSessions.TryGet(actorId, out var state)
+                && !state.IsDispatchBlocked
                 ? state.Actor
                 : null);
     }
@@ -151,6 +153,7 @@ internal sealed partial class ZLinkActorSessionManager(
     {
         state = null!;
         if (!_actorSessions.TryGet(actorId, out var existingState)
+            || existingState.IsDispatchBlocked
             || existingState.Actor is null)
             return false;
 
@@ -165,6 +168,7 @@ internal sealed partial class ZLinkActorSessionManager(
     {
         state = null!;
         if (!_actorSessions.TryGet(actorId, out var existingState)
+            || existingState.IsDispatchBlocked
             || existingState.Actor is null)
             return false;
 
@@ -272,5 +276,10 @@ internal sealed partial class ZLinkActorSessionManager(
     public ZLinkActorRuntimeState GetOrCreateState(string actorId)
     {
         return _actorSessions.GetOrCreate(actorId);
+    }
+
+    internal void ResetGeneration()
+    {
+        _actorSessions.ResetGeneration();
     }
 }

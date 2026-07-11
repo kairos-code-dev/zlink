@@ -10,11 +10,15 @@ internal readonly record struct CreateActorResult(
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
+    private static readonly AsyncLocal<ZLinkRuntimeOperationOwnership?> AmbientOperation = new();
     private readonly ZLinkFrameworkActorFacade _actors;
     private readonly ZLinkActorSessionManager _actorSessionManager;
+    private readonly ZLinkActorHandoffAdmissions _actorHandoffAdmissions = new();
     private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
     private readonly ZLinkChannelRuntimeManager _channels;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private ZLinkRuntimeExecutionScope? _executionScope;
+    private readonly object _operationGate = new();
     private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
     private readonly ZLinkLocationLifecycle? _locationLifecycle;
     private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
@@ -24,8 +28,12 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkStreamRuntimeManager _streams;
     private readonly object _workerPoolGate = new();
     private ZLinkMessageFlowTracer? _flow;
+    private int _lifecyclePhase;
     private ZLinkFrameworkRuntimeState? _state;
     private ZLinkWorkerPool? _workerPool;
+    private TaskCompletionSource? _operationsDrained;
+    private int _activeOperations;
+    private bool _acceptingOperations;
 
     public ZLinkFrameworkRuntime(
         IServiceProvider services,
@@ -55,10 +63,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         _stateFactory = components.StateFactory;
         _actorSessionManager = components.ActorSessionManager;
         _actors = components.Actors;
+        _actorStragglerForwarder = new ZLinkActorStragglerForwarder(this);
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
     }
 
-    public IZLinkBackendContext? Context => _state?.Context;
+    public IZLinkBackendContext? Context
+        => Volatile.Read(ref _lifecyclePhase) == (int)ZLinkRuntimeLifecyclePhase.Running
+            ? _state?.Context
+            : null;
 
     public ZLinkFrameworkRegistration Registration { get; }
 
@@ -66,17 +78,70 @@ internal sealed partial class ZLinkFrameworkRuntime
     // send/request/publish), built once. Inbound surfaces use the reporter's Flow.
     internal ZLinkMessageFlowTracer Flow => _flow ??= new ZLinkMessageFlowTracer(
         Registration.DispatchOptions,
-        Services,
-        Services.GetService<ILogger<ZLinkFrameworkRuntime>>());
+        Services.GetService<ILogger<ZLinkFrameworkRuntime>>(),
+        this);
 
     internal IServiceProvider Services { get; }
+
+    internal object ExecutionOwner
+    {
+        get
+        {
+            var current = Volatile.Read(ref _executionScope);
+            if (current is not null) return current;
+            var created = new ZLinkRuntimeExecutionScope();
+            return Interlocked.CompareExchange(ref _executionScope, created, null) ?? created;
+        }
+    }
+
+    internal ZLinkRuntimeOperationLease EnterOperation()
+    {
+        if (AmbientOperation.Value is { IsActive: true } current
+            && ReferenceEquals(current.Runtime, this))
+            return new ZLinkRuntimeOperationLease();
+
+        lock (_operationGate)
+        {
+            if (!_acceptingOperations
+                || Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running
+                || _state is not { } state)
+                throw new InvalidOperationException("ZLink framework runtime is not accepting operations.");
+            _activeOperations++;
+            var previous = AmbientOperation.Value;
+            var ownership = new ZLinkRuntimeOperationOwnership(this, state);
+            AmbientOperation.Value = ownership;
+            return new ZLinkRuntimeOperationLease(this, ownership, previous);
+        }
+    }
+
+    internal async ValueTask ExecuteOperationAsync(Func<ValueTask> operation)
+    {
+        using var lease = EnterOperation();
+        await operation().ConfigureAwait(false);
+    }
+
+    internal async ValueTask<T> ExecuteOperationAsync<T>(Func<ValueTask<T>> operation)
+    {
+        using var lease = EnterOperation();
+        return await operation().ConfigureAwait(false);
+    }
+
+    internal T ExecuteOperation<T>(Func<T> operation)
+    {
+        using var lease = EnterOperation();
+        return operation();
+    }
 
     internal ZLinkWorkerPool WorkerPool
     {
         get
         {
+            if (!IsStarted)
+                throw new InvalidOperationException("ZLink framework runtime is not running.");
             lock (_workerPoolGate)
             {
+                if (!IsStarted || _state is null)
+                    throw new InvalidOperationException("ZLink framework runtime is not running.");
                 return _workerPool ??= Registration.WorkerOptions.CreatePool();
             }
         }
@@ -84,11 +149,44 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkRouteClient RouteClient => Services.GetRequiredService<IZLinkRouteClient>();
 
-    public bool IsStarted => _state is not null;
+    public bool IsStarted
+        => Volatile.Read(ref _lifecyclePhase) == (int)ZLinkRuntimeLifecyclePhase.Running;
+
+    internal CancellationToken ShutdownToken
+        => _state?.StopTokenSource.Token ?? new CancellationToken(canceled: true);
+
+    internal void RunDetached(
+        string name,
+        Func<CancellationToken, ValueTask> callback)
+    {
+        _ = TryRunDetached(name, callback);
+    }
+
+    internal bool TryRunDetached(
+        string name,
+        Func<CancellationToken, ValueTask> callback)
+    {
+        var state = AmbientOperation.Value is { IsActive: true } operation
+                    && ReferenceEquals(operation.Runtime, this)
+            ? operation.State
+            : Volatile.Read(ref _executionScope) is { } executionScope
+              && ZLinkRuntimeTaskRunner.IsCurrentExecutionFor(executionScope)
+                ? _state
+            : IsStarted
+                ? _state
+                : null;
+        return state is not null && state.TaskRunner.TryRunDetached(name, callback);
+    }
+
+    internal bool TryEnqueueMessageFlowObserver(ZLinkMessageFlowEvent flow)
+    {
+        var state = Volatile.Read(ref _state);
+        return state is not null && state.MessageFlowObservers.Enqueue(flow);
+    }
 
     internal void DrainSpotRouteBridges()
     {
-        var state = _state;
+        var state = IsStarted ? _state : null;
         if (state is null) return;
 
         IZLinkBackendSpotRouteBridge[] bridges;
@@ -132,9 +230,26 @@ internal sealed partial class ZLinkFrameworkRuntime
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (_state is not null) return;
+            if (Volatile.Read(ref _lifecyclePhase) == (int)ZLinkRuntimeLifecyclePhase.Running) return;
 
-            _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
+            Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Starting);
+            try
+            {
+                _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
+                lock (_operationGate) _acceptingOperations = true;
+                Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Running);
+                _locationLifecycle?.ResumeBackgroundWork();
+            }
+            catch (Exception startFailure)
+            {
+                Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Stopping);
+                await StopAcceptingOperationsAsync().ConfigureAwait(false);
+                var failures = await CleanupRuntimeGenerationAsync(_state).ConfigureAwait(false);
+                _state = null;
+                Interlocked.Exchange(ref _executionScope, null);
+                Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Stopped);
+                ThrowCleanupFailures(failures, startFailure);
+            }
         }
         finally
         {
@@ -144,45 +259,213 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        ZLinkFrameworkRuntimeState? stateToDispose;
-
+        ThrowIfStopRequestedFromOwnedWork();
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            stateToDispose = _state;
-            _state = null;
+            ThrowIfStopRequestedFromOwnedWork();
+            if ((ZLinkRuntimeLifecyclePhase)Volatile.Read(ref _lifecyclePhase)
+                == ZLinkRuntimeLifecyclePhase.Stopped)
+                return;
+            var stateToDispose = _state;
+            Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Stopping);
+            try
+            {
+                await StopAcceptingOperationsAsync().ConfigureAwait(false);
+                var failures = await CleanupRuntimeGenerationAsync(stateToDispose).ConfigureAwait(false);
+                ThrowCleanupFailures(failures);
+            }
+            finally
+            {
+                _state = null;
+                Interlocked.Exchange(ref _executionScope, null);
+                Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Stopped);
+            }
         }
         finally
         {
             _gate.Release();
         }
+    }
 
-        if (stateToDispose is not null) await stateToDispose.DisposeAsync();
+    private void ThrowIfStopRequestedFromOwnedWork()
+    {
+        if (Volatile.Read(ref _executionScope) is { } executionScope
+            && ZLinkRuntimeTaskRunner.IsCurrentExecutionFor(executionScope))
+            throw new InvalidOperationException(
+                "The framework runtime cannot stop from one of its own managed tasks. Request shutdown from an external lifecycle owner.");
+        if (AmbientOperation.Value is { IsActive: true } operation
+            && ReferenceEquals(operation.Runtime, this))
+            throw new InvalidOperationException(
+                "The framework runtime cannot stop from one of its active operations. Request shutdown from an external lifecycle owner.");
+    }
 
-        ZLinkWorkerPool? workerPoolToDispose;
+    private async ValueTask<List<Exception>> CleanupRuntimeGenerationAsync(
+        ZLinkFrameworkRuntimeState? state)
+    {
+        var failures = new List<Exception>();
+        ZLinkWorkerPool? workerPool;
         lock (_workerPoolGate)
         {
-            workerPoolToDispose = _workerPool;
+            workerPool = _workerPool;
             _workerPool = null;
         }
 
-        workerPoolToDispose?.Dispose();
+        if (workerPool is not null) Capture(workerPool.RequestStop);
+        if (_locationLifecycle is not null)
+            await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
+        if (state is not null)
+            await CaptureAsync(state.DisposeAsync).ConfigureAwait(false);
+        Capture(ResetActorRuntimeGeneration);
+        if (_locationLifecycle is not null)
+            await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
+
+        if (workerPool is not null) await CaptureAsync(workerPool.DisposeAsync).ConfigureAwait(false);
+        return failures;
+
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+    }
+
+    private static void ThrowCleanupFailures(
+        IReadOnlyList<Exception> cleanupFailures,
+        Exception? primaryFailure = null)
+    {
+        if (primaryFailure is null && cleanupFailures.Count == 0) return;
+        if (primaryFailure is not null && cleanupFailures.Count == 0)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primaryFailure).Throw();
+        if (primaryFailure is null && cleanupFailures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cleanupFailures[0]).Throw();
+
+        throw new AggregateException(
+            primaryFailure is null
+                ? cleanupFailures
+                : new[] { primaryFailure }.Concat(cleanupFailures));
     }
 
     private async ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateAsync(
         CancellationToken cancellationToken)
     {
-        if (_state is null) await StartAsync(cancellationToken);
+        var phase = (ZLinkRuntimeLifecyclePhase)Volatile.Read(ref _lifecyclePhase);
+        if (phase is ZLinkRuntimeLifecyclePhase.Stopping or ZLinkRuntimeLifecyclePhase.Starting)
+            throw new InvalidOperationException($"ZLink framework runtime is {phase.ToString().ToLowerInvariant()}.");
+        if (phase == ZLinkRuntimeLifecyclePhase.Stopped) await StartAsync(cancellationToken);
 
-        return _state ?? throw new InvalidOperationException("ZLink framework runtime is not started.");
+        return IsStarted && _state is { } state
+            ? state
+            : throw new InvalidOperationException("ZLink framework runtime is not started.");
     }
 
     private ZLinkFrameworkRuntimeState GetOrStartState()
     {
-        if (_state is null)
+        if (!IsStarted || _state is null)
             throw new InvalidOperationException(
                 "ZLink framework runtime is not started. Call StartAsync before using synchronous runtime APIs.");
 
         return _state;
     }
+
+    private Task StopAcceptingOperationsAsync()
+    {
+        lock (_operationGate)
+        {
+            _acceptingOperations = false;
+            if (_activeOperations == 0) return Task.CompletedTask;
+            return (_operationsDrained ??= new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+    }
+
+    private void ExitOperation()
+    {
+        TaskCompletionSource? drained = null;
+        lock (_operationGate)
+        {
+            if (--_activeOperations < 0)
+                throw new InvalidOperationException("Runtime operation lease count became negative.");
+            if (_activeOperations == 0 && !_acceptingOperations)
+            {
+                drained = _operationsDrained;
+                _operationsDrained = null;
+            }
+        }
+        drained?.TrySetResult();
+    }
+
+    internal sealed class ZLinkRuntimeOperationLease : IDisposable
+    {
+        private readonly ZLinkFrameworkRuntime? _runtime;
+        private readonly ZLinkRuntimeOperationOwnership? _ownership;
+        private readonly ZLinkRuntimeOperationOwnership? _previous;
+        private int _disposed;
+
+        internal ZLinkRuntimeOperationLease()
+        {
+        }
+
+        internal ZLinkRuntimeOperationLease(
+            ZLinkFrameworkRuntime runtime,
+            ZLinkRuntimeOperationOwnership ownership,
+            ZLinkRuntimeOperationOwnership? previous)
+        {
+            _runtime = runtime;
+            _ownership = ownership;
+            _previous = previous;
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _ownership?.Deactivate();
+                if (_ownership is not null && ReferenceEquals(AmbientOperation.Value, _ownership))
+                    AmbientOperation.Value = _previous;
+                _runtime?.ExitOperation();
+            }
+        }
+    }
+
+    internal sealed class ZLinkRuntimeOperationOwnership(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkFrameworkRuntimeState state)
+    {
+        private int _active = 1;
+
+        public ZLinkFrameworkRuntime Runtime { get; } = runtime;
+
+        public ZLinkFrameworkRuntimeState State { get; } = state;
+
+        public bool IsActive => Volatile.Read(ref _active) != 0;
+
+        public void Deactivate() => Interlocked.Exchange(ref _active, 0);
+    }
+}
+
+internal enum ZLinkRuntimeLifecyclePhase
+{
+    Stopped,
+    Running,
+    Stopping,
+    Starting
 }

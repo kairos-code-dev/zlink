@@ -64,13 +64,23 @@ internal sealed class ZLinkSpotLocationLifecycle(
         TrackedSpot? tracked;
         lock (_gate)
         {
-            if (!_spots.Remove(canonical, out tracked))
+            if (!_spots.TryGetValue(canonical, out tracked))
             {
                 return;
             }
         }
 
-        await runtime.RemoveSpotAsync(key, tracked.Generation, cancellationToken).ConfigureAwait(false);
+        var result = await runtime.RemoveSpotAsync(key, tracked.Generation, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Status is not (ZLinkLocationWriteStatus.Stored or ZLinkLocationWriteStatus.IgnoredStale))
+            throw new InvalidOperationException(
+                $"SPOT '{spotRid}' location release was rejected with '{result.Status}'.");
+
+        lock (_gate)
+        {
+            if (_spots.TryGetValue(canonical, out var current) && ReferenceEquals(current, tracked))
+                _spots.Remove(canonical);
+        }
     }
 
     internal Func<CancellationToken, ValueTask>? TakeOwnershipLostDeactivation(string canonicalKey)
@@ -79,6 +89,11 @@ internal sealed class ZLinkSpotLocationLifecycle(
         {
             return _spots.Remove(canonicalKey, out var spot) ? spot.Deactivate : null;
         }
+    }
+
+    internal void ResetGeneration()
+    {
+        lock (_gate) _spots.Clear();
     }
 
     private sealed record TrackedSpot(

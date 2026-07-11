@@ -302,6 +302,42 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_WhenActorTransferTypeIsDuplicatedAcrossNodes()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddSpotMesh("actor-node-a")
+                    .EnableRouter("tcp://127.0.0.1:6201")
+                    .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior");
+                options.AddSpotMesh("actor-node-b")
+                    .EnableRouter("tcp://127.0.0.1:6202")
+                    .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior");
+            }));
+
+        Assert.Contains("Duplicate actor transfer 'warrior'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_AllowsTransferAdaptersWithoutFactoriesOnTheSameNode()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotMesh("actor-node-a")
+                .EnableRouter("tcp://127.0.0.1:6203")
+                .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior");
+        });
+
+        var registration = services.BuildServiceProvider()
+            .GetRequiredService<ZLinkFrameworkRegistration>();
+        Assert.True(registration.ActorCatalog.TryGetTransfer("warrior", out _));
+    }
+
+    [Fact]
     public void SessionActorDispatch_Registers_Stream_Node_Without_Explicit_Relay_Target()
     {
         var services = new ServiceCollection();

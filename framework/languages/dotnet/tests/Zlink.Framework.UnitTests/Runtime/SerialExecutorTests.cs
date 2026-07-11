@@ -12,7 +12,7 @@ public sealed class SerialExecutorTests
         ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
         try
         {
-            await using var executor = new ZLinkStreamSessionSerialExecutor();
+            await using var executor = new ZLinkStreamSessionSerialExecutor(new object());
             var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
             Assert.True(executor.Enqueue(() => throw new InvalidOperationException("stream failure")));

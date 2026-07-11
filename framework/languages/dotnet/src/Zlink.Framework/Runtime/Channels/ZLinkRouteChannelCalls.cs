@@ -13,6 +13,7 @@ internal sealed class ZLinkRouteChannelCalls
 
     public ZLinkRouteChannelCalls(
         IServiceProvider services,
+        ZLinkFrameworkRuntime? runtime,
         ZLinkFrameworkRegistration frameworkRegistration,
         string routerChannelId,
         IZLinkBackendRouterSocket router,
@@ -24,8 +25,8 @@ internal sealed class ZLinkRouteChannelCalls
         _codecs = frameworkRegistration.Codecs;
         _flow = new ZLinkMessageFlowTracer(
             frameworkRegistration.DispatchOptions,
-            services,
-            services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRouteChannelCalls>());
+            services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRouteChannelCalls>(),
+            runtime);
     }
 
     public ValueTask SubmitSendAsync<TMessage>(

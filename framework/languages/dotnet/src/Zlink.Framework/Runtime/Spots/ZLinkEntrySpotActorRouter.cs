@@ -4,7 +4,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
 {
     private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
         runtime.Registration.DispatchOptions,
-        runtime.Services);
+        runtime: runtime);
 
     public async ValueTask<bool> TryAsync(
         ZLinkFrameworkRuntimeState state,

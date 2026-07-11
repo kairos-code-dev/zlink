@@ -67,29 +67,19 @@ internal sealed class ZLinkActorRemoteJoiner(
         var actorType = actorState.ActorType;
         var handoffId = Guid.NewGuid().ToString("N");
         ZLinkActorTransferRegistry.TryResolve(registration, actorType, out var transfer);
-        actorState.BeginHandoffCapture();
-
-        try
-        {
-            return await SubmitRoutedJoinActorCoreAsync(
-                    actor,
-                    actorRef,
-                    actorState,
-                    targetNodeRid,
-                    targetSpotRid,
-                    routerChannelId,
-                    request,
-                    actorType,
-                    handoffId,
-                    transfer,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            actorState.CancelHandoffCapture();
-            throw;
-        }
+        return await SubmitRoutedJoinActorCoreAsync(
+                actor,
+                actorRef,
+                actorState,
+                targetNodeRid,
+                targetSpotRid,
+                routerChannelId,
+                request,
+                actorType,
+                handoffId,
+                transfer,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<ZLinkActorJoinResult> SubmitRoutedJoinActorCoreAsync(
@@ -105,7 +95,119 @@ internal sealed class ZLinkActorRemoteJoiner(
         ZLinkActorTransferRegistration? transfer,
         CancellationToken cancellationToken)
     {
+        var targetAccepted = false;
+        var sourceActivation = actorState.LiveActivation;
+        var sourceLeft = false;
+        var sourceCaptureStarted = false;
+        try
+        {
+            var result = await SubmitRoutedJoinActorTransactionAsync(
+                    actor,
+                    actorRef,
+                    actorState,
+                    targetNodeRid,
+                    targetSpotRid,
+                    routerChannelId,
+                    request,
+                    actorType,
+                    handoffId,
+                    transfer,
+                    accepted => targetAccepted = accepted,
+                    () => sourceCaptureStarted = true,
+                    () => sourceLeft = true,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!result.Accepted)
+            {
+                await RollbackSourceHandoffAsync(
+                        actor,
+                        actorState,
+                        sourceActivation,
+                        sourceLeft,
+                        sourceCaptureStarted)
+                    .ConfigureAwait(false);
+            }
 
+            return result;
+        }
+        catch (Exception transactionFailure)
+        {
+            if (!targetAccepted)
+            {
+                try
+                {
+                    await RollbackSourceHandoffAsync(
+                            actor,
+                            actorState,
+                            sourceActivation,
+                            sourceLeft,
+                            sourceCaptureStarted)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception rollbackFailure)
+                {
+                    throw new AggregateException(transactionFailure, rollbackFailure);
+                }
+            }
+            throw;
+        }
+    }
+
+    private async ValueTask RollbackSourceHandoffAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        ZLinkSpotActivation? sourceActivation,
+        bool sourceLeft,
+        bool sourceCaptureStarted)
+    {
+        List<Exception>? failures = null;
+        if (sourceLeft && sourceActivation is not null)
+        {
+            try
+            {
+                await sourceActivation.RestoreActorAfterFailedHandoffAsync(
+                        actor,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
+        }
+
+        if (sourceCaptureStarted)
+        {
+            try
+            {
+                await ReplayAbortedSourceHandoffAsync(actorState).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
+        }
+
+        if (failures is { Count: > 0 })
+            throw new AggregateException("Actor handoff source rollback failed.", failures);
+    }
+
+    private async ValueTask<ZLinkActorJoinResult> SubmitRoutedJoinActorTransactionAsync(
+        IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
+        ZLinkActorRuntimeState actorState,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        string routerChannelId,
+        ZLinkMessage request,
+        string actorType,
+        string handoffId,
+        ZLinkActorTransferRegistration? transfer,
+        Action<bool> setTargetAccepted,
+        Action markSourceCaptureStarted,
+        Action markSourceLeft,
+        CancellationToken cancellationToken)
+    {
         var sourceSpotRid = ResolveSourceSpotRid(actorState);
 
         var admissionHeader = ZLinkClientCallCodec.CreateEnvelope(
@@ -113,10 +215,13 @@ internal sealed class ZLinkActorRemoteJoiner(
             routerChannelId,
             ZLinkRemoteActorJoinPackets.AdmissionPacketName,
             registration.DefaultRequestTimeout);
+        var admissionDeadline = DateTimeOffset.UtcNow + registration.DefaultRequestTimeout;
         var admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
             admissionHeader,
             actor.ActorId,
             actorType,
+            handoffId,
+            admissionDeadline,
             sourceSpotRid,
             actorRef.NodeRid,
             request,
@@ -138,9 +243,11 @@ internal sealed class ZLinkActorRemoteJoiner(
             registration.Codecs);
         if (!admissionReply.Accepted)
         {
-            actorState.CancelHandoffCapture();
             return new ZLinkActorJoinResult(false, null, admissionReplyMessage);
         }
+
+        await actorState.BeginHandoffCaptureAsync(cancellationToken).ConfigureAwait(false);
+        markSourceCaptureStarted();
 
         var transferState = transfer is null
             ? ZLinkMessage.Empty
@@ -151,6 +258,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     cancellationToken)
                 .ConfigureAwait(false);
 
+        markSourceLeft();
         await NotifySourceActorLeftAsync(actor, actorState, cancellationToken)
             .ConfigureAwait(false);
 
@@ -160,70 +268,245 @@ internal sealed class ZLinkActorRemoteJoiner(
             ZLinkRemoteActorJoinPackets.CommitPacketName,
             registration.DefaultRequestTimeout);
         actorState.TryGetBoundSession(out var boundSession);
-        var parts = ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
-            header,
-            actor.ActorId,
-            actorType,
-            handoffId,
-            boundSession.SessionNodeRid,
-            boundSession.SessionRid,
-            transferState,
-            request,
-            actorState.DrainHandoffFrames(),
-            registration.Codecs);
-
-        var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
-                routerChannelId,
+        var committedFrames = actorState.Handoff.SnapshotFrames();
+        var reply = await ReconcileTargetJoinCommitAsync(
+                actor.ActorId,
+                handoffId,
                 targetNodeRid,
                 targetSpotRid,
-                parts,
-                registration.DefaultRequestTimeout,
-                cancellationToken)
+                routerChannelId,
+                () => ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
+                    header,
+                    actor.ActorId,
+                    actorType,
+                    handoffId,
+                    sourceSpotRid,
+                    actorRef.NodeRid,
+                    boundSession.SessionNodeRid,
+                    boundSession.SessionRid,
+                    transferState,
+                    request,
+                    committedFrames,
+                    registration.Codecs))
             .ConfigureAwait(false);
-        var reply = ZLinkRemoteActorJoinPackets.DecodeJoinReplyAndDispose(
-            replyParts,
-            actor.ActorId,
-            targetSpotRid);
-        var resultActorRef = ZLinkRemoteActorJoinPackets.ToActorRef(reply);
-        var replyMessage = ZLinkRemoteActorJoinPackets.DecodeJoinReplyPayload(
-            reply,
-            registration.Codecs);
+        if (!reply.Accepted)
+            return new ZLinkActorJoinResult(false, null, admissionReplyMessage);
 
-        if (reply.Accepted)
-        {
-            var trailingFrames = actorState.CompleteHandoffCapture();
-            await CompleteTargetHandoffAsync(
+        var resultActorRef = ZLinkRemoteActorJoinPackets.ToActorRef(reply);
+        var trailingFrames = actorState.Handoff.CutoverCaptureToForwarding(
+            committedFrames.Count,
+            actorRef,
+            resultActorRef);
+        await ReconcileTargetHandoffCompletionAsync(
                     actor.ActorId,
                     handoffId,
                     trailingFrames,
+                    sourceSpotRid,
+                    actorRef.NodeRid,
                     targetNodeRid,
                     targetSpotRid,
                     routerChannelId,
-                    CancellationToken.None)
+                CancellationToken.None)
                 .ConfigureAwait(false);
-            actorState.InstallForwardingMapping(
+        setTargetAccepted(true);
+        actorState.Handoff.CommitForwardingCutover(registration.ActorTransferForwardWindow);
+        runtime.RunDetached(
+            "actor-source-handoff-cleanup",
+            ct => ReconcileCommittedSourceHandoffAsync(
+                actorState,
                 actorRef,
                 resultActorRef,
-                registration.ActorTransferForwardWindow);
-
-            await ApplyRemoteActorMigrationAsync(actor, actorState, resultActorRef, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        else
-        {
-            actorState.CancelHandoffCapture();
-        }
-
+                ct));
         return new ZLinkActorJoinResult(
-            reply.Accepted,
-            reply.Accepted ? resultActorRef.ToNative() : null,
+            true,
+            resultActorRef.ToNative(),
             admissionReplyMessage);
+    }
+
+    private async ValueTask ReconcileCommittedSourceHandoffAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef sourceActorRef,
+        ZLinkBackendActorRef targetActorRef,
+        CancellationToken cancellationToken)
+    {
+        if (ZLinkBoundSessionDispatchScope.TryDefer(
+                actorState.ActorId,
+                ct => ReconcileCommittedSourceHandoffCoreAsync(
+                    actorState,
+                    sourceActorRef,
+                    targetActorRef,
+                    ct)))
+            return;
+
+        await ReconcileCommittedSourceHandoffCoreAsync(
+                actorState,
+                sourceActorRef,
+                targetActorRef,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask ReconcileCommittedSourceHandoffCoreAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef sourceActorRef,
+        ZLinkBackendActorRef targetActorRef,
+        CancellationToken cancellationToken)
+    {
+        var migrationApplied = false;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (!migrationApplied)
+                {
+                    await ApplyRemoteActorMigrationCoreAsync(
+                            actorState,
+                            targetActorRef,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    migrationApplied = true;
+                }
+
+                await actorSessionManager.FinalizeMigratedSourceAsync(actorState, sourceActorRef)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                ReportCommittedHandoffFailure("actor-source-handoff-cleanup", exception);
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async ValueTask<ZLinkRemoteActorJoinReply> ReconcileTargetJoinCommitAsync(
+        string actorId,
+        string handoffId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        string routerChannelId,
+        Func<IReadOnlyList<Message>> createParts)
+    {
+        while (true)
+        {
+            runtime.ShutdownToken.ThrowIfCancellationRequested();
+            try
+            {
+                var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                        routerChannelId,
+                        targetNodeRid,
+                        targetSpotRid,
+                        createParts(),
+                        registration.DefaultRequestTimeout,
+                        runtime.ShutdownToken)
+                    .ConfigureAwait(false);
+                return ZLinkRemoteActorJoinPackets.DecodeJoinReplyAndDispose(
+                    replyParts,
+                    actorId,
+                    targetSpotRid);
+            }
+            catch (OperationCanceledException) when (runtime.ShutdownToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (ZLinkActorHandoffRejectedException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"handoff commit retry actor={actorId} id={handoffId}: {exception.Message}");
+                await Task.Delay(TimeSpan.FromMilliseconds(100), runtime.ShutdownToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async ValueTask ReconcileTargetHandoffCompletionAsync(
+        string actorId,
+        string handoffId,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames,
+        RoutingId sourceSpotRid,
+        RoutingId sourceNodeRid,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        string routerChannelId,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            runtime.ShutdownToken.ThrowIfCancellationRequested();
+            try
+            {
+                await CompleteTargetHandoffAsync(
+                        actorId,
+                        handoffId,
+                        frames,
+                        sourceSpotRid,
+                        sourceNodeRid,
+                        targetNodeRid,
+                        targetSpotRid,
+                        routerChannelId,
+                        runtime.ShutdownToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (OperationCanceledException) when (runtime.ShutdownToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (ZLinkActorHandoffRejectedException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"handoff completion retry actor={actorId} id={handoffId}: {exception.Message}");
+                await Task.Delay(TimeSpan.FromMilliseconds(100), runtime.ShutdownToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async ValueTask ReplayAbortedSourceHandoffAsync(ZLinkActorRuntimeState actorState)
+    {
+        var frames = actorState.Handoff.AbortCapture();
+        if (frames.Count == 0) return;
+
+        if (actorState.LiveActivation is { } activation)
+        {
+            await activation.ReplayAbortedActorHandoffAsync(
+                    actorState,
+                    frames,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorState.ActorId}' does not have a native Actor ref during handoff rollback.");
+        var pipeline = new ZLinkActorInboundPipeline(
+            runtime,
+            new ZLinkEntrySpotActorInboundEndpoint(runtime));
+        await pipeline.DispatchAsync(
+                ZLinkActorHandoffFrames.Restore(actorRef, frames),
+                CancellationToken.None)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask CompleteTargetHandoffAsync(
         string actorId,
         string handoffId,
         IReadOnlyList<ZLinkActorHandoffFrame> frames,
+        RoutingId sourceSpotRid,
+        RoutingId sourceNodeRid,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         string routerChannelId,
@@ -238,6 +521,9 @@ internal sealed class ZLinkActorRemoteJoiner(
             header,
             actorId,
             handoffId,
+            sourceSpotRid,
+            sourceNodeRid,
+            targetSpotRid,
             frames);
         var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
                 routerChannelId,
@@ -271,43 +557,17 @@ internal sealed class ZLinkActorRemoteJoiner(
         return actorState.NativeActorRef?.NodeRid ?? default;
     }
 
-    private async ValueTask ApplyRemoteActorMigrationAsync(
-        IZLinkActor actor,
-        ZLinkActorRuntimeState actorState,
-        ZLinkBackendActorRef targetActorRef,
-        CancellationToken cancellationToken)
-    {
-        if (ZLinkBoundSessionDispatchScope.TryDefer(
-                actorState.ActorId,
-                ct => ApplyRemoteActorMigrationCoreAsync(actor, actorState, targetActorRef, ct)))
-            return;
-
-        await ApplyRemoteActorMigrationCoreAsync(actor, actorState, targetActorRef, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     private async ValueTask ApplyRemoteActorMigrationCoreAsync(
-        IZLinkActor actor,
         ZLinkActorRuntimeState actorState,
         ZLinkBackendActorRef targetActorRef,
         CancellationToken cancellationToken)
     {
-        _ = actor;
         actorState.BindNativeActorRef(targetActorRef);
-        try
-        {
-            await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            ReportCommittedHandoffFailure("actor-session-rebind", exception);
-        }
+        await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
+            .ConfigureAwait(false);
         actorState.InvalidateContext();
-        // The target runtime claimed the actor location with Takeover as
-        // part of hosting the joined instance; releasing this owner's stale
-        // row is cleanup and must not hold back the accepted join reply.
-        _ = ReleaseActorLocationAfterMoveAsync(actorState);
+        await ReconcileActorLocationAfterMoveAsync(actorState, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask NotifySourceActorLeftAsync(
@@ -323,18 +583,26 @@ internal sealed class ZLinkActorRemoteJoiner(
                 .ConfigureAwait(false);
     }
 
-    private async Task ReleaseActorLocationAfterMoveAsync(
-        ZLinkActorRuntimeState actorState)
+    private async ValueTask ReconcileActorLocationAfterMoveAsync(
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
     {
-        try
+        while (true)
         {
-            await actorSessionManager.ReleaseActorLocationAfterMoveAsync(actorState, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"remote actor move cleanup failed for '{actorState.ActorId}': {exception.Message}");
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await actorSessionManager.ReleaseActorLocationAfterMoveAsync(actorState, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (Exception exception)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"remote actor move cleanup retry for '{actorState.ActorId}': {exception.Message}");
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkFrameworkRuntimeStateFactory(
+    ZLinkFrameworkRuntime frameworkRuntime,
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration,
     ZLinkChannelRuntimeManager channels,
@@ -10,10 +11,17 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
     public async ValueTask<ZLinkFrameworkRuntimeState> CreateAsync()
     {
         var channelAdapter = backendAdapterFactory.CreateChannelAdapter();
-        var state = new ZLinkFrameworkRuntimeState(channelAdapter.CreateContext(), registration);
+        IZLinkBackendContext? context = null;
+        ZLinkFrameworkRuntimeState? state = null;
 
         try
         {
+            context = channelAdapter.CreateContext();
+            state = new ZLinkFrameworkRuntimeState(
+                context,
+                registration,
+                frameworkRuntime.Services,
+                frameworkRuntime.ExecutionOwner);
             await channels.InitializeInboundChannelsAsync(state, channelAdapter).ConfigureAwait(false);
             await channels.InitializePublisherChannelsAsync(state, channelAdapter).ConfigureAwait(false);
             await channels.InitializeClientChannelsAsync(state).ConfigureAwait(false);
@@ -25,8 +33,13 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
         catch (Exception error)
         {
             ZLinkFrameworkDebugLog.Startup(error);
-            await state.DisposeAsync();
-            throw;
+            var failures = new ZLinkFailureCollector(error);
+            if (state is not null)
+                await failures.CaptureAsync(state.DisposeAsync).ConfigureAwait(false);
+            else if (context is not null)
+                await failures.CaptureAsync(context.DisposeAsync).ConfigureAwait(false);
+            failures.ThrowIfAny();
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
 

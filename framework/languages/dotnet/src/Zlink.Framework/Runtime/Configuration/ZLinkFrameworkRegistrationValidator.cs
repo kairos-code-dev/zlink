@@ -41,6 +41,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         if (actorCapableNodes.Length > 1)
             throw new ZLinkConfigurationException(
                 "Actor factory registration is ambiguous because more than one SpotNode owns actor factories.");
+
+        registration.ActorCatalog.Build(registration.SpotNodes.Values);
     }
 
     private static void ValidateDispatchOptions(ZLinkDispatchOptionsModel options)

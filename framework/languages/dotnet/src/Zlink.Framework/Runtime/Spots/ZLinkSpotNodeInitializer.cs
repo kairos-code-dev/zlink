@@ -58,11 +58,13 @@ internal sealed class ZLinkSpotNodeInitializer(
                 await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
                 await ClaimEntrySpotLocationAsync(spotNodeRegistration, node).ConfigureAwait(false);
             }
-            catch
+            catch (Exception initializationFailure)
             {
                 state.SpotNodes.Remove(spotNodeRegistration.SpotNodeName);
-                await nodeRuntime.DisposeAsync().ConfigureAwait(false);
-                throw;
+                var failures = new ZLinkFailureCollector(initializationFailure);
+                await failures.CaptureAsync(nodeRuntime.DisposeAsync).ConfigureAwait(false);
+                failures.ThrowIfAny();
+                throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
             }
         }
     }

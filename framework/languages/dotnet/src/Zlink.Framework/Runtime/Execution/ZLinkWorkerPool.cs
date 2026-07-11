@@ -7,15 +7,17 @@ namespace Zlink.Framework.Runtime.Execution;
 ///     A full queue fails the submit immediately; the pool never blocks the
 ///     submitting dispatcher and never runs work on the caller thread.
 /// </summary>
-internal sealed class ZLinkWorkerPool : IDisposable
+internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
 {
     private readonly TimeSpan _idleTimeout;
     private readonly int _maxQueueLength;
     private readonly int _minThreads;
-    private readonly Queue<Action<CancellationToken>> _queue = new();
+    private readonly Queue<WorkerItem> _queue = new();
     private readonly CancellationTokenSource _shutdownSource = new();
     private readonly object _sync = new();
+    private readonly HashSet<Thread> _threads = [];
     private bool _disposed;
+    private Task? _disposeTask;
     private int _idleThreads;
     private int _threadCount;
 
@@ -67,25 +69,78 @@ internal sealed class ZLinkWorkerPool : IDisposable
 
     public void Dispose()
     {
-        lock (_sync)
-        {
-            if (_disposed) return;
-
-            _disposed = true;
-            _queue.Clear();
-            Monitor.PulseAll(_sync);
-        }
-
-        _shutdownSource.Cancel();
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
-    public bool TrySubmit(Action<CancellationToken> work)
+    public ValueTask DisposeAsync()
+    {
+        TaskCompletionSource completion;
+        Thread[] threads;
+        WorkerItem[] abandoned = [];
+        var cancel = false;
+        lock (_sync)
+        {
+            if (_threads.Contains(Thread.CurrentThread))
+                throw new InvalidOperationException("A worker cannot dispose its own pool.");
+            if (_disposeTask is not null) return new ValueTask(_disposeTask);
+            if (!_disposed)
+            {
+                _disposed = true;
+                abandoned = _queue.ToArray();
+                _queue.Clear();
+                Monitor.PulseAll(_sync);
+                cancel = true;
+            }
+            completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _disposeTask = completion.Task;
+            threads = _threads.ToArray();
+        }
+
+        var stopFailures = new ZLinkFailureCollector();
+        foreach (var item in abandoned)
+            if (item.CancelBeforeStart is { } cancelBeforeStart)
+                stopFailures.Capture(cancelBeforeStart);
+        if (cancel)
+            stopFailures.Capture(_shutdownSource.Cancel);
+
+        _ = CompleteStopAsync(threads, completion, stopFailures.BuildException());
+        return new ValueTask(completion.Task);
+    }
+
+    public void RequestStop()
+    {
+        var cancel = false;
+        WorkerItem[] abandoned = [];
+        lock (_sync)
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                abandoned = _queue.ToArray();
+                _queue.Clear();
+                Monitor.PulseAll(_sync);
+                cancel = true;
+            }
+        }
+
+        var failures = new ZLinkFailureCollector();
+        foreach (var item in abandoned)
+            if (item.CancelBeforeStart is { } cancelBeforeStart)
+                failures.Capture(cancelBeforeStart);
+        if (cancel) failures.Capture(_shutdownSource.Cancel);
+        failures.ThrowIfAny();
+    }
+
+    public ZLinkWorkerSubmitResult TrySubmit(
+        Action<CancellationToken> work,
+        Action? cancelBeforeStart = null)
     {
         lock (_sync)
         {
-            if (_disposed || _queue.Count >= _maxQueueLength) return false;
+            if (_disposed) return ZLinkWorkerSubmitResult.Stopped;
+            if (_queue.Count >= _maxQueueLength) return ZLinkWorkerSubmitResult.Full;
 
-            _queue.Enqueue(work);
+            _queue.Enqueue(new WorkerItem(work, cancelBeforeStart));
             if (_idleThreads > 0)
             {
                 Monitor.Pulse(_sync);
@@ -96,7 +151,7 @@ internal sealed class ZLinkWorkerPool : IDisposable
                 StartWorkerThread();
             }
 
-            return true;
+            return ZLinkWorkerSubmitResult.Accepted;
         }
     }
 
@@ -107,46 +162,79 @@ internal sealed class ZLinkWorkerPool : IDisposable
             IsBackground = true,
             Name = "zlink-worker"
         };
+        _threads.Add(thread);
         thread.Start();
     }
 
     private void WorkerLoop()
     {
-        while (true)
+        try
         {
-            Action<CancellationToken> work;
-            lock (_sync)
+            while (true)
             {
-                while (_queue.Count == 0)
+                WorkerItem item;
+                lock (_sync)
                 {
-                    if (_disposed)
+                    while (_queue.Count == 0)
                     {
-                        _threadCount--;
-                        return;
+                        if (_disposed) return;
+
+                        _idleThreads++;
+                        var signaled = Monitor.Wait(_sync, _idleTimeout);
+                        _idleThreads--;
+                        if (!signaled && _queue.Count == 0 && _threadCount > _minThreads)
+                            return;
                     }
 
-                    _idleThreads++;
-                    var signaled = Monitor.Wait(_sync, _idleTimeout);
-                    _idleThreads--;
-                    if (!signaled && _queue.Count == 0 && _threadCount > _minThreads)
-                    {
-                        _threadCount--;
-                        return;
-                    }
+                    item = _queue.Dequeue();
                 }
 
-                work = _queue.Dequeue();
+                try
+                {
+                    item.Run(_shutdownSource.Token);
+                }
+                catch
+                {
+                    // Worker call wrappers convert their own failures; a throwing
+                    // wrapper must never take the pool thread down.
+                }
             }
-
-            try
+        }
+        finally
+        {
+            lock (_sync)
             {
-                work(_shutdownSource.Token);
-            }
-            catch
-            {
-                // Worker call wrappers convert their own failures; a throwing
-                // wrapper must never take the pool thread down.
+                _threads.Remove(Thread.CurrentThread);
+                _threadCount--;
+                Monitor.PulseAll(_sync);
             }
         }
     }
+
+    private sealed record WorkerItem(
+        Action<CancellationToken> Run,
+        Action? CancelBeforeStart);
+
+    private async Task CompleteStopAsync(
+        IReadOnlyList<Thread> threads,
+        TaskCompletionSource completion,
+        Exception? cancellationFailure)
+    {
+        var failures = new ZLinkFailureCollector(cancellationFailure);
+        await failures.CaptureAsync(
+                () => new ValueTask(Task.WhenAll(
+                    threads.Select(static thread => Task.Run(thread.Join)))))
+            .ConfigureAwait(false);
+        failures.Capture(_shutdownSource.Dispose);
+        var failure = failures.BuildException();
+        if (failure is null) completion.TrySetResult();
+        else completion.TrySetException(failure);
+    }
+}
+
+internal enum ZLinkWorkerSubmitResult
+{
+    Accepted,
+    Full,
+    Stopped
 }

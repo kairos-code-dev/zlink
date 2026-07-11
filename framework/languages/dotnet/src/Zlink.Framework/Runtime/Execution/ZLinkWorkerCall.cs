@@ -69,7 +69,19 @@ internal sealed class ZLinkWorkerCall<TResult>(
         var execution = new Execution(work, complete, fail, _timeout);
         if (!execution.TryBind(pool, callerToken)) return;
 
-        if (!pool.TrySubmit(execution.Run)) execution.FailQueueFull();
+        switch (pool.TrySubmit(execution.Run, execution.FailStopped))
+        {
+            case ZLinkWorkerSubmitResult.Accepted:
+                break;
+            case ZLinkWorkerSubmitResult.Full:
+                execution.FailQueueFull();
+                break;
+            case ZLinkWorkerSubmitResult.Stopped:
+                execution.FailStopped();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
     }
 
     private void EnsureSingleTerminator()
@@ -156,6 +168,15 @@ internal sealed class ZLinkWorkerCall<TResult>(
                         ZLinkFrameworkErrorKind.WorkerQueueFull,
                         "Worker queue is full.",
                         true)),
+                this);
+            Cleanup();
+        }
+
+        public void FailStopped()
+        {
+            TrySettle(static (self, _) => self._fail(
+                    new OperationCanceledException(
+                        "Worker call was canceled because the framework runtime stopped.")),
                 this);
             Cleanup();
         }

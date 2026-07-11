@@ -21,6 +21,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         ZLinkMessage createRequest,
         CancellationToken cancellationToken = default)
     {
+        using var operation = runtime.EnterOperation();
         var result = await runtime.CreateActorAsync(
                 actorId,
                 actorType,
@@ -34,6 +35,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         string actorId,
         CancellationToken cancellationToken = default)
     {
+        using var operation = runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
         if (!runtime.TryGetCreatedActorState(actorId, out var state)
             || state.NativeActorRef is not { } actorRef)
@@ -61,6 +63,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         ZLinkMessage createRequest,
         CancellationToken cancellationToken = default)
     {
+        using var operation = runtime.EnterOperation();
         var result = await runtime.CreateLocalActorAsync(
                 actorId,
                 actorType,

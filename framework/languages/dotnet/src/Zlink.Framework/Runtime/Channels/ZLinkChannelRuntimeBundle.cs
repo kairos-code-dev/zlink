@@ -5,6 +5,7 @@ namespace Zlink.Framework.Runtime.Channels;
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 {
     private readonly ZLinkSortedConnectionSet _manualConnections = new();
+    private int _disposed;
 
     public ZLinkChannelRuntimeBundle(
         IZLinkBackendSocket socket,
@@ -34,12 +35,17 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Submitter is not null) await Submitter.DisposeAsync();
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        var failures = new ZLinkFailureCollector();
+        if (Submitter is not null)
+            await failures.CaptureAsync(Submitter.DisposeAsync).ConfigureAwait(false);
 
-        if (CompletionPump is not null) await CompletionPump.DisposeAsync();
+        if (CompletionPump is not null)
+            await failures.CaptureAsync(CompletionPump.DisposeAsync).ConfigureAwait(false);
 
-        await Socket.DisposeAsync();
-        ReceiveGate.Dispose();
+        await failures.CaptureAsync(Socket.DisposeAsync).ConfigureAwait(false);
+        failures.Capture(ReceiveGate.Dispose);
+        failures.ThrowIfAny();
     }
 
     public bool TryAddManualConnection(string endpoint)

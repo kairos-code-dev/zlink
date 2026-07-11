@@ -207,7 +207,8 @@ god-file·책임 혼합·중복·vestigial을 남기지 않게 정리하는 것�
 
 ## 10. .NET 완료 기록 (2026-07-10)
 
-.NET은 H0~H6와 ST-F1~F6을 완료했다.
+.NET은 H0~H6와 ST-F1~F5를 완료했다. ST-F6은 framework 구현은 있지만
+현재 고정한 bindings 패키지의 응답 연결 제약으로 배포형 검증을 완료하지 못했다.
 
 - H0 audit: 기존 Spot 직렬 큐는 moving 중 packet을 source handler에서 실행하지 않는 데에는 충분했지만,
   commit 응답 뒤 source 큐를 개별 forward하므로 target direct packet의 추월 가능성이 있었다. 또한
@@ -224,19 +225,31 @@ god-file·책임 혼합·중복·vestigial을 남기지 않게 정리하는 것�
   target ingress capture가 새 session packet도 backlog 뒤에 보존한다. target은 handoff id와 trailing
   frame을 받은 뒤 replay와 location 공개를 마치고 응답하며, source는 이 응답 뒤에만 정리를 확정한다.
   따라서 개수 기반 barrier 없이 replay packet과 새 session packet의 순서를 유지한다.
-- request framing: handoff frame이 원 actor ref와 request id·flags를 보존한다. target reply는 원 caller의
-  process-wide request id로 correlate하며, caller timeout 뒤 도착한 reply는 기존 late-reply 경로에서
-  버린다.
-- 경량 회귀: `ActorHandoffTests` 7개가 order, direct 추월 방지, bound-session 순서, window cutoff,
-  mapping 교체·축출, 완료 요청 멱등성, request framing을 검증한다.
-- 배포형 회귀: `e2e/SpotActorTransfer/run_e2e.sh ST-F1 ST-F2 ST-F3 ST-F4 ST-F5 ST-F6`가 Track F
-  전체를 검증한다. ST-F6은 정상 reply correlation과 caller timeout 뒤 late reply drop을 함께 확인한다.
+- request framing: handoff frame은 원 actor ref, request id·flags, caller node·session 좌표를 보존한다.
+  target은 source를 다시 거치지 않고 공개 no-bind reply API를 호출한다. 다만 `Systems.Zlink
+  8.6.4`에 포함된 runtime은 원 actor node·generation으로 등록한 대기 request와 target node의
+  응답을 연결하지 못하므로 ST-F6의 caller 응답은 timeout된다. source relay는 target이
+  caller에 직접 응답해야 하는 계약을 어기므로 사용하지 않는다.
+- 경량 회귀: `ActorHandoffTests` 26개가 order, direct 추월 방지, bound-session 순서, window
+  cutoff, mapping 교체·축출, 완료 요청 멱등성, request framing·reply route, 중복 commit
+  대기, 동시 handoff 거부, admission route 상관관계를 검증한다.
+- 배포형 회귀: `e2e/SpotActorTransfer/run_e2e.sh`는 ST-F1~F5를 통과한 뒤 ST-F6 target handler와
+  direct reply 제출까지 도달하지만 caller timeout으로 실패한다. 이동한 actor reply 연결을
+  지원하는 runtime이 포함된 새 bindings 패키지를 배포한 뒤 중앙 버전을 갱신하고 ST-F6을
+  다시 검증한다.
 - H6: 완료 신호를 frame 개수 barrier로 유지하는 안과 handoff id를 가진 상관 완료 요청으로 모으는 안을
-  비교해 후자를 선택했다. 상태 전이는 `ZLinkActorRuntimeState`, wire framing은
+  비교해 후자를 선택했다. handoff 상태 전이는 `ZLinkActorHandoffState`, wire framing은
   `ZLinkRemoteActorJoinPackets`, ingress capture/forward는 `ZLinkActorHandoffIngress`, location 공개는
   `ZLinkActorOwnershipCoordinator` 한 곳이 각각 소유한다. 2차 재리뷰에서 completion wire에 중복으로
   남은 session route를 제거하고 target capture를 location 공개까지 유지하도록 바로잡았다. count
-  barrier와 중복 route 지식이 더 남지 않아 `CONVERGED`로 판정했다.
+  barrier와 중복 route 지식이 더 남지 않아 당시 범위는 `CONVERGED`로 판정했다.
+- 2026-07-11 재리뷰에서 배포된 bindings의 part 단위 forwarding 계약에는 header가 접수된 뒤 body
+  제출이 실패했을 때 multipart를 취소하는 공개 API가 없음을 확인했다. framework가 일반
+  `SendToActor`에 .NET 전용 envelope를 얹는 대안도 검토했지만, 다른 언어가 해석할 수 없고 일반 actor
+  ingress가 내부 route 메타데이터를 신뢰하게 되므로 폐기했다. 현재 구현은 공개
+  `ForwardActorBoundSessionPart`만 사용하고 forwarding window가 끝나면 재시도를 중단한다. 다만 이미
+  접수된 header를 원자적으로 취소하는 문제는 framework 내부 리팩토링으로 해결하지 않고 bindings의
+  공개 atomic forward 또는 multipart abort 계약 후보로 남긴다.
 
 ## 11. C++ 진행 기록 (2026-07-10)
 

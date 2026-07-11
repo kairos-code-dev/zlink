@@ -215,7 +215,8 @@ public sealed class RouteCodecTests
             new RecordingRouter(),
             new ZLinkRouteHandlerRegistry([]),
             null,
-            CancellationToken.None);
+            CancellationToken.None,
+            new object());
     }
 
     private static async Task SendUntilReceivedAsync(

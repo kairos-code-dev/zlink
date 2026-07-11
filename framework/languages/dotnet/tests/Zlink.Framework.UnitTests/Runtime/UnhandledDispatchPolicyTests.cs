@@ -254,7 +254,7 @@ public sealed class UnhandledDispatchPolicyTests
                 registration),
             static _ => new HashSet<string>(StringComparer.Ordinal),
             LogLevel.Warning,
-            new ZLinkDispatchErrorReporter(registration.DispatchOptions, services),
+            new ZLinkDispatchErrorReporter(registration.DispatchOptions),
             registration.Codecs,
             new CapturingLogger<ZLinkChannelPublishDispatchPipeline>());
         var header = new ZLinkEnvelopeHeader(
@@ -316,9 +316,12 @@ public sealed class UnhandledDispatchPolicyTests
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
         options.SetMessageFlowObserver(observer);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
+        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
         var reporter = new ZLinkDispatchErrorReporter(
             options,
-            new ServiceCollection().BuildServiceProvider());
+            observerPump: observerPump);
         var error = new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.Channel,
             ZLinkDispatchMessageKind.Request,
@@ -339,6 +342,7 @@ public sealed class UnhandledDispatchPolicyTests
         Assert.Equal("MissingReq", observed.PacketName);
         Assert.Equal("api", observed.ChannelName);
         Assert.Equal("corr-1", observed.CorrelationId);
+        await runner.StopAsync();
     }
 
     [Fact]
@@ -347,13 +351,16 @@ public sealed class UnhandledDispatchPolicyTests
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
         options.SetMessageFlowObserver(observer);
+        var services = new ServiceCollection().BuildServiceProvider();
+        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
+        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
         var logger = new CapturingLogger<ZLinkSpotActorPacketDispatcher>();
         var dispatcher = new ZLinkSpotActorPacketDispatcher(
             static () => new ZLinkSpotActorHandlerRegistry(ZLinkSpotActorHandlerSurface.UserSpot),
             static () => throw new InvalidOperationException("Handler invoker should not be used."),
             new ZLinkDispatchErrorReporter(
                 options,
-                new ServiceCollection().BuildServiceProvider()),
+                observerPump: observerPump),
             logger);
         var actor = new TestActor("actor-1");
         var runtimeState = new ZLinkActorRuntimeState(actor.ActorId);
@@ -378,6 +385,7 @@ public sealed class UnhandledDispatchPolicyTests
         Assert.Equal("missing-actor-send", observed.PacketName);
         Assert.Equal("actor-1", observed.ActorId);
         Assert.Contains(logger.Messages, message => message.Contains("no-handler", StringComparison.Ordinal));
+        await runner.StopAsync();
     }
 
     private static async Task<Received> ReceiveAsync(

@@ -1,25 +1,25 @@
 namespace Zlink.Framework.Runtime.Locations;
 
-internal sealed class ZLinkActorSessionRouteLifecycle(ZLinkLocationRuntime runtime)
+internal sealed class ZLinkActorSessionRouteLifecycle(
+    ZLinkLocationRuntime runtime,
+    Func<Func<CancellationToken, ValueTask>, bool> schedule)
 {
     private readonly object _gate = new();
+    private readonly Queue<RouteChange> _pending = new();
     private readonly Dictionary<string, long> _routes = new(StringComparer.Ordinal);
+    private bool _draining;
 
     internal void OnActorSessionBound(
         RoutingId sessionRid,
         string actorId,
         RoutingId ownerNodeRid)
     {
-        _ = RunGuardedAsync(() => BindAsync(
-            sessionRid,
-            actorId,
-            ownerNodeRid,
-            CancellationToken.None));
+        Enqueue(new RouteChange(sessionRid, actorId, ownerNodeRid));
     }
 
     internal void OnActorSessionUnbound(RoutingId sessionRid)
     {
-        _ = RunGuardedAsync(() => RemoveAsync(sessionRid, CancellationToken.None));
+        Enqueue(new RouteChange(sessionRid, null, default));
     }
 
     internal async ValueTask BindAsync(
@@ -48,9 +48,8 @@ internal sealed class ZLinkActorSessionRouteLifecycle(ZLinkLocationRuntime runti
         }
 
         if (result.Status != ZLinkLocationWriteStatus.Stored)
-        {
-            return;
-        }
+            throw new InvalidOperationException(
+                $"Actor session route '{sessionRid}' write was rejected with '{result.Status}'.");
 
         var canonical = ZLinkLocationKeyCodec.EncodeRouteKey(
             new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, routeKey));
@@ -69,13 +68,22 @@ internal sealed class ZLinkActorSessionRouteLifecycle(ZLinkLocationRuntime runti
         long generation;
         lock (_gate)
         {
-            if (!_routes.Remove(canonical, out generation))
+            if (!_routes.TryGetValue(canonical, out generation))
             {
                 return;
             }
         }
 
-        await runtime.RemoveRouteAsync(key, generation, cancellationToken).ConfigureAwait(false);
+        var result = await runtime.RemoveRouteAsync(key, generation, cancellationToken).ConfigureAwait(false);
+        if (result.Status is not (ZLinkLocationWriteStatus.Stored or ZLinkLocationWriteStatus.IgnoredStale))
+            throw new InvalidOperationException(
+                $"Actor session route '{sessionRid}' removal was rejected with '{result.Status}'.");
+
+        lock (_gate)
+        {
+            if (_routes.TryGetValue(canonical, out var current) && current == generation)
+                _routes.Remove(canonical);
+        }
     }
 
     internal void OnOwnershipLost(string canonicalKey)
@@ -86,15 +94,94 @@ internal sealed class ZLinkActorSessionRouteLifecycle(ZLinkLocationRuntime runti
         }
     }
 
-    private static async Task RunGuardedAsync(Func<ValueTask> operation)
+    internal void ResetGeneration()
+    {
+        lock (_gate)
+        {
+            _pending.Clear();
+            _routes.Clear();
+            _draining = false;
+        }
+    }
+
+    private void Enqueue(RouteChange change)
+    {
+        var startDrain = false;
+        lock (_gate)
+        {
+            _pending.Enqueue(change);
+            if (!_draining)
+            {
+                _draining = true;
+                startDrain = true;
+            }
+        }
+
+        if (startDrain && !schedule(DrainAsync))
+            ResetGeneration();
+    }
+
+    private async ValueTask DrainAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await operation().ConfigureAwait(false);
+            while (true)
+            {
+                RouteChange change;
+                lock (_gate)
+                {
+                    if (!_pending.TryDequeue(out change)) return;
+                }
+
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        if (change.ActorId is { } actorId)
+                            await BindAsync(
+                                    change.SessionRid,
+                                    actorId,
+                                    change.OwnerNodeRid,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                        else
+                            await RemoveAsync(change.SessionRid, cancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"actor session route reconciliation retry: {exception.Message}");
+                        await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                }
+            }
         }
-        catch (Exception exception)
+        finally
         {
-            ZLinkFrameworkDebugLog.SpotDiscovery($"actor session route lifecycle error: {exception.Message}");
+            var restart = false;
+            lock (_gate)
+            {
+                _draining = false;
+                if (_pending.Count != 0 && !cancellationToken.IsCancellationRequested)
+                {
+                    _draining = true;
+                    restart = true;
+                }
+            }
+
+            if (restart && !schedule(DrainAsync)) ResetGeneration();
         }
     }
+
+    private readonly record struct RouteChange(
+        RoutingId SessionRid,
+        string? ActorId,
+        RoutingId OwnerNodeRid);
 }

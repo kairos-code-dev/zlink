@@ -13,18 +13,19 @@ internal sealed partial class ZLinkEntrySpotActivation :
     private readonly SemaphoreSlim _actorJoinDrainGate = new(1, 1);
     private readonly ZLinkSpotActorJoinRegistry _actorJoins = new();
     private readonly ZLinkSpotActorMembership _actors = new();
-    private readonly ZLinkSpotActivationDispatcher _dispatcher;
+    private ZLinkSpotActivationDispatcher _dispatcher = null!;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkEntrySpotHandlerExecutor _handlerExecutor;
     private readonly ZLinkSpotHandlerInvoker _invoker;
     private readonly IZLinkBackendSpot _nativeSpot;
-    private readonly ZLinkSpotOutboundTransport _outbound;
-    private readonly ZLinkSpotOutboundEndpoint _outboundEndpoint;
+    private ZLinkSpotOutboundTransport _outbound = null!;
+    private ZLinkSpotOutboundEndpoint _outboundEndpoint = null!;
     private readonly ZLinkSpotPacketRegistry _packets = new();
     private readonly SemaphoreSlim _routeDrainGate = new(1, 1);
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;
-    private readonly ZLinkSerialExecutionQueue _serial;
+    private readonly TimeSpan? _sendTimeout;
+    private ZLinkSerialExecutionQueue _serial = null!;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
     private readonly ZLinkSpotTimerRegistry _timers = new();
@@ -34,6 +35,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
     public ZLinkEntrySpotActivation(
         ZLinkFrameworkRuntime runtime,
         IServiceProvider services,
+        AsyncServiceScope scope,
         IZLinkBackendSpot nativeSpot,
         Type entrySpotType,
         RoutingId nodeRid,
@@ -48,21 +50,19 @@ internal sealed partial class ZLinkEntrySpotActivation :
         SpotNodeName = spotNodeName;
         ChannelName = channelName;
         DefaultRequestTimeout = defaultRequestTimeout;
-        var errorSink = new ZLinkRuntimeErrorSink();
-        _serial = new ZLinkSerialExecutionQueue(
-            new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token),
-            errorSink,
-            _stopSource.Token);
-        _scope = services.CreateAsyncScope();
-        EntrySpot = (IZLinkEntrySpot)ActivatorUtilities.CreateInstance(
-            _scope.ServiceProvider,
-            entrySpotType,
-            this);
-        if (!ReferenceEquals(EntrySpot.Context, this))
-            throw new InvalidOperationException(
-                $"Entry SPOT '{entrySpotType.FullName}' must expose the context provided by the runtime.");
+        _sendTimeout = sendTimeout;
+        _scope = scope;
+        try
+        {
+            EntrySpot = (IZLinkEntrySpot)ActivatorUtilities.CreateInstance(
+                _scope.ServiceProvider,
+                entrySpotType,
+                this);
+            if (!ReferenceEquals(EntrySpot.Context, this))
+                throw new InvalidOperationException(
+                    $"Entry SPOT '{entrySpotType.FullName}' must expose the context provided by the runtime.");
 
-        _invoker = new ZLinkSpotHandlerInvoker(
+            _invoker = new ZLinkSpotHandlerInvoker(
             _scope.ServiceProvider,
             EntrySpot,
             _runtime.Registration.Codecs,
@@ -75,26 +75,13 @@ internal sealed partial class ZLinkEntrySpotActivation :
         _actorHandlers = new ZLinkSpotActorHandlerRegistry(
             ZLinkSpotActorHandlerSurface.EntrySpot,
             EntrySpot.GetType());
-        _outbound = new ZLinkSpotOutboundTransport(
-            nativeSpot,
-            sendTimeout,
-            _stopSource.Token);
-        _outboundEndpoint = new ZLinkSpotOutboundEndpoint(
-            this,
-            _outbound,
-            _runtime);
         Handlers = new ZLinkSpotHandlerRegistrySurface(this);
-        Outbound = _outboundEndpoint;
-        _dispatcher = new ZLinkSpotActivationDispatcher(
-            runtime,
-            nativeSpot,
-            channelName,
-            _packets,
-            _actorJoins,
-            _actors,
-            _subscriptions,
-            () => _actorHandlers,
-            () => _invoker);
+        }
+        catch
+        {
+            _stopSource.Dispose();
+            throw;
+        }
     }
 
     public IZLinkEntrySpot EntrySpot { get; }
@@ -103,16 +90,78 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     private bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
+    internal void RequestStop()
+    {
+        _serial?.Complete();
+        _stopSource.Cancel();
+    }
+
+    internal void InitializeRuntimeResources()
+    {
+        _outbound = new ZLinkSpotOutboundTransport(
+            _nativeSpot,
+            _sendTimeout,
+            _stopSource.Token);
+        _outboundEndpoint = new ZLinkSpotOutboundEndpoint(this, _outbound, _runtime);
+        _dispatcher = new ZLinkSpotActivationDispatcher(
+            _runtime,
+            _nativeSpot,
+            ChannelName,
+            _packets,
+            _actorJoins,
+            _actors,
+            _subscriptions,
+            () => _actorHandlers,
+            () => _invoker);
+        var errorSink = new ZLinkRuntimeErrorSink();
+        _serial = new ZLinkSerialExecutionQueue(
+            new ZLinkRuntimeTaskRunner(
+                errorSink,
+                _stopSource.Token,
+                _runtime.ExecutionOwner),
+            errorSink,
+            _stopSource.Token);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        _stopSource.Cancel();
-        await _timers.DisposeAsync().ConfigureAwait(false);
-        await _serial.DisposeAsync().ConfigureAwait(false);
-        await _outbound.DisposeAsync().ConfigureAwait(false);
-        _stopSource.Dispose();
-        await _scope.DisposeAsync().ConfigureAwait(false);
+        var failures = new List<Exception>();
+        Capture(RequestStop);
+        await CaptureAsync(_timers.DisposeAsync).ConfigureAwait(false);
+        if (_serial is not null) await CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
+        if (_outbound is not null) await CaptureAsync(_outbound.DisposeAsync).ConfigureAwait(false);
+        Capture(_stopSource.Dispose);
+        await CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
+        return;
+
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
     }
 
     public string ChannelName { get; }
@@ -123,7 +172,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     public IZLinkSpotHandlerRegistry Handlers { get; }
 
-    public IZLinkSpotOutbound Outbound { get; }
+    public IZLinkSpotOutbound Outbound => _outboundEndpoint;
 
     ZLinkSpotOutboundEndpoint IZLinkCurrentSpotActivation.OutboundEndpoint => _outboundEndpoint;
 

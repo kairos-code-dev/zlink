@@ -2,20 +2,61 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
 {
+    internal object RuntimeExecutionOwner => _runtime.ExecutionOwner;
+
     public CancellationToken StopToken => _stopSource.Token;
+
+    internal void RequestStop()
+    {
+        _serial.RequestStop();
+        _stopSource.Cancel();
+    }
 
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        _stopSource.Cancel();
+        var failures = new List<Exception>();
+        Capture(RequestStop);
+        await CaptureAsync(_timers.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(_outbound.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(NativeSpot.DisposeAsync).ConfigureAwait(false);
+        Capture(_stopSource.Dispose);
+        await CaptureAsync(_scope.DisposeAsync).ConfigureAwait(false);
+        ThrowFailures(failures);
+        return;
 
-        await _timers.DisposeAsync();
-        await _serial.DisposeAsync();
-        await _outbound.DisposeAsync();
-        await NativeSpot.DisposeAsync();
-        _stopSource.Dispose();
-        await _scope.DisposeAsync();
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+    }
+
+    private static void ThrowFailures(IReadOnlyList<Exception> failures)
+    {
+        if (failures.Count == 1)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
     }
 
     public ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -88,11 +129,17 @@ internal sealed partial class ZLinkSpotActivation
                 actorParts =>
                 {
                     var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(_runtime, actorParts);
-                    if (dispatchable.Count == 0) return;
+                    if (dispatchable.Count == 0)
+                    {
+                        dispatchable.Dispose();
+                        return;
+                    }
 
-                    QueueSerialized(
-                        static (activation, state, ct) => activation._dispatcher.DispatchActorPartsAsync(state, ct),
-                        dispatchable);
+                    if (!QueueSerialized(
+                        static (activation, state, ct) => activation._dispatcher.DispatchActorFramesAsync(state, ct),
+                        dispatchable,
+                        dispatchable.Dispose))
+                        dispatchable.Dispose();
                 });
 
             return 0;
@@ -159,18 +206,21 @@ internal sealed partial class ZLinkSpotActivation
         return _serial.ExecuteAsync(operation, state, cancellationToken);
     }
 
-    private void QueueSerialized(Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation)
+    private bool QueueSerialized(Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation)
     {
-        _serial.Queue(operation);
+        return _serial.Queue(operation);
     }
 
-    private void QueueSerialized<TState>(
+    private bool QueueSerialized<TState>(
         Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
-        TState state)
+        TState state,
+        Action? onSkipped = null)
     {
         var capturedOp = operation;
         var capturedState = state;
-        _serial.Queue((activation, ct) => capturedOp(activation, capturedState, ct));
+        return _serial.Queue(
+            (activation, ct) => capturedOp(activation, capturedState, ct),
+            onSkipped);
     }
 
     private async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)

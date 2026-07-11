@@ -19,10 +19,12 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     private readonly IZLinkOwnerLeaseStore _ownerLeaseStore;
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
-    private readonly object _stateGate = new();
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private ZLinkLocationRuntimeHealth _health = new(false, null, null, null);
     private CancellationTokenSource? _heartbeatCts;
     private Task? _heartbeatLoop;
     private RoutingId _nodeRid;
+    private string _ownerId = Guid.NewGuid().ToString("n");
     private bool _started;
 
     internal ZLinkLocationRuntime(
@@ -47,15 +49,18 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         _time = timeProvider ?? TimeProvider.System;
     }
 
-    /// <summary>Stable process-local owner id, created once per runtime
-    /// start. A restarted process gets a fresh id.</summary>
-    internal string OwnerId { get; } = Guid.NewGuid().ToString("n");
+    /// <summary>Stable owner id for the current runtime generation. Each
+    /// successful restart attempt uses a fresh id so rows left by an older
+    /// generation cannot become live again.</summary>
+    internal string OwnerId => _ownerId;
 
-    internal bool OwnerLeaseHealthy { get; private set; }
+    internal bool OwnerLeaseHealthy => Volatile.Read(ref _health).Healthy;
 
-    internal DateTimeOffset? OwnerLeaseRenewedAt { get; private set; }
+    internal DateTimeOffset? OwnerLeaseRenewedAt => Volatile.Read(ref _health).RenewedAt;
 
-    internal string? LastError { get; private set; }
+    internal string? LastError => Volatile.Read(ref _health).LastError;
+
+    internal ZLinkLocationRuntimeHealth GetHealthSnapshot() => Volatile.Read(ref _health);
 
     /// <summary>Raised when a write for a row this owner believed it owned
     /// came back IgnoredStale. The argument is the canonical location key.</summary>
@@ -65,69 +70,89 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         RoutingId nodeRid,
         CancellationToken cancellationToken = default)
     {
-        if (_started)
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return;
+            if (_started) return;
+
+            _nodeRid = nodeRid;
+            _ownerId = Guid.NewGuid().ToString("n");
+
+            // Register liveness before any row write so readers joining rows
+            // against the lease never see this owner's rows as stale on start.
+            if (!await RenewOwnerLeaseOnceAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidOperationException(
+                    $"The location runtime could not establish its owner lease: {LastError ?? "unknown store failure"}");
+
+            var heartbeat = new CancellationTokenSource();
+            _heartbeatCts = heartbeat;
+            _heartbeatLoop = Task.Run(
+                () => HeartbeatLoopAsync(heartbeat.Token),
+                CancellationToken.None);
+            _started = true;
         }
-
-        _started = true;
-        _nodeRid = nodeRid;
-
-        // Register liveness before any row write so readers joining rows
-        // against the lease never see this owner's rows as stale on start.
-        await RenewOwnerLeaseOnceAsync(cancellationToken).ConfigureAwait(false);
-        _heartbeatCts = new CancellationTokenSource();
-        _heartbeatLoop = Task.Run(
-            () => HeartbeatLoopAsync(_heartbeatCts.Token),
-            CancellationToken.None);
+        finally
+        {
+            _lifecycleGate.Release();
+        }
     }
 
     internal async ValueTask StopAsync(CancellationToken cancellationToken = default)
     {
-        if (!_started)
-        {
-            return;
-        }
-
-        _started = false;
-        if (_heartbeatCts is not null)
-        {
-            await _heartbeatCts.CancelAsync().ConfigureAwait(false);
-        }
-
-        if (_heartbeatLoop is not null)
-        {
-            try
-            {
-                await _heartbeatLoop.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
-
-        // Shutdown order: drop the lease first so every row of this owner
-        // turns stale at once, then bulk-remove the rows without a call per
-        // row.
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _ownerLeaseStore.RemoveOwnerLeaseAsync(OwnerId, cancellationToken)
-                .ConfigureAwait(false);
-            await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
+            if (!_started) return;
+
+            _started = false;
+            var heartbeat = _heartbeatCts;
+            var heartbeatLoop = _heartbeatLoop;
+            _heartbeatCts = null;
+            _heartbeatLoop = null;
+            if (heartbeat is not null)
+                await heartbeat.CancelAsync().ConfigureAwait(false);
+
+            if (heartbeatLoop is not null)
+            {
+                try
+                {
+                    await heartbeatLoop.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            heartbeat?.Dispose();
+            UpdateHealth(static health => health with { Healthy = false });
+
+            // Shutdown order: drop the lease first so every row of this owner
+            // turns stale at once, then bulk-remove the rows without a call per
+            // row.
+            try
+            {
+                await _ownerLeaseStore.RemoveOwnerLeaseAsync(OwnerId, cancellationToken)
+                    .ConfigureAwait(false);
+                await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                // A store outage during shutdown is not fatal: the expired
+                // lease makes the leftover rows stale and background cleanup
+                // removes them later.
+                RecordStoreFailure(exception.Message);
+            }
         }
-        catch (Exception exception)
+        finally
         {
-            // A store outage during shutdown is not fatal: the expired
-            // lease makes the leftover rows stale and background cleanup
-            // removes them later.
-            RecordFailure(exception.Message);
+            _lifecycleGate.Release();
         }
     }
 
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
-        _heartbeatCts?.Dispose();
+        _lifecycleGate.Dispose();
     }
 
     /// <summary>
@@ -301,20 +326,25 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             var result = await _ownerLeaseStore.RenewOwnerLeaseAsync(
                 OwnerId, _nodeRid, _options.OwnerLeaseTtl, cancellationToken)
                 .ConfigureAwait(false);
-            lock (_stateGate)
-            {
-                OwnerLeaseHealthy = true;
-                OwnerLeaseRenewedAt = result.StoreNow;
-                LastError = null;
-            }
+            UpdateHealth(
+                health => health with
+                {
+                    Healthy = true,
+                    RenewedAt = result.StoreNow,
+                    LeaseError = null
+                });
 
             return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
             // Fail-static: record the failure and retry on the next tick.
             // Existing rows stay valid until the lease actually expires.
-            RecordFailure(exception.Message);
+            RecordLeaseFailure(exception.Message);
             return false;
         }
     }
@@ -342,11 +372,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     {
         try
         {
-            return await write().ConfigureAwait(false);
+            var result = await write().ConfigureAwait(false);
+            UpdateHealth(static health => health with { StoreError = null });
+            return result;
         }
         catch (Exception exception)
         {
-            RecordFailure(exception.Message);
+            RecordStoreFailure(exception.Message);
             throw;
         }
     }
@@ -378,12 +410,33 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         }
     }
 
-    private void RecordFailure(string message)
+    private void RecordLeaseFailure(string message)
     {
-        lock (_stateGate)
+        UpdateHealth(health => health with { Healthy = false, LeaseError = message });
+    }
+
+    private void RecordStoreFailure(string message)
+    {
+        UpdateHealth(health => health with { StoreError = message });
+    }
+
+    private void UpdateHealth(Func<ZLinkLocationRuntimeHealth, ZLinkLocationRuntimeHealth> update)
+    {
+        while (true)
         {
-            OwnerLeaseHealthy = false;
-            LastError = message;
+            var current = Volatile.Read(ref _health);
+            var next = update(current);
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _health, next, current), current))
+                return;
         }
     }
+}
+
+internal sealed record ZLinkLocationRuntimeHealth(
+    bool Healthy,
+    DateTimeOffset? RenewedAt,
+    string? LeaseError,
+    string? StoreError)
+{
+    public string? LastError => StoreError ?? LeaseError;
 }

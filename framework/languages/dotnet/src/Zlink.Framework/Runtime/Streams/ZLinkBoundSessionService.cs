@@ -24,6 +24,7 @@ internal sealed class ZLinkBoundSessionService(
         string actorId,
         CancellationToken cancellationToken = default)
     {
+        using var operation = runtime.EnterOperation();
         if (ZLinkBoundSessionDispatchScope.TryDeferClose(
                 actorId,
                 ct => DisconnectNowAsync(actorId, ct)))
@@ -60,6 +61,7 @@ internal sealed class ZLinkBoundSessionService(
         TMessage message,
         CancellationToken cancellationToken)
     {
+        using var operation = runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
         var frame = CreateBoundSessionFrame(
             packetName,

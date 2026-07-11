@@ -437,4 +437,5 @@ complete다. `test_cpp_contract_message`, `test_cpp_contract_socket`,
 - Single `DEALER_ROUTER_REQREP`: 완료
 - C perf 변경: request/reply 수명 주기 수정과 C/C++ echo 소유권 전달 의미 정합화
 - C++ binding 변경: 없음
+- 완료 커밋: `f951e7baa`
 - 다음 pattern: Single `ROUTER_ROUTER`
